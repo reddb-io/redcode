@@ -191,6 +191,8 @@ import type {
   ProviderOpenaiCompatibleConnectResponses,
   ProviderRedRouterConnectErrors,
   ProviderRedRouterConnectResponses,
+  ProviderRemoveErrors,
+  ProviderRemoveResponses,
   PtyConnectErrors,
   PtyConnectResponses,
   PtyConnectTokenErrors,
@@ -3851,6 +3853,40 @@ export class Provider extends HeyApiClient {
         ...options?.headers,
         ...params.headers,
       },
+    })
+  }
+
+  /**
+   * Remove a provider
+   *
+   * Remove a provider completely: its saved key or login, its entry in the global configuration, the global settings that name it (default and small model, agent and command models, the enabled and disabled provider lists), System Two models and a System One evaluator that use it, cached router detections and learned model limits, then reload instances before responding. With dryRun=true nothing changes and the result lists what would be removed. Project configuration files that mention the provider are listed, not edited, and environment variables that make the provider available again are named.
+   */
+  public remove<ThrowOnError extends boolean = false>(
+    parameters: {
+      providerID: string
+      directory?: string
+      workspace?: string
+      dryRun?: "true" | "false"
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "path", key: "providerID" },
+            { in: "query", key: "directory" },
+            { in: "query", key: "workspace" },
+            { in: "query", key: "dryRun" },
+          ],
+        },
+      ],
+    )
+    return (options?.client ?? this.client).delete<ProviderRemoveResponses, ProviderRemoveErrors, ThrowOnError>({
+      url: "/provider/{providerID}",
+      ...options,
+      ...params,
     })
   }
 
@@ -9335,12 +9371,45 @@ export class Intelligence extends HeyApiClient {
    * Read session semantic evaluations
    */
   public history<ThrowOnError extends boolean = false>(
-    parameters: {
-      sessionID: string
+    parameters?: {
+      sessionID?: string
+      operation?:
+        | "prompt_classification"
+        | "response_quality"
+        | "tool_usage"
+        | "task_quality"
+        | "todos"
+        | "plan"
+        | "feedback"
+        | "design_completion"
+        | "compaction"
+        | "compact_now"
+        | "task_completion"
+        | "goal_completion"
+      subjectID?: string
+      candidateID?: string
+      decision?: "accepted" | "needs_revision" | "inconclusive" | "unavailable"
+      limit?: string
+      offset?: string
     },
     options?: Options<never, ThrowOnError>,
   ) {
-    const params = buildClientParams([parameters], [{ args: [{ in: "query", key: "sessionID" }] }])
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "query", key: "sessionID" },
+            { in: "query", key: "operation" },
+            { in: "query", key: "subjectID" },
+            { in: "query", key: "candidateID" },
+            { in: "query", key: "decision" },
+            { in: "query", key: "limit" },
+            { in: "query", key: "offset" },
+          ],
+        },
+      ],
+    )
     return (options?.client ?? this.client).get<IntelligenceHistoryResponses, IntelligenceHistoryErrors, ThrowOnError>({
       url: "/api/intelligence/evaluations",
       ...options,

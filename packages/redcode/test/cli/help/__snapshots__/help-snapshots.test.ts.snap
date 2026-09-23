@@ -172,6 +172,7 @@ Commands:
   redcode providers list               list providers and credentials                  [aliases: ls]
   redcode providers login [url]        log in to a provider
   redcode providers logout [provider]  log out from a configured provider
+  redcode providers remove [provider]  remove a provider and the settings that use it
 
 Options:
   -h, --help        show help                                                              [boolean]
@@ -608,6 +609,26 @@ Options:
       --reasoning   reasoning mode for this run                 [string] [choices: "single", "dual"]
       --verbose     trace the boot to stderr until the screen renders, then trace activity to the
                     log                                                                    [boolean]"
+`;
+
+exports[`opencode CLI help-text snapshots every documented command emits stable help text: opencode providers remove --help 1`] = `
+"redcode providers remove [provider]
+
+remove a provider and the settings that use it
+
+Positionals:
+  provider  provider id or name to remove                                                   [string]
+
+Options:
+  -h, --help        show help                                                              [boolean]
+  -v, --version     show version number                                                    [boolean]
+      --print-logs  print logs to stderr                                                   [boolean]
+      --log-level   log level                   [string] [choices: "DEBUG", "INFO", "WARN", "ERROR"]
+      --pure        run without external plugins                                           [boolean]
+      --reasoning   reasoning mode for this run                 [string] [choices: "single", "dual"]
+      --verbose     trace the boot to stderr until the screen renders, then trace activity to the
+                    log                                                                    [boolean]
+  -y, --yes         remove without asking for confirmation                                 [boolean]"
 `;
 
 exports[`opencode CLI help-text snapshots every documented command emits stable help text: opencode agent create --help 1`] = `

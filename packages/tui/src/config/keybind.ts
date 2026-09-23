@@ -224,6 +224,7 @@ export const Definitions = {
   "dialog.mcp.logout": keybind("ctrl+d", "Log out of MCP in MCP dialog"),
   "dialog.mcp.auth.copy": keybind("ctrl+y", "Copy authorization URL in MCP sign-in"),
   "dialog.mcp.auth.retry": keybind("ctrl+r", "Retry MCP sign-in"),
+  "dialog.provider.remove": keybind("ctrl+d", "Remove provider in provider dialog"),
   "dialog.move_session.new": keybind("ctrl+m", "New project copy"),
   "dialog.move_session.delete": keybind("ctrl+d", "Delete project copy"),
   "dialog.move_session.refresh": keybind("ctrl+r", "Refresh project copies"),

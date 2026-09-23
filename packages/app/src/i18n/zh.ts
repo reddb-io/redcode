@@ -342,6 +342,18 @@ export const dict = {
 
   "provider.disconnect.toast.disconnected.title": "{{provider}} 已断开连接",
   "provider.disconnect.toast.disconnected.description": "{{provider}} 模型已不再可用。",
+  "provider.remove.title": "Remove {{provider}}?",
+  "provider.remove.description": "This removes the provider and every setting that points at it.",
+  "provider.remove.credential": "Saved key or login",
+  "provider.remove.config": "Configuration entry",
+  "provider.remove.references": "In use by: {{references}}",
+  "provider.remove.learnedLimits": "Learned model limits: {{count}}",
+  "provider.remove.nothing": "Nothing is saved for this provider.",
+  "provider.remove.env": "{{provider}} stays available through {{variables}}; unset it to remove it completely.",
+  "provider.remove.files": "Still mentioned in: {{files}}, which are not edited.",
+  "provider.remove.button": "Remove",
+  "provider.remove.toast.title": "{{provider}} removed",
+  "provider.remove.toast.description": "{{provider}} and the settings that used it were removed.",
 
   "model.tag.free": "免费",
   "model.tag.latest": "最新",

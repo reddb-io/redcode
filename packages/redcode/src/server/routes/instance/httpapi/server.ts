@@ -1,3 +1,5 @@
+import { ModelLimit } from "@reddb-io/redcode-core/model-limit"
+import { Credential } from "@reddb-io/redcode-core/credential"
 import { Intelligence } from "@reddb-io/redcode-core/intelligence"
 import { DesignReviewServer } from "@/design/review-server"
 import { DesignFeedback } from "@/design/feedback"
@@ -243,6 +245,7 @@ const app = LayerNode.group([
   Npm.node,
   FSUtil.node,
   Database.node,
+  Credential.node,
   Auth.node,
   Account.node,
   Config.node,
@@ -253,6 +256,7 @@ const app = LayerNode.group([
   Snapshot.node,
   Plugin.node,
   ModelsDev.node,
+  ModelLimit.node,
   Provider.node,
   ProviderAuth.node,
   Agent.node,

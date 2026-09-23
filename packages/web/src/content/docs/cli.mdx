@@ -182,6 +182,16 @@ opencode auth logout
 
 ---
 
+#### remove
+
+Removes a provider completely: its saved key or login, its entry in the global config, and every global setting that uses it (default and small model, agent and command models, the enabled and disabled provider lists, and the reasoning models). It shows what will be cleared and asks for confirmation; pass `--yes` to skip the question.
+
+```bash
+opencode auth remove [provider]
+```
+
+---
+
 ### github
 
 Manage the GitHub agent for repository automation.

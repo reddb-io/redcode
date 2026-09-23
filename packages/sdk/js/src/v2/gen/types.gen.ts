@@ -1906,6 +1906,29 @@ export type ProviderConfig = {
       headers?: {
         [key: string]: string
       }
+      router?: {
+        owned_by?: string
+        strategy?: string
+        thinking_levels?: Array<string>
+        capabilities?: {
+          [key: string]: unknown
+        }
+        parameters?: {
+          context_length?: number
+          max_completion_tokens?: number
+          reasoning?: boolean
+          thinking_levels?: Array<string>
+          thinking_can_disable?: boolean
+          forced_tool_choice?: boolean
+          tools?: boolean
+          search?: boolean
+          modalities?: {
+            input?: Array<string>
+            output?: Array<string>
+          }
+        }
+        members?: Array<string>
+      }
       /**
        * Variant-specific configuration
        */
@@ -2134,6 +2157,7 @@ export type Config = {
   design?: ConfigV2Design
   session?: ConfigV2Session
   models?: ConfigV2Models
+  reasoning?: ConfigV2Reasoning
   experimental?: {
     disable_paste_summary?: boolean
     batch_tool?: boolean
@@ -4299,6 +4323,15 @@ export type ConfigV2Models = {
   sources?: Array<string>
 }
 
+export type ConfigV2ReasoningAuto = {
+  floor?: "none" | "minimal" | "low" | "medium" | "high" | "xhigh" | "max"
+  ceiling?: "none" | "minimal" | "low" | "medium" | "high" | "xhigh" | "max"
+}
+
+export type ConfigV2Reasoning = {
+  auto?: ConfigV2ReasoningAuto
+}
+
 export type PolicyEffect = "allow" | "deny"
 
 export type ConfigV2ExperimentalPolicy = {
@@ -4414,6 +4447,41 @@ export type ProjectDirectories = Array<{
 export type PtyTicketConnectToken = {
   ticket: string
   expires_in: number
+}
+
+export type RouterKind = "red-router" | "9router" | "none"
+
+export type RouterFeature =
+  | "capabilities"
+  | "systemone"
+  | "combos"
+  | "decision"
+  | "hint"
+  | "token-saver"
+  | "session-affinity"
+  | "served-model"
+  | "cost"
+  | "stream-usage-cost"
+  | "catalog"
+  | "reasoning"
+  | "reasoning-auto"
+  | "reasoning-applies"
+  | "hint-signals"
+
+export type RouterDetection = {
+  kind: RouterKind
+  version?: string
+  instanceID?: string
+  catalogVersion?: string
+  features: Array<RouterFeature>
+  systemOne?: {
+    available: boolean
+    models: Array<string>
+  }
+  /**
+   * Epoch milliseconds of the probe.
+   */
+  checkedAt: number
 }
 
 export type WorkspaceEventConnectionStatus = {
@@ -7307,8 +7375,18 @@ export type ProjectCopyCopy = {
   directory: string
 }
 
+export type IntelligenceReasoning = "single" | "dual"
+
 export type IntelligenceEvaluator = {
-  transport: "opencode-zen" | "typesafe" | "red-router"
+  transport:
+    | "opencode-zen"
+    | "openrouter"
+    | "typesafe"
+    | "red-router"
+    | "cloudflare-ai-gateway"
+    | "vercel"
+    | "vivgrid"
+    | "nano-gpt"
   baseURL: string
   model: string
   credentialID?: string
@@ -7316,15 +7394,35 @@ export type IntelligenceEvaluator = {
 
 export type IntelligenceSettings = {
   enabled: boolean
+  reasoning?: IntelligenceReasoning
   onboarding: "pending" | "deferred" | "completed"
   principal?: ModelRef
   fast?: ModelRef
   evaluator?: IntelligenceEvaluator
 }
 
+export type IntelligenceEvaluatorOption = {
+  name: string
+  configured: boolean
+  evaluator: IntelligenceEvaluator
+}
+
+export type IntelligenceDetectedRouter = {
+  providerID: string
+  baseURL: string
+  detection: RouterDetection
+  evaluator?: IntelligenceEvaluator
+}
+
 export type IntelligenceStatus = {
   settings: IntelligenceSettings
   environment: string
+  evaluators: Array<IntelligenceEvaluatorOption>
+  effective: {
+    reasoning: IntelligenceReasoning
+    source: "flag" | "config" | "default"
+  }
+  router?: IntelligenceDetectedRouter
 }
 
 export type IntelligenceSave = {
@@ -7379,7 +7477,23 @@ export type IntelligenceEvaluation = {
   id: string
   fingerprint: string
   sessionID: string
-  operation: "todos" | "plan" | "feedback" | "design_completion" | "compaction" | "compact_now" | "task_completion"
+  operation:
+    | "prompt_classification"
+    | "response_quality"
+    | "tool_usage"
+    | "task_quality"
+    | "todos"
+    | "plan"
+    | "feedback"
+    | "design_completion"
+    | "compaction"
+    | "compact_now"
+    | "task_completion"
+    | "goal_completion"
+  kind?: "classification" | "gate"
+  subjectID?: string
+  candidateID?: string
+  attempt?: number
   policy: string
   decision: "accepted" | "needs_revision" | "inconclusive" | "unavailable"
   model: string
@@ -7390,7 +7504,15 @@ export type IntelligenceEvaluation = {
   created: number
   duration: number
   evaluator?: {
-    transport: "opencode-zen" | "typesafe" | "red-router"
+    transport:
+      | "opencode-zen"
+      | "openrouter"
+      | "typesafe"
+      | "red-router"
+      | "cloudflare-ai-gateway"
+      | "vercel"
+      | "vivgrid"
+      | "nano-gpt"
     baseURL: string
     model: string
   }
@@ -10828,7 +10950,32 @@ export type ProviderDiscoverResponses = {
        * True when the router and the models catalog did not describe this model, so its limits are a conservative guess.
        */
       estimated: boolean
+      router?: {
+        owned_by?: string
+        strategy?: string
+        thinking_levels?: Array<string>
+        capabilities?: {
+          [key: string]: unknown
+        }
+        parameters?: {
+          context_length?: number
+          max_completion_tokens?: number
+          reasoning?: boolean
+          thinking_levels?: Array<string>
+          thinking_can_disable?: boolean
+          forced_tool_choice?: boolean
+          tools?: boolean
+          search?: boolean
+          modalities?: {
+            input?: Array<string>
+            output?: Array<string>
+          }
+        }
+        members?: Array<string>
+      }
     }>
+    router?: RouterDetection
+    catalogVersion?: string
   }
 }
 
@@ -10895,6 +11042,29 @@ export type ProviderOpenaiCompatibleConnectResponses = {
        * True when the router and the models catalog did not describe this model, so its limits are a conservative guess.
        */
       estimated: boolean
+      router?: {
+        owned_by?: string
+        strategy?: string
+        thinking_levels?: Array<string>
+        capabilities?: {
+          [key: string]: unknown
+        }
+        parameters?: {
+          context_length?: number
+          max_completion_tokens?: number
+          reasoning?: boolean
+          thinking_levels?: Array<string>
+          thinking_can_disable?: boolean
+          forced_tool_choice?: boolean
+          tools?: boolean
+          search?: boolean
+          modalities?: {
+            input?: Array<string>
+            output?: Array<string>
+          }
+        }
+        members?: Array<string>
+      }
     }>
     /**
      * False when the models were entered instead of discovered.
@@ -10955,7 +11125,32 @@ export type ProviderNineRouterConnectResponses = {
        * True when the router and the models catalog did not describe this model, so its limits are a conservative guess.
        */
       estimated: boolean
+      router?: {
+        owned_by?: string
+        strategy?: string
+        thinking_levels?: Array<string>
+        capabilities?: {
+          [key: string]: unknown
+        }
+        parameters?: {
+          context_length?: number
+          max_completion_tokens?: number
+          reasoning?: boolean
+          thinking_levels?: Array<string>
+          thinking_can_disable?: boolean
+          forced_tool_choice?: boolean
+          tools?: boolean
+          search?: boolean
+          modalities?: {
+            input?: Array<string>
+            output?: Array<string>
+          }
+        }
+        members?: Array<string>
+      }
     }>
+    router?: RouterDetection
+    catalogVersion?: string
   }
 }
 
@@ -11001,12 +11196,104 @@ export type ProviderRedRouterConnectResponses = {
        * True when the router and the models catalog did not describe this model, so its limits are a conservative guess.
        */
       estimated: boolean
+      router?: {
+        owned_by?: string
+        strategy?: string
+        thinking_levels?: Array<string>
+        capabilities?: {
+          [key: string]: unknown
+        }
+        parameters?: {
+          context_length?: number
+          max_completion_tokens?: number
+          reasoning?: boolean
+          thinking_levels?: Array<string>
+          thinking_can_disable?: boolean
+          forced_tool_choice?: boolean
+          tools?: boolean
+          search?: boolean
+          modalities?: {
+            input?: Array<string>
+            output?: Array<string>
+          }
+        }
+        members?: Array<string>
+      }
     }>
+    router?: RouterDetection
+    catalogVersion?: string
   }
 }
 
 export type ProviderRedRouterConnectResponse =
   ProviderRedRouterConnectResponses[keyof ProviderRedRouterConnectResponses]
+
+export type ProviderRemoveData = {
+  body?: never
+  path: {
+    providerID: string
+  }
+  query?: {
+    directory?: string
+    workspace?: string
+    dryRun?: "true" | "false"
+  }
+  url: "/provider/{providerID}"
+}
+
+export type ProviderRemoveErrors = {
+  /**
+   * Bad request
+   */
+  400: BadRequestError
+}
+
+export type ProviderRemoveError = ProviderRemoveErrors[keyof ProviderRemoveErrors]
+
+export type ProviderRemoveResponses = {
+  /**
+   * What was removed, or with dryRun what would be
+   */
+  200: {
+    providerID: string
+    /**
+     * True when nothing was changed and the result only describes it.
+     */
+    dryRun: boolean
+    removed: {
+      /**
+       * A saved key or login for the provider.
+       */
+      credential: boolean
+      /**
+       * The provider's entry in the global configuration file.
+       */
+      config: boolean
+      /**
+       * Settings that pointed at the provider and are cleared, for example default model, agent build or S2 principal.
+       */
+      references: Array<string>
+      /**
+       * Learned model input limits that are forgotten.
+       */
+      learnedLimits: number
+    }
+    /**
+     * The global configuration file.
+     */
+    configPath: string
+    /**
+     * Project configuration files that still mention the provider. They are not edited.
+     */
+    referencingFiles: Array<string>
+    /**
+     * Environment variables set on the Redcode server that make the provider available again.
+     */
+    envVariables: Array<string>
+  }
+}
+
+export type ProviderRemoveResponse = ProviderRemoveResponses[keyof ProviderRemoveResponses]
 
 export type ProviderListData = {
   body?: never
@@ -18015,8 +18302,26 @@ export type IntelligenceProbeResponse = IntelligenceProbeResponses[keyof Intelli
 export type IntelligenceHistoryData = {
   body?: never
   path?: never
-  query: {
-    sessionID: string
+  query?: {
+    sessionID?: string
+    operation?:
+      | "prompt_classification"
+      | "response_quality"
+      | "tool_usage"
+      | "task_quality"
+      | "todos"
+      | "plan"
+      | "feedback"
+      | "design_completion"
+      | "compaction"
+      | "compact_now"
+      | "task_completion"
+      | "goal_completion"
+    subjectID?: string
+    candidateID?: string
+    decision?: "accepted" | "needs_revision" | "inconclusive" | "unavailable"
+    limit?: string
+    offset?: string
   }
   url: "/api/intelligence/evaluations"
 }

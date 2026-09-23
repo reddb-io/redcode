@@ -1,3 +1,4 @@
+import { Credential } from "@reddb-io/redcode-core/credential"
 import { Intelligence } from "@reddb-io/redcode-core/intelligence"
 import { Effect, Layer, ManagedRuntime } from "effect"
 import { attach } from "./run-service"
@@ -66,6 +67,7 @@ const nodes = [
   Npm.node,
   FSUtil.node,
   Database.node,
+  Credential.node,
   Auth.node,
   Account.node,
   Config.node,

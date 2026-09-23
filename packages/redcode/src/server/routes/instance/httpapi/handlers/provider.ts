@@ -9,12 +9,21 @@ import { Effect, Schema } from "effect"
 import { HttpClient, HttpEffect, HttpServerRequest, HttpServerResponse } from "effect/unstable/http"
 import { HttpApiBuilder } from "effect/unstable/httpapi"
 import { InstanceHttpApi } from "../api"
-import { ProviderAuthApiError, ProviderConnectApiError, ProviderDiscoveryApiError } from "../groups/provider"
+import {
+  ProviderAuthApiError,
+  ProviderConnectApiError,
+  ProviderDiscoveryApiError,
+  ProviderRemoveQuery,
+} from "../groups/provider"
 import { ProviderV2 } from "@reddb-io/redcode-core/provider"
 import { ProviderDiscovery } from "@/provider/discovery"
 import { NineRouter } from "@/provider/nine-router"
 import { RedRouter } from "@/provider/red-router"
 import { OpenAICompatible } from "@/provider/openai-compatible"
+import { ProviderRemove } from "@/provider/remove"
+import { Credential } from "@reddb-io/redcode-core/credential"
+import { Intelligence } from "@reddb-io/redcode-core/intelligence"
+import { ModelLimit } from "@reddb-io/redcode-core/model-limit"
 import { InstanceStore } from "@/project/instance-store"
 import { disposeAllInstancesAndEmitGlobalDisposed } from "@/server/global-lifecycle"
 import { InstanceState } from "@/effect/instance-state"
@@ -58,6 +67,9 @@ export const providerHandlers = HttpApiBuilder.group(InstanceHttpApi, "provider"
     const svc = yield* ProviderAuth.Service
     const authStore = yield* Auth.Service
     const http = yield* HttpClient.HttpClient
+    const credentials = yield* Credential.Service
+    const intelligence = yield* Intelligence.Service
+    const limits = yield* ModelLimit.Service
 
     const list = Effect.fn("ProviderHttpApi.list")(function* () {
       const config = yield* cfg.get()
@@ -124,6 +136,7 @@ export const providerHandlers = HttpApiBuilder.group(InstanceHttpApi, "provider"
           code: ctx.payload.code,
         }),
       )
+      yield* ProviderRemove.enable(cfg, ctx.params.providerID)
       return true
     })
 
@@ -194,6 +207,27 @@ export const providerHandlers = HttpApiBuilder.group(InstanceHttpApi, "provider"
       Effect.orElseSucceed((): string[] => []),
     )
 
+    const remove = Effect.fn("ProviderHttpApi.remove")(function* (ctx: {
+      params: { providerID: ProviderV2.ID }
+      query: typeof ProviderRemoveQuery.Type
+    }) {
+      const models = yield* ModelsDev.Service.use((s) => s.get())
+      const result = yield* ProviderRemove.remove(
+        {
+          config: cfg,
+          auth: authStore,
+          credentials,
+          intelligence,
+          limits,
+          envNames: models[ctx.params.providerID]?.env,
+        },
+        ctx.params.providerID,
+        { dryRun: ctx.query.dryRun },
+      )
+      if (!result.dryRun) yield* reloadBeforeResponse()
+      return { ...result, referencingFiles: yield* referencingFiles(ctx.params.providerID, result.configPath) }
+    })
+
     const connectNineRouter = Effect.fn("ProviderHttpApi.connectNineRouter")(function* (ctx: {
       payload: typeof ProviderDiscovery.Input.Type
     }) {
@@ -221,6 +255,7 @@ export const providerHandlers = HttpApiBuilder.group(InstanceHttpApi, "provider"
       .handle("connectOpenAICompatible", connectOpenAICompatible)
       .handle("connectNineRouter", connectNineRouter)
       .handle("connectRedRouter", connectRedRouter)
+      .handle("remove", remove)
       .handle("list", list)
       .handle("auth", auth)
       .handleRaw("authorize", authorizeRaw)
