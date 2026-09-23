@@ -24,6 +24,9 @@ export interface McpOAuthCallbacks {
 }
 
 export class McpOAuthProvider implements OAuthClientProvider {
+  // The tokens this provider last handed to the SDK or saved, i.e. the ones a rejection refers to.
+  private presented?: McpAuth.Tokens
+
   constructor(
     protected mcpName: string,
     protected serverUrl: string,
@@ -96,6 +99,7 @@ export class McpOAuthProvider implements OAuthClientProvider {
   async tokens(): Promise<OAuthTokens | undefined> {
     // Use getForUrl to validate tokens are for the current server URL
     const entry = await Effect.runPromise(this.auth.getForUrl(this.mcpName, this.serverUrl))
+    this.presented = entry?.tokens
     if (!entry?.tokens) return undefined
 
     return {
@@ -110,18 +114,14 @@ export class McpOAuthProvider implements OAuthClientProvider {
   }
 
   async saveTokens(tokens: OAuthTokens): Promise<void> {
-    await Effect.runPromise(
-      this.auth.updateTokens(
-        this.mcpName,
-        {
-          accessToken: tokens.access_token,
-          refreshToken: tokens.refresh_token,
-          expiresAt: tokens.expires_in ? Date.now() / 1000 + tokens.expires_in : undefined,
-          scope: tokens.scope,
-        },
-        this.serverUrl,
-      ),
-    )
+    const stored = {
+      accessToken: tokens.access_token,
+      refreshToken: tokens.refresh_token,
+      expiresAt: tokens.expires_in ? Date.now() / 1000 + tokens.expires_in : undefined,
+      scope: tokens.scope,
+    }
+    this.presented = stored
+    await Effect.runPromise(this.auth.updateTokens(this.mcpName, stored, this.serverUrl))
   }
 
   async redirectToAuthorization(authorizationUrl: URL): Promise<void> {
@@ -162,21 +162,7 @@ export class McpOAuthProvider implements OAuthClientProvider {
   }
 
   async invalidateCredentials(type: "all" | "client" | "tokens"): Promise<void> {
-    const entry = await Effect.runPromise(this.auth.get(this.mcpName))
-    if (!entry) return
-    switch (type) {
-      case "all":
-        await Effect.runPromise(this.auth.remove(this.mcpName))
-        break
-      case "client":
-        delete entry.clientInfo
-        await Effect.runPromise(this.auth.set(this.mcpName, entry))
-        break
-      case "tokens":
-        delete entry.tokens
-        await Effect.runPromise(this.auth.set(this.mcpName, entry))
-        break
-    }
+    await Effect.runPromise(this.auth.invalidate(this.mcpName, type, this.presented))
   }
 }
 

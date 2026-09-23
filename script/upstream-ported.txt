@@ -39,3 +39,10 @@ ea2d59d7ca8028951a16d4ebc558104258440bf9  # ported: explicit OpenAI service-tier
 # 2026-09-09: remaining provider updates from upstream dev at dff8fbc149.
 ac1758c0e6b8e7368be133e87e8e27a5f60dec04  # ported: preserve Bedrock DeepSeek identifiers and explicit ARNs in Core and CLI
 0b082b065d2b6bdf2cc6e6234176cbdaa2544d31  # ported: GitLab provider 6.15.0 with GPT-6 Astra Responses API mappings
+
+# 2026-09-22: MCP OAuth refresh hardening from upstream v2.
+2f8fa6afef061eb45e179a7face3287325edb873  # ported: MCP SDK patch serializing token refresh (upstream blob 3c3a81a6), with its test
+771c0f58507d6df8120f1c185f6ed9985ffe3d79  # ported: stale OAuth snapshots never drop rotated credentials, adapted to the file-backed McpAuth store
+
+# 2026-09-22: prompt cache diagnostics from upstream v2.
+7eb51d0507ecaf868c090d1e2bcbd577d0cdc625  # ported: prompt cache prefix diagnostics in both runtimes, behind --verbose instead of an env flag
