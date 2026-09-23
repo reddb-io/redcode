@@ -1,5 +1,12 @@
 # opencode
 
+## 0.46.0
+
+### Minor Changes
+
+- 6dc888d: Remove a provider completely from `/connect` (Manage → Remove provider, or ctrl+d on a connected provider), the web settings, or `redcode providers remove <id>`. Removal deletes the saved key or login and the provider's global configuration entry, clears the default, small, agent and command models, the enabled and disabled provider lists, System Two models and a System One evaluator that use it, and forgets its cached router detection and learned limits. A confirmation first shows what is in use, which project files still mention it and which environment variables would bring it back. Connecting a provider again takes it off `disabled_providers`, and `redcode providers list` now shows providers that are configured without a saved credential.
+- 1e1e4c8: Show where every model comes from: models served through a RedRouter are grouped by the upstream provider behind them and labeled `via RedRouter · <provider>` (with `subscription` for subscription accounts), directly connected providers are labeled `direct`, and a model available both ways says so. The prompt footer, `/setup` and the web model picker use the same labels, the session header shows the model RedRouter actually served, reasoning levels and modes (such as review) appear on their model instead of as separate models, and the web settings name a RedRouter connection instead of calling it custom. Connections now record which router they are, and after RedRouter switches to readable model ids (`codex/gpt-5.6-sol` instead of `cx/gpt-5.6-sol`) saved models, default and agent models, favorites, recents and System Two models move to the new ids while old ids keep working. A background catalog refresh that changes the models shows a notice.
+
 ## 0.45.3
 
 ### Patch Changes
