@@ -129,7 +129,7 @@ jobs:
           sudo sysctl -w kernel.yama.ptrace_scope=0 || true
           command -v gdb || (sudo apt-get install -y -qq gdb > /dev/null 2>&1 || true)
           sed -i 's/const SILENCE_MS = 4 \* 60_000/const SILENCE_MS = 60_000/' script/test-ci.ts
-          for i in $(seq 1 30); do
+          for i in $(seq 1 40); do
             if ! GITHUB_ACTIONS=false timeout 600 bun run test:ci test/plugin > fish-plugin-$i.log 2>&1; then
               echo "::group::plugin attempt $i failed"
               grep -E '\(fail\)' fish-plugin-$i.log || true
@@ -137,7 +137,7 @@ jobs:
               echo "::endgroup::"
             fi
           done
-          for i in 1 2 3 4; do
+          for i in 1 2 3; do
             if ! GITHUB_ACTIONS=false timeout 900 bun run test:ci > fish-all-$i.log 2>&1; then
               echo "::group::full attempt $i failed"
               grep -E '\(fail\)' fish-all-$i.log || true
