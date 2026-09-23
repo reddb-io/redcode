@@ -23,6 +23,7 @@ export const Feature = Schema.Literals([
   "served-model",
   "cost",
   "stream-usage-cost",
+  "catalog",
 ]).annotate({ identifier: "Router.Feature" })
 export type Feature = typeof Feature.Type
 
@@ -30,6 +31,10 @@ export const Detection = Schema.Struct({
   kind: Kind,
   version: Schema.String.pipe(optional),
   instanceID: Schema.String.pipe(optional),
+  catalogVersion: Schema.String.pipe(optional).annotate({
+    description:
+      "Digest of the model catalog the key sees. It changes when combos, their members or model limits change.",
+  }),
   features: Schema.Array(Feature),
   systemOne: Schema.Struct({
     available: Schema.Boolean,

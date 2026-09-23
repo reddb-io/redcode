@@ -10,6 +10,31 @@ const InterleavedField = Schema.Union([
   Schema.String,
 ])
 
+/**
+ * Settings RedRouter reports a model accepts. A combo reports its strictest member's: the smallest
+ * limits, the thinking levels every member accepts, and false when any member refuses to disable
+ * thinking or to be forced to call a tool.
+ */
+export const RouterParameters = Schema.Struct({
+  context_length: Schema.optional(Schema.Finite),
+  max_completion_tokens: Schema.optional(Schema.Finite),
+  reasoning: Schema.optional(Schema.Boolean),
+  thinking_levels: Schema.optional(Schema.NullOr(Schema.Array(Schema.String))),
+  thinking_can_disable: Schema.optional(Schema.Boolean),
+  forced_tool_choice: Schema.optional(Schema.Boolean).annotate({
+    description: "False when a request with a forced tool_choice (any or a named tool) would be refused.",
+  }),
+  tools: Schema.optional(Schema.Boolean),
+  search: Schema.optional(Schema.Boolean),
+  modalities: Schema.optional(
+    Schema.Struct({
+      input: Schema.optional(Schema.Array(Schema.String)),
+      output: Schema.optional(Schema.Array(Schema.String)),
+    }),
+  ),
+})
+export type RouterParameters = typeof RouterParameters.Type
+
 export const Model = Schema.Struct({
   id: Schema.optional(Schema.String),
   name: Schema.optional(Schema.String),
@@ -78,6 +103,10 @@ export const Model = Schema.Struct({
       strategy: Schema.optional(Schema.String),
       thinking_levels: Schema.optional(Schema.Array(Schema.String)),
       capabilities: Schema.optional(Schema.Record(Schema.String, Schema.Any)),
+      parameters: Schema.optional(RouterParameters),
+      members: Schema.optional(Schema.Array(Schema.String)).annotate({
+        description: "The provider/model ids a combo can route to, nested combos expanded.",
+      }),
     }),
   ).annotate({
     description:

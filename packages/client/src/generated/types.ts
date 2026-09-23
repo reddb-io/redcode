@@ -6978,6 +6978,7 @@ export type IntelligenceGetOutput = {
       readonly kind: "red-router" | "9router" | "none"
       readonly version?: string
       readonly instanceID?: string
+      readonly catalogVersion?: string
       readonly features: ReadonlyArray<
         | "capabilities"
         | "systemone"
@@ -6989,6 +6990,7 @@ export type IntelligenceGetOutput = {
         | "served-model"
         | "cost"
         | "stream-usage-cost"
+        | "catalog"
       >
       readonly systemOne?: { readonly available: boolean; readonly models: ReadonlyArray<string> }
       readonly checkedAt: number
