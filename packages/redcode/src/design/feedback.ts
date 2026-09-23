@@ -8,6 +8,7 @@ import { Design } from "@reddb-io/redcode-schema/design"
 import { DesignStore } from "@reddb-io/redcode-core/design/store"
 import { DesignFeedback } from "@reddb-io/redcode-core/design/feedback"
 import { DesignRounds } from "@reddb-io/redcode-core/design/rounds"
+import { DesignTarget } from "@reddb-io/redcode-core/design/target"
 import { Database } from "@reddb-io/redcode-core/database/database"
 import { MessageTable } from "@reddb-io/redcode-core/session/sql"
 import { LayerNode } from "@reddb-io/redcode-core/effect/layer-node"
@@ -87,11 +88,13 @@ const make = Effect.gen(function* () {
                 }
               }),
             )
+            const document = yield* store.get(id)
             const context = {
               id,
               storage: store.storage,
               attachments: files.map((file) => file.filename),
-              round: DesignRounds.next(yield* store.get(id)),
+              round: DesignRounds.next(document),
+              target: DesignTarget.label(document),
             }
             yield* prompt.prompt({
               sessionID,

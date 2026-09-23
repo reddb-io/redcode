@@ -24,6 +24,8 @@ import { mountReview } from "@reddb-io/redcode-design/review"
 import { reviewCopy } from "@reddb-io/redcode-design/copy"
 import { annotations } from "@reddb-io/redcode-design/annotations"
 import { viewports } from "@reddb-io/redcode-design/viewports"
+import { device } from "@reddb-io/redcode-design/devices"
+import { stage } from "@reddb-io/redcode-design/stage"
 import { screens } from "@reddb-io/redcode-design/screens"
 import { designFeed } from "@reddb-io/redcode-design/feed"
 
@@ -231,10 +233,16 @@ export const DesignHandler = HttpApiBuilder.group(Api, "server.design", (handler
         })
       }),
     )
-    .handleRaw("design.review", (ctx) =>
-      Effect.succeed(
-        HttpServerResponse.text(
-          `<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Design · Redcode</title><link rel="icon" type="image/svg+xml" href="${appearance.favicon}"><style>html,body,#review{height:100%;margin:0}</style></head><body><div id="review"></div><script>(${mountReview.toString()})(document.getElementById("review"), Object.assign(${JSON.stringify({ base: "", sessionID: ctx.params.sessionID, copy: reviewCopy, appearance }).replaceAll("<", "\\u003c")}, { feed: ${designFeed.toString()}, viewports: ${viewports.toString()} }))</script></body></html>`,
+    .handleRaw(
+      "design.review",
+      Effect.fn(function* (ctx) {
+        const store = yield* DesignStore.Service
+        // The page offers the configured web breakpoints; without a readable config, the defaults.
+        const breakpoints = (yield* store
+          .configured(ctx.params.sessionID)
+          .pipe(Effect.catch(() => Effect.succeed(undefined))))?.breakpoints
+        return HttpServerResponse.text(
+          `<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Design · Redcode</title><link rel="icon" type="image/svg+xml" href="${appearance.favicon}"><style>html,body,#review{height:100%;margin:0}</style></head><body><div id="review"></div><script>(${mountReview.toString()})(document.getElementById("review"), Object.assign(${JSON.stringify({ base: "", sessionID: ctx.params.sessionID, copy: reviewCopy, appearance, breakpoints }).replaceAll("<", "\\u003c")}, { feed: ${designFeed.toString()}, viewports: ${viewports.toString()}, device: ${device.toString()}, stage: ${stage.toString()} }))</script></body></html>`,
           {
             contentType: "text/html",
             headers: {
@@ -243,8 +251,8 @@ export const DesignHandler = HttpApiBuilder.group(Api, "server.design", (handler
                 "default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' blob: data:; font-src 'self' data:; frame-src 'self'; connect-src 'self' data:; worker-src blob:",
             },
           },
-        ),
-      ),
+        )
+      }),
     )
     .handle("design.feed", (ctx) => feed(ctx.params.sessionID, ctx.query.after))
     .handle(

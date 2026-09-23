@@ -512,6 +512,13 @@ describe("DesignFeedback variant operations", () => {
     expect(DesignFeed.describe(rendered)).toEqual({ text: "Variant operation: delete Compact", notes: 0 })
     expect(DesignFeedback.notice({ ...base, text: "x" }, context)).not.toHaveProperty("operation")
   })
+
+  test("the notice names the design's target when the caller knows it", () => {
+    const notice = DesignFeedback.notice({ ...base, text: "x" }, { ...context, target: "Android app" })
+    expect(Schema.is(Design.FeedbackNotice)(notice)).toBe(true)
+    expect(notice.target).toBe("Android app")
+    expect(DesignFeedback.notice({ ...base, text: "x" }, context)).not.toHaveProperty("target")
+  })
 })
 
 describe("DesignFeedback.notice and summarize", () => {

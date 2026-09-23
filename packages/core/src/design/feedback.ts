@@ -130,6 +130,8 @@ export interface Context {
   attachments: readonly string[]
   /** The feedback round this message's notes belong to, when the caller knows it. */
   round?: number
+  /** The design's target as a label, such as "iOS app", for the compact notice. */
+  target?: string
 }
 
 /** Render one review as a bounded, labelled message. Pure: both runtimes share it. */
@@ -260,6 +262,7 @@ export function notice(input: Design.Feedback, context: Context): Design.Feedbac
     attachments: [...context.attachments],
     snapshot: input.snapshot.trim().length > 0,
     ...(input.action ? { operation: describeOperation(input.action) } : {}),
+    ...(context.target ? { target: context.target } : {}),
   }
 }
 

@@ -6,6 +6,8 @@ import { usePlatform } from "@/context/platform"
 import { authTokenFromCredentials } from "@/utils/server"
 import { designFeed } from "@reddb-io/redcode-design/feed"
 import { viewports } from "@reddb-io/redcode-design/viewports"
+import { device } from "@reddb-io/redcode-design/devices"
+import { stage } from "@reddb-io/redcode-design/stage"
 import { createSessionDesignMount } from "./session-design-mount"
 
 export function SessionDesignTab() {
@@ -39,6 +41,8 @@ export function SessionDesignTab() {
         base,
         sessionID,
         viewports,
+        device,
+        stage,
         request: (url, init) => {
           const headers = new Headers(init?.headers)
           if (connection.password)

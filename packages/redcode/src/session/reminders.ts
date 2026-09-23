@@ -3,6 +3,7 @@ import { DESIGN_INSTRUCTIONS } from "@reddb-io/redcode-core/design/instructions"
 import { DesignStudio } from "@/design/studio"
 import { DesignStore } from "@reddb-io/redcode-core/design/store"
 import { DesignContext } from "@reddb-io/redcode-core/design/context"
+import { DesignTarget } from "@reddb-io/redcode-core/design/target"
 import { DesignApproval } from "@reddb-io/redcode-core/design/approval"
 import { SystemContext } from "@reddb-io/redcode-core/system-context/index"
 import path from "path"
@@ -168,7 +169,7 @@ export const apply = Effect.fn("SessionReminders.apply")(function* (input: {
         documents
           .map(
             (document) =>
-              `Design ${document.id}: ${document.name}; root ${document.root}; revision ${document.revision ?? "unpublished"}; ${document.ended ? "ended: do not reopen without the user asking" : "open"}`,
+              `Design ${document.id}: ${document.name}; target ${DesignTarget.label(document)}; root ${document.root}; revision ${document.revision ?? "unpublished"}; ${document.ended ? "ended: do not reopen without the user asking" : "open"}`,
           )
           .join("\n"),
     })

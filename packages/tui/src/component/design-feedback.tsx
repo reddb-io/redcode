@@ -19,7 +19,8 @@ export function DesignFeedbackNotice(props: { value: unknown }) {
           backgroundColor={theme.theme.backgroundPanel}
         >
           <text fg={theme.theme.accent}>
-            Design review · {record().id} · {record().revision}
+            Design review · {record().id}
+            {record().target ? ` · ${record().target}` : ""} · {record().revision}
             {record().variant ? ` · ${record().variant}` : ""}
             {record().ended ? " · ended" : ""}
           </text>
