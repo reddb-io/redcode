@@ -527,6 +527,94 @@ describe("Design revisions and review", () => {
       }),
     240000,
   )
+  it.live(
+    "exports a three-slide deck as a three-page 1920×1080 PDF and refuses a PDF of a web design",
+    () =>
+      Effect.gen(function* () {
+        const { store, document } = yield* setup
+        const renderer = yield* DesignRenderer.Service
+        const web = yield* store.publish(document.id, "Web")
+        const refused = yield* renderer.start(document.id, { revision: web.id, format: "pdf" }).pipe(Effect.result)
+        expect(JSON.stringify(refused)).toContain("PDF export prints presentation slides")
+        const deck = yield* store.create(document.sessionID, {
+          name: "Pitch",
+          journey: "new",
+          engine: "html",
+          kind: "deck",
+          target: "presentation",
+        })
+        yield* Effect.promise(() =>
+          Bun.write(
+            path.join(deck.root, deck.entry),
+            `<!doctype html><html lang="en"><head><title>Pitch</title><style>body{display:grid;gap:40px;padding:24px;background:#eee}section.slide{background:#fff;padding:96px}h1{font-size:96px}</style></head><body>${[1, 2, 3].map((number) => `<section class="slide"><h1>Slide ${number}</h1><aside class="notes">Say point ${number}</aside></section>`).join("")}</body></html>`,
+          ),
+        )
+        const revision = yield* store.publish(deck.id, "Deck")
+        const job = yield* renderer.start(deck.id, { revision: revision.id, format: "pdf" })
+        const done = yield* Effect.gen(function* () {
+          for (;;) {
+            const current = (yield* renderer.jobs(deck.id)).find((item) => item.id === job.id)!
+            if (current.status === "completed" || current.status === "failed" || current.status === "interrupted")
+              return current
+            yield* Effect.sleep("50 millis")
+          }
+        }).pipe(Effect.timeout("90 seconds"))
+        expect(done.error).toBeNull()
+        expect(done.status).toBe("completed")
+        expect(done.result).toEndWith(".pdf")
+        const pdf = Buffer.from(yield* Effect.promise(() => Bun.file(done.result!).bytes())).toString("latin1")
+        expect(pdf.startsWith("%PDF-")).toBe(true)
+        expect(pdf.match(/\/Type\s*\/Page(?![a-zA-Z])/g)).toHaveLength(3)
+        // 1920×1080 CSS pixels are 1440×810 points.
+        const boxes = [...pdf.matchAll(/\/MediaBox\s*\[\s*([\d.]+)\s+([\d.]+)\s+([\d.]+)\s+([\d.]+)\s*\]/g)]
+        expect(boxes.length).toBeGreaterThan(0)
+        for (const box of boxes) {
+          expect(Number(box[3]) - Number(box[1])).toBeCloseTo(1440, 0)
+          expect(Number(box[4]) - Number(box[2])).toBeCloseTo(810, 0)
+        }
+      }),
+    120000,
+  )
+  it.live(
+    "audits a presentation slide by slide at 1920×1080 and flags overflowing content and small text",
+    () =>
+      Effect.gen(function* () {
+        const { store, document } = yield* setup
+        const renderer = yield* DesignRenderer.Service
+        const deck = yield* store.create(document.sessionID, {
+          name: "Review deck",
+          journey: "new",
+          engine: "html",
+          kind: "deck",
+          target: "presentation",
+        })
+        yield* Effect.promise(() =>
+          Bun.write(
+            path.join(deck.root, deck.entry),
+            `<!doctype html><html lang="en"><head><title>Review deck</title><style>section.slide{background:#fff;color:#111;padding:96px;font-size:32px}h1{font-size:72px;margin:0}</style></head><body><section class="slide" id="intro"><h1>Intro</h1><p>One idea</p></section><section class="slide" id="crowded"><h1>Crowded</h1><p id="fine" style="font-size:14px">Fine print</p><div id="wall" style="height:1400px">Wall of text</div></section></body></html>`,
+          ),
+        )
+        const revision = yield* store.publish(deck.id, "Deck")
+        const job = yield* renderer.start(deck.id, { revision: revision.id, format: "audit" })
+        const audit = yield* Effect.gen(function* () {
+          for (;;) {
+            const current = (yield* renderer.jobs(deck.id)).find((item) => item.id === job.id)!
+            if (current.status === "completed" || current.status === "failed" || current.status === "interrupted")
+              return current
+            yield* Effect.sleep("50 millis")
+          }
+        }).pipe(Effect.timeout("120 seconds"))
+        expect(audit.status).toBe("completed")
+        expect(audit.audit?.widths).toEqual([1920])
+        expect((audit.audit?.captures ?? []).map((capture) => capture.screen)).toEqual(["intro", "crowded"])
+        const slideChecks = (audit.audit?.checks ?? [])
+          .filter((check) => check.rule.startsWith("slide-"))
+          .map((check) => `${check.screen} ${check.rule} ${check.selector}`)
+        expect(slideChecks).toEqual(["crowded slide-overflow #wall", "crowded slide-text-small #fine"])
+        expect((audit.audit?.findings ?? []).filter((item) => item.startsWith("Screens never rendered"))).toEqual([])
+      }),
+    240000,
+  )
   it.effect("disabled S1 preserves notes when an agent update is blocked and allows reviewer acceptance", () =>
     Effect.gen(function* () {
       const { store, document } = yield* setup

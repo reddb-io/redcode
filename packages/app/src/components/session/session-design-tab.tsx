@@ -8,6 +8,7 @@ import { designFeed } from "@reddb-io/redcode-design/feed"
 import { viewports } from "@reddb-io/redcode-design/viewports"
 import { device } from "@reddb-io/redcode-design/devices"
 import { stage } from "@reddb-io/redcode-design/stage"
+import { deck } from "@reddb-io/redcode-design/slides"
 import { createSessionDesignMount } from "./session-design-mount"
 
 export function SessionDesignTab() {
@@ -43,6 +44,7 @@ export function SessionDesignTab() {
         viewports,
         device,
         stage,
+        deck,
         request: (url, init) => {
           const headers = new Headers(init?.headers)
           if (connection.password)

@@ -27,6 +27,8 @@ import { viewports } from "@reddb-io/redcode-design/viewports"
 import { device } from "@reddb-io/redcode-design/devices"
 import { stage } from "@reddb-io/redcode-design/stage"
 import { screens } from "@reddb-io/redcode-design/screens"
+import { deck, slides } from "@reddb-io/redcode-design/slides"
+import { mountPresent } from "@reddb-io/redcode-design/present"
 import { designFeed } from "@reddb-io/redcode-design/feed"
 
 // The standalone server runs conversations on SessionV2; an embedding process with another runtime
@@ -242,7 +244,7 @@ export const DesignHandler = HttpApiBuilder.group(Api, "server.design", (handler
           .configured(ctx.params.sessionID)
           .pipe(Effect.catch(() => Effect.succeed(undefined))))?.breakpoints
         return HttpServerResponse.text(
-          `<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Design · Redcode</title><link rel="icon" type="image/svg+xml" href="${appearance.favicon}"><style>html,body,#review{height:100%;margin:0}</style></head><body><div id="review"></div><script>(${mountReview.toString()})(document.getElementById("review"), Object.assign(${JSON.stringify({ base: "", sessionID: ctx.params.sessionID, copy: reviewCopy, appearance, breakpoints }).replaceAll("<", "\\u003c")}, { feed: ${designFeed.toString()}, viewports: ${viewports.toString()}, device: ${device.toString()}, stage: ${stage.toString()} }))</script></body></html>`,
+          `<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Design · Redcode</title><link rel="icon" type="image/svg+xml" href="${appearance.favicon}"><style>html,body,#review{height:100%;margin:0}</style></head><body><div id="review"></div><script>(${mountReview.toString()})(document.getElementById("review"), Object.assign(${JSON.stringify({ base: "", sessionID: ctx.params.sessionID, copy: reviewCopy, appearance, breakpoints }).replaceAll("<", "\\u003c")}, { feed: ${designFeed.toString()}, viewports: ${viewports.toString()}, device: ${device.toString()}, stage: ${stage.toString()}, deck: ${deck.toString()} }))</script></body></html>`,
           {
             contentType: "text/html",
             headers: {
@@ -308,8 +310,32 @@ export const DesignHandler = HttpApiBuilder.group(Api, "server.design", (handler
           catch: (error) => new Design.Error({ code: "invalid", message: String(error) }),
         })
         return HttpServerResponse.text(
-          `<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; img-src data: blob:; font-src data:; connect-src 'none'; base-uri 'none'; form-action 'none'"><script>(${screens.toString()})()</script>${html}<script>(${params.toString()})(${JSON.stringify(revision.document.controls ?? []).replaceAll("<", "\\u003c")});(${annotations.toString()})()</script>`,
+          `<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; img-src data: blob:; font-src data:; connect-src 'none'; base-uri 'none'; form-action 'none'">${revision.document.target === "presentation" ? `<script>(${slides.toString()})(${deck.toString()})</script>` : ""}<script>(${screens.toString()})()</script>${html}<script>(${params.toString()})(${JSON.stringify(revision.document.controls ?? []).replaceAll("<", "\\u003c")});(${annotations.toString()})()</script>`,
           { contentType: "text/html", headers: { "cache-control": "private, max-age=31536000, immutable" } },
+        )
+      }),
+    )
+    .handleRaw(
+      "design.present",
+      Effect.fn(function* (ctx) {
+        yield* owned(ctx.params)
+        const options = {
+          endpoint: `/api/session/${encodeURIComponent(ctx.params.sessionID)}/design`,
+          designID: ctx.params.designID,
+          view: ctx.query.view ?? "audience",
+          revision: ctx.query.revision,
+          copy: reviewCopy,
+        }
+        return HttpServerResponse.text(
+          `<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>${reviewCopy.presentTitle} · Redcode</title><link rel="icon" type="image/svg+xml" href="${appearance.favicon}"></head><body><div id="present"></div><script>(${mountPresent.toString()})(document.getElementById("present"), Object.assign(${JSON.stringify(options).replaceAll("<", "\\u003c")}, { deck: ${deck.toString()}, stage: ${stage.toString()} }))</script></body></html>`,
+          {
+            contentType: "text/html",
+            headers: {
+              "cache-control": "no-store",
+              "content-security-policy":
+                "default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' blob: data:; font-src 'self' data:; frame-src 'self'; connect-src 'self' data:",
+            },
+          },
         )
       }),
     )
@@ -411,9 +437,9 @@ export const DesignHandler = HttpApiBuilder.group(Api, "server.design", (handler
         })
         // A verify report is read in the browser from the feed; other exports download.
         return HttpServerResponse.uint8Array(bytes, {
-          contentType: job.input.format === "gif" ? "image/gif" : "text/html",
+          contentType: Design.exportFile(job.input.format).mime,
           headers: {
-            "content-disposition": `${job.input.format === "verify" ? "inline" : "attachment"}; filename="${job.id}.${job.input.format === "gif" ? "gif" : "html"}"`,
+            "content-disposition": `${job.input.format === "verify" ? "inline" : "attachment"}; filename="${job.id}.${Design.exportFile(job.input.format).extension}"`,
             "x-content-type-options": "nosniff",
             "content-security-policy": "default-src 'none'; img-src data:; style-src 'unsafe-inline'; sandbox",
           },

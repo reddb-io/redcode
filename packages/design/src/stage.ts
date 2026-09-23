@@ -26,10 +26,13 @@ export interface Stage {
  * It is self-contained because review hosts serialize it into the standalone page with `toString()`.
  */
 export function stage() {
-  /** Scales content down (never up) to fit the available box less a margin, centered in it. */
-  const fit = (content: Size, available: Size, margin = 0): Stage => {
+  /**
+   * Scales content down to fit the available box less a margin, centered in it; never up, unless `grow`
+   * asks for it, as a slide shown full screen on a large display does.
+   */
+  const fit = (content: Size, available: Size, margin = 0, grow = false): Stage => {
     const room = { width: available.width - 2 * margin, height: available.height - 2 * margin }
-    const ratio = Math.min(1, room.width / content.width, room.height / content.height)
+    const ratio = Math.min(grow ? Infinity : 1, room.width / content.width, room.height / content.height)
     const scale = Number.isFinite(ratio) && ratio > 0 ? ratio : 1
     return {
       scale,

@@ -28,6 +28,8 @@ export function screens() {
     manifest: "",
     css: "",
     queued: false,
+    /** Every screen shown at once, as the PDF export of a deck prints them. */
+    all: false,
     params: undefined as Record<string, Record<string, unknown>> | undefined,
     listeners: [] as { id: string; run: (fields: Record<string, unknown>, meta: { reset: boolean }) => void }[],
   }
@@ -75,6 +77,7 @@ export function screens() {
   const find = (scope: string, id: string) =>
     nodes().find((node) => node.dataset.designScreen === id && scopeOf(node) === scope && !node.hasAttribute(REPEAT))
   const paint = () => {
+    if (state.all) return style(`[${REPEAT}]{display:none!important}`)
     const shown = [...state.current].map(([variant, id]) =>
       variant
         ? `[data-design-variant="${variant}"] [data-design-screen="${id}"]`
@@ -216,6 +219,11 @@ export function screens() {
     for (const [component, fields] of Object.entries(event.detail.values as Record<string, unknown>))
       if (fields && typeof fields === "object") next[component] = { ...next[component], ...fields }
     state.params = next
+  })
+  // Printing a deck shows every slide, one per page; tooling dispatches this before it prints.
+  window.addEventListener("design:print", (event) => {
+    state.all = !(event instanceof CustomEvent) || event.detail?.all !== false
+    paint()
   })
   window.addEventListener("design:go", (event) => {
     if (event instanceof CustomEvent) go(event.detail?.screen, event.detail?.variant, { focus: true, history: true })

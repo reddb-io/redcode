@@ -3,6 +3,7 @@ import type { ReviewCopy } from "./copy"
 import type { viewports } from "./viewports"
 import type { device } from "./devices"
 import type { stage } from "./stage"
+import type { deck } from "./slides"
 
 export interface ReviewOptions {
   base: string
@@ -32,6 +33,8 @@ export interface ReviewOptions {
   device?: typeof device
   /** Preview frame geometry from ./stage: scale-to-fit and where a scaled frame's rects land in its pane. */
   stage: typeof stage
+  /** Deck logic from ./slides; with it the arrow keys, Space, Page Up/Down, Home and End move between a presentation's slides. */
+  deck?: typeof deck
   /** Follows the server's conversation feed; absent when the host renders the conversation itself. */
   feed?: (
     url: string,
@@ -192,6 +195,8 @@ export function mountReview(host: HTMLElement, options: ReviewOptions) {
     restoreScroll: false,
     /** The phone an app design without a platform is previewed on; one with a platform uses its own. */
     device: "ios" as "ios" | "android",
+    /** The revision and slides the thumbnail strip was built for; unchanged, its frames are kept. */
+    strip: "",
   }
   const geometry = options.stage()
   const escape = (value: string) => value.replaceAll("&", "&amp;").replaceAll("<", "&lt;").replaceAll('"', "&quot;")
@@ -305,15 +310,15 @@ details{border-top:1px solid var(--edge);padding:14px 0}summary{cursor:pointer;f
 @media(prefers-reduced-motion:reduce){button{transition:none}button[aria-busy=true]::before{animation:none}}
 #agent-state{font-size:11px;font-weight:600;padding:3px 9px;border-radius:999px;border:1px solid var(--edge);color:var(--muted);white-space:nowrap}#agent-state[data-state=idle]{display:none}#agent-state[data-state=working]{color:var(--accent);border-color:var(--accent)}#agent-state[data-state=working]::before{content:"";display:inline-block;width:8px;height:8px;margin-right:6px;border:2px solid currentColor;border-right-color:transparent;border-radius:50%;vertical-align:-1px;animation:spin .8s linear infinite}#agent-state[data-state=published]{color:var(--reddb-color-feedback-success-foreground);border-color:currentColor}#feed{display:grid;gap:8px;margin-bottom:16px;max-height:40vh;overflow:auto}#feed:not(:has(.entry)) #feed-empty{display:block}#feed-empty{margin:0}#feed:has(.entry) #feed-empty{display:none}.entry{padding:8px 10px;border-radius:var(--reddb-radius-md);background:var(--panel);white-space:pre-wrap;overflow-wrap:anywhere;font-size:12px;line-height:1.5}.entry[data-kind=user]{background:color-mix(in oklch,var(--accent) 10%,var(--panel))}.entry[data-kind=tool]{font:11px/1.5 ui-monospace,monospace;color:var(--muted);padding:4px 10px;background:transparent}.entry[data-kind=published]{color:var(--reddb-color-feedback-success-foreground);font-weight:600}.entry[data-kind=verified]{display:grid;gap:4px}.entry[data-kind=verified] strong{display:block}.verdict{display:grid;grid-template-columns:auto minmax(0,1fr);gap:0 8px}.verdict .glyph{font-weight:700}.verdict[data-verdict=pass] .glyph{color:var(--reddb-color-feedback-success-foreground)}.verdict[data-verdict=warn] .glyph{color:var(--accent)}.verdict[data-verdict=fail] .glyph{color:var(--reddb-color-feedback-danger-foreground)}.verdict small{display:inline}.entry a{color:var(--accent)}
 #rounds{margin-top:8px}#rounds summary{display:flex;align-items:center;gap:8px}#rounds-count{font-size:11px;font-weight:600;padding:1px 8px;border-radius:999px;background:var(--panel);border:1px solid var(--edge);color:var(--muted)}#rounds-count[data-open="true"]{color:var(--accent-ink);background:var(--accent);border-color:var(--accent)}.round-head{font-size:12px;color:var(--muted);margin:8px 0 2px}.round-note{display:grid;grid-template-columns:auto minmax(0,1fr);gap:2px 8px;padding:6px 0;border-bottom:1px solid var(--edge);font-size:12px;overflow-wrap:anywhere}.round-note .badge{font-size:10px;font-weight:600;text-transform:uppercase;letter-spacing:.04em;padding:1px 6px;border-radius:4px;border:1px solid var(--edge);color:var(--muted);align-self:start;margin-top:2px;white-space:nowrap}.round-note[data-status=resolved] .badge{color:var(--reddb-color-feedback-success-foreground);border-color:currentColor}.round-note[data-status=partial] .badge{color:var(--accent);border-color:currentColor}.round-note[data-status=unresolved] .badge{color:var(--reddb-color-feedback-danger-foreground);border-color:currentColor}.round-note .round-body{display:grid;gap:2px}.round-note .round-actions{display:flex;gap:6px;flex-wrap:wrap;margin-top:2px}.round-note .round-actions button{padding:2px 7px;font-size:11px}.round-note .round-reason{font-size:11px;color:var(--muted)}.round-record{display:flex;gap:6px;flex-wrap:wrap;align-items:center;width:100%}.round-record select,.round-record input{flex:1 1 120px;min-width:0;padding:2px 6px;font-size:11px;min-height:24px}.round-record button{padding:2px 7px;font-size:11px}#approval-review-list,#approval-open-list{margin:0 0 12px;padding-left:18px;font-size:12px;overflow-wrap:anywhere}
-.viewport{position:relative}.device{display:contents}.device-chrome{display:none}.viewport[data-device]{overflow:hidden}.viewport[data-device] .device{display:block;position:absolute;left:0;top:0;transform-origin:0 0}.viewport[data-device] .device-chrome{display:block}.viewport[data-device] .device iframe{position:absolute;z-index:1;left:var(--device-bezel);top:var(--device-bezel);width:var(--device-width);height:var(--device-height);min-height:0;border-radius:var(--device-radius);box-shadow:none}#device-switch button{min-height:0;padding:3px 10px;font-size:12px}#device-switch button[aria-pressed=true]{background:var(--panel);border-color:var(--accent);color:var(--accent)}#card{position:absolute;z-index:2;width:min(320px,100%);padding:10px 12px;background:var(--surface);color:var(--ink);border:1px solid var(--edge);border-radius:var(--reddb-radius-md);box-shadow:0 8px 28px color-mix(in oklch,var(--ink) 18%,transparent);display:grid;gap:8px}#card header{padding:0;border:0;gap:8px;font-size:12px;font-weight:600;overflow-wrap:anywhere}#card header span{flex:1;min-width:0}#card-close{flex:none;padding:0 6px;min-height:24px;font-size:14px;line-height:1}#card-text{min-height:64px;width:100%;resize:vertical}#card .row{justify-content:flex-end}#card .row>*{flex:0 1 auto}#card small{font-size:11px}#card.moved header{animation:card-moved .6s ease-out 2}@keyframes card-moved{50%{color:var(--accent)}}
+.viewport{position:relative}.device{display:contents}.device-chrome{display:none}.viewport[data-device]{overflow:hidden}.viewport[data-device] .device{display:block;position:absolute;left:0;top:0;transform-origin:0 0}.viewport[data-device] .device-chrome{display:block}.viewport[data-device] .device iframe{position:absolute;z-index:1;left:var(--device-bezel);top:var(--device-bezel);width:var(--device-width);height:var(--device-height);min-height:0;border-radius:var(--device-radius);box-shadow:none}#device-switch button{min-height:0;padding:3px 10px;font-size:12px}.viewport[data-device=slide] .device iframe{box-shadow:0 0 0 1px var(--edge)}.screen-bar[data-slides=true] .tabs{gap:8px;padding:2px}.thumb{position:relative;flex:none;width:160px;height:90px;overflow:hidden;border-radius:4px;background:var(--panel)}.thumb iframe{position:absolute;left:0;top:0;width:1920px;height:1080px;min-height:0;margin:0;border:0;transform:scale(.0833333);transform-origin:0 0;pointer-events:none;box-shadow:none}.screen-bar .tabs .thumb button{position:absolute;inset:0;display:flex;align-items:flex-end;justify-content:flex-start;padding:4px;border:0;border-radius:4px;background:transparent;box-shadow:inset 0 0 0 1px var(--edge);min-height:0;font-size:10px}.thumb button span{padding:0 5px;border-radius:3px;background:var(--surface);color:var(--ink);font-weight:600}.screen-bar .tabs .thumb button[aria-selected=true]{box-shadow:inset 0 0 0 2px var(--accent)}#slide-count{font-variant-numeric:tabular-nums;white-space:nowrap}#device-switch button[aria-pressed=true]{background:var(--panel);border-color:var(--accent);color:var(--accent)}#card{position:absolute;z-index:2;width:min(320px,100%);padding:10px 12px;background:var(--surface);color:var(--ink);border:1px solid var(--edge);border-radius:var(--reddb-radius-md);box-shadow:0 8px 28px color-mix(in oklch,var(--ink) 18%,transparent);display:grid;gap:8px}#card header{padding:0;border:0;gap:8px;font-size:12px;font-weight:600;overflow-wrap:anywhere}#card header span{flex:1;min-width:0}#card-close{flex:none;padding:0 6px;min-height:24px;font-size:14px;line-height:1}#card-text{min-height:64px;width:100%;resize:vertical}#card .row{justify-content:flex-end}#card .row>*{flex:0 1 auto}#card small{font-size:11px}#card.moved header{animation:card-moved .6s ease-out 2}@keyframes card-moved{50%{color:var(--accent)}}
 .note{display:flex;flex-wrap:wrap;gap:4px 8px;align-items:baseline}.note .note-label{font-weight:600;font-size:12px}.note .note-text{flex:1 1 100%;white-space:pre-wrap}.note button{float:none;margin-left:auto;padding:2px 7px;font-size:11px}.note button+button{margin-left:0}.note:hover{background:color-mix(in oklch,var(--panel) 60%,transparent)}
 .sends{display:flex;gap:8px;margin:14px 0 8px}.sends>*{flex:1;min-width:0}#send{width:auto;margin:0}#send-end{white-space:nowrap}#send-hint{margin-bottom:8px}
 #inbox{margin-top:8px}#inbox summary{display:flex;align-items:center;gap:8px}#inbox-count{font-size:11px;font-weight:600;padding:1px 8px;border-radius:999px;background:var(--panel);border:1px solid var(--edge);color:var(--muted)}#inbox-count[data-open="true"]{color:var(--accent-ink);background:var(--accent);border-color:var(--accent)}.finding{display:grid;grid-template-columns:auto minmax(0,1fr);gap:4px 8px;padding:8px 0;border-bottom:1px solid var(--edge);font-size:12px;overflow-wrap:anywhere}.finding input{margin-top:3px}.finding .finding-tag{font-size:10px;font-weight:600;text-transform:uppercase;letter-spacing:.04em;padding:1px 6px;border-radius:4px;border:1px solid var(--edge);color:var(--muted);align-self:start;margin-top:2px}.finding[data-severity=warn] .finding-tag{color:var(--reddb-color-feedback-danger-foreground);border-color:currentColor}.finding[data-status=resolved]{color:var(--muted)}.finding .finding-body{display:grid;gap:2px}.finding .finding-actions{display:flex;gap:6px;flex-wrap:wrap;margin-top:4px}.finding .finding-actions button{padding:2px 7px;font-size:11px}.finding .finding-status{font-size:11px;color:var(--muted)}#queue-fixes{margin-top:10px}#inbox-empty{margin:6px 0 0}
 #variant-menu{position:absolute;right:0;top:calc(100% + 4px);z-index:5;min-width:200px;padding:4px;display:grid;background:var(--surface);color:var(--ink);border:1px solid var(--edge);border-radius:var(--reddb-radius-md);box-shadow:0 8px 28px color-mix(in oklch,var(--ink) 18%,transparent)}#variant-menu button{border:0;background:transparent;text-align:left;border-radius:4px;padding:6px 10px;min-height:0;white-space:nowrap;font-size:12px}#variant-menu button:hover,#variant-menu button:focus-visible{background:var(--panel);outline-offset:-2px}.op-badge{margin-left:6px;font-size:10px;font-weight:600;line-height:16px;padding:0 6px;border-radius:999px;border:1px solid currentColor;color:var(--accent);white-space:nowrap}.variant-bar .tabs button[data-operation]{color:var(--accent)}#merge-bar{display:flex;align-items:center;gap:10px;min-width:0;overflow:auto;font-size:12px}#merge-options{display:flex;gap:10px}#merge-bar label{margin:0;display:flex;gap:6px;align-items:center;font-weight:400;white-space:nowrap}#merge-bar button{min-height:24px;padding:1px 8px;font-size:12px;white-space:nowrap}#operation-state{display:flex;flex-wrap:wrap;gap:8px;align-items:center;padding:8px 10px;margin:0 0 12px;border-radius:var(--reddb-radius-md);background:var(--panel);color:var(--reddb-color-feedback-danger-foreground);overflow-wrap:anywhere}#operation-state button{padding:2px 8px;font-size:12px;color:var(--ink)}.note .note-orphaned{font-size:10px;font-weight:600;padding:0 6px;border-radius:4px;border:1px solid currentColor;color:var(--reddb-color-feedback-danger-foreground)}#approval-reselect{color:var(--reddb-color-feedback-danger-foreground)}
-    </style><header id="toolbar"><h1>${options.appearance ? `<img src="${options.appearance.favicon}" alt="RedDB">` : ""}<span data-copy="title">${copy.title}</span></h1><select id="designs" aria-label="${copy.alternatives}" data-copy-aria-label="alternatives"></select><div id="revision-tools" class="tools" hidden><select id="revisions" aria-label="${copy.history}" data-copy-aria-label="history"></select><button id="newer" hidden><span data-copy="latest">${copy.latest}</span></button><span id="agent-state" hidden data-state="idle" data-copy="stateIdle">${copy.stateIdle}</span></div><div class="actions"><div id="review-tools" class="tools" hidden><button type="button" id="annotate" aria-pressed="false" aria-label="${copy.annotate}" data-copy-aria-label="annotate" title="${copy.annotateShortcut}" data-copy-title="annotateShortcut">${icons.annotate}<span class="label" data-copy="annotateShort">${copy.annotateShort}</span></button><select id="width" aria-label="${copy.width}" data-copy-aria-label="width"><option value="100%" data-copy="full">${copy.full}</option><option value="390" data-copy="mobile">${copy.mobile}</option><option value="768" data-copy="tablet">${copy.tablet}</option><option value="1440" data-copy="desktop">${copy.desktop}</option></select><span class="segment" id="device-switch" role="group" aria-label="${copy.devicePlatform}" data-copy-aria-label="devicePlatform" hidden><button type="button" id="device-ios" aria-pressed="false"><span data-copy="platformIos">${copy.platformIos}</span></button><button type="button" id="device-android" aria-pressed="false"><span data-copy="platformAndroid">${copy.platformAndroid}</span></button></span><button id="restore" hidden title="${copy.restore}" data-copy-title="restore" aria-label="${copy.restore}" data-copy-aria-label="restore"><span data-copy="restore">${copy.restore}</span></button><button id="approve" class="primary"><span data-copy="approve">${copy.approve}</span></button><button id="reopen" hidden><span data-copy="reopen">${copy.reopen}</span></button></div><button type="button" id="refresh" class="icon" aria-label="${copy.refresh}" data-copy-aria-label="refresh" title="${copy.refresh}" data-copy-title="refresh">${icons.refresh}</button><div class="menu-host" id="menu-host"><button type="button" id="more" class="icon" aria-label="${copy.more}" data-copy-aria-label="more" title="${copy.more}" data-copy-title="more" aria-haspopup="menu" aria-expanded="false" aria-controls="menu">${icons.more}</button><div id="menu" role="menu" aria-label="${copy.more}" data-copy-aria-label="more" hidden><button type="button" role="menuitem" id="new"><span data-copy="create">${copy.create}</span></button><button type="button" role="menuitem" id="menu-refresh" data-for="refresh"><span data-copy="refresh">${copy.refresh}</span></button><button type="button" role="menuitem" id="menu-add-variant" data-for="add-variant"><span data-copy="addVariant">${copy.addVariant}</span></button><button type="button" role="menuitem" id="organize-variants"><span data-copy="organizeVariants">${copy.organizeVariants}</span></button></div></div></div></header>
+    </style><header id="toolbar"><h1>${options.appearance ? `<img src="${options.appearance.favicon}" alt="RedDB">` : ""}<span data-copy="title">${copy.title}</span></h1><select id="designs" aria-label="${copy.alternatives}" data-copy-aria-label="alternatives"></select><div id="revision-tools" class="tools" hidden><select id="revisions" aria-label="${copy.history}" data-copy-aria-label="history"></select><button id="newer" hidden><span data-copy="latest">${copy.latest}</span></button><span id="agent-state" hidden data-state="idle" data-copy="stateIdle">${copy.stateIdle}</span></div><div class="actions"><div id="review-tools" class="tools" hidden><button type="button" id="annotate" aria-pressed="false" aria-label="${copy.annotate}" data-copy-aria-label="annotate" title="${copy.annotateShortcut}" data-copy-title="annotateShortcut">${icons.annotate}<span class="label" data-copy="annotateShort">${copy.annotateShort}</span></button><select id="width" aria-label="${copy.width}" data-copy-aria-label="width"><option value="100%" data-copy="full">${copy.full}</option><option value="390" data-copy="mobile">${copy.mobile}</option><option value="768" data-copy="tablet">${copy.tablet}</option><option value="1440" data-copy="desktop">${copy.desktop}</option></select><span class="segment" id="device-switch" role="group" aria-label="${copy.devicePlatform}" data-copy-aria-label="devicePlatform" hidden><button type="button" id="device-ios" aria-pressed="false"><span data-copy="platformIos">${copy.platformIos}</span></button><button type="button" id="device-android" aria-pressed="false"><span data-copy="platformAndroid">${copy.platformAndroid}</span></button></span><button id="restore" hidden title="${copy.restore}" data-copy-title="restore" aria-label="${copy.restore}" data-copy-aria-label="restore"><span data-copy="restore">${copy.restore}</span></button><button type="button" id="present" hidden><span data-copy="present">${copy.present}</span></button><button id="approve" class="primary"><span data-copy="approve">${copy.approve}</span></button><button id="reopen" hidden><span data-copy="reopen">${copy.reopen}</span></button></div><button type="button" id="refresh" class="icon" aria-label="${copy.refresh}" data-copy-aria-label="refresh" title="${copy.refresh}" data-copy-title="refresh">${icons.refresh}</button><div class="menu-host" id="menu-host"><button type="button" id="more" class="icon" aria-label="${copy.more}" data-copy-aria-label="more" title="${copy.more}" data-copy-title="more" aria-haspopup="menu" aria-expanded="false" aria-controls="menu">${icons.more}</button><div id="menu" role="menu" aria-label="${copy.more}" data-copy-aria-label="more" hidden><button type="button" role="menuitem" id="new"><span data-copy="create">${copy.create}</span></button><button type="button" role="menuitem" id="menu-refresh" data-for="refresh"><span data-copy="refresh">${copy.refresh}</span></button><button type="button" role="menuitem" id="menu-add-variant" data-for="add-variant"><span data-copy="addVariant">${copy.addVariant}</span></button><button type="button" role="menuitem" id="organize-variants"><span data-copy="organizeVariants">${copy.organizeVariants}</span></button></div></div></div></header>
     <section id="intake"><form class="intake" id="create"><h2><span data-copy="create">${copy.create}</span></h2><label><span data-copy="name">${copy.name}</span><input id="name" required></label><div class="row"><label><span data-copy="journey">${copy.journey}</span><select id="journey"><option value="new" data-copy="new">${copy.new}</option><option value="existing" data-copy="existing">${copy.existing}</option></select></label><label><span data-copy="engine">${copy.engine}</span><select id="engine"><option value="html">HTML</option><option value="react">React</option><option value="solid">Solid</option></select></label></div><div class="row"><label><span data-copy="designTarget">${copy.designTarget}</span><select id="design-target"><option value="web" data-copy="targetWeb">${copy.targetWeb}</option><option value="app" data-copy="targetApp">${copy.targetApp}</option><option value="presentation" data-copy="targetPresentation">${copy.targetPresentation}</option></select></label><label id="design-platform-field" hidden><span data-copy="designPlatform">${copy.designPlatform}</span><select id="design-platform"><option value="" data-copy="platformBoth">${copy.platformBoth}</option><option value="ios" data-copy="platformIos">${copy.platformIos}</option><option value="android" data-copy="platformAndroid">${copy.platformAndroid}</option></select></label></div><label><span data-copy="application">${copy.application}</span><input id="application" value="."></label><label><span data-copy="objective">${copy.objective}</span><textarea id="objective" required></textarea></label><label><span data-copy="audience">${copy.audience}</span><input id="audience"></label><label><span data-copy="constraints">${copy.constraints}</span><textarea id="constraints"></textarea></label><label><span data-copy="references">${copy.references}</span><textarea id="references"></textarea></label><button class="primary"><span data-copy="create">${copy.create}</span></button></form></section>
-    <section id="studio" hidden><div class="variant-bar"><div id="variants" class="tabs" role="tablist" aria-label="${copy.variants}" data-copy-aria-label="variants"></div><span id="no-variants" class="muted" data-copy="noVariants">${copy.noVariants}</span><div id="merge-bar" role="group" aria-label="${copy.mergeSelection}" data-copy-aria-label="mergeSelection" hidden><span id="merge-options"></span><button type="button" id="merge-variants" class="primary"><span data-copy="mergeVariants">${copy.mergeVariants}</span></button><button type="button" id="cancel-merge"><span data-copy="cancel">${copy.cancel}</span></button></div><span id="operation-badge" class="op-badge" role="status" hidden></span><span class="spacer"></span><button type="button" id="add-variant" class="icon" aria-label="${copy.addVariant}" data-copy-aria-label="addVariant" title="${copy.addVariant}" data-copy-title="addVariant">${icons.add}</button><div class="menu-host" id="variant-menu-host"><button type="button" id="variant-actions" class="icon" aria-label="${copy.variantActions}" data-copy-aria-label="variantActions" title="${copy.variantActions}" data-copy-title="variantActions" aria-haspopup="menu" aria-expanded="false" aria-controls="variant-menu" hidden>${icons.edit}</button><div id="variant-menu" role="menu" aria-label="${copy.variantActions}" data-copy-aria-label="variantActions" hidden><button type="button" role="menuitem" id="rename-variant"><span data-copy="renameVariant">${copy.renameVariant}</span></button><button type="button" role="menuitem" id="split-variant"><span data-copy="splitVariant">${copy.splitVariant}</span></button><button type="button" role="menuitem" id="delete-variant"><span data-copy="deleteVariant">${copy.deleteVariant}</span></button><button type="button" role="menuitem" id="move-left"><span data-copy="moveLeft">${copy.moveLeft}</span></button><button type="button" role="menuitem" id="move-right"><span data-copy="moveRight">${copy.moveRight}</span></button><button type="button" role="menuitem" id="select-merge"><span data-copy="selectMerge">${copy.selectMerge}</span></button><button type="button" role="menuitem" id="menu-newer" data-for="newer"><span data-copy="latest">${copy.latest}</span></button><button type="button" role="menuitem" id="menu-reopen" data-for="reopen"><span data-copy="reopen">${copy.reopen}</span></button></div></div><span class="segment"><button type="button" id="view-single" class="icon" aria-pressed="true" aria-label="${copy.single}" data-copy-aria-label="single" title="${copy.single}" data-copy-title="single">${icons.single}</button><button type="button" id="view-compare" class="icon" aria-pressed="false" aria-label="${copy.sideBySide}" data-copy-aria-label="sideBySide" title="${copy.sideBySide}" data-copy-title="sideBySide">${icons.compare}</button></span></div><main><div class="canvas" id="canvas"><p id="preview-error" role="alert" hidden style="white-space:pre-wrap;overflow-wrap:anywhere"></p><section class="preview-pane" id="primary-pane" role="tabpanel"><div class="pane-label" id="primary-label" hidden></div><div id="screen-bar" class="screen-bar" hidden><span class="muted" data-copy="screens">${copy.screens}</span><div id="screens" class="tabs" role="tablist" aria-label="${copy.screens}" data-copy-aria-label="screens"></div></div><div class="viewport"><div class="device" id="preview-device"><div class="device-chrome"></div><iframe id="preview" title="${copy.review}" data-copy-title="review" sandbox="allow-scripts allow-forms" allow=""></iframe></div><div id="card" hidden role="dialog" aria-labelledby="card-label"><header><span id="card-label"></span><button type="button" id="card-close" aria-label="${copy.closeCard}" data-copy-aria-label="closeCard" title="${copy.closeCard}" data-copy-title="closeCard">×</button></header><textarea id="card-text" aria-label="${copy.cardNote}" data-copy-aria-label="cardNote"></textarea><small class="muted" data-copy="cardHint">${copy.cardHint}</small><div class="row"><button type="button" id="card-add" class="primary"><span data-copy="add">${copy.add}</span></button></div></div></div></section><section class="preview-pane" id="peer-pane" hidden><label class="pane-label"><span data-copy="compareVariant">${copy.compareVariant}</span><select id="peer-variant"></select></label><div class="viewport"><div class="device" id="peer-preview-device"><div class="device-chrome"></div><iframe id="peer-preview" title="${copy.compareVariant}" data-copy-title="compareVariant" sandbox="allow-scripts allow-forms" allow=""></iframe></div></div></section></div><aside><div class="tabs" role="tablist" aria-label="${copy.review}"><button type="button" role="tab" id="tab-review" aria-controls="panel-review" aria-selected="true" tabindex="0"><span data-copy="conversation">${copy.conversation}</span></button><button type="button" role="tab" id="tab-assets" aria-controls="panel-assets" aria-selected="false" tabindex="-1"><span data-copy="assets">${copy.assets}</span></button><button type="button" role="tab" id="tab-details" aria-controls="panel-details" aria-selected="false" tabindex="-1"><span data-copy="details">${copy.details}</span></button><button type="button" role="tab" id="tab-params" aria-controls="panel-params" aria-selected="false" tabindex="-1"><span data-copy="params">${copy.params}</span></button></div><section class="panel" role="tabpanel" id="panel-review" aria-labelledby="tab-review"><h2><span data-copy="conversation">${copy.conversation}</span></h2><p id="review-state" class="muted"></p><div id="operation-state" role="alert" hidden><span id="operation-error"></span><button type="button" id="retry-operation"><span data-copy="operationRetry">${copy.operationRetry}</span></button></div><p id="approval-reselect" data-copy="approvalReselect" hidden>${copy.approvalReselect}</p><div id="feed" role="log" aria-live="polite" hidden><p id="feed-empty" class="muted" data-copy="feedEmpty">${copy.feedEmpty}</p></div><details id="rounds" open hidden><summary><span data-copy="rounds">${copy.rounds}</span><span id="rounds-count" data-open="false">0</span></summary><div id="rounds-list"></div></details><details id="approved-record" hidden><summary data-copy="approvalDetails">${copy.approvalDetails}</summary><pre id="approved-details"></pre></details><p class="muted"><span data-copy="inspect">${copy.inspect}</span></p><small id="target" hidden></small><div id="notes"></div><details id="inbox"><summary><span data-copy="findings">${copy.findings}</span><span id="inbox-count" data-open="false">0</span></summary><p id="inbox-empty" class="muted" data-copy="inboxEmpty">${copy.inboxEmpty}</p><div id="inbox-list"></div><button type="button" id="queue-fixes" hidden><span data-copy="queueFixes">${copy.queueFixes}</span></button></details><label><span data-copy="notes">${copy.notes}</span><textarea id="note"></textarea></label><label><span data-copy="attachment">${copy.attachment}</span><input id="attachment" type="file" accept="image/png,image/jpeg,image/webp,image/svg+xml,image/gif"></label><small id="draft"><span data-copy="draft">${copy.draft}</span></small><small id="send-hint" class="muted" data-copy="sendHint">${copy.sendHint}</small><small id="round-open" class="muted" data-copy="roundOpen" hidden>${copy.roundOpen}</small><div class="sends"><button id="send" class="primary"><span data-copy="send">${copy.send}</span></button><button id="send-end"><span data-copy="sendEnd">${copy.sendEnd}</span></button></div>
-    <details><summary><span data-copy="diagram">${copy.diagram}</span></summary><label><span data-copy="diagram">${copy.diagram}</span><textarea id="selection"></textarea></label><button type="button" id="whiteboard"><span data-copy="whiteboard">${copy.whiteboard}</span></button></details></section><section class="panel" role="tabpanel" id="panel-assets" aria-labelledby="tab-assets" hidden><details open><summary><span data-copy="assets">${copy.assets}</span></summary><div id="assets"></div></details><details open><summary><span data-copy="export">${copy.export}</span></summary><button id="html"><span data-copy="html">${copy.html}</span></button><button id="audit"><span data-copy="audit">${copy.audit}</span></button><label><span data-copy="implementation">${copy.implementation}</span><input id="implementation" value="dist"></label><button id="compare"><span data-copy="compare">${copy.compare}</span></button><label><span data-copy="source">${copy.source}</span><select id="svg"></select></label><div class="row"><label><span data-copy="duration">${copy.duration}</span><input id="duration" type="number" min="0.1" max="10" step="0.1" value="3"></label><label><span data-copy="fps">${copy.fps}</span><input id="fps" type="number" min="1" max="25" value="20"></label></div><label><span data-copy="size">${copy.size}</span><input id="size" type="number" min="16" max="1024" value="512"></label><label class="check"><input type="checkbox" id="transparent"><span data-copy="transparent">${copy.transparent}</span></label><button id="gif"><span data-copy="gif">${copy.gif}</span></button></details><details open><summary><span data-copy="jobs">${copy.jobs}</span></summary><div id="jobs"></div></details>
+    <section id="studio" hidden><div class="variant-bar"><div id="variants" class="tabs" role="tablist" aria-label="${copy.variants}" data-copy-aria-label="variants"></div><span id="no-variants" class="muted" data-copy="noVariants">${copy.noVariants}</span><div id="merge-bar" role="group" aria-label="${copy.mergeSelection}" data-copy-aria-label="mergeSelection" hidden><span id="merge-options"></span><button type="button" id="merge-variants" class="primary"><span data-copy="mergeVariants">${copy.mergeVariants}</span></button><button type="button" id="cancel-merge"><span data-copy="cancel">${copy.cancel}</span></button></div><span id="operation-badge" class="op-badge" role="status" hidden></span><span class="spacer"></span><button type="button" id="add-variant" class="icon" aria-label="${copy.addVariant}" data-copy-aria-label="addVariant" title="${copy.addVariant}" data-copy-title="addVariant">${icons.add}</button><div class="menu-host" id="variant-menu-host"><button type="button" id="variant-actions" class="icon" aria-label="${copy.variantActions}" data-copy-aria-label="variantActions" title="${copy.variantActions}" data-copy-title="variantActions" aria-haspopup="menu" aria-expanded="false" aria-controls="variant-menu" hidden>${icons.edit}</button><div id="variant-menu" role="menu" aria-label="${copy.variantActions}" data-copy-aria-label="variantActions" hidden><button type="button" role="menuitem" id="rename-variant"><span data-copy="renameVariant">${copy.renameVariant}</span></button><button type="button" role="menuitem" id="split-variant"><span data-copy="splitVariant">${copy.splitVariant}</span></button><button type="button" role="menuitem" id="delete-variant"><span data-copy="deleteVariant">${copy.deleteVariant}</span></button><button type="button" role="menuitem" id="move-left"><span data-copy="moveLeft">${copy.moveLeft}</span></button><button type="button" role="menuitem" id="move-right"><span data-copy="moveRight">${copy.moveRight}</span></button><button type="button" role="menuitem" id="select-merge"><span data-copy="selectMerge">${copy.selectMerge}</span></button><button type="button" role="menuitem" id="menu-newer" data-for="newer"><span data-copy="latest">${copy.latest}</span></button><button type="button" role="menuitem" id="menu-reopen" data-for="reopen"><span data-copy="reopen">${copy.reopen}</span></button></div></div><span class="segment"><button type="button" id="view-single" class="icon" aria-pressed="true" aria-label="${copy.single}" data-copy-aria-label="single" title="${copy.single}" data-copy-title="single">${icons.single}</button><button type="button" id="view-compare" class="icon" aria-pressed="false" aria-label="${copy.sideBySide}" data-copy-aria-label="sideBySide" title="${copy.sideBySide}" data-copy-title="sideBySide">${icons.compare}</button></span></div><main><div class="canvas" id="canvas"><p id="preview-error" role="alert" hidden style="white-space:pre-wrap;overflow-wrap:anywhere"></p><section class="preview-pane" id="primary-pane" role="tabpanel"><div class="pane-label" id="primary-label" hidden></div><div id="screen-bar" class="screen-bar" hidden><span class="muted" id="screens-label" data-copy="screens">${copy.screens}</span><div id="screens" class="tabs" role="tablist" aria-label="${copy.screens}" data-copy-aria-label="screens"></div><span id="slide-count" class="muted" aria-live="polite" hidden></span></div><div class="viewport"><div class="device" id="preview-device"><div class="device-chrome"></div><iframe id="preview" title="${copy.review}" data-copy-title="review" sandbox="allow-scripts allow-forms" allow=""></iframe></div><div id="card" hidden role="dialog" aria-labelledby="card-label"><header><span id="card-label"></span><button type="button" id="card-close" aria-label="${copy.closeCard}" data-copy-aria-label="closeCard" title="${copy.closeCard}" data-copy-title="closeCard">×</button></header><textarea id="card-text" aria-label="${copy.cardNote}" data-copy-aria-label="cardNote"></textarea><small class="muted" data-copy="cardHint">${copy.cardHint}</small><div class="row"><button type="button" id="card-add" class="primary"><span data-copy="add">${copy.add}</span></button></div></div></div></section><section class="preview-pane" id="peer-pane" hidden><label class="pane-label"><span data-copy="compareVariant">${copy.compareVariant}</span><select id="peer-variant"></select></label><div class="viewport"><div class="device" id="peer-preview-device"><div class="device-chrome"></div><iframe id="peer-preview" title="${copy.compareVariant}" data-copy-title="compareVariant" sandbox="allow-scripts allow-forms" allow=""></iframe></div></div></section></div><aside><div class="tabs" role="tablist" aria-label="${copy.review}"><button type="button" role="tab" id="tab-review" aria-controls="panel-review" aria-selected="true" tabindex="0"><span data-copy="conversation">${copy.conversation}</span></button><button type="button" role="tab" id="tab-assets" aria-controls="panel-assets" aria-selected="false" tabindex="-1"><span data-copy="assets">${copy.assets}</span></button><button type="button" role="tab" id="tab-details" aria-controls="panel-details" aria-selected="false" tabindex="-1"><span data-copy="details">${copy.details}</span></button><button type="button" role="tab" id="tab-params" aria-controls="panel-params" aria-selected="false" tabindex="-1"><span data-copy="params">${copy.params}</span></button></div><section class="panel" role="tabpanel" id="panel-review" aria-labelledby="tab-review"><h2><span data-copy="conversation">${copy.conversation}</span></h2><p id="review-state" class="muted"></p><div id="operation-state" role="alert" hidden><span id="operation-error"></span><button type="button" id="retry-operation"><span data-copy="operationRetry">${copy.operationRetry}</span></button></div><p id="approval-reselect" data-copy="approvalReselect" hidden>${copy.approvalReselect}</p><div id="feed" role="log" aria-live="polite" hidden><p id="feed-empty" class="muted" data-copy="feedEmpty">${copy.feedEmpty}</p></div><details id="rounds" open hidden><summary><span data-copy="rounds">${copy.rounds}</span><span id="rounds-count" data-open="false">0</span></summary><div id="rounds-list"></div></details><details id="approved-record" hidden><summary data-copy="approvalDetails">${copy.approvalDetails}</summary><pre id="approved-details"></pre></details><p class="muted"><span data-copy="inspect">${copy.inspect}</span></p><small id="target" hidden></small><div id="notes"></div><details id="inbox"><summary><span data-copy="findings">${copy.findings}</span><span id="inbox-count" data-open="false">0</span></summary><p id="inbox-empty" class="muted" data-copy="inboxEmpty">${copy.inboxEmpty}</p><div id="inbox-list"></div><button type="button" id="queue-fixes" hidden><span data-copy="queueFixes">${copy.queueFixes}</span></button></details><label><span data-copy="notes">${copy.notes}</span><textarea id="note"></textarea></label><label><span data-copy="attachment">${copy.attachment}</span><input id="attachment" type="file" accept="image/png,image/jpeg,image/webp,image/svg+xml,image/gif"></label><small id="draft"><span data-copy="draft">${copy.draft}</span></small><small id="send-hint" class="muted" data-copy="sendHint">${copy.sendHint}</small><small id="round-open" class="muted" data-copy="roundOpen" hidden>${copy.roundOpen}</small><div class="sends"><button id="send" class="primary"><span data-copy="send">${copy.send}</span></button><button id="send-end"><span data-copy="sendEnd">${copy.sendEnd}</span></button></div>
+    <details><summary><span data-copy="diagram">${copy.diagram}</span></summary><label><span data-copy="diagram">${copy.diagram}</span><textarea id="selection"></textarea></label><button type="button" id="whiteboard"><span data-copy="whiteboard">${copy.whiteboard}</span></button></details></section><section class="panel" role="tabpanel" id="panel-assets" aria-labelledby="tab-assets" hidden><details open><summary><span data-copy="assets">${copy.assets}</span></summary><div id="assets"></div></details><details open><summary><span data-copy="export">${copy.export}</span></summary><button id="html"><span data-copy="html">${copy.html}</span></button><button id="pdf" hidden><span data-copy="pdf">${copy.pdf}</span></button><button id="audit"><span data-copy="audit">${copy.audit}</span></button><label><span data-copy="implementation">${copy.implementation}</span><input id="implementation" value="dist"></label><button id="compare"><span data-copy="compare">${copy.compare}</span></button><label><span data-copy="source">${copy.source}</span><select id="svg"></select></label><div class="row"><label><span data-copy="duration">${copy.duration}</span><input id="duration" type="number" min="0.1" max="10" step="0.1" value="3"></label><label><span data-copy="fps">${copy.fps}</span><input id="fps" type="number" min="1" max="25" value="20"></label></div><label><span data-copy="size">${copy.size}</span><input id="size" type="number" min="16" max="1024" value="512"></label><label class="check"><input type="checkbox" id="transparent"><span data-copy="transparent">${copy.transparent}</span></label><button id="gif"><span data-copy="gif">${copy.gif}</span></button></details><details open><summary><span data-copy="jobs">${copy.jobs}</span></summary><div id="jobs"></div></details>
     </section><section class="panel" role="tabpanel" id="panel-details" aria-labelledby="tab-details" hidden>
     <details><summary><span data-copy="system">${copy.system}</span></summary><div id="source-files"></div><button id="refresh-system"><span data-copy="refreshSystem">${copy.refreshSystem}</span></button></details><details><summary><span data-copy="decisions">${copy.decisions}</span></summary><div id="decisions"></div><h2><span data-copy="questions">${copy.questions}</span></h2><div id="questions"></div><h2><span data-copy="scenarios">${copy.scenarios}</span></h2><div id="scenarios"></div></details>
     <details><summary><span data-copy="tweaks">${copy.tweaks}</span></summary><label><span data-copy="token">${copy.token}</span><input id="token" value="--accent"></label><label><span data-copy="value">${copy.value}</span><input id="value" value="#285b49"></label><button id="apply"><span data-copy="apply">${copy.apply}</span></button><button id="reset"><span data-copy="reset">${copy.reset}</span></button></details>
@@ -367,6 +372,7 @@ details{border-top:1px solid var(--edge);padding:14px 0}summary{cursor:pointer;f
       "apply",
       "reset",
       "html",
+      "pdf",
       "audit",
       "gif",
       "compare",
@@ -374,7 +380,7 @@ details{border-top:1px solid var(--edge);padding:14px 0}summary{cursor:pointer;f
       element<HTMLButtonElement>(id).disabled ||=
         !state.revision ||
         !!state.failedPreview ||
-        (!!state.design?.ended && !["html", "audit", "gif", "compare"].includes(id))
+        (!!state.design?.ended && !["html", "pdf", "audit", "gif", "compare"].includes(id))
     element<HTMLButtonElement>("param-save").disabled ||=
       !state.revision || !!state.failedPreview || state.revision !== state.design?.revision || !!state.design?.ended
     element<HTMLButtonElement>("approve").disabled ||=
@@ -578,12 +584,22 @@ details{border-top:1px solid var(--edge);padding:14px 0}summary{cursor:pointer;f
     drawScreens()
     return true
   }
+  const presenting = () => state.design?.target === "presentation"
   const drawScreens = () => {
     const scope = screenScope()
     const items = state.screens.filter((item) => item.variant === scope)
     const current = currentScreen()
-    // One screen needs no switcher; the page behaves as before.
-    element("screen-bar").hidden = items.length < 2
+    const slides = presenting()
+    // One screen needs no switcher; the page behaves as before. A deck always shows its slides and counter.
+    element("screen-bar").hidden = slides ? !items.length : items.length < 2
+    element("screen-bar").dataset.slides = String(slides)
+    element("screens-label").textContent = slides ? copy.slides : copy.screens
+    element("screens-label").dataset.copy = slides ? "slides" : "screens"
+    element("slide-count").hidden = !slides
+    const at = items.findIndex((item) => item.id === current)
+    element("slide-count").textContent = slides && at >= 0 ? `${at + 1} / ${items.length}` : ""
+    if (slides) return drawStrip(items, current)
+    state.strip = ""
     element("screens").replaceChildren(
       ...(items.length < 2 ? [] : items).map((item, index) => {
         const button = document.createElement("button")
@@ -611,6 +627,73 @@ details{border-top:1px solid var(--edge);padding:14px 0}summary{cursor:pointer;f
       }),
     )
     syncPeerScreen()
+  }
+  /**
+   * A deck's thumbnail strip: one small live frame per slide, each opened on its slide. The frames are
+   * rebuilt only when the revision or its slides change, since re-inserting a frame reloads it; moving
+   * between slides only moves the selection.
+   */
+  const drawStrip = (items: { id: string; name: string }[], current: string) => {
+    const key = JSON.stringify([state.revision, items.map((item) => item.id)])
+    if (state.strip !== key) {
+      state.strip = key
+      element("screens").replaceChildren(
+        ...items.map((item, index) => {
+          const thumb = document.createElement("div")
+          thumb.className = "thumb"
+          const mini = document.createElement("iframe")
+          mini.setAttribute("sandbox", "allow-scripts")
+          mini.setAttribute("aria-hidden", "true")
+          mini.tabIndex = -1
+          mini.title = item.name
+          // A framework can mount its slides after load, so the slide is asked for again a moment later.
+          const show = () => mini.contentWindow?.postMessage({ type: "design:screen", id: item.id, scroll: false }, "*")
+          mini.onload = () => {
+            show()
+            setTimeout(show, 500)
+          }
+          mini.srcdoc = state.html
+          const button = document.createElement("button")
+          button.type = "button"
+          button.id = `screen-${item.id}`
+          button.setAttribute("role", "tab")
+          button.setAttribute("aria-controls", "preview")
+          button.setAttribute("aria-label", item.name)
+          button.title = item.name
+          const number = document.createElement("span")
+          number.textContent = String(index + 1)
+          button.append(number)
+          button.addEventListener("click", () => selectScreen(item.id))
+          button.onkeydown = (event) => {
+            const next = options.deck?.().step({ key: event.key, shift: event.shiftKey }, index, items.length)
+            if (next === undefined || event.key === " ") return
+            event.preventDefault()
+            selectScreen(items[next].id)
+            element(`screen-${items[next].id}`).focus()
+          }
+          thumb.append(mini, button)
+          return thumb
+        }),
+      )
+    }
+    for (const item of items) {
+      const button = element(`screen-${item.id}`)
+      button.setAttribute("aria-selected", String(item.id === current))
+      button.tabIndex = item.id === current ? 0 : -1
+      if (item.id === current) button.scrollIntoView({ block: "nearest", inline: "nearest" })
+    }
+    syncPeerScreen()
+  }
+  /** Moves a presentation to the slide a navigation key names; false for any other key or design. */
+  const stepSlide = (key: string, shift: boolean) => {
+    if (!presenting() || !options.deck) return false
+    const items = state.screens.filter((item) => item.variant === screenScope())
+    const next = options.deck().step(
+      { key, shift },
+      items.findIndex((item) => item.id === currentScreen()),
+      items.length,
+    )
+    return next !== undefined && selectScreen(items[next].id)
   }
   /** The side-by-side frame follows the switcher when its variant has the same screen. */
   const syncPeerScreen = () => {
@@ -844,7 +927,12 @@ details{border-top:1px solid var(--edge);padding:14px 0}summary{cursor:pointer;f
         row.className = "note"
         const label = document.createElement("span")
         label.className = "note-label"
-        label.textContent = note.label || note.target
+        // A deck's note names its slide, which Reveal opens before it finds the element.
+        const slide =
+          presenting() && note.params?.screen
+            ? (state.screens.find((item) => item.id === note.params?.screen)?.name ?? note.params.screen)
+            : ""
+        label.textContent = `${slide ? `${slide} · ` : ""}${note.label || note.target}`
         const text = document.createElement("span")
         text.className = "note-text"
         text.textContent = note.text
@@ -1735,7 +1823,7 @@ details{border-top:1px solid var(--edge);padding:14px 0}summary{cursor:pointer;f
               const url = URL.createObjectURL(await response.blob())
               const anchor = document.createElement("a")
               anchor.href = url
-              anchor.download = `${current.name}.${job.input.format === "gif" ? "gif" : "html"}`
+              anchor.download = `${current.name}.${job.input.format === "gif" ? "gif" : job.input.format === "pdf" ? "pdf" : "html"}`
               anchor.click()
               setTimeout(() => URL.revokeObjectURL(url), 1000)
             })
@@ -1833,20 +1921,31 @@ details{border-top:1px solid var(--edge);padding:14px 0}summary{cursor:pointer;f
   }
   const resize = () => {
     for (const id of ["preview", "peer-preview"])
-      element(id).style.width = phone() ? "" : input("width").value === "100%" ? "100%" : `${input("width").value}px`
+      element(id).style.width = frame() ? "" : input("width").value === "100%" ? "100%" : `${input("width").value}px`
   }
   element("width").onchange = resize
   /** The phone frame an app design is previewed in; none for other targets or without frames. */
   const phone = () =>
     state.design?.target === "app" && options.device ? options.device(state.design.platform ?? state.device) : undefined
   /**
-   * Draws the phone frame around both preview frames, or takes it away. The frames stay where they
-   * are in the DOM (moving an iframe reloads it); only their wrappers change.
+   * The fixed frame a design is previewed in, scaled to fit its pane: a phone for an app design, a
+   * 1920×1080 slide canvas for a presentation, none for the web.
+   */
+  const frame = () => {
+    if (presenting()) return { kind: "slide", width: 1920, height: 1080, bezel: 0, screenRadius: 0, html: "" }
+    const spec = phone()
+    return spec && { kind: spec.platform, ...spec }
+  }
+  /**
+   * Draws the phone frame or the slide canvas around both preview frames, or takes it away. The frames
+   * stay where they are in the DOM (moving an iframe reloads it); only their wrappers change.
    */
   const drawDevice = () => {
-    const spec = phone()
-    element("device-switch").hidden = !spec
+    const spec = frame()
+    element("device-switch").hidden = !phone()
     element("width").hidden = !!spec
+    element("present").hidden = !presenting()
+    element("pdf").hidden = !presenting()
     for (const id of ["preview", "peer-preview"]) {
       const box = element(`${id}-device`)
       const viewport = box.parentElement!
@@ -1858,20 +1957,20 @@ details{border-top:1px solid var(--edge);padding:14px 0}summary{cursor:pointer;f
         continue
       }
       // The design list refreshes every few seconds; an unchanged frame is left as it is.
-      if (viewport.dataset.device === spec.platform) continue
-      viewport.dataset.device = spec.platform
+      if (viewport.dataset.device === spec.kind) continue
+      viewport.dataset.device = spec.kind
       box.style.cssText = `width:${spec.width + 2 * spec.bezel}px;height:${spec.height + 2 * spec.bezel}px;--device-bezel:${spec.bezel}px;--device-width:${spec.width}px;--device-height:${spec.height}px;--device-radius:${spec.screenRadius}px`
       chrome.innerHTML = spec.html
     }
     for (const platform of ["ios", "android"])
-      element(`device-${platform}`).setAttribute("aria-pressed", String(spec?.platform === platform))
+      element(`device-${platform}`).setAttribute("aria-pressed", String(phone()?.platform === platform))
     resize()
     fitDevice()
     safeArea()
   }
-  /** Scales each framed phone to fit its pane, never above its real size. */
+  /** Scales each framed phone or slide to fit its pane, never above its real size. */
   const fitDevice = () => {
-    const spec = phone()
+    const spec = frame()
     if (!spec) return
     for (const id of ["preview", "peer-preview"]) {
       const box = element(`${id}-device`)
@@ -1917,6 +2016,16 @@ details{border-top:1px solid var(--edge);padding:14px 0}summary{cursor:pointer;f
   }
   click("device-ios", () => choosePlatform("ios"))
   click("device-android", () => choosePlatform("android"))
+  // Opened synchronously, inside the click, so the browser lets the new window through; it starts on
+  // the slide on screen, and the presentation's own P key opens the presenter view.
+  element("present").onclick = () => {
+    const design = state.design
+    if (!design || !presenting()) return
+    const url = new URL(`${endpoint}/${encodeURIComponent(design.id)}/present`, location.href)
+    if (state.revision) url.searchParams.set("revision", state.revision)
+    url.hash = currentScreen()
+    open(url.toString(), `redcode-audience-${design.id}`)
+  }
   /** Offers the open design's target viewports, keeping the chosen width when the new list has it. */
   const drawWidths = () => {
     drawDevice()
@@ -2475,7 +2584,7 @@ details{border-top:1px solid var(--edge);padding:14px 0}summary{cursor:pointer;f
   }
   click("apply", () => publishTweaks({ ...state.design!.tweaks, [input("token").value]: input("value").value }))
   click("reset", () => publishTweaks({}))
-  for (const format of ["html", "audit", "gif", "compare"] as const)
+  for (const format of ["html", "pdf", "audit", "gif", "compare"] as const)
     click(format, async () => {
       if (!state.revision) return
       await api(`/${state.design!.id}/job`, "POST", {
@@ -2559,12 +2668,25 @@ details{border-top:1px solid var(--edge);padding:14px 0}summary{cursor:pointer;f
     if (!(event instanceof KeyboardEvent)) return
     if (event.defaultPrevented || event.isComposing || event.repeat) return
     if (event.ctrlKey || event.metaKey || event.altKey) return
-    if (event.key.toLowerCase() !== "a" && event.key !== "Escape") return
     const path = event.composedPath()
     const target = path[0]
     const idle = target === document.body || target === document.documentElement
     if (!path.includes(host) && (scoped || !idle)) return
     if (target instanceof HTMLElement && (target.isContentEditable || target.matches("input, textarea, select"))) return
+    // A deck moves between slides from the review too, unless a dialog, menu or note card has the keys.
+    if (
+      !(event.key === " " && target instanceof HTMLElement && target.matches("button, summary, a[href]")) &&
+      !element("studio").hidden &&
+      !root.querySelector("dialog[open]") &&
+      element("menu").hidden &&
+      element("variant-menu").hidden &&
+      !state.card &&
+      stepSlide(event.key, event.shiftKey)
+    ) {
+      event.preventDefault()
+      return
+    }
+    if (event.key.toLowerCase() !== "a" && event.key !== "Escape") return
     if (annotationKey(event.key) && event.key !== "Escape") event.preventDefault()
   }
   keys.addEventListener("keydown", shortcut)

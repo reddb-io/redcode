@@ -468,7 +468,7 @@ const layer = Layer.effectDiscard(
         }),
         design_export: Tool.make({
           description:
-            "Start a local HTML export, rendered scenario audit, implementation comparison, SVG-to-GIF export, or a feedback-round verify. Poll design_jobs for progress and the resulting file. Format verify renders the revision once and, for each note of the round (latest by default), locates its element, captures it before and after, runs the scenarios on its screen and axe/layout checks on its container; design_jobs then lists one line per note to cite when recording statuses. In a comparison, differences caused by real data or existing components are expected. GIF defaults: 3 seconds, 20 fps, 512px, continuous repeat.",
+            "Start a local HTML export, a PDF of a presentation's slides (format pdf: one 1920×1080 page per slide, speaker notes left out), rendered scenario audit, implementation comparison, SVG-to-GIF export, or a feedback-round verify. Poll design_jobs for progress and the resulting file. Format verify renders the revision once and, for each note of the round (latest by default), locates its element, captures it before and after, runs the scenarios on its screen and axe/layout checks on its container; design_jobs then lists one line per note to cite when recording statuses. In a comparison, differences caused by real data or existing components are expected. GIF defaults: 3 seconds, 20 fps, 512px, continuous repeat.",
           input: Schema.Struct({ id: Design.ID, input: Design.Render }),
           output: Design.Job,
           toModelOutput: ({ output }) => [

@@ -133,6 +133,101 @@ export function inspect(minimum = 24) {
 }
 
 /**
+ * Checks for the slide a presentation shows, run inside the page at 1920×1080 once per slide: content
+ * that leaves the 1920×1080 slide box (clipped on a projector and in the PDF), and text smaller than
+ * `minimum` pixels, too small to read from the back of a room. Speaker notes are not checked. Gated by
+ * the design's target: only presentation audits run it.
+ */
+export function slide(minimum = 24) {
+  const checks: { rule: string; severity: "error" | "review"; selector: string; evidence: string; fix: string }[] = []
+  const selector = (element: Element) => {
+    if (element.id) return `#${CSS.escape(element.id)}`
+    const parts: string[] = []
+    for (let current: Element | null = element; current && current !== document.body; current = current.parentElement) {
+      parts.unshift(
+        `${current.tagName.toLowerCase()}:nth-child(${[...current.parentElement!.children].indexOf(current) + 1})`,
+      )
+    }
+    return `body > ${parts.join(" > ")}`
+  }
+  const shown = [...document.querySelectorAll<HTMLElement>("section.slide")].filter(
+    (node) => !node.parentElement?.closest("section.slide") && node.getClientRects().length > 0,
+  )
+  for (const slide of shown) {
+    const box = slide.getBoundingClientRect()
+    const content = [...slide.querySelectorAll<HTMLElement>("*")].filter((element) => {
+      if (element.closest("aside.notes")) return false
+      const style = getComputedStyle(element)
+      const rect = element.getBoundingClientRect()
+      return rect.width > 0 && rect.height > 0 && style.visibility !== "hidden" && style.display !== "none"
+    })
+    // An element spills when it crosses the slide's edge and nothing inside the slide clips it first;
+    // only the outermost spilling element is named.
+    const clipped = (element: HTMLElement) => {
+      for (let node = element.parentElement; node && node !== slide; node = node.parentElement)
+        if (getComputedStyle(node).overflow !== "visible") return true
+      return false
+    }
+    const spills = content.filter((element) => {
+      const rect = element.getBoundingClientRect()
+      const outside =
+        rect.left < box.left - 1 || rect.top < box.top - 1 || rect.right > box.right + 1 || rect.bottom > box.bottom + 1
+      return outside && !clipped(element)
+    })
+    const outermost = spills.filter((element) => !spills.some((other) => other !== element && other.contains(element)))
+    const size = `${Math.round(box.width)}×${Math.round(box.height)}`
+    if (box.width > 1921 || box.height > 1081)
+      checks.push({
+        rule: "slide-overflow",
+        severity: "error",
+        selector: selector(slide),
+        evidence: `The slide is ${size}px, larger than the 1920×1080 canvas.`,
+        fix: "Keep each section.slide at 1920×1080: remove height:auto, min-height or padding that grows it, and split the content across slides.",
+      })
+    for (const element of outermost.slice(0, 5)) {
+      const rect = element.getBoundingClientRect()
+      checks.push({
+        rule: "slide-overflow",
+        severity: "error",
+        selector: selector(element),
+        evidence: `Content reaches ${Math.round(rect.right - box.left)}×${Math.round(rect.bottom - box.top)}px from the slide's corner, past its ${size}px box; the projector and the PDF cut it off.`,
+        fix: "Cut the text, shrink the visual or move part of it to another slide; one idea per slide.",
+      })
+    }
+    if (!outermost.length && (slide.scrollHeight > slide.clientHeight + 1 || slide.scrollWidth > slide.clientWidth + 1))
+      checks.push({
+        rule: "slide-overflow",
+        severity: "error",
+        selector: selector(slide),
+        evidence: `The slide's content is ${slide.scrollWidth}×${slide.scrollHeight}px inside its ${slide.clientWidth}×${slide.clientHeight}px box.`,
+        fix: "Cut the text, shrink the visual or move part of it to another slide; one idea per slide.",
+      })
+    const small = content.filter(
+      (element) =>
+        [...element.childNodes].some((node) => node.nodeType === Node.TEXT_NODE && node.textContent?.trim()) &&
+        parseFloat(getComputedStyle(element).fontSize) < minimum,
+    )
+    for (const element of small.slice(0, 8))
+      checks.push({
+        rule: "slide-text-small",
+        severity: "review",
+        selector: selector(element),
+        evidence: `Text is ${Math.round(parseFloat(getComputedStyle(element).fontSize) * 10) / 10}px on a 1920×1080 slide, under the ${minimum}px projection minimum.`,
+        fix: `Set slide text at ${minimum}px or larger (body around 32px, titles 64px and up) and cut words instead of shrinking them; put detail in the speaker notes.`,
+      })
+    if (small.length > 8)
+      checks.push({
+        rule: "slide-text-small",
+        severity: "review",
+        selector: selector(slide),
+        evidence: `${small.length - 8} more text elements on this slide are under ${minimum}px.`,
+        fix: "Raise the slide's base font size rather than each element.",
+      })
+  }
+  return checks
+}
+
+/**
  * Structural problems with data-design-screen markup. Self-contained so it runs on a parsed static
  * document and, serialized, inside the rendered prototype.
  */
@@ -345,7 +440,7 @@ export function report(
               .slice(0, 30)
               .map(
                 (check) =>
-                  `${check.severity.toUpperCase()} ${check.rule} · ${check.width}px${check.variant ? ` · ${check.variant}` : ""}${check.scenario ? ` · ${check.scenario}` : ""} · ${check.selector}: ${check.evidence} Fix: ${check.fix}`,
+                  `${check.severity.toUpperCase()} ${check.rule} · ${check.width}px${check.variant ? ` · ${check.variant}` : ""}${check.screen ? ` · slide ${check.screen}` : ""}${check.scenario ? ` · ${check.scenario}` : ""} · ${check.selector}: ${check.evidence} Fix: ${check.fix}`,
               ),
             ...((current.audit.checks?.length ?? 0) > 30
               ? [`Further checks in ${current.result}; inspect the full report.`]
@@ -353,7 +448,7 @@ export function report(
             "Read these captures with the image-capable read tool before judging visual quality:",
             ...(current.audit.captures ?? []).map(
               (capture) =>
-                `${capture.width}px ${capture.variant ?? "page"} ${capture.scenario ?? "initial"} (${capture.fullPage ? "full page" : "viewport only"}): ${capture.file}`,
+                `${capture.width}px ${capture.variant ?? "page"}${capture.screen ? ` slide ${capture.screen}` : ""} ${capture.scenario ?? "initial"} (${capture.fullPage ? "full page" : "viewport only"}): ${capture.file}`,
             ),
             ...(!current.audit.captures?.length
               ? ["Historical audit has no capture manifest. Run a fresh audit before a visual verdict."]

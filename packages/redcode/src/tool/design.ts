@@ -429,7 +429,7 @@ export const DesignTools = Effect.gen(function* () {
     }),
     define("design_export", {
       description:
-        "Start HTML export, rendered scenario audit, implementation comparison, SVG-to-GIF export, or a feedback-round verify. Poll design_jobs. Format verify renders the revision once and, for each note of the round (latest by default), locates its element, captures it before and after, runs the scenarios on its screen and axe/layout checks on its container; design_jobs then lists one line per note to cite when recording statuses. In a comparison, differences caused by real data or existing components are expected. GIF defaults: 3 seconds, 20 fps, 512px, repeat.",
+        "Start HTML export, a PDF of a presentation's slides (format pdf: one 1920×1080 page per slide, speaker notes left out), rendered scenario audit, implementation comparison, SVG-to-GIF export, or a feedback-round verify. Poll design_jobs. Format verify renders the revision once and, for each note of the round (latest by default), locates its element, captures it before and after, runs the scenarios on its screen and axe/layout checks on its container; design_jobs then lists one line per note to cite when recording statuses. In a comparison, differences caused by real data or existing components are expected. GIF defaults: 3 seconds, 20 fps, 512px, repeat.",
       parameters: Schema.Struct({ id: Design.ID, input: Design.Render }),
       execute: (input, ctx) =>
         run(

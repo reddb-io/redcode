@@ -182,6 +182,22 @@ export const designGoalScenarios: Scenario[] = [
       }),
     ),
   http.protected
+    .get(`${item}/present`, "v2.design.present")
+    .seeded(document)
+    .at((ctx) => ({ path: `${ctx.state.item}/present?view=presenter`, headers: ctx.headers() }))
+    .status(200, (ctx, result) =>
+      Effect.sync(() => {
+        check(result.contentType.includes("text/html"), "present should return HTML")
+        check(
+          result.text.includes(ctx.state.document.id) &&
+            result.text.includes('id="present"') &&
+            result.text.includes('"view":"presenter"'),
+          "present should bind the requested design and view",
+        )
+        check(result.text.includes("BroadcastChannel"), "present should sync its windows over a BroadcastChannel")
+      }),
+    ),
+  http.protected
     .post(`${item}/restore`, "v2.design.restore")
     .seeded((ctx) =>
       Effect.gen(function* () {

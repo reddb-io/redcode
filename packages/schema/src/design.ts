@@ -537,7 +537,8 @@ export interface ImportAsset extends Schema.Schema.Type<typeof ImportAsset> {}
 
 export const Render = Schema.Struct({
   revision: Schema.String,
-  format: Schema.Literals(["html", "gif", "audit", "compare", "verify"]),
+  /** pdf prints a presentation's slides, one 1920×1080 page each, without speaker notes. */
+  format: Schema.Literals(["html", "gif", "audit", "compare", "verify", "pdf"]),
   /** With format verify: the feedback round whose notes are verified against `revision`; the latest round by default. */
   round: Schema.Int.check(Schema.isGreaterThanOrEqualTo(1)).pipe(optional),
   implementation: Schema.String.pipe(optional),
@@ -552,6 +553,13 @@ export const Render = Schema.Struct({
 }).annotate({ identifier: "Design.Render" })
 export interface Render extends Schema.Schema.Type<typeof Render> {}
 
+/** The file a render job writes and how it is served: a GIF, a PDF, or an HTML page (export, audit, compare and verify reports). */
+export function exportFile(format: Render["format"]) {
+  if (format === "gif") return { extension: "gif", mime: "image/gif" } as const
+  if (format === "pdf") return { extension: "pdf", mime: "application/pdf" } as const
+  return { extension: "html", mime: "text/html" } as const
+}
+
 export const AuditCheck = Schema.Struct({
   rule: Schema.String,
   severity: Schema.Literals(["error", "review"]),
@@ -561,6 +569,8 @@ export const AuditCheck = Schema.Struct({
   width: Schema.Number,
   variant: Schema.String.pipe(optional),
   scenario: Schema.String.pipe(optional),
+  /** The slide (screen id) a presentation audit checked. */
+  screen: Schema.String.pipe(optional),
 }).annotate({ identifier: "Design.AuditCheck" })
 export interface AuditCheck extends Schema.Schema.Type<typeof AuditCheck> {}
 
@@ -569,6 +579,8 @@ export const AuditCapture = Schema.Struct({
   width: Schema.Number,
   variant: Schema.String.pipe(optional),
   scenario: Schema.String.pipe(optional),
+  /** The slide (screen id) a presentation audit captured. */
+  screen: Schema.String.pipe(optional),
   fullPage: Schema.Boolean,
 }).annotate({ identifier: "Design.AuditCapture" })
 export interface AuditCapture extends Schema.Schema.Type<typeof AuditCapture> {}
