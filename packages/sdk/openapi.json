@@ -26163,6 +26163,216 @@
           }
         ]
       }
+    },
+    "/experimental/worktree/inventory": {
+      "get": {
+        "tags": ["experimental"],
+        "operationId": "worktree.inventory.list",
+        "parameters": [
+          {
+            "name": "directory",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            },
+            "required": false
+          },
+          {
+            "name": "workspace",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            },
+            "required": false
+          },
+          {
+            "name": "pullRequests",
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "enum": ["true", "false"]
+            },
+            "required": false
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The repository's worktrees",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WorktreeInventory"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "WorktreeInventoryError | InvalidRequestError",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/WorktreeInventoryError"
+                    },
+                    {
+                      "$ref": "#/components/schemas/InvalidRequestError"
+                    }
+                  ]
+                }
+              }
+            }
+          }
+        },
+        "description": "List the repository's linked worktrees with size, pending changes, divergence from the default branch, merge state, activity and linked sessions.",
+        "summary": "List worktree inventory",
+        "x-codeSamples": [
+          {
+            "lang": "js",
+            "source": "import { createRedcodeClient } from \"@reddb-io/redcode-sdk\"\n\nconst client = createRedcodeClient()\nawait client.worktree.inventory.list({\n  ...\n})"
+          }
+        ]
+      }
+    },
+    "/experimental/worktree/inventory/remove": {
+      "post": {
+        "tags": ["experimental"],
+        "operationId": "worktree.inventory.remove",
+        "parameters": [
+          {
+            "name": "directory",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            },
+            "required": false
+          },
+          {
+            "name": "workspace",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            },
+            "required": false
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Worktree removed",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WorktreeInventoryRemoveResult"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "WorktreeInventoryError | InvalidRequestError",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/WorktreeInventoryError"
+                    },
+                    {
+                      "$ref": "#/components/schemas/InvalidRequestError"
+                    }
+                  ]
+                }
+              }
+            }
+          }
+        },
+        "description": "Remove one linked worktree. Uncommitted changes need force; the primary checkout and worktrees of active sessions are never removed.",
+        "summary": "Remove a worktree safely",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/WorktreeInventoryRemoveInput"
+              }
+            }
+          }
+        },
+        "x-codeSamples": [
+          {
+            "lang": "js",
+            "source": "import { createRedcodeClient } from \"@reddb-io/redcode-sdk\"\n\nconst client = createRedcodeClient()\nawait client.worktree.inventory.remove({\n  ...\n})"
+          }
+        ]
+      }
+    },
+    "/experimental/worktree/inventory/clean": {
+      "post": {
+        "tags": ["experimental"],
+        "operationId": "worktree.inventory.clean",
+        "parameters": [
+          {
+            "name": "directory",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            },
+            "required": false
+          },
+          {
+            "name": "workspace",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            },
+            "required": false
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Worktrees cleaned or previewed",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WorktreeInventoryCleanResult"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "WorktreeInventoryError | InvalidRequestError",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/WorktreeInventoryError"
+                    },
+                    {
+                      "$ref": "#/components/schemas/InvalidRequestError"
+                    }
+                  ]
+                }
+              }
+            }
+          }
+        },
+        "description": "Remove clean worktrees whose branch merged or that saw no activity for a number of days, and prune stale registrations. dryRun only reports what would go.",
+        "summary": "Clean merged or stale worktrees",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/WorktreeInventoryCleanInput"
+              }
+            }
+          }
+        },
+        "x-codeSamples": [
+          {
+            "lang": "js",
+            "source": "import { createRedcodeClient } from \"@reddb-io/redcode-sdk\"\n\nconst client = createRedcodeClient()\nawait client.worktree.inventory.clean({\n  ...\n})"
+          }
+        ]
+      }
     }
   },
   "components": {
@@ -52486,6 +52696,250 @@
             }
           }
         }
+      },
+      "WorktreeInventoryChanges": {
+        "type": "object",
+        "properties": {
+          "tracked": {
+            "type": "number"
+          },
+          "untracked": {
+            "type": "number"
+          }
+        },
+        "required": ["tracked", "untracked"],
+        "additionalProperties": false
+      },
+      "WorktreeInventorySession": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "title": {
+            "type": "string"
+          }
+        },
+        "required": ["id", "title"],
+        "additionalProperties": false
+      },
+      "WorktreeInventoryInfo": {
+        "type": "object",
+        "properties": {
+          "path": {
+            "type": "string"
+          },
+          "relative": {
+            "type": "string"
+          },
+          "branch": {
+            "type": "string"
+          },
+          "head": {
+            "type": "string"
+          },
+          "primary": {
+            "type": "boolean"
+          },
+          "current": {
+            "type": "boolean"
+          },
+          "locked": {
+            "type": "boolean"
+          },
+          "prunable": {
+            "type": "boolean"
+          },
+          "size": {
+            "type": "number"
+          },
+          "sizePartial": {
+            "type": "boolean"
+          },
+          "changes": {
+            "$ref": "#/components/schemas/WorktreeInventoryChanges"
+          },
+          "ahead": {
+            "type": "number"
+          },
+          "behind": {
+            "type": "number"
+          },
+          "merged": {
+            "type": "boolean"
+          },
+          "activity": {
+            "type": "number"
+          },
+          "sessions": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/WorktreeInventorySession"
+            }
+          }
+        },
+        "required": [
+          "path",
+          "head",
+          "primary",
+          "current",
+          "locked",
+          "prunable",
+          "size",
+          "sizePartial",
+          "changes",
+          "merged",
+          "sessions"
+        ],
+        "additionalProperties": false
+      },
+      "WorktreeInventory": {
+        "type": "object",
+        "properties": {
+          "root": {
+            "type": "string"
+          },
+          "base": {
+            "type": "string"
+          },
+          "worktrees": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/WorktreeInventoryInfo"
+            }
+          }
+        },
+        "required": ["root", "worktrees"],
+        "additionalProperties": false
+      },
+      "WorktreeInventoryError": {
+        "type": "object",
+        "properties": {
+          "message": {
+            "type": "string"
+          }
+        },
+        "required": ["message"],
+        "additionalProperties": false
+      },
+      "WorktreeInventoryRemoveInput": {
+        "type": "object",
+        "properties": {
+          "target": {
+            "type": "string",
+            "description": "Worktree path (absolute or relative to the repository), name or branch"
+          },
+          "force": {
+            "type": "boolean",
+            "description": "Discard uncommitted changes or remove a locked worktree"
+          },
+          "deleteBranch": {
+            "type": "boolean",
+            "description": "Delete the local branch when it is merged"
+          },
+          "protect": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Directories whose worktrees must be kept"
+          }
+        },
+        "required": ["target"],
+        "additionalProperties": false
+      },
+      "WorktreeInventoryRemoveResult": {
+        "type": "object",
+        "properties": {
+          "path": {
+            "type": "string"
+          },
+          "branch": {
+            "type": "string"
+          },
+          "branchDeleted": {
+            "type": "boolean"
+          },
+          "freed": {
+            "type": "number"
+          }
+        },
+        "required": ["path", "branchDeleted", "freed"],
+        "additionalProperties": false
+      },
+      "WorktreeInventoryCleanInput": {
+        "type": "object",
+        "properties": {
+          "merged": {
+            "type": "boolean"
+          },
+          "staleDays": {
+            "type": "number"
+          },
+          "dryRun": {
+            "type": "boolean"
+          },
+          "deleteBranch": {
+            "type": "boolean"
+          },
+          "pullRequests": {
+            "type": "boolean"
+          },
+          "protect": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          }
+        },
+        "additionalProperties": false
+      },
+      "WorktreeInventoryCleanResult": {
+        "type": "object",
+        "properties": {
+          "dryRun": {
+            "type": "boolean"
+          },
+          "candidates": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/WorktreeInventoryInfo"
+            }
+          },
+          "removed": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "failed": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "path": {
+                  "type": "string"
+                },
+                "message": {
+                  "type": "string"
+                }
+              },
+              "required": ["path", "message"],
+              "additionalProperties": false
+            }
+          },
+          "pruned": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "freed": {
+            "type": "number"
+          }
+        },
+        "required": ["dryRun", "candidates", "removed", "failed", "pruned", "freed"],
+        "additionalProperties": false
       }
     }
   },
