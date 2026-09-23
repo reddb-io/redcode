@@ -202,6 +202,7 @@ export const reviewCopy = {
   iphone: "iPhone · 393 px",
   android: "Android · 412 px",
   slide: "Slide · 1920 px",
+  devicePlatform: "Phone frame",
   feedbackRequired: "Write a note before sending feedback.",
   failure: "The request failed. Your draft has been preserved.",
   published: "Revision published",

@@ -23,6 +23,8 @@ import { DesignQuality } from "./quality"
 import { DesignRounds } from "./rounds"
 import { DesignViewports } from "./viewports"
 import { screens } from "@reddb-io/redcode-design/screens"
+import { device } from "@reddb-io/redcode-design/devices"
+import type { Viewport } from "@reddb-io/redcode-design/viewports"
 
 /**
  * In-page helpers. Each is serialized on its own, so they reach the runtime through its private handle
@@ -34,6 +36,23 @@ type ScreenHandle = {
     screens?: () => { id: string; variant: string }[]
     current?: () => Record<string, string>
   }
+}
+/**
+ * Sets a phone's safe-area insets on the page root before the prototype's scripts run, waiting for the
+ * root element when the document has none yet.
+ */
+const safeArea = (inset: { readonly top: number; readonly bottom: number }) => {
+  const apply = () => {
+    const root = document.documentElement
+    if (!root) return false
+    root.style.setProperty("--safe-area-top", `${inset.top}px`)
+    root.style.setProperty("--safe-area-bottom", `${inset.bottom}px`)
+    return true
+  }
+  if (apply()) return
+  new MutationObserver((_, observer) => {
+    if (apply()) observer.disconnect()
+  }).observe(document, { childList: true })
 }
 /** Opens a screen; false when the prototype has no such screen in that variant or on the page. */
 const openScreen = (input: { screen: string; variant?: string }) => {
@@ -265,32 +284,69 @@ const make = Effect.gen(function* () {
     yield* Effect.scoped(
       Effect.gen(function* () {
         const instance = yield* browser
-        const context = yield* io(() =>
-          instance.newContext({ viewport: { width: 1440, height: 900 }, reducedMotion: "reduce" }),
-        )
-        // Screens and the design helper run before the prototype's scripts, as in the review page. A
-        // compare injects them only into the approved prototype, never into the implementation.
-        if (job.input.format !== "compare")
-          yield* io(() => context.addInitScript({ content: `(${screens.toString()})()` }))
-        const page = yield* io(() => context.newPage())
-        yield* io(() =>
-          page.route("**/*", async (route) => {
-            const url = new URL(route.request().url())
-            if (url.origin !== "http://design.local") {
-              await route.abort()
-              return
-            }
-            const file = await DesignFiles.resolve(
-              root,
-              decodeURIComponent(url.pathname.slice(1)) || "index.html",
-            ).catch(() => undefined)
-            if (!file) {
-              await route.fulfill({ status: 404, body: "Not found" })
-              return
-            }
-            await route.fulfill({ body: Buffer.from(await Bun.file(file).bytes()), contentType: Bun.file(file).type })
-          }),
-        )
+        /** Script errors of the current page; the audit and verify clear it before each view they check. */
+        const runtimeErrors: string[] = []
+        /**
+         * A page for one viewport. An app viewport is its phone: touch, mobile layout, device pixel ratio
+         * and user agent, which a browser context fixes when it is created, plus the phone's safe-area
+         * insets as --safe-area-top/--safe-area-bottom (CSS env() cannot be set from outside, so designs
+         * pad with max(env(safe-area-inset-*, 0px), var(--safe-area-*, 0px))). Any other viewport is a
+         * desktop page.
+         */
+        const open = Effect.fn("DesignRenderer.open")(function* (viewport: Viewport | undefined) {
+          const phone = viewport?.device ? device(viewport.device) : undefined
+          const context = yield* io(() =>
+            instance.newContext({
+              viewport: { width: viewport?.width ?? 1440, height: viewport?.height ?? 900 },
+              reducedMotion: "reduce",
+              ...(phone
+                ? { deviceScaleFactor: phone.scale, isMobile: true, hasTouch: true, userAgent: phone.userAgent }
+                : {}),
+            }),
+          )
+          // Screens and the design helper run before the prototype's scripts, as in the review page. A
+          // compare injects them only into the approved prototype, never into the implementation.
+          if (job.input.format !== "compare")
+            yield* io(() => context.addInitScript({ content: `(${screens.toString()})()` }))
+          if (phone) yield* io(() => context.addInitScript(safeArea, phone.safeArea))
+          const page = yield* io(() => context.newPage())
+          page.on("pageerror", (error) => runtimeErrors.push(error.message))
+          yield* io(() =>
+            page.route("**/*", async (route) => {
+              const url = new URL(route.request().url())
+              if (url.origin !== "http://design.local") {
+                await route.abort()
+                return
+              }
+              const file = await DesignFiles.resolve(
+                root,
+                decodeURIComponent(url.pathname.slice(1)) || "index.html",
+              ).catch(() => undefined)
+              if (!file) {
+                await route.fulfill({ status: 404, body: "Not found" })
+                return
+              }
+              await route.fulfill({
+                body: Buffer.from(await Bun.file(file).bytes()),
+                contentType: Bun.file(file).type,
+              })
+            }),
+          )
+          return page
+        })
+        const inspected =
+          job.input.format === "audit" || job.input.format === "compare" || job.input.format === "verify"
+        // The page is replaced when an app job moves to the other phone; helpers read it when they run.
+        let page = yield* open(inspected && sizes[0]?.device ? sizes[0] : undefined)
+        let emulated = inspected ? sizes[0]?.device : undefined
+        /** Shows the page at a viewport: resized in place, or a new page when the phone changes. */
+        const emulate = Effect.fn("DesignRenderer.emulate")(function* (viewport: Viewport) {
+          if (viewport.device === emulated)
+            return yield* io(() => page.setViewportSize({ width: viewport.width, height: viewport.height }))
+          yield* io(() => page.context().close())
+          page = yield* open(viewport)
+          emulated = viewport.device
+        })
         const entry = revision.document.engine === "html" ? revision.document.entry : "index.html"
         if (job.input.format !== "gif")
           yield* io(() => page.goto(`http://design.local/${entry}`, { waitUntil: "load" }))
@@ -390,6 +446,8 @@ const make = Effect.gen(function* () {
             const width = viewport.width
             const images: Buffer[] = []
             for (const source of [root, candidateRoot]) {
+              // First, since a new phone page comes with only the approved prototype's route.
+              yield* emulate(viewport)
               yield* io(() => page.unrouteAll())
               yield* io(() =>
                 page.route("**/*", async (route) => {
@@ -416,7 +474,6 @@ const make = Effect.gen(function* () {
                   })
                 }),
               )
-              yield* io(() => page.setViewportSize({ width, height: viewport.height }))
               for (const scenario of scenarios.length ? scenarios : [undefined]) {
                 yield* io(() => page.goto(`http://design.local/${source === root ? entry : "index.html"}`))
                 yield* io(() => page.evaluate(() => document.fonts.ready.then(() => undefined)))
@@ -455,7 +512,7 @@ const make = Effect.gen(function* () {
                   await target.waitFor({ state: "visible", timeout: 5000 })
                   return (await target.getAttribute("data-state")) === scenario.state ? "Exercised" : "State mismatch"
                 }).pipe(Effect.catchTag("Design.Error", (error) => Effect.succeed(error.message)))
-                const screenshot = yield* io(() => page.screenshot({ animations: "disabled" }))
+                const screenshot = yield* io(() => page.screenshot({ animations: "disabled", scale: "css" }))
                 images.push(screenshot)
                 report.push(
                   `<h2>${width}px · ${source === root ? "Approved" : "Implementation"} · ${escape(scenario?.name ?? "Page")}</h2><p>${escape(outcome)}</p><img style="max-width:100%" alt="Rendered comparison" src="data:image/png;base64,${screenshot.toString("base64")}">`,
@@ -502,8 +559,7 @@ const make = Effect.gen(function* () {
               : Design.VerifyNote[K]
           }
           const results: Draft[] = []
-          const runtimeErrors: string[] = []
-          page.on("pageerror", (error) => runtimeErrors.push(error.message))
+          yield* emulate(VIEWPORT)
           const { AxeBuilder } = yield* io((signal) => DesignRuntime.load("@axe-core/playwright", signal))
           const escape = (value: string) =>
             value.replaceAll("&", "&amp;").replaceAll("<", "&lt;").replaceAll('"', "&quot;")
@@ -635,10 +691,16 @@ const make = Effect.gen(function* () {
               // Crops are read by people and embedded in the report; JPEG keeps the report small.
               await DesignFiles.atomic(
                 file,
-                await page.screenshot({ type: "jpeg", quality: 80, fullPage: true, clip, animations: "disabled" }),
+                await page.screenshot({
+                  type: "jpeg",
+                  quality: 80,
+                  fullPage: true,
+                  clip,
+                  animations: "disabled",
+                  scale: "css",
+                }),
               )
             })
-          yield* io(() => page.setViewportSize({ width: WIDTH, height: VIEWPORT.height }))
           /** Records what the job has so far, so a timeout or crash keeps every finished note. */
           const record = (done: number) =>
             store.putJob({
@@ -696,7 +758,9 @@ const make = Effect.gen(function* () {
                 result.found = true
                 yield* capture(`${base}-after.jpg`, located)
                 result.after = `${base}-after.jpg`
-                const checks = yield* io(() => page.evaluate(DesignQuality.inspect))
+                const checks = yield* io(() =>
+                  page.evaluate(DesignQuality.inspect, DesignQuality.minimumControl(emulated)),
+                )
                 const layout = yield* io(() =>
                   page.evaluate(
                     scopedLayout,
@@ -820,11 +884,9 @@ const make = Effect.gen(function* () {
           const evidence: string[] = []
           const checks: Design.AuditCheck[] = []
           const captures: Design.AuditCapture[] = []
-          const runtimeErrors: string[] = []
           /** "variant screen" keys: screens the prototype declares and screens an audit view showed. */
           const declared = new Set<string>()
           const visited = new Set<string>()
-          page.on("pageerror", (error) => runtimeErrors.push(error.message))
           const screensMarked = yield* io(() => DesignQuality.mentionsScreens(root))
           /** Records the screens a view shows: the variant's own and the page-level ones. */
           const visit = (variant: string | undefined) =>
@@ -867,12 +929,14 @@ const make = Effect.gen(function* () {
             if (variant && !(yield* io(() => page.locator(`[data-design-variant="${variant}"]`).first().isVisible())))
               findings.push(`${label}: variant root is hidden; this direction remains unverified`)
             checks.push(
-              ...(yield* io(() => page.evaluate(DesignQuality.inspect))).map((check) => ({
-                ...check,
-                width,
-                variant,
-                scenario,
-              })),
+              ...(yield* io(() => page.evaluate(DesignQuality.inspect, DesignQuality.minimumControl(emulated)))).map(
+                (check) => ({
+                  ...check,
+                  width,
+                  variant,
+                  scenario,
+                }),
+              ),
             )
             const layout = yield* io(() =>
               page.evaluate(() => ({
@@ -918,12 +982,14 @@ const make = Effect.gen(function* () {
                 `${label}: page exceeds 12000px; capture covers only the current viewport. Inspect remaining content before a visual verdict.`,
               )
             const file = path.join(path.dirname(output), `${job.id}-${captures.length}.png`)
-            yield* io(async () => DesignFiles.atomic(file, await page.screenshot({ fullPage, animations: "disabled" })))
+            yield* io(async () =>
+              DesignFiles.atomic(file, await page.screenshot({ fullPage, animations: "disabled", scale: "css" })),
+            )
             captures.push({ file, width, variant, scenario, fullPage })
           })
           for (const [index, viewport] of sizes.entries()) {
             const width = viewport.width
-            yield* io(() => page.setViewportSize({ width, height: viewport.height }))
+            yield* emulate(viewport)
             for (const variant of valid.length ? valid.slice(0, 6) : [undefined]) {
               if (captures.length >= 36) continue
               yield* reset(variant)

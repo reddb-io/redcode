@@ -445,6 +445,8 @@ export const FeedbackNotice = Schema.Struct({
   snapshot: Schema.Boolean,
   /** One line naming a requested variant operation, such as "delete Compact". */
   operation: Schema.String.pipe(optional),
+  /** What the design is for, such as "iOS app" or "Web"; absent on notices recorded before targets. */
+  target: Schema.String.pipe(optional),
 }).annotate({ identifier: "Design.FeedbackNotice" })
 export interface FeedbackNotice extends Schema.Schema.Type<typeof FeedbackNotice> {}
 

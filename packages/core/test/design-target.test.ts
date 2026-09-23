@@ -10,6 +10,8 @@ import { DesignStore } from "../src/design/store"
 import { DesignTarget } from "../src/design/target"
 import { DesignViewports } from "../src/design/viewports"
 import { DesignPlaybooks } from "../src/design/playbooks"
+import { DesignContext } from "../src/design/context"
+import { SystemContext } from "../src/system-context"
 import { Intelligence } from "../src/intelligence"
 import { Location } from "../src/location"
 import { Project } from "../src/project"
@@ -360,6 +362,25 @@ describe("DesignStore targets", () => {
         .create(sessionID, { name: "Bad", journey: "new", engine: "html", kind: "screen", platform: "ios" })
         .pipe(Effect.flip)
       expect(created.code).toBe("invalid")
+    }),
+  )
+
+  it.effect("the per-turn Design context names each design's target", () =>
+    Effect.gen(function* () {
+      const store = yield* DesignStore.Service
+      const sessionID = yield* session
+      yield* store.create(sessionID, { name: "Site", journey: "new", engine: "html", kind: "screen" })
+      yield* store.create(sessionID, {
+        name: "Runner",
+        journey: "new",
+        engine: "html",
+        kind: "flow",
+        target: "app",
+        platform: "android",
+      })
+      const context = yield* SystemContext.initialize(yield* DesignContext.load(sessionID))
+      expect(context.baseline).toMatch(/Site\. Target: Web\./)
+      expect(context.baseline).toMatch(/Runner\. Target: Android app\./)
     }),
   )
 })

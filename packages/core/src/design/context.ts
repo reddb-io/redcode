@@ -5,11 +5,14 @@ import { Session } from "@reddb-io/redcode-schema/session"
 import { DesignStore } from "./store"
 import { DesignApproval } from "./approval"
 import { DesignSystem } from "./system"
+import { DesignTarget } from "./target"
 import { SystemContext } from "../system-context/index"
 
 const Entry = Schema.Struct({
   id: Schema.String,
   name: Schema.String,
+  /** What the design is for, such as "iOS app" or "Web"; decides its viewports and playbooks. */
+  target: Schema.String,
   root: Schema.String,
   revision: Schema.NullOr(Schema.String),
   ended: Schema.Boolean,
@@ -24,7 +27,7 @@ const render = (entries: readonly (typeof Entry.Type)[]) =>
     ? entries
         .map((entry) =>
           [
-            `Design ${entry.id}: ${entry.name}. Review ${entry.ended ? "closed" : "open"}. Working revision: ${entry.revision ?? "unpublished"}.`,
+            `Design ${entry.id}: ${entry.name}. Target: ${entry.target}. Review ${entry.ended ? "closed" : "open"}. Working revision: ${entry.revision ?? "unpublished"}.`,
             entry.approval
               ? DesignApproval.guidance(entry.approval)
               : `Work: ${entry.root}. Objective: ${entry.objective}. Open questions: ${entry.questions.join("; ")}. This design is not approved.`,
@@ -50,6 +53,7 @@ export const load = Effect.fn(function* (sessionID: Session.ID) {
             return {
               id: document.id,
               name: document.name,
+              target: DesignTarget.label(document),
               root: document.root,
               revision: document.revision,
               ended: document.ended,

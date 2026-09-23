@@ -2,6 +2,7 @@ import { describe, expect, test } from "bun:test"
 import { createRoot } from "solid-js"
 import { createStore } from "solid-js/store"
 import { mountReview, type ReviewOptions } from "@reddb-io/redcode-design/review"
+import { stage } from "@reddb-io/redcode-design/stage"
 import { createSessionDesignMount } from "@/components/session/session-design-mount"
 import { designGoalDictionary } from "@/i18n/design-goal"
 import type { DesktopNativeLocale } from "@/i18n/desktop-native"
@@ -235,6 +236,7 @@ function createFixture(
       options: () => ({
         base: "http://design-fixture.invalid",
         sessionID: "design_locale_fixture",
+        stage,
         request,
       }),
       translate: (key) => designGoalDictionary(state.locale)[key],

@@ -948,6 +948,8 @@ it.instance(
         notes: [{ label: 'h1 "Checkout"', text: "Make this title more prominent" }],
         attachments: ["reference.png"],
         snapshot: true,
+        // The suite forces new designs to web.
+        target: "Web",
       })
       expect(message?.parts.filter((part) => part.type === "file").map((part) => part.filename)).toEqual([
         "reference.png",

@@ -210,6 +210,7 @@ export const designGoalPortuguese: Record<string, string> = {
   "session.design.studio.iphone": "iPhone · 393 px",
   "session.design.studio.android": "Android · 412 px",
   "session.design.studio.slide": "Slide · 1920 px",
+  "session.design.studio.devicePlatform": "Moldura do celular",
   "session.design.studio.feedbackRequired": "Escreva uma nota antes de enviar feedback.",
   "session.design.studio.failure": "A solicitação falhou. Seu rascunho foi preservado.",
   "session.design.studio.published": "Revisão publicada",

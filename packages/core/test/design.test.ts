@@ -471,6 +471,62 @@ describe("Design revisions and review", () => {
       }),
     240000,
   )
+  it.live(
+    "audits an app design only on its phones, each emulated with touch, device pixels and safe-area insets",
+    () =>
+      Effect.gen(function* () {
+        const { store, document } = yield* setup
+        const renderer = yield* DesignRenderer.Service
+        const app = yield* store.create(document.sessionID, {
+          name: "Phone",
+          journey: "new",
+          engine: "html",
+          kind: "screen",
+          target: "app",
+        })
+        // The page reports what it sees as a script error, which the audit records per viewport.
+        yield* Effect.promise(() =>
+          Bun.write(
+            path.join(app.root, app.entry),
+            `<!doctype html><html lang="en"><head><title>Phone</title><meta name="viewport" content="width=device-width,initial-scale=1"></head><body><main><h1>Phone</h1><button id="mid" style="height:46px;width:120px">Continue</button></main><script>throw new Error("probe " + innerWidth + "x" + innerHeight + " dpr=" + devicePixelRatio + " touch=" + (navigator.maxTouchPoints > 0) + " ua=" + (/iPhone/.test(navigator.userAgent) ? "iphone" : /Android/.test(navigator.userAgent) ? "android" : "desktop") + " safe=" + getComputedStyle(document.documentElement).getPropertyValue("--safe-area-top").trim() + "/" + getComputedStyle(document.documentElement).getPropertyValue("--safe-area-bottom").trim())</script></body></html>`,
+          ),
+        )
+        const revision = yield* store.publish(app.id, "Phone")
+        const job = yield* renderer.start(app.id, { revision: revision.id, format: "audit" })
+        const audit = yield* Effect.gen(function* () {
+          for (;;) {
+            const current = (yield* renderer.jobs(app.id)).find((item) => item.id === job.id)!
+            if (current.status === "completed" || current.status === "failed" || current.status === "interrupted")
+              return current
+            yield* Effect.sleep("50 millis")
+          }
+        }).pipe(Effect.timeout("120 seconds"))
+        expect(audit.status).toBe("completed")
+        expect(audit.audit?.widths).toEqual([393, 412])
+        const probes = (audit.audit?.findings ?? []).filter((item) => item.includes("script error: probe"))
+        expect(probes).toEqual([
+          "393px · initial: script error: probe 393x852 dpr=3 touch=true ua=iphone safe=59px/34px",
+          "412px · initial: script error: probe 412x915 dpr=2.625 touch=true ua=android safe=40px/24px",
+        ])
+        // A 46px control meets the iOS 44pt target and misses the Android 48dp one.
+        expect(
+          (audit.audit?.checks ?? [])
+            .filter((check) => check.rule === "small-control" && check.selector === "#mid")
+            .map((check) => check.width),
+        ).toEqual([412])
+        // Captures stay in CSS pixels whatever the phone's pixel ratio.
+        const sizes = yield* Effect.promise(() =>
+          Promise.all(
+            (audit.audit?.captures ?? []).map(async (capture) => {
+              const bytes = await Bun.file(capture.file).bytes()
+              return new DataView(bytes.buffer, bytes.byteOffset).getUint32(16)
+            }),
+          ),
+        )
+        expect(sizes).toEqual([393, 412])
+      }),
+    240000,
+  )
   it.effect("disabled S1 preserves notes when an agent update is blocked and allows reviewer acceptance", () =>
     Effect.gen(function* () {
       const { store, document } = yield* setup
