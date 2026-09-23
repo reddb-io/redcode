@@ -5,8 +5,18 @@
 import os from "os"
 import path from "path"
 import fs from "fs/promises"
+import { appendFileSync } from "fs"
 import { afterAll } from "bun:test"
 import { removeOnExit, removeTempPaths, sharePlaywrightBrowsers } from "./fixture/temp-root"
+
+// Set by script/test-ci.ts only: every worker notes each file it starts and finishes, so a stalled CI
+// run can name the file it is stuck in. `Bun.main` is the test file, since each file re-runs this.
+const progress = process.env.REDCODE_TEST_PROGRESS
+if (progress) {
+  const log = path.join(progress, String(process.pid))
+  appendFileSync(log, `start ${Date.now()} ${Bun.main}\n`)
+  afterAll(() => appendFileSync(log, `end ${Date.now()} ${Bun.main}\n`))
+}
 
 // Before HOME and XDG_CACHE_HOME are repointed below, or every run downloads its own Chromium.
 sharePlaywrightBrowsers()

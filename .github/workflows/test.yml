@@ -99,7 +99,9 @@ jobs:
       # outside packages/ (lockfile, patches, root or CI config) can reach any package, so it runs
       # every suite, as do pushes and manual runs.
       - name: Run unit tests
-        timeout-minutes: 35
+        # The step takes about two minutes. Core's `test:ci` stops a stalled run itself after ten
+        # and names the file it was stuck in; this is the ceiling for everything else.
+        timeout-minutes: 15
         env:
           EVENT: ${{ github.event_name }}
           BASE: ${{ github.event.pull_request.base.sha }}
