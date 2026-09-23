@@ -56,5 +56,12 @@ export function spawn(cmd: string, argsOrOpts?: string[] | Process.Options, opts
 
   if (!proc.stdin || !proc.stdout || !proc.stderr) throw new Error("Process output not available")
 
+  // A server that exits at startup (a NODE_OPTIONS flag its Node rejects) closes stdin
+  // before the client's first write. The exit is what recover() acts on; the write's
+  // EPIPE must not surface as an unhandled error.
+  proc.stdin.on("error", (error: NodeJS.ErrnoException) => {
+    if (error.code !== "EPIPE" && error.code !== "ECONNRESET") throw error
+  })
+
   return proc
 }

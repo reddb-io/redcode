@@ -102,6 +102,15 @@ describe("session.system", () => {
     }
   })
 
+  test("selects the Astra prompt for GPT-6 model IDs", () => {
+    for (const id of ["gpt-6", "gpt-6-astra", "gpt-6-codex"]) {
+      const prompt = SystemPrompt.provider({ api: { id } } as Provider.Model)[0]
+      expect(prompt).toContain("You are an AI agent powered by Redcode, a coding agent harness.")
+      expect(prompt).not.toContain("OpenCode")
+    }
+    expect(SystemPrompt.provider({ api: { id: "gpt-5.5" } } as Provider.Model)[0]).toStartWith("You are Redcode.")
+  })
+
   test("selects the Kimi prompt for official provider model IDs", () => {
     for (const providerID of ["kimi-for-coding", "moonshotai", "moonshotai-cn"]) {
       const prompt = SystemPrompt.provider({ providerID, api: { id: "k3" } } as Provider.Model)[0]
