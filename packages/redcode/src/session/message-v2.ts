@@ -710,10 +710,11 @@ export function fromError(
       return new APIError(
         {
           message: e.message,
-          isRetryable: true,
+          isRetryable: e.refusal === undefined,
           metadata: {
             ...transport,
             code: e.name,
+            ...(e.refusal ? { classification: e.refusal } : {}),
           },
         },
         { cause: e },

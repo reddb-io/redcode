@@ -2,7 +2,7 @@ import { EventStreamCodec } from "@smithy/eventstream-codec"
 import { fromUtf8, toUtf8 } from "@smithy/util-utf8"
 import { describe, expect } from "bun:test"
 import { Effect } from "effect"
-import { CacheHint, LLM, Message, ToolCallPart, ToolChoice } from "../../src"
+import { CacheHint, LLM, Message, QUOTA_HINT, ToolCallPart, ToolChoice } from "../../src"
 import { LLMClient } from "../../src/route"
 import { AmazonBedrock } from "../../src/providers"
 import * as BedrockConverse from "../../src/protocols/bedrock-converse"
@@ -367,6 +367,23 @@ describe("Bedrock Converse route", () => {
         type: "provider-error",
         message: "Slow down",
         retryable: true,
+      })
+    }),
+  )
+
+  it.effect("marks a throttlingException that reports an exhausted quota as non-retryable", () =>
+    Effect.gen(function* () {
+      const body = eventStreamBody(
+        ["messageStart", { role: "assistant" }],
+        ["throttlingException", { message: "Daily usage limit reached for this account" }],
+      )
+      const response = yield* LLMClient.generate(baseRequest).pipe(Effect.provide(fixedBytes(body)))
+
+      expect(response.events.find((event) => event.type === "provider-error")).toEqual({
+        type: "provider-error",
+        message: `Daily usage limit reached for this account (${QUOTA_HINT})`,
+        classification: "quota",
+        retryable: false,
       })
     }),
   )

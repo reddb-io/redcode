@@ -1,4 +1,4 @@
-import { Effect, JsonSchema, Schema } from "effect"
+import { Cause, Effect, Exit, JsonSchema, Schema } from "effect"
 import { LLMClient } from "./route/client"
 import {
   GenerationOptions,
@@ -107,11 +107,30 @@ export interface GenerateObjectDynamicOptions extends GenerateObjectBase {
   readonly jsonSchema: JsonSchema.JsonSchema
 }
 
+/**
+ * Whether a model accepts a forced tool choice (`required` or a named tool). Claude Opus 5.5 and
+ * the Fable and Mythos models always think, and the API answers a forced tool choice with a 400 for
+ * them. `declared` is what a router says about the model: `false` refuses whatever the id is, so a
+ * combo refuses when any member does.
+ */
+export function supportsForcedToolChoice(modelID: string, declared?: boolean) {
+  if (declared === false) return false
+  const id = modelID.toLowerCase()
+  if (!id.includes("claude-")) return true
+  if (/(?:^|[^a-z])(?:fable|mythos)(?:[^a-z]|$)/.test(id)) return false
+  const version = /claude-(?:([a-z]+)-)?(\d+)(?:[.-](\d{1,2}))?(?:-([a-z]+))?(?:[.@-]|$)/.exec(id)
+  if (!version || (version[1] ?? version[4]) !== "opus") return true
+  const major = Number(version[2])
+  return major < 5 || (major === 5 && Number(version[3] ?? 0) < 5)
+}
+
 const runGenerateObject = Effect.fn("LLM.generateObject")(function* (
   options: GenerateObjectBase,
   tool: ReturnType<typeof makeTool>,
 ) {
   const baseRequest = request(options)
+  if (!supportsForcedToolChoice(baseRequest.model.id, baseRequest.model.compatibility?.forcedToolChoice))
+    return yield* generatePromptedObject(baseRequest, tool)
   const generateRequest = LLMRequest.update(baseRequest, {
     tools: toDefinitions({ [GENERATE_OBJECT_TOOL_NAME]: tool }),
     toolChoice: ToolChoice.named(GENERATE_OBJECT_TOOL_NAME),
@@ -143,10 +162,59 @@ const runGenerateObject = Effect.fn("LLM.generateObject")(function* (
   return new GenerateObjectResponse(object, response)
 })
 
+// Models that refuse a forced tool choice are asked for the bare JSON object instead; the reply is
+// validated against the schema and repaired once.
+const generatePromptedObject = Effect.fnUntraced(function* (
+  baseRequest: LLMRequest,
+  tool: ReturnType<typeof makeTool>,
+) {
+  const instruction = `Respond with ONLY a JSON object that matches this JSON Schema, no other text, do not wrap it in backticks:\n${JSON.stringify(tool._definition.inputSchema)}`
+  const promptedRequest = LLMRequest.update(baseRequest, {
+    system: [...baseRequest.system, SystemPart.make(instruction)],
+  })
+  const first = yield* LLMClient.generate(promptedRequest)
+  const parsed = yield* Effect.exit(decodePrompted(tool, first.text))
+  if (Exit.isSuccess(parsed)) return new GenerateObjectResponse(parsed.value, first)
+  const repair = yield* LLMClient.generate(
+    LLMRequest.update(promptedRequest, {
+      messages: [
+        ...promptedRequest.messages,
+        Message.assistant(first.text),
+        Message.user(
+          `That reply was not a valid JSON object for the schema: ${Cause.pretty(parsed.cause)}\n\nReturn ONLY the JSON object, no other text, do not wrap it in backticks.`,
+        ),
+      ],
+    }),
+  )
+  const object = yield* decodePrompted(tool, repair.text).pipe(
+    Effect.mapError(
+      (error) =>
+        new LLMError({
+          module: "LLM",
+          method: "generateObject",
+          reason: new InvalidProviderOutputReason({
+            message: `generateObject: reply failed schema decode after one repair: ${error.message}`,
+          }),
+        }),
+    ),
+  )
+  return new GenerateObjectResponse(object, repair)
+})
+
+// Models asked for bare JSON still wrap it in a fenced block now and then.
+const decodePrompted = (tool: ReturnType<typeof makeTool>, text: string) =>
+  decodeJson(/^\s*```(?:json)?\s*([\s\S]*?)\s*```\s*$/i.exec(text)?.[1] ?? text.trim()).pipe(
+    Effect.flatMap(tool._decode),
+  )
+
+const decodeJson = Schema.decodeUnknownEffect(Schema.UnknownFromJsonString)
+
 /**
  * Run a model and decode its output against `schema`. Works on every protocol
  * because it forces a synthetic tool call internally — provider-native JSON
- * modes are intentionally avoided so behaviour is uniform.
+ * modes are intentionally avoided so behaviour is uniform. Models that refuse a
+ * forced tool choice (see `supportsForcedToolChoice`) are prompted for the bare
+ * JSON object instead, validated against the same schema and repaired once.
  *
  * Two input modes:
  *

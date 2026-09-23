@@ -19,6 +19,8 @@ import { Snapshot } from "@/snapshot"
 import { assertExternalDirectoryEffect } from "./external-directory"
 import { FSUtil } from "@reddb-io/redcode-core/fs-util"
 import * as Bom from "@/util/bom"
+import { Session } from "@/session/session"
+import { AutoWorktree } from "@/session/auto-worktree"
 
 function normalizeLineEndings(text: string): string {
   return text.replaceAll("\r\n", "\n")
@@ -63,6 +65,7 @@ export const EditTool = Tool.define(
     const afs = yield* FSUtil.Service
     const format = yield* Format.Service
     const events = yield* EventV2Bridge.Service
+    const sessions = yield* Session.Service
 
     return {
       description: DESCRIPTION,
@@ -78,9 +81,10 @@ export const EditTool = Tool.define(
           }
 
           const instance = yield* InstanceState.context
-          const filePath = path.isAbsolute(params.filePath)
-            ? params.filePath
-            : path.join(instance.directory, params.filePath)
+          const filePath = yield* AutoWorktree.route(
+            { sessions, events, sessionID: ctx.sessionID, agent: ctx.agent },
+            path.isAbsolute(params.filePath) ? params.filePath : path.join(instance.directory, params.filePath),
+          )
           yield* RepositoryGuard.assertWrite(filePath).pipe(Effect.orDie)
           yield* assertExternalDirectoryEffect(ctx, filePath)
 

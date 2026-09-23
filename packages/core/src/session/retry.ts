@@ -104,6 +104,8 @@ export function retryable(error: Err, _provider: string): Retryable | undefined 
   // context overflow errors should not be retried
   if (SessionV1.ContextOverflowError.isInstance(error)) return undefined
   if (SessionV1.APIError.isInstance(error)) {
+    // The stream parser already classified the failure as one another attempt repeats.
+    if (STREAM_REFUSALS.has(error.data.metadata?.classification ?? "")) return undefined
     const headers = error.data.responseHeaders
     if (!routerRetryable(headers)) return undefined
     const status = error.data.statusCode
@@ -131,6 +133,8 @@ export function retryable(error: Err, _provider: string): Retryable | undefined 
   if (matchesRetryableMessage(message)) return { message }
   return undefined
 }
+
+const STREAM_REFUSALS = new Set(["quota", "content-policy"])
 
 export function connectionInterrupted(error: Err) {
   if (SessionV1.APIError.isInstance(error))

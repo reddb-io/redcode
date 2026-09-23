@@ -14,6 +14,7 @@ import { ToolOutputBridge } from "@/tool/output-bridge"
 import { SessionID, MessageID } from "../../src/session/schema"
 import * as Tool from "../../src/tool/tool"
 import { testEffect } from "../lib/effect"
+import { Session } from "@/session/session"
 import { Watcher } from "@reddb-io/redcode-core/filesystem/watcher"
 
 const ctx = {
@@ -32,7 +33,15 @@ afterEach(async () => {
 })
 
 const layer = LayerNode.compile(
-  LayerNode.group([LSP.node, FSUtil.node, Format.node, EventV2Bridge.node, ToolOutputBridge.node, Agent.node]),
+  LayerNode.group([
+    LSP.node,
+    FSUtil.node,
+    Format.node,
+    EventV2Bridge.node,
+    ToolOutputBridge.node,
+    Agent.node,
+    Session.node,
+  ]),
 )
 
 const it = testEffect(layer)

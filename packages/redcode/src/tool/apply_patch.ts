@@ -16,6 +16,8 @@ import DESCRIPTION from "./apply_patch.txt"
 import { FileSystem } from "@reddb-io/redcode-core/filesystem"
 import { Format } from "../format"
 import * as Bom from "@/util/bom"
+import { Session } from "@/session/session"
+import { AutoWorktree } from "@/session/auto-worktree"
 
 export const Parameters = Schema.Struct({
   patchText: Schema.String.annotate({ description: "The full patch text that describes all changes to be made" }),
@@ -100,6 +102,7 @@ export const ApplyPatchTool = Tool.define(
     const afs = yield* FSUtil.Service
     const format = yield* Format.Service
     const events = yield* EventV2Bridge.Service
+    const sessions = yield* Session.Service
 
     const run = Effect.fn("ApplyPatchTool.execute")(function* (
       params: Schema.Schema.Type<typeof Parameters>,
@@ -206,8 +209,15 @@ export const ApplyPatchTool = Tool.define(
           return entry
         })
 
+      // A patch against the primary checkout lands in the session worktree, created on first use.
+      const place = (file: string) =>
+        AutoWorktree.route(
+          { sessions, events, sessionID: ctx.sessionID, agent: ctx.agent },
+          path.resolve(instance.directory, file),
+        )
+
       for (const hunk of hunks) {
-        const filePath = path.resolve(instance.directory, hunk.path)
+        const filePath = yield* place(hunk.path)
         const entry = yield* load(filePath)
 
         switch (hunk.type) {
@@ -235,7 +245,7 @@ export const ApplyPatchTool = Tool.define(
             } catch (error) {
               return yield* verificationFailed(String(error))
             }
-            const movePath = hunk.move_path ? path.resolve(instance.directory, hunk.move_path) : undefined
+            const movePath = hunk.move_path ? yield* place(hunk.move_path) : undefined
             if (!movePath || movePath === filePath) {
               entry.next = next
               break

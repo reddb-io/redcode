@@ -1,7 +1,7 @@
 import type { Model, Provider, RouterConnection } from "@reddb-io/redcode-sdk/v2/client"
 
 type OriginProvider = Pick<Provider, "id" | "name" | "router">
-type OriginModel = Pick<Model, "id" | "upstream"> & { provider: OriginProvider }
+type OriginModel = Pick<Model, "id" | "upstream" | "via"> & { provider: OriginProvider }
 
 export type ModelAlternatives = { direct: boolean; routers: string[] }
 
@@ -32,7 +32,38 @@ export function modelOrigin(model: OriginModel) {
     router: model.provider.name,
     upstream: model.upstream?.name,
     subscription: model.upstream?.subscription === true,
+    via: model.via,
   }
+}
+
+/** The router a model is reached through, naming the router in between (a remote RedRouter) too. */
+export function routerPath(origin: { router: string; via?: string }) {
+  return origin.via ? `${origin.router} → ${origin.via}` : origin.router
+}
+
+/**
+ * What a router catalog refresh changed, when a model was added, removed or renamed. A refresh
+ * that only changed limits or modes updates the pickers without an announcement.
+ */
+export function catalogUpdate(event: { type: string; properties?: unknown }) {
+  if (event.type !== "provider.catalog.updated" || !isRecord(event.properties)) return undefined
+  const value = event.properties
+  const count = (key: string) => {
+    const item = value[key]
+    return typeof item === "number" ? item : 0
+  }
+  const update = {
+    name: typeof value.name === "string" ? value.name : "Router",
+    added: count("added"),
+    removed: count("removed"),
+    renamed: count("renamed"),
+  }
+  if (!update.added && !update.removed && !update.renamed) return undefined
+  return update
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null
 }
 
 /** Routed models are grouped by the provider behind them, e.g. `RedRouter · OpenAI Codex`. */

@@ -1,7 +1,7 @@
 import { describe, expect } from "bun:test"
 import { Effect } from "effect"
 import { HttpClientRequest } from "effect/unstable/http"
-import { CacheHint, LLM, LLMError, Message, ToolCallPart, Usage } from "../../src"
+import { CacheHint, LLM, LLMError, Message, QUOTA_HINT, ToolCallPart, Usage } from "../../src"
 import { Auth, LLMClient } from "../../src/route"
 import * as AnthropicMessages from "../../src/protocols/anthropic-messages"
 import { continuationRequest, nativeAnthropicMessagesContinuation } from "../continuation-scenarios"
@@ -502,6 +502,60 @@ describe("Anthropic Messages route", () => {
       // Prefix the error type so consumers can distinguish overloads, rate
       // limits, and quota errors without parsing the message string.
       expect(response.events).toEqual([{ type: "provider-error", message: "overloaded_error: Overloaded" }])
+    }),
+  )
+
+  it.effect("marks a mid-stream billing error as a non-retryable quota failure", () =>
+    Effect.gen(function* () {
+      const response = yield* LLMClient.generate(request).pipe(
+        Effect.provide(
+          fixedResponse(
+            sseEvents({ type: "error", error: { type: "billing_error", message: "Your credit balance is too low" } }),
+          ),
+        ),
+      )
+
+      expect(response.events).toEqual([
+        {
+          type: "provider-error",
+          message: `billing_error: Your credit balance is too low (${QUOTA_HINT})`,
+          classification: "quota",
+          retryable: false,
+        },
+      ])
+    }),
+  )
+
+  it.effect("reads quota wording on a mid-stream rate-limit error", () =>
+    Effect.gen(function* () {
+      const response = yield* LLMClient.generate(request).pipe(
+        Effect.provide(
+          fixedResponse(
+            sseEvents({ type: "error", error: { type: "rate_limit_error", message: "Monthly usage limit reached" } }),
+          ),
+        ),
+      )
+
+      expect(response.events).toEqual([
+        {
+          type: "provider-error",
+          message: `rate_limit_error: Monthly usage limit reached (${QUOTA_HINT})`,
+          classification: "quota",
+          retryable: false,
+        },
+      ])
+    }),
+  )
+
+  it.effect("leaves a plain mid-stream rate limit retryable", () =>
+    Effect.gen(function* () {
+      const response = yield* LLMClient.generate(request).pipe(
+        Effect.provide(
+          fixedResponse(sseEvents({ type: "error", error: { type: "rate_limit_error", message: "Slow down" } })),
+        ),
+      )
+
+      expect(response.events).toEqual([{ type: "provider-error", message: "rate_limit_error: Slow down" }])
     }),
   )
 

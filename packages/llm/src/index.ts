@@ -9,6 +9,8 @@ export {
   isContextOverflowFailure,
   isContentPolicyFailure,
   isQuotaFailure,
+  QUOTA_HINT,
+  streamProviderError,
 } from "./provider-error"
 export type { ContextOverflowNumbers, ProviderFailureInput } from "./provider-error"
 export type {

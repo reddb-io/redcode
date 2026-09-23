@@ -27,6 +27,8 @@ import { BashArity } from "@/permission/arity"
 import { Monitor } from "@reddb-io/redcode-schema/monitor"
 import { MonitorRuntime } from "@/background/monitor"
 import { Session } from "@/session/session"
+import { AutoWorktree } from "@/session/auto-worktree"
+import { EventV2Bridge } from "@/event-v2-bridge"
 import { continuation, forced, origin } from "./monitor"
 
 export { Parameters } from "./shell/prompt"
@@ -361,6 +363,7 @@ export const ShellTool = Tool.define(
     const spawner = yield* ChildProcessSpawner
     const monitors = yield* MonitorRuntime.Service
     const sessions = yield* Session.Service
+    const events = yield* EventV2Bridge.Service
     const fs = yield* FSUtil.Service
     const outputs = yield* ToolOutputBridge.Service
     const plugin = yield* Plugin.Service
@@ -649,9 +652,13 @@ export const ShellTool = Tool.define(
           execute: (params: Parameters, ctx: Tool.Context): Effect.Effect<Tool.ExecuteResult> =>
             Effect.gen(function* () {
               const instanceCtx = yield* InstanceState.context
-              const cwd = params.workdir
-                ? yield* resolvePath(params.workdir, instanceCtx.directory, shell)
-                : instanceCtx.directory
+              const cwd = yield* AutoWorktree.workdir(
+                { sessions, events, sessionID: ctx.sessionID, agent: ctx.agent },
+                params.workdir
+                  ? yield* resolvePath(params.workdir, instanceCtx.directory, shell)
+                  : instanceCtx.directory,
+                params.command,
+              )
               yield* ShellWorkdir.validate(fs, cwd, instanceCtx.directory).pipe(Effect.orDie)
               yield* RepositoryGuard.assertShell(cwd, params.command).pipe(Effect.orDie)
               if (params.timeout !== undefined && params.timeout < 0) {
@@ -714,14 +721,14 @@ export const ShellTool = Tool.define(
                         { ...ctx, abort: new AbortController().signal, metadata: () => Effect.void },
                       ),
                     ),
-                  Effect.map((result) => ({
-                    exit: result.metadata.exit,
-                    output: result.output,
-                    truncated: result.metadata.truncated,
-                    timedOut: result.metadata.timeout,
-                    ...(result.metadata.outputPath ? { outputPath: result.metadata.outputPath } : {}),
-                  })),
-                ),
+                    Effect.map((result) => ({
+                      exit: result.metadata.exit,
+                      output: result.output,
+                      truncated: result.metadata.truncated,
+                      timedOut: result.metadata.timeout,
+                      ...(result.metadata.outputPath ? { outputPath: result.metadata.outputPath } : {}),
+                    })),
+                  ),
                 notify,
               })
               return {

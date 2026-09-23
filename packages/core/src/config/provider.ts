@@ -72,11 +72,22 @@ class Model extends Schema.Class<Model>("ConfigV2.Model")({
   router: Schema.Struct({
     owned_by: Schema.String.pipe(Schema.optional),
     strategy: Schema.String.pipe(Schema.optional),
+    provider: Schema.Struct({
+      id: Schema.String,
+      slug: Schema.String.pipe(Schema.optional),
+      name: Schema.String.pipe(Schema.optional),
+      category: Schema.String.pipe(Schema.optional),
+      subscription: Schema.Boolean.pipe(Schema.optional),
+    }).pipe(Schema.optional),
+    aliases: Schema.String.pipe(Schema.Array, Schema.optional),
+    modes: Schema.String.pipe(Schema.Array, Schema.optional),
+    variants: Router.Variant.pipe(Schema.Array, Schema.optional),
+    via: Schema.String.pipe(Schema.optional),
   })
     .pipe(Schema.optional)
     .annotate({
       description:
-        "What the router reported about this model, written by provider discovery. A RedRouter combo with strategy auto or smart receives System One's routing hint.",
+        "What the router reported about this model, written by provider discovery: its owner and strategy (a RedRouter combo with strategy auto or smart receives System One's routing hint), the provider behind it, its earlier ids, the modes and reasoning levels it serves under this id, and the router in between.",
     }),
 }) {}
 

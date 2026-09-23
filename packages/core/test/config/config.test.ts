@@ -115,6 +115,43 @@ describe("Config", () => {
     }),
   )
 
+  it.effect("migrates what a router reported about a v1 model", () =>
+    Effect.sync(() => {
+      const migrated = ConfigMigrateV1.migrate({
+        provider: {
+          "red-router": {
+            npm: "@ai-sdk/openai-compatible",
+            router: { kind: "red-router" },
+            models: {
+              "codex/gpt-5.6-sol": {
+                router: {
+                  owned_by: "codex",
+                  parameters: { modes: ["review"] },
+                  provider: { id: "codex", slug: "cx", prefix: "cx", name: "OpenAI Codex" },
+                  aliases: ["cx/gpt-5.6-sol"],
+                  variants: [{ id: "codex/gpt-5.6-sol-review", mode: "review", aliases: ["cx/gpt-5.6-sol-review"] }],
+                  via: "remote",
+                },
+              },
+            },
+          },
+        },
+      })
+
+      expect(migrated.providers?.["red-router"]?.router).toEqual({ kind: "red-router" })
+      expect(migrated.providers?.["red-router"]?.models?.["codex/gpt-5.6-sol"]?.router).toEqual({
+        owned_by: "codex",
+        strategy: undefined,
+        provider: { id: "codex", slug: "cx", name: "OpenAI Codex" },
+        aliases: ["cx/gpt-5.6-sol"],
+        modes: ["review"],
+        variants: [{ id: "codex/gpt-5.6-sol-review", mode: "review", aliases: ["cx/gpt-5.6-sol-review"] }],
+        via: "remote",
+      })
+      Schema.decodeUnknownSync(Config.Info)(migrated, { errors: "all" })
+    }),
+  )
+
   it.effect("migrates v1 command configuration", () =>
     Effect.sync(() => {
       expect(
