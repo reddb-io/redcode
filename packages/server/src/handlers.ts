@@ -19,9 +19,13 @@ import { IntegrationHandler } from "./handlers/integration"
 import { CredentialHandler } from "./handlers/credential"
 import { ProjectCopyHandler } from "./handlers/project-copy"
 import { HookHandler } from "./handlers/hook"
-import { DesignHandler } from "./handlers/design"
+import { DesignHandler, DesignHostHandler } from "./handlers/design"
 
-export const handlers = Layer.mergeAll(
+/**
+ * Every group but `design.host`. A process that runs conversations on another runtime (the legacy
+ * session loop) serves the session side of Design itself and merges its own handler with these.
+ */
+export const baseHandlers = Layer.mergeAll(
   HealthHandler,
   IntelligenceHandler,
   IntelligenceModelHandler,
@@ -45,3 +49,5 @@ export const handlers = Layer.mergeAll(
   HookHandler,
   DesignHandler,
 )
+
+export const handlers = Layer.merge(baseHandlers, DesignHostHandler)

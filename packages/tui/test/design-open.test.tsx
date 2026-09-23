@@ -30,7 +30,7 @@ test("design-open searches prototypes and resumes their existing conversation", 
   const requests: string[] = []
   const calls = createFetch((url) => {
     requests.push(url.pathname)
-    if (url.pathname === "/design/list") {
+    if (url.pathname === "/api/design/list") {
       expect(url.searchParams.get("directory")).toBe(directory)
       if (response === "empty") return json([])
       if (response === "error") return json({}, { status: 503 })

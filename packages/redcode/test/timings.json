@@ -212,7 +212,6 @@
     "eval/test/history.test.ts": 1111,
     "test/plugin/modal-models.test.ts": 1106,
     "test/tool/code-mode.test.ts": 1099,
-    "test/design/export-bundle.test.js": 1079,
     "test/mcp/transport.test.ts": 1079,
     "test/auth/auth.test.ts": 1062,
     "test/mcp/catalog.test.ts": 1061,
