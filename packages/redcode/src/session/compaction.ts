@@ -41,6 +41,7 @@ import {
 import { CompactionPolicy } from "@reddb-io/redcode-core/session/compaction-policy"
 import { CompactionAnchors } from "@reddb-io/redcode-core/session/compaction-anchors"
 import { ProviderTransform } from "@/provider/transform"
+import { ComboMember } from "@/provider/combo-member"
 import { ToolSearch } from "./tool-search"
 import type { ModelMessage, Tool as AITool } from "ai"
 import { NamedError } from "@reddb-io/redcode-core/util/error"
@@ -632,7 +633,10 @@ const layer = Layer.effect(
       )
       const user = messages?.findLast((message) => message.info.role === "user")?.info
       if (!messages || user?.role !== "user") return
-      const model = yield* provider.getModel(user.model.providerID, user.model.modelID).pipe(Effect.orDie)
+      const model = ComboMember.model(
+        input.sessionID,
+        yield* provider.getModel(user.model.providerID, user.model.modelID).pipe(Effect.orDie),
+      )
       yield* trim({ sessionID: input.sessionID, model, messages })
     })
 
@@ -750,7 +754,10 @@ const layer = Layer.effect(
         ? yield* provider.getModel(transformation.providerID, transformation.id).pipe(Effect.orDie)
         : agent.model
           ? yield* provider.getModel(agent.model.providerID, agent.model.modelID).pipe(Effect.orDie)
-          : yield* provider.getModel(userMessage.model.providerID, userMessage.model.modelID).pipe(Effect.orDie)
+          : ComboMember.model(
+              input.sessionID,
+              yield* provider.getModel(userMessage.model.providerID, userMessage.model.modelID).pipe(Effect.orDie),
+            )
       const cfg = yield* config.get()
       const history = compactionPart && messages.at(-1)?.info.id === input.parentID ? messages.slice(0, -1) : messages
       const prior = completedCompactions(history)
@@ -833,7 +840,10 @@ const layer = Layer.effect(
       // prompt, tools and messages, and asks for the summary in a final user message: the provider
       // then serves the conversation from its cache instead of reading a rewritten copy of it.
       const conversationModel = agent.model
-        ? yield* provider.getModel(userMessage.model.providerID, userMessage.model.modelID).pipe(Effect.orDie)
+        ? ComboMember.model(
+            input.sessionID,
+            yield* provider.getModel(userMessage.model.providerID, userMessage.model.modelID).pipe(Effect.orDie),
+          )
         : model
       const conversationAgent = yield* agents.get(userMessage.agent)
       const cached = yield* Effect.gen(function* () {
@@ -1210,7 +1220,10 @@ const layer = Layer.effect(
         cached.config === JSON.stringify(yield* config.get()) &&
         cached.model ===
           JSON.stringify(
-            yield* provider.getModel(parent.info.model.providerID, parent.info.model.modelID).pipe(Effect.orDie),
+            ComboMember.model(
+              input.sessionID,
+              yield* provider.getModel(parent.info.model.providerID, parent.info.model.modelID).pipe(Effect.orDie),
+            ),
           ) &&
         cached.prefix.every((message, index) => message === JSON.stringify(input.messages[index]))
           ? yield* Fiber.join(cached.fiber)

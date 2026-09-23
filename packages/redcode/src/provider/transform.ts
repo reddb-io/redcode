@@ -762,13 +762,13 @@ function adaptiveThinkingDefault(apiId: string) {
 }
 
 // See LLM.supportsForcedToolChoice for which models refuse it. A router says so in the parameters
-// discovery saved for the model (`declared`, its configuration): a RedRouter combo refuses it when
-// any member does, whatever the combo is called.
+// that apply to the model (`ComboMember.effectiveRouterParameters`): what discovery saved, or the
+// serving member's while a fallback combo's member other than its lead serves.
 export function supportsForcedToolChoice(
   model: Provider.Model,
-  declared?: { readonly router?: { readonly parameters?: { readonly forced_tool_choice?: boolean } } },
+  parameters?: { readonly forced_tool_choice?: boolean },
 ) {
-  return LLM.supportsForcedToolChoice(model.api.id, declared?.router?.parameters?.forced_tool_choice)
+  return LLM.supportsForcedToolChoice(model.api.id, parameters?.forced_tool_choice)
 }
 
 function googleThinkingLevelEfforts(apiId: string) {

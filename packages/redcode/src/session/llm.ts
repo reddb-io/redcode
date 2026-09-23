@@ -40,6 +40,7 @@ import { GenerationTiming } from "@reddb-io/redcode-core/session/generation-timi
 import { ProviderRouter } from "@reddb-io/redcode-core/provider/router"
 import { ReasoningAuto } from "@reddb-io/redcode-core/session/reasoning-auto"
 import { RedRouter } from "@/provider/red-router"
+import { ComboMember } from "@/provider/combo-member"
 import { Router } from "@reddb-io/redcode-schema/router"
 import { PromptCacheDiagnostics } from "@reddb-io/redcode-core/session/prompt-cache-diagnostics"
 import type { LanguageModelV3CallOptions } from "@ai-sdk/provider"
@@ -179,7 +180,11 @@ const live: Layer.Layer<
       // Every session request crosses this boundary, so a model that answers a forced tool choice
       // with a 400 (Claude Opus 5.5, Fable, Mythos, or a router that says so) is only ever asked.
       const toolChoice =
-        input.toolChoice === "required" && !ProviderTransform.supportsForcedToolChoice(input.model, declared)
+        input.toolChoice === "required" &&
+        !ProviderTransform.supportsForcedToolChoice(
+          input.model,
+          ComboMember.effectiveRouterParameters(input.sessionID, input.model.providerID, input.model.id, declared),
+        )
           ? "auto"
           : input.toolChoice
 
@@ -617,6 +622,34 @@ const live: Layer.Layer<
       Effect.catchCause(() => Effect.void),
     )
 
+    /**
+     * The member of a RedRouter fallback combo that served a response decides whose parameters the
+     * session plans the next request by (see `ComboMember`). A member whose parameters were not
+     * saved is read from the router in the background; the turn never waits for it.
+     */
+    const followMember = Effect.fnUntraced(
+      function* (input: StreamInput, metadata: Parameters<typeof ProviderRouter.reportedServedModel>[0]) {
+        const cfg = yield* config.get()
+        const declared = cfg.provider?.[input.model.providerID]?.models?.[input.model.id]
+        if (!declared?.router) return
+        const connection = yield* provider.getProvider(input.model.providerID)
+        const baseURL = connection.options.baseURL
+        const apiKey = connection.key ?? connection.options.apiKey
+        yield* Effect.sync(() => {
+          void ComboMember.observe({
+            sessionID: input.sessionID,
+            providerID: input.model.providerID,
+            modelID: input.model.id,
+            servedModel: ProviderRouter.reportedServedModel(metadata),
+            declared,
+            ...(typeof baseURL === "string" ? { baseURL } : {}),
+            ...(typeof apiKey === "string" ? { apiKey } : {}),
+          }).catch(() => undefined)
+        })
+      },
+      Effect.catchCause(() => Effect.void),
+    )
+
     const stream: Interface["stream"] = (input) =>
       attempt(input, true).pipe(
         // Every provider call passes here — turns, subagents, compaction, titles, the goal judge — so
@@ -635,6 +668,9 @@ const live: Layer.Layer<
         ),
         Stream.tap((event) =>
           event.type === "step-finish" ? refreshCatalog(input.model, event.providerMetadata) : Effect.void,
+        ),
+        Stream.tap((event) =>
+          event.type === "step-finish" ? followMember(input, event.providerMetadata) : Effect.void,
         ),
         // A router that decided an `auto` session's effort says which level it applied.
         Stream.tap((event) =>

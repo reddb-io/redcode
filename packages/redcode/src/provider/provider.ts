@@ -31,6 +31,7 @@ import { optional } from "@reddb-io/redcode-core/schema"
 import { ConfigProviderV1 } from "@reddb-io/redcode-core/v1/config/provider"
 import { Router } from "@reddb-io/redcode-schema/router"
 import { ProviderTransform } from "./transform"
+import { ComboMember } from "./combo-member"
 import { ProviderV2 } from "@reddb-io/redcode-core/provider"
 import { ModelV2 } from "@reddb-io/redcode-core/model"
 import { ModelStatus } from "./model-status"
@@ -1138,6 +1139,12 @@ export const Model = Schema.Struct({
   via: optional(Schema.String).annotate({
     description: "The router in between when another router serves the model, e.g. a remote RedRouter.",
   }),
+  comboMembers: optional(
+    Schema.Array(Schema.Struct({ id: Schema.String, variants: Schema.Array(Schema.String) })),
+  ).annotate({
+    description:
+      "For a router combo planned by its lead member (a fallback combo), each member and the variants it takes, the lead first. While another member serves a session, that member's variants apply.",
+  }),
 }).annotate({ identifier: "Model" })
 export type Model = Types.DeepMutable<Schema.Schema.Type<typeof Model>>
 
@@ -1718,6 +1725,8 @@ const layer = Layer.effect(
               pickBy(merged, (v) => !v.disabled),
               (v) => omit(v, ["disabled"]),
             )
+            const comboMembers = ComboMember.memberVariants(parsedModel, model)
+            if (comboMembers) parsedModel.comboMembers = comboMembers
             parsed.models[modelID] = parsedModel
           }
           // A provider-level npm selects the SDK for every model of that provider, not just the ones

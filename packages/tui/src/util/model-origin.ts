@@ -1,4 +1,4 @@
-import type { Model, Part, Provider } from "@reddb-io/redcode-sdk/v2"
+import type { Message, Model, Part, Provider } from "@reddb-io/redcode-sdk/v2"
 import { parse } from "./model"
 
 type ModelRef = { providerID: string; modelID: string }
@@ -82,6 +82,35 @@ export function servedModel(message: ModelRef, parts: Part[]) {
   if ([message.modelID, `${message.providerID}/${message.modelID}`].includes(served)) return undefined
   if (message.modelID.endsWith(`/${served}`)) return undefined
   return served
+}
+
+/**
+ * The model a router last reported serving a session's requests for a model, from the newest
+ * response that says. Undefined when none did.
+ */
+export function latestServed(messages: Message[], parts: (messageID: string) => Part[], model: ModelRef) {
+  return messages
+    .filter(
+      (message) =>
+        message.role === "assistant" && message.providerID === model.providerID && message.modelID === model.modelID,
+    )
+    .flatMap((message) =>
+      parts(message.id).flatMap((part) => (part.type === "step-finish" && part.servedModel ? [part.servedModel] : [])),
+    )
+    .at(-1)
+}
+
+/**
+ * The variants of a fallback combo while a member other than its lead serves (`served`): that
+ * member's. Undefined while the lead serves, for a model that is no such combo, and for a member
+ * the model does not list.
+ */
+export function servingVariants(model: Pick<Model, "comboMembers">, served: string | undefined) {
+  const members = model.comboMembers
+  if (!served || !members?.length) return undefined
+  const same = (id: string) => id === served || id.endsWith(`/${served}`) || served.endsWith(`/${id}`)
+  if (same(members[0].id)) return undefined
+  return members.find((member) => same(member.id))?.variants
 }
 
 /**
