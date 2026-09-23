@@ -63,6 +63,8 @@ import type {
   DesignsRevisionsOutput,
   DesignsPreviewInput,
   DesignsPreviewOutput,
+  DesignsPresentInput,
+  DesignsPresentOutput,
   DesignsPublishInput,
   DesignsPublishOutput,
   DesignsRestoreInput,
@@ -768,6 +770,19 @@ export function make(options: ClientOptions) {
           {
             method: "GET",
             path: `/api/session/${encodeURIComponent(input.sessionID)}/design/${encodeURIComponent(input.designID)}/revision/${encodeURIComponent(input.revisionID)}/preview`,
+            successStatus: 200,
+            declaredStatuses: [409, 400, 404, 401],
+            empty: false,
+            binary: true,
+          },
+          requestOptions,
+        ),
+      present: (input: DesignsPresentInput, requestOptions?: RequestOptions) =>
+        request<DesignsPresentOutput>(
+          {
+            method: "GET",
+            path: `/api/session/${encodeURIComponent(input.sessionID)}/design/${encodeURIComponent(input.designID)}/present`,
+            query: { view: input["view"], revision: input["revision"] },
             successStatus: 200,
             declaredStatuses: [409, 400, 404, 401],
             empty: false,

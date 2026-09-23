@@ -4101,6 +4101,21 @@ export type DesignsPreviewInput = {
 
 export type DesignsPreviewOutput = Uint8Array
 
+export type DesignsPresentInput = {
+  readonly sessionID: { readonly sessionID: string; readonly designID: string }["sessionID"]
+  readonly designID: { readonly sessionID: string; readonly designID: string }["designID"]
+  readonly view?: {
+    readonly view?: "audience" | "presenter" | undefined
+    readonly revision?: string | undefined
+  }["view"]
+  readonly revision?: {
+    readonly view?: "audience" | "presenter" | undefined
+    readonly revision?: string | undefined
+  }["revision"]
+}
+
+export type DesignsPresentOutput = Uint8Array
+
 export type DesignsPublishInput = {
   readonly sessionID: { readonly sessionID: string; readonly designID: string }["sessionID"]
   readonly designID: { readonly sessionID: string; readonly designID: string }["designID"]
@@ -5474,12 +5489,14 @@ export type DesignsApprovalOutput = {
         readonly width: number | "Infinity" | "-Infinity" | "NaN"
         readonly variant?: string
         readonly scenario?: string
+        readonly screen?: string
       }>
       readonly captures?: ReadonlyArray<{
         readonly file: string
         readonly width: number | "Infinity" | "-Infinity" | "NaN"
         readonly variant?: string
         readonly scenario?: string
+        readonly screen?: string
         readonly fullPage: boolean
       }>
     }
@@ -5565,7 +5582,7 @@ export type DesignsJobsOutput = ReadonlyArray<{
   readonly designID: string
   readonly input: {
     readonly revision: string
-    readonly format: "html" | "gif" | "audit" | "compare" | "verify"
+    readonly format: "html" | "gif" | "audit" | "compare" | "verify" | "pdf"
     readonly round?: number
     readonly implementation?: string
     readonly candidate?: string
@@ -5598,12 +5615,14 @@ export type DesignsJobsOutput = ReadonlyArray<{
       readonly width: number | "Infinity" | "-Infinity" | "NaN"
       readonly variant?: string
       readonly scenario?: string
+      readonly screen?: string
     }>
     readonly captures?: ReadonlyArray<{
       readonly file: string
       readonly width: number | "Infinity" | "-Infinity" | "NaN"
       readonly variant?: string
       readonly scenario?: string
+      readonly screen?: string
       readonly fullPage: boolean
     }>
   }
@@ -5632,7 +5651,7 @@ export type DesignsRenderInput = {
   readonly designID: { readonly sessionID: string; readonly designID: string }["designID"]
   readonly revision: {
     readonly revision: string
-    readonly format: "html" | "gif" | "audit" | "compare" | "verify"
+    readonly format: "html" | "gif" | "audit" | "compare" | "verify" | "pdf"
     readonly round?: number
     readonly implementation?: string
     readonly candidate?: string
@@ -5646,7 +5665,7 @@ export type DesignsRenderInput = {
   }["revision"]
   readonly format: {
     readonly revision: string
-    readonly format: "html" | "gif" | "audit" | "compare" | "verify"
+    readonly format: "html" | "gif" | "audit" | "compare" | "verify" | "pdf"
     readonly round?: number
     readonly implementation?: string
     readonly candidate?: string
@@ -5660,7 +5679,7 @@ export type DesignsRenderInput = {
   }["format"]
   readonly round?: {
     readonly revision: string
-    readonly format: "html" | "gif" | "audit" | "compare" | "verify"
+    readonly format: "html" | "gif" | "audit" | "compare" | "verify" | "pdf"
     readonly round?: number
     readonly implementation?: string
     readonly candidate?: string
@@ -5674,7 +5693,7 @@ export type DesignsRenderInput = {
   }["round"]
   readonly implementation?: {
     readonly revision: string
-    readonly format: "html" | "gif" | "audit" | "compare" | "verify"
+    readonly format: "html" | "gif" | "audit" | "compare" | "verify" | "pdf"
     readonly round?: number
     readonly implementation?: string
     readonly candidate?: string
@@ -5688,7 +5707,7 @@ export type DesignsRenderInput = {
   }["implementation"]
   readonly candidate?: {
     readonly revision: string
-    readonly format: "html" | "gif" | "audit" | "compare" | "verify"
+    readonly format: "html" | "gif" | "audit" | "compare" | "verify" | "pdf"
     readonly round?: number
     readonly implementation?: string
     readonly candidate?: string
@@ -5702,7 +5721,7 @@ export type DesignsRenderInput = {
   }["candidate"]
   readonly asset?: {
     readonly revision: string
-    readonly format: "html" | "gif" | "audit" | "compare" | "verify"
+    readonly format: "html" | "gif" | "audit" | "compare" | "verify" | "pdf"
     readonly round?: number
     readonly implementation?: string
     readonly candidate?: string
@@ -5716,7 +5735,7 @@ export type DesignsRenderInput = {
   }["asset"]
   readonly duration?: {
     readonly revision: string
-    readonly format: "html" | "gif" | "audit" | "compare" | "verify"
+    readonly format: "html" | "gif" | "audit" | "compare" | "verify" | "pdf"
     readonly round?: number
     readonly implementation?: string
     readonly candidate?: string
@@ -5730,7 +5749,7 @@ export type DesignsRenderInput = {
   }["duration"]
   readonly fps?: {
     readonly revision: string
-    readonly format: "html" | "gif" | "audit" | "compare" | "verify"
+    readonly format: "html" | "gif" | "audit" | "compare" | "verify" | "pdf"
     readonly round?: number
     readonly implementation?: string
     readonly candidate?: string
@@ -5744,7 +5763,7 @@ export type DesignsRenderInput = {
   }["fps"]
   readonly size?: {
     readonly revision: string
-    readonly format: "html" | "gif" | "audit" | "compare" | "verify"
+    readonly format: "html" | "gif" | "audit" | "compare" | "verify" | "pdf"
     readonly round?: number
     readonly implementation?: string
     readonly candidate?: string
@@ -5758,7 +5777,7 @@ export type DesignsRenderInput = {
   }["size"]
   readonly repeat?: {
     readonly revision: string
-    readonly format: "html" | "gif" | "audit" | "compare" | "verify"
+    readonly format: "html" | "gif" | "audit" | "compare" | "verify" | "pdf"
     readonly round?: number
     readonly implementation?: string
     readonly candidate?: string
@@ -5772,7 +5791,7 @@ export type DesignsRenderInput = {
   }["repeat"]
   readonly background?: {
     readonly revision: string
-    readonly format: "html" | "gif" | "audit" | "compare" | "verify"
+    readonly format: "html" | "gif" | "audit" | "compare" | "verify" | "pdf"
     readonly round?: number
     readonly implementation?: string
     readonly candidate?: string
@@ -5786,7 +5805,7 @@ export type DesignsRenderInput = {
   }["background"]
   readonly transparent?: {
     readonly revision: string
-    readonly format: "html" | "gif" | "audit" | "compare" | "verify"
+    readonly format: "html" | "gif" | "audit" | "compare" | "verify" | "pdf"
     readonly round?: number
     readonly implementation?: string
     readonly candidate?: string
@@ -5805,7 +5824,7 @@ export type DesignsRenderOutput = {
   readonly designID: string
   readonly input: {
     readonly revision: string
-    readonly format: "html" | "gif" | "audit" | "compare" | "verify"
+    readonly format: "html" | "gif" | "audit" | "compare" | "verify" | "pdf"
     readonly round?: number
     readonly implementation?: string
     readonly candidate?: string
@@ -5838,12 +5857,14 @@ export type DesignsRenderOutput = {
       readonly width: number | "Infinity" | "-Infinity" | "NaN"
       readonly variant?: string
       readonly scenario?: string
+      readonly screen?: string
     }>
     readonly captures?: ReadonlyArray<{
       readonly file: string
       readonly width: number | "Infinity" | "-Infinity" | "NaN"
       readonly variant?: string
       readonly scenario?: string
+      readonly screen?: string
       readonly fullPage: boolean
     }>
   }
@@ -5878,7 +5899,7 @@ export type DesignsCancelOutput = {
   readonly designID: string
   readonly input: {
     readonly revision: string
-    readonly format: "html" | "gif" | "audit" | "compare" | "verify"
+    readonly format: "html" | "gif" | "audit" | "compare" | "verify" | "pdf"
     readonly round?: number
     readonly implementation?: string
     readonly candidate?: string
@@ -5911,12 +5932,14 @@ export type DesignsCancelOutput = {
       readonly width: number | "Infinity" | "-Infinity" | "NaN"
       readonly variant?: string
       readonly scenario?: string
+      readonly screen?: string
     }>
     readonly captures?: ReadonlyArray<{
       readonly file: string
       readonly width: number | "Infinity" | "-Infinity" | "NaN"
       readonly variant?: string
       readonly scenario?: string
+      readonly screen?: string
       readonly fullPage: boolean
     }>
   }

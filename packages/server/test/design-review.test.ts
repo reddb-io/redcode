@@ -3083,3 +3083,76 @@ test("an app design previews inside a scaled phone frame, switches platform and 
     await page.close()
   }
 }, 60000)
+
+test("a presentation previews as scaled 1920×1080 slides with a strip, keys and windows kept in sync", async () => {
+  const current = await session()
+  const root = `/api/session/${current.data.id}/design`
+  const document = await api<Design.Info>(root, "POST", {
+    name: "Pitch",
+    journey: "new",
+    engine: "html",
+    kind: "deck",
+    target: "presentation",
+  })
+  await Bun.write(
+    path.join(document.root, document.entry),
+    `<!doctype html><html lang="en"><head><title>Pitch</title><style>section.slide{background:#fff;color:#111;padding:96px;font:48px system-ui}</style></head><body>${["Problem", "Answer", "Ask"].map((title, index) => `<section class="slide"><h1 id="title-${index + 1}">${title}</h1><aside class="notes">Notes for ${title}</aside></section>`).join("")}</body></html>`,
+  )
+  const revision = await api<Design.Revision>(`${root}/${document.id}/revision`, "POST", { name: "Deck" })
+  const page = await browser.newPage({ viewport: { width: 1280, height: 800 } })
+  const errors: string[] = []
+  page.on("pageerror", (error) => errors.push(error.message))
+  try {
+    await page.goto(`${base}${root}/review`)
+    await showsRevision(page, revision.id)
+    const frame = page.frameLocator("#preview")
+    await frame.locator("#title-1").waitFor()
+    await until(async () => (await page.locator("#slide-count").textContent()) === "1 / 3", "slide counter")
+    expect(await page.locator("#screens .thumb").count()).toBe(3)
+    expect(await page.locator("#width").isHidden()).toBe(true)
+    expect(await page.getByRole("button", { name: "Present", exact: true }).isVisible()).toBe(true)
+    // The 1920×1080 canvas is scaled down to the pane, keeping its shape.
+    const scaled = await page.locator("#preview").boundingBox()
+    expect(scaled!.width).toBeLessThan(1920)
+    expect(scaled!.width / scaled!.height).toBeCloseTo(1920 / 1080, 2)
+    expect(await frame.locator("aside.notes").first().isVisible()).toBe(false)
+    // The review's own keys move between slides.
+    await page.keyboard.press("ArrowRight")
+    await until(async () => (await page.locator("#slide-count").textContent()) === "2 / 3", "next slide")
+    await frame.locator("#title-2").waitFor()
+    await page.keyboard.press("End")
+    await until(async () => (await page.locator("#slide-count").textContent()) === "3 / 3", "last slide")
+    expect(errors).toEqual([])
+  } finally {
+    await page.close()
+  }
+  // The audience and presenter windows of one browser follow each other.
+  const context = await browser.newContext({ viewport: { width: 1280, height: 800 } })
+  try {
+    const audience = await context.newPage()
+    const presenter = await context.newPage()
+    await audience.goto(`${base}${root}/${document.id}/present`)
+    await audience.frameLocator("#slide").locator("#title-1").waitFor()
+    await presenter.goto(`${base}${root}/${document.id}/present?view=presenter`)
+    await presenter.frameLocator("#slide").locator("#title-1").waitFor()
+    await until(async () => (await presenter.locator("#counter").textContent()) === "1 / 3", "presenter counter")
+    await until(
+      async () => (await presenter.locator("#notes").textContent()) === "Notes for Problem",
+      "presenter shows the slide's notes",
+    )
+    await presenter.getByRole("button", { name: "Next slide", exact: true }).click()
+    await until(async () => (await presenter.locator("#counter").textContent()) === "2 / 3", "presenter moved")
+    await until(
+      async () => (await presenter.locator("#notes").textContent()) === "Notes for Answer",
+      "presenter notes follow",
+    )
+    await audience.frameLocator("#slide").locator("#title-2").waitFor()
+    expect(await audience.frameLocator("#slide").locator("#title-1").isVisible()).toBe(false)
+    // Keys in the audience window move the presenter too.
+    await audience.keyboard.press("ArrowRight")
+    await until(async () => (await presenter.locator("#counter").textContent()) === "3 / 3", "audience moved presenter")
+    await until(async () => (await presenter.locator("#end").isVisible()) === true, "end of the deck")
+  } finally {
+    await context.close()
+  }
+}, 60000)

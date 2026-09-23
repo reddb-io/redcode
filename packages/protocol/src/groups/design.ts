@@ -72,6 +72,23 @@ export const makeDesignGroup = <Id extends HttpApiMiddleware.AnyId, Service>(mid
       }),
     )
     .add(
+      HttpApiEndpoint.get("design.present", `${item}/present`, {
+        params,
+        query: {
+          view: Schema.Literals(["audience", "presenter"]).pipe(Schema.optional),
+          revision: Schema.String.pipe(Schema.optional),
+        },
+        success: Schema.Uint8Array.pipe(HttpApiSchema.asUint8Array()),
+        error,
+      }).annotateMerge(
+        OpenApi.annotations({
+          summary: "Present a deck",
+          description:
+            "An HTML page that presents a presentation design's latest revision, or the given one: the audience view shows the slide full screen; the presenter view shows the current and next slide, the speaker notes and a timer. Windows of the same design stay on the same slide.",
+        }),
+      ),
+    )
+    .add(
       HttpApiEndpoint.post("design.publish", `${item}/revision`, {
         params,
         payload: Schema.Struct({ name: Schema.String }),

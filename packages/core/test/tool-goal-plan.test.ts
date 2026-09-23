@@ -853,6 +853,27 @@ it.live("Design approval for an existing application asks for target files befor
   }),
 )
 
+it.live("design_export accepts the pdf format and only prints presentation designs", () =>
+  Effect.gen(function* () {
+    const test = yield* setup
+    const store = yield* DesignStore.Service
+    const document = yield* store.create(test.sessionID, {
+      name: "Site",
+      journey: "new",
+      engine: "html",
+      kind: "screen",
+    })
+    const revision = yield* store.publish(document.id, "Web")
+    const result = yield* test.run("design_export", {
+      id: document.id,
+      input: { revision: revision.id, format: "pdf" },
+    })
+    // The input is accepted; the renderer refuses a PDF of a design that is not a presentation.
+    expect(result.type).toBe("error")
+    expect(JSON.stringify(result)).toContain("PDF export prints presentation slides")
+  }),
+)
+
 it.live("Design approval is refused while the latest feedback round has notes without a status", () =>
   Effect.gen(function* () {
     const test = yield* setup

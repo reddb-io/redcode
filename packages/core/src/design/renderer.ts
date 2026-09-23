@@ -23,6 +23,7 @@ import { DesignQuality } from "./quality"
 import { DesignRounds } from "./rounds"
 import { DesignViewports } from "./viewports"
 import { screens } from "@reddb-io/redcode-design/screens"
+import { deck, slides } from "@reddb-io/redcode-design/slides"
 import { device } from "@reddb-io/redcode-design/devices"
 import type { Viewport } from "@reddb-io/redcode-design/viewports"
 
@@ -179,10 +180,11 @@ const scopedLayout = (selectors: string[]) => {
 
 /**
  * Adds the screen runtime to a standalone HTML document: after <head>, else after <html>, else after
- * the doctype, so it never lands before the doctype or inside a <header>.
+ * the doctype, so it never lands before the doctype or inside a <header>. A presentation also gets the
+ * slide runtime, ahead of the screens, so its slides are screens from the first announcement.
  */
-export function injectScreens(html: string) {
-  const tag = `<script>(${screens.toString()})()</script>`
+export function injectScreens(html: string, target?: Design.Surface) {
+  const tag = `${target === "presentation" ? `<script>(${slides.toString()})(${deck.toString()})</script>` : ""}<script>(${screens.toString()})()</script>`
   for (const pattern of [/<head(?:\s[^>]*)?>/i, /<html(?:\s[^>]*)?>/i, /<!doctype[^>]*>/i]) {
     const match = pattern.exec(html)
     if (match) return html.slice(0, match.index + match[0].length) + tag + html.slice(match.index + match[0].length)
@@ -275,11 +277,12 @@ const make = Effect.gen(function* () {
     const sizes = DesignViewports.of(revision.document, yield* store.configured(revision.document.sessionID))
     const root = yield* directory(revision)
     const progress = (value: number) => store.putJob({ ...job, status: "running", started, progress: value })
+    const presentation = revision.document.target === "presentation"
     const output = path.join(
       store.storage,
       job.designID,
       "exports",
-      `${job.id}.${job.input.format === "gif" ? "gif" : "html"}`,
+      `${job.id}.${Design.exportFile(job.input.format).extension}`,
     )
     yield* Effect.scoped(
       Effect.gen(function* () {
@@ -306,6 +309,8 @@ const make = Effect.gen(function* () {
           )
           // Screens and the design helper run before the prototype's scripts, as in the review page. A
           // compare injects them only into the approved prototype, never into the implementation.
+          if (job.input.format !== "compare" && presentation)
+            yield* io(() => context.addInitScript({ content: `(${slides.toString()})(${deck.toString()})` }))
           if (job.input.format !== "compare")
             yield* io(() => context.addInitScript({ content: `(${screens.toString()})()` }))
           if (phone) yield* io(() => context.addInitScript(safeArea, phone.safeArea))
@@ -337,7 +342,8 @@ const make = Effect.gen(function* () {
         const inspected =
           job.input.format === "audit" || job.input.format === "compare" || job.input.format === "verify"
         // The page is replaced when an app job moves to the other phone; helpers read it when they run.
-        let page = yield* open(inspected && sizes[0]?.device ? sizes[0] : undefined)
+        // A PDF is printed from the presentation's own 1920×1080 viewport.
+        let page = yield* open((inspected && sizes[0]?.device) || job.input.format === "pdf" ? sizes[0] : undefined)
         let emulated = inspected ? sizes[0]?.device : undefined
         /** Shows the page at a viewport: resized in place, or a new page when the phone changes. */
         const emulate = Effect.fn("DesignRenderer.emulate")(function* (viewport: Viewport) {
@@ -427,7 +433,28 @@ const make = Effect.gen(function* () {
         if (job.input.format === "html") {
           const html = yield* io(() => DesignExport.html(root, entry))
           // The exported page keeps working screens without the review page around it.
-          yield* io(() => DesignFiles.atomic(output, injectScreens(html)))
+          yield* io(() => DesignFiles.atomic(output, injectScreens(html, revision.document.target)))
+        }
+
+        if (job.input.format === "pdf") {
+          // Frameworks can mount their slides after load; give them a moment, as the audit does.
+          yield* io(() => page.waitForFunction(anyScreen, undefined, { timeout: 2000 }).catch(() => undefined))
+          // Every slide shows at once, one per 1920×1080 page (the slide runtime's print rules); notes stay hidden.
+          const count = yield* io(() =>
+            page.evaluate(() => {
+              window.dispatchEvent(new CustomEvent("design:print"))
+              return document.querySelectorAll("section.slide").length
+            }),
+          )
+          if (!count)
+            return yield* new Design.Error({
+              code: "invalid",
+              message: 'The deck has no <section class="slide">; write one section per slide and publish again.',
+            })
+          const pdf = yield* io(() =>
+            page.pdf({ width: "1920px", height: "1080px", preferCSSPageSize: true, printBackground: true }),
+          )
+          yield* io(() => DesignFiles.atomic(output, pdf))
         }
 
         if (job.input.format === "compare") {
@@ -468,7 +495,7 @@ const make = Effect.gen(function* () {
                   await route.fulfill({
                     body:
                       source === root && route.request().resourceType() === "document"
-                        ? injectScreens(bytes.toString("utf8"))
+                        ? injectScreens(bytes.toString("utf8"), revision.document.target)
                         : bytes,
                     contentType: Bun.file(file).type,
                   })
@@ -887,7 +914,8 @@ const make = Effect.gen(function* () {
           /** "variant screen" keys: screens the prototype declares and screens an audit view showed. */
           const declared = new Set<string>()
           const visited = new Set<string>()
-          const screensMarked = yield* io(() => DesignQuality.mentionsScreens(root))
+          // A presentation's slides are screens even when no source marks one.
+          const screensMarked = presentation || (yield* io(() => DesignQuality.mentionsScreens(root)))
           /** Records the screens a view shows: the variant's own and the page-level ones. */
           const visit = (variant: string | undefined) =>
             Effect.gen(function* () {
@@ -924,8 +952,9 @@ const make = Effect.gen(function* () {
             width: number,
             variant?: string,
             scenario?: string,
+            screen?: string,
           ) {
-            const label = `${width}px${variant ? ` · ${variant}` : ""}${scenario ? ` · ${scenario}` : " · initial"}`
+            const label = `${width}px${variant ? ` · ${variant}` : ""}${screen ? ` · slide ${screen}` : ""}${scenario ? ` · ${scenario}` : screen ? "" : " · initial"}`
             if (variant && !(yield* io(() => page.locator(`[data-design-variant="${variant}"]`).first().isVisible())))
               findings.push(`${label}: variant root is hidden; this direction remains unverified`)
             checks.push(
@@ -935,9 +964,21 @@ const make = Effect.gen(function* () {
                   width,
                   variant,
                   scenario,
+                  screen,
                 }),
               ),
             )
+            // Presentations are also checked per slide: content leaving the slide and text too small to project.
+            if (presentation)
+              checks.push(
+                ...(yield* io(() => page.evaluate(DesignQuality.slide, 24))).map((check) => ({
+                  ...check,
+                  width,
+                  variant,
+                  scenario,
+                  screen,
+                })),
+              )
             const layout = yield* io(() =>
               page.evaluate(() => ({
                 overflow: document.documentElement.scrollWidth > innerWidth + 1,
@@ -966,6 +1007,7 @@ const make = Effect.gen(function* () {
                   width,
                   variant,
                   scenario,
+                  screen,
                 })),
               )
             }
@@ -985,7 +1027,7 @@ const make = Effect.gen(function* () {
             yield* io(async () =>
               DesignFiles.atomic(file, await page.screenshot({ fullPage, animations: "disabled", scale: "css" })),
             )
-            captures.push({ file, width, variant, scenario, fullPage })
+            captures.push({ file, width, variant, scenario, screen, fullPage })
           })
           for (const [index, viewport] of sizes.entries()) {
             const width = viewport.width
@@ -1004,8 +1046,24 @@ const make = Effect.gen(function* () {
                   if (!variant || screen.variant === variant || screen.variant === "")
                     declared.add(`${screen.variant} ${screen.id}`)
               }
-              if (screensMarked) yield* visit(variant)
-              yield* inspect(width, variant)
+              // A presentation is inspected slide by slide; anything else in its initial view.
+              const deckSlides = presentation
+                ? (yield* io(() => page.evaluate(declaredScreens))).filter(
+                    (screen) => !variant || screen.variant === variant || screen.variant === "",
+                  )
+                : []
+              for (const slide of deckSlides.slice(0, 40)) {
+                if (captures.length >= 36) break
+                yield* io(() =>
+                  page.evaluate(openScreen, { screen: slide.id, ...(slide.variant ? { variant: slide.variant } : {}) }),
+                )
+                yield* visit(variant)
+                yield* inspect(width, variant, undefined, slide.id)
+              }
+              if (!deckSlides.length) {
+                if (screensMarked) yield* visit(variant)
+                yield* inspect(width, variant)
+              }
               for (const scenario of revision.document.scenarios) {
                 if (
                   scenario.notApplicable ||
@@ -1132,7 +1190,12 @@ const make = Effect.gen(function* () {
   }, lock.withPermits(1))
 
   const start = Effect.fn("DesignRenderer.start")(function* (id: Design.ID, input: Design.Render) {
-    yield* store.revision(id, input.revision)
+    const revision = yield* store.revision(id, input.revision)
+    if (input.format === "pdf" && revision.document.target !== "presentation")
+      return yield* new Design.Error({
+        code: "invalid",
+        message: "PDF export prints presentation slides; this design's target is not presentation",
+      })
     // Two renders per note plus scoped checks; the round decides the budget, bounded to half an hour.
     let budget = 120
     if (input.format === "verify") {
@@ -1213,7 +1276,7 @@ const make = Effect.gen(function* () {
     const current = (yield* store.jobs(id)).find((item) => item.id === jobID)!
     if (current.status === "completed" || current.status === "failed" || current.status === "cancelled") return current
     yield* io(() =>
-      rm(path.join(store.storage, id, "exports", `${jobID}.${job.input.format === "gif" ? "gif" : "html"}`), {
+      rm(path.join(store.storage, id, "exports", `${jobID}.${Design.exportFile(job.input.format).extension}`), {
         force: true,
       }),
     )

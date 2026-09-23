@@ -27,6 +27,8 @@ import { viewports } from "@reddb-io/redcode-design/viewports"
 import { device } from "@reddb-io/redcode-design/devices"
 import { stage } from "@reddb-io/redcode-design/stage"
 import { screens } from "@reddb-io/redcode-design/screens"
+import { deck, slides } from "@reddb-io/redcode-design/slides"
+import { mountPresent } from "@reddb-io/redcode-design/present"
 import { designFeed } from "@reddb-io/redcode-design/feed"
 
 /**
@@ -85,7 +87,7 @@ export function serveDesignEffect(request: HttpServerRequest.HttpServerRequest) 
             if (request.method === "GET" && parts[3] === "review") {
               const breakpoints = (yield* store.configured(sessionID))?.breakpoints
               return html(
-                `<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Design · Redcode</title><link rel="icon" type="image/svg+xml" href="${appearance.favicon}"><style>html,body,#review{height:100%;margin:0}</style></head><body><div id="review"></div><script>(${mountReview.toString()})(document.getElementById("review"), Object.assign(${JSON.stringify({ base: "", endpoint: `/design/session/${sessionID}`, sessionID, copy: reviewCopy, appearance, breakpoints }).replaceAll("<", "\\u003c")}, { feed: ${designFeed.toString()}, viewports: ${viewports.toString()}, device: ${device.toString()}, stage: ${stage.toString()} }))</script></body></html>`,
+                `<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Design · Redcode</title><link rel="icon" type="image/svg+xml" href="${appearance.favicon}"><style>html,body,#review{height:100%;margin:0}</style></head><body><div id="review"></div><script>(${mountReview.toString()})(document.getElementById("review"), Object.assign(${JSON.stringify({ base: "", endpoint: `/design/session/${sessionID}`, sessionID, copy: reviewCopy, appearance, breakpoints }).replaceAll("<", "\\u003c")}, { feed: ${designFeed.toString()}, viewports: ${viewports.toString()}, device: ${device.toString()}, stage: ${stage.toString()}, deck: ${deck.toString()} }))</script></body></html>`,
               )
             }
             if (request.method === "GET" && parts[3] === "whiteboard")
@@ -130,7 +132,20 @@ export function serveDesignEffect(request: HttpServerRequest.HttpServerRequest) 
                   }),
               })
               return html(
-                `<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; img-src data: blob:; font-src data:; connect-src 'none'; base-uri 'none'; form-action 'none'"><script>(${screens.toString()})()</script>${content}<script>(${params.toString()})(${JSON.stringify(revision.document.controls ?? []).replaceAll("<", "\\u003c")});(${annotations.toString()})()</script>`,
+                `<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; img-src data: blob:; font-src data:; connect-src 'none'; base-uri 'none'; form-action 'none'">${revision.document.target === "presentation" ? `<script>(${slides.toString()})(${deck.toString()})</script>` : ""}<script>(${screens.toString()})()</script>${content}<script>(${params.toString()})(${JSON.stringify(revision.document.controls ?? []).replaceAll("<", "\\u003c")});(${annotations.toString()})()</script>`,
+              )
+            }
+            if (parts[4] === "present" && !parts[5] && request.method === "GET") {
+              const view = url.searchParams.get("view") === "presenter" ? "presenter" : "audience"
+              const options = {
+                endpoint: `/design/session/${sessionID}`,
+                designID: id,
+                view,
+                revision: url.searchParams.get("revision") ?? undefined,
+                copy: reviewCopy,
+              }
+              return html(
+                `<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>${reviewCopy.presentTitle} · Redcode</title><link rel="icon" type="image/svg+xml" href="${appearance.favicon}"></head><body><div id="present"></div><script>(${mountPresent.toString()})(document.getElementById("present"), Object.assign(${JSON.stringify(options).replaceAll("<", "\\u003c")}, { deck: ${deck.toString()}, stage: ${stage.toString()} }))</script></body></html>`,
               )
             }
             if (parts[4] === "job" && request.method === "GET" && !parts[5]) return reply(yield* renderer.jobs(id))
@@ -143,9 +158,9 @@ export function serveDesignEffect(request: HttpServerRequest.HttpServerRequest) 
               if (!job?.result || job.status !== "completed") return HttpServerResponse.empty({ status: 404 })
               // A verify report is read in the browser from the feed; other exports download.
               return HttpServerResponse.uint8Array(yield* Effect.promise(() => Bun.file(job.result!).bytes()), {
-                contentType: job.input.format === "gif" ? "image/gif" : "text/html",
+                contentType: Design.exportFile(job.input.format).mime,
                 headers: {
-                  "content-disposition": `${job.input.format === "verify" ? "inline" : "attachment"}; filename="${job.id}.${job.input.format === "gif" ? "gif" : "html"}"`,
+                  "content-disposition": `${job.input.format === "verify" ? "inline" : "attachment"}; filename="${job.id}.${Design.exportFile(job.input.format).extension}"`,
                   "x-content-type-options": "nosniff",
                   "content-security-policy": "default-src 'none'; img-src data:; style-src 'unsafe-inline'; sandbox",
                 },
