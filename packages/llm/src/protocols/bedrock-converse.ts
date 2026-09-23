@@ -17,7 +17,7 @@ import {
   type ToolResultPart,
 } from "../schema"
 import { BedrockEventStream } from "./bedrock-event-stream"
-import { isContextOverflow } from "../provider-error"
+import { isContextOverflow, streamProviderError } from "../provider-error"
 import { JsonObject, optionalArray, ProviderShared } from "./shared"
 import { BedrockAuth } from "./utils/bedrock-auth"
 import { BedrockCache } from "./utils/bedrock-cache"
@@ -592,7 +592,7 @@ const step = (state: ParserState, event: BedrockEvent) =>
         event.modelStreamErrorException?.message ??
         event.serviceUnavailableException?.message ??
         "Bedrock Converse stream error"
-      return [state, [LLMEvent.providerError({ message, retryable: true })]] as const
+      return [state, [streamProviderError({ message, body: event, retryable: true })]] as const
     }
 
     if (event.validationException || event.throttlingException) {
@@ -601,8 +601,11 @@ const step = (state: ParserState, event: BedrockEvent) =>
       return [
         state,
         [
-          LLMEvent.providerError({
+          streamProviderError({
             message,
+            body: event,
+            // Bedrock reports an exhausted account as a throttle, with the reason only in the text.
+            throttled: event.throttlingException !== undefined,
             classification: event.validationException && isContextOverflow(message) ? "context-overflow" : undefined,
             retryable: event.throttlingException !== undefined,
           }),

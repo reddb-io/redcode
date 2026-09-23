@@ -6,10 +6,11 @@ import { Auth } from "../src/route"
 import { Tool, toDefinitions } from "../src/tool"
 import { it } from "./lib/effect"
 import { dynamicResponse } from "./lib/http"
-import { finishChunk, toolCallChunk } from "./lib/openai-chunks"
+import { deltaChunk, finishChunk, toolCallChunk } from "./lib/openai-chunks"
 import { sseEvents } from "./lib/sse"
 
 type OpenAIChatBody = {
+  readonly messages?: ReadonlyArray<{ readonly role: string; readonly content?: unknown }>
   readonly tool_choice?: unknown
   readonly tools?: ReadonlyArray<{
     readonly function: {
@@ -179,6 +180,120 @@ describe("LLM.generateObject", () => {
       }).pipe(Effect.provide(layer), Effect.exit)
 
       expect(exit._tag).toBe("Failure")
+    }),
+  )
+})
+
+describe("LLM.supportsForcedToolChoice", () => {
+  test.each([
+    "claude-opus-5-5",
+    "claude-opus-5.5",
+    "anthropic/claude-opus-5.5",
+    "us.anthropic.claude-opus-5-5-v1:0",
+    "claude-opus-6",
+    "claude-fable-1",
+    "claude-mythos-preview",
+  ])("refuses for %s", (id) => {
+    expect(LLM.supportsForcedToolChoice(id)).toBe(false)
+  })
+
+  test.each(["claude-opus-5", "claude-opus-4-7", "claude-sonnet-5-5", "claude-3-5-sonnet-20240620", "gpt-4o-mini"])(
+    "accepts for %s",
+    (id) => {
+      expect(LLM.supportsForcedToolChoice(id)).toBe(true)
+    },
+  )
+
+  test("a router's declaration wins", () => {
+    expect(LLM.supportsForcedToolChoice("gpt-4o-mini", false)).toBe(false)
+  })
+})
+
+describe("LLM.generateObject without a forced tool choice", () => {
+  const refusing = OpenAIChat.route
+    .with({ endpoint: { baseURL: "https://api.openai.test/v1/" }, auth: Auth.bearer("test") })
+    .model({ id: "claude-opus-5-5" })
+
+  const textReply = (text: string) => sseEvents(deltaChunk({ role: "assistant", content: text }), finishChunk("stop"))
+
+  const replies = (texts: ReadonlyArray<string>, bodies: OpenAIChatBody[]) =>
+    dynamicResponse((input) =>
+      Effect.sync(() => {
+        bodies.push(decodeBody(input.text))
+        return input.respond(textReply(texts[bodies.length - 1] ?? ""), {
+          headers: { "content-type": "text/event-stream" },
+        })
+      }),
+    )
+
+  it.effect("prompts for the JSON object and validates it", () =>
+    Effect.gen(function* () {
+      const bodies: OpenAIChatBody[] = []
+      const response = yield* LLM.generateObject({
+        model: refusing,
+        prompt: "Return a structured weather report.",
+        schema: Schema.Struct({ city: Schema.String, temp: Schema.Number }),
+      }).pipe(Effect.provide(replies(['```json\n{"city":"Paris","temp":22}\n```'], bodies)))
+
+      expect(response.object).toEqual({ city: "Paris", temp: 22 })
+      expect(bodies).toHaveLength(1)
+      expect(bodies[0].tool_choice).toBeUndefined()
+      expect(bodies[0].tools ?? []).toHaveLength(0)
+      const system = JSON.stringify(bodies[0].messages?.filter((message) => message.role === "system"))
+      expect(system).toContain("JSON Schema")
+      expect(system).toContain("temp")
+    }),
+  )
+
+  it.effect("repairs an invalid reply once", () =>
+    Effect.gen(function* () {
+      const bodies: OpenAIChatBody[] = []
+      const response = yield* LLM.generateObject({
+        model: refusing,
+        prompt: "Return a structured value.",
+        schema: Schema.Struct({ value: Schema.Number }),
+      }).pipe(Effect.provide(replies(['{"value":"not-a-number"}', '{"value":3}'], bodies)))
+
+      expect(response.object).toEqual({ value: 3 })
+      expect(bodies).toHaveLength(2)
+      const repair = bodies[1].messages ?? []
+      expect(repair.at(-2)?.role).toBe("assistant")
+      expect(repair.at(-1)?.role).toBe("user")
+      expect(JSON.stringify(repair.at(-1)?.content)).toContain("not a valid JSON object")
+    }),
+  )
+
+  it.effect("fails when the repaired reply is still invalid", () =>
+    Effect.gen(function* () {
+      const bodies: OpenAIChatBody[] = []
+      const exit = yield* LLM.generateObject({
+        model: refusing,
+        prompt: "Return a structured value.",
+        schema: Schema.Struct({ value: Schema.Number }),
+      }).pipe(Effect.provide(replies(["no thanks", "still no"], bodies)), Effect.exit)
+
+      expect(exit._tag).toBe("Failure")
+      expect(bodies).toHaveLength(2)
+    }),
+  )
+
+  it.effect("follows a declared refusal on any model", () =>
+    Effect.gen(function* () {
+      const bodies: OpenAIChatBody[] = []
+      const response = yield* LLM.generateObject({
+        model: OpenAIChat.route
+          .with({ endpoint: { baseURL: "https://api.openai.test/v1/" }, auth: Auth.bearer("test") })
+          .model({ id: "router-combo", compatibility: { forcedToolChoice: false } }),
+        prompt: "Extract the user.",
+        jsonSchema: {
+          type: "object",
+          properties: { name: { type: "string" } },
+          required: ["name"],
+        },
+      }).pipe(Effect.provide(replies(['{"name":"Ada"}'], bodies)))
+
+      expect(response.object).toEqual({ name: "Ada" })
+      expect(bodies[0].tool_choice).toBeUndefined()
     }),
   )
 })

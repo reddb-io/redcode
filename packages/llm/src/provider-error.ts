@@ -1,5 +1,5 @@
 import { Option, Schema } from "effect"
-import { LLMError, ProviderErrorEvent } from "./schema"
+import { LLMError, LLMEvent, ProviderErrorEvent, type ProviderFailureClassification } from "./schema"
 
 const patterns = [
   /prompt is too long/i,
@@ -141,6 +141,40 @@ export const isQuotaFailure = (input: ProviderFailureInput) =>
 /** Whether a provider failure carries a content or safety policy code; the same request is refused again. */
 export const isContentPolicyFailure = (input: ProviderFailureInput) =>
   failureCodes(input).some((code) => contentPolicyCodes.has(code))
+
+/** What a person reads when a provider refuses a request because the account is exhausted. */
+export const QUOTA_HINT =
+  "the account's quota, credits or free-tier limit is exhausted; check the plan and billing with the provider, or switch models"
+
+/**
+ * The provider-error event for a failure reported inside a response stream, classified the way an
+ * HTTP failure is: an exhausted account or a content-policy refusal fails the same way on every
+ * attempt, so it is marked non-retryable, and a quota failure says what to do about it. A stream
+ * carries no HTTP status, so `throttled` marks the rate-limit shapes a 429 would have carried.
+ */
+export const streamProviderError = (input: {
+  readonly message: string
+  /** The provider's error object, as decoded from the stream. */
+  readonly body: unknown
+  readonly throttled?: boolean
+  readonly classification?: ProviderFailureClassification
+  readonly retryable?: boolean
+}) => {
+  const failure = { status: input.throttled ? 429 : undefined, body: input.body, message: input.message }
+  if (input.classification === undefined && isQuotaFailure(failure))
+    return LLMEvent.providerError({
+      message: `${input.message} (${QUOTA_HINT})`,
+      classification: "quota",
+      retryable: false,
+    })
+  if (input.classification === undefined && isContentPolicyFailure(failure))
+    return LLMEvent.providerError({ message: input.message, classification: "content-policy", retryable: false })
+  return LLMEvent.providerError({
+    message: input.message,
+    classification: input.classification,
+    retryable: input.retryable,
+  })
+}
 
 const failureCodes = (input: ProviderFailureInput) =>
   [
