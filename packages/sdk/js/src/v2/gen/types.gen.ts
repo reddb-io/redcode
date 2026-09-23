@@ -2238,6 +2238,13 @@ export type Config = {
     subtask_concurrency?: number
     background_subagents_max?: number
     /**
+     * Fan-out caps on the task tool. Nesting depth is bounded separately by subagent_depth.
+     */
+    subagent_limits?: {
+      concurrent?: number
+      per_request?: number
+    }
+    /**
      * Milliseconds a tool may run before it is stopped and reported to the model as a failure (default: 600000). Tools that carry their own deadline, wait for a person, or run a whole child turn are not affected. Set to false to disable.
      */
     tool_timeout?: false | number
@@ -7624,6 +7631,9 @@ export type IntelligenceEvaluation = {
     | "compact_now"
     | "task_completion"
     | "goal_completion"
+    | "subagent_brief"
+    | "subagent_progress"
+    | "subagent_result"
   kind?: "classification" | "gate"
   subjectID?: string
   candidateID?: string
@@ -18463,6 +18473,9 @@ export type IntelligenceHistoryData = {
       | "compact_now"
       | "task_completion"
       | "goal_completion"
+      | "subagent_brief"
+      | "subagent_progress"
+      | "subagent_result"
     subjectID?: string
     candidateID?: string
     decision?: "accepted" | "needs_revision" | "inconclusive" | "unavailable"

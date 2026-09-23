@@ -7246,6 +7246,9 @@ export type IntelligenceHistoryInput = {
       | "compact_now"
       | "task_completion"
       | "goal_completion"
+      | "subagent_brief"
+      | "subagent_progress"
+      | "subagent_result"
       | undefined
     readonly subjectID?: string | undefined
     readonly candidateID?: string | undefined
@@ -7268,6 +7271,9 @@ export type IntelligenceHistoryInput = {
       | "compact_now"
       | "task_completion"
       | "goal_completion"
+      | "subagent_brief"
+      | "subagent_progress"
+      | "subagent_result"
       | undefined
     readonly subjectID?: string | undefined
     readonly candidateID?: string | undefined
@@ -7290,6 +7296,9 @@ export type IntelligenceHistoryInput = {
       | "compact_now"
       | "task_completion"
       | "goal_completion"
+      | "subagent_brief"
+      | "subagent_progress"
+      | "subagent_result"
       | undefined
     readonly subjectID?: string | undefined
     readonly candidateID?: string | undefined
@@ -7312,6 +7321,9 @@ export type IntelligenceHistoryInput = {
       | "compact_now"
       | "task_completion"
       | "goal_completion"
+      | "subagent_brief"
+      | "subagent_progress"
+      | "subagent_result"
       | undefined
     readonly subjectID?: string | undefined
     readonly candidateID?: string | undefined
@@ -7334,6 +7346,9 @@ export type IntelligenceHistoryInput = {
       | "compact_now"
       | "task_completion"
       | "goal_completion"
+      | "subagent_brief"
+      | "subagent_progress"
+      | "subagent_result"
       | undefined
     readonly subjectID?: string | undefined
     readonly candidateID?: string | undefined
@@ -7356,6 +7371,9 @@ export type IntelligenceHistoryInput = {
       | "compact_now"
       | "task_completion"
       | "goal_completion"
+      | "subagent_brief"
+      | "subagent_progress"
+      | "subagent_result"
       | undefined
     readonly subjectID?: string | undefined
     readonly candidateID?: string | undefined
@@ -7378,6 +7396,9 @@ export type IntelligenceHistoryInput = {
       | "compact_now"
       | "task_completion"
       | "goal_completion"
+      | "subagent_brief"
+      | "subagent_progress"
+      | "subagent_result"
       | undefined
     readonly subjectID?: string | undefined
     readonly candidateID?: string | undefined
@@ -7404,6 +7425,9 @@ export type IntelligenceHistoryOutput = ReadonlyArray<{
     | "compact_now"
     | "task_completion"
     | "goal_completion"
+    | "subagent_brief"
+    | "subagent_progress"
+    | "subagent_result"
   readonly kind?: "classification" | "gate"
   readonly subjectID?: string
   readonly candidateID?: string

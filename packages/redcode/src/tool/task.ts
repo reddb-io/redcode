@@ -15,6 +15,12 @@ import { EffectBridge } from "@/effect/bridge"
 import { RuntimeFlags } from "@/effect/runtime-flags"
 import { Database } from "@reddb-io/redcode-core/database/database"
 import { SessionGoal } from "@/session/goal"
+import { Todo } from "../session/todo"
+import { Permission } from "../permission"
+import { Intelligence } from "@reddb-io/redcode-core/intelligence"
+import { SessionPlan } from "@reddb-io/redcode-core/session/plan"
+import { SubagentReview } from "@reddb-io/redcode-core/session/subagent-review"
+import type { PermissionV1 } from "@reddb-io/redcode-core/v1/permission"
 
 export interface TaskPromptOps {
   notify?(input: SessionPrompt.PromptInput): Effect.Effect<boolean>
@@ -46,6 +52,18 @@ const BaseParameterFields = {
   description: Schema.String.annotate({ description: "A short (3-5 words) description of the task" }),
   prompt: Schema.String.annotate({ description: "The task for the agent to perform" }),
   subagent_type: Schema.String.annotate({ description: "The type of specialized agent to use for this task" }),
+  scope: Schema.optional(Schema.Array(Schema.String)).annotate({
+    description:
+      "Globs, relative to the project root, of the files and directories the subagent may change, e.g. packages/core/src/session/**. Expected for agents that can edit files or run commands; name the non-goals in the prompt.",
+  }),
+  done_criteria: Schema.optional(Schema.Array(Schema.String)).annotate({
+    description:
+      "Observable conditions that mean the task is done, one per entry, e.g. bun test test/session passes, or every caller of foo() is listed.",
+  }),
+  return_format: Schema.optional(Schema.String).annotate({
+    description:
+      "What the subagent must hand back and in what shape, e.g. a list of file:line findings with one line of explanation each.",
+  }),
   task_id: Schema.optional(Schema.String).annotate({
     description:
       "This should only be set if you mean to resume a previous task (you can pass a prior task_id and the task will continue the same subagent session as before instead of creating a fresh one)",
@@ -63,16 +81,22 @@ export const Parameters = Schema.Struct({
   }),
 })
 
+/** Tools whose permission tells the brief reviewer what the subagent may do. */
+const REVIEWED_PERMISSIONS = ["read", "edit", "bash", "webfetch", "task"]
+
 function renderOutput(input: {
   sessionID: SessionID
   state: "running" | "completed" | "error"
   summary?: string
+  review?: SubagentReview.Review
   text: string
 }) {
   const tag = input.state === "error" ? "task_error" : "task_result"
+  const note = input.review && SubagentReview.note(input.review)
   return [
     `<task id="${input.sessionID}" state="${input.state}">`,
     ...(input.summary ? [`<summary>${input.summary}</summary>`] : []),
+    ...(input.review && note ? [`<brief_review verdict="${input.review.verdict}">${note}</brief_review>`] : []),
     `<${tag}>`,
     input.text,
     `</${tag}>`,
@@ -90,6 +114,124 @@ export const TaskTool = Tool.define(
     const scope = yield* Scope.Scope
     const flags = yield* RuntimeFlags.Service
     const database = yield* Database.Service
+    const intelligence = yield* Intelligence.Service
+    const todos = yield* Todo.Service
+    const plans = yield* SessionPlan.Service
+    // Foreground subagents running per parent session. Checked and taken in one synchronous step,
+    // so parallel task calls in one message cannot all slip under the cap.
+    const running = new Map<SessionID, number>()
+
+    /**
+     * Whether the brief is good enough to launch on. Structure is checked in every mode; dual
+     * reasoning also asks S1 against the user's request. A rejection fails the tool so the parent
+     * revises; one revision per request and agent type, after which the task proceeds with a warning.
+     * S1 that is unavailable or undecided never approves silently: the task proceeds, labelled.
+     */
+    const reviewBrief = Effect.fn("TaskTool.reviewBrief")(function* (input: {
+      params: Schema.Schema.Type<typeof Parameters>
+      ctx: Tool.Context
+      parent: Session.Info
+      agent: Agent.Info
+      permission: PermissionV1.Ruleset
+      writeCapable: boolean
+      request: ReturnType<typeof latestRequest>
+    }) {
+      const findings = SubagentReview.briefStructure({
+        prompt: input.params.prompt,
+        scope: input.params.scope,
+        doneCriteria: input.params.done_criteria,
+        returnFormat: input.params.return_format,
+        writeCapable: input.writeCapable,
+      })
+      const blocking = findings.filter((finding) => finding.blocking)
+      if (blocking.length) {
+        return yield* Effect.fail(
+          new Error(
+            SubagentReview.rejection(input.agent.name, {
+              verdict: "needs_revision",
+              issues: blocking.map((finding) => finding.id),
+              findings: blocking,
+            }),
+          ),
+        )
+      }
+      const settings = yield* intelligence.read().pipe(Effect.orElseSucceed(() => Intelligence.defaults))
+      if (Intelligence.mode(settings) === "single")
+        return { verdict: "unverified", issues: findings.map((finding) => finding.id), findings } as const
+
+      const subjectID = `${input.request.id}:${input.agent.name}`
+      const rejected = yield* intelligence
+        .history(input.ctx.sessionID, { operation: "subagent_brief", subjectID, decision: "needs_revision" })
+        .pipe(Effect.orElseSucceed(() => []))
+      const goal = SessionGoal.fromMetadata(input.parent.metadata)
+      const plan = (yield* plans.list(input.ctx.sessionID))
+        .filter((item) => item.status === "approved")
+        .toSorted((a, b) => b.created - a.created)[0]
+      const record = yield* intelligence
+        .evaluate({
+          sessionID: input.ctx.sessionID,
+          operation: "subagent_brief",
+          subjectID,
+          attempt: rejected.length,
+          sources: {
+            requests: Intelligence.evidence(input.request.texts, { reference: input.ctx.sessionID, limit: 16_000 }),
+            goal: goal?.status === "active" ? { objective: goal.objective } : undefined,
+            todos: (yield* todos.get(input.ctx.sessionID)).map((todo) => ({
+              content: todo.content,
+              status: todo.status,
+            })),
+            plan: plan
+              ? {
+                  path: plan.path,
+                  tasks: plan.tasks?.map((task) => ({ content: task.content, criterion: task.criterion })),
+                }
+              : undefined,
+            agent: {
+              name: input.agent.name,
+              description: input.agent.description,
+              write_capable: input.writeCapable,
+              permissions: Object.fromEntries(
+                REVIEWED_PERMISSIONS.map((item) => [item, Permission.evaluate(item, "*", input.permission).action]),
+              ),
+            },
+            structure: findings.map((finding) => finding.message),
+          },
+          candidate: {
+            description: input.params.description,
+            prompt: Intelligence.evidence(input.params.prompt, { limit: 16_000 }),
+            scope: input.params.scope,
+            done_criteria: input.params.done_criteria,
+            return_format: input.params.return_format,
+          },
+          questions: SubagentReview.briefQuestions,
+        })
+        .pipe(Effect.orElseSucceed(() => undefined))
+
+      if (!record || record.decision === "unavailable")
+        return {
+          verdict: "inconclusive",
+          issues: [],
+          // The engine's wording is for gates that keep a previous state; a brief has none.
+          unavailable: record?.issues[0]?.replace(/ Previous state preserved\.$/, "") ?? "System One is not enabled",
+          findings,
+          ...(record ? { evaluationID: record.id } : {}),
+        } as const
+      if (record.decision === "accepted") return { verdict: "verified", issues: [], evaluationID: record.id } as const
+      if (record.decision === "inconclusive")
+        return { verdict: "inconclusive", issues: record.issues, evaluationID: record.id } as const
+      if (!rejected.length) {
+        return yield* Effect.fail(
+          new Error(
+            SubagentReview.rejection(input.agent.name, {
+              verdict: "needs_revision",
+              issues: record.issues,
+              evaluationID: record.id,
+            }),
+          ),
+        )
+      }
+      return { verdict: "needs_revision", issues: record.issues, evaluationID: record.id } as const
+    })
 
     const run = Effect.fn("TaskTool.execute")(function* (
       params: Schema.Schema.Type<typeof Parameters>,
@@ -131,6 +273,26 @@ export const TaskTool = Tool.define(
         )
       }
 
+      if (!runInBackground) {
+        const max = cfg.experimental?.subagent_limits?.concurrent ?? 4
+        const count = running.get(ctx.sessionID) ?? 0
+        if (count >= max) {
+          return yield* Effect.fail(
+            new Error(
+              `${count} foreground subagent${count === 1 ? " is" : "s are"} already running for this session (limit ${max}). Wait for one to finish before starting another, or fold this work into a running one.`,
+            ),
+          )
+        }
+        running.set(ctx.sessionID, count + 1)
+        yield* Effect.addFinalizer(() =>
+          Effect.sync(() => {
+            const left = (running.get(ctx.sessionID) ?? 1) - 1
+            if (left > 0) return void running.set(ctx.sessionID, left)
+            running.delete(ctx.sessionID)
+          }),
+        )
+      }
+
       if (!ctx.extra?.bypassAgentCheck) {
         yield* ctx.ask({
           permission: id,
@@ -165,37 +327,75 @@ export const TaskTool = Tool.define(
           action: "deny" as const,
         })) ?? []),
       ]
-      const nextSession =
-        resumed ??
-        (yield* sessions.create({
-          parentID: ctx.sessionID,
-          title: params.description + ` (@${next.name} subagent)`,
-          agent: next.name,
-          permission: [
-            ...childPermission,
-            ...childToolDenies.filter(
-              (deny) =>
-                !childPermission.some(
-                  (rule) =>
-                    rule.permission === deny.permission && rule.pattern === deny.pattern && rule.action === deny.action,
-                ),
+      const permission = [
+        ...childPermission,
+        ...childToolDenies.filter(
+          (deny) =>
+            !childPermission.some(
+              (rule) =>
+                rule.permission === deny.permission && rule.pattern === deny.pattern && rule.action === deny.action,
             ),
-          ],
-        }))
+        ),
+      ]
 
       const msg = yield* MessageV2.get({ sessionID: ctx.sessionID, messageID: ctx.messageID }).pipe(
         Effect.provideService(Database.Service, database),
         Effect.orDie,
       )
       if (msg.info.role !== "assistant") return yield* Effect.fail(new Error("Not an assistant message"))
-      // The variant the person chose, which an `auto` turn's assistant message does not carry: it
-      // records the level that turn applied.
-      const asked = yield* MessageV2.get({ sessionID: ctx.sessionID, messageID: msg.info.parentID }).pipe(
+      const userMessage = yield* MessageV2.get({ sessionID: ctx.sessionID, messageID: msg.info.parentID }).pipe(
         Effect.provideService(Database.Service, database),
-        Effect.map((parent) => (parent.info.role === "user" ? parent.info.model.variant : undefined)),
         Effect.orElseSucceed(() => undefined),
       )
+      // The variant the person chose, which an `auto` turn's assistant message does not carry: it
+      // records the level that turn applied.
+      const asked = userMessage && userMessage.info.role === "user" ? userMessage.info.model.variant : undefined
       const variant = asked ?? msg.info.variant
+      const request = latestRequest(ctx.messages, userMessage)
+
+      if (!resumed) {
+        const max = cfg.experimental?.subagent_limits?.per_request ?? 12
+        const started = (yield* sessions.children(ctx.sessionID)).filter(
+          (child) => child.time.created >= request.created,
+        ).length
+        if (started >= max) {
+          return yield* Effect.fail(
+            new Error(
+              `${started} subagent${started === 1 ? " was" : "s were"} already started for this request (limit ${max}). Finish with the results you have, resume one with its task_id, or do the remaining work directly.`,
+            ),
+          )
+        }
+      }
+
+      const writeCapable = ["edit", "bash"].some((item) => Permission.evaluate(item, "*", permission).action !== "deny")
+      const review: SubagentReview.Review | undefined = resumed
+        ? undefined
+        : ctx.extra?.bypassAgentCheck
+          ? { verdict: "skipped", issues: [] }
+          : yield* reviewBrief({ params, ctx, parent, agent: next, permission, writeCapable, request })
+
+      const nextSession =
+        resumed ??
+        (yield* sessions.create({
+          parentID: ctx.sessionID,
+          title: params.description + ` (@${next.name} subagent)`,
+          agent: next.name,
+          permission,
+          metadata: SubagentReview.toMetadata(undefined, {
+            brief: params.prompt,
+            agent: next.name,
+            scope: params.scope ?? [],
+            criteria: params.done_criteria ?? [],
+            ...(params.return_format ? { returnFormat: params.return_format } : {}),
+            writeCapable,
+            parentSessionID: ctx.sessionID,
+            ...(ctx.callID ? { callID: ctx.callID } : {}),
+            ...(review?.evaluationID ? { briefEvaluationID: review.evaluationID } : {}),
+            verdict: review?.verdict ?? "skipped",
+            issues: review?.issues ?? [],
+            created: Date.now(),
+          }),
+        }))
 
       const model = next.model ?? {
         modelID: msg.info.modelID,
@@ -205,6 +405,15 @@ export const TaskTool = Tool.define(
         parentSessionId: ctx.sessionID,
         sessionId: nextSession.id,
         model,
+        ...(review && review.verdict !== "skipped"
+          ? {
+              brief: {
+                verdict: review.verdict,
+                issues: review.issues,
+                ...(review.evaluationID ? { evaluationID: review.evaluationID } : {}),
+              },
+            }
+          : {}),
         ...(runInBackground ? { background: true } : {}),
       }
 
@@ -217,7 +426,15 @@ export const TaskTool = Tool.define(
       if (!ops) return yield* Effect.fail(new Error("TaskTool requires promptOps in ctx.extra"))
 
       const runTask = Effect.fn("TaskTool.runTask")(function* () {
-        const resolved = yield* ops.resolvePromptParts(params.prompt)
+        const brief = SubagentReview.instructions({
+          scope: params.scope,
+          criteria: params.done_criteria,
+          returnFormat: params.return_format,
+        })
+        const resolved = [
+          ...(yield* ops.resolvePromptParts(params.prompt)),
+          ...(brief ? [{ type: "text" as const, text: brief, synthetic: true }] : []),
+        ]
         // The goal is copied, never shared: a child session is blank by design, so the parent's
         // objective rides in as a synthetic part ahead of the task, read fresh each run — the
         // goal may have been dropped or changed since the child was first created.
@@ -358,6 +575,7 @@ export const TaskTool = Tool.define(
             sessionID: nextSession.id,
             state: "running",
             summary: "Background task started",
+            review,
             text: BACKGROUND_STARTED,
           }),
         }
@@ -391,7 +609,12 @@ export const TaskTool = Tool.define(
             return {
               title: params.description,
               metadata,
-              output: renderOutput({ sessionID: nextSession.id, state: "completed", text: result?.output ?? "" }),
+              output: renderOutput({
+                sessionID: nextSession.id,
+                state: "completed",
+                review,
+                text: result?.output ?? "",
+              }),
             }
           }),
         (_, exit) =>
@@ -415,7 +638,25 @@ export const TaskTool = Tool.define(
       parameters: Parameters,
       jsonSchema: flags.experimentalBackgroundSubagents ? undefined : ToolJsonSchema.fromSchema(BaseParameters),
       execute: (params: Schema.Schema.Type<typeof Parameters>, ctx: Tool.Context) =>
-        run(params, ctx).pipe(Effect.orDie),
+        run(params, ctx).pipe(Effect.scoped, Effect.orDie),
     }
   }),
 )
+
+/**
+ * The latest thing a person asked in the parent, and when. A continuation the runtime wrote for
+ * itself is not a request; the turn's own user message stands in when the history has none.
+ */
+function latestRequest(messages: SessionV1.WithParts[], fallback: SessionV1.WithParts | undefined) {
+  const requests = messages.filter(
+    (message) => message.info.role === "user" && message.parts.some((part) => part.type === "text" && !part.synthetic),
+  )
+  const latest = requests.at(-1) ?? fallback
+  return {
+    id: latest?.info.id ?? "",
+    created: latest?.info.time.created ?? 0,
+    texts: (requests.length ? requests.slice(-3) : fallback ? [fallback] : []).map((message) =>
+      message.parts.flatMap((part) => (part.type === "text" && !part.synthetic ? [part.text] : [])).join("\n"),
+    ),
+  }
+}
