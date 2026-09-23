@@ -32,7 +32,9 @@ import {
 } from "effect"
 import { SessionStatusEvent } from "@reddb-io/redcode-schema/session-status-event"
 import { Flag } from "../../flag/flag"
+import { Verbose } from "../../observability/verbose"
 import { HumanWait } from "../human-wait"
+import { PromptCacheDiagnostics } from "../prompt-cache-diagnostics"
 import { LoopGuard } from "../loop-guard"
 import { SessionRetry } from "../retry"
 import { SessionStall } from "../stall"
@@ -290,6 +292,7 @@ const layer = Layer.effect(
     // The provider's count for the last request of a session and our estimate for it, so the
     // next request is projected from that count plus what it gained since.
     const anchors = new Map<SessionSchema.ID, { counted: number; estimate: number }>()
+    const promptCache = PromptCacheDiagnostics.tracker()
     const outputOf = (model: Model, request: LLMRequest) =>
       request.generation?.maxTokens ?? model.route.defaults.limits?.output ?? 0
     const carriesMedia = (request: LLMRequest) =>
@@ -1140,6 +1143,11 @@ const layer = Layer.effect(
       const completionTools: Effect.Effect<void, ToolOutputStore.Error>[] = []
       let reportedTokens: ReturnType<typeof usageTokens> | undefined
       let overflowFailure: ProviderErrorEvent | undefined
+      // Under --verbose only: which part of the request, if any, broke the cached prefix of the previous one.
+      yield* Verbose.log("prompt.cache", () => ({
+        sessionID: session.id,
+        ...promptCache(session.id, PromptCacheDiagnostics.fromRequest(request)),
+      }))
       // Stamped here in case the client makes no HTTP attempt of its own; the executor stamps each one.
       timing.request()
       const upstream = llm.stream(request)

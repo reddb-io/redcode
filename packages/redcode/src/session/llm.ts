@@ -37,6 +37,8 @@ import { SessionSpend } from "./spend"
 import { NativeToolSearch } from "./native-tool-search"
 import { GenerationTiming } from "@reddb-io/redcode-core/session/generation-timing"
 import { ProviderRouter } from "@reddb-io/redcode-core/provider/router"
+import { PromptCacheDiagnostics } from "@reddb-io/redcode-core/session/prompt-cache-diagnostics"
+import type { LanguageModelV3CallOptions } from "@ai-sdk/provider"
 
 export const OUTPUT_TOKEN_MAX = ProviderTransform.OUTPUT_TOKEN_MAX
 
@@ -111,6 +113,7 @@ const live: Layer.Layer<
     const flags = yield* RuntimeFlags.Service
     const hooks = yield* OperationHookBridge.Service
     const spend = yield* SessionSpend.Service
+    const promptCache = PromptCacheDiagnostics.tracker()
 
     const run = Effect.fn("LLM.run")(function* (input: StreamRequest, allowNativeSearch: boolean) {
       yield* Effect.logInfo("stream", {
@@ -411,6 +414,18 @@ const live: Layer.Layer<
                 specificationVersion: "v3" as const,
                 async transformParams(args) {
                   if (args.type === "stream") {
+                    // Under --verbose only: which part of the request, if any, broke the cached prefix of
+                    // the previous one. Taken before the cache markers below, which follow the tail.
+                    bridge.fork(
+                      Verbose.log("prompt.cache", () => ({
+                        sessionID: input.sessionID,
+                        agent: input.agent.name,
+                        ...promptCache(
+                          `${input.sessionID}:${input.agent.name}`,
+                          promptCacheComponents(input.model, args.params),
+                        ),
+                      })),
+                    )
                     // @ts-expect-error
                     args.params.prompt = ProviderTransform.message(
                       args.params.prompt,
@@ -580,6 +595,28 @@ const routerHeaders = Effect.fnUntraced(function* (
     model: declared?.router,
   })
 })
+
+/**
+ * The parts of an AI SDK call a prompt cache keys on. Headers and the abort signal are left out: they
+ * carry per-turn routing hints and never reach the cached prompt bytes.
+ */
+function promptCacheComponents(model: Provider.Model, params: LanguageModelV3CallOptions) {
+  return {
+    settings: {
+      ...params,
+      model: `${model.providerID}/${model.id}`,
+      prompt: undefined,
+      tools: undefined,
+      headers: undefined,
+      abortSignal: undefined,
+    },
+    tools: (params.tools ?? []).map((tool) => ({ label: tool.name, value: tool })),
+    system: params.prompt.filter((message) => message.role === "system"),
+    messages: params.prompt
+      .filter((message) => message.role !== "system")
+      .map((message, index) => ({ label: `${message.role}[${index}]`, value: message })),
+  }
+}
 
 export const hasToolCalls = LLMRequestPrep.hasToolCalls
 
