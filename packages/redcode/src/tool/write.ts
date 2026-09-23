@@ -15,6 +15,8 @@ import { InstanceState } from "@/effect/instance-state"
 import { trimDiff } from "./edit"
 import { assertExternalDirectoryEffect } from "./external-directory"
 import * as Bom from "@/util/bom"
+import { Session } from "@/session/session"
+import { AutoWorktree } from "@/session/auto-worktree"
 
 const MAX_PROJECT_DIAGNOSTICS_FILES = 5
 
@@ -32,6 +34,7 @@ export const WriteTool = Tool.define(
     const fs = yield* FSUtil.Service
     const events = yield* EventV2Bridge.Service
     const format = yield* Format.Service
+    const sessions = yield* Session.Service
 
     return {
       description: DESCRIPTION,
@@ -39,9 +42,10 @@ export const WriteTool = Tool.define(
       execute: (params: { content: string; filePath: string }, ctx: Tool.Context) =>
         Effect.gen(function* () {
           const instance = yield* InstanceState.context
-          const filepath = path.isAbsolute(params.filePath)
-            ? params.filePath
-            : path.join(instance.directory, params.filePath)
+          const filepath = yield* AutoWorktree.route(
+            { sessions, events, sessionID: ctx.sessionID, agent: ctx.agent },
+            path.isAbsolute(params.filePath) ? params.filePath : path.join(instance.directory, params.filePath),
+          )
           yield* RepositoryGuard.assertWrite(filepath).pipe(Effect.orDie)
           yield* assertExternalDirectoryEffect(ctx, filepath)
 
