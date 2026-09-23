@@ -1,0 +1,65 @@
+diff --git a/src/platform.ts b/src/platform.ts
+--- a/src/platform.ts
++++ b/src/platform.ts
+@@ -2,7 +2,7 @@
+  * Platform detection utilities for downloading the correct binary
+  */
+ 
+-import { execSync } from "node:child_process";
++import { readdirSync } from "node:fs";
+ 
+ /**
+  * Get the platform triple (e.g., "x86_64-unknown-linux-gnu")
+@@ -26,25 +26,37 @@
+   return `${archName}-${osName}`;
+ }
+ 
++let linuxLibc: string | undefined;
++
+ /**
+- * Detect whether we're on musl or glibc Linux
++ * Detect whether we're on musl or glibc Linux.
++ *
++ * Never spawns: a synchronous `ldd --version` can hang forever under Bun 1.4, freezing the whole
++ * process. The runtime's own report says which libc it was built against, and that is the libc
++ * the native library has to match.
+  */
+ function detectLinuxLibc(): string {
+-  let output = "";
++  if (linuxLibc) return linuxLibc;
++  linuxLibc = libcFromReport() ?? libcFromLoader();
++  return linuxLibc;
++}
++
++function libcFromReport(): string | undefined {
++  const report = process.report?.getReport?.() as unknown as
++    | { header?: { glibcVersionRuntime?: string } }
++    | undefined;
++  if (!report?.header) return undefined;
++  return report.header.glibcVersionRuntime ? "unknown-linux-gnu" : "unknown-linux-musl";
++}
++
++// Last resort when the runtime has no report: musl systems ship their dynamic loader as
++// /lib/ld-musl-<arch>.so.1.
++function libcFromLoader(): string {
+   try {
+-    output = execSync("ldd --version 2>&1", {
+-      encoding: "utf-8",
+-      timeout: 5000,
+-    });
+-  } catch (e: unknown) {
+-    // Alpine/musl: `ldd --version` exits with code 1 but still prints
+-    // "musl libc ..." — execSync surfaces that on the error object.
+-    const err = e as { stdout?: string | Buffer; stderr?: string | Buffer };
+-    output = String(err?.stdout ?? "") + String(err?.stderr ?? "");
+-  }
+-  if (output.toLowerCase().includes("musl")) {
+-    return "unknown-linux-musl";
+-  }
++    if (readdirSync("/lib").some((name) => name.startsWith("ld-musl-"))) {
++      return "unknown-linux-musl";
++    }
++  } catch {}
+   return "unknown-linux-gnu";
+ }
+ 
