@@ -2,7 +2,7 @@ import { describe, expect } from "bun:test"
 import fs from "node:fs/promises"
 import os from "node:os"
 import path from "node:path"
-import { Effect, Exit, Stream } from "effect"
+import { Deferred, Effect, Exit, Stream } from "effect"
 import type * as PlatformError from "effect/PlatformError"
 import { ChildProcess, ChildProcessSpawner } from "effect/unstable/process"
 import { CrossSpawnSpawner } from "@reddb-io/redcode-core/cross-spawn-spawner"
@@ -224,6 +224,34 @@ describe("cross-spawn spawner", () => {
         const out = yield* decodeByteStream(handle.stdout)
         yield* handle.exitCode
         expect(out).toBe("a b c")
+      }),
+    )
+
+    // A hook that exits without reading its input: Bun keeps the small write buffered and
+    // flushes it when the stream is destroyed after end(), which fails with EPIPE after the
+    // stdin sink stopped listening (HookV2 tests in CI). The child closes its stdin before
+    // anything is written, so the failed flush happens on every run.
+    fx.effect(
+      "ignores EPIPE from a child that closed its stdin before reading",
+      Effect.gen(function* () {
+        const uncaught: unknown[] = []
+        const record = (error: unknown) => uncaught.push(error)
+        process.on("uncaughtException", record)
+        yield* Effect.addFinalizer(() => Effect.sync(() => process.off("uncaughtException", record)))
+        const closed = yield* Deferred.make<void>()
+        const handle = yield* js(
+          "require('fs').closeSync(0); process.stdout.write('closed'); setTimeout(() => {}, 1000)",
+          {
+            stdin: Stream.fromEffect(Deferred.await(closed)).pipe(
+              Stream.map(() => Buffer.from(JSON.stringify({ hook_event_name: "PreToolUse" }))),
+            ),
+          },
+        )
+        yield* Stream.runDrain(Stream.take(handle.stdout, 1))
+        yield* Deferred.succeed(closed, undefined)
+        yield* handle.exitCode
+        yield* Effect.promise(() => new Promise((resolve) => setImmediate(resolve)))
+        expect(uncaught).toEqual([])
       }),
     )
   })
