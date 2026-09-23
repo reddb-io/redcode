@@ -3,7 +3,7 @@ import { Integration } from "./integration"
 import { ModelV2 } from "./model"
 export * as Semantic from "./semantic"
 
-import { Context, Effect, Layer, Schema, Stream } from "effect"
+import { Context, Effect, Layer, Result, Schema, Stream } from "effect"
 import { LLM, LLMClient, LLMEvent, Message } from "@reddb-io/redcode-llm"
 import { Intelligence } from "./intelligence"
 import { SessionRunnerModel } from "./session/runner/model"
@@ -33,20 +33,15 @@ const make = Effect.gen(function* () {
     const result = yield* Effect.gen(function* () {
       const credential = connection ? yield* integrations.connection.resolve(connection) : undefined
       const model = yield* SessionRunnerModel.fromCatalogModel(selected, credential)
+      // Room for models that always reason (Opus 5.5, GPT-6, Fable): a tiny budget is spent on
+      // thinking and ends at the length limit before any text, which is still a working connection.
       return yield* llm
         .stream(
-          LLM.request({ model, messages: [Message.user("Reply with OK.")], tools: [], generation: { maxTokens: 32 } }),
+          LLM.request({ model, messages: [Message.user("Reply with OK.")], tools: [], generation: { maxTokens: 1024 } }),
         )
         .pipe(Stream.runCollect)
-    }).pipe(Effect.timeout("15 seconds"), Effect.result)
-    return {
-      ok:
-        result._tag === "Success" &&
-        result.success.some((event) => LLMEvent.is.textDelta(event) && event.text.trim().length > 0) &&
-        !result.success.some(LLMEvent.is.providerError) &&
-        result.success.some((event) => LLMEvent.is.finish(event) && event.reason === "stop"),
-      message: result._tag === "Success" ? "Generative connection checked" : "Generative connection failed",
-    }
+    }).pipe(Effect.timeout("30 seconds"), Effect.result)
+    return probeVerdict(result)
   })
   const generate = Effect.fn("Semantic.generate")(function* (
     sessionID: SessionSchema.ID,
@@ -191,4 +186,23 @@ export function transformer(
     yield* Intelligence.requireConfigured(yield* intelligence.read())
     return repaired
   })
+}
+
+/**
+ * A connection works when the provider streamed a finished answer without an error. Text is not
+ * required: a reasoning model may spend a short budget thinking and stop at the length limit.
+ */
+export function probeVerdict(result: Result.Result<ReadonlyArray<LLMEvent>, unknown>) {
+  if (result._tag === "Failure") {
+    const cause = result.failure
+    const reason = cause instanceof Error ? cause.message : String(cause)
+    return { ok: false, message: `Generative connection failed: ${reason}` }
+  }
+  const error = result.success.find(LLMEvent.is.providerError)
+  if (error) return { ok: false, message: `Generative connection failed: ${error.message}` }
+  const finish = result.success.find(LLMEvent.is.finish)
+  if (!finish) return { ok: false, message: "Generative connection failed: the provider ended the stream without finishing" }
+  if (finish.reason === "error" || finish.reason === "content-filter")
+    return { ok: false, message: `Generative connection failed: the provider finished with "${finish.reason}"` }
+  return { ok: true, message: "Generative connection checked" }
 }
