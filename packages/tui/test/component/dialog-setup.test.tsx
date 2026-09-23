@@ -745,6 +745,157 @@ test("setup groups RedRouter models per upstream provider and says where each mo
   }
 })
 
+test("a RedRouter's recommendations come first and are preselected for S2 and S1", async () => {
+  await using tmp = await tmpdir()
+  await Bun.write(`${tmp.path}/kv.json`, "{}")
+  const routed = (id: string, name: string, upstream: { id: string; name: string }) => ({
+    ...provider.models.model,
+    id,
+    providerID: "red-router",
+    name,
+    upstream,
+  })
+  const routerProvider = {
+    ...provider,
+    id: "red-router",
+    name: "RedRouter",
+    router: { kind: "red-router" },
+    models: {
+      "cx/gpt-6-luna": routed("cx/gpt-6-luna", "GPT-6 Luna", { id: "codex", name: "OpenAI Codex" }),
+      "cc/claude-opus-5-5": routed("cc/claude-opus-5-5", "Claude Opus 5.5", { id: "claude", name: "Claude Code" }),
+    },
+  }
+  const router = {
+    providerID: "red-router",
+    baseURL: "http://127.0.0.1:25050/v1",
+    detection: {
+      kind: "red-router",
+      instanceID: "studio",
+      features: ["capabilities", "systemone", "recommendations"],
+      systemOne: { available: true, models: ["jev-latest", "jev-1.13.0"] },
+      checkedAt: 0,
+    },
+    evaluator: {
+      transport: "red-router",
+      baseURL: "http://127.0.0.1:25050/v1",
+      model: "jev-1.13.0",
+      credentialID: "cred_router",
+    },
+    recommended: {
+      default: {
+        id: "cc/claude-opus-5-5",
+        name: "Claude Opus 5.5",
+        provider: { slug: "cc", name: "Claude Code" },
+        reason: "Strongest connected coding model (claude-opus family, newest version).",
+      },
+      fast: {
+        id: "cx/gpt-6-luna",
+        name: "GPT-6 Luna",
+        provider: { slug: "cx", name: "OpenAI Codex" },
+        reason: "Cheapest capable fast model (gpt-6-luna family).",
+      },
+      systemone: {
+        id: "jev-1.13.0",
+        name: "Jev 1.13",
+        provider: { slug: "jev", name: "Jev" },
+        reason: "First JEV model served on /v1/systemone.",
+      },
+    },
+  }
+  const saved: unknown[] = []
+  const setup = await mount(
+    async (url, input) => {
+      if (url.pathname === "/api/intelligence" && input instanceof Request && input.method === "PUT") {
+        saved.push(await input.json())
+        return json({ enabled: true, reasoning: "dual", onboarding: "completed" })
+      }
+      if (url.pathname === "/api/intelligence") return json({ ...intelligence, router })
+      if (url.pathname === "/config/providers")
+        return json({
+          providers: [provider, routerProvider],
+          default: { mock: "model", "red-router": "cc/claude-opus-5-5" },
+        })
+      if (url.pathname === "/api/intelligence/test-model") return json({ ok: true, message: "Connection checked" })
+      if (url.pathname === "/api/intelligence/test") return json({ ok: true, message: "Connection checked" })
+    },
+    tmp.path,
+    () => <Dialogs resume={{ settings: intelligence.settings, step: "principal", reasoning: "dual" }} />,
+    { height: 44 },
+  )
+  try {
+    await ready(setup.app, "Recommended: Claude Opus 5.5")
+    await wait(() => setup.app.captureCharFrame().includes("Strongest connected coding model"))
+    const principal = setup.app.captureCharFrame()
+    expect(principal).toContain("via RedRouter · Claude Code")
+    // The Providers section and the active provider's models stay below the recommendation.
+    expect(principal.indexOf("Recommended: Claude Opus 5.5")).toBeLessThan(principal.indexOf("Providers"))
+    expect(principal).toContain("Mock Provider models")
+
+    // The cursor starts on the recommendation.
+    await setup.app.mockInput.pressEnter()
+    await ready(setup.app, "Recommended: GPT-6 Luna")
+    const fast = setup.app.captureCharFrame()
+    expect(fast).toContain("2/3 · S2 transformations")
+    expect(fast).toContain("via RedRouter · OpenAI Codex")
+    expect(fast).toContain("Reuse System Two principal")
+    expect(fast.indexOf("Recommended: GPT-6 Luna")).toBeLessThan(fast.indexOf("Reuse System Two principal"))
+
+    await setup.app.mockInput.pressEnter()
+    await ready(setup.app, "Use RedRouter studio (detected)")
+    expect(setup.app.captureCharFrame()).toContain("Use RedRouter studio (detected) jev-1.13.0")
+    await setup.app.mockInput.pressEnter()
+    await ready(setup.app, "Save global intelligence setup")
+    await setup.app.mockInput.pressEnter()
+    await wait(() => saved.length === 1)
+    expect(saved[0]).toEqual({
+      settings: {
+        enabled: true,
+        reasoning: "dual",
+        onboarding: "completed",
+        principal: { providerID: "red-router", id: "cc/claude-opus-5-5" },
+        fast: { providerID: "red-router", id: "cx/gpt-6-luna" },
+        evaluator: router.evaluator,
+      },
+    })
+  } finally {
+    setup.app.renderer.destroy()
+  }
+})
+
+test("a recommendation the router does not list is not offered", async () => {
+  await using tmp = await tmpdir()
+  await Bun.write(`${tmp.path}/kv.json`, "{}")
+  const router = {
+    providerID: "red-router",
+    baseURL: "http://127.0.0.1:25050/v1",
+    detection: { kind: "red-router", features: ["capabilities", "recommendations"], checkedAt: 0 },
+    recommended: {
+      default: {
+        id: "cc/claude-opus-5-5",
+        name: "Claude Opus 5.5",
+        provider: { slug: "cc", name: "Claude Code" },
+        reason: "Strongest connected coding model.",
+      },
+    },
+  }
+  const setup = await mount(
+    (url) => {
+      if (url.pathname === "/api/intelligence") return json({ ...intelligence, router })
+      if (url.pathname === "/config/providers") return json({ providers: [provider], default: { mock: "model" } })
+    },
+    tmp.path,
+    () => <Dialogs resume={{ settings: intelligence.settings, step: "principal", reasoning: "single" }} />,
+    { height: 40 },
+  )
+  try {
+    await ready(setup.app, "Balanced Combo")
+    await wait(() => setup.app.captureCharFrame().includes("Mock Provider models"))
+    expect(setup.app.captureCharFrame()).not.toContain("Recommended:")
+  } finally {
+    setup.app.renderer.destroy()
+  }
+})
+
 async function ready(app: Awaited<ReturnType<typeof mount>>["app"], text: string) {
   await wait(() => app.captureCharFrame().includes(text))
   await wait(

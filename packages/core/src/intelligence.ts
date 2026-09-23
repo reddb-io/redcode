@@ -964,11 +964,23 @@ export const make = (
       const baseURL = stringMetadata(credential?.value.metadata, "baseURL") ?? evaluatorPreset("red-router").baseURL
       const detection = yield* ProviderRouter.detect({ baseURL, apiKey: key, fetch: fetcher })
       if (!ProviderRouter.isRedRouter(detection)) return undefined
-      const model = detection.systemOne?.available ? detection.systemOne.models[0] : undefined
+      const recommended = detection.features.includes("recommendations")
+        ? yield* ProviderRouter.recommendations({
+            baseURL,
+            apiKey: key,
+            version: detection.catalogVersion,
+            fetch: fetcher,
+          })
+        : undefined
+      // The router's recommended System One model when it serves it, else the first one it lists.
+      const model = detection.systemOne?.available
+        ? (detection.systemOne.models.find((id) => id === recommended?.systemone?.id) ?? detection.systemOne.models[0])
+        : undefined
       return {
         providerID: credential?.integrationID ?? "red-router",
         baseURL,
         detection,
+        ...(recommended ? { recommended } : {}),
         ...(model
           ? {
               evaluator: {

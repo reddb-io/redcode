@@ -7005,6 +7005,7 @@ export type IntelligenceGetOutput = {
         | "reasoning-auto"
         | "reasoning-applies"
         | "hint-signals"
+        | "recommendations"
       >
       readonly systemOne?: { readonly available: boolean; readonly models: ReadonlyArray<string> }
       readonly checkedAt: number
@@ -7022,6 +7023,38 @@ export type IntelligenceGetOutput = {
       readonly baseURL: string
       readonly model: string
       readonly credentialID?: string
+    }
+    readonly recommended?: {
+      readonly default?: {
+        readonly id: string
+        readonly name: string
+        readonly provider: { readonly slug: string; readonly name: string }
+        readonly reason: string
+      }
+      readonly fast?: {
+        readonly id: string
+        readonly name: string
+        readonly provider: { readonly slug: string; readonly name: string }
+        readonly reason: string
+      }
+      readonly review?: {
+        readonly id: string
+        readonly name: string
+        readonly provider: { readonly slug: string; readonly name: string }
+        readonly reason: string
+      }
+      readonly systemone?: {
+        readonly id: string
+        readonly name: string
+        readonly provider: { readonly slug: string; readonly name: string }
+        readonly reason: string
+      }
+      readonly vision?: {
+        readonly id: string
+        readonly name: string
+        readonly provider: { readonly slug: string; readonly name: string }
+        readonly reason: string
+      }
     }
   }
 }

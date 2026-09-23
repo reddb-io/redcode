@@ -1,7 +1,7 @@
 export * as ProviderRouter from "./router"
 
 import { createHash } from "node:crypto"
-import { Effect } from "effect"
+import { Effect, Option, Schema } from "effect"
 import { Router } from "@reddb-io/redcode-schema/router"
 
 /** How long one probe result is reused for the same address and key. */
@@ -35,8 +35,21 @@ export type DetectInput = {
   readonly timeout?: number
 }
 
+export type RecommendationsInput = {
+  readonly baseURL: string
+  readonly apiKey?: string
+  /** The catalog version the detection reported; a cached result read at another version is refetched. */
+  readonly version?: string
+  readonly fetch?: typeof fetch
+  readonly timeout?: number
+}
+
 const cache = new Map<string, { value: Router.Detection; expires: number }>()
 const pending = new Map<string, Promise<Router.Detection>>()
+const recommended = new Map<
+  string,
+  { value: Router.Recommendations | undefined; version: string | undefined; expires: number }
+>()
 const LOOPBACK = new Set(["localhost", "127.0.0.1", "[::1]"])
 
 /**
@@ -58,10 +71,19 @@ export function known(baseURL: string) {
     .toSorted((a, b) => b.checkedAt - a.checkedAt)[0]
 }
 
-/** Drops cached detections, for one address or all of them. */
+/**
+ * The models a RedRouter that advertises `recommendations` recommends for the accounts the key has
+ * connected, read from its `/catalog` document. Cached per address and key until the catalog
+ * version changes or the probe TTL passes. It never fails: an unreachable, slow or malformed
+ * catalog is no recommendation, and a role the router left empty or sent malformed is dropped alone.
+ */
+export const recommendations = (input: RecommendationsInput) => Effect.promise(() => recommend(input))
+
+/** Drops cached detections and recommendations, for one address or all of them. */
 export function forget(baseURL?: string) {
   const base = baseURL === undefined ? undefined : normalizeURL(baseURL)
-  for (const key of cache.keys()) if (base === undefined || key.startsWith(`${base}\n`)) cache.delete(key)
+  for (const store of [cache, recommended])
+    for (const key of store.keys()) if (base === undefined || key.startsWith(`${base}\n`)) store.delete(key)
 }
 
 /**
@@ -300,11 +322,7 @@ function dollars(value: unknown) {
 async function lookup(input: DetectInput) {
   const base = normalizeURL(input.baseURL)
   if (!base) return none(Date.now())
-  // Keyed by a digest of the key, never the key itself: System One availability is per key.
-  const key = `${base}\n${createHash("sha256")
-    .update(input.apiKey?.trim() ?? "")
-    .digest("hex")
-    .slice(0, 16)}`
+  const key = keyed(base, input.apiKey)
   const hit = cache.get(key)
   if (!input.fresh && hit && hit.expires > Date.now()) return hit.value
   const running = pending.get(key)
@@ -318,6 +336,49 @@ async function lookup(input: DetectInput) {
     .finally(() => pending.delete(key))
   pending.set(key, next)
   return next
+}
+
+async function recommend(input: RecommendationsInput) {
+  const base = normalizeURL(input.baseURL)
+  if (!base) return
+  const key = keyed(base, input.apiKey)
+  const hit = recommended.get(key)
+  if (hit && hit.expires > Date.now() && hit.version === input.version) return hit.value
+  const apiKey = input.apiKey?.trim()
+  // Redirects are refused so the key never follows a hop to another address.
+  const document = await (input.fetch ?? fetch)(`${input.baseURL.trim().replace(/\/+$/, "")}/catalog`, {
+    redirect: "error",
+    signal: AbortSignal.timeout(input.timeout ?? TIMEOUT),
+    headers: { accept: "application/json", ...(apiKey ? { authorization: `Bearer ${apiKey}` } : {}) },
+  })
+    .then((response) => (response.ok ? (response.json() as Promise<unknown>) : undefined))
+    .catch(() => undefined)
+  const value = recommendationsFrom(record(document).recommended)
+  recommended.set(key, { value, version: input.version, expires: Date.now() + TTL })
+  return value
+}
+
+const decodeRecommendation = Schema.decodeUnknownOption(Router.Recommendation)
+
+function recommendationsFrom(value: unknown): Router.Recommendations | undefined {
+  const document = record(value)
+  const pick = (role: keyof Router.Recommendations) => Option.getOrUndefined(decodeRecommendation(document[role]))
+  const picks = {
+    default: pick("default"),
+    fast: pick("fast"),
+    review: pick("review"),
+    systemone: pick("systemone"),
+    vision: pick("vision"),
+  }
+  return Object.values(picks).some((item) => item !== undefined) ? picks : undefined
+}
+
+// Keyed by a digest of the key, never the key itself: what a router serves is per key.
+function keyed(base: string, apiKey: string | undefined) {
+  return `${base}\n${createHash("sha256")
+    .update(apiKey?.trim() ?? "")
+    .digest("hex")
+    .slice(0, 16)}`
 }
 
 async function probe(input: DetectInput): Promise<Router.Detection> {
@@ -378,6 +439,7 @@ function fromCapabilities(document: Record<string, unknown>, now: number): Route
     ["reasoning-auto", typeof reasoning.header === "string" && accepts.includes("auto")],
     ["reasoning-applies", typeof reasoning.header === "string" && reasoning.applies === true],
     ["hint-signals", ["stall", "feedback", "frustration"].every((key) => hintKeys.includes(key))],
+    ["recommendations", catalog.recommendations === true && typeof catalog.catalog_endpoint === "string"],
   ]
   return {
     kind: "red-router",

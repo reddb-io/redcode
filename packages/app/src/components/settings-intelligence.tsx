@@ -78,6 +78,25 @@ function IntelligenceForm() {
       : {}),
   })
   const probe = () => ({ evaluator: evaluator(), ...(state.key ? { apiKey: state.key } : {}) })
+  // The connected RedRouter's recommended model for a role, when the model list has it.
+  const recommendation = (role: "principal" | "fast") => {
+    const router = state.router
+    const pick = router?.recommended?.[role === "principal" ? "default" : "fast"]
+    const listed =
+      pick && models.list().find((model) => model.provider.id === router?.providerID && model.id === pick.id)
+    if (!pick || !listed) return undefined
+    return { pick, value: `${listed.provider.id}/${listed.id}` }
+  }
+  // The detected router's S1 model at its connected address, with the provider's credential.
+  const selectDetected = (detected: Intelligence.Evaluator) => {
+    set("detected", true)
+    set("transport", detected.transport)
+    set("baseURL", detected.baseURL)
+    set("model", detected.model)
+    set("settings", (settings) => ({ ...settings, evaluator: detected }))
+    set("key", "")
+    set("discovered", [])
+  }
   const run = async (action: () => Promise<void>) => {
     set("busy", true)
     set("message", "")
@@ -116,11 +135,13 @@ function IntelligenceForm() {
       set("evaluators", result.evaluators)
       set("router", result.router)
       set("detected", false)
-      set("principal", value(result.settings.principal))
-      set("fast", value(result.settings.fast))
+      // With nothing saved yet, the router's recommendations are preselected.
+      set("principal", value(result.settings.principal) || (recommendation("principal")?.value ?? ""))
+      set("fast", result.settings.principal ? value(result.settings.fast) : (recommendation("fast")?.value ?? ""))
       set("transport", result.settings.evaluator?.transport ?? IntelligenceClient.evaluatorPreset().transport)
       set("baseURL", result.settings.evaluator?.baseURL ?? IntelligenceClient.evaluatorPreset().baseURL)
       set("model", result.settings.evaluator?.model ?? IntelligenceClient.evaluatorPreset().model)
+      if (!result.settings.evaluator && result.router?.evaluator) selectDetected(result.router.evaluator)
       set("loaded", true)
       const history = await client.history({ limit: 20 })
       if (active) {
@@ -216,6 +237,18 @@ function IntelligenceForm() {
                 {language.t(role === "principal" ? "settings.intelligence.principal" : "settings.intelligence.fast")}
               </span>
               <select class={inputClass} value={state[role]} onChange={(event) => set(role, event.currentTarget.value)}>
+                <Show when={recommendation(role)}>
+                  {(recommended) => (
+                    <optgroup label={language.t("settings.intelligence.recommended")}>
+                      <option value={recommended().value}>
+                        {language.t("settings.intelligence.recommendedModel", {
+                          name: recommended().pick.name,
+                          provider: recommended().pick.provider.name,
+                        })}
+                      </option>
+                    </optgroup>
+                  )}
+                </Show>
                 <option value="">
                   {language.t(role === "principal" ? "settings.intelligence.select" : "settings.intelligence.reuse")}
                 </option>
@@ -227,6 +260,9 @@ function IntelligenceForm() {
                   )}
                 </For>
               </select>
+              <Show when={recommendation(role)}>
+                {(recommended) => <span class="text-12-regular text-text-weak">{recommended().pick.reason}</span>}
+              </Show>
             </label>
           )}
         </For>
@@ -237,18 +273,8 @@ function IntelligenceForm() {
               class={inputClass}
               value={state.detected ? "detected" : state.transport}
               onChange={(event) => {
-                // The detected router's S1 model at its connected address, with the provider's credential.
                 const detected = state.router?.evaluator
-                if (event.currentTarget.value === "detected" && detected) {
-                  set("detected", true)
-                  set("transport", detected.transport)
-                  set("baseURL", detected.baseURL)
-                  set("model", detected.model)
-                  set("settings", (settings) => ({ ...settings, evaluator: detected }))
-                  set("key", "")
-                  set("discovered", [])
-                  return
-                }
+                if (event.currentTarget.value === "detected" && detected) return selectDetected(detected)
                 const selected = state.evaluators.find(
                   (option) => option.evaluator.transport === event.currentTarget.value,
                 )

@@ -1,9 +1,10 @@
-import { describe, expect } from "bun:test"
+import { describe, expect, test } from "bun:test"
 import { Deferred, Effect, Queue } from "effect"
 import path from "node:path"
 import { cliIt, isolatedEnv, withCliFixture } from "../lib/cli-process"
 import { it } from "../lib/effect"
 import { testProviderConfig } from "../lib/test-provider"
+import { recommendedFirst } from "../../src/cli/cmd/setup"
 
 const interactive = process.platform === "win32" ? it.live.skip : it.live
 
@@ -71,6 +72,57 @@ describe("redcode setup", () => {
       ),
     90_000,
   )
+})
+
+describe("redcode setup recommendations", () => {
+  const choices = [
+    { value: "mock/model", label: "Mock: Model" },
+    { value: "red-router/cx/gpt-6-luna", label: "RedRouter: GPT-6 Luna" },
+    { value: "red-router/cc/claude-opus-5-5", label: "RedRouter: Claude Opus 5.5" },
+  ]
+  const router = {
+    providerID: "red-router",
+    baseURL: "http://127.0.0.1:25050/v1",
+    detection: { kind: "red-router" as const, features: ["recommendations" as const], checkedAt: 0 },
+    recommended: {
+      default: {
+        id: "cc/claude-opus-5-5",
+        name: "Claude Opus 5.5",
+        provider: { slug: "cc", name: "Claude Code" },
+        reason: "Strongest connected coding model.",
+      },
+      fast: {
+        id: "cx/gpt-6-missing",
+        name: "GPT-6 Missing",
+        provider: { slug: "cx", name: "OpenAI Codex" },
+        reason: "Cheapest capable fast model.",
+      },
+    },
+  }
+
+  test("moves the recommended model first, labelled with its origin and reason, and preselects it", () => {
+    expect(recommendedFirst(choices, router, "default")).toEqual({
+      options: [
+        {
+          value: "red-router/cc/claude-opus-5-5",
+          label: "Recommended: Claude Opus 5.5 · via RedRouter · Claude Code",
+          hint: "Strongest connected coding model.",
+        },
+        { value: "mock/model", label: "Mock: Model" },
+        { value: "red-router/cx/gpt-6-luna", label: "RedRouter: GPT-6 Luna" },
+      ],
+      initialValue: "red-router/cc/claude-opus-5-5",
+    })
+  })
+
+  test("keeps the list when there is no router, no recommendation or the router does not list it", () => {
+    expect(recommendedFirst(choices, undefined, "default")).toEqual({ options: choices, initialValue: undefined })
+    expect(recommendedFirst(choices, { ...router, recommended: undefined }, "default")).toEqual({
+      options: choices,
+      initialValue: undefined,
+    })
+    expect(recommendedFirst(choices, router, "fast")).toEqual({ options: choices, initialValue: undefined })
+  })
 })
 
 const settingsPath = (home: string) => path.join(home, ".red", "code", "intelligence.json")
