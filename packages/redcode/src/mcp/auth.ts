@@ -43,6 +43,11 @@ export interface Interface {
   readonly getForUrl: (mcpName: string, serverUrl: string) => Effect.Effect<Entry | undefined>
   readonly set: (mcpName: string, entry: Entry, serverUrl?: string) => Effect.Effect<void>
   readonly remove: (mcpName: string) => Effect.Effect<void>
+  readonly invalidate: (
+    mcpName: string,
+    type: "all" | "client" | "tokens",
+    presented: Tokens | undefined,
+  ) => Effect.Effect<void>
   readonly updateTokens: (mcpName: string, tokens: Tokens, serverUrl?: string) => Effect.Effect<void>
   readonly updateClientInfo: (mcpName: string, clientInfo: ClientInfo, serverUrl?: string) => Effect.Effect<void>
   readonly updateCodeVerifier: (mcpName: string, codeVerifier: string) => Effect.Effect<void>
@@ -109,6 +114,34 @@ const layer = Layer.effect(
       })
     })
 
+    // Drops credentials a server rejected. `presented` is the token set the caller sent: with refresh-token
+    // rotation another connection or process may already have replaced it, and dropping the newer tokens would
+    // strand every connection until a manual re-auth. The check and the write share the file lock, so a stale
+    // read can never be written back over the rotated tokens.
+    const invalidate = Effect.fn("McpAuth.invalidate")(function* (
+      mcpName: string,
+      type: "all" | "client" | "tokens",
+      presented: Tokens | undefined,
+    ) {
+      yield* mutate((data) => {
+        const entry = data[mcpName]
+        if (!entry) return undefined
+        if (type === "client") {
+          delete entry.clientInfo
+          return { ...data, [mcpName]: entry }
+        }
+        if (entry.tokens?.accessToken !== presented?.accessToken) return undefined
+        if (entry.tokens?.refreshToken !== presented?.refreshToken) return undefined
+        if (type === "tokens") {
+          delete entry.tokens
+          return { ...data, [mcpName]: entry }
+        }
+        const next = { ...data }
+        delete next[mcpName]
+        return next
+      })
+    })
+
     const updateField = <K extends keyof Entry>(field: K, spanName: string) =>
       Effect.fn(`McpAuth.${spanName}`)(function* (mcpName: string, value: NonNullable<Entry[K]>, serverUrl?: string) {
         yield* mutate((data) => {
@@ -147,6 +180,7 @@ const layer = Layer.effect(
       getForUrl,
       set,
       remove,
+      invalidate,
       updateTokens,
       updateClientInfo,
       updateCodeVerifier,
