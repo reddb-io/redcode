@@ -120,17 +120,30 @@ jobs:
           GITHUB_ACTIONS=false bun turbo test --filter=!@reddb-io/redcode --filter=!@reddb-io/redcode-core --filter=!@reddb-io/redcode-tui --filter=!@reddb-io/redcode-server "${scope[@]}" --continue=dependencies-successful || status=1
           exit $status
 
-      # TEMPORARY (revert before merge): repeat the parallel suites to catch a core stall.
+      # TEMPORARY (revert before merge): repeat core suites to catch a stall.
       - name: Fish for core stall
         if: ${{ !cancelled() }}
         timeout-minutes: 45
+        working-directory: packages/core
         run: |
-          for i in 1 2 3 4 5 6; do
-            echo "::group::attempt $i"
-            GITHUB_ACTIONS=false bun turbo test:ci --force --filter=@reddb-io/redcode-core --filter=@reddb-io/redcode-tui --filter=@reddb-io/redcode-server --continue --log-order=stream > fish-$i.log 2>&1 || true
-            grep -E 'test-ci|Ran [0-9]+ tests|Interrupted|still running|\(fail\)|pid [0-9]+|^\S+ +[0-9]+ ' fish-$i.log | grep -v 'redcode-tui\|redcode-server' | cut -c1-300 || true
-            echo "::endgroup::"
-            if grep -q 'test run stalled' fish-$i.log; then sed -n '/test run stalled/,$p' fish-$i.log | head -120; fi
+          sudo sysctl -w kernel.yama.ptrace_scope=0 || true
+          command -v gdb || (sudo apt-get install -y -qq gdb > /dev/null 2>&1 || true)
+          sed -i 's/const SILENCE_MS = 4 \* 60_000/const SILENCE_MS = 60_000/' script/test-ci.ts
+          for i in $(seq 1 30); do
+            if ! GITHUB_ACTIONS=false timeout 600 bun run test:ci test/plugin > fish-plugin-$i.log 2>&1; then
+              echo "::group::plugin attempt $i failed"
+              grep -E '\(fail\)' fish-plugin-$i.log || true
+              sed -n '/test run stalled/,$p' fish-plugin-$i.log | head -400
+              echo "::endgroup::"
+            fi
+          done
+          for i in 1 2 3 4; do
+            if ! GITHUB_ACTIONS=false timeout 900 bun run test:ci > fish-all-$i.log 2>&1; then
+              echo "::group::full attempt $i failed"
+              grep -E '\(fail\)' fish-all-$i.log || true
+              sed -n '/test run stalled/,$p' fish-all-$i.log | head -400
+              echo "::endgroup::"
+            fi
           done
 
       # Saved even when a suite fails: the packages that passed are the ones worth skipping next time.

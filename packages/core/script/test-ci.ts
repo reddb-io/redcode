@@ -64,9 +64,16 @@ async function forward(stream: ReadableStream<Uint8Array>, out: NodeJS.WriteStre
 async function stall(reason: string) {
   const tree = processTree(child.pid)
   console.error(`\n[test-ci] core test run stalled: ${reason}. Stopping it.`)
+  const stuck = unfinished()
   console.error("[test-ci] files each worker started and has not finished:")
-  console.error(unfinished().join("\n") || "  (none recorded)")
+  console.error(
+    stuck
+      .map((item) => `  pid ${item.pid}${item.alive ? "" : " (gone)"}: ${item.file} (${item.elapsed}, ${item.test})`)
+      .join("\n") ||
+      "  (none recorded)",
+  )
   if (tree.length) console.error(`[test-ci] process tree:\n${tree.map((row) => `  ${row.line}`).join("\n")}`)
+  for (const item of stuck.filter((item) => item.alive)) console.error(threads(item.pid))
   // Bun answers SIGTERM with the files it was still running; wait for that before forcing it.
   child.kill("SIGTERM")
   const exited = await Promise.race([child.exited.then(() => true), Bun.sleep(GRACE_MS).then(() => false)])
@@ -78,14 +85,40 @@ async function stall(reason: string) {
   }
 }
 
-/** `<pid> <file> (<elapsed>)` for every worker whose last recorded file never finished. */
+/** Every worker whose last recorded file never finished. */
 function unfinished() {
-  return fs.readdirSync(progress).flatMap((pid) => {
-    const last = fs.readFileSync(path.join(progress, pid), "utf8").trim().split("\n").at(-1)?.split(" ")
-    if (last?.[0] !== "start") return []
-    const alive = processAlive(Number(pid))
-    return [`  pid ${pid}${alive ? "" : " (gone)"}: ${last.slice(2).join(" ")} (${minutes(Date.now() - Number(last[1]))})`]
+  return fs.readdirSync(progress).flatMap((name) => {
+    const lines = fs.readFileSync(path.join(progress, name), "utf8").trim().split("\n")
+    const start = lines.findLastIndex((line) => line.startsWith("start "))
+    if (start === -1 || lines.slice(start).some((line) => line.startsWith("end "))) return []
+    const fields = lines[start]!.split(" ")
+    const last = lines.at(-1)!
+    const pid = Number(name)
+    return [
+      {
+        pid,
+        alive: processAlive(pid),
+        file: fields.slice(2).join(" "),
+        elapsed: minutes(Date.now() - Number(fields[1])),
+        test: last === lines[start] ? "no test started" : `test ${last.split(" ").slice(2).join(" ")}`,
+      },
+    ]
   })
+}
+
+/**
+ * A stuck worker's threads (which one is spinning) and, where gdb is installed, their native
+ * stacks: a main thread draining microtasks forever looks different from one blocked in a syscall.
+ */
+function threads(pid: number) {
+  if (process.platform !== "linux") return ""
+  const text = (command: string[], timeout: number) =>
+    Bun.spawnSync(command, { timeout, stderr: "pipe" }).stdout.toString().trim()
+  const list = text(["ps", "-L", "-o", "tid=,stat=,pcpu=,time=,comm=", "-p", String(pid)], 10_000)
+  const stacks = Bun.which("gdb")
+    ? text(["gdb", "-p", String(pid), "-batch", "-nx", "-ex", "thread apply all bt 40"], 90_000)
+    : "(gdb not installed)"
+  return `[test-ci] threads of ${pid}:\n${list}\n[test-ci] native stacks of ${pid}:\n${stacks}`
 }
 
 /** The runner and its descendants, with state and wait channel; empty where `ps` is unavailable. */

@@ -6,7 +6,7 @@ import os from "os"
 import path from "path"
 import fs from "fs/promises"
 import { appendFileSync } from "fs"
-import { afterAll } from "bun:test"
+import { afterAll, afterEach, beforeEach } from "bun:test"
 import { removeOnExit, removeTempPaths, sharePlaywrightBrowsers } from "./fixture/temp-root"
 
 // Set by script/test-ci.ts only: every worker notes each file it starts and finishes, so a stalled CI
@@ -15,6 +15,11 @@ const progress = process.env.REDCODE_TEST_PROGRESS
 if (progress) {
   const log = path.join(progress, String(process.pid))
   appendFileSync(log, `start ${Date.now()} ${Bun.main}\n`)
+  // Tests are numbered in run order: a stall names the test it is in, or none when the file
+  // never finished loading.
+  let count = 0
+  beforeEach(() => appendFileSync(log, `test ${Date.now()} #${++count} started\n`))
+  afterEach(() => appendFileSync(log, `test ${Date.now()} #${count} finished\n`))
   afterAll(() => appendFileSync(log, `end ${Date.now()} ${Bun.main}\n`))
 }
 
