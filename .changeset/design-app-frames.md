@@ -1,5 +1,0 @@
----
-"@reddb-io/redcode": minor
----
-
-App designs are now previewed in a phone frame drawn in CSS and SVG: an iPhone (Dynamic Island, status bar, home indicator) or an Android phone (punch-hole camera, status bar, gesture bar), scaled to fit the preview. An iOS/Android switch changes the frame and viewport and saves the platform on the design, so the agent sees it. The framed prototype gets the phone's safe-area insets as `--safe-area-top` and `--safe-area-bottom`. Annotation cards now land on the element in a scaled preview. Audit, compare and verify emulate each phone (viewport, device pixel ratio, touch, mobile user agent and safe-area insets). On app designs the small-control check uses 44pt on iOS and 48dp on Android. The `mobile-app` playbook now covers the app shell, the navigation stack, sheets, safe areas, touch targets, HIG versus Material, and screens and params as app navigation and states. The Design review notice in the TUI and the agent's per-turn Design context show each design's target. The review width picker offers the configured `design.breakpoints` for web designs.
