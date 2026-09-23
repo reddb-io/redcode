@@ -3,6 +3,7 @@ import { ProviderRouter } from "@reddb-io/redcode-core/provider/router"
 import type { HttpClient } from "effect/unstable/http"
 import type { Auth } from "@/auth"
 import type { Config } from "@/config/config"
+import { isRecord } from "@/util/record"
 import { ProviderDiscovery } from "./discovery"
 import { OpenAICompatible } from "./openai-compatible"
 
@@ -59,5 +60,32 @@ export const connect = Effect.fn("RedRouter.connect")(function* (
   const router = yield* ProviderRouter.detect({ baseURL: result.baseURL, apiKey: input.apiKey, fresh: true })
   return { baseURL: result.baseURL, models: result.models, router }
 })
+
+/**
+ * Re-reads the models of a router connection with its saved credential and saves them as a
+ * reconnection would: the name, package, headers and credential stay, router fields and limits the
+ * router reported follow it, and models it no longer lists that carry nothing but discovery's
+ * fields are removed. Only a connection saved in the global configuration file for this very
+ * address is refreshed; anything else (a provider declared by hand, or pointed elsewhere by a
+ * project file) is left alone and `undefined` is returned.
+ */
+export const refresh = Effect.fn("RedRouter.refresh")(function* (
+  deps: {
+    http: HttpClient.HttpClient
+    config: Config.Interface
+    auth: Auth.Interface
+    catalog?: ProviderDiscovery.CatalogLimit
+  },
+  input: { readonly providerID: string; readonly baseURL: string },
+) {
+  const file = yield* deps.config.readGlobalFile()
+  const baseURL = record(record(record(file.data.provider)[input.providerID]).options).baseURL
+  if (typeof baseURL !== "string" || !ProviderRouter.sameEndpoint(baseURL, input.baseURL)) return
+  return yield* OpenAICompatible.connect(deps, { providerID: input.providerID, baseURL })
+})
+
+function record(value: unknown): Record<string, unknown> {
+  return isRecord(value) ? value : {}
+}
 
 export * as RedRouter from "./red-router"

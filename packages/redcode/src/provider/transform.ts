@@ -761,8 +761,14 @@ function adaptiveThinkingDefault(apiId: string) {
 }
 
 // Claude Opus 5.5 and the Fable and Mythos models always think, and the API answers a forced
-// tool_choice ("any" or a named tool) with a 400 for them.
-export function supportsForcedToolChoice(model: Provider.Model) {
+// tool_choice ("any" or a named tool) with a 400 for them. A router says so in the parameters
+// discovery saved for the model (`declared`, its configuration): a RedRouter combo refuses it when
+// any member does, whatever the combo is called.
+export function supportsForcedToolChoice(
+  model: Provider.Model,
+  declared?: { readonly router?: { readonly parameters?: { readonly forced_tool_choice?: boolean } } },
+) {
+  if (declared?.router?.parameters?.forced_tool_choice === false) return false
   const id = model.api.id.toLowerCase()
   if (!id.includes("claude-")) return true
   if (/(?:^|[^a-z])(?:fable|mythos)(?:[^a-z]|$)/.test(id)) return false

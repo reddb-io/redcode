@@ -16,6 +16,7 @@ export const Header = {
   tokenSaver: "x-red-router-token-saver",
   servedModel: "x-redrouter-served-model",
   cost: "x-redrouter-cost-usd",
+  catalogVersion: "x-redrouter-catalog-version",
   retryAt: "x-9router-retry-at",
   reason: "x-9router-reason",
 } as const
@@ -153,17 +154,23 @@ function validHintPair(key: string, value: string) {
 }
 
 /**
- * What RedRouter reported about a finished response: the model that served it and its cost in
- * USD. The cost header is set on non-streaming responses; streams carry `usage.cost` in their
- * final usage instead, which is trusted only next to RedRouter's served-model header so another
- * provider's `usage.cost` (in its own units) is never read as dollars.
+ * What RedRouter reported about a finished response: the model that served it, its cost in USD
+ * and the version of the model catalog the key sees. The cost header is set on non-streaming
+ * responses; streams carry `usage.cost` in their final usage instead, which is trusted only next
+ * to RedRouter's served-model header so another provider's `usage.cost` (in its own units) is
+ * never read as dollars.
  */
 export function reported(headers: Readonly<Record<string, string>> | undefined, usage?: unknown) {
   const servedModel = header(headers, Header.servedModel)
   const cost =
     dollars(header(headers, Header.cost)) ?? (servedModel && isRecord(usage) ? dollars(usage.cost) : undefined)
-  if (servedModel === undefined && cost === undefined) return
-  return { ...(servedModel ? { servedModel } : {}), ...(cost !== undefined ? { costUSD: cost } : {}) }
+  const catalogVersion = header(headers, Header.catalogVersion)
+  if (servedModel === undefined && cost === undefined && catalogVersion === undefined) return
+  return {
+    ...(servedModel ? { servedModel } : {}),
+    ...(cost !== undefined ? { costUSD: cost } : {}),
+    ...(catalogVersion ? { catalogVersion } : {}),
+  }
 }
 
 /** A header value by case-insensitive name; blank is absent. */
@@ -179,6 +186,46 @@ export function header(headers: Readonly<Record<string, string>> | undefined, na
 /** The USD cost a step's provider metadata carries from `reported`, when RedRouter priced it. */
 export function reportedCost(metadata: Readonly<Record<string, Readonly<Record<string, unknown>>>> | undefined) {
   return dollars(metadata?.[METADATA]?.costUSD)
+}
+
+/** The catalog version a step's provider metadata carries from `reported`. */
+export function reportedCatalogVersion(
+  metadata: Readonly<Record<string, Readonly<Record<string, unknown>>>> | undefined,
+) {
+  const version = metadata?.[METADATA]?.catalogVersion
+  return typeof version === "string" && version ? version : undefined
+}
+
+const catalogs = new Map<string, string>()
+
+/**
+ * Records the catalog version a provider's models were last read at, from the model list itself
+ * (discovery) or from a response. `scope` tells apart connections that share an address with
+ * different keys, since each key sees its own catalog.
+ */
+export function recordCatalog(scope: string, baseURL: string, version: string) {
+  const base = normalizeURL(baseURL)
+  if (base && version) catalogs.set(`${scope}\n${base}`, version)
+}
+
+/**
+ * Whether a response reports a catalog version other than the one last recorded for this
+ * connection, meaning its saved models (combos, members, limits) may be stale. The version is
+ * recorded at once, so each version answers true at most once however many responses carry it.
+ * A connection with nothing recorded (models read by an earlier process) counts as changed.
+ */
+export function catalogChanged(scope: string, baseURL: string, version: string) {
+  const base = normalizeURL(baseURL)
+  if (!base || !version) return false
+  const key = `${scope}\n${base}`
+  if (catalogs.get(key) === version) return false
+  catalogs.set(key, version)
+  return true
+}
+
+/** Drops recorded catalog versions, for tests. */
+export function forgetCatalogs() {
+  catalogs.clear()
 }
 
 function dollars(value: unknown) {
@@ -243,6 +290,7 @@ function fromCapabilities(document: Record<string, unknown>, now: number): Route
   const systemOne = record(document.systemone)
   const decision = record(document.decision)
   const session = record(document.session)
+  const catalog = record(document.catalog)
   const models = Array.isArray(systemOne.models)
     ? systemOne.models.filter((item): item is string => typeof item === "string" && item.length > 0)
     : []
@@ -258,11 +306,13 @@ function fromCapabilities(document: Record<string, unknown>, now: number): Route
     ["served-model", typeof document.served_model_header === "string"],
     ["cost", typeof document.cost_header === "string"],
     ["stream-usage-cost", document.stream_usage_cost === true],
+    ["catalog", catalog.model_parameters === true],
   ]
   return {
     kind: "red-router",
     ...(typeof document.version === "string" ? { version: document.version } : {}),
     ...(typeof document.instance_id === "string" ? { instanceID: document.instance_id } : {}),
+    ...(typeof catalog.version === "string" && catalog.version ? { catalogVersion: catalog.version } : {}),
     features: flags.filter(([, on]) => on).map(([feature]) => feature),
     systemOne: { available, models },
     checkedAt: now,

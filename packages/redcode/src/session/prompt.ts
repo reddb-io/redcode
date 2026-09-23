@@ -2707,6 +2707,8 @@ const layer = Layer.effect(
             // is compacted first and, once compaction has had its two chances, not sent at all.
             const requestEstimate = overhead + Token.estimate(JSON.stringify(stepMessages))
             const cfg = yield* config.get()
+            // What discovery saved about the model: a router's parameters say what it accepts.
+            const declared = cfg.provider?.[model.providerID]?.models?.[model.id]
             const observed = yield* limits.get(
               model.providerID,
               model.id,
@@ -2799,7 +2801,7 @@ const layer = Layer.effect(
               // Models that always think reject a forced tool choice; they are asked for the tool instead.
               toolChoice:
                 format.type === "json_schema"
-                  ? ProviderTransform.supportsForcedToolChoice(model)
+                  ? ProviderTransform.supportsForcedToolChoice(model, declared)
                     ? "required"
                     : "auto"
                   : undefined,
@@ -2859,7 +2861,7 @@ const layer = Layer.effect(
               if (format.type === "json_schema") {
                 // Without a forced tool choice the model may answer in text; remind it before failing.
                 if (
-                  !ProviderTransform.supportsForcedToolChoice(model) &&
+                  !ProviderTransform.supportsForcedToolChoice(model, declared) &&
                   structuredReminders < (format.retryCount ?? 2)
                 ) {
                   structuredReminders++
