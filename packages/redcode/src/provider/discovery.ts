@@ -365,14 +365,14 @@ export function routerInfo(item: Record<string, unknown>): RouterInfo | undefine
   const aliases = strings(item.aliases)?.filter((alias) => alias !== item.id && validModelID(alias))
   const variants = routerVariants(item.variants)
   const memberParameters = routerMemberParameters(item.member_parameters)
+  const basis =
+    item.parameters_basis === "lead" ? "lead" : item.parameters_basis === "strictest" ? "strictest" : undefined
   const info = {
     ...(typeof item.strategy === "string" && item.strategy ? { strategy: item.strategy } : {}),
     ...(levels?.length ? { thinking_levels: levels } : {}),
     ...(isRecord(item.capabilities) ? { capabilities: item.capabilities } : {}),
     ...(parameters ? { parameters } : {}),
-    ...(item.parameters_basis === "lead" || item.parameters_basis === "strictest"
-      ? { parameters_basis: item.parameters_basis }
-      : {}),
+    ...(basis ? { parameters_basis: basis } : {}),
     ...(members?.length ? { members } : {}),
     ...(memberParameters?.length ? { member_parameters: memberParameters } : {}),
     ...(upstream ? { provider: upstream } : {}),

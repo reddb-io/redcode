@@ -7,8 +7,12 @@ import { ProviderTransform } from "../../src/provider/transform"
 import type { Provider } from "../../src/provider/provider"
 import type { ConfigProviderV1 } from "@reddb-io/redcode-core/v1/config/provider"
 
-const LEAD = { context_length: 1_000_000, max_completion_tokens: 64_000, thinking_levels: ["none", "low", "high"] }
-const MEMBER = {
+const LEAD: ConfigProviderV1.RouterParameters = {
+  context_length: 1_000_000,
+  max_completion_tokens: 64_000,
+  thinking_levels: ["none", "low", "high"],
+}
+const MEMBER: ConfigProviderV1.RouterParameters = {
   context_length: 200_000,
   max_completion_tokens: 16_000,
   thinking_levels: ["none", "low", "medium"],
@@ -18,7 +22,7 @@ const MEMBER = {
 
 const media = { text: true, audio: false, image: false, video: false, pdf: false }
 
-function combo(limit = { context: LEAD.context_length, output: LEAD.max_completion_tokens }): Provider.Model {
+function combo(limit = { context: 1_000_000, output: 64_000 }): Provider.Model {
   const model: Provider.Model = {
     id: ModelV2.ID.make("fast"),
     providerID: ProviderV2.ID.make("red-router"),
@@ -41,7 +45,7 @@ function combo(limit = { context: LEAD.context_length, output: LEAD.max_completi
     release_date: "",
     variants: {},
   }
-  return { ...model, variants: ProviderTransform.effortVariants(model, LEAD.thinking_levels) }
+  return { ...model, variants: ProviderTransform.effortVariants(model, ["none", "low", "high"]) }
 }
 
 function declared(

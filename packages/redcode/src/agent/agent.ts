@@ -566,7 +566,7 @@ const layer = Layer.effect(
         // generateObject forces a JSON tool wherever a provider lacks native structured output
         // (Vertex, gateway ids), and models that refuse a forced tool choice answer that with a 400.
         const declared = cfg.provider?.[resolved.providerID]?.models?.[resolved.id]
-        if (!ProviderTransform.supportsForcedToolChoice(resolved, declared))
+        if (!ProviderTransform.supportsForcedToolChoice(resolved, declared?.router?.parameters))
           return yield* Effect.promise(() => generatePromptedAgent(params))
 
         return yield* Effect.promise(() => generateObject(params).then((r) => r.object))
