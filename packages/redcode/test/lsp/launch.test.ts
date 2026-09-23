@@ -1,6 +1,7 @@
 import { describe, expect, test } from "bun:test"
 import fs from "fs/promises"
 import path from "path"
+import { createMessageConnection, StreamMessageReader, StreamMessageWriter } from "vscode-jsonrpc/node"
 import { spawn } from "../../src/lsp/launch"
 import { tmpdir } from "../fixture/fixture"
 
@@ -39,6 +40,36 @@ describe("lsp.launch", () => {
       expect(proc.stdin.destroyed).toBe(true)
     } finally {
       proc.kill()
+    }
+  })
+
+  // vscode-jsonrpc's sendRequest rejects its promise when the write fails, then rethrows the
+  // write error from an async Promise executor, where no one can catch it. A server that exits
+  // at startup turned that into an unhandled EPIPE on Windows (node-options-recovery.test.ts).
+  // Writing after the child exited fails the write on every platform.
+  test("a request to a server that already exited rejects without an unhandled rejection", async () => {
+    const unhandled: unknown[] = []
+    const record = (reason: unknown) => unhandled.push(reason)
+    process.on("unhandledRejection", record)
+    const proc = spawn(process.execPath, ["-e", "process.exit(0)"])
+    try {
+      await proc.exited
+      const connection = createMessageConnection(
+        new StreamMessageReader(proc.stdout),
+        new StreamMessageWriter(proc.stdin),
+      )
+      connection.listen()
+      const outcome = await connection.sendRequest("initialize", {}).then(
+        () => "resolved",
+        () => "rejected",
+      )
+      connection.dispose()
+      // Bun reports unhandled rejections from the check phase, not from a timer.
+      await new Promise((resolve) => setImmediate(resolve))
+      expect(outcome).toBe("rejected")
+      expect(unhandled).toEqual([])
+    } finally {
+      process.off("unhandledRejection", record)
     }
   })
 })

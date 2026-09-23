@@ -1,0 +1,14 @@
+diff --git a/lib/common/connection.js b/lib/common/connection.js
+--- a/lib/common/connection.js
++++ b/lib/common/connection.js
+@@ -1088,7 +1088,9 @@
+                     responsePromises.delete(id);
+                     responsePromise.reject(new messages_1.ResponseError(messages_1.ErrorCodes.MessageWriteError, error.message ? error.message : 'Unknown reason'));
+                     logger.error(`Sending request failed.`);
+-                    throw error;
++                    // The request promise is already rejected above. Rethrowing from this async
++                    // executor only rejects a promise nobody holds: an unhandled rejection whenever
++                    // the peer is gone (EPIPE from a server that exited at startup).
+                 }
+             });
+         },

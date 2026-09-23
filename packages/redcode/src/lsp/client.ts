@@ -1,4 +1,5 @@
 import path from "path"
+import { finished } from "stream/promises"
 import { pathToFileURL, fileURLToPath } from "url"
 import { createMessageConnection, StreamMessageReader, StreamMessageWriter } from "vscode-jsonrpc/node"
 import type { Diagnostic as VSCodeDiagnostic } from "vscode-languageserver-types"
@@ -18,6 +19,7 @@ const DIAGNOSTICS_REQUEST_TIMEOUT_MS = 3_000
 
 const INITIALIZE_TIMEOUT_MS = 45_000
 const STDERR_LIMIT = 2_000
+const STDERR_SETTLE_MS = 2_000
 
 // LSP spec constants
 const FILE_CHANGE_CREATED = 1
@@ -263,7 +265,10 @@ export async function create(input: {
       }),
     ]),
     INITIALIZE_TIMEOUT_MS,
-  ).catch((err) => {
+  ).catch(async (err) => {
+    // A server that dies at startup can fail the initialize write (EPIPE on Windows) before
+    // its stderr has been read, and recovery finds the rejected NODE_OPTIONS flag in stderr.
+    await withTimeout(finished(input.server.process.stderr), STDERR_SETTLE_MS).catch(() => undefined)
     throw new InitializeError({ serverID: input.serverID, cause: err, stderr: stderr.trim() || undefined })
   })
 
