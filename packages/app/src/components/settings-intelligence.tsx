@@ -60,6 +60,9 @@ function IntelligenceForm() {
     message: "",
     discovered: [] as { id: string; name: string }[],
     evaluators: [] as Intelligence.EvaluatorOption[],
+    router: undefined as Intelligence.DetectedRouter | undefined,
+    // The S1 connection shown is the detected RedRouter rather than a catalog transport.
+    detected: false,
   })
   const value = (ref?: Model.Ref) => (ref ? `${ref.providerID}/${ref.id}` : "")
   const ref = (text: string) => ({
@@ -111,6 +114,8 @@ function IntelligenceForm() {
       set("flag", mode.source === "flag" ? mode.reasoning : "")
       set("environment", result.environment)
       set("evaluators", result.evaluators)
+      set("router", result.router)
+      set("detected", false)
       set("principal", value(result.settings.principal))
       set("fast", value(result.settings.fast))
       set("transport", result.settings.evaluator?.transport ?? IntelligenceClient.evaluatorPreset().transport)
@@ -230,12 +235,25 @@ function IntelligenceForm() {
             <span>{language.t("settings.intelligence.connection")}</span>
             <select
               class={inputClass}
-              value={state.transport}
+              value={state.detected ? "detected" : state.transport}
               onChange={(event) => {
+                // The detected router's S1 model at its connected address, with the provider's credential.
+                const detected = state.router?.evaluator
+                if (event.currentTarget.value === "detected" && detected) {
+                  set("detected", true)
+                  set("transport", detected.transport)
+                  set("baseURL", detected.baseURL)
+                  set("model", detected.model)
+                  set("settings", (settings) => ({ ...settings, evaluator: detected }))
+                  set("key", "")
+                  set("discovered", [])
+                  return
+                }
                 const selected = state.evaluators.find(
                   (option) => option.evaluator.transport === event.currentTarget.value,
                 )
                 if (!selected) return
+                set("detected", false)
                 set("transport", selected.evaluator.transport)
                 set("baseURL", selected.evaluator.baseURL)
                 set("model", selected.evaluator.model)
@@ -244,6 +262,17 @@ function IntelligenceForm() {
                 set("discovered", [])
               }}
             >
+              <Show when={state.router?.evaluator && state.router}>
+                {(router) => (
+                  <option value="detected">
+                    {language.t("settings.intelligence.detectedRouter", {
+                      name:
+                        router().detection.instanceID ??
+                        (URL.canParse(router().baseURL) ? new URL(router().baseURL).host : router().baseURL),
+                    })}
+                  </option>
+                )}
+              </Show>
               <For each={state.evaluators}>
                 {(option) => (
                   <option value={option.evaluator.transport}>

@@ -157,16 +157,31 @@ function configureSystemOne(service: Intelligence.Interface, previous: Settings)
     )
       return { evaluator: current, key: "" }
     const evaluators = yield* service.options()
+    // A connected RedRouter that serves System One comes first: it shares the provider's key.
+    const router = yield* service.router()
+    const detected = router?.evaluator
     const transport = yield* answer(
-      yield* select<Evaluator["transport"]>({
+      yield* select<Evaluator["transport"] | "detected">({
         message: "S1 (System One) connection",
-        // Detected local transports (for example a running RedRouter) belong ahead of the catalog.
-        options: evaluators.map((option) => ({
-          value: option.evaluator.transport,
-          label: `${option.configured ? "Configured · " : ""}${option.name}`,
-        })),
+        options: [
+          ...(router && detected
+            ? [
+                {
+                  value: "detected" as const,
+                  label: `Use RedRouter ${router.detection.instanceID ?? URL.parse(router.baseURL)?.host ?? router.baseURL} (detected)`,
+                  hint: `${detected.model} · shares the provider connection`,
+                },
+              ]
+            : []),
+          ...evaluators.map((option) => ({
+            value: option.evaluator.transport,
+            label: `${option.configured ? "Configured · " : ""}${option.name}`,
+          })),
+        ],
       }),
     )
+    if (transport === "detected")
+      return detected ? { evaluator: detected, key: "" } : yield* fail("No RedRouter with System One was detected")
     const selected = evaluators.find((option) => option.evaluator.transport === transport)
     if (!selected) return yield* fail(`Unknown S1 connection: ${transport}`)
     const baseURL = yield* answer(

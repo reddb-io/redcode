@@ -60,9 +60,10 @@ export type StreamInput = {
   /**
    * Cooperation with a detected RedRouter, ignored by every other provider: `decision: false` when
    * System One already chose this turn's tools and skills, `tokenSaver: false` for compaction and
-   * validation requests, which must reach the model whole.
+   * validation requests, which must reach the model whole, and `hint`, System One's reading of the
+   * turn, sent only when the selected model is a combo that picks its member per request.
    */
-  router?: { readonly decision?: boolean; readonly tokenSaver?: boolean }
+  router?: { readonly decision?: boolean; readonly tokenSaver?: boolean; readonly hint?: string }
   /**
    * Timing hooks. `request` runs right before every provider HTTP attempt, after all local request
    * preparation: from a stream middleware on the AI SDK path (again for each SDK retry), and per
@@ -153,7 +154,10 @@ const live: Layer.Layer<
         isWorkflow,
         hooks,
       })
-      const headers = { ...prepared.headers, ...(yield* routerHeaders(input, item, info)) }
+      const headers = {
+        ...prepared.headers,
+        ...(yield* routerHeaders(input, item, info, cfg.provider?.[input.model.providerID]?.models?.[input.model.id])),
+      }
 
       // Provider-native tool search, as SessionTools chose it for this step (a fallback attempt
       // runs without it). History keeps only search parts the request can replay, and a deferred
@@ -554,21 +558,27 @@ const live: Layer.Layer<
 /**
  * RedRouter headers for a request that asks for them. Only a connection with its own base URL is
  * probed (lazily, cached per address and key), so catalog providers never are; anything not
- * detected as RedRouter gets none.
+ * detected as RedRouter gets none. `declared` is the model's configuration, where discovery keeps
+ * what the router said about it (a combo's strategy decides whether the hint is sent).
  */
 const routerHeaders = Effect.fnUntraced(function* (
   input: StreamInput,
   provider: Provider.Info,
   auth: Auth.Info | undefined,
+  declared: { readonly router?: { readonly strategy?: string } } | undefined,
 ) {
   const wanted = input.router
-  if (!wanted || (wanted.decision !== false && wanted.tokenSaver !== false)) return {}
+  const hinted = !!wanted?.hint && ProviderRouter.routesByHint(declared?.router)
+  if (!wanted || (wanted.decision !== false && wanted.tokenSaver !== false && !hinted)) return {}
   const baseURL = provider.options.baseURL
   if (typeof baseURL !== "string" || !["@ai-sdk/openai-compatible", "@ai-sdk/openai"].includes(input.model.api.npm))
     return {}
   const configured = provider.options.apiKey
   const apiKey = auth?.type === "api" ? auth.key : typeof configured === "string" ? configured : provider.key
-  return ProviderRouter.requestHeaders(yield* ProviderRouter.detect({ baseURL, apiKey }), wanted)
+  return ProviderRouter.requestHeaders(yield* ProviderRouter.detect({ baseURL, apiKey }), {
+    ...wanted,
+    model: declared?.router,
+  })
 })
 
 export const hasToolCalls = LLMRequestPrep.hasToolCalls

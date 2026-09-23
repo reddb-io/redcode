@@ -144,6 +144,55 @@ describe("ProviderRouter headers", () => {
     expect(ProviderRouter.requestHeaders(undefined, { tokenSaver: false })).toEqual({})
   })
 
+  test("sends a valid hint only to a hint-accepting RedRouter serving a combo that picks per request", () => {
+    const hinting: Router.Detection = { ...detected, features: ["decision", "hint"] }
+    const hint = "complexity=0.5;deliberation=0.75;needs_tool=true;tier=complex"
+    expect(ProviderRouter.requestHeaders(hinting, { hint, model: { strategy: "auto" } })).toEqual({
+      "x-red-router-hint": hint,
+    })
+    expect(ProviderRouter.requestHeaders(hinting, { hint, model: { strategy: "smart" } })).toEqual({
+      "x-red-router-hint": hint,
+    })
+    expect(ProviderRouter.requestHeaders(hinting, { hint, model: { strategy: "fallback" } })).toEqual({})
+    expect(ProviderRouter.requestHeaders(hinting, { hint })).toEqual({})
+    expect(ProviderRouter.requestHeaders(detected, { hint, model: { strategy: "auto" } })).toEqual({})
+    expect(ProviderRouter.requestHeaders(hinting, { hint: "tier=huge", model: { strategy: "auto" } })).toEqual({})
+  })
+
+  test("accepts only hints in RedRouter's grammar", () => {
+    for (const valid of [
+      "complexity=0",
+      "complexity=1",
+      "complexity=0.123456",
+      "complexity=1.000000",
+      "complexity=reasoning",
+      "deliberation=0.5;needs_tool=false;tier=simple",
+    ])
+      expect(ProviderRouter.validHint(valid)).toBe(true)
+    for (const invalid of [
+      "",
+      "complexity=1.5",
+      "complexity=0.1234567",
+      "complexity=-0",
+      "complexity=.5",
+      "deliberation=medium",
+      "needs_tool=yes",
+      "tier=0.5",
+      "mood=calm",
+      "complexity=0.5;",
+      "complexity=0.5;complexity=0.6",
+      "complexity",
+      "complexity=0.5=1",
+      " complexity=0.5",
+      `tier=simple;${"needs_tool=true;".repeat(40)}`,
+    ])
+      expect(ProviderRouter.validHint(invalid)).toBe(false)
+    expect(ProviderRouter.hintUnit(1 / 3)).toBe("0.333333")
+    expect(ProviderRouter.hintUnit(0.0000004)).toBe("0")
+    expect(ProviderRouter.hintUnit(2)).toBe("1")
+    expect(ProviderRouter.hintUnit(-1)).toBe("0")
+  })
+
   test("reads the served model and its cost, trusting usage.cost only next to RedRouter's header", () => {
     expect(
       ProviderRouter.reported({ "X-RedRouter-Served-Model": "cc/claude", "X-RedRouter-Cost-USD": "0.0125" }),

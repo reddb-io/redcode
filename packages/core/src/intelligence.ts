@@ -1386,6 +1386,40 @@ export function promptPriority(evaluation: Intelligence.Evaluation | undefined) 
   return "low" as const
 }
 
+/**
+ * The RedRouter hint for a turn, from System One's prompt classification and tool selection:
+ * complexity as a unit, deliberation as the greater of complexity and consequence, `needs_tool`
+ * when System One recommended a skill or MCP tool, and the tier from the complexity bands 0.25,
+ * 0.5 and 0.75. Answers below 0.60 confidence are unresolved and left out. It is always a valid
+ * header value or undefined; `needs_tool=false` is never claimed, since built-in tools stay
+ * available whatever System One recommended.
+ */
+export function routerHint(prompt: Intelligence.Evaluation | undefined, tools: Intelligence.Evaluation | undefined) {
+  const complexity = unitAnswer(prompt, "complexity")
+  const assessed = [complexity, unitAnswer(prompt, "consequence")].filter((unit) => unit !== undefined)
+  const needsTool = recommendations(tools, "mcp_tool").length > 0 || recommendations(prompt, "skill").length > 0
+  const value = [
+    complexity === undefined ? undefined : `complexity=${ProviderRouter.hintUnit(complexity)}`,
+    assessed.length ? `deliberation=${ProviderRouter.hintUnit(Math.max(...assessed))}` : undefined,
+    needsTool ? "needs_tool=true" : undefined,
+    complexity === undefined
+      ? undefined
+      : `tier=${complexity < 0.25 ? "simple" : complexity < 0.5 ? "medium" : complexity < 0.75 ? "complex" : "reasoning"}`,
+  ]
+    .filter((pair) => pair !== undefined)
+    .join(";")
+  return ProviderRouter.validHint(value) ? value : undefined
+}
+
+/** A reliable score answer scaled to 0..1 by its legend, or undefined. */
+function unitAnswer(evaluation: Intelligence.Evaluation | undefined, id: string) {
+  const answer = evaluation && evaluation.decision !== "unavailable" ? evaluation.answers[id] : undefined
+  if (answer?.type !== "score" || answer.confidence < 0.6 || !Number.isFinite(answer.score)) return undefined
+  const top = Object.keys(answer.legend).length - 1
+  if (top < 1) return undefined
+  return Math.min(1, Math.max(0, answer.score / top))
+}
+
 function validURL(value: string) {
   if (!URL.canParse(value)) return false
   const url = new URL(value)

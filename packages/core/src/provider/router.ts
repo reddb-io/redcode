@@ -82,22 +82,74 @@ export function sameEndpoint(a: string | undefined, b: string | undefined) {
 
 export const isRedRouter = (detection: Router.Detection | undefined) => detection?.kind === "red-router"
 
+/** The longest hint RedRouter reads; a longer header is ignored whole. */
+export const HINT_LIMIT = 512
+
 /**
  * Cooperation headers for one request to a detected RedRouter. `decision: false` turns the
  * router's own decision layer off (Redcode's System One already chose tools for this turn);
- * `tokenSaver: false` keeps the prompt intact (compaction and validation must see all of it).
- * Anything the router did not advertise is left out.
+ * `tokenSaver: false` keeps the prompt intact (compaction and validation must see all of it);
+ * `hint` tells a combo that picks its member per request (`model`, the router's own description
+ * of the selected model) what System One made of the turn. Anything the router did not
+ * advertise, and any hint outside its grammar, is left out.
  */
 export function requestHeaders(
   detection: Router.Detection | undefined,
-  input: { readonly decision?: boolean; readonly tokenSaver?: boolean },
+  input: {
+    readonly decision?: boolean
+    readonly tokenSaver?: boolean
+    readonly hint?: string
+    readonly model?: { readonly strategy?: string }
+  },
 ): Record<string, string> {
   if (!isRedRouter(detection)) return {}
   const features = new Set(detection?.features)
   return {
     ...(input.decision === false && features.has("decision") ? { [Header.decision]: "off" } : {}),
     ...(input.tokenSaver === false && features.has("token-saver") ? { [Header.tokenSaver]: "off" } : {}),
+    ...(input.hint && features.has("hint") && routesByHint(input.model) && validHint(input.hint)
+      ? { [Header.hint]: input.hint }
+      : {}),
   }
+}
+
+/**
+ * Whether the selected model is a RedRouter combo that picks its member per request, which is
+ * what a hint steers. The router chooses the model then, so Redcode never switches it itself.
+ */
+export const routesByHint = (model: { readonly strategy?: string } | undefined) =>
+  model?.strategy === "auto" || model?.strategy === "smart"
+
+/**
+ * Whether a value follows RedRouter's `x-red-router-hint` grammar: `;`-separated `key=value`
+ * pairs, at most 512 characters. Keys are `complexity` (a unit or a tier), `deliberation` (a
+ * unit), `needs_tool` (`true` or `false`) and `tier`. The router ignores the whole header when any
+ * pair is malformed or out of range, so an invalid hint must never be sent.
+ */
+export function validHint(value: string) {
+  if (!value || value.length > HINT_LIMIT) return false
+  const pairs = value.split(";").map((pair) => pair.split("="))
+  const keys = pairs.map((pair) => pair[0])
+  return (
+    new Set(keys).size === keys.length &&
+    pairs.every((pair) => pair.length === 2 && validHintPair(pair[0] ?? "", pair[1] ?? ""))
+  )
+}
+
+/** A unit in the hint's decimal form: 0 to 1 with at most six fraction digits. */
+export function hintUnit(value: number) {
+  return String(Math.round(Math.min(1, Math.max(0, value)) * 1_000_000) / 1_000_000)
+}
+
+const TIERS = new Set(["simple", "medium", "complex", "reasoning"])
+
+function validHintPair(key: string, value: string) {
+  const unit = /^[01](\.\d{1,6})?$/.test(value) && Number(value) <= 1
+  if (key === "complexity") return unit || TIERS.has(value)
+  if (key === "deliberation") return unit
+  if (key === "needs_tool") return value === "true" || value === "false"
+  if (key === "tier") return TIERS.has(value)
+  return false
 }
 
 /**
@@ -117,7 +169,11 @@ export function reported(headers: Readonly<Record<string, string>> | undefined, 
 /** A header value by case-insensitive name; blank is absent. */
 export function header(headers: Readonly<Record<string, string>> | undefined, name: string) {
   const lower = name.toLowerCase()
-  return Object.entries(headers ?? {}).find(([key]) => key.toLowerCase() === lower)?.[1]?.trim() || undefined
+  return (
+    Object.entries(headers ?? {})
+      .find(([key]) => key.toLowerCase() === lower)?.[1]
+      ?.trim() || undefined
+  )
 }
 
 /** The USD cost a step's provider metadata carries from `reported`, when RedRouter priced it. */
@@ -134,7 +190,10 @@ async function lookup(input: DetectInput) {
   const base = normalizeURL(input.baseURL)
   if (!base) return none(Date.now())
   // Keyed by a digest of the key, never the key itself: System One availability is per key.
-  const key = `${base}\n${createHash("sha256").update(input.apiKey?.trim() ?? "").digest("hex").slice(0, 16)}`
+  const key = `${base}\n${createHash("sha256")
+    .update(input.apiKey?.trim() ?? "")
+    .digest("hex")
+    .slice(0, 16)}`
   const hit = cache.get(key)
   if (!input.fresh && hit && hit.expires > Date.now()) return hit.value
   const running = pending.get(key)

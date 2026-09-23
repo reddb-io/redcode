@@ -400,6 +400,53 @@ test("prompt priority uses only confident impact and time pressure", () => {
   ).toBeUndefined()
 })
 
+test("the RedRouter hint maps confident complexity and consequence to units, tiers and tool need", () => {
+  const scored = (complexity: number, consequence: number, confidence = 1) => {
+    const base = classification({ score: 0, confidence: 1 }, { choice: "none", confidence: 1 })
+    const score = (answer: (typeof base.answers)[string], value: number) =>
+      answer?.type === "score" ? { ...answer, score: value, confidence } : answer
+    return {
+      ...base,
+      answers: {
+        ...base.answers,
+        complexity: score(base.answers.complexity, complexity),
+        consequence: score(base.answers.consequence, consequence),
+      },
+    } as typeof Evaluation.Type
+  }
+  const tools = {
+    ...scored(0, 0),
+    operation: "tool_usage",
+    answers: {
+      recommended_mcp_tool: {
+        type: "choice",
+        choice: "github_search",
+        confidence: 0.9,
+        probabilities: { github_search: 0.9, no_matching_mcp_tool: 0.1 },
+      },
+    },
+  } as typeof Evaluation.Type
+
+  expect(Intelligence.routerHint(scored(0, 0), undefined)).toBe("complexity=0;deliberation=0;tier=simple")
+  expect(Intelligence.routerHint(scored(1, 2), undefined)).toBe("complexity=0.333333;deliberation=0.666667;tier=medium")
+  expect(Intelligence.routerHint(scored(2, 0), tools)).toBe(
+    "complexity=0.666667;deliberation=0.666667;needs_tool=true;tier=complex",
+  )
+  expect(Intelligence.routerHint(scored(3, 3), undefined)).toBe("complexity=1;deliberation=1;tier=reasoning")
+  // Out-of-range scores are clamped rather than producing a header the router would reject.
+  expect(Intelligence.routerHint(scored(7, -2), undefined)).toBe("complexity=1;deliberation=1;tier=reasoning")
+  // Unresolved answers say nothing; tool guidance alone still does.
+  expect(Intelligence.routerHint(scored(3, 3, 0.59), undefined)).toBeUndefined()
+  expect(Intelligence.routerHint(scored(3, 3, 0.59), tools)).toBe("needs_tool=true")
+  expect(Intelligence.routerHint({ ...scored(3, 3), decision: "unavailable" }, undefined)).toBeUndefined()
+  expect(Intelligence.routerHint(undefined, undefined)).toBeUndefined()
+  for (const complexity of [0, 0.5, 0.74, 0.75, 1, 1.5, 2, 2.25, 2.999999, 3])
+    for (const consequence of [0, 1, 3]) {
+      const hint = Intelligence.routerHint(scored(complexity, consequence), tools)
+      expect(hint === undefined || ProviderRouter.validHint(hint)).toBe(true)
+    }
+})
+
 test("clarification policy permits inspection under uncertainty and never grants external authorization", () => {
   expect(
     Intelligence.promptContext(classification({ score: 0, confidence: 1 }, { choice: "none", confidence: 1 }, 0.8)),
