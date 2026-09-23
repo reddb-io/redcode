@@ -24,7 +24,7 @@ function fakes(
 ) {
   const calls: string[] = []
   const writes: Write[] = []
-  const saved: Settings[] = []
+  const saved: unknown[] = []
   const forgotten: Array<[string, string]> = []
   const credentials: Record<string, Auth.Info> = { ...input.auth }
   const config = TestConfig.make({
