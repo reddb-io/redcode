@@ -120,6 +120,19 @@ jobs:
           GITHUB_ACTIONS=false bun turbo test --filter=!@reddb-io/redcode --filter=!@reddb-io/redcode-core --filter=!@reddb-io/redcode-tui --filter=!@reddb-io/redcode-server "${scope[@]}" --continue=dependencies-successful || status=1
           exit $status
 
+      # TEMPORARY (revert before merge): repeat the parallel suites to catch a core stall.
+      - name: Fish for core stall
+        if: ${{ !cancelled() }}
+        timeout-minutes: 45
+        run: |
+          for i in 1 2 3 4 5 6; do
+            echo "::group::attempt $i"
+            GITHUB_ACTIONS=false bun turbo test:ci --force --filter=@reddb-io/redcode-core --filter=@reddb-io/redcode-tui --filter=@reddb-io/redcode-server --continue --log-order=stream > fish-$i.log 2>&1 || true
+            grep -E 'test-ci|Ran [0-9]+ tests|Interrupted|still running|\(fail\)|pid [0-9]+|^\S+ +[0-9]+ ' fish-$i.log | grep -v 'redcode-tui\|redcode-server' | cut -c1-300 || true
+            echo "::endgroup::"
+            if grep -q 'test run stalled' fish-$i.log; then sed -n '/test run stalled/,$p' fish-$i.log | head -120; fi
+          done
+
       # Saved even when a suite fails: the packages that passed are the ones worth skipping next time.
       - name: Save Turbo cache
         if: ${{ !cancelled() }}
