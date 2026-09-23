@@ -25,7 +25,8 @@ export const RETRY_INITIAL_DELAY = 2000
 export const RETRY_BACKOFF_FACTOR = 2
 export const RETRY_JITTER_FACTOR = 0.25
 export const RETRY_MAX_DELAY_NO_HEADERS = 30_000 // 30 seconds
-export const RETRY_MAX_DELAY = 2_147_483_647 // max 32-bit signed integer for setTimeout
+/** Bounds provider-requested waits so a hostile or buggy retry-after cannot stall a session for hours. */
+export const RETRY_MAX_DELAY = 15 * 60 * 1000 // 15 minutes
 export const RETRY_MAX_RETRIES = 5
 export const CONNECTION_CONTINUATION_MAX_RETRIES = 3
 export const CONNECTION_CONTINUATION_PROMPT =
