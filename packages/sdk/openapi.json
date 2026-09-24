@@ -28795,7 +28795,8 @@
                 "subagent_brief",
                 "session_progress",
                 "subagent_result",
-                "design_target"
+                "design_target",
+                "design_system_detect"
               ]
             },
             "required": false
@@ -53683,7 +53684,8 @@
               "subagent_brief",
               "session_progress",
               "subagent_result",
-              "design_target"
+              "design_target",
+              "design_system_detect"
             ]
           },
           "kind": {

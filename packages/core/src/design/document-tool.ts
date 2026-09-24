@@ -2,9 +2,10 @@ export * as DesignDocumentTool from "./document-tool"
 
 import { Schema } from "effect"
 import { Design } from "@reddb-io/redcode-schema/design"
+import { DesignIdentify } from "./identify"
 
 export const description =
-  'Create, inspect or update a design in this conversation. Always supply action. Use {"action":"list"} to inspect designs. To create, supply action="create" and input with name, journey (new/existing), engine (html/react/solid), and kind (screen/flow/comparison/deck); identify application for an existing project. Also supply target: web (responsive frontend), app (mobile app; add platform ios or android when the request names one) or presentation (slides), judged from what the user asked for; with dual reasoning the user confirms it, and update can change it later. Update requires id and input; reopen and refresh require id. {"action":"detect"} (optional input.application) only reads files inside the project and reports the design system it detects, with per-field confidence and evidence; it never asks the user and never writes anything. Edit only the returned root. Persist briefing, decisions, scenarios and targets (existing product files the design changes). After a feedback round\'s verify, update notes: [{feedback, index, status, reason?, evidence: {job}}] records each review note as resolved, partial, unresolved or accepted, citing the verify job.'
+  'Create, inspect or update a design in this conversation. Always supply action. Use {"action":"list"} to inspect designs. To create, supply action="create" and input with name, journey (new/existing), engine (html/react/solid), and kind (screen/flow/comparison/deck); identify application for an existing project. Also supply target: web (responsive frontend), app (mobile app; add platform ios or android when the request names one) or presentation (slides), judged from what the user asked for; with dual reasoning the user confirms it, and update can change it later. Update requires id and input; reopen and refresh require id. {"action":"detect"} (optional input.application) only reads files inside the project and reports the design system it detects, with per-field confidence and evidence; it never asks the user and never writes anything. When design.system is not configured, create first identifies the design system of the project and asks the user whether to adopt it: with dual reasoning System One reads the evidence; with single reasoning call detect before create, read its evidence pack and pass your conclusion as system on create. Edit only the returned root. Persist briefing, decisions, scenarios and targets (existing product files the design changes). After a feedback round\'s verify, update notes: [{feedback, index, status, reason?, evidence: {job}}] records each review note as resolved, partial, unresolved or accepted, citing the verify job.'
 
 // Statuses the reviewer records come from the review page only; the model's update never carries `by`.
 const { by: _by, ...updateFields } = Design.Update.fields
@@ -24,11 +25,16 @@ export const Input = Schema.Struct({
       application: Schema.optional(Schema.String),
     }),
   ).annotate({ description: "Required for create and update. Create requires name, journey, engine and kind." }),
+  system: Schema.optional(DesignIdentify.Answer),
 }).pipe(
   Schema.decodeTo(
     Schema.Union([
       Schema.Struct({ action: Schema.Literal("list") }),
-      Schema.Struct({ action: Schema.Literal("create"), input: Design.Create }),
+      Schema.Struct({
+        action: Schema.Literal("create"),
+        input: Design.Create,
+        system: Schema.optional(DesignIdentify.Answer),
+      }),
       Schema.Struct({ action: Schema.Literal("update"), id: Design.ID, input: AgentUpdate }),
       Schema.Struct({ action: Schema.Literal("reopen"), id: Design.ID }),
       Schema.Struct({ action: Schema.Literal("refresh"), id: Design.ID }),

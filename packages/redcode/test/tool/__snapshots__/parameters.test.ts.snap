@@ -1151,6 +1151,81 @@ exports[`tool parameters JSON Schema (wire shape) design_document 1`] = `
       },
       "type": "object",
     },
+    "system": {
+      "description": "Create only, single reasoning: the design system you identified from the evidence pack of design_document detect. Omit it when you did not read the pack.",
+      "properties": {
+        "application": {
+          "description": "Project-relative directory of the application package the design targets",
+          "type": "string",
+        },
+        "components": {
+          "description": "Project-relative component directories to import from; empty when there are none",
+          "items": {
+            "type": "string",
+          },
+          "type": "array",
+        },
+        "confidence": {
+          "description": "0..1: how sure you are",
+          "type": "number",
+        },
+        "css": {
+          "description": "Project-relative stylesheets holding the tokens; empty when there are none",
+          "items": {
+            "type": "string",
+          },
+          "type": "array",
+        },
+        "framework": {
+          "enum": [
+            "react",
+            "solid",
+            "vue",
+            "none",
+          ],
+          "type": "string",
+        },
+        "kind": {
+          "description": "tailwind (Tailwind theme), tokens (CSS custom properties or token files), components (component library), storybook, or none",
+          "enum": [
+            "tailwind",
+            "tokens",
+            "components",
+            "storybook",
+            "none",
+          ],
+          "type": "string",
+        },
+        "library": {
+          "enum": [
+            "shadcn",
+            "radix",
+            "mui",
+            "chakra",
+            "mantine",
+            "antd",
+            "own",
+            "none",
+          ],
+          "type": "string",
+        },
+        "present": {
+          "description": "Whether the project has a design system a new design should reuse",
+          "type": "boolean",
+        },
+        "reason": {
+          "description": "One sentence citing the files that decided it",
+          "type": "string",
+        },
+      },
+      "required": [
+        "present",
+        "kind",
+        "confidence",
+        "reason",
+      ],
+      "type": "object",
+    },
   },
   "required": [
     "action",

@@ -10,6 +10,7 @@ import { ProjectDir } from "../project-dir"
 import { Flock } from "../util/flock"
 import { DesignDetect } from "./detect"
 import { DesignFiles } from "./files"
+import { DesignIdentify } from "./identify"
 import { DesignManifest } from "./manifest"
 import { DesignSystem } from "./system"
 
@@ -39,25 +40,34 @@ export interface Design {
   readonly browser?: string
 }
 
+/** How the design system was identified, when identification ran; see DesignIdentify. */
+type Identified = { readonly identification?: DesignIdentify.Identification }
+
 export type Decision =
-  | { readonly status: "configured" | "dismissed" | "snoozed" | "none" }
-  | { readonly status: "yes" | "later" | "declined"; readonly proposal: DesignDetect.Proposal }
+  | ({ readonly status: "configured" | "dismissed" | "snoozed" | "none" } & Identified)
+  | ({ readonly status: "yes" | "later" | "declined"; readonly proposal: DesignDetect.Proposal } & Identified)
 
 export type Outcome =
-  | { readonly status: "configured" | "dismissed" | "snoozed" | "none" }
-  | { readonly status: "later" | "declined"; readonly proposal: DesignDetect.Proposal }
-  | {
+  | ({ readonly status: "configured" | "dismissed" | "snoozed" | "none" } & Identified)
+  | ({ readonly status: "later" | "declined"; readonly proposal: DesignDetect.Proposal } & Identified)
+  | ({
       readonly status: "adopted"
       readonly proposal: DesignDetect.Proposal
       readonly file: string
       readonly manifest: string
-    }
-  | { readonly status: "failed"; readonly proposal: DesignDetect.Proposal; readonly message: string }
+    } & Identified)
+  | ({ readonly status: "failed"; readonly proposal: DesignDetect.Proposal; readonly message: string } & Identified)
 
-export const question = (proposal: DesignDetect.Proposal) => ({
+/** The adoption question; an identification adds its one-line result and the reason under the question. */
+export const question = (proposal: DesignDetect.Proposal, identification?: DesignIdentify.Identification) => ({
   header: HEADER,
   custom: false,
-  question: `${QUESTION}\n${DesignDetect.summary(proposal)}`,
+  question: [
+    QUESTION,
+    ...(identification ? [DesignIdentify.headline(identification)] : []),
+    DesignDetect.summary(proposal),
+    ...(identification ? [DesignIdentify.explanation(identification)] : []),
+  ].join("\n"),
   options: [
     { label: YES, description: "Write the design section into redcode.json and generate .red/DESIGN.md" },
     { label: LATER, description: "Not now; ask again in a day" },
@@ -244,18 +254,46 @@ function formatting(text: string) {
 }
 
 /**
+ * Whether a configured system points at paths that no longer exist: any declared root or stylesheet
+ * missing makes identification run again, and adopting its result then replaces the configured system.
+ */
+export async function stale(
+  directory: string,
+  design:
+    | {
+        readonly system?: { readonly paths: readonly string[]; readonly css?: readonly string[] }
+        readonly application?: string
+      }
+    | undefined,
+) {
+  if (!design?.system) return false
+  const declared = [...design.system.paths, ...(design.system.css ?? [])]
+  const found = await Promise.all(
+    declared.map((file) =>
+      stat(path.resolve(directory, design.application ?? ".", file)).then(
+        () => true,
+        () => false,
+      ),
+    ),
+  )
+  return found.includes(false)
+}
+
+/**
  * Adds `design.system` (and `design.application` for a package inside a monorepo) to a config file
  * with minimal text edits: other keys, comments and indentation stay as written. A file that already
- * declares `design.system` is left untouched; an unparsable one is refused.
+ * declares `design.system` is left untouched unless `replace` is set (a stale system); an unparsable
+ * one is refused.
  */
-export async function write(file: string, proposal: DesignDetect.Proposal) {
+export async function write(file: string, proposal: DesignDetect.Proposal, replace = false) {
   const exists = await Bun.file(file).exists()
   const before = exists ? await Bun.file(file).text() : "{}\n"
   const errors: ParseError[] = []
   const current = parse(before, errors, { allowTrailingComma: true })
   if (errors.length || (current !== undefined && (typeof current !== "object" || Array.isArray(current))))
     throw new Error(`${path.basename(file)} is not a valid JSON object; add the design section by hand`)
-  if ((current as { design?: Design } | undefined)?.design?.system !== undefined) return { file, changed: false }
+  if ((current as { design?: Design } | undefined)?.design?.system !== undefined && !replace)
+    return { file, changed: false }
   const formattingOptions = formatting(before)
   const system = JSON.parse(JSON.stringify(proposal.system))
   let next = applyEdits(before, modify(before, ["design", "system"], system, { formattingOptions }))
@@ -272,6 +310,8 @@ export interface Commit {
   readonly state: string
   readonly proposal: DesignDetect.Proposal
   readonly now?: number
+  /** The configured system is stale: Yes replaces it instead of keeping it. */
+  readonly replace?: boolean
 }
 
 /**
@@ -288,7 +328,7 @@ export async function commit(input: Commit) {
     `design-config:${file}`,
     async () => {
       const current = effective(await layers(input.directory, input.global))
-      if (current?.system === undefined) await write(file, input.proposal)
+      if (current?.system === undefined || input.replace) await write(file, input.proposal, input.replace)
       else if (canonicalJson(current.system) !== canonicalJson(input.proposal.system))
         return { status: "configured" as const }
       const after = effective(await layers(input.directory, input.global))
@@ -332,6 +372,13 @@ export interface Input<E, R> {
   readonly now?: number
   /** Detection time budget in milliseconds; defaults to DesignDetect's. */
   readonly budget?: number
+  /**
+   * Identifies the design system for the (checked) application in place of the bare heuristic scan:
+   * System One or the design agent confirms, corrects or rejects it. See DesignIdentify.
+   */
+  readonly identify?: (application: string | undefined) => Effect.Effect<DesignIdentify.Identification, never, R>
+  /** The configured system is stale (see stale): an adoption replaces it. */
+  readonly replace?: boolean
 }
 
 /** Questions in flight per project: a second session waits for the first answer instead of asking again. */
@@ -350,21 +397,26 @@ const interview = <E, R>(input: Input<E, R>) =>
     if (yield* Effect.promise(() => cachedNone(input.state, input.directory, application, now).catch(() => false)))
       return { status: "none" } satisfies Decision
     // A failed or partial scan is not evidence of "nothing there", so only a complete one is cached.
-    const { proposal, partial } = yield* Effect.promise(() =>
-      DesignDetect.scan(input.directory, { application, budget: input.budget }).catch(() => ({
-        proposal: undefined,
-        partial: true,
-      })),
-    )
+    const identification = input.identify ? yield* input.identify(application) : undefined
+    const { proposal, partial } = identification
+      ? { proposal: identification.proposal, partial: identification.partial }
+      : yield* Effect.promise(() =>
+          DesignDetect.scan(input.directory, { application, budget: input.budget }).catch(() => ({
+            proposal: undefined,
+            partial: true,
+          })),
+        )
+    const identified = identification ? { identification } : {}
     if (!proposal) {
-      if (!partial)
+      // An unverified "nothing" may still be corrected by System One or the agent, so it is not cached.
+      if (!partial && (identification?.verified ?? true))
         yield* Effect.promise(() => rememberNone(input.state, input.directory, application, now).catch(() => undefined))
-      return { status: "none" } satisfies Decision
+      return { status: "none", ...identified } satisfies Decision
     }
-    const choice = answer(yield* input.ask(question(proposal)))
-    if (choice === "yes") return { status: "yes", proposal } satisfies Decision
+    const choice = answer(yield* input.ask(question(proposal, identification)))
+    if (choice === "yes") return { status: "yes", proposal, ...identified } satisfies Decision
     yield* Effect.promise(() => remember(input.state, input.directory, choice, now).catch(() => undefined))
-    return { status: choice === "no" ? "declined" : "later", proposal } satisfies Decision
+    return { status: choice === "no" ? "declined" : "later", proposal, ...identified } satisfies Decision
   })
 
 /**
@@ -389,15 +441,19 @@ export const decide = <E, R>(input: Input<E, R>): Effect.Effect<Decision, E, R> 
     )
   })
 
-const settle = (input: Commit) =>
+const settle = (input: Commit, identification?: DesignIdentify.Identification) =>
   Effect.promise(
     (): Promise<Outcome> =>
       commit(input).then(
-        (result) => (result.status === "adopted" ? { ...result, proposal: input.proposal } : { status: "configured" }),
+        (result) =>
+          result.status === "adopted"
+            ? { ...result, proposal: input.proposal, ...(identification ? { identification } : {}) }
+            : { status: "configured" },
         (error: unknown) => ({
           status: "failed",
           proposal: input.proposal,
           message: error instanceof Error ? error.message : String(error),
+          ...(identification ? { identification } : {}),
         }),
       ),
   )
@@ -407,7 +463,7 @@ export const offer = <E, R>(input: Input<E, R>) =>
   Effect.gen(function* () {
     const decision = yield* decide(input)
     if (decision.status !== "yes") return decision as Outcome
-    return yield* settle({ ...input, proposal: decision.proposal })
+    return yield* settle({ ...input, proposal: decision.proposal }, decision.identification)
   })
 
 /** The configuration a proposal amounts to, for a store that adopts it before the config file is written. */
@@ -437,13 +493,25 @@ export const around = <A, E, R, AE, AR>(
     }
     yield* input.adopt(adoption(decision.proposal))
     const value = yield* operation.pipe(Effect.onError(() => input.adopt(undefined)))
-    const outcome = yield* settle({ ...input, proposal: decision.proposal })
+    const outcome = yield* settle({ ...input, proposal: decision.proposal }, decision.identification)
     yield* outcome.status === "adopted" ? input.adopt(adoption(decision.proposal), true) : input.adopt(undefined)
     return { value, report: report(outcome, input.directory) }
   })
 
-/** The line a tool result carries so the agent knows what the user chose. Empty when nothing was asked. */
+/**
+ * The line a tool result carries so the agent knows what the user chose, led by the identification's
+ * one-line result when identification ran. Empty when nothing was identified or asked.
+ */
 export function report(outcome: Outcome | Decision, directory: string) {
+  const line = reported(outcome, directory)
+  const identification = outcome.identification
+  if (!identification) return line
+  if (outcome.status === "none")
+    return `${DesignIdentify.headline(identification)}; nothing to adopt, so design from the brief.`
+  return [DesignIdentify.headline(identification), line].filter(Boolean).join(". ")
+}
+
+function reported(outcome: Outcome | Decision, directory: string) {
   if (outcome.status === "adopted")
     return `Design system: the user adopted the detected design system; wrote design.system to ${path.relative(directory, outcome.file) || outcome.file}${outcome.proposal.application !== "." ? ` for ${outcome.proposal.application}` : ""} (${DesignDetect.summary(outcome.proposal).split("\n").slice(1, -1).join("; ")}). ${outcome.manifest}.`
   if (outcome.status === "failed")
@@ -461,16 +529,20 @@ export async function detection(input: {
   readonly application?: string
   readonly global?: string
   readonly state?: string
+  /** Appends the evidence pack and asks the design agent for its conclusion (single reasoning). */
+  readonly pack?: boolean
 }) {
   const application =
     input.application === undefined ? undefined : await DesignDetect.contained(input.directory, input.application)
   if (input.application !== undefined && application === undefined)
     return `Design system detection: ${input.application} is not a directory inside the project.`
-  const [{ proposal, partial }, design, answered] = await Promise.all([
+  const [{ proposal, partial }, design, answered, pack] = await Promise.all([
     DesignDetect.scan(input.directory, { application }).catch(() => ({ proposal: undefined, partial: true })),
     configured(input.directory, input.global).catch(() => undefined),
     input.state ? status(input.state, input.directory).catch(() => undefined) : undefined,
+    input.pack ? DesignIdentify.collect(input.directory).catch(() => undefined) : undefined,
   ])
+  const evidence = pack ? `\n${DesignIdentify.render(pack)}\n${DesignIdentify.INSTRUCTIONS}` : ""
   const state = design?.system
     ? "design.system is configured; the configured system is what previews use."
     : answered === "dismissed"
@@ -478,7 +550,7 @@ export async function detection(input: {
       : "design.system is not configured; design_document create or refresh asks the user whether to adopt it."
   if (!proposal)
     return partial
-      ? `Design system detection: nothing detected before the scan ran out of time; the project may still have one.\n${state}`
-      : `Design system detection: nothing detected.\n${state}`
-  return `Design system detection (nothing was written):\n${DesignDetect.evidence(proposal)}\n${state}`
+      ? `Design system detection: nothing detected before the scan ran out of time; the project may still have one.\n${state}${evidence}`
+      : `Design system detection: nothing detected by the heuristic.\n${state}${evidence}`
+  return `Design system detection (nothing was written):\n${DesignDetect.evidence(proposal)}\n${state}${evidence}`
 }

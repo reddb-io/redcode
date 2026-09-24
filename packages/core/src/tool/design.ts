@@ -28,6 +28,7 @@ import { LocationMutation } from "../location-mutation"
 import { Location } from "../location"
 import { Global } from "../global"
 import { DesignProposal } from "../design/proposal"
+import { DesignIdentify } from "../design/identify"
 import { DesignTarget } from "../design/target"
 import { Intelligence } from "../intelligence"
 import { SessionStore } from "../session/store"
@@ -58,29 +59,54 @@ const layer = Layer.effectDiscard(
     const sessions = yield* SessionStore.Service
 
     const state = path.join(global.state, DesignProposal.STATE)
-    // Asks once whether to adopt a detected design system when none is configured; see DesignProposal.
-    const proposal = (context: Tool.Context, application?: string) =>
-      Effect.map(store.configured(context.sessionID), (design) => ({
-        directory: location.directory,
-        application,
-        state,
-        global: global.config,
-        configured: design?.system !== undefined,
-        adopt: (design: ConfigDesign.Effective | undefined, committed?: boolean) =>
-          store.adopt(context.sessionID, design, committed),
-        ask: (request: ReturnType<typeof DesignProposal.question>) =>
-          questions
-            .ask({
+    const reasoning = intelligence.read().pipe(
+      Effect.orElseSucceed(() => Intelligence.defaults),
+      Effect.map(Intelligence.mode),
+    )
+    // Identifies the design system first (System One in dual reasoning, the agent's `system` answer in
+    // single), then asks once whether to adopt it when none is configured; see DesignIdentify and DesignProposal.
+    const proposal = (
+      context: Tool.Context,
+      application: string | undefined,
+      mode: ReturnType<typeof Intelligence.mode>,
+      answer?: DesignIdentify.Answer,
+    ) =>
+      Effect.gen(function* () {
+        const design = yield* store.configured(context.sessionID)
+        const stale = yield* Effect.promise(() => DesignProposal.stale(location.directory, design).catch(() => false))
+        return {
+          directory: location.directory,
+          application,
+          state,
+          global: global.config,
+          configured: design?.system !== undefined && !stale,
+          replace: stale,
+          identify: (checked: string | undefined) =>
+            DesignIdentify.identify({
+              directory: location.directory,
+              application: checked,
+              state: path.join(global.state, DesignIdentify.STATE),
+              mode,
               sessionID: context.sessionID,
-              tool: { messageID: context.assistantMessageID, callID: context.toolCallID },
-              questions: [request],
-            })
-            .pipe(
-              Effect.map((answers) => answers[0]?.[0]),
-              // A dismissed question is "not now": the design goes on without the system.
-              Effect.catch(() => Effect.succeed(undefined)),
-            ),
-      }))
+              answer,
+              evaluate: (evaluation) => intelligence.evaluate(evaluation),
+            }),
+          adopt: (design: ConfigDesign.Effective | undefined, committed?: boolean) =>
+            store.adopt(context.sessionID, design, committed),
+          ask: (request: ReturnType<typeof DesignProposal.question>) =>
+            questions
+              .ask({
+                sessionID: context.sessionID,
+                tool: { messageID: context.assistantMessageID, callID: context.toolCallID },
+                questions: [request],
+              })
+              .pipe(
+                Effect.map((answers) => answers[0]?.[0]),
+                // A dismissed question is "not now": the design goes on without the system.
+                Effect.catch(() => Effect.succeed(undefined)),
+              ),
+        }
+      })
 
     const allow = (action: string, context: Tool.Context) =>
       permissions
@@ -317,50 +343,61 @@ const layer = Layer.effectDiscard(
             Effect.gen(function* () {
               yield* allow("design_document", context)
               if (input.action === "list") return yield* store.list(context.sessionID)
-              if (input.action === "detect")
+              if (input.action === "detect") {
+                // Single reasoning has no System One: the agent reads the evidence pack and reports on create.
+                const pack = (yield* reasoning) === "single"
                 return yield* Effect.promise(() =>
                   DesignProposal.detection({
                     directory: location.directory,
                     application: input.input?.application,
                     global: global.config,
                     state,
+                    pack,
                   }),
                 )
+              }
               yield* allow("design_edit", context)
               if (input.action === "create") {
-                const target = yield* DesignTarget.choose({
-                  requested: input.input,
-                  forced: DesignTarget.forced(),
-                  mode: Intelligence.mode(
-                    yield* intelligence.read().pipe(Effect.orElseSucceed(() => Intelligence.defaults)),
-                  ),
-                  detect: sessions.context(context.sessionID).pipe(
-                    Effect.orElseSucceed(() => []),
-                    Effect.flatMap((messages) =>
-                      intelligence.evaluate(
-                        DesignTarget.evaluation({
-                          sessionID: context.sessionID,
-                          requests: messages.flatMap((message) => (message.type === "user" ? [message.text] : [])),
-                          design: { name: input.input.name, kind: input.input.kind },
-                        }),
-                      ),
-                    ),
-                  ),
-                  ask: (request) =>
-                    questions
-                      .ask({
-                        sessionID: context.sessionID,
-                        tool: { messageID: context.assistantMessageID, callID: context.toolCallID },
-                        questions: [request],
-                      })
-                      .pipe(Effect.map((answers) => answers[0]?.[0])),
-                })
+                const mode = yield* reasoning
+                // The design system is identified and offered first, then the target is settled.
                 const created = yield* DesignProposal.around(
-                  yield* proposal(context, input.input.application),
-                  store.create(context.sessionID, { ...input.input, target: target.target, platform: target.platform }),
+                  yield* proposal(context, input.input.application, mode, input.system),
+                  Effect.gen(function* () {
+                    const target = yield* DesignTarget.choose({
+                      requested: input.input,
+                      forced: DesignTarget.forced(),
+                      mode,
+                      detect: sessions.context(context.sessionID).pipe(
+                        Effect.orElseSucceed(() => []),
+                        Effect.flatMap((messages) =>
+                          intelligence.evaluate(
+                            DesignTarget.evaluation({
+                              sessionID: context.sessionID,
+                              requests: messages.flatMap((message) => (message.type === "user" ? [message.text] : [])),
+                              design: { name: input.input.name, kind: input.input.kind },
+                            }),
+                          ),
+                        ),
+                      ),
+                      ask: (request) =>
+                        questions
+                          .ask({
+                            sessionID: context.sessionID,
+                            tool: { messageID: context.assistantMessageID, callID: context.toolCallID },
+                            questions: [request],
+                          })
+                          .pipe(Effect.map((answers) => answers[0]?.[0])),
+                    })
+                    const document = yield* store.create(context.sessionID, {
+                      ...input.input,
+                      target: target.target,
+                      platform: target.platform,
+                    })
+                    return { document, note: target.note }
+                  }),
                 )
-                const document = withReport(created.value, created.report)
-                settled.set(document.id, target.note)
+                const document = withReport(created.value.document, created.report)
+                settled.set(document.id, created.value.note)
                 if (context.agent !== "design")
                   yield* events.publish(SessionEvent.AgentSwitched, {
                     sessionID: context.sessionID,
@@ -374,7 +411,7 @@ const layer = Layer.effectDiscard(
               if (input.action === "reopen") return [yield* store.reopen(input.id)]
               if (input.action === "refresh") {
                 const refreshed = yield* DesignProposal.around(
-                  yield* proposal(context, DesignStore.applicationOf(current)),
+                  yield* proposal(context, DesignStore.applicationOf(current), yield* reasoning),
                   store.refresh(input.id),
                 )
                 return [withReport(refreshed.value, refreshed.report)]

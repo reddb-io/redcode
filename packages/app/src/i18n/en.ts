@@ -52,6 +52,7 @@ export const dict = {
   "settings.intelligence.operation.session_progress": "Session progress",
   "settings.intelligence.operation.subagent_result": "Subagent result",
   "settings.intelligence.operation.design_target": "Design target",
+  "settings.intelligence.operation.design_system_detect": "Design system",
   "settings.intelligence.decision.accepted": "Accepted",
   "settings.intelligence.decision.needs_revision": "Needs revision",
   "settings.intelligence.decision.inconclusive": "Inconclusive",

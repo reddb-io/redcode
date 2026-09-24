@@ -8141,6 +8141,7 @@ export type IntelligenceHistoryInput = {
       | "session_progress"
       | "subagent_result"
       | "design_target"
+      | "design_system_detect"
       | undefined
     readonly subjectID?: string | undefined
     readonly candidateID?: string | undefined
@@ -8167,6 +8168,7 @@ export type IntelligenceHistoryInput = {
       | "session_progress"
       | "subagent_result"
       | "design_target"
+      | "design_system_detect"
       | undefined
     readonly subjectID?: string | undefined
     readonly candidateID?: string | undefined
@@ -8193,6 +8195,7 @@ export type IntelligenceHistoryInput = {
       | "session_progress"
       | "subagent_result"
       | "design_target"
+      | "design_system_detect"
       | undefined
     readonly subjectID?: string | undefined
     readonly candidateID?: string | undefined
@@ -8219,6 +8222,7 @@ export type IntelligenceHistoryInput = {
       | "session_progress"
       | "subagent_result"
       | "design_target"
+      | "design_system_detect"
       | undefined
     readonly subjectID?: string | undefined
     readonly candidateID?: string | undefined
@@ -8245,6 +8249,7 @@ export type IntelligenceHistoryInput = {
       | "session_progress"
       | "subagent_result"
       | "design_target"
+      | "design_system_detect"
       | undefined
     readonly subjectID?: string | undefined
     readonly candidateID?: string | undefined
@@ -8271,6 +8276,7 @@ export type IntelligenceHistoryInput = {
       | "session_progress"
       | "subagent_result"
       | "design_target"
+      | "design_system_detect"
       | undefined
     readonly subjectID?: string | undefined
     readonly candidateID?: string | undefined
@@ -8297,6 +8303,7 @@ export type IntelligenceHistoryInput = {
       | "session_progress"
       | "subagent_result"
       | "design_target"
+      | "design_system_detect"
       | undefined
     readonly subjectID?: string | undefined
     readonly candidateID?: string | undefined
@@ -8327,6 +8334,7 @@ export type IntelligenceHistoryOutput = ReadonlyArray<{
     | "session_progress"
     | "subagent_result"
     | "design_target"
+    | "design_system_detect"
   readonly kind?: "classification" | "gate"
   readonly subjectID?: string
   readonly candidateID?: string

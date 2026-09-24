@@ -29,6 +29,7 @@ import { SessionGoal } from "@/session/goal"
 import { InstanceState } from "@/effect/instance-state"
 import { Global } from "@reddb-io/redcode-core/global"
 import { DesignProposal } from "@reddb-io/redcode-core/design/proposal"
+import { DesignIdentify } from "@reddb-io/redcode-core/design/identify"
 import { DesignTarget } from "@reddb-io/redcode-core/design/target"
 import { Intelligence } from "@reddb-io/redcode-core/intelligence"
 import type { ConfigDesign } from "@reddb-io/redcode-core/config/design"
@@ -206,72 +207,104 @@ export const DesignTools = Effect.gen(function* () {
             const directory = (yield* InstanceState.context).directory
             const state = path.join(Global.make().state, DesignProposal.STATE)
             const global = Global.make().config
+            const mode = Intelligence.mode(
+              yield* intelligence.read().pipe(Effect.orElseSucceed(() => Intelligence.defaults)),
+            )
             if (input.action === "detect")
               return result(
                 yield* Effect.promise(() =>
-                  DesignProposal.detection({ directory, application: input.input?.application, global, state }),
+                  DesignProposal.detection({
+                    directory,
+                    application: input.input?.application,
+                    global,
+                    state,
+                    // Single reasoning has no System One: the agent reads the evidence pack and reports on create.
+                    pack: mode === "single",
+                  }),
                 ),
               )
             yield* ctx.ask({ permission: "design_edit", patterns: ["*"], always: ["*"], metadata: {} })
-            // Asks once whether to adopt a detected design system when none is configured; see DesignProposal.
-            const proposal = (application?: string) =>
-              Effect.map(store.configured(ctx.sessionID), (design) => ({
-                directory,
-                application,
-                state,
-                global,
-                configured: design?.system !== undefined,
-                adopt: (design: ConfigDesign.Effective | undefined, committed?: boolean) =>
-                  store.adopt(ctx.sessionID, design, committed),
-                ask: (request: ReturnType<typeof DesignProposal.question>) =>
-                  questions
-                    .ask({
+            // Identifies the design system first (System One in dual reasoning, the agent's `system` answer
+            // in single), then asks once whether to adopt it when none is configured; see DesignIdentify.
+            const proposal = (application?: string, answer?: DesignIdentify.Answer) =>
+              Effect.gen(function* () {
+                const design = yield* store.configured(ctx.sessionID)
+                const stale = yield* Effect.promise(() => DesignProposal.stale(directory, design).catch(() => false))
+                return {
+                  directory,
+                  application,
+                  state,
+                  global,
+                  configured: design?.system !== undefined && !stale,
+                  replace: stale,
+                  identify: (checked: string | undefined) =>
+                    DesignIdentify.identify({
+                      directory,
+                      application: checked,
+                      state: path.join(Global.make().state, DesignIdentify.STATE),
+                      mode,
                       sessionID: ctx.sessionID,
-                      tool: ctx.callID ? { messageID: ctx.messageID, callID: ctx.callID } : undefined,
-                      questions: [request],
-                    })
-                    .pipe(
-                      Effect.map((answers) => answers[0]?.[0]),
-                      // A dismissed question is "not now": the design goes on without the system.
-                      Effect.catch(() => Effect.succeed(undefined)),
-                    ),
-              }))
+                      answer,
+                      evaluate: (evaluation) => intelligence.evaluate(evaluation),
+                    }),
+                  adopt: (design: ConfigDesign.Effective | undefined, committed?: boolean) =>
+                    store.adopt(ctx.sessionID, design, committed),
+                  ask: (request: ReturnType<typeof DesignProposal.question>) =>
+                    questions
+                      .ask({
+                        sessionID: ctx.sessionID,
+                        tool: ctx.callID ? { messageID: ctx.messageID, callID: ctx.callID } : undefined,
+                        questions: [request],
+                      })
+                      .pipe(
+                        Effect.map((answers) => answers[0]?.[0]),
+                        // A dismissed question is "not now": the design goes on without the system.
+                        Effect.catch(() => Effect.succeed(undefined)),
+                      ),
+                }
+              })
             const reported = (document: Design.Info, report: string) =>
               report ? { ...document, manifest: [document.manifest, report].filter(Boolean).join(". ") } : document
             if (input.action === "create") {
-              const target = yield* DesignTarget.choose({
-                requested: input.input,
-                forced: DesignTarget.forced(),
-                mode: Intelligence.mode(
-                  yield* intelligence.read().pipe(Effect.orElseSucceed(() => Intelligence.defaults)),
-                ),
-                detect: intelligence.evaluate(
-                  DesignTarget.evaluation({
-                    sessionID: ctx.sessionID,
-                    // A continuation the runtime wrote for itself is not a request.
-                    requests: ctx.messages.flatMap((message) => {
-                      const text = message.parts
-                        .flatMap((part) => (part.type === "text" && !part.synthetic ? [part.text] : []))
-                        .join("\n")
-                      return message.info.role === "user" && text ? [text] : []
-                    }),
-                    design: { name: input.input.name, kind: input.input.kind },
-                  }),
-                ),
-                ask: (request) =>
-                  questions
-                    .ask({
-                      sessionID: ctx.sessionID,
-                      tool: ctx.callID ? { messageID: ctx.messageID, callID: ctx.callID } : undefined,
-                      questions: [request],
-                    })
-                    .pipe(Effect.map((answers) => answers[0]?.[0])),
-              })
+              // The design system is identified and offered first, then the target is settled.
               const created = yield* DesignProposal.around(
-                yield* proposal(input.input.application),
-                store.create(ctx.sessionID, { ...input.input, target: target.target, platform: target.platform }),
+                yield* proposal(input.input.application, input.system),
+                Effect.gen(function* () {
+                  const target = yield* DesignTarget.choose({
+                    requested: input.input,
+                    forced: DesignTarget.forced(),
+                    mode,
+                    detect: intelligence.evaluate(
+                      DesignTarget.evaluation({
+                        sessionID: ctx.sessionID,
+                        // A continuation the runtime wrote for itself is not a request.
+                        requests: ctx.messages.flatMap((message) => {
+                          const text = message.parts
+                            .flatMap((part) => (part.type === "text" && !part.synthetic ? [part.text] : []))
+                            .join("\n")
+                          return message.info.role === "user" && text ? [text] : []
+                        }),
+                        design: { name: input.input.name, kind: input.input.kind },
+                      }),
+                    ),
+                    ask: (request) =>
+                      questions
+                        .ask({
+                          sessionID: ctx.sessionID,
+                          tool: ctx.callID ? { messageID: ctx.messageID, callID: ctx.callID } : undefined,
+                          questions: [request],
+                        })
+                        .pipe(Effect.map((answers) => answers[0]?.[0])),
+                  })
+                  const document = yield* store.create(ctx.sessionID, {
+                    ...input.input,
+                    target: target.target,
+                    platform: target.platform,
+                  })
+                  return { document, note: target.note }
+                }),
               )
-              return result(`${describe(reported(created.value, created.report))}\n${target.note}`)
+              return result(`${describe(reported(created.value.document, created.report))}\n${created.value.note}`)
             }
             const current = yield* store.get(input.id, ctx.sessionID)
             if (input.action === "refresh") {
