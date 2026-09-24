@@ -26,9 +26,10 @@ describe("slide navigation", () => {
     expect(logic.step({ key, shift }, from, 3)).toBe(to)
   })
 
-  test("stops at either end, starts from the first slide when none is current and ignores other keys", () => {
-    expect(logic.step({ key: "ArrowRight" }, 2, 3)).toBe(2)
-    expect(logic.step({ key: "ArrowLeft" }, 0, 3)).toBe(0)
+  test("stops at either end without a move, starts from the first slide when none is current and ignores other keys", () => {
+    expect(logic.step({ key: "ArrowRight" }, 2, 3)).toBeUndefined()
+    expect(logic.step({ key: "ArrowLeft" }, 0, 3)).toBeUndefined()
+    expect(logic.step({ key: "Home" }, 0, 3)).toBeUndefined()
     expect(logic.step({ key: "ArrowRight" }, -1, 3)).toBe(1)
     expect(logic.step({ key: "a" }, 0, 3)).toBeUndefined()
     expect(logic.step({ key: "Enter" }, 0, 3)).toBeUndefined()
@@ -37,58 +38,75 @@ describe("slide navigation", () => {
 })
 
 describe("presenter sync", () => {
-  const show = { slide: "slide-1", started: 1000 }
+  const show = { slide: "slide-1", started: 1000, time: 2, from: "a" }
+  const goto = (slide: string, time: number, from: string) => ({ type: "goto", slide, time, from, sender: from })
 
-  test("a goto moves every window to its slide and keeps the talk's start", () => {
-    expect(logic.sync(show, { type: "goto", slide: "slide-2" })).toEqual({
-      show: { slide: "slide-2", started: 1000 },
+  test("a newer goto moves every window to its slide and keeps the talk's start", () => {
+    expect(logic.sync(show, goto("slide-2", 3, "b"), "c")).toEqual({
+      show: { slide: "slide-2", started: 1000, time: 3, from: "b" },
       changed: true,
     })
-    expect(logic.sync(show, { type: "goto", slide: "slide-1" }).changed).toBe(false)
+    expect(logic.sync(show, goto("slide-1", 3, "b"), "c")).toEqual({
+      show: { ...show, time: 3, from: "b" },
+      changed: false,
+    })
   })
 
   test("a hello is answered with the window's state once it knows its slide", () => {
-    expect(logic.sync(show, { type: "hello" })).toEqual({
+    expect(logic.sync(show, { type: "hello", sender: "b" }, "a")).toEqual({
       show,
       changed: false,
-      reply: { type: "state", slide: "slide-1", started: 1000 },
+      reply: { type: "state", slide: "slide-1", started: 1000, time: 2, from: "a", sender: "a" },
     })
-    expect(logic.sync({ slide: "", started: 0 }, { type: "hello" }).reply).toBeUndefined()
+    expect(
+      logic.sync({ slide: "", started: 0, time: 0, from: "" }, { type: "hello", sender: "b" }, "a").reply,
+    ).toBeUndefined()
   })
 
   test("a state answer moves a new window and gives it the talk's start only when it has none", () => {
-    expect(logic.sync({ slide: "", started: 0 }, { type: "state", slide: "slide-3", started: 500 }).show).toEqual({
-      slide: "slide-3",
-      started: 500,
-    })
+    expect(
+      logic.sync(
+        { slide: "", started: 0, time: 0, from: "" },
+        { type: "state", slide: "slide-3", started: 500, time: 4, from: "b", sender: "b" },
+        "c",
+      ).show,
+    ).toEqual({ slide: "slide-3", started: 500, time: 4, from: "b" })
     // The presenter keeps its own timer when the audience window answers without one.
-    expect(logic.sync(show, { type: "state", slide: "slide-2", started: 0 }).show).toEqual({
-      slide: "slide-2",
-      started: 1000,
-    })
-    expect(logic.sync(show, { type: "state", slide: "slide-1", started: 400 }).show.started).toBe(1000)
+    expect(
+      logic.sync(show, { type: "state", slide: "slide-2", started: 0, time: 5, from: "b", sender: "b" }, "a").show,
+    ).toEqual({ slide: "slide-2", started: 1000, time: 5, from: "b" })
+    expect(
+      logic.sync(show, { type: "state", slide: "slide-1", started: 400, time: 5, from: "b", sender: "b" }, "a").show
+        .started,
+    ).toBe(1000)
   })
 
   test("a reset restarts the timer everywhere", () => {
-    expect(logic.sync(show, { type: "reset", started: 9000 })).toEqual({
-      show: { slide: "slide-1", started: 9000 },
+    expect(logic.sync(show, { type: "reset", started: 9000, sender: "b" }, "a")).toEqual({
+      show: { ...show, started: 9000 },
       changed: true,
     })
   })
 
-  test("malformed messages leave the show as it is", () => {
+  test("malformed messages and a window's own leave the show as it is", () => {
     for (const message of [
       undefined,
       "goto",
-      { type: "goto" },
-      { type: "goto", slide: "bad id" },
-      { type: "goto", slide: "x".repeat(65) },
-      { type: "reset", started: -1 },
-      { type: "reset", started: Number.NaN },
-      { type: "state", slide: 3 },
-      { type: "unknown", slide: "slide-2" },
+      { type: "goto", sender: "b" },
+      { type: "goto", slide: "bad id", time: 9, from: "b", sender: "b" },
+      { type: "goto", slide: "x".repeat(65), time: 9, from: "b", sender: "b" },
+      { type: "goto", slide: "slide-2", time: 9, from: "b" },
+      { type: "goto", slide: "slide-2", time: 9, from: "b", sender: "a" },
+      { type: "goto", slide: "slide-2", from: "b", sender: "b" },
+      { type: "goto", slide: "slide-2", time: -1, from: "b", sender: "b" },
+      { type: "goto", slide: "slide-2", time: 9.5, from: "b", sender: "b" },
+      { type: "goto", slide: "slide-2", time: 9, from: "bad id", sender: "b" },
+      { type: "reset", started: -1, sender: "b" },
+      { type: "reset", started: Number.NaN, sender: "b" },
+      { type: "state", slide: 3, sender: "b" },
+      { type: "unknown", slide: "slide-2", sender: "b" },
     ])
-      expect(logic.sync(show, message)).toEqual({ show, changed: false })
+      expect(logic.sync(show, message, "a")).toEqual({ show, changed: false })
   })
 
   test("formats the elapsed time", () => {
@@ -101,7 +119,16 @@ describe("presenter sync", () => {
   test("survives serialization into the presentation page", () => {
     const serialized = (new Function(`return (${deck.toString()})`)() as typeof deck)()
     expect(serialized.step({ key: "End" }, 0, 5)).toBe(4)
-    expect(serialized.sync(show, { type: "goto", slide: "slide-4" }).show.slide).toBe("slide-4")
+    expect(serialized.sync(show, goto("slide-4", 3, "b"), "a").show.slide).toBe("slide-4")
+    const host = serialized.update(serialized.start("a", "slide-1", 0), {
+      type: "frame",
+      slides: [{ id: "slide-1", name: "1" }],
+      current: "slide-1",
+      origin: "command",
+      seq: 0,
+      now: 0,
+    }).host
+    expect(host.ready).toBe(true)
   })
 })
 
