@@ -42,10 +42,12 @@ const sources = await Promise.all(
   active.map(async (file) => ({ file, text: await Bun.file(path.join(workflows, file)).text() })),
 )
 const forbiddenCommands = ["sst deploy", "docker buildx build --platform", "npm publish", "gh release create"]
+// design-publish.yml releases the design app to GitHub only: it may create a release, nothing else.
 const offenders = sources.flatMap((source) =>
   source.file === "red-publish.yml"
     ? []
     : forbiddenCommands
+        .filter((command) => !(source.file === "design-publish.yml" && command === "gh release create"))
         .filter((command) => source.text.includes(command))
         .map((command) => `${source.file}: ${command}`),
 )
@@ -177,6 +179,37 @@ for (const required of ["REDCODE_RPC_SIDECAR_PATH", 'startsWith("redcode-rpc-sid
 }
 for (const banned of ["beta", "docker", "desktop", "sst", "vscode"]) {
   if (publish.toLowerCase().includes(banned)) throw new Error(`red-publish.yml must not mention ${banned}`)
+}
+
+// The design app has its own releases, which must never displace redcode's latest release.
+const design = await Bun.file(path.join(workflows, "design-publish.yml")).text()
+for (const required of [
+  "github.repository == 'reddb-io/redcode'",
+  '"design-v[0-9]+.[0-9]+.[0-9]+"',
+  "group: design-publish",
+  "workflow_dispatch:",
+  "released tags are immutable",
+  'gh release create "$TAG" --verify-tag --draft --latest=false',
+  'gh release edit "$TAG" --draft=false --latest=false',
+  "bun packages/design-app/script/build.ts --release --upload",
+  "Smoke the uploaded GitHub Release asset",
+]) {
+  if (!design.includes(required)) throw new Error(`design-publish.yml is missing ${required}`)
+}
+if (/--latest(?!=false)/.test(design)) throw new Error("design-publish.yml must never mark its release latest")
+const designWorkflow = Bun.YAML.parse(design) as {
+  permissions?: Record<string, string>
+  jobs: Record<string, WorkflowJob>
+}
+if (JSON.stringify(designWorkflow.permissions) !== JSON.stringify({ contents: "read" }))
+  throw new Error("design-publish.yml top-level permissions must be exactly contents: read")
+if (Object.values(designWorkflow.jobs).some((job) => job.permissions?.["id-token"] !== undefined))
+  throw new Error("design-publish.yml must not request OIDC tokens")
+if (designWorkflow.jobs.release?.steps?.at(-1)?.name !== "Publish GitHub Release")
+  throw new Error("design-publish.yml must publish the GitHub Release as its last step")
+const designBuild = await Bun.file(path.join(root, "packages", "design-app", "script", "build.ts")).text()
+for (const required of ["SHA256SUMS", 'new Bun.CryptoHasher("sha256")', "manifest.json", "redcode-whiteboard-"]) {
+  if (!designBuild.includes(required)) throw new Error(`design app build.ts is missing release contract ${required}`)
 }
 
 const release = await Bun.file(path.join(workflows, "red-release.yml")).text()

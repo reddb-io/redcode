@@ -6,7 +6,7 @@ import { deck, slides } from "@reddb-io/redcode-design/slides"
 import { screens } from "@reddb-io/redcode-design/screens"
 import { DesignPlaybooks } from "../src/design/playbooks"
 import { DesignQuality } from "../src/design/quality"
-import { injectScreens } from "../src/design/renderer"
+import { injectScreens } from "../src/design/renderer-local"
 
 const logic = deck()
 

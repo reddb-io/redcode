@@ -4479,6 +4479,7 @@ export type ConfigV2Design = {
   breakpoints?: Array<number>
   app?: {
     mode?: "process" | "inline"
+    version?: string
   }
 }
 

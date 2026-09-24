@@ -4,7 +4,8 @@ import { Intelligence } from "@reddb-io/redcode-core/intelligence"
 import { DesignReviewServer } from "@/design/review-server"
 import { DesignFeedback } from "@/design/feedback"
 import { DesignFeed } from "@/design/feed"
-import { serveDesignEffect } from "@/server/shared/design"
+import type { serveDesignEffect } from "@/server/shared/design"
+import { DesignAppClient } from "@/design/app"
 import { DesignStudio } from "@/design/studio"
 import { Config as EffectConfig, Context, Effect, Layer } from "effect"
 import { HttpApiBuilder, OpenApi } from "effect/unstable/httpapi"
@@ -214,10 +215,20 @@ const docRoute = HttpRouter.use((router) => router.add("GET", "/doc", () => Effe
   Layer.provide(authOnlyRouterLayer),
 )
 
+// Compiled redcode defines REDCODE_DESIGN_APP_ONLY, so its bundler drops the inline review pages and
+// everything they serve: the design app serves Design, and a link to these pages is sent there.
+const designPages = process.env.REDCODE_DESIGN_APP_ONLY === "1" ? undefined : () => import("@/server/shared/design")
+
 const designRoute = HttpRouter.use((router) =>
   Effect.gen(function* () {
     const services = yield* Effect.context<Effect.Services<ReturnType<typeof serveDesignEffect>>>()
-    yield* router.add("*", "/design/*", (request) => serveDesignEffect(request).pipe(Effect.provide(services)))
+    yield* router.add("*", "/design/*", (request) =>
+      Effect.gen(function* () {
+        if (!designPages) return yield* DesignAppClient.redirect(request)
+        const { serveDesignEffect } = yield* Effect.promise(designPages)
+        return yield* serveDesignEffect(request)
+      }).pipe(Effect.provide(services)),
+    )
   }),
 ).pipe(Layer.provide(authOnlyRouterLayer))
 

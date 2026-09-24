@@ -88,15 +88,20 @@ async function members(archive: string) {
 
 export async function unpackReleaseAssets(input: { assetsDir: string; distDir: string; version: string }) {
   const checksums = parseChecksums(await Bun.file(path.join(input.assetsDir, "SHA256SUMS")).text())
-  // The whiteboard bundle carries the version in its name, which ties this SHA256SUMS to the tag.
-  if (!checksums.has(`redcode-whiteboard-${input.version}.tar.gz`))
-    throw new Error(`SHA256SUMS does not belong to ${input.version}: no redcode-whiteboard-${input.version}.tar.gz`)
+  // The release manifest carries the version in its name, which ties this SHA256SUMS to the tag;
+  // releases before the design app moved out carried the whiteboard bundle instead.
+  if (
+    !checksums.has(`redcode-release-${input.version}.json`) &&
+    !checksums.has(`redcode-whiteboard-${input.version}.tar.gz`)
+  )
+    throw new Error(`SHA256SUMS does not belong to ${input.version}: no redcode-release-${input.version}.json`)
 
   const platforms: PlatformArchive[] = []
   for (const file of checksums.keys()) {
     const platform = platformFromArchive(file)
     if (platform) platforms.push(platform)
-    else if (!file.startsWith("redcode-whiteboard-")) throw new Error(`unexpected release asset in SHA256SUMS: ${file}`)
+    else if (!file.startsWith("redcode-whiteboard-") && !file.startsWith("redcode-release-"))
+      throw new Error(`unexpected release asset in SHA256SUMS: ${file}`)
   }
   if (platforms.length === 0) throw new Error("SHA256SUMS lists no platform archives")
 

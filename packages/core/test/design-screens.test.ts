@@ -6,7 +6,7 @@ import { parseHTML } from "linkedom"
 import { DesignQuality } from "../src/design/quality"
 import { DesignPlaybooks } from "../src/design/playbooks"
 import { DESIGN_INSTRUCTIONS } from "../src/design/instructions"
-import { injectScreens } from "../src/design/renderer"
+import { injectScreens } from "../src/design/renderer-local"
 
 const temporary = await mkdtemp(path.join(os.tmpdir(), "design-screens-"))
 afterAll(() => rm(temporary, { recursive: true, force: true }))

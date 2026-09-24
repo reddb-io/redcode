@@ -74,6 +74,11 @@ jobs:
       - name: Verify the native package contains the RPC sidecar
         if: steps.release.outputs.release_only != 'true'
         run: test -x packages/redcode/dist/redcode-linux-x64/bin/redcode-rpc-sidecar
+      # The design app ships on its own (design-publish.yml); this proves its native binary builds and
+      # answers --version and --protocol the way a redcode that downloads it expects.
+      - name: Build the current design app binary
+        if: steps.release.outputs.release_only != 'true'
+        run: bun packages/design-app/script/build.ts --single --skip-install
       # Fails when the binary grows past packages/redcode/script/binary-size.json plus its allowance.
       - name: Check the redcode binary size
         if: steps.release.outputs.release_only != 'true'
