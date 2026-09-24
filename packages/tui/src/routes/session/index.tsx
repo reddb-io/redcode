@@ -77,9 +77,11 @@ import { DialogConfirm } from "../../ui/dialog-confirm"
 import { DialogTimeline } from "./dialog-timeline"
 import { DialogForkFromTimeline } from "./dialog-fork-from-timeline"
 import { DialogSessionRename } from "../../component/dialog-session-rename"
-import { Sidebar } from "./sidebar"
+import { Sidebar, SIDEBAR_TABS, type SidebarTab } from "./sidebar"
 import { clampSidebarWidth, SIDEBAR_WIDTH_DEFAULT, SIDEBAR_WIDTH_STEP } from "./sidebar-width"
 import { SubagentFooter } from "./subagent-footer.tsx"
+import { GuardTripLine, guardTripsAt, SubagentSummary } from "./subagent"
+import { SubagentView } from "@reddb-io/redcode-core/session/subagent-view"
 import { VerboseIndicator } from "../../component/verbose-indicator"
 import { filetype } from "../../util/filetype"
 import parsers from "../../parsers-config"
@@ -248,6 +250,7 @@ export function Session() {
       .toSorted((a, b) => (a.id < b.id ? -1 : a.id > b.id ? 1 : 0))
   })
   const messages = createMemo(() => sync.data.message[route.sessionID] ?? [])
+  const guardTrips = createMemo(() => sync.data.guard_trip[route.sessionID] ?? [])
   const messagesBeforeRevert = () => {
     const messageID = session()?.revert?.messageID
     if (!messageID) return messages()
@@ -288,7 +291,7 @@ export function Session() {
   const dimensions = useTerminalDimensions()
   const [sidebar, setSidebar] = kv.signal<"auto" | "hide">("sidebar", "auto")
   const [sidebarOpen, setSidebarOpen] = createSignal(false)
-  const [sidebarTab, setSidebarTab] = kv.signal<"context" | "workers">("sidebar_tab", "context")
+  const [sidebarTab, setSidebarTab] = kv.signal<SidebarTab>("sidebar_tab", "context")
   const [storedSidebarWidth, setStoredSidebarWidth] = kv.signal("sidebar_width", SIDEBAR_WIDTH_DEFAULT)
   const [dragSidebarWidth, setDragSidebarWidth] = createSignal<number>()
   const [sidebarDrag, setSidebarDrag] = createSignal<{ x: number; width: number }>()
@@ -395,7 +398,7 @@ export function Session() {
   const dialog = useDialog()
   const renderer = useRenderer()
 
-  const selectSidebarTab = (tab: "context" | "workers") => {
+  const selectSidebarTab = (tab: SidebarTab) => {
     setSidebarTab(() => tab)
     if (tab === "context") prompt?.focus()
   }
@@ -891,7 +894,7 @@ export function Session() {
       category: "Session",
       run: () => {
         batch(() => {
-          selectSidebarTab(sidebarTab() === "context" ? "workers" : "context")
+          selectSidebarTab(SIDEBAR_TABS[(SIDEBAR_TABS.indexOf(sidebarTab()) + 1) % SIDEBAR_TABS.length] ?? "context")
           setSidebar(() => "auto")
           setSidebarOpen(true)
         })
@@ -920,6 +923,22 @@ export function Session() {
       run: () => {
         batch(() => {
           selectSidebarTab("workers")
+          setSidebar(() => "auto")
+          setSidebarOpen(true)
+        })
+        dialog.clear()
+      },
+    },
+    {
+      title: "Open Subagents",
+      value: "subagents.show",
+      category: "Session",
+      slash: {
+        name: "subagents",
+      },
+      run: () => {
+        batch(() => {
+          selectSidebarTab("subagents")
           setSidebar(() => "auto")
           setSidebarOpen(true)
         })
@@ -1572,6 +1591,9 @@ export function Session() {
                             parts={sync.data.part[message.id] ?? []}
                             pending={pending()}
                           />
+                          <For each={guardTripsAt(messages(), guardTrips(), index())}>
+                            {(trip) => <GuardTripLine trip={trip} />}
+                          </For>
                         </Match>
                         <Match when={message.role === "assistant"}>
                           <AssistantMessage
@@ -1579,6 +1601,9 @@ export function Session() {
                             message={message as AssistantMessage}
                             parts={sync.data.part[message.id] ?? []}
                           />
+                          <For each={guardTripsAt(messages(), guardTrips(), index())}>
+                            {(trip) => <GuardTripLine trip={trip} />}
+                          </For>
                         </Match>
                       </Switch>
                     )}
@@ -2891,6 +2916,10 @@ function Task(props: ToolProps) {
   const sessionID = createMemo(() => stringValue(props.metadata.sessionId))
   useSessionHistory(sessionID)
   const messages = createMemo(() => sync.data.message[sessionID() ?? ""] ?? [])
+  const child = createMemo(() => sync.session.get(sessionID() ?? ""))
+  const model = createMemo(() => SubagentView.model(props.metadata, child()))
+  const decision = createMemo(() => SubagentView.decision(props.metadata, child()?.metadata))
+  const checkpoint = createMemo(() => SubagentView.checkpointState(SubagentView.checkpoints(child()?.metadata)))
 
   const tools = createMemo(() => {
     return messages().flatMap((msg) =>
@@ -2972,6 +3001,10 @@ function Task(props: ToolProps) {
       }}
     >
       {content()}
+      <Show when={sessionID()}>
+        {"\n↳ "}
+        <SubagentSummary model={model()} decision={decision()} checkpoint={checkpoint()} />
+      </Show>
     </InlineTool>
   )
 }

@@ -173,6 +173,13 @@ export const dict: Record<string, string> = {
   "ui.tool.questions.numbered": "Запитання {{number}}",
   "ui.tool.agent": "Агент {{type}}",
   "ui.tool.agent.default": "Агент",
+  "ui.tool.task.verdict.verified": "перевірено",
+  "ui.tool.task.verdict.inconclusive": "непереконливо",
+  "ui.tool.task.verdict.needs_revision": "потребує доопрацювання",
+  "ui.tool.task.verdict.unverified": "не перевірено",
+  "ui.tool.task.checkpoint.in_scope": "у межах завдання",
+  "ui.tool.task.checkpoint.corrected": "виправлено (підказку надіслано)",
+  "ui.tool.task.checkpoint.stopped": "зупинено · {{reason}}",
   "ui.tool.skill": "Навичка",
 
   "ui.basicTool.called": "Викликано `{{tool}}`",

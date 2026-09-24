@@ -1,6 +1,7 @@
 import { SessionPlan } from "@reddb-io/redcode-core/session/plan"
 import { Intelligence } from "@reddb-io/redcode-core/intelligence"
 import { SubagentReview } from "@reddb-io/redcode-core/session/subagent-review"
+import { SubagentView } from "@reddb-io/redcode-core/session/subagent-view"
 import { ReasoningAuto } from "@reddb-io/redcode-core/session/reasoning-auto"
 import { LoopGuard } from "@reddb-io/redcode-core/session/loop-guard"
 import { SessionStopLoss } from "@reddb-io/redcode-core/session/stop-loss"
@@ -1840,6 +1841,15 @@ const layer = Layer.effect(
             subject: checkpoint.type === "signal" ? checkpoint.signals.join(",") : "interval",
             detail: SessionStopLoss.detail(trajectory, verdict),
           })
+          // Kept on the session too, so a parent's task row and the sidebar show where the checkpoints
+          // left a subagent without loading its messages.
+          const kept: SubagentView.Checkpoint = {
+            action: verdict.action,
+            line: SessionStopLoss.line(trajectory, verdict, { subagent }),
+            ...(verdict.action === "steer" ? {} : { reason: SessionStopLoss.reason(trajectory, verdict) }),
+            at: Date.now(),
+          }
+          yield* sessions.updateMetadata(sessionID, (metadata) => SubagentView.withCheckpoint(metadata, kept))
           yield* Effect.logWarning("stop-loss acted on a turn without progress", {
             "session.id": sessionID,
             action: verdict.action,

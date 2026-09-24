@@ -156,6 +156,13 @@ export const dict = {
   "ui.tool.questions.numbered": "質問 {{number}}",
   "ui.tool.agent": "{{type}}エージェント",
   "ui.tool.agent.default": "エージェント",
+  "ui.tool.task.verdict.verified": "検証済み",
+  "ui.tool.task.verdict.inconclusive": "判定不能",
+  "ui.tool.task.verdict.needs_revision": "要修正",
+  "ui.tool.task.verdict.unverified": "未検証",
+  "ui.tool.task.checkpoint.in_scope": "範囲内",
+  "ui.tool.task.checkpoint.corrected": "修正済み（ヒント送信）",
+  "ui.tool.task.checkpoint.stopped": "停止 · {{reason}}",
 
   "ui.common.file.one": "ファイル",
   "ui.common.file.other": "ファイル",

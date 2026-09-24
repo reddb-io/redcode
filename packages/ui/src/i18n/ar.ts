@@ -173,6 +173,13 @@ export const dict = {
   "ui.tool.questions.numbered": "أسئلة {{number}}",
   "ui.tool.agent": "وكيل {{type}}",
   "ui.tool.agent.default": "وكيل",
+  "ui.tool.task.verdict.verified": "تم التحقق",
+  "ui.tool.task.verdict.inconclusive": "غير حاسم",
+  "ui.tool.task.verdict.needs_revision": "يحتاج إلى مراجعة",
+  "ui.tool.task.verdict.unverified": "لم يتم التحقق",
+  "ui.tool.task.checkpoint.in_scope": "ضمن النطاق",
+  "ui.tool.task.checkpoint.corrected": "تم التصحيح (أُرسل تلميح)",
+  "ui.tool.task.checkpoint.stopped": "متوقف · {{reason}}",
 
   "ui.common.file.one": "ملف",
   "ui.common.file.other": "ملفات",

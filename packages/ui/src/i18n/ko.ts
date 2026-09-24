@@ -133,6 +133,13 @@ export const dict = {
   "ui.tool.questions.numbered": "질문 {{number}}",
   "ui.tool.agent": "{{type}} 에이전트",
   "ui.tool.agent.default": "에이전트",
+  "ui.tool.task.verdict.verified": "검증됨",
+  "ui.tool.task.verdict.inconclusive": "판단 불가",
+  "ui.tool.task.verdict.needs_revision": "수정 필요",
+  "ui.tool.task.verdict.unverified": "미검증",
+  "ui.tool.task.checkpoint.in_scope": "범위 내",
+  "ui.tool.task.checkpoint.corrected": "수정됨(힌트 전송)",
+  "ui.tool.task.checkpoint.stopped": "중지됨 · {{reason}}",
 
   "ui.common.file.one": "파일",
   "ui.common.file.other": "파일",

@@ -65,6 +65,7 @@ import { partDefaultOpen } from "./part-default-open"
 import { animate } from "motion"
 import { attached, inline, kind, typeLabel } from "./message-file"
 import { readPartText } from "./message-part-text"
+import { taskCardDetail } from "./task-card-detail"
 import { SessionProgressIndicatorV2 } from "../v2/components/session-progress-indicator-v2"
 
 async function writeClipboard(text: string): Promise<boolean> {
@@ -1999,6 +2000,15 @@ ToolRegistry.register({
       return value
     })
     const running = createMemo(() => props.status === "pending" || props.status === "running")
+    const detail = createMemo(() => {
+      const id = childSessionId()
+      if (!id) return []
+      return taskCardDetail(
+        i18n,
+        props.metadata,
+        data.store.session.find((session) => session.id === id),
+      )
+    })
 
     const href = createMemo(() => sessionLink(childSessionId(), data.sessionHref))
     const clickable = createMemo(() => !!(childSessionId() && (data.navigateToSession || href())))
@@ -2056,6 +2066,11 @@ ToolRegistry.register({
                 <span data-slot="basic-tool-tool-subtitle">{subtitle()}</span>
               </Show>
             </div>
+            <Show when={detail().length > 0}>
+              <div data-slot="task-tool-detail">
+                <For each={detail()}>{(segment) => <span data-tone={segment.tone}>{segment.text}</span>}</For>
+              </div>
+            </Show>
           </div>
         </div>
         <Show when={clickable()}>

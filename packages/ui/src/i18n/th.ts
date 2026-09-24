@@ -157,6 +157,13 @@ export const dict = {
   "ui.tool.questions.numbered": "คำถาม {{number}}",
   "ui.tool.agent": "เอเจนต์ {{type}}",
   "ui.tool.agent.default": "เอเจนต์",
+  "ui.tool.task.verdict.verified": "ยืนยันแล้ว",
+  "ui.tool.task.verdict.inconclusive": "ไม่ชัดเจน",
+  "ui.tool.task.verdict.needs_revision": "ต้องแก้ไข",
+  "ui.tool.task.verdict.unverified": "ยังไม่ยืนยัน",
+  "ui.tool.task.checkpoint.in_scope": "อยู่ในขอบเขต",
+  "ui.tool.task.checkpoint.corrected": "แก้ไขแล้ว (ส่งคำแนะนำแล้ว)",
+  "ui.tool.task.checkpoint.stopped": "หยุดแล้ว · {{reason}}",
 
   "ui.common.file.one": "ไฟล์",
   "ui.common.file.other": "ไฟล์",

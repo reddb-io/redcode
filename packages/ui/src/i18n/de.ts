@@ -143,6 +143,13 @@ export const dict = {
   "ui.tool.questions.numbered": "Fragen {{number}}",
   "ui.tool.agent": "{{type}}-Agent",
   "ui.tool.agent.default": "Agent",
+  "ui.tool.task.verdict.verified": "verifiziert",
+  "ui.tool.task.verdict.inconclusive": "nicht eindeutig",
+  "ui.tool.task.verdict.needs_revision": "Überarbeitung nötig",
+  "ui.tool.task.verdict.unverified": "nicht verifiziert",
+  "ui.tool.task.checkpoint.in_scope": "im Rahmen",
+  "ui.tool.task.checkpoint.corrected": "korrigiert (Hinweis gesendet)",
+  "ui.tool.task.checkpoint.stopped": "gestoppt · {{reason}}",
 
   "ui.common.file.one": "Datei",
   "ui.common.file.other": "Dateien",

@@ -110,6 +110,19 @@ function compareMessage(a: Message, b: Message) {
 const messageKey = (message: Message) => message.time.created + message.id
 export const SESSION_CACHE_LIMIT = 20
 
+/** One guard intervention (`session.next.guard.tripped`), as the session view shows it. */
+export type GuardTrip = {
+  id: string
+  guard: string
+  action: string
+  subject?: string
+  detail: string
+  time: number
+}
+
+/** Trips kept per session; the guard log on the server keeps them all. */
+const GUARD_TRIP_LIMIT = 50
+
 export type ProviderCatalog = {
   all: { id: string; name: string; env: string[] }[]
   default: ProviderListResponse["default"]
@@ -175,6 +188,10 @@ export const {
       session_diff: {
         [sessionID: string]: SnapshotFileDiff[]
       }
+      /** Guard interventions seen live this run, oldest first; the server keeps no transcript of them. */
+      guard_trip: {
+        [sessionID: string]: GuardTrip[]
+      }
       todo: {
         [sessionID: string]: Todo[]
       }
@@ -218,6 +235,7 @@ export const {
       prompt_steer: {},
       prompt_steered: {},
       session_diff: {},
+      guard_trip: {},
       todo: {},
       message: {},
       part: {},
@@ -302,6 +320,7 @@ export const {
           delete draft.message[sessionID]
           delete draft.todo[sessionID]
           delete draft.session_diff[sessionID]
+          delete draft.guard_trip[sessionID]
           if (!deleted) return
           delete draft.session_status[sessionID]
           delete draft.permission[sessionID]
@@ -565,6 +584,24 @@ export const {
 
         case "session.status": {
           setStore("session_status", event.properties.sessionID, event.properties.status)
+          break
+        }
+
+        // Live only: a trip is shown once, as it happens, and a replayed event is the same trip.
+        case "session.next.guard.tripped": {
+          const trips = store.guard_trip[event.properties.sessionID] ?? []
+          if (trips.some((trip) => trip.id === event.id)) break
+          setStore("guard_trip", event.properties.sessionID, [
+            ...trips.slice(-(GUARD_TRIP_LIMIT - 1)),
+            {
+              id: event.id,
+              guard: event.properties.guard,
+              action: event.properties.action,
+              ...(event.properties.subject ? { subject: event.properties.subject } : {}),
+              detail: event.properties.detail,
+              time: event.properties.timestamp,
+            },
+          ])
           break
         }
 

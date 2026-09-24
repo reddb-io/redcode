@@ -80,7 +80,7 @@ export const Definitions = {
   theme_switch_mode: keybind("none", "Switch between light and dark theme mode"),
   theme_mode_lock: keybind("none", "Lock or unlock theme mode"),
   sidebar_toggle: keybind("<leader>b", "Toggle sidebar"),
-  sidebar_tab_cycle: keybind("<leader>w", "Switch sidebar between Context and Workers"),
+  sidebar_tab_cycle: keybind("<leader>w", "Switch sidebar between Context, Workers and Subagents"),
   sidebar_width_decrease: keybind("<leader>[", "Decrease sidebar width"),
   sidebar_width_increase: keybind("<leader>]", "Increase sidebar width"),
   scrollbar_toggle: keybind("none", "Toggle session scrollbar"),
