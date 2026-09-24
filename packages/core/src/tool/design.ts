@@ -70,6 +70,8 @@ const layer = Layer.effectDiscard(
       application: string | undefined,
       mode: ReturnType<typeof Intelligence.mode>,
       answer?: DesignIdentify.Answer,
+      /** Create takes an agreed system without asking; refresh always asks. */
+      auto = false,
     ) =>
       Effect.gen(function* () {
         const design = yield* store.configured(context.sessionID)
@@ -81,6 +83,7 @@ const layer = Layer.effectDiscard(
           global: global.config,
           configured: design?.system !== undefined && !stale,
           replace: stale,
+          auto,
           identify: (checked: string | undefined) =>
             DesignIdentify.identify({
               directory: location.directory,
@@ -359,14 +362,28 @@ const layer = Layer.effectDiscard(
               yield* allow("design_edit", context)
               if (input.action === "create") {
                 const mode = yield* reasoning
+                const memory = path.join(global.state, DesignTarget.STATE)
                 // The design system is identified and offered first, then the target is settled.
                 const created = yield* DesignProposal.around(
-                  yield* proposal(context, input.input.application, mode, input.system),
+                  yield* proposal(context, input.input.application, mode, input.system, true),
                   Effect.gen(function* () {
                     const target = yield* DesignTarget.choose({
                       requested: input.input,
                       forced: DesignTarget.forced(),
                       mode,
+                      // The message's own classification already read the target when it routed to design.
+                      classified:
+                        mode === "dual"
+                          ? yield* intelligence
+                              .history(context.sessionID, { operation: "prompt_classification", limit: 5 })
+                              .pipe(
+                                Effect.map(DesignTarget.latest),
+                                Effect.orElseSucceed(() => undefined),
+                              )
+                          : undefined,
+                      remembered: yield* Effect.promise(() =>
+                        DesignTarget.recall(memory, location.directory).catch(() => undefined),
+                      ),
                       detect: sessions.context(context.sessionID).pipe(
                         Effect.orElseSucceed(() => []),
                         Effect.flatMap((messages) =>
@@ -388,16 +405,21 @@ const layer = Layer.effectDiscard(
                           })
                           .pipe(Effect.map((answers) => answers[0]?.[0])),
                     })
+                    if (target.settled)
+                      yield* Effect.promise(() => DesignTarget.remember(memory, location.directory, target))
                     const document = yield* store.create(context.sessionID, {
                       ...input.input,
                       target: target.target,
                       platform: target.platform,
                     })
-                    return { document, note: target.note }
+                    return { document, target }
                   }),
                 )
                 const document = withReport(created.value.document, created.report)
-                settled.set(document.id, created.value.note)
+                settled.set(
+                  document.id,
+                  `${DesignTarget.chip(created.value.target, DesignProposal.chip(created.decision))}\n${created.value.target.note}`,
+                )
                 if (context.agent !== "design")
                   yield* events.publish(SessionEvent.AgentSwitched, {
                     sessionID: context.sessionID,

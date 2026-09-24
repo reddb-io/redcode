@@ -45,7 +45,12 @@ type Identified = { readonly identification?: DesignIdentify.Identification }
 
 export type Decision =
   | ({ readonly status: "configured" | "dismissed" | "snoozed" | "none" } & Identified)
-  | ({ readonly status: "yes" | "later" | "declined"; readonly proposal: DesignDetect.Proposal } & Identified)
+  | ({
+      readonly status: "yes" | "later" | "declined"
+      readonly proposal: DesignDetect.Proposal
+      /** Taken without asking because System One and the scan agree (see Input.auto). */
+      readonly automatic?: boolean
+    } & Identified)
 
 export type Outcome =
   | ({ readonly status: "configured" | "dismissed" | "snoozed" | "none" } & Identified)
@@ -57,6 +62,7 @@ export type Outcome =
       readonly manifest: string
     } & Identified)
   | ({ readonly status: "failed"; readonly proposal: DesignDetect.Proposal; readonly message: string } & Identified)
+  | ({ readonly status: "automatic"; readonly proposal: DesignDetect.Proposal } & Identified)
 
 /** The adoption question; an identification adds its one-line result and the reason under the question. */
 export const question = (proposal: DesignDetect.Proposal, identification?: DesignIdentify.Identification) => ({
@@ -379,6 +385,12 @@ export interface Input<E, R> {
   readonly identify?: (application: string | undefined) => Effect.Effect<DesignIdentify.Identification, never, R>
   /** The configured system is stale (see stale): an adoption replaces it. */
   readonly replace?: boolean
+  /**
+   * Skip the question when the identification reports agreement: around then adopts the system for
+   * the calling session only, without writing the configuration, so a later refresh (auto off) still
+   * asks whether to save it.
+   */
+  readonly auto?: boolean
 }
 
 /** Questions in flight per project: a second session waits for the first answer instead of asking again. */
@@ -413,6 +425,8 @@ const interview = <E, R>(input: Input<E, R>) =>
         yield* Effect.promise(() => rememberNone(input.state, input.directory, application, now).catch(() => undefined))
       return { status: "none", ...identified } satisfies Decision
     }
+    if (input.auto && identification?.agreement)
+      return { status: "yes", proposal, automatic: true, ...identified } satisfies Decision
     const choice = answer(yield* input.ask(question(proposal, identification)))
     if (choice === "yes") return { status: "yes", proposal, ...identified } satisfies Decision
     yield* Effect.promise(() => remember(input.state, input.directory, choice, now).catch(() => undefined))
@@ -489,13 +503,19 @@ export const around = <A, E, R, AE, AR>(
     const decision = yield* decide(input).pipe(Effect.catch(() => Effect.succeed<Decision>({ status: "none" })))
     if (decision.status !== "yes") {
       const value = yield* operation
-      return { value, report: report(decision, input.directory) }
+      return { value, report: report(decision, input.directory), decision }
     }
     yield* input.adopt(adoption(decision.proposal))
     const value = yield* operation.pipe(Effect.onError(() => input.adopt(undefined)))
+    if (decision.automatic)
+      return {
+        value,
+        report: report({ ...decision, status: "automatic" }, input.directory),
+        decision,
+      }
     const outcome = yield* settle({ ...input, proposal: decision.proposal }, decision.identification)
     yield* outcome.status === "adopted" ? input.adopt(adoption(decision.proposal), true) : input.adopt(undefined)
-    return { value, report: report(outcome, input.directory) }
+    return { value, report: report(outcome, input.directory), decision }
   })
 
 /**
@@ -512,6 +532,8 @@ export function report(outcome: Outcome | Decision, directory: string) {
 }
 
 function reported(outcome: Outcome | Decision, directory: string) {
+  if (outcome.status === "automatic")
+    return "System One and the scan agree, so this design uses it without asking; it is not saved to the configuration. design_document refresh asks whether to save it, and the user can change it there"
   if (outcome.status === "adopted")
     return `Design system: the user adopted the detected design system; wrote design.system to ${path.relative(directory, outcome.file) || outcome.file}${outcome.proposal.application !== "." ? ` for ${outcome.proposal.application}` : ""} (${DesignDetect.summary(outcome.proposal).split("\n").slice(1, -1).join("; ")}). ${outcome.manifest}.`
   if (outcome.status === "failed")
@@ -521,6 +543,14 @@ function reported(outcome: Outcome | Decision, directory: string) {
   if (outcome.status === "later")
     return "Design system: the user postponed adopting the detected design system; it is not configured yet."
   return ""
+}
+
+/** The design-system part of the design chip for a decision: what this design uses. */
+export function chip(decision: Decision) {
+  if (decision.status === "configured") return "DS: configured"
+  if (decision.status === "dismissed" || decision.status === "declined") return "DS: declined"
+  if (decision.identification) return DesignIdentify.chip(decision.identification)
+  return decision.status === "yes" ? "DS: detected" : "DS: none"
 }
 
 /** design_document {"action":"detect"}: what detection finds and whether it is configured, asking nothing. */

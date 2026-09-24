@@ -379,6 +379,8 @@ test("prompt classification v2 separates route, impact, timing, interaction, and
     "consequence",
     "frustration",
     "user_feedback",
+    "design_target",
+    "design_platform",
   ])
   expect(Intelligence.promptQuestions.user_feedback).toMatchObject({
     type: "choice",

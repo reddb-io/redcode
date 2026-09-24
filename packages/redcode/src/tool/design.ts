@@ -226,7 +226,8 @@ export const DesignTools = Effect.gen(function* () {
             yield* ctx.ask({ permission: "design_edit", patterns: ["*"], always: ["*"], metadata: {} })
             // Identifies the design system first (System One in dual reasoning, the agent's `system` answer
             // in single), then asks once whether to adopt it when none is configured; see DesignIdentify.
-            const proposal = (application?: string, answer?: DesignIdentify.Answer) =>
+            // Create takes a design system System One and the scan agree on without asking; refresh always asks.
+            const proposal = (application?: string, answer?: DesignIdentify.Answer, auto = false) =>
               Effect.gen(function* () {
                 const design = yield* store.configured(ctx.sessionID)
                 const stale = yield* Effect.promise(() => DesignProposal.stale(directory, design).catch(() => false))
@@ -237,6 +238,7 @@ export const DesignTools = Effect.gen(function* () {
                   global,
                   configured: design?.system !== undefined && !stale,
                   replace: stale,
+                  auto,
                   identify: (checked: string | undefined) =>
                     DesignIdentify.identify({
                       directory,
@@ -267,13 +269,27 @@ export const DesignTools = Effect.gen(function* () {
               report ? { ...document, manifest: [document.manifest, report].filter(Boolean).join(". ") } : document
             if (input.action === "create") {
               // The design system is identified and offered first, then the target is settled.
+              const memory = path.join(Global.make().state, DesignTarget.STATE)
               const created = yield* DesignProposal.around(
-                yield* proposal(input.input.application, input.system),
+                yield* proposal(input.input.application, input.system, true),
                 Effect.gen(function* () {
                   const target = yield* DesignTarget.choose({
                     requested: input.input,
                     forced: DesignTarget.forced(),
                     mode,
+                    // The message's own classification already read the target when it routed to design.
+                    classified:
+                      mode === "dual"
+                        ? yield* intelligence
+                            .history(ctx.sessionID, { operation: "prompt_classification", limit: 5 })
+                            .pipe(
+                              Effect.map(DesignTarget.latest),
+                              Effect.orElseSucceed(() => undefined),
+                            )
+                        : undefined,
+                    remembered: yield* Effect.promise(() =>
+                      DesignTarget.recall(memory, directory).catch(() => undefined),
+                    ),
                     detect: intelligence.evaluate(
                       DesignTarget.evaluation({
                         sessionID: ctx.sessionID,
@@ -296,15 +312,25 @@ export const DesignTools = Effect.gen(function* () {
                         })
                         .pipe(Effect.map((answers) => answers[0]?.[0])),
                   })
+                  if (target.settled) yield* Effect.promise(() => DesignTarget.remember(memory, directory, target))
                   const document = yield* store.create(ctx.sessionID, {
                     ...input.input,
                     target: target.target,
                     platform: target.platform,
                   })
-                  return { document, note: target.note }
+                  return { document, target }
                 }),
               )
-              return result(`${describe(reported(created.value.document, created.report))}\n${created.value.note}`)
+              const chip = DesignTarget.chip(created.value.target, DesignProposal.chip(created.decision))
+              return {
+                ...result(
+                  `${chip}\n${describe(reported(created.value.document, created.report))}\n${created.value.target.note}`,
+                  // The TUI shows the chip in place of the tool call, even with details hidden.
+                  { designChip: chip },
+                ),
+                // The web app shows the tool title.
+                title: chip.split(" — ")[0]!,
+              }
             }
             const current = yield* store.get(input.id, ctx.sessionID)
             if (input.action === "refresh") {

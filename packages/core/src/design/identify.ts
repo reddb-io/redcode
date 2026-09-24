@@ -3,7 +3,7 @@ export * as DesignIdentify from "./identify"
 import path from "node:path"
 import { createHash } from "node:crypto"
 import { lstat, readdir, realpath } from "node:fs/promises"
-import { Effect, Schema } from "effect"
+import { Effect, Exit, Schema } from "effect"
 import { parse } from "jsonc-parser"
 import type { Intelligence } from "../intelligence"
 import { DesignDetect } from "./detect"
@@ -96,7 +96,15 @@ export interface Identification {
   readonly notes: readonly string[]
   /** The heuristic scan ran out of time. */
   readonly partial: boolean
+  /**
+   * System One and the heuristic scan agree with high confidence (both at least AGREEMENT, every field
+   * confirmed, none corrected): the design goes on with the system without asking.
+   */
+  readonly agreement?: boolean
 }
+
+/** At or above this confidence, System One agreeing with the heuristic scan settles the system without asking. */
+export const AGREEMENT = 0.85
 
 type FileKind = "stylesheet" | "tailwind" | "tokens" | "shadcn" | "storybook" | "manifest"
 
@@ -215,31 +223,65 @@ export const identify = <E, R>(input: {
       })
 
     if (input.mode === "single" && input.answer) return yield* save(fromAnswer(input.answer))
-    const cached = yield* Effect.promise(() => lookup(input.state, key, fingerprint).catch(() => undefined))
-    if (cached) return cached
-    if (!scanned.proposal && !hasEvidence(pack))
-      return {
-        ...heuristic(scanned, pack, "no stylesheet with tokens, token file, component directory or Storybook found"),
-        verified: true,
-      }
-    if (input.mode === "single")
-      return heuristic(
-        scanned,
-        pack,
-        'single reasoning and the design agent reported no design system (design_document {"action":"detect"}, then system on create); heuristic scan only',
-      )
-    const result = yield* input
-      .evaluate(evaluation({ sessionID: input.sessionID, proposal: scanned.proposal, pack }))
-      .pipe(Effect.catchCause(() => Effect.succeed(undefined)))
-    const verdict = fromEvaluation(result)
-    if (!verdict)
-      return heuristic(
-        scanned,
-        pack,
-        `System One could not answer (${result?.issues[0] ?? "no evaluation"}); heuristic scan only`,
-      )
-    return yield* save(verdict)
+    // A background warm-up and a design created meanwhile share one identification, so one S1 call:
+    // the first registers itself before it reads the cache, the second waits for its result.
+    const flight = `${key}\0${fingerprint}`
+    const running = inflight.get(flight)
+    if (running) return yield* Effect.promise(() => running)
+    const pending = Promise.withResolvers<Identification>()
+    inflight.set(flight, pending.promise)
+    return yield* Effect.gen(function* () {
+      const cached = yield* Effect.promise(() => lookup(input.state, key, fingerprint).catch(() => undefined))
+      if (cached) return cached
+      if (!scanned.proposal && !hasEvidence(pack))
+        return {
+          ...heuristic(scanned, pack, "no stylesheet with tokens, token file, component directory or Storybook found"),
+          verified: true,
+        }
+      if (input.mode === "single")
+        return heuristic(
+          scanned,
+          pack,
+          'single reasoning and the design agent reported no design system (design_document {"action":"detect"}, then system on create); heuristic scan only',
+        )
+      const result = yield* input
+        .evaluate(evaluation({ sessionID: input.sessionID, proposal: scanned.proposal, pack }))
+        .pipe(Effect.catchCause(() => Effect.succeed(undefined)))
+      const verdict = fromEvaluation(result)
+      if (!verdict)
+        return heuristic(
+          scanned,
+          pack,
+          `System One could not answer (${result?.issues[0] ?? "no evaluation"}); heuristic scan only`,
+        )
+      return yield* save(verdict)
+    }).pipe(
+      Effect.onExit((exit) =>
+        Effect.sync(() => {
+          inflight.delete(flight)
+          pending.resolve(
+            Exit.isSuccess(exit) ? exit.value : heuristic(scanned, pack, "identification was interrupted"),
+          )
+        }),
+      ),
+    )
   })
+
+/** Identifications in flight per project, application and scanned tree. */
+const inflight = new Map<string, Promise<Identification>>()
+
+/**
+ * Starts identification ahead of the design (the session switched to the design agent, or a
+ * design-routed message arrived) so it is cached by the time design_document create needs it. Only
+ * dual reasoning has anything to warm: single reasoning waits for the design agent's answer. Never
+ * fails and never asks anything.
+ */
+export const warm = <E, R>(input: Omit<Parameters<typeof identify<E, R>>[0], "answer">) =>
+  input.mode === "dual" ? identify(input).pipe(Effect.asVoid) : Effect.void
+
+/** Whether a turn should warm identification: the design agent runs it or System One routed it as design. */
+export const wanted = (turn: { readonly agent: string; readonly route?: string }) =>
+  turn.agent === "design" || turn.route === "design"
 
 /** The compact line the tool results and the adoption question show. */
 export function headline(identified: Identification) {
@@ -251,6 +293,19 @@ export function headline(identified: Identification) {
   const by =
     identified.source === "system-one" ? "System One" : identified.source === "agent" ? "design agent" : "heuristic"
   return `Design system: ${KIND_LABELS[identified.kind]}${library} at ${paths.join(", ") || proposal.application} (${percent(identified.confidence)}, ${by}${identified.verified ? "" : ", unverified"})`
+}
+
+/** The short design-system part of the design chip, such as "DS: shadcn/ui (packages/ui)". */
+export function chip(identified: Identification) {
+  if (!identified.proposal) return "DS: none"
+  const proposal = identified.proposal
+  const prefix = proposal.application === "." ? "" : `${proposal.application}/`
+  const where = proposal.system.paths[0] ?? proposal.system.css?.[0]
+  const name =
+    identified.library && identified.library !== "none" && identified.library !== "own"
+      ? label(identified.library)
+      : KIND_LABELS[identified.kind]
+  return `DS: ${name}${where ? ` (${prefix}${where})` : ""}`
 }
 
 /** The reason and merge notes shown under the headline in the adoption question. */
@@ -831,6 +886,12 @@ async function settle(
         : `${who} found nothing to reuse`),
     notes: merged.notes,
     partial: merged.partial,
+    agreement:
+      verdict.source === "system-one" &&
+      merged.proposal !== undefined &&
+      verdict.present.confidence >= AGREEMENT &&
+      (scanned.proposal?.confidence ?? 0) >= AGREEMENT &&
+      merged.notes.every((note) => note.startsWith(`${who} confirmed`)),
   }
 }
 
