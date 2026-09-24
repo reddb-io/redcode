@@ -176,6 +176,9 @@ import { SessionReminders } from "./reminders"
 import { SessionTools } from "./tools"
 import { ToolSearch } from "./tool-search"
 import { DesignStore } from "@reddb-io/redcode-core/design/store"
+import { DesignIdentify } from "@reddb-io/redcode-core/design/identify"
+import { DesignProposal } from "@reddb-io/redcode-core/design/proposal"
+import { Global } from "@reddb-io/redcode-core/global"
 import { LLMEvent } from "@reddb-io/redcode-llm"
 import { OperationHook } from "@reddb-io/redcode-core/operation-hook"
 import { OperationHookBridge } from "@/operation-hook-bridge"
@@ -1554,6 +1557,30 @@ const layer = Layer.effect(
         Effect.orDie,
       )
 
+    /** User messages whose design-system identification was already started in the background. */
+    const warmed = new Set<string>()
+    /**
+     * Identifies the design system in the background once the design agent runs or System One routes a
+     * message as design, so design_document create finds the result cached instead of waiting for S1.
+     */
+    const warmDesignSystem = (sessionID: SessionID, directory: string) =>
+      Effect.gen(function* () {
+        const global = Global.make()
+        const design = yield* Effect.promise(() =>
+          DesignProposal.configured(directory, global.config).catch(() => undefined),
+        )
+        if (design?.system && !(yield* Effect.promise(() => DesignProposal.stale(directory, design).catch(() => true))))
+          return
+        yield* DesignIdentify.warm({
+          directory,
+          application: design?.application,
+          state: path.join(global.state, DesignIdentify.STATE),
+          mode: Intelligence.mode(yield* intelligence.read().pipe(Effect.orElseSucceed(() => Intelligence.defaults))),
+          sessionID,
+          evaluate: (evaluation) => intelligence.evaluate(evaluation),
+        })
+      })
+
     const evaluateIntelligence = Effect.fn("SessionPrompt.evaluateIntelligence")(function* (
       input: Intelligence.EvaluationInput,
       attempts?: Map<string, Intelligence.Evaluation | undefined>,
@@ -2583,6 +2610,15 @@ const layer = Layer.effect(
               message.info.role === "user" && !message.parts.every((part) => "synthetic" in part && part.synthetic),
           )
           const assessment = realUser ? promptAssessments.get(realUser.info.id) : undefined
+          if (
+            realUser &&
+            !warmed.has(realUser.info.id) &&
+            DesignIdentify.wanted({ agent: agent.name, route: Intelligence.workRoute(assessment) })
+          ) {
+            warmed.add(realUser.info.id)
+            const directory = (yield* InstanceState.context).directory
+            yield* warmDesignSystem(sessionID, directory).pipe(Effect.ignore, Effect.forkIn(scope))
+          }
           const batch = msgs.findLast((message) => message.info.role === "assistant")
           const settledTools =
             batch && (!realUser || msgs.indexOf(batch) > msgs.indexOf(realUser)) ? responseToolResults([batch]) : []

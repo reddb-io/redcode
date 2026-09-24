@@ -2390,6 +2390,8 @@ function ToolPart(props: { last: boolean; part: ToolPart; message: AssistantMess
   const shouldHide = createMemo(() => {
     if (ctx.showDetails()) return false
     if (props.part.state.status !== "completed") return false
+    // A created design's chip (target and design system) stays visible: it is how the user sees what was settled.
+    if (typeof props.part.state.metadata?.designChip === "string") return false
     return true
   })
 
@@ -2458,6 +2460,11 @@ function ToolPart(props: { last: boolean; part: ToolPart; message: AssistantMess
         </Match>
         <Match when={display() === "skill"}>
           <Skill {...toolprops} />
+        </Match>
+        <Match when={display() === "design_document" && typeof toolprops.metadata.designChip === "string"}>
+          <InlineTool icon="◆" pending="Creating design…" complete={true} part={props.part}>
+            {String(toolprops.metadata.designChip)}
+          </InlineTool>
         </Match>
         <Match when={true}>
           <GenericTool {...toolprops} />
@@ -3381,6 +3388,7 @@ const toolDisplays = new Set([
   "question",
   "skill",
   "execute",
+  "design_document",
 ])
 
 export function toolDisplay(tool: string) {

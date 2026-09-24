@@ -19,6 +19,7 @@ import { SessionSchema } from "./session/schema"
 import { Flag } from "./flag/flag"
 import { ProviderRouter } from "./provider/router"
 import { ReasoningAuto } from "./session/reasoning-auto"
+import { DesignTargetCriteria } from "./design/target-criteria"
 
 export const defaults: Intelligence.Settings = { enabled: false, onboarding: "pending" }
 export const POLICY = "semantic-v3-experimental"
@@ -1275,6 +1276,23 @@ const promptQuestionDefinitions: Record<string, Intelligence.Question> = {
       rejects: "Rejects the previous answer or work, says it failed, or says it went the wrong way",
       neutral: "Does not judge the previous turn, or there is no previous turn",
     },
+  },
+  // Asked with every classification so a design request settles its target without another S1 call.
+  design_target: {
+    type: "choice",
+    instructions: {
+      question: "If work_route is design, what does the user ask to design?",
+      note: "This answer is irrelevant when work_route is not design. Judge the artifact from its meaning, in whatever language the request uses.",
+    },
+    criteria: DesignTargetCriteria.TARGETS,
+  },
+  design_platform: {
+    type: "choice",
+    instructions: {
+      question: "If the design is a mobile app, which platform does the request name or clearly imply?",
+      note: "Choose either unless one platform is named or clearly implied. This answer is irrelevant unless design_target is app.",
+    },
+    criteria: DesignTargetCriteria.PLATFORMS,
   },
 }
 
