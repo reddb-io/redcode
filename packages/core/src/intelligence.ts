@@ -1407,6 +1407,92 @@ export const responseQuestions: Record<string, Intelligence.Question> = {
   },
 }
 
+/**
+ * The response checks that apply to a turn, or undefined when there is nothing to review. Judging
+ * tool evidence needs tool results and judging a premature finish needs tasks or an active goal;
+ * asking either without them only invites a false positive. A turn with none of that evidence,
+ * which System One reliably routed as a plain answer, has nothing a review could verify.
+ */
+export function responseQuestionsFor(turn: { tools: boolean; tasks: boolean; goal: boolean; route?: string }) {
+  if (!turn.tools && !turn.tasks && !turn.goal && turn.route === "answer") return undefined
+  return Object.fromEntries(
+    Object.entries(responseQuestions).filter(
+      ([id]) => (id !== "tool_evidence" || turn.tools) && (id !== "premature" || turn.tasks || turn.goal),
+    ),
+  )
+}
+
+/** The work route of a prompt classification when System One gave it reliably, or undefined. */
+export function workRoute(evaluation: Intelligence.Evaluation | undefined) {
+  const route = evaluation && evaluation.decision !== "unavailable" ? evaluation.answers.work_route : undefined
+  return route?.type === "choice" && route.confidence >= 0.6 ? route.choice : undefined
+}
+
+export const RESPONSE_REPAIR = "[system:response-quality-repair]"
+
+/**
+ * The probability at or above which System One establishes a response issue. Below it the issue is
+ * unresolved, not found: repairing on it rewrites a sound answer, and the revision reads to the
+ * user as the agent replying to itself.
+ */
+export const REPAIR_CONFIDENCE = 0.75
+
+/**
+ * The issues of a response review that justify one more pass (`repair`) and the established ones
+ * left standing (`unresolved`). An issue already repaired this turn is never repaired again: S1
+ * finding it in the revision means the repair did not settle it, and another round only repeats it.
+ */
+export function responseRepair(evaluation: Intelligence.Evaluation | undefined, repaired: ReadonlyArray<string>) {
+  const established =
+    !evaluation || evaluation.decision === "unavailable"
+      ? []
+      : evaluation.issues.filter((id) => {
+          const answer = evaluation.answers[id]
+          return answer?.type === "noul" && answer.noul >= REPAIR_CONFIDENCE
+        })
+  return { repair: established.filter((id) => !repaired.includes(id)), unresolved: established }
+}
+
+/** The synthetic prompt that asks S2 to revise its final response for established issues. */
+export function repairPrompt(issues: ReadonlyArray<string>) {
+  return `${RESPONSE_REPAIR}
+System One review found these issues in your final response: ${issues.join(", ")}.
+Fix what is actually wrong, then write the final response again in full. It replaces the previous one for the user, so do not acknowledge or mention this review. If no issue is real, repeat the previous response unchanged.`
+}
+
+/**
+ * Whether a revised response is materially the same as the one it revises: equal once case,
+ * spacing, punctuation and symbols are ignored, or sharing nearly all of its character pairs.
+ * Character pairs compare every script alike, including those written without spaces.
+ */
+export function sameResponse(previous: string, next: string) {
+  const normalize = (text: string) =>
+    text
+      .normalize("NFKC")
+      .toLocaleLowerCase()
+      .replace(/[\p{P}\p{S}\s]+/gu, " ")
+      .trim()
+  const left = normalize(previous)
+  const right = normalize(next)
+  if (left === right) return true
+  const pairs = (text: string) => {
+    const characters = [...text]
+    return characters.slice(1).map((character, index) => characters[index]! + character)
+  }
+  const before = pairs(left)
+  const after = pairs(right)
+  if (!before.length || !after.length) return false
+  const remaining = new Map<string, number>()
+  before.forEach((pair) => remaining.set(pair, (remaining.get(pair) ?? 0) + 1))
+  const shared = after.filter((pair) => {
+    const count = remaining.get(pair) ?? 0
+    if (!count) return false
+    remaining.set(pair, count - 1)
+    return true
+  }).length
+  return (2 * shared) / (before.length + after.length) >= 0.9
+}
+
 export function promptContext(evaluation: Intelligence.Evaluation | undefined) {
   if (!evaluation || evaluation.decision === "unavailable") return undefined
   const route = evaluation.answers.work_route

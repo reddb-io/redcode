@@ -962,7 +962,7 @@ describe("SessionRunnerLLM", () => {
     }),
   )
 
-  it.effect("allows bounded corrective work with tools and exposes unresolved review", () =>
+  it.effect("repairs an established issue once and exposes it when the revision still has it", () =>
     Effect.gen(function* () {
       yield* setup
       intelligenceEvaluate = (input) =>
@@ -977,19 +977,106 @@ describe("SessionRunnerLLM", () => {
       responses = [
         fragmentFixture("text", "weak-final", ["Done."]).completeEvents,
         fragmentFixture("text", "repair-final", ["The crash was fixed and verified."]).completeEvents,
-        fragmentFixture("text", "unresolved-final", ["Some verification is still missing."]).completeEvents,
       ]
 
       yield* session.resume(sessionID)
 
-      expect(requests).toHaveLength(3)
+      // S1 flagging the same issue on the revision does not start a second repair.
+      expect(requests).toHaveLength(2)
       expect(requests[1]?.tools.length).toBeGreaterThan(0)
       expect(requests[1]?.toolChoice).toBeUndefined()
       expect(JSON.stringify(requests[1]?.system)).toContain("finish already authorized work")
       expect(JSON.stringify(yield* session.context(sessionID))).toContain("Unresolved issues: omission")
       expect(
         intelligenceInputs.filter((input) => input.operation === "response_quality").map((input) => input.attempt),
-      ).toEqual([0, 1, 2])
+      ).toEqual([0, 1])
+    }),
+  )
+
+  it.effect("does not review a plain answer turn without tools, tasks or a goal", () =>
+    Effect.gen(function* () {
+      yield* setup
+      intelligenceEvaluate = (input) =>
+        Effect.succeed(
+          input.operation === "prompt_classification"
+            ? evaluated(input, "accepted", {
+                ...promptAnswers,
+                work_route: {
+                  type: "choice",
+                  choice: "answer",
+                  confidence: 0.97,
+                  probabilities: { answer: 0.97, uncertain: 0.03 },
+                },
+              })
+            : evaluated(input, "needs_revision", responseAnswers(0.99), ["omission"]),
+        )
+      const session = yield* SessionV2.Service
+      yield* session.prompt({ sessionID, prompt: Prompt.make({ text: "yo, this is a test" }), resume: false })
+      requests.length = 0
+      responses = [fragmentFixture("text", "greeting", ["Hey! Test received. What do you need?"]).completeEvents]
+
+      yield* session.resume(sessionID)
+
+      expect(requests).toHaveLength(1)
+      expect(intelligenceInputs.map((input) => input.operation)).toEqual(["prompt_classification"])
+    }),
+  )
+
+  it.effect("leaves a doubtful response issue unrepaired and silent", () =>
+    Effect.gen(function* () {
+      yield* setup
+      intelligenceEvaluate = (input) =>
+        Effect.succeed(
+          input.operation === "prompt_classification"
+            ? evaluated(input, "accepted", promptAnswers)
+            : evaluated(input, "inconclusive", responseAnswers(0.3), ["omission"]),
+        )
+      const session = yield* SessionV2.Service
+      yield* session.prompt({ sessionID, prompt: Prompt.make({ text: "yo, this is a test" }), resume: false })
+      requests.length = 0
+      responses = [
+        fragmentFixture("text", "greeting", ["Hey! Test received. What do you need?"]).completeEvents,
+        fragmentFixture("text", "self-reply", ["Copy that. What would you like me to do?"]).completeEvents,
+      ]
+
+      yield* session.resume(sessionID)
+
+      expect(requests).toHaveLength(1)
+      const review = intelligenceInputs.find((input) => input.operation === "response_quality")
+      expect(Object.keys(review?.questions ?? {})).not.toContain("tool_evidence")
+      expect(Object.keys(review?.questions ?? {})).not.toContain("premature")
+      const context = JSON.stringify(yield* session.context(sessionID))
+      expect(context).not.toContain(Intelligence.RESPONSE_REPAIR)
+      expect(context).not.toContain("Unresolved issues")
+    }),
+  )
+
+  it.effect("stops repairing when the revision makes no material change", () =>
+    Effect.gen(function* () {
+      yield* setup
+      intelligenceEvaluate = (input) =>
+        Effect.succeed(
+          input.operation === "prompt_classification"
+            ? evaluated(input, "accepted", promptAnswers)
+            : evaluated(input, "needs_revision", responseAnswers(0.99), ["omission"]),
+        )
+      const session = yield* SessionV2.Service
+      yield* session.prompt({ sessionID, prompt: Prompt.make({ text: "Fix the crash" }), resume: false })
+      requests.length = 0
+      responses = [
+        fragmentFixture("text", "first-final", ["Done, the crash is fixed."]).completeEvents,
+        fragmentFixture("text", "same-final", ["Done — the crash is fixed!"]).completeEvents,
+      ]
+
+      yield* session.resume(sessionID)
+
+      expect(requests).toHaveLength(2)
+      expect(
+        intelligenceInputs.filter((input) => input.operation === "response_quality").map((input) => input.attempt),
+      ).toEqual([0])
+      expect(JSON.stringify(yield* session.context(sessionID))).toContain(
+        "The revised response made no material change. Unresolved issues: omission",
+      )
     }),
   )
 
@@ -1099,7 +1186,7 @@ describe("SessionRunnerLLM", () => {
                 input,
                 input.operation === "response_quality" && !verified ? "needs_revision" : "accepted",
                 responseAnswers(verified ? 0 : 0.99),
-                verified ? [] : ["missing_evidence"],
+                verified ? [] : ["omission"],
               ),
         )
       yield* session.prompt({ sessionID, prompt: Prompt.make({ text: "Verify the implementation" }), resume: false })

@@ -691,7 +691,30 @@ it.instance("persists classifications for every promoted legacy prompt using rea
         .map((evaluation) => evaluation.subjectID)
         .toSorted(),
     ).toEqual([first.info.id, second.info.id].toSorted())
-    expect(history.some((evaluation) => evaluation.operation === "response_quality")).toBe(true)
+    // The fixture routes both prompts as plain answers, and the turn used no tools, tasks or goal:
+    // there is nothing a response review could verify, so S1 is not asked for one.
+    expect(history.some((evaluation) => evaluation.operation === "response_quality")).toBe(false)
+  }),
+)
+
+it.instance("reviews the final response of a turn that ran tools even when routed as an answer", () =>
+  Effect.gen(function* () {
+    const { llm } = yield* useServerConfig(providerCfg)
+    const service = yield* Intelligence.Service
+    const prompt = yield* SessionPrompt.Service
+    const sessions = yield* Session.Service
+    const chat = yield* sessions.create({ title: "Pinned" })
+    yield* prompt.prompt({
+      sessionID: chat.id,
+      noReply: true,
+      parts: [{ type: "text", text: "Which config files are there?" }],
+    })
+    yield* llm.tool("glob", { pattern: "*.json" })
+    yield* llm.text("There are no config files.")
+    yield* prompt.loop({ sessionID: chat.id })
+    expect(
+      (yield* service.history(chat.id)).filter((evaluation) => evaluation.operation === "response_quality"),
+    ).toHaveLength(1)
   }),
 )
 
