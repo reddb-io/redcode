@@ -20,6 +20,7 @@ function fakes(
     settings?: Record<string, unknown>
     credentials?: Record<string, string>
     limits?: Array<[string, string]>
+    env?: Record<string, string>
   } = {},
 ) {
   const calls: string[] = []
@@ -73,13 +74,14 @@ function fakes(
         }),
     } as unknown as Pick<ModelLimit.Interface, "list" | "forget">,
     envNames: ["GONE_API_KEY", "GONE_TOKEN"],
-    env: (name: string) => (name === "GONE_API_KEY" ? "set" : undefined),
+    env: (name: string) => (input.env ?? { GONE_API_KEY: "set" })[name],
   }
   return { calls, writes, saved, forgotten, credentials, deps }
 }
 
-const everything = () =>
+const everything = (env?: Record<string, string>) =>
   fakes({
+    env,
     data: {
       provider: { gone: { name: "Gone", options: { baseURL: BASE_URL } }, keep: { name: "Keep" } },
       model: "gone/a",
@@ -119,12 +121,12 @@ const REMOVED = {
     "agent build",
     "command review",
     "enabled providers",
-    "disabled providers",
     "S2 principal",
     "S1 evaluator",
     "dual reasoning (turned off until set up again in /setup)",
   ],
   learnedLimits: 1,
+  hidden: true,
 }
 
 describe("ProviderRemove.remove", () => {
@@ -151,7 +153,6 @@ describe("ProviderRemove.remove", () => {
           ["small_model"],
           ["agent", "build", "model"],
           ["command", "review", "model"],
-          ["disabled_providers"],
         ],
       },
     ])
@@ -207,13 +208,38 @@ describe("ProviderRemove.remove", () => {
     expect(keyless.saved).toEqual([{ enabled: true, reasoning: "single", onboarding: "completed" }])
   })
 
-  test("a provider with nothing saved changes nothing but still names its environment variables", async () => {
-    const fake = fakes()
+  test("without an environment variable that loads it, the provider leaves disabled_providers", async () => {
+    const fake = everything({})
     const result = await Effect.runPromise(ProviderRemove.remove(fake.deps, "gone"))
-    expect(result.removed).toEqual({ credential: false, config: false, references: [], learnedLimits: 0 })
-    expect(result.envVariables).toEqual(["GONE_API_KEY"])
+    expect(result.removed.hidden).toBe(false)
+    expect(result.envVariables).toEqual([])
+    expect(result.removed.references).toContain("disabled providers")
+    expect(fake.writes[0].remove).toContainEqual(["disabled_providers"])
+  })
+
+  test("a provider the environment loads is hidden through disabled_providers so the removal sticks", async () => {
+    const fake = fakes({ data: { disabled_providers: ["other"] }, env: { AWS_PROFILE: "work" } })
+    const deps = { ...fake.deps, envNames: ["AWS_PROFILE", "AWS_ACCESS_KEY_ID"] }
+    const preview = await Effect.runPromise(ProviderRemove.remove(deps, "gone", { dryRun: true }))
+    expect(preview.removed).toEqual({
+      credential: false,
+      config: false,
+      references: [],
+      learnedLimits: 0,
+      hidden: true,
+    })
+    expect(preview.envVariables).toEqual(["AWS_PROFILE"])
     expect(fake.writes).toEqual([])
-    expect(fake.calls).toEqual(["auth.remove:gone"])
+
+    const result = await Effect.runPromise(ProviderRemove.remove(deps, "gone"))
+    expect(result.removed.hidden).toBe(true)
+    expect(fake.writes).toEqual([{ patch: { disabled_providers: ["other", "gone"] }, remove: [] }])
+    expect(fake.calls).toEqual(["config", "auth.remove:gone"])
+    // Connecting it again takes it off the list.
+    expect(ProviderRemove.enabling({ disabled_providers: ["other", "gone"] }, "gone")).toEqual({
+      patch: { disabled_providers: ["other"] },
+      remove: [],
+    })
   })
 })
 

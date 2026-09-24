@@ -156,7 +156,7 @@ test("provider reload failure stays in the credential dialog without exiting the
 
 async function mountRemoval(
   tmp: string,
-  removed: { credential: boolean; config: boolean; references: string[]; learnedLimits: number },
+  removed: { credential: boolean; config: boolean; references: string[]; learnedLimits: number; hidden: boolean },
   notes: { envVariables: string[]; referencingFiles: string[] } = { envVariables: [], referencingFiles: [] },
 ) {
   await Bun.write(`${tmp}/kv.json`, "{}")
@@ -203,6 +203,7 @@ test("the manage menu removes a connected provider after previewing what goes", 
     config: true,
     references: ["default model"],
     learnedLimits: 2,
+    hidden: false,
   })
   try {
     await wait(() => setup.app.captureCharFrame().includes("Connect a provider"))
@@ -233,7 +234,7 @@ test("ctrl+d on a connected provider previews the removal and cancelling keeps i
   await using tmp = await tmpdir()
   const { setup, removals } = await mountRemoval(
     tmp.path,
-    { credential: true, config: false, references: [], learnedLimits: 0 },
+    { credential: true, config: false, references: [], learnedLimits: 0, hidden: true },
     { envVariables: ["MOCK_API_KEY"], referencingFiles: ["/work/redcode.json"] },
   )
   try {
@@ -242,6 +243,7 @@ test("ctrl+d on a connected provider previews the removal and cancelling keeps i
     setup.app.mockInput.pressKey("d", { ctrl: true })
     await wait(() => setup.app.captureCharFrame().includes("Remove Mock Provider?"))
     const frame = setup.app.captureCharFrame()
+    expect(frame).toContain("hidden")
     expect(frame).toContain("MOCK_API_KEY")
     expect(frame).toContain("Still mentioned in:")
 

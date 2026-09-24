@@ -614,6 +614,63 @@ describe("provider HttpApi", () => {
     30000,
   )
 
+  it.instance(
+    "removing a provider the environment loads hides it until it is connected again",
+    () =>
+      Effect.gen(function* () {
+        const directory = (yield* TestInstance).directory
+        const authFile = path.join(Global.Path.data, "auth.json")
+        const configFile = path.join(Global.Path.config, "config.jsonc")
+        const headers = { "x-opencode-directory": directory, "content-type": "application/json" }
+        yield* Effect.acquireRelease(
+          Effect.promise(async () => ({
+            config: await fs.readFile(configFile, "utf8").catch(() => undefined),
+            auth: await fs.readFile(authFile, "utf8").catch(() => undefined),
+            env: process.env.ANTHROPIC_API_KEY,
+          })),
+          (saved) =>
+            Effect.promise(async () => {
+              if (saved.config === undefined) await fs.rm(configFile, { force: true })
+              else await fs.writeFile(configFile, saved.config)
+              if (saved.auth === undefined) await fs.rm(authFile, { force: true })
+              else await fs.writeFile(authFile, saved.auth)
+              if (saved.env === undefined) delete process.env.ANTHROPIC_API_KEY
+              else process.env.ANTHROPIC_API_KEY = saved.env
+            }),
+        )
+        yield* Effect.promise(() =>
+          fs.writeFile(configFile, JSON.stringify({ disabled_providers: ["other"] }, null, 2)),
+        )
+        process.env.ANTHROPIC_API_KEY = "env-anthropic-key"
+
+        const removed = yield* request("/provider/anthropic", { method: "DELETE", headers })
+        expect(removed.status).toBe(200)
+        expect(yield* removed.json).toMatchObject({
+          dryRun: false,
+          removed: { hidden: true },
+          envVariables: ["ANTHROPIC_API_KEY"],
+        })
+        expect(JSON.parse(yield* Effect.promise(() => fs.readFile(configFile, "utf8")))).toEqual({
+          disabled_providers: ["other", "anthropic"],
+        })
+        // Reloaded after the removal, the environment variable no longer brings it back.
+        const listed = yield* request("/provider", { headers })
+        expect(((yield* listed.json) as { connected: string[] }).connected).not.toContain("anthropic")
+
+        const reconnected = yield* request("/auth/anthropic", {
+          method: "PUT",
+          headers,
+          body: JSON.stringify({ type: "api", key: "saved-anthropic-key" }),
+        })
+        expect(reconnected.status).toBe(200)
+        expect(JSON.parse(yield* Effect.promise(() => fs.readFile(configFile, "utf8")))).toEqual({
+          disabled_providers: ["other"],
+        })
+      }),
+    projectOptions,
+    30000,
+  )
+
   it.instance.skip(
     "returns public v2 provider not found errors",
     Effect.gen(function* () {

@@ -38,6 +38,12 @@ const setProcessEnv = (k: string, v: string) =>
     process.env[k] = v
   })
 
+const unsetProcessEnv = (k: string) =>
+  Effect.sync(() => {
+    rememberEnv(k)
+    delete process.env[k]
+  })
+
 const set = (k: string, v: string) =>
   Effect.gen(function* () {
     rememberEnv(k)
@@ -2342,9 +2348,10 @@ it.instance(
   }),
 )
 
-it.effect("opencode loader keeps paid models when config apiKey is present", () =>
+it.effect("opencode is opt-in: absent unconfigured, free models with a bare entry, all with a key", () =>
   Effect.gen(function* () {
     const noneDir = yield* tmpdirScoped()
+    const bareDir = yield* tmpdirScoped({ config: { provider: { opencode: {} } } })
     const keyedDir = yield* tmpdirScoped({
       config: { provider: { opencode: { options: { apiKey: "test-key" } } } },
     })
@@ -2355,15 +2362,16 @@ it.effect("opencode loader keeps paid models when config apiKey is present", () 
         .pipe(provideInstanceEffect(directory))
         .pipe(Effect.provide(instanceStoreLayer), Effect.provide(AppNodeBuilder.build(CrossSpawnSpawner.node)))
 
-    const none = paid(yield* listIn(noneDir))
-    const keyedCount = paid(yield* listIn(keyedDir))
-
-    expect(none).toBe(0)
-    expect(keyedCount).toBeGreaterThan(0)
+    yield* unsetProcessEnv("OPENCODE_API_KEY")
+    expect((yield* listIn(noneDir))[ProviderV2.ID.opencode]).toBeUndefined()
+    const bare = yield* listIn(bareDir)
+    expect(paid(bare)).toBe(0)
+    expect(bare[ProviderV2.ID.opencode].options.apiKey).toBe("public")
+    expect(paid(yield* listIn(keyedDir))).toBeGreaterThan(0)
   }).pipe(provideMultiInstance),
 )
 
-it.effect("opencode loader keeps paid models when auth exists", () =>
+it.effect("opencode loads with all models once a key is saved", () =>
   Effect.gen(function* () {
     const noneDir = yield* tmpdirScoped()
     const keyedDir = yield* tmpdirScoped()
@@ -2374,7 +2382,8 @@ it.effect("opencode loader keeps paid models when auth exists", () =>
         .pipe(provideInstanceEffect(directory))
         .pipe(Effect.provide(instanceStoreLayer), Effect.provide(AppNodeBuilder.build(CrossSpawnSpawner.node)))
 
-    const none = paid(yield* listIn(noneDir))
+    yield* unsetProcessEnv("OPENCODE_API_KEY")
+    expect((yield* listIn(noneDir))[ProviderV2.ID.opencode]).toBeUndefined()
 
     const authPath = path.join(Global.Path.data, "auth.json")
     const original = yield* Effect.promise(() => Filesystem.readText(authPath).catch(() => undefined))
@@ -2388,9 +2397,13 @@ it.effect("opencode loader keeps paid models when auth exists", () =>
         }),
     )
 
-    const keyedCount = paid(yield* listIn(keyedDir))
-
-    expect(none).toBe(0)
-    expect(keyedCount).toBeGreaterThan(0)
+    expect(paid(yield* listIn(keyedDir))).toBeGreaterThan(0)
   }).pipe(provideMultiInstance),
+)
+
+it.instance("opencode loads with OPENCODE_API_KEY in the environment", () =>
+  Effect.gen(function* () {
+    yield* set("OPENCODE_API_KEY", "test-key")
+    expect(paid(yield* list)).toBeGreaterThan(0)
+  }),
 )

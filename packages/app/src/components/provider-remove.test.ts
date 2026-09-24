@@ -17,7 +17,7 @@ const removal = (
   referencingFiles: [],
   envVariables: [],
   ...input,
-  removed: { credential: false, config: false, references: [], learnedLimits: 0, ...input.removed },
+  removed: { credential: false, config: false, references: [], learnedLimits: 0, hidden: false, ...input.removed },
 })
 
 describe("providerRemoveSummary", () => {
@@ -50,10 +50,10 @@ describe("providerRemoveSummary", () => {
     expect(providerRemoveSummary(removal({}), "Acme", t).removed).toEqual(["provider.remove.nothing"])
   })
 
-  test("notes environment variables and project files that keep the provider around", () => {
+  test("notes the hiding environment variables and project files that keep the provider around", () => {
     const summary = providerRemoveSummary(
       removal({
-        removed: { credential: true },
+        removed: { credential: true, hidden: true },
         envVariables: ["ACME_API_KEY", "ACME_TOKEN"],
         referencingFiles: ["/work/app/redcode.json"],
       }),

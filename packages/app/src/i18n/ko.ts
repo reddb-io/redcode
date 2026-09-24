@@ -209,7 +209,8 @@ export const dict = {
   "provider.remove.references": "In use by: {{references}}",
   "provider.remove.learnedLimits": "Learned model limits: {{count}}",
   "provider.remove.nothing": "Nothing is saved for this provider.",
-  "provider.remove.env": "{{provider}} stays available through {{variables}}; unset it to remove it completely.",
+  "provider.remove.env":
+    "{{provider}} is hidden, since {{variables}} would load it again. Connecting it again shows it.",
   "provider.remove.files": "Still mentioned in: {{files}}, which are not edited.",
   "provider.remove.button": "Remove",
   "provider.remove.toast.title": "{{provider}} removed",
