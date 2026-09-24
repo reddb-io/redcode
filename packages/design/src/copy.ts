@@ -164,6 +164,7 @@ export const reviewCopy = {
   renameVariant: "Rename…",
   splitVariant: "Split…",
   deleteVariant: "Delete…",
+  deleteVariantTab: "Delete variant",
   moveLeft: "Move left",
   moveRight: "Move right",
   selectMerge: "Select variants to merge",
