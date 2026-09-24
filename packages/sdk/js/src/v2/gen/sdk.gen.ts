@@ -9865,6 +9865,7 @@ export class Intelligence extends HeyApiClient {
         | "session_progress"
         | "subagent_result"
         | "design_target"
+        | "design_system_detect"
       subjectID?: string
       candidateID?: string
       decision?: "accepted" | "needs_revision" | "inconclusive" | "unavailable"

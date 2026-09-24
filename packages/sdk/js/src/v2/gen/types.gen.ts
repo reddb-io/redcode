@@ -7766,6 +7766,7 @@ export type IntelligenceEvaluation = {
     | "session_progress"
     | "subagent_result"
     | "design_target"
+    | "design_system_detect"
   kind?: "classification" | "gate"
   subjectID?: string
   candidateID?: string
@@ -19266,6 +19267,7 @@ export type IntelligenceHistoryData = {
       | "session_progress"
       | "subagent_result"
       | "design_target"
+      | "design_system_detect"
     subjectID?: string
     candidateID?: string
     decision?: "accepted" | "needs_revision" | "inconclusive" | "unavailable"
