@@ -2423,8 +2423,8 @@ test("the active tab offers a delete affordance that opens the same confirmation
     await page.getByRole("tab", { name: "Alpha", exact: true }).waitFor()
     const closeAlpha = page.getByRole("button", { name: "Delete variant Alpha", exact: true })
     const closeBeta = page.getByRole("button", { name: "Delete variant Beta", exact: true })
-    // Only the active tab (Alpha, selected by default) shows the delete "x".
-    expect(await closeAlpha.count()).toBe(1)
+    // Only the active tab (Alpha, selected by default) shows the delete "x", once hydration settles.
+    await closeAlpha.waitFor()
     expect(await closeBeta.count()).toBe(0)
     await closeAlpha.click()
     // It opens the exact same confirmation the variant-actions menu's "Delete…" opens.
