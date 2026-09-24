@@ -26,6 +26,8 @@ const executableEvents = new Set<Hook.Event>([
   "PermissionRequest",
   "PostToolUse",
   "PostToolUseFailure",
+  "SubagentStart",
+  "SubagentStop",
   "Stop",
   "PreCompact",
   "MessageDisplay",

@@ -37,6 +37,7 @@ import { HumanWait } from "../human-wait"
 import { PromptCacheDiagnostics } from "../prompt-cache-diagnostics"
 import { LoopGuard } from "../loop-guard"
 import { SessionStopLoss } from "../stop-loss"
+import { SubagentReview } from "../subagent-review"
 import { ReasoningAuto } from "../reasoning-auto"
 import { SessionRetry } from "../retry"
 import { SessionStall } from "../stall"
@@ -773,6 +774,9 @@ const layer = Layer.effect(
       sessionID: SessionSchema.ID,
       attempt: number,
     ) {
+      // The parent reviews a supervised subagent's result against its brief (the task tool), so its
+      // own generic response review would only judge the same answer twice.
+      if (SubagentReview.supervised(SubagentReview.fromMetadata(yield* store.metadata(sessionID)))) return undefined
       const entries = yield* SessionHistory.entriesForRunner(db, sessionID, 0).pipe(Effect.orDie)
       const candidate = entries.map((entry) => entry.message).findLast((message) => message.type === "assistant")
       if (!candidate) return undefined
@@ -1062,7 +1066,11 @@ const layer = Layer.effect(
       }
       const toolMaterialization = isLastStep
         ? undefined
-        : yield* tools.materialize({ permissions: agent.info?.permissions, deferral })
+        : yield* tools.materialize({
+            // A subagent's Session rules hide what its parent denied, like its agent's rules do.
+            permissions: [...(agent.info?.permissions ?? []), ...(yield* store.permission(session.id))],
+            deferral,
+          })
       const mcpCatalog = toolMaterialization?.mcpTools ?? []
       const selectionID = `mcp-selection:${Intelligence.fingerprint({ tools: mcpCatalog, request: latestUser?.id, batch: batch?.id })}`
       const mcpSelection =
