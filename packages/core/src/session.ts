@@ -38,6 +38,8 @@ import { Revert } from "@reddb-io/redcode-schema/revert"
 import { FSUtil } from "./fs-util"
 import { SessionDurable } from "@reddb-io/redcode-schema/durable-event-manifest"
 import { HookV2 } from "./hook"
+import { SessionHost } from "./session/host"
+import type { Permission } from "@reddb-io/redcode-schema/permission"
 
 export const RevertState = Revert.State
 export type RevertState = Revert.State
@@ -82,6 +84,12 @@ type CreateInput = {
   agent?: AgentV2.ID
   model?: ModelV2.Ref
   location: Location.Ref
+  /** The Session that started this one, for a subagent. */
+  parentID?: SessionSchema.ID
+  title?: string
+  /** Rules the Session carries on top of its agent's; they win over the agent's. */
+  permission?: Permission.Ruleset
+  metadata?: Record<string, unknown>
 }
 
 type CompactInput = {
@@ -232,7 +240,8 @@ const layer = Layer.effect(
           directory: input.location.directory,
           path: path.relative(project.directory, input.location.directory).replaceAll("\\", "/"),
           workspaceID: input.location.workspaceID ? WorkspaceV2.ID.make(input.location.workspaceID) : undefined,
-          title: `New session - ${new Date(now).toISOString()}`,
+          parentID: input.parentID,
+          title: input.title ?? `New session - ${new Date(now).toISOString()}`,
           agent: input.agent,
           model: input.model
             ? {
@@ -244,6 +253,13 @@ const layer = Layer.effect(
           cost: 0,
           tokens: { input: 0, output: 0, reasoning: 0, cache: { read: 0, write: 0 } },
           time: { created: now, updated: now },
+          // Stored in the legacy rule shape, which the Session row and both runtimes share.
+          permission: input.permission?.map((rule) => ({
+            permission: rule.action,
+            pattern: rule.resource,
+            action: rule.effect,
+          })),
+          metadata: input.metadata,
         })
         const projected = yield* events
           .publish(SessionV1.Event.Created, { sessionID, info }, { location: input.location })
@@ -266,7 +282,8 @@ const layer = Layer.effect(
         if (projected.type === "existing") return projected.session
         // TODO: Restore recorded sessions onto replacement synchronized workspaces in a future API slice.
         const created = yield* result.get(sessionID).pipe(Effect.orDie)
-        if (yield* fs.isDir(created.location.directory))
+        // A subagent announces itself through SubagentStart, fired by the task tool that starts it.
+        if (!input.parentID && (yield* fs.isDir(created.location.directory)))
           yield* HookV2.Service.use((hooks) =>
             hooks.run({ event: "SessionStart", session_id: sessionID, matcher: "startup" }),
           ).pipe(Effect.provide(locations.get(created.location)))
@@ -474,6 +491,21 @@ const layer = Layer.effect(
         }),
       },
     })
+
+    // Subagents create, prompt and drain child Sessions from inside a tool call, which cannot depend
+    // on this service through the layer graph (see SessionHost).
+    yield* Effect.acquireRelease(
+      Effect.sync(() =>
+        SessionHost.register({
+          create: result.create,
+          prompt: result.prompt,
+          resume: result.resume,
+          interrupt: result.interrupt,
+          wake: execution.wake,
+        }),
+      ),
+      (remove) => Effect.sync(remove),
+    )
 
     return result
   }),

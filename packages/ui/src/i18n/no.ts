@@ -136,6 +136,13 @@ export const dict: Record<Keys, string> = {
   "ui.tool.questions.numbered": "Spørsmål {{number}}",
   "ui.tool.agent": "{{type}}-agent",
   "ui.tool.agent.default": "Agent",
+  "ui.tool.task.verdict.verified": "verifisert",
+  "ui.tool.task.verdict.inconclusive": "ikke entydig",
+  "ui.tool.task.verdict.needs_revision": "trenger revisjon",
+  "ui.tool.task.verdict.unverified": "ikke verifisert",
+  "ui.tool.task.checkpoint.in_scope": "innenfor omfanget",
+  "ui.tool.task.checkpoint.corrected": "korrigert (hint sendt)",
+  "ui.tool.task.checkpoint.stopped": "stoppet · {{reason}}",
 
   "ui.common.file.one": "fil",
   "ui.common.file.other": "filer",

@@ -136,6 +136,13 @@ export const dict = {
   "ui.tool.questions.numbered": "Spørgsmål {{number}}",
   "ui.tool.agent": "{{type}}-agent",
   "ui.tool.agent.default": "Agent",
+  "ui.tool.task.verdict.verified": "verificeret",
+  "ui.tool.task.verdict.inconclusive": "ikke entydigt",
+  "ui.tool.task.verdict.needs_revision": "kræver revision",
+  "ui.tool.task.verdict.unverified": "ikke verificeret",
+  "ui.tool.task.checkpoint.in_scope": "inden for omfanget",
+  "ui.tool.task.checkpoint.corrected": "rettet (tip sendt)",
+  "ui.tool.task.checkpoint.stopped": "stoppet · {{reason}}",
 
   "ui.common.file.one": "fil",
   "ui.common.file.other": "filer",

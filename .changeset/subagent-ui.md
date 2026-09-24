@@ -1,0 +1,5 @@
+---
+"@reddb-io/redcode": minor
+---
+
+Subagents are easier to follow and control. A task row in the TUI and the task card on the web now show the model and variant the subagent ran on, a badge for the verdict on its result (✓ verified, ? inconclusive, ! needs revision, ~ unverified) and where the stop-loss left it: in scope, corrected (hint sent) or stopped with the reason. Inside a subagent the footer shows the brief it was launched under (goal, scope, done criteria and return format, collapsed to the goal until clicked) and its checkpoint history. A new Subagents tab in the sidebar (`/subagents`) lists the session's children with their status, model and verdict, and opens one, sends it a steer, or kills it while it runs. When a guard intervenes (the loop guard, the stop-loss, the step limit and the others), the session shows one collapsed line for the trip that expands to its detail. Stop-loss checkpoints are now also kept on the session's metadata so these surfaces can show them without loading the subagent's messages.

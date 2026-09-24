@@ -165,6 +165,13 @@ export const dict = {
   "ui.tool.questions.numbered": "Pitanja {{number}}",
   "ui.tool.agent": "{{type}} agent",
   "ui.tool.agent.default": "agent",
+  "ui.tool.task.verdict.verified": "provjereno",
+  "ui.tool.task.verdict.inconclusive": "neodređeno",
+  "ui.tool.task.verdict.needs_revision": "potrebna revizija",
+  "ui.tool.task.verdict.unverified": "neprovjereno",
+  "ui.tool.task.checkpoint.in_scope": "u opsegu",
+  "ui.tool.task.checkpoint.corrected": "ispravljeno (poslan savjet)",
+  "ui.tool.task.checkpoint.stopped": "zaustavljeno · {{reason}}",
 
   "ui.common.file.one": "datoteka",
   "ui.common.file.other": "datoteke",

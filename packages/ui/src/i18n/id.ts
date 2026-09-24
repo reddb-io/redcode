@@ -164,6 +164,13 @@ export const dict: Record<string, string> = {
   "ui.tool.questions.numbered": "Pertanyaan {{number}}",
   "ui.tool.agent": "Agen {{type}}",
   "ui.tool.agent.default": "Agen",
+  "ui.tool.task.verdict.verified": "terverifikasi",
+  "ui.tool.task.verdict.inconclusive": "tidak meyakinkan",
+  "ui.tool.task.verdict.needs_revision": "perlu revisi",
+  "ui.tool.task.verdict.unverified": "belum diverifikasi",
+  "ui.tool.task.checkpoint.in_scope": "dalam cakupan",
+  "ui.tool.task.checkpoint.corrected": "dikoreksi (petunjuk dikirim)",
+  "ui.tool.task.checkpoint.stopped": "dihentikan · {{reason}}",
   "ui.tool.skill": "Keahlian",
 
   "ui.basicTool.called": "`{{tool}}` dipanggil",

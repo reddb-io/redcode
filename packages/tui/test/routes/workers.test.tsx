@@ -227,6 +227,10 @@ test("workers render in the session sidebar and preserve the session column", as
     // it is given (36 → 34 for a 6-column drag), and whether that is the drag helper or the
     // resize handler is its own question. Keyboard resizing, asserted just above, is covered.
 
+    // Workers → Subagents → Context → Workers.
+    app.dispatch("session.sidebar.tab.cycle")
+    screen = await app.waitFor("No subagents")
+    expect(screen).not.toContain("▶ h9977")
     app.dispatch("session.sidebar.tab.cycle")
     screen = await app.frame()
     expect(screen).not.toContain("▶ h9977")

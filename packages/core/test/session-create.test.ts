@@ -93,6 +93,30 @@ describe("SessionV2.create", () => {
     }),
   )
 
+  it.effect("records a subagent's parent, title, rules and metadata", () =>
+    Effect.gen(function* () {
+      const session = yield* SessionV2.Service
+      const store = yield* SessionStore.Service
+      const parent = yield* session.create({ location })
+      const child = yield* session.create({
+        location: parent.location,
+        parentID: parent.id,
+        title: "Summarize the parser (@general subagent)",
+        permission: [{ action: "task", resource: "*", effect: "deny" }],
+        metadata: { subagentBrief: { brief: "Summarize the parser" } },
+      })
+
+      expect(child).toMatchObject({
+        parentID: parent.id,
+        location: parent.location,
+        title: "Summarize the parser (@general subagent)",
+      })
+      expect(yield* store.permission(child.id)).toEqual([{ action: "task", resource: "*", effect: "deny" }])
+      expect(yield* store.metadata(child.id)).toEqual({ subagentBrief: { brief: "Summarize the parser" } })
+      expect(yield* store.permission(parent.id)).toEqual([])
+    }),
+  )
+
   it.effect("returns the existing Session when one ID is reused with different create arguments", () =>
     Effect.gen(function* () {
       const session = yield* SessionV2.Service

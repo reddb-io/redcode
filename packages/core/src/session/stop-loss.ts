@@ -671,34 +671,7 @@ export function projected(messages: ReadonlyArray<SessionMessage.Message>) {
     const used = message.tokens
     return [
       {
-        parts: message.content.flatMap((item): Part[] => {
-          if (item.type === "text") return [{ type: "text", text: item.text }]
-          if (item.type !== "tool" || item.provider?.executed === true) return []
-          if (item.state.status === "completed")
-            return [
-              {
-                type: "tool",
-                tool: item.name,
-                callID: item.id,
-                state: {
-                  status: "completed",
-                  input: item.state.input,
-                  output: JSON.stringify([item.state.content, item.state.structured]),
-                  metadata: item.state.structured,
-                },
-              },
-            ]
-          if (item.state.status === "error")
-            return [
-              {
-                type: "tool",
-                tool: item.name,
-                callID: item.id,
-                state: { status: "error", input: item.state.input, error: item.state.error.message },
-              },
-            ]
-          return []
-        }),
+        parts: parts(message),
         tokens: used ? used.input + used.output + used.reasoning + used.cache.write : 0,
         cost: message.cost ?? 0,
         ...(message.time.completed ? { completed: DateTime.toEpochMillis(message.time.completed) } : {}),
@@ -711,6 +684,38 @@ export function projected(messages: ReadonlyArray<SessionMessage.Message>) {
     started: user ? DateTime.toEpochMillis(user.time.created) : 0,
     request: user?.type === "user" ? { id: user.id, text: user.text } : { text: "" },
   }
+}
+
+/** A V2 assistant message's text and settled tool calls, in the shape the legacy checks read. */
+export function parts(message: SessionMessage.Assistant): Part[] {
+  return message.content.flatMap((item): Part[] => {
+    if (item.type === "text") return [{ type: "text", text: item.text }]
+    if (item.type !== "tool" || item.provider?.executed === true) return []
+    if (item.state.status === "completed")
+      return [
+        {
+          type: "tool",
+          tool: item.name,
+          callID: item.id,
+          state: {
+            status: "completed",
+            input: item.state.input,
+            output: JSON.stringify([item.state.content, item.state.structured]),
+            metadata: item.state.structured,
+          },
+        },
+      ]
+    if (item.state.status === "error")
+      return [
+        {
+          type: "tool",
+          tool: item.name,
+          callID: item.id,
+          state: { status: "error", input: item.state.input, error: item.state.error.message },
+        },
+      ]
+    return []
+  })
 }
 
 export * as SessionStopLoss from "./stop-loss"

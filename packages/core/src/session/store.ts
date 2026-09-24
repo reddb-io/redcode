@@ -2,6 +2,7 @@ export * as SessionStore from "./store"
 
 import { eq } from "drizzle-orm"
 import { Context, Effect, Layer, Schema } from "effect"
+import type { Permission } from "@reddb-io/redcode-schema/permission"
 import { Database } from "../database/database"
 import { makeGlobalNode } from "../effect/app-node"
 import { SessionHistory } from "./history"
@@ -21,6 +22,13 @@ export interface Interface {
   readonly message: (
     messageID: SessionMessage.ID,
   ) => Effect.Effect<{ readonly sessionID: SessionSchema.ID; readonly message: SessionMessage.Message } | undefined>
+  /**
+   * The rules the Session itself carries on top of its agent's, such as the ones a subagent inherits
+   * from its parent. Stored in the legacy rule shape, which both runtimes read.
+   */
+  readonly permission: (sessionID: SessionSchema.ID) => Effect.Effect<Permission.Ruleset>
+  /** The Session's free-form metadata, such as a subagent's brief. */
+  readonly metadata: (sessionID: SessionSchema.ID) => Effect.Effect<Record<string, unknown> | undefined>
 }
 
 export class Service extends Context.Service<Service, Interface>()("@redcode/v2/SessionStore") {}
@@ -55,6 +63,28 @@ const layer = Layer.effect(
               message: yield* decodeMessage({ ...row.data, id: row.id, type: row.type }).pipe(Effect.orDie),
             }
           : undefined
+      }),
+      permission: Effect.fn("SessionStore.permission")(function* (sessionID) {
+        const row = yield* db
+          .select({ permission: SessionTable.permission })
+          .from(SessionTable)
+          .where(eq(SessionTable.id, sessionID))
+          .get()
+          .pipe(Effect.orDie)
+        return (row?.permission ?? []).map((rule) => ({
+          action: rule.permission,
+          resource: rule.pattern,
+          effect: rule.action,
+        }))
+      }),
+      metadata: Effect.fn("SessionStore.metadata")(function* (sessionID) {
+        const row = yield* db
+          .select({ metadata: SessionTable.metadata })
+          .from(SessionTable)
+          .where(eq(SessionTable.id, sessionID))
+          .get()
+          .pipe(Effect.orDie)
+        return row?.metadata ?? undefined
       }),
     })
   }),

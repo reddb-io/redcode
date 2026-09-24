@@ -196,12 +196,44 @@
   [data-slot="basic-tool-tool-info-structured"] {
     flex: 1 1 auto;
     min-width: 0;
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 2px;
   }
 
   [data-slot="basic-tool-tool-info-main"] {
     flex: 1 1 auto;
     min-width: 0;
     align-items: center;
+  }
+
+  [data-slot="task-tool-detail"] {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    min-width: 0;
+    font-family: var(--font-family-sans);
+    font-size: 12px;
+    line-height: var(--line-height-large);
+    color: var(--text-weak);
+
+    span + span::before {
+      content: "·";
+      margin: 0 6px;
+      color: var(--text-weak);
+    }
+
+    [data-tone="success"] {
+      color: var(--icon-success-base);
+    }
+
+    [data-tone="warning"] {
+      color: var(--icon-warning-base);
+    }
+
+    [data-tone="critical"] {
+      color: var(--icon-critical-base);
+    }
   }
 
   [data-component="task-tool-spinner"] {
