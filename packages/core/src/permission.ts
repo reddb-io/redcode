@@ -166,7 +166,8 @@ const layer = Layer.effect(
       if (!session) return yield* new SessionV2.NotFoundError({ sessionID })
       if (RepositoryGuard.yolo()) return [{ action: "*", resource: "*", effect: "allow" as const }]
       const agent = yield* agents.resolve(agentID ?? session.agent)
-      return agent?.permissions ?? missingAgentPermissions
+      // The Session's own rules come last so they win: a subagent keeps its parent's denies.
+      return [...(agent?.permissions ?? missingAgentPermissions), ...(yield* sessions.permission(sessionID))]
     })
 
     function denied(input: AssertInput, rules: Permission.Ruleset) {
@@ -268,10 +269,7 @@ const layer = Layer.effect(
       ),
     )
 
-    const rules = EffectRuntime.fn("PermissionV2.rules")(function* (
-      sessionID: SessionV2.ID,
-      agent?: AgentV2.ID,
-    ) {
+    const rules = EffectRuntime.fn("PermissionV2.rules")(function* (sessionID: SessionV2.ID, agent?: AgentV2.ID) {
       return [...(yield* configured(sessionID, agent)), ...(yield* savedRules())]
     })
 

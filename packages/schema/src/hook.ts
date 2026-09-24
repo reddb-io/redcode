@@ -135,6 +135,11 @@ export const Input = Schema.Struct({
   error: Schema.String.pipe(optional),
   prompt: Schema.String.pipe(optional),
   message: Schema.String.pipe(optional),
+  /** SubagentStart and SubagentStop: the subagent's own Session and its agent type. */
+  agent_id: Schema.String.pipe(optional),
+  agent_type: Schema.String.pipe(optional),
+  /** SubagentStop: the text the subagent finished with. */
+  last_assistant_message: Schema.String.pipe(optional),
   cwd: Schema.String,
 })
 export type Input = typeof Input.Type

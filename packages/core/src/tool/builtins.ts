@@ -18,6 +18,8 @@ import { DesignTools } from "./design"
 import { GoalTools } from "./goal"
 import { MonitorTool } from "./monitor"
 import { PlanTools } from "./plan"
+import { ModelsTool } from "./models"
+import { TaskTool } from "./task"
 
 /**
  * Composes only the shipped Location-scoped built-in tool transforms.
@@ -28,9 +30,8 @@ import { PlanTools } from "./plan"
  * services once to this merged set.
  *
  * TODO: Port the remaining launch-follow-up leaves deliberately: edit fuzzy
- * parity, task, LSP,
- * repo_clone, repo_overview, and Rune/code mode. Keep MCP and plugin
- * transforms separate from this static built-in list.
+ * parity, LSP, repo_clone, repo_overview, and Rune/code mode. Keep MCP and
+ * plugin transforms separate from this static built-in list.
  */
 export const node = makeLocationNode({
   name: "built-in-tools",
@@ -52,5 +53,7 @@ export const node = makeLocationNode({
     GoalTools.node,
     MonitorTool.node,
     PlanTools.node,
+    ModelsTool.node,
+    TaskTool.node,
   ],
 })
