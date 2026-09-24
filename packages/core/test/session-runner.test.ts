@@ -5301,6 +5301,66 @@ describe("SessionRunnerLLM legacy runtime parity", () => {
     ),
   )
 
+  it.effect("keeps the loop guard on when RepositoryGuard.yolo is active", () =>
+    Effect.acquireUseRelease(
+      Effect.sync(() => {
+        const previous = process.env["REDCODE_YOLO"]
+        process.env["REDCODE_YOLO"] = "1"
+        return previous
+      }),
+      () =>
+        Effect.gen(function* () {
+          yield* setup
+          yield* clearGuardTrips
+          const session = yield* SessionV2.Service
+          executions.length = 0
+          yield* session.prompt({ sessionID, prompt: Prompt.make({ text: "Poll for the device" }), resume: false })
+          responses = Array.from({ length: 6 }, (_, index) => toolCallTurn(`call-yolo-${index}`, "echo", { text: "same" }))
+
+          yield* session.resume(sessionID)
+
+          // Yolo means "skip permission prompts", not "disable the loop guard": the identical calls
+          // still stop instead of running the full six turns the responses offer.
+          expect(executions).toEqual(["same", "same"])
+          expect(yield* guardTrips).toEqual([
+            ["loop", "correct"],
+            ["loop", "correct"],
+            ["loop", "stop"],
+          ])
+        }),
+      (previous) =>
+        Effect.sync(() => {
+          if (previous === undefined) delete process.env["REDCODE_YOLO"]
+          else process.env["REDCODE_YOLO"] = previous
+        }),
+    ),
+  )
+
+  it.effect("still honors an explicit doom_loop: allow rule with RepositoryGuard.yolo off", () =>
+    Effect.gen(function* () {
+      yield* setup
+      yield* clearGuardTrips
+      const agents = yield* AgentV2.Service
+      yield* agents.transform((editor) =>
+        editor.update(AgentV2.ID.make("build"), (agent) => {
+          agent.permissions = [...(agent.permissions ?? []), { action: "doom_loop", resource: "*", effect: "allow" }]
+        }),
+      )
+      const session = yield* SessionV2.Service
+      executions.length = 0
+      yield* session.prompt({ sessionID, prompt: Prompt.make({ text: "Repeat freely" }), resume: false })
+      responses = [
+        ...Array.from({ length: 6 }, (_, index) => toolCallTurn(`call-allow-${index}`, "echo", { text: "same" })),
+        [],
+      ]
+
+      yield* session.resume(sessionID)
+
+      expect(executions).toEqual(Array.from({ length: 6 }, () => "same"))
+      expect(yield* guardTrips).toEqual([])
+    }),
+  )
+
   it.effect("fails a wedged tool at the configured experimental.tool_timeout", () =>
     withExperimental(
       { tool_timeout: 5_000 },

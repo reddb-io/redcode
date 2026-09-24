@@ -18,6 +18,14 @@ test("YOLO bypasses repository guards and explicit permission denials in an isol
     if (Permission.evaluate("edit", "*", denied).action !== "allow") throw new Error("permission denied")
     if (Permission.disabled(["write", "bash", "design_exit"], denied).size) throw new Error("tools filtered")
     if (!RepositoryGuard.instructions().includes("YOLO mode is active")) throw new Error("wrong instructions")
+    // Yolo means "skip permission prompts", not "disable safety guards": the loop guard's
+    // doom_loop opt-out must come from an explicit rule, never from yolo's blanket allow.
+    const noRule = []
+    if (Permission.evaluateConfigured("doom_loop", "bash", noRule).action !== "ask")
+      throw new Error("yolo silently disabled the loop guard")
+    const allowedRule = [{ permission: "doom_loop", pattern: "*", action: "allow" }]
+    if (Permission.evaluateConfigured("doom_loop", "bash", allowedRule).action !== "allow")
+      throw new Error("explicit doom_loop: allow was not honored")
   `
   const proc = Bun.spawn([process.execPath, "-e", script, repo.root], {
     cwd: fileURLToPath(new URL("../..", import.meta.url)),
