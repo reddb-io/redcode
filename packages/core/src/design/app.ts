@@ -351,7 +351,8 @@ export const open = Effect.fn("DesignApp.open")(function* (input: {
     ),
   )
   const outcome = Option.getOrUndefined(attempt)
-  if (outcome?.url) return { redirect: outcome.url }
+  const url = outcome?.url
+  if (url) return { redirect: url }
   const progress = DesignAppBinary.progress()
   const html = designWaiting(reviewCopy, {
     phase: outcome?.error ? "failed" : (progress?.phase ?? "start"),
