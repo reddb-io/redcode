@@ -127,11 +127,12 @@ const layer = Layer.effectDiscard(
                 return yield* new ToolFailure({
                   message: "Tasks could not be extracted from the request; retry or supply todos directly",
                 })
-              const updated = yield* todos.update({
+              const written = yield* todos.write({
                 sessionID: context.sessionID,
                 todos: generated ?? input.todos,
                 messageID: context.assistantMessageID,
               })
+              const updated = written.todos
               const completed = input.todos.some((todo) => todo.status === "completed")
               const unverified =
                 completed && Intelligence.mode(yield* intelligence.read().pipe(Effect.orDie)) === "single"
@@ -144,6 +145,7 @@ const layer = Layer.effectDiscard(
                 ...(unverified
                   ? [`Completion passed the structural evidence checks; S1 review ${Intelligence.UNVERIFIED}.`]
                   : []),
+                ...written.notes,
               ]
               return {
                 todos: updated,

@@ -48,7 +48,7 @@ const make = Effect.gen(function* () {
     const incoming = yield* Schema.decodeUnknownEffect(Schema.Array(SessionTodo.Input))(input.todos).pipe(
       Effect.mapError((error) => new SessionTodo.Error({ message: `Invalid task update: ${error.message}` })),
     )
-    if (!incoming.length) return yield* get(input.sessionID)
+    if (!incoming.length) return { todos: yield* get(input.sessionID), notes: [] }
     const settings = yield* intelligence.read().pipe(
       Effect.tap(Intelligence.requireConfigured),
       Effect.mapError((error) => new SessionTodo.Error({ message: error.message })),
@@ -403,8 +403,15 @@ const make = Effect.gen(function* () {
         .pipe(Effect.mapError((error) => new SessionTodo.Error({ message: error.message })))
     })
     // Structural and revision checks above always apply; only the S1 verdict depends on the mode.
-    yield* Effect.forEach(semantic, (record) => Intelligence.requireReview(settings, record)).pipe(
-      Effect.mapError((error) => new SessionTodo.Error({ message: error.message })),
+    // Task bookkeeping never stalls on S1: a refusal keeps the previous state, while an unavailable
+    // evaluator or an inconclusive verdict applies the update with a visible unverified note. A plan
+    // handoff is an approval, so the tasks it admits keep the strict verdict.
+    const notes = (yield* Effect.forEach(semantic, (record) =>
+      input.origin?.type === "plan"
+        ? Intelligence.requireReview(settings, record).pipe(Effect.as(undefined))
+        : Intelligence.advise(settings, record),
+    ).pipe(Effect.mapError((error) => new SessionTodo.Error({ message: error.message })))).filter(
+      (note) => note !== undefined,
     )
     if (
       semantic.some(Boolean) &&
@@ -498,14 +505,14 @@ const make = Effect.gen(function* () {
             }),
           )
           if (commit) yield* commit.write
-          return result
+          return { todos: result, notes }
         }),
       )
       .pipe(Effect.catchTag("SqlError", Effect.die))
   })
   // A refusal reaches the model as a tool error and the person only as a folded row. The log keeps
   // its kind, the tasks it named and the first line of the reason, never prompts, commands or output.
-  const update = (input: Parameters<typeof reconcile>[0], commit?: Commit) =>
+  const write = (input: Parameters<typeof reconcile>[0], commit?: Commit) =>
     reconcile(input, commit).pipe(
       Effect.tapError((error) =>
         Effect.logWarning("todowrite refused", {
@@ -516,6 +523,8 @@ const make = Effect.gen(function* () {
         }),
       ),
     )
+  const update = (input: Parameters<typeof reconcile>[0], commit?: Commit) =>
+    write(input, commit).pipe(Effect.map((written) => written.todos))
 
   const block = Effect.fn("SessionTodoStore.block")(function* (sessionID: SessionSchema.ID, reason: string) {
     return yield* update({
@@ -558,7 +567,7 @@ const make = Effect.gen(function* () {
       })),
     })
   })
-  return { get, update, block, review, withMutation: lock.withPermits(1) }
+  return { get, update, write, block, review, withMutation: lock.withPermits(1) }
 })
 
 type Observed = {

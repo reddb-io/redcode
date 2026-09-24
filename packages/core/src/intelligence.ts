@@ -324,32 +324,44 @@ export const make = (
       )
     }).pipe(Effect.catch((error) => Effect.logWarning("evaluation artifact cleanup failed", { error: error.message })))
     yield* cleanup
+    // The newest usable connection saved for the transport's provider integrations.
+    const connection = Effect.fn("Intelligence.connection")(function* (transport: Intelligence.Evaluator["transport"]) {
+      return (yield* Effect.forEach(providerIntegrations(transport), (integration) =>
+        credentials.list(Integration.ID.make(integration)),
+      ))
+        .map((connections) => connections.toReversed().find((item) => credentialValue(item.value)))
+        .find((item) => item !== undefined)
+    })
     const credentialFor = Effect.fn("Intelligence.credentialFor")(function* (evaluator: Intelligence.Evaluator) {
       if (!evaluator.credentialID) return
       const credential = yield* credentials.get(Credential.ID.make(evaluator.credentialID))
-      const metadata = credential?.value.metadata
-      const baseURL = validURL(evaluator.baseURL) ? new URL(evaluator.baseURL).href.replace(/\/$/, "") : undefined
-      const owned = credential?.integrationID === Integration.ID.make(`intelligence:${evaluator.transport}`)
-      // A provider's key is shared with S1 only for the address it was saved for: the one recorded
-      // with the connection, else the transport's preset. Loopback names are one address.
-      const shared =
-        providerIntegrations(evaluator.transport).some(
-          (integration) => credential?.integrationID === Integration.ID.make(integration),
-        ) &&
-        ProviderRouter.sameEndpoint(
-          evaluator.baseURL,
-          stringMetadata(metadata, "baseURL") ?? evaluatorPreset(evaluator.transport).baseURL,
-        )
-      if (
-        !credential ||
-        (!owned && !shared) ||
-        (owned && (metadata?.intelligenceTransport !== evaluator.transport || metadata.intelligenceBaseURL !== baseURL))
-      )
+      if (credential) {
+        if (!belongs(evaluator, credential))
+          return yield* new Error({
+            message: "Stored System One credential does not belong to this transport and API origin",
+          })
+        return credential
+      }
+      // Reconnecting a provider saves its key under a new credential id. Follow the provider's current
+      // connection instead of failing every evaluation, but only one this evaluator may use.
+      const current = yield* connection(evaluator.transport)
+      if (!current || !belongs(evaluator, current))
         return yield* new Error({
-          message: "Stored System One credential does not belong to this transport and API origin",
+          message: `System One credential was removed; reconnect ${evaluator.transport} in /setup`,
         })
-      return credential
+      yield* Effect.logWarning("System One credential was removed; using the provider's current connection", {
+        transport: evaluator.transport,
+        previous: evaluator.credentialID,
+        credentialID: current.id,
+      })
+      return current
     })
+    // Persists a healed credential id, unless the settings moved on while the request ran.
+    const repoint = Effect.fn("Intelligence.repoint")(function* (previous: string, next: string) {
+      const settings = yield* read()
+      if (settings.evaluator?.credentialID !== previous) return
+      yield* write(file, { ...settings, evaluator: { ...settings.evaluator, credentialID: next } })
+    }, lock.withPermits(1))
     const options = Effect.fn("Intelligence.options")(function* () {
       const offers = new Map(
         ModelsDev.systemOneOffers(catalog).map((offer) => [
@@ -369,11 +381,7 @@ export const make = (
       return yield* Effect.forEach(entries, (entry) =>
         Effect.gen(function* () {
           const preset = evaluatorPreset(entry.transport)
-          const credential = (yield* Effect.forEach(providerIntegrations(entry.transport), (integration) =>
-            credentials.list(Integration.ID.make(integration)),
-          ))
-            .map((connections) => connections.toReversed().find((item) => credentialValue(item.value)))
-            .find((item) => item !== undefined)
+          const credential = yield* connection(entry.transport)
           const connected = stringMetadata(credential?.value.metadata, "baseURL")
           return {
             name: entry.transport === "opencode-zen" ? `${entry.name} (recommended)` : entry.name,
@@ -403,7 +411,9 @@ export const make = (
         return yield* new Error({ message: "Jev is an evaluator; select a generative model for System Two" })
       if (settings.fast && (!settings.fast.id.trim() || !settings.fast.providerID.trim()))
         return yield* new Error({ message: "Select a valid transformation model" })
-      if (!input.apiKey && settings.evaluator?.credentialID) yield* credentialFor(settings.evaluator)
+      // A stored credential that was replaced is saved under its current id.
+      const kept =
+        !input.apiKey && settings.evaluator?.credentialID ? yield* credentialFor(settings.evaluator) : undefined
       const credential =
         input.apiKey && settings.evaluator
           ? yield* credentials.create({
@@ -418,7 +428,7 @@ export const make = (
               },
               label: "System One",
             })
-          : undefined
+          : kept
       const next = {
         ...settings,
         ...(settings.evaluator
@@ -438,6 +448,12 @@ export const make = (
         return yield* new Error({ message: "Use an HTTP(S) base URL without credentials, query or fragment" })
       const url = new URL(evaluator.baseURL)
       const stored = !apiKey && evaluator.credentialID ? yield* credentialFor(evaluator) : undefined
+      if (stored && evaluator.credentialID && stored.id !== evaluator.credentialID)
+        yield* repoint(evaluator.credentialID, stored.id).pipe(
+          Effect.catch((error) =>
+            Effect.logWarning("Unable to save the System One credential", { error: error.message }),
+          ),
+        )
       const officialZen =
         evaluator.transport === "opencode-zen" && url.href.replace(/\/$/, "") === evaluatorPreset().baseURL
       const zenCredential = officialZen
@@ -1043,11 +1059,44 @@ export const requireAccepted = (record: Intelligence.Evaluation | undefined): Ef
     ? Effect.void
     : Effect.fail(
         new Error({
-          message: record
-            ? `Semantic evaluation ${record.decision} (${record.id}): ${record.issues.join(", ")}. Previous state preserved. Correct against the original sources and provide new evidence when required.`
-            : "Semantic evaluation unavailable. Previous state preserved. Configure S1 and S2 in /setup and retry before relying on this decision.",
+          message: !record
+            ? "Semantic evaluation unavailable. Previous state preserved. Configure S1 and S2 in /setup and retry before relying on this decision."
+            : record.decision === "unavailable"
+              ? `Semantic evaluation unavailable (${record.id}): ${issueSummary(record)}. Previous state preserved. Retry, or check S1 in /setup.`
+              : `Semantic evaluation ${record.decision} (${record.id}): ${issueSummary(record)}. Previous state preserved. Correct against the original sources and provide new evidence when required.`,
         }),
       )
+
+/** A record's issues without the "Evaluation unavailable:" and "Previous state preserved." wrapping it is stored with. */
+export const issueSummary = (record: Intelligence.Evaluation) =>
+  record.issues
+    .map((issue) =>
+      issue
+        .replace(/^Evaluation unavailable: /, "")
+        .replace(/ Previous state preserved\.$/, "")
+        .replace(/\.+$/, ""),
+    )
+    .join(", ")
+
+/**
+ * Advisory verdict for bookkeeping that must not stall on S1, such as task updates. A refusal
+ * (needs_revision) still fails like {@link requireReview}. An unavailable evaluator or an
+ * inconclusive verdict lets the change through and returns the visible `unverified` note to report.
+ */
+export const advise = (
+  settings: Intelligence.Settings,
+  record: Intelligence.Evaluation | undefined,
+): Effect.Effect<string | undefined, Error> => {
+  if (mode(settings) === "single" || record?.decision === "accepted") return Effect.succeed(undefined)
+  if (record?.decision === "needs_revision") return requireAccepted(record).pipe(Effect.as(undefined))
+  if (record?.decision === "inconclusive")
+    return Effect.succeed(
+      `Unverified: S1 review inconclusive (${record.id}) on ${issueSummary(record)}. The update was applied; revise the task if these checks point at a real problem.`,
+    )
+  return Effect.succeed(
+    `Unverified: S1 review unavailable${record ? ` (${record.id}): ${issueSummary(record)}` : ""}. The update was applied without S1 review.`,
+  )
+}
 
 /**
  * Mode-aware gate verdict. Dual keeps the strict contract: unavailable or inconclusive S1 never
@@ -1512,6 +1561,30 @@ function validURL(value: string) {
 function credentialValue(value: Credential.Value | undefined) {
   if (value?.type === "key") return value.key
   if (value?.type === "oauth" && value.expires > Date.now()) return value.access
+}
+
+/**
+ * Whether the evaluator may use `credential`: a key saved for System One at this transport and
+ * origin, or a provider's key at the address it was saved for (the one recorded with the
+ * connection, else the transport's preset). Loopback names are one address.
+ */
+function belongs(evaluator: Intelligence.Evaluator, credential: Credential.Info) {
+  const metadata = credential.value.metadata
+  if (credential.integrationID === Integration.ID.make(`intelligence:${evaluator.transport}`))
+    return (
+      metadata?.intelligenceTransport === evaluator.transport &&
+      metadata.intelligenceBaseURL ===
+        (validURL(evaluator.baseURL) ? new URL(evaluator.baseURL).href.replace(/\/$/, "") : undefined)
+    )
+  return (
+    providerIntegrations(evaluator.transport).some(
+      (integration) => credential.integrationID === Integration.ID.make(integration),
+    ) &&
+    ProviderRouter.sameEndpoint(
+      evaluator.baseURL,
+      stringMetadata(metadata, "baseURL") ?? evaluatorPreset(evaluator.transport).baseURL,
+    )
+  )
 }
 
 function providerIntegrations(transport: Intelligence.Evaluator["transport"]) {

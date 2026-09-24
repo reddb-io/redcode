@@ -17,6 +17,8 @@ export const ModelParameters = Schema.Struct({
 
 type Metadata = {
   todos: ReadonlyArray<Todo.Info>
+  /** Set when S1 could not verify the update: it applied, and the TUI labels it unverified. */
+  unverified?: boolean
 }
 
 export const TodoWriteTool = Tool.define<typeof ModelParameters, Metadata, Todo.Service | SessionTaskFacts.Service>(
@@ -46,18 +48,22 @@ export const TodoWriteTool = Tool.define<typeof ModelParameters, Metadata, Todo.
             metadata: {},
           })
 
-          const todos = yield* todo
-            .update({
+          const written = yield* todo
+            .write({
               sessionID: ctx.sessionID,
               todos: params.todos,
               messageID: ctx.messageID,
             })
             .pipe(Effect.orDie)
-          const notes = SessionTodo.notes(
-            params.todos,
-            todos,
-            SessionTodo.quotesCommand(params.todos, todos) ? (yield* facts.load(ctx.sessionID)).results : [],
-          )
+          const todos = written.todos
+          const notes = [
+            ...SessionTodo.notes(
+              params.todos,
+              todos,
+              SessionTodo.quotesCommand(params.todos, todos) ? (yield* facts.load(ctx.sessionID)).results : [],
+            ),
+            ...written.notes,
+          ]
 
           return {
             title: `${todos.filter((x) => x.status !== "completed" && x.status !== "cancelled").length} todos`,
@@ -71,6 +77,7 @@ export const TodoWriteTool = Tool.define<typeof ModelParameters, Metadata, Todo.
             ].join("\n"),
             metadata: {
               todos,
+              ...(written.notes.length ? { unverified: true } : {}),
             },
           }
         }),
