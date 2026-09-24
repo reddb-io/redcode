@@ -1,5 +1,17 @@
 # opencode
 
+## 0.50.0
+
+### Minor Changes
+
+- d8a22a1: Design can run in its own process. With `design.app.mode: "process"`, redcode starts `redcode-design` on demand (from `REDCODE_DESIGN_BIN`, or from source in a checkout), finds it again through a private registration file and talks to it with a private token; the app serves the review page, the presenter and the previews, runs builds, renders and exports, reaches the conversation back through `design.host`, and exits after ten idle minutes. Review links carry a short-lived signed ticket that the app exchanges for a session cookie, so windows the review opens, such as the presenter, need no credentials of their own. The default stays `"inline"`, which runs everything inside redcode as before.
+- 07ece41: Presentation designs are real decks: every `<section class="slide">` becomes a 1920×1080 slide, scaled to fit the review with a thumbnail strip, a slide counter and keyboard navigation (arrows, Space, Page Up/Down, Home, End), and review notes stay anchored to their slide. A Present button opens the deck in a full-screen window and a presenter view with the current and next slide, the speaker notes from `<aside class="notes">` and a timer, kept on the same slide over a BroadcastChannel. `design_export` gains a `pdf` format that prints one 1920×1080 page per slide without notes, the audit checks every slide for overflowing content and text under 24px, and the slides playbook is rewritten for the new runtime.
+
+### Patch Changes
+
+- 1396708: Task updates no longer fail when System One cannot review them. After a provider was reconnected, System One kept pointing at the removed key and every `todowrite` failed with "Stored System One credential does not belong to this transport and API origin". System One now switches to the provider's current connection and saves it. If there is none, it says to reconnect the provider in /setup. Re-saving a provider connection now keeps its credential id. When System One is unavailable, the task update is applied and labelled unverified. An inconclusive review adds a note and no longer rejects the update. A clear refusal still keeps the previous state, and plan handoffs stay strict. Refusal messages no longer say "Previous state preserved" twice.
+- 6dac1ba: Fix `--yolo` silently disabling the loop guard. Yolo's blanket permission allow no longer counts as an explicit `doom_loop: allow` rule, so a session that keeps calling the same read-only tool with the same result still corrects and then stops the turn instead of repeating forever. The loop guard's correction message also now tells the model to stop polling and ask the user for the action it is waiting on, instead of just naming "change the arguments" as the only way out.
+
 ## 0.49.0
 
 ### Minor Changes
