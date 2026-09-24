@@ -1,54 +1,145 @@
 /// <reference lib="dom" />
 /// <reference lib="dom.iterable" />
 
-/** Where a presenter window stands: the slide on screen and when the talk started (0 until it has). */
+/** Where a presentation window stands: the slide on screen and when the talk started (0 until it has). */
 export interface Show {
   readonly slide: string
   readonly started: number
+  /** Lamport time of the navigation that put the show on its slide; 0 until a window moves. */
+  readonly time: number
+  /** The window behind that time, which breaks ties between equal times; "" until a window moves or answers. */
+  readonly from: string
 }
 
-/** What the audience and presenter windows of one deck say to each other over their BroadcastChannel. */
+/**
+ * What the audience and presenter windows of one deck say to each other over their BroadcastChannel.
+ * Every message names its sender; a goto and a state carry the (time, from) stamp that orders them.
+ */
 export type ShowMessage =
-  | { readonly type: "hello" }
-  | { readonly type: "goto"; readonly slide: string }
-  | { readonly type: "state"; readonly slide: string; readonly started: number }
-  | { readonly type: "reset"; readonly started: number }
+  | { readonly type: "hello"; readonly sender: string }
+  | {
+      readonly type: "goto"
+      readonly slide: string
+      readonly time: number
+      readonly from: string
+      readonly sender: string
+    }
+  | {
+      readonly type: "state"
+      readonly slide: string
+      readonly started: number
+      readonly time: number
+      readonly from: string
+      readonly sender: string
+    }
+  | { readonly type: "reset"; readonly started: number; readonly sender: string }
+
+/** One presentation window: its show, its slide frame as far as it knows, and its loop guard. */
+export interface Presenting {
+  /** This window's random id, the sender of its messages. */
+  readonly self: string
+  readonly show: Show
+  /** The deck's slides as the frame announced them, in the variant on screen. */
+  readonly slides: readonly { readonly id: string; readonly name: string }[]
+  /** The frame has announced its slides once; later announcements can only be moves made inside it. */
+  readonly ready: boolean
+  /** The number of the last command sent to the slide frame. */
+  readonly seq: number
+  /** The slide the frame shows as far as this window knows. */
+  readonly shown: string
+  /** The highest Lamport time seen, counting the moves ignored while sync is paused. */
+  readonly clock: number
+  /** When the recent navigations that no key or click in this window made happened. */
+  readonly recent: readonly number[]
+  /** Too many of those in a second: the window stops following the others and its frame. */
+  readonly paused: boolean
+}
+
+/** What happens to a presentation window. */
+export type PresentEvent =
+  /** A message from another window of the show. */
+  | { readonly type: "channel"; readonly message: unknown; readonly now: number }
+  /** A design:screens announcement of the slide frame, its slides already read in the variant on screen. */
+  | {
+      readonly type: "frame"
+      readonly slides: readonly { readonly id: string; readonly name: string }[]
+      readonly current: unknown
+      readonly origin: unknown
+      readonly seq: unknown
+      readonly now: number
+    }
+  /** A key or a presenter button of this window moves to a slide. */
+  | { readonly type: "move"; readonly slide: string }
+  /** A key or a click reached this window. */
+  | { readonly type: "input" }
 
 /**
  * The deck logic every slide surface shares: which slide a key moves to, and how the audience and
- * presenter windows reconcile what they tell each other. Pure and self-contained, because the preview,
- * the review page and the presenter serialize it with `toString()`.
+ * presenter windows and their slide frames agree on one slide. Pure and self-contained, because the
+ * preview, the review page and the presenter serialize it with `toString()`.
+ *
+ * Two rules keep the windows from echoing each other forever. A window follows its slide frame only
+ * for a move the reader made inside it after the frame took the window's latest command, never for the
+ * frame's report of a command. A window applies a goto only when it is newer than the move it shows,
+ * by Lamport time and then sender id, and never passes on what it received.
  */
 export function deck() {
   const ID = /^[a-zA-Z0-9_-]{1,64}$/
+  // A loop runs at message speed, hundreds of moves a second; a held arrow key repeats about 30 times.
+  const LOOP = { limit: 50, span: 1000 }
   /**
    * The slide index a key moves to from `index` in a deck of `count` slides, or undefined when the key
    * does not navigate. Forward: →, ↓, Page Down, Space; back: ←, ↑, Page Up, Shift+Space; Home and End
-   * jump to the first and last slide. The ends do not wrap.
+   * jump to the first and last slide. The ends neither wrap nor bounce: back on the first slide, forward
+   * on the last one and a jump to the slide on screen are no move at all.
    */
   const step = (input: { readonly key: string; readonly shift?: boolean }, index: number, count: number) => {
     if (count < 1) return undefined
     const last = count - 1
     const at = Math.min(Math.max(index, 0), last)
     const space = input.key === " " || input.key === "Spacebar"
-    if (input.key === "Home") return 0
-    if (input.key === "End") return last
-    if ((space && input.shift) || ["ArrowLeft", "ArrowUp", "PageUp"].includes(input.key)) return Math.max(at - 1, 0)
-    if (space || ["ArrowRight", "ArrowDown", "PageDown"].includes(input.key)) return Math.min(at + 1, last)
-    return undefined
+    const back = (space && input.shift) || ["ArrowLeft", "ArrowUp", "PageUp"].includes(input.key)
+    const forward = space || ["ArrowRight", "ArrowDown", "PageDown"].includes(input.key)
+    const next = input.key === "Home" ? 0 : input.key === "End" ? last : back ? at - 1 : forward ? at + 1 : undefined
+    if (next === undefined || next < 0 || next > last || next === index) return undefined
+    return next
   }
+  /** The slide index a presenter button moves to, or undefined when it has nowhere to go and is disabled. */
+  const button = (which: "previous" | "next", index: number, count: number) =>
+    index < 0 ? undefined : step({ key: which === "next" ? "ArrowRight" : "ArrowLeft" }, index, count)
+  /** Whether a (time, from) stamp is newer than the one of a show. */
+  const newer = (time: number, from: string, than: { readonly time: number; readonly from: string }) =>
+    time > than.time || (time === than.time && from > than.from)
   /**
-   * Applies one message from another window of the show. A goto moves to its slide; a state (the answer
-   * to a hello) moves there too and adopts the talk's start when this window has none yet; a reset
-   * restarts the timer. A hello is answered with this window's state once it knows its slide. Anything
-   * malformed leaves the show as it is.
+   * Applies one message from another window of the show. A goto moves to its slide when it is newer
+   * than the move this window shows; a state (the answer to a hello) does the same, and gives its talk's
+   * start to a window that has none yet; a reset restarts the timer. A hello is answered with this
+   * window's state once it knows its slide. A window's own messages, and anything malformed, change
+   * nothing.
    */
-  const sync = (show: Show, message: unknown): { show: Show; changed: boolean; reply?: ShowMessage } => {
+  const sync = (show: Show, message: unknown, self: string): { show: Show; changed: boolean; reply?: ShowMessage } => {
     const same = { show, changed: false }
     if (!message || typeof message !== "object") return same
     const data = message as Record<string, unknown>
-    if (data.type === "hello")
-      return show.slide ? { ...same, reply: { type: "state", slide: show.slide, started: show.started } } : same
+    // BroadcastChannel does not deliver a window's own posts, but a second channel or a relay could.
+    if (typeof data.sender !== "string" || !ID.test(data.sender) || data.sender === self) return same
+    if (data.type === "hello") {
+      if (!show.slide) return same
+      // A window that never moved claims its place, so a new window takes it and two new windows settle on one.
+      const claimed = show.from ? show : { ...show, from: self }
+      return {
+        show: claimed,
+        changed: false,
+        reply: {
+          type: "state",
+          slide: claimed.slide,
+          started: claimed.started,
+          time: claimed.time,
+          from: claimed.from,
+          sender: self,
+        },
+      }
+    }
     const time = (value: unknown) => (typeof value === "number" && Number.isFinite(value) && value >= 0 ? value : -1)
     if (data.type === "reset") {
       const started = time(data.started)
@@ -56,9 +147,103 @@ export function deck() {
     }
     if (data.type !== "goto" && data.type !== "state") return same
     if (typeof data.slide !== "string" || !ID.test(data.slide)) return same
+    const at = time(data.time)
+    if (!Number.isInteger(at) || at < 0 || typeof data.from !== "string" || !ID.test(data.from)) return same
     const started = data.type === "state" && !show.started && time(data.started) > 0 ? time(data.started) : show.started
-    if (data.slide === show.slide && started === show.started) return same
-    return { show: { slide: data.slide, started }, changed: true }
+    const next = newer(at, data.from, show)
+      ? { ...show, slide: data.slide, started, time: at, from: data.from }
+      : { ...show, started }
+    return { show: next, changed: next.slide !== show.slide || next.started !== show.started }
+  }
+  /**
+   * Counts one navigation that no key or click in this window made. More than the limit within a
+   * second is a loop: the window pauses sync until the next key or click.
+   */
+  const guard = (recent: readonly number[], now: number) => {
+    const kept = [...recent.filter((time) => time <= now && now - time < LOOP.span), now]
+    return { recent: kept, paused: kept.length > LOOP.limit }
+  }
+  /** A new window, on the slide its link names ("" when none) and with the talk started at `started`. */
+  const start = (self: string, slide: string, started: number): Presenting => ({
+    self,
+    show: { slide: ID.test(slide) ? slide : "", started, time: 0, from: "" },
+    slides: [],
+    ready: false,
+    seq: 0,
+    shown: "",
+    clock: 0,
+    recent: [],
+    paused: false,
+  })
+  /** Moves this window to a slide of its deck and tells the others, stamped after every move it has seen. */
+  const navigate = (host: Presenting, slide: string): { host: Presenting; post?: ShowMessage; draw: boolean } => {
+    if (slide === host.show.slide || !host.slides.some((item) => item.id === slide)) return { host, draw: false }
+    const time = Math.max(host.show.time, host.clock) + 1
+    return {
+      host: { ...host, clock: time, show: { ...host.show, slide, time, from: host.self } },
+      post: { type: "goto", slide, time, from: host.self, sender: host.self },
+      draw: true,
+    }
+  }
+  /**
+   * Applies one event to a window. The result says what to post to the other windows, if anything, and
+   * whether to redraw; a redraw sends the frame its next command (see `command`). Nothing received is
+   * ever posted on.
+   */
+  const update = (host: Presenting, event: PresentEvent): { host: Presenting; post?: ShowMessage; draw: boolean } => {
+    if (event.type === "move") return navigate(host, event.slide)
+    if (event.type === "input") {
+      if (!host.paused) return { host: host.recent.length ? { ...host, recent: [] } : host, draw: false }
+      // Resuming asks the other windows where the show went meanwhile; the newest answer wins.
+      return { host: { ...host, recent: [], paused: false }, post: { type: "hello", sender: host.self }, draw: true }
+    }
+    if (event.type === "channel") return receive(host, event.message, event.now)
+    return follow(host, event)
+  }
+  const receive = (host: Presenting, message: unknown, now: number) => {
+    const data = message && typeof message === "object" ? (message as Record<string, unknown>) : {}
+    const moving =
+      (data.type === "goto" || data.type === "state") && typeof data.time === "number" && Number.isFinite(data.time)
+    const clock = moving ? Math.max(host.clock, data.time as number) : host.clock
+    if (host.paused && moving) return { host: { ...host, clock }, draw: false }
+    const result = sync(host.show, message, host.self)
+    const next = { ...host, clock, show: result.show }
+    if (result.show.slide === host.show.slide) return { host: next, post: result.reply, draw: result.changed }
+    const guarded = guard(host.recent, now)
+    if (guarded.paused) return { host: { ...host, clock, recent: guarded.recent, paused: true }, draw: true }
+    return { host: { ...next, recent: guarded.recent }, draw: true }
+  }
+  const follow = (host: Presenting, event: Extract<PresentEvent, { type: "frame" }>) => {
+    const slides = event.slides
+    const known = (id: unknown): id is string => typeof id === "string" && slides.some((item) => item.id === id)
+    if (!slides.length) return { host: { ...host, slides }, draw: false }
+    if (!host.ready) {
+      // First announcement: the slide the link or another window asked for, else the frame's own.
+      const slide = known(host.show.slide) ? host.show.slide : known(event.current) ? event.current : slides[0].id
+      const shown = known(event.current) ? event.current : ""
+      return { host: { ...host, slides, ready: true, shown, show: { ...host.show, slide } }, draw: true }
+    }
+    // An announcement sent before the frame took this window's latest command is settled by that command.
+    if (typeof event.seq !== "number" || event.seq < host.seq) return { host: { ...host, slides }, draw: true }
+    const synced = { ...host, slides, shown: known(event.current) ? event.current : host.shown }
+    // Only a move the reader made inside the frame leads the show; the report of a command never does.
+    if (host.paused || event.origin !== "user" || !known(event.current) || event.current === host.show.slide)
+      return { host: synced, draw: true }
+    const guarded = guard(host.recent, event.now)
+    if (guarded.paused) return { host: { ...synced, recent: guarded.recent, paused: true }, draw: true }
+    return navigate({ ...synced, recent: guarded.recent }, event.current)
+  }
+  /**
+   * The design:screen command that puts the slide frame on the show's slide, numbered so the frame's
+   * later announcements say which commands it had taken; none when the frame is known to be there.
+   */
+  const command = (
+    host: Presenting,
+  ): { host: Presenting; message?: { type: "design:screen"; id: string; seq: number } } => {
+    const slide = host.show.slide
+    if (!host.ready || slide === host.shown || !host.slides.some((item) => item.id === slide)) return { host }
+    const seq = host.seq + 1
+    return { host: { ...host, seq, shown: slide }, message: { type: "design:screen", id: slide, seq } }
   }
   /** Elapsed time as m:ss, or h:mm:ss from the first hour. */
   const clock = (milliseconds: number) => {
@@ -68,7 +253,7 @@ export function deck() {
     const seconds = String(total % 60).padStart(2, "0")
     return hours ? `${hours}:${String(minutes).padStart(2, "0")}:${seconds}` : `${minutes}:${seconds}`
   }
-  return { step, sync, clock }
+  return { step, button, sync, guard, start, update, command, clock }
 }
 
 /**

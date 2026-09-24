@@ -225,20 +225,35 @@ test("announces screens to the host, follows host selection and picks up screens
       { id: "done", name: "Done", variant: "" },
     ],
     current: { "": "cart" },
+    origin: "command",
+    seq: 0,
   })
-  const post = (id: string) =>
+  const post = (id: string, seq?: number) =>
     page.evaluate(
-      (id) =>
+      ([id, seq]) =>
         document
           .querySelector<HTMLIFrameElement>("#frame")!
-          .contentWindow!.postMessage({ type: "design:screen", id }, "*"),
-      id,
+          .contentWindow!.postMessage({ type: "design:screen", id, seq }, "*"),
+      [id, seq] as const,
     )
-  await post("done")
+  await post("done", 4)
   await page.waitForFunction(() =>
     (window as any).received.some((item: any) => item.type === "design:screens" && item.current[""] === "done"),
   )
   expect(await shown(page, true)).toEqual([":done"])
+  // The host's command is reported as one, with its number, so the host never takes it for the reader's move.
+  expect((await announced()).at(-1)).toMatchObject({ current: { "": "done" }, origin: "command", seq: 4 })
+  await frame().evaluate(() => (window as any).__redcodeDesign.go("pay"))
+  await page.waitForFunction(() =>
+    (window as any).received.some((item: any) => item.type === "design:screens" && item.current[""] === "pay"),
+  )
+  expect((await announced()).at(-1)).toMatchObject({ current: { "": "pay" }, origin: "user", seq: 4 })
+  await post("done")
+  await page.waitForFunction(
+    () =>
+      (window as any).received.filter((item: any) => item.type === "design:screens" && item.current[""] === "done")
+        .length > 1,
+  )
   // A message from anything but the parent is ignored: it is queued before the host's next message,
   // so had it been accepted, "cart" would be announced before "pay".
   const before = (await announced()).length
