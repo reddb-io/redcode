@@ -265,18 +265,17 @@ function formatting(text: string) {
  */
 export async function stale(
   directory: string,
-  design:
-    | {
-        readonly system?: { readonly paths: readonly string[]; readonly css?: readonly string[] }
-        readonly application?: string
-      }
-    | undefined,
+  design: { readonly system?: unknown; readonly application?: string } | undefined,
 ) {
-  if (!design?.system) return false
-  const declared = [...design.system.paths, ...(design.system.css ?? [])]
+  // Read leniently: the static configuration loader hands the system over undecoded.
+  const system = design?.system as { readonly paths?: unknown; readonly css?: unknown } | undefined
+  if (!system || typeof system !== "object") return false
+  const declared = [system.paths, system.css].flatMap((list) =>
+    Array.isArray(list) ? list.filter((item): item is string => typeof item === "string") : [],
+  )
   const found = await Promise.all(
     declared.map((file) =>
-      stat(path.resolve(directory, design.application ?? ".", file)).then(
+      stat(path.resolve(directory, design?.application ?? ".", file)).then(
         () => true,
         () => false,
       ),
