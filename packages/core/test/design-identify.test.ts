@@ -92,7 +92,7 @@ const identify = (
   options: { answer?: DesignIdentify.Answer; counter?: { calls: number } } = {},
 ) =>
   Effect.gen(function* () {
-    const mode = Intelligence.mode(yield* intelligence.read())
+    const mode = Intelligence.mode(yield* intelligence.read().pipe(Effect.orDie))
     return yield* DesignIdentify.identify({
       directory,
       state,
