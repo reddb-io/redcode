@@ -19,6 +19,7 @@ import { GlobTool } from "./glob"
 import { GrepTool } from "./grep"
 import { ReadTool } from "./read"
 import { TaskTool } from "./task"
+import { ModelsTool } from "./models"
 import { Database } from "@reddb-io/redcode-core/database/database"
 import { TodoWriteTool } from "./todo"
 import { WebFetchTool } from "./webfetch"
@@ -117,6 +118,7 @@ const layer = Layer.effect(
 
     const invalid = yield* InvalidTool
     const task = yield* TaskTool
+    const models = yield* ModelsTool
     const read = yield* ReadTool
     const question = yield* QuestionTool
     const todo = yield* TodoWriteTool
@@ -261,6 +263,7 @@ const layer = Layer.effect(
           edit: Tool.init(edit),
           write: Tool.init(writetool),
           task: Tool.init(task),
+          models: Tool.init(models),
           fetch: Tool.init(webfetch),
           todo: Tool.init(todo),
           search: Tool.init(websearch),
@@ -287,6 +290,8 @@ const layer = Layer.effect(
             tool.edit,
             tool.write,
             tool.task,
+            // Read-only: finds the exact model id a task call takes when the user asks for a model.
+            tool.models,
             tool.fetch,
             tool.todo,
             tool.search,
@@ -375,6 +380,12 @@ const layer = Layer.effect(
 
         const usePatch =
           input.modelID.includes("gpt-") && !input.modelID.includes("oss") && !input.modelID.includes("gpt-4")
+        // A model search is only for choosing a subagent's model, so it goes where the task tool goes.
+        if (tool.id === ModelsTool.id)
+          return !Permission.disabled(
+            [TaskTool.id],
+            Permission.merge(input.agent.permission, input.permission ?? []),
+          ).has(TaskTool.id)
         if (tool.id === ApplyPatchTool.id) return usePatch
         if (tool.id === EditTool.id || tool.id === WriteTool.id) return !usePatch
 

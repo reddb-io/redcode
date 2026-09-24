@@ -1,0 +1,5 @@
+---
+"@reddb-io/redcode": minor
+---
+
+A subagent can run on a model the user asks for. The task tool takes `model` ("providerID/modelID") and `variant`; an explicit model wins over the agent's configured model, which wins over the parent's. An unknown model or a variant the model does not have fails the call with the closest matches, and a variant carried over from the parent or the agent is dropped where the subagent's model lacks it. A new `models` tool, available wherever the task tool is, searches the connected providers' models by words, provider and capabilities (reasoning, tool calls, attachments), your own provider first and newest per family, with limits, variants and known prices, a page at a time; System One evaluator and deprecated models are never listed or accepted. With dual reasoning, System One's brief review flags a model or variant the user did not ask for. The task part records the resolved `model`, `variant` and `modelSource` (explicit, agent or parent), and the child session starts on that model.

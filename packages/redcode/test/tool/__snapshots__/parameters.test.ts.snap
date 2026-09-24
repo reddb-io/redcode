@@ -405,6 +405,10 @@ exports[`tool parameters JSON Schema (wire shape) task 1`] = `
       },
       "type": "array",
     },
+    "model": {
+      "description": "Only when the user asks for a particular model: the model the subagent runs on, as providerID/modelID. Look it up with the models tool, your own provider first; never guess an id. Left out, the subagent runs on its agent's configured model, else on yours.",
+      "type": "string",
+    },
     "prompt": {
       "description": "The task for the agent to perform",
       "type": "string",
@@ -426,6 +430,10 @@ exports[`tool parameters JSON Schema (wire shape) task 1`] = `
     },
     "task_id": {
       "description": "This should only be set if you mean to resume a previous task (you can pass a prior task_id and the task will continue the same subagent session as before instead of creating a fresh one)",
+      "type": "string",
+    },
+    "variant": {
+      "description": "Only when the user asks for a reasoning level: the variant of the subagent's model to run, as the models tool lists it, e.g. high. Left out, your own variant carries over where the subagent's model has it.",
       "type": "string",
     },
   },

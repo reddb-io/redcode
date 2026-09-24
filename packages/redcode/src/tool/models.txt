@@ -1,0 +1,7 @@
+Search the models available to run a subagent on, across the connected providers.
+
+Use it only when the user asks for a particular model or reasoning level for a subagent: it turns the name they used into the exact "providerID/modelID" the task tool's model parameter takes, and lists the variants that model accepts. Never guess an id.
+
+Your own provider comes first, then the other providers, newest models first and one per model family unless all is true. Each entry gives the id, name, provider, context and output limits in tokens, variants, and the price per million tokens when it is known. System One evaluator models and deprecated models are never listed: a subagent cannot run on them.
+
+Results are paged: when more models match, the output ends with a cursor to pass for the next page.
