@@ -81,7 +81,7 @@ import { Sidebar, SIDEBAR_TABS, type SidebarTab } from "./sidebar"
 import { clampSidebarWidth, SIDEBAR_WIDTH_DEFAULT, SIDEBAR_WIDTH_STEP } from "./sidebar-width"
 import { SubagentFooter } from "./subagent-footer.tsx"
 import { GuardTripLine, guardTripsAt, SubagentSummary } from "./subagent"
-import { responseRepairLine, revisedAnswer } from "./response-repair"
+import { responseRevisions, ResponseRevisionNote } from "./response-repair"
 import { SubagentView } from "@reddb-io/redcode-core/session/subagent-view"
 import { VerboseIndicator } from "../../component/verbose-indicator"
 import { filetype } from "../../util/filetype"
@@ -284,6 +284,7 @@ export function Session() {
 
   // The prompt component reads the same boundary to find the queued prompt an empty steer acts on.
   const pending = createMemo(() => pendingAssistantIndex(messages(), sync.data.session_status[route.sessionID]?.type))
+  const revisions = createMemo(() => responseRevisions(messages(), sync.data.part))
 
   const lastAssistant = createMemo(() => {
     return messages().findLast((x) => x.role === "assistant")
@@ -1591,6 +1592,7 @@ export function Session() {
                             message={message as UserMessage}
                             parts={sync.data.part[message.id] ?? []}
                             pending={pending()}
+                            revising={revisions().pending.has(message.id)}
                           />
                           <For each={guardTripsAt(messages(), guardTrips(), index())}>
                             {(trip) => <GuardTripLine trip={trip} />}
@@ -1600,8 +1602,15 @@ export function Session() {
                           <AssistantMessage
                             last={lastAssistant()?.id === message.id}
                             message={message as AssistantMessage}
-                            parts={sync.data.part[message.id] ?? []}
-                            revised={revisedAnswer(messages(), sync.data.part, index())}
+                            parts={
+                              revisions().superseded.has(message.id)
+                                ? (sync.data.part[message.id] ?? []).filter(
+                                    (part) => part.type !== "text" && part.type !== "reasoning",
+                                  )
+                                : (sync.data.part[message.id] ?? [])
+                            }
+                            footer={!revisions().superseded.has(message.id)}
+                            revision={revisions().notes.get(message.id)}
                           />
                           <For each={guardTripsAt(messages(), guardTrips(), index())}>
                             {(trip) => <GuardTripLine trip={trip} />}
@@ -1713,6 +1722,7 @@ function UserMessage(props: {
   onMouseUp: () => void
   index: number
   pending?: number
+  revising?: boolean
 }) {
   const ctx = use()
   const local = useLocal()
@@ -1757,12 +1767,6 @@ function UserMessage(props: {
       return line ? [line] : []
     }),
   )
-  const revisions = createMemo(() =>
-    props.parts.flatMap((part) => {
-      const line = part.type === "text" && part.synthetic ? responseRepairLine(part.metadata) : undefined
-      return line ? [line] : []
-    }),
-  )
 
   return (
     <>
@@ -1775,13 +1779,11 @@ function UserMessage(props: {
           </box>
         )}
       </For>
-      <For each={revisions()}>
-        {(line) => (
-          <box marginTop={1} paddingLeft={3} flexShrink={0}>
-            <text fg={theme.textMuted}>↻ Answer {line}</text>
-          </box>
-        )}
-      </For>
+      <Show when={props.revising}>
+        <box marginTop={1} paddingLeft={3} flexShrink={0}>
+          <text fg={theme.textMuted}>↻ Revising the answer after S1 review…</text>
+        </box>
+      </Show>
       <Show when={text()}>
         <box
           id={props.message.id}
@@ -1872,7 +1874,13 @@ function UserMessage(props: {
   )
 }
 
-function AssistantMessage(props: { message: AssistantMessage; parts: Part[]; last: boolean; revised?: boolean }) {
+function AssistantMessage(props: {
+  message: AssistantMessage
+  parts: Part[]
+  last: boolean
+  footer?: boolean
+  revision?: { issues: ReadonlyArray<string>; originals: ReadonlyArray<string> }
+}) {
   const ctx = use()
   const local = useLocal()
   const { theme } = useTheme()
@@ -1902,18 +1910,23 @@ function AssistantMessage(props: { message: AssistantMessage; parts: Part[]; las
 
   const childShortcut = useCommandShortcut("session.child.first")
   const backgroundShortcut = useCommandShortcut("session.background")
-  // An answer a response repair revised collapses: the revision that follows replaces its text.
-  const parts = createMemo(() => (props.revised ? props.parts.filter((part) => part.type !== "text") : props.parts))
+  // The answers an S1 repair superseded, shown under the revision only when the user opens them.
+  const originals = createMemo(() =>
+    (props.revision?.originals ?? []).flatMap((id) => {
+      const message = messages().find((x) => x.id === id)
+      return message?.role === "assistant" ? [message] : []
+    }),
+  )
 
   return (
     <>
-      <For each={parts()}>
+      <For each={props.parts}>
         {(part, index) => {
           const component = createMemo(() => PART_MAPPING[part.type as keyof typeof PART_MAPPING])
           return (
             <Show when={component()}>
               <Dynamic
-                last={index() === parts().length - 1}
+                last={index() === props.parts.length - 1}
                 component={component()}
                 part={part as any}
                 message={props.message}
@@ -1967,7 +1980,11 @@ function AssistantMessage(props: { message: AssistantMessage; parts: Part[]; las
         </box>
       </Show>
       <Switch>
-        <Match when={!props.revised && (props.last || final() || props.message.error?.name === "MessageAbortedError")}>
+        <Match
+          when={
+            props.footer !== false && (props.last || final() || props.message.error?.name === "MessageAbortedError")
+          }
+        >
           <box ref={(el: BoxRenderable) => alwaysSeparate.add(el)} paddingLeft={3}>
             <text marginTop={1}>
               <span
@@ -1998,6 +2015,24 @@ function AssistantMessage(props: { message: AssistantMessage; parts: Part[]; las
           </box>
         </Match>
       </Switch>
+      <Show when={props.revision}>
+        {(revision) => (
+          <ResponseRevisionNote issues={revision().issues}>
+            <For each={originals()}>
+              {(message) => (
+                <AssistantMessage
+                  message={message}
+                  parts={(sync.data.part[message.id] ?? []).filter(
+                    (part) => part.type === "text" || part.type === "reasoning",
+                  )}
+                  last={false}
+                  footer={false}
+                />
+              )}
+            </For>
+          </ResponseRevisionNote>
+        )}
+      </Show>
     </>
   )
 }

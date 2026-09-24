@@ -2,7 +2,7 @@ import { createEffect, For, onCleanup, Show } from "solid-js"
 import { createStore } from "solid-js/store"
 import { useTerminalDimensions } from "@opentui/solid"
 import { IntelligenceClient } from "@reddb-io/redcode-client"
-import type { Intelligence } from "@reddb-io/redcode-schema/intelligence"
+import { Intelligence } from "@reddb-io/redcode-schema/intelligence"
 import { useLocal } from "../context/local"
 import { useSDK } from "../context/sdk"
 import { useSync } from "../context/sync"
@@ -43,8 +43,12 @@ export function IntelligenceIndicator(props: { sessionID?: string }) {
   })
   const single = () => local.intelligence.reasoning() === "single"
   const warning = () =>
-    !local.intelligence.ready() ||
-    (!single() && (state.failed || (state.evaluation && state.evaluation.decision !== "accepted")))
+    indicatorWarning({
+      ready: local.intelligence.ready(),
+      single: single(),
+      failed: state.failed,
+      evaluation: state.evaluation,
+    })
   const label = () => {
     if (single()) return "Single"
     if (!local.intelligence.ready()) return "S1 Setup"
@@ -61,6 +65,40 @@ export function IntelligenceIndicator(props: { sessionID?: string }) {
       {warning() ? " !" : ""}
     </text>
   )
+}
+
+/**
+ * Whether the S1 indicator warns: S1 is not set up, its evaluations could not be read, or the latest
+ * one needs attention. An inconclusive review only annotates the answer, so it stays quiet.
+ */
+export function indicatorWarning(input: {
+  ready: boolean
+  single: boolean
+  failed: boolean
+  evaluation: Intelligence.Evaluation | undefined
+}) {
+  return !input.ready || (!input.single && (input.failed || evaluationWarning(input.evaluation) !== undefined))
+}
+
+/**
+ * Why the latest S1 evaluation needs attention, or undefined: S1 was unavailable, it asked for a
+ * revision, or a response issue it established was still there after the repair.
+ */
+export function evaluationWarning(evaluation: Intelligence.Evaluation | undefined) {
+  if (!evaluation) return undefined
+  const operation = evaluation.operation.replaceAll("_", " ")
+  if (evaluation.decision === "unavailable")
+    return `S1 was unavailable for the last ${operation} check; it is not verified.`
+  if (evaluation.decision === "needs_revision")
+    return `The last ${operation} check needs revision: ${evaluation.issues.join(", ").replaceAll("_", " ")}.`
+  // A response review establishes an issue at the repair threshold; one still there was not settled.
+  const unresolved = evaluation.issues.filter((id) => {
+    const answer = evaluation.answers[id]
+    return answer?.type === "noul" && answer.noul >= Intelligence.REPAIR_CONFIDENCE
+  })
+  if (evaluation.operation === "response_quality" && unresolved.length)
+    return `The final answer still has ${unresolved.join(", ").replaceAll("_", " ")} after the S1 repair.`
+  return undefined
 }
 
 export function DialogIntelligence(props: { sessionID?: string }) {
@@ -149,6 +187,13 @@ export function DialogIntelligence(props: { sessionID?: string }) {
       <text fg={theme.text}>
         <b>Session evaluations</b>
       </text>
+      <Show when={evaluationWarning(state.evaluations[0])}>
+        {(reason) => (
+          <text fg={theme.warning} wrapMode="word">
+            {reason()}
+          </text>
+        )}
+      </Show>
       <Show when={state.loading}>
         <text fg={theme.textMuted}>Loading…</text>
       </Show>
