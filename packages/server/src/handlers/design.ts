@@ -37,7 +37,7 @@ const redirect = Effect.fn(function* (
     route,
     search,
   })
-  if ("redirect" in opened) return HttpServerResponse.redirect(opened.redirect)
+  if (opened.kind === "redirect") return HttpServerResponse.redirect(opened.url)
   return HttpServerResponse.text(opened.html, {
     status: opened.status,
     contentType: "text/html",

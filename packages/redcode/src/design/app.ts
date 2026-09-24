@@ -80,7 +80,7 @@ export const redirect = (request: HttpServerRequest.HttpServerRequest) =>
       route,
       search: Object.fromEntries(url.searchParams),
     })
-    if ("redirect" in opened) return HttpServerResponse.redirect(opened.redirect)
+    if (opened.kind === "redirect") return HttpServerResponse.redirect(opened.url)
     return HttpServerResponse.text(opened.html, {
       status: opened.status,
       contentType: "text/html",

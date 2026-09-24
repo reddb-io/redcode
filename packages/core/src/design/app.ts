@@ -352,7 +352,7 @@ export const open = Effect.fn("DesignApp.open")(function* (input: {
   )
   const outcome = Option.getOrUndefined(attempt)
   const url = outcome?.url
-  if (url) return { redirect: url }
+  if (url) return { kind: "redirect" as const, url }
   const progress = DesignAppBinary.progress()
   const html = designWaiting(reviewCopy, {
     phase: outcome?.error ? "failed" : (progress?.phase ?? "start"),
@@ -363,6 +363,7 @@ export const open = Effect.fn("DesignApp.open")(function* (input: {
     message: outcome?.error,
   })
   return {
+    kind: "page" as const,
     html,
     status: outcome?.error ? 503 : 200,
     headers: { "cache-control": "no-store", "content-security-policy": WAITING_CSP },
