@@ -81,6 +81,7 @@ import { Sidebar, SIDEBAR_TABS, type SidebarTab } from "./sidebar"
 import { clampSidebarWidth, SIDEBAR_WIDTH_DEFAULT, SIDEBAR_WIDTH_STEP } from "./sidebar-width"
 import { SubagentFooter } from "./subagent-footer.tsx"
 import { GuardTripLine, guardTripsAt, SubagentSummary } from "./subagent"
+import { responseRepairLine, revisedAnswer } from "./response-repair"
 import { SubagentView } from "@reddb-io/redcode-core/session/subagent-view"
 import { VerboseIndicator } from "../../component/verbose-indicator"
 import { filetype } from "../../util/filetype"
@@ -1600,6 +1601,7 @@ export function Session() {
                             last={lastAssistant()?.id === message.id}
                             message={message as AssistantMessage}
                             parts={sync.data.part[message.id] ?? []}
+                            revised={revisedAnswer(messages(), sync.data.part, index())}
                           />
                           <For each={guardTripsAt(messages(), guardTrips(), index())}>
                             {(trip) => <GuardTripLine trip={trip} />}
@@ -1755,6 +1757,12 @@ function UserMessage(props: {
       return line ? [line] : []
     }),
   )
+  const revisions = createMemo(() =>
+    props.parts.flatMap((part) => {
+      const line = part.type === "text" && part.synthetic ? responseRepairLine(part.metadata) : undefined
+      return line ? [line] : []
+    }),
+  )
 
   return (
     <>
@@ -1764,6 +1772,13 @@ function UserMessage(props: {
         {(line) => (
           <box marginTop={1} paddingLeft={3} flexShrink={0}>
             <text fg={theme.warning}>{line} · hint sent</text>
+          </box>
+        )}
+      </For>
+      <For each={revisions()}>
+        {(line) => (
+          <box marginTop={1} paddingLeft={3} flexShrink={0}>
+            <text fg={theme.textMuted}>↻ Answer {line}</text>
           </box>
         )}
       </For>
@@ -1857,7 +1872,7 @@ function UserMessage(props: {
   )
 }
 
-function AssistantMessage(props: { message: AssistantMessage; parts: Part[]; last: boolean }) {
+function AssistantMessage(props: { message: AssistantMessage; parts: Part[]; last: boolean; revised?: boolean }) {
   const ctx = use()
   const local = useLocal()
   const { theme } = useTheme()
@@ -1887,16 +1902,18 @@ function AssistantMessage(props: { message: AssistantMessage; parts: Part[]; las
 
   const childShortcut = useCommandShortcut("session.child.first")
   const backgroundShortcut = useCommandShortcut("session.background")
+  // An answer a response repair revised collapses: the revision that follows replaces its text.
+  const parts = createMemo(() => (props.revised ? props.parts.filter((part) => part.type !== "text") : props.parts))
 
   return (
     <>
-      <For each={props.parts}>
+      <For each={parts()}>
         {(part, index) => {
           const component = createMemo(() => PART_MAPPING[part.type as keyof typeof PART_MAPPING])
           return (
             <Show when={component()}>
               <Dynamic
-                last={index() === props.parts.length - 1}
+                last={index() === parts().length - 1}
                 component={component()}
                 part={part as any}
                 message={props.message}
@@ -1950,7 +1967,7 @@ function AssistantMessage(props: { message: AssistantMessage; parts: Part[]; las
         </box>
       </Show>
       <Switch>
-        <Match when={props.last || final() || props.message.error?.name === "MessageAbortedError"}>
+        <Match when={!props.revised && (props.last || final() || props.message.error?.name === "MessageAbortedError")}>
           <box ref={(el: BoxRenderable) => alwaysSeparate.add(el)} paddingLeft={3}>
             <text marginTop={1}>
               <span

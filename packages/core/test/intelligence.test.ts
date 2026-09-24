@@ -1688,3 +1688,95 @@ test("a RedRouter whose catalog fails is still offered, without recommendations"
     await server.stop(true)
   }
 })
+
+const responseReview = (answers: Record<string, number>): typeof Evaluation.Type => {
+  const decided = Intelligence.decide(
+    Intelligence.questions(Object.fromEntries(Object.keys(answers).map((id) => [id, id]))),
+    {
+      model: "jev-test",
+      answers: Object.fromEntries(Object.entries(answers).map(([id, noul]) => [id, { type: "noul" as const, noul }])),
+      usage: { input_tokens: 1, output_tokens: 1 },
+    },
+  )
+  return {
+    id: "review",
+    fingerprint: "review",
+    sessionID: "session",
+    operation: "response_quality",
+    kind: "gate",
+    policy: Intelligence.POLICY,
+    decision: decided.decision,
+    model: "jev-test",
+    answers: Object.fromEntries(Object.entries(answers).map(([id, noul]) => [id, { type: "noul" as const, noul }])),
+    issues: decided.issues,
+    created: 1,
+    duration: 1,
+    usage: { input_tokens: 1, output_tokens: 1 },
+  }
+}
+
+test("a response review repairs only issues System One establishes", () => {
+  // The answers jev-1.13 gave a greeting reply ("Hey! Test received loud and clear. What do you need?").
+  const greeting = responseReview({ omission: 0.11, unsupported: 0.21, tool_evidence: 0.03, premature: 0.04 })
+  expect(greeting.decision).toBe("inconclusive")
+  expect(Intelligence.responseRepair(greeting, [])).toEqual({ repair: [], unresolved: [] })
+  expect(Intelligence.responseRepair(responseReview({ omission: 0.6, writing: 0.2 }), [])).toEqual({
+    repair: [],
+    unresolved: [],
+  })
+  expect(Intelligence.responseRepair(responseReview({ omission: 0.95, writing: 0.2 }), [])).toEqual({
+    repair: ["omission"],
+    unresolved: ["omission"],
+  })
+  expect(Intelligence.responseRepair(undefined, [])).toEqual({ repair: [], unresolved: [] })
+})
+
+test("an issue already repaired this turn is not repaired again", () => {
+  const again = responseReview({ omission: 0.95, writing: 0.9 })
+  expect(Intelligence.responseRepair(again, ["omission"])).toEqual({
+    repair: ["writing"],
+    unresolved: ["omission", "writing"],
+  })
+  expect(Intelligence.responseRepair(again, ["omission", "writing"])).toEqual({
+    repair: [],
+    unresolved: ["omission", "writing"],
+  })
+})
+
+test("response checks follow the evidence a turn has", () => {
+  expect(
+    Intelligence.responseQuestionsFor({ tools: false, tasks: false, goal: false, route: "answer" }),
+  ).toBeUndefined()
+  const plain = Intelligence.responseQuestionsFor({ tools: false, tasks: false, goal: false, route: "uncertain" })
+  expect(Object.keys(plain ?? {}).toSorted()).toEqual(["omission", "unsupported", "writing", "writing_quality"])
+  expect(
+    Object.keys(Intelligence.responseQuestionsFor({ tools: true, tasks: false, goal: false, route: "answer" }) ?? {}),
+  ).toContain("tool_evidence")
+  expect(Object.keys(Intelligence.responseQuestionsFor({ tools: false, tasks: false, goal: true }) ?? {})).toContain(
+    "premature",
+  )
+  expect(Intelligence.workRoute(classification({ score: 2, confidence: 0.8 }, { choice: "none", confidence: 1 }))).toBe(
+    "local_change",
+  )
+  expect(Intelligence.workRoute(undefined)).toBeUndefined()
+})
+
+test("a revision that changes nothing material is the same response in any script", () => {
+  expect(Intelligence.sameResponse("Hey! Test received.", "hey — test received")).toBe(true)
+  expect(
+    Intelligence.sameResponse(
+      "The build passes and the crash is fixed in the parser.",
+      "The build passes, and the crash is fixed in the parser!",
+    ),
+  ).toBe(true)
+  expect(
+    Intelligence.sameResponse("テストを受け取りました。何をしますか？", "テストを受け取りました 何をしますか"),
+  ).toBe(true)
+  expect(
+    Intelligence.sameResponse(
+      "Hey! Test received loud and clear. What do you need?",
+      "Copy that — no task was included, so there's nothing to run or verify yet. What would you like me to do?",
+    ),
+  ).toBe(false)
+  expect(Intelligence.sameResponse("テストを受け取りました。", "ビルドは失敗しました。")).toBe(false)
+})
