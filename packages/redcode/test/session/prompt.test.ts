@@ -110,6 +110,9 @@ const stopLossChoice = (criteria: Record<string, unknown>) => {
   return undefined
 }
 
+// The plan review checks S1 flags with certainty when a test sets them; empty accepts every plan.
+let planFlags: string[] = []
+
 const intelligence = Layer.effect(
   Intelligence.Service,
   Effect.gen(function* () {
@@ -132,7 +135,9 @@ const intelligence = Layer.effect(
               Object.entries(body.questions).map(([id, question]) => {
                 // Most of this legacy suite asserts provider-limit compaction timing. Keep the
                 // semantic early-boundary recommendation off unless a focused test opts into it.
-                if (question.type === "noul") return [id, { type: "noul", noul: id === "unsafe" ? 1 : 0 }]
+                const planReview = "requirements" in body.questions && "decomposition" in body.questions
+                if (question.type === "noul")
+                  return [id, { type: "noul", noul: id === "unsafe" || (planReview && planFlags.includes(id)) ? 1 : 0 }]
                 if (question.type === "score")
                   return [
                     id,
@@ -6231,6 +6236,68 @@ it.instance(
       expect(JSON.stringify((yield* llm.inputs).at(-1))).toContain(content.slice(7))
     }),
   30000,
+)
+
+it.instance(
+  "a long session's plan flagged by S1 still asks the user, shows the reasons and reaches Build on Yes",
+  () =>
+    Effect.gen(function* () {
+      const { llm } = yield* useServerConfig((url) => ({ ...providerCfg(url), agent: { build: { steps: 3 } } }))
+      const sessions = yield* Session.Service
+      const prompt = yield* SessionPrompt.Service
+      const questions = yield* Question.Service
+      const plans = yield* SessionPlan.Service
+      const chat = yield* sessions.create({ agent: "plan", title: "Long plan session" })
+      const file = Session.plan(chat, yield* InstanceState.context)
+      // Far more request text than the review budget: the evidence S1 sees is necessarily partial.
+      yield* Effect.forEach(
+        Array.from({ length: 14 }, (_, index) => index),
+        (index) =>
+          prompt.prompt({
+            sessionID: chat.id,
+            agent: "plan",
+            noReply: true,
+            parts: [
+              { type: "text", text: `Requirement ${index}: ${"keep the payment retries idempotent ".repeat(60)}` },
+            ],
+          }),
+      )
+      const content = "# Plan\nPreserve the transaction key on payment retries. Verify duplicate requests charge once."
+      yield* llm.tool("write", { filePath: file, content })
+      yield* llm.tool("plan_exit", {
+        tasks: [
+          {
+            key: "implement",
+            content: "Execute the reviewed plan",
+            criterion: "Requested behavior verified",
+            quote: content.slice(7),
+          },
+        ],
+      })
+      yield* llm.text("Implementing the approved payment plan.")
+      planFlags = ["coverage", "decomposition", "requirements"]
+      const fiber = yield* prompt.loop({ sessionID: chat.id }).pipe(Effect.forkChild)
+      const question = yield* pollWithTimeout(
+        questions.list().pipe(Effect.map((items) => items.find((item) => item.sessionID === chat.id))),
+        "Plan approval never opened despite the S1 verdict",
+        "15 seconds",
+      ).pipe(Effect.ensuring(Effect.sync(() => (planFlags = []))))
+      expect(question.questions[0].question).toContain(
+        "S1 plan review: needs revision — coverage (100%): a request may have no matching change or verification in the plan",
+      )
+      expect(question.questions[0].question).toContain("requirements (100%): the plan may contradict a request")
+      yield* questions.reply({ requestID: question.id, answers: [["Yes"]] })
+      yield* awaitWithTimeout(Fiber.join(fiber), "Approved plan never reached Build", "30 seconds")
+      expect((yield* plans.list(chat.id))[0]).toMatchObject({ content, status: "approved" })
+      expect((yield* sessions.get(chat.id)).agent).toBe("build")
+      const exit = (yield* sessions.messages({ sessionID: chat.id }))
+        .flatMap((item) => item.parts)
+        .find((part) => part.type === "tool" && part.tool === "plan_exit")
+      if (exit?.type !== "tool" || exit.state.status !== "completed") throw new Error("Expected plan_exit to complete")
+      expect(exit.state.metadata.review).toContain("S1 plan review: needs revision")
+      expect(exit.state.output).toContain("The user approved it over this review")
+    }),
+  60000,
 )
 
 it.instance(

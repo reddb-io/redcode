@@ -5,6 +5,7 @@ import { SessionPlan } from "@reddb-io/redcode-schema/session-plan"
 import { and, desc, eq } from "drizzle-orm"
 import { Context, Effect, Layer } from "effect"
 import { Database } from "../database/database"
+import { Intelligence } from "../intelligence"
 import { makeGlobalNode } from "../effect/app-node"
 import { SessionSchema } from "./schema"
 import { SessionPlanTable } from "./goal.sql"
@@ -93,5 +94,102 @@ export function validationError(input: Pick<SessionPlan.Info, "content" | "tasks
     if (keys.has(task.key) || contents.has(task.content.trim())) return "Plan task keys and contents must be unique"
     keys.add(task.key)
     contents.add(task.content.trim())
+  }
+}
+
+const REVIEW_LIMIT = 24_000
+const OMITTED =
+  "The harness shortens long evidence for size: '[... evidence omitted ...]' markers and requests it left out are not gaps in the plan, so never answer yes because content is truncated or omitted."
+/** Short readings of the plan review questions, reported with S1's confidence. */
+const REASONS: Record<string, string> = {
+  coverage: "a request may have no matching change or verification in the plan",
+  decomposition:
+    "the tasks may miss a plan deliverable or verification, contradict the plan, or lack an observable criterion",
+  requirements: "the plan may contradict a request or a later correction",
+}
+
+/**
+ * The S1 plan review. It informs the user's decision and never replaces it. A long session keeps
+ * the first request and the most recent ones (later corrections included) within the budget, so the
+ * review reads the requests that shape the plan instead of a truncated transcript.
+ */
+export function review(input: {
+  requests: ReadonlyArray<{ id: string; text: string }>
+  content: string
+  path: string
+  reference: string
+  tasks?: SessionPlan.Info["tasks"]
+}) {
+  const entries = input.requests.map((request) => ({
+    id: request.id,
+    text: Intelligence.evidence(request.text, { limit: 6_000 }).content,
+  }))
+  const latest = entries
+    .slice(1)
+    .toReversed()
+    .reduce(
+      (kept, entry) => {
+        if (kept.full) return kept
+        const size = kept.size + JSON.stringify(entry).length + 1
+        return size > REVIEW_LIMIT ? { ...kept, full: true } : { entries: [entry, ...kept.entries], size, full: false }
+      },
+      { entries: [] as typeof entries, size: JSON.stringify(entries.slice(0, 1)).length, full: false },
+    ).entries
+  const selected = entries[0] ? [entries[0], ...latest] : []
+  const omitted = entries.length - selected.length
+  return {
+    sources: {
+      requests: selected,
+      scope: omitted
+        ? `The first request and the ${latest.length} most recent requests are shown; ${omitted} older requests between them were left out for size. Later requests and corrections take precedence. ${OMITTED}`
+        : `Every user request of the session is shown. Later requests and corrections take precedence. ${OMITTED}`,
+    },
+    candidate: {
+      plan: Intelligence.evidence(input.content, { reference: input.path, limit: REVIEW_LIMIT }),
+      tasks: input.tasks,
+    },
+    questions: Intelligence.questions({
+      coverage: `Does candidate.plan leave a request in sources.requests with no corresponding change or verification? ${OMITTED}`,
+      decomposition: `Do candidate.tasks omit a deliverable or verification from candidate.plan, contradict that plan, or lack observable acceptance criteria? If tasks are absent, evaluate only the plan itself. ${OMITTED}`,
+      requirements: `Does candidate.plan contradict an applicable requirement in sources.requests, accounting for later corrections? ${OMITTED}`,
+    }),
+  }
+}
+
+/**
+ * The review as the user and the model read it: the decision, each flagged check with S1's
+ * confidence and what it means, and whether earlier revisions drew the same flags. A repeated set
+ * of flags across revisions stops being actionable for the model; the user decides.
+ */
+export function verdict(
+  settings: Intelligence.Settings,
+  record: Intelligence.Evaluation | undefined,
+  history: ReadonlyArray<Intelligence.Evaluation> = [],
+) {
+  if (Intelligence.mode(settings) === "single")
+    return { decision: "unverified" as const, text: `S1 plan review: ${Intelligence.UNVERIFIED}.` }
+  if (!record) return { decision: "unavailable" as const, text: "S1 plan review: unavailable." }
+  if (record.decision === "accepted") return { decision: record.decision, text: "S1 plan review: accepted." }
+  if (record.decision === "unavailable")
+    return { decision: record.decision, text: `S1 plan review: unavailable (${Intelligence.issueSummary(record)}).` }
+  const reasons = record.issues.map((issue) => {
+    const answer = record.answers[issue]
+    const confidence = answer?.type === "noul" ? ` (${Math.round(answer.noul * 100)}%)` : ""
+    return `${issue}${confidence}${REASONS[issue] ? `: ${REASONS[issue]}` : ""}`
+  })
+  const flags = record.issues.toSorted().join("\n")
+  const repeated =
+    record.issues.length > 0 &&
+    history.some(
+      (entry) =>
+        entry.id !== record.id &&
+        entry.candidateID !== record.candidateID &&
+        (entry.decision === "needs_revision" || entry.decision === "inconclusive") &&
+        entry.issues.toSorted().join("\n") === flags,
+    )
+  const label = record.decision === "needs_revision" ? "needs revision" : "inconclusive"
+  return {
+    decision: record.decision,
+    text: `S1 plan review: ${label}${reasons.length ? ` — ${reasons.join("; ")}` : ""}.${repeated ? ` S1 keeps flagging the same axes (${record.issues.join(", ")}) across plan revisions; the user decides. Do not revise or resubmit the plan only to satisfy S1.` : ""}`,
   }
 }

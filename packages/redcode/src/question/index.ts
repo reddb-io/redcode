@@ -25,9 +25,12 @@ export const Replied = QuestionV1.Replied
 export const Rejected = QuestionV1.Rejected
 export const Event = QuestionV1.Event
 
-export class RejectedError extends Schema.TaggedErrorClass<RejectedError>()("QuestionRejectedError", {}) {
+export class RejectedError extends Schema.TaggedErrorClass<RejectedError>()("QuestionRejectedError", {
+  /** Context the model needs after the refusal, such as the review the user saw. */
+  detail: Schema.optional(Schema.String),
+}) {
   override get message() {
-    return "The user dismissed this question"
+    return `The user dismissed this question${this.detail ? `. ${this.detail}` : ""}`
   }
 }
 

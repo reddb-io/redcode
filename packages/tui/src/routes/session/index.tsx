@@ -2427,6 +2427,8 @@ function ToolPart(props: { last: boolean; part: ToolPart; message: AssistantMess
     if (props.part.state.status !== "completed") return false
     // A created design's chip (target and design system) stays visible: it is how the user sees what was settled.
     if (typeof props.part.state.metadata?.designChip === "string") return false
+    // The S1 plan review stays visible: the user decides with it and sees what it flagged.
+    if (props.part.tool === "plan_exit" && typeof props.part.state.metadata?.review === "string") return false
     return true
   })
 
@@ -2499,6 +2501,11 @@ function ToolPart(props: { last: boolean; part: ToolPart; message: AssistantMess
         <Match when={display() === "design_document" && typeof toolprops.metadata.designChip === "string"}>
           <InlineTool icon="◆" pending="Creating design…" complete={true} part={props.part}>
             {String(toolprops.metadata.designChip)}
+          </InlineTool>
+        </Match>
+        <Match when={props.part.tool === "plan_exit" && typeof toolprops.metadata.review === "string"}>
+          <InlineTool icon="→" pending="Reviewing plan…" complete={true} part={props.part}>
+            {String(toolprops.metadata.review)}
           </InlineTool>
         </Match>
         <Match when={true}>
