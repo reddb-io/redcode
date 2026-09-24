@@ -262,6 +262,33 @@ test("a review link lets a browser in, and feedback and the feed go through desi
   expect(recorded.feeds).toBeGreaterThan(0)
 })
 
+test("serves a legacy prototype's vendor assets to redcode, and only to redcode", async () => {
+  const app = state.app!
+  const asset = await fetch(new URL("/app/vendor/daisyui.css", app.url), {
+    headers: { authorization: `Bearer ${app.token}` },
+  })
+  expect(asset.status).toBe(200)
+  expect(asset.headers.get("content-type")).toContain("text/css")
+  expect((await asset.text()).length).toBeGreaterThan(1000)
+  const missing = await fetch(new URL("/app/vendor/unknown.js", app.url), {
+    headers: { authorization: `Bearer ${app.token}` },
+  })
+  expect(missing.status).toBe(404)
+  expect((await fetch(new URL("/app/vendor/daisyui.css", app.url))).status).toBe(401)
+})
+
+test("reports its version and protocol for redcode's download check", async () => {
+  const entry = path.join(import.meta.dir, "../src/index.ts")
+  const run = async (flag: string) => {
+    const child = Bun.spawn([process.execPath, entry, flag], { stdout: "pipe", stderr: "pipe" })
+    const [code, output] = await Promise.all([child.exited, new Response(child.stdout).text()])
+    expect(code).toBe(0)
+    return output.trim()
+  }
+  expect(await run("--protocol")).toBe(String(DesignApp.PROTOCOL))
+  expect(await run("--version")).toBe("local")
+})
+
 test("exits by itself once idle and removes its registration", async () => {
   const app = await ensure(states.idle, 0.02)
   const deadline = Date.now() + 20_000

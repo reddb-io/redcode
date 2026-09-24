@@ -43274,6 +43274,10 @@
               "mode": {
                 "type": "string",
                 "enum": ["process", "inline"]
+              },
+              "version": {
+                "type": "string",
+                "pattern": "^(latest|\\d+\\.\\d+\\.\\d+(-[0-9A-Za-z.-]+)?)$"
               }
             },
             "additionalProperties": false

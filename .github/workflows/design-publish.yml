@@ -1,0 +1,125 @@
+name: design-publish
+
+# Releases the design app (redcode-design) on its own: a design-vX.Y.Z tag builds one binary per
+# platform, the whiteboard bundle, a manifest carrying the protocol and SHA256SUMS, and publishes
+# them as a GitHub release that is never marked latest, so redcode's own releases stay the latest.
+# redcode downloads these assets the first time Design needs the app. red-tag-release pushes the tag
+# when a Version PR bumps packages/design-app; a dispatch rebuilds an existing tag.
+on:
+  push:
+    tags:
+      - "design-v[0-9]+.[0-9]+.[0-9]+"
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Existing design app tag to build and publish, e.g. design-v0.1.0"
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: design-publish
+  cancel-in-progress: false
+
+jobs:
+  release:
+    if: github.repository == 'reddb-io/redcode'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
+        with:
+          fetch-depth: 0
+          fetch-tags: true
+          ref: ${{ inputs.tag || github.ref }}
+      - name: Resolve release tag
+        id: release
+        env:
+          INPUT_TAG: ${{ inputs.tag }}
+          REF_NAME: ${{ github.ref_name }}
+        run: |
+          set -euo pipefail
+          tag="${INPUT_TAG:-$REF_NAME}"
+          if ! [[ "$tag" =~ ^design-v[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            echo "::error::design app tags must match design-v<major>.<minor>.<patch>"
+            exit 1
+          fi
+          git rev-parse --verify "refs/tags/${tag}^{commit}" >/dev/null
+          version="${tag#design-v}"
+          package="$(node -p "require('./packages/design-app/package.json').version")"
+          if [ "$package" != "$version" ]; then
+            echo "::error::$tag does not match packages/design-app/package.json version $package"
+            exit 1
+          fi
+          echo "tag=$tag" >> "$GITHUB_OUTPUT"
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+      - uses: ./.github/actions/setup-bun
+      - name: Resolve GitHub Release state
+        id: state
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ steps.release.outputs.tag }}
+        run: |
+          set -euo pipefail
+          if ! gh release view "$TAG" >/dev/null 2>&1; then
+            state=missing
+          elif [ "$(gh release view "$TAG" --json isDraft --jq .isDraft)" = true ]; then
+            state=draft
+          else
+            state=published
+          fi
+          if [ "$state" = published ]; then
+            echo "::notice::released tags are immutable; $TAG is already published, so this run leaves it untouched"
+          fi
+          echo "state=$state" >> "$GITHUB_OUTPUT"
+      - name: Create or resume draft GitHub Release
+        if: steps.state.outputs.state != 'published'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          STATE: ${{ steps.state.outputs.state }}
+          TAG: ${{ steps.release.outputs.tag }}
+          VERSION: ${{ steps.release.outputs.version }}
+        run: |
+          set -euo pipefail
+          if [ "$STATE" = missing ]; then
+            gh release create "$TAG" --verify-tag --draft --latest=false --title "Redcode Design $VERSION" \
+              --notes "The design app (redcode-design) that redcode downloads the first time Design needs it. Binaries per platform, the whiteboard bundle, manifest.json (version and protocol) and SHA256SUMS."
+          else
+            echo "resuming existing draft $TAG"
+          fi
+      - name: Build and upload the design app
+        if: steps.state.outputs.state != 'published'
+        env:
+          GH_REPO: reddb-io/redcode
+          GH_TOKEN: ${{ github.token }}
+          REDCODE_DESIGN_VERSION: ${{ steps.release.outputs.version }}
+        run: bun packages/design-app/script/build.ts --release --upload
+      - name: Smoke the uploaded GitHub Release asset
+        if: steps.state.outputs.state != 'published'
+        env:
+          GH_REPO: reddb-io/redcode
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ steps.release.outputs.tag }}
+          VERSION: ${{ steps.release.outputs.version }}
+        run: |
+          set -euo pipefail
+          root="$(mktemp -d)"
+          trap 'rm -rf "$root"' EXIT
+          # Download what redcode will download, not the local build output.
+          gh release download "$TAG" --dir "$root" --pattern redcode-design-linux-x64.tar.gz --pattern SHA256SUMS --pattern manifest.json
+          (cd "$root" && grep -E '  (redcode-design-linux-x64\.tar\.gz|manifest\.json)$' SHA256SUMS | sha256sum --check -)
+          mkdir "$root/bin"
+          tar -xzf "$root/redcode-design-linux-x64.tar.gz" -C "$root/bin"
+          "$root/bin/redcode-design" --version | grep -Fx "$VERSION"
+          test "$("$root/bin/redcode-design" --protocol)" = "$(node -p "require('$root/manifest.json').protocol")"
+      # Last on purpose: until this step the release is a draft, so any earlier failure can be rerun
+      # from the top. Never latest: that stays redcode's own release.
+      - name: Publish GitHub Release
+        if: steps.state.outputs.state != 'published'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ steps.release.outputs.tag }}
+        run: gh release edit "$TAG" --draft=false --latest=false

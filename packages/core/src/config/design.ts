@@ -49,8 +49,14 @@ export class Info extends Schema.Class<Info>("ConfigV2.Design")({
   app: Schema.Struct({
     mode: Schema.Literals(["process", "inline"]).pipe(Schema.optional).annotate({
       description:
-        'Where Design builds, renders, exports and serves its review: "process" runs them in the design app (redcode-design), a separate process redcode starts on demand and that exits after ten idle minutes; "inline" runs them inside redcode. Default: "inline". "process" needs REDCODE_DESIGN_BIN or a source checkout, and falls back to "inline" without one.',
+        'Where Design builds, renders, exports and serves its review when redcode runs from source: "process" runs them in the design app (redcode-design), a separate process redcode starts on demand and that exits after ten idle minutes; "inline" runs them inside redcode. Default: "inline". Installed redcode always uses the design app and ignores this setting.',
     }),
+    version: Schema.String.check(Schema.isPattern(/^(latest|\d+\.\d+\.\d+(-[0-9A-Za-z.-]+)?)$/))
+      .pipe(Schema.optional)
+      .annotate({
+        description:
+          'Design app release to run: an exact version such as "0.1.0", or "latest" for the newest release that speaks this redcode\'s protocol. Default: the release this redcode was built with. Releases are downloaded from GitHub on first use into the cache directory and verified against their SHA256SUMS; REDCODE_DESIGN_BIN overrides the binary.',
+      }),
   })
     .pipe(Schema.optional)
     .annotate({ description: "The design app process that serves Design's review surface and runs its heavy work" }),

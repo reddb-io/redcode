@@ -21,6 +21,7 @@ import { DesignPlaybooks } from "@reddb-io/redcode-core/design/playbooks"
 import { DesignRounds } from "@reddb-io/redcode-core/design/rounds"
 import { DesignStudio } from "@/design/studio"
 import { DesignAppClient } from "@/design/app"
+import { DesignApp } from "@reddb-io/redcode-core/design/app"
 import { Tool } from "./tool"
 import { Question } from "@/question"
 import { Session } from "@/session/session"
@@ -54,10 +55,9 @@ export const DesignTools = Effect.gen(function* () {
       return yield* studio.use(effect)
     }).pipe(Effect.orDie)
   const result = (output: string, metadata: Record<string, unknown> = {}) => ({ title: "Design", output, metadata })
-  // With design.app.mode "process" the design app builds, renders and serves the review; nothing means inline.
-  const app = settings
-    .get()
-    .pipe(Effect.flatMap((config) => DesignAppClient.connect(config.design?.app?.mode, review.url)))
+  // The design app builds, renders and serves the review: always in a compiled redcode, with
+  // design.app.mode "process" from source. Nothing means Design runs inline.
+  const app = settings.get().pipe(Effect.flatMap((config) => DesignAppClient.connect(config.design?.app, review.url)))
   return yield* Effect.all([
     define("design_media", {
       description:
@@ -357,23 +357,23 @@ export const DesignTools = Effect.gen(function* () {
           ctx,
           Effect.gen(function* () {
             const store = yield* DesignStore.Service
+            const connection = yield* app
             const document =
               "path" in input
-                ? yield* DesignLegacy.importPrototype(input, ctx)
+                ? yield* DesignLegacy.importPrototype(input, ctx, connection)
                 : yield* store.get(input.id, ctx.sessionID)
             if (document.ended)
               return result(`The user ended this review. Reopen only on an explicit request. Design: ${document.id}`)
             yield* DesignRead.grant(document, ctx.ask)
             const tooling = yield* DesignRead.tooling(document, ctx.ask)
-            const connection = yield* app
             const revision = connection
-              ? yield* DesignAppClient.publish(connection, ctx.sessionID, document.id, {
+              ? yield* DesignApp.publish(connection, ctx.sessionID, document.id, {
                   name: input.name ?? document.name,
                   tooling,
                 })
               : yield* store.publish(document.id, input.name ?? document.name, yield* DesignRead.make(ctx.ask), tooling)
             const url = connection
-              ? yield* DesignAppClient.review(connection, ctx.sessionID)
+              ? yield* DesignApp.link(connection, ctx.sessionID)
               : new URL(`/design/session/${ctx.sessionID}/review`, yield* review.url).toString()
             // One tab per review, claimed through the presence the review feeds, the TUI command and
             // `redcode design` share: a connected page live-reloads the revision, a burst of publishes or
@@ -447,7 +447,7 @@ export const DesignTools = Effect.gen(function* () {
             const connection = yield* app
             const revisions = [
               connection
-                ? yield* DesignAppClient.restore(connection, ctx.sessionID, input.id, {
+                ? yield* DesignApp.restore(connection, ctx.sessionID, input.id, {
                     revision: input.restore,
                     tooling,
                   })
@@ -490,7 +490,7 @@ export const DesignTools = Effect.gen(function* () {
             yield* store.get(input.id, ctx.sessionID)
             const connection = yield* app
             const job = connection
-              ? yield* DesignAppClient.render(connection, ctx.sessionID, input.id, input.input)
+              ? yield* DesignApp.render(connection, ctx.sessionID, input.id, input.input)
               : yield* renderer.start(input.id, input.input)
             return result(`Job ${job.id}: ${job.status}. Poll design_jobs for the result.`, { job })
           }),
@@ -512,8 +512,8 @@ export const DesignTools = Effect.gen(function* () {
             const connection = yield* app
             const jobs = connection
               ? input.cancel
-                ? [yield* DesignAppClient.cancel(connection, ctx.sessionID, input.id, input.cancel)]
-                : yield* DesignAppClient.jobs(connection, ctx.sessionID, input.id)
+                ? [yield* DesignApp.cancel(connection, ctx.sessionID, input.id, input.cancel)]
+                : yield* DesignApp.jobs(connection, ctx.sessionID, input.id)
               : input.cancel
                 ? [yield* renderer.cancel(input.id, input.cancel)]
                 : yield* renderer.jobs(input.id)

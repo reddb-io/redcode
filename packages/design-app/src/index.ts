@@ -3,6 +3,7 @@ import path from "node:path"
 import { parseArgs } from "node:util"
 
 const usage = `Usage: redcode-design serve --host-url <redcode server> [options]
+       redcode-design --version | --protocol
 
 Serves Design's review surface and runs its builds, renders and exports for redcode.
 
@@ -26,8 +27,17 @@ const parsed = parseArgs({
     port: { type: "string", default: "0" },
     "idle-minutes": { type: "string" },
     help: { type: "boolean", short: "h", default: false },
+    version: { type: "boolean", short: "v", default: false },
+    protocol: { type: "boolean", default: false },
   },
 })
+
+if (parsed.values.version || parsed.values.protocol) {
+  const { InstallationVersion } = await import("@reddb-io/redcode-core/installation/version")
+  const { DesignApp } = await import("@reddb-io/redcode-core/design/app")
+  console.log(parsed.values.version ? InstallationVersion : DesignApp.PROTOCOL)
+  process.exit(0)
+}
 
 if (parsed.values.help || parsed.positionals[0] !== "serve" || !parsed.values["host-url"]) {
   console.error(usage)
