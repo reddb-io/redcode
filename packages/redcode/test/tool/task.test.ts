@@ -32,7 +32,6 @@ import { SubagentReview } from "@reddb-io/redcode-core/session/subagent-review"
 import { makeGlobalNode } from "@reddb-io/redcode-core/effect/app-node"
 import { Todo } from "../../src/session/todo"
 import { Provider } from "@/provider/provider"
-import { ConfigProviderV1 } from "@reddb-io/redcode-core/v1/config/provider"
 import path from "path"
 
 afterEach(async () => {
@@ -1770,7 +1769,17 @@ describe("tool.task result review", () => {
   )
 })
 
-const catalogModel = (name: string, extra: Partial<typeof ConfigProviderV1.Model.Type> = {}) => ({
+const catalogModel = (
+  name: string,
+  extra: {
+    family?: string
+    reasoning?: boolean
+    attachment?: boolean
+    status?: "deprecated"
+    cost?: { input: number; output: number }
+    variants?: Record<string, Record<string, string>>
+  } = {},
+) => ({
   name,
   tool_call: true,
   release_date: "2025-01-01",

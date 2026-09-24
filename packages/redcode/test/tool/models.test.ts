@@ -2,9 +2,9 @@ import { afterEach, describe, expect } from "bun:test"
 import { Cause, Effect, Exit } from "effect"
 import { Database } from "@reddb-io/redcode-core/database/database"
 import { LayerNode } from "@reddb-io/redcode-core/effect/layer-node"
+import { SessionProjector } from "@reddb-io/redcode-core/session/projector"
 import { ModelV2 } from "@reddb-io/redcode-core/model"
 import { ProviderV2 } from "@reddb-io/redcode-core/provider"
-import { ConfigProviderV1 } from "@reddb-io/redcode-core/v1/config/provider"
 import { Provider } from "@/provider/provider"
 import { Session } from "@/session/session"
 import { MessageID } from "@/session/schema"
@@ -18,10 +18,23 @@ afterEach(async () => {
 })
 
 const it = testEffect(
-  LayerNode.compile(LayerNode.group([Provider.node, Session.node, ToolOutputBridge.node, Database.node])),
+  LayerNode.compile(
+    LayerNode.group([Provider.node, Session.node, SessionProjector.node, ToolOutputBridge.node, Database.node]),
+  ),
 )
 
-const model = (name: string, release_date: string, extra: Partial<typeof ConfigProviderV1.Model.Type> = {}) => ({
+const model = (
+  name: string,
+  release_date: string,
+  extra: {
+    family?: string
+    reasoning?: boolean
+    attachment?: boolean
+    status?: "deprecated"
+    cost?: { input: number; output: number }
+    variants?: Record<string, Record<string, string>>
+  } = {},
+) => ({
   name,
   release_date,
   tool_call: true,
