@@ -1500,6 +1500,216 @@
         ]
       }
     },
+    "/experimental/worktree/inventory": {
+      "get": {
+        "tags": ["experimental"],
+        "operationId": "worktree.inventory.list",
+        "parameters": [
+          {
+            "name": "directory",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            },
+            "required": false
+          },
+          {
+            "name": "workspace",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            },
+            "required": false
+          },
+          {
+            "name": "pullRequests",
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "enum": ["true", "false"]
+            },
+            "required": false
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The repository's worktrees",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WorktreeInventory"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "WorktreeInventoryError | InvalidRequestError",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/WorktreeInventoryError"
+                    },
+                    {
+                      "$ref": "#/components/schemas/InvalidRequestError"
+                    }
+                  ]
+                }
+              }
+            }
+          }
+        },
+        "description": "List the repository's linked worktrees with size, pending changes, divergence from the default branch, merge state, activity and linked sessions.",
+        "summary": "List worktree inventory",
+        "x-codeSamples": [
+          {
+            "lang": "js",
+            "source": "import { createRedcodeClient } from \"@reddb-io/redcode-sdk\"\n\nconst client = createRedcodeClient()\nawait client.worktree.inventory.list({\n  ...\n})"
+          }
+        ]
+      }
+    },
+    "/experimental/worktree/inventory/remove": {
+      "post": {
+        "tags": ["experimental"],
+        "operationId": "worktree.inventory.remove",
+        "parameters": [
+          {
+            "name": "directory",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            },
+            "required": false
+          },
+          {
+            "name": "workspace",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            },
+            "required": false
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Worktree removed",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WorktreeInventoryRemoveResult"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "WorktreeInventoryError | InvalidRequestError",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/WorktreeInventoryError"
+                    },
+                    {
+                      "$ref": "#/components/schemas/InvalidRequestError"
+                    }
+                  ]
+                }
+              }
+            }
+          }
+        },
+        "description": "Remove one linked worktree. Uncommitted changes need force; the primary checkout and worktrees of active sessions are never removed.",
+        "summary": "Remove a worktree safely",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/WorktreeInventoryRemoveInput"
+              }
+            }
+          }
+        },
+        "x-codeSamples": [
+          {
+            "lang": "js",
+            "source": "import { createRedcodeClient } from \"@reddb-io/redcode-sdk\"\n\nconst client = createRedcodeClient()\nawait client.worktree.inventory.remove({\n  ...\n})"
+          }
+        ]
+      }
+    },
+    "/experimental/worktree/inventory/clean": {
+      "post": {
+        "tags": ["experimental"],
+        "operationId": "worktree.inventory.clean",
+        "parameters": [
+          {
+            "name": "directory",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            },
+            "required": false
+          },
+          {
+            "name": "workspace",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            },
+            "required": false
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Worktrees cleaned or previewed",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WorktreeInventoryCleanResult"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "WorktreeInventoryError | InvalidRequestError",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/WorktreeInventoryError"
+                    },
+                    {
+                      "$ref": "#/components/schemas/InvalidRequestError"
+                    }
+                  ]
+                }
+              }
+            }
+          }
+        },
+        "description": "Remove clean worktrees whose branch merged or that saw no activity for a number of days, and prune stale registrations. dryRun only reports what would go.",
+        "summary": "Clean merged or stale worktrees",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/WorktreeInventoryCleanInput"
+              }
+            }
+          }
+        },
+        "x-codeSamples": [
+          {
+            "lang": "js",
+            "source": "import { createRedcodeClient } from \"@reddb-io/redcode-sdk\"\n\nconst client = createRedcodeClient()\nawait client.worktree.inventory.clean({\n  ...\n})"
+          }
+        ]
+      }
+    },
     "/experimental/session": {
       "get": {
         "tags": ["experimental"],
@@ -5549,11 +5759,237 @@
                           "estimated": {
                             "type": "boolean",
                             "description": "True when the router and the models catalog did not describe this model, so its limits are a conservative guess."
+                          },
+                          "router": {
+                            "type": "object",
+                            "properties": {
+                              "owned_by": {
+                                "type": "string"
+                              },
+                              "strategy": {
+                                "type": "string"
+                              },
+                              "thinking_levels": {
+                                "type": "array",
+                                "items": {
+                                  "type": "string"
+                                }
+                              },
+                              "capabilities": {
+                                "type": "object"
+                              },
+                              "parameters": {
+                                "type": "object",
+                                "properties": {
+                                  "context_length": {
+                                    "type": "number"
+                                  },
+                                  "max_completion_tokens": {
+                                    "type": "number"
+                                  },
+                                  "reasoning": {
+                                    "type": "boolean"
+                                  },
+                                  "thinking_levels": {
+                                    "type": "array",
+                                    "items": {
+                                      "type": "string"
+                                    }
+                                  },
+                                  "thinking_can_disable": {
+                                    "type": "boolean"
+                                  },
+                                  "forced_tool_choice": {
+                                    "type": "boolean"
+                                  },
+                                  "tools": {
+                                    "type": "boolean"
+                                  },
+                                  "search": {
+                                    "type": "boolean"
+                                  },
+                                  "modes": {
+                                    "type": "array",
+                                    "items": {
+                                      "type": "string"
+                                    }
+                                  },
+                                  "modalities": {
+                                    "type": "object",
+                                    "properties": {
+                                      "input": {
+                                        "type": "array",
+                                        "items": {
+                                          "type": "string"
+                                        }
+                                      },
+                                      "output": {
+                                        "type": "array",
+                                        "items": {
+                                          "type": "string"
+                                        }
+                                      }
+                                    },
+                                    "additionalProperties": false
+                                  }
+                                },
+                                "additionalProperties": false
+                              },
+                              "parameters_basis": {
+                                "type": "string",
+                                "enum": ["lead", "strictest"]
+                              },
+                              "members": {
+                                "type": "array",
+                                "items": {
+                                  "type": "string"
+                                }
+                              },
+                              "member_parameters": {
+                                "type": "array",
+                                "items": {
+                                  "type": "object",
+                                  "properties": {
+                                    "id": {
+                                      "type": "string"
+                                    },
+                                    "parameters": {
+                                      "type": "object",
+                                      "properties": {
+                                        "context_length": {
+                                          "type": "number"
+                                        },
+                                        "max_completion_tokens": {
+                                          "type": "number"
+                                        },
+                                        "reasoning": {
+                                          "type": "boolean"
+                                        },
+                                        "thinking_levels": {
+                                          "type": "array",
+                                          "items": {
+                                            "type": "string"
+                                          }
+                                        },
+                                        "thinking_can_disable": {
+                                          "type": "boolean"
+                                        },
+                                        "forced_tool_choice": {
+                                          "type": "boolean"
+                                        },
+                                        "tools": {
+                                          "type": "boolean"
+                                        },
+                                        "search": {
+                                          "type": "boolean"
+                                        },
+                                        "modes": {
+                                          "type": "array",
+                                          "items": {
+                                            "type": "string"
+                                          }
+                                        },
+                                        "modalities": {
+                                          "type": "object",
+                                          "properties": {
+                                            "input": {
+                                              "type": "array",
+                                              "items": {
+                                                "type": "string"
+                                              }
+                                            },
+                                            "output": {
+                                              "type": "array",
+                                              "items": {
+                                                "type": "string"
+                                              }
+                                            }
+                                          },
+                                          "additionalProperties": false
+                                        }
+                                      },
+                                      "additionalProperties": false
+                                    }
+                                  },
+                                  "required": ["id"],
+                                  "additionalProperties": false
+                                }
+                              },
+                              "provider": {
+                                "type": "object",
+                                "properties": {
+                                  "id": {
+                                    "type": "string"
+                                  },
+                                  "slug": {
+                                    "type": "string"
+                                  },
+                                  "prefix": {
+                                    "type": "string"
+                                  },
+                                  "name": {
+                                    "type": "string"
+                                  },
+                                  "category": {
+                                    "type": "string"
+                                  },
+                                  "subscription": {
+                                    "type": "boolean"
+                                  }
+                                },
+                                "required": ["id"],
+                                "additionalProperties": false
+                              },
+                              "aliases": {
+                                "type": "array",
+                                "items": {
+                                  "type": "string"
+                                }
+                              },
+                              "variants": {
+                                "type": "array",
+                                "items": {
+                                  "type": "object",
+                                  "properties": {
+                                    "id": {
+                                      "type": "string"
+                                    },
+                                    "name": {
+                                      "type": "string"
+                                    },
+                                    "level": {
+                                      "type": "string"
+                                    },
+                                    "mode": {
+                                      "type": "string"
+                                    },
+                                    "aliases": {
+                                      "type": "array",
+                                      "items": {
+                                        "type": "string"
+                                      }
+                                    }
+                                  },
+                                  "required": ["id"],
+                                  "additionalProperties": false
+                                }
+                              },
+                              "via": {
+                                "type": "string"
+                              }
+                            },
+                            "additionalProperties": false
                           }
                         },
                         "required": ["id", "name", "limit", "estimated"],
                         "additionalProperties": false
                       }
+                    },
+                    "router": {
+                      "$ref": "#/components/schemas/RouterDetection"
+                    },
+                    "catalogVersion": {
+                      "type": "string"
                     }
                   },
                   "required": ["baseURL", "models"],
@@ -5718,6 +6154,226 @@
                           "estimated": {
                             "type": "boolean",
                             "description": "True when the router and the models catalog did not describe this model, so its limits are a conservative guess."
+                          },
+                          "router": {
+                            "type": "object",
+                            "properties": {
+                              "owned_by": {
+                                "type": "string"
+                              },
+                              "strategy": {
+                                "type": "string"
+                              },
+                              "thinking_levels": {
+                                "type": "array",
+                                "items": {
+                                  "type": "string"
+                                }
+                              },
+                              "capabilities": {
+                                "type": "object"
+                              },
+                              "parameters": {
+                                "type": "object",
+                                "properties": {
+                                  "context_length": {
+                                    "type": "number"
+                                  },
+                                  "max_completion_tokens": {
+                                    "type": "number"
+                                  },
+                                  "reasoning": {
+                                    "type": "boolean"
+                                  },
+                                  "thinking_levels": {
+                                    "type": "array",
+                                    "items": {
+                                      "type": "string"
+                                    }
+                                  },
+                                  "thinking_can_disable": {
+                                    "type": "boolean"
+                                  },
+                                  "forced_tool_choice": {
+                                    "type": "boolean"
+                                  },
+                                  "tools": {
+                                    "type": "boolean"
+                                  },
+                                  "search": {
+                                    "type": "boolean"
+                                  },
+                                  "modes": {
+                                    "type": "array",
+                                    "items": {
+                                      "type": "string"
+                                    }
+                                  },
+                                  "modalities": {
+                                    "type": "object",
+                                    "properties": {
+                                      "input": {
+                                        "type": "array",
+                                        "items": {
+                                          "type": "string"
+                                        }
+                                      },
+                                      "output": {
+                                        "type": "array",
+                                        "items": {
+                                          "type": "string"
+                                        }
+                                      }
+                                    },
+                                    "additionalProperties": false
+                                  }
+                                },
+                                "additionalProperties": false
+                              },
+                              "parameters_basis": {
+                                "type": "string",
+                                "enum": ["lead", "strictest"]
+                              },
+                              "members": {
+                                "type": "array",
+                                "items": {
+                                  "type": "string"
+                                }
+                              },
+                              "member_parameters": {
+                                "type": "array",
+                                "items": {
+                                  "type": "object",
+                                  "properties": {
+                                    "id": {
+                                      "type": "string"
+                                    },
+                                    "parameters": {
+                                      "type": "object",
+                                      "properties": {
+                                        "context_length": {
+                                          "type": "number"
+                                        },
+                                        "max_completion_tokens": {
+                                          "type": "number"
+                                        },
+                                        "reasoning": {
+                                          "type": "boolean"
+                                        },
+                                        "thinking_levels": {
+                                          "type": "array",
+                                          "items": {
+                                            "type": "string"
+                                          }
+                                        },
+                                        "thinking_can_disable": {
+                                          "type": "boolean"
+                                        },
+                                        "forced_tool_choice": {
+                                          "type": "boolean"
+                                        },
+                                        "tools": {
+                                          "type": "boolean"
+                                        },
+                                        "search": {
+                                          "type": "boolean"
+                                        },
+                                        "modes": {
+                                          "type": "array",
+                                          "items": {
+                                            "type": "string"
+                                          }
+                                        },
+                                        "modalities": {
+                                          "type": "object",
+                                          "properties": {
+                                            "input": {
+                                              "type": "array",
+                                              "items": {
+                                                "type": "string"
+                                              }
+                                            },
+                                            "output": {
+                                              "type": "array",
+                                              "items": {
+                                                "type": "string"
+                                              }
+                                            }
+                                          },
+                                          "additionalProperties": false
+                                        }
+                                      },
+                                      "additionalProperties": false
+                                    }
+                                  },
+                                  "required": ["id"],
+                                  "additionalProperties": false
+                                }
+                              },
+                              "provider": {
+                                "type": "object",
+                                "properties": {
+                                  "id": {
+                                    "type": "string"
+                                  },
+                                  "slug": {
+                                    "type": "string"
+                                  },
+                                  "prefix": {
+                                    "type": "string"
+                                  },
+                                  "name": {
+                                    "type": "string"
+                                  },
+                                  "category": {
+                                    "type": "string"
+                                  },
+                                  "subscription": {
+                                    "type": "boolean"
+                                  }
+                                },
+                                "required": ["id"],
+                                "additionalProperties": false
+                              },
+                              "aliases": {
+                                "type": "array",
+                                "items": {
+                                  "type": "string"
+                                }
+                              },
+                              "variants": {
+                                "type": "array",
+                                "items": {
+                                  "type": "object",
+                                  "properties": {
+                                    "id": {
+                                      "type": "string"
+                                    },
+                                    "name": {
+                                      "type": "string"
+                                    },
+                                    "level": {
+                                      "type": "string"
+                                    },
+                                    "mode": {
+                                      "type": "string"
+                                    },
+                                    "aliases": {
+                                      "type": "array",
+                                      "items": {
+                                        "type": "string"
+                                      }
+                                    }
+                                  },
+                                  "required": ["id"],
+                                  "additionalProperties": false
+                                }
+                              },
+                              "via": {
+                                "type": "string"
+                              }
+                            },
+                            "additionalProperties": false
                           }
                         },
                         "required": ["id", "name", "limit", "estimated"],
@@ -5957,11 +6613,237 @@
                           "estimated": {
                             "type": "boolean",
                             "description": "True when the router and the models catalog did not describe this model, so its limits are a conservative guess."
+                          },
+                          "router": {
+                            "type": "object",
+                            "properties": {
+                              "owned_by": {
+                                "type": "string"
+                              },
+                              "strategy": {
+                                "type": "string"
+                              },
+                              "thinking_levels": {
+                                "type": "array",
+                                "items": {
+                                  "type": "string"
+                                }
+                              },
+                              "capabilities": {
+                                "type": "object"
+                              },
+                              "parameters": {
+                                "type": "object",
+                                "properties": {
+                                  "context_length": {
+                                    "type": "number"
+                                  },
+                                  "max_completion_tokens": {
+                                    "type": "number"
+                                  },
+                                  "reasoning": {
+                                    "type": "boolean"
+                                  },
+                                  "thinking_levels": {
+                                    "type": "array",
+                                    "items": {
+                                      "type": "string"
+                                    }
+                                  },
+                                  "thinking_can_disable": {
+                                    "type": "boolean"
+                                  },
+                                  "forced_tool_choice": {
+                                    "type": "boolean"
+                                  },
+                                  "tools": {
+                                    "type": "boolean"
+                                  },
+                                  "search": {
+                                    "type": "boolean"
+                                  },
+                                  "modes": {
+                                    "type": "array",
+                                    "items": {
+                                      "type": "string"
+                                    }
+                                  },
+                                  "modalities": {
+                                    "type": "object",
+                                    "properties": {
+                                      "input": {
+                                        "type": "array",
+                                        "items": {
+                                          "type": "string"
+                                        }
+                                      },
+                                      "output": {
+                                        "type": "array",
+                                        "items": {
+                                          "type": "string"
+                                        }
+                                      }
+                                    },
+                                    "additionalProperties": false
+                                  }
+                                },
+                                "additionalProperties": false
+                              },
+                              "parameters_basis": {
+                                "type": "string",
+                                "enum": ["lead", "strictest"]
+                              },
+                              "members": {
+                                "type": "array",
+                                "items": {
+                                  "type": "string"
+                                }
+                              },
+                              "member_parameters": {
+                                "type": "array",
+                                "items": {
+                                  "type": "object",
+                                  "properties": {
+                                    "id": {
+                                      "type": "string"
+                                    },
+                                    "parameters": {
+                                      "type": "object",
+                                      "properties": {
+                                        "context_length": {
+                                          "type": "number"
+                                        },
+                                        "max_completion_tokens": {
+                                          "type": "number"
+                                        },
+                                        "reasoning": {
+                                          "type": "boolean"
+                                        },
+                                        "thinking_levels": {
+                                          "type": "array",
+                                          "items": {
+                                            "type": "string"
+                                          }
+                                        },
+                                        "thinking_can_disable": {
+                                          "type": "boolean"
+                                        },
+                                        "forced_tool_choice": {
+                                          "type": "boolean"
+                                        },
+                                        "tools": {
+                                          "type": "boolean"
+                                        },
+                                        "search": {
+                                          "type": "boolean"
+                                        },
+                                        "modes": {
+                                          "type": "array",
+                                          "items": {
+                                            "type": "string"
+                                          }
+                                        },
+                                        "modalities": {
+                                          "type": "object",
+                                          "properties": {
+                                            "input": {
+                                              "type": "array",
+                                              "items": {
+                                                "type": "string"
+                                              }
+                                            },
+                                            "output": {
+                                              "type": "array",
+                                              "items": {
+                                                "type": "string"
+                                              }
+                                            }
+                                          },
+                                          "additionalProperties": false
+                                        }
+                                      },
+                                      "additionalProperties": false
+                                    }
+                                  },
+                                  "required": ["id"],
+                                  "additionalProperties": false
+                                }
+                              },
+                              "provider": {
+                                "type": "object",
+                                "properties": {
+                                  "id": {
+                                    "type": "string"
+                                  },
+                                  "slug": {
+                                    "type": "string"
+                                  },
+                                  "prefix": {
+                                    "type": "string"
+                                  },
+                                  "name": {
+                                    "type": "string"
+                                  },
+                                  "category": {
+                                    "type": "string"
+                                  },
+                                  "subscription": {
+                                    "type": "boolean"
+                                  }
+                                },
+                                "required": ["id"],
+                                "additionalProperties": false
+                              },
+                              "aliases": {
+                                "type": "array",
+                                "items": {
+                                  "type": "string"
+                                }
+                              },
+                              "variants": {
+                                "type": "array",
+                                "items": {
+                                  "type": "object",
+                                  "properties": {
+                                    "id": {
+                                      "type": "string"
+                                    },
+                                    "name": {
+                                      "type": "string"
+                                    },
+                                    "level": {
+                                      "type": "string"
+                                    },
+                                    "mode": {
+                                      "type": "string"
+                                    },
+                                    "aliases": {
+                                      "type": "array",
+                                      "items": {
+                                        "type": "string"
+                                      }
+                                    }
+                                  },
+                                  "required": ["id"],
+                                  "additionalProperties": false
+                                }
+                              },
+                              "via": {
+                                "type": "string"
+                              }
+                            },
+                            "additionalProperties": false
                           }
                         },
                         "required": ["id", "name", "limit", "estimated"],
                         "additionalProperties": false
                       }
+                    },
+                    "router": {
+                      "$ref": "#/components/schemas/RouterDetection"
+                    },
+                    "catalogVersion": {
+                      "type": "string"
                     }
                   },
                   "required": ["baseURL", "models"],
@@ -6013,6 +6895,519 @@
           {
             "lang": "js",
             "source": "import { createRedcodeClient } from \"@reddb-io/redcode-sdk\"\n\nconst client = createRedcodeClient()\nawait client.provider.nineRouter.connect({\n  ...\n})"
+          }
+        ]
+      }
+    },
+    "/provider/red-router/connect": {
+      "post": {
+        "tags": ["provider"],
+        "operationId": "provider.redRouter.connect",
+        "parameters": [
+          {
+            "name": "directory",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            },
+            "required": false
+          },
+          {
+            "name": "workspace",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            },
+            "required": false
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "baseURL": {
+                      "type": "string"
+                    },
+                    "models": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "id": {
+                            "type": "string"
+                          },
+                          "name": {
+                            "type": "string"
+                          },
+                          "limit": {
+                            "type": "object",
+                            "properties": {
+                              "context": {
+                                "anyOf": [
+                                  {
+                                    "type": "number"
+                                  },
+                                  {
+                                    "type": "string",
+                                    "enum": ["NaN"]
+                                  },
+                                  {
+                                    "type": "string",
+                                    "enum": ["Infinity"]
+                                  },
+                                  {
+                                    "type": "string",
+                                    "enum": ["-Infinity"]
+                                  },
+                                  {
+                                    "type": "string",
+                                    "enum": ["Infinity", "-Infinity", "NaN"]
+                                  }
+                                ]
+                              },
+                              "output": {
+                                "anyOf": [
+                                  {
+                                    "type": "number"
+                                  },
+                                  {
+                                    "type": "string",
+                                    "enum": ["NaN"]
+                                  },
+                                  {
+                                    "type": "string",
+                                    "enum": ["Infinity"]
+                                  },
+                                  {
+                                    "type": "string",
+                                    "enum": ["-Infinity"]
+                                  },
+                                  {
+                                    "type": "string",
+                                    "enum": ["Infinity", "-Infinity", "NaN"]
+                                  }
+                                ]
+                              }
+                            },
+                            "required": ["context", "output"],
+                            "additionalProperties": false
+                          },
+                          "estimated": {
+                            "type": "boolean",
+                            "description": "True when the router and the models catalog did not describe this model, so its limits are a conservative guess."
+                          },
+                          "router": {
+                            "type": "object",
+                            "properties": {
+                              "owned_by": {
+                                "type": "string"
+                              },
+                              "strategy": {
+                                "type": "string"
+                              },
+                              "thinking_levels": {
+                                "type": "array",
+                                "items": {
+                                  "type": "string"
+                                }
+                              },
+                              "capabilities": {
+                                "type": "object"
+                              },
+                              "parameters": {
+                                "type": "object",
+                                "properties": {
+                                  "context_length": {
+                                    "type": "number"
+                                  },
+                                  "max_completion_tokens": {
+                                    "type": "number"
+                                  },
+                                  "reasoning": {
+                                    "type": "boolean"
+                                  },
+                                  "thinking_levels": {
+                                    "type": "array",
+                                    "items": {
+                                      "type": "string"
+                                    }
+                                  },
+                                  "thinking_can_disable": {
+                                    "type": "boolean"
+                                  },
+                                  "forced_tool_choice": {
+                                    "type": "boolean"
+                                  },
+                                  "tools": {
+                                    "type": "boolean"
+                                  },
+                                  "search": {
+                                    "type": "boolean"
+                                  },
+                                  "modes": {
+                                    "type": "array",
+                                    "items": {
+                                      "type": "string"
+                                    }
+                                  },
+                                  "modalities": {
+                                    "type": "object",
+                                    "properties": {
+                                      "input": {
+                                        "type": "array",
+                                        "items": {
+                                          "type": "string"
+                                        }
+                                      },
+                                      "output": {
+                                        "type": "array",
+                                        "items": {
+                                          "type": "string"
+                                        }
+                                      }
+                                    },
+                                    "additionalProperties": false
+                                  }
+                                },
+                                "additionalProperties": false
+                              },
+                              "parameters_basis": {
+                                "type": "string",
+                                "enum": ["lead", "strictest"]
+                              },
+                              "members": {
+                                "type": "array",
+                                "items": {
+                                  "type": "string"
+                                }
+                              },
+                              "member_parameters": {
+                                "type": "array",
+                                "items": {
+                                  "type": "object",
+                                  "properties": {
+                                    "id": {
+                                      "type": "string"
+                                    },
+                                    "parameters": {
+                                      "type": "object",
+                                      "properties": {
+                                        "context_length": {
+                                          "type": "number"
+                                        },
+                                        "max_completion_tokens": {
+                                          "type": "number"
+                                        },
+                                        "reasoning": {
+                                          "type": "boolean"
+                                        },
+                                        "thinking_levels": {
+                                          "type": "array",
+                                          "items": {
+                                            "type": "string"
+                                          }
+                                        },
+                                        "thinking_can_disable": {
+                                          "type": "boolean"
+                                        },
+                                        "forced_tool_choice": {
+                                          "type": "boolean"
+                                        },
+                                        "tools": {
+                                          "type": "boolean"
+                                        },
+                                        "search": {
+                                          "type": "boolean"
+                                        },
+                                        "modes": {
+                                          "type": "array",
+                                          "items": {
+                                            "type": "string"
+                                          }
+                                        },
+                                        "modalities": {
+                                          "type": "object",
+                                          "properties": {
+                                            "input": {
+                                              "type": "array",
+                                              "items": {
+                                                "type": "string"
+                                              }
+                                            },
+                                            "output": {
+                                              "type": "array",
+                                              "items": {
+                                                "type": "string"
+                                              }
+                                            }
+                                          },
+                                          "additionalProperties": false
+                                        }
+                                      },
+                                      "additionalProperties": false
+                                    }
+                                  },
+                                  "required": ["id"],
+                                  "additionalProperties": false
+                                }
+                              },
+                              "provider": {
+                                "type": "object",
+                                "properties": {
+                                  "id": {
+                                    "type": "string"
+                                  },
+                                  "slug": {
+                                    "type": "string"
+                                  },
+                                  "prefix": {
+                                    "type": "string"
+                                  },
+                                  "name": {
+                                    "type": "string"
+                                  },
+                                  "category": {
+                                    "type": "string"
+                                  },
+                                  "subscription": {
+                                    "type": "boolean"
+                                  }
+                                },
+                                "required": ["id"],
+                                "additionalProperties": false
+                              },
+                              "aliases": {
+                                "type": "array",
+                                "items": {
+                                  "type": "string"
+                                }
+                              },
+                              "variants": {
+                                "type": "array",
+                                "items": {
+                                  "type": "object",
+                                  "properties": {
+                                    "id": {
+                                      "type": "string"
+                                    },
+                                    "name": {
+                                      "type": "string"
+                                    },
+                                    "level": {
+                                      "type": "string"
+                                    },
+                                    "mode": {
+                                      "type": "string"
+                                    },
+                                    "aliases": {
+                                      "type": "array",
+                                      "items": {
+                                        "type": "string"
+                                      }
+                                    }
+                                  },
+                                  "required": ["id"],
+                                  "additionalProperties": false
+                                }
+                              },
+                              "via": {
+                                "type": "string"
+                              }
+                            },
+                            "additionalProperties": false
+                          }
+                        },
+                        "required": ["id", "name", "limit", "estimated"],
+                        "additionalProperties": false
+                      }
+                    },
+                    "router": {
+                      "$ref": "#/components/schemas/RouterDetection"
+                    },
+                    "catalogVersion": {
+                      "type": "string"
+                    }
+                  },
+                  "required": ["baseURL", "models"],
+                  "additionalProperties": false
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "ProviderDiscoveryApiError | InvalidRequestError",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/ProviderDiscoveryApiError"
+                    },
+                    {
+                      "$ref": "#/components/schemas/InvalidRequestError"
+                    }
+                  ]
+                }
+              }
+            }
+          }
+        },
+        "description": "Connect the RedRouter preset of the OpenAI-compatible connection: discover RedRouter models from the Redcode server, save the provider to global configuration and the API key to the credential store, and reload instances before responding. Models that discovery added earlier and the router no longer lists are removed; customized models are kept.",
+        "summary": "Connect RedRouter",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "baseURL": {
+                    "type": "string"
+                  },
+                  "apiKey": {
+                    "type": "string"
+                  }
+                },
+                "required": ["baseURL", "apiKey"],
+                "additionalProperties": false
+              }
+            }
+          }
+        },
+        "x-codeSamples": [
+          {
+            "lang": "js",
+            "source": "import { createRedcodeClient } from \"@reddb-io/redcode-sdk\"\n\nconst client = createRedcodeClient()\nawait client.provider.redRouter.connect({\n  ...\n})"
+          }
+        ]
+      }
+    },
+    "/provider/{providerID}": {
+      "delete": {
+        "tags": ["provider"],
+        "operationId": "provider.remove",
+        "parameters": [
+          {
+            "name": "providerID",
+            "in": "path",
+            "schema": {
+              "type": "string"
+            },
+            "required": true
+          },
+          {
+            "name": "directory",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            },
+            "required": false
+          },
+          {
+            "name": "workspace",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            },
+            "required": false
+          },
+          {
+            "name": "dryRun",
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "enum": ["true", "false"]
+            },
+            "required": false
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "What was removed, or with dryRun what would be",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "providerID": {
+                      "type": "string"
+                    },
+                    "dryRun": {
+                      "type": "boolean",
+                      "description": "True when nothing was changed and the result only describes it."
+                    },
+                    "removed": {
+                      "type": "object",
+                      "properties": {
+                        "credential": {
+                          "type": "boolean",
+                          "description": "A saved key or login for the provider."
+                        },
+                        "config": {
+                          "type": "boolean",
+                          "description": "The provider's entry in the global configuration file."
+                        },
+                        "references": {
+                          "type": "array",
+                          "items": {
+                            "type": "string"
+                          },
+                          "description": "Settings that pointed at the provider and are cleared, for example default model, agent build or S2 principal."
+                        },
+                        "learnedLimits": {
+                          "type": "number",
+                          "description": "Learned model input limits that are forgotten."
+                        }
+                      },
+                      "required": ["credential", "config", "references", "learnedLimits"],
+                      "additionalProperties": false
+                    },
+                    "configPath": {
+                      "type": "string",
+                      "description": "The global configuration file."
+                    },
+                    "referencingFiles": {
+                      "type": "array",
+                      "items": {
+                        "type": "string"
+                      },
+                      "description": "Project configuration files that still mention the provider. They are not edited."
+                    },
+                    "envVariables": {
+                      "type": "array",
+                      "items": {
+                        "type": "string"
+                      },
+                      "description": "Environment variables set on the Redcode server that make the provider available again."
+                    }
+                  },
+                  "required": ["providerID", "dryRun", "removed", "configPath", "referencingFiles", "envVariables"],
+                  "additionalProperties": false,
+                  "description": "What was removed, or with dryRun what would be"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BadRequestError"
+                }
+              }
+            }
+          }
+        },
+        "description": "Remove a provider completely: its saved key or login, its entry in the global configuration, the global settings that name it (default and small model, agent and command models, the enabled and disabled provider lists), System Two models and a System One evaluator that use it, cached router detections and learned model limits, then reload instances before responding. With dryRun=true nothing changes and the result lists what would be removed. Project configuration files that mention the provider are listed, not edited, and environment variables that make the provider available again are named.",
+        "summary": "Remove a provider",
+        "x-codeSamples": [
+          {
+            "lang": "js",
+            "source": "import { createRedcodeClient } from \"@reddb-io/redcode-sdk\"\n\nconst client = createRedcodeClient()\nawait client.provider.remove({\n  ...\n})"
           }
         ]
       }
@@ -20594,6 +21989,111 @@
         ]
       }
     },
+    "/api/session/{sessionID}/design/{designID}/present": {
+      "get": {
+        "tags": ["Design"],
+        "operationId": "server.design.design.present",
+        "parameters": [
+          {
+            "name": "sessionID",
+            "in": "path",
+            "schema": {
+              "type": "string",
+              "pattern": "^ses"
+            },
+            "required": true
+          },
+          {
+            "name": "designID",
+            "in": "path",
+            "schema": {
+              "type": "string",
+              "pattern": "^design_[a-zA-Z0-9_-]+$"
+            },
+            "required": true
+          },
+          {
+            "name": "view",
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "enum": ["audience", "presenter"]
+            },
+            "required": false
+          },
+          {
+            "name": "revision",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            },
+            "required": false
+          }
+        ],
+        "security": [],
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/octet-stream": {
+                "schema": {
+                  "type": "string",
+                  "format": "binary"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "InvalidRequestError",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/InvalidRequestError"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "UnauthorizedError",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UnauthorizedError"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "SessionNotFoundError",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SessionNotFoundError"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "DesignError",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DesignError"
+                }
+              }
+            }
+          }
+        },
+        "description": "An HTML page that presents a presentation design's latest revision, or the given one: the audience view shows the slide full screen; the presenter view shows the current and next slide, the speaker notes and a timer. Windows of the same design stay on the same slide.",
+        "summary": "Present a deck",
+        "x-codeSamples": [
+          {
+            "lang": "js",
+            "source": "import { createRedcodeClient } from \"@reddb-io/redcode-sdk\"\n\nconst client = createRedcodeClient()\nawait client.server.design.design.present({\n  ...\n})"
+          }
+        ]
+      }
+    },
     "/api/session/{sessionID}/design/{designID}/restore": {
       "post": {
         "tags": ["Design"],
@@ -21798,6 +23298,941 @@
           {
             "lang": "js",
             "source": "import { createRedcodeClient } from \"@reddb-io/redcode-sdk\"\n\nconst client = createRedcodeClient()\nawait client.server.design.design.assetFile({\n  ...\n})"
+          }
+        ]
+      }
+    },
+    "/api/design/list": {
+      "get": {
+        "tags": ["Design host"],
+        "operationId": "design.host.designHost.list",
+        "parameters": [
+          {
+            "name": "directory",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            },
+            "required": true
+          }
+        ],
+        "security": [],
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "type": "object",
+                    "properties": {
+                      "sessionID": {
+                        "type": "string",
+                        "pattern": "^ses"
+                      },
+                      "title": {
+                        "type": "string"
+                      },
+                      "updated": {
+                        "anyOf": [
+                          {
+                            "type": "number"
+                          },
+                          {
+                            "type": "string",
+                            "enum": ["NaN"]
+                          },
+                          {
+                            "type": "string",
+                            "enum": ["Infinity"]
+                          },
+                          {
+                            "type": "string",
+                            "enum": ["-Infinity"]
+                          },
+                          {
+                            "type": "string",
+                            "enum": ["Infinity", "-Infinity", "NaN"]
+                          }
+                        ]
+                      },
+                      "designs": {
+                        "type": "array",
+                        "items": {
+                          "type": "object",
+                          "properties": {
+                            "id": {
+                              "type": "string",
+                              "pattern": "^design_[a-zA-Z0-9_-]+$"
+                            },
+                            "name": {
+                              "type": "string"
+                            },
+                            "revision": {
+                              "type": "string"
+                            },
+                            "approvedRevision": {
+                              "type": "string"
+                            },
+                            "ended": {
+                              "type": "boolean"
+                            }
+                          },
+                          "required": ["id", "name", "revision", "approvedRevision", "ended"],
+                          "additionalProperties": false
+                        }
+                      }
+                    },
+                    "required": ["sessionID", "title", "updated", "designs"],
+                    "additionalProperties": false
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "InvalidRequestError",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/InvalidRequestError"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "UnauthorizedError",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UnauthorizedError"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "ForbiddenError",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ForbiddenError"
+                }
+              }
+            }
+          }
+        },
+        "description": "Conversations of a directory that own a design or run in Design mode, newest first.",
+        "summary": "List Design conversations",
+        "x-codeSamples": [
+          {
+            "lang": "js",
+            "source": "import { createRedcodeClient } from \"@reddb-io/redcode-sdk\"\n\nconst client = createRedcodeClient()\nawait client.design.host.designHost.list({\n  ...\n})"
+          }
+        ]
+      }
+    },
+    "/api/design/session/{sessionID}/open": {
+      "get": {
+        "tags": ["Design host"],
+        "operationId": "design.host.designHost.open",
+        "parameters": [
+          {
+            "name": "sessionID",
+            "in": "path",
+            "schema": {
+              "type": "string",
+              "pattern": "^ses"
+            },
+            "required": true
+          }
+        ],
+        "security": [],
+        "responses": {
+          "200": {
+            "description": "DesignHostReview",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DesignHostReview"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "InvalidRequestError",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/InvalidRequestError"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "UnauthorizedError",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UnauthorizedError"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "ForbiddenError",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ForbiddenError"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "SessionNotFoundError",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SessionNotFoundError"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "DesignError",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DesignError"
+                }
+              }
+            }
+          }
+        },
+        "x-codeSamples": [
+          {
+            "lang": "js",
+            "source": "import { createRedcodeClient } from \"@reddb-io/redcode-sdk\"\n\nconst client = createRedcodeClient()\nawait client.design.host.designHost.open({\n  ...\n})"
+          }
+        ]
+      }
+    },
+    "/api/design/session/{sessionID}/launch": {
+      "post": {
+        "tags": ["Design host"],
+        "operationId": "design.host.designHost.launch",
+        "parameters": [
+          {
+            "name": "sessionID",
+            "in": "path",
+            "schema": {
+              "type": "string",
+              "pattern": "^ses"
+            },
+            "required": true
+          }
+        ],
+        "security": [],
+        "responses": {
+          "200": {
+            "description": "DesignHostLaunch",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DesignHostLaunch"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "InvalidRequestError",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/InvalidRequestError"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "UnauthorizedError",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UnauthorizedError"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "ForbiddenError",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ForbiddenError"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "SessionNotFoundError",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SessionNotFoundError"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "DesignError",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DesignError"
+                }
+              }
+            }
+          }
+        },
+        "description": "Claims opening a browser tab on the session's review, against the review pages connected to its feed. Never while a page is connected and never twice within the debounce.",
+        "summary": "Claim a review browser launch",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "explicit": {
+                    "type": "boolean"
+                  }
+                },
+                "additionalProperties": false
+              }
+            }
+          },
+          "required": true
+        },
+        "x-codeSamples": [
+          {
+            "lang": "js",
+            "source": "import { createRedcodeClient } from \"@reddb-io/redcode-sdk\"\n\nconst client = createRedcodeClient()\nawait client.design.host.designHost.launch({\n  ...\n})"
+          }
+        ]
+      }
+    },
+    "/api/design/session/{sessionID}/launch/release": {
+      "post": {
+        "tags": ["Design host"],
+        "operationId": "design.host.designHost.release",
+        "parameters": [
+          {
+            "name": "sessionID",
+            "in": "path",
+            "schema": {
+              "type": "string",
+              "pattern": "^ses"
+            },
+            "required": true
+          }
+        ],
+        "security": [],
+        "responses": {
+          "204": {
+            "description": "<No Content>"
+          },
+          "400": {
+            "description": "InvalidRequestError",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/InvalidRequestError"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "UnauthorizedError",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UnauthorizedError"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "ForbiddenError",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ForbiddenError"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "SessionNotFoundError",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SessionNotFoundError"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "DesignError",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DesignError"
+                }
+              }
+            }
+          }
+        },
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "token": {
+                    "anyOf": [
+                      {
+                        "type": "number"
+                      },
+                      {
+                        "type": "string",
+                        "enum": ["NaN"]
+                      },
+                      {
+                        "type": "string",
+                        "enum": ["Infinity"]
+                      },
+                      {
+                        "type": "string",
+                        "enum": ["-Infinity"]
+                      },
+                      {
+                        "type": "string",
+                        "enum": ["Infinity", "-Infinity", "NaN"]
+                      }
+                    ]
+                  }
+                },
+                "required": ["token"],
+                "additionalProperties": false
+              }
+            }
+          },
+          "required": true
+        },
+        "x-codeSamples": [
+          {
+            "lang": "js",
+            "source": "import { createRedcodeClient } from \"@reddb-io/redcode-sdk\"\n\nconst client = createRedcodeClient()\nawait client.design.host.designHost.release({\n  ...\n})"
+          }
+        ]
+      }
+    },
+    "/api/design/session/{sessionID}/feed": {
+      "get": {
+        "tags": ["Design host"],
+        "operationId": "design.host.designHost.feed",
+        "parameters": [
+          {
+            "name": "sessionID",
+            "in": "path",
+            "schema": {
+              "type": "string",
+              "pattern": "^ses"
+            },
+            "required": true
+          },
+          {
+            "name": "after",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            },
+            "required": false
+          }
+        ],
+        "security": [],
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "text/event-stream": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "id": {
+                      "type": "string"
+                    },
+                    "event": {
+                      "type": "string"
+                    },
+                    "data": {
+                      "$ref": "#/components/schemas/DesignFeedEventStream"
+                    }
+                  },
+                  "required": ["id", "event", "data"],
+                  "additionalProperties": false
+                },
+                "x-effect-stream": {
+                  "encoding": "sse",
+                  "causeSchema": {
+                    "type": "array",
+                    "items": {
+                      "anyOf": [
+                        {
+                          "type": "object",
+                          "properties": {
+                            "_tag": {
+                              "type": "string",
+                              "enum": ["Fail"]
+                            },
+                            "error": {
+                              "not": {}
+                            }
+                          },
+                          "required": ["_tag", "error"],
+                          "additionalProperties": false
+                        },
+                        {
+                          "type": "object",
+                          "properties": {
+                            "_tag": {
+                              "type": "string",
+                              "enum": ["Die"]
+                            },
+                            "defect": {}
+                          },
+                          "required": ["_tag", "defect"],
+                          "additionalProperties": false
+                        },
+                        {
+                          "type": "object",
+                          "properties": {
+                            "_tag": {
+                              "type": "string",
+                              "enum": ["Interrupt"]
+                            },
+                            "fiberId": {
+                              "anyOf": [
+                                {
+                                  "type": "number"
+                                },
+                                {
+                                  "type": "null"
+                                }
+                              ]
+                            }
+                          },
+                          "required": ["_tag", "fiberId"],
+                          "additionalProperties": false
+                        }
+                      ]
+                    }
+                  },
+                  "errorSchema": {
+                    "not": {}
+                  },
+                  "failureEvent": "effect/httpapi/stream/failure"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "InvalidRequestError",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/InvalidRequestError"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "UnauthorizedError",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UnauthorizedError"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "ForbiddenError",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ForbiddenError"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "SessionNotFoundError",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SessionNotFoundError"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "DesignError",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DesignError"
+                }
+              }
+            }
+          }
+        },
+        "description": "The conversation as reduced feed entries, replayed then live. A subscriber counts as a connected review page.",
+        "summary": "Subscribe to the conversation feed",
+        "x-codeSamples": [
+          {
+            "lang": "js",
+            "source": "import { createRedcodeClient } from \"@reddb-io/redcode-sdk\"\n\nconst client = createRedcodeClient()\nawait client.design.host.designHost.feed({\n  ...\n})"
+          }
+        ]
+      }
+    },
+    "/api/design/session/{sessionID}/{designID}/feedback": {
+      "post": {
+        "tags": ["Design host"],
+        "operationId": "design.host.designHost.feedback",
+        "parameters": [
+          {
+            "name": "sessionID",
+            "in": "path",
+            "schema": {
+              "type": "string",
+              "pattern": "^ses"
+            },
+            "required": true
+          },
+          {
+            "name": "designID",
+            "in": "path",
+            "schema": {
+              "type": "string",
+              "pattern": "^design_[a-zA-Z0-9_-]+$"
+            },
+            "required": true
+          }
+        ],
+        "security": [],
+        "responses": {
+          "200": {
+            "description": "Design.Receipt",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DesignReceipt"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "InvalidRequestError",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/InvalidRequestError"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "UnauthorizedError",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UnauthorizedError"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "ForbiddenError",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ForbiddenError"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "SessionNotFoundError",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SessionNotFoundError"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "DesignError",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DesignError"
+                }
+              }
+            }
+          }
+        },
+        "description": "Admits feedback into the conversation. Idempotent by feedback ID: an exact retry returns the same receipt.",
+        "summary": "Admit review feedback",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/DesignFeedback"
+              }
+            }
+          },
+          "required": true
+        },
+        "x-codeSamples": [
+          {
+            "lang": "js",
+            "source": "import { createRedcodeClient } from \"@reddb-io/redcode-sdk\"\n\nconst client = createRedcodeClient()\nawait client.design.host.designHost.feedback({\n  ...\n})"
+          }
+        ]
+      }
+    },
+    "/api/design/session/{sessionID}/{designID}/approve": {
+      "post": {
+        "tags": ["Design host"],
+        "operationId": "design.host.designHost.approve",
+        "parameters": [
+          {
+            "name": "sessionID",
+            "in": "path",
+            "schema": {
+              "type": "string",
+              "pattern": "^ses"
+            },
+            "required": true
+          },
+          {
+            "name": "designID",
+            "in": "path",
+            "schema": {
+              "type": "string",
+              "pattern": "^design_[a-zA-Z0-9_-]+$"
+            },
+            "required": true
+          }
+        ],
+        "security": [],
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "plan": {
+                      "type": "string"
+                    },
+                    "revision": {
+                      "type": "string"
+                    }
+                  },
+                  "required": ["plan", "revision"],
+                  "additionalProperties": false
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "InvalidRequestError",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/InvalidRequestError"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "UnauthorizedError",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UnauthorizedError"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "ForbiddenError",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ForbiddenError"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "SessionNotFoundError",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SessionNotFoundError"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "DesignError",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DesignError"
+                }
+              }
+            }
+          }
+        },
+        "description": "Records the approval, writes the Design section of the session plan and continues the conversation in Plan mode.",
+        "summary": "Approve a revision and hand off to the plan",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/DesignApprove"
+              }
+            }
+          },
+          "required": true
+        },
+        "x-codeSamples": [
+          {
+            "lang": "js",
+            "source": "import { createRedcodeClient } from \"@reddb-io/redcode-sdk\"\n\nconst client = createRedcodeClient()\nawait client.design.host.designHost.approve({\n  ...\n})"
+          }
+        ]
+      }
+    },
+    "/api/design/session/{sessionID}/permission": {
+      "post": {
+        "tags": ["Design host"],
+        "operationId": "design.host.designHost.permission",
+        "parameters": [
+          {
+            "name": "sessionID",
+            "in": "path",
+            "schema": {
+              "type": "string",
+              "pattern": "^ses"
+            },
+            "required": true
+          }
+        ],
+        "security": [],
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "granted": {
+                      "type": "boolean"
+                    }
+                  },
+                  "required": ["granted"],
+                  "additionalProperties": false
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "InvalidRequestError",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/InvalidRequestError"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "UnauthorizedError",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UnauthorizedError"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "ForbiddenError",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ForbiddenError"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "SessionNotFoundError",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SessionNotFoundError"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "DesignError",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DesignError"
+                }
+              }
+            }
+          }
+        },
+        "description": "Asks through the session's permission queue with its agent's rules; waits for the user when a rule asks. A refusal answers granted false.",
+        "summary": "Ask a permission for the session",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/DesignHostPermission"
+              }
+            }
+          },
+          "required": true
+        },
+        "x-codeSamples": [
+          {
+            "lang": "js",
+            "source": "import { createRedcodeClient } from \"@reddb-io/redcode-sdk\"\n\nconst client = createRedcodeClient()\nawait client.design.host.designHost.permission({\n  ...\n})"
           }
         ]
       }
@@ -26078,6 +28513,447 @@
         ]
       }
     },
+    "/api/intelligence": {
+      "get": {
+        "tags": ["Redcode HttpApi"],
+        "operationId": "intelligence.get",
+        "parameters": [],
+        "security": [],
+        "responses": {
+          "200": {
+            "description": "Intelligence.Status",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/IntelligenceStatus"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "InvalidRequestError",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/InvalidRequestError"
+                    },
+                    {
+                      "$ref": "#/components/schemas/InvalidRequestError"
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "UnauthorizedError",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UnauthorizedError"
+                }
+              }
+            }
+          }
+        },
+        "summary": "Get global intelligence setup",
+        "x-codeSamples": [
+          {
+            "lang": "js",
+            "source": "import { createRedcodeClient } from \"@reddb-io/redcode-sdk\"\n\nconst client = createRedcodeClient()\nawait client.intelligence.get({\n  ...\n})"
+          }
+        ]
+      },
+      "put": {
+        "tags": ["Redcode HttpApi"],
+        "operationId": "intelligence.save",
+        "parameters": [],
+        "security": [],
+        "responses": {
+          "200": {
+            "description": "Intelligence.Settings",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/IntelligenceSettings"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "InvalidRequestError",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/InvalidRequestError"
+                    },
+                    {
+                      "$ref": "#/components/schemas/InvalidRequestError"
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "UnauthorizedError",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UnauthorizedError"
+                }
+              }
+            }
+          }
+        },
+        "summary": "Save global intelligence setup",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/IntelligenceSave"
+              }
+            }
+          },
+          "required": true
+        },
+        "x-codeSamples": [
+          {
+            "lang": "js",
+            "source": "import { createRedcodeClient } from \"@reddb-io/redcode-sdk\"\n\nconst client = createRedcodeClient()\nawait client.intelligence.save({\n  ...\n})"
+          }
+        ]
+      }
+    },
+    "/api/intelligence/models": {
+      "post": {
+        "tags": ["Redcode HttpApi"],
+        "operationId": "intelligence.discover",
+        "parameters": [],
+        "security": [],
+        "responses": {
+          "200": {
+            "description": "Intelligence.Models",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/IntelligenceModels"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "InvalidRequestError",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/InvalidRequestError"
+                    },
+                    {
+                      "$ref": "#/components/schemas/InvalidRequestError"
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "UnauthorizedError",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UnauthorizedError"
+                }
+              }
+            }
+          }
+        },
+        "summary": "Discover System One models",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/IntelligenceProbe"
+              }
+            }
+          },
+          "required": true
+        },
+        "x-codeSamples": [
+          {
+            "lang": "js",
+            "source": "import { createRedcodeClient } from \"@reddb-io/redcode-sdk\"\n\nconst client = createRedcodeClient()\nawait client.intelligence.discover({\n  ...\n})"
+          }
+        ]
+      }
+    },
+    "/api/intelligence/test": {
+      "post": {
+        "tags": ["Redcode HttpApi"],
+        "operationId": "intelligence.probe",
+        "parameters": [],
+        "security": [],
+        "responses": {
+          "200": {
+            "description": "Intelligence.Check",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/IntelligenceCheck"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "InvalidRequestError",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/InvalidRequestError"
+                    },
+                    {
+                      "$ref": "#/components/schemas/InvalidRequestError"
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "UnauthorizedError",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UnauthorizedError"
+                }
+              }
+            }
+          }
+        },
+        "summary": "Test System One connection",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/IntelligenceProbe"
+              }
+            }
+          },
+          "required": true
+        },
+        "x-codeSamples": [
+          {
+            "lang": "js",
+            "source": "import { createRedcodeClient } from \"@reddb-io/redcode-sdk\"\n\nconst client = createRedcodeClient()\nawait client.intelligence.probe({\n  ...\n})"
+          }
+        ]
+      }
+    },
+    "/api/intelligence/evaluations": {
+      "get": {
+        "tags": ["Redcode HttpApi"],
+        "operationId": "intelligence.history",
+        "parameters": [
+          {
+            "name": "sessionID",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            },
+            "required": false
+          },
+          {
+            "name": "operation",
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "enum": [
+                "prompt_classification",
+                "response_quality",
+                "tool_usage",
+                "task_quality",
+                "todos",
+                "plan",
+                "feedback",
+                "design_completion",
+                "compaction",
+                "compact_now",
+                "task_completion",
+                "goal_completion",
+                "subagent_brief",
+                "session_progress",
+                "subagent_result",
+                "design_target"
+              ]
+            },
+            "required": false
+          },
+          {
+            "name": "subjectID",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            },
+            "required": false
+          },
+          {
+            "name": "candidateID",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            },
+            "required": false
+          },
+          {
+            "name": "decision",
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "enum": ["accepted", "needs_revision", "inconclusive", "unavailable"]
+            },
+            "required": false
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            },
+            "required": false
+          },
+          {
+            "name": "offset",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            },
+            "required": false
+          }
+        ],
+        "security": [],
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/IntelligenceEvaluation"
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "InvalidRequestError",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/InvalidRequestError"
+                    },
+                    {
+                      "$ref": "#/components/schemas/InvalidRequestError"
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "UnauthorizedError",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UnauthorizedError"
+                }
+              }
+            }
+          }
+        },
+        "summary": "Read session semantic evaluations",
+        "x-codeSamples": [
+          {
+            "lang": "js",
+            "source": "import { createRedcodeClient } from \"@reddb-io/redcode-sdk\"\n\nconst client = createRedcodeClient()\nawait client.intelligence.history({\n  ...\n})"
+          }
+        ]
+      }
+    },
+    "/api/intelligence/test-model": {
+      "post": {
+        "tags": ["Redcode HttpApi"],
+        "operationId": "intelligence.model.test",
+        "parameters": [],
+        "security": [],
+        "responses": {
+          "200": {
+            "description": "Intelligence.Check",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/IntelligenceCheck"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "InvalidRequestError",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/InvalidRequestError"
+                    },
+                    {
+                      "$ref": "#/components/schemas/InvalidRequestError"
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "UnauthorizedError",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UnauthorizedError"
+                }
+              }
+            }
+          }
+        },
+        "summary": "Test a generative role with a synthetic prompt",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ModelRef"
+              }
+            }
+          },
+          "required": true
+        },
+        "x-codeSamples": [
+          {
+            "lang": "js",
+            "source": "import { createRedcodeClient } from \"@reddb-io/redcode-sdk\"\n\nconst client = createRedcodeClient()\nawait client.intelligence.model.test({\n  ...\n})"
+          }
+        ]
+      }
+    },
     "/pty/{ptyID}/connect": {
       "get": {
         "tags": ["pty"],
@@ -26163,216 +29039,6 @@
           }
         ]
       }
-    },
-    "/experimental/worktree/inventory": {
-      "get": {
-        "tags": ["experimental"],
-        "operationId": "worktree.inventory.list",
-        "parameters": [
-          {
-            "name": "directory",
-            "in": "query",
-            "schema": {
-              "type": "string"
-            },
-            "required": false
-          },
-          {
-            "name": "workspace",
-            "in": "query",
-            "schema": {
-              "type": "string"
-            },
-            "required": false
-          },
-          {
-            "name": "pullRequests",
-            "in": "query",
-            "schema": {
-              "type": "string",
-              "enum": ["true", "false"]
-            },
-            "required": false
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": "The repository's worktrees",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/WorktreeInventory"
-                }
-              }
-            }
-          },
-          "400": {
-            "description": "WorktreeInventoryError | InvalidRequestError",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "anyOf": [
-                    {
-                      "$ref": "#/components/schemas/WorktreeInventoryError"
-                    },
-                    {
-                      "$ref": "#/components/schemas/InvalidRequestError"
-                    }
-                  ]
-                }
-              }
-            }
-          }
-        },
-        "description": "List the repository's linked worktrees with size, pending changes, divergence from the default branch, merge state, activity and linked sessions.",
-        "summary": "List worktree inventory",
-        "x-codeSamples": [
-          {
-            "lang": "js",
-            "source": "import { createRedcodeClient } from \"@reddb-io/redcode-sdk\"\n\nconst client = createRedcodeClient()\nawait client.worktree.inventory.list({\n  ...\n})"
-          }
-        ]
-      }
-    },
-    "/experimental/worktree/inventory/remove": {
-      "post": {
-        "tags": ["experimental"],
-        "operationId": "worktree.inventory.remove",
-        "parameters": [
-          {
-            "name": "directory",
-            "in": "query",
-            "schema": {
-              "type": "string"
-            },
-            "required": false
-          },
-          {
-            "name": "workspace",
-            "in": "query",
-            "schema": {
-              "type": "string"
-            },
-            "required": false
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": "Worktree removed",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/WorktreeInventoryRemoveResult"
-                }
-              }
-            }
-          },
-          "400": {
-            "description": "WorktreeInventoryError | InvalidRequestError",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "anyOf": [
-                    {
-                      "$ref": "#/components/schemas/WorktreeInventoryError"
-                    },
-                    {
-                      "$ref": "#/components/schemas/InvalidRequestError"
-                    }
-                  ]
-                }
-              }
-            }
-          }
-        },
-        "description": "Remove one linked worktree. Uncommitted changes need force; the primary checkout and worktrees of active sessions are never removed.",
-        "summary": "Remove a worktree safely",
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/WorktreeInventoryRemoveInput"
-              }
-            }
-          }
-        },
-        "x-codeSamples": [
-          {
-            "lang": "js",
-            "source": "import { createRedcodeClient } from \"@reddb-io/redcode-sdk\"\n\nconst client = createRedcodeClient()\nawait client.worktree.inventory.remove({\n  ...\n})"
-          }
-        ]
-      }
-    },
-    "/experimental/worktree/inventory/clean": {
-      "post": {
-        "tags": ["experimental"],
-        "operationId": "worktree.inventory.clean",
-        "parameters": [
-          {
-            "name": "directory",
-            "in": "query",
-            "schema": {
-              "type": "string"
-            },
-            "required": false
-          },
-          {
-            "name": "workspace",
-            "in": "query",
-            "schema": {
-              "type": "string"
-            },
-            "required": false
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": "Worktrees cleaned or previewed",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/WorktreeInventoryCleanResult"
-                }
-              }
-            }
-          },
-          "400": {
-            "description": "WorktreeInventoryError | InvalidRequestError",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "anyOf": [
-                    {
-                      "$ref": "#/components/schemas/WorktreeInventoryError"
-                    },
-                    {
-                      "$ref": "#/components/schemas/InvalidRequestError"
-                    }
-                  ]
-                }
-              }
-            }
-          }
-        },
-        "description": "Remove clean worktrees whose branch merged or that saw no activity for a number of days, and prune stale registrations. dryRun only reports what would go.",
-        "summary": "Clean merged or stale worktrees",
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/WorktreeInventoryCleanInput"
-              }
-            }
-          }
-        },
-        "x-codeSamples": [
-          {
-            "lang": "js",
-            "source": "import { createRedcodeClient } from \"@reddb-io/redcode-sdk\"\n\nconst client = createRedcodeClient()\nawait client.worktree.inventory.clean({\n  ...\n})"
-          }
-        ]
-      }
     }
   },
   "components": {
@@ -26381,6 +29047,9 @@
         "anyOf": [
           {
             "$ref": "#/components/schemas/EventModels-devRefreshed"
+          },
+          {
+            "$ref": "#/components/schemas/EventProviderCatalogUpdated"
           },
           {
             "$ref": "#/components/schemas/EventIntegrationUpdated"
@@ -28129,6 +30798,9 @@
           "snapshot": {
             "type": "string"
           },
+          "servedModel": {
+            "type": "string"
+          },
           "cost": {
             "type": "number"
           },
@@ -28486,7 +31158,8 @@
           },
           "revision": {
             "type": "integer",
-            "exclusiveMinimum": 0
+            "exclusiveMinimum": 0,
+            "description": "The revision you were shown for this task; omit it from an update to apply against the stored revision, and a supplied revision that no longer matches is refused"
           },
           "reason": {
             "type": "string"
@@ -28533,6 +31206,9 @@
           "priority": {
             "type": "string",
             "description": "Priority level of the task: high, medium, low"
+          },
+          "closedAt": {
+            "type": "number"
           }
         },
         "required": ["content", "status", "priority"],
@@ -28717,6 +31393,43 @@
                   "properties": {
                     "type": "object",
                     "properties": {}
+                  }
+                },
+                "required": ["id", "type", "properties"],
+                "additionalProperties": false
+              },
+              {
+                "type": "object",
+                "properties": {
+                  "id": {
+                    "type": "string",
+                    "pattern": "^evt_"
+                  },
+                  "type": {
+                    "type": "string",
+                    "enum": ["provider.catalog.updated"]
+                  },
+                  "properties": {
+                    "type": "object",
+                    "properties": {
+                      "providerID": {
+                        "type": "string"
+                      },
+                      "name": {
+                        "type": "string"
+                      },
+                      "added": {
+                        "type": "number"
+                      },
+                      "removed": {
+                        "type": "number"
+                      },
+                      "renamed": {
+                        "type": "number"
+                      }
+                    },
+                    "required": ["providerID", "name", "added", "removed", "renamed"],
+                    "additionalProperties": false
                   }
                 },
                 "required": ["id", "type", "properties"],
@@ -32210,6 +34923,9 @@
             },
             "additionalProperties": {}
           },
+          "router": {
+            "$ref": "#/components/schemas/RouterConnection"
+          },
           "models": {
             "type": "object",
             "additionalProperties": {
@@ -32374,6 +35090,226 @@
                   "additionalProperties": {
                     "type": "string"
                   }
+                },
+                "router": {
+                  "type": "object",
+                  "properties": {
+                    "owned_by": {
+                      "type": "string"
+                    },
+                    "strategy": {
+                      "type": "string"
+                    },
+                    "thinking_levels": {
+                      "type": "array",
+                      "items": {
+                        "type": "string"
+                      }
+                    },
+                    "capabilities": {
+                      "type": "object"
+                    },
+                    "parameters": {
+                      "type": "object",
+                      "properties": {
+                        "context_length": {
+                          "type": "number"
+                        },
+                        "max_completion_tokens": {
+                          "type": "number"
+                        },
+                        "reasoning": {
+                          "type": "boolean"
+                        },
+                        "thinking_levels": {
+                          "type": "array",
+                          "items": {
+                            "type": "string"
+                          }
+                        },
+                        "thinking_can_disable": {
+                          "type": "boolean"
+                        },
+                        "forced_tool_choice": {
+                          "type": "boolean"
+                        },
+                        "tools": {
+                          "type": "boolean"
+                        },
+                        "search": {
+                          "type": "boolean"
+                        },
+                        "modes": {
+                          "type": "array",
+                          "items": {
+                            "type": "string"
+                          }
+                        },
+                        "modalities": {
+                          "type": "object",
+                          "properties": {
+                            "input": {
+                              "type": "array",
+                              "items": {
+                                "type": "string"
+                              }
+                            },
+                            "output": {
+                              "type": "array",
+                              "items": {
+                                "type": "string"
+                              }
+                            }
+                          },
+                          "additionalProperties": false
+                        }
+                      },
+                      "additionalProperties": false
+                    },
+                    "parameters_basis": {
+                      "type": "string",
+                      "enum": ["lead", "strictest"]
+                    },
+                    "members": {
+                      "type": "array",
+                      "items": {
+                        "type": "string"
+                      }
+                    },
+                    "member_parameters": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "id": {
+                            "type": "string"
+                          },
+                          "parameters": {
+                            "type": "object",
+                            "properties": {
+                              "context_length": {
+                                "type": "number"
+                              },
+                              "max_completion_tokens": {
+                                "type": "number"
+                              },
+                              "reasoning": {
+                                "type": "boolean"
+                              },
+                              "thinking_levels": {
+                                "type": "array",
+                                "items": {
+                                  "type": "string"
+                                }
+                              },
+                              "thinking_can_disable": {
+                                "type": "boolean"
+                              },
+                              "forced_tool_choice": {
+                                "type": "boolean"
+                              },
+                              "tools": {
+                                "type": "boolean"
+                              },
+                              "search": {
+                                "type": "boolean"
+                              },
+                              "modes": {
+                                "type": "array",
+                                "items": {
+                                  "type": "string"
+                                }
+                              },
+                              "modalities": {
+                                "type": "object",
+                                "properties": {
+                                  "input": {
+                                    "type": "array",
+                                    "items": {
+                                      "type": "string"
+                                    }
+                                  },
+                                  "output": {
+                                    "type": "array",
+                                    "items": {
+                                      "type": "string"
+                                    }
+                                  }
+                                },
+                                "additionalProperties": false
+                              }
+                            },
+                            "additionalProperties": false
+                          }
+                        },
+                        "required": ["id"],
+                        "additionalProperties": false
+                      }
+                    },
+                    "provider": {
+                      "type": "object",
+                      "properties": {
+                        "id": {
+                          "type": "string"
+                        },
+                        "slug": {
+                          "type": "string"
+                        },
+                        "prefix": {
+                          "type": "string"
+                        },
+                        "name": {
+                          "type": "string"
+                        },
+                        "category": {
+                          "type": "string"
+                        },
+                        "subscription": {
+                          "type": "boolean"
+                        }
+                      },
+                      "required": ["id"],
+                      "additionalProperties": false
+                    },
+                    "aliases": {
+                      "type": "array",
+                      "items": {
+                        "type": "string"
+                      }
+                    },
+                    "variants": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "id": {
+                            "type": "string"
+                          },
+                          "name": {
+                            "type": "string"
+                          },
+                          "level": {
+                            "type": "string"
+                          },
+                          "mode": {
+                            "type": "string"
+                          },
+                          "aliases": {
+                            "type": "array",
+                            "items": {
+                              "type": "string"
+                            }
+                          }
+                        },
+                        "required": ["id"],
+                        "additionalProperties": false
+                      }
+                    },
+                    "via": {
+                      "type": "string"
+                    }
+                  },
+                  "additionalProperties": false
                 },
                 "variants": {
                   "type": "object",
@@ -32990,6 +35926,10 @@
                 "type": "integer",
                 "minimum": 0
               },
+              "summary_max_tokens": {
+                "type": "integer",
+                "exclusiveMinimum": 0
+              },
               "reserved": {
                 "type": "integer",
                 "minimum": 0
@@ -33005,6 +35945,9 @@
           },
           "models": {
             "$ref": "#/components/schemas/ConfigV2Models"
+          },
+          "reasoning": {
+            "$ref": "#/components/schemas/ConfigV2Reasoning"
           },
           "experimental": {
             "type": "object",
@@ -33093,6 +36036,41 @@
                   }
                 ],
                 "description": "How many identical tool calls in a row - same arguments, same result - before the model is told it is repeating itself (correct_at, default 3) and before the turn ends (stop_at, default 5). nudge_at (default 12) says how many identical calls are allowed before it is mentioned even when the answers keep differing, which is how an answer carrying a timestamp would otherwise repeat forever. Set to false to disable."
+              },
+              "stop_loss": {
+                "anyOf": [
+                  {
+                    "type": "boolean",
+                    "enum": [false]
+                  },
+                  {
+                    "type": "object",
+                    "properties": {
+                      "every": {
+                        "type": "integer",
+                        "exclusiveMinimum": 0
+                      },
+                      "cooldown": {
+                        "type": "integer",
+                        "exclusiveMinimum": 0
+                      },
+                      "idle_at": {
+                        "type": "integer",
+                        "exclusiveMinimum": 0
+                      },
+                      "tokens": {
+                        "type": "integer",
+                        "exclusiveMinimum": 0
+                      },
+                      "minutes": {
+                        "type": "integer",
+                        "exclusiveMinimum": 0
+                      }
+                    },
+                    "additionalProperties": false
+                  }
+                ],
+                "description": "When a turn keeps spending without progress, notice it and act: steer the model, ask the user, or stop. A signal is idle_at steps in a row without progress (default 5), the same result or error coming back, repeated task failures, or tokens (default 150000) or minutes (default 15) spent since the last progress. In dual reasoning System One also checks every `every` steps (default 8), with at least `cooldown` steps between checks (default 3). Set to false to disable."
               },
               "goal": {
                 "type": "object",
@@ -33379,6 +36357,10 @@
           "capabilities": {
             "type": "object",
             "properties": {
+              "protocol": {
+                "type": "string",
+                "enum": ["language", "systemone"]
+              },
               "temperature": {
                 "type": "boolean"
               },
@@ -33599,6 +36581,71 @@
             "additionalProperties": {
               "type": "object"
             }
+          },
+          "upstream": {
+            "$ref": "#/components/schemas/RouterUpstream"
+          },
+          "aliases": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "modes": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "routerVariants": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "id": {
+                  "type": "string"
+                },
+                "name": {
+                  "type": "string"
+                },
+                "level": {
+                  "type": "string"
+                },
+                "mode": {
+                  "type": "string"
+                },
+                "aliases": {
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  }
+                }
+              },
+              "required": ["id"],
+              "additionalProperties": false
+            }
+          },
+          "via": {
+            "type": "string"
+          },
+          "comboMembers": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "id": {
+                  "type": "string"
+                },
+                "variants": {
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  }
+                }
+              },
+              "required": ["id", "variants"],
+              "additionalProperties": false
+            }
           }
         },
         "required": [
@@ -33640,6 +36687,9 @@
           },
           "options": {
             "type": "object"
+          },
+          "router": {
+            "$ref": "#/components/schemas/RouterConnection"
           },
           "models": {
             "type": "object",
@@ -33794,6 +36844,250 @@
           }
         },
         "required": ["directory"],
+        "additionalProperties": false
+      },
+      "WorktreeInventoryChanges": {
+        "type": "object",
+        "properties": {
+          "tracked": {
+            "type": "number"
+          },
+          "untracked": {
+            "type": "number"
+          }
+        },
+        "required": ["tracked", "untracked"],
+        "additionalProperties": false
+      },
+      "WorktreeInventorySession": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "title": {
+            "type": "string"
+          }
+        },
+        "required": ["id", "title"],
+        "additionalProperties": false
+      },
+      "WorktreeInventoryInfo": {
+        "type": "object",
+        "properties": {
+          "path": {
+            "type": "string"
+          },
+          "relative": {
+            "type": "string"
+          },
+          "branch": {
+            "type": "string"
+          },
+          "head": {
+            "type": "string"
+          },
+          "primary": {
+            "type": "boolean"
+          },
+          "current": {
+            "type": "boolean"
+          },
+          "locked": {
+            "type": "boolean"
+          },
+          "prunable": {
+            "type": "boolean"
+          },
+          "size": {
+            "type": "number"
+          },
+          "sizePartial": {
+            "type": "boolean"
+          },
+          "changes": {
+            "$ref": "#/components/schemas/WorktreeInventoryChanges"
+          },
+          "ahead": {
+            "type": "number"
+          },
+          "behind": {
+            "type": "number"
+          },
+          "merged": {
+            "type": "boolean"
+          },
+          "activity": {
+            "type": "number"
+          },
+          "sessions": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/WorktreeInventorySession"
+            }
+          }
+        },
+        "required": [
+          "path",
+          "head",
+          "primary",
+          "current",
+          "locked",
+          "prunable",
+          "size",
+          "sizePartial",
+          "changes",
+          "merged",
+          "sessions"
+        ],
+        "additionalProperties": false
+      },
+      "WorktreeInventory": {
+        "type": "object",
+        "properties": {
+          "root": {
+            "type": "string"
+          },
+          "base": {
+            "type": "string"
+          },
+          "worktrees": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/WorktreeInventoryInfo"
+            }
+          }
+        },
+        "required": ["root", "worktrees"],
+        "additionalProperties": false
+      },
+      "WorktreeInventoryError": {
+        "type": "object",
+        "properties": {
+          "message": {
+            "type": "string"
+          }
+        },
+        "required": ["message"],
+        "additionalProperties": false
+      },
+      "WorktreeInventoryRemoveInput": {
+        "type": "object",
+        "properties": {
+          "target": {
+            "type": "string",
+            "description": "Worktree path (absolute or relative to the repository), name or branch"
+          },
+          "force": {
+            "type": "boolean",
+            "description": "Discard uncommitted changes or remove a locked worktree"
+          },
+          "deleteBranch": {
+            "type": "boolean",
+            "description": "Delete the local branch when it is merged"
+          },
+          "protect": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Directories whose worktrees must be kept"
+          }
+        },
+        "required": ["target"],
+        "additionalProperties": false
+      },
+      "WorktreeInventoryRemoveResult": {
+        "type": "object",
+        "properties": {
+          "path": {
+            "type": "string"
+          },
+          "branch": {
+            "type": "string"
+          },
+          "branchDeleted": {
+            "type": "boolean"
+          },
+          "freed": {
+            "type": "number"
+          }
+        },
+        "required": ["path", "branchDeleted", "freed"],
+        "additionalProperties": false
+      },
+      "WorktreeInventoryCleanInput": {
+        "type": "object",
+        "properties": {
+          "merged": {
+            "type": "boolean"
+          },
+          "staleDays": {
+            "type": "number"
+          },
+          "dryRun": {
+            "type": "boolean"
+          },
+          "deleteBranch": {
+            "type": "boolean"
+          },
+          "pullRequests": {
+            "type": "boolean"
+          },
+          "protect": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          }
+        },
+        "additionalProperties": false
+      },
+      "WorktreeInventoryCleanResult": {
+        "type": "object",
+        "properties": {
+          "dryRun": {
+            "type": "boolean"
+          },
+          "candidates": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/WorktreeInventoryInfo"
+            }
+          },
+          "removed": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "failed": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "path": {
+                  "type": "string"
+                },
+                "message": {
+                  "type": "string"
+                }
+              },
+              "required": ["path", "message"],
+              "additionalProperties": false
+            }
+          },
+          "pruned": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "freed": {
+            "type": "number"
+          }
+        },
+        "required": ["dryRun", "candidates", "removed", "failed", "pruned", "freed"],
         "additionalProperties": false
       },
       "ProjectSummary": {
@@ -36325,6 +39619,115 @@
         "required": ["_tag", "code", "message"],
         "additionalProperties": false
       },
+      "ForbiddenError": {
+        "type": "object",
+        "properties": {
+          "_tag": {
+            "type": "string",
+            "enum": ["ForbiddenError"]
+          },
+          "message": {
+            "type": "string"
+          }
+        },
+        "required": ["_tag", "message"],
+        "additionalProperties": false
+      },
+      "DesignHostReview": {
+        "type": "object",
+        "properties": {
+          "url": {
+            "type": "string"
+          },
+          "connected": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "string",
+                "enum": ["NaN"]
+              },
+              {
+                "type": "string",
+                "enum": ["Infinity"]
+              },
+              {
+                "type": "string",
+                "enum": ["-Infinity"]
+              },
+              {
+                "type": "string",
+                "enum": ["Infinity", "-Infinity", "NaN"]
+              }
+            ]
+          }
+        },
+        "required": ["url", "connected"],
+        "additionalProperties": false
+      },
+      "DesignHostLaunch": {
+        "type": "object",
+        "properties": {
+          "url": {
+            "type": "string"
+          },
+          "outcome": {
+            "type": "string",
+            "enum": ["claimed", "connected", "pending"]
+          },
+          "token": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "string",
+                "enum": ["NaN"]
+              },
+              {
+                "type": "string",
+                "enum": ["Infinity"]
+              },
+              {
+                "type": "string",
+                "enum": ["-Infinity"]
+              },
+              {
+                "type": "string",
+                "enum": ["Infinity", "-Infinity", "NaN"]
+              }
+            ]
+          }
+        },
+        "required": ["url", "outcome"],
+        "additionalProperties": false
+      },
+      "DesignHostPermission": {
+        "type": "object",
+        "properties": {
+          "permission": {
+            "type": "string"
+          },
+          "patterns": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "always": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "metadata": {
+            "type": "object"
+          }
+        },
+        "required": ["permission", "patterns"],
+        "additionalProperties": false
+      },
       "SessionMessagesResponse": {
         "type": "object",
         "properties": {
@@ -36565,6 +39968,9 @@
         "anyOf": [
           {
             "$ref": "#/components/schemas/Models-devRefreshed"
+          },
+          {
+            "$ref": "#/components/schemas/ProviderCatalogUpdated"
           },
           {
             "$ref": "#/components/schemas/IntegrationUpdated"
@@ -36844,20 +40250,6 @@
           "$ref": "#/components/schemas/V2Event"
         },
         "contentMediaType": "application/json"
-      },
-      "ForbiddenError": {
-        "type": "object",
-        "properties": {
-          "_tag": {
-            "type": "string",
-            "enum": ["ForbiddenError"]
-          },
-          "message": {
-            "type": "string"
-          }
-        },
-        "required": ["_tag", "message"],
-        "additionalProperties": false
       },
       "ProjectCopyError": {
         "type": "object",
@@ -39800,6 +43192,23 @@
         "required": ["path"],
         "additionalProperties": false
       },
+      "RouterConnection": {
+        "type": "object",
+        "properties": {
+          "kind": {
+            "type": "string",
+            "enum": ["red-router", "9router"]
+          },
+          "instanceID": {
+            "type": "string"
+          },
+          "version": {
+            "type": "string"
+          }
+        },
+        "required": ["kind"],
+        "additionalProperties": false
+      },
       "ConfigV2DesignSystem": {
         "type": "object",
         "properties": {
@@ -39854,6 +43263,16 @@
             },
             "minItems": 1,
             "maxItems": 6
+          },
+          "app": {
+            "type": "object",
+            "properties": {
+              "mode": {
+                "type": "string",
+                "enum": ["process", "inline"]
+              }
+            },
+            "additionalProperties": false
           }
         },
         "additionalProperties": false
@@ -39896,6 +43315,29 @@
         },
         "additionalProperties": false
       },
+      "ConfigV2ReasoningAuto": {
+        "type": "object",
+        "properties": {
+          "floor": {
+            "type": "string",
+            "enum": ["none", "minimal", "low", "medium", "high", "xhigh", "max"]
+          },
+          "ceiling": {
+            "type": "string",
+            "enum": ["none", "minimal", "low", "medium", "high", "xhigh", "max"]
+          }
+        },
+        "additionalProperties": false
+      },
+      "ConfigV2Reasoning": {
+        "type": "object",
+        "properties": {
+          "auto": {
+            "$ref": "#/components/schemas/ConfigV2ReasoningAuto"
+          }
+        },
+        "additionalProperties": false
+      },
       "PolicyEffect": {
         "type": "string",
         "enum": ["allow", "deny"]
@@ -39915,6 +43357,28 @@
           }
         },
         "required": ["action", "effect", "resource"],
+        "additionalProperties": false
+      },
+      "RouterUpstream": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "slug": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "category": {
+            "type": "string"
+          },
+          "subscription": {
+            "type": "boolean"
+          }
+        },
+        "required": ["id", "name"],
         "additionalProperties": false
       },
       "MonitorOptions": {
@@ -40200,7 +43664,7 @@
           },
           "status": {
             "type": "string",
-            "enum": ["running", "succeeded", "failed", "timed_out", "cancelled", "interrupted"]
+            "enum": ["running", "succeeded", "failed", "timed_out", "cancelled", "interrupted", "expired"]
           },
           "created": {
             "type": "number"
@@ -40274,6 +43738,76 @@
           }
         },
         "required": ["ticket", "expires_in"],
+        "additionalProperties": false
+      },
+      "RouterKind": {
+        "type": "string",
+        "enum": ["red-router", "9router", "none"]
+      },
+      "RouterFeature": {
+        "type": "string",
+        "enum": [
+          "capabilities",
+          "systemone",
+          "combos",
+          "decision",
+          "hint",
+          "token-saver",
+          "session-affinity",
+          "served-model",
+          "cost",
+          "stream-usage-cost",
+          "catalog",
+          "reasoning",
+          "reasoning-auto",
+          "reasoning-applies",
+          "hint-signals",
+          "recommendations"
+        ]
+      },
+      "RouterDetection": {
+        "type": "object",
+        "properties": {
+          "kind": {
+            "$ref": "#/components/schemas/RouterKind"
+          },
+          "version": {
+            "type": "string"
+          },
+          "instanceID": {
+            "type": "string"
+          },
+          "catalogVersion": {
+            "type": "string"
+          },
+          "features": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/RouterFeature"
+            }
+          },
+          "systemOne": {
+            "type": "object",
+            "properties": {
+              "available": {
+                "type": "boolean"
+              },
+              "models": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              }
+            },
+            "required": ["available", "models"],
+            "additionalProperties": false
+          },
+          "checkedAt": {
+            "type": "number",
+            "description": "Epoch milliseconds of the probe."
+          }
+        },
+        "required": ["kind", "features", "checkedAt"],
         "additionalProperties": false
       },
       "WorkspaceEventConnectionStatus": {
@@ -44566,14 +48100,6 @@
             "type": "string",
             "enum": ["reviewer"]
           },
-          "target": {
-            "type": "string",
-            "enum": ["web", "app", "presentation"]
-          },
-          "platform": {
-            "type": "string",
-            "enum": ["ios", "android"]
-          },
           "controls": {
             "type": "array",
             "items": {
@@ -44591,6 +48117,14 @@
           "name": {
             "type": "string",
             "minLength": 1
+          },
+          "target": {
+            "type": "string",
+            "enum": ["web", "app", "presentation"]
+          },
+          "platform": {
+            "type": "string",
+            "enum": ["ios", "android"]
           },
           "brief": {
             "$ref": "#/components/schemas/DesignBrief"
@@ -44964,6 +48498,9 @@
           },
           "scenario": {
             "type": "string"
+          },
+          "screen": {
+            "type": "string"
           }
         },
         "required": ["rule", "severity", "selector", "evidence", "fix", "width"],
@@ -45002,6 +48539,9 @@
             "type": "string"
           },
           "scenario": {
+            "type": "string"
+          },
+          "screen": {
             "type": "string"
           },
           "fullPage": {
@@ -45174,7 +48714,7 @@
           },
           "format": {
             "type": "string",
-            "enum": ["html", "gif", "audit", "compare", "verify"]
+            "enum": ["html", "gif", "audit", "compare", "verify", "pdf"]
           },
           "round": {
             "type": "integer",
@@ -45502,6 +49042,10 @@
       "ModelCapabilities": {
         "type": "object",
         "properties": {
+          "protocol": {
+            "type": "string",
+            "enum": ["language", "systemone"]
+          },
           "tools": {
             "type": "boolean"
           },
@@ -45559,6 +49103,31 @@
           }
         },
         "required": ["input", "output", "cache"],
+        "additionalProperties": false
+      },
+      "RouterVariant": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "level": {
+            "type": "string"
+          },
+          "mode": {
+            "type": "string"
+          },
+          "aliases": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          }
+        },
+        "required": ["id"],
         "additionalProperties": false
       },
       "ModelV2Info": {
@@ -45661,6 +49230,30 @@
             },
             "required": ["context", "output"],
             "additionalProperties": false
+          },
+          "upstream": {
+            "$ref": "#/components/schemas/RouterUpstream"
+          },
+          "aliases": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "modes": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "routerVariants": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/RouterVariant"
+            }
+          },
+          "via": {
+            "type": "string"
           }
         },
         "required": [
@@ -45746,6 +49339,9 @@
           },
           "request": {
             "$ref": "#/components/schemas/ProviderRequest"
+          },
+          "router": {
+            "$ref": "#/components/schemas/RouterConnection"
           }
         },
         "required": ["id", "name", "api", "request"],
@@ -46445,6 +50041,65 @@
           "data": {
             "type": "object",
             "properties": {}
+          }
+        },
+        "required": ["id", "type", "data"],
+        "additionalProperties": false
+      },
+      "ProviderCatalogUpdated": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "pattern": "^evt_"
+          },
+          "metadata": {
+            "type": "object"
+          },
+          "type": {
+            "type": "string",
+            "enum": ["provider.catalog.updated"]
+          },
+          "durable": {
+            "type": "object",
+            "properties": {
+              "aggregateID": {
+                "type": "string"
+              },
+              "seq": {
+                "type": "integer"
+              },
+              "version": {
+                "type": "integer"
+              }
+            },
+            "required": ["aggregateID", "seq", "version"],
+            "additionalProperties": false
+          },
+          "location": {
+            "$ref": "#/components/schemas/LocationRef"
+          },
+          "data": {
+            "type": "object",
+            "properties": {
+              "providerID": {
+                "type": "string"
+              },
+              "name": {
+                "type": "string"
+              },
+              "added": {
+                "type": "number"
+              },
+              "removed": {
+                "type": "number"
+              },
+              "renamed": {
+                "type": "number"
+              }
+            },
+            "required": ["providerID", "name", "added", "removed", "renamed"],
+            "additionalProperties": false
           }
         },
         "required": ["id", "type", "data"],
@@ -49652,6 +53307,477 @@
         "required": ["directory"],
         "additionalProperties": false
       },
+      "IntelligenceReasoning": {
+        "type": "string",
+        "enum": ["single", "dual"]
+      },
+      "IntelligenceEvaluator": {
+        "type": "object",
+        "properties": {
+          "transport": {
+            "type": "string",
+            "enum": [
+              "opencode-zen",
+              "openrouter",
+              "typesafe",
+              "red-router",
+              "cloudflare-ai-gateway",
+              "vercel",
+              "vivgrid",
+              "nano-gpt"
+            ]
+          },
+          "baseURL": {
+            "type": "string",
+            "minLength": 1
+          },
+          "model": {
+            "type": "string",
+            "minLength": 1
+          },
+          "credentialID": {
+            "type": "string"
+          }
+        },
+        "required": ["transport", "baseURL", "model"],
+        "additionalProperties": false
+      },
+      "IntelligenceSettings": {
+        "type": "object",
+        "properties": {
+          "enabled": {
+            "type": "boolean"
+          },
+          "reasoning": {
+            "$ref": "#/components/schemas/IntelligenceReasoning"
+          },
+          "onboarding": {
+            "type": "string",
+            "enum": ["pending", "deferred", "completed"]
+          },
+          "principal": {
+            "$ref": "#/components/schemas/ModelRef"
+          },
+          "fast": {
+            "$ref": "#/components/schemas/ModelRef"
+          },
+          "evaluator": {
+            "$ref": "#/components/schemas/IntelligenceEvaluator"
+          }
+        },
+        "required": ["enabled", "onboarding"],
+        "additionalProperties": false
+      },
+      "IntelligenceEvaluatorOption": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string",
+            "minLength": 1
+          },
+          "configured": {
+            "type": "boolean"
+          },
+          "evaluator": {
+            "$ref": "#/components/schemas/IntelligenceEvaluator"
+          }
+        },
+        "required": ["name", "configured", "evaluator"],
+        "additionalProperties": false
+      },
+      "RouterRecommendation": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "minLength": 1
+          },
+          "name": {
+            "type": "string"
+          },
+          "provider": {
+            "type": "object",
+            "properties": {
+              "slug": {
+                "type": "string"
+              },
+              "name": {
+                "type": "string"
+              }
+            },
+            "required": ["slug", "name"],
+            "additionalProperties": false
+          },
+          "reason": {
+            "type": "string"
+          }
+        },
+        "required": ["id", "name", "provider", "reason"],
+        "additionalProperties": false
+      },
+      "RouterRecommendations": {
+        "type": "object",
+        "properties": {
+          "default": {
+            "$ref": "#/components/schemas/RouterRecommendation"
+          },
+          "fast": {
+            "$ref": "#/components/schemas/RouterRecommendation"
+          },
+          "review": {
+            "$ref": "#/components/schemas/RouterRecommendation"
+          },
+          "systemone": {
+            "$ref": "#/components/schemas/RouterRecommendation"
+          },
+          "vision": {
+            "$ref": "#/components/schemas/RouterRecommendation"
+          }
+        },
+        "additionalProperties": false
+      },
+      "IntelligenceDetectedRouter": {
+        "type": "object",
+        "properties": {
+          "providerID": {
+            "type": "string",
+            "minLength": 1
+          },
+          "baseURL": {
+            "type": "string",
+            "minLength": 1
+          },
+          "detection": {
+            "$ref": "#/components/schemas/RouterDetection"
+          },
+          "evaluator": {
+            "$ref": "#/components/schemas/IntelligenceEvaluator"
+          },
+          "recommended": {
+            "$ref": "#/components/schemas/RouterRecommendations"
+          }
+        },
+        "required": ["providerID", "baseURL", "detection"],
+        "additionalProperties": false
+      },
+      "IntelligenceStatus": {
+        "type": "object",
+        "properties": {
+          "settings": {
+            "$ref": "#/components/schemas/IntelligenceSettings"
+          },
+          "environment": {
+            "type": "string"
+          },
+          "evaluators": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/IntelligenceEvaluatorOption"
+            }
+          },
+          "effective": {
+            "type": "object",
+            "properties": {
+              "reasoning": {
+                "$ref": "#/components/schemas/IntelligenceReasoning"
+              },
+              "source": {
+                "type": "string",
+                "enum": ["flag", "config", "default"]
+              }
+            },
+            "required": ["reasoning", "source"],
+            "additionalProperties": false
+          },
+          "router": {
+            "$ref": "#/components/schemas/IntelligenceDetectedRouter"
+          }
+        },
+        "required": ["settings", "environment", "evaluators", "effective"],
+        "additionalProperties": false
+      },
+      "IntelligenceSave": {
+        "type": "object",
+        "properties": {
+          "settings": {
+            "$ref": "#/components/schemas/IntelligenceSettings"
+          },
+          "apiKey": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "required": ["settings"],
+        "additionalProperties": false
+      },
+      "IntelligenceProbe": {
+        "type": "object",
+        "properties": {
+          "evaluator": {
+            "$ref": "#/components/schemas/IntelligenceEvaluator"
+          },
+          "apiKey": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "required": ["evaluator"],
+        "additionalProperties": false
+      },
+      "IntelligenceModels": {
+        "type": "object",
+        "properties": {
+          "models": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "id": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "name": {
+                  "type": "string",
+                  "minLength": 1
+                }
+              },
+              "required": ["id", "name"],
+              "additionalProperties": false
+            }
+          },
+          "manual": {
+            "type": "boolean"
+          }
+        },
+        "required": ["models", "manual"],
+        "additionalProperties": false
+      },
+      "IntelligenceCheck": {
+        "type": "object",
+        "properties": {
+          "ok": {
+            "type": "boolean"
+          },
+          "message": {
+            "type": "string"
+          }
+        },
+        "required": ["ok", "message"],
+        "additionalProperties": false
+      },
+      "IntelligenceAnswer": {
+        "anyOf": [
+          {
+            "type": "object",
+            "properties": {
+              "type": {
+                "type": "string",
+                "enum": ["noul"]
+              },
+              "noul": {
+                "type": "number",
+                "minimum": 0,
+                "maximum": 1
+              }
+            },
+            "required": ["type", "noul"],
+            "additionalProperties": false
+          },
+          {
+            "type": "object",
+            "properties": {
+              "type": {
+                "type": "string",
+                "enum": ["choice"]
+              },
+              "choice": {
+                "type": "string",
+                "minLength": 1
+              },
+              "probabilities": {
+                "type": "object",
+                "additionalProperties": {
+                  "type": "number",
+                  "minimum": 0,
+                  "maximum": 1
+                }
+              },
+              "confidence": {
+                "type": "number",
+                "minimum": 0,
+                "maximum": 1
+              }
+            },
+            "required": ["type", "choice", "probabilities", "confidence"],
+            "additionalProperties": false
+          },
+          {
+            "type": "object",
+            "properties": {
+              "type": {
+                "type": "string",
+                "enum": ["score"]
+              },
+              "score": {
+                "type": "number"
+              },
+              "legend": {
+                "type": "object"
+              },
+              "probabilities": {
+                "type": "object",
+                "additionalProperties": {
+                  "type": "number",
+                  "minimum": 0,
+                  "maximum": 1
+                }
+              },
+              "confidence": {
+                "type": "number",
+                "minimum": 0,
+                "maximum": 1
+              }
+            },
+            "required": ["type", "score", "legend", "probabilities", "confidence"],
+            "additionalProperties": false
+          }
+        ]
+      },
+      "IntelligenceEvaluation": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "minLength": 1
+          },
+          "fingerprint": {
+            "type": "string",
+            "minLength": 1
+          },
+          "sessionID": {
+            "type": "string"
+          },
+          "operation": {
+            "type": "string",
+            "enum": [
+              "prompt_classification",
+              "response_quality",
+              "tool_usage",
+              "task_quality",
+              "todos",
+              "plan",
+              "feedback",
+              "design_completion",
+              "compaction",
+              "compact_now",
+              "task_completion",
+              "goal_completion",
+              "subagent_brief",
+              "session_progress",
+              "subagent_result",
+              "design_target"
+            ]
+          },
+          "kind": {
+            "type": "string",
+            "enum": ["classification", "gate"]
+          },
+          "subjectID": {
+            "type": "string"
+          },
+          "candidateID": {
+            "type": "string"
+          },
+          "attempt": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "policy": {
+            "type": "string"
+          },
+          "decision": {
+            "type": "string",
+            "enum": ["accepted", "needs_revision", "inconclusive", "unavailable"]
+          },
+          "model": {
+            "type": "string"
+          },
+          "answers": {
+            "type": "object",
+            "additionalProperties": {
+              "$ref": "#/components/schemas/IntelligenceAnswer"
+            }
+          },
+          "issues": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "created": {
+            "type": "number"
+          },
+          "duration": {
+            "type": "number"
+          },
+          "evaluator": {
+            "type": "object",
+            "properties": {
+              "transport": {
+                "type": "string",
+                "enum": [
+                  "opencode-zen",
+                  "openrouter",
+                  "typesafe",
+                  "red-router",
+                  "cloudflare-ai-gateway",
+                  "vercel",
+                  "vivgrid",
+                  "nano-gpt"
+                ]
+              },
+              "baseURL": {
+                "type": "string",
+                "minLength": 1
+              },
+              "model": {
+                "type": "string",
+                "minLength": 1
+              }
+            },
+            "required": ["transport", "baseURL", "model"],
+            "additionalProperties": false
+          },
+          "usage": {
+            "type": "object",
+            "properties": {
+              "input_tokens": {
+                "type": "integer"
+              },
+              "output_tokens": {
+                "type": "integer"
+              }
+            },
+            "required": ["input_tokens", "output_tokens"],
+            "additionalProperties": false
+          }
+        },
+        "required": [
+          "id",
+          "fingerprint",
+          "sessionID",
+          "operation",
+          "policy",
+          "decision",
+          "model",
+          "answers",
+          "issues",
+          "created",
+          "duration",
+          "usage"
+        ],
+        "additionalProperties": false
+      },
       "EventModels-devRefreshed": {
         "type": "object",
         "properties": {
@@ -49666,6 +53792,43 @@
           "properties": {
             "type": "object",
             "properties": {}
+          }
+        },
+        "required": ["id", "type", "properties"],
+        "additionalProperties": false
+      },
+      "EventProviderCatalogUpdated": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "pattern": "^evt_"
+          },
+          "type": {
+            "type": "string",
+            "enum": ["provider.catalog.updated"]
+          },
+          "properties": {
+            "type": "object",
+            "properties": {
+              "providerID": {
+                "type": "string"
+              },
+              "name": {
+                "type": "string"
+              },
+              "added": {
+                "type": "number"
+              },
+              "removed": {
+                "type": "number"
+              },
+              "renamed": {
+                "type": "number"
+              }
+            },
+            "required": ["providerID", "name", "added", "removed", "renamed"],
+            "additionalProperties": false
           }
         },
         "required": ["id", "type", "properties"],
@@ -52730,250 +56893,6 @@
             }
           }
         }
-      },
-      "WorktreeInventoryChanges": {
-        "type": "object",
-        "properties": {
-          "tracked": {
-            "type": "number"
-          },
-          "untracked": {
-            "type": "number"
-          }
-        },
-        "required": ["tracked", "untracked"],
-        "additionalProperties": false
-      },
-      "WorktreeInventorySession": {
-        "type": "object",
-        "properties": {
-          "id": {
-            "type": "string"
-          },
-          "title": {
-            "type": "string"
-          }
-        },
-        "required": ["id", "title"],
-        "additionalProperties": false
-      },
-      "WorktreeInventoryInfo": {
-        "type": "object",
-        "properties": {
-          "path": {
-            "type": "string"
-          },
-          "relative": {
-            "type": "string"
-          },
-          "branch": {
-            "type": "string"
-          },
-          "head": {
-            "type": "string"
-          },
-          "primary": {
-            "type": "boolean"
-          },
-          "current": {
-            "type": "boolean"
-          },
-          "locked": {
-            "type": "boolean"
-          },
-          "prunable": {
-            "type": "boolean"
-          },
-          "size": {
-            "type": "number"
-          },
-          "sizePartial": {
-            "type": "boolean"
-          },
-          "changes": {
-            "$ref": "#/components/schemas/WorktreeInventoryChanges"
-          },
-          "ahead": {
-            "type": "number"
-          },
-          "behind": {
-            "type": "number"
-          },
-          "merged": {
-            "type": "boolean"
-          },
-          "activity": {
-            "type": "number"
-          },
-          "sessions": {
-            "type": "array",
-            "items": {
-              "$ref": "#/components/schemas/WorktreeInventorySession"
-            }
-          }
-        },
-        "required": [
-          "path",
-          "head",
-          "primary",
-          "current",
-          "locked",
-          "prunable",
-          "size",
-          "sizePartial",
-          "changes",
-          "merged",
-          "sessions"
-        ],
-        "additionalProperties": false
-      },
-      "WorktreeInventory": {
-        "type": "object",
-        "properties": {
-          "root": {
-            "type": "string"
-          },
-          "base": {
-            "type": "string"
-          },
-          "worktrees": {
-            "type": "array",
-            "items": {
-              "$ref": "#/components/schemas/WorktreeInventoryInfo"
-            }
-          }
-        },
-        "required": ["root", "worktrees"],
-        "additionalProperties": false
-      },
-      "WorktreeInventoryError": {
-        "type": "object",
-        "properties": {
-          "message": {
-            "type": "string"
-          }
-        },
-        "required": ["message"],
-        "additionalProperties": false
-      },
-      "WorktreeInventoryRemoveInput": {
-        "type": "object",
-        "properties": {
-          "target": {
-            "type": "string",
-            "description": "Worktree path (absolute or relative to the repository), name or branch"
-          },
-          "force": {
-            "type": "boolean",
-            "description": "Discard uncommitted changes or remove a locked worktree"
-          },
-          "deleteBranch": {
-            "type": "boolean",
-            "description": "Delete the local branch when it is merged"
-          },
-          "protect": {
-            "type": "array",
-            "items": {
-              "type": "string"
-            },
-            "description": "Directories whose worktrees must be kept"
-          }
-        },
-        "required": ["target"],
-        "additionalProperties": false
-      },
-      "WorktreeInventoryRemoveResult": {
-        "type": "object",
-        "properties": {
-          "path": {
-            "type": "string"
-          },
-          "branch": {
-            "type": "string"
-          },
-          "branchDeleted": {
-            "type": "boolean"
-          },
-          "freed": {
-            "type": "number"
-          }
-        },
-        "required": ["path", "branchDeleted", "freed"],
-        "additionalProperties": false
-      },
-      "WorktreeInventoryCleanInput": {
-        "type": "object",
-        "properties": {
-          "merged": {
-            "type": "boolean"
-          },
-          "staleDays": {
-            "type": "number"
-          },
-          "dryRun": {
-            "type": "boolean"
-          },
-          "deleteBranch": {
-            "type": "boolean"
-          },
-          "pullRequests": {
-            "type": "boolean"
-          },
-          "protect": {
-            "type": "array",
-            "items": {
-              "type": "string"
-            }
-          }
-        },
-        "additionalProperties": false
-      },
-      "WorktreeInventoryCleanResult": {
-        "type": "object",
-        "properties": {
-          "dryRun": {
-            "type": "boolean"
-          },
-          "candidates": {
-            "type": "array",
-            "items": {
-              "$ref": "#/components/schemas/WorktreeInventoryInfo"
-            }
-          },
-          "removed": {
-            "type": "array",
-            "items": {
-              "type": "string"
-            }
-          },
-          "failed": {
-            "type": "array",
-            "items": {
-              "type": "object",
-              "properties": {
-                "path": {
-                  "type": "string"
-                },
-                "message": {
-                  "type": "string"
-                }
-              },
-              "required": ["path", "message"],
-              "additionalProperties": false
-            }
-          },
-          "pruned": {
-            "type": "array",
-            "items": {
-              "type": "string"
-            }
-          },
-          "freed": {
-            "type": "number"
-          }
-        },
-        "required": ["dryRun", "candidates", "removed", "failed", "pruned", "freed"],
-        "additionalProperties": false
       }
     }
   },
@@ -53080,6 +56999,10 @@
       "description": "Design documents, immutable revisions, review, assets and local exports."
     },
     {
+      "name": "Design host",
+      "description": "Session-side Design contract: conversation list, review launches, feed, feedback, approval and permissions."
+    },
+    {
       "name": "messages",
       "description": "Experimental message routes."
     },
@@ -53138,6 +57061,14 @@
     {
       "name": "hooks",
       "description": "Declarative lifecycle hooks and project trust."
+    },
+    {
+      "name": "Redcode HttpApi",
+      "description": "Experimental HttpApi surface for selected instance routes."
+    },
+    {
+      "name": "Redcode HttpApi",
+      "description": "Experimental HttpApi surface for selected instance routes."
     },
     {
       "name": "pty",

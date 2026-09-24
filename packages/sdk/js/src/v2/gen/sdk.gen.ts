@@ -27,6 +27,23 @@ import type {
   DesignApprove,
   DesignCreate,
   DesignFeedback,
+  DesignHostDesignHostApproveErrors,
+  DesignHostDesignHostApproveResponses,
+  DesignHostDesignHostFeedbackErrors,
+  DesignHostDesignHostFeedbackResponses,
+  DesignHostDesignHostFeedErrors,
+  DesignHostDesignHostFeedResponses,
+  DesignHostDesignHostLaunchErrors,
+  DesignHostDesignHostLaunchResponses,
+  DesignHostDesignHostListErrors,
+  DesignHostDesignHostListResponses,
+  DesignHostDesignHostOpenErrors,
+  DesignHostDesignHostOpenResponses,
+  DesignHostDesignHostPermissionErrors,
+  DesignHostDesignHostPermissionResponses,
+  DesignHostDesignHostReleaseErrors,
+  DesignHostDesignHostReleaseResponses,
+  DesignHostPermission,
   DesignImportAsset,
   DesignRender,
   DesignUpdate,
@@ -259,6 +276,8 @@ import type {
   ServerDesignDesignJobsResponses,
   ServerDesignDesignListErrors,
   ServerDesignDesignListResponses,
+  ServerDesignDesignPresentErrors,
+  ServerDesignDesignPresentResponses,
   ServerDesignDesignPreviewErrors,
   ServerDesignDesignPreviewResponses,
   ServerDesignDesignPublishErrors,
@@ -8951,6 +8970,44 @@ export class Design extends HeyApiClient {
     })
   }
 
+  /**
+   * Present a deck
+   *
+   * An HTML page that presents a presentation design's latest revision, or the given one: the audience view shows the slide full screen; the presenter view shows the current and next slide, the speaker notes and a timer. Windows of the same design stay on the same slide.
+   */
+  public present<ThrowOnError extends boolean = false>(
+    parameters: {
+      sessionID: string
+      designID: string
+      view?: "audience" | "presenter"
+      revision?: string
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "path", key: "sessionID" },
+            { in: "path", key: "designID" },
+            { in: "query", key: "view" },
+            { in: "query", key: "revision" },
+          ],
+        },
+      ],
+    )
+    return (options?.client ?? this.client).get<
+      ServerDesignDesignPresentResponses,
+      ServerDesignDesignPresentErrors,
+      ThrowOnError
+    >({
+      url: "/api/session/{sessionID}/design/{designID}/present",
+      ...options,
+      ...params,
+    })
+  }
+
   public restore<ThrowOnError extends boolean = false>(
     parameters: {
       sessionID: string
@@ -9391,6 +9448,291 @@ export class Server extends HeyApiClient {
   }
 }
 
+export class DesignHost extends HeyApiClient {
+  /**
+   * List Design conversations
+   *
+   * Conversations of a directory that own a design or run in Design mode, newest first.
+   */
+  public list<ThrowOnError extends boolean = false>(
+    parameters: {
+      directory: string
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams([parameters], [{ args: [{ in: "query", key: "directory" }] }])
+    return (options?.client ?? this.client).get<
+      DesignHostDesignHostListResponses,
+      DesignHostDesignHostListErrors,
+      ThrowOnError
+    >({
+      url: "/api/design/list",
+      ...options,
+      ...params,
+    })
+  }
+
+  public open<ThrowOnError extends boolean = false>(
+    parameters: {
+      sessionID: string
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams([parameters], [{ args: [{ in: "path", key: "sessionID" }] }])
+    return (options?.client ?? this.client).get<
+      DesignHostDesignHostOpenResponses,
+      DesignHostDesignHostOpenErrors,
+      ThrowOnError
+    >({
+      url: "/api/design/session/{sessionID}/open",
+      ...options,
+      ...params,
+    })
+  }
+
+  /**
+   * Claim a review browser launch
+   *
+   * Claims opening a browser tab on the session's review, against the review pages connected to its feed. Never while a page is connected and never twice within the debounce.
+   */
+  public launch<ThrowOnError extends boolean = false>(
+    parameters: {
+      sessionID: string
+      explicit?: boolean
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "path", key: "sessionID" },
+            { in: "body", key: "explicit" },
+          ],
+        },
+      ],
+    )
+    return (options?.client ?? this.client).post<
+      DesignHostDesignHostLaunchResponses,
+      DesignHostDesignHostLaunchErrors,
+      ThrowOnError
+    >({
+      url: "/api/design/session/{sessionID}/launch",
+      ...options,
+      ...params,
+      headers: {
+        "Content-Type": "application/json",
+        ...options?.headers,
+        ...params.headers,
+      },
+    })
+  }
+
+  public release<ThrowOnError extends boolean = false>(
+    parameters: {
+      sessionID: string
+      token?: number | "NaN" | "Infinity" | "-Infinity" | "Infinity" | "-Infinity" | "NaN"
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "path", key: "sessionID" },
+            { in: "body", key: "token" },
+          ],
+        },
+      ],
+    )
+    return (options?.client ?? this.client).post<
+      DesignHostDesignHostReleaseResponses,
+      DesignHostDesignHostReleaseErrors,
+      ThrowOnError
+    >({
+      url: "/api/design/session/{sessionID}/launch/release",
+      ...options,
+      ...params,
+      headers: {
+        "Content-Type": "application/json",
+        ...options?.headers,
+        ...params.headers,
+      },
+    })
+  }
+
+  /**
+   * Subscribe to the conversation feed
+   *
+   * The conversation as reduced feed entries, replayed then live. A subscriber counts as a connected review page.
+   */
+  public feed<ThrowOnError extends boolean = false>(
+    parameters: {
+      sessionID: string
+      after?: string
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "path", key: "sessionID" },
+            { in: "query", key: "after" },
+          ],
+        },
+      ],
+    )
+    return (options?.client ?? this.client).sse.get<
+      DesignHostDesignHostFeedResponses,
+      DesignHostDesignHostFeedErrors,
+      ThrowOnError
+    >({
+      url: "/api/design/session/{sessionID}/feed",
+      ...options,
+      ...params,
+    })
+  }
+
+  /**
+   * Admit review feedback
+   *
+   * Admits feedback into the conversation. Idempotent by feedback ID: an exact retry returns the same receipt.
+   */
+  public feedback<ThrowOnError extends boolean = false>(
+    parameters: {
+      sessionID: string
+      designID: string
+      designFeedback: DesignFeedback
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "path", key: "sessionID" },
+            { in: "path", key: "designID" },
+            { key: "designFeedback", map: "body" },
+          ],
+        },
+      ],
+    )
+    return (options?.client ?? this.client).post<
+      DesignHostDesignHostFeedbackResponses,
+      DesignHostDesignHostFeedbackErrors,
+      ThrowOnError
+    >({
+      url: "/api/design/session/{sessionID}/{designID}/feedback",
+      ...options,
+      ...params,
+      headers: {
+        "Content-Type": "application/json",
+        ...options?.headers,
+        ...params.headers,
+      },
+    })
+  }
+
+  /**
+   * Approve a revision and hand off to the plan
+   *
+   * Records the approval, writes the Design section of the session plan and continues the conversation in Plan mode.
+   */
+  public approve<ThrowOnError extends boolean = false>(
+    parameters: {
+      sessionID: string
+      designID: string
+      designApprove: DesignApprove
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "path", key: "sessionID" },
+            { in: "path", key: "designID" },
+            { key: "designApprove", map: "body" },
+          ],
+        },
+      ],
+    )
+    return (options?.client ?? this.client).post<
+      DesignHostDesignHostApproveResponses,
+      DesignHostDesignHostApproveErrors,
+      ThrowOnError
+    >({
+      url: "/api/design/session/{sessionID}/{designID}/approve",
+      ...options,
+      ...params,
+      headers: {
+        "Content-Type": "application/json",
+        ...options?.headers,
+        ...params.headers,
+      },
+    })
+  }
+
+  /**
+   * Ask a permission for the session
+   *
+   * Asks through the session's permission queue with its agent's rules; waits for the user when a rule asks. A refusal answers granted false.
+   */
+  public permission<ThrowOnError extends boolean = false>(
+    parameters: {
+      sessionID: string
+      designHostPermission: DesignHostPermission
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "path", key: "sessionID" },
+            { key: "designHostPermission", map: "body" },
+          ],
+        },
+      ],
+    )
+    return (options?.client ?? this.client).post<
+      DesignHostDesignHostPermissionResponses,
+      DesignHostDesignHostPermissionErrors,
+      ThrowOnError
+    >({
+      url: "/api/design/session/{sessionID}/permission",
+      ...options,
+      ...params,
+      headers: {
+        "Content-Type": "application/json",
+        ...options?.headers,
+        ...params.headers,
+      },
+    })
+  }
+}
+
+export class Host extends HeyApiClient {
+  private _designHost?: DesignHost
+  get designHost(): DesignHost {
+    return (this._designHost ??= new DesignHost({ client: this.client }))
+  }
+}
+
+export class Design3 extends HeyApiClient {
+  private _host?: Host
+  get host(): Host {
+    return (this._host ??= new Host({ client: this.client }))
+  }
+}
+
 export class Model2 extends HeyApiClient {
   /**
    * Test a generative role with a synthetic prompt
@@ -9711,6 +10053,11 @@ export class RedcodeClient extends HeyApiClient {
   private _server?: Server
   get server(): Server {
     return (this._server ??= new Server({ client: this.client }))
+  }
+
+  private _design?: Design3
+  get design(): Design3 {
+    return (this._design ??= new Design3({ client: this.client }))
   }
 
   private _intelligence?: Intelligence
