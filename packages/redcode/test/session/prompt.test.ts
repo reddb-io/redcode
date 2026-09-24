@@ -1,4 +1,6 @@
 import { Intelligence } from "@reddb-io/redcode-core/intelligence"
+import { SessionStopLoss } from "@reddb-io/redcode-core/session/stop-loss"
+import { SubagentReview } from "@reddb-io/redcode-core/session/subagent-review"
 import { DesignStudio } from "../../src/design/studio"
 import { DesignStore } from "@reddb-io/redcode-core/design/store"
 import { SessionPlan } from "@reddb-io/redcode-core/session/plan"
@@ -97,6 +99,16 @@ import { PluginV2 } from "@reddb-io/redcode-core/plugin"
 import { AbsolutePath } from "@reddb-io/redcode-core/schema"
 import { define, Operation } from "@reddb-io/redcode-plugin/v2/effect"
 
+// What a stop-loss checkpoint answers when a test sets it. Otherwise it gets the first choice like
+// every other question, which lets the session continue.
+let stopLossAnswer: { state: string; decision: string } | undefined
+const stopLossChoice = (criteria: Record<string, unknown>) => {
+  if (!stopLossAnswer) return undefined
+  if ("ask_user" in criteria) return stopLossAnswer.decision
+  if ("wrong_approach" in criteria) return stopLossAnswer.state
+  return undefined
+}
+
 const intelligence = Layer.effect(
   Intelligence.Service,
   Effect.gen(function* () {
@@ -132,6 +144,7 @@ const intelligence = Layer.effect(
                     },
                   ]
                 const choice =
+                  stopLossChoice(question.criteria) ??
                   Object.keys(question.criteria).find((label) => label.startsWith("no_matching_")) ??
                   Object.keys(question.criteria)[0]!
                 return [id, { type: "choice", choice, confidence: 1, probabilities: { [choice]: 1 } }]
@@ -7034,6 +7047,171 @@ it.instance(
       const status = yield* SessionStatus.Service
       expect((yield* status.get(chat.id)).type).toBe("idle")
     }),
+  60_000,
+)
+
+/** What S1 answers at a stop-loss checkpoint, and yolo mode, for the length of one test. */
+const withStopLoss = <A, E, R>(
+  input: { answer?: { state: string; decision: string }; yolo?: boolean },
+  body: Effect.Effect<A, E, R>,
+) =>
+  Effect.acquireUseRelease(
+    Effect.sync(() => {
+      const yolo = process.env.REDCODE_YOLO
+      stopLossAnswer = input.answer
+      if (input.yolo) process.env.REDCODE_YOLO = "1"
+      return yolo
+    }),
+    () => body,
+    (yolo) =>
+      Effect.sync(() => {
+        stopLossAnswer = undefined
+        if (yolo === undefined) delete process.env.REDCODE_YOLO
+        else process.env.REDCODE_YOLO = yolo
+      }),
+  )
+
+/** The check from the session that asked for this: the phone is never plugged in, so it never changes. */
+const devices = { command: "printf 'List of devices attached\\n'" }
+
+const stopLossNotice = (message: SessionV1.WithParts) => {
+  const part = message.parts.find((item): item is SessionV1.TextPart => item.type === "text")
+  return { text: part?.text ?? "", notice: part?.metadata?.[SessionStopLoss.METADATA_KEY] }
+}
+
+unix(
+  "the stop-loss asks the user when System One reads a repeated check as waiting on them, yolo or not",
+  () =>
+    withStopLoss(
+      { answer: { state: "waiting", decision: "ask_user" }, yolo: true },
+      Effect.gen(function* () {
+        const { llm } = yield* useServerConfig((url) => providerCfg(url))
+        const prompt = yield* SessionPrompt.Service
+        const sessions = yield* Session.Service
+        const guards = yield* SessionGuardLog.Service
+        const chat = yield* sessions.create({ title: "Waiting on a phone" })
+        yield* prompt.prompt({
+          sessionID: chat.id,
+          agent: "build",
+          noReply: true,
+          parts: [{ type: "text", text: "Install the debug build on my phone" }],
+        })
+        for (let i = 0; i < 8; i++) yield* llm.tool("bash", devices)
+        yield* llm.text("never reached")
+
+        const result = yield* awaitWithTimeout(
+          prompt.loop({ sessionID: chat.id }),
+          "the turn never ended",
+          "30 seconds",
+        )
+
+        // The third identical answer is the signal, and S1's reading of it ends the turn right there.
+        expect(yield* llm.calls).toBe(3)
+        expect(result.info).toMatchObject({ role: "assistant", finish: "stop" })
+        const final = stopLossNotice(result)
+        expect(final.text).toStartWith("**S1 · ")
+        expect(final.text).toContain("waiting on you")
+        expect(final.text).toContain("List of devices attached")
+        expect(final.notice).toMatchObject({ action: "ask_user", state: "waiting", verified: true })
+        expect(yield* guards.recent()).toContainEqual(
+          expect.objectContaining({ sessionID: chat.id, guard: "stop_loss", action: "stop" }),
+        )
+      }),
+    ),
+  60_000,
+)
+
+unix(
+  "in single reasoning the stop-loss hints once, then stops a check that keeps coming back the same",
+  () =>
+    Effect.gen(function* () {
+      // With the loop guard off, as yolo used to leave it, nothing else would ever end this turn.
+      const { llm } = yield* useServerConfig((url) => ({ ...providerCfg(url), experimental: { loop_guard: false } }))
+      const intelligence = yield* Intelligence.Service
+      const saved = yield* intelligence.read()
+      yield* intelligence.save({ settings: { ...saved, reasoning: "single" } })
+      const prompt = yield* SessionPrompt.Service
+      const sessions = yield* Session.Service
+      const guards = yield* SessionGuardLog.Service
+      const chat = yield* sessions.create({ title: "Waiting on a phone, single" })
+      yield* prompt.prompt({
+        sessionID: chat.id,
+        agent: "build",
+        noReply: true,
+        parts: [{ type: "text", text: "Install the debug build on my phone" }],
+      })
+      for (let i = 0; i < 10; i++) yield* llm.tool("bash", devices)
+      yield* llm.text("never reached")
+
+      const result = yield* awaitWithTimeout(prompt.loop({ sessionID: chat.id }), "the turn never ended", "30 seconds")
+
+      // A hint after the third, the cooldown, then a stop once it persisted to the stop threshold.
+      expect(yield* llm.calls).toBe(6)
+      const bodies = (yield* llm.hits).map((hit) => JSON.stringify(hit.body))
+      expect(bodies[2]).not.toContain(SessionStopLoss.STEER)
+      expect(bodies[3]).toContain(SessionStopLoss.STEER)
+      const final = stopLossNotice(result)
+      expect(final.text).toStartWith("**Stop-loss (unverified)")
+      expect(final.text).toContain("I stopped here")
+      expect(final.notice).toMatchObject({ action: "stop", verified: false })
+      const trips = (yield* guards.recent()).filter((trip) => trip.sessionID === chat.id && trip.guard === "stop_loss")
+      expect(trips.map((trip) => trip.action).toReversed()).toEqual(["correct", "stop"])
+      expect(yield* intelligence.history(chat.id, { operation: "session_progress" })).toEqual([])
+      yield* intelligence.save({ settings: saved })
+    }),
+  60_000,
+)
+
+unix(
+  "a read-only subagent keeps the mechanical stop-loss without S1 and ends with the reason for its parent",
+  () =>
+    withStopLoss(
+      { answer: { state: "progressing", decision: "continue" } },
+      Effect.gen(function* () {
+        const { llm } = yield* useServerConfig((url) => ({ ...providerCfg(url), experimental: { loop_guard: false } }))
+        const prompt = yield* SessionPrompt.Service
+        const sessions = yield* Session.Service
+        const intelligence = yield* Intelligence.Service
+        const parent = yield* sessions.create({ title: "Parent" })
+        const brief = "Find out whether a phone is connected over USB and report what you see."
+        const child = yield* sessions.create({
+          parentID: parent.id,
+          title: "Look for the phone (@explore subagent)",
+          metadata: SubagentReview.toMetadata(undefined, {
+            brief,
+            agent: "explore",
+            scope: [],
+            criteria: [],
+            writeCapable: false,
+            parentSessionID: parent.id,
+            verdict: "skipped",
+            issues: [],
+            created: Date.now(),
+          }),
+        })
+        yield* prompt.prompt({
+          sessionID: child.id,
+          agent: "build",
+          noReply: true,
+          parts: [{ type: "text", text: brief }],
+        })
+        for (let i = 0; i < 10; i++) yield* llm.tool("bash", devices)
+        yield* llm.text("never reached")
+
+        const result = yield* awaitWithTimeout(
+          prompt.loop({ sessionID: child.id }),
+          "the turn never ended",
+          "30 seconds",
+        )
+
+        expect(yield* llm.calls).toBe(6)
+        const final = stopLossNotice(result)
+        expect(final.text).toContain("Stopped by the stop-loss before finishing")
+        expect(final.notice).toMatchObject({ action: "stop", verified: false })
+        expect(SessionStopLoss.isNotice(result.parts.find((part) => part.type === "text")!)).toBe(true)
+        expect(yield* intelligence.history(child.id, { operation: "session_progress" })).toEqual([])
+      }),
+    ),
   60_000,
 )
 

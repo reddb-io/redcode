@@ -30,6 +30,7 @@ export type Guard =
   | "compaction"
   | "budget"
   | "intelligence"
+  | "stop_loss"
 export type Action = "warn" | "correct" | "stop"
 
 export interface Trip {

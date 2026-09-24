@@ -235,6 +235,21 @@ export const Info = Schema.Struct({
         description:
           "How many identical tool calls in a row - same arguments, same result - before the model is told it is repeating itself (correct_at, default 3) and before the turn ends (stop_at, default 5). nudge_at (default 12) says how many identical calls are allowed before it is mentioned even when the answers keep differing, which is how an answer carrying a timestamp would otherwise repeat forever. Set to false to disable.",
       }),
+      stop_loss: Schema.optional(
+        Schema.Union([
+          Schema.Literal(false),
+          Schema.Struct({
+            every: Schema.optional(PositiveInt),
+            cooldown: Schema.optional(PositiveInt),
+            idle_at: Schema.optional(PositiveInt),
+            tokens: Schema.optional(PositiveInt),
+            minutes: Schema.optional(PositiveInt),
+          }),
+        ]),
+      ).annotate({
+        description:
+          "When a turn keeps spending without progress, notice it and act: steer the model, ask the user, or stop. A signal is idle_at steps in a row without progress (default 5), the same result or error coming back, repeated task failures, or tokens (default 150000) or minutes (default 15) spent since the last progress. In dual reasoning System One also checks every `every` steps (default 8), with at least `cooldown` steps between checks (default 3). Set to false to disable.",
+      }),
       goal: Schema.optional(
         Schema.Struct({
           max_turns: Schema.optional(PositiveInt).annotate({

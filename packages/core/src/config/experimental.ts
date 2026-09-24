@@ -28,6 +28,20 @@ export const LoopGuard = Schema.Union([
     "How many identical tool calls in a row - same arguments, same result - before the model is told it is repeating itself (correct_at, default 3) and before the turn ends (stop_at, default 5). nudge_at (default 12) says how many identical calls are allowed before it is mentioned even when the answers keep differing. Set to false to disable.",
 })
 
+export const StopLoss = Schema.Union([
+  Schema.Literal(false),
+  Schema.Struct({
+    every: PositiveInt.pipe(Schema.optional),
+    cooldown: PositiveInt.pipe(Schema.optional),
+    idle_at: PositiveInt.pipe(Schema.optional),
+    tokens: PositiveInt.pipe(Schema.optional),
+    minutes: PositiveInt.pipe(Schema.optional),
+  }),
+]).annotate({
+  description:
+    "When a turn keeps spending without progress, notice it and act: steer the model, ask the user, or stop. A signal is idle_at steps in a row without progress (default 5), the same result or error coming back, repeated task failures, or tokens (default 150000) or minutes (default 15) spent since the last progress. In dual reasoning System One also checks every `every` steps (default 8), with at least `cooldown` steps between checks (default 3). Set to false to disable.",
+})
+
 export const ToolTimeout = Schema.Union([Schema.Literal(false), PositiveInt]).annotate({
   description:
     "Milliseconds a tool may run before it is stopped and reported to the model as a failure (default: 600000). Tools that carry their own deadline, wait for a person, or run a whole child turn are not affected. Set to false to disable.",
@@ -69,6 +83,7 @@ export const ToolSearch = Schema.Struct({
 export class Experimental extends Schema.Class<Experimental>("ConfigV2.Experimental")({
   policies: Policy.pipe(Schema.Array, Schema.optional),
   loop_guard: LoopGuard.pipe(Schema.optional),
+  stop_loss: StopLoss.pipe(Schema.optional),
   tool_timeout: ToolTimeout.pipe(Schema.optional),
   turn_stall: TurnStall.pipe(Schema.optional),
   tool_search: ToolSearch.pipe(Schema.optional),

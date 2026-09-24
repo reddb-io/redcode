@@ -1,6 +1,6 @@
 /**
- * Supervising a subagent from its parent: the brief it is launched with, the checkpoints on its way,
- * and the result it hands back.
+ * Supervising a subagent from its parent: the brief it is launched with and the result it hands
+ * back. The checkpoints on its way are the stop-loss's (`SessionStopLoss`), shared with every session.
  *
  * Kept pure and runtime-agnostic, like the loop guard and the stall detector: the legacy task tool
  * and the V2 subagent tool supply the observations and ask S1 the semantic questions; this module
@@ -23,7 +23,7 @@ export interface Brief {
   readonly scope: ReadonlyArray<string>
   readonly criteria: ReadonlyArray<string>
   readonly returnFormat?: string
-  /** Whether the subagent may change files or run commands; read-only subagents skip checkpoints. */
+  /** Whether the subagent may change files or run commands; read-only subagents skip S1 stop-loss checkpoints. */
   readonly writeCapable: boolean
   readonly parentSessionID: string
   readonly callID?: string
@@ -314,35 +314,6 @@ function relative(file: string, root: string | undefined) {
   if (file === root) return ""
   const prefix = root.endsWith("/") ? root : `${root}/`
   return file.startsWith(prefix) ? file.slice(prefix.length) : undefined
-}
-
-/** Reasons to look at a subagent's progress before the next interval. */
-export type Signal = "loop_guard" | "scope_violation" | "tool_review_rejected" | "step_budget" | "stall"
-
-export type Checkpoint =
-  | { readonly type: "none" }
-  | { readonly type: "interval" }
-  | { readonly type: "signal"; readonly signals: ReadonlyArray<Signal> }
-
-/**
- * Whether a progress checkpoint is due at `step`, given the step of the `last` one (0 before the
- * first). A signal is looked at right away; otherwise one checkpoint every `every` steps, where a
- * non-positive or infinite `every` turns the interval off. At most one checkpoint a step, and none
- * once `remaining` checkpoints reach zero.
- */
-export function checkpointDue(input: {
-  readonly step: number
-  readonly last: number
-  readonly every: number
-  readonly signals: ReadonlyArray<Signal>
-  readonly remaining?: number
-}): Checkpoint {
-  if (input.remaining !== undefined && input.remaining <= 0) return { type: "none" }
-  if (input.step <= input.last) return { type: "none" }
-  if (input.signals.length) return { type: "signal", signals: [...new Set(input.signals)] }
-  if (input.every > 0 && Number.isFinite(input.every) && input.step - input.last >= input.every)
-    return { type: "interval" }
-  return { type: "none" }
 }
 
 export type ResultIssue = "empty_result" | "criteria_not_mentioned" | "no_successful_change"

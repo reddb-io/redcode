@@ -169,26 +169,6 @@ describe("SubagentReview.scopeViolations", () => {
   })
 })
 
-describe("SubagentReview.checkpointDue", () => {
-  const cases: Array<[string, Parameters<typeof SubagentReview.checkpointDue>[0], SubagentReview.Checkpoint]> = [
-    ["before the interval", { step: 4, last: 0, every: 5, signals: [] }, { type: "none" }],
-    ["at the interval", { step: 5, last: 0, every: 5, signals: [] }, { type: "interval" }],
-    ["the interval counts from the last checkpoint", { step: 8, last: 5, every: 5, signals: [] }, { type: "none" }],
-    [
-      "a signal comes first, without repeats",
-      { step: 2, last: 0, every: 5, signals: ["scope_violation", "loop_guard", "scope_violation"] },
-      { type: "signal", signals: ["scope_violation", "loop_guard"] },
-    ],
-    ["once a step", { step: 5, last: 5, every: 5, signals: ["loop_guard"] }, { type: "none" }],
-    ["an interval of zero is off", { step: 50, last: 0, every: 0, signals: [] }, { type: "none" }],
-    ["an infinite interval is off", { step: 50, last: 0, every: Infinity, signals: [] }, { type: "none" }],
-    ["no checkpoints left", { step: 9, last: 0, every: 5, signals: ["stall"], remaining: 0 }, { type: "none" }],
-  ]
-  test.each(cases)("%s", (_name, input, expected) => {
-    expect(SubagentReview.checkpointDue(input)).toEqual(expected)
-  })
-})
-
 describe("SubagentReview.resultStructure", () => {
   const done = (tool: string, input: unknown = {}): SubagentReview.Part => ({
     type: "tool",

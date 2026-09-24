@@ -3,6 +3,7 @@ import { Intelligence } from "@reddb-io/redcode-core/intelligence"
 import { SubagentReview } from "@reddb-io/redcode-core/session/subagent-review"
 import { ReasoningAuto } from "@reddb-io/redcode-core/session/reasoning-auto"
 import { LoopGuard } from "@reddb-io/redcode-core/session/loop-guard"
+import { SessionStopLoss } from "@reddb-io/redcode-core/session/stop-loss"
 import { Verbose } from "@reddb-io/redcode-core/observability/verbose"
 import { DesignStudio } from "@/design/studio"
 import { LayerNode } from "@reddb-io/redcode-core/effect/layer-node"
@@ -46,6 +47,8 @@ import { MAX_STEPS_PROMPT } from "@reddb-io/redcode-core/session/runner/max-step
 /** How often the watchdog looks. Well below the thresholds it is checking against. */
 const STALL_POLL_SECONDS = 15
 const RESPONSE_REPAIR = "[system:response-quality-repair]"
+/** Messages the stop-loss reads back: comfortably more than the steps its ceiling allows. */
+const STOP_LOSS_WINDOW = 64
 
 // Keep evaluator context readable without serializing binary attachments or provider metadata.
 const intelligenceHistory = (messages: ReadonlyArray<SessionV1.WithParts>) =>
@@ -177,6 +180,7 @@ import { Todo } from "./todo"
 import { SessionTodo } from "@reddb-io/redcode-core/session/todo"
 import { SessionGoal } from "./goal"
 import { GoalRuntime } from "./goal-runtime"
+import { SessionSpend } from "./spend"
 import { SessionBudget } from "./budget"
 import { errorMessage } from "@/util/error"
 import { Skill } from "@/skill"
@@ -286,6 +290,7 @@ const layer = Layer.effect(
     const monitors = yield* MonitorRuntime.Service
     const todos = yield* Todo.Service
     const goals = yield* GoalRuntime.Service
+    const spend = yield* SessionSpend.Service
     const limits = yield* ModelLimit.Service
     const intelligence = yield* Intelligence.Service
     const skills = yield* Skill.Service
@@ -1680,6 +1685,8 @@ const layer = Layer.effect(
         // Recoveries this turn from a request that would not, or did not, fit the provider's
         // limit. Bounded: after them the request is refused with what to do about it.
         let overflowRecoveries = 0
+        // The stop-loss's checkpoints this turn: when the last one was and how many hints it gave.
+        let stopLoss = SessionStopLoss.FRESH
         const measured = (effective: boolean) => {
           ineffectiveCompactions = effective ? 0 : ineffectiveCompactions + 1
         }
@@ -1694,6 +1701,7 @@ const layer = Layer.effect(
           reviewed = undefined
           ineffectiveCompactions = 0
           overflowRecoveries = 0
+          stopLoss = SessionStopLoss.FRESH
         }
         // The turn ends here: nothing we can send fits the provider, and compacting again would
         // only repeat the last attempt.
@@ -1768,6 +1776,130 @@ const layer = Layer.effect(
           if (JSON.stringify(shown) === shownEffort) return
           shownEffort = JSON.stringify(shown)
           yield* sessions.updateMetadata(sessionID, (metadata) => ({ ...metadata, reasoning: shown }))
+        })
+        // The stop-loss, at the boundary after a step the model continues from: is the turn still
+        // getting anywhere for what it spends? True when it ended the turn. See SessionStopLoss.
+        const checkStopLoss = Effect.fnUntraced(function* (input: {
+          /** The turn's step that just finished; the window read back may not reach its start. */
+          step: number
+          lastUser: SessionV1.User
+          agent: Agent.Info
+          model: Provider.Model
+        }) {
+          const experimental = (yield* config.get()).experimental
+          const bounds = SessionStopLoss.limits(experimental?.stop_loss, LoopGuard.limits(experimental?.loop_guard))
+          if (!bounds) return false
+          const turn = SessionStopLoss.legacy(
+            yield* sessions.messages({ sessionID, limit: STOP_LOSS_WINDOW }).pipe(Effect.orElseSucceed(() => [])),
+          )
+          const trajectory = SessionStopLoss.observe(turn.steps, { now: Date.now(), started: turn.started })
+          const found = SessionStopLoss.signals(trajectory, bounds)
+          const subagent = session.parentID !== undefined
+          // A read-only subagent keeps the mechanical rules but costs no S1 checkpoints.
+          const readOnly = SubagentReview.fromMetadata(session.metadata)?.writeCapable === false
+          const settings = yield* intelligence.read().pipe(Effect.orElseSucceed(() => undefined))
+          const asked = !!settings && Intelligence.mode(settings) === "dual" && !readOnly
+          const step = input.step
+          const memory = SessionStopLoss.current(stopLoss, step)
+          const checkpoint = SessionStopLoss.due({ step, memory, limits: bounds, signals: found, interval: asked })
+          if (checkpoint.type === "none") return false
+          const started = Date.now()
+          const evaluation = asked
+            ? yield* evaluateIntelligence(
+                SessionStopLoss.evaluation({
+                  sessionID,
+                  request: turn.request,
+                  steps: turn.steps,
+                  trajectory,
+                  checkpoint,
+                  subagent,
+                  directory: ctx.directory,
+                  limits: bounds,
+                }),
+                intelligenceAttempts,
+              ).pipe(Effect.orElseSucceed(() => undefined))
+            : undefined
+          // A checkpoint reused from the cache was paid for when it was made.
+          if (evaluation && evaluation.created >= started)
+            yield* spend.recordEvaluation({ sessionID, usage: evaluation.usage })
+          const verdict = SessionStopLoss.decide({
+            trajectory,
+            limits: bounds,
+            memory,
+            asked,
+            evaluation,
+            subagent,
+          })
+          stopLoss = SessionStopLoss.remember(memory, step, verdict)
+          if (verdict.action === "continue") return false
+          const notice = { [SessionStopLoss.METADATA_KEY]: SessionStopLoss.notice(trajectory, verdict, { subagent }) }
+          yield* guards.record({
+            sessionID,
+            guard: "stop_loss",
+            action: verdict.action === "steer" ? "correct" : "stop",
+            subject: checkpoint.type === "signal" ? checkpoint.signals.join(",") : "interval",
+            detail: SessionStopLoss.detail(trajectory, verdict),
+          })
+          yield* Effect.logWarning("stop-loss acted on a turn without progress", {
+            "session.id": sessionID,
+            action: verdict.action,
+            verified: verdict.verified,
+            idle: trajectory.idle,
+          })
+          if (verdict.action === "steer") {
+            const message: SessionV1.User = {
+              id: MessageID.ascending(),
+              sessionID,
+              role: "user",
+              time: { created: Date.now() },
+              agent: input.lastUser.agent,
+              model: input.lastUser.model,
+            }
+            yield* sessions.updateMessage(message)
+            yield* sessions.updatePart({
+              id: PartID.ascending(),
+              sessionID,
+              messageID: message.id,
+              type: "text",
+              text: SessionStopLoss.steer(trajectory, verdict),
+              synthetic: true,
+              metadata: notice,
+            })
+            return false
+          }
+          // The turn ends on a message of its own: the question for the user, or the account of what
+          // was spent and why. A subagent's becomes the result its parent reads.
+          const now = Date.now()
+          const message: SessionV1.Assistant = {
+            id: MessageID.ascending(),
+            parentID: input.lastUser.id,
+            role: "assistant",
+            mode: input.agent.name,
+            agent: input.agent.name,
+            variant: input.lastUser.model.variant,
+            path: { cwd: ctx.directory, root: ctx.worktree },
+            cost: 0,
+            tokens: { input: 0, output: 0, reasoning: 0, cache: { read: 0, write: 0 } },
+            modelID: input.model.id,
+            providerID: input.model.providerID,
+            time: { created: now, completed: now },
+            finish: "stop",
+            sessionID,
+          }
+          yield* sessions.updateMessage(message)
+          yield* sessions.updatePart({
+            id: PartID.ascending(),
+            sessionID,
+            messageID: message.id,
+            type: "text",
+            text: SessionStopLoss.final(trajectory, verdict, { subagent }),
+            synthetic: true,
+            metadata: notice,
+          })
+          yield* goals
+            .pause(sessionID, `${SessionStopLoss.PAUSE}${SessionStopLoss.reason(trajectory, verdict)}`)
+            .pipe(Effect.ignore)
+          return true
         })
         // A goal never restarts itself: if the process that drove it is not this one, it is
         // paused here, and only /goal resume brings it back.
@@ -3091,6 +3223,9 @@ const layer = Layer.effect(
                 overflow: refused,
               })
             }
+            if (result === "continue" && !finished && !handle.message.error) {
+              if (yield* checkStopLoss({ step, lastUser, agent, model })) return "break" as const
+            }
             return "continue" as const
           }).pipe(
             Effect.ensuring(instruction.clear(handle.message.id)),
@@ -3438,6 +3573,7 @@ export const node = LayerNode.make({
   deps: [
     DesignStudio.node,
     GoalRuntime.node,
+    SessionSpend.node,
     SessionPlan.node,
     SessionGuardLog.node,
     SessionStatus.node,

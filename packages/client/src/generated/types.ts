@@ -8138,7 +8138,7 @@ export type IntelligenceHistoryInput = {
       | "task_completion"
       | "goal_completion"
       | "subagent_brief"
-      | "subagent_progress"
+      | "session_progress"
       | "subagent_result"
       | "design_target"
       | undefined
@@ -8164,7 +8164,7 @@ export type IntelligenceHistoryInput = {
       | "task_completion"
       | "goal_completion"
       | "subagent_brief"
-      | "subagent_progress"
+      | "session_progress"
       | "subagent_result"
       | "design_target"
       | undefined
@@ -8190,7 +8190,7 @@ export type IntelligenceHistoryInput = {
       | "task_completion"
       | "goal_completion"
       | "subagent_brief"
-      | "subagent_progress"
+      | "session_progress"
       | "subagent_result"
       | "design_target"
       | undefined
@@ -8216,7 +8216,7 @@ export type IntelligenceHistoryInput = {
       | "task_completion"
       | "goal_completion"
       | "subagent_brief"
-      | "subagent_progress"
+      | "session_progress"
       | "subagent_result"
       | "design_target"
       | undefined
@@ -8242,7 +8242,7 @@ export type IntelligenceHistoryInput = {
       | "task_completion"
       | "goal_completion"
       | "subagent_brief"
-      | "subagent_progress"
+      | "session_progress"
       | "subagent_result"
       | "design_target"
       | undefined
@@ -8268,7 +8268,7 @@ export type IntelligenceHistoryInput = {
       | "task_completion"
       | "goal_completion"
       | "subagent_brief"
-      | "subagent_progress"
+      | "session_progress"
       | "subagent_result"
       | "design_target"
       | undefined
@@ -8294,7 +8294,7 @@ export type IntelligenceHistoryInput = {
       | "task_completion"
       | "goal_completion"
       | "subagent_brief"
-      | "subagent_progress"
+      | "session_progress"
       | "subagent_result"
       | "design_target"
       | undefined
@@ -8324,7 +8324,7 @@ export type IntelligenceHistoryOutput = ReadonlyArray<{
     | "task_completion"
     | "goal_completion"
     | "subagent_brief"
-    | "subagent_progress"
+    | "session_progress"
     | "subagent_result"
     | "design_target"
   readonly kind?: "classification" | "gate"

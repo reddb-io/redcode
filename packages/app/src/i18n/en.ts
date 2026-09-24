@@ -49,7 +49,7 @@ export const dict = {
   "settings.intelligence.operation.compact_now": "Compaction timing",
   "settings.intelligence.operation.task_completion": "Task completion",
   "settings.intelligence.operation.subagent_brief": "Subagent brief",
-  "settings.intelligence.operation.subagent_progress": "Subagent progress",
+  "settings.intelligence.operation.session_progress": "Session progress",
   "settings.intelligence.operation.subagent_result": "Subagent result",
   "settings.intelligence.operation.design_target": "Design target",
   "settings.intelligence.decision.accepted": "Accepted",
