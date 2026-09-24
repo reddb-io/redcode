@@ -188,3 +188,32 @@ test("names archives the way the design app release publishes them", () => {
   expect(DesignAppBinary.archive("darwin-arm64")).toBe("redcode-design-darwin-arm64.zip")
   expect(DesignAppBinary.archive("windows-x64")).toBe("redcode-design-windows-x64.zip")
 })
+
+test("reports a first-use download's progress, which the TUI shows as a status line", async () => {
+  await using bin = await tmpdir()
+  await publish({ version: "0.2.0" })
+  const seen: (DesignAppBinary.Progress | undefined)[] = []
+  const stop = DesignAppBinary.watch((progress) => seen.push(progress))
+  try {
+    await DesignAppBinary.command(options(bin.path, { version: "0.2.0" }))
+  } finally {
+    stop()
+  }
+  const downloads = seen.filter((item) => item?.phase === "download")
+  expect(downloads[0]).toMatchObject({ version: "0.2.0", received: 0 })
+  const last = downloads.at(-1)!
+  expect(last.total).toBeGreaterThan(0)
+  expect(last.received).toBe(last.total!)
+  expect(DesignAppBinary.describe(last)).toBe("Downloading redcode-design 0.2.0… 100%")
+  // Once the archive is verified the app is being started.
+  expect(seen.at(-1)).toMatchObject({ phase: "start", version: "0.2.0" })
+  expect(DesignAppBinary.describe(seen.at(-1)!)).toBe("Starting redcode-design 0.2.0…")
+  expect(DesignAppBinary.describe({ phase: "download", version: "0.2.0", received: 3_250_000, started: 0 })).toBe(
+    "Downloading redcode-design 0.2.0… 3.3 MB",
+  )
+  expect(
+    DesignAppBinary.describe({ phase: "download", version: "0.2.0", received: 450, total: 1000, started: 0 }),
+  ).toBe("Downloading redcode-design 0.2.0… 45%")
+  DesignAppBinary.report()
+  expect(DesignAppBinary.progress()).toBeUndefined()
+})

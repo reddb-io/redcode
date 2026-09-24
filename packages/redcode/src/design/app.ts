@@ -3,6 +3,9 @@ export * as DesignAppClient from "./app"
 import { Effect } from "effect"
 import { HttpServerResponse, type HttpServerRequest } from "effect/unstable/http"
 import { DesignApp } from "@reddb-io/redcode-core/design/app"
+import { DesignAppBinary } from "@reddb-io/redcode-core/design/app-binary"
+import { EventV2 } from "@reddb-io/redcode-core/event"
+import { TuiEvent } from "@/server/tui-event"
 import { DesignHost } from "@reddb-io/redcode-core/design/host"
 import { ServerAuth } from "@reddb-io/redcode-server/auth"
 
@@ -16,17 +19,24 @@ import { ServerAuth } from "@reddb-io/redcode-server/auth"
 /**
  * The design app to use, started when none runs; nothing when Design runs inline. A compiled redcode
  * has no inline Design, so a failure to start the app is its error; from source it falls back to inline.
+ * A first-use download shows its progress in the TUI through `events`.
  */
 export const connect = Effect.fn("DesignAppClient.connect")(function* (
   design: { readonly mode?: "process" | "inline"; readonly version?: string } | undefined,
   server: Effect.Effect<string>,
+  events?: EventV2.Interface,
 ) {
   const only = process.env.REDCODE_DESIGN_APP_ONLY === "1"
   if (!only && design?.mode !== "process") return undefined
+  const toast = Effect.runForkWith(yield* Effect.context())
+  const stop = DesignAppBinary.watch((progress) => {
+    const shown = status(progress)
+    if (events && shown) toast(events.publish(TuiEvent.ToastShow, shown).pipe(Effect.ignore))
+  })
   const connecting = DesignApp.connect({
     host: { url: DesignApp.loopback(yield* server), authorization: ServerAuth.header() },
     version: design?.version,
-  })
+  }).pipe(Effect.ensuring(Effect.sync(stop)))
   if (only) return yield* connecting
   return yield* connecting.pipe(
     Effect.catch((error) =>
@@ -36,6 +46,12 @@ export const connect = Effect.fn("DesignAppClient.connect")(function* (
     ),
   )
 })
+
+/** The TUI status of a design app download, such as "Downloading redcode-design 0.1.0… 45%"; none otherwise. */
+export function status(progress: DesignAppBinary.Progress | undefined) {
+  if (progress?.phase !== "download") return undefined
+  return { message: DesignAppBinary.describe(progress), variant: "info" as const, duration: 8_000 }
+}
 
 /**
  * A review or presenter link to this server, from a compiled redcode that no longer serves the pages:
@@ -57,14 +73,17 @@ export const redirect = (request: HttpServerRequest.HttpServerRequest) =>
         { code: "not-found", message: "The design app serves Design; open the review again from redcode" },
         { status: 404 },
       )
-    const connection = yield* DesignApp.connect({
+    // While the app downloads or starts, the browser waits on a page that follows it, not a connection error.
+    const opened = yield* DesignApp.open({
       host: { url: `http://${request.headers.host}`, authorization: ServerAuth.header() },
+      sessionID: parts[2],
+      route,
+      search: Object.fromEntries(url.searchParams),
     })
-    return HttpServerResponse.redirect(
-      yield* DesignApp.link(connection, parts[2], route, Object.fromEntries(url.searchParams)),
-    )
-  }).pipe(
-    Effect.catch((error) =>
-      Effect.succeed(HttpServerResponse.jsonUnsafe({ code: error.code, message: error.message }, { status: 503 })),
-    ),
-  )
+    if (opened.kind === "redirect") return HttpServerResponse.redirect(opened.url)
+    return HttpServerResponse.text(opened.html, {
+      status: opened.status,
+      contentType: "text/html",
+      headers: opened.headers,
+    })
+  })

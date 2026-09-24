@@ -30,10 +30,19 @@ const redirect = Effect.fn(function* (
   route: string,
   search: Record<string, string | undefined> = {},
 ) {
-  const connection = yield* DesignApp.connect({
+  // While the app downloads or starts, the browser waits on a page that follows it, not a connection error.
+  const opened = yield* DesignApp.open({
     host: { url: `http://${request.headers.host ?? "127.0.0.1"}`, authorization: ServerAuth.header() },
+    sessionID,
+    route,
+    search,
   })
-  return HttpServerResponse.redirect(yield* DesignApp.link(connection, sessionID, route, search))
+  if (opened.kind === "redirect") return HttpServerResponse.redirect(opened.url)
+  return HttpServerResponse.text(opened.html, {
+    status: opened.status,
+    contentType: "text/html",
+    headers: opened.headers,
+  })
 })
 
 const unavailable = () =>

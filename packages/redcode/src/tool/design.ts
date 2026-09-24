@@ -21,6 +21,7 @@ import { DesignPlaybooks } from "@reddb-io/redcode-core/design/playbooks"
 import { DesignRounds } from "@reddb-io/redcode-core/design/rounds"
 import { DesignStudio } from "@/design/studio"
 import { DesignAppClient } from "@/design/app"
+import { EventV2Bridge } from "@/event-v2-bridge"
 import { DesignApp } from "@reddb-io/redcode-core/design/app"
 import { Tool } from "./tool"
 import { Question } from "@/question"
@@ -44,6 +45,7 @@ export const DesignTools = Effect.gen(function* () {
   const sessions = yield* Session.Service
   const questions = yield* Question.Service
   const intelligence = yield* Intelligence.Service
+  const events = yield* EventV2Bridge.Service
   const run = <A, E>(
     name: string,
     ctx: Tool.Context,
@@ -57,7 +59,9 @@ export const DesignTools = Effect.gen(function* () {
   const result = (output: string, metadata: Record<string, unknown> = {}) => ({ title: "Design", output, metadata })
   // The design app builds, renders and serves the review: always in a compiled redcode, with
   // design.app.mode "process" from source. Nothing means Design runs inline.
-  const app = settings.get().pipe(Effect.flatMap((config) => DesignAppClient.connect(config.design?.app, review.url)))
+  const app = settings
+    .get()
+    .pipe(Effect.flatMap((config) => DesignAppClient.connect(config.design?.app, review.url, events)))
   return yield* Effect.all([
     define("design_media", {
       description:
