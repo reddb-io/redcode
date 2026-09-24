@@ -7,7 +7,7 @@ import { Cause, DateTime, Deferred, Duration, Effect, Exit, Layer, Context, Scop
 import * as Stream from "effect/Stream"
 import { Agent } from "@/agent/agent"
 import { Config } from "@/config/config"
-import { Permission, evaluate } from "@/permission"
+import { Permission } from "@/permission"
 import { Plugin } from "@/plugin"
 import { Snapshot } from "@/snapshot"
 import { Session } from "./session"
@@ -969,9 +969,11 @@ const layer = Layer.effect(
         const bounds = LoopGuard.limits(configured)
         if (!bounds) return { type: "ok" } as LoopGuard.Decision
         // The `doom_loop` permission predates this guard and is how people already say "let it
-        // repeat"; allowing it keeps meaning that, rather than becoming a dead config key.
+        // repeat"; allowing it keeps meaning that, rather than becoming a dead config key. This
+        // must ignore yolo's blanket allow: yolo means "skip permission prompts", not "disable the
+        // loop guard" — only an explicit `doom_loop: allow` rule opts out.
         const agent = yield* agents.get(ctx.assistantMessage.agent)
-        if (evaluate("doom_loop", input.tool, agent.permission).action === "allow") {
+        if (Permission.evaluateConfigured("doom_loop", input.tool, agent.permission).action === "allow") {
           return { type: "ok" } as LoopGuard.Decision
         }
         // Every step of a turn is its own assistant message, so looking at the current message
