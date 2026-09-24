@@ -107,6 +107,12 @@ export const Operation = Schema.Literals([
 ])
 export type Operation = typeof Operation.Type
 export const Decision = Schema.Literals(["accepted", "needs_revision", "inconclusive", "unavailable"])
+/**
+ * The probability at or above which System One establishes a response issue. Below it the issue is
+ * unresolved, not found: repairing on it rewrites a sound answer, and the revision reads to the
+ * user as the agent replying to itself.
+ */
+export const REPAIR_CONFIDENCE = 0.75
 export const Evaluation = Schema.Struct({
   id: Text,
   fingerprint: Text,

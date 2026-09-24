@@ -1745,6 +1745,23 @@ test("an issue already repaired this turn is not repaired again", () => {
   })
 })
 
+test("the unsupported check asks about claimed work, not conversation, under the same keys", () => {
+  expect(Object.keys(Intelligence.responseQuestions).toSorted()).toEqual([
+    "omission",
+    "premature",
+    "tool_evidence",
+    "unsupported",
+    "writing",
+    "writing_quality",
+  ])
+  const unsupported = Intelligence.responseQuestions.unsupported
+  expect(unsupported?.type).toBe("noul")
+  // A greeting that says it is working ("Olá! Funcionando.") is not a claim of performed work.
+  expect(unsupported?.instructions).toContain("performed or verified work")
+  expect(unsupported?.instructions).toContain("are not claims of work")
+  expect(Intelligence.REPAIR_CONFIDENCE).toBe(0.75)
+})
+
 test("response checks follow the evidence a turn has", () => {
   expect(
     Intelligence.responseQuestionsFor({ tools: false, tasks: false, goal: false, route: "answer" }),
