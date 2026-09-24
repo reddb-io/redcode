@@ -1,0 +1,104 @@
+name: legacy-sdk
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - ".github/workflows/legacy-sdk.yml"
+      - "package.json"
+      - "bun.lock"
+      - "script/generate.ts"
+      - "packages/redcode/**"
+      - "packages/server/**"
+      - "packages/protocol/**"
+      - "packages/core/**"
+      - "packages/schema/**"
+      - "packages/httpapi-codegen/**"
+      - "packages/sdk/**"
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  changes:
+    name: legacy-sdk scope
+    runs-on: ubuntu-latest
+    outputs:
+      release_only: ${{ steps.release.outputs.release_only }}
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
+        with:
+          fetch-depth: 0
+      - id: release
+        uses: ./.github/actions/release-only
+        with:
+          event: ${{ github.event_name }}
+          head-ref: ${{ github.head_ref }}
+          head-repository: ${{ github.event.pull_request.head.repo.full_name }}
+          repository: ${{ github.repository }}
+          base-sha: ${{ github.event.pull_request.base.sha || github.event.before }}
+          head-sha: ${{ github.sha }}
+
+  regenerate:
+    name: regenerate legacy SDK
+    needs: changes
+    if: needs.changes.outputs.release_only != 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
+
+      - name: Setup Bun
+        uses: ./.github/actions/setup-bun
+
+      # Regenerates both packages/sdk/js/src/**/gen/** and packages/sdk/openapi.json from the
+      # current server HttpApi, then formats the result the same way a local run would.
+      - name: Regenerate legacy SDK
+        run: bun script/generate.ts
+
+      - name: Check for drift
+        id: diff
+        run: |
+          if git diff --quiet -- packages/sdk; then
+            echo "drifted=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          echo "drifted=true" >> "$GITHUB_OUTPUT"
+          echo "::error::Regenerated legacy SDK differs from the committed files. Run ./packages/sdk/js/script/build.ts (or download this job's artifact) and commit the result."
+          echo "## Legacy SDK drift" >> "$GITHUB_STEP_SUMMARY"
+          echo '```diff' >> "$GITHUB_STEP_SUMMARY"
+          git diff --stat -- packages/sdk >> "$GITHUB_STEP_SUMMARY"
+          echo '```' >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload regenerated SDK
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: legacy-sdk
+          path: |
+            packages/sdk/openapi.json
+            packages/sdk/js/src/gen
+            packages/sdk/js/src/v2/gen
+          retention-days: 14
+
+      - name: Fail on drift
+        if: steps.diff.outputs.drifted == 'true'
+        run: git diff --exit-code -- packages/sdk
+
+  # The one check branch protection requires, so it keeps its name if the job above changes shape.
+  legacy-sdk:
+    name: legacy-sdk
+    runs-on: ubuntu-latest
+    needs: [changes, regenerate]
+    if: always()
+    steps:
+      - name: Regenerate passed
+        env:
+          RELEASE_ONLY: ${{ needs.changes.outputs.release_only }}
+          REGENERATE_RESULT: ${{ needs.regenerate.result }}
+        run: |
+          if [ "$RELEASE_ONLY" = true ]; then exit 0; fi
+          echo "regenerate: $REGENERATE_RESULT"
+          test "$REGENERATE_RESULT" = success
