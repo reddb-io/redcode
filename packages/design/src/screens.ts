@@ -32,6 +32,13 @@ export function screens() {
     all: false,
     params: undefined as Record<string, Record<string, unknown>> | undefined,
     listeners: [] as { id: string; run: (fields: Record<string, unknown>, meta: { reset: boolean }) => void }[],
+    /**
+     * Who moved last: the reader ("user": a key, a link, the URL) or the host ("command"), and the
+     * number of the host's last command. Both ride on every announcement, so a host can tell a move
+     * made here from the report of its own command, even one that crossed a newer command in flight.
+     */
+    origin: "command" as "user" | "command",
+    seq: 0,
   }
   const sheet = new CSSStyleSheet()
   const style = (text: string) => {
@@ -99,7 +106,8 @@ export function screens() {
     const manifest = JSON.stringify([items, current])
     if (manifest === state.manifest) return
     state.manifest = manifest
-    if (parent !== window) parent.postMessage({ type: "design:screens", screens: items, current }, "*")
+    if (parent !== window)
+      parent.postMessage({ type: "design:screens", screens: items, current, origin: state.origin, seq: state.seq }, "*")
   }
   /** Coalesces a burst of mutations, such as a framework mounting a tree, into one announcement. */
   const schedule = () => {
@@ -127,10 +135,13 @@ export function screens() {
   const go = (
     id: unknown,
     variant?: unknown,
-    options: { scroll?: boolean; focus?: boolean; history?: boolean } = {},
+    options: { scroll?: boolean; focus?: boolean; history?: boolean; origin?: "user" | "command"; seq?: number } = {},
   ) => {
     if (typeof id !== "string" || !ID.test(id)) return false
+    // Announces what changed before this move with the origin it had, then records who makes this one.
     announce()
+    state.origin = options.origin ?? "user"
+    if (options.seq !== undefined) state.seq = options.seq
     const items = list()
     const has = (scope: string) => items.some((item) => item.id === id && item.variant === scope)
     const scopes =
@@ -170,7 +181,7 @@ export function screens() {
   const api = {
     go: (screen: string, variant?: string) => go(screen, variant, { focus: true, history: true }),
     /** Opens a screen for tooling: no focus move and no history entry. */
-    open: (screen: string, variant?: string) => go(screen, variant),
+    open: (screen: string, variant?: string) => go(screen, variant, { origin: "command" }),
     screen: (variant?: string) =>
       state.current.get(variant ?? "") ?? (variant === undefined ? ([...state.current.values()][0] ?? "") : ""),
     screens: () => list(),
@@ -243,8 +254,11 @@ export function screens() {
   window.addEventListener("popstate", follow)
   window.addEventListener("message", (event) => {
     if (event.source !== parent || event.data?.type !== "design:screen") return
+    const seq = event.data.seq
     go(event.data.id, typeof event.data.variant === "string" ? event.data.variant : undefined, {
       scroll: event.data.scroll !== false,
+      origin: "command",
+      seq: typeof seq === "number" && Number.isSafeInteger(seq) && seq >= 0 ? seq : undefined,
     })
   })
   const navigate = (event: Event, trigger: HTMLElement) => {

@@ -226,6 +226,7 @@ export const designGoalPortuguese: Record<string, string> = {
   "session.design.studio.presentFullscreen": "Tela cheia",
   "session.design.studio.presentHint": "F tela cheia · ← → navegar · P visão do apresentador",
   "session.design.studio.presentEmpty": "Este design ainda não tem uma revisão publicada para apresentar.",
+  "session.design.studio.presentSyncPaused": "Sincronização pausada — pressione uma tecla para retomar",
   "session.design.studio.slides": "Slides",
   "session.design.studio.pdf": "Slides em PDF",
   "session.design.studio.feedbackRequired": "Escreva uma nota antes de enviar feedback.",

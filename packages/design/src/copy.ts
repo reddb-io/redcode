@@ -218,6 +218,7 @@ export const reviewCopy = {
   presentFullscreen: "Full screen",
   presentHint: "F full screen · ← → move · P presenter view",
   presentEmpty: "This design has no published revision to present yet.",
+  presentSyncPaused: "Sync paused — press a key to resume",
   slides: "Slides",
   pdf: "Slides to PDF",
   feedbackRequired: "Write a note before sending feedback.",
