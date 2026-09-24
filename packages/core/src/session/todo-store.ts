@@ -412,10 +412,11 @@ const make = Effect.gen(function* () {
     // Structural and revision checks above always apply; only the S1 verdict depends on the mode.
     // Task bookkeeping never stalls on S1: a refusal keeps the previous state, while an unavailable
     // evaluator or an inconclusive verdict applies the update with a visible unverified note. A plan
-    // handoff is an approval, so the tasks it admits keep the strict verdict.
+    // handoff carries the user's approval (or the Goal's execution consent), which S1 informs but
+    // cannot overrule, so the tasks it admits only report the verdict.
     const notes = (yield* Effect.forEach(semantic, (record) =>
       input.origin?.type === "plan"
-        ? Intelligence.requireReview(settings, record).pipe(Effect.as(undefined))
+        ? Effect.succeed(Intelligence.approved(settings, record))
         : Intelligence.advise(settings, record),
     ).pipe(Effect.mapError((error) => new SessionTodo.Error({ message: error.message })))).filter(
       (note) => note !== undefined,

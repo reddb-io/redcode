@@ -92,28 +92,19 @@ export const PlanExitTool = Tool.define(
           if (problem) return yield* Effect.die(problem)
           const sourceRequests = (yield* facts.load(ctx.sessionID)).requests
           const requests = sourceRequests.filter((request) => !request.pending)
-          yield* Intelligence.requireReview(
+          const evaluation = yield* intelligence.evaluate({
+            sessionID: ctx.sessionID,
+            operation: "plan",
+            candidateID: revision,
+            ...SessionPlan.review({ requests, content, path: plan, reference: ctx.sessionID, tasks }),
+          })
+          // S1 informs the user's decision and never blocks it: the approval question is always asked.
+          const review = SessionPlan.verdict(
             settings,
-            yield* intelligence.evaluate({
-              sessionID: ctx.sessionID,
-              operation: "plan",
-              candidateID: revision,
-              sources: {
-                requests: Intelligence.evidence(requests, { reference: ctx.sessionID, limit: 24000 }),
-                coverage:
-                  "All applicable request text must be visible to approve the plan; truncated history is incomplete coverage.",
-              },
-              candidate: { plan: Intelligence.evidence(content, { reference: plan, limit: 24000 }), tasks },
-              questions: Intelligence.questions({
-                coverage:
-                  "Are sources.requests or candidate.plan truncated, so full requirements or plan coverage cannot be verified? Missing content cannot be assumed covered.",
-                decomposition:
-                  "Do candidate.tasks omit a deliverable or verification from candidate.plan, contradict that plan, or lack observable acceptance criteria? If tasks are absent, evaluate only the plan itself.",
-                requirements:
-                  "Does candidate.plan omit or contradict an applicable requirement in sources.requests, accounting for later corrections?",
-              }),
-            }),
+            evaluation,
+            evaluation ? yield* intelligence.history(ctx.sessionID, { operation: "plan", limit: 20 }) : [],
           )
+          yield* ctx.metadata({ metadata: { review: review.text } })
           if (
             createHash("sha256")
               .update(yield* readPlan(path.resolve(instance.worktree, plan)))
@@ -138,8 +129,8 @@ export const PlanExitTool = Tool.define(
           if (goal?.status === "active" && goal.stopAfter === "plan")
             return {
               title: "Plan ready",
-              output: `Plan-only goal: revision ${revision} is recorded and ready for review at ${plan}.`,
-              metadata: { agent: "plan", revision },
+              output: `Plan-only goal: revision ${revision} is recorded and ready for review at ${plan}.\n${review.text}`,
+              metadata: { agent: "plan", revision, review: review.text },
             }
           if (!ready.tasks?.length)
             return yield* Effect.die(
@@ -148,23 +139,29 @@ export const PlanExitTool = Tool.define(
           const answers =
             previous?.status === "approved" && previous.tasks?.length
               ? [["Yes"]]
-              : yield* question.ask({
-                  sessionID: ctx.sessionID,
-                  questions: [
-                    {
-                      question: `Execute plan ${plan} (revision ${revision})?\n\n${content}\n\nExecution tasks:\n${ready.tasks.map((task) => `- ${task.key}: ${task.content} — ${task.criterion}`).join("\n")}${Intelligence.mode(settings) === "single" ? `\n\nS1 plan review: ${Intelligence.UNVERIFIED}.` : ""}`,
-                      header: "Build Agent",
-                      custom: false,
-                      options: [
-                        { label: "Yes", description: "Switch to build agent and start implementing the plan" },
-                        { label: "No", description: "Stay with plan agent to continue refining the plan" },
-                      ],
-                    },
-                  ],
-                  tool: ctx.callID ? { messageID: ctx.messageID, callID: ctx.callID } : undefined,
-                })
+              : yield* question
+                  .ask({
+                    sessionID: ctx.sessionID,
+                    questions: [
+                      {
+                        question: `Execute plan ${plan} (revision ${revision})?\n\n${content}\n\nExecution tasks:\n${ready.tasks.map((task) => `- ${task.key}: ${task.content} — ${task.criterion}`).join("\n")}\n\n${review.text}`,
+                        header: "Build Agent",
+                        custom: false,
+                        options: [
+                          { label: "Yes", description: "Switch to build agent and start implementing the plan" },
+                          { label: "No", description: "Stay with plan agent to continue refining the plan" },
+                        ],
+                      },
+                    ],
+                    tool: ctx.callID ? { messageID: ctx.messageID, callID: ctx.callID } : undefined,
+                  })
+                  .pipe(
+                    Effect.catchTag("QuestionRejectedError", () =>
+                      Effect.fail(new Question.RejectedError({ detail: review.text })),
+                    ),
+                  )
 
-          if (answers[0]?.[0] !== "Yes") yield* new Question.RejectedError()
+          if (answers[0]?.[0] !== "Yes") yield* new Question.RejectedError({ detail: review.text })
           const current = yield* readPlan(path.resolve(instance.worktree, plan))
           if (createHash("sha256").update(current).digest("hex") !== revision)
             return yield* Effect.die("Plan changed during approval; review the current revision before executing")
@@ -174,7 +171,7 @@ export const PlanExitTool = Tool.define(
             return yield* Effect.die("Goal changed during plan approval; inspect the current goal before executing")
           yield* Intelligence.requireConfigured(yield* intelligence.read())
           const approved = { ...ready, status: "approved" as const, created: Date.now() }
-          yield* todos.update(
+          const admitted = yield* todos.write(
             {
               sessionID: ctx.sessionID,
               origin: { type: "plan", id: ready.revision, quote: ready.content, created: ready.created },
@@ -255,8 +252,14 @@ export const PlanExitTool = Tool.define(
 
           return {
             title: "Switching to build agent",
-            output: `User approved plan revision ${revision}. Switch to Build and execute the recorded plan. If the plan implements an approved Design, follow its implementation contract.`,
-            metadata: { agent: "build", revision },
+            output: [
+              `User approved plan revision ${revision}. Switch to Build and execute the recorded plan. If the plan implements an approved Design, follow its implementation contract.`,
+              review.decision === "needs_revision" || review.decision === "inconclusive"
+                ? `The user approved it over this review; weigh it while executing. ${review.text}`
+                : review.text,
+              ...admitted.notes,
+            ].join("\n"),
+            metadata: { agent: "build", revision, review: review.text },
           }
         }).pipe(Effect.orDie),
     }

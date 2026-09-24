@@ -67,9 +67,9 @@ const layer = Layer.effectDiscard(
         }),
         plan_exit: Tool.make({
           description:
-            "Read and record the finished implementation plan. Provide its file path and tasks covering every deliverable and verification, each with key, content, criterion and exact quote from the plan. Build requires this decomposition, which creates persistent tasks after approval. The plan must be self-contained, name decisions and include concrete verification. When the plan implements an approved Design that changes existing code, include tasks that verify the behaviors it preserves (for example data loading, pagination and state), not only the visual changes. A Plan-only goal records the ready revision and stays in Plan. Otherwise execution requires existing explicit authorization or the user's approval of this revision. The approved content is preserved across compaction and resume.",
+            "Read and record the finished implementation plan. Provide its file path and tasks covering every deliverable and verification, each with key, content, criterion and exact quote from the plan. Build requires this decomposition, which creates persistent tasks after approval. The plan must be self-contained, name decisions and include concrete verification. When the plan implements an approved Design that changes existing code, include tasks that verify the behaviors it preserves (for example data loading, pagination and state), not only the visual changes. A Plan-only goal records the ready revision and stays in Plan. Otherwise execution requires existing explicit authorization or the user's approval of this revision. The S1 plan review is advisory and shown with the approval question; the user decides. The approved content is preserved across compaction and resume.",
           input: Schema.Struct({ path: Schema.String, tasks: Schema.optional(Schema.Array(SessionTodo.PlanTask)) }),
-          output: SessionPlan.Info,
+          output: Schema.Struct({ ...SessionPlan.Info.fields, review: Schema.optional(Schema.String) }),
           execute: (input, context) =>
             Effect.gen(function* () {
               yield* permissions.assert({
@@ -116,25 +116,21 @@ const layer = Layer.effectDiscard(
               const evaluation = yield* intelligence.evaluate({
                 sessionID: context.sessionID,
                 operation: "plan",
-                sources: {
-                  requests: Intelligence.evidence(requests, { reference: context.sessionID, limit: 24000 }),
-                  coverage:
-                    "All applicable request text must be visible to approve the plan; truncated history is incomplete coverage.",
-                },
-                candidate: {
-                  plan: Intelligence.evidence(evidence.content, { reference: evidence.path, limit: 24000 }),
+                candidateID: evidence.hash,
+                ...SessionPlan.review({
+                  requests,
+                  content: evidence.content,
+                  path: evidence.path,
+                  reference: context.sessionID,
                   tasks: decomposition,
-                },
-                questions: Intelligence.questions({
-                  coverage:
-                    "Are sources.requests or candidate.plan truncated, so full requirements or plan coverage cannot be verified? Missing content cannot be assumed covered.",
-                  decomposition:
-                    "Do candidate.tasks omit a deliverable or verification from candidate.plan, contradict that plan, or lack observable acceptance criteria? If tasks are absent, evaluate only the plan itself.",
-                  requirements:
-                    "Does candidate.plan omit or contradict an applicable requirement in sources.requests, accounting for later corrections?",
                 }),
               })
-              yield* Intelligence.requireReview(settings, evaluation)
+              // S1 informs the user's decision and never blocks it: the approval question is always asked.
+              const review = SessionPlan.verdict(
+                settings,
+                evaluation,
+                evaluation ? yield* intelligence.history(context.sessionID, { operation: "plan", limit: 20 }) : [],
+              )
               const currentEvidence = yield* SessionEvidence.read(input.path, context, permissions, location)
               if (
                 currentEvidence.hash !== evidence.hash ||
@@ -154,7 +150,7 @@ const layer = Layer.effectDiscard(
                 status: "ready",
                 created: Date.now(),
               })
-              if (goal && goal.stopAfter !== "build") return ready
+              if (goal && goal.stopAfter !== "build") return { ...ready, review: review.text }
               if (!ready.tasks?.length)
                 return yield* new ToolFailure({
                   message:
@@ -167,7 +163,7 @@ const layer = Layer.effectDiscard(
                   questions: [
                     {
                       header: "Plan approval",
-                      question: `Execute this recorded plan? ${evidence.path}\nRevision ${evidence.hash}\n\n${evidence.content}\n\nExecution tasks:\n${ready.tasks.map((task) => `- ${task.key}: ${task.content} — ${task.criterion}`).join("\n")}${Intelligence.mode(settings) === "single" ? `\n\nS1 plan review: ${Intelligence.UNVERIFIED}.` : ""}`,
+                      question: `Execute this recorded plan? ${evidence.path}\nRevision ${evidence.hash}\n\n${evidence.content}\n\nExecution tasks:\n${ready.tasks.map((task) => `- ${task.key}: ${task.content} — ${task.criterion}`).join("\n")}\n\n${review.text}`,
                       custom: false,
                       options: [
                         { label: "Execute", description: "Approve this revision and start Build" },
@@ -176,7 +172,7 @@ const layer = Layer.effectDiscard(
                     },
                   ],
                 })
-                if (answer[0]?.[0] !== "Execute") return ready
+                if (answer[0]?.[0] !== "Execute") return { ...ready, review: review.text }
               }
               const current = yield* SessionEvidence.read(input.path, context, permissions, location)
               if (current.hash !== evidence.hash)
@@ -245,7 +241,7 @@ const layer = Layer.effectDiscard(
                 timestamp: yield* DateTime.now,
                 text: `Execute approved plan revision ${approved.revision}. The recorded plan content is in your system context. Preserve its scope and verify the stated criteria. If the plan implements an approved Design, follow its implementation contract.`,
               })
-              return approved
+              return { ...approved, review: review.text }
             }).pipe(Effect.mapError((error) => new ToolFailure({ message: error.message }))),
         }),
       })

@@ -76,6 +76,7 @@ export interface EvaluationInput {
   questions: Record<string, Intelligence.Question>
 }
 export type Evaluation = Intelligence.Evaluation
+export type Settings = Intelligence.Settings
 export interface GenerationInput {
   sessionID: string
   model: string
@@ -1098,6 +1099,17 @@ export const advise = (
   return Effect.succeed(
     `Unverified: S1 review unavailable${record ? ` (${record.id}): ${issueSummary(record)}` : ""}. The update was applied without S1 review.`,
   )
+}
+
+/**
+ * Verdict for a change the user already approved, such as the tasks of an approved plan: S1 informs
+ * it but can no longer refuse it. Returns the visible `unverified` note to report, if any.
+ */
+export const approved = (settings: Intelligence.Settings, record: Intelligence.Evaluation | undefined) => {
+  if (mode(settings) === "single" || record?.decision === "accepted") return undefined
+  if (record?.decision === "needs_revision" || record?.decision === "inconclusive")
+    return `Unverified: S1 review ${record.decision === "needs_revision" ? "needs revision" : "inconclusive"} (${record.id}) on ${issueSummary(record)}. The user-approved update was applied; revise the task if these checks point at a real problem.`
+  return `Unverified: S1 review unavailable${record ? ` (${record.id}): ${issueSummary(record)}` : ""}. The user-approved update was applied without S1 review.`
 }
 
 /**

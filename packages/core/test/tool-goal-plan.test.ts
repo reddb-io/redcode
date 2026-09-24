@@ -51,6 +51,9 @@ let duringReview = Effect.void
 let duringApproval = Effect.void
 let duringTasks = Effect.void
 let taskDecision: Intelligence.Evaluation["decision"] = "accepted"
+// Checks the plan review flags with high confidence; empty accepts the plan.
+let planFlags: string[] = []
+const evaluations: Intelligence.Evaluation[] = []
 let deny = ""
 let answer = "Execute"
 const permission = Layer.succeed(
@@ -126,7 +129,13 @@ const it = testEffect(
               principal: { providerID: Provider.ID.make("fixture"), id: ModelV2.ID.make("principal") },
               evaluator: { transport: "typesafe", baseURL: "http://localhost/v1", model: "jev" },
             })),
-          history: () => Effect.succeed([]),
+          history: (sessionID, options) =>
+            Effect.sync(() =>
+              evaluations.filter(
+                (entry) =>
+                  entry.sessionID === sessionID && (!options?.operation || entry.operation === options.operation),
+              ),
+            ),
           // Mirrors the real service: single reasoning never produces an S1 record.
           evaluate: (input) =>
             Effect.gen(function* () {
@@ -168,6 +177,30 @@ const it = testEffect(
                 yield* duringReview
               }
               if (input.operation === "task_quality") yield* duringTasks
+              if (input.operation === "plan") {
+                const record: Intelligence.Evaluation = {
+                  id: crypto.randomUUID(),
+                  fingerprint: "fixture",
+                  sessionID: input.sessionID,
+                  operation: input.operation,
+                  candidateID: input.candidateID,
+                  policy: "fixture",
+                  decision: planFlags.length ? "needs_revision" : "accepted",
+                  model: "jev",
+                  answers: Object.fromEntries(
+                    Object.keys(input.questions).map((id) => [
+                      id,
+                      { type: "noul" as const, noul: planFlags.includes(id) ? 0.95 : 0 },
+                    ]),
+                  ),
+                  issues: planFlags,
+                  created: Date.now(),
+                  duration: 1,
+                  usage: { input_tokens: 10, output_tokens: 5 },
+                }
+                evaluations.push(record)
+                return record
+              }
               return {
                 id: crypto.randomUUID(),
                 fingerprint: "fixture",
@@ -214,6 +247,8 @@ const setup = Effect.gen(function* () {
   duringApproval = Effect.void
   duringTasks = Effect.void
   taskDecision = "accepted"
+  planFlags = []
+  evaluations.length = 0
   deny = ""
   answer = "Execute"
   const database = yield* Database.Service
@@ -574,18 +609,85 @@ it.live("plan decomposition rejects unmatched quotes and duplicates, while a new
 )
 
 for (const decision of ["needs_revision", "unavailable", "inconclusive"] as const) {
-  it.live(`a ${decision} task evaluation leaves the plan ready and admits no tasks`, () =>
+  it.live(`a ${decision} task evaluation cannot overrule the user's plan approval`, () =>
     Effect.gen(function* () {
       const test = yield* setup
       const plans = yield* SessionPlan.Service
       const todos = yield* SessionTodo.Service
       taskDecision = decision
-      expect((yield* test.run("plan_exit", { path: test.file, tasks: planTasks })).type).toBe("error")
-      expect((yield* plans.list(test.sessionID))[0]?.status).toBe("ready")
-      expect(yield* todos.get(test.sessionID)).toEqual([])
+      expect((yield* test.run("plan_exit", { path: test.file, tasks: planTasks })).type).not.toBe("error")
+      expect((yield* plans.list(test.sessionID))[0]?.status).toBe("approved")
+      expect(yield* todos.get(test.sessionID)).toMatchObject([{ source: { type: "plan", key: "button" } }])
     }),
   )
 }
+
+it.live("a needs_revision plan review still asks the user, with the S1 verdict and its reasons", () =>
+  Effect.gen(function* () {
+    const test = yield* setup
+    const plans = yield* SessionPlan.Service
+    planFlags = ["coverage", "requirements"]
+    const result = yield* test.run("plan_exit", { path: test.file, tasks: planTasks })
+    expect(result.type).not.toBe("error")
+    const asked = questions[0].questions[0].question
+    expect(asked).toContain("S1 plan review: needs revision — coverage (95%): a request may have no matching change")
+    expect(asked).toContain("requirements (95%): the plan may contradict a request")
+    expect(JSON.stringify(result)).toContain("S1 plan review: needs revision")
+    expect((yield* plans.list(test.sessionID))[0]?.status).toBe("approved")
+  }),
+)
+
+it.live("a long session's plan review keeps the first and latest requests and never blames truncation", () =>
+  Effect.sync(() => {
+    const requests = Array.from({ length: 60 }, (_, index) => ({
+      id: `msg_${index}`,
+      text: `Request ${index}: ${"keep the button accessible ".repeat(80)}`,
+    }))
+    const review = SessionPlan.review({
+      requests,
+      content: `# Plan\n${"Change the button label. ".repeat(3000)}`,
+      path: "plan.md",
+      reference: "ses_long",
+      tasks: planTasks,
+    })
+    const ids = review.sources.requests.map((request) => request.id)
+    expect(ids[0]).toBe("msg_0")
+    expect(ids.at(-1)).toBe("msg_59")
+    expect(ids.length).toBeLessThan(requests.length)
+    expect(JSON.stringify(review.sources.requests).length).toBeLessThanOrEqual(24_000)
+    expect(review.sources.scope).toContain("older requests between them were left out for size")
+    expect(review.candidate.plan.truncated).toBe(true)
+    const questions = JSON.stringify(review.questions)
+    expect(questions).not.toContain("Missing content cannot be assumed covered")
+    expect(questions).toContain("never answer yes because content is truncated or omitted")
+  }),
+)
+
+it.live("repeated identical S1 flags across plan revisions leave the decision to the user", () =>
+  Effect.gen(function* () {
+    const test = yield* setup
+    planFlags = ["coverage", "decomposition", "requirements"]
+    answer = "Refine"
+    const first = yield* test.run("plan_exit", { path: test.file, tasks: planTasks })
+    expect(first.type).not.toBe("error")
+    expect(JSON.stringify(first)).not.toContain("S1 keeps flagging the same axes")
+    yield* Effect.promise(() =>
+      Bun.write(test.file, "# Plan\nChange the button label. Verify it in Chromium and Firefox."),
+    )
+    const second = yield* test.run("plan_exit", { path: test.file, tasks: planTasks })
+    expect(JSON.stringify(second)).toContain("S1 keeps flagging the same axes")
+    expect(questions).toHaveLength(2)
+    expect(questions[1].questions[0].question).toContain("the user decides")
+  }),
+)
+
+it.live("an accepted S1 plan review is reported with the approval question", () =>
+  Effect.gen(function* () {
+    const test = yield* setup
+    expect((yield* test.run("plan_exit", { path: test.file, tasks: planTasks })).type).not.toBe("error")
+    expect(questions[0].questions[0].question).toContain("S1 plan review: accepted.")
+  }),
+)
 
 it.live("a goal paused while tasks are evaluated cannot approve a plan", () =>
   Effect.gen(function* () {
