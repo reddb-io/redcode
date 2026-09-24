@@ -1,5 +1,6 @@
 import { Intelligence } from "@reddb-io/redcode-core/intelligence"
 import { SessionStopLoss } from "@reddb-io/redcode-core/session/stop-loss"
+import { SubagentView } from "@reddb-io/redcode-core/session/subagent-view"
 import { SubagentReview } from "@reddb-io/redcode-core/session/subagent-review"
 import { DesignStudio } from "../../src/design/studio"
 import { DesignStore } from "@reddb-io/redcode-core/design/store"
@@ -7210,6 +7211,11 @@ unix(
         expect(final.notice).toMatchObject({ action: "stop", verified: false })
         expect(SessionStopLoss.isNotice(result.parts.find((part) => part.type === "text")!)).toBe(true)
         expect(yield* intelligence.history(child.id, { operation: "session_progress" })).toEqual([])
+        // The parent's task row reads where the checkpoints left the child from its metadata.
+        const kept = SubagentView.checkpoints((yield* sessions.get(child.id)).metadata)
+        expect(kept.map((item) => item.action)).toEqual(["steer", "stop"])
+        expect(SubagentView.checkpointState(kept)).toMatchObject({ type: "stopped" })
+        expect(kept[1]?.reason).toBeTruthy()
       }),
     ),
   60_000,

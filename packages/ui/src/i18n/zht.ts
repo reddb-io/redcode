@@ -159,6 +159,13 @@ export const dict = {
   "ui.tool.questions.numbered": "問題 {{number}}",
   "ui.tool.agent": "{{type}} 代理程式",
   "ui.tool.agent.default": "代理程式",
+  "ui.tool.task.verdict.verified": "已驗證",
+  "ui.tool.task.verdict.inconclusive": "無法判定",
+  "ui.tool.task.verdict.needs_revision": "需要修改",
+  "ui.tool.task.verdict.unverified": "未驗證",
+  "ui.tool.task.checkpoint.in_scope": "在範圍內",
+  "ui.tool.task.checkpoint.corrected": "已修正（已傳送提示）",
+  "ui.tool.task.checkpoint.stopped": "已停止 · {{reason}}",
 
   "ui.common.file.one": "個檔案",
   "ui.common.file.other": "個檔案",

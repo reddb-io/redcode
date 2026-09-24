@@ -159,6 +159,13 @@ export const dict = {
   "ui.tool.questions.numbered": "问题 {{number}}",
   "ui.tool.agent": "{{type}} 智能体",
   "ui.tool.agent.default": "智能体",
+  "ui.tool.task.verdict.verified": "已验证",
+  "ui.tool.task.verdict.inconclusive": "无法判定",
+  "ui.tool.task.verdict.needs_revision": "需要修改",
+  "ui.tool.task.verdict.unverified": "未验证",
+  "ui.tool.task.checkpoint.in_scope": "在范围内",
+  "ui.tool.task.checkpoint.corrected": "已纠正（已发送提示）",
+  "ui.tool.task.checkpoint.stopped": "已停止 · {{reason}}",
 
   "ui.common.file.one": "个文件",
   "ui.common.file.other": "个文件",

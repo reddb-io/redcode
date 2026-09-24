@@ -12,8 +12,10 @@ import { getScrollAcceleration } from "../../util/scroll"
 import { WorkspaceLabel } from "../../component/workspace-label"
 import { useRedskilled } from "../../context/redskilled"
 import { Workers } from "../workers"
+import { SidebarSubagents } from "./subagent"
 
-export type SidebarTab = "context" | "workers"
+export const SIDEBAR_TABS = ["context", "workers", "subagents"] as const
+export type SidebarTab = (typeof SIDEBAR_TABS)[number]
 
 export function Sidebar(props: {
   sessionID: string
@@ -41,6 +43,7 @@ export function Sidebar(props: {
   const failedWorkers = createMemo(
     () => redskilled.status()?.payload?.workers.filter((item) => item.display?.failed).length ?? 0,
   )
+  const subagentCount = createMemo(() => sync.data.session.filter((item) => item.parentID === props.sessionID).length)
 
   return (
     <Show when={session()}>
@@ -133,6 +136,16 @@ export function Sidebar(props: {
               </span>
             </Show>
           </text>
+          <text
+            fg={props.tab === "subagents" ? theme.primary : theme.textMuted}
+            attributes={props.tab === "subagents" ? TextAttributes.BOLD : undefined}
+            onMouseUp={() => props.onTabChange("subagents")}
+          >
+            Subagents
+            <Show when={subagentCount() > 0}>
+              <span style={{ fg: theme.textMuted }}>{` (${subagentCount()})`}</span>
+            </Show>
+          </text>
         </box>
 
         <box visible={props.tab === "context"} flexGrow={1} minHeight={0}>
@@ -160,6 +173,14 @@ export function Sidebar(props: {
         <box visible={props.tab === "workers"} flexGrow={1} minHeight={0}>
           <Workers active={props.tab === "workers"} width={props.width - 4} />
         </box>
+
+        <Show when={props.tab === "subagents"}>
+          <scrollbox flexGrow={1} minHeight={0} scrollAcceleration={scrollAcceleration()}>
+            <box paddingRight={1}>
+              <SidebarSubagents sessionID={props.sessionID} />
+            </box>
+          </scrollbox>
+        </Show>
       </box>
     </Show>
   )
