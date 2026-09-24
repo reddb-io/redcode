@@ -397,6 +397,10 @@ details{border-top:1px solid var(--edge);padding:14px 0}summary{cursor:pointer;f
       element<HTMLButtonElement>(id).disabled = blocked || index < 0
     // The last remaining variant cannot be deleted.
     element<HTMLButtonElement>("delete-variant").disabled ||= state.variants.length < 2
+    // The active tab's own delete "x" follows the same guard, but working/preview state can flip
+    // without a variant redraw, so it is re-synced here rather than only at creation time.
+    const closeTab = root.getElementById("variant-close") as HTMLButtonElement | null
+    if (closeTab) closeTab.hidden = blocked
     element<HTMLButtonElement>("move-left").disabled = blocked || index <= 0
     element<HTMLButtonElement>("move-right").disabled = blocked || index < 0 || index >= state.variants.length - 1
     element<HTMLButtonElement>("merge-variants").disabled = blocked || state.mergePick.length < 2
@@ -501,8 +505,10 @@ details{border-top:1px solid var(--edge);padding:14px 0}summary{cursor:pointer;f
       !!state.design?.ended ||
       !items.length ||
       items.some((item) => item.id === approved.id)
-    // The tab's own delete affordance follows the same guard as the delete-variant menu item.
-    const deletable = items.length > 1 && !operationBlocked()
+    // The tab's own delete affordance exists whenever there is more than one variant; controls()
+    // hides it while blocked, the same guard the delete-variant menu item uses, so it stays in
+    // sync even when only state.working (not the variant list) changes.
+    const deletable = items.length > 1
     element("variants").replaceChildren(
       ...items.map((item, index) => {
         const button = document.createElement("button")
@@ -554,7 +560,9 @@ details{border-top:1px solid var(--edge);padding:14px 0}summary{cursor:pointer;f
         if (item.id === state.variant && deletable) {
           const close = document.createElement("button")
           close.type = "button"
+          close.id = "variant-close"
           close.className = "variant-close"
+          close.hidden = operationBlocked()
           close.setAttribute("aria-label", `${copy.deleteVariantTab} ${item.name}`)
           close.textContent = "×"
           close.addEventListener("click", (event) => {
