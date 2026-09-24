@@ -58,6 +58,9 @@ const make = Effect.gen(function* () {
     const assessments = yield* intelligence.history(input.sessionID).pipe(Effect.orElseSucceed(() => []))
     const previous = baseline
     const seen = new Set<string>()
+    // The results each newly accepted completion rests on, rechecked against the facts that land while
+    // S1 evaluates and again inside the write transaction.
+    const proven = new Map<string, ReadonlyArray<SessionTaskFacts.Result>>()
     const changes = yield* Effect.forEach(incoming, (item) =>
       Effect.gen(function* () {
         const supplied = item.content?.trim()
@@ -198,15 +201,17 @@ const make = Effect.gen(function* () {
           return yield* new SessionTodo.Error({
             message: `${SCOPE_CHANGE_REQUIRED} include scopeChange naming the user message that removed this work, e.g. {"scopeChange":{"messageID":"<user message id>","quote":"<the instruction, quoted or paraphrased>"},"reason":"<concrete reason>"}`,
           })
+        const id =
+          before?.id ??
+          (input.origin?.type === "plan"
+            ? `todo_${createHash("sha256")
+                .update(`${input.sessionID}:${input.origin.id}:${item.planKey ?? content}`)
+                .digest("hex")
+                .slice(0, 24)}`
+            : `todo_${crypto.randomUUID()}`)
+        if (proof) proven.set(id, proof.proofs)
         return {
-          id:
-            before?.id ??
-            (input.origin?.type === "plan"
-              ? `todo_${createHash("sha256")
-                  .update(`${input.sessionID}:${input.origin.id}:${item.planKey ?? content}`)
-                  .digest("hex")
-                  .slice(0, 24)}`
-              : `todo_${crypto.randomUUID()}`),
+          id,
           revision: before?.revision ?? 1,
           content,
           status: capped ? ("blocked" as const) : status,
@@ -315,10 +320,12 @@ const make = Effect.gen(function* () {
             request.id === latest?.id ||
             (task.source !== undefined && request.created >= task.source.created)),
       )
-      const results = observed.results.filter(
-        (result) =>
-          result.settled && result.callID === task.evidence?.callID && result.messageID === task.evidence?.messageID,
-      )
+      const results =
+        proven.get(task.id) ??
+        observed.results.filter(
+          (result) =>
+            result.settled && result.callID === task.evidence?.callID && result.messageID === task.evidence?.messageID,
+        )
       return intelligence
         .evaluate({
           sessionID: input.sessionID,
@@ -413,14 +420,24 @@ const make = Effect.gen(function* () {
     ).pipe(Effect.mapError((error) => new SessionTodo.Error({ message: error.message })))).filter(
       (note) => note !== undefined,
     )
-    if (
-      semantic.some(Boolean) &&
-      (Intelligence.fingerprint(baseline) !== Intelligence.fingerprint(yield* get(input.sessionID)) ||
-        Intelligence.fingerprint(observed) !== Intelligence.fingerprint(yield* facts.load(input.sessionID)))
-    )
-      return yield* new SessionTodo.Error({
-        message: "Task sources changed during evaluation; retry with current evidence",
-      })
+    // Evaluation is slow and the model's other tool calls keep settling meanwhile, so new facts alone
+    // are no conflict: only another committed task update is, or a new result that breaks the proof a
+    // completion was accepted on. New requests are no conflict either: the model issued this update
+    // without them too, and sees them on its next turn.
+    const settle = Effect.fnUntraced(function* (current: ReadonlyArray<SessionTodo.Info>) {
+      if (Intelligence.fingerprint(current) !== Intelligence.fingerprint(baseline))
+        return yield* new SessionTodo.Error({
+          message: "Tasks changed during evaluation; retry with current revisions",
+        })
+      if (!proven.size) return
+      const fresh = yield* facts.load(input.sessionID)
+      const broken = [...proven.values()]
+        .flat()
+        .map((proof) => recheck(fresh.results, proof, input.messageID))
+        .find((error) => error !== undefined)
+      if (broken) return yield* new SessionTodo.Error({ message: broken })
+    })
+    if (semantic.some(Boolean)) yield* settle(yield* get(input.sessionID))
     yield* intelligence.read().pipe(
       Effect.flatMap(Intelligence.requireConfigured),
       Effect.mapError((error) => new SessionTodo.Error({ message: error.message })),
@@ -437,13 +454,7 @@ const make = Effect.gen(function* () {
             .orderBy(asc(TodoTable.position))
             .all()
             .pipe(Effect.orDie)).map(read)
-          if (
-            Intelligence.fingerprint(persisted) !== Intelligence.fingerprint(baseline) ||
-            Intelligence.fingerprint(observed) !== Intelligence.fingerprint(yield* facts.load(input.sessionID))
-          )
-            return yield* new SessionTodo.Error({
-              message: "Tasks changed during evaluation; retry with current revisions",
-            })
+          yield* settle(persisted)
           yield* Effect.forEach(result, (task, position) =>
             Effect.gen(function* () {
               const before = previous.find((item) => item.id === task.id)
@@ -747,7 +758,9 @@ function resolve(input: {
   reason?: string
   /** The reason or a criterion that says more than the title; explains a check picked automatically. */
   fallback?: string
-}): { proof: SessionTaskFacts.Result; explanation: string } | { error: string } {
+}):
+  | { proof: SessionTaskFacts.Result; proofs: ReadonlyArray<SessionTaskFacts.Result>; explanation: string }
+  | { error: string } {
   const results = input.observed.results
   const claim = input.claim
   const when = `the request ${input.source.id} at ${iso(input.source.created)}`
@@ -781,7 +794,7 @@ function resolve(input: {
   const accept = (proof: SessionTaskFacts.Result, explanation: string) => {
     const edit = invalidating(results, proof, input.messageID)
     if (edit) return refuse(predates(proof, edit))
-    return { proof, explanation }
+    return { proof, proofs: [proof], explanation }
   }
   if (!claim) {
     const shell = (entry: SessionTaskFacts.Result) => entry.tool === "bash" || entry.tool === "shell"
@@ -801,7 +814,12 @@ function resolve(input: {
     // A shell pick is recorded only when the task says what it had to show; a render or export is its
     // own explanation.
     if (auto && shell(auto) && !input.fallback) return unexplained(auto)
-    if (auto) return { proof: auto, explanation: input.fallback || `auto-selected latest verification ${auto.tool}` }
+    if (auto)
+      return {
+        proof: auto,
+        proofs: [auto],
+        explanation: input.fallback || `auto-selected latest verification ${auto.tool}`,
+      }
     return refuse(
       `Completing "${input.content}" needs evidence, and no verification result (a successful bash or shell check, design_preview or design_export) exists after ${when} and after the last edit. Run the check that proves the task, then complete it; or, for investigation work, cite the read, grep or other result that answers it as evidence with an explanation. ${describe(results)}`,
     )
@@ -815,8 +833,14 @@ function resolve(input: {
   // A cited result is the model's own claim, so the model must say how it meets the criterion.
   const explanation = claim.explanation?.trim() || input.reason || ""
   if (!matching.length)
-    return refuse(
-      `Evidence callID "${claim.callID}" does not match any tool result in this session. Cite a callID from the recent results, or run the verification and cite it. ${describe(results)}`,
+    return (
+      // Only an id no result carries at all is invented; one cited with the wrong message is not.
+      (results.some((entry) => entry.callID === claim.callID)
+        ? undefined
+        : recover({ results, explanation, valid, callID: claim.callID, messageID: input.messageID })) ??
+      refuse(
+        `Evidence callID "${claim.callID}" does not match any tool result in this session. Cite a callID from the recent results, or run the verification and cite it. ${describe(results)}`,
+      )
     )
   if (!explicit)
     return refuse(
@@ -844,6 +868,110 @@ function resolve(input: {
     )
   if (!explanation) return unexplained(explicit)
   return accept(explicit, explanation)
+}
+
+/**
+ * Evidence for a cited callID that matches no result at all: a model that invented the id while
+ * describing real work. The concrete artifacts its explanation names — files, design ids and
+ * `commands` in backticks — are matched against the session's valid results by spelling alone, so the
+ * explanation may be in any language. Each artifact is proved by its newest result that is not an
+ * edit, as if it were cited: edits prove nothing, and a later overlapping edit refuses the completion.
+ * `undefined` when nothing matches, so the caller keeps its refusal.
+ */
+function recover(input: {
+  results: ReadonlyArray<SessionTaskFacts.Result>
+  explanation: string
+  valid: (entry: SessionTaskFacts.Result) => boolean
+  callID: string
+  messageID?: string
+}) {
+  const candidates = input.results
+    .filter((entry) => input.valid(entry) && entry.kind !== "edit")
+    .toSorted((a, b) => b.completed - a.completed)
+  const files = [
+    ...new Set(candidates.flatMap((entry) => entry.paths.filter((file) => mentions(input.explanation, file)))),
+  ]
+  const ids = [...new Set(input.explanation.match(IDENTIFIER) ?? [])]
+  const commands = [...input.explanation.matchAll(/`([^`\n]{3,})`/g)].map((match) => match[1]!.trim())
+  const proofs = [
+    ...new Map(
+      [
+        ...files.map((file) => candidates.find((entry) => entry.paths.includes(file))),
+        // A design tool working on the design proves it before one that only reports its id, such as a listing.
+        ...ids.map((id) => {
+          const design = candidates.filter((entry) => entry.tool.startsWith("design_"))
+          return (
+            design.find((entry) => entry.paths.includes(`${SessionTaskFacts.DESIGN}${id}`)) ??
+            design.find((entry) => entry.summary.includes(id))
+          )
+        }),
+        ...commands.map((text) =>
+          candidates.find(
+            (entry) =>
+              (entry.tool === "bash" || entry.tool === "shell") &&
+              (SessionTaskFacts.command(entry.input, Infinity)?.includes(text) ?? false),
+          ),
+        ),
+      ].flatMap((proof) => (proof ? [[`${proof.messageID}:${proof.callID}`, proof] as const] : [])),
+    ).values(),
+  ].toSorted((a, b) => b.completed - a.completed)
+  if (!proofs.length) return undefined
+  const stale = proofs.flatMap((proof) => {
+    const edit = invalidating(input.results, proof, input.messageID)
+    return edit ? [predates(proof, edit)] : []
+  })[0]
+  if (stale)
+    return {
+      error: `${REFUSED} Evidence callID "${input.callID}" matches no tool result, and the result its explanation names is stale. ${stale}`,
+    }
+  // The newest one is stored as the task's evidence; the explanation keeps every result it rests on.
+  return {
+    proof: proofs[0]!,
+    proofs,
+    explanation: `${input.explanation} [${RESOLVED} ${proofs.map((proof) => `${proof.callID} (${proof.tool}, message ${proof.messageID})`).join(", ")}]`,
+  }
+}
+
+/** Marks an explanation whose evidence was resolved from the artifacts it names, not from its cited callID. */
+export const RESOLVED = "evidence resolved from explanation:"
+
+/** An id another tool reported, such as a design's `design_1d2e…`: a prefix, then at least 8 characters with a digit. */
+const IDENTIFIER = /\b[a-z]+_(?=[0-9a-z-]*\d)[0-9a-z-]{8,}/gi
+
+/**
+ * Whether `text` names `file`: the whole path or a trailing part of it that starts at a segment and
+ * keeps a separator or an extension (`voice.md`, `identity/voice.md`), with no path character
+ * continuing it on either side. Only ASCII path characters bound a mention, so it is found inside a
+ * sentence in any language or script.
+ */
+function mentions(text: string, file: string) {
+  if (file.startsWith(SessionTaskFacts.DESIGN)) return false
+  // Windows paths are compared case-insensitively, as the task facts store them.
+  const windows = /^[a-z]:/i.test(file)
+  const body = windows ? text.replaceAll("\\", "/").toLowerCase() : text.replaceAll("\\", "/")
+  const segments = (windows ? file.toLowerCase() : file).split("/")
+  return segments.some((_, index) => {
+    const suffix = segments.slice(index).join("/")
+    if (!/[./]/.test(suffix.replace(/^\//, ""))) return false
+    for (let at = body.indexOf(suffix); at !== -1; at = body.indexOf(suffix, at + 1)) {
+      const before = body.slice(0, at).replace(/(\.\.?\/)+$/, "")
+      const after = body.slice(at + suffix.length)
+      if (!/[A-Za-z0-9_\-./~]$/.test(before) && !/^([A-Za-z0-9_\-/~]|\.[A-Za-z0-9])/.test(after)) return true
+    }
+    return false
+  })
+}
+
+/**
+ * Why `proof`, accepted before S1 evaluated the update, no longer holds against the facts that
+ * landed meanwhile: its result changed or vanished, or a later edit overlapping its files settled.
+ */
+function recheck(results: ReadonlyArray<SessionTaskFacts.Result>, proof: SessionTaskFacts.Result, messageID?: string) {
+  const current = results.find((entry) => entry.callID === proof.callID && entry.messageID === proof.messageID)
+  if (!current || current.hash !== proof.hash || !current.successful || current.abandoned)
+    return `${REFUSED} Evidence callID "${proof.callID}" (${proof.tool}) changed while the update was evaluated. Run the check again and cite the new result.`
+  const edit = invalidating(results, current, messageID)
+  return edit ? `${REFUSED} ${predates(current, edit)}` : undefined
 }
 
 function predates(proof: SessionTaskFacts.Result, edit: SessionTaskFacts.Result) {

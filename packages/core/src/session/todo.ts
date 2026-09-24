@@ -131,6 +131,17 @@ export function notes(
     if (item.status !== "completed") return linking
     if (task.status === "blocked")
       return [...linking, `Task ${task.id} was blocked instead of completed: ${task.reason}`]
+    if (
+      task.status === "completed" &&
+      item.evidence?.callID &&
+      task.evidence &&
+      task.evidence.callID !== item.evidence.callID &&
+      task.evidence.explanation.includes(SessionTodoStore.RESOLVED)
+    )
+      return [
+        ...linking,
+        `Evidence for ${task.id} was resolved from the explanation: callID "${item.evidence.callID}" matches no tool result, so the results it names were recorded (${(task.evidence.explanation.split(SessionTodoStore.RESOLVED).at(-1) ?? "").replace(/\]$/, "").trim()}). Cite callIDs exactly as the results show them.`,
+      ]
     if (task.status === "completed" && task.evidence && task.evidence.callID !== item.evidence?.callID) {
       const evidence = task.evidence
       const proof = results.find((entry) => entry.callID === evidence.callID && entry.messageID === evidence.messageID)
