@@ -583,9 +583,6 @@ export type StepFinishPart = {
   type: "step-finish"
   reason: string
   snapshot?: string
-  /**
-   * The model that actually served the step, when a router such as RedRouter reported it.
-   */
   servedModel?: string
   cost: number
   tokens: {
@@ -1864,6 +1861,7 @@ export type ProviderConfig = {
     chunkTimeout?: number | false
     [key: string]: unknown | string | boolean | number | false | number | false | number | false | undefined
   }
+  router?: RouterConnection
   models?: {
     [key: string]: {
       id?: string
@@ -1938,12 +1936,49 @@ export type ProviderConfig = {
           forced_tool_choice?: boolean
           tools?: boolean
           search?: boolean
+          modes?: Array<string>
           modalities?: {
             input?: Array<string>
             output?: Array<string>
           }
         }
+        parameters_basis?: "lead" | "strictest"
         members?: Array<string>
+        member_parameters?: Array<{
+          id: string
+          parameters?: {
+            context_length?: number
+            max_completion_tokens?: number
+            reasoning?: boolean
+            thinking_levels?: Array<string>
+            thinking_can_disable?: boolean
+            forced_tool_choice?: boolean
+            tools?: boolean
+            search?: boolean
+            modes?: Array<string>
+            modalities?: {
+              input?: Array<string>
+              output?: Array<string>
+            }
+          }
+        }>
+        provider?: {
+          id: string
+          slug?: string
+          prefix?: string
+          name?: string
+          category?: string
+          subscription?: boolean
+        }
+        aliases?: Array<string>
+        variants?: Array<{
+          id: string
+          name?: string
+          level?: string
+          mode?: string
+          aliases?: Array<string>
+        }>
+        via?: string
       }
       /**
        * Variant-specific configuration
@@ -2204,6 +2239,18 @@ export type Config = {
           stop_at?: number
           nudge_at?: number
         }
+    /**
+     * When a turn keeps spending without progress, notice it and act: steer the model, ask the user, or stop. A signal is idle_at steps in a row without progress (default 5), the same result or error coming back, repeated task failures, or tokens (default 150000) or minutes (default 15) spent since the last progress. In dual reasoning System One also checks every `every` steps (default 8), with at least `cooldown` steps between checks (default 3). Set to false to disable.
+     */
+    stop_loss?:
+      | false
+      | {
+          every?: number
+          cooldown?: number
+          idle_at?: number
+          tokens?: number
+          minutes?: number
+        }
     goal?: {
       max_turns?: number
       /**
@@ -2237,9 +2284,6 @@ export type Config = {
     }
     subtask_concurrency?: number
     background_subagents_max?: number
-    /**
-     * Fan-out caps on the task tool. Nesting depth is bounded separately by subagent_depth.
-     */
     subagent_limits?: {
       concurrent?: number
       per_request?: number
@@ -2364,21 +2408,9 @@ export type Model = {
       [key: string]: unknown
     }
   }
-  /**
-   * The provider behind a model a router serves (RedRouter reports it), so clients can say where a model really comes from.
-   */
   upstream?: RouterUpstream
-  /**
-   * Earlier ids of the model at its router. A request for one of them resolves to this model.
-   */
   aliases?: Array<string>
-  /**
-   * Modes the router serves the model in besides its default, such as review.
-   */
   modes?: Array<string>
-  /**
-   * Reasoning levels and modes the router serves under this model rather than as separate models. Each id (and its earlier ids) requests that level or mode.
-   */
   routerVariants?: Array<{
     id: string
     name?: string
@@ -2386,39 +2418,11 @@ export type Model = {
     mode?: string
     aliases?: Array<string>
   }>
-  /**
-   * The router in between when another router serves the model, e.g. a remote RedRouter.
-   */
   via?: string
-  /**
-   * For a router combo planned by its lead member (a fallback combo), each member and the variants it takes, the lead first. While another member serves a session, that member's variants apply.
-   */
   comboMembers?: Array<{
     id: string
     variants: Array<string>
   }>
-}
-
-export type RouterUpstream = {
-  id: string
-  slug?: string
-  name: string
-  category?: string
-  subscription?: boolean
-}
-
-export type RouterVariant = {
-  id: string
-  name?: string
-  level?: string
-  mode?: string
-  aliases?: Array<string>
-}
-
-export type RouterConnection = {
-  kind: "red-router" | "9router"
-  instanceID?: string
-  version?: string
 }
 
 export type Provider = {
@@ -2430,9 +2434,6 @@ export type Provider = {
   options: {
     [key: string]: unknown
   }
-  /**
-   * Set when the connection is a router (RedRouter or 9Router) rather than the provider itself.
-   */
   router?: RouterConnection
   models: {
     [key: string]: Model
@@ -3335,6 +3336,31 @@ export type DesignError = {
   message: string
 }
 
+export type ForbiddenError = {
+  _tag: "ForbiddenError"
+  message: string
+}
+
+export type DesignHostReview = {
+  url: string
+  connected: number | "NaN" | "Infinity" | "-Infinity" | "Infinity" | "-Infinity" | "NaN"
+}
+
+export type DesignHostLaunch = {
+  url: string
+  outcome: "claimed" | "connected" | "pending"
+  token?: number | "NaN" | "Infinity" | "-Infinity" | "Infinity" | "-Infinity" | "NaN"
+}
+
+export type DesignHostPermission = {
+  permission: string
+  patterns: Array<string>
+  always?: Array<string>
+  metadata?: {
+    [key: string]: unknown
+  }
+}
+
 export type SessionMessagesResponse = {
   data: Array<SessionMessage>
   cursor: {
@@ -3509,11 +3535,6 @@ export type V2Event =
   | GlobalDisposed
 
 export type V2EventStream = string
-
-export type ForbiddenError = {
-  _tag: "ForbiddenError"
-  message: string
-}
 
 export type ProjectCopyError = {
   name: "ProjectCopyError"
@@ -4459,6 +4480,12 @@ export type ConfigV2ReferenceLocal = {
   hidden?: boolean
 }
 
+export type RouterConnection = {
+  kind: "red-router" | "9router"
+  instanceID?: string
+  version?: string
+}
+
 export type ConfigV2DesignSystem = {
   /**
    * Project-relative component and token roots of the design system. Declaring a root is a standing read grant for design builds: design_preview asks once for the declared roots and stylesheets, the tooling configuration and the project's node_modules, and later preview builds import from them without a per-file prompt. Symlinks escaping a declared root are still refused, and a package linked to a source tree outside node_modules (a workspace package) must be declared here; "." grants the whole project.
@@ -4512,6 +4539,14 @@ export type ConfigV2ExperimentalPolicy = {
   action: "provider.use"
   effect: PolicyEffect
   resource: string
+}
+
+export type RouterUpstream = {
+  id: string
+  slug?: string
+  name: string
+  category?: string
+  subscription?: boolean
 }
 
 export type MonitorOptions = {
@@ -6043,6 +6078,7 @@ export type DesignAuditCheck = {
   width: number | "NaN" | "Infinity" | "-Infinity" | "Infinity" | "-Infinity" | "NaN"
   variant?: string
   scenario?: string
+  screen?: string
 }
 
 export type DesignAuditCapture = {
@@ -6050,6 +6086,7 @@ export type DesignAuditCapture = {
   width: number | "NaN" | "Infinity" | "-Infinity" | "Infinity" | "-Infinity" | "NaN"
   variant?: string
   scenario?: string
+  screen?: string
   fullPage: boolean
 }
 
@@ -6086,7 +6123,7 @@ export type DesignImportAsset = {
 
 export type DesignRender = {
   revision: string
-  format: "html" | "gif" | "audit" | "compare" | "verify"
+  format: "html" | "gif" | "audit" | "compare" | "verify" | "pdf"
   round?: number
   implementation?: string
   candidate?: string
@@ -6174,6 +6211,14 @@ export type ModelCost = {
   }
 }
 
+export type RouterVariant = {
+  id: string
+  name?: string
+  level?: string
+  mode?: string
+  aliases?: Array<string>
+}
+
 export type ModelV2Info = {
   id: string
   providerID: string
@@ -6210,25 +6255,10 @@ export type ModelV2Info = {
     input?: number
     output: number
   }
-  /**
-   * The provider behind a model a router serves, so clients can say where it really comes from.
-   */
   upstream?: RouterUpstream
-  /**
-   * Earlier ids of the model at its router. A request for one resolves to this model.
-   */
   aliases?: Array<string>
-  /**
-   * Modes the router serves the model in besides its default, such as review.
-   */
   modes?: Array<string>
-  /**
-   * Reasoning levels and modes the router serves under this model rather than as separate models.
-   */
   routerVariants?: Array<RouterVariant>
-  /**
-   * The router in between when another router serves the model, e.g. a remote RedRouter.
-   */
   via?: string
 }
 
@@ -6258,9 +6288,6 @@ export type ProviderV2Info = {
   disabled?: boolean
   api: ProviderApi
   request: ProviderRequest
-  /**
-   * Set when the connection is a router (RedRouter or 9Router) rather than the provider itself.
-   */
   router?: RouterConnection
 }
 
@@ -11312,12 +11339,49 @@ export type ProviderDiscoverResponses = {
           forced_tool_choice?: boolean
           tools?: boolean
           search?: boolean
+          modes?: Array<string>
           modalities?: {
             input?: Array<string>
             output?: Array<string>
           }
         }
+        parameters_basis?: "lead" | "strictest"
         members?: Array<string>
+        member_parameters?: Array<{
+          id: string
+          parameters?: {
+            context_length?: number
+            max_completion_tokens?: number
+            reasoning?: boolean
+            thinking_levels?: Array<string>
+            thinking_can_disable?: boolean
+            forced_tool_choice?: boolean
+            tools?: boolean
+            search?: boolean
+            modes?: Array<string>
+            modalities?: {
+              input?: Array<string>
+              output?: Array<string>
+            }
+          }
+        }>
+        provider?: {
+          id: string
+          slug?: string
+          prefix?: string
+          name?: string
+          category?: string
+          subscription?: boolean
+        }
+        aliases?: Array<string>
+        variants?: Array<{
+          id: string
+          name?: string
+          level?: string
+          mode?: string
+          aliases?: Array<string>
+        }>
+        via?: string
       }
     }>
     router?: RouterDetection
@@ -11404,12 +11468,49 @@ export type ProviderOpenaiCompatibleConnectResponses = {
           forced_tool_choice?: boolean
           tools?: boolean
           search?: boolean
+          modes?: Array<string>
           modalities?: {
             input?: Array<string>
             output?: Array<string>
           }
         }
+        parameters_basis?: "lead" | "strictest"
         members?: Array<string>
+        member_parameters?: Array<{
+          id: string
+          parameters?: {
+            context_length?: number
+            max_completion_tokens?: number
+            reasoning?: boolean
+            thinking_levels?: Array<string>
+            thinking_can_disable?: boolean
+            forced_tool_choice?: boolean
+            tools?: boolean
+            search?: boolean
+            modes?: Array<string>
+            modalities?: {
+              input?: Array<string>
+              output?: Array<string>
+            }
+          }
+        }>
+        provider?: {
+          id: string
+          slug?: string
+          prefix?: string
+          name?: string
+          category?: string
+          subscription?: boolean
+        }
+        aliases?: Array<string>
+        variants?: Array<{
+          id: string
+          name?: string
+          level?: string
+          mode?: string
+          aliases?: Array<string>
+        }>
+        via?: string
       }
     }>
     /**
@@ -11487,12 +11588,49 @@ export type ProviderNineRouterConnectResponses = {
           forced_tool_choice?: boolean
           tools?: boolean
           search?: boolean
+          modes?: Array<string>
           modalities?: {
             input?: Array<string>
             output?: Array<string>
           }
         }
+        parameters_basis?: "lead" | "strictest"
         members?: Array<string>
+        member_parameters?: Array<{
+          id: string
+          parameters?: {
+            context_length?: number
+            max_completion_tokens?: number
+            reasoning?: boolean
+            thinking_levels?: Array<string>
+            thinking_can_disable?: boolean
+            forced_tool_choice?: boolean
+            tools?: boolean
+            search?: boolean
+            modes?: Array<string>
+            modalities?: {
+              input?: Array<string>
+              output?: Array<string>
+            }
+          }
+        }>
+        provider?: {
+          id: string
+          slug?: string
+          prefix?: string
+          name?: string
+          category?: string
+          subscription?: boolean
+        }
+        aliases?: Array<string>
+        variants?: Array<{
+          id: string
+          name?: string
+          level?: string
+          mode?: string
+          aliases?: Array<string>
+        }>
+        via?: string
       }
     }>
     router?: RouterDetection
@@ -11558,12 +11696,49 @@ export type ProviderRedRouterConnectResponses = {
           forced_tool_choice?: boolean
           tools?: boolean
           search?: boolean
+          modes?: Array<string>
           modalities?: {
             input?: Array<string>
             output?: Array<string>
           }
         }
+        parameters_basis?: "lead" | "strictest"
         members?: Array<string>
+        member_parameters?: Array<{
+          id: string
+          parameters?: {
+            context_length?: number
+            max_completion_tokens?: number
+            reasoning?: boolean
+            thinking_levels?: Array<string>
+            thinking_can_disable?: boolean
+            forced_tool_choice?: boolean
+            tools?: boolean
+            search?: boolean
+            modes?: Array<string>
+            modalities?: {
+              input?: Array<string>
+              output?: Array<string>
+            }
+          }
+        }>
+        provider?: {
+          id: string
+          slug?: string
+          prefix?: string
+          name?: string
+          category?: string
+          subscription?: boolean
+        }
+        aliases?: Array<string>
+        variants?: Array<{
+          id: string
+          name?: string
+          level?: string
+          mode?: string
+          aliases?: Array<string>
+        }>
+        via?: string
       }
     }>
     router?: RouterDetection
@@ -16148,6 +16323,50 @@ export type ServerDesignDesignPreviewResponses = {
 export type ServerDesignDesignPreviewResponse =
   ServerDesignDesignPreviewResponses[keyof ServerDesignDesignPreviewResponses]
 
+export type ServerDesignDesignPresentData = {
+  body?: never
+  path: {
+    sessionID: string
+    designID: string
+  }
+  query?: {
+    view?: "audience" | "presenter"
+    revision?: string
+  }
+  url: "/api/session/{sessionID}/design/{designID}/present"
+}
+
+export type ServerDesignDesignPresentErrors = {
+  /**
+   * InvalidRequestError
+   */
+  400: InvalidRequestError
+  /**
+   * UnauthorizedError
+   */
+  401: UnauthorizedError
+  /**
+   * SessionNotFoundError
+   */
+  404: SessionNotFoundError
+  /**
+   * DesignError
+   */
+  409: DesignError
+}
+
+export type ServerDesignDesignPresentError = ServerDesignDesignPresentErrors[keyof ServerDesignDesignPresentErrors]
+
+export type ServerDesignDesignPresentResponses = {
+  /**
+   * Success
+   */
+  200: Blob | File
+}
+
+export type ServerDesignDesignPresentResponse =
+  ServerDesignDesignPresentResponses[keyof ServerDesignDesignPresentResponses]
+
 export type ServerDesignDesignRestoreData = {
   body: {
     revision: string
@@ -16690,6 +16909,382 @@ export type ServerDesignDesignAssetFileResponses = {
 
 export type ServerDesignDesignAssetFileResponse =
   ServerDesignDesignAssetFileResponses[keyof ServerDesignDesignAssetFileResponses]
+
+export type DesignHostDesignHostListData = {
+  body?: never
+  path?: never
+  query: {
+    directory: string
+  }
+  url: "/api/design/list"
+}
+
+export type DesignHostDesignHostListErrors = {
+  /**
+   * InvalidRequestError
+   */
+  400: InvalidRequestError
+  /**
+   * UnauthorizedError
+   */
+  401: UnauthorizedError
+  /**
+   * ForbiddenError
+   */
+  403: ForbiddenError
+}
+
+export type DesignHostDesignHostListError = DesignHostDesignHostListErrors[keyof DesignHostDesignHostListErrors]
+
+export type DesignHostDesignHostListResponses = {
+  /**
+   * Success
+   */
+  200: Array<{
+    sessionID: string
+    title: string
+    updated: number | "NaN" | "Infinity" | "-Infinity" | "Infinity" | "-Infinity" | "NaN"
+    designs: Array<{
+      id: string
+      name: string
+      revision: string
+      approvedRevision: string
+      ended: boolean
+    }>
+  }>
+}
+
+export type DesignHostDesignHostListResponse =
+  DesignHostDesignHostListResponses[keyof DesignHostDesignHostListResponses]
+
+export type DesignHostDesignHostOpenData = {
+  body?: never
+  path: {
+    sessionID: string
+  }
+  query?: never
+  url: "/api/design/session/{sessionID}/open"
+}
+
+export type DesignHostDesignHostOpenErrors = {
+  /**
+   * InvalidRequestError
+   */
+  400: InvalidRequestError
+  /**
+   * UnauthorizedError
+   */
+  401: UnauthorizedError
+  /**
+   * ForbiddenError
+   */
+  403: ForbiddenError
+  /**
+   * SessionNotFoundError
+   */
+  404: SessionNotFoundError
+  /**
+   * DesignError
+   */
+  409: DesignError
+}
+
+export type DesignHostDesignHostOpenError = DesignHostDesignHostOpenErrors[keyof DesignHostDesignHostOpenErrors]
+
+export type DesignHostDesignHostOpenResponses = {
+  /**
+   * DesignHostReview
+   */
+  200: DesignHostReview
+}
+
+export type DesignHostDesignHostOpenResponse =
+  DesignHostDesignHostOpenResponses[keyof DesignHostDesignHostOpenResponses]
+
+export type DesignHostDesignHostLaunchData = {
+  body: {
+    explicit?: boolean
+  }
+  path: {
+    sessionID: string
+  }
+  query?: never
+  url: "/api/design/session/{sessionID}/launch"
+}
+
+export type DesignHostDesignHostLaunchErrors = {
+  /**
+   * InvalidRequestError
+   */
+  400: InvalidRequestError
+  /**
+   * UnauthorizedError
+   */
+  401: UnauthorizedError
+  /**
+   * ForbiddenError
+   */
+  403: ForbiddenError
+  /**
+   * SessionNotFoundError
+   */
+  404: SessionNotFoundError
+  /**
+   * DesignError
+   */
+  409: DesignError
+}
+
+export type DesignHostDesignHostLaunchError = DesignHostDesignHostLaunchErrors[keyof DesignHostDesignHostLaunchErrors]
+
+export type DesignHostDesignHostLaunchResponses = {
+  /**
+   * DesignHostLaunch
+   */
+  200: DesignHostLaunch
+}
+
+export type DesignHostDesignHostLaunchResponse =
+  DesignHostDesignHostLaunchResponses[keyof DesignHostDesignHostLaunchResponses]
+
+export type DesignHostDesignHostReleaseData = {
+  body: {
+    token: number | "NaN" | "Infinity" | "-Infinity" | "Infinity" | "-Infinity" | "NaN"
+  }
+  path: {
+    sessionID: string
+  }
+  query?: never
+  url: "/api/design/session/{sessionID}/launch/release"
+}
+
+export type DesignHostDesignHostReleaseErrors = {
+  /**
+   * InvalidRequestError
+   */
+  400: InvalidRequestError
+  /**
+   * UnauthorizedError
+   */
+  401: UnauthorizedError
+  /**
+   * ForbiddenError
+   */
+  403: ForbiddenError
+  /**
+   * SessionNotFoundError
+   */
+  404: SessionNotFoundError
+  /**
+   * DesignError
+   */
+  409: DesignError
+}
+
+export type DesignHostDesignHostReleaseError =
+  DesignHostDesignHostReleaseErrors[keyof DesignHostDesignHostReleaseErrors]
+
+export type DesignHostDesignHostReleaseResponses = {
+  /**
+   * <No Content>
+   */
+  204: void
+}
+
+export type DesignHostDesignHostReleaseResponse =
+  DesignHostDesignHostReleaseResponses[keyof DesignHostDesignHostReleaseResponses]
+
+export type DesignHostDesignHostFeedData = {
+  body?: never
+  path: {
+    sessionID: string
+  }
+  query?: {
+    after?: string
+  }
+  url: "/api/design/session/{sessionID}/feed"
+}
+
+export type DesignHostDesignHostFeedErrors = {
+  /**
+   * InvalidRequestError
+   */
+  400: InvalidRequestError
+  /**
+   * UnauthorizedError
+   */
+  401: UnauthorizedError
+  /**
+   * ForbiddenError
+   */
+  403: ForbiddenError
+  /**
+   * SessionNotFoundError
+   */
+  404: SessionNotFoundError
+  /**
+   * DesignError
+   */
+  409: DesignError
+}
+
+export type DesignHostDesignHostFeedError = DesignHostDesignHostFeedErrors[keyof DesignHostDesignHostFeedErrors]
+
+export type DesignHostDesignHostFeedResponses = {
+  /**
+   * Success
+   */
+  200: {
+    id: string
+    event: string
+    data: DesignFeedEventStream
+  }
+}
+
+export type DesignHostDesignHostFeedResponse =
+  DesignHostDesignHostFeedResponses[keyof DesignHostDesignHostFeedResponses]
+
+export type DesignHostDesignHostFeedbackData = {
+  body: DesignFeedback
+  path: {
+    sessionID: string
+    designID: string
+  }
+  query?: never
+  url: "/api/design/session/{sessionID}/{designID}/feedback"
+}
+
+export type DesignHostDesignHostFeedbackErrors = {
+  /**
+   * InvalidRequestError
+   */
+  400: InvalidRequestError
+  /**
+   * UnauthorizedError
+   */
+  401: UnauthorizedError
+  /**
+   * ForbiddenError
+   */
+  403: ForbiddenError
+  /**
+   * SessionNotFoundError
+   */
+  404: SessionNotFoundError
+  /**
+   * DesignError
+   */
+  409: DesignError
+}
+
+export type DesignHostDesignHostFeedbackError =
+  DesignHostDesignHostFeedbackErrors[keyof DesignHostDesignHostFeedbackErrors]
+
+export type DesignHostDesignHostFeedbackResponses = {
+  /**
+   * Design.Receipt
+   */
+  200: DesignReceipt
+}
+
+export type DesignHostDesignHostFeedbackResponse =
+  DesignHostDesignHostFeedbackResponses[keyof DesignHostDesignHostFeedbackResponses]
+
+export type DesignHostDesignHostApproveData = {
+  body: DesignApprove
+  path: {
+    sessionID: string
+    designID: string
+  }
+  query?: never
+  url: "/api/design/session/{sessionID}/{designID}/approve"
+}
+
+export type DesignHostDesignHostApproveErrors = {
+  /**
+   * InvalidRequestError
+   */
+  400: InvalidRequestError
+  /**
+   * UnauthorizedError
+   */
+  401: UnauthorizedError
+  /**
+   * ForbiddenError
+   */
+  403: ForbiddenError
+  /**
+   * SessionNotFoundError
+   */
+  404: SessionNotFoundError
+  /**
+   * DesignError
+   */
+  409: DesignError
+}
+
+export type DesignHostDesignHostApproveError =
+  DesignHostDesignHostApproveErrors[keyof DesignHostDesignHostApproveErrors]
+
+export type DesignHostDesignHostApproveResponses = {
+  /**
+   * Success
+   */
+  200: {
+    plan: string
+    revision: string
+  }
+}
+
+export type DesignHostDesignHostApproveResponse =
+  DesignHostDesignHostApproveResponses[keyof DesignHostDesignHostApproveResponses]
+
+export type DesignHostDesignHostPermissionData = {
+  body: DesignHostPermission
+  path: {
+    sessionID: string
+  }
+  query?: never
+  url: "/api/design/session/{sessionID}/permission"
+}
+
+export type DesignHostDesignHostPermissionErrors = {
+  /**
+   * InvalidRequestError
+   */
+  400: InvalidRequestError
+  /**
+   * UnauthorizedError
+   */
+  401: UnauthorizedError
+  /**
+   * ForbiddenError
+   */
+  403: ForbiddenError
+  /**
+   * SessionNotFoundError
+   */
+  404: SessionNotFoundError
+  /**
+   * DesignError
+   */
+  409: DesignError
+}
+
+export type DesignHostDesignHostPermissionError =
+  DesignHostDesignHostPermissionErrors[keyof DesignHostDesignHostPermissionErrors]
+
+export type DesignHostDesignHostPermissionResponses = {
+  /**
+   * Success
+   */
+  200: {
+    granted: boolean
+  }
+}
+
+export type DesignHostDesignHostPermissionResponse =
+  DesignHostDesignHostPermissionResponses[keyof DesignHostDesignHostPermissionResponses]
 
 export type V2SessionMessagesData = {
   body?: never
@@ -18667,7 +19262,6 @@ export type IntelligenceHistoryData = {
       | "session_progress"
       | "subagent_result"
       | "design_target"
-    | "design_target"
     subjectID?: string
     candidateID?: string
     decision?: "accepted" | "needs_revision" | "inconclusive" | "unavailable"
