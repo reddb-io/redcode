@@ -30,11 +30,18 @@ import { Provider } from "@reddb-io/redcode-schema/provider"
 const driveless = (entries: ReadonlyArray<string> | undefined) => entries?.map((entry) => entry.replace(/^[a-z]:/, ""))
 
 const it = testEffect(
-  AppNodeBuilder.build(LayerNode.group([Database.node, SessionTodo.node, SessionTaskFacts.node, Intelligence.node])),
+  AppNodeBuilder.build(
+    LayerNode.group([Database.node, SessionTodo.node, SessionTodoStore.node, SessionTaskFacts.node, Intelligence.node]),
+  ),
 )
 const sessionID = SessionSchema.ID.make("ses_task_evidence")
 const setup = Effect.gen(function* () {
-  const review = { calls: [] as string[], rejectCompletion: false }
+  const review = {
+    calls: [] as string[],
+    rejectCompletion: false,
+    /** Runs once inside the next S1 evaluation, before its verdict returns: facts landing meanwhile. */
+    during: undefined as (() => Promise<unknown>) | undefined,
+  }
   const intelligence = yield* Intelligence.Service
   const previous = yield* intelligence.read()
   const server = yield* Effect.acquireRelease(
@@ -44,6 +51,9 @@ const setup = Effect.gen(function* () {
         fetch: async (request) => {
           const body = await request.json()
           review.calls.push(JSON.stringify(body))
+          const during = review.during
+          review.during = undefined
+          await during?.()
           return Response.json({
             model: "jev",
             answers: Object.fromEntries(
@@ -1772,5 +1782,232 @@ it.effect("blocks after two refused completions when requests are legacy and res
     const blocked = yield* todos.update({ sessionID, todos: [completion] })
     expect(blocked[0]).toMatchObject({ status: "blocked" })
     expect(blocked[0].reason).toContain("completion evidence could not be verified after 2 attempts")
+  }),
+)
+
+it.effect("a parallel tool result landing during S1 evaluation does not fail the update", () =>
+  Effect.gen(function* () {
+    const review = yield* setup
+    yield* request()
+    yield* result("bash", "passing", 30)
+    const todos = yield* SessionTodo.Service
+    const created = (yield* todos.update({ sessionID, todos: [task] }))[0]!
+    const context = yield* Effect.context<Database.Service>()
+    review.during = () =>
+      Effect.runPromiseWith(context)(
+        result("read", "parallel-read", 40, 0, "completed", { filePath: "/project/identity/voice.md" }),
+      )
+    const done = yield* todos.update({
+      sessionID,
+      todos: [
+        {
+          id: created.id,
+          status: "completed",
+          evidence: { callID: "passing", explanation: "Two duplicate requests produced one charge" },
+        },
+      ],
+    })
+    expect(review.during).toBeUndefined()
+    expect(done[0]).toMatchObject({ status: "completed", evidence: { callID: "passing", tool: "bash" } })
+  }),
+)
+
+it.effect("an overlapping edit settling during S1 evaluation refuses the completion it predates", () =>
+  Effect.gen(function* () {
+    const review = yield* setup
+    yield* request("Explore the current Leads table in the code")
+    yield* result("read", "read-leads", 30, 0, "completed", { filePath: "/project/src/leads/table.tsx" })
+    const todos = yield* SessionTodo.Service
+    const context = yield* Effect.context<Database.Service>()
+    review.during = () =>
+      Effect.runPromiseWith(context)(
+        result("edit", "edit-leads", 40, 0, "completed", { filePath: "/project/src/leads/table.tsx" }),
+      )
+    const refused = yield* todos
+      .update({
+        sessionID,
+        todos: [
+          {
+            content: "Explore the Leads table",
+            requirement: "Explore the current Leads table",
+            status: "completed",
+            priority: "high",
+            evidence: { callID: "read-leads", explanation: "table.tsx renders the columns and row actions" },
+          },
+        ],
+      })
+      .pipe(Effect.flip)
+    expect(review.during).toBeUndefined()
+    expect(refused.message).toContain(SessionTodoStore.REFUSED)
+    expect(refused.message).toContain("predates a later edit edit-leads (edit, /project/src/leads/table.tsx")
+    expect(refused.message).not.toContain("changed during evaluation")
+    expect(yield* todos.get(sessionID)).toEqual([])
+  }),
+)
+
+it.effect("another task update committed during S1 evaluation is still a conflict", () =>
+  Effect.gen(function* () {
+    const review = yield* setup
+    yield* request()
+    const todos = yield* SessionTodo.Service
+    const store = yield* SessionTodoStore.Service
+    const created = (yield* todos.update({ sessionID, todos: [task] }))[0]!
+    const context = yield* Effect.context<Database.Service>()
+    // The store directly, as a writer that does not share the SessionTodo lock.
+    review.during = () =>
+      Effect.runPromiseWith(context)(
+        store.update({ sessionID, todos: [{ id: created.id, priority: "low" }] }).pipe(Effect.orDie),
+      )
+    const conflict = yield* todos
+      .update({ sessionID, todos: [{ id: created.id, criterion: "One charge per duplicate request" }] })
+      .pipe(Effect.flip)
+    expect(review.during).toBeUndefined()
+    expect(conflict.message).toContain("Tasks changed during evaluation; retry with current revisions")
+    expect((yield* todos.get(sessionID))[0]).toMatchObject({ priority: "low", criterion: task.criterion })
+  }),
+)
+
+it.effect("single reasoning completes without an S1 evaluation to race", () =>
+  Effect.gen(function* () {
+    const review = yield* setup
+    const intelligence = yield* Intelligence.Service
+    yield* intelligence.save({ settings: { ...(yield* intelligence.read()), reasoning: "single" } })
+    yield* request()
+    yield* result("bash", "passing", 30)
+    const todos = yield* SessionTodo.Service
+    const created = (yield* todos.update({ sessionID, todos: [task] }))[0]!
+    review.calls.length = 0
+    const done = yield* todos.update({
+      sessionID,
+      todos: [{ id: created.id, status: "completed", evidence: { callID: "passing", explanation: "One charge" } }],
+    })
+    expect(review.calls).toEqual([])
+    expect(done[0]).toMatchObject({ status: "completed", evidence: { callID: "passing" } })
+  }),
+)
+
+const brandbook = {
+  content: "Read the brandbook",
+  requirement: "Leia o brandbook e confirme os tokens",
+  status: "completed" as const,
+  priority: "high" as const,
+}
+
+it.effect("resolves an invented callID from the files its explanation names", () =>
+  Effect.gen(function* () {
+    yield* setup
+    yield* request("Leia o brandbook e confirme os tokens")
+    yield* result("read", "read-voice", 20, 0, "completed", { filePath: "/project/identity/voice.md" })
+    yield* result("read", "read-house", 21, 0, "completed", { filePath: "/project/identity/house.md" })
+    yield* result("read", "read-tokens", 22, 0, "completed", { filePath: "/project/tokens/tokens.css" })
+    yield* result("read", "read-other", 23, 0, "completed", { filePath: "/project/other/voice.md.bak" })
+    const todos = yield* SessionTodo.Service
+    const incoming = [
+      {
+        ...brandbook,
+        evidence: {
+          callID: "call_00_qDYwMzUeZJDkP1d1FRlU0675",
+          explanation:
+            "Li o texto do brandbook (identity/voice.md e house.md); confirmei os tokens em ./tokens/tokens.css.",
+        },
+      },
+    ]
+    const done = yield* todos.update({ sessionID, todos: incoming })
+    expect(done[0]).toMatchObject({ status: "completed", evidence: { callID: "read-tokens", tool: "read" } })
+    expect(done[0]!.evidence!.explanation).toContain(SessionTodoStore.RESOLVED)
+    for (const callID of ["read-voice", "read-house", "read-tokens"])
+      expect(done[0]!.evidence!.explanation).toContain(callID)
+    expect(done[0]!.evidence!.explanation).not.toContain("read-other")
+    expect(SessionTodo.notes(incoming, done).join("\n")).toContain("resolved from the explanation")
+  }),
+)
+
+it.effect("refuses an invented callID whose explanation names nothing the session did", () =>
+  Effect.gen(function* () {
+    yield* setup
+    yield* request("Leia o brandbook e confirme os tokens")
+    yield* result("read", "read-voice", 20, 0, "completed", { filePath: "/project/identity/voice.md" })
+    const todos = yield* SessionTodo.Service
+    const refused = yield* todos
+      .update({
+        sessionID,
+        todos: [
+          {
+            ...brandbook,
+            evidence: { callID: "call_invented", explanation: "Li o brandbook inteiro em guide/intro.md" },
+          },
+        ],
+      })
+      .pipe(Effect.flip)
+    expect(refused.message).toContain('Evidence callID "call_invented" does not match any tool result')
+  }),
+)
+
+it.effect("refuses an invented callID whose named file was edited after it was read", () =>
+  Effect.gen(function* () {
+    yield* setup
+    yield* request("Leia o brandbook e confirme os tokens")
+    yield* result("read", "read-voice", 20, 0, "completed", { filePath: "/project/identity/voice.md" })
+    yield* result("edit", "edit-voice", 30, 0, "completed", { filePath: "/project/identity/voice.md" })
+    const todos = yield* SessionTodo.Service
+    const refused = yield* todos
+      .update({
+        sessionID,
+        todos: [
+          { ...brandbook, evidence: { callID: "call_invented", explanation: "Li identity/voice.md por completo" } },
+        ],
+      })
+      .pipe(Effect.flip)
+    expect(refused.message).toContain(SessionTodoStore.REFUSED)
+    expect(refused.message).toContain("predates a later edit edit-voice (edit, /project/identity/voice.md")
+  }),
+)
+
+it.effect("resolves an invented callID from the design id its explanation names", () =>
+  Effect.gen(function* () {
+    yield* setup
+    yield* request("Crie o design da tela de retries")
+    const design = "design_1d2e8ddb-5eea-4cba-ac51-b05b6a0f39c5"
+    yield* message(
+      {
+        id: "msg_design_document",
+        type: "assistant",
+        agent: "design",
+        model: { id: "fixture", providerID: "fixture" },
+        time: { created: 20 },
+        content: [
+          {
+            type: "tool",
+            id: "create-design",
+            name: "design_document",
+            time: { created: 19, completed: 20 },
+            state: {
+              status: "completed",
+              input: { action: "create", name: "Retries" },
+              structured: {},
+              content: [{ type: "text", text: `Design ${design}: Retries` }],
+            },
+          },
+        ],
+      },
+      20,
+    )
+    const todos = yield* SessionTodo.Service
+    const done = yield* todos.update({
+      sessionID,
+      todos: [
+        {
+          content: "Create the retries design",
+          requirement: "Crie o design da tela de retries",
+          status: "completed",
+          priority: "high",
+          evidence: { callID: "call_01_invented", explanation: `Criei o documento ${design} para a tela.` },
+        },
+      ],
+    })
+    expect(done[0]).toMatchObject({
+      status: "completed",
+      evidence: { callID: "create-design", tool: "design_document" },
+    })
   }),
 )
