@@ -1667,6 +1667,13 @@ export function Session() {
   )
 }
 
+/** The checkpoint line of a stop-loss notice (`SessionStopLoss.notice`), when the metadata carries one. */
+export function stopLossLine(metadata: Record<string, unknown> | undefined) {
+  const notice = metadata?.stopLoss
+  if (typeof notice !== "object" || notice === null || !("line" in notice)) return undefined
+  return typeof notice.line === "string" ? notice.line : undefined
+}
+
 /** The compaction divider says how much it freed, when the server recorded it. */
 export function compactionTitle(part: { tokens?: { before: number; after: number } } | undefined) {
   if (!part?.tokens) return " Compaction "
@@ -1716,11 +1723,25 @@ function UserMessage(props: {
       part.type === "text" && part.metadata?.designFeedback ? [part.metadata.designFeedback] : [],
     ),
   )
+  // A stop-loss steer is synthetic, so its text stays hidden; its one-line checkpoint is shown.
+  const steers = createMemo(() =>
+    props.parts.flatMap((part) => {
+      const line = part.type === "text" && part.synthetic ? stopLossLine(part.metadata) : undefined
+      return line ? [line] : []
+    }),
+  )
 
   return (
     <>
       <For each={approvals()}>{(value) => <DesignApprovalNotice value={value} />}</For>
       <For each={reviews()}>{(value) => <DesignFeedbackNotice value={value} />}</For>
+      <For each={steers()}>
+        {(line) => (
+          <box marginTop={1} paddingLeft={3} flexShrink={0}>
+            <text fg={theme.warning}>{line} · hint sent</text>
+          </box>
+        )}
+      </For>
       <Show when={text()}>
         <box
           id={props.message.id}

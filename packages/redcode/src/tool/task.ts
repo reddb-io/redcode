@@ -20,6 +20,7 @@ import { Permission } from "../permission"
 import { Intelligence } from "@reddb-io/redcode-core/intelligence"
 import { SessionPlan } from "@reddb-io/redcode-core/session/plan"
 import { SubagentReview } from "@reddb-io/redcode-core/session/subagent-review"
+import { SessionStopLoss } from "@reddb-io/redcode-core/session/stop-loss"
 import { SessionSpend } from "@/session/spend"
 import type { PermissionV1 } from "@reddb-io/redcode-core/v1/permission"
 
@@ -587,6 +588,10 @@ export const TaskTool = Tool.define(
             : resolved
         const from = MessageID.ascending()
         const first = yield* send(from, parts)
+        // The stop-loss ended the child and its last message says why; a review or a repair round
+        // would only send it back into what it was stopped for.
+        if (first.parts.some(SessionStopLoss.isNotice))
+          return first.parts.findLast((item) => item.type === "text")?.text ?? ""
         const child = yield* sessions.get(nextSession.id)
         const supervision = SubagentReview.fromMetadata(child.metadata)
         if (!SubagentReview.supervised(supervision))

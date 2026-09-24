@@ -110,7 +110,7 @@ const refused = (text: string) => text.startsWith(REFUSAL)
 const REFUSAL = LOOP_GUARD_REFUSAL
 
 /** Arguments compared by value: the same keys in another order are the same call. */
-const stable = (value: unknown): string =>
+export const stable = (value: unknown): string =>
   JSON.stringify(value ?? null, (_key, item: unknown) =>
     item && typeof item === "object" && !Array.isArray(item)
       ? Object.fromEntries(Object.entries(item).toSorted(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0)))

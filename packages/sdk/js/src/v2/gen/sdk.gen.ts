@@ -9520,7 +9520,7 @@ export class Intelligence extends HeyApiClient {
         | "task_completion"
         | "goal_completion"
         | "subagent_brief"
-        | "subagent_progress"
+        | "session_progress"
         | "subagent_result"
         | "design_target"
       subjectID?: string

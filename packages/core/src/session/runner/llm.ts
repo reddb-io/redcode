@@ -36,6 +36,7 @@ import { Verbose } from "../../observability/verbose"
 import { HumanWait } from "../human-wait"
 import { PromptCacheDiagnostics } from "../prompt-cache-diagnostics"
 import { LoopGuard } from "../loop-guard"
+import { SessionStopLoss } from "../stop-loss"
 import { ReasoningAuto } from "../reasoning-auto"
 import { SessionRetry } from "../retry"
 import { SessionStall } from "../stall"
@@ -579,6 +580,76 @@ const layer = Layer.effect(
       })
       yield* Effect.logWarning("model is repeating itself", { sessionID, tool, streak: decision.streak })
       return decision
+    })
+
+    // The stop-loss at a boundary the model continues from, as in legacy (see SessionStopLoss): the
+    // turn's checkpoint memory after it, and whether it ended the turn.
+    const checkStopLoss = Effect.fn("SessionRunner.checkStopLoss")(function* (
+      sessionID: SessionSchema.ID,
+      step: number,
+      memory: SessionStopLoss.Memory,
+    ) {
+      const experimental = Config.latest(yield* config.entries(), "experimental")
+      const bounds = SessionStopLoss.limits(experimental?.stop_loss, LoopGuard.limits(experimental?.loop_guard))
+      if (!bounds) return { memory, ended: false }
+      const turn = SessionStopLoss.projected(yield* getContext(sessionID).pipe(Effect.orElseSucceed(() => [])))
+      const trajectory = SessionStopLoss.observe(turn.steps, {
+        now: yield* Clock.currentTimeMillis,
+        started: turn.started,
+      })
+      const found = SessionStopLoss.signals(trajectory, bounds)
+      const subagent = (yield* getSession(sessionID)).parentID !== undefined
+      const settings = yield* intelligence.read().pipe(Effect.orElseSucceed(() => undefined))
+      const asked = !!settings && Intelligence.mode(settings) === "dual"
+      const current = SessionStopLoss.current(memory, step)
+      const checkpoint = SessionStopLoss.due({ step, memory: current, limits: bounds, signals: found, interval: asked })
+      if (checkpoint.type === "none") return { memory: current, ended: false }
+      const evaluation = asked
+        ? yield* evaluateIntelligence(
+            SessionStopLoss.evaluation({
+              sessionID,
+              request: turn.request,
+              steps: turn.steps,
+              trajectory,
+              checkpoint,
+              subagent,
+              directory: location.directory,
+              limits: bounds,
+            }),
+            promptAttempts.get(sessionID),
+          ).pipe(Effect.orElseSucceed(() => undefined))
+        : undefined
+      const verdict = SessionStopLoss.decide({
+        trajectory,
+        limits: bounds,
+        memory: current,
+        asked,
+        evaluation,
+        subagent,
+      })
+      const next = SessionStopLoss.remember(current, step, verdict)
+      if (verdict.action === "continue") return { memory: next, ended: false }
+      yield* recordGuard({
+        sessionID,
+        guard: "stop_loss",
+        action: verdict.action === "steer" ? "correct" : "stop",
+        subject: checkpoint.type === "signal" ? checkpoint.signals.join(",") : "interval",
+        detail: SessionStopLoss.detail(trajectory, verdict),
+      })
+      // A steer is the next thing the model reads; a question or a stop is the turn's last word, for
+      // the user and for the model when the user answers.
+      yield* events.publish(SessionEvent.Synthetic, {
+        sessionID,
+        messageID: SessionMessage.ID.create(),
+        timestamp: yield* DateTime.now,
+        text:
+          verdict.action === "steer"
+            ? SessionStopLoss.steer(trajectory, verdict)
+            : SessionStopLoss.final(trajectory, verdict, { subagent }),
+      })
+      if (verdict.action === "steer") return { memory: next, ended: false }
+      yield* pauseGoal(sessionID, `${SessionStopLoss.PAUSE}${SessionStopLoss.reason(trajectory, verdict)}`)
+      return { memory: next, ended: true }
     })
 
     // The legacy tool deadline: a wedged tool becomes an ordinary tool failure, minus human wait time.
@@ -1693,6 +1764,7 @@ const layer = Layer.effect(
           let step = 1
           let todoContinuations = 0
           let responseRepairs = 0
+          let stopLoss = SessionStopLoss.FRESH
           while (needsContinuation) {
             const result = yield* runTurn(input.sessionID, promotion, step)
             if (result.goalStopped) return
@@ -1705,6 +1777,12 @@ const layer = Layer.effect(
             needsContinuation = result.needsContinuation
             step = result.step + 1
             promotion = "steer"
+            if (needsContinuation) {
+              const checked = yield* checkStopLoss(input.sessionID, result.step, stopLoss)
+              stopLoss = checked.memory
+              // Ended on a question or a stop: nothing below may continue the turn, a queued prompt still runs.
+              if (checked.ended) break
+            }
             if (!needsContinuation) needsContinuation = yield* SessionInput.hasPending(db, input.sessionID, "steer")
             if (!needsContinuation && result.todoEligible) {
               const reminder = SessionTodo.reminder(yield* SessionTodo.reviewOrKeep(todos, input.sessionID))

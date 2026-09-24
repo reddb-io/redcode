@@ -2595,6 +2595,61 @@ describe("SessionRunnerLLM", () => {
     }),
   )
 
+  it.effect("the stop-loss ends a turn that keeps checking something only the user can change", () =>
+    Effect.gen(function* () {
+      yield* setup
+      const agents = yield* AgentV2.Service
+      yield* agents.transform((editor) =>
+        editor.update(AgentV2.ID.make("build"), (agent) => {
+          agent.steps = 20
+        }),
+      )
+      const session = yield* SessionV2.Service
+      yield* session.prompt({
+        sessionID,
+        prompt: Prompt.make({ text: "Install the debug build on my phone" }),
+        resume: false,
+      })
+      const choice = (value: string) => ({
+        type: "choice" as const,
+        choice: value,
+        confidence: 0.9,
+        probabilities: { [value]: 0.9, continue: 0.1 },
+      })
+      intelligenceEvaluate = (input) =>
+        input.operation === "session_progress"
+          ? Effect.succeed(evaluated(input, "accepted", { state: choice("waiting"), decision: choice("ask_user") }))
+          : acceptRequiredGate(input)
+
+      requests.length = 0
+      executions.length = 0
+      // The same answer to a probe whose arguments drift, as the legacy loop sees it too.
+      responses = Array.from({ length: 8 }, (_, index) => [
+        LLMEvent.stepStart({ index: 0 }),
+        LLMEvent.toolCall({
+          id: `call-probe-${index}`,
+          name: "echo",
+          input: { text: "List of devices attached", variant: `${index}` },
+        }),
+        LLMEvent.stepFinish({ index: 0, reason: "tool-calls" }),
+        LLMEvent.finish({ reason: "tool-calls" }),
+      ])
+
+      yield* session.resume(sessionID)
+
+      expect(requests).toHaveLength(3)
+      expect(intelligenceInputs.filter((input) => input.operation === "session_progress")).toHaveLength(1)
+      expect((yield* session.context(sessionID)).at(-1)).toMatchObject({
+        type: "synthetic",
+        text: expect.stringContaining("waiting on you"),
+      })
+      const database = yield* Database.Service
+      expect(yield* database.db.select().from(SessionGuardTripTable).all().pipe(Effect.orDie)).toContainEqual(
+        expect.objectContaining({ session_id: sessionID, guard: "stop_loss", action: "stop" }),
+      )
+    }),
+  )
+
   it.effect("continues a natural stop while persisted todos are unfinished", () =>
     Effect.gen(function* () {
       yield* setup
@@ -5280,8 +5335,9 @@ describe("SessionRunnerLLM legacy runtime parity", () => {
   )
 
   it.effect("lets identical tool calls run when experimental.loop_guard is false", () =>
+    // The stop-loss would end this turn at its own threshold; this is about the loop guard alone.
     withExperimental(
-      { loop_guard: false },
+      { loop_guard: false, stop_loss: false },
       Effect.gen(function* () {
         yield* setup
         yield* clearGuardTrips
@@ -5315,7 +5371,9 @@ describe("SessionRunnerLLM legacy runtime parity", () => {
           const session = yield* SessionV2.Service
           executions.length = 0
           yield* session.prompt({ sessionID, prompt: Prompt.make({ text: "Poll for the device" }), resume: false })
-          responses = Array.from({ length: 6 }, (_, index) => toolCallTurn(`call-yolo-${index}`, "echo", { text: "same" }))
+          responses = Array.from({ length: 6 }, (_, index) =>
+            toolCallTurn(`call-yolo-${index}`, "echo", { text: "same" }),
+          )
 
           yield* session.resume(sessionID)
 
@@ -5337,28 +5395,32 @@ describe("SessionRunnerLLM legacy runtime parity", () => {
   )
 
   it.effect("still honors an explicit doom_loop: allow rule with RepositoryGuard.yolo off", () =>
-    Effect.gen(function* () {
-      yield* setup
-      yield* clearGuardTrips
-      const agents = yield* AgentV2.Service
-      yield* agents.transform((editor) =>
-        editor.update(AgentV2.ID.make("build"), (agent) => {
-          agent.permissions = [...(agent.permissions ?? []), { action: "doom_loop", resource: "*", effect: "allow" }]
-        }),
-      )
-      const session = yield* SessionV2.Service
-      executions.length = 0
-      yield* session.prompt({ sessionID, prompt: Prompt.make({ text: "Repeat freely" }), resume: false })
-      responses = [
-        ...Array.from({ length: 6 }, (_, index) => toolCallTurn(`call-allow-${index}`, "echo", { text: "same" })),
-        [],
-      ]
+    // The stop-loss would end this turn at its own threshold; this is about the loop guard alone.
+    withExperimental(
+      { stop_loss: false },
+      Effect.gen(function* () {
+        yield* setup
+        yield* clearGuardTrips
+        const agents = yield* AgentV2.Service
+        yield* agents.transform((editor) =>
+          editor.update(AgentV2.ID.make("build"), (agent) => {
+            agent.permissions = [...(agent.permissions ?? []), { action: "doom_loop", resource: "*", effect: "allow" }]
+          }),
+        )
+        const session = yield* SessionV2.Service
+        executions.length = 0
+        yield* session.prompt({ sessionID, prompt: Prompt.make({ text: "Repeat freely" }), resume: false })
+        responses = [
+          ...Array.from({ length: 6 }, (_, index) => toolCallTurn(`call-allow-${index}`, "echo", { text: "same" })),
+          [],
+        ]
 
-      yield* session.resume(sessionID)
+        yield* session.resume(sessionID)
 
-      expect(executions).toEqual(Array.from({ length: 6 }, () => "same"))
-      expect(yield* guardTrips).toEqual([])
-    }),
+        expect(executions).toEqual(Array.from({ length: 6 }, () => "same"))
+        expect(yield* guardTrips).toEqual([])
+      }),
+    ),
   )
 
   it.effect("fails a wedged tool at the configured experimental.tool_timeout", () =>
