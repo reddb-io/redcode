@@ -36,6 +36,7 @@ export const dict = {
   "settings.intelligence.operation.session_progress": "Progresso da sessão",
   "settings.intelligence.operation.subagent_result": "Resultado do subagente",
   "settings.intelligence.operation.design_target": "Alvo do design",
+  "settings.intelligence.operation.design_system_detect": "Sistema de design",
   "desktop.menu.app": "Redcode",
   "desktop.menu.file": "Arquivo",
   "desktop.menu.edit": "Editar",

@@ -685,6 +685,7 @@ export const make = (
                         session_progress: "Using System One to check session progress",
                         subagent_result: "Using System One to review the subagent result",
                         design_target: "Using System One to classify the design target",
+                        design_system_detect: "Using System One to identify the project's design system",
                       }[input.operation],
                       {
                         sessionID: input.sessionID,
