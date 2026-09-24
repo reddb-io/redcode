@@ -92,7 +92,7 @@ export const remove = Effect.fn("ProviderRemove.remove")(function* (
     Effect.gen(function* () {
       if (result.removed.config || config.labels.length || config.hides)
         yield* deps.config.updateGlobal(config.patch as Parameters<Config.Interface["updateGlobal"]>[0], {
-          remove: [["provider", providerID], ...config.remove],
+          remove: [...(result.removed.config ? [["provider", providerID]] : []), ...config.remove],
         })
       yield* deps.auth.remove(providerID).pipe(Effect.orDie)
       if (reasoning.next)
