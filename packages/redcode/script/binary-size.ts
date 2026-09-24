@@ -52,7 +52,7 @@ if (import.meta.main) {
     .json()
     .catch(() => ({}))
   const target = args.values.target
-  if (args.update) {
+  if (args.values.update) {
     await Bun.write(
       args.values.baseline,
       `${JSON.stringify({ ...recorded, [target]: { bytes: size, allowance: recorded[target]?.allowance ?? 2 * 1024 * 1024 } }, null, 2)}\n`,

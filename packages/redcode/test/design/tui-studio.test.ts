@@ -832,7 +832,7 @@ it.instance("the TUI model receives and executes the new Design toolset", () =>
       )
     })
     const studio = yield* DesignStudio.Service
-    const imported = yield* studio.use(DesignLegacy.importPrototype({ path: legacy }, context))
+    const imported = yield* studio.use(DesignLegacy.importPrototype({ path: legacy }, context, undefined))
     expect(imported.root).not.toBe(legacy)
     expect(imported.decisions.map((item) => item.text)).toContain("Use a compact header")
     expect(imported.questions).toContain("Which empty state?")
