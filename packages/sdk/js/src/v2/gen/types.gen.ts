@@ -11797,6 +11797,10 @@ export type ProviderRemoveResponses = {
        * Learned model input limits that are forgotten.
        */
       learnedLimits: number
+      /**
+       * True when the provider is also added to disabled_providers because envVariables would load it again. Connecting it again shows it.
+       */
+      hidden: boolean
     }
     /**
      * The global configuration file.
@@ -11807,7 +11811,7 @@ export type ProviderRemoveResponses = {
      */
     referencingFiles: Array<string>
     /**
-     * Environment variables set on the Redcode server that make the provider available again.
+     * Environment variables set on the Redcode server that would load the provider again, which is why it is hidden.
      */
     envVariables: Array<string>
   }

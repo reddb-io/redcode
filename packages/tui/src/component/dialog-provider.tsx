@@ -441,7 +441,7 @@ function createProviderRemoval() {
         `${name} removed.`,
         moved && after ? `Now using ${local?.model.parsed().model} (${local?.model.parsed().provider}).` : "",
         moved && !after ? "No model is available; pick one with /models." : "",
-        result.data.envVariables.length ? `Still available through ${result.data.envVariables.join(", ")}.` : "",
+        result.data.removed.hidden ? `Hidden, since ${result.data.envVariables.join(", ")} would load it again.` : "",
       ]
         .filter(Boolean)
         .join(" "),
@@ -459,9 +459,11 @@ function removalSummary(name: string, removal: ProviderRemoveResponses[200]) {
   return [
     removed.length ? `Removes: ${removed.join(", ")}.` : "",
     removal.removed.references.length ? `In use by: ${removal.removed.references.join(", ")}.` : "",
-    !removed.length && !removal.removed.references.length ? `Nothing saved for ${name} needs removing.` : "",
-    removal.envVariables.length
-      ? `${name} stays available through ${removal.envVariables.join(", ")}; unset ${removal.envVariables.length === 1 ? "it" : "them"} to remove it completely.`
+    !removed.length && !removal.removed.references.length && !removal.removed.hidden
+      ? `Nothing saved for ${name} needs removing.`
+      : "",
+    removal.removed.hidden
+      ? `${name} is hidden, since ${removal.envVariables.join(", ")} would load it again. Connecting it again shows it.`
       : "",
     removal.referencingFiles.length
       ? `Still mentioned in: ${removal.referencingFiles.join(", ")}. These files are not edited.`

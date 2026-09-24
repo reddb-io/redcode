@@ -27,8 +27,7 @@ export function providerRemoveSummary(
   return {
     removed: removed.length > 0 ? removed : [t("provider.remove.nothing")],
     notes: [
-      result.envVariables.length > 0 &&
-        t("provider.remove.env", { provider: name, variables: result.envVariables.join(", ") }),
+      result.removed.hidden && t("provider.remove.env", { provider: name, variables: result.envVariables.join(", ") }),
       result.referencingFiles.length > 0 && t("provider.remove.files", { files: result.referencingFiles.join(", ") }),
     ].filter((line): line is string => typeof line === "string"),
   }

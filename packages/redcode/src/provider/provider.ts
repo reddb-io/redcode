@@ -14,7 +14,7 @@ import { type LanguageModelV3 } from "@ai-sdk/provider"
 import { ModelsDev } from "@reddb-io/redcode-core/models-dev"
 import { ModelLimit } from "@reddb-io/redcode-core/model-limit"
 import { EventV2 } from "@reddb-io/redcode-core/event"
-import { Auth } from "../auth"
+import { Auth, OAUTH_DUMMY_KEY } from "../auth"
 import { Env } from "../env"
 import { InstallationVersion } from "@reddb-io/redcode-core/installation/version"
 import { iife } from "@/util/iife"
@@ -37,6 +37,7 @@ import { ModelV2 } from "@reddb-io/redcode-core/model"
 import { ModelStatus } from "./model-status"
 import { RuntimeFlags } from "@/effect/runtime-flags"
 import { ProviderError } from "./error"
+import { ProviderAmbient } from "./ambient"
 
 const OPENAI_HEADER_TIMEOUT_DEFAULT = 300_000
 // Applies to every provider, not just the one that happened to set its own. `false` opts out.
@@ -202,18 +203,18 @@ function custom(dep: CustomDep): Record<string, CustomLoader> {
           },
         },
       }),
+    // OpenCode Zen is opt-in: it loads with a key (environment, saved or configured) or a
+    // configuration entry. A bare entry opts into the free models through the public key.
     opencode: Effect.fnUntraced(function* (input: Info) {
       const env = yield* dep.env()
-      const hasKey = iife(() => {
-        if (input.env.some((item) => env[item])) return true
-        return false
-      })
-      const ok =
-        hasKey ||
+      const configured = (yield* dep.config()).provider?.["opencode"]
+      const keyed =
+        input.env.some((item) => env[item]) ||
         Boolean(yield* dep.auth(input.id)) ||
-        Boolean((yield* dep.config()).provider?.["opencode"]?.options?.apiKey)
+        Boolean(configured?.options?.apiKey)
+      if (!keyed && !configured) return { autoload: false }
 
-      if (!ok) {
+      if (!keyed) {
         for (const [key, value] of Object.entries(input.models)) {
           if (value.cost.input === 0) continue
           delete input.models[key]
@@ -222,7 +223,7 @@ function custom(dep: CustomDep): Record<string, CustomLoader> {
 
       return {
         autoload: Object.keys(input.models).length > 0,
-        options: ok ? {} : { apiKey: "public" },
+        options: keyed ? {} : { apiKey: "public" },
       }
     }),
     openai: () =>
@@ -318,20 +319,25 @@ function custom(dep: CustomDep): Record<string, CustomLoader> {
         },
       }
     }),
+    // Bedrock is opt-in: AWS credentials in the environment or ~/.aws alone do not load it. It loads
+    // once connected (a saved Bedrock API key, or an imported AWS profile or environment setup saved
+    // with the placeholder key) or configured in redcode.json.
     "amazon-bedrock": Effect.fnUntraced(function* () {
       const providerConfig = (yield* dep.config()).provider?.["amazon-bedrock"]
       const auth = yield* dep.auth("amazon-bedrock")
+      if (!auth && !providerConfig) return { autoload: false }
       const env = yield* dep.env()
+      const saved = auth?.type === "api" ? auth : undefined
+      // An imported AWS setup has no key of its own; it resolves through the AWS credential chain.
+      const chain = saved?.key === OAUTH_DUMMY_KEY
 
-      // Region precedence: 1) config file, 2) env var, 3) default
-      const configRegion = providerConfig?.options?.region
-      const envRegion = env["AWS_REGION"]
-      const defaultRegion = configRegion ?? envRegion ?? "us-east-1"
+      // Region precedence: 1) config file, 2) saved setup, 3) env var, 4) default
+      const defaultRegion =
+        providerConfig?.options?.region ?? (saved?.metadata?.region || undefined) ?? env["AWS_REGION"] ?? "us-east-1"
 
-      // Profile: config file takes precedence over env var
-      const configProfile = providerConfig?.options?.profile
-      const envProfile = env["AWS_PROFILE"]
-      const profile = configProfile ?? envProfile
+      // Profile precedence: 1) config file, 2) imported profile, 3) env var
+      const imported = chain ? saved?.metadata?.profile || undefined : undefined
+      const profile = providerConfig?.options?.profile ?? imported ?? env["AWS_PROFILE"]
 
       const awsAccessKeyId = env["AWS_ACCESS_KEY_ID"]
       const configApiKey = providerConfig?.options?.apiKey
@@ -339,11 +345,12 @@ function custom(dep: CustomDep): Record<string, CustomLoader> {
       // TODO: Using process.env directly because Env.set only updates a process.env shallow copy,
       // until the scope of the Env API is clarified (test only or runtime?)
       const awsBearerToken = iife(() => {
+        if (chain) return undefined
         const envToken = process.env.AWS_BEARER_TOKEN_BEDROCK
         if (envToken) return envToken
-        if (auth?.type === "api") {
-          process.env.AWS_BEARER_TOKEN_BEDROCK = auth.key
-          return auth.key
+        if (saved) {
+          process.env.AWS_BEARER_TOKEN_BEDROCK = saved.key
+          return saved.key
         }
         return undefined
       })
@@ -355,6 +362,7 @@ function custom(dep: CustomDep): Record<string, CustomLoader> {
       )
 
       if (
+        !chain &&
         !profile &&
         !awsAccessKeyId &&
         !awsBearerToken &&
@@ -1769,6 +1777,7 @@ const layer = Layer.effect(
         for (const [id, provider] of Object.entries(database)) {
           const providerID = ProviderV2.ID.make(id)
           if (disabled.has(providerID)) continue
+          if (ProviderAmbient.optIn(providerID)) continue
           const apiKey = provider.env.map((item) => envs[item]).find(Boolean)
           if (!apiKey) continue
           mergeProvider(providerID, {
@@ -1785,7 +1794,8 @@ const layer = Layer.effect(
           if (provider.type === "api") {
             mergeProvider(providerID, {
               source: "api",
-              key: provider.key,
+              // A placeholder key marks a connection without a key of its own (an imported AWS setup).
+              key: provider.key === OAUTH_DUMMY_KEY ? undefined : provider.key,
             })
           }
         }

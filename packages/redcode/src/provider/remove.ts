@@ -18,13 +18,18 @@ export const Result = Schema.Struct({
         "Settings that pointed at the provider and are cleared, for example default model, agent build or S2 principal.",
     }),
     learnedLimits: Schema.Finite.annotate({ description: "Learned model input limits that are forgotten." }),
+    hidden: Schema.Boolean.annotate({
+      description:
+        "True when the provider is also added to disabled_providers because envVariables would load it again. Connecting it again shows it.",
+    }),
   }),
   configPath: Schema.String.annotate({ description: "The global configuration file." }),
   referencingFiles: Schema.Array(Schema.String).annotate({
     description: "Project configuration files that still mention the provider. They are not edited.",
   }),
   envVariables: Schema.Array(Schema.String).annotate({
-    description: "Environment variables set on the Redcode server that make the provider available again.",
+    description:
+      "Environment variables set on the Redcode server that would load the provider again, which is why it is hidden.",
   }),
 })
 export type Result = typeof Result.Type
@@ -33,9 +38,10 @@ export type Result = typeof Result.Type
  * Removes a provider completely: its saved credential, its entry in the global configuration,
  * every global setting that names it (default, small, agent and command models, the enabled and
  * disabled provider lists), System Two models and a System One evaluator that use it, cached
- * router detections and catalog versions, and learned model limits. With `dryRun` nothing is
- * changed and the result lists what would be. Project configuration files are never edited;
- * the caller lists them.
+ * router detections and catalog versions, and learned model limits. A provider the environment
+ * would load again is hidden through `disabled_providers` so the removal sticks; connecting it
+ * again takes it off that list. With `dryRun` nothing is changed and the result lists what would
+ * be. Project configuration files are never edited; the caller lists them.
  */
 export const remove = Effect.fn("ProviderRemove.remove")(function* (
   deps: {
@@ -44,7 +50,7 @@ export const remove = Effect.fn("ProviderRemove.remove")(function* (
     credentials: Pick<Credential.Interface, "get">
     intelligence: Pick<Intelligence.Interface, "read" | "save">
     limits: Pick<ModelLimit.Interface, "list" | "forget">
-    /** Environment variables the provider's catalog entry reads its key from. */
+    /** Environment variables that load the provider with nothing saved for it (`Provider.ambientEnv`). */
     envNames?: ReadonlyArray<string>
     env?: (name: string) => string | undefined
   },
@@ -58,7 +64,8 @@ export const remove = Effect.fn("ProviderRemove.remove")(function* (
   const baseURL =
     stringValue(record(entry.options).baseURL) ??
     (saved?.type === "api" ? stringValue(saved.metadata?.baseURL) : undefined)
-  const config = configChanges(file.data, providerID)
+  const envVariables = (deps.envNames ?? []).filter((name) => env(name))
+  const config = configChanges(file.data, providerID, envVariables.length > 0)
   const settings = yield* deps.intelligence.read().pipe(Effect.orElseSucceed(() => undefined))
   const reasoning = settings
     ? yield* intelligenceChanges(settings, providerID, baseURL, deps.credentials)
@@ -73,18 +80,19 @@ export const remove = Effect.fn("ProviderRemove.remove")(function* (
       config: Object.hasOwn(record(file.data.provider), providerID),
       references: [...config.labels, ...reasoning.labels],
       learnedLimits: limits.length,
+      hidden: envVariables.length > 0,
     },
     configPath: file.path,
     referencingFiles: [] as string[],
-    envVariables: (deps.envNames ?? []).filter((name) => env(name)),
+    envVariables,
   } satisfies Result
   if (options.dryRun) return result
 
   yield* Effect.uninterruptible(
     Effect.gen(function* () {
-      if (result.removed.config || config.labels.length)
+      if (result.removed.config || config.labels.length || config.hides)
         yield* deps.config.updateGlobal(config.patch as Parameters<Config.Interface["updateGlobal"]>[0], {
-          remove: [["provider", providerID], ...config.remove],
+          remove: [...(result.removed.config ? [["provider", providerID]] : []), ...config.remove],
         })
       yield* deps.auth.remove(providerID).pipe(Effect.orDie)
       if (reasoning.next)
@@ -129,10 +137,11 @@ export function enabling(data: Record<string, unknown>, providerID: string) {
 /**
  * The global settings that name a provider, and the change that clears them: default and small
  * models, agent and command models are removed (they fall back to their defaults), and the id
- * leaves the enabled and disabled provider lists. A list left empty is removed, since an empty
- * `enabled_providers` would hide every provider.
+ * leaves the enabled provider list. A list left empty is removed, since an empty
+ * `enabled_providers` would hide every provider. With `hide` the id joins `disabled_providers`
+ * (`hides` says whether that is a change); otherwise it leaves that list too.
  */
-export function configChanges(data: Record<string, unknown>, providerID: string) {
+export function configChanges(data: Record<string, unknown>, providerID: string, hide = false) {
   const uses = (value: unknown) => typeof value === "string" && value.startsWith(`${providerID}/`)
   const labels: string[] = []
   const remove: string[][] = []
@@ -158,12 +167,16 @@ export function configChanges(data: Record<string, unknown>, providerID: string)
   ] as const) {
     const list = data[key]
     if (!Array.isArray(list) || !list.includes(providerID)) continue
+    if (hide && key === "disabled_providers") continue
     labels.push(label)
     const next = list.filter((item) => item !== providerID)
     if (next.length) patch[key] = next
     else remove.push([key])
   }
-  return { labels, patch, remove }
+  const disabled = Array.isArray(data.disabled_providers) ? data.disabled_providers : []
+  const hides = hide && !disabled.includes(providerID)
+  if (hides) patch.disabled_providers = [...disabled, providerID]
+  return { labels, patch, remove, hides }
 }
 
 type Settings = Effect.Success<ReturnType<Intelligence.Interface["read"]>>

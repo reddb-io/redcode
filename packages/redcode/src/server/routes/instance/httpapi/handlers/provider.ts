@@ -21,6 +21,7 @@ import { NineRouter } from "@/provider/nine-router"
 import { RedRouter } from "@/provider/red-router"
 import { OpenAICompatible } from "@/provider/openai-compatible"
 import { ProviderRemove } from "@/provider/remove"
+import { ProviderAmbient } from "@/provider/ambient"
 import { Credential } from "@reddb-io/redcode-core/credential"
 import { Intelligence } from "@reddb-io/redcode-core/intelligence"
 import { ModelLimit } from "@reddb-io/redcode-core/model-limit"
@@ -74,11 +75,12 @@ export const providerHandlers = HttpApiBuilder.group(InstanceHttpApi, "provider"
     const list = Effect.fn("ProviderHttpApi.list")(function* () {
       const config = yield* cfg.get()
       const all = yield* ModelsDev.Service.use((s) => s.get())
-      const disabled = new Set(config.disabled_providers ?? [])
+      // Disabled providers stay listed so they can be connected again (which takes them off
+      // disabled_providers); they are never connected while disabled.
       const enabled = config.enabled_providers ? new Set(config.enabled_providers) : undefined
       const filtered: Record<string, (typeof all)[string]> = {}
       for (const [key, value] of Object.entries(all)) {
-        if ((enabled ? enabled.has(key) : true) && !disabled.has(key)) filtered[key] = value
+        if (enabled ? enabled.has(key) : true) filtered[key] = value
       }
       const connected = yield* provider.list()
       const credentials = yield* authStore.all().pipe(Effect.orDie)
@@ -219,7 +221,7 @@ export const providerHandlers = HttpApiBuilder.group(InstanceHttpApi, "provider"
           credentials,
           intelligence,
           limits,
-          envNames: models[ctx.params.providerID]?.env,
+          envNames: ProviderAmbient.env(ctx.params.providerID, models[ctx.params.providerID]?.env),
         },
         ctx.params.providerID,
         { dryRun: ctx.query.dryRun },
