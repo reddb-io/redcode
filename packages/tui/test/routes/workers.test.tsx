@@ -229,7 +229,7 @@ test("workers render in the session sidebar and preserve the session column", as
 
     // Workers → Subagents → Context → Workers.
     app.dispatch("session.sidebar.tab.cycle")
-    screen = await app.waitFor("No subagents in this session")
+    screen = await app.waitFor("No subagents")
     expect(screen).not.toContain("▶ h9977")
     app.dispatch("session.sidebar.tab.cycle")
     screen = await app.frame()
