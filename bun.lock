@@ -418,6 +418,26 @@
         "@typescript/native-preview": "catalog:",
       },
     },
+    "packages/design-app": {
+      "name": "@reddb-io/redcode-design-app",
+      "version": "0.0.0",
+      "bin": {
+        "redcode-design": "./src/index.ts",
+      },
+      "dependencies": {
+        "@reddb-io/redcode-core": "workspace:*",
+        "@reddb-io/redcode-design": "workspace:*",
+        "@reddb-io/redcode-schema": "workspace:*",
+        "@reddb-io/redcode-server": "workspace:*",
+        "drizzle-orm": "catalog:",
+        "effect": "catalog:",
+      },
+      "devDependencies": {
+        "@tsconfig/bun": "catalog:",
+        "@types/bun": "catalog:",
+        "@typescript/native-preview": "catalog:",
+      },
+    },
     "packages/desktop": {
       "name": "@reddb-io/redcode-desktop",
       "version": "1.18.18",
@@ -2509,6 +2529,8 @@
     "@reddb-io/redcode-core": ["@reddb-io/redcode-core@workspace:packages/core"],
 
     "@reddb-io/redcode-design": ["@reddb-io/redcode-design@workspace:packages/design"],
+
+    "@reddb-io/redcode-design-app": ["@reddb-io/redcode-design-app@workspace:packages/design-app"],
 
     "@reddb-io/redcode-desktop": ["@reddb-io/redcode-desktop@workspace:packages/desktop"],
 

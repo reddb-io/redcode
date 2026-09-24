@@ -46,6 +46,14 @@ export class Info extends Schema.Class<Info>("ConfigV2.Design")({
       description:
         "Viewport widths in CSS pixels that web designs are reviewed and audited at, narrowest first. Default: [390, 768, 1440]. App designs use phone presets and presentations 1920×1080 instead.",
     }),
+  app: Schema.Struct({
+    mode: Schema.Literals(["process", "inline"]).pipe(Schema.optional).annotate({
+      description:
+        'Where Design builds, renders, exports and serves its review: "process" runs them in the design app (redcode-design), a separate process redcode starts on demand and that exits after ten idle minutes; "inline" runs them inside redcode. Default: "inline". "process" needs REDCODE_DESIGN_BIN or a source checkout, and falls back to "inline" without one.',
+    }),
+  })
+    .pipe(Schema.optional)
+    .annotate({ description: "The design app process that serves Design's review surface and runs its heavy work" }),
 }) {}
 
 /** The `design` section in effect: what the layered configuration documents say together. */
