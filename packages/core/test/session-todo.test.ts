@@ -413,7 +413,7 @@ describe("SessionTodo", () => {
 })
 
 it.live(
-  "single reasoning completes tasks through structural checks while dual never treats unavailable S1 as approval",
+  "single reasoning completes tasks through structural checks while dual applies an unavailable S1 review as unverified",
   () =>
     Effect.gen(function* () {
       const fixture = yield* setup
@@ -445,15 +445,81 @@ it.live(
       ).toBe("Failure")
       expect(calls.count).toBe(0)
       yield* intelligence.save({ settings })
-      const refused = yield* todos
-        .update({
-          sessionID,
-          todos: [{ content: "Verify the release", criterion: "Release verified", priority: "high" }],
-        })
-        .pipe(Effect.flip)
-      expect(refused.message).toContain("unavailable")
+      // An unavailable evaluator never freezes the task list: the update applies, labelled unverified.
+      const written = yield* todos.write({
+        sessionID,
+        todos: [{ content: "Verify the release", criterion: "Release verified", priority: "high" }],
+      })
+      expect(written.todos.map((item) => item.content)).toContain("Verify the release")
+      expect((yield* todos.get(sessionID)).map((item) => item.content)).toContain("Verify the release")
+      expect(written.notes).toHaveLength(1)
+      expect(written.notes[0]).toStartWith("Unverified: S1 review unavailable")
+      expect(written.notes[0]).toContain("System One HTTP 503")
+      expect(written.notes[0]).not.toContain("Previous state preserved")
       expect(calls.count).toBeGreaterThan(0)
     }),
+)
+
+it.live("an inconclusive S1 review applies the task update with an annotation", () =>
+  Effect.gen(function* () {
+    const fixture = yield* setup
+    const todos = yield* SessionTodo.Service
+    fixture.server.reload({
+      fetch: async (request) => {
+        const body = await request.json()
+        return Response.json({
+          model: "jev",
+          answers: Object.fromEntries(
+            Object.entries(body.questions).map(([id, question]) => [
+              id,
+              (question as { type: string }).type === "score"
+                ? {
+                    type: "score",
+                    score: 2,
+                    confidence: 1,
+                    probabilities: { "2": 1 },
+                    legend: { "0": "Unclear", "1": "Ambiguous", "2": "Clear", "3": "Precise" },
+                  }
+                : { type: "noul", noul: id === "coverage" ? 0.3 : 0.01 },
+            ]),
+          ),
+          usage: { input_tokens: 10, output_tokens: 0 },
+        })
+      },
+    })
+    const written = yield* todos.write({
+      sessionID,
+      todos: [{ content: "Check the device", criterion: "adb lists the device", priority: "high" }],
+    })
+    expect(written.todos.map((item) => item.content)).toEqual(["Check the device"])
+    expect(written.notes).toHaveLength(1)
+    expect(written.notes[0]).toStartWith("Unverified: S1 review inconclusive")
+    expect(written.notes[0]).toContain("coverage")
+  }),
+)
+
+it.live("S1 refusal messages do not repeat that the previous state was preserved", () =>
+  Effect.sync(() => {
+    const record = {
+      id: "eval_1",
+      fingerprint: "f",
+      sessionID: "ses_1",
+      operation: "task_quality" as const,
+      policy: Intelligence.POLICY,
+      created: 0,
+      duration: 0,
+      model: "jev",
+      decision: "unavailable" as const,
+      answers: {},
+      issues: ["Evaluation unavailable: System One HTTP 503. Previous state preserved."],
+      usage: { input_tokens: 0, output_tokens: 0 },
+    }
+    const message = Effect.runSync(Intelligence.requireAccepted(record).pipe(Effect.flip)).message
+    expect(message).toBe(
+      "Semantic evaluation unavailable (eval_1): System One HTTP 503. Previous state preserved. Retry, or check S1 in /setup.",
+    )
+    expect(message.match(/Previous state preserved/g)).toHaveLength(1)
+  }),
 )
 
 it.live("disabled intelligence and a configuration change during evaluation preserve task revisions", () =>

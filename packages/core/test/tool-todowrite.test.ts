@@ -150,6 +150,31 @@ describe("TodoWriteTool", () => {
     }),
   )
 
+  it.live("applies the update labelled unverified when System One is unavailable", () =>
+    Effect.gen(function* () {
+      yield* setup
+      const intelligence = yield* Intelligence.Service
+      const settings = yield* intelligence.read()
+      const down = yield* Effect.acquireRelease(
+        Effect.sync(() => Bun.serve({ port: 0, fetch: () => new Response("unavailable", { status: 503 }) })),
+        (server) => Effect.sync(() => server.stop(true)),
+      )
+      yield* intelligence.save({
+        settings: { ...settings, evaluator: { transport: "typesafe", model: "jev", baseURL: `${down.url}v1` } },
+      })
+      const registry = yield* ToolRegistry.Service
+      const service = yield* SessionTodo.Service
+      const result = yield* executeTool(
+        registry,
+        call([{ content: "Implement slice", status: "in_progress", priority: "high" }]),
+      )
+      expect(result.type).not.toBe("error")
+      expect(String(result.value)).toContain("Unverified: S1 review unavailable")
+      expect(String(result.value)).not.toContain("Previous state preserved")
+      expect((yield* service.get(sessionID)).map((item) => item.content)).toEqual(["Implement slice"])
+    }),
+  )
+
   it.effect("registers, approves the wildcard resource, persists todos, and returns typed output", () =>
     Effect.gen(function* () {
       yield* setup

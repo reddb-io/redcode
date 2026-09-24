@@ -3175,7 +3175,10 @@ function TodoWrite(props: ToolProps) {
   return (
     <Switch>
       <Match when={parseTodos(props.metadata.todos).length}>
-        <BlockTool title="# Todos" part={props.part}>
+        <BlockTool
+          title={props.metadata.unverified === true ? "# Todos · unverified by S1" : "# Todos"}
+          part={props.part}
+        >
           <box>
             <For each={todos()}>
               {(todo) => <TodoItem status={todo.status} content={todo.content} reason={todo.reason} />}

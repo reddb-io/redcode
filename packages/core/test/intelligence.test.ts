@@ -1414,6 +1414,91 @@ test("a connected RedRouter serving System One is offered with the provider key,
   }
 })
 
+test("a removed System One credential heals to the provider's current connection and persists", async () => {
+  await using dir = await tmpdir()
+  const keys: Array<string | null> = []
+  const server = Bun.serve({
+    hostname: "127.0.0.1",
+    port: 0,
+    fetch: (request) => {
+      keys.push(request.headers.get("authorization"))
+      return Response.json(response(0.02))
+    },
+  })
+  try {
+    const baseURL = `http://127.0.0.1:${server.port}/v1`
+    // Reconnecting RedRouter saved its key under a new id; the settings still name the old one.
+    const current = new Credential.Info({
+      id: Credential.ID.create(),
+      integrationID: Integration.ID.make("red-router"),
+      label: "Provider connection",
+      value: { type: "key", key: "router-key", metadata: { baseURL, router: "red-router" } },
+    })
+    const elsewhere = new Credential.Info({
+      id: Credential.ID.create(),
+      integrationID: Integration.ID.make("red-router"),
+      label: "Provider connection",
+      value: { type: "key", key: "other-key", metadata: { baseURL: "http://127.0.0.1:9/v1" } },
+    })
+    const evaluator = {
+      transport: "red-router" as const,
+      baseURL,
+      model: "openrouter/typesafe/jev-1.13",
+      credentialID: Credential.ID.make("cred_removed"),
+    }
+    await fs.writeFile(
+      path.join(dir.path, "intelligence.json"),
+      JSON.stringify({ enabled: true, reasoning: "dual", onboarding: "completed", evaluator }),
+    )
+    const serviceWith = (connections: Credential.Info[]) =>
+      Effect.runPromise(
+        Intelligence.make(
+          dir.path,
+          {
+            get: (id) => Effect.succeed(connections.find((item) => item.id === id)),
+            list: (id) => Effect.succeed(connections.filter((item) => item.integrationID === id)),
+            create: () => Effect.die("unused"),
+          },
+          fetch,
+        ),
+      )
+
+    // No connection at all: a distinct message that says what to do.
+    const missing = await Effect.runPromise(
+      (await serviceWith([])).request(evaluator, "systemone", { model: evaluator.model }).pipe(Effect.result),
+    )
+    expect(missing._tag).toBe("Failure")
+    if (missing._tag === "Failure")
+      expect(missing.failure.message).toBe("System One credential was removed; reconnect red-router in /setup")
+
+    // A connection saved for another address is never adopted.
+    const foreign = await Effect.runPromise(
+      (await serviceWith([elsewhere])).request(evaluator, "systemone", {}).pipe(Effect.result),
+    )
+    expect(foreign._tag).toBe("Failure")
+    if (foreign._tag === "Failure") expect(foreign.failure.message).toContain("System One credential was removed")
+    expect(keys).toEqual([])
+
+    const service = await serviceWith([current])
+    expect(await Effect.runPromise(service.request(evaluator, "systemone", { model: evaluator.model }))).toEqual(
+      response(0.02),
+    )
+    expect(keys).toEqual(["Bearer router-key"])
+    expect((await Effect.runPromise(service.read())).evaluator?.credentialID).toBe(current.id)
+
+    // An existing credential that belongs elsewhere is still refused, not healed.
+    const mismatched = await Effect.runPromise(
+      (await serviceWith([current, elsewhere]))
+        .request({ ...evaluator, credentialID: elsewhere.id }, "systemone", {})
+        .pipe(Effect.result),
+    )
+    expect(mismatched._tag).toBe("Failure")
+    if (mismatched._tag === "Failure") expect(mismatched.failure.message).toContain("does not belong")
+  } finally {
+    await server.stop(true)
+  }
+})
+
 test("no RedRouter is offered when the connected router does not answer as one", async () => {
   await using dir = await tmpdir()
   const server = Bun.serve({ hostname: "127.0.0.1", port: 0, fetch: () => new Response("not found", { status: 404 }) })

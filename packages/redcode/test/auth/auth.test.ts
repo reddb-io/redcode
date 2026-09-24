@@ -80,4 +80,18 @@ describe("Auth", () => {
       expect(yield* credentials.list(Integration.ID.make("anthropic"))).toEqual([])
     }),
   )
+
+  it.instance("re-saving a provider connection keeps its credential id", () =>
+    Effect.gen(function* () {
+      const auth = yield* Auth.Service
+      const credentials = yield* Credential.Service
+      const integrationID = Integration.ID.make("red-router")
+      yield* auth.set("red-router", { type: "api", key: "rr-old" })
+      const before = yield* credentials.list(integrationID)
+      yield* auth.set("red-router", { type: "api", key: "rr-new", metadata: { router: "red-router" } })
+      const after = yield* credentials.list(integrationID)
+      expect(after.map((credential) => credential.id)).toEqual(before.map((credential) => credential.id))
+      expect(after[0]?.value).toMatchObject({ type: "key", key: "rr-new", metadata: { router: "red-router" } })
+    }),
+  )
 })

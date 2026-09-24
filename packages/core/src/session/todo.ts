@@ -45,17 +45,21 @@ export function blocker(todos: ReadonlyArray<Info>) {
 export const limitReason =
   "Task continuation limit reached without completing the remaining work. Execution is paused; tasks retain their state. Send a new instruction to resume from the next actionable item."
 
+type UpdateInput = {
+  readonly sessionID: SessionSchema.ID
+  readonly todos: ReadonlyArray<Input>
+  readonly origin?: SessionTodo.Source
+  /** The assistant message issuing the update, so its still-running sibling tools do not count as later edits. */
+  readonly messageID?: string
+}
+
 export interface Interface {
-  readonly update: (
-    input: {
-      readonly sessionID: SessionSchema.ID
-      readonly todos: ReadonlyArray<Input>
-      readonly origin?: SessionTodo.Source
-      /** The assistant message issuing the update, so its still-running sibling tools do not count as later edits. */
-      readonly messageID?: string
-    },
+  readonly update: (input: UpdateInput, commit?: SessionTodoStore.Commit) => Effect.Effect<ReadonlyArray<Info>, Error>
+  /** An update that also returns the notes to report with it, such as an S1 review that could not verify it. */
+  readonly write: (
+    input: UpdateInput,
     commit?: SessionTodoStore.Commit,
-  ) => Effect.Effect<ReadonlyArray<Info>, Error>
+  ) => Effect.Effect<{ readonly todos: ReadonlyArray<Info>; readonly notes: ReadonlyArray<string> }, Error>
   readonly get: (sessionID: SessionSchema.ID) => Effect.Effect<ReadonlyArray<Info>>
   readonly review: (sessionID: SessionSchema.ID) => Effect.Effect<ReadonlyArray<Info>, Error>
   readonly block: (sessionID: SessionSchema.ID, reason: string) => Effect.Effect<ReadonlyArray<Info>, Error>
@@ -83,11 +87,13 @@ const layer = Layer.effect(
   Effect.gen(function* () {
     const store = yield* SessionTodoStore.Service
     const events = yield* EventV2.Service
-    const update: Interface["update"] = Effect.fn("SessionTodo.update")(function* (input, commit) {
-      const todos = yield* store.update(input, commit)
-      yield* events.publish(Event.Updated, { sessionID: input.sessionID, todos })
-      return todos
+    const write: Interface["write"] = Effect.fn("SessionTodo.write")(function* (input, commit) {
+      const written = yield* store.write(input, commit)
+      yield* events.publish(Event.Updated, { sessionID: input.sessionID, todos: written.todos })
+      return written
     }, store.withMutation)
+    const update: Interface["update"] = (input, commit) =>
+      write(input, commit).pipe(Effect.map((written) => written.todos))
     const get = store.get
     const block: Interface["block"] = Effect.fn("SessionTodo.block")(function* (sessionID, reason) {
       const todos = yield* store.block(sessionID, reason)
@@ -101,7 +107,7 @@ const layer = Layer.effect(
       if (JSON.stringify(before) !== JSON.stringify(todos)) yield* events.publish(Event.Updated, { sessionID, todos })
       return todos
     }, store.withMutation)
-    return Service.of({ update, get, block, review })
+    return Service.of({ update, write, get, block, review })
   }),
 )
 

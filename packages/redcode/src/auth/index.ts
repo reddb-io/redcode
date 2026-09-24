@@ -81,9 +81,17 @@ const layer = Layer.effect(
       const integrationID = Integration.ID.make(providerID)
       const current = yield* credentials.list(integrationID)
       if (existing && current.length) return
-      yield* Effect.forEach(current, (credential) => credentials.remove(credential.id), { discard: true })
       const value = credentialValue(info)
+      // Re-saving a connection (a new key, a router refresh adding metadata) keeps its credential id,
+      // so settings that name it, such as the System One evaluator, stay valid.
+      const kept = value ? current.at(-1) : undefined
+      yield* Effect.forEach(
+        current.filter((credential) => credential !== kept),
+        (credential) => credentials.remove(credential.id),
+        { discard: true },
+      )
       if (!value) return
+      if (kept) return yield* credentials.update(kept.id, { value, label: "Provider connection" })
       yield* credentials.create({ integrationID, value, label: "Provider connection" })
     })
 

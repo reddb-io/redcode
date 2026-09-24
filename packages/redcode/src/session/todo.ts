@@ -12,17 +12,24 @@ export type Input = SessionTodo.Input
 export const ModelInput = SessionTodo.ModelInput
 export const Event = SessionTodo.Event
 
+type UpdateInput = {
+  sessionID: SessionID
+  todos: ReadonlyArray<Input>
+  origin?: SessionTodo.Source
+  /** The assistant message issuing the update, so its still-running sibling tools do not count as later edits. */
+  messageID?: string
+}
+
 export interface Interface {
   readonly update: (
-    input: {
-      sessionID: SessionID
-      todos: ReadonlyArray<Input>
-      origin?: SessionTodo.Source
-      /** The assistant message issuing the update, so its still-running sibling tools do not count as later edits. */
-      messageID?: string
-    },
+    input: UpdateInput,
     commit?: SessionTodoStore.Commit,
   ) => Effect.Effect<ReadonlyArray<Info>, SessionTodo.Error>
+  /** An update that also returns the notes to report with it, such as an S1 review that could not verify it. */
+  readonly write: (
+    input: UpdateInput,
+    commit?: SessionTodoStore.Commit,
+  ) => Effect.Effect<{ readonly todos: ReadonlyArray<Info>; readonly notes: ReadonlyArray<string> }, SessionTodo.Error>
   readonly get: (sessionID: SessionID) => Effect.Effect<Info[]>
   readonly review: (sessionID: SessionID) => Effect.Effect<ReadonlyArray<Info>, SessionTodo.Error>
   readonly block: (sessionID: SessionID, reason: string) => Effect.Effect<ReadonlyArray<Info>, SessionTodo.Error>
@@ -35,11 +42,13 @@ const layer = Layer.effect(
   Effect.gen(function* () {
     const events = yield* EventV2Bridge.Service
     const store = yield* SessionTodoStore.Service
-    const update: Interface["update"] = Effect.fn("Todo.update")(function* (input, commit) {
-      const todos = yield* store.update(input, commit)
-      yield* events.publish(Event.Updated, { sessionID: input.sessionID, todos })
-      return todos
+    const write: Interface["write"] = Effect.fn("Todo.write")(function* (input, commit) {
+      const written = yield* store.write(input, commit)
+      yield* events.publish(Event.Updated, { sessionID: input.sessionID, todos: written.todos })
+      return written
     }, store.withMutation)
+    const update: Interface["update"] = (input, commit) =>
+      write(input, commit).pipe(Effect.map((written) => written.todos))
     const block: Interface["block"] = Effect.fn("Todo.block")(function* (sessionID, reason) {
       const todos = yield* store.block(sessionID, reason)
       yield* events.publish(Event.Updated, { sessionID, todos })
@@ -51,7 +60,7 @@ const layer = Layer.effect(
       if (JSON.stringify(before) !== JSON.stringify(todos)) yield* events.publish(Event.Updated, { sessionID, todos })
       return todos
     }, store.withMutation)
-    return Service.of({ update, get: store.get, block, review })
+    return Service.of({ update, write, get: store.get, block, review })
   }),
 )
 
