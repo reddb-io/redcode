@@ -1,5 +1,11 @@
 # opencode
 
+## 0.51.0
+
+### Minor Changes
+
+- 7286ed2: A stop-loss watches every turn for work that keeps spending without progress: steps that change no file, complete no task and bring back nothing new, the same result or error coming back, repeated task failures, and the tokens and time spent since the last progress. In dual reasoning System One checks the trajectory against the request on those signals and every 8 steps, and decides whether to continue, steer the model with a hint (at most two a turn), end the turn with a specific question for the user when the work waits on them, or stop with an account of what was spent. Single reasoning, read-only subagents and an unreachable System One fall back to mechanical rules labelled unverified: a hint on the first signal, a stop once it persists. It applies in yolo and auto modes too, and a turn with nothing moving for 15 steps always ends. Subagents share the same checks, and a stopped subagent hands its parent the reason. The session shows a one-line checkpoint such as `S1 · no progress for 9 steps (~40k tokens) · waiting on you`; checkpoints are recorded in the guard log and their System One tokens count toward the session's spend. Configure or disable it with `experimental.stop_loss`. The `subagent_progress` System One operation is now `session_progress`.
+
 ## 0.50.0
 
 ### Minor Changes
