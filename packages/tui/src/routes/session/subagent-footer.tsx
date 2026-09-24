@@ -7,12 +7,16 @@ import type { AssistantMessage } from "@reddb-io/redcode-sdk/v2"
 import { Locale } from "../../util/locale"
 import { useTerminalDimensions } from "@opentui/solid"
 import { useCommandShortcut, useOpencodeKeymap } from "../../keymap"
+import { SubagentView } from "@reddb-io/redcode-core/session/subagent-view"
+import { SubagentBrief } from "./subagent"
 
 export function SubagentFooter() {
   const route = useRouteData("session")
   const sync = useSync()
   const messages = createMemo(() => sync.data.message[route.sessionID] ?? [])
   const session = createMemo(() => sync.session.get(route.sessionID))
+  const brief = createMemo(() => SubagentView.brief(session()?.metadata))
+  const checkpoints = createMemo(() => SubagentView.checkpoints(session()?.metadata))
 
   const subagentInfo = createMemo(() => {
     const s = session()
@@ -126,6 +130,11 @@ export function SubagentFooter() {
             </box>
           </box>
         </box>
+        <Show when={brief() || checkpoints().length > 0}>
+          <box paddingTop={1} flexShrink={0}>
+            <SubagentBrief brief={brief()} checkpoints={checkpoints()} />
+          </box>
+        </Show>
       </box>
     </box>
   )

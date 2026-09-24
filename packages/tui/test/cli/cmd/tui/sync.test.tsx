@@ -63,6 +63,32 @@ describe("tui sync", () => {
     }
   })
 
+  test("a guard trip is kept once per event, live, for its session", async () => {
+    await using tmp = await tmpdir()
+    await Bun.write(`${tmp.path}/kv.json`, "{}")
+    const { app, emit, sync } = await mount(undefined, tmp.path)
+    const trip = (id: string, guard: string): GlobalEvent => ({
+      directory,
+      project: "proj_test",
+      payload: {
+        id,
+        type: "session.next.guard.tripped",
+        properties: { timestamp: 10, sessionID: "ses_guarded", guard, action: "stop", detail: `${guard} acted` },
+      },
+    })
+
+    try {
+      emit(trip("evt_loop", "loop"))
+      emit(trip("evt_loop", "loop"))
+      emit(trip("evt_stop_loss", "stop_loss"))
+      await wait(() => (sync.data.guard_trip["ses_guarded"] ?? []).length === 2)
+      expect(sync.data.guard_trip["ses_guarded"]?.map((item) => item.guard)).toEqual(["loop", "stop_loss"])
+      expect(sync.data.guard_trip["ses_guarded"]?.[0]).toMatchObject({ id: "evt_loop", action: "stop", time: 10 })
+    } finally {
+      app.renderer.destroy()
+    }
+  })
+
   test("a router catalog refresh reloads providers and announces the change", async () => {
     await using tmp = await tmpdir()
     await Bun.write(`${tmp.path}/kv.json`, "{}")

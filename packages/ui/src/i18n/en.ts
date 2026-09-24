@@ -165,6 +165,13 @@ export const dict: Record<string, string> = {
   "ui.tool.questions.numbered": "Questions {{number}}",
   "ui.tool.agent": "{{type}} Agent",
   "ui.tool.agent.default": "Agent",
+  "ui.tool.task.verdict.verified": "verified",
+  "ui.tool.task.verdict.inconclusive": "inconclusive",
+  "ui.tool.task.verdict.needs_revision": "needs revision",
+  "ui.tool.task.verdict.unverified": "unverified",
+  "ui.tool.task.checkpoint.in_scope": "in scope",
+  "ui.tool.task.checkpoint.corrected": "corrected (hint sent)",
+  "ui.tool.task.checkpoint.stopped": "stopped · {{reason}}",
   "ui.tool.skill": "Skill",
 
   "ui.basicTool.called": "Called `{{tool}}`",

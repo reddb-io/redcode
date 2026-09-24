@@ -12,6 +12,7 @@
 import { minimatch } from "minimatch"
 import { Intelligence } from "../intelligence"
 import { SessionTaskFacts } from "./task-facts"
+import { SubagentView } from "./subagent-view"
 
 /** How the brief a subagent runs under was judged before it started. */
 export type Verdict = "verified" | "inconclusive" | "needs_revision" | "unverified" | "skipped"
@@ -35,7 +36,7 @@ export interface Brief {
   readonly result?: ResultReview
 }
 
-export const METADATA_KEY = "subagentBrief"
+export const METADATA_KEY = SubagentView.BRIEF_KEY
 
 export function fromMetadata(metadata: Record<string, unknown> | undefined): Brief | undefined {
   const raw = metadata?.[METADATA_KEY]

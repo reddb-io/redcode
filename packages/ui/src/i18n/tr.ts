@@ -163,6 +163,13 @@ export const dict = {
   "ui.tool.questions.numbered": "Sorular {{number}}",
   "ui.tool.agent": "{{type}} ajanı",
   "ui.tool.agent.default": "Ajan",
+  "ui.tool.task.verdict.verified": "doğrulandı",
+  "ui.tool.task.verdict.inconclusive": "belirsiz",
+  "ui.tool.task.verdict.needs_revision": "düzeltme gerekli",
+  "ui.tool.task.verdict.unverified": "doğrulanmadı",
+  "ui.tool.task.checkpoint.in_scope": "kapsam içinde",
+  "ui.tool.task.checkpoint.corrected": "düzeltildi (ipucu gönderildi)",
+  "ui.tool.task.checkpoint.stopped": "durduruldu · {{reason}}",
 
   "ui.common.file.one": "dosya",
   "ui.common.file.other": "dosya",
