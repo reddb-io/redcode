@@ -4,6 +4,7 @@ import type { viewports } from "./viewports"
 import type { device } from "./devices"
 import type { stage } from "./stage"
 import type { deck } from "./slides"
+import type { LoadingEvent, previewLoading } from "./loading"
 
 export interface ReviewOptions {
   base: string
@@ -35,6 +36,8 @@ export interface ReviewOptions {
   stage: typeof stage
   /** Deck logic from ./slides; with it the arrow keys, Space, Page Up/Down, Home and End move between a presentation's slides. */
   deck?: typeof deck
+  /** The preview area's loading, zero and error states from ./loading. */
+  loading: typeof previewLoading
   /** Follows the server's conversation feed; absent when the host renders the conversation itself. */
   feed?: (
     url: string,
@@ -199,6 +202,12 @@ export function mountReview(host: HTMLElement, options: ReviewOptions) {
     strip: "",
   }
   const geometry = options.stage()
+  const loader = options.loading()
+  const loading = {
+    view: loader.initial(Date.now()),
+    /** Shows a frame whose runtime never reports ready (a page without the design runtime) after a while. */
+    reveal: undefined as ReturnType<typeof setTimeout> | undefined,
+  }
   const escape = (value: string) => value.replaceAll("&", "&amp;").replaceAll("<", "&lt;").replaceAll('"', "&quot;")
   const thumbnails = new Map<string, string>()
   const controller = new AbortController()
@@ -314,9 +323,10 @@ details{border-top:1px solid var(--edge);padding:14px 0}summary{cursor:pointer;f
 .sends{display:flex;gap:8px;margin:14px 0 8px}.sends>*{flex:1;min-width:0}#send{width:auto;margin:0}#send-end{white-space:nowrap}#send-hint{margin-bottom:8px}
 #inbox{margin-top:8px}#inbox summary{display:flex;align-items:center;gap:8px}#inbox-count{font-size:11px;font-weight:600;padding:1px 8px;border-radius:999px;background:var(--panel);border:1px solid var(--edge);color:var(--muted)}#inbox-count[data-open="true"]{color:var(--accent-ink);background:var(--accent);border-color:var(--accent)}.finding{display:grid;grid-template-columns:auto minmax(0,1fr);gap:4px 8px;padding:8px 0;border-bottom:1px solid var(--edge);font-size:12px;overflow-wrap:anywhere}.finding input{margin-top:3px}.finding .finding-tag{font-size:10px;font-weight:600;text-transform:uppercase;letter-spacing:.04em;padding:1px 6px;border-radius:4px;border:1px solid var(--edge);color:var(--muted);align-self:start;margin-top:2px}.finding[data-severity=warn] .finding-tag{color:var(--reddb-color-feedback-danger-foreground);border-color:currentColor}.finding[data-status=resolved]{color:var(--muted)}.finding .finding-body{display:grid;gap:2px}.finding .finding-actions{display:flex;gap:6px;flex-wrap:wrap;margin-top:4px}.finding .finding-actions button{padding:2px 7px;font-size:11px}.finding .finding-status{font-size:11px;color:var(--muted)}#queue-fixes{margin-top:10px}#inbox-empty{margin:6px 0 0}
 #variant-menu{position:absolute;right:0;top:calc(100% + 4px);z-index:5;min-width:200px;padding:4px;display:grid;background:var(--surface);color:var(--ink);border:1px solid var(--edge);border-radius:var(--reddb-radius-md);box-shadow:0 8px 28px color-mix(in oklch,var(--ink) 18%,transparent)}#variant-menu button{border:0;background:transparent;text-align:left;border-radius:4px;padding:6px 10px;min-height:0;white-space:nowrap;font-size:12px}#variant-menu button:hover,#variant-menu button:focus-visible{background:var(--panel);outline-offset:-2px}.op-badge{margin-left:6px;font-size:10px;font-weight:600;line-height:16px;padding:0 6px;border-radius:999px;border:1px solid currentColor;color:var(--accent);white-space:nowrap}.variant-bar .tabs button[data-operation]{color:var(--accent)}#merge-bar{display:flex;align-items:center;gap:10px;min-width:0;overflow:auto;font-size:12px}#merge-options{display:flex;gap:10px}#merge-bar label{margin:0;display:flex;gap:6px;align-items:center;font-weight:400;white-space:nowrap}#merge-bar button{min-height:24px;padding:1px 8px;font-size:12px;white-space:nowrap}#operation-state{display:flex;flex-wrap:wrap;gap:8px;align-items:center;padding:8px 10px;margin:0 0 12px;border-radius:var(--reddb-radius-md);background:var(--panel);color:var(--reddb-color-feedback-danger-foreground);overflow-wrap:anywhere}#operation-state button{padding:2px 8px;font-size:12px;color:var(--ink)}.note .note-orphaned{font-size:10px;font-weight:600;padding:0 6px;border-radius:4px;border:1px solid currentColor;color:var(--reddb-color-feedback-danger-foreground)}#approval-reselect{color:var(--reddb-color-feedback-danger-foreground)}
+.canvas{position:relative}.preview-state{position:absolute;inset:0;z-index:3;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:20px;padding:24px;background:var(--canvas);pointer-events:none;overflow:hidden}.preview-state button{pointer-events:auto}.canvas[data-phase=ready] .preview-state{display:none}.canvas:not([data-phase=ready]) .preview-pane{opacity:0}.canvas[data-phase=ready] .preview-pane{opacity:1;transition:opacity .24s ease-out}.skeleton{display:flex;flex-direction:column;align-items:center;gap:10px;width:min(100%,760px)}.sk-strip{display:none;gap:8px;align-self:stretch;overflow:hidden}.sk-strip i{flex:none;width:80px;aspect-ratio:16/9;border-radius:4px}.sk-frame{width:min(100%,calc(50vh * 4 / 3));aspect-ratio:4/3;border-radius:var(--reddb-radius-md);background:var(--surface);box-shadow:0 0 0 1px var(--edge);display:flex;flex-direction:column;gap:12px;padding:6%}.sk-frame i{display:block;height:10px;border-radius:4px}.sk-frame i:first-child{height:18px;width:45%}.sk-frame i:nth-child(2){width:80%}.sk-frame i:nth-child(3){width:62%}.sk-strip i,.sk-frame i{background:linear-gradient(90deg,var(--panel) 25%,color-mix(in oklch,var(--panel) 55%,var(--canvas)) 50%,var(--panel) 75%);background-size:300% 100%;animation:shimmer 1.6s ease-in-out infinite}@keyframes shimmer{from{background-position:100% 0}to{background-position:0 0}}.preview-state[data-target=presentation] .sk-strip{display:flex}.preview-state[data-target=presentation] .sk-frame{width:min(100%,calc(50vh * 16 / 9));aspect-ratio:16/9}.preview-state[data-target=app] .skeleton{width:auto}.preview-state[data-target=app] .sk-frame{width:auto;height:min(52vh,520px);aspect-ratio:9/19.5;border-radius:34px;box-shadow:0 0 0 8px var(--panel),0 0 0 9px var(--edge);padding:48px 18px}.preview-note{display:grid;justify-items:center;gap:4px;text-align:center;max-width:520px}#preview-stage{margin:0;font-weight:600}#preview-agent{margin:0}#preview-elapsed{font-variant-numeric:tabular-nums}#preview-elapsed:empty{display:none}#preview-error{margin:4px 0 0;white-space:pre-wrap;overflow-wrap:anywhere;color:var(--reddb-color-feedback-danger-foreground)}#preview-retry{margin-top:8px}.canvas[data-phase=error] .skeleton{display:none}.canvas[data-phase=empty] :is(.sk-strip,.sk-frame) i{animation:none}#no-variants{font-size:11px;opacity:.75}@media(prefers-reduced-motion:reduce){.canvas[data-phase=ready] .preview-pane{transition:none}.sk-strip i,.sk-frame i{animation:none}}
     </style><header id="toolbar"><h1>${options.appearance ? `<img src="${options.appearance.favicon}" alt="RedDB">` : ""}<span data-copy="title">${copy.title}</span></h1><select id="designs" aria-label="${copy.alternatives}" data-copy-aria-label="alternatives"></select><div id="revision-tools" class="tools" hidden><select id="revisions" aria-label="${copy.history}" data-copy-aria-label="history"></select><button id="newer" hidden><span data-copy="latest">${copy.latest}</span></button><span id="agent-state" hidden data-state="idle" data-copy="stateIdle">${copy.stateIdle}</span></div><div class="actions"><div id="review-tools" class="tools" hidden><button type="button" id="annotate" aria-pressed="false" aria-label="${copy.annotate}" data-copy-aria-label="annotate" title="${copy.annotateShortcut}" data-copy-title="annotateShortcut">${icons.annotate}<span class="label" data-copy="annotateShort">${copy.annotateShort}</span></button><select id="width" aria-label="${copy.width}" data-copy-aria-label="width"><option value="100%" data-copy="full">${copy.full}</option><option value="390" data-copy="mobile">${copy.mobile}</option><option value="768" data-copy="tablet">${copy.tablet}</option><option value="1440" data-copy="desktop">${copy.desktop}</option></select><span class="segment" id="device-switch" role="group" aria-label="${copy.devicePlatform}" data-copy-aria-label="devicePlatform" hidden><button type="button" id="device-ios" aria-pressed="false"><span data-copy="platformIos">${copy.platformIos}</span></button><button type="button" id="device-android" aria-pressed="false"><span data-copy="platformAndroid">${copy.platformAndroid}</span></button></span><button id="restore" hidden title="${copy.restore}" data-copy-title="restore" aria-label="${copy.restore}" data-copy-aria-label="restore"><span data-copy="restore">${copy.restore}</span></button><button type="button" id="present" hidden><span data-copy="present">${copy.present}</span></button><button id="approve" class="primary"><span data-copy="approve">${copy.approve}</span></button><button id="reopen" hidden><span data-copy="reopen">${copy.reopen}</span></button></div><button type="button" id="refresh" class="icon" aria-label="${copy.refresh}" data-copy-aria-label="refresh" title="${copy.refresh}" data-copy-title="refresh">${icons.refresh}</button><div class="menu-host" id="menu-host"><button type="button" id="more" class="icon" aria-label="${copy.more}" data-copy-aria-label="more" title="${copy.more}" data-copy-title="more" aria-haspopup="menu" aria-expanded="false" aria-controls="menu">${icons.more}</button><div id="menu" role="menu" aria-label="${copy.more}" data-copy-aria-label="more" hidden><button type="button" role="menuitem" id="new"><span data-copy="create">${copy.create}</span></button><button type="button" role="menuitem" id="menu-refresh" data-for="refresh"><span data-copy="refresh">${copy.refresh}</span></button><button type="button" role="menuitem" id="menu-add-variant" data-for="add-variant"><span data-copy="addVariant">${copy.addVariant}</span></button><button type="button" role="menuitem" id="organize-variants"><span data-copy="organizeVariants">${copy.organizeVariants}</span></button></div></div></div></header>
-    <section id="intake"><form class="intake" id="create"><h2><span data-copy="create">${copy.create}</span></h2><label><span data-copy="name">${copy.name}</span><input id="name" required></label><div class="row"><label><span data-copy="journey">${copy.journey}</span><select id="journey"><option value="new" data-copy="new">${copy.new}</option><option value="existing" data-copy="existing">${copy.existing}</option></select></label><label><span data-copy="engine">${copy.engine}</span><select id="engine"><option value="html">HTML</option><option value="react">React</option><option value="solid">Solid</option></select></label></div><div class="row"><label><span data-copy="designTarget">${copy.designTarget}</span><select id="design-target"><option value="web" data-copy="targetWeb">${copy.targetWeb}</option><option value="app" data-copy="targetApp">${copy.targetApp}</option><option value="presentation" data-copy="targetPresentation">${copy.targetPresentation}</option></select></label><label id="design-platform-field" hidden><span data-copy="designPlatform">${copy.designPlatform}</span><select id="design-platform"><option value="" data-copy="platformBoth">${copy.platformBoth}</option><option value="ios" data-copy="platformIos">${copy.platformIos}</option><option value="android" data-copy="platformAndroid">${copy.platformAndroid}</option></select></label></div><label><span data-copy="application">${copy.application}</span><input id="application" value="."></label><label><span data-copy="objective">${copy.objective}</span><textarea id="objective" required></textarea></label><label><span data-copy="audience">${copy.audience}</span><input id="audience"></label><label><span data-copy="constraints">${copy.constraints}</span><textarea id="constraints"></textarea></label><label><span data-copy="references">${copy.references}</span><textarea id="references"></textarea></label><button class="primary"><span data-copy="create">${copy.create}</span></button></form></section>
-    <section id="studio" hidden><div class="variant-bar"><div id="variants" class="tabs" role="tablist" aria-label="${copy.variants}" data-copy-aria-label="variants"></div><span id="no-variants" class="muted" data-copy="noVariants">${copy.noVariants}</span><div id="merge-bar" role="group" aria-label="${copy.mergeSelection}" data-copy-aria-label="mergeSelection" hidden><span id="merge-options"></span><button type="button" id="merge-variants" class="primary"><span data-copy="mergeVariants">${copy.mergeVariants}</span></button><button type="button" id="cancel-merge"><span data-copy="cancel">${copy.cancel}</span></button></div><span id="operation-badge" class="op-badge" role="status" hidden></span><span class="spacer"></span><button type="button" id="add-variant" class="icon" aria-label="${copy.addVariant}" data-copy-aria-label="addVariant" title="${copy.addVariant}" data-copy-title="addVariant">${icons.add}</button><div class="menu-host" id="variant-menu-host"><button type="button" id="variant-actions" aria-label="${copy.variantActions}" data-copy-aria-label="variantActions" title="${copy.variantActions}" data-copy-title="variantActions" aria-haspopup="menu" aria-expanded="false" aria-controls="variant-menu" hidden>${icons.more}<span class="label" data-copy="variantActions">${copy.variantActions}</span></button><div id="variant-menu" role="menu" aria-label="${copy.variantActions}" data-copy-aria-label="variantActions" hidden><button type="button" role="menuitem" id="rename-variant"><span data-copy="renameVariant">${copy.renameVariant}</span></button><button type="button" role="menuitem" id="split-variant"><span data-copy="splitVariant">${copy.splitVariant}</span></button><button type="button" role="menuitem" id="delete-variant"><span data-copy="deleteVariant">${copy.deleteVariant}</span></button><button type="button" role="menuitem" id="move-left"><span data-copy="moveLeft">${copy.moveLeft}</span></button><button type="button" role="menuitem" id="move-right"><span data-copy="moveRight">${copy.moveRight}</span></button><button type="button" role="menuitem" id="select-merge"><span data-copy="selectMerge">${copy.selectMerge}</span></button><button type="button" role="menuitem" id="menu-newer" data-for="newer"><span data-copy="latest">${copy.latest}</span></button><button type="button" role="menuitem" id="menu-reopen" data-for="reopen"><span data-copy="reopen">${copy.reopen}</span></button></div></div><span class="segment"><button type="button" id="view-single" class="icon" aria-pressed="true" aria-label="${copy.single}" data-copy-aria-label="single" title="${copy.single}" data-copy-title="single">${icons.single}</button><button type="button" id="view-compare" class="icon" aria-pressed="false" aria-label="${copy.sideBySide}" data-copy-aria-label="sideBySide" title="${copy.sideBySide}" data-copy-title="sideBySide">${icons.compare}</button></span></div><main><div class="canvas" id="canvas"><p id="preview-error" role="alert" hidden style="white-space:pre-wrap;overflow-wrap:anywhere"></p><section class="preview-pane" id="primary-pane" role="tabpanel"><div class="pane-label" id="primary-label" hidden></div><div id="screen-bar" class="screen-bar" hidden><span class="muted" id="screens-label" data-copy="screens">${copy.screens}</span><div id="screens" class="tabs" role="tablist" aria-label="${copy.screens}" data-copy-aria-label="screens"></div><span id="slide-count" class="muted" aria-live="polite" hidden></span></div><div class="viewport"><div class="device" id="preview-device"><div class="device-chrome"></div><iframe id="preview" title="${copy.review}" data-copy-title="review" sandbox="allow-scripts allow-forms" allow=""></iframe></div><div id="card" hidden role="dialog" aria-labelledby="card-label"><header><span id="card-label"></span><button type="button" id="card-close" aria-label="${copy.closeCard}" data-copy-aria-label="closeCard" title="${copy.closeCard}" data-copy-title="closeCard">×</button></header><textarea id="card-text" aria-label="${copy.cardNote}" data-copy-aria-label="cardNote"></textarea><small class="muted" data-copy="cardHint">${copy.cardHint}</small><div class="row"><button type="button" id="card-add" class="primary"><span data-copy="add">${copy.add}</span></button></div></div></div></section><section class="preview-pane" id="peer-pane" hidden><label class="pane-label"><span data-copy="compareVariant">${copy.compareVariant}</span><select id="peer-variant"></select></label><div class="viewport"><div class="device" id="peer-preview-device"><div class="device-chrome"></div><iframe id="peer-preview" title="${copy.compareVariant}" data-copy-title="compareVariant" sandbox="allow-scripts allow-forms" allow=""></iframe></div></div></section></div><aside><div class="tabs" role="tablist" aria-label="${copy.review}"><button type="button" role="tab" id="tab-review" aria-controls="panel-review" aria-selected="true" tabindex="0"><span data-copy="conversation">${copy.conversation}</span></button><button type="button" role="tab" id="tab-assets" aria-controls="panel-assets" aria-selected="false" tabindex="-1"><span data-copy="assets">${copy.assets}</span></button><button type="button" role="tab" id="tab-details" aria-controls="panel-details" aria-selected="false" tabindex="-1"><span data-copy="details">${copy.details}</span></button><button type="button" role="tab" id="tab-params" aria-controls="panel-params" aria-selected="false" tabindex="-1"><span data-copy="params">${copy.params}</span></button></div><section class="panel" role="tabpanel" id="panel-review" aria-labelledby="tab-review"><h2><span data-copy="conversation">${copy.conversation}</span></h2><p id="review-state" class="muted"></p><div id="operation-state" role="alert" hidden><span id="operation-error"></span><button type="button" id="retry-operation"><span data-copy="operationRetry">${copy.operationRetry}</span></button></div><p id="approval-reselect" data-copy="approvalReselect" hidden>${copy.approvalReselect}</p><div id="feed" role="log" aria-live="polite" hidden><p id="feed-empty" class="muted" data-copy="feedEmpty">${copy.feedEmpty}</p></div><details id="rounds" open hidden><summary><span data-copy="rounds">${copy.rounds}</span><span id="rounds-count" data-open="false">0</span></summary><div id="rounds-list"></div></details><details id="approved-record" hidden><summary data-copy="approvalDetails">${copy.approvalDetails}</summary><pre id="approved-details"></pre></details><p class="muted"><span data-copy="inspect">${copy.inspect}</span></p><small id="target" hidden></small><div id="notes"></div><details id="inbox"><summary><span data-copy="findings">${copy.findings}</span><span id="inbox-count" data-open="false">0</span></summary><p id="inbox-empty" class="muted" data-copy="inboxEmpty">${copy.inboxEmpty}</p><div id="inbox-list"></div><button type="button" id="queue-fixes" hidden><span data-copy="queueFixes">${copy.queueFixes}</span></button></details><label><span data-copy="notes">${copy.notes}</span><textarea id="note"></textarea></label><label><span data-copy="attachment">${copy.attachment}</span><input id="attachment" type="file" accept="image/png,image/jpeg,image/webp,image/svg+xml,image/gif"></label><small id="draft"><span data-copy="draft">${copy.draft}</span></small><small id="send-hint" class="muted" data-copy="sendHint">${copy.sendHint}</small><small id="round-open" class="muted" data-copy="roundOpen" hidden>${copy.roundOpen}</small><div class="sends"><button id="send" class="primary"><span data-copy="send">${copy.send}</span></button><button id="send-end"><span data-copy="sendEnd">${copy.sendEnd}</span></button></div>
+    <section id="intake" hidden><form class="intake" id="create"><h2><span data-copy="create">${copy.create}</span></h2><label><span data-copy="name">${copy.name}</span><input id="name" required></label><div class="row"><label><span data-copy="journey">${copy.journey}</span><select id="journey"><option value="new" data-copy="new">${copy.new}</option><option value="existing" data-copy="existing">${copy.existing}</option></select></label><label><span data-copy="engine">${copy.engine}</span><select id="engine"><option value="html">HTML</option><option value="react">React</option><option value="solid">Solid</option></select></label></div><div class="row"><label><span data-copy="designTarget">${copy.designTarget}</span><select id="design-target"><option value="web" data-copy="targetWeb">${copy.targetWeb}</option><option value="app" data-copy="targetApp">${copy.targetApp}</option><option value="presentation" data-copy="targetPresentation">${copy.targetPresentation}</option></select></label><label id="design-platform-field" hidden><span data-copy="designPlatform">${copy.designPlatform}</span><select id="design-platform"><option value="" data-copy="platformBoth">${copy.platformBoth}</option><option value="ios" data-copy="platformIos">${copy.platformIos}</option><option value="android" data-copy="platformAndroid">${copy.platformAndroid}</option></select></label></div><label><span data-copy="application">${copy.application}</span><input id="application" value="."></label><label><span data-copy="objective">${copy.objective}</span><textarea id="objective" required></textarea></label><label><span data-copy="audience">${copy.audience}</span><input id="audience"></label><label><span data-copy="constraints">${copy.constraints}</span><textarea id="constraints"></textarea></label><label><span data-copy="references">${copy.references}</span><textarea id="references"></textarea></label><button class="primary"><span data-copy="create">${copy.create}</span></button></form></section>
+    <section id="studio"><div class="variant-bar"><div id="variants" class="tabs" role="tablist" aria-label="${copy.variants}" data-copy-aria-label="variants"></div><span id="no-variants" class="muted" data-copy="noVariants">${copy.noVariants}</span><div id="merge-bar" role="group" aria-label="${copy.mergeSelection}" data-copy-aria-label="mergeSelection" hidden><span id="merge-options"></span><button type="button" id="merge-variants" class="primary"><span data-copy="mergeVariants">${copy.mergeVariants}</span></button><button type="button" id="cancel-merge"><span data-copy="cancel">${copy.cancel}</span></button></div><span id="operation-badge" class="op-badge" role="status" hidden></span><span class="spacer"></span><button type="button" id="add-variant" class="icon" aria-label="${copy.addVariant}" data-copy-aria-label="addVariant" title="${copy.addVariant}" data-copy-title="addVariant">${icons.add}</button><div class="menu-host" id="variant-menu-host"><button type="button" id="variant-actions" aria-label="${copy.variantActions}" data-copy-aria-label="variantActions" title="${copy.variantActions}" data-copy-title="variantActions" aria-haspopup="menu" aria-expanded="false" aria-controls="variant-menu" hidden>${icons.more}<span class="label" data-copy="variantActions">${copy.variantActions}</span></button><div id="variant-menu" role="menu" aria-label="${copy.variantActions}" data-copy-aria-label="variantActions" hidden><button type="button" role="menuitem" id="rename-variant"><span data-copy="renameVariant">${copy.renameVariant}</span></button><button type="button" role="menuitem" id="split-variant"><span data-copy="splitVariant">${copy.splitVariant}</span></button><button type="button" role="menuitem" id="delete-variant"><span data-copy="deleteVariant">${copy.deleteVariant}</span></button><button type="button" role="menuitem" id="move-left"><span data-copy="moveLeft">${copy.moveLeft}</span></button><button type="button" role="menuitem" id="move-right"><span data-copy="moveRight">${copy.moveRight}</span></button><button type="button" role="menuitem" id="select-merge"><span data-copy="selectMerge">${copy.selectMerge}</span></button><button type="button" role="menuitem" id="menu-newer" data-for="newer"><span data-copy="latest">${copy.latest}</span></button><button type="button" role="menuitem" id="menu-reopen" data-for="reopen"><span data-copy="reopen">${copy.reopen}</span></button></div></div><span class="segment"><button type="button" id="view-single" class="icon" aria-pressed="true" aria-label="${copy.single}" data-copy-aria-label="single" title="${copy.single}" data-copy-title="single">${icons.single}</button><button type="button" id="view-compare" class="icon" aria-pressed="false" aria-label="${copy.sideBySide}" data-copy-aria-label="sideBySide" title="${copy.sideBySide}" data-copy-title="sideBySide">${icons.compare}</button></span></div><main><div class="canvas" id="canvas" data-phase="loading"><div id="preview-state" class="preview-state" data-target="web"><div class="skeleton" aria-hidden="true"><div class="sk-strip"><i></i><i></i><i></i><i></i><i></i></div><div class="sk-frame"><i></i><i></i><i></i></div></div><div class="preview-note"><p id="preview-stage" role="status" aria-live="polite"></p><p id="preview-agent" class="muted" aria-live="polite" hidden></p><small id="preview-elapsed" class="muted" aria-hidden="true"></small><p id="preview-error" role="alert" hidden></p><button type="button" id="preview-retry" hidden><span data-copy="previewRetry">${copy.previewRetry}</span></button></div></div><section class="preview-pane" id="primary-pane" role="tabpanel"><div class="pane-label" id="primary-label" hidden></div><div id="screen-bar" class="screen-bar" hidden><span class="muted" id="screens-label" data-copy="screens">${copy.screens}</span><div id="screens" class="tabs" role="tablist" aria-label="${copy.screens}" data-copy-aria-label="screens"></div><span id="slide-count" class="muted" aria-live="polite" hidden></span></div><div class="viewport"><div class="device" id="preview-device"><div class="device-chrome"></div><iframe id="preview" title="${copy.review}" data-copy-title="review" sandbox="allow-scripts allow-forms" allow=""></iframe></div><div id="card" hidden role="dialog" aria-labelledby="card-label"><header><span id="card-label"></span><button type="button" id="card-close" aria-label="${copy.closeCard}" data-copy-aria-label="closeCard" title="${copy.closeCard}" data-copy-title="closeCard">×</button></header><textarea id="card-text" aria-label="${copy.cardNote}" data-copy-aria-label="cardNote"></textarea><small class="muted" data-copy="cardHint">${copy.cardHint}</small><div class="row"><button type="button" id="card-add" class="primary"><span data-copy="add">${copy.add}</span></button></div></div></div></section><section class="preview-pane" id="peer-pane" hidden><label class="pane-label"><span data-copy="compareVariant">${copy.compareVariant}</span><select id="peer-variant"></select></label><div class="viewport"><div class="device" id="peer-preview-device"><div class="device-chrome"></div><iframe id="peer-preview" title="${copy.compareVariant}" data-copy-title="compareVariant" sandbox="allow-scripts allow-forms" allow=""></iframe></div></div></section></div><aside><div class="tabs" role="tablist" aria-label="${copy.review}"><button type="button" role="tab" id="tab-review" aria-controls="panel-review" aria-selected="true" tabindex="0"><span data-copy="conversation">${copy.conversation}</span></button><button type="button" role="tab" id="tab-assets" aria-controls="panel-assets" aria-selected="false" tabindex="-1"><span data-copy="assets">${copy.assets}</span></button><button type="button" role="tab" id="tab-details" aria-controls="panel-details" aria-selected="false" tabindex="-1"><span data-copy="details">${copy.details}</span></button><button type="button" role="tab" id="tab-params" aria-controls="panel-params" aria-selected="false" tabindex="-1"><span data-copy="params">${copy.params}</span></button></div><section class="panel" role="tabpanel" id="panel-review" aria-labelledby="tab-review"><h2><span data-copy="conversation">${copy.conversation}</span></h2><p id="review-state" class="muted"></p><div id="operation-state" role="alert" hidden><span id="operation-error"></span><button type="button" id="retry-operation"><span data-copy="operationRetry">${copy.operationRetry}</span></button></div><p id="approval-reselect" data-copy="approvalReselect" hidden>${copy.approvalReselect}</p><div id="feed" role="log" aria-live="polite" hidden><p id="feed-empty" class="muted" data-copy="feedEmpty">${copy.feedEmpty}</p></div><details id="rounds" open hidden><summary><span data-copy="rounds">${copy.rounds}</span><span id="rounds-count" data-open="false">0</span></summary><div id="rounds-list"></div></details><details id="approved-record" hidden><summary data-copy="approvalDetails">${copy.approvalDetails}</summary><pre id="approved-details"></pre></details><p class="muted"><span data-copy="inspect">${copy.inspect}</span></p><small id="target" hidden></small><div id="notes"></div><details id="inbox"><summary><span data-copy="findings">${copy.findings}</span><span id="inbox-count" data-open="false">0</span></summary><p id="inbox-empty" class="muted" data-copy="inboxEmpty">${copy.inboxEmpty}</p><div id="inbox-list"></div><button type="button" id="queue-fixes" hidden><span data-copy="queueFixes">${copy.queueFixes}</span></button></details><label><span data-copy="notes">${copy.notes}</span><textarea id="note"></textarea></label><label><span data-copy="attachment">${copy.attachment}</span><input id="attachment" type="file" accept="image/png,image/jpeg,image/webp,image/svg+xml,image/gif"></label><small id="draft"><span data-copy="draft">${copy.draft}</span></small><small id="send-hint" class="muted" data-copy="sendHint">${copy.sendHint}</small><small id="round-open" class="muted" data-copy="roundOpen" hidden>${copy.roundOpen}</small><div class="sends"><button id="send" class="primary"><span data-copy="send">${copy.send}</span></button><button id="send-end"><span data-copy="sendEnd">${copy.sendEnd}</span></button></div>
     <details><summary><span data-copy="diagram">${copy.diagram}</span></summary><label><span data-copy="diagram">${copy.diagram}</span><textarea id="selection"></textarea></label><button type="button" id="whiteboard"><span data-copy="whiteboard">${copy.whiteboard}</span></button></details></section><section class="panel" role="tabpanel" id="panel-assets" aria-labelledby="tab-assets" hidden><details open><summary><span data-copy="assets">${copy.assets}</span></summary><div id="assets"></div></details><details open><summary><span data-copy="export">${copy.export}</span></summary><button id="html"><span data-copy="html">${copy.html}</span></button><button id="pdf" hidden><span data-copy="pdf">${copy.pdf}</span></button><button id="audit"><span data-copy="audit">${copy.audit}</span></button><label><span data-copy="implementation">${copy.implementation}</span><input id="implementation" value="dist"></label><button id="compare"><span data-copy="compare">${copy.compare}</span></button><label><span data-copy="source">${copy.source}</span><select id="svg"></select></label><div class="row"><label><span data-copy="duration">${copy.duration}</span><input id="duration" type="number" min="0.1" max="10" step="0.1" value="3"></label><label><span data-copy="fps">${copy.fps}</span><input id="fps" type="number" min="1" max="25" value="20"></label></div><label><span data-copy="size">${copy.size}</span><input id="size" type="number" min="16" max="1024" value="512"></label><label class="check"><input type="checkbox" id="transparent"><span data-copy="transparent">${copy.transparent}</span></label><button id="gif"><span data-copy="gif">${copy.gif}</span></button></details><details open><summary><span data-copy="jobs">${copy.jobs}</span></summary><div id="jobs"></div></details>
     </section><section class="panel" role="tabpanel" id="panel-details" aria-labelledby="tab-details" hidden>
     <details><summary><span data-copy="system">${copy.system}</span></summary><div id="source-files"></div><button id="refresh-system"><span data-copy="refreshSystem">${copy.refreshSystem}</span></button></details><details><summary><span data-copy="decisions">${copy.decisions}</span></summary><div id="decisions"></div><h2><span data-copy="questions">${copy.questions}</span></h2><div id="questions"></div><h2><span data-copy="scenarios">${copy.scenarios}</span></h2><div id="scenarios"></div></details>
@@ -453,7 +463,8 @@ details{border-top:1px solid var(--edge);padding:14px 0}summary{cursor:pointer;f
   }
   const drawVariants = () => {
     const items = state.variants
-    element("no-variants").hidden = items.length > 0
+    // Said once the revision is on screen, not over its loading state.
+    element("no-variants").hidden = items.length > 0 || loading.view.phase !== "ready"
     element("organize-variants").hidden = items.length > 0
     element("variant-actions").hidden = items.length === 0
     state.mergePick = state.mergePick.filter((id) => items.some((item) => item.id === id))
@@ -1456,6 +1467,86 @@ details{border-top:1px solid var(--edge);padding:14px 0}summary{cursor:pointer;f
       ? `${copy.evidence}: ${state.audits.map((job) => `${job.audit!.scenarios.length} · ${copy.findings}: ${job.audit!.findings.length}`).join("; ")}`
       : copy.noAudit
   }
+  const stageCopy = {
+    revision: "loadingRevision",
+    queued: "loadingQueued",
+    tools: "loadingTools",
+    build: "loadingBuild",
+    assets: "loadingAssets",
+    runtime: "loadingRuntime",
+  } as const
+  /**
+   * The preview area: the zero state with the agent's live activity, a loading stage over a skeleton of
+   * the target with its elapsed time, a failure with Retry, or the frame once its runtime is ready.
+   */
+  const drawLoading = () => {
+    const view = loading.view
+    element("canvas").dataset.phase = view.phase
+    element("preview-state").dataset.target = state.design?.target ?? "web"
+    const key =
+      view.phase === "empty" ? "zeroRevision" : view.phase === "error" ? "previewFailed" : stageCopy[view.stage]
+    // Live regions announce every write, so text is only written when it changes.
+    const put = (id: string, value: string) => {
+      if (element(id).textContent !== value) element(id).textContent = value
+    }
+    put("preview-stage", copy[key])
+    element("preview-agent").hidden = view.phase !== "empty" || !options.feed
+    put(
+      "preview-agent",
+      view.agent === "tool"
+        ? copy.agentTool.replace("{{tool}}", view.tool)
+        : view.agent === "thinking"
+          ? copy.agentThinking
+          : copy.agentWaiting,
+    )
+    put(
+      "preview-elapsed",
+      view.phase === "loading"
+        ? copy.loadingElapsed.replace("{{seconds}}", String(loader.elapsed(view, Date.now())))
+        : "",
+    )
+    element("preview-retry").hidden = view.phase !== "error"
+    // The failure's summary belongs to the error state; a new load starts without it.
+    if (view.phase !== "error") element("preview-error").hidden = true
+    element("no-variants").hidden = state.variants.length > 0 || view.phase !== "ready"
+  }
+  const loadingEvent = (event: LoadingEvent) => {
+    loading.view = loader.reduce(loading.view, event)
+    if (loading.view.phase !== "loading") {
+      clearTimeout(loading.reveal)
+      loading.reveal = undefined
+    }
+    drawLoading()
+  }
+  /** Shows the frame after a while even when its runtime never says it is ready. */
+  const revealAfter = (ms: number) => {
+    clearTimeout(loading.reveal)
+    loading.reveal = setTimeout(() => loadingEvent({ type: "ready" }), ms)
+  }
+  /**
+   * Follows the host's build of a preview while its request is in flight, until the returned stop is
+   * called. A cached preview answers at once, so the first question waits a moment.
+   */
+  const watchBuild = (designID: string, revisionID: string) => {
+    const watch = { active: true, timer: undefined as ReturnType<typeof setTimeout> | undefined }
+    const tick = async () => {
+      const response = await request(`${endpoint}/${designID}/revision/${encodeURIComponent(revisionID)}/status`).catch(
+        () => undefined,
+      )
+      if (!watch.active || state.stopped) return
+      // A host without build status still shows that a build is running.
+      if (!response?.ok) return loadingEvent({ type: "build", revision: revisionID, stage: "building" })
+      const body = await response.json().catch(() => undefined)
+      if (!watch.active || state.stopped) return
+      if (typeof body?.stage === "string") loadingEvent({ type: "build", revision: revisionID, stage: body.stage })
+      watch.timer = setTimeout(() => void tick(), 700)
+    }
+    watch.timer = setTimeout(() => void tick(), 250)
+    return () => {
+      watch.active = false
+      clearTimeout(watch.timer)
+    }
+  }
   const pill = (key: "stateWorking" | "stateIdle" | "statePublished" | "feedUnavailable") => {
     const node = element("agent-state")
     node.dataset.state =
@@ -1580,6 +1671,10 @@ details{border-top:1px solid var(--edge);padding:14px 0}summary{cursor:pointer;f
   }
   const onFeed = (event: Design.FeedEvent) => {
     if (state.stopped) return
+    if (event.type === "state") loadingEvent({ type: "agent", state: event.state })
+    // A reconnect replays old tool calls; only those made while the agent works are its live activity.
+    if (event.type === "tool" && state.agent === "working")
+      loadingEvent({ type: "tool", tool: event.tool, status: event.status })
     const operation = state.pendingOperation
     const check = state.operationCheck
     // Agent states say nothing about an operation until a turn has taken its message up: an operation
@@ -1623,13 +1718,17 @@ details{border-top:1px solid var(--edge);padding:14px 0}summary{cursor:pointer;f
       items.find((item) => item.id === revisionID),
     )
     if (!revision) return
+    clearTimeout(loading.reveal)
+    loadingEvent({ type: "load", revision: revisionID, at: Date.now(), quiet: keep })
+    const stop = watchBuild(state.design!.id, revisionID)
     const response = await request(`${endpoint}/${state.design!.id}/revision/${revisionID}/preview`, {
       signal: controller.signal,
-    })
+    }).finally(stop)
     if (!response.ok) {
       const body = await response.json().catch(() => undefined)
       const message = typeof body?.message === "string" ? body.message : `${copy.failure} (${response.status})`
       state.failedPreview = revisionID
+      loadingEvent({ type: "failed", revision: revisionID, message })
       element("preview-error").textContent = `${revision.name}: ${message}`
       element("preview-error").hidden = false
       element("primary-pane").hidden = true
@@ -1675,6 +1774,8 @@ details{border-top:1px solid var(--edge);padding:14px 0}summary{cursor:pointer;f
       drawScreens()
     }
     state.restoreScroll = keep
+    loadingEvent({ type: "document", revision: revisionID })
+    revealAfter(10000)
     element<HTMLIFrameElement>("peer-preview").removeAttribute("srcdoc")
     element<HTMLIFrameElement>("preview").srcdoc = html
     if (keep && state.comparing) element<HTMLIFrameElement>("peer-preview").srcdoc = html
@@ -1699,7 +1800,11 @@ details{border-top:1px solid var(--edge);padding:14px 0}summary{cursor:pointer;f
       .map((item) => `<option value="${escape(item.id)}">${escape(item.name)}</option>`)
       .join("")
     const current = documents.find((item) => item.id === designID) ?? documents.at(-1)
-    if (!current) return
+    // Without a design yet the brief is the page; one the agent creates replaces it on a later refresh.
+    if (!current) {
+      if (!state.creating) showStudio(false)
+      return
+    }
     const changed = state.design?.id !== current.id
     const onLatest = !changed && !!state.revision && state.revision === state.design?.revision
     if (changed) {
@@ -1722,6 +1827,7 @@ details{border-top:1px solid var(--edge);padding:14px 0}summary{cursor:pointer;f
       drawVariants()
     }
     state.design = current
+    loadingEvent({ type: "design", revision: current.revision ?? undefined, at: Date.now() })
     drawWidths()
     // Lock stale revision actions before the remaining refresh requests can yield.
     controls()
@@ -2647,6 +2753,13 @@ details{border-top:1px solid var(--edge);padding:14px 0}summary{cursor:pointer;f
     )
     element<HTMLIFrameElement>("preview").contentWindow?.postMessage({ type: "design:variant", id: state.variant }, "*")
   }
+  element("preview").addEventListener("load", () => {
+    // Emptying the frame loads about:blank, which is not a revision.
+    if (!element<HTMLIFrameElement>("preview").srcdoc) return
+    loadingEvent({ type: "frame" })
+    if (loading.view.phase === "loading") revealAfter(3000)
+  })
+  element("preview-retry").onclick = () => element("refresh").click()
   // Annotation is the main review action, so its toggle lives in the toolbar and on the A key.
   function annotating() {
     return element("annotate").getAttribute("aria-pressed") === "true"
@@ -2752,6 +2865,10 @@ details{border-top:1px solid var(--edge);padding:14px 0}summary{cursor:pointer;f
       "*",
     )
   const message = (event: MessageEvent) => {
+    if (event.data?.type === "design:ready") {
+      if (event.source === element<HTMLIFrameElement>("preview").contentWindow) loadingEvent({ type: "ready" })
+      return
+    }
     if (
       event.source === element<HTMLIFrameElement>("preview").contentWindow &&
       event.data?.type === "design:params-get"
@@ -3190,9 +3307,15 @@ details{border-top:1px solid var(--edge);padding:14px 0}summary{cursor:pointer;f
     options.feed(`${endpoint}/feed`, transport, controller.signal, onFeed, () => {
       if (!state.stopped) pill("feedUnavailable")
     })
+  drawLoading()
+  const ticker = setInterval(() => {
+    if (loading.view.phase === "loading") drawLoading()
+  }, 1000)
   void run(refresh)
   const dispose = () => {
     save()
+    clearInterval(ticker)
+    clearTimeout(loading.reveal)
     scheme.removeEventListener("change", syncScheme)
     schemeObserver.disconnect()
     fitting.disconnect()
@@ -3228,6 +3351,7 @@ details{border-top:1px solid var(--edge);padding:14px 0}summary{cursor:pointer;f
       }
       drawSources(state.revisionInfo)
       drawEvidence()
+      drawLoading()
     },
   })
 }

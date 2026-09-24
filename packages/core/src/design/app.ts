@@ -8,6 +8,8 @@ import { createHmac, randomBytes, timingSafeEqual } from "node:crypto"
 import { setTimeout as sleep } from "node:timers/promises"
 import { Effect, Option, Schema } from "effect"
 import { Design } from "@reddb-io/redcode-schema/design"
+import { reviewCopy } from "@reddb-io/redcode-design/copy"
+import { designWaiting, WAITING_CSP } from "@reddb-io/redcode-design/waiting"
 import { Global } from "../global"
 import { Database } from "../database/database"
 import { InstallationVersion } from "../installation/version"
@@ -154,12 +156,29 @@ export interface EnsureInput {
   readonly env?: Record<string, string | undefined>
 }
 
+const launches = new Map<string, Promise<{ url: string; token: string }>>()
+
 /**
  * The running design app, started when none answers. A registration counts only while its process
  * lives, it answers its health check with this token, and it speaks this protocol; an app of another
- * protocol is asked to stop and a new one takes over the registration.
+ * protocol is asked to stop and a new one takes over the registration. Callers in this process share
+ * one launch, so a review link opened during a first-use download waits on that download.
  */
-export async function ensure(input: EnsureInput) {
+export function ensure(input: EnsureInput) {
+  const key = paths(input.state).registration
+  const pending = launches.get(key)
+  if (pending) return pending
+  const launch = start(input)
+  launches.set(key, launch)
+  // A failure stays for a moment, so a page waiting on this launch shows it instead of starting another.
+  launch.then(
+    () => launches.delete(key),
+    () => setTimeout(() => launches.delete(key), 5_000).unref(),
+  )
+  return launch
+}
+
+async function start(input: EnsureInput) {
   const files = paths(input.state)
   const secret = await token(files.token)
   const current = await reusable(files.registration, secret)
@@ -170,6 +189,7 @@ export async function ensure(input: EnsureInput) {
       // Another redcode may have started one while this one waited for the lock.
       const started = await reusable(files.registration, secret)
       if (started) return { url: started.url, token: secret }
+      DesignAppBinary.report({ phase: "start", received: 0, started: Date.now() })
       const launch =
         typeof input.command === "function"
           ? await input.command()
@@ -208,7 +228,7 @@ export async function ensure(input: EnsureInput) {
       throw new Error(`The design app did not register in time; see ${files.log}`)
     },
     { timeoutMs: (input.timeout ?? 30_000) + 5_000 },
-  )
+  ).finally(() => DesignAppBinary.report())
 }
 
 async function reusable(file: string, secret: string) {
@@ -309,6 +329,43 @@ export const link = Effect.fn("DesignApp.link")(function* (
   for (const [key, value] of Object.entries(search)) if (value !== undefined) url.searchParams.set(key, value)
   url.searchParams.set("ticket", ticket(connection.token, sessionID))
   return url.toString()
+})
+
+/**
+ * Where a review link sends the browser: the page on the design app once it runs, or, while this process
+ * still downloads or starts it, a waiting page that shows how far that got and reloads itself; a failure
+ * to start shows why, with Retry, instead of a connection error.
+ */
+export const open = Effect.fn("DesignApp.open")(function* (input: {
+  readonly host: Host
+  readonly sessionID: string
+  readonly route: string
+  readonly search?: Record<string, string | undefined>
+}) {
+  const attempt = yield* connect({ host: input.host }).pipe(
+    Effect.flatMap((connection) => link(connection, input.sessionID, input.route, input.search)),
+    Effect.map((url): { readonly url?: string; readonly error?: string } => ({ url })),
+    Effect.timeoutOption("2 seconds"),
+    Effect.catch((error) =>
+      Effect.succeed(Option.some<{ readonly url?: string; readonly error?: string }>({ error: error.message })),
+    ),
+  )
+  const outcome = Option.getOrUndefined(attempt)
+  if (outcome?.url) return { redirect: outcome.url }
+  const progress = DesignAppBinary.progress()
+  const html = designWaiting(reviewCopy, {
+    phase: outcome?.error ? "failed" : (progress?.phase ?? "start"),
+    version: progress?.version,
+    amount: progress?.phase === "download" ? DesignAppBinary.amount(progress) : undefined,
+    percent: progress?.total ? (progress.received / progress.total) * 100 : undefined,
+    elapsed: progress ? Math.floor((Date.now() - progress.started) / 1000) : undefined,
+    message: outcome?.error,
+  })
+  return {
+    html,
+    status: outcome?.error ? 503 : 200,
+    headers: { "cache-control": "no-store", "content-security-policy": WAITING_CSP },
+  }
 })
 
 export const publish = (

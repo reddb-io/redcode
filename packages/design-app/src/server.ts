@@ -14,6 +14,7 @@ import { screens } from "@reddb-io/redcode-design/screens"
 import { deck, slides } from "@reddb-io/redcode-design/slides"
 import { mountPresent } from "@reddb-io/redcode-design/present"
 import { designFeed } from "@reddb-io/redcode-design/feed"
+import { previewLoading } from "@reddb-io/redcode-design/loading"
 import { DesignVendor } from "@reddb-io/redcode-design/vendor"
 import { Design } from "@reddb-io/redcode-schema/design"
 import { Session } from "@reddb-io/redcode-schema/session"
@@ -29,6 +30,7 @@ import { DesignHost } from "@reddb-io/redcode-core/design/host"
 import { DesignStore } from "@reddb-io/redcode-core/design/store"
 import { DesignRenderer } from "@reddb-io/redcode-core/design/renderer"
 import { DesignRendererLocal } from "@reddb-io/redcode-core/design/renderer-local"
+import { DesignRuntime } from "@reddb-io/redcode-core/design/runtime"
 import { DesignExport } from "@reddb-io/redcode-core/design/export"
 import { DesignWhiteboard } from "@reddb-io/redcode-core/design/whiteboard"
 import { InstallationVersion } from "@reddb-io/redcode-core/installation/version"
@@ -67,6 +69,8 @@ export async function start(options: Options) {
   const studios = new Map<string, Promise<Studio>>()
   const jobs = new Map<string, { readonly studio: Promise<Studio>; readonly designID: Design.ID }>()
   const activity = { tabs: 0, requests: 0, last: Date.now() }
+  /** Preview builds by revision, which the review page follows while it waits for a preview. */
+  const previews = new Map<string, "building" | "ready" | "failed">()
   const fallback: DesignAppHost.Host = { url: options.host, authorization: ServerAuth.header() }
 
   const run = async <A>(effect: Effect.Effect<A, unknown, Database.Service>) => {
@@ -205,7 +209,7 @@ export async function start(options: Options) {
       const breakpoints = (await exec(store.configured(sessionID).pipe(Effect.catch(() => Effect.succeed(undefined)))))
         ?.breakpoints
       return html(
-        `<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Design · Redcode</title><link rel="icon" type="image/svg+xml" href="${appearance.favicon}"><style>html,body,#review{height:100%;margin:0}</style></head><body><div id="review"></div><script>(${mountReview.toString()})(document.getElementById("review"), Object.assign(${JSON.stringify({ base: "", endpoint, sessionID, copy: reviewCopy, appearance, breakpoints }).replaceAll("<", "\\u003c")}, { feed: ${designFeed.toString()}, viewports: ${viewports.toString()}, device: ${device.toString()}, stage: ${stage.toString()}, deck: ${deck.toString()} }))</script></body></html>`,
+        `<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Design · Redcode</title><link rel="icon" type="image/svg+xml" href="${appearance.favicon}"><style>html,body,#review{height:100%;margin:0}</style></head><body><div id="review"></div><script>(${mountReview.toString()})(document.getElementById("review"), Object.assign(${JSON.stringify({ base: "", endpoint, sessionID, copy: reviewCopy, appearance, breakpoints }).replaceAll("<", "\\u003c")}, { feed: ${designFeed.toString()}, viewports: ${viewports.toString()}, device: ${device.toString()}, stage: ${stage.toString()}, deck: ${deck.toString()}, loading: ${previewLoading.toString()} }))</script></body></html>`,
       )
     }
     if (method === "GET" && parts[3] === "whiteboard" && parts.length === 4) return html(await DesignWhiteboard.frame())
@@ -238,9 +242,23 @@ export async function start(options: Options) {
       const build = await building(Schema.Struct({ revision: Schema.String }))
       return Response.json(await exec(store.restore(id, build.input.revision, build.read, build.tooling)))
     }
+    // A preview not asked for yet is queued; one whose build runs installs the Design tools first on first use.
+    if (parts[4] === "revision" && parts[5] && parts[6] === "status" && !parts[7] && method === "GET") {
+      const preview = previews.get(parts[5])
+      return Response.json({
+        stage: !preview ? "queued" : preview === "building" && DesignRuntime.installing() ? "tools" : preview,
+      })
+    }
     if (parts[4] === "revision" && parts[6] === "preview" && method === "GET") {
       const revision = await exec(store.revision(id, parts[5]))
-      const directory = await exec(renderer.directory(revision))
+      previews.delete(revision.id)
+      previews.set(revision.id, "building")
+      if (previews.size > 500) previews.delete(previews.keys().next().value!)
+      const directory = await exec(renderer.directory(revision)).catch((cause: unknown) => {
+        previews.set(revision.id, "failed")
+        throw cause
+      })
+      previews.set(revision.id, "ready")
       const content = await DesignExport.html(
         directory,
         revision.document.engine === "html" ? revision.document.entry : "index.html",

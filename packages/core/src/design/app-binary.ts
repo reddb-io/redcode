@@ -21,6 +21,52 @@ export const MINIMUM = typeof REDCODE_DESIGN_APP_VERSION === "string" ? REDCODE_
 export const DOWNLOAD = "https://github.com/reddb-io/redcode/releases/download"
 export const RELEASES = "https://api.github.com/repos/reddb-io/redcode/releases"
 
+/**
+ * Where a first-use download or a start of the design app stands, shared by the whole process: the TUI
+ * reports it, and a review link opened meanwhile shows it on a waiting page.
+ */
+export interface Progress {
+  readonly phase: "download" | "start"
+  readonly version?: string
+  readonly received: number
+  /** The archive's size, when the release server says it. */
+  readonly total?: number
+  readonly started: number
+}
+
+const tracker = { current: undefined as Progress | undefined, listeners: new Set<(progress?: Progress) => void>() }
+
+/** The download or start in progress in this process, if any. */
+export function progress() {
+  return tracker.current
+}
+
+/** Calls the listener on every progress change, and with nothing once the app runs or failed to. */
+export function watch(listener: (progress?: Progress) => void) {
+  tracker.listeners.add(listener)
+  return () => {
+    tracker.listeners.delete(listener)
+  }
+}
+
+export function report(next?: Progress) {
+  tracker.current = next
+  tracker.listeners.forEach((listener) => listener(next))
+}
+
+/** How much arrived: a percentage when the size is known, megabytes otherwise. */
+export function amount(value: Progress) {
+  if (value.total) return `${Math.min(100, Math.floor((value.received / value.total) * 100))}%`
+  return `${(value.received / 1_000_000).toFixed(1)} MB`
+}
+
+/** One status line, such as "Downloading redcode-design 0.1.0… 45%". */
+export function describe(value: Progress) {
+  const name = value.version ? `redcode-design ${value.version}` : "redcode-design"
+  if (value.phase === "start") return `Starting ${name}…`
+  return `Downloading ${name}… ${amount(value)}`
+}
+
 /** What a release says about itself; the archive is installed only when it speaks redcode's protocol. */
 export const Manifest = Schema.Struct({ version: Schema.String, protocol: Schema.Int })
 export type Manifest = typeof Manifest.Type
@@ -155,6 +201,8 @@ async function fetchManifest(options: Options, version: string) {
 
 async function download(input: Options & { version: string; platform: string; bin: string; file: string }) {
   const asset = archive(input.platform)
+  const started = tracker.current?.started ?? Date.now()
+  report({ phase: "download", version: input.version, received: 0, started })
   // The manifest is checked before the archive is fetched: a release of another protocol is refused outright.
   const remote = await fetchManifest(input, input.version)
   if (remote.protocol !== input.protocol) throw mismatch(input.version, remote.protocol, input.protocol)
@@ -166,8 +214,9 @@ async function download(input: Options & { version: string; platform: string; bi
       .find(([, name]) => name === file)?.[0]
       ?.toLowerCase()
   verify(input.version, "manifest.json", remote.bytes, expected("manifest.json"))
-  const bytes = await (await get(input, `${base(input, input.version)}/${asset}`)).bytes()
+  const bytes = await receive(await get(input, `${base(input, input.version)}/${asset}`), input.version, started)
   verify(input.version, asset, bytes, expected(asset))
+  report({ phase: "start", version: input.version, received: 0, started })
   await mkdir(input.bin, { recursive: true })
   const temporary = path.join(input.bin, `.redcode-design-${input.version}-${crypto.randomUUID()}`)
   await mkdir(temporary)
@@ -184,6 +233,28 @@ async function download(input: Options & { version: string; platform: string; bi
   } finally {
     await rm(temporary, { recursive: true, force: true })
   }
+}
+
+/** Reads an archive, reporting each whole percent (or tenth of a megabyte) at most five times a second. */
+async function receive(response: Response, version: string, started: number) {
+  const reader = response.body?.getReader()
+  if (!reader) return response.bytes()
+  const total = Number(response.headers.get("content-length")) || undefined
+  const chunks: Uint8Array[] = []
+  const state = { received: 0, shown: "", at: 0 }
+  for (;;) {
+    const chunk = await reader.read()
+    if (chunk.done) break
+    chunks.push(chunk.value)
+    state.received += chunk.value.byteLength
+    const next: Progress = { phase: "download", version, received: state.received, total, started }
+    const complete = total !== undefined && state.received >= total
+    if (amount(next) === state.shown || (!complete && Date.now() - state.at < 200)) continue
+    state.shown = amount(next)
+    state.at = Date.now()
+    report(next)
+  }
+  return new Uint8Array(Bun.concatArrayBuffers(chunks))
 }
 
 async function extract(directory: string, asset: string) {

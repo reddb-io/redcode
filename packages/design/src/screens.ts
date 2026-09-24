@@ -298,4 +298,13 @@ export function screens() {
   })
   if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", announce)
   else announce()
+  // The host keeps the frame out of sight until it has painted with its fonts, so it never shows a blank page.
+  const ready = () =>
+    void (document.fonts?.ready ?? Promise.resolve()).then(() =>
+      requestAnimationFrame(() => {
+        if (parent !== window) parent.postMessage({ type: "design:ready" }, "*")
+      }),
+    )
+  if (document.readyState === "complete") ready()
+  else window.addEventListener("load", ready, { once: true })
 }

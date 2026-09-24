@@ -33,26 +33,35 @@ type Modules = {
 
 const runtime = makeRuntime(Npm.Service, LayerNode.compile(Npm.node))
 const fingerprint = Bun.hash(JSON.stringify(versions)).toString(16)
+const installs = { active: 0 }
+
+/** Whether the Design tools are being installed now, as they are the first time a compiled redcode needs them. */
+export function installing() {
+  return installs.active > 0
+}
 
 export async function resolve(name: keyof Modules, signal?: AbortSignal) {
   signal?.throwIfAborted()
   if (typeof REDCODE_DESIGN_RUNTIME === "undefined") return createRequire(import.meta.url).resolve(name)
   const directory = path.join(Global.Path.cache, "design-runtime", fingerprint)
   await mkdir(directory, { recursive: true })
-  await runtime.runPromise(
-    (npm) =>
-      npm.install(directory, { add: Object.entries(versions).map(([name, version]) => ({ name, version })) }).pipe(
-        Effect.timeout("5 minutes"),
-        Effect.mapError(
-          (error) =>
-            new Design.Error({
-              code: "unavailable",
-              message: `Unable to prepare Design tools in ${directory}: ${String(error)}. Check registry access and retry.`,
-            }),
+  installs.active++
+  await runtime
+    .runPromise(
+      (npm) =>
+        npm.install(directory, { add: Object.entries(versions).map(([name, version]) => ({ name, version })) }).pipe(
+          Effect.timeout("5 minutes"),
+          Effect.mapError(
+            (error) =>
+              new Design.Error({
+                code: "unavailable",
+                message: `Unable to prepare Design tools in ${directory}: ${String(error)}. Check registry access and retry.`,
+              }),
+          ),
         ),
-      ),
-    { signal },
-  )
+      { signal },
+    )
+    .finally(() => installs.active--)
   signal?.throwIfAborted()
   return createRequire(path.join(directory, "package.json")).resolve(name)
 }

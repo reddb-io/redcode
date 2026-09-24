@@ -204,6 +204,24 @@ test("publishes and exports through HTTP, and the job is what the store reads", 
   expect(file.status).toBe(200)
 }, 150_000)
 
+test("reports a preview's build stage, which the review page follows while it waits", async () => {
+  const document = state.document!
+  const published = await call(`/${document.id}/revision`, {
+    method: "POST",
+    body: JSON.stringify({ name: "Status", tooling: false }),
+  })
+  expect(published.status).toBe(200)
+  const revision = (await published.json()) as Design.Revision
+  const stage = async () =>
+    ((await (await call(`/${document.id}/revision/${revision.id}/status`)).json()) as { stage: string }).stage
+  // Nothing asked for its preview yet.
+  expect(await stage()).toBe("queued")
+  const preview = await call(`/${document.id}/revision/${revision.id}/preview`)
+  expect(preview.status).toBe(200)
+  expect(await preview.text()).toContain("Exported by the design app.")
+  expect(await stage()).toBe("ready")
+}, 60_000)
+
 test("a review link lets a browser in, and feedback and the feed go through design.host", async () => {
   const app = state.app!
   const document = state.document!
