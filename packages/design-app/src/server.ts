@@ -14,6 +14,7 @@ import { screens } from "@reddb-io/redcode-design/screens"
 import { deck, slides } from "@reddb-io/redcode-design/slides"
 import { mountPresent } from "@reddb-io/redcode-design/present"
 import { designFeed } from "@reddb-io/redcode-design/feed"
+import { DesignVendor } from "@reddb-io/redcode-design/vendor"
 import { Design } from "@reddb-io/redcode-schema/design"
 import { Session } from "@reddb-io/redcode-schema/session"
 import { AbsolutePath } from "@reddb-io/redcode-schema/schema"
@@ -27,6 +28,7 @@ import { DesignApp } from "@reddb-io/redcode-core/design/app"
 import { DesignHost } from "@reddb-io/redcode-core/design/host"
 import { DesignStore } from "@reddb-io/redcode-core/design/store"
 import { DesignRenderer } from "@reddb-io/redcode-core/design/renderer"
+import { DesignRendererLocal } from "@reddb-io/redcode-core/design/renderer-local"
 import { DesignExport } from "@reddb-io/redcode-core/design/export"
 import { DesignWhiteboard } from "@reddb-io/redcode-core/design/whiteboard"
 import { InstallationVersion } from "@reddb-io/redcode-core/installation/version"
@@ -99,7 +101,7 @@ export async function start(options: Options) {
       Effect.gen(function* () {
         const database = yield* Database.Service
         return yield* Layer.buildWithScope(
-          AppNodeBuilder.build(LayerNode.group([DesignStore.node, DesignRenderer.node]), [
+          AppNodeBuilder.build(LayerNode.group([DesignStore.node, DesignRendererLocal.node]), [
             [Database.node, Layer.succeed(Database.Service, database)],
             [
               Location.node,
@@ -169,6 +171,10 @@ export async function start(options: Options) {
       setTimeout(() => void shutdown(), 50)
       return new Response(null, { status: 202 })
     }
+    // A pre-0.22 prototype's assets, which redcode copies into it when importing it.
+    const asset =
+      parts[1] === "vendor" && parts.length === 3 && request.method === "GET" ? DesignVendor.FILES[parts[2]] : undefined
+    if (asset) return new Response(asset.body, { headers: { "content-type": asset.mime } })
     return failure(404, "Not found")
   }
 

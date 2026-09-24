@@ -6,10 +6,13 @@ import { mkdir, rename, rm, writeFile } from "node:fs/promises"
 import { spawn } from "node:child_process"
 import { createHmac, randomBytes, timingSafeEqual } from "node:crypto"
 import { setTimeout as sleep } from "node:timers/promises"
-import { Option, Schema } from "effect"
+import { Effect, Option, Schema } from "effect"
+import { Design } from "@reddb-io/redcode-schema/design"
 import { Global } from "../global"
+import { Database } from "../database/database"
 import { InstallationVersion } from "../installation/version"
 import { Flock } from "../util/flock"
+import { DesignAppBinary } from "./app-binary"
 
 /**
  * The contract between redcode and the design app (`redcode-design`), the separate process that serves
@@ -19,7 +22,7 @@ import { Flock } from "../util/flock"
  */
 
 /** Bumped whenever routes or payloads between redcode and the design app change incompatibly. */
-export const PROTOCOL = 1
+export const PROTOCOL = 2
 
 /** Minutes without review tabs, requests or running jobs before the app exits on its own. */
 export const IDLE_MINUTES = 10
@@ -139,23 +142,11 @@ export async function health(url: string, secret: string) {
   return Option.getOrUndefined(Schema.decodeUnknownOption(Health)(await response.json().catch(() => undefined)))
 }
 
-/**
- * How to start the app: `REDCODE_DESIGN_BIN`, else its source in this checkout run with Bun. Nothing
- * in a compiled redcode without the variable: Design then runs inside redcode.
- */
-export function command(): string[] | undefined {
-  const bin = process.env.REDCODE_DESIGN_BIN?.trim()
-  if (bin) return [bin]
-  const entry = path.resolve(import.meta.dir, "../../../design-app/src/index.ts")
-  if (!existsSync(entry)) return undefined
-  if (path.basename(process.execPath).replace(/\.exe$/, "") !== "bun") return undefined
-  return [process.execPath, entry]
-}
-
 export interface EnsureInput {
   /** redcode's server: where the app reaches `design.host` for the sessions it serves. */
   readonly host: string
-  readonly command?: readonly string[]
+  /** How to start the app; resolved only when none runs. Default: see DesignAppBinary.command. */
+  readonly command?: readonly string[] | (() => Promise<readonly string[]>)
   readonly state?: string
   readonly idleMinutes?: number
   /** How long a new app has to register. */
@@ -179,8 +170,11 @@ export async function ensure(input: EnsureInput) {
       // Another redcode may have started one while this one waited for the lock.
       const started = await reusable(files.registration, secret)
       if (started) return { url: started.url, token: secret }
-      const launch = input.command ?? command()
-      if (!launch?.length) throw new Error("The design app is not available in this installation")
+      const launch =
+        typeof input.command === "function"
+          ? await input.command()
+          : (input.command ?? (await DesignAppBinary.command({ protocol: PROTOCOL })))
+      if (!launch.length) throw new Error("The design app is not available in this installation")
       const log = openSync(files.log, "a", 0o600)
       const child = spawn(
         launch[0],
@@ -235,4 +229,180 @@ export async function stop(url: string, secret: string) {
     headers: { authorization: `Bearer ${secret}` },
     signal: AbortSignal.timeout(2_000),
   }).catch(() => undefined)
+}
+
+/** The redcode server design.host routes are reached at, with the authorization it expects. */
+export interface Host {
+  readonly url: string
+  readonly authorization?: string
+}
+
+/** A running design app and, when redcode serves the conversation, where the app reaches it. */
+export interface Connection {
+  readonly url: string
+  readonly token: string
+  readonly host?: Host
+}
+
+let served: Host | undefined
+
+/** A server bound to every interface is reached on loopback. */
+export function loopback(url: string | URL) {
+  const parsed = new URL(url)
+  if (parsed.hostname === "0.0.0.0" || parsed.hostname === "[::]" || parsed.hostname === "::")
+    parsed.hostname = "127.0.0.1"
+  return parsed.origin
+}
+
+/** Records this process's redcode server: an app started from here reaches `design.host` there. */
+export function serve(host: Host) {
+  served = host
+}
+
+/** The running design app, started when none answers, with the version `design.app.version` names. */
+export const connect = Effect.fn("DesignApp.connect")(function* (
+  input: { readonly host?: Host; readonly version?: string; readonly state?: string } = {},
+) {
+  const host = input.host ?? served
+  if (!host)
+    return yield* new Design.Error({
+      code: "unavailable",
+      message:
+        "Design runs in the design app, which reaches the conversation through redcode's server; none listens here",
+    })
+  const started = yield* Effect.tryPromise({
+    try: () =>
+      ensure({
+        host: host.url,
+        state: input.state,
+        command: () => DesignAppBinary.command({ protocol: PROTOCOL, version: input.version }),
+        // The app opens this redcode's database file, whatever its release channel names it.
+        env: { REDCODE_DB: Database.path() },
+      }),
+    catch: (cause) =>
+      new Design.Error({
+        code: "unavailable",
+        message: `The design app did not start: ${cause instanceof Error ? cause.message : String(cause)}`,
+      }),
+  })
+  return { ...started, host } satisfies Connection
+})
+
+/** The app that runs now, if any, without starting one. */
+export async function running(state?: string): Promise<Connection | undefined> {
+  const files = paths(state)
+  const secret = await token(files.token)
+  const info = await reusable(files.registration, secret)
+  return info ? { url: info.url, token: secret } : undefined
+}
+
+/** A page of the session on the app, with a ticket that lets the browser in. */
+export const link = Effect.fn("DesignApp.link")(function* (
+  connection: Connection,
+  sessionID: string,
+  route = "/review",
+  search: Record<string, string | undefined> = {},
+) {
+  // Tells the app which redcode serves this session before a browser asks it for the feed.
+  yield* send(connection, sessionID, "/attach", { method: "POST" })
+  const url = new URL(`/design/session/${encodeURIComponent(sessionID)}${route}`, connection.url)
+  for (const [key, value] of Object.entries(search)) if (value !== undefined) url.searchParams.set(key, value)
+  url.searchParams.set("ticket", ticket(connection.token, sessionID))
+  return url.toString()
+})
+
+export const publish = (
+  connection: Connection,
+  sessionID: string,
+  id: Design.ID,
+  input: { readonly name: string; readonly tooling: boolean },
+) => call(connection, sessionID, `/${id}/revision`, Design.Revision, { method: "POST", body: input })
+
+export const restore = (
+  connection: Connection,
+  sessionID: string,
+  id: Design.ID,
+  input: { readonly revision: string; readonly tooling: boolean },
+) => call(connection, sessionID, `/${id}/restore`, Design.Revision, { method: "POST", body: input })
+
+export const render = (connection: Connection, sessionID: string, id: Design.ID, input: Design.Render) =>
+  call(connection, sessionID, `/${id}/job`, Design.Job, { method: "POST", body: input })
+
+export const jobs = (connection: Connection, sessionID: string, id: Design.ID) =>
+  call(connection, sessionID, `/${id}/job`, Schema.Array(Design.Job))
+
+export const cancel = (connection: Connection, sessionID: string, id: Design.ID, jobID: string) =>
+  call(connection, sessionID, `/${id}/job/${encodeURIComponent(jobID)}/cancel`, Design.Job, { method: "POST" })
+
+/** A vendor asset (Tailwind, DaisyUI, Mermaid) a pre-0.22 prototype referenced, served by the app. */
+export const vendor = (connection: Connection, name: string) =>
+  request(connection, `/app/vendor/${encodeURIComponent(name)}`, {}).pipe(
+    Effect.flatMap((response) =>
+      response.ok
+        ? Effect.promise(() => response.text())
+        : Effect.fail(new Design.Error({ code: "not-found", message: `The design app has no vendor asset ${name}` })),
+    ),
+  )
+
+const call = <A>(
+  connection: Connection,
+  sessionID: string,
+  route: string,
+  schema: Schema.Codec<A, unknown, never, never>,
+  init: { readonly method?: string; readonly body?: unknown } = {},
+) =>
+  send(connection, sessionID, route, init).pipe(
+    Effect.flatMap((response) =>
+      Effect.tryPromise({
+        try: () => response.json(),
+        catch: () =>
+          new Design.Error({ code: "unavailable", message: `The design app answered ${response.status} without JSON` }),
+      }).pipe(Effect.flatMap((payload) => (response.ok ? decode(schema, payload) : Effect.fail(failure(payload))))),
+    ),
+  )
+
+const send = (
+  connection: Connection,
+  sessionID: string,
+  route: string,
+  init: { readonly method?: string; readonly body?: unknown },
+) => request(connection, `/design/session/${encodeURIComponent(sessionID)}${route}`, init)
+
+const request = (connection: Connection, route: string, init: { readonly method?: string; readonly body?: unknown }) =>
+  Effect.tryPromise({
+    try: (signal) =>
+      fetch(new URL(route, connection.url), {
+        method: init.method ?? "GET",
+        body: init.body === undefined ? undefined : JSON.stringify(init.body),
+        signal,
+        headers: {
+          authorization: `Bearer ${connection.token}`,
+          ...(connection.host ? { [HOST_HEADER]: connection.host.url } : {}),
+          ...(connection.host?.authorization ? { [HOST_AUTHORIZATION_HEADER]: connection.host.authorization } : {}),
+          ...(init.body === undefined ? {} : { "content-type": "application/json" }),
+        },
+      }),
+    catch: (cause) =>
+      new Design.Error({
+        code: "unavailable",
+        message: `The design app did not answer: ${cause instanceof Error ? cause.message : String(cause)}`,
+      }),
+  })
+
+const decode = <A>(schema: Schema.Codec<A, unknown, never, never>, payload: unknown) =>
+  Schema.decodeUnknownEffect(schema)(payload).pipe(
+    Effect.mapError(
+      (error) => new Design.Error({ code: "unavailable", message: `The design app answered: ${error.message}` }),
+    ),
+  )
+
+const Failure = Schema.Struct({
+  code: Schema.Literals(["not-found", "conflict", "invalid", "unavailable"]),
+  message: Schema.String,
+})
+
+function failure(payload: unknown) {
+  const decoded = Schema.decodeUnknownOption(Failure)(payload)
+  if (Option.isSome(decoded)) return new Design.Error(decoded.value)
+  return new Design.Error({ code: "unavailable", message: "The design app failed without saying why" })
 }

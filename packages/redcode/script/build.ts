@@ -17,6 +17,7 @@ const generated = await import("./generate.ts")
 
 import { Script } from "@reddb-io/redcode-script"
 import pkg from "../package.json"
+import designApp from "../../design-app/package.json"
 
 const product = "redcode"
 const npmScope = "@reddb-io"
@@ -56,14 +57,6 @@ const createEmbeddedWebUIBundle = async () => {
 
 const embeddedFileMap = skipEmbedWebUi ? null : await createEmbeddedWebUIBundle()
 const treeSitterWorker = await Bun.file(fileURLToPath(import.meta.resolve("@opentui/core/parser.worker"))).text()
-const rasterWorker = await Bun.build({
-  entrypoints: ["../core/src/design/raster-worker.ts"],
-  target: "bun",
-  format: "esm",
-  minify: true,
-})
-if (!rasterWorker.success) throw new AggregateError(rasterWorker.logs, "Unable to bundle the Design raster worker")
-const rasterWorkerSource = await rasterWorker.outputs[0].text()
 
 const allTargets: {
   os: string
@@ -172,7 +165,6 @@ for (const item of targets) {
   await $`mkdir -p dist/${name}/bin`
 
   const workerPath = "./src/cli/tui/worker.ts"
-  const designWorkerPath = "design-raster-worker.js"
   const treeSitterWorkerPath = "opentui-tree-sitter-worker.js"
   const bunfsRoot = item.os === "win32" ? "B:/~BUN/root/" : "/$bunfs/root/"
 
@@ -197,13 +189,11 @@ for (const item of targets) {
     },
     files: {
       [treeSitterWorkerPath]: treeSitterWorker,
-      [designWorkerPath]: rasterWorkerSource,
       ...(embeddedFileMap ? { "opencode-web-ui.gen.ts": embeddedFileMap } : {}),
     },
     entrypoints: [
       "./src/index.ts",
       workerPath,
-      designWorkerPath,
       treeSitterWorkerPath,
       ...(embeddedFileMap ? ["opencode-web-ui.gen.ts"] : []),
     ],
@@ -213,8 +203,12 @@ for (const item of targets) {
       REDCODE_MODELS_DEV: generated.modelsData,
       OTUI_TREE_SITTER_WORKER_PATH: bunfsRoot + treeSitterWorkerPath,
       REDCODE_WORKER_PATH: workerPath,
-      REDCODE_DESIGN_WORKER_PATH: JSON.stringify(bunfsRoot + designWorkerPath),
       REDCODE_DESIGN_RUNTIME: "true",
+      // Design's renders, exports, rasters and review pages run in the design app (redcode-design), a
+      // separate release downloaded on first use: gated on this, the bundler leaves them out.
+      "process.env.REDCODE_DESIGN_APP_ONLY": JSON.stringify("1"),
+      REDCODE_DESIGN_APP_VERSION: JSON.stringify(designApp.version),
+      REDCODE_TARGET: JSON.stringify(name.slice(`${product}-`.length)),
       REDCODE_CHANNEL: `'${Script.channel}'`,
       REDCODE_LIBC: item.os === "linux" ? `'${item.abi ?? "glibc"}'` : "",
       ...(item.os === "linux" ? { "process.env.OPENTUI_LIBC": JSON.stringify(item.abi ?? "glibc") } : {}),
@@ -299,10 +293,12 @@ if (Script.release) {
       archives.push(`dist/${key}.zip`)
     }
   }
-  // The whiteboard bundle rides on the release as its own tarball: not in any binary, fetched by
-  // the server the first time a diagram is opened as a whiteboard.
-  await $`bun script/whiteboard-bundle.ts --archive`.env({ ...process.env, REDCODE_VERSION: Script.version })
-  archives.push(`dist/redcode-whiteboard-${Script.version}.tar.gz`)
+  // Names the version, tying SHA256SUMS to the tag, and the design app release this redcode runs.
+  await Bun.write(
+    `dist/redcode-release-${Script.version}.json`,
+    `${JSON.stringify({ version: Script.version, design: designApp.version }, null, 2)}\n`,
+  )
+  archives.push(`dist/redcode-release-${Script.version}.json`)
   const checksums: string[] = []
   for (const archive of archives.sort()) {
     const hasher = new Bun.CryptoHasher("sha256")
@@ -316,7 +312,7 @@ if (Script.release) {
   }
   await Bun.write("dist/SHA256SUMS", `${checksums.join("\n")}\n`)
   if (!skipUpload)
-    await $`gh release upload v${Script.version} ./dist/*.zip ./dist/*.tar.gz ./dist/SHA256SUMS --clobber --repo ${process.env.GH_REPO}`
+    await $`gh release upload v${Script.version} ./dist/*.zip ./dist/*.tar.gz ./dist/redcode-release-${Script.version}.json ./dist/SHA256SUMS --clobber --repo ${process.env.GH_REPO}`
 }
 
 export { binaries }

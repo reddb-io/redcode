@@ -70,7 +70,7 @@ describe.skipIf(process.platform === "win32")("unpackReleaseAssets", () => {
     await Promise.all(scratch.splice(0).map((dir) => rm(dir, { recursive: true, force: true })))
   })
 
-  async function releaseFixture(options: { tamper?: boolean; extra?: string } = {}) {
+  async function releaseFixture(options: { tamper?: boolean; extra?: string; marker?: string } = {}) {
     const root = await mkdtemp(path.join(os.tmpdir(), "redcode-npm-release-assets-test-"))
     scratch.push(root)
     const assets = path.join(root, "assets")
@@ -80,8 +80,9 @@ describe.skipIf(process.platform === "win32")("unpackReleaseAssets", () => {
     await Bun.write(path.join(staging, "redcode-rpc-sidecar"), "#!/bin/sh\n")
     if (options.extra) await Bun.write(path.join(staging, options.extra), "x")
     await $`tar -czf ${path.join(assets, "redcode-linux-x64.tar.gz")} *`.cwd(staging)
-    await Bun.write(path.join(assets, "redcode-whiteboard-0.31.2.tar.gz"), "whiteboard")
-    const sums = await $`sha256sum redcode-linux-x64.tar.gz redcode-whiteboard-0.31.2.tar.gz`.cwd(assets).text()
+    const marker = options.marker ?? "redcode-whiteboard-0.31.2.tar.gz"
+    await Bun.write(path.join(assets, marker), "marker")
+    const sums = await $`sha256sum redcode-linux-x64.tar.gz ${marker}`.cwd(assets).text()
     await Bun.write(
       path.join(assets, "SHA256SUMS"),
       options.tamper ? sums.replace(/^[0-9a-f]/, (c) => (c === "0" ? "1" : "0")) : sums,
@@ -99,6 +100,15 @@ describe.skipIf(process.platform === "win32")("unpackReleaseAssets", () => {
     expect(await Bun.file(path.join(fixture.dist, "redcode-linux-x64", "package.json")).json()).toEqual(
       platformManifest(platformFromArchive("redcode-linux-x64.tar.gz")!, "0.31.2"),
     )
+  })
+
+  test("accepts the release manifest that ties SHA256SUMS to the version", async () => {
+    const fixture = await releaseFixture({ marker: "redcode-release-0.31.2.json" })
+    const packages = await unpackReleaseAssets({ assetsDir: fixture.assets, distDir: fixture.dist, version: "0.31.2" })
+    expect(packages).toEqual(["@reddb-io/redcode-linux-x64"])
+    await expect(
+      unpackReleaseAssets({ assetsDir: fixture.assets, distDir: fixture.dist, version: "0.31.3" }),
+    ).rejects.toThrow("SHA256SUMS does not belong to 0.31.3")
   })
 
   test("refuses an archive that does not match SHA256SUMS", async () => {

@@ -1,0 +1,5 @@
+---
+"@reddb-io/redcode": minor
+---
+
+Design now always runs in the design app. Installed redcode no longer carries Design's renderer, exports, raster worker, whiteboard or review and presenter pages: the first time Design needs them, redcode downloads `redcode-design` for its platform from the `design-vX.Y.Z` GitHub release, checks the release speaks its protocol, verifies the archive against the release's SHA256SUMS (a mismatch is refused), and installs it into the cache directory, where later runs reuse it. `design.app.version` picks the release: the one redcode was built with by default, an exact version, or `"latest"` for the newest release that speaks redcode's protocol (offline, the newest compatible release already installed). `REDCODE_DESIGN_BIN` still overrides the binary and a source checkout still runs the app from source. Offline with nothing installed, Design tools fail with a clear error instead of running inline; `design.app.mode` now only applies when redcode runs from source. Review and presenter links to redcode's own server redirect to the app.

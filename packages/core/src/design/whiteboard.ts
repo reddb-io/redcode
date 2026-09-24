@@ -43,7 +43,8 @@ export function frame() {
 }
 
 async function download(asset: string) {
-  const url = `https://github.com/reddb-io/redcode/releases/download/v${source.version}/${asset}`
+  // Only the design app serves whiteboards, so its version names the release that carries the bundle.
+  const url = `https://github.com/reddb-io/redcode/releases/download/design-v${source.version}/${asset}`
   return source
     .fetch(url, { signal: AbortSignal.timeout(source.timeout) })
     .then((response) => {
@@ -76,7 +77,7 @@ async function install(release: string) {
   if (!expected)
     throw new Design.Error({
       code: "unavailable",
-      message: `Whiteboard bundle is unavailable: SHA256SUMS for v${source.version} has no entry for ${asset}`,
+      message: `Whiteboard bundle is unavailable: SHA256SUMS for design-v${source.version} has no entry for ${asset}`,
     })
   const archive = await download(asset)
   const actual = new Bun.CryptoHasher("sha256").update(archive).digest("hex")

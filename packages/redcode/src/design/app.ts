@@ -1,150 +1,70 @@
 export * as DesignAppClient from "./app"
 
-import { Effect, Option, Schema } from "effect"
-import { Design } from "@reddb-io/redcode-schema/design"
+import { Effect } from "effect"
+import { HttpServerResponse, type HttpServerRequest } from "effect/unstable/http"
 import { DesignApp } from "@reddb-io/redcode-core/design/app"
-import { Database } from "@reddb-io/redcode-core/database/database"
+import { DesignHost } from "@reddb-io/redcode-core/design/host"
 import { ServerAuth } from "@reddb-io/redcode-server/auth"
 
 /**
- * redcode's side of the design app: with `design.app.mode` "process", builds, renders and exports run
- * in `redcode-design` and the review links point at it, while the conversation stays here behind
- * `design.host`. Documents are still read and written directly through the Design store.
+ * redcode's side of the design app (`redcode-design`), which builds, renders, exports and serves the
+ * review while the conversation stays here behind `design.host`. A compiled redcode always runs Design
+ * there; from source, `design.app.mode` "process" does and inline stays the default. Documents are
+ * still read and written directly through the Design store.
  */
-
-export interface Connection {
-  readonly url: string
-  readonly token: string
-  /** This redcode's server, where the app reaches `design.host`. */
-  readonly host: string
-}
 
 /**
- * The design app to use, started when none runs; nothing when Design runs inline, which is the default
- * and what a compiled redcode without `REDCODE_DESIGN_BIN` falls back to.
+ * The design app to use, started when none runs; nothing when Design runs inline. A compiled redcode
+ * has no inline Design, so a failure to start the app is its error; from source it falls back to inline.
  */
 export const connect = Effect.fn("DesignAppClient.connect")(function* (
-  mode: "process" | "inline" | undefined,
+  design: { readonly mode?: "process" | "inline"; readonly version?: string } | undefined,
   server: Effect.Effect<string>,
 ) {
-  if (mode !== "process") return undefined
-  const command = DesignApp.command()
-  if (!command) {
-    yield* Effect.logWarning("design.app.mode is process but the design app is unavailable; Design runs inline")
-    return undefined
-  }
-  const host = loopback(yield* server)
-  const started = yield* Effect.tryPromise({
-    // The app opens this redcode's database file, whatever its release channel names it.
-    try: () => DesignApp.ensure({ host, command, env: { REDCODE_DB: Database.path() } }),
-    catch: (cause) =>
-      new Design.Error({
-        code: "unavailable",
-        message: `The design app did not start: ${cause instanceof Error ? cause.message : String(cause)}`,
-      }),
+  const only = process.env.REDCODE_DESIGN_APP_ONLY === "1"
+  if (!only && design?.mode !== "process") return undefined
+  const connecting = DesignApp.connect({
+    host: { url: DesignApp.loopback(yield* server), authorization: ServerAuth.header() },
+    version: design?.version,
   })
-  return { ...started, host } satisfies Connection
-})
-
-/** The session's review page on the app, with a ticket that lets the browser in. */
-export const review = Effect.fn("DesignAppClient.review")(function* (connection: Connection, sessionID: string) {
-  // Tells the app which redcode serves this session before a browser asks it for the feed.
-  yield* send(connection, sessionID, "/attach", { method: "POST" })
-  const url = new URL(`/design/session/${encodeURIComponent(sessionID)}/review`, connection.url)
-  url.searchParams.set("ticket", DesignApp.ticket(connection.token, sessionID))
-  return url.toString()
-})
-
-export const publish = (
-  connection: Connection,
-  sessionID: string,
-  id: Design.ID,
-  input: { readonly name: string; readonly tooling: boolean },
-) => call(connection, sessionID, `/${id}/revision`, Design.Revision, { method: "POST", body: input })
-
-export const restore = (
-  connection: Connection,
-  sessionID: string,
-  id: Design.ID,
-  input: { readonly revision: string; readonly tooling: boolean },
-) => call(connection, sessionID, `/${id}/restore`, Design.Revision, { method: "POST", body: input })
-
-export const render = (connection: Connection, sessionID: string, id: Design.ID, input: Design.Render) =>
-  call(connection, sessionID, `/${id}/job`, Design.Job, { method: "POST", body: input })
-
-export const jobs = (connection: Connection, sessionID: string, id: Design.ID) =>
-  call(connection, sessionID, `/${id}/job`, Schema.Array(Design.Job))
-
-export const cancel = (connection: Connection, sessionID: string, id: Design.ID, jobID: string) =>
-  call(connection, sessionID, `/${id}/job/${encodeURIComponent(jobID)}/cancel`, Design.Job, { method: "POST" })
-
-const call = <A>(
-  connection: Connection,
-  sessionID: string,
-  route: string,
-  schema: Schema.Codec<A, unknown, never, never>,
-  init: { readonly method?: string; readonly body?: unknown } = {},
-) =>
-  send(connection, sessionID, route, init).pipe(
-    Effect.flatMap((response) =>
-      Effect.tryPromise({
-        try: () => response.json(),
-        catch: () =>
-          new Design.Error({ code: "unavailable", message: `The design app answered ${response.status} without JSON` }),
-      }).pipe(Effect.flatMap((payload) => (response.ok ? decode(schema, payload) : Effect.fail(failure(payload))))),
+  if (only) return yield* connecting
+  return yield* connecting.pipe(
+    Effect.catch((error) =>
+      Effect.logWarning(`design.app.mode is process but ${error.message}; Design runs inline`).pipe(
+        Effect.as(undefined),
+      ),
     ),
   )
-
-const send = (
-  connection: Connection,
-  sessionID: string,
-  route: string,
-  init: { readonly method?: string; readonly body?: unknown },
-) => {
-  const authorization = ServerAuth.header()
-  return Effect.tryPromise({
-    try: (signal) =>
-      fetch(new URL(`/design/session/${encodeURIComponent(sessionID)}${route}`, connection.url), {
-        method: init.method ?? "GET",
-        body: init.body === undefined ? undefined : JSON.stringify(init.body),
-        signal,
-        headers: {
-          authorization: `Bearer ${connection.token}`,
-          [DesignApp.HOST_HEADER]: connection.host,
-          ...(authorization ? { [DesignApp.HOST_AUTHORIZATION_HEADER]: authorization } : {}),
-          ...(init.body === undefined ? {} : { "content-type": "application/json" }),
-        },
-      }),
-    catch: (cause) =>
-      new Design.Error({
-        code: "unavailable",
-        message: `The design app did not answer: ${cause instanceof Error ? cause.message : String(cause)}`,
-      }),
-  })
-}
-
-const decode = <A>(schema: Schema.Codec<A, unknown, never, never>, payload: unknown) =>
-  Schema.decodeUnknownEffect(schema)(payload).pipe(
-    Effect.mapError(
-      (error) => new Design.Error({ code: "unavailable", message: `The design app answered: ${error.message}` }),
-    ),
-  )
-
-const Failure = Schema.Struct({
-  code: Schema.Literals(["not-found", "conflict", "invalid", "unavailable"]),
-  message: Schema.String,
 })
 
-function failure(payload: unknown) {
-  const decoded = Schema.decodeUnknownOption(Failure)(payload)
-  if (Option.isSome(decoded)) return new Design.Error(decoded.value)
-  return new Design.Error({ code: "unavailable", message: "The design app failed without saying why" })
-}
-
-/** A server bound to every interface is reached on loopback. */
-function loopback(url: string) {
-  const parsed = new URL(url)
-  if (parsed.hostname === "0.0.0.0" || parsed.hostname === "[::]" || parsed.hostname === "::")
-    parsed.hostname = "127.0.0.1"
-  return parsed.origin
-}
+/**
+ * A review or presenter link to this server, from a compiled redcode that no longer serves the pages:
+ * the browser goes on to the same page on the design app.
+ */
+export const redirect = (request: HttpServerRequest.HttpServerRequest) =>
+  Effect.gen(function* () {
+    const url = new URL(request.url, "http://localhost")
+    const parts = url.pathname.split("/").filter(Boolean)
+    const route = `/${parts.slice(3).join("/")}`
+    if (!DesignHost.allowed(request.headers.host)) return HttpServerResponse.empty({ status: 403 })
+    if (
+      request.method !== "GET" ||
+      parts[1] !== "session" ||
+      !parts[2] ||
+      (route !== "/review" && !/^\/[^/]+\/present$/.test(route))
+    )
+      return HttpServerResponse.jsonUnsafe(
+        { code: "not-found", message: "The design app serves Design; open the review again from redcode" },
+        { status: 404 },
+      )
+    const connection = yield* DesignApp.connect({
+      host: { url: `http://${request.headers.host}`, authorization: ServerAuth.header() },
+    })
+    return HttpServerResponse.redirect(
+      yield* DesignApp.link(connection, parts[2], route, Object.fromEntries(url.searchParams)),
+    )
+  }).pipe(
+    Effect.catch((error) =>
+      Effect.succeed(HttpServerResponse.jsonUnsafe({ code: error.code, message: error.message }, { status: 503 })),
+    ),
+  )
