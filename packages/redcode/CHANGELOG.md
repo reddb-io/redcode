@@ -1,5 +1,14 @@
 # opencode
 
+## 0.54.1
+
+### Patch Changes
+
+- 00e4cda: Fix presentation windows ping-ponging between slides forever. Pressing back on the first slide could start the audience and presenter windows echoing each other's moves, flipping the URL between two slides without end, and a reopened window joined the loop. A window now follows its slide frame only for a move the reader made inside it, never for the frame's report of a command; it applies a move from another window only when that move is newer than the one on screen, and never passes on what it received; a new window takes the running show's slide. Previous on the first slide and next on the last do nothing anywhere. If moves still arrive faster than any person could make them, the window pauses sync and says "Sync paused — press a key to resume".
+- 9179143: Show an answer revised after System One's review as one reply in the TUI: the final answer and its thought come first, followed by a muted "↻ revised after S1 review (issue) · show original" note that opens the superseded answer on demand. The S1 marker in the prompt footer now warns only when S1 is not set up, unavailable or failing, or left an issue unresolved after its repair, and the S1 dialog says why. System One's `unsupported` check now targets claims of performed or verified work, so greetings and statements of readiness are no longer flagged.
+- a73600c: Stop failing todo updates with "Task sources changed during evaluation" whenever another tool call in the same step settles while System One reviews the update. Only a task update committed meanwhile, or a new edit that makes the completion's evidence stale, now refuses it, with the specific stale-evidence message. A completion that cites a callID no tool result has is resolved from the files, design ids and `commands` its explanation names, under the same stale-evidence rules; nothing named still refuses it.
+- a514686: Design review: each variant tab now shows a small "×" to delete it (shown on hover/focus of the active tab, always visible on touch/narrow widths, or via the Delete key on a focused tab), opening the same delete confirmation as the variant-actions menu. The variant-actions button's pencil icon is replaced with a clearer "more" icon plus a visible "Variant actions" label, so the Rename/Split/Delete/Move/Merge menu is easier to find.
+
 ## 0.54.0
 
 ### Minor Changes
