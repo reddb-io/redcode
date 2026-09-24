@@ -7,6 +7,8 @@ import { Global } from "@reddb-io/redcode-core/global"
 import { Filesystem } from "@/util/filesystem"
 import { Env } from "../../src/env"
 import { Provider } from "@/provider/provider"
+import { OAUTH_DUMMY_KEY } from "@/auth"
+import { amazonBedrockAuthHooks } from "@/plugin/amazon-bedrock"
 
 import { disposeAllInstances } from "../fixture/fixture"
 import { testEffect } from "../lib/effect"
@@ -80,13 +82,50 @@ it.instance(
   { config: { provider: { "amazon-bedrock": { options: { region: "eu-west-1" } } } } },
 )
 
-it.instance("Bedrock: falls back to AWS_REGION env var when no config region", () =>
+it.instance("Bedrock: falls back to AWS_REGION env var when no config or saved region", () =>
   Effect.gen(function* () {
+    yield* withAuthJson(JSON.stringify({ "amazon-bedrock": { type: "api", key: OAUTH_DUMMY_KEY, metadata: {} } }))
     yield* set("AWS_REGION", "eu-west-1")
     yield* set("AWS_PROFILE", "default")
     const providers = yield* list
     expect(providers[ProviderV2.ID.amazonBedrock]).toBeDefined()
     expect(providers[ProviderV2.ID.amazonBedrock].options?.region).toBe("eu-west-1")
+  }),
+)
+
+it.instance("Bedrock: AWS credentials in the environment alone do not load it", () =>
+  Effect.gen(function* () {
+    yield* withAuthJson(JSON.stringify({}))
+    yield* set("AWS_PROFILE", "work")
+    yield* set("AWS_REGION", "eu-west-1")
+    yield* set("AWS_ACCESS_KEY_ID", "test-key-id")
+    yield* set("AWS_SECRET_ACCESS_KEY", "test-secret")
+    const providers = yield* list
+    expect(providers[ProviderV2.ID.amazonBedrock]).toBeUndefined()
+  }),
+)
+
+it.instance("Bedrock: an imported AWS profile loads it through the credential chain", () =>
+  Effect.gen(function* () {
+    const hooks = amazonBedrockAuthHooks({}, [{ name: "work", region: "eu-central-1", sso: true, keys: false }])
+    const method = hooks.auth?.methods[0]
+    if (method?.type !== "oauth") throw new Error("expected the profile import method")
+    const authorization = yield* Effect.promise(() => method.authorize({ profile: "work", region: "" }))
+    if (authorization.method !== "auto") throw new Error("expected an automatic import")
+    const result = yield* Effect.promise(() => authorization.callback())
+    if (result.type !== "success" || !("key" in result)) throw new Error("expected a saved setup")
+    yield* withAuthJson(
+      JSON.stringify({ "amazon-bedrock": { type: "api", key: result.key, metadata: result.metadata } }),
+    )
+    yield* set("AWS_PROFILE", "")
+    yield* set("AWS_REGION", "")
+    yield* set("AWS_BEARER_TOKEN_BEDROCK", "")
+    const provider = (yield* list)[ProviderV2.ID.amazonBedrock]
+    expect(provider).toBeDefined()
+    expect(provider.options?.region).toBe("eu-central-1")
+    expect(provider.options?.credentialProvider).toBeDefined()
+    // The placeholder key is never sent as a Bedrock API key.
+    expect(provider.key).toBeUndefined()
   }),
 )
 

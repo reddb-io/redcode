@@ -21,6 +21,7 @@ import { Credential } from "@reddb-io/redcode-core/credential"
 import { Intelligence } from "@reddb-io/redcode-core/intelligence"
 import { ModelLimit } from "@reddb-io/redcode-core/model-limit"
 import { ProviderRemove } from "@/provider/remove"
+import { ProviderAmbient } from "@/provider/ambient"
 import { isRecord } from "@/util/record"
 
 type PluginAuth = NonNullable<Hooks["auth"]>
@@ -480,16 +481,6 @@ export const ProvidersLoginCommand = effectCmd({
       )
     }
 
-    if (provider === "amazon-bedrock") {
-      yield* Prompt.log.info(
-        "Amazon Bedrock authentication priority:\n" +
-          "  1. Bearer token (AWS_BEARER_TOKEN_BEDROCK or /connect)\n" +
-          "  2. AWS credential chain (profile, access keys, IAM roles, EKS IRSA)\n\n" +
-          "Configure via redcode.json options (profile, region, endpoint) or\n" +
-          "AWS environment variables (AWS_PROFILE, AWS_REGION, AWS_ACCESS_KEY_ID, AWS_WEB_IDENTITY_TOKEN_FILE).",
-      )
-    }
-
     if (provider === "opencode") {
       yield* Prompt.log.info("Create an api key at https://opencode.ai/auth")
     }
@@ -590,6 +581,10 @@ export const ProvidersRemoveCommand = effectCmd({
       ...new Set([
         ...Object.keys(yield* Effect.orDie(auth.all())),
         ...Object.keys(isRecord(global.data.provider) ? global.data.provider : {}),
+        // Loaded from the environment alone: removing hides them.
+        ...Object.keys(database).filter((id) =>
+          ProviderAmbient.env(id, database[id].env).some((name) => process.env[name]),
+        ),
       ]),
     ]
     const name = (id: string) => database[id]?.name || id
@@ -612,12 +607,12 @@ export const ProvidersRemoveCommand = effectCmd({
       credentials: yield* Credential.Service,
       intelligence: yield* Intelligence.Service,
       limits: yield* ModelLimit.Service,
-      envNames: database[providerID]?.env,
+      envNames: ProviderAmbient.env(providerID, database[providerID]?.env),
     }
     const preview = yield* ProviderRemove.remove(deps, providerID, { dryRun: true })
     const lines = removalLines(preview)
     if (!lines.length) {
-      yield* Prompt.log.warn(envNotice(providerID, preview.envVariables) ?? `Nothing saved for ${providerID}`)
+      yield* Prompt.log.warn(`Nothing saved for ${providerID}`)
       return yield* fail(`Nothing to remove for "${providerID}"`)
     }
     for (const line of lines) yield* Prompt.log.info(line)
@@ -637,8 +632,10 @@ export const ProvidersRemoveCommand = effectCmd({
       }
     }
     const result = yield* ProviderRemove.remove(deps, providerID)
-    const notice = envNotice(providerID, result.envVariables)
-    if (notice) yield* Prompt.log.warn(notice)
+    if (result.removed.hidden)
+      yield* Prompt.log.warn(
+        `${name(providerID)} is hidden: ${result.envVariables.join(", ")} would load it again. Connecting it again shows it.`,
+      )
     yield* Prompt.outro(`Removed ${name(providerID)}`)
   }),
 })
@@ -652,10 +649,8 @@ export function removalLines(result: ProviderRemove.Result) {
     ...(result.removed.learnedLimits
       ? [`${result.removed.learnedLimits} learned model limit${result.removed.learnedLimits === 1 ? "" : "s"}`]
       : []),
+    ...(result.removed.hidden
+      ? [`Hidden through disabled_providers, since ${result.envVariables.join(", ")} would load it again`]
+      : []),
   ]
-}
-
-function envNotice(providerID: string, names: ReadonlyArray<string>) {
-  if (!names.length) return
-  return `${providerID} stays available through ${names.join(", ")}. Unset ${names.length === 1 ? "it" : "them"} to remove it completely.`
 }

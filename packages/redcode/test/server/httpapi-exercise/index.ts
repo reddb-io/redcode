@@ -391,6 +391,10 @@ const scenarios: Scenario[] = [
         object(body)
         check(body.dryRun === false, "a removal should not be a dry run")
         check(isRecord(body.removed) && body.removed.credential === true, "a removal should report the saved key")
+        check(
+          isRecord(body.removed) && body.removed.hidden === false,
+          "a provider nothing in the environment loads should not be hidden",
+        )
         check(Array.isArray(body.referencingFiles), "a removal should list project files that mention the provider")
         const auth = yield* Effect.promise(() => Bun.file(path.join(exerciseDataDirectory, "auth.json")).json())
         object(auth)
