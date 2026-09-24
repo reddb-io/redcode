@@ -19,6 +19,9 @@ Say whether you expect code changes or research only, and how the work can be ve
 
 Before the subagent starts, the brief is reviewed against the user's request, and in single reasoning only its structure is checked. A brief that needs revision fails the call with the issues and the questions to answer. Revise it and call again; nothing was launched. Only one revision per request is expected: a second rejection lets the task run with a warning.
 
+Choosing the model:
+A subagent runs on its agent's configured model, else on yours, with your variant where that model has it. Set model and variant only when the user asks for a particular model or reasoning level, never on your own initiative: with dual reasoning, a model the user did not ask for fails the brief review. Pass model as "providerID/modelID", looked up with the models tool (your own provider first) rather than guessed, and variant as one that tool lists for the model. An unknown model or variant fails the call with the closest matches.
+
 Reading the result:
 The task output can carry a <brief_review verdict="..."> note on the brief, and, when the brief has scope, done_criteria or return_format, a <review decision="..."> block on the result. The result is checked against the brief and the subagent's own tool calls: done criteria, claims without evidence (such as tests reported passing with no command that exited 0), changes outside the scope, the requested output, and contradictions with the brief. A result that falls short gets one repair round in the same subagent before the verdict. Decisions mean:
 - verified: the result was checked against the brief and its evidence, and no gap was found. Rely on it, citing the evidence it reports.

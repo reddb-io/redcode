@@ -23,6 +23,9 @@ import { SubagentReview } from "@reddb-io/redcode-core/session/subagent-review"
 import { SessionStopLoss } from "@reddb-io/redcode-core/session/stop-loss"
 import { SessionSpend } from "@/session/spend"
 import type { PermissionV1 } from "@reddb-io/redcode-core/v1/permission"
+import { ReasoningAuto } from "@reddb-io/redcode-core/session/reasoning-auto"
+import { Provider } from "@/provider/provider"
+import { closest, runnable, selectable } from "./models"
 
 export interface TaskPromptOps {
   notify?(input: SessionPrompt.PromptInput): Effect.Effect<boolean>
@@ -65,6 +68,14 @@ const BaseParameterFields = {
   return_format: Schema.optional(Schema.String).annotate({
     description:
       "What the subagent must hand back and in what shape, e.g. a list of file:line findings with one line of explanation each.",
+  }),
+  model: Schema.optional(Schema.String).annotate({
+    description:
+      "Only when the user asks for a particular model: the model the subagent runs on, as providerID/modelID. Look it up with the models tool, your own provider first; never guess an id. Left out, the subagent runs on its agent's configured model, else on yours.",
+  }),
+  variant: Schema.optional(Schema.String).annotate({
+    description:
+      "Only when the user asks for a reasoning level: the variant of the subagent's model to run, as the models tool lists it, e.g. high. Left out, your own variant carries over where the subagent's model has it.",
   }),
   task_id: Schema.optional(Schema.String).annotate({
     description:
@@ -122,6 +133,7 @@ export const TaskTool = Tool.define(
     const todos = yield* Todo.Service
     const plans = yield* SessionPlan.Service
     const spend = yield* SessionSpend.Service
+    const provider = yield* Provider.Service
     // Foreground subagents running per parent session. Checked and taken in one synchronous step,
     // so parallel task calls in one message cannot all slip under the cap.
     const running = new Map<SessionID, number>()
@@ -137,6 +149,64 @@ export const TaskTool = Tool.define(
       if (record && record.created >= started)
         yield* spend.recordEvaluation({ sessionID: input.sessionID, usage: record.usage })
       return record
+    })
+
+    /** The model a call names, among the connected providers; an unknown one fails with the closest ids. */
+    const requireModel = Effect.fn("TaskTool.requireModel")(function* (text: string) {
+      const ref = Provider.parseModel(text.trim())
+      const found = yield* provider.getModel(ref.providerID, ref.modelID).pipe(Effect.orElseSucceed(() => undefined))
+      if (found && runnable(found)) return found
+      if (found)
+        return yield* Effect.fail(
+          new Error(`${text} is a System One evaluator or a deprecated model; a subagent cannot run on it.`),
+        )
+      const close = closest(selectable(yield* provider.list()), text)
+      return yield* Effect.fail(
+        new Error(
+          [
+            `Unknown model "${text}": no connected provider serves it.`,
+            ...(close.length ? [`Close matches: ${close.join(", ")}.`] : []),
+            'Pass it as "providerID/modelID"; the models tool searches the available models.',
+          ].join(" "),
+        ),
+      )
+    })
+
+    /**
+     * The model a subagent runs on: the one the call names, else its agent's, else the parent's. A
+     * variant the call names must exist on that model; an inherited one is dropped where it does not.
+     */
+    const resolveModel = Effect.fn("TaskTool.resolveModel")(function* (input: {
+      model?: string
+      variant?: string
+      agent: Agent.Info
+      parent: NonNullable<Agent.Info["model"]>
+      parentVariant?: string
+    }) {
+      const explicit = input.model === undefined ? undefined : yield* requireModel(input.model)
+      const source = explicit ? "explicit" : input.agent.model ? "agent" : "parent"
+      const model = explicit
+        ? { providerID: explicit.providerID, modelID: explicit.id }
+        : (input.agent.model ?? input.parent)
+      // The parent's variant was chosen for the parent's model, so on that model it needs no check.
+      if (input.variant === undefined && source === "parent") return { model, variant: input.parentVariant, source }
+      const info =
+        explicit ??
+        (yield* provider.getModel(model.providerID, model.modelID).pipe(Effect.orElseSucceed(() => undefined)))
+      const choices = ReasoningAuto.options(Object.keys(info?.variants ?? {}))
+      if (input.variant !== undefined && !choices.includes(input.variant)) {
+        const ref = `${model.providerID}/${model.modelID}`
+        return yield* Effect.fail(
+          new Error(
+            choices.length
+              ? `Variant "${input.variant}" is not available for ${ref}. Available: ${choices.join(", ")}.`
+              : `${ref} has no variants. Leave variant out.`,
+          ),
+        )
+      }
+      const inherited = source === "agent" ? input.agent.variant : input.parentVariant
+      const variant = input.variant ?? (inherited !== undefined && choices.includes(inherited) ? inherited : undefined)
+      return { model, variant, source }
     })
 
     /**
@@ -219,8 +289,14 @@ export const TaskTool = Tool.define(
           scope: input.params.scope,
           done_criteria: input.params.done_criteria,
           return_format: input.params.return_format,
+          ...(input.params.model ? { model: input.params.model } : {}),
+          ...(input.params.variant ? { variant: input.params.variant } : {}),
         },
-        questions: SubagentReview.briefQuestions,
+        // Only a brief that picks a model is asked whether the user wanted it.
+        questions:
+          input.params.model || input.params.variant
+            ? { ...SubagentReview.briefQuestions, ...SubagentReview.modelQuestions }
+            : SubagentReview.briefQuestions,
       })
 
       if (!record || record.decision === "unavailable")
@@ -450,6 +526,13 @@ export const TaskTool = Tool.define(
       const asked = userMessage && userMessage.info.role === "user" ? userMessage.info.model.variant : undefined
       const variant = asked ?? msg.info.variant
       const request = latestRequest(ctx.messages, userMessage)
+      const resolved = yield* resolveModel({
+        model: params.model,
+        variant: params.variant,
+        agent: next,
+        parent: { providerID: msg.info.providerID, modelID: msg.info.modelID },
+        parentVariant: variant,
+      })
 
       if (!resumed) {
         const max = cfg.experimental?.subagent_limits?.per_request ?? 12
@@ -478,6 +561,11 @@ export const TaskTool = Tool.define(
           parentID: ctx.sessionID,
           title: params.description + ` (@${next.name} subagent)`,
           agent: next.name,
+          model: {
+            id: resolved.model.modelID,
+            providerID: resolved.model.providerID,
+            ...(resolved.variant ? { variant: resolved.variant } : {}),
+          },
           permission,
           metadata: SubagentReview.toMetadata(undefined, {
             brief: params.prompt,
@@ -495,14 +583,13 @@ export const TaskTool = Tool.define(
           }),
         }))
 
-      const model = next.model ?? {
-        modelID: msg.info.modelID,
-        providerID: msg.info.providerID,
-      }
       const metadata = {
         parentSessionId: ctx.sessionID,
         sessionId: nextSession.id,
-        model,
+        model: { providerID: resolved.model.providerID, modelID: resolved.model.modelID },
+        ...(resolved.variant ? { variant: resolved.variant } : {}),
+        // Where the model came from: the call (the user asked), the agent's configuration, or the parent.
+        modelSource: resolved.source,
         ...(review && review.verdict !== "skipped"
           ? {
               brief: {
@@ -535,10 +622,10 @@ export const TaskTool = Tool.define(
           messageID,
           sessionID: nextSession.id,
           model: {
-            modelID: model.modelID,
-            providerID: model.providerID,
+            modelID: resolved.model.modelID,
+            providerID: resolved.model.providerID,
           },
-          variant: next.model ? undefined : variant,
+          variant: resolved.variant,
           agent: next.name,
           parts,
         })

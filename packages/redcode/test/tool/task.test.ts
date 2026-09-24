@@ -31,6 +31,8 @@ import { SessionPlan } from "@reddb-io/redcode-core/session/plan"
 import { SubagentReview } from "@reddb-io/redcode-core/session/subagent-review"
 import { makeGlobalNode } from "@reddb-io/redcode-core/effect/app-node"
 import { Todo } from "../../src/session/todo"
+import { Provider } from "@/provider/provider"
+import { ConfigProviderV1 } from "@reddb-io/redcode-core/v1/config/provider"
 import path from "path"
 
 afterEach(async () => {
@@ -107,6 +109,7 @@ const nodes = () =>
     Todo.node,
     SessionPlan.node,
     SessionSpend.node,
+    Provider.node,
   ])
 
 const layer = (flags: Partial<RuntimeFlags.Info> = {}) =>
@@ -1764,5 +1767,200 @@ describe("tool.task result review", () => {
       expect(notification).toContain(`<review decision="verified">`)
       expect(notification).toContain(DONE)
     }),
+  )
+})
+
+const catalogModel = (name: string, extra: Partial<typeof ConfigProviderV1.Model.Type> = {}) => ({
+  name,
+  tool_call: true,
+  release_date: "2025-01-01",
+  limit: { context: 100_000, output: 10_000 },
+  ...extra,
+})
+
+const catalogProvider = (name: string, models: Record<string, ReturnType<typeof catalogModel>>) => ({
+  name,
+  env: [],
+  npm: "@ai-sdk/openai-compatible",
+  options: { apiKey: "test-key", baseURL: "http://localhost:1/v1" },
+  models,
+})
+
+/** The parent runs on test/test-model, which has no variants; test-reason and acme-large have `high`. */
+const catalog = {
+  enabled_providers: ["test", "acme"],
+  provider: {
+    test: catalogProvider("Test", {
+      "test-model": catalogModel("Test Model"),
+      "test-reason": catalogModel("Test Reason", { reasoning: true, variants: { high: {} } }),
+    }),
+    acme: catalogProvider("Acme", {
+      "acme-large": catalogModel("Acme Large", { reasoning: true, variants: { high: {} } }),
+    }),
+  },
+  agent: {
+    pinned: { description: "Pinned agent", mode: "subagent" as const, model: "acme/acme-large", variant: "high" },
+  },
+}
+
+const quick = { description: "inspect bug", prompt: "look into the cache key path" }
+const acme = { providerID: ProviderV2.ID.make("acme"), modelID: ModelV2.ID.make("acme-large") }
+const reason = { providerID: ProviderV2.ID.make("test"), modelID: ModelV2.ID.make("test-reason") }
+
+describe("tool.task model", () => {
+  it.instance(
+    "a subagent runs on the parent's model and variant when neither the call nor its agent names one",
+    () =>
+      Effect.gen(function* () {
+        const sessions = yield* Session.Service
+        const { chat, assistant } = yield* seed()
+        const def = yield* (yield* TaskTool).init()
+        let seen: SessionPrompt.PromptInput | undefined
+        const result = yield* def.execute(
+          { ...quick, subagent_type: "general" },
+          context(chat.id, assistant.id, stubOps({ onPrompt: (input) => (seen = input) })),
+        )
+
+        expect(seen?.model).toEqual(ref)
+        expect(seen?.variant).toBe("xhigh")
+        expect(result.metadata.model).toEqual(ref)
+        expect(result.metadata.variant).toBe("xhigh")
+        expect(result.metadata.modelSource).toBe("parent")
+        const child = yield* sessions.get(result.metadata.sessionId)
+        expect(child.model).toEqual({ id: ref.modelID, providerID: ref.providerID, variant: "xhigh" })
+      }),
+    { config: catalog },
+  )
+
+  it.instance(
+    "an agent's configured model and variant win over the parent's",
+    () =>
+      Effect.gen(function* () {
+        const { chat, assistant } = yield* seed()
+        const def = yield* (yield* TaskTool).init()
+        let seen: SessionPrompt.PromptInput | undefined
+        const result = yield* def.execute(
+          { ...quick, subagent_type: "pinned" },
+          context(chat.id, assistant.id, stubOps({ onPrompt: (input) => (seen = input) })),
+        )
+
+        expect(seen?.model).toEqual(acme)
+        expect(seen?.variant).toBe("high")
+        expect(result.metadata.modelSource).toBe("agent")
+      }),
+    { config: catalog },
+  )
+
+  it.instance(
+    "a model the call names wins over the agent's, and its variant is checked against it",
+    () =>
+      Effect.gen(function* () {
+        const { chat, assistant } = yield* seed()
+        const def = yield* (yield* TaskTool).init()
+        let seen: SessionPrompt.PromptInput | undefined
+        const result = yield* def.execute(
+          { ...quick, subagent_type: "pinned", model: "test/test-reason", variant: "high" },
+          context(chat.id, assistant.id, stubOps({ onPrompt: (input) => (seen = input) })),
+        )
+
+        expect(seen?.model).toEqual(reason)
+        expect(seen?.variant).toBe("high")
+        expect(result.metadata.model).toEqual(reason)
+        expect(result.metadata.variant).toBe("high")
+        expect(result.metadata.modelSource).toBe("explicit")
+      }),
+    { config: catalog },
+  )
+
+  it.instance(
+    "an inherited variant the resolved model lacks is dropped",
+    () =>
+      Effect.gen(function* () {
+        const { chat, assistant } = yield* seed()
+        const def = yield* (yield* TaskTool).init()
+        let seen: SessionPrompt.PromptInput | undefined
+        // The parent runs at xhigh, which acme-large does not have.
+        const result = yield* def.execute(
+          { ...quick, subagent_type: "general", model: "acme/acme-large" },
+          context(chat.id, assistant.id, stubOps({ onPrompt: (input) => (seen = input) })),
+        )
+
+        expect(seen?.model).toEqual(acme)
+        expect(seen?.variant).toBeUndefined()
+        expect(result.metadata).not.toHaveProperty("variant")
+      }),
+    { config: catalog },
+  )
+
+  it.instance(
+    "an unknown model fails with the closest matches and launches nothing",
+    () =>
+      Effect.gen(function* () {
+        const sessions = yield* Session.Service
+        const { chat, assistant } = yield* seed()
+        const def = yield* (yield* TaskTool).init()
+        let prompted = false
+        const exit = yield* def
+          .execute(
+            { ...quick, subagent_type: "general", model: "test/test-modle" },
+            context(chat.id, assistant.id, stubOps({ onPrompt: () => (prompted = true) })),
+          )
+          .pipe(Effect.exit)
+
+        expect(failure(exit)).toContain(`Unknown model "test/test-modle"`)
+        expect(failure(exit)).toContain("Close matches:")
+        expect(failure(exit)).toContain("test/test-model")
+        expect(failure(exit)).toContain("models tool")
+        expect(prompted).toBe(false)
+        expect(yield* sessions.children(chat.id)).toHaveLength(0)
+      }),
+    { config: catalog },
+  )
+
+  it.instance(
+    "a variant the resolved model lacks fails with the ones it has",
+    () =>
+      Effect.gen(function* () {
+        const { chat, assistant } = yield* seed()
+        const def = yield* (yield* TaskTool).init()
+        const ctx = context(chat.id, assistant.id, stubOps())
+
+        const wrong = yield* def
+          .execute({ ...quick, subagent_type: "general", model: "test/test-reason", variant: "turbo" }, ctx)
+          .pipe(Effect.exit)
+        expect(failure(wrong)).toContain(`Variant "turbo" is not available for test/test-reason`)
+        expect(failure(wrong)).toContain("high")
+
+        const none = yield* def
+          .execute({ ...quick, subagent_type: "general", model: "test/test-model", variant: "high" }, ctx)
+          .pipe(Effect.exit)
+        expect(failure(none)).toContain("test/test-model has no variants")
+      }),
+    { config: catalog },
+  )
+
+  dual.instance(
+    "S1 flags a model the user did not ask for, and asks only when the brief names one",
+    () =>
+      Effect.gen(function* () {
+        s1.calls = 0
+        s1.down = false
+        s1.flagged = new Set(["model_not_requested"])
+        const sessions = yield* Session.Service
+        const { chat, assistant } = yield* seed()
+        const def = yield* (yield* TaskTool).init()
+        const ctx = context(chat.id, assistant.id, stubOps())
+
+        const picked = yield* def.execute({ ...brief, model: "acme/acme-large" }, ctx).pipe(Effect.exit)
+        expect(failure(picked)).toContain("needs revision")
+        expect(failure(picked)).toContain("model_not_requested")
+        expect(failure(picked)).toContain("Did the user ask for this model")
+        expect(yield* sessions.children(chat.id)).toHaveLength(0)
+
+        const plain = yield* def.execute(brief, ctx)
+        expect(plain.metadata.brief?.verdict).toBe("verified")
+        expect(plain.metadata.modelSource).toBe("parent")
+      }),
+    { config: catalog },
   )
 })
