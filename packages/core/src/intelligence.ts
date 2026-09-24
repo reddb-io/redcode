@@ -1405,8 +1405,9 @@ Inspect their schemas through the available discovery interface before calling t
 export const responseQuestions: Record<string, Intelligence.Question> = {
   ...questions({
     omission: "Does candidate fail to answer an applicable user request or question in sources?",
+    // Only claims of performed or verified work: a greeting or a statement of readiness is not one.
     unsupported:
-      "Does candidate claim work, verification or completion that is not supported by sources.tasks, sources.goal or sources.tool_results?",
+      "Does candidate claim it performed or verified work, such as making edits, running commands or tests, completing tasks or checking results, that sources.tasks, sources.goal and sources.tool_results do not support? Conversational statements, such as greetings, saying it is ready or available, plans or offers of help, are not claims of work.",
     tool_evidence:
       "Does candidate rely on a failed, partial, irrelevant or ambiguous result in sources.tool_results as if it proved the claimed outcome?",
     premature:
@@ -1449,12 +1450,7 @@ export function workRoute(evaluation: Intelligence.Evaluation | undefined) {
 
 export const RESPONSE_REPAIR = "[system:response-quality-repair]"
 
-/**
- * The probability at or above which System One establishes a response issue. Below it the issue is
- * unresolved, not found: repairing on it rewrites a sound answer, and the revision reads to the
- * user as the agent replying to itself.
- */
-export const REPAIR_CONFIDENCE = 0.75
+export const REPAIR_CONFIDENCE = Intelligence.REPAIR_CONFIDENCE
 
 /**
  * The issues of a response review that justify one more pass (`repair`) and the established ones
