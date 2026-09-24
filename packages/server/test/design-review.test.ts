@@ -2399,6 +2399,53 @@ test("a rename must change the label and the only variant cannot be deleted", as
   }
 }, 60000)
 
+test("the active tab offers a delete affordance that opens the same confirmation as the menu, only with two or more variants", async () => {
+  const solo = await withVariants([["solo", "Solo"]])
+  const soloPage = await browser.newPage({ viewport: { width: 1440, height: 900 } })
+  await withoutFeed(soloPage)
+  try {
+    await soloPage.goto(`${base}${solo.root}/review`)
+    await soloPage.getByRole("tab", { name: "Solo", exact: true }).waitFor()
+    // A single variant offers no delete affordance on its tab, matching the disabled menu item.
+    expect(await soloPage.getByRole("button", { name: "Delete variant Solo", exact: true }).count()).toBe(0)
+  } finally {
+    await soloPage.close()
+  }
+
+  const current = await withVariants([
+    ["alpha", "Alpha"],
+    ["beta", "Beta"],
+  ])
+  const page = await browser.newPage({ viewport: { width: 1440, height: 900 } })
+  await withoutFeed(page)
+  try {
+    await page.goto(`${base}${current.root}/review`)
+    await page.getByRole("tab", { name: "Alpha", exact: true }).waitFor()
+    const closeAlpha = page.getByRole("button", { name: "Delete variant Alpha", exact: true })
+    const closeBeta = page.getByRole("button", { name: "Delete variant Beta", exact: true })
+    // Only the active tab (Alpha, selected by default) shows the delete "x", once hydration settles.
+    await closeAlpha.waitFor()
+    expect(await closeBeta.count()).toBe(0)
+    await closeAlpha.click()
+    // It opens the exact same confirmation the variant-actions menu's "Delete…" opens.
+    await page.getByRole("heading", { name: "Delete variant?" }).waitFor()
+    expect(await page.locator("#operation-subject").textContent()).toBe("Alpha")
+    await page.keyboard.press("Escape")
+    await page.locator("#operation-dialog").waitFor({ state: "hidden" })
+    // Switching the active tab moves the close affordance with it.
+    await page.getByRole("tab", { name: "Beta", exact: true }).click()
+    expect(await closeAlpha.count()).toBe(0)
+    expect(await closeBeta.count()).toBe(1)
+    // The Delete key on a focused tab opens the same confirmation.
+    await page.getByRole("tab", { name: "Beta", exact: true }).focus()
+    await page.keyboard.press("Delete")
+    await page.getByRole("heading", { name: "Delete variant?" }).waitFor()
+    expect(await page.locator("#operation-subject").textContent()).toBe("Beta")
+  } finally {
+    await page.close()
+  }
+}, 60000)
+
 test("a failed rename or reorder restores the preview's labels and order exactly and a reorder retry uses the current variants", async () => {
   const current = await withVariants([
     ["compact", "Compact"],

@@ -136,6 +136,7 @@ export const designGoalPortuguese: Record<string, string> = {
   "session.design.studio.renameVariant": "Renomear…",
   "session.design.studio.splitVariant": "Dividir…",
   "session.design.studio.deleteVariant": "Excluir…",
+  "session.design.studio.deleteVariantTab": "Excluir variante",
   "session.design.studio.moveLeft": "Mover para a esquerda",
   "session.design.studio.moveRight": "Mover para a direita",
   "session.design.studio.selectMerge": "Selecionar variantes para mesclar",
