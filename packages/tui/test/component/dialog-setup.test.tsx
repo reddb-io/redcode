@@ -270,7 +270,7 @@ test("configured setup can edit System Two without walking through System One", 
     expect(mode).toContain("Simple — one model")
     expect(mode).toContain("Dual — S1 classifies")
     expect(mode).toContain("Change System One evaluator")
-    expect(mode).toContain("opencode-zen/jev-1.13")
+    expect(mode).toContain("OpenCode Zen · jev-1.13")
     expect(mode).not.toContain("--reasoning")
 
     await setup.app.mockInput.pressArrow("down")
@@ -381,14 +381,14 @@ test("dual setup with a saved S2 offers Continue and goes straight to S1", async
   try {
     await ready(setup.app, "--reasoning dual")
     await setup.app.mockInput.pressEnter()
-    await ready(setup.app, "Continue with Mock Provider / Mock Model")
+    await ready(setup.app, "Continue with Mock Provider · Mock Model")
     const principal = setup.app.captureCharFrame()
     expect(principal).toContain("2/3 · S2 principal")
     expect(principal).toContain("Change System Two model…")
 
     await setup.app.mockInput.pressEnter()
     await ready(setup.app, "3/3 · S1 connection")
-    expect(setup.app.captureCharFrame()).toContain("Continue with opencode-zen/jev-1.13-free")
+    expect(setup.app.captureCharFrame()).toContain("Continue with OpenCode Zen · jev-1.13-free")
     await setup.app.mockInput.pressEnter()
     await wait(() => setup.app.captureCharFrame().includes("Save global intelligence setup"))
   } finally {
@@ -422,7 +422,7 @@ test("changing a saved S2 keeps the active-connection model list", async () => {
   try {
     await ready(setup.app, "Change System Two models")
     await setup.app.mockInput.pressEnter()
-    await ready(setup.app, "Continue with Mock Provider / Mock Model")
+    await ready(setup.app, "Continue with Mock Provider · Mock Model")
     await setup.app.mockInput.pressArrow("down")
     await setup.app.mockInput.pressEnter()
     await ready(setup.app, "Balanced Combo")
@@ -473,7 +473,7 @@ test("failed OpenRouter probe stays in setup and can be retried with the entered
   try {
     await ready(setup.app, "S2 transformations")
     await setup.app.mockInput.pressEnter()
-    await ready(setup.app, "Continue with opencode-zen/jev-1.13-free")
+    await ready(setup.app, "Continue with OpenCode Zen · jev-1.13-free")
     // Continue, Cloudflare (connected), OpenCode Zen, then OpenRouter below the visible rows.
     await setup.app.mockInput.pressArrow("down")
     await setup.app.mockInput.pressArrow("down")
@@ -671,7 +671,7 @@ test("a failed S2 probe names the model and leaves the cursor on Change S2 model
     { height: 40 },
   )
   try {
-    await ready(setup.app, "Continue with Mock Provider / Mock Model")
+    await ready(setup.app, "Continue with Mock Provider · Mock Model")
     await setup.app.mockInput.pressEnter()
     await ready(setup.app, "Save global intelligence setup")
     await setup.app.mockInput.pressEnter()
@@ -891,6 +891,71 @@ test("a recommendation the router does not list is not offered", async () => {
     await ready(setup.app, "Balanced Combo")
     await wait(() => setup.app.captureCharFrame().includes("Mock Provider models"))
     expect(setup.app.captureCharFrame()).not.toContain("Recommended:")
+  } finally {
+    setup.app.renderer.destroy()
+  }
+})
+
+test("a saved S2 principal under a router's old alias id resolves to the model's current name", async () => {
+  await using tmp = await tmpdir()
+  await Bun.write(`${tmp.path}/kv.json`, "{}")
+  const router = {
+    ...provider,
+    id: "red-router",
+    name: "RedRouter",
+    router: { kind: "red-router" },
+    models: {
+      "opencode-go/glm-5.3-flash": {
+        ...provider.models.model,
+        id: "opencode-go/glm-5.3-flash",
+        providerID: "red-router",
+        name: "GLM 5.3 Flash (Vision)",
+        aliases: ["ocg/glm-5.3-flash"],
+      },
+    },
+  }
+  const settings = {
+    enabled: true,
+    reasoning: "single",
+    onboarding: "completed",
+    // Saved before the router renamed this model to a readable id; only the old alias is stored.
+    principal: { providerID: "red-router", id: "ocg/glm-5.3-flash" },
+  } as Intelligence.Settings
+  const setup = await mount(
+    (url) => {
+      if (url.pathname === "/api/intelligence") return json({ ...intelligence, settings })
+      if (url.pathname === "/config/providers")
+        return json({ providers: [router], default: { "red-router": "opencode-go/glm-5.3-flash" } })
+    },
+    tmp.path,
+    () => <Dialogs resume={{ settings, step: "principal", reasoning: "single" }} />,
+  )
+  try {
+    await ready(setup.app, "Continue with RedRouter · GLM 5.3 Flash (Vision)")
+  } finally {
+    setup.app.renderer.destroy()
+  }
+})
+
+test("a saved S2 principal with an id the provider no longer lists falls back to the raw id", async () => {
+  await using tmp = await tmpdir()
+  await Bun.write(`${tmp.path}/kv.json`, "{}")
+  const settings = {
+    enabled: true,
+    reasoning: "single",
+    onboarding: "completed",
+    principal: { providerID: "mock", id: "retired-model" },
+  } as Intelligence.Settings
+  const setup = await mount(
+    (url) => {
+      if (url.pathname === "/api/intelligence") return json({ ...intelligence, settings })
+      if (url.pathname === "/config/providers") return json({ providers: [provider], default: { mock: "model" } })
+    },
+    tmp.path,
+    () => <Dialogs resume={{ settings, step: "principal", reasoning: "single" }} />,
+  )
+  try {
+    await ready(setup.app, "Continue with Mock Provider · retired-model")
   } finally {
     setup.app.renderer.destroy()
   }
