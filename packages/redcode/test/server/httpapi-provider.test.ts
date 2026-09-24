@@ -650,9 +650,10 @@ describe("provider HttpApi", () => {
           removed: { hidden: true },
           envVariables: ["ANTHROPIC_API_KEY"],
         })
-        expect(JSON.parse(yield* Effect.promise(() => fs.readFile(configFile, "utf8")))).toEqual({
-          disabled_providers: ["other", "anthropic"],
-        })
+        expect(JSON.parse(yield* Effect.promise(() => fs.readFile(configFile, "utf8"))).disabled_providers).toEqual([
+          "other",
+          "anthropic",
+        ])
         // Reloaded after the removal, the environment variable no longer brings it back.
         const listed = yield* request("/provider", { headers })
         expect(((yield* listed.json) as { connected: string[] }).connected).not.toContain("anthropic")
@@ -663,9 +664,10 @@ describe("provider HttpApi", () => {
           body: JSON.stringify({ type: "api", key: "saved-anthropic-key" }),
         })
         expect(reconnected.status).toBe(200)
-        expect(JSON.parse(yield* Effect.promise(() => fs.readFile(configFile, "utf8")))).toEqual({
-          disabled_providers: ["other"],
-        })
+        // The reload may add a $schema key; only the disabled list matters here.
+        expect(JSON.parse(yield* Effect.promise(() => fs.readFile(configFile, "utf8"))).disabled_providers).toEqual([
+          "other",
+        ])
       }),
     projectOptions,
     30000,
