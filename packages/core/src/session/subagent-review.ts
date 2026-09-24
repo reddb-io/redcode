@@ -180,6 +180,15 @@ export const briefQuestions = Intelligence.questions({
     "Does candidate fail to say what the subagent must hand back (candidate.return_format absent and candidate.prompt specifies neither the content nor the shape of the final answer)?",
 })
 
+/**
+ * Asked only when the brief names a model or a variant: whether the user asked for it. The
+ * structural checks cannot know, so single reasoning only records the choice.
+ */
+export const modelQuestions = Intelligence.questions({
+  model_not_requested:
+    "Does candidate set candidate.model or candidate.variant although nothing in sources.requests, sources.goal or sources.plan asks for that model, its provider or family, or that reasoning level? Answer no when the user named the model, provider, family or level, in any language or wording.",
+})
+
 const REVISION: Record<string, string> = {
   empty_prompt: "What is the subagent's objective? Write it in the prompt.",
   short_prompt:
@@ -195,6 +204,8 @@ const REVISION: Record<string, string> = {
     "How does this task serve what the user asked? Rewrite it against the user's latest request.",
   overreach:
     "Which part of this task goes beyond what the user asked or what the agent may do? Drop it, or ask the user first.",
+  model_not_requested:
+    "Did the user ask for this model or variant? Leave model and variant out unless they did; the subagent then runs on its agent's model or yours.",
 }
 
 /** The questions the parent answers in a revised brief, one per issue, without repeats. */

@@ -190,6 +190,7 @@ const layer = Layer.effect(
                   "*": "deny",
                   explore: "allow",
                 },
+                models: "allow",
                 external_directory: {
                   // Windows tool checks can expand short directory names to their canonical paths.
                   [path.join(Global.Path.data, "plans", "*")]: "allow",
@@ -235,6 +236,7 @@ const layer = Layer.effect(
                 "design_*": "allow",
                 bash: "deny",
                 task: { "*": "deny", explore: "allow" },
+                models: "allow",
                 goal_complete: "allow",
                 question: "allow",
                 design_exit: "allow",

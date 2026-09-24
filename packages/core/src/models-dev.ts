@@ -141,6 +141,11 @@ export function systemOneOffers(catalog: Record<string, Provider>) {
   })
 }
 
+/** Whether the catalog serves this model as a System One evaluator rather than as a language model. */
+export function systemOneOffer(providerID: string, modelID: string) {
+  return SYSTEM_ONE_OFFERS[providerID]?.has(modelID) ?? false
+}
+
 function classify(catalog: Record<string, Provider>): Record<string, Provider> {
   return Object.fromEntries(
     Object.entries(catalog).map(([key, provider]) => {
