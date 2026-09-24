@@ -358,7 +358,7 @@ export function correction(
     answer ? `result: ${answer}` : undefined,
     sameFailure
       ? `The call was not run this time, because reshuffling the arguments has not changed the answer. Read the error, do what it asks with other tools first, or tell the user what is blocking you and stop.`
-      : `The call was not run this time, because running it again cannot produce anything new. Change the arguments, use a different tool, or tell the user what is blocking you and stop.`,
+      : `The call was not run this time, because running it again cannot produce anything new. If this was a check for something only the user can change, stop checking and tell them plainly what you are waiting on and what they need to do. Otherwise, change the arguments or use a different tool.`,
   ]
     .filter(Boolean)
     .join("\n")

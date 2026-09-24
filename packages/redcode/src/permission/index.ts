@@ -52,6 +52,21 @@ interface State {
 
 export function evaluate(permission: string, pattern: string, ...rulesets: PermissionV1.Ruleset[]): PermissionV1.Rule {
   if (RepositoryGuard.yolo()) return { permission, pattern, action: "allow" }
+  return evaluateConfigured(permission, pattern, ...rulesets)
+}
+
+/**
+ * The same rule lookup as `evaluate`, without the yolo blanket allow.
+ *
+ * Yolo means "skip permission prompts", not "disable safety guards" — a guard's opt-out (such as
+ * `doom_loop: allow`) must come from an explicit rule in the configured ruleset, never from yolo
+ * making every permission read as allowed.
+ */
+export function evaluateConfigured(
+  permission: string,
+  pattern: string,
+  ...rulesets: PermissionV1.Ruleset[]
+): PermissionV1.Rule {
   return (
     rulesets
       .flat()
