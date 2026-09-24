@@ -143,7 +143,11 @@ export function DialogSetup(
   }
   const label = (ref: Model.Ref) => {
     const provider = sync.data.provider.find((item) => item.id === ref.providerID)
-    return `${provider?.name ?? ref.providerID} / ${provider?.models[ref.id]?.name ?? ref.id}`
+    // A saved ref may hold a router alias (e.g. an id a router renamed); resolve it to the model
+    // the provider currently lists before reading its display name.
+    const resolved = resolveModel(provider, ref.id)
+    const model = resolved ? provider?.models[resolved.modelID] : undefined
+    return `${provider?.name ?? ref.providerID} · ${model?.name ?? ref.id}`
   }
   const sessionModel = () => {
     const current = local?.model.current()
@@ -301,7 +305,7 @@ export function DialogSetup(
     ...(state.settings.evaluator
       ? [
           {
-            title: `Continue with ${state.settings.evaluator.transport}/${state.settings.evaluator.model}`,
+            title: `Continue with ${evaluatorLabel(state.settings.evaluator)}`,
             value: "continue" as const,
             category: "Current",
           },
@@ -401,7 +405,7 @@ export function DialogSetup(
                   {
                     title: "Change System One evaluator",
                     value: "system-one",
-                    description: `${state.settings.evaluator.transport}/${state.settings.evaluator.model}`,
+                    description: evaluatorLabel(state.settings.evaluator),
                   },
                 ]
               : []),
@@ -631,4 +635,19 @@ function wrap(text: string, width: number) {
 /** A detected router by its instance name, else the address it answers at. */
 function routerName(router: Intelligence.DetectedRouter) {
   return router.detection.instanceID ?? URL.parse(router.baseURL)?.host ?? router.baseURL
+}
+
+/** Display name for an S1 evaluator's transport, matching the "Provider · model" format used for S2. */
+const TRANSPORT_NAMES: Record<Intelligence.Evaluator["transport"], string> = {
+  "opencode-zen": "OpenCode Zen",
+  openrouter: "OpenRouter",
+  typesafe: "TypeSafe",
+  "red-router": "RedRouter",
+  "cloudflare-ai-gateway": "Cloudflare AI Gateway",
+  vercel: "Vercel AI Gateway",
+  vivgrid: "Vivgrid",
+  "nano-gpt": "NanoGPT",
+}
+function evaluatorLabel(evaluator: Intelligence.Evaluator) {
+  return `${TRANSPORT_NAMES[evaluator.transport] ?? evaluator.transport} · ${evaluator.model}`
 }

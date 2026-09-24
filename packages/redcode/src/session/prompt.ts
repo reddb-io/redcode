@@ -47,7 +47,6 @@ import { MAX_STEPS_PROMPT } from "@reddb-io/redcode-core/session/runner/max-step
 
 /** How often the watchdog looks. Well below the thresholds it is checking against. */
 const STALL_POLL_SECONDS = 15
-const RESPONSE_REPAIR = "[system:response-quality-repair]"
 /** Messages the stop-loss reads back: comfortably more than the steps its ceiling allows. */
 const STOP_LOSS_WINDOW = 64
 
@@ -82,6 +81,9 @@ const intelligenceHistory = (messages: ReadonlyArray<SessionV1.WithParts>) =>
         : [],
     ),
   }))
+
+const responseText = (message: SessionV1.WithParts) =>
+  message.parts.flatMap((part) => (part.type === "text" ? [part.text] : [])).join("\n")
 
 const responseToolResults = (messages: ReadonlyArray<SessionV1.WithParts>) => {
   const latest = messages.findLastIndex(
@@ -1614,7 +1616,7 @@ const layer = Layer.effect(
       candidate: SessionV1.WithParts,
       attempt: number,
     ) {
-      const text = candidate.parts.flatMap((part) => (part.type === "text" ? [part.text] : [])).join("\n")
+      const text = responseText(candidate)
       if (!text.trim()) return undefined
       const requests = messages.flatMap((message) => {
         if (message.info.role !== "user" || message.parts.every((part) => "synthetic" in part && part.synthetic))
@@ -1627,6 +1629,21 @@ const layer = Layer.effect(
         ]
       })
       const toolResults = responseToolResults(messages)
+      const tasks = yield* todos.get(sessionID)
+      const goal = yield* goals.get(sessionID)
+      const request = requests.at(-1)?.id
+      const classification = request
+        ? (yield* intelligence
+            .history(sessionID, { operation: "prompt_classification", subjectID: request, limit: 1 })
+            .pipe(Effect.orElseSucceed(() => [])))[0]
+        : undefined
+      const questions = Intelligence.responseQuestionsFor({
+        tools: toolResults.length > 0,
+        tasks: tasks.length > 0,
+        goal: goal?.status === "active",
+        route: Intelligence.workRoute(classification),
+      })
+      if (!questions) return undefined
       return yield* evaluateIntelligence({
         sessionID,
         operation: "response_quality",
@@ -1637,12 +1654,12 @@ const layer = Layer.effect(
         sources: {
           requests: Intelligence.evidence(requests, { reference: `${sessionID}/requests`, limit: 3000 }),
           latest_request: Intelligence.evidence(requests.at(-1), { reference: requests.at(-1)?.id, limit: 4000 }),
-          tasks: Intelligence.evidence(yield* todos.get(sessionID), { reference: `${sessionID}/tasks`, limit: 3000 }),
-          goal: Intelligence.evidence(yield* goals.get(sessionID), { reference: `${sessionID}/goal`, limit: 2000 }),
+          tasks: Intelligence.evidence(tasks, { reference: `${sessionID}/tasks`, limit: 3000 }),
+          goal: Intelligence.evidence(goal, { reference: `${sessionID}/goal`, limit: 2000 }),
           tool_results: Intelligence.evidence(toolResults, { reference: `${sessionID}/tool-results`, limit: 8000 }),
         },
         candidate: Intelligence.evidence(text, { reference: candidate.info.id, limit: 6000 }),
-        questions: Intelligence.responseQuestions,
+        questions,
       }).pipe(
         Effect.catchTag("IntelligenceError", (error) =>
           reportIntelligenceFailure(sessionID, "response_quality", error.message).pipe(Effect.as(undefined)),
@@ -1659,6 +1676,10 @@ const layer = Layer.effect(
         let todoContinuations = 0
         let reconnects = 0
         let responseRepairs = 0
+        // The issues repaired this turn and the response the last repair revised: an issue is
+        // repaired once, and a revision that changes nothing material ends the repairs.
+        let repairedIssues: ReadonlyArray<string> = []
+        let repairedResponse: string | undefined
         // Reminders sent to a model that cannot be forced to call StructuredOutput and answered in text.
         let structuredReminders = 0
         const promptAssessments = new Map<string, Intelligence.Evaluation | undefined>()
@@ -1698,6 +1719,8 @@ const layer = Layer.effect(
           todoContinuations = 0
           reconnects = 0
           responseRepairs = 0
+          repairedIssues = []
+          repairedResponse = undefined
           structuredReminders = 0
           reviewed = undefined
           ineffectiveCompactions = 0
@@ -2320,10 +2343,18 @@ const layer = Layer.effect(
                       message.info.id < lastAssistantMsg.info.id,
                   )
                 : lastAssistantMsg
+            // A revision that changes nothing material settles nothing: the issues it was asked to
+            // fix stand, and reviewing it again would only start the same exchange over.
+            const unchanged =
+              repairedResponse !== undefined &&
+              responseCandidate !== undefined &&
+              Intelligence.sameResponse(repairedResponse, responseText(responseCandidate))
             // A subagent under a structured brief has its result reviewed by its parent against that
             // brief (the task tool); a generic review here as well would only double the S1 cost.
             const evaluation =
-              responseCandidate && !SubagentReview.supervised(SubagentReview.fromMetadata(session.metadata))
+              responseCandidate &&
+              !unchanged &&
+              !SubagentReview.supervised(SubagentReview.fromMetadata(session.metadata))
                 ? yield* reviewResponse(sessionID, msgs, responseCandidate, responseRepairs).pipe(
                     Effect.catch((error) =>
                       reportIntelligenceFailure(sessionID, "response_quality", String(error)).pipe(
@@ -2332,12 +2363,10 @@ const layer = Layer.effect(
                     ),
                   )
                 : undefined
-            if (
-              evaluation &&
-              evaluation.decision !== "accepted" &&
-              evaluation.decision !== "unavailable" &&
-              responseRepairs < 2
-            ) {
+            // Only issues S1 establishes are repaired, each once; a doubtful one is left alone,
+            // since the revision would read to the user as the agent replying to itself.
+            const verdict = Intelligence.responseRepair(evaluation, repairedIssues)
+            if (responseCandidate && verdict.repair.length && responseRepairs < 2) {
               const message: SessionV1.User = {
                 id: MessageID.ascending(),
                 sessionID,
@@ -2352,14 +2381,19 @@ const layer = Layer.effect(
                 sessionID,
                 messageID: message.id,
                 type: "text",
-                text: `${RESPONSE_REPAIR}\nCorrect the final response for these evaluation issues: ${evaluation.issues.join(", ")}.`,
+                text: Intelligence.repairPrompt(verdict.repair),
                 synthetic: true,
+                // Surfaces show the revision and the answer it replaces as one reply.
+                metadata: { responseRepair: { issues: verdict.repair } },
               })
+              repairedIssues = [...repairedIssues, ...verdict.repair]
+              repairedResponse = responseText(responseCandidate)
               responseRepairs++
               continue
             }
-            if (evaluation && evaluation.decision !== "accepted") {
-              const detail = `System One response review ${evaluation.decision} (${evaluation.id}). Unresolved issues: ${evaluation.issues.join(", ") || "evaluation could not verify completion"}. Completion has not been verified.`
+            const unresolved = unchanged ? repairedIssues : verdict.unresolved
+            if (unresolved.length || evaluation?.decision === "unavailable") {
+              const detail = `${evaluation ? `System One response review ${evaluation.decision} (${evaluation.id})` : "The revised response made no material change"}. Unresolved issues: ${unresolved.join(", ") || "evaluation could not verify completion"}. Completion has not been verified.`
               yield* guards.record({ sessionID, guard: "intelligence", action: "warn", detail })
               yield* events.publish(Session.Event.Error, {
                 sessionID,
@@ -2602,7 +2636,7 @@ const layer = Layer.effect(
               ? `System One tool review ${toolReview.decision} (${toolReview.id}): ${toolReview.issues.join(", ")}. Verify missing evidence and correct failed work within the user's scope and existing permissions. An unavailable or inconclusive evaluation is not approval.`
               : undefined
           const responseRepair = currentUser?.parts.some(
-            (part) => part.type === "text" && part.text.startsWith(RESPONSE_REPAIR),
+            (part) => part.type === "text" && part.text.startsWith(Intelligence.RESPONSE_REPAIR),
           )
           // `auto` is never sent: the turn carries one of the model's own variants, chosen where the
           // person speaks, with one step up inside a tool loop in trouble (ReasoningAuto).
