@@ -1587,7 +1587,15 @@ const layer = Layer.effect(
               : undefined
           if (llmFailure && !publisher.hasProviderError() && !retryable) {
             yield* withPublication(publisher.failUnsettledTools("Provider did not return a tool result", true))
-            yield* withPublication(publisher.failAssistant(llmFailure.reason.message))
+            // A reset too far off to wait for: say which model, until when, and what to do instead.
+            const exhausted = SessionRetry.exhaustedLLM(llmFailure)
+            yield* withPublication(
+              publisher.failAssistant(
+                exhausted
+                  ? SessionRetry.exhaustedMessage(`${model.provider} · ${model.id}`, exhausted)
+                  : llmFailure.reason.message,
+              ),
+            )
           }
           if (stream._tag === "Failure" && Cause.hasInterrupts(stream.cause)) yield* FiberSet.clear(toolFibers)
           const settled = yield* restore(

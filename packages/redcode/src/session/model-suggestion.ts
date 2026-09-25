@@ -8,6 +8,7 @@ import { Config } from "@/config/config"
 import { EventV2Bridge } from "@/event-v2-bridge"
 import { Provider } from "@/provider/provider"
 import { RedRouter } from "@/provider/red-router"
+import { SessionRetry } from "./retry"
 import type { SessionID } from "./schema"
 
 /**
@@ -61,11 +62,15 @@ export interface ObserveInput {
 export interface Interface {
   /** Before a provider step: when a trigger fires, asks the router in the background. Never waits on it. */
   readonly observe: (input: ObserveInput) => Effect.Effect<void>
-  /** A provider attempt failed: counts toward the provider-errors trigger. */
+  /**
+   * A provider attempt failed: counts toward the provider-errors trigger. A failure with `until`
+   * (a quota that resets too far off to wait for) asks for an equivalent at once.
+   */
   readonly failure: (input: {
     readonly sessionID: SessionID
     readonly model: Provider.Model
     readonly status?: number
+    readonly until?: number
   }) => Effect.Effect<void>
   /** A provider step succeeded: failures no longer repeat. */
   readonly recovered: (sessionID: SessionID) => Effect.Effect<void>
@@ -216,15 +221,18 @@ const layer = Layer.effect(
       readonly sessionID: SessionID
       readonly model: Provider.Model
       readonly status?: number
+      readonly until?: number
     }) {
-      if (!providerFailure(input.status)) return
+      if (!providerFailure(input.status) && input.until === undefined) return
       const connection = yield* connectionOf(input.model)
       if (!connection) return
       const state = stateOf(input.sessionID)
       state.failures += 1
       const key = input.model.id
       if (state.kept.has("provider_errors") || state.asked.get("provider_errors") === key) return
-      const repeated = state.failures >= REPEATED_FAILURES
+      const until = input.until
+      // An exhausted quota is known unusable until it resets: nothing to ask the router first.
+      const repeated = state.failures >= REPEATED_FAILURES || until !== undefined
       // After one failure the router is asked once whether the model is rate limited or unhealthy;
       // after repeated failures an equivalent is looked for whatever it says.
       const healthCheck = `health:${key}`
@@ -237,12 +245,15 @@ const layer = Layer.effect(
         request: { trigger: "provider_errors", args: equivalent(input.model, []) },
         key,
         needs: [],
-        gate: repeated
-          ? undefined
-          : (mcp) =>
-              RouterMCP.model(mcp, routerID(input.model)).pipe(
-                Effect.map((summary) => (summary && UNHEALTHY.has(summary.status.state) ? [] : undefined)),
-              ),
+        gate:
+          until !== undefined
+            ? () => Effect.succeed([{ code: "quota", detail: `quota exhausted until ${SessionRetry.clock(until)}` }])
+            : repeated
+              ? undefined
+              : (mcp) =>
+                  RouterMCP.model(mcp, routerID(input.model)).pipe(
+                    Effect.map((summary) => (summary && UNHEALTHY.has(summary.status.state) ? [] : undefined)),
+                  ),
       }).pipe(Effect.ignore, Effect.forkIn(scope))
     }, Effect.catchCause(() => Effect.void))
 
