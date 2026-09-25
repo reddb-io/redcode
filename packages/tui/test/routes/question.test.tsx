@@ -56,6 +56,22 @@ async function waitForFrame(setup: { app: { renderOnce(): Promise<void>; capture
   }
 }
 
+// The plan body is markdown that lays out after the dialog's answers appear, so a fixed number of
+// PgDn presses can run out before the body is complete. Scroll until the end marker shows instead.
+async function scrollUntil(
+  setup: { app: { renderOnce(): Promise<void>; captureCharFrame(): string; mockInput: { pressKey(key: string): void } } },
+  text: string,
+) {
+  const start = Date.now()
+  for (;;) {
+    setup.app.mockInput.pressKey("\u001b[6~")
+    await setup.app.renderOnce()
+    if (setup.app.captureCharFrame().includes(text)) return
+    if (Date.now() - start > 10_000) throw new Error(`timed out scrolling to "${text}"`)
+    await Bun.sleep(10)
+  }
+}
+
 function PlanExitPrompt(props: { question: string; timeout?: number; onExit?: () => void; requestID?: () => string }) {
   const renderer = useRenderer()
   const keymap = createDefaultOpenTuiKeymap(renderer)
@@ -142,11 +158,10 @@ test("long plan approval keeps answers and dismiss visible and keyboard usable",
     () => <Prompt />,
   )
   try {
-    await waitForFrame(setup, "1. Approve")
+    await waitForFrame(setup, "A detailed implementation step")
+    expect(setup.app.captureCharFrame()).toContain("1. Approve")
     expect(setup.app.captureCharFrame()).toContain("dismiss")
-    for (let index = 0; index < 30; index++) setup.app.mockInput.pressKey("\u001b[6~")
-    await setup.app.renderOnce()
-    expect(setup.app.captureCharFrame()).toContain("END OF PLAN")
+    await scrollUntil(setup, "END OF PLAN")
     expect(setup.app.captureCharFrame()).toContain("1. Approve")
     setup.app.mockInput.pressKey("2")
     await wait(() => replies.length === 1)
@@ -172,13 +187,11 @@ test("plan_exit with a Design handoff renders and Yes submits", async () => {
     { width: 200, height: 50 },
   )
   try {
-    await waitForFrame(setup, "1. Yes")
+    await waitForFrame(setup, "Implementation plan")
     const approval = setup.app.captureCharFrame()
-    expect(approval).toContain("Implementation plan")
+    expect(approval).toContain("1. Yes")
     expect(approval).not.toContain("# Implementation plan")
-    for (let index = 0; index < 40; index++) setup.app.mockInput.pressKey("\u001b[6~")
-    await setup.app.renderOnce()
-    expect(setup.app.captureCharFrame()).toContain("END OF HANDOFF")
+    await scrollUntil(setup, "END OF HANDOFF")
     setup.app.mockInput.pressKey("\r")
     await wait(() => replies.length === 1)
     expect(replies).toEqual([{ answers: [["Yes"]] }])
