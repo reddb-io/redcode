@@ -1,16 +1,18 @@
 import type { TuiPlugin, TuiPluginApi } from "@reddb-io/redcode-plugin/tui"
 import type { BuiltinTuiPlugin } from "../builtins"
 import { createMemo, createResource, For, Show } from "solid-js"
+import { useTerminalDimensions } from "@opentui/solid"
 import path from "path"
 import { abbreviateHome } from "../../runtime"
 import { useTuiPaths } from "../../context/runtime"
 import { Locale } from "../../util/locale"
-import { SIDEBAR_WIDTH_DEFAULT, SIDEBAR_WIDTH_MAX } from "../../routes/session/sidebar-width"
+import { effectiveSidebarWidth, SIDEBAR_WIDTH_MAX } from "../../routes/session/sidebar-width"
 
 const id = "internal:sidebar-footer"
 
 export function SidebarFooter(props: { api: TuiPluginApi; sessionID: string }) {
   const paths = useTuiPaths()
+  const dimensions = useTerminalDimensions()
   const theme = () => props.api.theme.current
   const has = createMemo(() =>
     props.api.state.provider.some(
@@ -37,7 +39,11 @@ export function SidebarFooter(props: { api: TuiPluginApi; sessionID: string }) {
       checkout: props.api.state.path.worktree,
       branch: directory() === props.api.state.path.directory ? props.api.state.vcs?.branch : moved(),
       home: paths.home,
-      width: Math.min(Number(props.api.kv.get("sidebar_width", SIDEBAR_WIDTH_DEFAULT)), SIDEBAR_WIDTH_MAX) - 4,
+      width:
+        Math.min(
+          effectiveSidebarWidth(props.api.kv.get("sidebar_width"), dimensions().width),
+          SIDEBAR_WIDTH_MAX,
+        ) - 4,
     }),
   )
 
