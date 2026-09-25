@@ -5976,6 +5976,88 @@
                               },
                               "via": {
                                 "type": "string"
+                              },
+                              "flat": {
+                                "type": "boolean"
+                              },
+                              "canonical": {
+                                "type": "string"
+                              },
+                              "offers": {
+                                "type": "array",
+                                "items": {
+                                  "type": "object",
+                                  "properties": {
+                                    "id": {
+                                      "type": "string"
+                                    },
+                                    "pin_id": {
+                                      "type": "string"
+                                    },
+                                    "provider": {
+                                      "type": "object",
+                                      "properties": {
+                                        "id": {
+                                          "type": "string"
+                                        },
+                                        "slug": {
+                                          "type": "string"
+                                        },
+                                        "prefix": {
+                                          "type": "string"
+                                        },
+                                        "name": {
+                                          "type": "string"
+                                        },
+                                        "category": {
+                                          "type": "string"
+                                        },
+                                        "subscription": {
+                                          "type": "boolean"
+                                        }
+                                      },
+                                      "required": ["id"],
+                                      "additionalProperties": false
+                                    },
+                                    "via": {
+                                      "type": "array",
+                                      "items": {
+                                        "type": "object",
+                                        "properties": {
+                                          "slug": {
+                                            "type": "string"
+                                          },
+                                          "name": {
+                                            "type": "string"
+                                          }
+                                        },
+                                        "required": ["slug", "name"],
+                                        "additionalProperties": false
+                                      },
+                                      "description": "The routers between RedRouter and the provider, outermost first."
+                                    },
+                                    "available": {
+                                      "type": "boolean"
+                                    },
+                                    "price": {
+                                      "type": "object",
+                                      "properties": {
+                                        "input": {
+                                          "type": "number"
+                                        },
+                                        "output": {
+                                          "type": "number"
+                                        }
+                                      },
+                                      "additionalProperties": false
+                                    },
+                                    "free": {
+                                      "type": "boolean"
+                                    }
+                                  },
+                                  "required": ["id", "pin_id", "provider", "via", "available", "free"],
+                                  "additionalProperties": false
+                                }
                               }
                             },
                             "additionalProperties": false
@@ -6371,6 +6453,88 @@
                               },
                               "via": {
                                 "type": "string"
+                              },
+                              "flat": {
+                                "type": "boolean"
+                              },
+                              "canonical": {
+                                "type": "string"
+                              },
+                              "offers": {
+                                "type": "array",
+                                "items": {
+                                  "type": "object",
+                                  "properties": {
+                                    "id": {
+                                      "type": "string"
+                                    },
+                                    "pin_id": {
+                                      "type": "string"
+                                    },
+                                    "provider": {
+                                      "type": "object",
+                                      "properties": {
+                                        "id": {
+                                          "type": "string"
+                                        },
+                                        "slug": {
+                                          "type": "string"
+                                        },
+                                        "prefix": {
+                                          "type": "string"
+                                        },
+                                        "name": {
+                                          "type": "string"
+                                        },
+                                        "category": {
+                                          "type": "string"
+                                        },
+                                        "subscription": {
+                                          "type": "boolean"
+                                        }
+                                      },
+                                      "required": ["id"],
+                                      "additionalProperties": false
+                                    },
+                                    "via": {
+                                      "type": "array",
+                                      "items": {
+                                        "type": "object",
+                                        "properties": {
+                                          "slug": {
+                                            "type": "string"
+                                          },
+                                          "name": {
+                                            "type": "string"
+                                          }
+                                        },
+                                        "required": ["slug", "name"],
+                                        "additionalProperties": false
+                                      },
+                                      "description": "The routers between RedRouter and the provider, outermost first."
+                                    },
+                                    "available": {
+                                      "type": "boolean"
+                                    },
+                                    "price": {
+                                      "type": "object",
+                                      "properties": {
+                                        "input": {
+                                          "type": "number"
+                                        },
+                                        "output": {
+                                          "type": "number"
+                                        }
+                                      },
+                                      "additionalProperties": false
+                                    },
+                                    "free": {
+                                      "type": "boolean"
+                                    }
+                                  },
+                                  "required": ["id", "pin_id", "provider", "via", "available", "free"],
+                                  "additionalProperties": false
+                                }
                               }
                             },
                             "additionalProperties": false
@@ -6830,6 +6994,88 @@
                               },
                               "via": {
                                 "type": "string"
+                              },
+                              "flat": {
+                                "type": "boolean"
+                              },
+                              "canonical": {
+                                "type": "string"
+                              },
+                              "offers": {
+                                "type": "array",
+                                "items": {
+                                  "type": "object",
+                                  "properties": {
+                                    "id": {
+                                      "type": "string"
+                                    },
+                                    "pin_id": {
+                                      "type": "string"
+                                    },
+                                    "provider": {
+                                      "type": "object",
+                                      "properties": {
+                                        "id": {
+                                          "type": "string"
+                                        },
+                                        "slug": {
+                                          "type": "string"
+                                        },
+                                        "prefix": {
+                                          "type": "string"
+                                        },
+                                        "name": {
+                                          "type": "string"
+                                        },
+                                        "category": {
+                                          "type": "string"
+                                        },
+                                        "subscription": {
+                                          "type": "boolean"
+                                        }
+                                      },
+                                      "required": ["id"],
+                                      "additionalProperties": false
+                                    },
+                                    "via": {
+                                      "type": "array",
+                                      "items": {
+                                        "type": "object",
+                                        "properties": {
+                                          "slug": {
+                                            "type": "string"
+                                          },
+                                          "name": {
+                                            "type": "string"
+                                          }
+                                        },
+                                        "required": ["slug", "name"],
+                                        "additionalProperties": false
+                                      },
+                                      "description": "The routers between RedRouter and the provider, outermost first."
+                                    },
+                                    "available": {
+                                      "type": "boolean"
+                                    },
+                                    "price": {
+                                      "type": "object",
+                                      "properties": {
+                                        "input": {
+                                          "type": "number"
+                                        },
+                                        "output": {
+                                          "type": "number"
+                                        }
+                                      },
+                                      "additionalProperties": false
+                                    },
+                                    "free": {
+                                      "type": "boolean"
+                                    }
+                                  },
+                                  "required": ["id", "pin_id", "provider", "via", "available", "free"],
+                                  "additionalProperties": false
+                                }
                               }
                             },
                             "additionalProperties": false
@@ -7216,6 +7462,88 @@
                               },
                               "via": {
                                 "type": "string"
+                              },
+                              "flat": {
+                                "type": "boolean"
+                              },
+                              "canonical": {
+                                "type": "string"
+                              },
+                              "offers": {
+                                "type": "array",
+                                "items": {
+                                  "type": "object",
+                                  "properties": {
+                                    "id": {
+                                      "type": "string"
+                                    },
+                                    "pin_id": {
+                                      "type": "string"
+                                    },
+                                    "provider": {
+                                      "type": "object",
+                                      "properties": {
+                                        "id": {
+                                          "type": "string"
+                                        },
+                                        "slug": {
+                                          "type": "string"
+                                        },
+                                        "prefix": {
+                                          "type": "string"
+                                        },
+                                        "name": {
+                                          "type": "string"
+                                        },
+                                        "category": {
+                                          "type": "string"
+                                        },
+                                        "subscription": {
+                                          "type": "boolean"
+                                        }
+                                      },
+                                      "required": ["id"],
+                                      "additionalProperties": false
+                                    },
+                                    "via": {
+                                      "type": "array",
+                                      "items": {
+                                        "type": "object",
+                                        "properties": {
+                                          "slug": {
+                                            "type": "string"
+                                          },
+                                          "name": {
+                                            "type": "string"
+                                          }
+                                        },
+                                        "required": ["slug", "name"],
+                                        "additionalProperties": false
+                                      },
+                                      "description": "The routers between RedRouter and the provider, outermost first."
+                                    },
+                                    "available": {
+                                      "type": "boolean"
+                                    },
+                                    "price": {
+                                      "type": "object",
+                                      "properties": {
+                                        "input": {
+                                          "type": "number"
+                                        },
+                                        "output": {
+                                          "type": "number"
+                                        }
+                                      },
+                                      "additionalProperties": false
+                                    },
+                                    "free": {
+                                      "type": "boolean"
+                                    }
+                                  },
+                                  "required": ["id", "pin_id", "provider", "via", "available", "free"],
+                                  "additionalProperties": false
+                                }
                               }
                             },
                             "additionalProperties": false
@@ -35464,6 +35792,88 @@
                     },
                     "via": {
                       "type": "string"
+                    },
+                    "flat": {
+                      "type": "boolean"
+                    },
+                    "canonical": {
+                      "type": "string"
+                    },
+                    "offers": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "id": {
+                            "type": "string"
+                          },
+                          "pin_id": {
+                            "type": "string"
+                          },
+                          "provider": {
+                            "type": "object",
+                            "properties": {
+                              "id": {
+                                "type": "string"
+                              },
+                              "slug": {
+                                "type": "string"
+                              },
+                              "prefix": {
+                                "type": "string"
+                              },
+                              "name": {
+                                "type": "string"
+                              },
+                              "category": {
+                                "type": "string"
+                              },
+                              "subscription": {
+                                "type": "boolean"
+                              }
+                            },
+                            "required": ["id"],
+                            "additionalProperties": false
+                          },
+                          "via": {
+                            "type": "array",
+                            "items": {
+                              "type": "object",
+                              "properties": {
+                                "slug": {
+                                  "type": "string"
+                                },
+                                "name": {
+                                  "type": "string"
+                                }
+                              },
+                              "required": ["slug", "name"],
+                              "additionalProperties": false
+                            },
+                            "description": "The routers between RedRouter and the provider, outermost first."
+                          },
+                          "available": {
+                            "type": "boolean"
+                          },
+                          "price": {
+                            "type": "object",
+                            "properties": {
+                              "input": {
+                                "type": "number"
+                              },
+                              "output": {
+                                "type": "number"
+                              }
+                            },
+                            "additionalProperties": false
+                          },
+                          "free": {
+                            "type": "boolean"
+                          }
+                        },
+                        "required": ["id", "pin_id", "provider", "via", "available", "free"],
+                        "additionalProperties": false
+                      }
                     }
                   },
                   "additionalProperties": false
@@ -36803,6 +37213,21 @@
               "required": ["id", "variants"],
               "additionalProperties": false
             }
+          },
+          "flat": {
+            "type": "boolean"
+          },
+          "canonical": {
+            "type": "string"
+          },
+          "offers": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/RouterOffer"
+            }
+          },
+          "pinOf": {
+            "type": "string"
           }
         },
         "required": [
@@ -43568,6 +43993,59 @@
           }
         },
         "required": ["id", "name"],
+        "additionalProperties": false
+      },
+      "RouterHop": {
+        "type": "object",
+        "properties": {
+          "slug": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          }
+        },
+        "required": ["slug", "name"],
+        "additionalProperties": false
+      },
+      "RouterOffer": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "pinID": {
+            "type": "string"
+          },
+          "provider": {
+            "$ref": "#/components/schemas/RouterUpstream"
+          },
+          "via": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/RouterHop"
+            }
+          },
+          "available": {
+            "type": "boolean"
+          },
+          "price": {
+            "type": "object",
+            "properties": {
+              "input": {
+                "type": "number"
+              },
+              "output": {
+                "type": "number"
+              }
+            },
+            "additionalProperties": false
+          },
+          "free": {
+            "type": "boolean"
+          }
+        },
+        "required": ["id", "provider", "via", "available", "free"],
         "additionalProperties": false
       },
       "MonitorOptions": {

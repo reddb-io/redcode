@@ -56,3 +56,29 @@ describe("ModelChoice.closest", () => {
     })
   })
 })
+
+describe("ModelChoice.runnable", () => {
+  test("judges a RedRouter flat model id by its offers, never by a provider read from the id", () => {
+    const flat = (id: string, offers: string[]) => ({
+      providerID: "red-router",
+      id,
+      flat: true,
+      offers: offers.map((offer) => ({ id: offer })),
+    })
+    // `typesafe/jev-1.13` names the model; its offers are chained ids that do name their provider.
+    expect(
+      ModelChoice.runnable(
+        flat("typesafe/jev-1.13", ["red-router/red-router/opencode-go/typesafe/jev-1.13", "openrouter/typesafe/jev-1.13"]),
+      ),
+    ).toBe(false)
+    expect(ModelChoice.runnable(flat("vendor/evaluator", ["opencode-zen/jev-1.13"]))).toBe(false)
+    expect(
+      ModelChoice.runnable(
+        flat("anthropic/claude-sonnet-4-5", ["anthropic/claude-sonnet-4-5", "openrouter/anthropic/claude-sonnet-4.5"]),
+      ),
+    ).toBe(true)
+    // A prefixed id is parsed as before.
+    expect(ModelChoice.runnable({ providerID: "red-router", id: "opencode-zen/jev-1.13" })).toBe(false)
+    expect(ModelChoice.runnable({ providerID: "red-router", id: "codex/gpt-5.6-sol" })).toBe(true)
+  })
+})

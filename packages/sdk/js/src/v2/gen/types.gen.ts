@@ -1979,6 +1979,33 @@ export type ProviderConfig = {
           aliases?: Array<string>
         }>
         via?: string
+        flat?: boolean
+        canonical?: string
+        offers?: Array<{
+          id: string
+          pin_id: string
+          provider: {
+            id: string
+            slug?: string
+            prefix?: string
+            name?: string
+            category?: string
+            subscription?: boolean
+          }
+          /**
+           * The routers between RedRouter and the provider, outermost first.
+           */
+          via: Array<{
+            slug: string
+            name: string
+          }>
+          available: boolean
+          price?: {
+            input?: number
+            output?: number
+          }
+          free: boolean
+        }>
       }
       /**
        * Variant-specific configuration
@@ -2423,6 +2450,10 @@ export type Model = {
     id: string
     variants: Array<string>
   }>
+  flat?: boolean
+  canonical?: string
+  offers?: Array<RouterOffer>
+  pinOf?: string
 }
 
 export type Provider = {
@@ -4559,6 +4590,24 @@ export type RouterUpstream = {
   name: string
   category?: string
   subscription?: boolean
+}
+
+export type RouterHop = {
+  slug: string
+  name: string
+}
+
+export type RouterOffer = {
+  id: string
+  pinID?: string
+  provider: RouterUpstream
+  via: Array<RouterHop>
+  available: boolean
+  price?: {
+    input?: number
+    output?: number
+  }
+  free: boolean
 }
 
 export type MonitorOptions = {
@@ -11395,6 +11444,33 @@ export type ProviderDiscoverResponses = {
           aliases?: Array<string>
         }>
         via?: string
+        flat?: boolean
+        canonical?: string
+        offers?: Array<{
+          id: string
+          pin_id: string
+          provider: {
+            id: string
+            slug?: string
+            prefix?: string
+            name?: string
+            category?: string
+            subscription?: boolean
+          }
+          /**
+           * The routers between RedRouter and the provider, outermost first.
+           */
+          via: Array<{
+            slug: string
+            name: string
+          }>
+          available: boolean
+          price?: {
+            input?: number
+            output?: number
+          }
+          free: boolean
+        }>
       }
     }>
     router?: RouterDetection
@@ -11524,6 +11600,33 @@ export type ProviderOpenaiCompatibleConnectResponses = {
           aliases?: Array<string>
         }>
         via?: string
+        flat?: boolean
+        canonical?: string
+        offers?: Array<{
+          id: string
+          pin_id: string
+          provider: {
+            id: string
+            slug?: string
+            prefix?: string
+            name?: string
+            category?: string
+            subscription?: boolean
+          }
+          /**
+           * The routers between RedRouter and the provider, outermost first.
+           */
+          via: Array<{
+            slug: string
+            name: string
+          }>
+          available: boolean
+          price?: {
+            input?: number
+            output?: number
+          }
+          free: boolean
+        }>
       }
     }>
     /**
@@ -11644,6 +11747,33 @@ export type ProviderNineRouterConnectResponses = {
           aliases?: Array<string>
         }>
         via?: string
+        flat?: boolean
+        canonical?: string
+        offers?: Array<{
+          id: string
+          pin_id: string
+          provider: {
+            id: string
+            slug?: string
+            prefix?: string
+            name?: string
+            category?: string
+            subscription?: boolean
+          }
+          /**
+           * The routers between RedRouter and the provider, outermost first.
+           */
+          via: Array<{
+            slug: string
+            name: string
+          }>
+          available: boolean
+          price?: {
+            input?: number
+            output?: number
+          }
+          free: boolean
+        }>
       }
     }>
     router?: RouterDetection
@@ -11752,6 +11882,33 @@ export type ProviderRedRouterConnectResponses = {
           aliases?: Array<string>
         }>
         via?: string
+        flat?: boolean
+        canonical?: string
+        offers?: Array<{
+          id: string
+          pin_id: string
+          provider: {
+            id: string
+            slug?: string
+            prefix?: string
+            name?: string
+            category?: string
+            subscription?: boolean
+          }
+          /**
+           * The routers between RedRouter and the provider, outermost first.
+           */
+          via: Array<{
+            slug: string
+            name: string
+          }>
+          available: boolean
+          price?: {
+            input?: number
+            output?: number
+          }
+          free: boolean
+        }>
       }
     }>
     router?: RouterDetection

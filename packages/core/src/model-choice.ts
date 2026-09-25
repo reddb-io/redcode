@@ -68,18 +68,27 @@ export interface Entry {
   readonly cost?: { readonly input: number; readonly output: number }
 }
 
-/** Whether a subagent can run on the model: never a System One evaluator, never a deprecated model. */
+/**
+ * Whether a subagent can run on the model: never a System One evaluator, never a deprecated model.
+ * A RedRouter flat model id (`flat`) is judged by its offers, since the id names no provider.
+ */
 export function runnable(model: {
   readonly providerID: string
   readonly id: string
   readonly status?: string
   readonly protocol?: string
+  readonly flat?: boolean
+  readonly offers?: ReadonlyArray<{ readonly id: string }>
 }) {
   return (
     model.status !== "deprecated" &&
     model.protocol !== "systemone" &&
     // A model the configuration redeclares loses the catalog's protocol, so the offer list decides too.
-    !ModelsDev.systemOneOffer(model.providerID, model.id)
+    !ModelsDev.systemOneOffer(
+      model.providerID,
+      model.id,
+      model.flat ? (model.offers ?? []).map((offer) => offer.id) : undefined,
+    )
   )
 }
 

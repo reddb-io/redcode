@@ -48,3 +48,31 @@ describe("Router.route", () => {
     expect(Router.routeName({ routers: ["RedRouter"], model: "jev-1.13.0" })).toBe("RedRouter · jev-1.13.0")
   })
 })
+
+describe("Router.routeOf", () => {
+  test("never reads a provider from a flat model id: the offer that serves it by policy decides", () => {
+    const jev = {
+      id: "typesafe/jev-1.13",
+      flat: true,
+      offers: [
+        { id: "red-router/red-router/opencode-go/typesafe/jev-1.13", available: false },
+        { id: "openrouter/typesafe/jev-1.13", available: true },
+      ],
+    }
+    // The first available offer serves it; `typesafe` is not a provider.
+    expect(Router.routeOf(jev)).toEqual({ hops: [], provider: "openrouter", model: "typesafe/jev-1.13" })
+    expect(Router.leadOffer(jev)?.id).toBe("openrouter/typesafe/jev-1.13")
+    expect(Router.routeOf({ ...jev, offers: [{ id: "red-router/opencode-go/typesafe/jev-1.13" }] })).toEqual({
+      hops: ["red-router"],
+      provider: "opencode-go",
+      model: "typesafe/jev-1.13",
+    })
+    expect(Router.routeOf({ id: "typesafe/jev-1.13", flat: true })).toEqual({
+      hops: [],
+      provider: undefined,
+      model: "typesafe/jev-1.13",
+    })
+    // A prefixed id parses as it always did.
+    expect(Router.routeOf({ id: "typesafe/jev-1.13" })).toEqual(Router.route("typesafe/jev-1.13"))
+  })
+})

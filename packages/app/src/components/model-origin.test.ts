@@ -1,6 +1,7 @@
 import { describe, expect, test } from "bun:test"
 import {
   catalogUpdate,
+  flatOffers,
   modelAlternatives,
   modelGroup,
   modelOrigin,
@@ -144,5 +145,56 @@ describe("catalogUpdate", () => {
       }),
     ).toBeUndefined()
     expect(catalogUpdate({ type: "models-dev.refreshed", properties: {} })).toBeUndefined()
+  })
+})
+
+describe("flat model ids", () => {
+  const openrouter = { id: "openrouter", slug: "openrouter", name: "OpenRouter" }
+  const anthropicUpstream = { id: "anthropic", slug: "anthropic", name: "Anthropic" }
+  const claude = {
+    id: "anthropic/claude-sonnet-4-5",
+    provider: redRouter,
+    flat: true,
+    upstream: anthropicUpstream,
+    offers: [
+      { id: "anthropic/claude-sonnet-4-5", provider: anthropicUpstream, via: [], available: true, free: false },
+      {
+        id: "openrouter/anthropic/claude-sonnet-4.5",
+        pinID: "openrouter/anthropic/claude-sonnet-4.5",
+        provider: openrouter,
+        via: [{ slug: "red-router", name: "Office RedRouter" }],
+        available: true,
+        price: { input: 3, output: 15 },
+        free: false,
+      },
+    ],
+  }
+
+  test("pairs a flat model with a direct connection through its offers, never through its id", () => {
+    const direct = { id: "claude-sonnet-4-5", provider: anthropic }
+    const typesafe = { id: "jev-1.13", provider: { id: "typesafe", name: "Typesafe" } }
+    const jev = {
+      id: "typesafe/jev-1.13",
+      provider: redRouter,
+      flat: true,
+      upstream: openrouter,
+      offers: [{ id: "openrouter/typesafe/jev-1.13", provider: openrouter, via: [], available: true, free: false }],
+    }
+    const result = modelAlternatives([claude, direct, jev, typesafe])
+    expect(result.get("anthropic:claude-sonnet-4-5")).toEqual({ direct: false, routers: ["RedRouter"] })
+    expect(result.get("red-router:anthropic/claude-sonnet-4-5")).toEqual({ direct: true, routers: [] })
+    expect(result.get("typesafe:jev-1.13")).toBeUndefined()
+    expect(result.get("red-router:typesafe/jev-1.13")).toBeUndefined()
+  })
+
+  test("lists offers with their route and price, and pins only by pin id", () => {
+    const rows = flatOffers(claude, (id) => id === "openrouter/anthropic/claude-sonnet-4.5")
+    expect(rows.map((row) => [row.route, row.price, row.pin])).toEqual([
+      ["RedRouter » Anthropic", undefined, undefined],
+      ["RedRouter » Office RedRouter » OpenRouter", "$3/$15", "openrouter/anthropic/claude-sonnet-4.5"],
+    ])
+    // A pin id with no model listed under it is not offered.
+    expect(flatOffers(claude, () => false).map((row) => row.pin)).toEqual([undefined, undefined])
+    expect(flatOffers({ ...claude, flat: false }, () => true)).toEqual([])
   })
 })

@@ -152,11 +152,20 @@ export function systemOneOffers(catalog: Record<string, Provider>) {
 
 const SYSTEM_ONE_MODELS = new Set(Object.values(SYSTEM_ONE_OFFERS).flatMap((ids) => [...ids]))
 
-/** Whether the catalog serves this model as a System One evaluator rather than as a language model. */
-export function systemOneOffer(providerID: string, modelID: string) {
+/**
+ * Whether the catalog serves this model as a System One evaluator rather than as a language model.
+ * A RedRouter flat model id names no provider, so it is judged by the model it names and by its
+ * offers (`offers`, the offers' chained ids), never by splitting the flat id into a provider.
+ */
+export function systemOneOffer(providerID: string, modelID: string, offers?: ReadonlyArray<string>) {
+  if (offers) return SYSTEM_ONE_MODELS.has(modelID) || offers.some((offer) => routedSystemOne(offer))
   if (SYSTEM_ONE_OFFERS[providerID]?.has(modelID)) return true
-  // A routed id, through any number of routers, is judged by the upstream and model at its end:
-  // `opencode-zen/jev-1.13` and `red-router/red-router/opencode-go/jev-1.13` are both Jev.
+  return routedSystemOne(modelID)
+}
+
+// A routed id, through any number of routers, is judged by the upstream and model at its end:
+// `opencode-zen/jev-1.13` and `red-router/red-router/opencode-go/jev-1.13` are both Jev.
+function routedSystemOne(modelID: string) {
   const routed = Router.route(modelID)
   return (
     routed.provider !== undefined &&

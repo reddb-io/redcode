@@ -2,6 +2,7 @@ import { describe, expect, test } from "bun:test"
 import type { Message, Model, Part, Provider } from "@reddb-io/redcode-sdk/v2"
 import {
   catalogUpdateMessage,
+  flatOffers,
   latestServed,
   migrateModelState,
   modeBadge,
@@ -10,8 +11,10 @@ import {
   originDescription,
   originIndex,
   resolveModel,
+  routeLabel,
   routerLabel,
   servedModel,
+  servedRoute,
   servingVariants,
 } from "../../src/util/model-origin"
 
@@ -297,5 +300,130 @@ describe("model origin", () => {
     expect(servingVariants(combo, "cc/third")).toBeUndefined()
     expect(servingVariants(combo, undefined)).toBeUndefined()
     expect(servingVariants(model("red-router", "smart"), "cc/other")).toBeUndefined()
+  })
+})
+
+describe("flat model ids", () => {
+  const anthropic = { id: "anthropic", slug: "anthropic", name: "Anthropic", category: "apikey", subscription: false }
+  const openrouter = { id: "openrouter", slug: "openrouter", name: "OpenRouter", category: "freeTier" }
+  const opencodeGo = { id: "opencode-go", slug: "opencode-go", name: "OpenCode Go" }
+  const offices = [
+    { slug: "red-router", name: "RedRouter" },
+    { slug: "red-router", name: "Office RedRouter" },
+  ]
+  // As the server lists them: upstream and via are the lead offer's, pinnable offers are models too.
+  const claude = model("red-router", "anthropic/claude-sonnet-4-5", {
+    name: "Claude Sonnet 4.5",
+    flat: true,
+    upstream: anthropic,
+    offers: [
+      { id: "anthropic/claude-sonnet-4-5", provider: anthropic, via: [], available: true, price: { input: 3, output: 15 }, free: false },
+      {
+        id: "openrouter/anthropic/claude-sonnet-4.5",
+        pinID: "openrouter/anthropic/claude-sonnet-4.5",
+        provider: openrouter,
+        via: [],
+        available: true,
+        price: { input: 3, output: 15 },
+        free: false,
+      },
+    ],
+  })
+  const pinned = model("red-router", "openrouter/anthropic/claude-sonnet-4.5", {
+    name: "Claude Sonnet 4.5",
+    upstream: openrouter,
+    pinOf: "anthropic/claude-sonnet-4-5",
+  })
+  const jev = model("red-router", "typesafe/jev-1.13", {
+    name: "JEV 1.13",
+    flat: true,
+    upstream: opencodeGo,
+    via: "RedRouter » Office RedRouter",
+    offers: [
+      {
+        id: "red-router/red-router/opencode-go/typesafe/jev-1.13",
+        pinID: "red-router/red-router/opencode-go/typesafe/jev-1.13",
+        provider: opencodeGo,
+        via: offices,
+        available: true,
+        price: { input: 0.042, output: 0 },
+        free: false,
+      },
+      { id: "openrouter/typesafe/jev-1.13", provider: openrouter, via: [], available: true, free: true },
+    ],
+    comboMembers: [
+      { id: "red-router/red-router/opencode-go/typesafe/jev-1.13", variants: ["low"] },
+      { id: "openrouter/typesafe/jev-1.13", variants: ["low", "high"] },
+    ],
+  })
+  const flat = provider("red-router", "RedRouter", [claude, pinned, jev], { router: { kind: "red-router" } })
+  const anthropicDirect = provider("anthropic", "Anthropic", [model("anthropic", "claude-sonnet-4-5")])
+  // A direct provider whose id is the flat id's vendor: a flat id must never be paired with it.
+  const typesafeDirect = provider("typesafe", "Typesafe", [model("typesafe", "jev-1.13")])
+
+  test("labels a flat model by the offer that serves it, never by a provider read from its id", () => {
+    const index = originIndex([flat, anthropicDirect, typesafeDirect])
+    expect(routeLabel(flat, jev)).toBe("via RedRouter » RedRouter » Office RedRouter")
+    expect(originDescription(index, flat, jev)).toBe("via RedRouter » RedRouter » Office RedRouter » OpenCode Go · 2 offers")
+    expect(originCategory(flat, jev)).toBe("RedRouter » OpenCode Go")
+    expect(originDescription(index, flat, jev)).not.toContain("typesafe")
+    // Without a reported route, the hops come from the lead offer's id, not from the flat id.
+    const chained = { ...jev, via: undefined, offers: [{ ...jev.offers![0], via: [] }] }
+    expect(routeLabel(flat, chained)).toBe("via RedRouter » RedRouter » RedRouter")
+  })
+
+  test("pairs a flat model with a direct connection through its offers only", () => {
+    const index = originIndex([flat, anthropicDirect, typesafeDirect])
+    expect(index.also(flat, claude)).toEqual(["direct"])
+    expect(index.also(anthropicDirect, anthropicDirect.models["claude-sonnet-4-5"])).toEqual(["RedRouter"])
+    expect(index.also(flat, jev)).toEqual([])
+    expect(index.also(typesafeDirect, typesafeDirect.models["jev-1.13"])).toEqual([])
+  })
+
+  test("lists the offers with their route, price and pin id; an offer without one cannot be pinned", () => {
+    expect(flatOffers(flat, claude).map((row) => ({ route: row.route, detail: row.detail, pin: row.pin }))).toEqual([
+      { route: "RedRouter » Anthropic", detail: "$3/$15 per 1M · cannot be pinned", pin: undefined },
+      {
+        route: "RedRouter » OpenRouter",
+        detail: "$3/$15 per 1M",
+        pin: "openrouter/anthropic/claude-sonnet-4.5",
+      },
+    ])
+    // A pin id with no model listed under it is not offered either.
+    expect(flatOffers(flat, jev).map((row) => [row.route, row.pin, row.offer.free])).toEqual([
+      ["RedRouter » RedRouter » Office RedRouter » OpenCode Go", undefined, false],
+      ["RedRouter » OpenRouter", undefined, true],
+    ])
+    expect(flatOffers(flat, pinned)).toEqual([])
+  })
+
+  test("follows the serving offer by its exact id and names it by its route", () => {
+    expect(servingVariants(jev, "openrouter/typesafe/jev-1.13")).toEqual(["low", "high"])
+    expect(servingVariants(jev, "openrouter/typesafe/jev-1.13(high)")).toEqual(["low", "high"])
+    expect(servingVariants(jev, "red-router/red-router/opencode-go/typesafe/jev-1.13")).toBeUndefined()
+    // The flat id itself is no member: suffix matching would have read it as the lead.
+    expect(servingVariants(jev, "typesafe/jev-1.13")).toBeUndefined()
+
+    const finish = (served: string): Part => ({
+      id: "prt",
+      sessionID: "ses",
+      messageID: "msg",
+      type: "step-finish",
+      reason: "stop",
+      servedModel: served,
+      cost: 0,
+      tokens: { input: 0, output: 0, reasoning: 0, cache: { read: 0, write: 0 } },
+    })
+    const message = { providerID: "red-router", modelID: "anthropic/claude-sonnet-4-5" }
+    // The vendor's own offer shares the flat id, and is still news for a flat model.
+    expect(servedModel(message, [finish("anthropic/claude-sonnet-4-5")])).toBeUndefined()
+    expect(servedModel(message, [finish("anthropic/claude-sonnet-4-5")], true)).toBe("anthropic/claude-sonnet-4-5")
+    expect(servedRoute(claude, "anthropic/claude-sonnet-4-5")).toBe("Anthropic · claude-sonnet-4-5")
+    expect(servedRoute(claude, "openrouter/anthropic/claude-sonnet-4.5")).toBe("OpenRouter · anthropic/claude-sonnet-4.5")
+    expect(servedRoute(jev, "red-router/red-router/opencode-go/typesafe/jev-1.13")).toBe(
+      "RedRouter » Office RedRouter » OpenCode Go · typesafe/jev-1.13",
+    )
+    // An offer the model does not list is read from its chained id.
+    expect(servedRoute(jev, "red-router/opencode-zen/jev-1.13")).toBe("RedRouter » opencode-zen · jev-1.13")
   })
 })

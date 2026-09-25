@@ -231,6 +231,7 @@ export const Definitions = {
   "dialog.worktrees.remove": keybind("ctrl+d", "Remove worktree in worktrees dialog"),
   "dialog.worktrees.clean": keybind("ctrl+o", "Clean merged worktrees in worktrees dialog"),
   "dialog.worktrees.refresh": keybind("ctrl+r", "Refresh worktrees dialog"),
+  "model.dialog.offers": keybind("ctrl+o", "Show or hide a flat model's offers in model pickers"),
   "prompt.autocomplete.prev": keybind("up,ctrl+p", "Move to previous autocomplete item"),
   "prompt.autocomplete.next": keybind("down,ctrl+n", "Move to next autocomplete item"),
   "prompt.autocomplete.hide": keybind("escape", "Hide autocomplete"),

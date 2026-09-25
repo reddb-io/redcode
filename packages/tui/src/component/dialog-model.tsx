@@ -9,6 +9,7 @@ import * as fuzzysort from "fuzzysort"
 import { useConnected } from "./use-connected"
 import { useSync } from "../context/sync"
 import {
+  flatOffers,
   modeBadge,
   originCategory,
   originDescription,
@@ -32,6 +33,25 @@ export function DialogModel(props: { providerID?: string }) {
 
   const showExtra = createMemo(() => connected() && !props.providerID)
   const origins = createMemo(() => originIndex(sync.data.provider))
+  // Flat models whose offers are listed under them, keyed `provider/model`. A pinned offer opens its
+  // flat model, so the current choice stays visible.
+  const [expanded, setExpanded] = createSignal<ReadonlySet<string>>(
+    new Set(
+      [local.model.current()].flatMap((current) => {
+        const pinned = current && flatKey(current)
+        return pinned ? [pinned] : []
+      }),
+    ),
+  )
+  // The flat model a row belongs to: the flat model itself, or the one an offer row pins.
+  function flatKey(value: { providerID: string; modelID: string } | string | undefined) {
+    // Rows that are no model (a provider to connect) carry a string.
+    if (!value || typeof value === "string") return undefined
+    const model = sync.data.provider.find((item) => item.id === value.providerID)?.models[value.modelID]
+    if (model?.flat) return `${value.providerID}/${model.id}`
+    if (model?.pinOf) return `${value.providerID}/${model.pinOf}`
+    return undefined
+  }
   // Counts every active model by name, so entries that render with the same title (e.g. the same
   // upstream model served both directly via RedRouter and via a remote RedRouter it forwards to) can
   // get a distinguishing route suffix. `originIndex.also` cannot catch this by itself: it tracks
@@ -40,7 +60,8 @@ export function DialogModel(props: { providerID?: string }) {
     const counts = new Map<string, number>()
     sync.data.provider.forEach((provider) =>
       Object.values(provider.models).forEach((model) => {
-        if (model.status === "deprecated") return
+        // A pinned offer is listed under its flat model, not as a model of its own.
+        if (model.status === "deprecated" || model.pinOf) return
         const name = model.name ?? model.id
         counts.set(name, (counts.get(name) ?? 0) + 1)
       }),
@@ -112,6 +133,8 @@ export function DialogModel(props: { providerID?: string }) {
           provider.models,
           entries(),
           filter(([_, info]) => info.status !== "deprecated"),
+          // A pinned offer is listed under its flat model (see `offers` below), not as a model of its own.
+          filter(([_, info]) => !info.pinOf),
           filter(([_, info]) => (props.providerID ? info.providerID === props.providerID : true)),
           map(([model, info]) => {
             const route = routeSuffix(provider, info)
@@ -130,7 +153,11 @@ export function DialogModel(props: { providerID?: string }) {
                 : origin,
               category: connected() ? originCategory(provider, info) : undefined,
               disabled: provider.id === "opencode" && model.includes("-nano"),
-              footer: info.cost?.input === 0 && provider.id === "opencode" ? "Free" : modeBadge(info),
+              footer:
+                (info.cost?.input === 0 && provider.id === "opencode") ||
+                (info.flat && info.offers?.length && info.offers.every((offer) => offer.free))
+                  ? "Free"
+                  : modeBadge(info),
               onSelect() {
                 onSelect(provider.id, model)
               },
@@ -155,6 +182,29 @@ export function DialogModel(props: { providerID?: string }) {
           (options) => sortModelOptions(options, props.providerID !== undefined),
           // Keeps each upstream group of a router together (the sort is stable).
           (options) => sortBy(options, (option) => option.category ?? ""),
+          // An expanded flat model lists its offers right under it. Picking one pins it: its pin id is
+          // saved, never the offer id, which can be the flat id itself.
+          flatMap((option) => {
+            const info = provider.models[option.value.modelID]
+            if (!info?.flat || !expanded().has(`${provider.id}/${info.id}`)) return [option]
+            return [
+              option,
+              ...flatOffers(provider, info).map((row) => ({
+                value: row.pin
+                  ? { providerID: provider.id, modelID: row.pin }
+                  : { providerID: provider.id, modelID: info.id, offer: row.offer.id },
+                title: `  ↳ ${row.route}`,
+                releaseDate: option.releaseDate,
+                description: row.detail || (row.pin ? "Pin this offer" : ""),
+                category: option.category,
+                disabled: !row.pin,
+                footer: row.offer.free ? "Free" : undefined,
+                onSelect() {
+                  if (row.pin) onSelect(provider.id, row.pin)
+                },
+              })),
+            ]
+          }),
         ),
       ),
     )
@@ -225,6 +275,22 @@ export function DialogModel(props: { providerID?: string }) {
           hidden: !connected(),
           onTrigger: (option) => {
             local.model.toggleFavorite(option.value as { providerID: string; modelID: string })
+          },
+        },
+        {
+          command: "model.dialog.offers",
+          title: "Offers",
+          hidden:
+            !connected() || !sync.data.provider.some((item) => Object.values(item.models).some((model) => model.flat)),
+          disabled: (option) => !flatKey(option?.value),
+          onTrigger: (option) => {
+            const key = flatKey(option.value)
+            if (!key) return
+            setExpanded((current) => {
+              const next = new Set(current)
+              if (!next.delete(key)) next.add(key)
+              return next
+            })
           },
         },
       ]}
