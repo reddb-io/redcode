@@ -47,12 +47,13 @@ function Prompt(props: { onExit?: () => void; request?: PermissionRequest }) {
   )
 }
 
+// Same ceiling as `wait`: CI runs test files in parallel and a loaded runner can take seconds to render.
 async function waitForFrame(setup: { app: { renderOnce(): Promise<void>; captureCharFrame(): string } }, text: string) {
   const start = Date.now()
   for (;;) {
     await setup.app.renderOnce()
     if (setup.app.captureCharFrame().includes(text)) return
-    if (Date.now() - start > 2000) throw new Error(`timed out waiting for "${text}"`)
+    if (Date.now() - start > 10_000) throw new Error(`timed out waiting for "${text}"`)
     await Bun.sleep(10)
   }
 }
@@ -70,9 +71,13 @@ async function setupPrompt(
     () => <Prompt onExit={onExit} request={request} />,
   )
   setup.sync.set("permission", "ses_test", [request])
-  await setup.app.renderOnce()
-  await Bun.sleep(50)
-  await setup.app.renderOnce()
+  // ThemeProvider renders nothing until its palette and theme discovery settle, so a key pressed before
+  // the prompt is on screen hits no binding. Wait for the prompt itself instead of sleeping.
+  await waitForFrame(setup, "Allow once").catch(async (error: unknown) => {
+    setup.app.renderer.destroy()
+    await tmp[Symbol.asyncDispose]()
+    throw error
+  })
   return { setup, tmp }
 }
 
