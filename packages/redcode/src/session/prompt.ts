@@ -1432,17 +1432,72 @@ const layer = Layer.effect(
         ...(files.length > 0 ? { files } : {}),
         ...(mentions.length > 0 ? { agents: mentions } : {}),
       })
+      const delivery = input.delivery ?? "steer"
+      const earlier = yield* readmission({ sessionID: input.sessionID, messageID: input.messageID, prompt, delivery })
+      if (earlier) return earlier
       yield* SessionInput.admit(db, events, {
         id: SessionMessage.ID.make(info.id),
         sessionID: input.sessionID,
         prompt,
-        delivery: input.delivery ?? "steer",
+        delivery,
       })
       yield* sessions.updateMessage(info)
       for (const part of parts) yield* sessions.updatePart(part)
 
       return { info, parts }
     }, Effect.scoped)
+
+    // The stored message a prompt is a second copy of, returned instead of admitting it again.
+    //
+    // A prompt that names an ID already admitted is a retry. An exact one (same Session, prompt and
+    // delivery) gets the stored message back untouched: writing its rows again would re-stamp a
+    // promoted message to now, moving it to the end of history where the model reads it as the
+    // person asking a second time. A reuse that differs is refused.
+    //
+    // A prompt without an ID that repeats one still waiting in the inbox is the same request sent
+    // again: after a send the client reported as failed although the server had admitted it, or
+    // to get a queued prompt taken up sooner. A second row would be promoted at its own idle
+    // boundary, often long after the first one was answered. The waiting row stands for both, and
+    // a steer moves it ahead of the queue. Callers that need distinct inputs name their IDs.
+    const readmission = Effect.fnUntraced(function* (input: {
+      sessionID: SessionID
+      messageID?: MessageID
+      prompt: Prompt
+      delivery: SessionInput.Delivery
+    }) {
+      if (input.messageID !== undefined) {
+        const admitted = yield* SessionInput.find(db, SessionMessage.ID.make(input.messageID))
+        if (admitted === undefined) return undefined
+        if (!SessionInput.equivalent(admitted, input))
+          return yield* Effect.die(new SessionInput.LifecycleConflict({ id: admitted.id }))
+        // Admitted but its rows never written: the retry writes them.
+        return yield* storedUserMessage(input.sessionID, input.messageID)
+      }
+      const waiting = (yield* SessionInput.listPending(db, input.sessionID)).find((row) =>
+        SessionInput.matchesPrompt(row, input),
+      )
+      if (waiting === undefined) return undefined
+      const stored = yield* storedUserMessage(input.sessionID, MessageID.make(waiting.id))
+      if (stored === undefined) return undefined
+      // Promoted in the meantime is fine too: the request is being delivered either way.
+      if (input.delivery === "steer" && waiting.delivery === "queue")
+        yield* SessionInput.setDelivery(db, events, { sessionID: input.sessionID, id: waiting.id, delivery: "steer" })
+      yield* Effect.logInfo("prompt repeats one still pending; kept the admitted one", {
+        "session.id": input.sessionID,
+        messageID: waiting.id,
+        delivery: input.delivery,
+      })
+      return stored
+    })
+
+    const storedUserMessage = (sessionID: SessionID, messageID: MessageID) =>
+      MessageV2.get({ sessionID, messageID }).pipe(
+        Effect.provideService(Database.Service, database),
+        Effect.option,
+        Effect.map((message) =>
+          Option.isSome(message) && message.value.info.role === "user" ? message.value : undefined,
+        ),
+      )
 
     // Prompt Promotion for a V1 session. The stored user message is published again, re-stamped
     // to now (history is ordered by creation time, and an admitted prompt is older than everything
