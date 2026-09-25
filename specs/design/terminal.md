@@ -16,7 +16,7 @@ Use `/review` to open the browser, `/mode design|plan|build` to explicitly chang
 the session agent, and `/model provider/model` to change its model. Adopting an
 existing session preserves the server's agent and model; startup flags apply to
 new sessions. Adoption and event reconnection never resume provider work.
-`/resume`, a new message, or `/goal-resume` is an explicit request to continue.
+`/resume`, a new message, or `/goal resume` is an explicit request to continue.
 
 Review pages (`/review`, `--open`, the TUI's `/design-review` and
 `design_preview`) open in Google Chrome or Chromium when one is installed, and
@@ -50,8 +50,9 @@ them automatically. `/allow request-id once|always|reject` answers permissions.
 semicolons between questions. Free text is accepted only when the question permits
 it. `/reject request-id` rejects a question request.
 
-`/goal objective` starts a Goal; `/goal-status`, `/goal-pause`, `/goal-resume`,
-`/goal-budget N`, and `/goal-drop` use the current SessionV2 contract. `/status`
+`/goal objective` starts a Goal; `/goal status`, `/goal pause`, `/goal resume`,
+`/goal budget N`, and `/goal drop` use the current SessionV2 contract (the older
+`/goal-pause`-style spellings still work). `/status`
 shows the authoritative mode, activity, Goal budget and pending requests.
 
 History is read in bounded pages and events reconnect from the last durable

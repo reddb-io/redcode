@@ -1,13 +1,14 @@
 import type { Redcode, SessionsEventsOutput, QuestionsListOutput } from "@reddb-io/redcode-client"
 import timers from "node:timers/promises"
 import { DesignFeedback } from "@reddb-io/redcode-core/design/feedback"
+import { GoalCommand } from "@reddb-io/redcode-core/session/goal-command"
 import { errorMessage } from "@/util/error"
 import { withTimeout } from "@/util/timeout"
 
 export const help = [
   "Write a message to steer the session; /queue text waits until its current work finishes.",
   "/mode design|plan|build|question · /model provider/model · /status · /stop · /resume · /review · /quit",
-  "/goal objective · /goal-status · /goal-pause · /goal-resume · /goal-budget N · /goal-drop",
+  "/goal objective · /goal status|pause|resume|drop · /goal budget N",
   "/allow request-id once|always|reject · /answer request-id 1; 2,3 · /reject request-id",
   "For questions, separate answers with semicolons and multiple option numbers with commas.",
 ].join("\n")
@@ -156,7 +157,7 @@ export async function create(input: {
     const command = text.split(/\s/, 1)[0]
     const argument = text.slice(command.length).trim()
     if (command === "/help") return input.write(help)
-    if (command === "/status" || command === "/goal-status") return status(true)
+    if (command === "/status") return status(true)
     if (command === "/review") return input.review(session.id)
     // Invalidate reads already in flight before submitting an intervention.
     state.refresh++
@@ -185,25 +186,22 @@ export async function create(input: {
       await status(true)
       return
     }
-    if (command === "/goal") {
-      if (!argument) return status(true)
-      await input.client.sessions.goalSet({ ...ref, objective: argument }, options())
-      await status(true)
-      return
-    }
-    if (["/goal-pause", "/goal-resume", "/goal-drop", "/goal-budget"].includes(command)) {
-      const action =
-        command === "/goal-pause"
-          ? "pause"
-          : command === "/goal-resume"
-            ? "resume"
-            : command === "/goal-drop"
-              ? "drop"
-              : "budget"
-      const maxTurns = action === "budget" ? Number(argument) : undefined
+    // `/goal` and its retired `/goal-pause`-style aliases; plain text after `/goal` is the objective.
+    const goal = GoalCommand.slash(text)
+    if (goal) {
+      const start = async (objective: string) => {
+        if (!objective) throw new Error("Usage: /goal objective")
+        await input.client.sessions.goalSet({ ...ref, objective }, options())
+        await status(true)
+      }
+      if (goal.type === "menu") return status(true)
+      if (goal.type === "text") return start(goal.text)
+      if (goal.action === "status") return status(true)
+      if (goal.action === "set") return start(goal.argument)
+      const maxTurns = goal.action === "budget" ? Number(goal.argument) : undefined
       if (maxTurns !== undefined && (!Number.isInteger(maxTurns) || maxTurns < 1 || maxTurns > 1000))
-        throw new Error("Usage: /goal-budget N (1–1000 provider attempts)")
-      await input.client.sessions.goalControl({ ...ref, action, maxTurns }, options())
+        throw new Error("Usage: /goal budget N (1–1000 provider attempts)")
+      await input.client.sessions.goalControl({ ...ref, action: goal.action, maxTurns }, options())
       await status(true)
       return
     }

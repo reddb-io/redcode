@@ -8146,6 +8146,7 @@ export type IntelligenceHistoryInput = {
       | "subagent_result"
       | "design_target"
       | "design_system_detect"
+      | "goal_command"
       | undefined
     readonly subjectID?: string | undefined
     readonly candidateID?: string | undefined
@@ -8173,6 +8174,7 @@ export type IntelligenceHistoryInput = {
       | "subagent_result"
       | "design_target"
       | "design_system_detect"
+      | "goal_command"
       | undefined
     readonly subjectID?: string | undefined
     readonly candidateID?: string | undefined
@@ -8200,6 +8202,7 @@ export type IntelligenceHistoryInput = {
       | "subagent_result"
       | "design_target"
       | "design_system_detect"
+      | "goal_command"
       | undefined
     readonly subjectID?: string | undefined
     readonly candidateID?: string | undefined
@@ -8227,6 +8230,7 @@ export type IntelligenceHistoryInput = {
       | "subagent_result"
       | "design_target"
       | "design_system_detect"
+      | "goal_command"
       | undefined
     readonly subjectID?: string | undefined
     readonly candidateID?: string | undefined
@@ -8254,6 +8258,7 @@ export type IntelligenceHistoryInput = {
       | "subagent_result"
       | "design_target"
       | "design_system_detect"
+      | "goal_command"
       | undefined
     readonly subjectID?: string | undefined
     readonly candidateID?: string | undefined
@@ -8281,6 +8286,7 @@ export type IntelligenceHistoryInput = {
       | "subagent_result"
       | "design_target"
       | "design_system_detect"
+      | "goal_command"
       | undefined
     readonly subjectID?: string | undefined
     readonly candidateID?: string | undefined
@@ -8308,6 +8314,7 @@ export type IntelligenceHistoryInput = {
       | "subagent_result"
       | "design_target"
       | "design_system_detect"
+      | "goal_command"
       | undefined
     readonly subjectID?: string | undefined
     readonly candidateID?: string | undefined
@@ -8339,6 +8346,7 @@ export type IntelligenceHistoryOutput = ReadonlyArray<{
     | "subagent_result"
     | "design_target"
     | "design_system_detect"
+    | "goal_command"
   readonly kind?: "classification" | "gate"
   readonly subjectID?: string
   readonly candidateID?: string

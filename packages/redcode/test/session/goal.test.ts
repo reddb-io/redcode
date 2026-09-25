@@ -188,8 +188,8 @@ describe("one line for a status bar", () => {
     const exhausted = { ...goal, turns: { used: 1, max: 1 } }
     const paused = SessionGoal.resumed(exhausted, now + 1)
     expect(paused.status).toBe("paused")
-    expect(paused.reason).toContain("/goal-budget")
-    expect(paused.reason).toContain("/goal-resume")
+    expect(paused.reason).toContain("/goal budget")
+    expect(paused.reason).toContain("/goal resume")
     const resumed = SessionGoal.resumed({ ...paused, turns: { used: 1, max: 2 } }, now + 2)
     expect(resumed.status).toBe("active")
     expect(resumed.turns.used).toBe(1)

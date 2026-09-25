@@ -5678,7 +5678,7 @@ it.instance("a goal pauses at its cost budget after the step that reached it", (
     expect(goal?.reason).toBe("budget: $1.00 of $0.50 spent")
     const trips = yield* budgetTrips()
     expect(trips.map((trip) => [trip.action, trip.subject])).toEqual([["stop", "goal"]])
-    expect(trips[0]?.detail).toContain("/goal-budget")
+    expect(trips[0]?.detail).toContain("/goal budget")
   }),
 )
 
@@ -6072,7 +6072,7 @@ it.instance(
       expect(goal?.turns.used).toBe(1)
       expect(goal?.status).toBe("paused")
       expect(goal?.reason).toContain("running out of turns is not completion")
-      expect(goal?.reason).toContain("/goal-budget")
+      expect(goal?.reason).toContain("/goal budget")
     }),
   20000,
 )
@@ -6228,7 +6228,7 @@ it.instance(
       const { llm } = yield* useServerConfig((url) => providerCfg(url))
       const { chat, goals, prompt } = yield* startGoal("hold the line; gate: true", { maxTurns: 1 })
       const thinking = defer<void>()
-      // The first judgement waits for the test; /goal-budget lands while it does.
+      // The first judgement waits for the test; /goal budget lands while it does.
       yield* llm.pushMatch(judgeRequest, reply().wait(thinking.promise).text(verdict("continue", "not yet")).stop())
       yield* llm.textMatch(judgeRequest, verdict("done", "now it holds"))
       yield* llm.text("one")

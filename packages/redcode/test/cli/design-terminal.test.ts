@@ -291,8 +291,8 @@ test("Design terminal sends explicit permission and question answers through ses
 test("Design terminal exposes interruption, Goal budget and explicit resume without legacy orchestration", async () => {
   const test = await fixture()
   try {
-    await expect(test.terminal.line("/goal-budget 0")).rejects.toThrow("1–1000")
-    await test.terminal.line("/goal-budget 12")
+    await expect(test.terminal.line("/goal budget 0")).rejects.toThrow("1–1000")
+    await test.terminal.line("/goal budget 12")
     await test.terminal.line("/goal-resume")
     await test.terminal.interrupt()
     await test.terminal.line("/resume")

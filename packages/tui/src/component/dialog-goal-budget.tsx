@@ -33,7 +33,7 @@ export function DialogGoalBudget(props: { sessionID: string }) {
         toast.show({
           variant: goal ? "success" : "warning",
           message: goal
-            ? `Goal budget: ${goal.turns.used}/${goal.turns.max} turns used.${spend} ${Number(goal.turns.used) >= Number(goal.turns.max) ? "Increase the total above turns used to continue." : goal.status === "active" ? "Goal is active." : "Use /goal-resume to continue."}`
+            ? `Goal budget: ${goal.turns.used}/${goal.turns.max} turns used.${spend} ${Number(goal.turns.used) >= Number(goal.turns.max) ? "Increase the total above turns used to continue." : goal.status === "active" ? "Goal is active." : "Use /goal resume to continue."}`
             : "Could not update the goal budget.",
           duration: 5000,
         })
