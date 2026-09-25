@@ -2495,7 +2495,12 @@ const layer = Layer.effect(
                 text: Intelligence.repairPrompt(verdict.repair),
                 synthetic: true,
                 // Surfaces show the revision and the answer it replaces as one reply.
-                metadata: { responseRepair: { issues: verdict.repair } },
+                metadata: {
+                  responseRepair: {
+                    issues: verdict.repair,
+                    confidence: Intelligence.responseRepairConfidence(evaluation, verdict.repair),
+                  },
+                },
               })
               repairedIssues = [...repairedIssues, ...verdict.repair]
               repairedResponse = responseText(responseCandidate)

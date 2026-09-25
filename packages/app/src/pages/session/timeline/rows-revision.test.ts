@@ -49,10 +49,10 @@ const tool = (id: string, messageID: string) =>
     callID: id,
     state: { status: "completed", input: {}, output: "", title: "", metadata: {}, time: { start: 0, end: 1 } },
   }) as Part
-const repair = (messageID: string, issues: string[]) =>
+const repair = (messageID: string, issues: string[], confidence: Record<string, number> = {}) =>
   text(`${messageID}-part`, messageID, "[system:response-quality-repair]", {
     synthetic: true,
-    metadata: { responseRepair: { issues } },
+    metadata: { responseRepair: { issues, confidence } },
   })
 
 function rows(
@@ -85,7 +85,7 @@ describe("S1-revised answers in the web timeline", () => {
   const parts = {
     msg_user: [text("p_user", "msg_user", "teste")],
     msg_answer: [tool("p_tool", "msg_answer"), text("p_answer", "msg_answer", "Olá! Funcionando.")],
-    msg_repair: [repair("msg_repair", ["unsupported"])],
+    msg_repair: [repair("msg_repair", ["unsupported"], { unsupported: 0.82 })],
     msg_revision: [text("p_revision", "msg_revision", "Olá! Em que posso ajudar?")],
   }
 
@@ -99,9 +99,12 @@ describe("S1-revised answers in the web timeline", () => {
       "revision:msg_user:msg_revision",
     ])
     const note = result.rows.find((row) => row._tag === "Revision")
-    expect(note?._tag === "Revision" && { issues: note.issues, originals: note.originals }).toEqual({
+    expect(
+      note?._tag === "Revision" && { issues: note.issues, originals: note.originals, confidence: note.confidence },
+    ).toEqual({
       issues: ["unsupported"],
       originals: ["msg_answer"],
+      confidence: { unsupported: 0.82 },
     })
   })
 

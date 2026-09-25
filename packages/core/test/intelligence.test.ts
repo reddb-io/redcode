@@ -2053,6 +2053,28 @@ test("an issue already repaired this turn is not repaired again", () => {
   })
 })
 
+test("every response question has a plain-language reason, and an unknown key gets a generic one", () => {
+  for (const id of Object.keys(Intelligence.responseQuestions).filter((id) => id !== "writing_quality"))
+    expect(Intelligence.responseQuestionReason(id)).toBe(Intelligence.responseQuestionReasons[id])
+  expect(Intelligence.responseQuestionReason("omission")).toBe("missed part of your request")
+  expect(Intelligence.responseQuestionReason("unsupported")).toBe("claimed work it couldn't prove")
+  expect(Intelligence.responseQuestionReason("tool_evidence")).toBe("relied on a failed or unrelated result")
+  expect(Intelligence.responseQuestionReason("premature")).toBe("said done with work still open")
+  expect(Intelligence.responseQuestionReason("writing")).toBe("was hard to follow")
+  expect(Intelligence.responseQuestionReason("made_up_key")).toBe("didn't pass S1 review")
+})
+
+test("responseRepairConfidence reports each named issue's noul, skipping unavailable or unnamed ones", () => {
+  const review = responseReview({ omission: 0.95, writing: 0.9 })
+  expect(Intelligence.responseRepairConfidence(review, ["omission", "writing"])).toEqual({
+    omission: 0.95,
+    writing: 0.9,
+  })
+  expect(Intelligence.responseRepairConfidence(review, ["omission"])).toEqual({ omission: 0.95 })
+  expect(Intelligence.responseRepairConfidence(review, [])).toEqual({})
+  expect(Intelligence.responseRepairConfidence(undefined, ["omission"])).toEqual({})
+})
+
 test("the unsupported check asks about claimed work, not conversation, under the same keys", () => {
   expect(Object.keys(Intelligence.responseQuestions).toSorted()).toEqual([
     "omission",
