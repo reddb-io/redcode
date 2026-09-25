@@ -1144,6 +1144,8 @@ export const dict = {
   "settings.providers.section.popular": "Ofruesit e njohur",
   "settings.providers.custom.description": "Shtoni një ofrues të pajtueshëm me OpenAI nga baza URL.",
   "settings.providers.tag.environment": "Mjedisi",
+  "settings.providers.tag.adminKey": "Admin key",
+  "settings.providers.tag.standardKey": "Standard key",
   "settings.providers.tag.config": "Konfigurimi",
   "settings.providers.tag.custom": "Me porosi",
   "settings.providers.tag.other": "Të tjera",

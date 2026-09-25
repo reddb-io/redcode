@@ -32,6 +32,10 @@ export const Request = Schema.Struct({
   metadata: Schema.Record(Schema.String, Schema.Unknown),
   always: Schema.Array(Schema.String),
   tool: Schema.optional(Schema.Struct({ messageID: Schema.String, callID: Schema.String })),
+  protected: Schema.optional(Schema.Boolean).annotate({
+    description:
+      "A protected action: asked every time, even with --yolo, and never answered by a client's auto-approve. Only the person may allow it, once.",
+  }),
 }).annotate({ identifier: "PermissionRequest" })
 export type Request = typeof Request.Type
 

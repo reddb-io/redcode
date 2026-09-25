@@ -1111,6 +1111,8 @@ export const dict = {
   "settings.providers.section.popular": "ታዋቂ አቅራቢዎች",
   "settings.providers.custom.description": "OpenAI-ተኳሃኝ አቅራቢን በመሠረት URL ያክሉ።",
   "settings.providers.tag.environment": "አካባቢ",
+  "settings.providers.tag.adminKey": "Admin key",
+  "settings.providers.tag.standardKey": "Standard key",
   "settings.providers.tag.config": "ውቅር",
   "settings.providers.tag.custom": "ብጁ",
   "settings.providers.tag.other": "ሌላ",

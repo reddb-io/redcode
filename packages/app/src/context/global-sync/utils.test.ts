@@ -155,6 +155,26 @@ describe("normalizeProviderList", () => {
     })
   })
 
+  test("keeps a RedRouter key's role and MCP server", () => {
+    const result = normalizeProviderList(
+      [
+        {
+          id: "red-router",
+          name: "RedRouter",
+          package: "@ai-sdk/openai-compatible",
+          router: { kind: "red-router", role: "admin", mcp: "http://127.0.0.1:25050/v1/mcp", owner: "ignored" },
+        },
+      ] as unknown as ProviderListOutput["data"],
+      [],
+      null,
+    )
+    expect(result.all.get("red-router")?.router).toEqual({
+      kind: "red-router",
+      role: "admin",
+      mcp: "http://127.0.0.1:25050/v1/mcp",
+    })
+  })
+
   test("preserves an empty current default", () => {
     expect(normalizeProviderList([] as ProviderListOutput["data"], [], null).defaultModel).toBeNull()
   })

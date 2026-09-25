@@ -1146,6 +1146,8 @@ export const dict = {
   "settings.providers.section.popular": "Հանրաճանաչ մատակարարներ",
   "settings.providers.custom.description": "Ավելացնել OpenAI-համատեղելի մատակարար ըստ բազային URL։",
   "settings.providers.tag.environment": "Շրջակա միջավայր",
+  "settings.providers.tag.adminKey": "Admin key",
+  "settings.providers.tag.standardKey": "Standard key",
   "settings.providers.tag.config": "Կազմաձևում",
   "settings.providers.tag.custom": "Պատվիրված",
   "settings.providers.tag.other": "Այլ",

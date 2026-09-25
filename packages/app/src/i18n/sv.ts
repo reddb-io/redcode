@@ -1144,6 +1144,8 @@ export const dict = {
   "settings.providers.section.popular": "Populära leverantörer",
   "settings.providers.custom.description": "Lägg till en OpenAI-kompatibel leverantör genom bas-URL.",
   "settings.providers.tag.environment": "Miljö",
+  "settings.providers.tag.adminKey": "Admin key",
+  "settings.providers.tag.standardKey": "Standard key",
   "settings.providers.tag.config": "Konfiguration",
   "settings.providers.tag.custom": "Anpassad",
   "settings.providers.tag.other": "Övrigt",

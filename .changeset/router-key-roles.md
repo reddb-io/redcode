@@ -1,0 +1,5 @@
+---
+"@reddb-io/redcode": minor
+---
+
+Know what a RedRouter key may do, and use the router's MCP server with it. Connecting or refreshing a RedRouter reads the key's role (`standard` or `admin`) and its MCP server from the model list's `x-redrouter-key-role` / `x-redrouter-mcp` headers, or from `GET /v1/key` on routers that do not send them, and saves both on the connection. The TUI's `/connect` and `/setup` show "standard key" / "admin key", and so do the web app's provider settings. Each connected RedRouter's MCP server is registered automatically: it is named after the provider (`red-router`), reached over streamable HTTP with the connection's own key, re-listed when the router's catalog is refreshed, and removed with the provider. An MCP server you declare under the same name wins. RedRouter's key-management tools (`create_api_key`, `list_api_keys`, and `get_usage` for another key) are protected actions: they ask every time, allow once only, and are never approved by `--yolo`, allow rules or a client's auto-approve.

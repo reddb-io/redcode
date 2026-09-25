@@ -1155,6 +1155,8 @@ export const dict = {
   "settings.providers.section.popular": "Δημοφιλείς πάροχοι",
   "settings.providers.custom.description": "Προσθήκη παρόχου συμβατού με OpenAI κατά βάση URL.",
   "settings.providers.tag.environment": "Περιβάλλον",
+  "settings.providers.tag.adminKey": "Admin key",
+  "settings.providers.tag.standardKey": "Standard key",
   "settings.providers.tag.config": "Ρύθμιση",
   "settings.providers.tag.custom": "Προσαρμοσμένο",
   "settings.providers.tag.other": "Άλλο",

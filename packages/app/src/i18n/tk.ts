@@ -1141,6 +1141,8 @@ export const dict = {
   "settings.providers.section.popular": "Meşhur üpjün edijiler",
   "settings.providers.custom.description": "URL esasly OpenAI gabat gelýän üpjün edijini goşuň.",
   "settings.providers.tag.environment": "Daşky gurşaw",
+  "settings.providers.tag.adminKey": "Admin key",
+  "settings.providers.tag.standardKey": "Standard key",
   "settings.providers.tag.config": "Sazlamak",
   "settings.providers.tag.custom": "Omörite",
   "settings.providers.tag.other": "Beýlekiler",

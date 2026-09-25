@@ -1071,6 +1071,8 @@ export const dict = {
   "settings.providers.connected.empty": "Aucun fournisseur connecté",
   "settings.providers.section.popular": "Fournisseurs populaires",
   "settings.providers.tag.environment": "Environnement",
+  "settings.providers.tag.adminKey": "Admin key",
+  "settings.providers.tag.standardKey": "Standard key",
   "settings.providers.tag.config": "Configuration",
   "settings.providers.tag.custom": "Personnalisé",
   "settings.providers.tag.other": "Autre",

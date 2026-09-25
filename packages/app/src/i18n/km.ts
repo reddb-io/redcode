@@ -1133,6 +1133,8 @@ export const dict = {
   "settings.providers.section.popular": "អ្នកផ្តល់សេវាពេញនិយម",
   "settings.providers.custom.description": "បន្ថែមអ្នកផ្តល់សេវាដែលត្រូវគ្នាជាមួយ OpenAI ដោយ URL មូលដ្ឋាន។",
   "settings.providers.tag.environment": "បរិស្ថាន",
+  "settings.providers.tag.adminKey": "Admin key",
+  "settings.providers.tag.standardKey": "Standard key",
   "settings.providers.tag.config": "កំណត់រចនាសម្ព័ន្ធ",
   "settings.providers.tag.custom": "ផ្ទាល់ខ្លួន",
   "settings.providers.tag.other": "ផ្សេងទៀត។",

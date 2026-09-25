@@ -1136,6 +1136,8 @@ export const dict = {
   "settings.providers.section.popular": "Vælumtóktir veitarar",
   "settings.providers.custom.description": "Legg ein OpenAI-sambæriligan veitara til eftir grund URL.",
   "settings.providers.tag.environment": "Umhvørvi",
+  "settings.providers.tag.adminKey": "Admin key",
+  "settings.providers.tag.standardKey": "Standard key",
   "settings.providers.tag.config": "Uppseting",
   "settings.providers.tag.custom": "Sersniðgivið",
   "settings.providers.tag.other": "Annað",

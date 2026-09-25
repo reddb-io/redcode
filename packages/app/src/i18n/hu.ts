@@ -1151,6 +1151,8 @@ export const dict = {
   "settings.providers.section.popular": "Népszerű szolgáltatók",
   "settings.providers.custom.description": "Adjon hozzá egy OpenAI-kompatibilis szolgáltatót az alap URL segítségével.",
   "settings.providers.tag.environment": "Környezet",
+  "settings.providers.tag.adminKey": "Admin key",
+  "settings.providers.tag.standardKey": "Standard key",
   "settings.providers.tag.config": "Konfiguráció",
   "settings.providers.tag.custom": "Szokás",
   "settings.providers.tag.other": "Más",

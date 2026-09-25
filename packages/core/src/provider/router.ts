@@ -19,6 +19,8 @@ export const Header = {
   servedModel: "x-redrouter-served-model",
   cost: "x-redrouter-cost-usd",
   catalogVersion: "x-redrouter-catalog-version",
+  keyRole: "x-redrouter-key-role",
+  mcp: "x-redrouter-mcp",
   retryAt: "x-9router-retry-at",
   reason: "x-9router-reason",
 } as const

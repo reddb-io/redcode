@@ -199,6 +199,51 @@ export const quotas = (input: Input, provider?: string) =>
     )
   })
 
+/**
+ * What a RedRouter API key is, from `GET {base URL}/key`: its role and where its MCP server is, or
+ * undefined when the router does not say (an older router, a refused key, no key). The MCP URL is
+ * kept only on the router's own origin, so the key is never sent anywhere else. Never fails.
+ */
+export const key = (input: Input) =>
+  Effect.promise(async () => {
+    const apiKey = input.apiKey?.trim()
+    const base = input.baseURL.trim().replace(/\/+$/, "")
+    if (!apiKey || !ProviderRouter.normalizeURL(base)) return
+    const response = await (input.fetch ?? fetch)(`${base}/key`, {
+      redirect: "error",
+      signal: AbortSignal.timeout(input.timeout ?? TIMEOUT),
+      headers: { accept: "application/json", authorization: `Bearer ${apiKey}` },
+    }).catch(() => undefined)
+    if (!response?.ok) return
+    const body = record(await response.json().catch(() => undefined))
+    const mcp = record(body.mcp)
+    const role = keyRole(body.role)
+    if (!role) return
+    const url = mcpURL(base, mcp.url)
+    return {
+      role,
+      ...(url ? { mcp: url } : {}),
+      ...(typeof mcp.schema_version === "number" ? { version: mcp.schema_version } : {}),
+    }
+  })
+
+/** A key role as RedRouter writes it, or undefined for anything else. */
+export function keyRole(value: unknown) {
+  return value === "admin" || value === "standard" ? value : undefined
+}
+
+/**
+ * The MCP server URL a router gave (a path like `/v1/mcp`, or a full URL), resolved against its base
+ * URL. Undefined when it points at another origin: the key must never follow it there.
+ */
+export function mcpURL(baseURL: string, value: unknown) {
+  if (typeof value !== "string" || !value.trim()) return
+  const base = URL.parse(baseURL)
+  const url = base ? URL.parse(value.trim(), base) : undefined
+  if (!base || !url || url.origin !== base.origin || url.username || url.password) return
+  return url.href
+}
+
 /** Drops cached probes, for one address or all of them. */
 export function forget(baseURL?: string) {
   const base = baseURL === undefined ? undefined : ProviderRouter.normalizeURL(baseURL)

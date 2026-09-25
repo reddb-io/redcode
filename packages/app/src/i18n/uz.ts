@@ -1153,6 +1153,8 @@ export const dict = {
   "settings.providers.section.popular": "Mashhur provayderlar",
   "settings.providers.custom.description": "URL bazasi bo'yicha OpenAI-mos provayderni qo'shing.",
   "settings.providers.tag.environment": "Atrof-muhit",
+  "settings.providers.tag.adminKey": "Admin key",
+  "settings.providers.tag.standardKey": "Standard key",
   "settings.providers.tag.config": "Konfiguratsiya",
   "settings.providers.tag.custom": "Maxsus",
   "settings.providers.tag.other": "Boshqa",

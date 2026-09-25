@@ -1228,6 +1228,8 @@ export const dict = {
   "settings.providers.section.popular": "Penyedia populer",
   "settings.providers.custom.description": "Tambahkan penyedia yang kompatibel dengan OpenAI berdasarkan URL dasar.",
   "settings.providers.tag.environment": "Lingkungan",
+  "settings.providers.tag.adminKey": "Admin key",
+  "settings.providers.tag.standardKey": "Standard key",
   "settings.providers.tag.config": "Konfigurasi",
   "settings.providers.tag.custom": "Kustom",
   "settings.providers.tag.other": "Lainnya",

@@ -1156,6 +1156,8 @@ export const dict = {
   "settings.providers.section.popular": "လူကြိုက်များသော ဝန်ဆောင်မှုပေးသူများ",
   "settings.providers.custom.description": "အခြေခံ URL ဖြင့် OpenAI-သဟဇာတ ပံ့ပိုးပေးသူကို ထည့်ပါ။",
   "settings.providers.tag.environment": "ပတ်ဝန်းကျင်",
+  "settings.providers.tag.adminKey": "Admin key",
+  "settings.providers.tag.standardKey": "Standard key",
   "settings.providers.tag.config": "ပြင်ဆင်မှု",
   "settings.providers.tag.custom": "စိတ်ကြိုက်",
   "settings.providers.tag.other": "အခြား",

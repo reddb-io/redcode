@@ -35,6 +35,10 @@ import { CrossSpawnSpawner } from "@reddb-io/redcode-core/cross-spawn-spawner"
 import { McpCatalog } from "./catalog"
 import { McpEvent } from "@reddb-io/redcode-schema/mcp-event"
 import { McpBrowser } from "./browser"
+import { McpRouterServers } from "./router-servers"
+import { isRecord } from "@/util/record"
+import { Auth } from "@/auth"
+import { Router } from "@reddb-io/redcode-schema/router"
 
 const DEFAULT_TIMEOUT = 30_000
 
@@ -523,6 +527,24 @@ const layer = Layer.effect(
       }),
     )
     const cfgSvc = yield* Config.Service
+    const credentials = yield* Auth.Service
+
+    /**
+     * The MCP servers to run: the configured ones, plus the MCP server of each connected RedRouter
+     * (named after its provider, reached with its key). A configured server of the same name wins.
+     */
+    const effective = Effect.fnUntraced(function* (cfg: ConfigV1.Info) {
+      const stored = yield* credentials.all().pipe(Effect.orElseSucceed((): Record<string, Auth.Info> => ({})))
+      const routers = McpRouterServers.servers({
+        providers: cfg.provider,
+        disabled: cfg.disabled_providers,
+        keyOf: (providerID) => {
+          const info = stored[providerID]
+          return info?.type === "api" ? info.key : undefined
+        },
+      })
+      return { ...routers, ...cfg.mcp }
+    })
 
     const descendants = Effect.fnUntraced(
       function* (pid: number) {
@@ -631,7 +653,7 @@ const layer = Layer.effect(
         const cfg = yield* cfgSvc.get()
         const bridge = yield* EffectBridge.make()
         const directory = yield* InstanceState.directory
-        const config = cfg.mcp ?? {}
+        const config = yield* effective(cfg)
         const s: State = {
           lock: yield* Semaphore.make(1),
           enabled: {},
@@ -847,7 +869,8 @@ const layer = Layer.effect(
           )
         }),
       )
-      const config = { ...cfg.mcp, ...s.config }
+      const configured = yield* effective(cfg)
+      const config = { ...configured, ...s.config }
       const names = name === undefined ? [...new Set([...Object.keys(s.status), ...Object.keys(config)])] : [name]
       if (name !== undefined && !(name in s.status) && !isMcpConfigured(config[name])) {
         return yield* new NotFoundError({ name })
@@ -872,7 +895,8 @@ const layer = Layer.effect(
             }
             // A selected-server reload must not change the effective config of other live clients.
             delete s.configured[key]
-            if (cfg.mcp?.[key]) s.configured[key] = cfg.mcp[key]
+            const declared = configured[key]
+            if (declared) s.configured[key] = declared
             yield* createAndStore(key, { ...mcp, enabled: s.enabled[key] ?? mcp.enabled })
             yield* events.publish(ToolsChanged, { server: key }).pipe(Effect.ignore)
           }),
@@ -1389,6 +1413,16 @@ const layer = Layer.effect(
       return result
     })
 
+    // A RedRouter whose models were read again may now have a key of another role (an admin key gets
+    // more tools) or no MCP server: its server reconnects, listing its tools again, or goes away.
+    const unsubscribe = yield* events.listen((event) => {
+      if (event.type !== Router.Event.CatalogUpdated.type || !isRecord(event.data)) return Effect.void
+      const providerID = event.data.providerID
+      if (typeof providerID !== "string") return Effect.void
+      return reload(providerID).pipe(Effect.catchCause(() => Effect.void))
+    })
+    yield* Effect.addFinalizer(() => unsubscribe)
+
     return Service.of({
       info,
       beginAuth,
@@ -1423,7 +1457,7 @@ export type AuthStatus = "authenticated" | "expired" | "not_authenticated"
 export const node = LayerNode.make({
   service: Service,
   layer: layer,
-  deps: [CrossSpawnSpawner.node, McpAuth.node, EventV2Bridge.node, Config.node, McpBrowser.node],
+  deps: [CrossSpawnSpawner.node, McpAuth.node, EventV2Bridge.node, Config.node, McpBrowser.node, Auth.node],
 })
 
 export * as MCP from "."

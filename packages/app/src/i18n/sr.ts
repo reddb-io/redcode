@@ -1143,6 +1143,8 @@ export const dict = {
   "settings.providers.section.popular": "Популарни провајдери",
   "settings.providers.custom.description": "Додајте добављача компатибилног са OpenAI по бази URL.",
   "settings.providers.tag.environment": "окружење",
+  "settings.providers.tag.adminKey": "Admin key",
+  "settings.providers.tag.standardKey": "Standard key",
   "settings.providers.tag.config": "Конфигурација",
   "settings.providers.tag.custom": "Прилагођено",
   "settings.providers.tag.other": "Друго",

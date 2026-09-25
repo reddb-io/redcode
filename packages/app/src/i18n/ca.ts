@@ -1153,6 +1153,8 @@ export const dict = {
   "settings.providers.section.popular": "Proveïdors populars",
   "settings.providers.custom.description": "Afegiu un proveïdor compatible amb OpenAI per base URL.",
   "settings.providers.tag.environment": "Medi ambient",
+  "settings.providers.tag.adminKey": "Admin key",
+  "settings.providers.tag.standardKey": "Standard key",
   "settings.providers.tag.config": "Config",
   "settings.providers.tag.custom": "Personalitzat",
   "settings.providers.tag.other": "Altres",

@@ -3,6 +3,7 @@ import type { Message, Model, Part, Provider } from "@reddb-io/redcode-sdk/v2"
 import {
   catalogUpdateMessage,
   flatOffers,
+  keyRoleLabel,
   latestServed,
   migrateModelState,
   missingModelMessage,
@@ -468,5 +469,13 @@ describe("flat model ids", () => {
     expect(missingModelMessage([], saved, undefined)).toBe(
       "red-router is not connected, so typesafe/jev-1.14 is unavailable. Pick another model with /model.",
     )
+  })
+})
+
+describe("keyRoleLabel", () => {
+  test("names a RedRouter key's role, and nothing the router did not say", () => {
+    expect(keyRoleLabel("admin")).toBe("admin key")
+    expect(keyRoleLabel("standard")).toBe("standard key")
+    expect(keyRoleLabel(undefined)).toBeUndefined()
   })
 })

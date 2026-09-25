@@ -1147,6 +1147,8 @@ export const dict = {
   "settings.providers.section.popular": "Провайдерҳои машҳур",
   "settings.providers.custom.description": "Илова кардани провайдери OpenAI-мувофиқ аз рӯи асос URL.",
   "settings.providers.tag.environment": "Муҳити зист",
+  "settings.providers.tag.adminKey": "Admin key",
+  "settings.providers.tag.standardKey": "Standard key",
   "settings.providers.tag.config": "Конфигуратсия",
   "settings.providers.tag.custom": "Фармоишгар",
   "settings.providers.tag.other": "Дигар",

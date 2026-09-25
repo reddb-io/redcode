@@ -1136,6 +1136,8 @@ export const dict: Record<string, string> = {
   "settings.providers.section.popular": "ජනප්‍රිය සැපයුම්කරුවන්",
   "settings.providers.custom.description": "URL පදනම අනුව OpenAI-අනුකූල සැපයුම්කරුවෙකු එක් කරන්න.",
   "settings.providers.tag.environment": "පරිසරය",
+  "settings.providers.tag.adminKey": "Admin key",
+  "settings.providers.tag.standardKey": "Standard key",
   "settings.providers.tag.config": "වින්යාසය",
   "settings.providers.tag.custom": "අභිරුචි",
   "settings.providers.tag.other": "වෙනත්",

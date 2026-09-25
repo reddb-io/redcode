@@ -1154,6 +1154,8 @@ export const dict = {
   "settings.providers.section.popular": "Populiarūs tiekėjai",
   "settings.providers.custom.description": "Pridėkite su OpenAI suderinamą tiekėją pagal bazinį URL.",
   "settings.providers.tag.environment": "Aplinka",
+  "settings.providers.tag.adminKey": "Admin key",
+  "settings.providers.tag.standardKey": "Standard key",
   "settings.providers.tag.config": "Konfigūracija",
   "settings.providers.tag.custom": "Pasirinktinis",
   "settings.providers.tag.other": "Kita",

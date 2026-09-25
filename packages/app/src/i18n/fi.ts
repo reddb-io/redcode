@@ -1041,6 +1041,8 @@ export const dict = {
   "settings.providers.custom.description":
     "Lisää OpenAI-yhteensopiva palveluntarjoaja perus-URL-osoitteen perusteella.",
   "settings.providers.tag.environment": "Ympäristö",
+  "settings.providers.tag.adminKey": "Admin key",
+  "settings.providers.tag.standardKey": "Standard key",
   "settings.providers.tag.config": "Määritys",
   "settings.providers.tag.custom": "Mukautettu",
   "settings.providers.tag.other": "Muut",

@@ -1130,6 +1130,8 @@ export const dict = {
   "settings.providers.section.popular": "ຜູ້ໃຫ້ບໍລິການທີ່ນິຍົມ",
   "settings.providers.custom.description": "ເພີ່ມຜູ້ໃຫ້ບໍລິການທີ່ເຂົ້າກັນໄດ້ກັບ OpenAI ໂດຍ URL ພື້ນຖານ.",
   "settings.providers.tag.environment": "ສະພາບແວດລ້ອມ",
+  "settings.providers.tag.adminKey": "Admin key",
+  "settings.providers.tag.standardKey": "Standard key",
   "settings.providers.tag.config": "ການຕັ້ງຄ່າ",
   "settings.providers.tag.custom": "ກຳນົດເອງ",
   "settings.providers.tag.other": "ອື່ນໆ",
