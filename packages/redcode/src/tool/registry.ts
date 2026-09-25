@@ -68,6 +68,7 @@ import { MCP } from "@/mcp"
 import { PermissionV1 } from "@reddb-io/redcode-core/v1/permission"
 import { McpCatalog } from "@/mcp/catalog"
 import { CodeModeGate } from "./code-mode-gate"
+import { HookV2Bridge } from "@/hook-v2-bridge"
 
 export function webSearchEnabled(providerID: ProviderV2.ID, flags = { exa: false, parallel: false }) {
   return (
@@ -550,6 +551,7 @@ export const node = LayerNode.make({
     MCP.node,
     Database.node,
     Ripgrep.node,
+    HookV2Bridge.node,
   ],
 })
 

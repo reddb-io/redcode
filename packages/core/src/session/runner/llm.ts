@@ -1,3 +1,4 @@
+import path from "path"
 import { Intelligence } from "../../intelligence"
 import { ProviderRouter } from "../../provider/router"
 import { Semantic } from "../../semantic"
@@ -38,6 +39,7 @@ import { PromptCacheDiagnostics } from "../prompt-cache-diagnostics"
 import { LoopGuard } from "../loop-guard"
 import { SessionStopLoss } from "../stop-loss"
 import { SubagentReview } from "../subagent-review"
+import { SubagentView } from "../subagent-view"
 import { ReasoningAuto } from "../reasoning-auto"
 import { SessionRetry } from "../retry"
 import { SessionStall } from "../stall"
@@ -56,6 +58,9 @@ import { SystemContextRegistry } from "../../system-context/registry"
 import { DesignContext } from "../../design/context"
 import { DesignRenderer } from "../../design/renderer"
 import { DesignStore } from "../../design/store"
+import { DesignIdentify } from "../../design/identify"
+import { DesignProposal } from "../../design/proposal"
+import { Global } from "../../global"
 import { SkillGuidance } from "../../skill/guidance"
 import { SkillV2 } from "../../skill"
 import { ReferenceGuidance } from "../../reference/guidance"
@@ -73,6 +78,7 @@ import { SessionEvent } from "../event"
 import { SessionHistory } from "../history"
 import { SessionGuardTripTable } from "../sql"
 import { SessionInput } from "../input"
+import { SessionMetadata } from "../metadata"
 import { SessionSchema } from "../schema"
 import { SessionStore } from "../store"
 import { SessionMessage } from "../message"
@@ -306,11 +312,13 @@ const layer = Layer.effect(
     const limits = yield* ModelLimit.Service
     const intelligence = yield* Intelligence.Service
     const semantic = yield* Semantic.Service
+    const global = yield* Global.Service
+    const scope = yield* Scope.Scope
     const configEntriesAtStart = yield* config.entries()
     const compaction = SessionCompaction.make({
       intelligence,
       semantic,
-      scope: yield* Scope.Scope,
+      scope,
       latestUser: (sessionID, beforeSeq) => SessionHistory.latestUser(db, sessionID, beforeSeq).pipe(Effect.orDie),
       events,
       llm,
@@ -635,6 +643,15 @@ const layer = Layer.effect(
         subject: checkpoint.type === "signal" ? checkpoint.signals.join(",") : "interval",
         detail: SessionStopLoss.detail(trajectory, verdict),
       })
+      // Kept on the Session too, as legacy does, so a parent's task row and the sidebar show where the
+      // checkpoints left a subagent without loading its messages.
+      const kept: SubagentView.Checkpoint = {
+        action: verdict.action,
+        line: SessionStopLoss.line(trajectory, verdict, { subagent }),
+        ...(verdict.action === "steer" ? {} : { reason: SessionStopLoss.reason(trajectory, verdict) }),
+        at: yield* Clock.currentTimeMillis,
+      }
+      yield* SessionMetadata.update(db, events, sessionID, (metadata) => SubagentView.withCheckpoint(metadata, kept))
       // A steer is the next thing the model reads; a question or a stop is the turn's last word, for
       // the user and for the model when the user answers.
       yield* events.publish(SessionEvent.Synthetic, {
@@ -711,6 +728,30 @@ const layer = Layer.effect(
       })
 
     const promptAttempts = new Map<SessionSchema.ID, Map<string, Intelligence.Evaluation | undefined>>()
+
+    /** User messages whose design-system identification was already started in the background. */
+    const warmed = new Set<string>()
+    /**
+     * Identifies the design system in the background, as legacy does, so design_document create finds
+     * the result cached instead of waiting for S1. A configured system that is still current needs none.
+     */
+    const warmDesignSystem = (sessionID: SessionSchema.ID) =>
+      Effect.gen(function* () {
+        const design = yield* designs.configured(sessionID)
+        if (
+          design?.system &&
+          !(yield* Effect.promise(() => DesignProposal.stale(location.directory, design).catch(() => true)))
+        )
+          return
+        yield* DesignIdentify.warm({
+          directory: location.directory,
+          application: design?.application,
+          state: path.join(global.state, DesignIdentify.STATE),
+          mode: Intelligence.mode(yield* intelligence.read().pipe(Effect.orElseSucceed(() => Intelligence.defaults))),
+          sessionID,
+          evaluate: (evaluation) => intelligence.evaluate(evaluation),
+        })
+      })
 
     const evaluateIntelligence = Effect.fn("SessionRunner.evaluateIntelligence")(function* (
       input: Intelligence.EvaluationInput,
@@ -967,6 +1008,16 @@ const layer = Layer.effect(
           ? `System One prompt classification unavailable (${assessment.id}). Use the original user request and conversation; no classification has been verified.`
           : undefined)
       const skillContext = Intelligence.skillContext(assessment)
+      // Started as soon as the design agent runs or S1 routes the request as design, not when the
+      // model first reaches for design_document.
+      if (
+        latestUser &&
+        !warmed.has(latestUser.id) &&
+        DesignIdentify.wanted({ agent: agent.id, route: Intelligence.workRoute(assessment) })
+      ) {
+        warmed.add(latestUser.id)
+        yield* warmDesignSystem(session.id).pipe(Effect.ignore, Effect.forkIn(scope))
+      }
       const batch = context.findLast((message) => message.type === "assistant")
       const settledTools =
         batch && (!latestUser || context.indexOf(batch) > context.indexOf(latestUser))
@@ -1908,12 +1959,17 @@ const layer = Layer.effect(
               const verdict = Intelligence.responseRepair(evaluation, repairedIssues)
               const unresolved = review?.unchanged ? repairedIssues : verdict.unresolved
               if (review && verdict.repair.length && responseRepairs < 2) {
-                yield* events.publish(SessionEvent.Synthetic, {
-                  sessionID: input.sessionID,
-                  messageID: SessionMessage.ID.create(),
-                  timestamp: yield* DateTime.now,
-                  text: Intelligence.repairPrompt(verdict.repair),
-                })
+                yield* events.publish(
+                  SessionEvent.Synthetic,
+                  {
+                    sessionID: input.sessionID,
+                    messageID: SessionMessage.ID.create(),
+                    timestamp: yield* DateTime.now,
+                    text: Intelligence.repairPrompt(verdict.repair),
+                  },
+                  // Surfaces show the revision and the answer it replaces as one reply, as legacy's repair part does.
+                  { metadata: { responseRepair: { issues: verdict.repair } } },
+                )
                 repairedIssues = [...repairedIssues, ...verdict.repair]
                 repairedResponse = review.text
                 responseRepairs++
@@ -1995,5 +2051,6 @@ export const node = makeLocationNode({
     SessionPlan.node,
     Monitor.node,
     ModelLimit.node,
+    Global.node,
   ],
 })

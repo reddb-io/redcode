@@ -152,6 +152,22 @@ describe("Config", () => {
     }),
   )
 
+  it.effect("keeps the subagent caps of a v1 configuration", () =>
+    Effect.sync(() => {
+      const migrated = ConfigMigrateV1.migrate({
+        subagent_depth: 2,
+        experimental: { subagent_limits: { concurrent: 2, per_request: 5 }, background_subagents_max: 1 },
+      })
+      expect(migrated.subagent_depth).toBe(2)
+      expect(migrated.experimental).toMatchObject({
+        subagent_limits: { concurrent: 2, per_request: 5 },
+        background_subagents_max: 1,
+      })
+      expect(ConfigMigrateV1.migrate({}).experimental).toBeUndefined()
+      Schema.decodeUnknownSync(Config.Info)(migrated, { errors: "all" })
+    }),
+  )
+
   it.effect("migrates v1 command configuration", () =>
     Effect.sync(() => {
       expect(
