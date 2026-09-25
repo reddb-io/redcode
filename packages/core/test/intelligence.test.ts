@@ -1053,6 +1053,9 @@ test("Zen onboarding offers free Jev without changing existing defaults or accep
   expect(Intelligence.isJev("red-router/red-router/opencode-go/jev-1.13")).toBe(true)
   expect(Intelligence.isJev("red-router/openrouter/typesafe/jev-1.13")).toBe(true)
   expect(Intelligence.isJev("red-router/red-router/codex/gpt-5.6-sol")).toBe(false)
+  // A RedRouter flat id names the model only, and reads the same.
+  expect(Intelligence.isJev("typesafe/jev-1.13")).toBe(true)
+  expect(Intelligence.isJev("anthropic/claude-sonnet-4-5")).toBe(false)
   await using dir = await tmpdir()
   await Effect.runPromise(
     Effect.gen(function* () {

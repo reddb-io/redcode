@@ -18,6 +18,7 @@ type Declared = {
   readonly router?: {
     readonly parameters?: ConfigProviderV1.RouterParameters
     readonly parameters_basis?: string
+    readonly flat?: boolean
     readonly members?: ReadonlyArray<string>
     readonly member_parameters?: ReadonlyArray<ConfigProviderV1.RouterMemberParameters>
   }
@@ -58,6 +59,11 @@ export type ObserveInput = {
  * Records which member served a response for a session's combo. A member missing from the saved
  * `member_parameters` is read once from the router; until that answers, and when it has nothing,
  * the lead's parameters stay in use. A response that names no model changes nothing.
+ *
+ * A flat model id is such a combo over its offers. Its members are matched exactly: the router
+ * reports the serving member's full chained id, and a flat id (`typesafe/jev-1.13`) is a suffix of
+ * several offers (`openrouter/typesafe/jev-1.13`), so suffix matching would take any of them for the
+ * lead or for the model itself.
  */
 export async function observe(input: ObserveInput) {
   const key = sessionKey(input.sessionID, input.providerID, input.modelID)
@@ -69,12 +75,16 @@ export async function observe(input: ObserveInput) {
     return
   }
   if (!served) return
+  const flat = router.flat === true
+  // A thinking level asked with a `(level)` suffix may be carried onto the member the router reports.
+  const reported = flat ? served.replace(/\([^()]+\)\s*$/, "") : served
+  const same = flat ? (a: string, b: string) => a === b : sameModel
   const lead = members[0]
-  if (!lead || sameModel(served, lead) || sameModel(served, input.modelID)) {
+  if (!lead || same(reported, lead) || (!flat && sameModel(reported, input.modelID))) {
     serving.delete(key)
     return
   }
-  const member = members.find((id) => sameModel(served, id)) ?? served
+  const member = members.find((id) => same(reported, id)) ?? reported
   const connection = `${input.providerID}\n${ProviderRouter.normalizeURL(input.baseURL ?? "") ?? ""}`
   const saved = router.member_parameters?.find((item) => item.id === member)?.parameters
   serving.set(key, { member, lead: router.parameters, parameters: saved, connection })

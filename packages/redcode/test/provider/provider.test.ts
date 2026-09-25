@@ -736,6 +736,167 @@ it.instance(
   },
 )
 
+const FLAT_PARAMETERS = { context_length: 200000, max_completion_tokens: 64000, thinking_levels: ["low", "high"] }
+const OPENCODE_GO_PARAMETERS = { context_length: 128000, max_completion_tokens: 16000, thinking_levels: ["low"] }
+
+it.instance(
+  "a flat model id is labeled by the offer that serves it, never by splitting the id, and its offers pin by pin id",
+  Effect.gen(function* () {
+    const providers = yield* list
+    const router = providers[ProviderV2.ID.make("red-router")]
+    const claude = router.models["anthropic/claude-sonnet-4-5"]
+    expect(claude.flat).toBe(true)
+    expect(claude.canonical).toBe("anthropic/claude-sonnet-4-5")
+    // The lead offer, not the combo, is who serves it by policy.
+    expect(claude.upstream).toEqual({
+      id: "anthropic",
+      slug: "anthropic",
+      name: "Anthropic",
+      category: "apikey",
+      subscription: false,
+    })
+    expect(claude.via).toBeUndefined()
+    expect(claude.offers?.map((offer) => [offer.id, offer.pinID])).toEqual([
+      ["anthropic/claude-sonnet-4-5", undefined],
+      ["openrouter/anthropic/claude-sonnet-4.5", "openrouter/anthropic/claude-sonnet-4.5"],
+    ])
+    expect(claude.comboMembers?.map((member) => member.id)).toEqual([
+      "anthropic/claude-sonnet-4-5",
+      "openrouter/anthropic/claude-sonnet-4.5",
+    ])
+    // The vendor's own offer has no pin id: its id is the flat id, which asks for the flat model.
+    expect(claude.pinOf).toBeUndefined()
+    const pinned = router.models["openrouter/anthropic/claude-sonnet-4.5"]
+    expect(pinned.pinOf).toBe("anthropic/claude-sonnet-4-5")
+    expect(pinned.api.id).toBe("openrouter/anthropic/claude-sonnet-4.5")
+    expect(pinned.upstream?.name).toBe("OpenRouter")
+    expect(pinned.flat).toBeUndefined()
+    expect(pinned.offers).toBeUndefined()
+    expect(pinned.cost.input).toBe(3)
+    expect(pinned.cost.output).toBe(15)
+    const resolved = yield* Provider.use.getModel(
+      ProviderV2.ID.make("red-router"),
+      ModelV2.ID.make("openrouter/anthropic/claude-sonnet-4.5"),
+    )
+    expect(resolved.api.id).toBe("openrouter/anthropic/claude-sonnet-4.5")
+
+    // `typesafe/jev-1.13` names no provider `typesafe`: its route is the lead offer's.
+    const jev = router.models["typesafe/jev-1.13"]
+    expect(jev.upstream?.id).toBe("opencode-go")
+    expect(jev.via).toBe("RedRouter » Office RedRouter")
+    // A pinned offer plans for its own limits and thinking levels.
+    const openrouter = router.models["openrouter/typesafe/jev-1.13"]
+    expect(openrouter.pinOf).toBe("typesafe/jev-1.13")
+    expect(openrouter.limit.context).toBe(200000)
+    expect(Object.keys(openrouter.variants ?? {})).toEqual(["low", "high"])
+    expect(router.models["red-router/red-router/opencode-go/typesafe/jev-1.13"].via).toBe(
+      "RedRouter » Office RedRouter",
+    )
+  }),
+  {
+    config: {
+      provider: {
+        "red-router": {
+          name: "RedRouter",
+          npm: "@ai-sdk/openai-compatible",
+          env: [],
+          options: { apiKey: "test-key", baseURL: "http://127.0.0.1:25050/v1" },
+          router: { kind: "red-router", version: "4.0.0" },
+          models: {
+            "anthropic/claude-sonnet-4-5": {
+              name: "Claude Sonnet 4.5",
+              limit: { context: 200000, output: 64000 },
+              router: {
+                owned_by: "combo",
+                strategy: "fallback",
+                flat: true,
+                canonical: "anthropic/claude-sonnet-4-5",
+                thinking_levels: ["low", "high"],
+                parameters: FLAT_PARAMETERS,
+                parameters_basis: "lead",
+                members: ["anthropic/claude-sonnet-4-5", "openrouter/anthropic/claude-sonnet-4.5"],
+                member_parameters: [
+                  { id: "anthropic/claude-sonnet-4-5", parameters: FLAT_PARAMETERS },
+                  { id: "openrouter/anthropic/claude-sonnet-4.5", parameters: FLAT_PARAMETERS },
+                ],
+                provider: { id: "combo", slug: "combo", name: "Combo", category: "combo" },
+                offers: [
+                  {
+                    id: "anthropic/claude-sonnet-4-5",
+                    pin_id: null,
+                    provider: {
+                      id: "anthropic",
+                      slug: "anthropic",
+                      name: "Anthropic",
+                      category: "apikey",
+                      subscription: false,
+                    },
+                    via: [],
+                    available: true,
+                    price: { input: 3, output: 15 },
+                    free: false,
+                  },
+                  {
+                    id: "openrouter/anthropic/claude-sonnet-4.5",
+                    pin_id: "openrouter/anthropic/claude-sonnet-4.5",
+                    provider: { id: "openrouter", slug: "openrouter", name: "OpenRouter", category: "freeTier" },
+                    via: [],
+                    available: true,
+                    price: { input: 3, output: 15 },
+                    free: false,
+                  },
+                ],
+              },
+            },
+            "typesafe/jev-1.13": {
+              name: "JEV 1.13",
+              limit: { context: 128000, output: 16000 },
+              router: {
+                owned_by: "combo",
+                strategy: "fallback",
+                flat: true,
+                canonical: "typesafe/jev-latest",
+                thinking_levels: ["low"],
+                parameters: OPENCODE_GO_PARAMETERS,
+                parameters_basis: "lead",
+                members: ["red-router/red-router/opencode-go/typesafe/jev-1.13", "openrouter/typesafe/jev-1.13"],
+                member_parameters: [
+                  { id: "red-router/red-router/opencode-go/typesafe/jev-1.13", parameters: OPENCODE_GO_PARAMETERS },
+                  { id: "openrouter/typesafe/jev-1.13", parameters: FLAT_PARAMETERS },
+                ],
+                provider: { id: "combo", slug: "combo", name: "Combo", category: "combo" },
+                offers: [
+                  {
+                    id: "red-router/red-router/opencode-go/typesafe/jev-1.13",
+                    pin_id: "red-router/red-router/opencode-go/typesafe/jev-1.13",
+                    provider: { id: "opencode-go", slug: "opencode-go", name: "OpenCode Go" },
+                    via: [
+                      { slug: "red-router", name: "RedRouter" },
+                      { slug: "red-router", name: "Office RedRouter" },
+                    ],
+                    available: true,
+                    price: { input: 0.042, output: 0 },
+                    free: false,
+                  },
+                  {
+                    id: "openrouter/typesafe/jev-1.13",
+                    pin_id: "openrouter/typesafe/jev-1.13",
+                    provider: { id: "openrouter", slug: "openrouter", name: "OpenRouter" },
+                    via: [],
+                    available: true,
+                    price: { input: 0.05, output: 0 },
+                    free: false,
+                  },
+                ],
+              },
+            },
+          },
+        },
+      },
+    },
+  },
+)
+
 it.instance(
   "model config preserves explicitly empty models.dev variants",
   Effect.gen(function* () {

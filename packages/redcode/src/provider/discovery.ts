@@ -35,6 +35,11 @@ export const RouterInfo = Schema.Struct({
   via: Schema.optional(Schema.String).annotate({
     description: "The router in between when the model is served by another router, e.g. a remote RedRouter.",
   }),
+  flat: Schema.optional(Schema.Boolean).annotate({
+    description: "A flat model id: it names the model, not who serves it. Its offers say who can.",
+  }),
+  canonical: Schema.optional(Schema.String),
+  offers: Schema.optional(Schema.Array(ConfigProviderV1.RouterOffer)),
 })
 export const Model = Schema.Struct({
   id: Schema.String,
@@ -92,6 +97,7 @@ const OUTPUT_FIELDS = ["max_output_tokens", "max_output_length", "max_completion
 const NESTED = "top_provider"
 
 const Catalog = Schema.Struct({
+  id_format: Schema.optional(Schema.Unknown),
   data: Schema.Array(
     Schema.Struct({
       id: Schema.String,
@@ -108,6 +114,9 @@ const Catalog = Schema.Struct({
       aliases: Schema.optional(Schema.Unknown),
       variants: Schema.optional(Schema.Unknown),
       via: Schema.optional(Schema.Unknown),
+      flat: Schema.optional(Schema.Unknown),
+      canonical: Schema.optional(Schema.Unknown),
+      offers: Schema.optional(Schema.Unknown),
       [NESTED]: Schema.optional(Schema.Unknown),
       ...Object.fromEntries(
         [...CONTEXT_FIELDS, ...OUTPUT_FIELDS].map((field) => [field, Schema.optional(Schema.Unknown)]),
@@ -314,12 +323,14 @@ export const discover = Effect.fn("ProviderDiscovery.discover")(function* (
       try: () => JSON.parse(new TextDecoder().decode(Buffer.concat(chunks))) as unknown,
       catch: invalid,
     }).pipe(Effect.flatMap(Schema.decodeUnknownEffect(Catalog)), Effect.mapError(invalid))
+    // Routers from before flat ids do not say: their ids are prefixed.
+    const idFormat: Router.IdFormat = body.id_format === "flat" ? "flat" : "prefixed"
     const models = [
       ...new Map(
         body.data
           .filter((model) => validModelID(model.id))
           .map((model) => {
-            const router = routerInfo(model)
+            const router = routerInfo(model, idFormat)
             return [
               model.id,
               {
@@ -354,9 +365,14 @@ export const discover = Effect.fn("ProviderDiscovery.discover")(function* (
 
 /**
  * The router fields of a model list entry. `owned_by` alone is every OpenAI-compatible server's
- * boilerplate, so it is kept only for a combo or next to another router field.
+ * boilerplate, so it is kept only for a combo or next to another router field. A flat model id (the
+ * entry says `flat`, or a flat list's combo carries offers) is marked so, since its id names no
+ * provider and must never be split into one.
  */
-export function routerInfo(item: Record<string, unknown>): RouterInfo | undefined {
+export function routerInfo(
+  item: Record<string, unknown>,
+  idFormat: Router.IdFormat = "prefixed",
+): RouterInfo | undefined {
   const parameters = routerParameters(item.parameters)
   // A combo's own levels are already what all its members accept; parameters say the same.
   const levels = strings(item.thinking_levels) ?? strings(parameters?.thinking_levels)
@@ -365,6 +381,9 @@ export function routerInfo(item: Record<string, unknown>): RouterInfo | undefine
   const aliases = strings(item.aliases)?.filter((alias) => alias !== item.id && validModelID(alias))
   const variants = routerVariants(item.variants)
   const memberParameters = routerMemberParameters(item.member_parameters)
+  const offers = routerOffers(item.offers)
+  const flat = item.flat === true || (idFormat === "flat" && item.owned_by === "combo" && !!offers?.length)
+  const canonical = typeof item.canonical === "string" && item.canonical.trim() ? item.canonical.trim() : undefined
   // Annotated so the literal is not widened to string inside the object below.
   const basis: ConfigProviderV1.RouterParametersBasis | undefined =
     item.parameters_basis === "lead" ? "lead" : item.parameters_basis === "strictest" ? "strictest" : undefined
@@ -380,6 +399,9 @@ export function routerInfo(item: Record<string, unknown>): RouterInfo | undefine
     ...(aliases?.length ? { aliases } : {}),
     ...(variants?.length ? { variants } : {}),
     ...(typeof item.via === "string" && item.via.trim() ? { via: item.via.trim() } : {}),
+    ...(flat ? { flat: true } : {}),
+    ...(canonical ? { canonical } : {}),
+    ...(offers?.length ? { offers } : {}),
   }
   const owner = typeof item.owned_by === "string" && item.owned_by ? item.owned_by : undefined
   if (owner && (owner === "combo" || Object.keys(info).length)) return { owned_by: owner, ...info }
@@ -403,6 +425,43 @@ function routerUpstream(value: unknown): ConfigProviderV1.RouterUpstream | undef
     category: text(value.category),
     subscription: typeof value.subscription === "boolean" ? value.subscription : undefined,
   }) as ConfigProviderV1.RouterUpstream
+}
+
+/**
+ * RedRouter's `offers` of a flat model id, in policy order. An offer without an id or a provider is
+ * dropped. A missing `pin_id` means the offer cannot be pinned, like null: the offer id itself is
+ * never used to pin, since the vendor's own offer id can be the flat id.
+ */
+function routerOffers(value: unknown): ConfigProviderV1.RouterOffer[] | undefined {
+  if (!Array.isArray(value)) return
+  const text = (item: unknown) => (typeof item === "string" && item.trim() ? item.trim() : undefined)
+  const price = (item: unknown) => (typeof item === "number" && Number.isFinite(item) && item >= 0 ? item : undefined)
+  return value.flatMap((item) => {
+    if (!isRecord(item) || typeof item.id !== "string" || !validModelID(item.id)) return []
+    const provider = routerUpstream(item.provider)
+    if (!provider) return []
+    const pin = text(item.pin_id)
+    const cost = isRecord(item.price)
+      ? defined({ input: price(item.price.input), output: price(item.price.output) })
+      : {}
+    return [
+      {
+        id: item.id,
+        pin_id: pin && validModelID(pin) ? pin : null,
+        provider,
+        via: Array.isArray(item.via)
+          ? item.via.flatMap((hop) => {
+              if (!isRecord(hop)) return []
+              const slug = text(hop.slug)
+              return slug ? [{ slug, name: text(hop.name) ?? slug }] : []
+            })
+          : [],
+        available: item.available !== false,
+        ...(Object.keys(cost).length ? { price: cost } : {}),
+        free: item.free === true,
+      },
+    ]
+  })
 }
 
 /** RedRouter's `variants`: the reasoning levels and modes collapsed into one model entry. */

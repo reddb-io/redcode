@@ -225,4 +225,40 @@ describe("ComboMember", () => {
       { id: "cc/other", variants: ["low", "medium"] },
     ])
   })
+
+  test("follows the offer serving a flat model id by its exact chained id", async () => {
+    // `typesafe/jev-1.13` is a suffix of the OpenRouter offer's id: suffix matching would read that
+    // offer as the model itself and never switch.
+    const flat = {
+      router: {
+        owned_by: "combo",
+        strategy: "fallback",
+        flat: true,
+        parameters: LEAD,
+        parameters_basis: "lead",
+        members: ["red-router/red-router/opencode-go/typesafe/jev-1.13", "openrouter/typesafe/jev-1.13"],
+        member_parameters: [
+          { id: "red-router/red-router/opencode-go/typesafe/jev-1.13", parameters: LEAD },
+          { id: "openrouter/typesafe/jev-1.13", parameters: MEMBER },
+        ],
+      },
+    }
+    const serve = (servedModel: string) =>
+      ComboMember.observe({
+        sessionID: "ses_a",
+        providerID: "red-router",
+        modelID: "typesafe/jev-1.13",
+        servedModel,
+        declared: flat,
+      })
+    const current = () => ComboMember.effectiveRouterParameters("ses_a", "red-router", "typesafe/jev-1.13", flat)
+
+    await serve("openrouter/typesafe/jev-1.13")
+    expect(current()).toEqual(MEMBER)
+    // A thinking level asked as a suffix may come back on the member's id.
+    await serve("red-router/red-router/opencode-go/typesafe/jev-1.13(high)")
+    expect(current()).toEqual(LEAD)
+    await serve("openrouter/typesafe/jev-1.13(high)")
+    expect(current()).toEqual(MEMBER)
+  })
 })

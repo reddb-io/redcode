@@ -66,6 +66,25 @@ export const RouterUpstream = Schema.Struct({
 })
 export type RouterUpstream = typeof RouterUpstream.Type
 
+/**
+ * One offer behind a RedRouter flat model id, as its model list reports it. `pin_id` requests this
+ * offer only; null when it cannot be pinned (the vendor's own offer id can be the flat id itself).
+ */
+export const RouterOffer = Schema.Struct({
+  id: Schema.String,
+  pin_id: Schema.NullOr(Schema.String),
+  provider: RouterUpstream,
+  via: Schema.Array(Schema.Struct({ slug: Schema.String, name: Schema.String })).annotate({
+    description: "The routers between RedRouter and the provider, outermost first.",
+  }),
+  available: Schema.Boolean,
+  price: Schema.optional(
+    Schema.Struct({ input: Schema.optional(Schema.Finite), output: Schema.optional(Schema.Finite) }),
+  ).annotate({ description: "Dollars per million tokens." }),
+  free: Schema.Boolean,
+})
+export type RouterOffer = typeof RouterOffer.Type
+
 /** A reasoning level (`level`) or mode (`mode`, e.g. review) RedRouter serves under a model. */
 export const RouterVariant = Schema.Struct({
   id: Schema.String,
@@ -168,6 +187,16 @@ export const Model = Schema.Struct({
       }),
       via: Schema.optional(Schema.String).annotate({
         description: "Set when the router serves this model through another router, such as a remote RedRouter.",
+      }),
+      flat: Schema.optional(Schema.Boolean).annotate({
+        description:
+          "A flat model id: it names the model, not who serves it, and the router routes it as a fallback combo over `offers`.",
+      }),
+      canonical: Schema.optional(Schema.String).annotate({
+        description: "The catalog id of a flat model, when the router knows it.",
+      }),
+      offers: Schema.optional(Schema.Array(RouterOffer)).annotate({
+        description: "The offers a flat model is served by, in the router's policy order (its `members`).",
       }),
     }),
   ).annotate({

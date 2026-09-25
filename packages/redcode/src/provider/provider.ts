@@ -1153,6 +1153,18 @@ export const Model = Schema.Struct({
     description:
       "For a router combo planned by its lead member (a fallback combo), each member and the variants it takes, the lead first. While another member serves a session, that member's variants apply.",
   }),
+  flat: optional(Schema.Boolean).annotate({
+    description:
+      "A RedRouter flat model id: it names the model, not who serves it. The router serves it by one of `offers`; `upstream` and `via` describe the offer that serves it by policy.",
+  }),
+  canonical: optional(Schema.String).annotate({ description: "The catalog id of a flat model, when known." }),
+  offers: optional(Schema.Array(Router.Offer)).annotate({
+    description: "The offers a flat model is served by, in the router's policy order.",
+  }),
+  pinOf: optional(Schema.String).annotate({
+    description:
+      "Set on a model that pins one offer of a flat model (its id is the offer's pin id): the flat model's id. Pickers list it under that model.",
+  }),
 }).annotate({ identifier: "Model" })
 export type Model = Types.DeepMutable<Schema.Schema.Type<typeof Model>>
 
@@ -1434,10 +1446,21 @@ function modeOptions(model: Model, body: Record<string, unknown> | undefined) {
 
 /**
  * What clients are told about a routed model: who serves it, its earlier ids, its modes and the
- * router in between. A combo's upstream is the combo itself.
+ * router in between. A combo's upstream is the combo itself. A flat model id names no provider, so
+ * its upstream and routers in between are those of the offer that serves it by policy.
  */
 function routedModel(router: RouterInfo | undefined) {
   if (!router) return {}
+  const offers = router.offers?.map((offer) => ({
+    id: offer.id,
+    ...(offer.pin_id ? { pinID: offer.pin_id } : {}),
+    provider: publicUpstream(offer.provider),
+    via: offer.via.map((hop) => ({ ...hop })),
+    available: offer.available,
+    ...(offer.price ? { price: { ...offer.price } } : {}),
+    free: offer.free,
+  }))
+  const lead = router.flat ? Router.leadOffer({ offers }) : undefined
   const modes = [
     ...new Set([
       ...(router.parameters?.modes ?? []),
@@ -1445,19 +1468,12 @@ function routedModel(router: RouterInfo | undefined) {
     ]),
   ]
   const upstream: ConfigProviderV1.RouterUpstream | undefined =
-    router.provider ?? (router.owned_by === "combo" ? { id: "combo", name: "Combo", category: "combo" } : undefined)
+    lead?.provider ??
+    router.provider ??
+    (router.owned_by === "combo" ? { id: "combo", name: "Combo", category: "combo" } : undefined)
+  const via = lead ? lead.via.map((hop) => hop.name).join(Router.HOP_SEPARATOR) : router.via
   return {
-    ...(upstream
-      ? {
-          upstream: {
-            id: upstream.id,
-            name: upstream.name ?? upstream.slug ?? upstream.id,
-            ...(upstream.slug ? { slug: upstream.slug } : {}),
-            ...(upstream.category ? { category: upstream.category } : {}),
-            ...(upstream.subscription !== undefined ? { subscription: upstream.subscription } : {}),
-          },
-        }
-      : {}),
+    ...(upstream ? { upstream: publicUpstream(upstream) } : {}),
     ...(router.aliases?.length ? { aliases: [...router.aliases] } : {}),
     ...(modes.length ? { modes } : {}),
     ...(router.variants?.length
@@ -1468,8 +1484,52 @@ function routedModel(router: RouterInfo | undefined) {
           })),
         }
       : {}),
-    ...(router.via ? { via: router.via } : {}),
+    ...(via ? { via } : {}),
+    ...(router.flat ? { flat: true } : {}),
+    ...(router.canonical ? { canonical: router.canonical } : {}),
+    ...(offers?.length ? { offers } : {}),
   }
+}
+
+function publicUpstream(upstream: ConfigProviderV1.RouterUpstream): Router.Upstream {
+  return {
+    id: upstream.id,
+    name: upstream.name ?? upstream.slug ?? upstream.id,
+    ...(upstream.slug ? { slug: upstream.slug } : {}),
+    ...(upstream.category ? { category: upstream.category } : {}),
+    ...(upstream.subscription !== undefined ? { subscription: upstream.subscription } : {}),
+  }
+}
+
+/**
+ * The offers of a flat model a user can pin, each as a model of its own under its pin id, so a
+ * pinned choice resolves, labels and plans like any routed model: the offer's provider and routers,
+ * its price, and its own limits and thinking levels when the router listed them. An offer without a
+ * pin id cannot be pinned: its id may be the flat id itself, which asks for the flat model.
+ */
+function pinnedModels(flat: Model, router: RouterInfo | undefined): Model[] {
+  if (!flat.flat) return []
+  return (flat.offers ?? []).flatMap((offer) => {
+    if (!offer.pinID || offer.pinID === flat.id) return []
+    const parameters = router?.member_parameters?.find((item) => item.id === offer.id)?.parameters
+    const model: Model = {
+      ...omit(flat, ["flat", "canonical", "offers", "comboMembers", "aliases", "routerVariants", "modes", "via"]),
+      id: ModelV2.ID.make(offer.pinID),
+      api: { ...flat.api, id: offer.pinID },
+      upstream: { ...offer.provider },
+      ...(offer.via.length ? { via: offer.via.map((hop) => hop.name).join(Router.HOP_SEPARATOR) } : {}),
+      cost: offer.price
+        ? { ...omit(flat.cost, ["unknown"]), input: offer.price.input ?? 0, output: offer.price.output ?? 0 }
+        : flat.cost,
+      limit: {
+        ...flat.limit,
+        context: parameters?.context_length ?? flat.limit.context,
+        output: parameters?.max_completion_tokens ?? flat.limit.output,
+      },
+      pinOf: flat.id,
+    }
+    return [{ ...model, variants: parameters ? ComboMember.variants(model, parameters) : model.variants }]
+  })
 }
 
 type RouterInfo = NonNullable<(typeof ConfigProviderV1.Model.Type)["router"]>
@@ -1753,6 +1813,9 @@ const layer = Layer.effect(
             const comboMembers = ComboMember.memberVariants(parsedModel, model)
             if (comboMembers) parsedModel.comboMembers = comboMembers
             parsed.models[modelID] = parsedModel
+            // A model the configuration lists under the same id wins over a pinned offer.
+            for (const pinned of pinnedModels(parsedModel, model.router))
+              if (!provider.models?.[pinned.id]) parsed.models[pinned.id] = pinned
           }
           // A provider-level npm selects the SDK for every model of that provider, not just the ones
           // redeclared above. Leaving catalog models on the catalog package pairs them with an

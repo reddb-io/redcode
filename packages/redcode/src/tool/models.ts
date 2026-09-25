@@ -18,12 +18,19 @@ export function runnable(model: Provider.Model) {
     id: model.id,
     status: model.status,
     protocol: model.capabilities.protocol,
+    flat: model.flat,
+    offers: model.offers,
   })
 }
 
-/** Every model a subagent can run on, across the connected providers. */
+/**
+ * Every model a subagent can run on, across the connected providers. A pinned offer of a flat model
+ * is left out as a duplicate of that model; its id still resolves when asked for.
+ */
 export function selectable(providers: Record<string, Provider.Info>) {
-  return Object.values(providers).flatMap((provider) => Object.values(provider.models).filter(runnable))
+  return Object.values(providers).flatMap((provider) =>
+    Object.values(provider.models).filter((model) => !model.pinOf && runnable(model)),
+  )
 }
 
 /** The `providerID/modelID` references closest to what was asked for, best first. */

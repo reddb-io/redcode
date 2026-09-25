@@ -77,6 +77,41 @@ export const Upstream = Schema.Struct({
 export interface Upstream extends Schema.Schema.Type<typeof Upstream> {}
 
 /**
+ * How a router built the ids of a model list. `prefixed` ids name the provider (and the routers in
+ * between) that serves them, e.g. `openrouter/anthropic/claude-sonnet-4.5`. `flat` ids name only the
+ * model (`anthropic/claude-sonnet-4-5`, `typesafe/jev-1.13`): the router picks one of its offers, so
+ * the id says nothing about who serves it. A list that does not say is `prefixed`.
+ */
+export const IdFormat = Schema.Literals(["prefixed", "flat"]).annotate({ identifier: "Router.IdFormat" })
+export type IdFormat = typeof IdFormat.Type
+
+/** A router an offer passes through before its provider, as its slug in ids and its display name. */
+export const Hop = Schema.Struct({
+  slug: Schema.String,
+  name: Schema.String,
+}).annotate({ identifier: "Router.Hop" })
+export interface Hop extends Schema.Schema.Type<typeof Hop> {}
+
+/**
+ * One way a router serves a flat model id: the offer's full chained id, the id that pins it (absent
+ * when it cannot be pinned), its provider, the routers in between (outermost first), whether it is
+ * available, its price in dollars per million tokens when known, and whether it is free.
+ */
+export const Offer = Schema.Struct({
+  id: Schema.String,
+  pinID: Schema.String.pipe(optional).annotate({
+    description:
+      "The id that requests this offer only. Never the offer id itself: the vendor's own offer id can equal the flat id, which asks for the flat model.",
+  }),
+  provider: Upstream,
+  via: Schema.Array(Hop),
+  available: Schema.Boolean,
+  price: Schema.Struct({ input: Schema.Finite.pipe(optional), output: Schema.Finite.pipe(optional) }).pipe(optional),
+  free: Schema.Boolean,
+}).annotate({ identifier: "Router.Offer" })
+export interface Offer extends Schema.Schema.Type<typeof Offer> {}
+
+/**
  * A reasoning level (`level`) or mode (`mode`, e.g. review) a router serves under one model entry
  * instead of as a separate model. Requesting `id` (or one of its earlier `aliases`) asks the router
  * for that level or mode.
@@ -167,6 +202,27 @@ export function route(id: string) {
     provider: rest.length > 1 ? rest[0] : undefined,
     model: rest.length > 1 ? rest.slice(1).join("/") : (rest[0] ?? id),
   }
+}
+
+/**
+ * The route of a listed model. A flat model id names a model, not a provider (`typesafe/jev-1.13`
+ * is not served by a provider `typesafe`), so its route is the one of the offer that serves it by
+ * the router's policy: the first available offer, whose id is always chained. Any other id is parsed
+ * as it is.
+ */
+export function routeOf(model: {
+  id: string
+  flat?: boolean
+  offers?: ReadonlyArray<{ id: string; available?: boolean }>
+}): ReturnType<typeof route> {
+  if (!model.flat) return route(model.id)
+  const lead = leadOffer(model)
+  return lead ? route(lead.id) : { hops: [], provider: undefined, model: model.id }
+}
+
+/** The offer a flat model is served by under the router's policy: the first available one. */
+export function leadOffer<T extends { available?: boolean }>(model: { offers?: ReadonlyArray<T> }) {
+  return model.offers?.find((offer) => offer.available !== false) ?? model.offers?.[0]
 }
 
 /**
