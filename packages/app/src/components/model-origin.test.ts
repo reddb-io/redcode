@@ -68,11 +68,11 @@ describe("modelGroup", () => {
   test("groups routed models by their upstream provider", () => {
     expect(modelGroup({ id: "codex/gpt-5.5", provider: redRouter, upstream: codexUpstream })).toEqual({
       key: "red-router:codex",
-      label: "RedRouter · OpenAI Codex",
+      label: "RedRouter » OpenAI Codex",
     })
     expect(
       modelGroup({ id: "smart", provider: redRouter, upstream: { id: "combo", name: "Combo", category: "combo" } }),
-    ).toEqual({ key: "red-router:combo", label: "RedRouter · Combo" })
+    ).toEqual({ key: "red-router:combo", label: "RedRouter » Combo" })
   })
 
   test("groups direct models and routed models without an upstream by provider", () => {
@@ -121,7 +121,7 @@ describe("routerPath", () => {
   test("names the router in between when a remote router serves the model", () => {
     const origin = modelOrigin({ id: "codex/gpt-5.5", provider: redRouter, upstream: codexUpstream, via: "office" })
     expect(origin).toMatchObject({ type: "router", router: "RedRouter", via: "office" })
-    expect(routerPath({ router: "RedRouter", via: "office" })).toBe("RedRouter → office")
+    expect(routerPath({ router: "RedRouter", via: "office" })).toBe("RedRouter » office")
     expect(routerPath({ router: "RedRouter" })).toBe("RedRouter")
   })
 })

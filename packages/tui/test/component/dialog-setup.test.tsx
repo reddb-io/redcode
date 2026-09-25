@@ -560,8 +560,8 @@ test("the S1 picker lists the RedRouter's models first and saves the chosen one 
         if (input instanceof Request) discovered.push(await input.json())
         return json({
           models: [
-            { id: "openrouter/typesafe/jev-1.13", name: "RedRouter · OpenRouter · TypeSafe JEV 1.13" },
-            { id: "jev-1.13.0", name: "RedRouter · TypeSafe · Jev 1.13" },
+            { id: "openrouter/typesafe/jev-1.13", name: "RedRouter » OpenRouter · TypeSafe JEV 1.13" },
+            { id: "jev-1.13.0", name: "RedRouter » TypeSafe · Jev 1.13" },
           ],
           manual: false,
         })
@@ -579,13 +579,13 @@ test("the S1 picker lists the RedRouter's models first and saves the chosen one 
   try {
     await ready(setup.app, "S2 transformations")
     await setup.app.mockInput.pressEnter()
-    await ready(setup.app, "RedRouter · OpenRouter · TypeSafe JEV 1.13")
+    await ready(setup.app, "RedRouter » OpenRouter · TypeSafe JEV 1.13")
     const options = setup.app.captureCharFrame()
     expect(options).toContain("3/3 · S1 evaluator")
     expect(options).toContain("openrouter/typesafe/jev-1.13")
-    expect(options).toContain("RedRouter · TypeSafe · Jev 1.13")
+    expect(options).toContain("RedRouter » TypeSafe · Jev 1.13")
     // RedRouter models, then connected direct providers, then Zen; manual entry is the last option.
-    expect(options.indexOf("RedRouter · OpenRouter")).toBeLessThan(options.indexOf("Cloudflare AI Gateway"))
+    expect(options.indexOf("RedRouter » OpenRouter")).toBeLessThan(options.indexOf("Cloudflare AI Gateway"))
     expect(options.indexOf("Cloudflare AI Gateway")).toBeLessThan(options.indexOf("OpenCode Zen · Jev Free"))
     expect(options.indexOf("OpenCode Zen · Jev Free")).toBeLessThan(options.indexOf("Enter model manually…"))
     expect(options).not.toContain("Vercel AI Gateway")
@@ -654,7 +654,7 @@ test("a failed RedRouter discovery shows why with Retry, and manual entry stays 
             { status: 400 },
           )
         return json({
-          models: [{ id: "openrouter/typesafe/jev-1.13", name: "RedRouter · OpenRouter · TypeSafe JEV 1.13" }],
+          models: [{ id: "openrouter/typesafe/jev-1.13", name: "RedRouter » OpenRouter · TypeSafe JEV 1.13" }],
           manual: false,
         })
       }
@@ -677,7 +677,7 @@ test("a failed RedRouter discovery shows why with Retry, and manual entry stays 
     await setup.app.mockInput.pressArrow("up")
     await setup.app.mockInput.pressEnter()
     await wait(() => discoveries === 2)
-    await wait(() => setup.app.captureCharFrame().includes("RedRouter · OpenRouter · TypeSafe JEV 1.13"))
+    await wait(() => setup.app.captureCharFrame().includes("RedRouter » OpenRouter · TypeSafe JEV 1.13"))
     expect(setup.app.captureCharFrame()).not.toContain("Retry RedRouter")
 
     await setup.app.mockInput.typeText("manual")
@@ -838,15 +838,15 @@ test("setup groups RedRouter models per upstream provider and says where each mo
     { height: 40 },
   )
   try {
-    await ready(setup.app, "RedRouter · Combo")
+    await ready(setup.app, "RedRouter » Combo")
     const frame = setup.app.captureCharFrame()
     expect(frame).toContain("2 models · current")
     expect(frame).toContain("1 model · direct")
-    expect(frame).toContain("RedRouter · Codex")
-    expect(frame).toContain("Sol via RedRouter · Codex")
+    expect(frame).toContain("RedRouter » Codex")
+    expect(frame).toContain("Sol via RedRouter » Codex")
     expect(frame).toContain("review")
-    expect(frame).toContain("Smart via RedRouter · Combo")
-    expect(frame.indexOf("RedRouter · Codex")).toBeLessThan(frame.indexOf("RedRouter · Combo"))
+    expect(frame).toContain("Smart via RedRouter » Combo")
+    expect(frame.indexOf("RedRouter » Codex")).toBeLessThan(frame.indexOf("RedRouter » Combo"))
   } finally {
     setup.app.renderer.destroy()
   }
@@ -925,8 +925,8 @@ test("a RedRouter's recommendations come first and are preselected for S2 and S1
       if (url.pathname === "/api/intelligence/models")
         return json({
           models: [
-            { id: "jev-latest", name: "RedRouter · Jev · Jev Latest" },
-            { id: "jev-1.13.0", name: "RedRouter · Jev · Jev 1.13" },
+            { id: "jev-latest", name: "RedRouter » Jev · Jev Latest" },
+            { id: "jev-1.13.0", name: "RedRouter » Jev · Jev 1.13" },
           ],
           manual: false,
         })
@@ -941,7 +941,7 @@ test("a RedRouter's recommendations come first and are preselected for S2 and S1
     await ready(setup.app, "Recommended: Claude Opus 5.5")
     await wait(() => setup.app.captureCharFrame().includes("Strongest connected coding model"))
     const principal = setup.app.captureCharFrame()
-    expect(principal).toContain("via RedRouter · Claude Code")
+    expect(principal).toContain("via RedRouter » Claude Code")
     // The Providers section and the active provider's models stay below the recommendation.
     expect(principal.indexOf("Recommended: Claude Opus 5.5")).toBeLessThan(principal.indexOf("Providers"))
     expect(principal).toContain("Mock Provider models")
@@ -951,17 +951,17 @@ test("a RedRouter's recommendations come first and are preselected for S2 and S1
     await ready(setup.app, "Recommended: GPT-6 Luna")
     const fast = setup.app.captureCharFrame()
     expect(fast).toContain("2/3 · S2 transformations")
-    expect(fast).toContain("via RedRouter · OpenAI Codex")
+    expect(fast).toContain("via RedRouter » OpenAI Codex")
     expect(fast).toContain("Reuse System Two principal")
     expect(fast.indexOf("Recommended: GPT-6 Luna")).toBeLessThan(fast.indexOf("Reuse System Two principal"))
 
     await setup.app.mockInput.pressEnter()
     // The router's recommended System One model comes first and holds the cursor.
-    await ready(setup.app, "RedRouter · Jev · Jev 1.13")
+    await ready(setup.app, "RedRouter » Jev · Jev 1.13")
     const evaluators = setup.app.captureCharFrame()
     expect(evaluators).toContain("jev-1.13.0 · recommended")
-    expect(evaluators.indexOf("RedRouter · Jev · Jev 1.13")).toBeLessThan(
-      evaluators.indexOf("RedRouter · Jev · Jev Latest"),
+    expect(evaluators.indexOf("RedRouter » Jev · Jev 1.13")).toBeLessThan(
+      evaluators.indexOf("RedRouter » Jev · Jev Latest"),
     )
     await setup.app.mockInput.pressEnter()
     await ready(setup.app, "Save global intelligence setup")

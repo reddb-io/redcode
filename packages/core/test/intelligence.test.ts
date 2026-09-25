@@ -1485,7 +1485,7 @@ test("a RedRouter connected under another provider id lists its System One model
     const routed = options.filter((option) => option.evaluator.transport === "red-router")
     expect(routed).toEqual([
       {
-        name: "RedRouter · OpenRouter · TypeSafe JEV 1.13",
+        name: "RedRouter » OpenRouter · TypeSafe JEV 1.13",
         configured: true,
         evaluator: {
           transport: "red-router",
@@ -1495,7 +1495,7 @@ test("a RedRouter connected under another provider id lists its System One model
         },
       },
       {
-        name: "RedRouter · OpenCode Zen (via OpenCode Go) · JEV 1.13",
+        name: "RedRouter » OpenCode Zen (via OpenCode Go) · JEV 1.13",
         configured: true,
         evaluator: { transport: "red-router", baseURL, model: "opencode-zen/jev-1.13", credentialID: connection.id },
       },
@@ -1508,8 +1508,8 @@ test("a RedRouter connected under another provider id lists its System One model
     const evaluator = routed[0]!.evaluator
     expect(await Effect.runPromise(service.discover({ evaluator }))).toEqual({
       models: [
-        { id: "openrouter/typesafe/jev-1.13", name: "RedRouter · OpenRouter · TypeSafe JEV 1.13" },
-        { id: "opencode-zen/jev-1.13", name: "RedRouter · OpenCode Zen (via OpenCode Go) · JEV 1.13" },
+        { id: "openrouter/typesafe/jev-1.13", name: "RedRouter » OpenRouter · TypeSafe JEV 1.13" },
+        { id: "opencode-zen/jev-1.13", name: "RedRouter » OpenCode Zen (via OpenCode Go) · JEV 1.13" },
         { id: "jev-1.13.0", name: "RedRouter · jev-1.13.0" },
       ],
       manual: false,
@@ -1608,14 +1608,14 @@ test("a chained RedRouter lists flat and nested System One routes once each, rec
     )
     expect(routed.map((option) => [option.name, option.evaluator.model])).toEqual([
       [
-        "RedRouter → RedRouter → RedRouter → OpenCode Zen (via OpenCode Go) · JEV 1.13",
+        "RedRouter » RedRouter » RedRouter » OpenCode Zen (via OpenCode Go) · JEV 1.13",
         "red-router/red-router/opencode-zen/jev-1.13",
       ],
-      ["RedRouter · OpenCode Zen (via OpenCode Go) · JEV 1.13", "opencode-zen/jev-1.13"],
-      ["RedRouter → RedRouter → OpenCode Zen (via OpenCode Go) · JEV 1.13", "red-router/opencode-zen/jev-1.13"],
-      ["RedRouter → RedRouter → OpenRouter · TypeSafe JEV 1.13", "red-router/openrouter/typesafe/jev-1.13"],
+      ["RedRouter » OpenCode Zen (via OpenCode Go) · JEV 1.13", "opencode-zen/jev-1.13"],
+      ["RedRouter » RedRouter » OpenCode Zen (via OpenCode Go) · JEV 1.13", "red-router/opencode-zen/jev-1.13"],
+      ["RedRouter » RedRouter » OpenRouter · TypeSafe JEV 1.13", "red-router/openrouter/typesafe/jev-1.13"],
       [
-        "RedRouter · OpenCode Zen (via OpenCode Go) · JEV 1.13 (opencode-zen/jev-1.13-latest)",
+        "RedRouter » OpenCode Zen (via OpenCode Go) · JEV 1.13 (opencode-zen/jev-1.13-latest)",
         "opencode-zen/jev-1.13-latest",
       ],
     ])
@@ -1672,7 +1672,7 @@ test("a RedRouter connected under a direct provider's id is offered as the route
     const options = await Effect.runPromise(service.options())
     expect(options.filter((option) => option.evaluator.transport === "red-router")).toEqual([
       {
-        name: "RedRouter · TypeSafe · JEV 1.13.0",
+        name: "RedRouter » TypeSafe · JEV 1.13.0",
         configured: true,
         evaluator: { transport: "red-router", baseURL, model: "typesafe-ai/jev-1.13.0", credentialID: connection.id },
       },

@@ -141,6 +141,13 @@ export function hopName(slug: string) {
 }
 
 /**
+ * The separator between route hops (routers, then the upstream) in a model label, e.g.
+ * `RedRouter » OpenCode Zen`. Every surface that renders a route uses this one constant so they stay
+ * in agreement; only the model name itself keeps ` · `.
+ */
+export const HOP_SEPARATOR = " » "
+
+/**
  * A routed model id split into the routers it passes through (`hops`, outermost first), the upstream
  * provider that serves it and the id that provider knows it by. Any depth parses to the same shape:
  * `opencode-zen/jev-1.13`, `red-router/opencode-zen/jev-1.13` and
@@ -163,15 +170,14 @@ export function route(id: string) {
 }
 
 /**
- * A route in words: the routers joined by arrows, then the upstream and the model. A single router
- * reads `RedRouter · OpenCode Zen (via OpenCode Go) · JEV 1.13`; a chain continues its arrows into
- * the upstream: `RedRouter → RedRouter → OpenCode Zen (via OpenCode Go) · JEV 1.13`.
+ * A route in words: the routers joined by `HOP_SEPARATOR`, then the upstream and the model. A
+ * single router reads `RedRouter » OpenCode Zen (via OpenCode Go) · JEV 1.13`; a chain continues the
+ * same separator into the upstream: `RedRouter » RedRouter » OpenCode Zen (via OpenCode Go) · JEV
+ * 1.13`.
  */
 export function routeName(input: { routers: ReadonlyArray<string>; upstream?: string; model: string }) {
-  const chain = input.routers.join(" → ")
+  const chain = input.routers.join(HOP_SEPARATOR)
   const path =
-    chain && input.upstream
-      ? `${chain}${input.routers.length > 1 ? " → " : " · "}${input.upstream}`
-      : chain || input.upstream
+    chain && input.upstream ? `${chain}${HOP_SEPARATOR}${input.upstream}` : chain || input.upstream
   return path ? `${path} · ${input.model}` : input.model
 }
