@@ -57,6 +57,14 @@ export const Info = Schema.Struct({
     description:
       "Enable or disable snapshot tracking. When false, filesystem snapshots are not recorded and undoing or reverting will not undo/redo file changes. Defaults to true.",
   }),
+  worktree: Schema.optional(
+    Schema.Struct({
+      auto: Schema.optional(Schema.Boolean).annotate({
+        description:
+          "Move a writing session into its own worktree under .red/worktrees on its first edit or build command in a Git repository, --yolo included (default: true). Set to false to keep sessions in the primary checkout.",
+      }),
+    }),
+  ).annotate({ description: "Session worktrees" }),
   plugin: Schema.optional(Schema.mutable(Schema.Array(ConfigPluginV1.Spec))),
   share: Schema.optional(Schema.Literals(["manual", "auto", "disabled"])).annotate({
     description:
