@@ -33,6 +33,8 @@ import { SessionRunnerModel } from "@reddb-io/redcode-core/session/runner/model"
 import { SessionTable } from "@reddb-io/redcode-core/session/sql"
 import { SessionStore } from "@reddb-io/redcode-core/session/store"
 import { SubagentReview } from "@reddb-io/redcode-core/session/subagent-review"
+import { SubagentView } from "@reddb-io/redcode-core/session/subagent-view"
+import { ConfigExperimental } from "@reddb-io/redcode-core/config/experimental"
 import { SkillGuidance } from "@reddb-io/redcode-core/skill/guidance"
 import { Snapshot } from "@reddb-io/redcode-core/snapshot"
 import { SystemContext } from "@reddb-io/redcode-core/system-context"
@@ -165,7 +167,15 @@ const projects = Layer.mock(ProjectV2.Service, {
   directories: () => Effect.succeed([]),
   commit: () => Effect.void,
 })
-const config = Layer.succeed(Config.Service, Config.Service.of({ entries: () => Effect.succeed([]) }))
+/** The config the next task call reads; `setup` clears it. */
+let configInfo: Config.Info | undefined
+const config = Layer.succeed(
+  Config.Service,
+  Config.Service.of({
+    entries: () =>
+      Effect.sync(() => (configInfo ? [new Config.Document({ type: "document", info: configInfo })] : [])),
+  }),
+)
 const skillGuidance = Layer.mock(SkillGuidance.Service, { load: () => Effect.succeed(SystemContext.empty) })
 const referenceGuidance = Layer.mock(ReferenceGuidance.Service, { load: () => Effect.succeed(SystemContext.empty) })
 const modelLimits = ModelLimit.memoryLayer()
@@ -264,6 +274,7 @@ const setup = Effect.gen(function* () {
   judge = accepting
   hookCalls = []
   hookOutput = () => ({ continue: true })
+  configInfo = undefined
   const agents = yield* AgentV2.Service
   yield* agents.transform((editor) => {
     editor.update(AgentV2.ID.make("build"), (agent) => {
@@ -398,6 +409,11 @@ describe("V2 task tool", () => {
       )
       expect(users).toHaveLength(2)
       expect(users[1]?.type === "user" ? users[1].text : "").toStartWith(SubagentReview.REPAIR)
+      // The verdict is kept on the child too, where the sidebar reads it.
+      const store = yield* SessionStore.Service
+      expect(
+        SubagentReview.fromMetadata(yield* store.metadata(SessionV2.ID.make(metadataOf(settlement).sessionId)))?.result,
+      ).toMatchObject({ decision: "verified", issues: [], repaired: true })
     }),
   )
 
@@ -509,6 +525,29 @@ describe("V2 task tool", () => {
       expect(metadataOf(settlement).review).toBeUndefined()
       expect(outputOf(settlement)).toContain("Stopped by the stop-loss before finishing")
       expect(inputs.filter((input) => input.operation === "subagent_result")).toHaveLength(0)
+      // Where the checkpoints left the child is kept on it, for the parent's task row and the sidebar.
+      const store = yield* SessionStore.Service
+      const kept = SubagentView.checkpoints(yield* store.metadata(SessionV2.ID.make(metadataOf(settlement).sessionId)))
+      expect(kept.at(-1)?.action).toBe("stop")
+      expect(kept.at(-1)?.reason).toBeTruthy()
+      expect(SubagentView.checkpointState(kept)).toMatchObject({ type: "stopped" })
+    }),
+  )
+
+  it.live("the caps come from legacy's config keys", () =>
+    Effect.gen(function* () {
+      const parent = yield* setup
+      responses = [text("capped", "Every stage of the parser is explained at parser.ts:10.")]
+      configInfo = new Config.Info({
+        experimental: new ConfigExperimental.Experimental({ subagent_limits: { per_request: 1 } }),
+      })
+      expect(errorOf(yield* callTask(parent.id, brief))).toBe("")
+      expect(errorOf(yield* callTask(parent.id, brief))).toContain("already started for this request (limit 1)")
+
+      configInfo = new Config.Info({ subagent_depth: 0 })
+      expect(errorOf(yield* callTask(parent.id, brief))).toContain(
+        'Subagent depth limit reached (0). Increase "subagent_depth"',
+      )
     }),
   )
 })
