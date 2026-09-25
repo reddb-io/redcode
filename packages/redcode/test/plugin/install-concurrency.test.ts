@@ -79,8 +79,10 @@ describe("plugin.install.concurrent", () => {
       ),
     )
 
-    expect(out.map((x) => x.code)).toEqual(Array.from({ length: all.length }, () => 0))
-    expect(out.map((x) => x.stderr.toString()).filter(Boolean)).toEqual([])
+    // Exit codes and stderr together, so a failing worker reports why it failed.
+    expect(out.map((x) => ({ code: x.code, stderr: x.stderr.toString() }))).toEqual(
+      Array.from({ length: all.length }, () => ({ code: 0, stderr: "" })),
+    )
 
     const cfg = await read(path.join(tmp.path, ".red", "code", "config.jsonc"))
     expectPlugins(cfg.plugin, all)
@@ -102,8 +104,9 @@ describe("plugin.install.concurrent", () => {
       ),
     )
 
-    expect(out.map((x) => x.code)).toEqual(Array.from({ length: all.length }, () => 0))
-    expect(out.map((x) => x.stderr.toString()).filter(Boolean)).toEqual([])
+    expect(out.map((x) => ({ code: x.code, stderr: x.stderr.toString() }))).toEqual(
+      Array.from({ length: all.length }, () => ({ code: 0, stderr: "" })),
+    )
 
     const server = await read(path.join(tmp.path, ".red", "code", "config.jsonc"))
     const tui = await read(path.join(tmp.path, ".red", "code", "tui.jsonc"))
@@ -130,8 +133,9 @@ describe("plugin.install.concurrent", () => {
       ),
     )
 
-    expect(out.map((x) => x.code)).toEqual(Array.from({ length: next.length }, () => 0))
-    expect(out.map((x) => x.stderr.toString()).filter(Boolean)).toEqual([])
+    expect(out.map((x) => ({ code: x.code, stderr: x.stderr.toString() }))).toEqual(
+      Array.from({ length: next.length }, () => ({ code: 0, stderr: "" })),
+    )
 
     const json = await read(cfg)
     expectPlugins(json.plugin, ["seed@1.0.0", ...next])

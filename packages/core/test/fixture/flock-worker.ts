@@ -10,7 +10,6 @@ type Msg = {
   maxDelayMs?: number
   holdMs?: number
   ready?: string
-  active?: string
   done?: string
 }
 
@@ -34,22 +33,20 @@ async function job(input: Msg) {
     await fs.writeFile(input.ready, String(process.pid))
   }
 
-  if (input.active) {
-    await fs.writeFile(input.active, String(process.pid), { flag: "wx" })
+  // Each holder brackets its critical section in the shared journal: mutual exclusion holds
+  // exactly when no other holder's line lands between a start and its end. A marker file created
+  // and deleted by each holder cannot prove this on Windows, where a deleted name stays reserved
+  // while another process still has it open and the next holder's exclusive create then fails.
+  if (input.done) {
+    await fs.appendFile(input.done, `start ${process.pid}\n`)
   }
 
-  try {
-    if (input.holdMs && input.holdMs > 0) {
-      await sleep(input.holdMs)
-    }
+  if (input.holdMs && input.holdMs > 0) {
+    await sleep(input.holdMs)
+  }
 
-    if (input.done) {
-      await fs.appendFile(input.done, "1\n")
-    }
-  } finally {
-    if (input.active) {
-      await fs.rm(input.active, { force: true })
-    }
+  if (input.done) {
+    await fs.appendFile(input.done, `end ${process.pid}\n`)
   }
 }
 
