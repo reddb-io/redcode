@@ -482,6 +482,32 @@ describe("SessionModelSuggestion service", () => {
   )
 
   it.instance(
+    "a quota exhausted until far off asks for an equivalent at once, with the reset as its reason",
+    () =>
+      Effect.gen(function* () {
+        const events = listen()
+        yield* Effect.addFinalizer(() => Effect.sync(events.stop))
+        const suggestions = yield* SessionModelSuggestion.Service
+        yield* suggestions.failure({
+          sessionID,
+          model: yield* getModel("text-only"),
+          status: 429,
+          until: Date.now() + 3_600_000,
+        })
+        expect(yield* until(() => events.seen.some((event) => event.type === "session.model.suggested"))).toBe(true)
+        // No health check first: the failure already says the model cannot serve.
+        expect(router.calls.map((call) => call.name)).toEqual(["recommend_models"])
+        expect(router.calls[0]?.arguments).toMatchObject({ equivalent_to: "text-only" })
+        const suggested = events.seen[0]?.properties as { suggestion: ModelSuggestion.Info }
+        expect(suggested.suggestion.trigger).toBe("provider_errors")
+        expect(suggested.suggestion.model).toEqual({ providerID: "red-router", modelID: "vision-model" })
+        expect(suggested.suggestion.why[0]?.code).toBe("quota")
+        expect(suggested.suggestion.whyText).toStartWith("quota exhausted until ")
+      }),
+    { config: routerConfig() },
+  )
+
+  it.instance(
     "a schema 3 router whose quotas for the model's provider are nearly used up asks for an equivalent",
     () =>
       Effect.gen(function* () {

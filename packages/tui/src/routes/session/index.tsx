@@ -504,6 +504,24 @@ export function Session() {
 
   const local = useLocal()
 
+  // A model picked while the turn waits to retry a provider takes that request now, instead of
+  // waiting for a prompt that cannot start until the retry ends. Picks from the suggestion card too.
+  createEffect(
+    on(
+      () => local.model.current(),
+      (model) => {
+        if (!model || sync.data.session_status[route.sessionID]?.type !== "retry") return
+        void sdk.client.session
+          .update({
+            sessionID: route.sessionID,
+            model: { providerID: model.providerID, modelID: model.modelID, variant: local.model.variant.current() },
+          })
+          .catch(() => undefined)
+      },
+      { defer: true },
+    ),
+  )
+
   function enterChild(sessionID: string) {
     navigate({
       type: "session",

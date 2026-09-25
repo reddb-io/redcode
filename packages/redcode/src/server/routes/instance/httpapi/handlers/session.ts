@@ -17,6 +17,7 @@ import { Config } from "@/config/config"
 import { SessionRevert } from "@/session/revert"
 import { SessionRunState } from "@/session/run-state"
 import { SessionStatus } from "@/session/status"
+import { SessionModelSwitch } from "@/session/model-switch"
 import { SessionSummary } from "@/session/summary"
 import { Todo } from "@/session/todo"
 import { MessageID, PartID, SessionID } from "@/session/schema"
@@ -67,6 +68,7 @@ export const sessionHandlers = HttpApiBuilder.group(InstanceHttpApi, "session", 
     const agentSvc = yield* Agent.Service
     const permissionSvc = yield* Permission.Service
     const statusSvc = yield* SessionStatus.Service
+    const switches = yield* SessionModelSwitch.Service
     const todoSvc = yield* Todo.Service
     const summary = yield* SessionSummary.Service
     const events = yield* EventV2Bridge.Service
@@ -210,6 +212,19 @@ export const sessionHandlers = HttpApiBuilder.group(InstanceHttpApi, "session", 
       }
       if (ctx.payload.time?.archived !== undefined) {
         yield* session.setArchived({ sessionID: ctx.params.sessionID, time: ctx.payload.time.archived })
+      }
+      if (ctx.payload.model !== undefined) {
+        yield* session.setAgentModel({
+          sessionID: ctx.params.sessionID,
+          agent: current.agent ?? (yield* agentSvc.defaultInfo()).name,
+          model: {
+            id: ctx.payload.model.modelID,
+            providerID: ctx.payload.model.providerID,
+            variant: ctx.payload.model.variant ?? "default",
+          },
+          time: Date.now(),
+        })
+        yield* switches.select(ctx.params.sessionID, ctx.payload.model)
       }
       return yield* requireSession(ctx.params.sessionID)
     })
