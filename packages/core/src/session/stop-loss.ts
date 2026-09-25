@@ -10,12 +10,16 @@
  * Every step boundary is observed mechanically and for free: steps since the last progress, the
  * same result coming back, the same error, todowrite failures, and what was spent since the last
  * progress. Progress is a changed file, a completed task, or a tool result not seen before in the
- * turn. In dual reasoning a signal, or every `every` steps, is a checkpoint where S1 reads the
- * user's request and a bounded digest of the trajectory and decides: continue, steer (a hint, at
- * most {@link MAX_STEERS} a turn), ask the user, or stop. Single reasoning, read-only subagents and
- * an S1 that cannot answer use the mechanical rules instead: steer on the first signal, stop when
- * one persists to the loop guard's stop threshold after a steer. Whatever S1 says, a trajectory
- * past {@link ceiling} ends the turn: a loop never runs unbounded, yolo or not.
+ * turn. What a step spent is the work it added: what it generated and how much its context grew,
+ * never the whole context it re-read, so a large session is not judged by its size. A status check
+ * of something outside the session (a CI run, a deploy) that keeps answering the same is waiting,
+ * not looping: it is steered to a monitor, and its steps do not count as stalled until the wait
+ * budget runs out. In dual reasoning a signal, or every `every` steps, is a checkpoint where S1
+ * reads the user's request and a bounded digest of the trajectory and decides: continue, steer (a
+ * hint, at most {@link MAX_STEERS} a turn), ask the user, or stop. Single reasoning, read-only
+ * subagents and an S1 that cannot answer use the mechanical rules instead: a hint on the first
+ * signal, a second hint, and a stop only when a strong signal persists after both. Whatever S1
+ * says, a trajectory past {@link ceiling} ends the turn: a loop never runs unbounded, yolo or not.
  *
  * Pure and runtime-agnostic like the loop guard: the legacy loop and the V2 runner turn their
  * history into {@link Step}s, ask S1 when {@link due} says so, and apply what {@link decide} returns.
@@ -27,6 +31,7 @@ import { Intelligence } from "../intelligence"
 import type { SessionV1 } from "../v1/session"
 import { LoopGuard } from "./loop-guard"
 import { LOOP_GUARD_REFUSAL } from "./loop-marker"
+import { ShellPolling } from "../tool/shell-polling"
 import type { SessionMessage } from "./message"
 import { SubagentReview } from "./subagent-review"
 import { SessionTaskFacts } from "./task-facts"
@@ -42,13 +47,36 @@ export interface Limits {
   readonly repeatAt: number
   /** A signal this strong after a steer ends the turn: the loop guard's stop threshold. */
   readonly stopAt: number
-  /** Tokens spent since the last progress before it is a signal. */
+  /** Tokens of new work since the last progress before it is a signal, at a context of {@link CONTEXT_SCALE}. */
   readonly tokens: number
-  /** Minutes since the last progress before it is a signal. */
+  /** Minutes since the last progress before it is a signal, at a context of {@link CONTEXT_SCALE}. */
   readonly minutes: number
+  /** Minutes a status check of something outside the session may keep answering the same before the user is asked. */
+  readonly wait: number
 }
 
-export const LIMITS: Limits = { every: 8, cooldown: 3, idleAt: 5, repeatAt: 3, stopAt: 5, tokens: 150_000, minutes: 15 }
+export const LIMITS: Limits = {
+  every: 8,
+  cooldown: 3,
+  idleAt: 5,
+  repeatAt: 3,
+  stopAt: 5,
+  tokens: 150_000,
+  minutes: 15,
+  wait: 30,
+}
+
+/**
+ * The context size the spend thresholds are set for. Past it they grow with the context: a step over
+ * a larger conversation takes longer and adds more to it for the same work.
+ */
+export const CONTEXT_SCALE = 200_000
+
+/** Steps without progress before spend alone can end the turn, however large the steps are. */
+export const SPEND_STOP_STEPS = 6
+
+/** The same answer from a status check this many times in a row is polling. */
+export const POLL_AT = 2
 
 /** Hints a turn gets before a persisting signal ends it instead. */
 export const MAX_STEERS = 2
@@ -87,6 +115,7 @@ export function limits(config: Config | undefined, loop: LoopGuard.Limits | unde
     stopAt: guard.stopAt,
     tokens: config?.tokens ?? LIMITS.tokens,
     minutes: config?.minutes ?? LIMITS.minutes,
+    wait: LIMITS.wait,
   }
 }
 
@@ -109,8 +138,13 @@ export interface Part {
 /** One provider step of the current turn. */
 export interface Step {
   readonly parts: ReadonlyArray<Part>
-  /** Tokens the step spent, cache reads excluded: every step re-reads the cache. */
+  /** Tokens the step generated: output and reasoning. */
   readonly tokens: number
+  /**
+   * Tokens of context the step's request carried, cached or not. Only its growth over the step before
+   * is new work: every step re-reads the rest, and not every provider reports what it had cached.
+   */
+  readonly context?: number
   readonly cost: number
   /** When the step finished, in epoch milliseconds. */
   readonly completed?: number
@@ -127,6 +161,11 @@ export interface Repeat {
   readonly identical: boolean
   readonly input: unknown
   readonly result: string
+  /**
+   * The command, when every call in the run was a successful read-only check of something outside
+   * the session (see `ShellPolling.observes`): the same answer means it has not moved yet.
+   */
+  readonly probe?: string
 }
 
 export interface Trajectory {
@@ -135,8 +174,10 @@ export interface Trajectory {
   readonly idle: number
   readonly repeat?: Repeat
   readonly todoFailures: number
-  /** Spent since the last progress, or since the turn began. */
+  /** Spent since the last progress, or since the turn began: new work in tokens, the actual cost, and time. */
   readonly spent: { readonly tokens: number; readonly cost: number; readonly ms: number }
+  /** The context the latest step carried, 0 when unknown. */
+  readonly context?: number
   /** The latest step drew a loop-guard correction: the model has just been told. */
   readonly corrected: boolean
 }
@@ -156,13 +197,19 @@ export function observe(
     repeat: repeat(parts),
     todoFailures: LoopGuard.todoFailures(parts),
     spent: {
-      tokens: idle.reduce((total, step) => total + step.tokens, 0),
+      // Each idle step's previous step is the one just before it in the turn.
+      tokens: idle.reduce((total, step, index) => total + step.tokens + grown(steps[last + index], step), 0),
       cost: idle.reduce((total, step) => total + step.cost, 0),
       ms: Math.max(0, input.now - since),
     },
+    context: steps.at(-1)?.context ?? 0,
     corrected: steps.at(-1)?.parts.some((part) => settled(part) && refused(result(part))) ?? false,
   }
 }
+
+/** How much a step's context grew over the step before it; nothing to compare against counts as none. */
+const grown = (before: Step | undefined, step: Step) =>
+  before?.context === undefined || step.context === undefined ? 0 : Math.max(0, step.context - before.context)
 
 /**
  * Which steps moved the work: a file changed, a task was completed, or a call answered with
@@ -213,6 +260,7 @@ function repeat(parts: ReadonlyArray<Part>): Repeat | undefined {
     (refused(result(part)) || (result(part) === text && (part.state?.status === "error") === failed))
   const run = calls.slice(calls.findLastIndex((part) => !same(part)) + 1)
   if (!run.includes(anchor)) return undefined
+  const probe = failed ? undefined : SessionTaskFacts.command(anchor.state?.input, Infinity)
   return {
     tool: anchor.tool,
     count: run.length,
@@ -220,7 +268,15 @@ function repeat(parts: ReadonlyArray<Part>): Repeat | undefined {
     identical: new Set(run.map((part) => LoopGuard.stable(part.state?.input))).size === 1,
     input: anchor.state?.input,
     result: text,
+    ...(probe && run.filter((part) => !refused(result(part))).every(checks) ? { probe } : {}),
   }
+}
+
+/** A call that read the state of something outside the session and succeeded (exit code 0, when it has one). */
+function checks(part: Part) {
+  const command = SessionTaskFacts.command(part.state?.input, Infinity)
+  const exit = part.state?.metadata?.["exit"]
+  return !!command && (exit === undefined || exit === 0) && ShellPolling.observes(command)
 }
 
 const settled = (part: Part) =>
@@ -228,14 +284,18 @@ const settled = (part: Part) =>
 const result = (part: Part) => part.state?.output ?? part.state?.error ?? ""
 const refused = (text: string) => text.startsWith(LOOP_GUARD_REFUSAL)
 
-export type Signal = "no_progress" | "same_result" | "same_error" | "todo_failures" | "spend"
+export type Signal = "no_progress" | "same_result" | "same_error" | "todo_failures" | "spend" | "polling" | "waited"
 
 /**
  * What the trajectory shows. A repeat of identical calls is also the loop guard's, which corrects the
  * model on the same step; {@link decide} then leaves the hint to it, while S1 still gets to judge.
+ * A status check of something outside the session that keeps answering the same is `polling`: those
+ * steps are waiting, not stalled, until the wait budget runs out and it becomes `waited`.
  */
 export function signals(trajectory: Trajectory, limits: Limits): Signal[] {
   const repeated = trajectory.repeat
+  const waiting = waits(trajectory, limits)
+  if (waiting) return [waiting, ...(trajectory.todoFailures >= limits.stopAt ? ["todo_failures" as const] : [])]
   return [
     ...(trajectory.idle >= limits.idleAt ? ["no_progress" as const] : []),
     ...(repeated && repeated.count >= limits.repeatAt
@@ -246,25 +306,43 @@ export function signals(trajectory: Trajectory, limits: Limits): Signal[] {
   ]
 }
 
-/** The signals strong enough to end the turn once a steer has not changed them. */
+/**
+ * The signals strong enough to end the turn once the hints have not changed them. Polling that went
+ * on after being pointed at a monitor is one of them.
+ */
 export function severe(trajectory: Trajectory, limits: Limits): Signal[] {
   return signals(trajectory, limits).filter((signal) => {
+    if (signal === "polling" || signal === "waited") return true
     if (signal === "no_progress") return trajectory.idle >= 2 * limits.idleAt
     if (signal === "same_result" || signal === "same_error") return (trajectory.repeat?.count ?? 0) >= limits.stopAt
     if (signal === "todo_failures") return trajectory.todoFailures >= 2 * limits.stopAt
-    return spending(trajectory, limits, 2)
+    return trajectory.idle >= SPEND_STOP_STEPS && spending(trajectory, limits, 2)
   })
 }
 
-/** Past this the turn ends whatever S1 says. */
+/** Past this the turn ends whatever S1 says. Waiting within the wait budget is bounded by it instead. */
 export function ceiling(trajectory: Trajectory, limits: Limits) {
-  return trajectory.idle >= 3 * limits.idleAt || spending(trajectory, limits, 3)
+  if (waits(trajectory, limits) === "polling") return false
+  return (
+    trajectory.idle >= 3 * limits.idleAt || (trajectory.idle >= SPEND_STOP_STEPS && spending(trajectory, limits, 3))
+  )
 }
 
 // Spend only means something while nothing moves: one long productive step is not a loss.
-const spending = (trajectory: Trajectory, limits: Limits, times: number) =>
-  trajectory.idle >= 2 &&
-  (trajectory.spent.tokens >= times * limits.tokens || trajectory.spent.ms >= times * limits.minutes * 60_000)
+const spending = (trajectory: Trajectory, limits: Limits, times: number) => {
+  const scale = Math.max(1, (trajectory.context ?? 0) / CONTEXT_SCALE)
+  return (
+    trajectory.idle >= 2 &&
+    (trajectory.spent.tokens >= times * limits.tokens * scale ||
+      trajectory.spent.ms >= times * limits.minutes * 60_000 * scale)
+  )
+}
+
+/** Whether the turn is polling a status check that has not moved, and whether the wait budget is spent. */
+function waits(trajectory: Trajectory, limits: Limits) {
+  if (!trajectory.repeat?.probe || trajectory.repeat.count < POLL_AT) return undefined
+  return trajectory.spent.ms >= limits.wait * 60_000 ? ("waited" as const) : ("polling" as const)
+}
 
 /** What a turn remembers between checkpoints; a new user prompt starts it over. */
 export interface Memory {
@@ -275,9 +353,15 @@ export interface Memory {
 
 export const FRESH: Memory = { last: 0, steers: 0 }
 
-/** The memory for a checkpoint at `step`: a turn that restarted (fewer steps than before) starts over. */
-export function current(memory: Memory, step: number): Memory {
-  return step < memory.last ? FRESH : memory
+/**
+ * The memory for a checkpoint at `step`: a turn that restarted (fewer steps than before) starts over.
+ * With `idle`, the steps since the last progress, progress made after the last checkpoint means its
+ * hints worked, so a later stall gets hints of its own before it can be stopped.
+ */
+export function current(memory: Memory, step: number, idle?: number): Memory {
+  if (step < memory.last) return FRESH
+  if (idle !== undefined && memory.steers > 0 && step - idle > memory.last) return { last: memory.last, steers: 0 }
+  return memory
 }
 
 export type Checkpoint =
@@ -402,6 +486,7 @@ export function evaluation(input: {
               },
             }
           : {}),
+        ...(trajectory.repeat?.probe ? { polling_outside_status: trajectory.repeat.probe } : {}),
         todo_failures: trajectory.todoFailures,
         spent_since_progress: {
           tokens: trajectory.spent.tokens,
@@ -459,13 +544,16 @@ export function decide(input: {
     ...by,
   })
   if (ceiling(input.trajectory, input.limits)) return verdict(judged?.state === "waiting" ? "ask_user" : "stop")
+  // The wait budget is spent: whether to keep waiting is the user's call, not a loss to cut.
+  if (found.includes("waited")) return verdict("ask_user")
   if (judged) {
     if (judged.action !== "steer" || input.memory.steers < MAX_STEERS) return verdict(judged.action)
     if (!strong.length) return verdict("continue")
     return verdict(judged.state === "waiting" ? "ask_user" : "stop")
   }
   if (!found.length) return verdict("continue")
-  if (strong.length && input.memory.steers > 0) return verdict("stop")
+  // Two hints first: the turn ends only on the third checkpoint a strong signal is still there.
+  if (strong.length && input.memory.steers >= MAX_STEERS) return verdict("stop")
   // The loop guard has just answered the model; a second voice on the same step is noise.
   if (input.memory.steers >= MAX_STEERS || input.trajectory.corrected) return verdict("continue")
   return verdict("steer")
@@ -496,8 +584,43 @@ function call(repeated: Repeat) {
   return `\`${repeated.tool}\` ${clip(input, 120)}`
 }
 
+const polls = (verdict: Verdict) => verdict.signals.includes("polling") || verdict.signals.includes("waited")
 const repeating = (verdict: Verdict) =>
-  verdict.signals.includes("same_result") || verdict.signals.includes("same_error")
+  verdict.signals.includes("same_result") || verdict.signals.includes("same_error") || polls(verdict)
+
+/** How often, and for how long, the suggested monitor checks a polled status again. */
+const MONITOR = { interval_ms: 60_000, deadline_ms: 3_600_000 }
+
+/** The bash call that waits in the background for a polled status check to answer differently. */
+function monitorCall(repeated: Repeat) {
+  const input = repeated.input
+  const workdir =
+    typeof input === "object" && input !== null && "workdir" in input && typeof input.workdir === "string"
+      ? input.workdir
+      : undefined
+  return ShellPolling.call(
+    { command: repeated.probe ?? "", monitor: { mode: "poll", until: "changed", ...MONITOR } },
+    workdir,
+  )
+}
+
+/**
+ * How the user picks the turn back up, with a single reply. For a polled status check that is also
+ * the monitor that waits for it, when the runtime's shell can start one.
+ */
+function resume(trajectory: Trajectory, verdict: Verdict, monitor: boolean) {
+  const repeated = polls(verdict) ? trajectory.repeat : undefined
+  if (repeated?.probe && monitor)
+    return [
+      "Reply `c` to continue, or `w` to wait for it: I will start this monitor, which checks again every minute in the background and picks the work back up once the answer changes:",
+      "",
+      "```json",
+      monitorCall(repeated),
+      "```",
+    ]
+  if (repeated?.probe) return ["Reply `c` to check it again and continue, or tell me what to do instead."]
+  return ["Reply `c` to continue from here, or tell me what to change."]
+}
 
 /**
  * The compact line surfaces show for a checkpoint, such as
@@ -518,8 +641,9 @@ export function line(trajectory: Trajectory, verdict: Verdict, input: { readonly
           `same ${trajectory.repeat.failed ? "error" : "result"} from \`${trajectory.repeat.tool}\` ${trajectory.repeat.count}×`,
         ]
       : []
-  const state =
-    verdict.state === "waiting"
+  const state = polls(verdict)
+    ? ["waiting on an outside job"]
+    : verdict.state === "waiting"
       ? [input.subagent ? "waiting on an outside condition" : "waiting on you"]
       : verdict.state === "looping"
         ? ["looping"]
@@ -531,6 +655,10 @@ export function line(trajectory: Trajectory, verdict: Verdict, input: { readonly
 
 /** Why the turn is not worth continuing, for a stop or a paused goal. */
 export function reason(trajectory: Trajectory, verdict: Verdict) {
+  if (trajectory.repeat && verdict.signals.includes("waited"))
+    return `${call(trajectory.repeat)} answered the same for ${Math.round(trajectory.spent.ms / 60_000)} minutes: what it checks has not moved`
+  if (trajectory.repeat && polls(verdict))
+    return `${call(trajectory.repeat)} was polled ${trajectory.repeat.count} times instead of waited for, and answered the same each time`
   if (verdict.state === "waiting") return "it is waiting on something outside the session"
   if (verdict.state === "wrong_approach") return "the approach is not getting closer to the request"
   if (trajectory.repeat && repeating(verdict))
@@ -541,9 +669,28 @@ export function reason(trajectory: Trajectory, verdict: Verdict) {
   return `${plural(trajectory.idle, "step")} in a row made no progress`
 }
 
-/** The synthetic hint a steer sends the model, quoting what it keeps getting back. */
-export function steer(trajectory: Trajectory, verdict: Verdict) {
+/**
+ * The synthetic hint a steer sends the model, quoting what it keeps getting back. `monitor` says the
+ * runtime's shell can wait on a command in the background (legacy bash's `monitor` parameter).
+ */
+export function steer(trajectory: Trajectory, verdict: Verdict, input: { readonly monitor?: boolean } = {}) {
   const repeated = trajectory.repeat && repeating(verdict) ? trajectory.repeat : undefined
+  if (repeated?.probe && polls(verdict))
+    return [
+      STEER,
+      `Stop-loss checkpoint: ${line(trajectory, verdict)}.`,
+      `\`${repeated.probe}\` answered the same ${repeated.count} times: ${clip(repeated.result)}`,
+      "It checks something outside the session that has not changed yet. That is waiting, not progress, and every check re-sends the whole conversation.",
+      ...(input.monitor
+        ? [
+            "Stop polling it. Wait with a monitor instead: it runs the same check in the background every minute and resumes this session once the answer changes. Start it with this bash call:",
+            monitorCall(repeated),
+            "Then do independent work or end your response. Do not run the check again yourself.",
+          ]
+        : [
+            "Stop polling it. Say what you are waiting for and its current status, then do independent work or end your turn; the session can pick it up once it has moved.",
+          ]),
+    ].join("\n")
   return [
     STEER,
     `Stop-loss checkpoint: ${line(trajectory, verdict)}.`,
@@ -560,8 +707,15 @@ export function steer(trajectory: Trajectory, verdict: Verdict) {
   ].join("\n")
 }
 
-/** The message that ends the turn on `ask_user` or `stop`: the line, then the question or the account. */
-export function final(trajectory: Trajectory, verdict: Verdict, input: { readonly subagent: boolean }) {
+/**
+ * The message that ends the turn on `ask_user` or `stop`: the line, then the question or the account,
+ * and how to pick it back up. `monitor` is as for {@link steer}.
+ */
+export function final(
+  trajectory: Trajectory,
+  verdict: Verdict,
+  input: { readonly subagent: boolean; readonly monitor?: boolean },
+) {
   const head = `**${line(trajectory, verdict, input)}**`
   const repeated = trajectory.repeat && repeating(verdict) ? trajectory.repeat : undefined
   const evidence = repeated
@@ -573,6 +727,9 @@ export function final(trajectory: Trajectory, verdict: Verdict, input: { readonl
         "```",
       ]
     : [`${plural(trajectory.idle, "step")} (${tokens(trajectory.spent.tokens)}) went by without progress.`]
+  const next = resume(trajectory, verdict, input.monitor === true)
+  if (verdict.action === "ask_user" && polls(verdict))
+    return [head, "", `I paused here: ${reason(trajectory, verdict)}.`, "", ...evidence, "", ...next].join("\n")
   if (verdict.action === "ask_user")
     return [
       head,
@@ -580,6 +737,8 @@ export function final(trajectory: Trajectory, verdict: Verdict, input: { readonl
       ...evidence,
       "",
       "This looks like it is waiting on something only you can change or decide. Can you check it, and tell me when it is ready or how you want me to continue?",
+      "",
+      ...next,
     ].join("\n")
   const spent = `Since the last progress this turn spent ${tokens(trajectory.spent.tokens)}${trajectory.spent.cost > 0 ? ` ($${trajectory.spent.cost.toFixed(2)})` : ""} over ${plural(trajectory.idle, "step")}.`
   if (input.subagent)
@@ -600,7 +759,7 @@ export function final(trajectory: Trajectory, verdict: Verdict, input: { readonl
     "",
     ...evidence,
     "",
-    "Tell me how you want to continue.",
+    ...next,
   ].join("\n")
 }
 
@@ -644,7 +803,8 @@ export function legacy(messages: ReadonlyArray<SessionV1.WithParts>) {
     return [
       {
         parts: item.parts,
-        tokens: used.input + used.output + used.reasoning + used.cache.write,
+        tokens: used.output + used.reasoning,
+        context: used.input + used.cache.read + used.cache.write,
         cost: item.info.cost,
         ...(item.info.time.completed ? { completed: item.info.time.completed } : {}),
         changed: item.parts.some((part) => part.type === "patch" && part.files.length > 0),
@@ -672,7 +832,8 @@ export function projected(messages: ReadonlyArray<SessionMessage.Message>) {
     return [
       {
         parts: parts(message),
-        tokens: used ? used.input + used.output + used.reasoning + used.cache.write : 0,
+        tokens: used ? used.output + used.reasoning : 0,
+        ...(used ? { context: used.input + used.cache.read + used.cache.write } : {}),
         cost: message.cost ?? 0,
         ...(message.time.completed ? { completed: DateTime.toEpochMillis(message.time.completed) } : {}),
         changed: (message.snapshot?.files?.length ?? 0) > 0,
