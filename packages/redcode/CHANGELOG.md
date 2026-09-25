@@ -1,5 +1,18 @@
 # opencode
 
+## 0.55.0
+
+### Minor Changes
+
+- 8107242: Support RedRouter flat model ids. A RedRouter key whose model list says `id_format: "flat"` lists one entry per model (`anthropic/claude-sonnet-4-5`, `typesafe/jev-1.13`) instead of one per provider. Redcode treats each entry as a fallback combo over its offers. Labels, System One detection and "also direct" matching come from the offers, never from splitting the flat id, so `typesafe/jev-1.13` is not shown as served by a provider "typesafe". The model pickers show the route the model will be served by and, with ctrl+o in the TUI or the chevron on the web, its offers with their route, price and a free badge. Picking an offer pins it by its `pin_id`; an offer without one cannot be pinned. A response names the offer that served it by its route, and a session follows that offer's limits and reasoning levels. A model list without `id_format` is read as prefixed, as before.
+
+### Patch Changes
+
+- 7dbed4e: Alt+Enter now steers in terminals and multiplexers that send it as a bare ESC CR (zellij without the kitty protocol, tmux) once the terminal has sent Shift+Enter as `CSI 13;2u` or `CSI 27;2;13~`, or from the start when `input_newline` does not list `alt+return`. The busy hint names `alt+return` as soon as the key works.
+- 7dbed4e: Ctrl+C and Ctrl+D no longer quit on the first press. On an idle, empty prompt the first press shows "Press ctrl+c again to exit" and a second press within two seconds exits; while the agent works, Ctrl+C interrupts the turn instead of quitting.
+- d02f5c1: Sending a prompt again while an identical one is still queued no longer adds a second copy that the model reads later as a repeated request. The waiting prompt covers both sends, and sending it again with the steer key moves it ahead of the queue. Retrying a prompt with the same message ID returns the stored message instead of moving it to the end of the conversation.
+- ae0e44a: The TUI now sends a prompt once it is admitted instead of waiting for the whole turn: each submit names its own message ID, a transient failure is retried with that same ID (so a lost response never becomes a second copy), and a send that fails keeps the text in the prompt. A queued prompt left behind by an interrupted or failed turn, or by a restart, is no longer slipped into a later conversation: it is held until you send or discard it with `/pending`, which lists every prompt still waiting in the session. New routes `GET /session/{id}/prompt` and `DELETE /session/{id}/prompt/{messageID}` list and discard pending prompts.
+
 ## 0.54.5
 
 ### Patch Changes
