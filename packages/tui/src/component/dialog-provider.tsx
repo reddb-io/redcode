@@ -378,7 +378,11 @@ export function createDialogProviderOptions(props: { onConnected?: Connected } =
 export function DialogProvider(props: { onConnected?: Connected } = {}) {
   const options = createDialogProviderOptions(props)
   const sync = useSync()
+  const dialog = useDialog()
   const remove = createProviderRemoval()
+  // Provider names and descriptions (e.g. "ChatGPT Plus/Pro or API key") need more room than the
+  // default dialog width gives before being cut off.
+  dialog.setSize("large")
   return (
     <DialogSelect
       title="Connect a provider"

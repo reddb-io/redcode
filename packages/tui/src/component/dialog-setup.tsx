@@ -331,7 +331,7 @@ export function DialogSetup(
       state.discovery === "failed"
         ? state.discoveryError
         : state.discovery === "ready" && !state.models.length
-          ? "RedRouter lists no System One models. Connect OpenRouter or OpenCode Zen in the router."
+          ? "RedRouter lists no System One models. Connect a System One provider in the router."
           : undefined
     return [
       ...(state.settings.evaluator
