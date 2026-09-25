@@ -21,6 +21,7 @@ import { Permission } from "@/permission"
 import { mergeDeep, pipe, sortBy, values } from "remeda"
 import { Global } from "@reddb-io/redcode-core/global"
 import { FSUtil } from "@reddb-io/redcode-core/fs-util"
+import os from "os"
 import path from "path"
 import { Plugin } from "@/plugin"
 import { Skill } from "../skill"
@@ -114,6 +115,10 @@ const layer = Layer.effect(
           path.join(Global.Path.tmp, "*"),
           ...skillDirs.map((dir) => path.join(dir, "*")),
           ...referenceDirs.map((dir) => path.join(dir, "*")),
+          // A temporary session worktree is the session's own workspace, not an outside directory.
+          ...(ctx.worktree === "/"
+            ? []
+            : [path.join(RepositoryGuard.temporaryBase(ctx.worktree, cfg.worktree?.tmpdir ?? os.tmpdir()), "*")]),
         ]
         const readonlyExternalDirectory = {
           "*": "ask",
