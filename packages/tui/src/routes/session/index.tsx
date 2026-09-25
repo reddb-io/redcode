@@ -1909,7 +1909,11 @@ function AssistantMessage(props: {
   parts: Part[]
   last: boolean
   footer?: boolean
-  revision?: { issues: ReadonlyArray<string>; originals: ReadonlyArray<string> }
+  revision?: {
+    issues: ReadonlyArray<string>
+    originals: ReadonlyArray<string>
+    confidence: Readonly<Record<string, number>>
+  }
 }) {
   const ctx = use()
   const local = useLocal()
@@ -2052,7 +2056,7 @@ function AssistantMessage(props: {
       </Switch>
       <Show when={props.revision}>
         {(revision) => (
-          <ResponseRevisionNote issues={revision().issues}>
+          <ResponseRevisionNote issues={revision().issues} confidence={revision().confidence}>
             <For each={originals()}>
               {(message) => (
                 <AssistantMessage
