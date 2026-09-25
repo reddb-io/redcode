@@ -68,22 +68,7 @@ const router = {
   requests: [] as Array<{ authorization: string | null; method: string | undefined }>,
 }
 
-beforeAll(async () => {
-  const protocol = new Server({ name: "red-router", version: "0.29.0" }, { capabilities: { tools: {} } })
-  protocol.setRequestHandler(ListToolsRequestSchema, () =>
-    Promise.resolve({
-      tools: ["list_models", "create_api_key"].map((name) => ({
-        name,
-        inputSchema: { type: "object" as const, properties: {} },
-      })),
-    }),
-  )
-  // Stateless, like RedRouter's: every connection may initialize again.
-  const transport = new WebStandardStreamableHTTPServerTransport({
-    sessionIdGenerator: undefined,
-    enableJsonResponse: true,
-  })
-  await protocol.connect(transport)
+beforeAll(() => {
   const http = Bun.serve({
     port: 0,
     async fetch(request) {
@@ -92,14 +77,26 @@ beforeAll(async () => {
         authorization: request.headers.get("authorization"),
         method: typeof body?.method === "string" ? body.method : undefined,
       })
+      // Stateless, like RedRouter's: a fresh server answers each request, so any request may initialize.
+      const protocol = new Server({ name: "red-router", version: "0.29.0" }, { capabilities: { tools: {} } })
+      protocol.setRequestHandler(ListToolsRequestSchema, () =>
+        Promise.resolve({
+          tools: ["list_models", "create_api_key"].map((name) => ({
+            name,
+            inputSchema: { type: "object" as const, properties: {} },
+          })),
+        }),
+      )
+      const transport = new WebStandardStreamableHTTPServerTransport({
+        sessionIdGenerator: undefined,
+        enableJsonResponse: true,
+      })
+      await protocol.connect(transport)
       return transport.handleRequest(request)
     },
   })
   router.url = new URL("/v1/mcp", http.url).toString()
-  router.close = async () => {
-    await http.stop(true)
-    await protocol.close()
-  }
+  router.close = () => http.stop(true)
 })
 
 afterAll(() => router.close())

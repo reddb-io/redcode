@@ -35,7 +35,8 @@ export function reason(input: { readonly server: string | undefined; readonly to
  * with `protected` and cannot be approved for later.
  */
 export function ask(key: string, tool: { readonly def: { readonly name: string }; readonly client: Client }, args: unknown) {
-  const why = reason({ server: tool.client.getServerVersion()?.name, tool: tool.def.name, args })
+  // A client stand-in that never initialized has no server version: it is not RedRouter's.
+  const why = reason({ server: tool.client.getServerVersion?.()?.name, tool: tool.def.name, args })
   if (!why) return { permission: key, metadata: {}, patterns: ["*"], always: ["*"] }
   return { permission: key, metadata: { protected: why }, patterns: ["*"], always: [], protected: true }
 }
