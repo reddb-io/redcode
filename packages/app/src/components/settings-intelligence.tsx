@@ -78,6 +78,14 @@ function IntelligenceForm() {
       : {}),
   })
   const probe = () => ({ evaluator: evaluator(), ...(state.key ? { apiKey: state.key } : {}) })
+  // A connected RedRouter lists one option per System One model it serves, so the chosen model
+  // picks the option; any other connection is one option per transport.
+  const selectedOption = () => {
+    const exact = state.evaluators.findIndex(
+      (option) => option.evaluator.transport === state.transport && option.evaluator.model === state.model,
+    )
+    return exact >= 0 ? exact : state.evaluators.findIndex((option) => option.evaluator.transport === state.transport)
+  }
   // The connected RedRouter's recommended model for a role, when the model list has it.
   const recommendation = (role: "principal" | "fast") => {
     const router = state.router
@@ -271,13 +279,11 @@ function IntelligenceForm() {
             <span>{language.t("settings.intelligence.connection")}</span>
             <select
               class={inputClass}
-              value={state.detected ? "detected" : state.transport}
+              value={state.detected ? "detected" : String(selectedOption())}
               onChange={(event) => {
                 const detected = state.router?.evaluator
                 if (event.currentTarget.value === "detected" && detected) return selectDetected(detected)
-                const selected = state.evaluators.find(
-                  (option) => option.evaluator.transport === event.currentTarget.value,
-                )
+                const selected = state.evaluators[Number(event.currentTarget.value)]
                 if (!selected) return
                 set("detected", false)
                 set("transport", selected.evaluator.transport)
@@ -300,8 +306,8 @@ function IntelligenceForm() {
                 )}
               </Show>
               <For each={state.evaluators}>
-                {(option) => (
-                  <option value={option.evaluator.transport}>
+                {(option, index) => (
+                  <option value={String(index())}>
                     {option.configured ? "Connected · " : ""}
                     {option.name}
                   </option>

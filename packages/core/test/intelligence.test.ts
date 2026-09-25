@@ -1049,6 +1049,10 @@ test("Zen onboarding offers free Jev without changing existing defaults or accep
   expect(Intelligence.isJev("openrouter/typesafe/jev-1.13")).toBe(true)
   expect(Intelligence.isJev("jev-1.13-free")).toBe(true)
   expect(Intelligence.isJev("gpt-5")).toBe(false)
+  // Through chained routers, at any depth, the model at the end decides.
+  expect(Intelligence.isJev("red-router/red-router/opencode-go/jev-1.13")).toBe(true)
+  expect(Intelligence.isJev("red-router/openrouter/typesafe/jev-1.13")).toBe(true)
+  expect(Intelligence.isJev("red-router/red-router/codex/gpt-5.6-sol")).toBe(false)
   await using dir = await tmpdir()
   await Effect.runPromise(
     Effect.gen(function* () {
@@ -1438,6 +1442,16 @@ test("a RedRouter connected under another provider id lists its System One model
               name: "TypeSafe JEV 1.13",
               provider: { id: "openrouter", name: "OpenRouter" },
             },
+            // Served with another account's key: red-router names the account that lends it.
+            {
+              id: "opencode-zen/jev-1.13",
+              name: "JEV 1.13",
+              provider: {
+                id: "opencode-zen",
+                name: "OpenCode Zen",
+                via: { id: "opencode-go", name: "OpenCode Go" },
+              },
+            },
             { id: "jev-1.13.0" },
           ],
         })
@@ -1467,13 +1481,36 @@ test("a RedRouter connected under another provider id lists its System One model
       ),
     )
     const options = await Effect.runPromise(service.options())
-    const router = options.find((option) => option.evaluator.transport === "red-router")
-    expect(router).toMatchObject({ configured: true, evaluator: { baseURL, credentialID: connection.id } })
-    const evaluator = router!.evaluator
+    // The router's own catalog decides the RedRouter options: one per model it serves.
+    const routed = options.filter((option) => option.evaluator.transport === "red-router")
+    expect(routed).toEqual([
+      {
+        name: "RedRouter · OpenRouter · TypeSafe JEV 1.13",
+        configured: true,
+        evaluator: {
+          transport: "red-router",
+          baseURL,
+          model: "openrouter/typesafe/jev-1.13",
+          credentialID: connection.id,
+        },
+      },
+      {
+        name: "RedRouter · OpenCode Zen (via OpenCode Go) · JEV 1.13",
+        configured: true,
+        evaluator: { transport: "red-router", baseURL, model: "opencode-zen/jev-1.13", credentialID: connection.id },
+      },
+      {
+        name: "RedRouter · jev-1.13.0",
+        configured: true,
+        evaluator: { transport: "red-router", baseURL, model: "jev-1.13.0", credentialID: connection.id },
+      },
+    ])
+    const evaluator = routed[0]!.evaluator
     expect(await Effect.runPromise(service.discover({ evaluator }))).toEqual({
       models: [
-        { id: "openrouter/typesafe/jev-1.13", name: "OpenRouter · TypeSafe JEV 1.13" },
-        { id: "jev-1.13.0", name: "jev-1.13.0" },
+        { id: "openrouter/typesafe/jev-1.13", name: "RedRouter · OpenRouter · TypeSafe JEV 1.13" },
+        { id: "opencode-zen/jev-1.13", name: "RedRouter · OpenCode Zen (via OpenCode Go) · JEV 1.13" },
+        { id: "jev-1.13.0", name: "RedRouter · jev-1.13.0" },
       ],
       manual: false,
     })
@@ -1490,6 +1527,194 @@ test("a RedRouter connected under another provider id lists its System One model
     expect(refused._tag).toBe("Failure")
     if (refused._tag === "Failure")
       expect(refused.failure.message).toBe("RedRouter rejected the credential (HTTP 401). Reconnect it or enter a key.")
+  } finally {
+    ProviderRouter.forget()
+    await server.stop(true)
+  }
+})
+
+test("a chained RedRouter lists flat and nested System One routes once each, recommended first, and saves the full id", async () => {
+  await using dir = await tmpdir()
+  const zen = { id: "opencode-zen", name: "OpenCode Zen", via: { id: "opencode-go", name: "OpenCode Go" } }
+  const server = Bun.serve({
+    hostname: "127.0.0.1",
+    port: 0,
+    fetch: (request) => {
+      const path = new URL(request.url).pathname
+      if (path === "/v1/capabilities")
+        return Response.json({
+          product: "red-router",
+          version: "3.6.0",
+          systemone: { available: true, models: ["opencode-zen/jev-1.13"] },
+          catalog: { version: "cat-1", catalog_endpoint: "/v1/catalog", recommendations: true },
+        })
+      if (path === "/v1/catalog")
+        return Response.json({
+          version: "cat-1",
+          recommended: {
+            systemone: {
+              id: "red-router/red-router/opencode-zen/jev-1.13",
+              name: "JEV 1.13",
+              provider: { slug: "red-router", name: "RedRouter" },
+              reason: "Served through the office router.",
+            },
+          },
+        })
+      if (path === "/v1/models/systemone")
+        return Response.json({
+          object: "list",
+          data: [
+            { id: "opencode-zen/jev-1.13", name: "JEV 1.13", provider: zen },
+            // The same model through a remote RedRouter, and through one more behind it.
+            { id: "red-router/opencode-zen/jev-1.13", name: "JEV 1.13", provider: zen },
+            { id: "red-router/red-router/opencode-zen/jev-1.13", name: "JEV 1.13", provider: zen },
+            // A remote router's own provider block does not name the upstream: the catalog does.
+            {
+              id: "red-router/openrouter/typesafe/jev-1.13",
+              name: "TypeSafe JEV 1.13",
+              provider: { id: "red-router", name: "RedRouter" },
+            },
+            // Listed twice, and a different model under a name already taken.
+            { id: "opencode-zen/jev-1.13", name: "JEV 1.13", provider: zen },
+            { id: "opencode-zen/jev-1.13-latest", name: "JEV 1.13", provider: zen },
+          ],
+        })
+      return new Response("not found", { status: 404 })
+    },
+  })
+  try {
+    const baseURL = `http://127.0.0.1:${server.port}/v1`
+    const connection = new Credential.Info({
+      id: Credential.ID.create(),
+      integrationID: Integration.ID.make("red-router"),
+      label: "Provider connection",
+      value: { type: "key", key: "router-key", metadata: { baseURL, router: "red-router" } },
+    })
+    const catalog = { openrouter: { id: "openrouter", name: "OpenRouter", env: [], models: {} } }
+    const service = await Effect.runPromise(
+      Intelligence.make(
+        dir.path,
+        {
+          get: (id) => Effect.succeed(id === connection.id ? connection : undefined),
+          list: (id) => Effect.succeed(id === connection.integrationID ? [connection] : []),
+          create: () => Effect.die("unused"),
+        },
+        fetch,
+        catalog,
+      ),
+    )
+    const routed = (await Effect.runPromise(service.options())).filter(
+      (option) => option.evaluator.transport === "red-router",
+    )
+    expect(routed.map((option) => [option.name, option.evaluator.model])).toEqual([
+      [
+        "RedRouter → RedRouter → RedRouter → OpenCode Zen (via OpenCode Go) · JEV 1.13",
+        "red-router/red-router/opencode-zen/jev-1.13",
+      ],
+      ["RedRouter · OpenCode Zen (via OpenCode Go) · JEV 1.13", "opencode-zen/jev-1.13"],
+      ["RedRouter → RedRouter → OpenCode Zen (via OpenCode Go) · JEV 1.13", "red-router/opencode-zen/jev-1.13"],
+      ["RedRouter → RedRouter → OpenRouter · TypeSafe JEV 1.13", "red-router/openrouter/typesafe/jev-1.13"],
+      [
+        "RedRouter · OpenCode Zen (via OpenCode Go) · JEV 1.13 (opencode-zen/jev-1.13-latest)",
+        "opencode-zen/jev-1.13-latest",
+      ],
+    ])
+    // Every route uses the connected (outermost) router's address and credential.
+    expect(routed.every((option) => option.evaluator.baseURL === baseURL)).toBe(true)
+    expect(routed.every((option) => option.evaluator.credentialID === connection.id)).toBe(true)
+
+    // Saving a nested choice keeps the exact id the connected router expects, hops included.
+    const evaluator = routed[0]!.evaluator
+    await Effect.runPromise(service.save({ settings: { enabled: false, onboarding: "pending", evaluator } }))
+    expect((await Effect.runPromise(service.read())).evaluator).toEqual(evaluator)
+    expect(evaluator.model).toBe("red-router/red-router/opencode-zen/jev-1.13")
+  } finally {
+    ProviderRouter.forget()
+    await server.stop(true)
+  }
+})
+
+test("a RedRouter connected under a direct provider's id is offered as the router, not as that provider", async () => {
+  await using dir = await tmpdir()
+  const server = Bun.serve({
+    hostname: "127.0.0.1",
+    port: 0,
+    fetch: (request) =>
+      new URL(request.url).pathname === "/v1/models/systemone"
+        ? Response.json({
+            object: "list",
+            data: [{ id: "typesafe-ai/jev-1.13.0", name: "JEV 1.13.0", provider: { name: "TypeSafe" } }],
+          })
+        : new Response("not found", { status: 404 }),
+  })
+  try {
+    const baseURL = `http://127.0.0.1:${server.port}/v1`
+    const connection = new Credential.Info({
+      id: Credential.ID.create(),
+      integrationID: Integration.ID.make("openrouter"),
+      label: "Provider connection",
+      value: { type: "key", key: "router-key", metadata: { baseURL, router: "red-router" } },
+    })
+    const catalog = { openrouter: { id: "openrouter", name: "OpenRouter", env: [], models: {} } }
+    const service = await Effect.runPromise(
+      Intelligence.make(
+        dir.path,
+        {
+          get: (id) => Effect.succeed(id === connection.id ? connection : undefined),
+          list: (id) => Effect.succeed(id === connection.integrationID ? [connection] : []),
+          all: () => Effect.succeed([connection]),
+          create: () => Effect.die("unused"),
+        },
+        fetch,
+        catalog,
+      ),
+    )
+    const options = await Effect.runPromise(service.options())
+    expect(options.filter((option) => option.evaluator.transport === "red-router")).toEqual([
+      {
+        name: "RedRouter · TypeSafe · JEV 1.13.0",
+        configured: true,
+        evaluator: { transport: "red-router", baseURL, model: "typesafe-ai/jev-1.13.0", credentialID: connection.id },
+      },
+    ])
+    // The router's key never passes for a direct OpenRouter connection.
+    expect(options.find((option) => option.evaluator.transport === "openrouter")?.evaluator.credentialID).toBeUndefined()
+  } finally {
+    ProviderRouter.forget()
+    await server.stop(true)
+  }
+})
+
+test("an unreadable RedRouter catalog leaves one RedRouter option", async () => {
+  await using dir = await tmpdir()
+  const server = Bun.serve({ hostname: "127.0.0.1", port: 0, fetch: () => new Response("down", { status: 503 }) })
+  try {
+    const baseURL = `http://127.0.0.1:${server.port}/v1`
+    const connection = new Credential.Info({
+      id: Credential.ID.create(),
+      integrationID: Integration.ID.make("red-router"),
+      label: "Provider connection",
+      value: { type: "key", key: "router-key", metadata: { baseURL, router: "red-router" } },
+    })
+    const service = await Effect.runPromise(
+      Intelligence.make(
+        dir.path,
+        {
+          get: (id) => Effect.succeed(id === connection.id ? connection : undefined),
+          list: (id) => Effect.succeed(id === connection.integrationID ? [connection] : []),
+          create: () => Effect.die("unused"),
+        },
+        fetch,
+      ),
+    )
+    const options = await Effect.runPromise(service.options())
+    expect(options.filter((option) => option.evaluator.transport === "red-router")).toEqual([
+      {
+        name: "RedRouter",
+        configured: true,
+        evaluator: { ...Intelligence.evaluatorPreset("red-router"), baseURL, credentialID: connection.id },
+      },
+    ])
   } finally {
     ProviderRouter.forget()
     await server.stop(true)

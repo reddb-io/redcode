@@ -218,6 +218,27 @@ describe("model origin", () => {
     )
   })
 
+  test("names every router hop of a nested routed id and matches its direct twin", () => {
+    // A RedRouter connected to another RedRouter, which is connected to a third: any depth.
+    const chained = provider(
+      "red-router",
+      "RedRouter",
+      [
+        model("red-router", "red-router/codex/gpt-5.6-sol", { upstream: codex }),
+        model("red-router", "red-router/red-router/codex/gpt-5.5", { upstream: codex }),
+      ],
+      { router: { kind: "red-router" } },
+    )
+    const index = originIndex([chained, direct])
+    expect(originDescription(index, chained, chained.models["red-router/codex/gpt-5.6-sol"])).toBe(
+      "via RedRouter → RedRouter · OpenAI Codex · subscription · also direct",
+    )
+    expect(originDescription(index, chained, chained.models["red-router/red-router/codex/gpt-5.5"])).toBe(
+      "via RedRouter → RedRouter → RedRouter · OpenAI Codex · subscription · also direct",
+    )
+    expect(originDescription(index, direct, direct.models["gpt-5.5"])).toBe("direct · also via RedRouter")
+  })
+
   test("a router mode chosen as the variant requests the router's id for it", () => {
     const sol = model("red-router", "codex/gpt-5.6-sol", {
       modes: ["review"],
