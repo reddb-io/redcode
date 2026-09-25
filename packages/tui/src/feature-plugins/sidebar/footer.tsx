@@ -4,6 +4,7 @@ import { createMemo, createResource, For, Show } from "solid-js"
 import path from "path"
 import { abbreviateHome } from "../../runtime"
 import { useTuiPaths } from "../../context/runtime"
+import { Locale } from "../../util/locale"
 import { SIDEBAR_WIDTH_DEFAULT, SIDEBAR_WIDTH_MAX } from "../../routes/session/sidebar-width"
 
 const id = "internal:sidebar-footer"
@@ -91,7 +92,8 @@ export function SidebarFooter(props: { api: TuiPluginApi; sessionID: string }) {
 /**
  * Project, worktree and branch as three short lines: the primary checkout's directory, then the
  * worktree (relative to the project when nested under it) and the branch. Outside Git only the
- * directory remains. Each line keeps its end and loses its start to fit `width`.
+ * directory remains. A line too long for `width` loses its middle, so both its root and its
+ * name stay readable.
  */
 export function locationLines(input: {
   directory: string
@@ -115,10 +117,9 @@ export function locationLines(input: {
     : prepared
       ? abbreviateHome(path.join(prepared[1], ".redcode-worktrees", prepared[2], prepared[3]), input.home)
       : undefined
-  const fit = (prefix: string, text: string) => {
-    const room = Math.max(1, input.width - prefix.length)
-    return prefix + (text.length > room ? "…" + text.slice(text.length - room + 1) : text)
-  }
+  // truncateMiddle needs room for a character on each side of its ellipsis.
+  const fit = (prefix: string, text: string) =>
+    prefix + Locale.truncateMiddle(text, Math.max(3, input.width - prefix.length))
   return [
     fit("", abbreviateHome(project, input.home)),
     ...(worktree || input.branch ? [fit("⎇ ", worktree ?? "primary checkout")] : []),
