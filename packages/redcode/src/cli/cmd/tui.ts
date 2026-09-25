@@ -120,6 +120,11 @@ export const TuiThreadCommand = cmd({
         describe: "auto-approve permissions that are not explicitly denied (dangerous!)",
         default: false,
       })
+      .option("tmp", {
+        type: "boolean",
+        describe: "put automatic session worktrees in the temporary directory instead of <repo>/.red/worktrees",
+        default: false,
+      })
       .option("yolo", {
         type: "boolean",
         hidden: true,
@@ -153,6 +158,7 @@ export const TuiThreadCommand = cmd({
       }),
   handler: async (args) => {
     if (args.yolo || args["dangerously-skip-permissions"]) process.env.REDCODE_YOLO = "1"
+    if (args.tmp) process.env.REDCODE_WORKTREE_LOCATION = "tmp"
     if (args.replay === true) {
       UI.error("--replay is not supported; replay is enabled by default")
       process.exitCode = 1

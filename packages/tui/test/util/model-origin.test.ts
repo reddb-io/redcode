@@ -2,6 +2,7 @@ import { describe, expect, test } from "bun:test"
 import type { Message, Model, Part, Provider } from "@reddb-io/redcode-sdk/v2"
 import {
   catalogUpdateMessage,
+  compactRouteLabel,
   flatOffers,
   keyRoleLabel,
   latestServed,
@@ -19,6 +20,15 @@ import {
   servedRoute,
   servingVariants,
 } from "../../src/util/model-origin"
+
+describe("compactRouteLabel", () => {
+  test("joins the router and upstream with the compact separator, no `via` prefix", () => {
+    expect(compactRouteLabel("RedRouter", "Antigravity")).toBe("RedRouter»Antigravity")
+    expect(compactRouteLabel("RedRouter", undefined)).toBe("RedRouter")
+    expect(compactRouteLabel(undefined, "Antigravity")).toBeUndefined()
+    expect(compactRouteLabel(undefined, undefined)).toBeUndefined()
+  })
+})
 
 function model(providerID: string, id: string, extra: Partial<Model> = {}): Model {
   const media = { text: true, audio: false, image: false, video: false, pdf: false }

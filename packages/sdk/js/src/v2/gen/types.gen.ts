@@ -2164,6 +2164,8 @@ export type Config = {
   snapshot?: boolean
   worktree?: {
     auto?: boolean
+    location?: "repo" | "tmp"
+    tmpdir?: string
   }
   plugin?: Array<
     | string

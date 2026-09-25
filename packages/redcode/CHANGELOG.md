@@ -1,5 +1,25 @@
 # opencode
 
+## 0.57.0
+
+### Minor Changes
+
+- 555b491: Session worktrees can live in the temporary directory instead of the repository. Pass `--tmp` to `redcode`, `redcode run` or `redcode serve`, or set `"worktree": { "location": "tmp" }` in the global or project config (`.red/code/config.jsonc`, `redcode.json`), and the automatic worktree goes to `<tmpdir>/redcode-worktrees/<repository>-<hash>/<name>` on the same `<name>` branch, created with `git worktree add` from the repository, and `.git/info/exclude` is left alone. `worktree.tmpdir` replaces the system temporary directory, and `REDCODE_WORKTREE_LOCATION=tmp|repo` overrides the config like the flag does. The sidebar shows the path, middle-truncated, with a `tmp` marker, and the toast names the temporary worktree. `/worktrees` and `redcode worktrees` list temporary worktrees with the rest. `clean` removes the merged or stale ones and prunes those whose directory is gone. A worktree with uncommitted changes is never removed without force. `worktree.auto: false` and `REDCODE_AUTO_WORKTREE=0` still turn automatic worktrees off.
+
+### Patch Changes
+
+- 0524fdc: Compact the S2/S1 model line in the TUI prompt footer: `Gemini 3.7 Flash·high ⁄ jev-1.13` instead of `S2 Gemini 3.7 Flash* via RedRouter · Antigravity · S1 jev-1.13 · high`. The variant sits right on the S2 model in the accent color, a discreet `⁄` separates the S1 evaluator (or a "S1 setup" hint when it is not configured yet, still clickable), and the route chain (`RedRouter»Antigravity · RedRouter»OpenRouter`) moves to a dim, right-aligned hint shown only when the terminal has spare width. On narrow terminals the route hint disappears first, then the S1 name truncates; the S2 model name is never shortened for width.
+
+## 0.56.1
+
+### Patch Changes
+
+- e9d5762: Stop waiting out a quota that resets far off, and let a model switch take a pending retry. When a provider or RedRouter says the model's quota or usage limit resets more than two minutes away (a long `Retry-After`, a router retry-at, or an explicit "until <date>"), the turn ends at once with `<provider · model> quota exhausted until <local time>; switch model with /model or wait` and offers an equivalent model on the suggestion card, instead of showing a countdown of up to 15 minutes. Shorter waits still retry, and the retry status now names the model it waits for and, for a quota, when it resets. Selecting another model (with `/model` or from the suggestion card) while a retry waits cancels the wait and sends the same request to the new model right away, with fresh retry attempts; Esc still ends the wait. `PATCH /session/:id` accepts a `model` to select it.
+- 0d7af8d: S1 revision notes now name the reason in plain words instead of the raw internal question key ("claimed work it couldn't prove" instead of "unsupported"), in the TUI footnote, the web timeline, and the S1 warning dialog. Opening a revised answer also shows S1's confidence for each reason, such as "S1: 82% sure the answer claimed work it couldn't prove".
+- 6e29885: Give the TUI sidebar a wider default (40/44 columns) on wide and ultrawide terminals, unless you've already resized it.
+- df67a68: Stop-loss no longer halts large sessions after two steps. Spend since the last progress now counts only the work each step added (generated tokens plus context growth), not the whole context re-read every step, and its thresholds grow with the context size; spend alone ends a turn only after six steps without progress. Polling a read-only status check of an outside job (such as `gh run view` while CI runs) is treated as waiting: the model is pointed at a monitor instead of being stopped, those steps do not count as stalled for 30 minutes, and the user is asked after that. In single reasoning a stall now gets two hints before a stop, and a stop message says what it was waiting for and offers a one-reply way to continue or wait with a monitor.
+- e8a3773: `--yolo` sessions now work in their own worktree too. YOLO means "skip permission prompts", not "skip isolation": in a Git repository, the first write, edit, patch or non-read-only shell command a writing session makes in the primary checkout creates `.red/worktrees/<name>` on a new branch `<name>` from `HEAD` and moves the session there, as it already did without `--yolo`. A session already working in the primary checkout moves on its next write. A command the repository guard would refuse outside YOLO (such as `mkdir` in the primary checkout or `git stash`) now runs inside the session worktree instead of the primary checkout. Uncommitted changes in the primary checkout are never moved or stashed; they stay there, and the toast says so. Plan, design and explore sessions, directories outside Git, and (in YOLO mode) repositories with no commits yet keep their directory. To keep sessions in the primary checkout in every mode, set `"worktree": { "auto": false }` in the config or `REDCODE_AUTO_WORKTREE=0` in the environment.
+
 ## 0.56.0
 
 ### Minor Changes

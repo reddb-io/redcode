@@ -36544,6 +36544,13 @@
             "properties": {
               "auto": {
                 "type": "boolean"
+              },
+              "location": {
+                "type": "string",
+                "enum": ["repo", "tmp"]
+              },
+              "tmpdir": {
+                "type": "string"
               }
             },
             "additionalProperties": false
