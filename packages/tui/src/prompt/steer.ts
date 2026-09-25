@@ -7,13 +7,16 @@
 // Enter queues; the steer key (alt+return) or `/steer <text>` steers. Idle, the steer key submits
 // like Enter, so it is always "send now"; shift+return always inserts a newline.
 //
-// A bare ESC CR is not a steer key press. Terminals without keyboard enhancements report
-// alt+return that way, but so does every setup that maps Shift+Enter to ESC CR to get a newline
-// out of a legacy terminal (the VS Code and Cursor `sendSequence` binding, Alacritty `chars`,
-// iTerm2 "Send Escape Sequence", tmux). Those two cannot be told apart, and a newline that turns
-// into a send loses a half-written prompt, so the legacy byte pair stays a newline. alt+return
-// steers when the terminal reports it unambiguously: kitty `CSI 13;3u` or modifyOtherKeys
-// `CSI 27;3;13~`.
+// A bare ESC CR is not a steer key press by default. Terminals without keyboard enhancements
+// report alt+return that way, but so does every setup that maps Shift+Enter to ESC CR to get a
+// newline out of a legacy terminal (the VS Code and Cursor `sendSequence` binding, Alacritty
+// `chars`, iTerm2 "Send Escape Sequence", tmux). Those two cannot be told apart from the bytes,
+// and a newline that turns into a send loses a half-written prompt, so the legacy byte pair stays
+// a newline until something rules the Shift+Enter mapping out: the terminal has already reported
+// Shift+Enter in a form of its own (`CSI 13;2u`, `CSI 27;2;13~`), or the config keeps alt+return
+// off `input_newline`. alt+return always steers when the terminal reports it unambiguously: kitty
+// `CSI 13;3u` or modifyOtherKeys `CSI 27;3;13~`. A multiplexer that forwards legacy bytes (zellij
+// without the kitty protocol, tmux) sends ESC CR for Alt+Enter, so this is the common case there.
 
 export type PromptIntent = "submit" | "steer"
 export type Delivery = "steer" | "queue"
@@ -38,7 +41,7 @@ export function steerKeyActive(input: { focused: boolean; disabled: boolean }) {
 }
 
 /** The parts of a key event that say how the terminal encoded it. */
-export type KeyReport = { raw?: string; sequence?: string; source?: string }
+export type KeyReport = { raw?: string; sequence?: string; source?: string; name?: string; shift?: boolean }
 
 /**
  * Whether a key event is the legacy ESC CR encoding, which a Shift+Enter mapped to ESC CR and a
@@ -47,6 +50,47 @@ export type KeyReport = { raw?: string; sequence?: string; source?: string }
 export function legacyAltReturn(event: KeyReport | undefined) {
   if (!event || event.source === "kitty") return false
   return (event.raw ?? event.sequence) === "\x1b\r"
+}
+
+/**
+ * Whether a key event is Shift+Enter in a form no alt+return shares (kitty `CSI 13;2u`,
+ * modifyOtherKeys `CSI 27;2;13~`). Once a terminal has sent one, its Shift+Enter is not mapped to
+ * ESC CR, so a later ESC CR can only be alt+return.
+ */
+export function distinctShiftReturn(event: KeyReport | undefined) {
+  if (!event || event.name !== "return" || event.shift !== true) return false
+  return (event.raw ?? event.sequence ?? "").startsWith("\x1b[")
+}
+
+/** Whether a set of bindings (as the keybind lookup returns them) includes alt+return. */
+export function bindsAltReturn(bindings: readonly { key: unknown }[]) {
+  return bindings.some((binding) => {
+    const key = binding.key
+    if (typeof key === "string")
+      return key.split(",").some((part) => /^(alt|meta|option)\+(return|enter)$/i.test(part.trim()))
+    if (typeof key !== "object" || key === null) return false
+    const stroke = key as { name?: unknown; meta?: unknown; ctrl?: unknown; shift?: unknown }
+    return (
+      (stroke.name === "return" || stroke.name === "enter") && stroke.meta === true && !stroke.ctrl && !stroke.shift
+    )
+  })
+}
+
+export type EscCrContext = {
+  /** The terminal has already sent Shift+Enter as `CSI 13;2u` or `CSI 27;2;13~` this run. */
+  shiftReturnReported: boolean
+  /** `input_newline` lists alt+return, so ESC CR has a newline to fall back to. */
+  newlineOnAltReturn: boolean
+}
+
+/** Whether a bare ESC CR can only be alt+return here (see the note at the top of the file). */
+export function escCrIsAltReturn(context: EscCrContext) {
+  return context.shiftReturnReported || !context.newlineOnAltReturn
+}
+
+/** Whether the steer key lets this press fall through to `input_newline`. */
+export function steerKeyRejects(event: KeyReport | undefined, context: EscCrContext) {
+  return legacyAltReturn(event) && !escCrIsAltReturn(context)
 }
 
 /** While the session works the steer key steers; idle, it submits exactly like Enter. */
@@ -128,8 +172,16 @@ export function altReturnUnreported(env: TerminalEnv) {
  * `legacyAltReturn`), which a terminal without the kitty protocol may not do, and some hosts keep
  * the key for themselves (`altReturnUnreported`).
  */
-export function steerKeyAmbiguous(steerKey: string, kittyKeyboard: boolean | undefined, env: TerminalEnv = {}) {
-  if (/(alt|meta|option)\+(return|enter)/i.test(steerKey)) return kittyKeyboard === false || altReturnUnreported(env)
+export function steerKeyAmbiguous(
+  steerKey: string,
+  kittyKeyboard: boolean | undefined,
+  env: TerminalEnv = {},
+  escCrSteers = false,
+) {
+  if (/(alt|meta|option)\+(return|enter)/i.test(steerKey)) {
+    if (altReturnUnreported(env)) return true
+    return kittyKeyboard === false && !escCrSteers
+  }
   if (kittyKeyboard !== false) return false
   return /shift\+(return|enter)/i.test(steerKey)
 }
@@ -144,11 +196,13 @@ export function busyHint(input: {
   kittyKeyboard?: boolean
   env?: TerminalEnv
   queued?: boolean
+  /** A bare ESC CR steers here (`escCrIsAltReturn`), so the legacy alt+return works too. */
+  escCrSteers?: boolean
 }) {
   const parts: string[] = []
   const what = input.queued === true ? "steer queued" : "steer"
   if (input.submitKey) parts.push(`${input.submitKey} queue`)
-  if (input.steerKey && !steerKeyAmbiguous(input.steerKey, input.kittyKeyboard, input.env))
+  if (input.steerKey && !steerKeyAmbiguous(input.steerKey, input.kittyKeyboard, input.env, input.escCrSteers))
     parts.push(`${input.steerKey} ${what}`)
   else parts.push(`/${STEER_SLASH} ${what}`)
   return parts.join(" · ")

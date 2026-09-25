@@ -12,7 +12,11 @@ import {
   steerKeyAmbiguous,
   steerKeyIntent,
   altReturnUnreported,
+  bindsAltReturn,
+  distinctShiftReturn,
+  escCrIsAltReturn,
   legacyAltReturn,
+  steerKeyRejects,
   stripSteerCommand,
 } from "../../src/prompt/steer"
 import { TuiKeybind } from "../../src/config/keybind"
@@ -38,6 +42,37 @@ describe("prompt delivery", () => {
     expect(legacyAltReturn({ raw: "\x1b[27;3;13~", sequence: "\x1b[27;3;13~", source: "raw" })).toBe(false)
     // Dispatched from the palette or a test, with no key event at all.
     expect(legacyAltReturn(undefined)).toBe(false)
+  })
+
+  test("a bare ESC CR steers once Shift+Enter is known to be something else", () => {
+    const escCr = { raw: "\x1b\r", sequence: "\x1b\r", source: "raw" }
+    const defaults = { shiftReturnReported: false, newlineOnAltReturn: true }
+    expect(steerKeyRejects(escCr, defaults)).toBe(true)
+    expect(steerKeyRejects(escCr, { ...defaults, shiftReturnReported: true })).toBe(false)
+    expect(steerKeyRejects(escCr, { ...defaults, newlineOnAltReturn: false })).toBe(false)
+    expect(escCrIsAltReturn(defaults)).toBe(false)
+    // An unambiguous report is never rejected.
+    expect(steerKeyRejects({ raw: "\x1b[13;3u", sequence: "\x1b[13;3u", source: "kitty" }, defaults)).toBe(false)
+  })
+
+  test("only a CSI report of shift+return counts as proof", () => {
+    expect(distinctShiftReturn({ name: "return", shift: true, raw: "\x1b[13;2u", source: "kitty" })).toBe(true)
+    expect(distinctShiftReturn({ name: "return", shift: true, raw: "\x1b[27;2;13~", source: "raw" })).toBe(true)
+    expect(distinctShiftReturn({ name: "return", shift: false, raw: "\r", source: "raw" })).toBe(false)
+    expect(distinctShiftReturn({ name: "return", shift: false, raw: "\x1b\r", source: "raw" })).toBe(false)
+    expect(distinctShiftReturn({ name: "return", shift: true })).toBe(false)
+    expect(distinctShiftReturn(undefined)).toBe(false)
+  })
+
+  test("reads alt+return out of input_newline bindings", () => {
+    expect(bindsAltReturn([{ key: "shift+return,ctrl+return,alt+return,ctrl+j" }])).toBe(true)
+    expect(bindsAltReturn([{ key: "meta+enter" }])).toBe(true)
+    expect(bindsAltReturn([{ key: { name: "return", meta: true } }])).toBe(true)
+    expect(bindsAltReturn([{ key: "shift+return" }, { key: "ctrl+j" }])).toBe(false)
+    expect(bindsAltReturn([{ key: "ctrl+alt+return" }])).toBe(false)
+    expect(bindsAltReturn([{ key: { name: "return", meta: true, shift: true } }])).toBe(false)
+    // The default input_newline keeps alt+return as the ESC CR newline.
+    expect(bindsAltReturn([{ key: TuiKeybind.parse({}).input_newline }])).toBe(true)
   })
 
   test("the steer key steers while the session works and submits when idle", () => {
@@ -131,6 +166,13 @@ describe("busy hint", () => {
     expect(
       busyHint({ submitKey: "return", steerKey: "alt+return", kittyKeyboard: false, env: { WT_SESSION: "x" } }),
     ).toBe("return queue · /steer steer")
+  })
+
+  test("names alt+return once a bare ESC CR steers, except where the host keeps the key", () => {
+    expect(busyHint({ submitKey: "return", steerKey: "alt+return", kittyKeyboard: false, escCrSteers: true })).toBe(
+      "return queue · alt+return steer",
+    )
+    expect(steerKeyAmbiguous("alt+return", false, { TERM_PROGRAM: "WezTerm" }, true)).toBe(true)
   })
 
   test("falls back to /steer when the steer key is unbound", () => {
