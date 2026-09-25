@@ -764,6 +764,10 @@ export type ModelSuggestion = {
   }>
   whyText: string
   delta?: ModelSuggestionDelta
+  /**
+   * When the current model's exhausted quota resets, in epoch milliseconds.
+   */
+  until?: number
 }
 
 export type QuestionOption = {
@@ -15397,7 +15401,7 @@ export type ModelSuggestionResolveError = ModelSuggestionResolveErrors[keyof Mod
 
 export type ModelSuggestionResolveResponses = {
   /**
-   * Answered
+   * Answered; false when the suggested model is no longer available
    */
   200: boolean
 }
