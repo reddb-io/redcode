@@ -29,11 +29,20 @@ export class Violation extends Schema.TaggedErrorClass<Violation>()("RepositoryG
   message: Schema.String,
 }) {}
 
+export const YOLO_INSTRUCTIONS = `YOLO mode is active: permission prompts, permission filters and the Git command policy are disabled for this local harness process. Work isolation still applies:
+1. Reading, searching and answering questions happen wherever the session is; they never create a worktree.
+2. In a Git repository, the first source creation, edit, deletion or non-read-only command that a writing session makes in the primary checkout makes the harness create a linked worktree at <repository root>/${WORKTREES}/<name> on a new branch <name>, based on the current HEAD, and move the session into it. The edit or command then runs against the same relative path inside that worktree, and the tool result reports it. Uncommitted work in the primary checkout stays there; the new worktree starts from HEAD.
+3. After the move, use the worktree's absolute paths for file tools and workdir; keep subsequent edits, tests and commits in that same worktree. Subagents inherit the session's worktree.`
+
+/** YOLO skips permission prompts and the Git command policy; it does not stop writing sessions from getting a worktree. */
 export const yolo = () => process.env.REDCODE_YOLO === "1"
-export const instructions = () =>
-  yolo()
-    ? "YOLO mode is active: repository restrictions, mandatory worktrees and permission filters are disabled for this local harness process. Follow the user's requested working directory and operations."
-    : INSTRUCTIONS
+/** `REDCODE_AUTO_WORKTREE=0` keeps writing sessions in the primary checkout, in every mode. */
+export const auto = () => process.env.REDCODE_AUTO_WORKTREE !== "0"
+export const instructions = () => {
+  if (!yolo()) return INSTRUCTIONS
+  if (auto()) return YOLO_INSTRUCTIONS
+  return "YOLO mode is active: repository restrictions, automatic worktrees and permission filters are disabled for this local harness process. Follow the user's requested working directory and operations."
+}
 
 const missing = (error: unknown) => {
   if (error && typeof error === "object" && "code" in error && error.code === "ENOENT") return undefined
@@ -357,8 +366,9 @@ const claiming = new Map<string, Promise<Claim | undefined>>()
 /**
  * Creates or reuses the session's worktree at `<primary root>/.red/worktrees/<slug>` on branch `<slug>`,
  * based on the primary checkout's HEAD. From inside the session's own worktree it returns that worktree.
- * Returns nothing in YOLO mode, outside Git, or from any other linked worktree. The primary checkout is
- * never stashed, reset or cleaned.
+ * YOLO mode gets one too. Returns nothing when `REDCODE_AUTO_WORKTREE=0`, outside Git, from any other
+ * linked worktree, or for an unborn repository in YOLO mode. The primary checkout is never stashed,
+ * reset or cleaned.
  */
 export function claim(input: { directory: string; session: string; name: string }) {
   const key = `${input.directory}\0${input.session}`
@@ -370,10 +380,13 @@ export function claim(input: { directory: string; session: string; name: string 
 }
 
 async function claimWorktree(input: { directory: string; session: string; name: string }): Promise<Claim | undefined> {
-  if (yolo()) return
+  if (!auto()) return
   const repository = await inspect(input.directory)
   if (!repository) return
   if (repository.linked) return adopted(repository, input.session)
+  // Without a first commit there is nothing to branch from. Outside YOLO the guard keeps refusing
+  // source edits; YOLO lets them land in the primary checkout rather than leave the session unable to write.
+  if (yolo() && (await git(repository.root, ["rev-parse", "--verify", "--quiet", "HEAD"])).exit !== 0) return
   await exclude(repository.commonDirectory)
   const base = path.join(repository.root, WORKTREES)
   const entries = await readdir(base).catch(() => [] as string[])

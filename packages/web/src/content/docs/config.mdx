@@ -654,6 +654,23 @@ Note that disabling snapshots means changes made by the agent cannot be rolled b
 
 ---
 
+### Worktrees
+
+In a Git repository, the first file write, edit, patch or non-read-only shell command that a writing session (such as `build`) makes in the primary checkout moves the session into its own worktree at `.red/worktrees/<name>`, on a new branch `<name>` based on `HEAD`. This happens with `--yolo` too: YOLO skips permission prompts, it does not skip isolation. A session that was already working in the primary checkout moves on its next write.
+
+Uncommitted changes in the primary checkout are never moved, stashed or reset. They stay where they are, and the new worktree starts from `HEAD`. Plan, design and explore sessions, and directories outside Git, never get a worktree. In YOLO mode, a repository with no commits yet keeps the session in the primary checkout.
+
+To keep sessions in the primary checkout, set `worktree.auto` to `false`, or set `REDCODE_AUTO_WORKTREE=0` in the environment. Either one turns automatic worktrees off in every mode.
+
+```json title="opencode.json"
+{
+  "$schema": "https://opencode.ai/config.json",
+  "worktree": { "auto": false }
+}
+```
+
+---
+
 ### Autoupdate
 
 OpenCode will automatically download any new updates when it starts up. You can disable this with the `autoupdate` option.
