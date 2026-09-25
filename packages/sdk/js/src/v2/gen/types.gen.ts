@@ -2006,6 +2006,7 @@ export type ProviderConfig = {
           }
           free: boolean
         }>
+        offer_order?: "price" | "custom"
       }
       /**
        * Variant-specific configuration
@@ -2453,6 +2454,7 @@ export type Model = {
   flat?: boolean
   canonical?: string
   offers?: Array<RouterOffer>
+  offerOrder?: "price" | "custom"
   pinOf?: string
 }
 
@@ -11471,6 +11473,7 @@ export type ProviderDiscoverResponses = {
           }
           free: boolean
         }>
+        offer_order?: "price" | "custom"
       }
     }>
     router?: RouterDetection
@@ -11627,6 +11630,7 @@ export type ProviderOpenaiCompatibleConnectResponses = {
           }
           free: boolean
         }>
+        offer_order?: "price" | "custom"
       }
     }>
     /**
@@ -11774,6 +11778,7 @@ export type ProviderNineRouterConnectResponses = {
           }
           free: boolean
         }>
+        offer_order?: "price" | "custom"
       }
     }>
     router?: RouterDetection
@@ -11909,6 +11914,7 @@ export type ProviderRedRouterConnectResponses = {
           }
           free: boolean
         }>
+        offer_order?: "price" | "custom"
       }
     }>
     router?: RouterDetection
