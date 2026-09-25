@@ -1853,7 +1853,7 @@ export function Prompt(props: PromptProps) {
                             {intelligenceOverride() ? "*" : ""}
                             <Show when={showVariant()}>
                               <span style={{ fg: fadeColor(theme.primary, variantMetaAlpha()) }}>
-                                {"·" + compactVariantLabel(variantLabel())}
+                                {"·" + compactVariantLabel(variantLabel() ?? "")}
                               </span>
                             </Show>
                           </text>
