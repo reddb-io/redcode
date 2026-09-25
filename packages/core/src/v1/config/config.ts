@@ -63,6 +63,13 @@ export const Info = Schema.Struct({
         description:
           "Move a writing session into its own worktree under .red/worktrees on its first edit or build command in a Git repository, --yolo included (default: true). Set to false to keep sessions in the primary checkout.",
       }),
+      location: Schema.optional(Schema.Literals(["repo", "tmp"])).annotate({
+        description:
+          "Where automatic worktrees go: 'repo' for <repository>/.red/worktrees/<name> (default), 'tmp' for <tmpdir>/redcode-worktrees/<repository>-<hash>/<name>. The --tmp flag and REDCODE_WORKTREE_LOCATION override it.",
+      }),
+      tmpdir: Schema.optional(Schema.String).annotate({
+        description: "Temporary directory for 'tmp' worktrees instead of the system one",
+      }),
     }),
   ).annotate({ description: "Session worktrees" }),
   plugin: Schema.optional(Schema.mutable(Schema.Array(ConfigPluginV1.Spec))),

@@ -436,7 +436,7 @@ export function summary(info: Info, now = Date.now()) {
   const pending = info.changes.tracked + info.changes.untracked
   const state = info.prunable ? "missing" : pending > 0 ? "dirty" : info.merged ? "merged" : "clean"
   return {
-    location: `⎇ ${info.primary ? "primary checkout" : (info.relative ?? info.path)}`,
+    location: `⎇ ${info.primary ? "primary checkout" : (info.relative ?? `${temporary(info.path) ? "tmp " : ""}${info.path}`)}`,
     branch: `⑂ ${info.branch ?? info.head.slice(0, 7)}`,
     size: `${info.sizePartial ? "≥" : ""}${bytes(info.size)}`,
     state: [
@@ -447,6 +447,9 @@ export function summary(info: Info, now = Date.now()) {
     ].join("·"),
   }
 }
+
+/** A `--tmp` session worktree, under `<tmp>/redcode-worktrees/`. */
+const temporary = (directory: string) => directory.split(/[\\/]/).includes(RepositoryGuard.TEMPORARY)
 
 /** Bytes as `512B`, `4.2K`, `31M`, `1.2G`: one decimal below ten units. */
 export function bytes(value: number) {

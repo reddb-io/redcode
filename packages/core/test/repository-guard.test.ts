@@ -248,6 +248,32 @@ describe("session worktree", () => {
     expect(await Bun.file(path.join(repo.root, "untracked.txt")).text()).toBe("keep me\n")
   })
 
+  test("creates a temporary worktree under the tmp base and reuses it", async () => {
+    await using tmp = await tmpdir()
+    const repo = await gitWorktree(tmp.path)
+    const system = path.join(tmp.path, "system-tmp")
+    const claim = await RepositoryGuard.claim({ directory: repo.root, session: "ses_t", name: "Fix it", tmp: system })
+    const base = RepositoryGuard.temporaryBase(await realpath(repo.root), system)
+    expect(path.basename(base)).toMatch(/^source-[0-9a-f]{8}$/)
+    const worktree = await realpath(path.join(base, "fix"))
+    expect(claim).toEqual({ root: await realpath(repo.root), worktree, branch: "fix", created: true })
+    expect(await Bun.file(path.join(worktree, "source.txt")).text()).toBe("committed\n")
+    expect(await Bun.file(path.join(repo.root, "source.txt")).text()).toBe("user changes\n")
+    expect(await Bun.file(path.join(repo.root, ".red", "worktrees", "fix", ".git")).exists()).toBe(false)
+    expect(
+      await Bun.file(path.join(repo.root, ".git", "info", "exclude"))
+        .text()
+        .catch(() => ""),
+    ).not.toContain(RepositoryGuard.WORKTREES)
+    expect(await RepositoryGuard.claim({ directory: repo.root, session: "ses_t", name: "Other", tmp: system })).toEqual(
+      { root: await realpath(repo.root), worktree, branch: "fix", created: false },
+    )
+    expect(await RepositoryGuard.claim({ directory: worktree, session: "ses_t", name: "Other" })).toMatchObject({
+      worktree,
+      created: false,
+    })
+  })
+
   test("keeps a YOLO session in an unborn repository's primary checkout", async () => {
     await using tmp = await tmpdir()
     const root = path.join(tmp.path, "fresh")

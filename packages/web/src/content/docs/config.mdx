@@ -669,6 +669,16 @@ To keep sessions in the primary checkout, set `worktree.auto` to `false`, or set
 }
 ```
 
+To keep worktrees out of the repository, put them in the temporary directory: pass `--tmp` to `redcode`, `redcode run` or `redcode serve`, or set `worktree.location` to `"tmp"` in the global config or in the project's `.red/code/config.jsonc` (or `redcode.json`). They go to `<tmpdir>/redcode-worktrees/<repository>-<hash>/<name>`, on the same `<name>` branch. `worktree.tmpdir` replaces the system temporary directory. `--tmp` and `REDCODE_WORKTREE_LOCATION=tmp` take precedence over the config. The sidebar marks these worktrees `tmp`.
+
+```jsonc title=".red/code/config.jsonc"
+{
+  "worktree": { "location": "tmp", "tmpdir": "/var/tmp" },
+}
+```
+
+Temporary worktrees are disposable. `/worktrees` and `redcode worktrees` list them with the others, and `clean` removes the merged or stale ones and prunes those whose directory is gone, for example after a reboot. A worktree with uncommitted changes is never removed without an explicit force.
+
 ---
 
 ### Autoupdate

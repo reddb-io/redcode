@@ -97,9 +97,9 @@ export function SidebarFooter(props: { api: TuiPluginApi; sessionID: string }) {
 
 /**
  * Project, worktree and branch as three short lines: the primary checkout's directory, then the
- * worktree (relative to the project when nested under it) and the branch. Outside Git only the
- * directory remains. A line too long for `width` loses its middle, so both its root and its
- * name stay readable.
+ * worktree (relative to the project when nested under it, marked `tmp` in the temporary directory)
+ * and the branch. Outside Git only the directory remains. A line too long for `width` loses its
+ * middle, so both its root and its name stay readable.
  */
 export function locationLines(input: {
   directory: string
@@ -111,24 +111,29 @@ export function locationLines(input: {
 }) {
   const nested = input.directory.match(/^(.*?)[\\/]\.red[\\/]worktrees[\\/]([^\\/]+)/)
   const prepared = input.directory.match(/^(.*?)[\\/]\.redcode-worktrees[\\/]([^\\/]+)[\\/]([^\\/]+)/)
+  // A temporary worktree (`--tmp`): `<tmp>/redcode-worktrees/<repository>-<hash>/<name>`.
+  const temporary =
+    nested || prepared ? undefined : input.directory.match(/^(.*?[\\/]redcode-worktrees[\\/][^\\/]+[\\/][^\\/]+)/)
   const project = nested
     ? nested[1]
     : prepared
       ? path.join(prepared[1], prepared[2])
-      : input.checkout && input.checkout !== "/" && contains(input.checkout, input.directory)
+      : input.checkout && input.checkout !== "/" && (temporary || contains(input.checkout, input.directory))
         ? input.checkout
         : input.directory
   const worktree = nested
     ? [".red", "worktrees", nested[2]].join("/")
     : prepared
       ? abbreviateHome(path.join(prepared[1], ".redcode-worktrees", prepared[2], prepared[3]), input.home)
-      : undefined
+      : temporary
+        ? abbreviateHome(temporary[1], input.home)
+        : undefined
   // truncateMiddle needs room for a character on each side of its ellipsis.
   const fit = (prefix: string, text: string) =>
     prefix + Locale.truncateMiddle(text, Math.max(3, input.width - prefix.length))
   return [
     fit("", abbreviateHome(project, input.home)),
-    ...(worktree || input.branch ? [fit("⎇ ", worktree ?? "primary checkout")] : []),
+    ...(worktree || input.branch ? [fit(temporary ? "⎇ tmp " : "⎇ ", worktree ?? "primary checkout")] : []),
     ...(input.branch ? [fit("⑂ ", input.branch)] : []),
   ]
 }
