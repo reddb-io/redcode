@@ -53,6 +53,7 @@ import type {
   UserMessage,
 } from "@reddb-io/redcode-sdk/v2"
 import { showToast } from "@/utils/toast"
+import { responseQuestionReason } from "@reddb-io/redcode-core/session/response-revision"
 import { downloadSessionExport, fetchSessionExport, sessionExportFilename } from "@/utils/session-export"
 import { getDirectory, getFilename } from "@reddb-io/redcode-core/util/path"
 import { Popover as KobaltePopover } from "@kobalte/core/popover"
@@ -1214,6 +1215,14 @@ export function MessageTimeline(props: {
               .map((part) => ({ message, part }))
           }),
         )
+        const reasons = createMemo(() => revisionRow().issues.map(responseQuestionReason))
+        // The issues with a confidence S1 gave them, shown as one line each once the note opens.
+        const confidences = createMemo(() =>
+          revisionRow().issues.flatMap((issue) => {
+            const confidence = revisionRow().confidence[issue]
+            return confidence === undefined ? [] : [{ issue, reason: responseQuestionReason(issue), confidence }]
+          }),
+        )
         return (
           <TimelineRowFrame row={revisionRow}>
             <div data-slot="session-turn-message-container" class="w-full px-4 md:px-5">
@@ -1228,8 +1237,8 @@ export function MessageTimeline(props: {
                 }}
               >
                 {language.t(
-                  revisionRow().issues.length ? "intelligence.revision.noteIssues" : "intelligence.revision.note",
-                  { issues: revisionRow().issues.join(", ") },
+                  reasons().length ? "intelligence.revision.noteIssues" : "intelligence.revision.note",
+                  { issues: reasons().join(", ") },
                 )}
                 {" · "}
                 {language.t(open() ? "intelligence.revision.hideOriginal" : "intelligence.revision.showOriginal")}
@@ -1239,6 +1248,16 @@ export function MessageTimeline(props: {
                   data-slot="session-turn-revision-original"
                   class="mt-2 border-l border-border-weak-base pl-3 opacity-80"
                 >
+                  <For each={confidences()}>
+                    {(item) => (
+                      <p data-slot="session-turn-revision-confidence" class="text-12-regular text-text-weak">
+                        {language.t("intelligence.revision.confidence", {
+                          percent: String(Math.round(item.confidence * 100)),
+                          reason: item.reason,
+                        })}
+                      </p>
+                    )}
+                  </For>
                   <For each={originals()}>
                     {(item) => <MessagePart part={item.part} message={item.message} onContentRendered={onSizeChange} />}
                   </For>

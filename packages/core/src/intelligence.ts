@@ -1545,6 +1545,11 @@ export const responseQuestions: Record<string, Intelligence.Question> = {
   },
 }
 
+// Plain-language reasons for `responseQuestions` live in `./session/response-revision`, the
+// import-free module the TUI and the web app both bundle, so a reason never pulls in this
+// server-only module (node builtins, Drizzle) through a client build.
+export { responseQuestionReasons, responseQuestionReason } from "./session/response-revision"
+
 /**
  * The response checks that apply to a turn, or undefined when there is nothing to review. Judging
  * tool evidence needs tool results and judging a premature finish needs tasks or an active goal;
@@ -1584,6 +1589,19 @@ export function responseRepair(evaluation: Intelligence.Evaluation | undefined, 
           return answer?.type === "noul" && answer.noul >= REPAIR_CONFIDENCE
         })
   return { repair: established.filter((id) => !repaired.includes(id)), unresolved: established }
+}
+
+/** The confidence S1 gave each named issue, from its `noul` answers, for surfaces to report alongside the reason. */
+export function responseRepairConfidence(
+  evaluation: Intelligence.Evaluation | undefined,
+  issues: ReadonlyArray<string>,
+) {
+  return Object.fromEntries(
+    issues.flatMap((id) => {
+      const answer = evaluation && evaluation.decision !== "unavailable" ? evaluation.answers[id] : undefined
+      return answer?.type === "noul" ? [[id, answer.noul] as const] : []
+    }),
+  )
 }
 
 /** The synthetic prompt that asks S2 to revise its final response for established issues. */
