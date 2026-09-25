@@ -93,6 +93,8 @@ type Input = {
   /** Admit every primary provider attempt, including retries, before starting the stream. */
   beforeAttempt?: () => Effect.Effect<boolean>
   onFailure?: (reason: string) => Effect.Effect<void>
+  /** A provider attempt failed and is about to be retried. */
+  onRetry?: () => Effect.Effect<void>
   /** The handle writes a compaction summary: every phase it reports is `compacting`. */
   compacting?: boolean
 }
@@ -934,6 +936,7 @@ const layer = Layer.effect(
                         next: info.next,
                       }),
                     ),
+                    Effect.andThen(input.onRetry?.() ?? Effect.void),
                   ),
               }),
             ),

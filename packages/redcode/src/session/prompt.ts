@@ -186,6 +186,7 @@ import { Todo } from "./todo"
 import { SessionTodo } from "@reddb-io/redcode-core/session/todo"
 import { SessionGoal } from "./goal"
 import { GoalRuntime } from "./goal-runtime"
+import { SessionModelSuggestion } from "./model-suggestion"
 import { SessionSpend } from "./spend"
 import { SessionBudget } from "./budget"
 import { errorMessage } from "@/util/error"
@@ -303,6 +304,7 @@ const layer = Layer.effect(
     const monitors = yield* MonitorRuntime.Service
     const todos = yield* Todo.Service
     const goals = yield* GoalRuntime.Service
+    const suggestions = yield* SessionModelSuggestion.Service
     const spend = yield* SessionSpend.Service
     const limits = yield* ModelLimit.Service
     const intelligence = yield* Intelligence.Service
@@ -2910,6 +2912,8 @@ const layer = Layer.effect(
               reconnectAttempt: reconnects + 1,
               beforeAttempt: () => goals.beginTurn(sessionID),
               onFailure: (reason) => goals.block(sessionID, `Provider request failed: ${reason}`),
+              // Subagents run the model their agent names; only the person's own session is offered another.
+              onRetry: () => (session.parentID ? Effect.void : suggestions.failure({ sessionID, model })),
             })
             .pipe(Effect.onInterrupt(() => finalizeInterruptedAssistant))
 
@@ -2981,6 +2985,17 @@ const layer = Layer.effect(
               Effect.provideService(RuntimeFlags.Service, flags),
               Effect.provideService(OperationHookBridge.Service, hooks),
             )
+
+            // Only suggests: a card asks the person, and nothing switches unless they accept.
+            if (!session.parentID)
+              yield* suggestions.observe({
+                sessionID,
+                model,
+                messages: msgs,
+                tools: Object.keys(tools).length > 0,
+                finished: lastFinished,
+                usable: usableTokens({ cfg: yield* config.get(), model, outputTokenMax: flags.outputTokenMax }),
+              })
 
             const selectionID = `mcp-selection:${Intelligence.fingerprint({ tools: mcpCatalog, request: realUser?.info.id, batch: batch?.info.id })}`
             if (mcpCatalog.length && realUser) {
@@ -3299,6 +3314,11 @@ const layer = Layer.effect(
                 return "break" as const
               }
             }
+
+            const failed = handle.message.error
+            if (!session.parentID && SessionV1.APIError.isInstance(failed))
+              yield* suggestions.failure({ sessionID, model, status: failed.data.statusCode })
+            if (!session.parentID && !failed && handle.message.finish) yield* suggestions.recovered(sessionID)
 
             if (result === "stop") {
               // A loop-guard stop breaks here, before the goal loop below, so an active goal would
@@ -3785,6 +3805,7 @@ export const node = LayerNode.make({
   deps: [
     DesignStudio.node,
     GoalRuntime.node,
+    SessionModelSuggestion.node,
     SessionSpend.node,
     SessionPlan.node,
     SessionGuardLog.node,

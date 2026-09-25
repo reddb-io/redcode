@@ -82,6 +82,7 @@ import { lazy } from "@/util/lazy"
 import { CorsConfig, isAllowedCorsOrigin, type CorsOptions } from "@reddb-io/redcode-server/cors"
 import { serveUIEffect } from "@/server/shared/ui"
 import { GoalRuntime } from "@/session/goal-runtime"
+import { SessionModelSuggestion } from "@/session/model-suggestion"
 import { SessionSpend } from "@/session/spend"
 import { ServerAuth } from "@/server/auth"
 import { InstanceHttpApi, RootHttpApi } from "./api"
@@ -116,6 +117,7 @@ import { sessionHandlers } from "./handlers/session"
 import { syncHandlers } from "./handlers/sync"
 import { tuiHandlers } from "./handlers/tui"
 import { redskilledHandlers } from "./handlers/redskilled"
+import { modelSuggestionHandlers } from "./handlers/model-suggestion"
 import { baseHandlers } from "@reddb-io/redcode-server/handlers"
 import { designHostHandlers } from "./handlers/design-host"
 import { buildLocationServiceMap, LocationServiceMap } from "@reddb-io/redcode-core/location-services"
@@ -186,6 +188,7 @@ const instanceApiRoutes = HttpApiBuilder.layer(InstanceHttpApi).pipe(
     syncHandlers,
     tuiHandlers,
     redskilledHandlers,
+    modelSuggestionHandlers,
     workspaceHandlers,
   ]),
 )
@@ -315,6 +318,7 @@ const app = LayerNode.group([
   ProjectCopy.node,
   PtyTicket.node,
   GoalRuntime.node,
+  SessionModelSuggestion.node,
   SessionSpend.node,
   SessionGoal.node,
   SessionPlan.node,

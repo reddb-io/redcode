@@ -110,6 +110,7 @@ import { getScrollAcceleration } from "../../util/scroll"
 import { collapseToolOutput } from "../../util/collapse-tool-output"
 import { usePluginRuntime } from "../../plugin/runtime"
 import { DialogRetryAction } from "../../component/dialog-retry-action"
+import { ModelSuggestionCard } from "../../component/model-suggestion"
 import { getRevertDiffFiles } from "../../util/revert-diff"
 import { appliedLabel } from "../../util/reasoning"
 import { OPENCODE_BASE_MODE, useBindings, useCommandShortcut, useOpencodeKeymap } from "../../keymap"
@@ -1646,6 +1647,7 @@ export function Session() {
                   <SubagentFooter />
                 </Show>
                 <VerboseIndicator />
+                <ModelSuggestionCard sessionID={route.sessionID} visible={visible()} />
                 <Show when={visible()}>
                   <pluginRuntime.Slot
                     name="session_prompt"
