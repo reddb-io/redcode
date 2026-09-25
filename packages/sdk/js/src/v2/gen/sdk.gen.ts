@@ -330,6 +330,8 @@ import type {
   SessionGetResponses,
   SessionGoalBudgetErrors,
   SessionGoalBudgetResponses,
+  SessionGoalCommandErrors,
+  SessionGoalCommandResponses,
   SessionGoalControl,
   SessionGoalDropErrors,
   SessionGoalDropResponses,
@@ -5061,6 +5063,45 @@ export class Session2 extends HeyApiClient {
     )
     return (options?.client ?? this.client).post<SessionGoalBudgetResponses, SessionGoalBudgetErrors, ThrowOnError>({
       url: "/session/{sessionID}/goal/budget",
+      ...options,
+      ...params,
+      headers: {
+        "Content-Type": "application/json",
+        ...options?.headers,
+        ...params.headers,
+      },
+    })
+  }
+
+  /**
+   * Resolve a /goal command
+   *
+   * Reads what the user typed after /goal without acting on it. An explicit subcommand (set, pause, resume, drop, budget, status) resolves directly; other text is a new goal in single reasoning, and in dual reasoning System One classifies it. Dropping or replacing a goal on a reading below 0.85 confidence, or any unavailable reading, returns options to ask the user instead of an action.
+   */
+  public goalCommand<ThrowOnError extends boolean = false>(
+    parameters: {
+      sessionID: string
+      directory?: string
+      workspace?: string
+      text?: string
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "path", key: "sessionID" },
+            { in: "query", key: "directory" },
+            { in: "query", key: "workspace" },
+            { in: "body", key: "text" },
+          ],
+        },
+      ],
+    )
+    return (options?.client ?? this.client).post<SessionGoalCommandResponses, SessionGoalCommandErrors, ThrowOnError>({
+      url: "/session/{sessionID}/goal/command",
       ...options,
       ...params,
       headers: {
@@ -9944,6 +9985,7 @@ export class Intelligence extends HeyApiClient {
         | "subagent_result"
         | "design_target"
         | "design_system_detect"
+        | "goal_command"
       subjectID?: string
       candidateID?: string
       decision?: "accepted" | "needs_revision" | "inconclusive" | "unavailable"

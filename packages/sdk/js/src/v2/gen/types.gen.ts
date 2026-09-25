@@ -3110,6 +3110,20 @@ export type SessionGoalSetResult = {
   warnings?: Array<string>
 }
 
+export type SessionGoalCommandAction = "set" | "pause" | "resume" | "drop" | "budget" | "status"
+
+export type SessionGoalCommand = {
+  action?: SessionGoalCommandAction
+  /**
+   * When the user has to choose, the likely interpretations, the most likely first
+   */
+  options: Array<SessionGoalCommandAction>
+  /**
+   * How sure System One was of its reading
+   */
+  confidence?: number | "NaN" | "Infinity" | "-Infinity" | "Infinity" | "-Infinity" | "NaN"
+}
+
 export type SessionBudget = {
   limits: SpendLimits
   override: SpendLimits
@@ -7830,6 +7844,7 @@ export type IntelligenceEvaluation = {
     | "subagent_result"
     | "design_target"
     | "design_system_detect"
+    | "goal_command"
   kind?: "classification" | "gate"
   subjectID?: string
   candidateID?: string
@@ -13058,6 +13073,45 @@ export type SessionGoalBudgetResponses = {
 }
 
 export type SessionGoalBudgetResponse = SessionGoalBudgetResponses[keyof SessionGoalBudgetResponses]
+
+export type SessionGoalCommandData = {
+  body?: {
+    /**
+     * What the user typed after /goal
+     */
+    text: string
+  }
+  path: {
+    sessionID: string
+  }
+  query?: {
+    directory?: string
+    workspace?: string
+  }
+  url: "/session/{sessionID}/goal/command"
+}
+
+export type SessionGoalCommandErrors = {
+  /**
+   * Bad request
+   */
+  400: BadRequestError
+  /**
+   * NotFoundError
+   */
+  404: NotFoundError
+}
+
+export type SessionGoalCommandError = SessionGoalCommandErrors[keyof SessionGoalCommandErrors]
+
+export type SessionGoalCommandResponses = {
+  /**
+   * What the /goal text asks for, or what to ask the user
+   */
+  200: SessionGoalCommand
+}
+
+export type SessionGoalCommandResponse = SessionGoalCommandResponses[keyof SessionGoalCommandResponses]
 
 export type SessionBudgetData = {
   body?: never
@@ -19512,6 +19566,7 @@ export type IntelligenceHistoryData = {
       | "subagent_result"
       | "design_target"
       | "design_system_detect"
+      | "goal_command"
     subjectID?: string
     candidateID?: string
     decision?: "accepted" | "needs_revision" | "inconclusive" | "unavailable"
