@@ -119,7 +119,7 @@ describe("/queue", () => {
     const result = stripSlashCommand("queue", input, [file])
     expect(result?.text).toBe("check @a.ts")
     expect(result?.parts).toEqual([
-      { ...file, source: { ...file.source, text: { value: "@a.ts", start: 5, end: 10 } } },
+      { ...file, source: { ...file.source, text: { value: "@a.ts", start: 6, end: 11 } } },
     ])
     expect(stripSlashCommand("queue", "/steer check", [file])).toBeUndefined()
   })
