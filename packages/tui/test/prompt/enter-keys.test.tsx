@@ -71,7 +71,8 @@ for (const busy of [false, true]) {
       if (url.pathname === "/session/status") return json(busy ? { [session.id]: { type: "busy" } } : {})
       if (url.pathname === "/config/providers") return json({ providers: [provider], default: { mock: "model" } })
       if (url.pathname === "/agent") return json([{ name: "build", mode: "primary", permission: [], options: {} }])
-      if (url.pathname.includes("prompt")) {
+      // Sends only: listing the session's pending prompts is not one.
+      if (/\/prompt(_async|\/)/.test(url.pathname)) {
         prompts.push(url.pathname)
         return json({})
       }
