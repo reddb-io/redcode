@@ -64,26 +64,27 @@ function harness(input: {
 }
 
 describe("/goal in single reasoning", () => {
-  const cases: Array<[string, string[], unknown?]> = [
-    ["/goal pause", ["POST /goal/pause"]],
-    ["/goal resume", ["POST /goal/resume"]],
-    ["/goal drop", ["POST /goal/drop"]],
-    ["/goal budget 5$", ["POST /goal/budget"], { max_cost_usd: 5 }],
-    ["/goal budget 200k tokens", ["POST /goal/budget"], { max_tokens: 200_000 }],
-    ["/goal status", ["GET /goal"]],
-    ["/goal make the tests pass", ["POST /goal"], { text: "make the tests pass", agent: "build" }],
-    ["/goal set pause the rollout", ["POST /goal"], { text: "pause the rollout", agent: "build" }],
+  // Every case has the same arity: bun passes a `done` callback in place of a missing tuple element.
+  const cases: Array<[string, { paths: string[]; body?: unknown }]> = [
+    ["/goal pause", { paths: ["POST /goal/pause"] }],
+    ["/goal resume", { paths: ["POST /goal/resume"] }],
+    ["/goal drop", { paths: ["POST /goal/drop"] }],
+    ["/goal budget 5$", { paths: ["POST /goal/budget"], body: { max_cost_usd: 5 } }],
+    ["/goal budget 200k tokens", { paths: ["POST /goal/budget"], body: { max_tokens: 200_000 } }],
+    ["/goal status", { paths: ["GET /goal"] }],
+    ["/goal make the tests pass", { paths: ["POST /goal"], body: { text: "make the tests pass", agent: "build" } }],
+    ["/goal set pause the rollout", { paths: ["POST /goal"], body: { text: "pause the rollout", agent: "build" } }],
     // Retired spellings keep working.
-    ["/goal-pause", ["POST /goal/pause"]],
-    ["/goal-resume", ["POST /goal/resume"]],
-    ["/goal-drop", ["POST /goal/drop"]],
-    ["/goal-budget $3", ["POST /goal/budget"], { max_cost_usd: 3 }],
+    ["/goal-pause", { paths: ["POST /goal/pause"] }],
+    ["/goal-resume", { paths: ["POST /goal/resume"] }],
+    ["/goal-drop", { paths: ["POST /goal/drop"] }],
+    ["/goal-budget $3", { paths: ["POST /goal/budget"], body: { max_cost_usd: 3 } }],
   ]
-  test.each(cases)("%p", async (text, paths, body) => {
+  test.each(cases)("%p", async (text, expected) => {
     const app = harness({ reasoning: "single" })
     await app.run(text)
-    expect(app.paths()).toEqual(paths)
-    if (body !== undefined) expect(app.requests.at(-1)?.body).toEqual(body)
+    expect(app.paths()).toEqual(expected.paths)
+    if (expected.body !== undefined) expect(app.requests.at(-1)?.body).toEqual(expected.body)
     expect(app.asked).toEqual([])
   })
 
