@@ -1366,7 +1366,7 @@ export function Prompt(props: PromptProps) {
     // `/goal <text>`, its subcommands and the retired `/goal-*` spellings; a server command with the
     // same name keeps precedence.
     const goalCommand =
-      steerCommand || sync.data.command.some((x) => x.name === inputText.slice(1).split(/\s/)[0])
+      slashDelivery || sync.data.command.some((x) => x.name === inputText.slice(1).split(/\s/)[0])
         ? undefined
         : GoalCommand.slash(inputText)
 
