@@ -986,7 +986,13 @@ describe("SessionRunnerLLM", () => {
       expect(requests[1]?.tools.length).toBeGreaterThan(0)
       expect(requests[1]?.toolChoice).toBeUndefined()
       expect(JSON.stringify(requests[1]?.system)).toContain("finish already authorized work")
-      expect(JSON.stringify(yield* session.context(sessionID))).toContain("Unresolved issues: omission")
+      const context = yield* session.context(sessionID)
+      expect(JSON.stringify(context)).toContain("Unresolved issues: omission")
+      // Surfaces fold the revision and the answer it replaced into one reply by this mark.
+      const repair = context.find(
+        (message) => message.type === "synthetic" && message.text.startsWith(Intelligence.RESPONSE_REPAIR),
+      )
+      expect(repair?.metadata).toEqual({ responseRepair: { issues: ["omission"] } })
       expect(
         intelligenceInputs.filter((input) => input.operation === "response_quality").map((input) => input.attempt),
       ).toEqual([0, 1])

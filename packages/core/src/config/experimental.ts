@@ -80,8 +80,24 @@ export const ToolSearch = Schema.Struct({
     }),
 }).annotate({ description: "Progressive discovery of MCP and Design tools through the tool_search tool." })
 
+export const SubagentLimits = Schema.Struct({
+  concurrent: PositiveInt.pipe(Schema.optional).annotate({
+    description:
+      "How many foreground subagents one session may run at the same time; past it the task tool refuses and asks the model to wait for one (default: 4)",
+  }),
+  per_request: PositiveInt.pipe(Schema.optional).annotate({
+    description:
+      "How many new subagents one session may start for a single user message; past it the task tool refuses and asks the model to finish with what it has (default: 12)",
+  }),
+}).annotate({ description: "Fan-out caps on the task tool. Nesting depth is bounded separately by subagent_depth." })
+
 export class Experimental extends Schema.Class<Experimental>("ConfigV2.Experimental")({
   policies: Policy.pipe(Schema.Array, Schema.optional),
+  subagent_limits: SubagentLimits.pipe(Schema.optional),
+  background_subagents_max: PositiveInt.pipe(Schema.optional).annotate({
+    description:
+      "How many background subagents one session may have running at once; past it the task tool refuses and asks the model to wait or run the task inline (default: 4)",
+  }),
   loop_guard: LoopGuard.pipe(Schema.optional),
   stop_loss: StopLoss.pipe(Schema.optional),
   tool_timeout: ToolTimeout.pipe(Schema.optional),
