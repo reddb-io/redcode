@@ -387,6 +387,9 @@ export function routerInfo(
   const flat = item.flat === true || (idFormat === "flat" && item.owned_by === "combo" && !!offers?.length)
   const canonical = typeof item.canonical === "string" && item.canonical.trim() ? item.canonical.trim() : undefined
   // Annotated so the literal is not widened to string inside the object below.
+  const order: ConfigProviderV1.RouterOfferOrder | undefined =
+    item.offer_order === "price" ? "price" : item.offer_order === "custom" ? "custom" : undefined
+  // Annotated so the literal is not widened to string inside the object below.
   const basis: ConfigProviderV1.RouterParametersBasis | undefined =
     item.parameters_basis === "lead" ? "lead" : item.parameters_basis === "strictest" ? "strictest" : undefined
   const info = {
@@ -404,7 +407,7 @@ export function routerInfo(
     ...(flat ? { flat: true } : {}),
     ...(canonical ? { canonical } : {}),
     ...(offers?.length ? { offers } : {}),
-    ...(item.offer_order === "price" || item.offer_order === "custom" ? { offer_order: item.offer_order } : {}),
+    ...(order ? { offer_order: order } : {}),
   }
   const owner = typeof item.owned_by === "string" && item.owned_by ? item.owned_by : undefined
   if (owner && (owner === "combo" || Object.keys(info).length)) return { owned_by: owner, ...info }
