@@ -112,10 +112,10 @@ describe("/queue", () => {
     const file = {
       type: "file",
       url: "file:///a.ts",
-      source: { type: "file", path: "a.ts", text: { value: "@a.ts", start: 12, end: 17 } },
+      source: { type: "file", path: "a.ts", text: { value: "@a.ts", start: 13, end: 18 } },
     }
     const input = "/queue check @a.ts"
-    expect(input.slice(12, 17)).toBe("@a.ts")
+    expect(input.slice(13, 18)).toBe("@a.ts")
     const result = stripSlashCommand("queue", input, [file])
     expect(result?.text).toBe("check @a.ts")
     expect(result?.parts).toEqual([
