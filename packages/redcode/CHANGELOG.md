@@ -1,5 +1,17 @@
 # opencode
 
+## 0.56.0
+
+### Minor Changes
+
+- 70e1b00: Suggest a better RedRouter model or combo, and switch only when you say so. With a RedRouter that serves its MCP server (schema 2 or later, red-router v0.28.0), Redcode notices when the session attaches images the model cannot see, needs tools it cannot call, nears its context limit, keeps failing at the provider (or, with schema 3, its provider's quotas are nearly used up), or has a much cheaper equivalent. It asks the router's `recommend_models` and shows a card in the TUI and the web app: `Suggest: <route> — <why>`, the price, context and capability deltas, and switch / keep (`/switch-model`, `/keep-model`). Nothing switches until you accept; keep silences that trigger for the session, and a suggestion never loses a capability the session needs. Turn it off with `experimental.model_suggestions: false`.
+- 0e5cd0e: Know what a RedRouter key may do, and use the router's MCP server with it. Connecting or refreshing a RedRouter reads the key's role (`standard` or `admin`) and its MCP server from the model list's `x-redrouter-key-role` / `x-redrouter-mcp` headers, or from `GET /v1/key` on routers that do not send them, and saves both on the connection. The TUI's `/connect` and `/setup` show "standard key" / "admin key", and so do the web app's provider settings. Each connected RedRouter's MCP server is registered automatically: it is named after the provider (`red-router`), reached over streamable HTTP with the connection's own key, re-listed when the router's catalog is refreshed, and removed with the provider. An MCP server you declare under the same name wins. RedRouter's key-management tools (`create_api_key`, `list_api_keys`, and `get_usage` for another key) are protected actions: they ask every time, allow once only, and are never approved by `--yolo`, allow rules or a client's auto-approve.
+- 92f2a5d: While the agent works, Enter now steers: your prompt reaches the agent at its next step instead of waiting for the turn to end. Alt+Enter (new `input_queue` keybind, in every encoding: kitty `CSI 13;3u`, modifyOtherKeys `CSI 27;3;13~`, and `ESC CR` once the terminal has reported Shift+Enter on its own) or the new `/queue <text>` command queues it for after the turn instead. When the session is idle, Enter and Alt+Enter both just send. With an empty prompt, Enter steers the most recently queued prompt. The busy hint now reads `enter steer · alt+enter queue`, or names `/queue` where Alt+Enter may not arrive. The web app follows the same rules: Enter steers, and Alt+Enter or `/queue <text>` queues. `input_steer` is now unbound by default; a `tui.json` that still sets `"input_steer": "alt+return"` keeps Alt+Enter steering, so remove that line to get the new Alt+Enter queue. `redcode run`, ACP, and SDK callers are unchanged: a prompt without a delivery still steers.
+
+### Patch Changes
+
+- 94834db: Keep the directory, worktree and branch lines visible in the session sidebar: they move above the task list while tasks are shown, a long task list is cut short with a "+N more" line, LSP and MCP give way first on short terminals, and long paths lose their middle instead of their start on narrow sidebars.
+
 ## 0.55.1
 
 ### Patch Changes

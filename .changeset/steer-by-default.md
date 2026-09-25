@@ -1,5 +1,0 @@
----
-"@reddb-io/redcode": minor
----
-
-While the agent works, Enter now steers: your prompt reaches the agent at its next step instead of waiting for the turn to end. Alt+Enter (new `input_queue` keybind, in every encoding: kitty `CSI 13;3u`, modifyOtherKeys `CSI 27;3;13~`, and `ESC CR` once the terminal has reported Shift+Enter on its own) or the new `/queue <text>` command queues it for after the turn instead. When the session is idle, Enter and Alt+Enter both just send. With an empty prompt, Enter steers the most recently queued prompt. The busy hint now reads `enter steer · alt+enter queue`, or names `/queue` where Alt+Enter may not arrive. The web app follows the same rules: Enter steers, and Alt+Enter or `/queue <text>` queues. `input_steer` is now unbound by default; a `tui.json` that still sets `"input_steer": "alt+return"` keeps Alt+Enter steering, so remove that line to get the new Alt+Enter queue. `redcode run`, ACP, and SDK callers are unchanged: a prompt without a delivery still steers.
