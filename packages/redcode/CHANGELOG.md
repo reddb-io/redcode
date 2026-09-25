@@ -1,5 +1,20 @@
 # opencode
 
+## 0.54.5
+
+### Patch Changes
+
+- 340daf0: Parallel `redcode acp` agents sharing one database no longer lose a turn to "Failed to execute statement": a write outside a transaction that finds another process holding the lock now waits and tries again, like transactions already did. When a statement does fail, the error names the statement and the SQLite code, for example "Failed to execute statement (INSERT, SQLITE_BUSY: database is locked)". Set `REDCODE_DB` per process to give an agent its own database.
+- f4f1c39: The legacy runtime now runs the `SubagentStart` and `SubagentStop` hooks for subagents, as the V2 runtime does. Context a `SubagentStart` hook returns is added to the subagent's brief. A `SubagentStop` hook that blocks sends its reason back to the subagent once.
+- d538ea4: Show a model's router route as a title suffix in `/model` when another catalog entry has the same name, and widen the `/model` and provider dialogs so routed model names and descriptions stop getting cut off.
+- 6239b99: Use `»` between router and upstream hops in model route labels (TUI `/model`, `/setup`, web settings and model pickers), keeping `·` only before the model name, so chains like `RedRouter » RedRouter » OpenCode Zen (via OpenCode Go) · JEV 1.13` are easier to scan.
+- ca9ce8e: A connected RedRouter now decides which System One evaluators it offers: setup, the web settings and the CLI list one option per model in the router's `/v1/models/systemone` catalog, named after the upstream that serves it, including models reached through another account (for example `RedRouter · OpenCode Zen (via OpenCode Go) · JEV 1.13`). The built-in System One offers now describe direct providers only, and a RedRouter connected under a direct provider's id is no longer offered as that provider.
+- 9c22d47: System One models served through chained routers (a RedRouter connected to another RedRouter, at any depth) are now recognised and labelled with their full route, for example `RedRouter → RedRouter → OpenCode Zen (via OpenCode Go) · JEV 1.13`. Each route is listed once, the router's recommendation first, and choosing one keeps the exact routed id the connected router expects. Chat model pickers name every router hop of a nested model and match it with the same model connected directly.
+- 7951d20: Pickers such as `/setup` no longer jump the cursor back to an outdated option when their list finishes loading or right after you move it, so Enter selects the highlighted option.
+- 9ea46cb: The V2 session runtime now matches the legacy runtime in five places. It keeps a subagent's result verdict and its last 20 stop-loss checkpoints in the child session's metadata, so the sidebar and task rows show them. It reads the subagent caps from the legacy config keys `subagent_depth`, `experimental.subagent_limits` and `experimental.background_subagents_max`, also when the config file uses the legacy format. It marks an S1 response repair so surfaces show the revised answer as one reply. It also starts design-system identification as soon as the design agent runs or S1 routes the request as design.
+- 0b991b6: The web session now presents an S1-revised answer as one reply, like the TUI: the revision reads as the answer, a "↻ revised after S1 review (issues) · show original" footnote opens the superseded text on demand, and "Revising…" shows while the revision is on its way. A created design's transcript card on the web shows its chip and the design-system line (kind, paths, confidence, verified or unverified).
+- 1c9e05e: On Windows, cross-process file locks (config and plugin updates, diagnostic log rotation, TUI state, package installs) no longer fail with `EPERM`, `EBUSY` or `ENOTEMPTY` when another process is checking the same lock while it is released; the waiter retries and the owner finishes removing the lock instead of leaving it held until it goes stale.
+
 ## 0.54.4
 
 ### Patch Changes
