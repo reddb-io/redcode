@@ -72,3 +72,22 @@ describe("shell polling guard without monitors", () => {
     expect(lines(refusal)).toEqual([{ command: "npm test" }])
   })
 })
+
+describe("ShellPolling.observes", () => {
+  const cases: Array<[string, boolean]> = [
+    ["gh run view 42 --json status,conclusion,jobs", true],
+    ["gh pr checks 7", true],
+    ["cd infra && kubectl get pods -n web", true],
+    ["gh run view 42 --json status | jq -r .status", true],
+    ["gh pr merge 7 --squash", false],
+    ["gh run watch 42", false],
+    ["while true; do gh run view 42; sleep 60; done", false],
+    ["curl -X POST https://api.example.com/jobs", false],
+    ["adb devices -l; lsusb", false],
+    ["git status", false],
+    ["bun test", false],
+  ]
+  test.each(cases)("%s", (command, expected) => {
+    expect(ShellPolling.observes(command)).toBe(expected)
+  })
+})

@@ -7537,7 +7537,7 @@ unix(
 )
 
 unix(
-  "in single reasoning the stop-loss hints once, then stops a check that keeps coming back the same",
+  "in single reasoning the stop-loss hints twice, then stops a check that keeps coming back the same",
   () =>
     Effect.gen(function* () {
       // With the loop guard off, as yolo used to leave it, nothing else would ever end this turn.
@@ -7560,18 +7560,64 @@ unix(
 
       const result = yield* awaitWithTimeout(prompt.loop({ sessionID: chat.id }), "the turn never ended", "30 seconds")
 
-      // A hint after the third, the cooldown, then a stop once it persisted to the stop threshold.
-      expect(yield* llm.calls).toBe(6)
+      // A hint after the third, the cooldown, a second hint, and a stop only when it persisted past both.
+      expect(yield* llm.calls).toBe(9)
       const bodies = (yield* llm.hits).map((hit) => JSON.stringify(hit.body))
       expect(bodies[2]).not.toContain(SessionStopLoss.STEER)
       expect(bodies[3]).toContain(SessionStopLoss.STEER)
+      expect(bodies[6]!.split(SessionStopLoss.STEER).length - 1).toBe(2)
       const final = stopLossNotice(result)
       expect(final.text).toStartWith("**Stop-loss (unverified)")
       expect(final.text).toContain("I stopped here")
+      expect(final.text).toContain("Reply `c` to continue from here")
       expect(final.notice).toMatchObject({ action: "stop", verified: false })
       const trips = (yield* guards.recent()).filter((trip) => trip.sessionID === chat.id && trip.guard === "stop_loss")
-      expect(trips.map((trip) => trip.action).toReversed()).toEqual(["correct", "stop"])
+      expect(trips.map((trip) => trip.action).toReversed()).toEqual(["correct", "correct", "stop"])
       expect(yield* intelligence.history(chat.id, { operation: "session_progress" })).toEqual([])
+      yield* intelligence.save({ settings: saved })
+    }),
+  60_000,
+)
+
+unix(
+  "in single reasoning the stop-loss points a repeated outside status check at a monitor, and stops it only after two hints",
+  () =>
+    Effect.gen(function* () {
+      // The loop guard would refuse the identical call on its own; this is about the stop-loss alone.
+      const { llm } = yield* useServerConfig((url) => ({ ...providerCfg(url), experimental: { loop_guard: false } }))
+      const intelligence = yield* Intelligence.Service
+      const saved = yield* intelligence.read()
+      yield* intelligence.save({ settings: { ...saved, reasoning: "single" } })
+      const prompt = yield* SessionPrompt.Service
+      const sessions = yield* Session.Service
+      const guards = yield* SessionGuardLog.Service
+      const chat = yield* sessions.create({ title: "Waiting on CI, single" })
+      yield* prompt.prompt({
+        sessionID: chat.id,
+        agent: "build",
+        noReply: true,
+        parts: [{ type: "text", text: "Ship the release once CI is green" }],
+      })
+      // A status CLI whose job is still running: it answers the same every time it is asked.
+      const run = { command: "gh() { printf 'in_progress\\n'; }; gh run view 42 --json status" }
+      for (let i = 0; i < 10; i++) yield* llm.tool("bash", run)
+      yield* llm.text("never reached")
+
+      const result = yield* awaitWithTimeout(prompt.loop({ sessionID: chat.id }), "the turn never ended", "30 seconds")
+
+      // Waiting is steered from the second identical answer, again after the cooldown, and only then stopped.
+      expect(yield* llm.calls).toBe(8)
+      const bodies = (yield* llm.hits).map((hit) => JSON.stringify(hit.body))
+      expect(bodies[1]).not.toContain(SessionStopLoss.STEER)
+      expect(bodies[2]).toContain(SessionStopLoss.STEER)
+      expect(bodies[2]).toContain("Stop polling it")
+      expect(bodies[2]).toContain('\\"until\\":\\"changed\\"')
+      const final = stopLossNotice(result)
+      expect(final.text).toContain("waiting on an outside job")
+      expect(final.text).toContain("Reply `c` to continue, or `w` to wait for it")
+      expect(final.notice).toMatchObject({ action: "stop", verified: false })
+      const trips = (yield* guards.recent()).filter((trip) => trip.sessionID === chat.id && trip.guard === "stop_loss")
+      expect(trips.map((trip) => trip.action).toReversed()).toEqual(["correct", "correct", "stop"])
       yield* intelligence.save({ settings: saved })
     }),
   60_000,
@@ -7619,7 +7665,7 @@ unix(
           "30 seconds",
         )
 
-        expect(yield* llm.calls).toBe(6)
+        expect(yield* llm.calls).toBe(9)
         const final = stopLossNotice(result)
         expect(final.text).toContain("Stopped by the stop-loss before finishing")
         expect(final.notice).toMatchObject({ action: "stop", verified: false })
@@ -7627,9 +7673,9 @@ unix(
         expect(yield* intelligence.history(child.id, { operation: "session_progress" })).toEqual([])
         // The parent's task row reads where the checkpoints left the child from its metadata.
         const kept = SubagentView.checkpoints((yield* sessions.get(child.id)).metadata)
-        expect(kept.map((item) => item.action)).toEqual(["steer", "stop"])
+        expect(kept.map((item) => item.action)).toEqual(["steer", "steer", "stop"])
         expect(SubagentView.checkpointState(kept)).toMatchObject({ type: "stopped" })
-        expect(kept[1]?.reason).toBeTruthy()
+        expect(kept[2]?.reason).toBeTruthy()
       }),
     ),
   60_000,

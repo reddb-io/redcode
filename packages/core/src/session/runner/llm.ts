@@ -608,7 +608,7 @@ const layer = Layer.effect(
       const subagent = (yield* getSession(sessionID)).parentID !== undefined
       const settings = yield* intelligence.read().pipe(Effect.orElseSucceed(() => undefined))
       const asked = !!settings && Intelligence.mode(settings) === "dual"
-      const current = SessionStopLoss.current(memory, step)
+      const current = SessionStopLoss.current(memory, step, trajectory.idle)
       const checkpoint = SessionStopLoss.due({ step, memory: current, limits: bounds, signals: found, interval: asked })
       if (checkpoint.type === "none") return { memory: current, ended: false }
       const evaluation = asked
@@ -653,7 +653,8 @@ const layer = Layer.effect(
       }
       yield* SessionMetadata.update(db, events, sessionID, (metadata) => SubagentView.withCheckpoint(metadata, kept))
       // A steer is the next thing the model reads; a question or a stop is the turn's last word, for
-      // the user and for the model when the user answers.
+      // the user and for the model when the user answers. This bash tool cannot wait on a command in
+      // the background, so a polled status check is not pointed at a monitor here.
       yield* events.publish(SessionEvent.Synthetic, {
         sessionID,
         messageID: SessionMessage.ID.create(),
