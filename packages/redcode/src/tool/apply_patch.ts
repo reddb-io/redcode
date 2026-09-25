@@ -1,6 +1,7 @@
 import { RepositoryGuard } from "@reddb-io/redcode-core/repository-guard"
 import * as path from "path"
-import { Cause, Effect, Exit, Schema } from "effect"
+import { Cause, Effect, Exit, Option, Schema } from "effect"
+import { Config } from "@/config/config"
 import * as Tool from "./tool"
 import { EventV2Bridge } from "@/event-v2-bridge"
 import { Watcher } from "@reddb-io/redcode-core/filesystem/watcher"
@@ -103,6 +104,8 @@ export const ApplyPatchTool = Tool.define(
     const format = yield* Format.Service
     const events = yield* EventV2Bridge.Service
     const sessions = yield* Session.Service
+    // Optional so the tool still builds where no config is provided; the registry always has one.
+    const config = Option.getOrUndefined(yield* Effect.serviceOption(Config.Service))
 
     const run = Effect.fn("ApplyPatchTool.execute")(function* (
       params: Schema.Schema.Type<typeof Parameters>,
@@ -212,7 +215,7 @@ export const ApplyPatchTool = Tool.define(
       // A patch against the primary checkout lands in the session worktree, created on first use.
       const place = (file: string) =>
         AutoWorktree.route(
-          { sessions, events, sessionID: ctx.sessionID, agent: ctx.agent },
+          { sessions, events, config, sessionID: ctx.sessionID, agent: ctx.agent },
           path.resolve(instance.directory, file),
         )
 

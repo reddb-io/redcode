@@ -1,0 +1,5 @@
+---
+"@reddb-io/redcode": patch
+---
+
+`--yolo` sessions now work in their own worktree too. YOLO means "skip permission prompts", not "skip isolation": in a Git repository, the first write, edit, patch or non-read-only shell command a writing session makes in the primary checkout creates `.red/worktrees/<name>` on a new branch `<name>` from `HEAD` and moves the session there, as it already did without `--yolo`. A session already working in the primary checkout moves on its next write. A command the repository guard would refuse outside YOLO (such as `mkdir` in the primary checkout or `git stash`) now runs inside the session worktree instead of the primary checkout. Uncommitted changes in the primary checkout are never moved or stashed; they stay there, and the toast says so. Plan, design and explore sessions, directories outside Git, and (in YOLO mode) repositories with no commits yet keep their directory. To keep sessions in the primary checkout in every mode, set `"worktree": { "auto": false }` in the config or `REDCODE_AUTO_WORKTREE=0` in the environment.
