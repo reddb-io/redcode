@@ -69,6 +69,8 @@ export type RouterUpstream = typeof RouterUpstream.Type
 /**
  * One offer behind a RedRouter flat model id, as its model list reports it. `pin_id` requests this
  * offer only; null when it cannot be pinned (the vendor's own offer id can be the flat id itself).
+ * An offer that is not `available` is switched off for the flat id (it is never a member), but its
+ * pin id still routes to it.
  */
 export const RouterOffer = Schema.Struct({
   id: Schema.String,
@@ -84,6 +86,10 @@ export const RouterOffer = Schema.Struct({
   free: Schema.Boolean,
 })
 export type RouterOffer = typeof RouterOffer.Type
+
+/** How RedRouter orders a flat model's offers: its price policy, or an order the user set. */
+export const RouterOfferOrder = Schema.Literals(["price", "custom"])
+export type RouterOfferOrder = typeof RouterOfferOrder.Type
 
 /** A reasoning level (`level`) or mode (`mode`, e.g. review) RedRouter serves under a model. */
 export const RouterVariant = Schema.Struct({
@@ -197,6 +203,9 @@ export const Model = Schema.Struct({
       }),
       offers: Schema.optional(Schema.Array(RouterOffer)).annotate({
         description: "The offers a flat model is served by, in the router's policy order (its `members`).",
+      }),
+      offer_order: Schema.optional(RouterOfferOrder).annotate({
+        description: "How a flat model's offers are ordered: by `price` (the router's policy) or a `custom` order.",
       }),
     }),
   ).annotate({

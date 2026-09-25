@@ -70,6 +70,7 @@ function originDetails(index: OriginIndex, provider: Provider, model: Model) {
     ...(model.upstream ? [model.upstream.name] : []),
     ...(model.upstream?.subscription ? ["subscription"] : []),
     ...(offers > 1 ? [`${offers} offers`] : []),
+    ...(model.flat && model.offerOrder === "custom" ? ["custom order"] : []),
     ...(also.length ? [`also ${also.join(", ")}`] : []),
   ]
 }
@@ -102,25 +103,28 @@ export function originCategory(provider: Provider, model: Model) {
 type Offer = NonNullable<Model["offers"]>[number]
 
 /**
- * The offers of a flat model as picker rows, in the router's policy order: the route (the
- * connection's router, the routers in between and the provider, joined by ` » `), the price and
- * availability (`offer.free` is the free badge), and the model to save to pin the offer. That model is the one listed
- * under the offer's pin id, never the offer id: the vendor's own offer id can be the flat id itself.
- * Undefined `pin` means the offer cannot be pinned.
+ * The offers of a flat model as picker rows, in the router's order: the route (the connection's
+ * router, the routers in between and the provider, joined by ` » `), the price, `off` for an offer
+ * switched off for the flat model (`offer.free` is the free badge), and the model to save to pin
+ * the offer. That model is the one listed under the offer's pin id, never the offer id: the
+ * vendor's own offer id can be the flat id itself. Undefined `pin` means the offer cannot be pinned.
+ * An offer that is off is never served for the flat id, but its pin id still routes to it, so it
+ * stays pinnable (`off` tells a picker to grey it out).
  */
 export function flatOffers(provider: Provider, model: Model) {
   if (!model.flat) return []
   return (model.offers ?? []).map((offer) => ({
     offer,
     route: offerRoute(provider, offer),
+    off: !offer.available,
     detail: [
+      ...(offer.available ? [] : ["off"]),
       offerPrice(offer),
-      ...(offer.available ? [] : ["unavailable"]),
       ...(offer.pinID ? [] : ["cannot be pinned"]),
     ]
       .filter(Boolean)
       .join(" · "),
-    pin: offer.pinID && offer.available && provider.models[offer.pinID] ? offer.pinID : undefined,
+    pin: offer.pinID && provider.models[offer.pinID] ? offer.pinID : undefined,
   }))
 }
 
@@ -166,6 +170,21 @@ export function modeBadge(model: Pick<Model, "modes">) {
 export function modeID(model: Pick<Model, "api" | "modes" | "routerVariants">, variant: string) {
   if (!model.modes?.includes(variant)) return undefined
   return model.routerVariants?.find((item) => item.mode === variant)?.id ?? `${model.api.id}-${variant}`
+}
+
+/**
+ * Why a saved model choice is not used: its provider no longer lists it (RedRouter drops a flat
+ * model id once all its offers are switched off) or is not connected, and the model used instead.
+ */
+export function missingModelMessage(providers: Provider[], saved: ModelRef, fallback: ModelRef | undefined) {
+  const provider = providers.find((item) => item.id === saved.providerID)
+  const reason = !provider
+    ? `${saved.providerID} is not connected, so ${saved.modelID} is unavailable`
+    : routerLabel(provider)
+      ? `${provider.name} no longer lists ${saved.modelID}: it was removed, or all its offers were switched off`
+      : `${provider.name} no longer lists ${saved.modelID}`
+  const using = fallback ? ` Using ${fallback.providerID}/${fallback.modelID} instead.` : ""
+  return `${reason}.${using} Pick another model with /model.`
 }
 
 /** Announces a background router catalog refresh, e.g. `RedRouter catalog updated: +2/−1 models, 3 renamed`. */

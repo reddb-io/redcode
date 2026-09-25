@@ -40,6 +40,7 @@ export const RouterInfo = Schema.Struct({
   }),
   canonical: Schema.optional(Schema.String),
   offers: Schema.optional(Schema.Array(ConfigProviderV1.RouterOffer)),
+  offer_order: Schema.optional(ConfigProviderV1.RouterOfferOrder),
 })
 export const Model = Schema.Struct({
   id: Schema.String,
@@ -117,6 +118,7 @@ const Catalog = Schema.Struct({
       flat: Schema.optional(Schema.Unknown),
       canonical: Schema.optional(Schema.Unknown),
       offers: Schema.optional(Schema.Unknown),
+      offer_order: Schema.optional(Schema.Unknown),
       [NESTED]: Schema.optional(Schema.Unknown),
       ...Object.fromEntries(
         [...CONTEXT_FIELDS, ...OUTPUT_FIELDS].map((field) => [field, Schema.optional(Schema.Unknown)]),
@@ -402,6 +404,7 @@ export function routerInfo(
     ...(flat ? { flat: true } : {}),
     ...(canonical ? { canonical } : {}),
     ...(offers?.length ? { offers } : {}),
+    ...(item.offer_order === "price" || item.offer_order === "custom" ? { offer_order: item.offer_order } : {}),
   }
   const owner = typeof item.owned_by === "string" && item.owned_by ? item.owned_by : undefined
   if (owner && (owner === "combo" || Object.keys(info).length)) return { owned_by: owner, ...info }

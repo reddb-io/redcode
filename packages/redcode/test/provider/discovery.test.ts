@@ -515,6 +515,22 @@ describe("flat model ids", () => {
     }),
   )
 
+  test("keeps an offer switched off for the flat id and the router's offer order", () => {
+    const [claude] = FLAT_LIST.data
+    const info = ProviderDiscovery.routerInfo({
+      ...claude,
+      offer_order: "custom",
+      offers: claude.offers.map((offer, index) => (index === 1 ? { ...offer, available: false } : offer)),
+    })
+    expect(info?.offer_order).toBe("custom")
+    expect(info?.offers?.map((offer) => [offer.pin_id, offer.available])).toEqual([
+      [null, true],
+      ["openrouter/anthropic/claude-sonnet-4.5", false],
+    ])
+    expect(ProviderDiscovery.routerInfo({ ...claude, offer_order: "cheapest" })?.offer_order).toBeUndefined()
+    expect(ProviderDiscovery.routerInfo(claude)?.offer_order).toBeUndefined()
+  })
+
   test("drops malformed offers and never pins through the offer id", () => {
     const info = ProviderDiscovery.routerInfo(
       {

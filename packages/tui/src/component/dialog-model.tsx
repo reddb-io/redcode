@@ -8,6 +8,7 @@ import { DialogVariant } from "./dialog-variant"
 import * as fuzzysort from "fuzzysort"
 import { useConnected } from "./use-connected"
 import { useSync } from "../context/sync"
+import { useTheme } from "../context/theme"
 import {
   flatOffers,
   modeBadge,
@@ -23,6 +24,7 @@ export function DialogModel(props: { providerID?: string }) {
   const local = useLocal()
   const sync = useSync()
   const dialog = useDialog()
+  const { theme } = useTheme()
   // Model names plus their route suffix (e.g. "via RedRouter » RedRouter") need more room than the
   // default dialog width gives before being cut off.
   dialog.setSize("large")
@@ -194,6 +196,8 @@ export function DialogModel(props: { providerID?: string }) {
                   ? { providerID: provider.id, modelID: row.pin }
                   : { providerID: provider.id, modelID: info.id, offer: row.offer.id },
                 title: `  ↳ ${row.route}`,
+                // Switched off for the flat model: greyed out, but its pin id still routes to it.
+                titleView: row.off ? <span style={{ fg: theme.textMuted }}>{`  ↳ ${row.route}`}</span> : undefined,
                 releaseDate: option.releaseDate,
                 description: row.detail || (row.pin ? "Pin this offer" : ""),
                 category: option.category,

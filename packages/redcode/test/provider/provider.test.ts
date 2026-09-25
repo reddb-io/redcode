@@ -792,6 +792,22 @@ it.instance(
     expect(router.models["red-router/red-router/opencode-go/typesafe/jev-1.13"].via).toBe(
       "RedRouter » Office RedRouter",
     )
+    expect(jev.offerOrder).toBe("custom")
+    expect(claude.offerOrder).toBeUndefined()
+    // An offer switched off for the flat id is never its lead, but stays pinnable.
+    const off = router.models["nano-gpt/typesafe/jev-1.13"]
+    expect(jev.offers?.find((offer) => offer.id === "nano-gpt/typesafe/jev-1.13")?.available).toBe(false)
+    expect(jev.comboMembers?.map((member) => member.id)).not.toContain("nano-gpt/typesafe/jev-1.13")
+    expect(off.upstream?.name).toBe("NanoGPT")
+    expect(off.pinOf).toBe("typesafe/jev-1.13")
+    expect(off.offerOrder).toBeUndefined()
+
+    // A flat id RedRouter no longer lists (all its offers switched off) fails with a clear reason.
+    const missing = yield* Provider.use
+      .getModel(ProviderV2.ID.make("red-router"), ModelV2.ID.make("typesafe/jev-1.14"))
+      .pipe(Effect.flip)
+    expect(missing.message).toContain("RedRouter no longer lists this model")
+    expect(missing.message).toContain("all its offers were switched off")
   }),
   {
     config: {
@@ -856,6 +872,7 @@ it.instance(
                 strategy: "fallback",
                 flat: true,
                 canonical: "typesafe/jev-latest",
+                offer_order: "custom",
                 thinking_levels: ["low"],
                 parameters: OPENCODE_GO_PARAMETERS,
                 parameters_basis: "lead",
@@ -885,6 +902,16 @@ it.instance(
                     via: [],
                     available: true,
                     price: { input: 0.05, output: 0 },
+                    free: false,
+                  },
+                  // Switched off for the flat id: never a member, still pinnable.
+                  {
+                    id: "nano-gpt/typesafe/jev-1.13",
+                    pin_id: "nano-gpt/typesafe/jev-1.13",
+                    provider: { id: "nano-gpt", slug: "nano-gpt", name: "NanoGPT" },
+                    via: [],
+                    available: false,
+                    price: { input: 0.04, output: 0 },
                     free: false,
                   },
                 ],

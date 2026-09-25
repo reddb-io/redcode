@@ -64,6 +64,7 @@ function originLabel(
 ) {
   return [
     ...originRoute(language, modelOrigin(item)),
+    ...(item.flat && item.offerOrder === "custom" ? [language.t("model.flat.customOrder")] : []),
     ...(alternatives?.direct ? [language.t("model.origin.alsoDirect")] : []),
     ...(alternatives?.routers ?? []).map((router) => language.t("model.origin.alsoVia", { router })),
   ].join(" · ")
@@ -172,6 +173,7 @@ const ModelList: Component<{
                 <button
                   type="button"
                   class="w-full flex items-center gap-x-2 py-0.5 text-12-regular text-left disabled:opacity-50"
+                  classList={{ "text-text-weak": row.off }}
                   disabled={!row.pin}
                   title={row.pin ? language.t("model.flat.pin") : language.t("model.flat.unpinnable")}
                   onClick={(event) => {
@@ -186,8 +188,8 @@ const ModelList: Component<{
                   <Show when={row.offer.free}>
                     <Tag>{language.t("model.tag.free")}</Tag>
                   </Show>
-                  <Show when={!row.offer.available}>
-                    <span class="text-text-weak">{language.t("model.flat.unavailable")}</span>
+                  <Show when={row.off}>
+                    <span>{language.t("model.flat.off")}</span>
                   </Show>
                   <span class="ml-auto shrink-0 text-text-weak">{row.price}</span>
                 </button>
