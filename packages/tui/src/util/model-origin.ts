@@ -43,7 +43,7 @@ export function originIndex(providers: Provider[]) {
 export type OriginIndex = ReturnType<typeof originIndex>
 
 /**
- * The connection a model is served through: `via RedRouter[ → RedRouter]`, or `direct`. Shown as a
+ * The connection a model is served through: `via RedRouter[ » RedRouter]`, or `direct`. Shown as a
  * title suffix when another catalog entry renders with the same name, so two entries reachable
  * through different router chains (e.g. one direct via RedRouter, one via a remote RedRouter) stay
  * distinguishable even when the row is filtered or truncated before the description is reached.
@@ -56,7 +56,7 @@ export function routeLabel(provider: Provider, model: Model) {
   // A router serving the model through other routers (remote RedRouters) names them too: the one it
   // reported, else every router hop in the model id, at any depth.
   const hops = model.via ? [model.via] : Router.route(model.id).hops.map(Router.hopName)
-  return `via ${[router, ...hops].join(" → ")}`
+  return `via ${[router, ...hops].join(Router.HOP_SEPARATOR)}`
 }
 
 /** The parts of `originDescription` after the route: upstream name, subscription, and duplicate connections. */
@@ -71,9 +71,15 @@ function originDetails(index: OriginIndex, provider: Provider, model: Model) {
   ]
 }
 
-/** Where a model comes from: `direct`, or `via RedRouter · OpenAI Codex · subscription`, plus duplicates. */
+/** Where a model comes from: `direct`, or `via RedRouter » OpenAI Codex · subscription`, plus duplicates. */
 export function originDescription(index: OriginIndex, provider: Provider, model: Model) {
-  return [routeLabel(provider, model), ...originDetails(index, provider, model)].join(" · ")
+  const route = routeLabel(provider, model)
+  const details = originDetails(index, provider, model)
+  // The upstream name continues the route (a hop), so it joins with the same separator as the router
+  // chain; everything after it is a detail, not a hop, and keeps the plain separator.
+  if (!routerLabel(provider) || !model.upstream) return [route, ...details].join(" · ")
+  const [upstream, ...rest] = details
+  return [`${route}${Router.HOP_SEPARATOR}${upstream}`, ...rest].join(" · ")
 }
 
 /**
@@ -87,7 +93,7 @@ export function originDescriptionDetail(index: OriginIndex, provider: Provider, 
 /** Routed models are grouped per upstream provider inside their router connection. */
 export function originCategory(provider: Provider, model: Model) {
   if (!routerLabel(provider) || !model.upstream) return provider.name
-  return `${provider.name} · ${model.upstream.name}`
+  return `${provider.name}${Router.HOP_SEPARATOR}${model.upstream.name}`
 }
 
 /** Modes a router serves the model in besides its default, shown as a badge. */

@@ -1,4 +1,5 @@
 import type { DetectedRouter, Reasoning, Settings } from "@reddb-io/redcode-schema/intelligence"
+import { Router } from "@reddb-io/redcode-schema/router"
 import { Effect, Option } from "effect"
 import { Intelligence } from "@reddb-io/redcode-core/intelligence"
 import { Location } from "@reddb-io/redcode-core/location"
@@ -162,7 +163,7 @@ export function recommendedFirst(
     options: [
       {
         value: listed.value,
-        label: `Recommended: ${pick.name} · via RedRouter${pick.provider.name ? ` · ${pick.provider.name}` : ""}`,
+        label: `Recommended: ${pick.name} · via RedRouter${pick.provider.name ? `${Router.HOP_SEPARATOR}${pick.provider.name}` : ""}`,
         hint: pick.reason,
       },
       ...choices.filter((choice) => choice !== listed),
@@ -224,7 +225,7 @@ function configureSystemOne(service: Intelligence.Interface, previous: Settings,
     if (
       selected.configured &&
       selected.evaluator.transport === "red-router" &&
-      /^RedRouter [·→] /.test(selected.name)
+      /^RedRouter [·»] /.test(selected.name)
     )
       return { evaluator: selected.evaluator, key: "" }
     const transport = selected.evaluator.transport

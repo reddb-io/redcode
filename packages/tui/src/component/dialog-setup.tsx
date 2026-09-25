@@ -4,6 +4,7 @@ import { IntelligenceClient } from "@reddb-io/redcode-client"
 import { Intelligence } from "@reddb-io/redcode-schema/intelligence"
 import { Model } from "@reddb-io/redcode-schema/model"
 import { Provider } from "@reddb-io/redcode-schema/provider"
+import { Router } from "@reddb-io/redcode-schema/router"
 import { useSDK } from "../context/sdk"
 import { useSync } from "../context/sync"
 import { useLocal } from "../context/local"
@@ -203,7 +204,7 @@ export function DialogSetup(
               details: [
                 [`via ${routerLabel(recommended.provider) ?? "RedRouter"}`, recommended.pick.provider.name]
                   .filter(Boolean)
-                  .join(" · "),
+                  .join(Router.HOP_SEPARATOR),
                 ...wrap(recommended.pick.reason, 50),
               ],
               category: "Recommended",
@@ -352,7 +353,7 @@ export function DialogSetup(
             : state.models
                 .toSorted((a, b) => Number(b.id === recommended) - Number(a.id === recommended))
                 .map((model) => ({
-                  // Discovery names the whole route: `RedRouter → RedRouter → OpenCode Zen · JEV 1.13`.
+                  // Discovery names the whole route: `RedRouter » RedRouter » OpenCode Zen · JEV 1.13`.
                   title: model.name,
                   value: { evaluator: { ...router, model: model.id } },
                   // The full routed id on its own line: the dialog is too narrow to follow the title.
