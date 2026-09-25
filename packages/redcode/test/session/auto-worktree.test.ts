@@ -1,6 +1,8 @@
 import { describe, expect } from "bun:test"
 import path from "path"
 import { existsSync } from "fs"
+import { rm } from "fs/promises"
+import os from "os"
 import { Effect, Exit, Layer } from "effect"
 import { RepositoryGuard } from "@reddb-io/redcode-core/repository-guard"
 import { SessionProjector } from "@reddb-io/redcode-core/session/projector"
@@ -176,6 +178,56 @@ describe("session auto worktree", () => {
     { git: true },
   )
 
+  it.instance(
+    "puts the worktree in the temporary directory with worktree.location set to tmp",
+    () =>
+      withEnv(
+        { REDCODE_WORKTREE_LOCATION: undefined, REDCODE_AUTO_WORKTREE: undefined },
+        Effect.gen(function* () {
+          const test = yield* TestInstance
+          const input = yield* writer("Fix the setup flow")
+          const worktree = path.join(RepositoryGuard.temporaryBase(test.directory, tmpByConfig), "fix-setup-flow")
+          expect(yield* AutoWorktree.route(input, path.join(test.directory, "a.txt"))).toBe(
+            path.join(worktree, "a.txt"),
+          )
+          expect((yield* input.sessions.get(input.sessionID)).directory).toBe(worktree)
+          expect(existsSync(path.join(test.directory, ".red", "worktrees"))).toBe(false)
+        }),
+      ).pipe(Effect.ensuring(Effect.promise(() => rm(tmpByConfig, { recursive: true, force: true })))),
+    { git: true, config: { worktree: { location: "tmp", tmpdir: tmpByConfig } } },
+  )
+
+  it.instance(
+    "puts the worktree in the temporary directory with --tmp",
+    () =>
+      withEnv(
+        { REDCODE_WORKTREE_LOCATION: "tmp", REDCODE_AUTO_WORKTREE: undefined },
+        Effect.gen(function* () {
+          const test = yield* TestInstance
+          const input = yield* writer("Fix the setup flow")
+          const worktree = path.join(RepositoryGuard.temporaryBase(test.directory, tmpByFlag), "fix-setup-flow")
+          expect(yield* AutoWorktree.workdir(input, test.directory, "mkdir build")).toBe(worktree)
+          expect((yield* input.sessions.get(input.sessionID)).directory).toBe(worktree)
+        }),
+      ).pipe(Effect.ensuring(Effect.promise(() => rm(tmpByFlag, { recursive: true, force: true })))),
+    { git: true, config: { worktree: { location: "repo", tmpdir: tmpByFlag } } },
+  )
+
+  it.instance(
+    "keeps the primary checkout with --tmp when worktree.auto is false",
+    () =>
+      withEnv(
+        { REDCODE_WORKTREE_LOCATION: "tmp", REDCODE_AUTO_WORKTREE: undefined },
+        Effect.gen(function* () {
+          const test = yield* TestInstance
+          const input = yield* writer("Fix the setup flow")
+          expect(yield* AutoWorktree.workdir(input, test.directory, "mkdir build")).toBe(test.directory)
+          expect(existsSync(tmpOptedOut)).toBe(false)
+        }),
+      ),
+    { git: true, config: { worktree: { auto: false, tmpdir: tmpOptedOut } } },
+  )
+
   it.instance("leaves a non-Git directory alone in YOLO mode", () =>
     withEnv(
       { REDCODE_YOLO: "1", REDCODE_AUTO_WORKTREE: undefined },
@@ -190,6 +242,12 @@ describe("session auto worktree", () => {
     ),
   )
 })
+
+/** A temporary directory of its own for each `--tmp` test, removed when the test ends. */
+const scratch = () => path.join(os.tmpdir(), `redcode-auto-worktree-${Math.random().toString(36).slice(2)}`)
+const tmpByConfig = scratch()
+const tmpByFlag = scratch()
+const tmpOptedOut = scratch()
 
 /** A build session with the instance's config, as the write, edit, patch and shell tools pass it. */
 const writer = Effect.fn("AutoWorktreeTest.writer")(function* (title: string) {

@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test"
-import { appliedLabel, reasoningLabel } from "../../src/util/reasoning"
+import { appliedLabel, compactVariantLabel, reasoningLabel } from "../../src/util/reasoning"
 
 describe("util.reasoning", () => {
   test("says which level an auto session runs at, why, and who chose it", () => {
@@ -32,5 +32,12 @@ describe("util.reasoning", () => {
     expect(appliedLabel("auto", undefined)).toBeUndefined()
     expect(appliedLabel("auto", "auto")).toBeUndefined()
     expect(appliedLabel(undefined, "high")).toBeUndefined()
+  })
+
+  test("tightens the arrow for the compact footer, leaving arrow-free labels alone", () => {
+    expect(compactVariantLabel("auto → xhigh")).toBe("auto→xhigh")
+    expect(compactVariantLabel("auto → xhigh · loop guard")).toBe("auto→xhigh · loop guard")
+    expect(compactVariantLabel("high")).toBe("high")
+    expect(compactVariantLabel("router: medium")).toBe("router: medium")
   })
 })

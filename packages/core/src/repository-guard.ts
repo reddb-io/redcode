@@ -20,7 +20,7 @@ export const FORBIDDEN = [
 
 export const INSTRUCTIONS = `Repository placement is handled by the harness. Follow these rules without waiting for a user reminder:
 1. Reading, searching and answering questions happen wherever the session is; they never create a worktree.
-2. In a Git repository, the first source creation, edit, deletion or build/test command that the session makes in the primary checkout makes the harness create a linked worktree at <repository root>/${WORKTREES}/<name> on a new branch <name>, based on the current HEAD, and move the session into it. The edit or command then runs against the same relative path inside that worktree, and the tool result reports it. Existing tracked and untracked work in the primary checkout is never stashed, reset or cleaned; the new worktree starts from HEAD, so inspect relevant uncommitted primary changes before copying any over.
+2. In a Git repository, the first source creation, edit, deletion or build/test command that the session makes in the primary checkout makes the harness create a linked worktree at <repository root>/${WORKTREES}/<name> (or under a temporary directory when configured) on a new branch <name>, based on the current HEAD, and move the session into it. The edit or command then runs against the same relative path inside that worktree, and the tool result reports it. Existing tracked and untracked work in the primary checkout is never stashed, reset or cleaned; the new worktree starts from HEAD, so inspect relevant uncommitted primary changes before copying any over.
 3. After the move, use the worktree's absolute paths for file tools and workdir; keep subsequent edits, tests and commits in that same worktree. Do not create another worktree by hand. worktree_prepare is optional: it creates or reuses the same session worktree early and reports its root, branch and status. Subagents inherit the session's worktree.
 4. The harness blocks git ${FORBIDDEN.join(", git ")}, forced/deleting pushes, forced branch changes/deletions, discard switches, and worktree removal/pruning. Do not bypass the policy through aliases, wrappers, scripts, another tool or equivalent filesystem operations. Report a blocked operation and use a preserving alternative.
 5. Recheck status and diff before delivery. Retain the worktree and all unrelated work. A non-Git directory does not require a worktree. An unborn repository needs an initial user-owned commit before a worktree can be created. Harness-owned session records and caches are not source edits.`
@@ -31,7 +31,7 @@ export class Violation extends Schema.TaggedErrorClass<Violation>()("RepositoryG
 
 export const YOLO_INSTRUCTIONS = `YOLO mode is active: permission prompts, permission filters and the Git command policy are disabled for this local harness process. Work isolation still applies:
 1. Reading, searching and answering questions happen wherever the session is; they never create a worktree.
-2. In a Git repository, the first source creation, edit, deletion or non-read-only command that a writing session makes in the primary checkout makes the harness create a linked worktree at <repository root>/${WORKTREES}/<name> on a new branch <name>, based on the current HEAD, and move the session into it. The edit or command then runs against the same relative path inside that worktree, and the tool result reports it. Uncommitted work in the primary checkout stays there; the new worktree starts from HEAD.
+2. In a Git repository, the first source creation, edit, deletion or non-read-only command that a writing session makes in the primary checkout makes the harness create a linked worktree at <repository root>/${WORKTREES}/<name> (or under a temporary directory when configured) on a new branch <name>, based on the current HEAD, and move the session into it. The edit or command then runs against the same relative path inside that worktree, and the tool result reports it. Uncommitted work in the primary checkout stays there; the new worktree starts from HEAD.
 3. After the move, use the worktree's absolute paths for file tools and workdir; keep subsequent edits, tests and commits in that same worktree. Subagents inherit the session's worktree.`
 
 /** YOLO skips permission prompts and the Git command policy; it does not stop writing sessions from getting a worktree. */
@@ -363,14 +363,33 @@ export function nextName(name: string, taken: ReadonlySet<string>) {
 
 const claiming = new Map<string, Promise<Claim | undefined>>()
 
+/** Temporary session worktrees live at `<tmp>/redcode-worktrees/<repository name>-<hash>/<slug>`. */
+export const TEMPORARY = "redcode-worktrees"
+
+/** Where a repository's temporary session worktrees go under the temporary directory `tmp`. */
+export const temporaryBase = (root: string, tmp: string) =>
+  path.join(
+    tmp,
+    TEMPORARY,
+    `${path.basename(root)}-${new Bun.CryptoHasher("sha256").update(root).digest("hex").slice(0, 8)}`,
+  )
+
+export type ClaimInput = {
+  readonly directory: string
+  readonly session: string
+  readonly name: string
+  /** A temporary directory (such as `os.tmpdir()`) to create the worktree under instead of the checkout. */
+  readonly tmp?: string
+}
+
 /**
  * Creates or reuses the session's worktree at `<primary root>/.red/worktrees/<slug>` on branch `<slug>`,
- * based on the primary checkout's HEAD. From inside the session's own worktree it returns that worktree.
- * YOLO mode gets one too. Returns nothing when `REDCODE_AUTO_WORKTREE=0`, outside Git, from any other
- * linked worktree, or for an unborn repository in YOLO mode. The primary checkout is never stashed,
- * reset or cleaned.
+ * or under {@link temporaryBase} when `tmp` is given, based on the primary checkout's HEAD. From inside
+ * the session's own worktree it returns that worktree. YOLO mode gets one too. Returns nothing when
+ * `REDCODE_AUTO_WORKTREE=0`, outside Git, from any other linked worktree, or for an unborn repository in
+ * YOLO mode. The primary checkout is never stashed, reset or cleaned.
  */
-export function claim(input: { directory: string; session: string; name: string }) {
+export function claim(input: ClaimInput) {
   const key = `${input.directory}\0${input.session}`
   const existing = claiming.get(key)
   if (existing) return existing
@@ -379,7 +398,7 @@ export function claim(input: { directory: string; session: string; name: string 
   return result
 }
 
-async function claimWorktree(input: { directory: string; session: string; name: string }): Promise<Claim | undefined> {
+async function claimWorktree(input: ClaimInput): Promise<Claim | undefined> {
   if (!auto()) return
   const repository = await inspect(input.directory)
   if (!repository) return
@@ -387,15 +406,17 @@ async function claimWorktree(input: { directory: string; session: string; name: 
   // Without a first commit there is nothing to branch from. Outside YOLO the guard keeps refusing
   // source edits; YOLO lets them land in the primary checkout rather than leave the session unable to write.
   if (yolo() && (await git(repository.root, ["rev-parse", "--verify", "--quiet", "HEAD"])).exit !== 0) return
-  await exclude(repository.commonDirectory)
-  const base = path.join(repository.root, WORKTREES)
-  const entries = await readdir(base).catch(() => [] as string[])
-  const owners = await Promise.all(entries.map((entry) => owner(path.join(base, entry))))
-  const owned = entries.find((_, index) => owners[index] === input.session)
+  const nested = path.join(repository.root, WORKTREES)
+  const base = input.tmp ? temporaryBase(repository.root, input.tmp) : nested
+  // A nested worktree must stay out of the primary checkout's status; a temporary one is not inside it.
+  if (!input.tmp) await exclude(repository.commonDirectory)
+  // A session keeps the worktree it already owns, wherever the current setting would put a new one.
+  const owned = await ownedWorktree([...new Set([base, nested])], input.session)
   if (owned)
-    return { root: repository.root, worktree: await realpath(path.join(base, owned)), branch: owned, created: false }
+    return { root: repository.root, worktree: await realpath(owned), branch: path.basename(owned), created: false }
   const prepared = await preparedWorktree(repository, input.session)
   if (prepared) return prepared
+  const entries = await readdir(base).catch(() => [] as string[])
   const branches = await git(repository.root, ["for-each-ref", "--format=%(refname:short)", "refs/heads"])
   const branch = nextName(
     slug(input.name),
@@ -406,13 +427,26 @@ async function claimWorktree(input: { directory: string; session: string; name: 
   const created = await git(repository.root, ["worktree", "add", "-b", branch, target, "HEAD"])
   if (created.exit !== 0)
     throw new Violation({
-      message: `Cannot create the session worktree ${WORKTREES}/${branch}: ${created.error.slice(0, 400).trim()} Source edits stay blocked in the primary checkout ${repository.root}, which is unchanged.`,
+      message: `Cannot create the session worktree ${input.tmp ? target : `${WORKTREES}/${branch}`}: ${created.error.slice(0, 400).trim()} Source edits stay blocked in the primary checkout ${repository.root}, which is unchanged.`,
     })
   const worktree = await inspect(target)
   if (!worktree?.linked)
     throw new Violation({ message: "Created directory is not a linked worktree; source edits remain blocked." })
   await Bun.write(path.join(worktree.gitDirectory, OWNER), input.session)
   return { root: repository.root, worktree: worktree.root, branch, created: true }
+}
+
+/** The worktree directory under one of `bases` whose Git directory names `session` as its owner. */
+async function ownedWorktree(bases: string[], session: string) {
+  const candidates = (
+    await Promise.all(
+      bases.map(async (base) =>
+        (await readdir(base).catch(() => [] as string[])).map((entry) => path.join(base, entry)),
+      ),
+    )
+  ).flat()
+  const owners = await Promise.all(candidates.map(owner))
+  return candidates.find((_, index) => owners[index] === session)
 }
 
 /** A session already working in its own worktree keeps it, so stale primary paths still map into it. */
