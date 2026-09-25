@@ -327,10 +327,17 @@ export const make = (
     }).pipe(Effect.catch((error) => Effect.logWarning("evaluation artifact cleanup failed", { error: error.message })))
     yield* cleanup
     // The newest usable connection saved for the transport's provider integrations.
+    // A RedRouter connection's key records the router that answered at its address, so a RedRouter
+    // saved under any provider id counts; one saved before that is found by the RedRouter id.
     const connection = Effect.fn("Intelligence.connection")(function* (transport: Intelligence.Evaluator["transport"]) {
-      return (yield* Effect.forEach(providerIntegrations(transport), (integration) =>
+      const tagged =
+        transport === "red-router" && credentials.all
+          ? (yield* credentials.all()).filter((item) => stringMetadata(item.value.metadata, "router") === "red-router")
+          : []
+      const listed = yield* Effect.forEach(providerIntegrations(transport), (integration) =>
         credentials.list(Integration.ID.make(integration)),
-      ))
+      )
+      return [tagged, ...listed]
         .map((connections) => connections.toReversed().find((item) => credentialValue(item.value)))
         .find((item) => item !== undefined)
     })
@@ -365,19 +372,15 @@ export const make = (
       yield* write(file, { ...settings, evaluator: { ...settings.evaluator, credentialID: next } })
     }, lock.withPermits(1))
     const options = Effect.fn("Intelligence.options")(function* () {
-      const offers = new Map(
-        ModelsDev.systemOneOffers(catalog).map((offer) => [
-          offer.providerID,
-          { name: offer.provider, model: offer.model },
-        ]),
-      )
+      const offers = new Map(ModelsDev.systemOneOffers(catalog).map((offer) => [offer.providerID, offer]))
+      // Named "Provider · Model", like the System Two labels.
       const entries = [
-        { transport: "opencode-zen" as const, name: "OpenCode Zen — Jev Free" },
-        { transport: "typesafe" as const, name: "TypeSafe" },
+        { transport: "opencode-zen" as const, name: "OpenCode Zen · Jev Free" },
+        { transport: "typesafe" as const, name: "TypeSafe · Jev 1.13" },
         { transport: "red-router" as const, name: "RedRouter" },
         ...(["openrouter", "cloudflare-ai-gateway", "vercel", "vivgrid", "nano-gpt"] as const).flatMap((transport) => {
           const offer = offers.get(transport)
-          return offer ? [{ transport, name: offer.name, model: offer.model }] : []
+          return offer ? [{ transport, name: `${offer.provider} · ${offer.name}`, model: offer.model }] : []
         }),
       ]
       return yield* Effect.forEach(entries, (entry) =>
@@ -386,7 +389,7 @@ export const make = (
           const credential = yield* connection(entry.transport)
           const connected = stringMetadata(credential?.value.metadata, "baseURL")
           return {
-            name: entry.transport === "opencode-zen" ? `${entry.name} (recommended)` : entry.name,
+            name: entry.name,
             configured: Boolean(credential || providerEnvironment(entry.transport).some((name) => process.env[name])),
             evaluator: {
               ...preset,
@@ -522,31 +525,50 @@ export const make = (
     const discover = Effect.fn("Intelligence.discover")(function* (input: typeof Intelligence.Probe.Type) {
       if (["openrouter", "cloudflare-ai-gateway", "vercel"].includes(input.evaluator.transport))
         return { models: [{ id: input.evaluator.model, name: input.evaluator.model }], manual: false }
+      const router = input.evaluator.transport === "red-router"
+      // A failed catalog read says why, so setup never drops the user into typing a model id blind.
       const result = yield* request(
         input.evaluator,
-        input.evaluator.transport === "red-router" ? "models/systemone" : "models",
+        router ? "models/systemone" : "models",
         undefined,
         input.apiKey,
-      ).pipe(Effect.result)
-      if (result._tag === "Failure") return { models: [], manual: true }
+      ).pipe(
+        Effect.mapError(
+          (error) =>
+            new Error({
+              message: discoveryFailure(input.evaluator, error),
+              ...(error.status === undefined ? {} : { status: error.status }),
+            }),
+        ),
+      )
       const parsed = yield* Schema.decodeUnknownEffect(
         Schema.Struct({
-          data: Schema.Array(Schema.Struct({ id: Schema.String })).pipe(Schema.optional),
+          data: Schema.Array(
+            Schema.Struct({
+              id: Schema.String,
+              name: Schema.String.pipe(Schema.optional),
+              provider: Schema.Struct({ name: Schema.String.pipe(Schema.optional) }).pipe(Schema.optional),
+            }),
+          ).pipe(Schema.optional),
           models: Schema.Array(Schema.Struct({ name: Schema.String })).pipe(Schema.optional),
         }),
-      )(result.success).pipe(Effect.mapError(() => new Error({ message: "Invalid System One catalog" })))
+      )(result).pipe(Effect.mapError(() => new Error({ message: "Invalid System One catalog" })))
       return {
         models: [
-          ...(parsed.data ?? []).map((model) => ({ id: model.id, name: model.id })),
+          // A router names each model with the upstream provider that serves it: "OpenRouter · TypeSafe JEV 1.13".
+          ...(parsed.data ?? []).map((model) => ({
+            id: model.id,
+            name: [model.provider?.name, model.name].filter(Boolean).join(" · ") || model.id,
+          })),
           ...(parsed.models ?? []).map((model) => ({ id: model.name, name: model.name })),
-        ].filter((model) => (input.evaluator.transport === "red-router" ? true : isJev(model.id))),
+        ].filter((model) => router || isJev(model.id)),
         manual: false,
       }
     })
     const probe = Effect.fn("Intelligence.probe")(function* (input: typeof Intelligence.Probe.Type) {
       if (input.evaluator.transport === "opencode-zen") {
-        const catalog = yield* discover(input)
-        if (catalog.manual || !catalog.models.some((model) => model.id === input.evaluator.model))
+        const catalog = yield* discover(input).pipe(Effect.result)
+        if (catalog._tag === "Failure" || !catalog.success.models.some((model) => model.id === input.evaluator.model))
           return {
             ok: false,
             message:
@@ -974,14 +996,7 @@ export const make = (
     const generation = (record: GenerationInput) =>
       write(path.join(root, "generations", `${randomUUID()}.json`), { ...record, created: Date.now() })
     const router = Effect.fn("Intelligence.router")(function* () {
-      // A connection's key records the router that answered at its address, so a RedRouter saved
-      // under any provider id is found; one saved before that is found by the RedRouter id.
-      const tagged = credentials.all
-        ? (yield* credentials.all()).filter((item) => stringMetadata(item.value.metadata, "router") === "red-router")
-        : []
-      const credential = [...(yield* credentials.list(Integration.ID.make("red-router"))), ...tagged]
-        .toReversed()
-        .find((item) => credentialValue(item.value))
+      const credential = yield* connection("red-router")
       const key = credentialValue(credential?.value) ?? process.env.RED_ROUTER_API_KEY
       if (!key) return undefined
       const baseURL = stringMetadata(credential?.value.metadata, "baseURL") ?? evaluatorPreset("red-router").baseURL
@@ -1671,6 +1686,27 @@ function validURL(value: string) {
   return ["http:", "https:"].includes(url.protocol) && !url.username && !url.password && !url.search && !url.hash
 }
 
+/** Why a System One catalog could not be read, in the terms setup shows next to Retry. */
+function discoveryFailure(evaluator: Intelligence.Evaluator, error: Error) {
+  const where = TRANSPORT_LABELS[evaluator.transport]
+  if (error.status === 401 || error.status === 403)
+    return `${where} rejected the credential (HTTP ${error.status}). Reconnect it or enter a key.`
+  if (error.status === 404) return `${where} has no System One catalog at ${evaluator.baseURL} (HTTP 404).`
+  if (error.status !== undefined) return `${where} returned HTTP ${error.status} listing System One models.`
+  return failureMessage(`Could not list ${where} System One models at ${evaluator.baseURL}`, error.message)
+}
+
+const TRANSPORT_LABELS: Record<Intelligence.Evaluator["transport"], string> = {
+  "opencode-zen": "OpenCode Zen",
+  openrouter: "OpenRouter",
+  typesafe: "TypeSafe",
+  "red-router": "RedRouter",
+  "cloudflare-ai-gateway": "Cloudflare AI Gateway",
+  vercel: "Vercel AI Gateway",
+  vivgrid: "Vivgrid",
+  "nano-gpt": "NanoGPT",
+}
+
 function credentialValue(value: Credential.Value | undefined) {
   if (value?.type === "key") return value.key
   if (value?.type === "oauth" && value.expires > Date.now()) return value.access
@@ -1690,9 +1726,11 @@ function belongs(evaluator: Intelligence.Evaluator, credential: Credential.Info)
         (validURL(evaluator.baseURL) ? new URL(evaluator.baseURL).href.replace(/\/$/, "") : undefined)
     )
   return (
-    providerIntegrations(evaluator.transport).some(
+    (providerIntegrations(evaluator.transport).some(
       (integration) => credential.integrationID === Integration.ID.make(integration),
-    ) &&
+    ) ||
+      // A RedRouter connected under another provider id records the router it answered as.
+      (evaluator.transport === "red-router" && stringMetadata(metadata, "router") === "red-router")) &&
     ProviderRouter.sameEndpoint(
       evaluator.baseURL,
       stringMetadata(metadata, "baseURL") ?? evaluatorPreset(evaluator.transport).baseURL,

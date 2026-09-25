@@ -873,7 +873,7 @@ test("large checkpoints inspect every source batch and retain a rejection from a
   }
 })
 
-test("temporary overload retries once and missing catalog supports manual selection", async () => {
+test("temporary overload retries once and a missing catalog says why instead of falling to manual", async () => {
   await using dir = await tmpdir()
   let calls = 0
   const server = Bun.serve({
@@ -889,7 +889,12 @@ test("temporary overload retries once and missing catalog supports manual select
       Effect.gen(function* () {
         const service = yield* Intelligence.make(dir.path, credentials)
         const evaluator = { transport: "red-router" as const, baseURL: `${server.url}v1`, model: "jev-1.13.0" }
-        expect(yield* service.discover({ evaluator })).toEqual({ models: [], manual: true })
+        const discovered = yield* service.discover({ evaluator }).pipe(Effect.result)
+        expect(discovered._tag).toBe("Failure")
+        if (discovered._tag === "Failure")
+          expect(discovered.failure.message).toBe(
+            `RedRouter has no System One catalog at ${evaluator.baseURL} (HTTP 404).`,
+          )
         yield* service.save({
           settings: {
             enabled: true,
@@ -1103,7 +1108,7 @@ test("System One onboarding lists configured catalog providers first", async () 
   )
   const options = await Effect.runPromise(service.options())
   expect(options[0]).toMatchObject({
-    name: "openrouter",
+    name: "openrouter · typesafe/jev-1.13",
     configured: true,
     evaluator: { transport: "openrouter", model: "typesafe/jev-1.13", credentialID: openrouter.id },
   })
@@ -1410,6 +1415,81 @@ test("a connected RedRouter serving System One is offered with the provider key,
     )
     expect(elsewhere._tag).toBe("Failure")
     if (elsewhere._tag === "Failure") expect(elsewhere.failure.message).toContain("does not belong")
+  } finally {
+    ProviderRouter.forget()
+    await server.stop(true)
+  }
+})
+
+test("a RedRouter connected under another provider id lists its System One models by upstream and model name", async () => {
+  await using dir = await tmpdir()
+  const server = Bun.serve({
+    hostname: "127.0.0.1",
+    port: 0,
+    fetch: (request) => {
+      if (request.headers.get("authorization") !== "Bearer router-key") return new Response("refused", { status: 401 })
+      const path = new URL(request.url).pathname
+      if (path === "/v1/models/systemone")
+        return Response.json({
+          object: "list",
+          data: [
+            {
+              id: "openrouter/typesafe/jev-1.13",
+              name: "TypeSafe JEV 1.13",
+              provider: { id: "openrouter", name: "OpenRouter" },
+            },
+            { id: "jev-1.13.0" },
+          ],
+        })
+      if (path === "/v1/systemone") return Response.json(response(0.02))
+      return new Response("not found", { status: 404 })
+    },
+  })
+  try {
+    const baseURL = `http://127.0.0.1:${server.port}/v1`
+    // Saved under the provider id the user chose, tagged with the router that answered there.
+    const connection = new Credential.Info({
+      id: Credential.ID.create(),
+      integrationID: Integration.ID.make("studio"),
+      label: "Provider connection",
+      value: { type: "key", key: "router-key", metadata: { baseURL, router: "red-router" } },
+    })
+    const service = await Effect.runPromise(
+      Intelligence.make(
+        dir.path,
+        {
+          get: (id) => Effect.succeed(id === connection.id ? connection : undefined),
+          list: (id) => Effect.succeed(id === connection.integrationID ? [connection] : []),
+          all: () => Effect.succeed([connection]),
+          create: () => Effect.die("unused"),
+        },
+        fetch,
+      ),
+    )
+    const options = await Effect.runPromise(service.options())
+    const router = options.find((option) => option.evaluator.transport === "red-router")
+    expect(router).toMatchObject({ configured: true, evaluator: { baseURL, credentialID: connection.id } })
+    const evaluator = router!.evaluator
+    expect(await Effect.runPromise(service.discover({ evaluator }))).toEqual({
+      models: [
+        { id: "openrouter/typesafe/jev-1.13", name: "OpenRouter · TypeSafe JEV 1.13" },
+        { id: "jev-1.13.0", name: "jev-1.13.0" },
+      ],
+      manual: false,
+    })
+    expect(
+      await Effect.runPromise(
+        service.request({ ...evaluator, model: "openrouter/typesafe/jev-1.13" }, "systemone", { model: "x" }),
+      ),
+    ).toEqual(response(0.02))
+
+    // Without the connection's key the router refuses, and discovery reports it rather than going manual.
+    const refused = await Effect.runPromise(
+      service.discover({ evaluator: { transport: "red-router", baseURL, model: "jev-1.13.0" } }).pipe(Effect.result),
+    )
+    expect(refused._tag).toBe("Failure")
+    if (refused._tag === "Failure")
+      expect(refused.failure.message).toBe("RedRouter rejected the credential (HTTP 401). Reconnect it or enter a key.")
   } finally {
     ProviderRouter.forget()
     await server.stop(true)
