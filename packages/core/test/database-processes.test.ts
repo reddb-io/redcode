@@ -49,7 +49,11 @@ const race = async (dir: string, args: string[][]) => {
     await Promise.all(outputs.map((output) => output.stdout.ready))
     await fs.writeFile(gate, "")
     return await Promise.all(
-      outputs.map(async (output, index) => ({ code: await children[index]!.exited, stderr: await output.stderr.text })),
+      outputs.map(async (output, index) => ({
+        code: await children[index]!.exited,
+        stdout: await output.stdout.text,
+        stderr: await output.stderr.text,
+      })),
     )
   } finally {
     for (const child of children) if (child.exitCode === null) child.kill()
@@ -57,26 +61,67 @@ const race = async (dir: string, args: string[][]) => {
 }
 
 describe("one database across processes", () => {
-  test("two processes opening an empty file at the same moment both migrate it once", async () => {
+  test("four processes opening an empty file at the same moment all migrate it once", async () => {
     await using tmp = await tmpdir()
     const filename = path.join(tmp.path, "shared.sqlite")
     const gate = path.join(tmp.path, "go")
 
-    const results = await race(tmp.path, [
-      ["open", filename, gate],
-      ["open", filename, gate],
-    ])
+    const results = await race(
+      tmp.path,
+      Array.from({ length: 4 }, () => ["open", filename, gate]),
+    )
 
     expect(
       results.map((result) => result.code),
       results.map((result) => result.stderr).join("\n"),
-    ).toEqual([0, 0])
+    ).toEqual([0, 0, 0, 0])
     const file = new SqliteFile(filename, { readonly: true })
     try {
       expect(file.query("SELECT count(*) AS count FROM migration").get()).toEqual({ count: migrations.length })
       expect(file.query("SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'session'").get()).toEqual({
         name: "session",
       })
+    } finally {
+      file.close()
+    }
+  }, 60_000)
+
+  // The scenario from #58: parallel headless agents writing their sessions into one file. One
+  // process keeps the write lock past the busy timeout twice, as a large write on a slow disk
+  // would; the writers' own statements and transactions must wait it out instead of failing.
+  test("several processes writing sessions at once all finish, even past a long lock hold", async () => {
+    await using tmp = await tmpdir()
+    const filename = path.join(tmp.path, "shared.sqlite")
+    const gate = path.join(tmp.path, "go")
+    const writers = ["a", "b", "c"]
+
+    const results = await race(tmp.path, [
+      ...writers.map((writer) => ["write", filename, gate, writer, "4000"]),
+      ["hold", filename, gate, "holder", "1500"],
+    ])
+
+    expect(
+      results.map((result) => result.code),
+      results.map((result) => result.stderr).join("\n"),
+    ).toEqual([0, 0, 0, 0])
+    const wrote = results.map((result) => Number(/wrote (\d+)/.exec(result.stdout)?.[1]))
+    for (const count of wrote.slice(0, writers.length)) expect(count).toBeGreaterThan(0)
+    const file = new SqliteFile(filename, { readonly: true })
+    try {
+      const counts = (table: string) =>
+        file
+          .query<
+            { session_id: string; count: number },
+            []
+          >(`SELECT session_id, count(*) AS count FROM ${table} GROUP BY session_id ORDER BY session_id`)
+          .all()
+      // Every write a process reported is there, once.
+      expect(counts("message")).toEqual(
+        [...writers, "holder"].map((writer, index) => ({ session_id: `ses_${writer}`, count: wrote[index]! })),
+      )
+      expect(counts("part")).toEqual(
+        writers.map((writer, index) => ({ session_id: `ses_${writer}`, count: wrote[index]! })),
+      )
     } finally {
       file.close()
     }

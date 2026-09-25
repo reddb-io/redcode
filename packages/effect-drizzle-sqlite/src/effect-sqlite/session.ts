@@ -48,11 +48,22 @@ export interface TransactionDefaults {
   readonly retry?: TransactionRetry
 }
 
+/**
+ * Defaults for every statement run outside a transaction. Such a statement commits on its own, so
+ * one SQLite refused with SQLITE_BUSY changed nothing and is safe to run again. Its `retry` covers
+ * the writer that holds the lock past the busy timeout: without it, the statement fails with the
+ * first refusal. Statements inside a transaction never retry on their own; the transaction does.
+ */
+export interface StatementDefaults {
+  readonly retry?: TransactionRetry
+}
+
 export interface EffectSQLiteSessionOptions {
   logger: EffectLoggerShape
   cache: EffectCacheShape
   useJitMappers?: boolean
   transaction?: TransactionDefaults
+  statement?: StatementDefaults
 }
 
 /**
@@ -152,6 +163,32 @@ const retryDelay = (retry: TransactionRetry, attempt: number) => {
   return Math.round(capped * (0.5 + Math.random()))
 }
 
+/**
+ * Runs `effect` again while it fails with a lock error ({@link isLockError}), up to
+ * `retry.attempts` more times, sleeping a jittered, exponentially growing delay before each. Any
+ * other failure, and the last lock error, pass through unchanged. `interruptible` wraps each wait,
+ * for callers that run under an uninterruptible mask and must still be interruptible while asleep.
+ */
+export const retryOnLock = <A, E, R>(
+  effect: Effect.Effect<A, E, R>,
+  retry: TransactionRetry,
+  interruptible: <X, Y, Z>(wait: Effect.Effect<X, Y, Z>) => Effect.Effect<X, Y, Z> = (wait) => wait,
+): Effect.Effect<A, E, R> => {
+  const attempt = (n: number): Effect.Effect<A, E, R> =>
+    effect.pipe(
+      Effect.catchIf(
+        (error) => n < retry.attempts && isLockError(error),
+        () => {
+          const delay = retryDelay(retry, n)
+          return interruptible(
+            (retry.onRetry?.(n + 1, delay) ?? Effect.void).pipe(Effect.andThen(Effect.sleep(delay))),
+          ).pipe(Effect.flatMap(() => attempt(n + 1)))
+        },
+      ),
+    )
+  return attempt(0)
+}
+
 export class EffectSQLiteSession<TRelations extends AnyRelations> extends SQLiteEffectSession<
   EffectSQLiteQueryEffectHKT,
   EffectSQLiteRunResult,
@@ -222,9 +259,19 @@ export class EffectSQLiteSession<TRelations extends AnyRelations> extends SQLite
 
   private execute(query: Query, params: unknown[], method: SQLiteExecuteMethod | "values") {
     const statement = this.client.unsafe(query.sql, params)
-    if (method === "values") return statement.values
-    if (method === "get") return statement.withoutTransform.pipe(Effect.map((rows) => rows[0]))
-    return statement.withoutTransform
+    const run: Effect.Effect<unknown, SqlError> =
+      method === "values"
+        ? statement.values
+        : method === "get"
+          ? statement.withoutTransform.pipe(Effect.map((rows) => rows[0]))
+          : statement.withoutTransform
+    const retry = this.options.statement?.retry
+    if (!retry || retry.attempts <= 0) return run
+    // Each attempt acquires the connection anew, so a transaction another fiber of this process
+    // opened during the wait is never joined by a statement that did not belong to it.
+    return this.isInTransaction().pipe(
+      Effect.flatMap((inTransaction) => (inTransaction ? run : retryOnLock(run, retry))),
+    )
   }
 
   private isInTransaction() {
@@ -337,19 +384,7 @@ export class EffectSQLiteSession<TRelations extends AnyRelations> extends SQLite
         // this process get their turn while another process finishes its write.
         const retry = config?.retry ?? this.options.transaction?.retry
         if (id !== 0 || !retry || retry.attempts <= 0) return once
-        const attempt = (n: number): Effect.Effect<A, E | SqlError, R> =>
-          once.pipe(
-            Effect.catchIf(
-              (error) => n < retry.attempts && isLockError(error),
-              () => {
-                const delay = retryDelay(retry, n)
-                return restore(
-                  (retry.onRetry?.(n + 1, delay) ?? Effect.void).pipe(Effect.andThen(Effect.sleep(delay))),
-                ).pipe(Effect.flatMap(() => attempt(n + 1)))
-              },
-            ),
-          )
-        return attempt(0)
+        return retryOnLock(once, retry, restore)
       }),
     )
   }

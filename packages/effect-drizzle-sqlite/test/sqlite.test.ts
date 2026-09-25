@@ -431,6 +431,108 @@ test("gives up after the configured attempts while the lock is still held", asyn
   })
 })
 
+test("retryOnLock runs an effect again only while it fails with SQLITE_BUSY, within its attempts", async () => {
+  const failure = (code: string, errno: number, message: string) =>
+    new SqlError({ reason: new LockTimeoutError({ cause: Object.assign(new Error(message), { code, errno }) }) })
+  const busy = failure("SQLITE_BUSY", 5, "database is locked")
+  const retry = { attempts: 3, baseDelayMs: 1, maxDelayMs: 2 }
+
+  // Succeeds on the third run: two waits, numbered from 1, each within the jittered cap.
+  const waits = new Array<[number, number]>()
+  let flaky = 0
+  const recovered = await Effect.runPromise(
+    EffectDrizzleSqlite.retryOnLock(
+      Effect.suspend(() => (++flaky < 3 ? Effect.fail(busy) : Effect.succeed(flaky))),
+      { ...retry, onRetry: (attempt, delayMs) => Effect.sync(() => void waits.push([attempt, delayMs])) },
+    ),
+  )
+  expect(recovered).toBe(3)
+  expect(waits.map(([attempt]) => attempt)).toEqual([1, 2])
+  for (const [, delayMs] of waits) expect(delayMs).toBeLessThanOrEqual(3)
+
+  // Still busy after every attempt: the first run plus `attempts`, then the last error unchanged.
+  let stuck = 0
+  const lastError = await Effect.runPromise(
+    EffectDrizzleSqlite.retryOnLock(
+      Effect.suspend(() => {
+        stuck++
+        return Effect.fail(busy)
+      }),
+      retry,
+    ).pipe(Effect.flip),
+  )
+  expect(lastError).toBe(busy)
+  expect(stuck).toBe(4)
+
+  // SQLITE_LOCKED, or any other failure, is not waited out.
+  for (const error of [failure("SQLITE_LOCKED", 6, "database table is locked"), new Error("boom")]) {
+    let runs = 0
+    const seen = await Effect.runPromise(
+      EffectDrizzleSqlite.retryOnLock(
+        Effect.suspend(() => {
+          runs++
+          return Effect.fail(error)
+        }),
+        retry,
+      ).pipe(Effect.flip),
+    )
+    expect(seen).toBe(error)
+    expect(runs).toBe(1)
+  }
+})
+
+test("retries a locked statement outside a transaction once the lock is released", async () => {
+  await withHolder(async (filename, holder) => {
+    holder.run("begin immediate")
+    const release = setTimeout(() => holder.run("commit"), 150)
+    try {
+      await onFile(
+        filename,
+        Effect.gen(function* () {
+          const db = yield* EffectDrizzleSqlite.makeWithDefaults({
+            statement: { retry: { attempts: 8, baseDelayMs: 20, maxDelayMs: 80 } },
+          })
+          yield* db.run(sql`pragma busy_timeout = 0`)
+          yield* db.insert(users).values({ name: "Waited" })
+          expect(yield* db.select({ name: users.name }).from(users)).toEqual([{ name: "Waited" }])
+        }),
+      )
+    } finally {
+      clearTimeout(release)
+    }
+  })
+})
+
+test("a statement fails with the lock error once its retries run out, and never retries without a budget", async () => {
+  await withHolder(async (filename, holder) => {
+    holder.run("begin immediate")
+    await onFile(
+      filename,
+      Effect.gen(function* () {
+        const waits = new Array<number>()
+        const patient = yield* EffectDrizzleSqlite.makeWithDefaults({
+          statement: {
+            retry: {
+              attempts: 2,
+              baseDelayMs: 5,
+              maxDelayMs: 10,
+              onRetry: (attempt) => Effect.sync(() => void waits.push(attempt)),
+            },
+          },
+        })
+        yield* patient.run(sql`pragma busy_timeout = 0`)
+        const error = yield* patient.insert(users).values({ name: "Blocked" }).pipe(Effect.flip)
+        expect(EffectDrizzleSqlite.isLockError(error)).toBe(true)
+        expect(waits).toEqual([1, 2])
+
+        const impatient = yield* EffectDrizzleSqlite.makeWithDefaults()
+        const refused = yield* impatient.insert(users).values({ name: "Blocked" }).pipe(Effect.flip)
+        expect(EffectDrizzleSqlite.isLockError(refused)).toBe(true)
+      }),
+    )
+  })
+})
+
 test("an immediate transaction keeps a competing writer out between its read and its write", async () => {
   await withHolder(async (filename, holder) => {
     const interleave = () =>

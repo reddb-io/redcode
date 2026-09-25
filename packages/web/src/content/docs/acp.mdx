@@ -140,6 +140,20 @@ This config sets up CodeCompanion to use OpenCode as the ACP agent for chat.
 
 If you need to pass environment variables (like `OPENCODE_API_KEY`), refer to [Configuring Adapters: Environment Variables](https://codecompanion.olimorris.dev/getting-started#setting-an-api-key) in the CodeCompanion.nvim documentation for full details.
 
+## Running several agents
+
+Any number of `acp` processes can run at once on one machine. They share one SQLite database in the data directory, and a write that finds another process holding the lock waits and tries again instead of failing the turn.
+
+To keep an agent's sessions apart from everyone else's, point it at its own database with `REDCODE_DB`, an absolute path or a file name inside the data directory:
+
+```bash
+REDCODE_DB=/var/lib/agents/worker-1.db redcode acp
+```
+
+Credentials and configuration stay shared, so the agent still signs in with the providers you set up.
+
+---
+
 ## Support
 
 OpenCode works the same via ACP as it does in the terminal. All features are supported:

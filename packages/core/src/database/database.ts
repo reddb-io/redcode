@@ -28,6 +28,11 @@ const makeDatabase = EffectDrizzleSqlite.makeWithDefaults({
   // a transaction body must only touch the database; anything for listeners goes through
   // `EffectDrizzleSqlite.afterCommit`. Migrations name their own, far larger, budget.
   transaction: { behavior: "immediate", retry: { attempts: 6, baseDelayMs: 25, maxDelayMs: 800 } },
+  // A write outside a transaction (a part update, a session touch, the startup checkpoint) commits
+  // on its own and waits on the same lock. With only the busy timeout, several agents writing at
+  // once turned one long lock hold into a failed statement and a dead turn; a refused autocommit
+  // statement changed nothing, so it is run again on the same budget.
+  statement: { retry: { attempts: 6, baseDelayMs: 25, maxDelayMs: 800 } },
 })
 const makeRemoteDatabase = EffectDrizzleSqlite.makeWithDefaults()
 type DatabaseShape = Effect.Success<typeof makeDatabase>
@@ -75,7 +80,8 @@ const databaseLayer = (remote: boolean) =>
 /**
  * How long a statement waits for another process's lock before SQLITE_BUSY, from the first one.
  * Short, because the wait blocks the thread (bun:sqlite is synchronous) and a TUI must not hang
- * on it; the transaction retry above, which sleeps between attempts, does the longer waiting.
+ * on it; the transaction and statement retries above, which sleep between attempts, do the longer
+ * waiting.
  */
 const BUSY_TIMEOUT_MS = 1000
 
