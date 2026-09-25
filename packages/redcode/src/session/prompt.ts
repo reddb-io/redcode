@@ -3696,9 +3696,9 @@ export const PendingPrompt = Schema.Struct({
   delivery: SessionInput.Delivery,
   text: Schema.String,
   /** Attached files, which the text alone does not show. */
-  files: Schema.Number,
+  files: Schema.Finite,
   /** When it was admitted, in epoch milliseconds. */
-  time: Schema.Number,
+  time: Schema.Finite,
   stale: Schema.Boolean.annotate({
     description:
       "Queued before the session last went idle without taking it up. A stale prompt is never promoted on its own: it waits to be sent as a steer or discarded",
