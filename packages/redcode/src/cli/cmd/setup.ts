@@ -1,4 +1,4 @@
-import type { DetectedRouter, Evaluator, Reasoning, Settings } from "@reddb-io/redcode-schema/intelligence"
+import type { DetectedRouter, Reasoning, Settings } from "@reddb-io/redcode-schema/intelligence"
 import { Effect, Option } from "effect"
 import { Intelligence } from "@reddb-io/redcode-core/intelligence"
 import { Location } from "@reddb-io/redcode-core/location"
@@ -191,8 +191,8 @@ function configureSystemOne(service: Intelligence.Interface, previous: Settings,
     const evaluators = yield* service.options()
     // A connected RedRouter that serves System One comes first: it shares the provider's key.
     const detected = router?.evaluator
-    const transport = yield* answer(
-      yield* select<Evaluator["transport"] | "detected">({
+    const choice = yield* answer(
+      yield* select<string>({
         message: "S1 (System One) connection",
         options: [
           ...(router && detected
@@ -208,17 +208,26 @@ function configureSystemOne(service: Intelligence.Interface, previous: Settings,
                 },
               ]
             : []),
-          ...evaluators.map((option) => ({
-            value: option.evaluator.transport,
+          // A connected RedRouter lists one option per System One model it serves.
+          ...evaluators.map((option, index) => ({
+            value: String(index),
             label: `${option.configured ? "Configured · " : ""}${option.name}`,
           })),
         ],
       }),
     )
-    if (transport === "detected")
+    if (choice === "detected")
       return detected ? { evaluator: detected, key: "" } : yield* fail("No RedRouter with System One was detected")
-    const selected = evaluators.find((option) => option.evaluator.transport === transport)
-    if (!selected) return yield* fail(`Unknown S1 connection: ${transport}`)
+    const selected = evaluators[Number(choice)]
+    if (!selected) return yield* fail(`Unknown S1 connection: ${choice}`)
+    // A model the connected RedRouter listed already carries the router's address and credential.
+    if (
+      selected.configured &&
+      selected.evaluator.transport === "red-router" &&
+      selected.name.startsWith("RedRouter · ")
+    )
+      return { evaluator: selected.evaluator, key: "" }
+    const transport = selected.evaluator.transport
     const baseURL = yield* answer(
       yield* text({
         message: "API base URL",

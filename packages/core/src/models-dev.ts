@@ -124,6 +124,8 @@ export const Model = Schema.Struct({
 })
 export type Model = Schema.Schema.Type<typeof Model>
 
+// System One models of DIRECT providers only. A connected RedRouter is not described here: what it
+// serves comes from its own `/v1/models/systemone` catalog (`Intelligence.discover`).
 const SYSTEM_ONE_OFFERS: Readonly<Record<string, ReadonlySet<string>>> = {
   opencode: new Set(["jev-1.13", "jev-1.13-free", "jev-latest"]),
   openrouter: new Set(["typesafe/jev-1.13"]),
@@ -133,6 +135,7 @@ const SYSTEM_ONE_OFFERS: Readonly<Record<string, ReadonlySet<string>>> = {
   "nano-gpt": new Set(["typesafe/jev-latest"]),
 }
 
+/** The System One offers of the direct providers the catalog knows; never a router's models. */
 export function systemOneOffers(catalog: Record<string, Provider>) {
   return Object.entries(SYSTEM_ONE_OFFERS).flatMap(([providerID, modelIDs]) => {
     const provider = Object.values(catalog).find((candidate) => candidate.id === providerID)

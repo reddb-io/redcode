@@ -118,12 +118,16 @@ test("the model picker labels routed and direct models and follows renamed favor
   try {
     await wait(() => setup.app.captureCharFrame().includes("Favorites"))
     const frame = setup.app.captureCharFrame()
-    // The favorite saved under the old id shows as the renamed model.
-    expect(frame).toContain("Sol via RedRouter · Codex")
+    // The favorite saved under the old id shows as the renamed model. Its route shows as a title
+    // suffix (it is also served directly), so the description does not repeat it.
+    expect(frame).toContain("Sol · via RedRouter")
+    expect(frame).toContain("Codex · subscription · also direct")
     expect(frame).toContain("review")
     expect(frame).toContain("RedRouter · Combo")
     expect(frame).toContain("Smart via RedRouter · Combo")
-    expect(frame).toContain("Sol direct · also via RedRouter")
+    // The direct connection's Sol is also served via RedRouter, so it gets a route suffix too.
+    expect(frame).toContain("Sol · direct")
+    expect(frame).toContain("also via RedRouter")
 
     await eventually(async () => {
       const saved = await Bun.file(file).json()
@@ -134,6 +138,59 @@ test("the model picker labels routed and direct models and follows renamed favor
       recent: [{ providerID: "red-router", modelID: "codex/sol" }],
       variant: { "red-router/codex/sol": "high" },
     })
+  } finally {
+    setup.app.renderer.destroy()
+  }
+})
+
+const opusRouter = {
+  id: "red-router",
+  name: "RedRouter",
+  env: [],
+  options: {},
+  source: "config",
+  router: { kind: "red-router" },
+  models: {
+    "anthropic/opus": {
+      ...base,
+      id: "anthropic/opus",
+      providerID: "red-router",
+      name: "Claude Opus 5.5",
+      upstream: { id: "anthropic", slug: "anthropic", name: "Claude Code" },
+    },
+    // Served through a remote RedRouter this connection forwards to: same name, different chain.
+    "openrouter/anthropic/opus": {
+      ...base,
+      id: "openrouter/anthropic/opus",
+      providerID: "red-router",
+      name: "Claude Opus 5.5",
+      upstream: { id: "openrouter-anthropic", slug: "openrouter-anthropic", name: "Claude" },
+      via: "RedRouter",
+    },
+  },
+}
+
+test("two same-named models reached through different router chains show distinct route labels", async () => {
+  await using tmp = await tmpdir()
+  await Bun.write(`${tmp.path}/kv.json`, "{}")
+  const setup = await mount(
+    (url) => {
+      if (url.pathname === "/api/intelligence") return new Response("", { status: 404 })
+      if (url.pathname === "/config/providers")
+        return json({ providers: [opusRouter], default: { "red-router": "anthropic/opus" } })
+    },
+    tmp.path,
+    () => <Dialogs />,
+    { width: 100, height: 40 },
+  )
+  try {
+    await wait(() => setup.app.captureCharFrame().includes("Select model"))
+    await setup.app.mockInput.typeText("opus")
+    await wait(() => setup.app.captureCharFrame().includes("via RedRouter → RedRouter"))
+    const frame = setup.app.captureCharFrame()
+    // Same title, distinguishable routes: one served directly via RedRouter, one via a remote one.
+    expect(frame).toContain("Claude Opus 5.5 · via RedRouter → RedRouter")
+    expect(frame).toContain("Claude Opus 5.5 · via RedRouter")
   } finally {
     setup.app.renderer.destroy()
   }
