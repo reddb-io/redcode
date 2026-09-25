@@ -165,6 +165,8 @@ export const dict = {
   "command.model.variant.cycle.description": "Treci la următorul nivel de efort",
   "command.prompt.mode.shell": "Shell",
   "command.prompt.mode.normal": "Solicitare",
+  "command.prompt.queue": "Queue prompt",
+  "command.prompt.queue.description": "Send after the current turn instead of steering it",
   "command.permissions.autoaccept.enable": "Acceptă automat permisiunile",
   "command.permissions.autoaccept.disable": "Oprește acceptarea automată a permisiunilor",
   "command.workspace.toggle": "Comută spațiile de lucru",

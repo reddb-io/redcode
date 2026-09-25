@@ -167,6 +167,8 @@ export const dict = {
   "command.model.variant.cycle.description": "Преминете към следващото ниво на усилие",
   "command.prompt.mode.shell": "Shell",
   "command.prompt.mode.normal": "подкана",
+  "command.prompt.queue": "Queue prompt",
+  "command.prompt.queue.description": "Send after the current turn instead of steering it",
   "command.permissions.autoaccept.enable": "Автоматично приемане на разрешения",
   "command.permissions.autoaccept.disable": "Спрете автоматичното приемане на разрешения",
   "command.workspace.toggle": "Превключване на работните пространства",

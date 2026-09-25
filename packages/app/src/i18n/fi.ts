@@ -72,6 +72,8 @@ export const dict = {
   "command.model.variant.cycle.description": "Vaihda seuraavalle päättelyn tasolle",
   "command.prompt.mode.shell": "Shell",
   "command.prompt.mode.normal": "Kehote",
+  "command.prompt.queue": "Queue prompt",
+  "command.prompt.queue.description": "Send after the current turn instead of steering it",
   "command.permissions.autoaccept.enable": "Hyväksy käyttöoikeudet automaattisesti",
   "command.permissions.autoaccept.disable": "Lopeta käyttöoikeuksien automaattinen hyväksyminen",
   "command.workspace.toggle": "Vaihda työtiloja",

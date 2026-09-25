@@ -167,6 +167,8 @@ export const dict = {
   "command.model.variant.cycle.description": "Növbəti səviyyəyə keç",
   "command.prompt.mode.shell": "Shell",
   "command.prompt.mode.normal": "Prompt",
+  "command.prompt.queue": "Queue prompt",
+  "command.prompt.queue.description": "Send after the current turn instead of steering it",
   "command.permissions.autoaccept.enable": "İcazələri avtomatik qəbul et",
   "command.permissions.autoaccept.disable": "İcazələrin avtomatik qəbulunu dayandır",
   "command.workspace.toggle": "İş sahələrini aç/bağla",

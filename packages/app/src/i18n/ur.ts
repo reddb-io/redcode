@@ -173,6 +173,8 @@ export const dict = {
   "command.model.variant.cycle.description": "محنت کی اگلی سطح پر جائیں۔",
   "command.prompt.mode.shell": "شیل",
   "command.prompt.mode.normal": "پرامپٹ",
+  "command.prompt.queue": "Queue prompt",
+  "command.prompt.queue.description": "Send after the current turn instead of steering it",
   "command.permissions.autoaccept.enable": "اجازتیں خود بخود قبول کریں۔",
   "command.permissions.autoaccept.disable": "اجازتوں کو خودکار طور پر قبول کرنا بند کریں۔",
   "command.workspace.toggle": "ورک اسپیسز فعال یا غیر فعال کریں",

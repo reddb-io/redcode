@@ -178,6 +178,8 @@ export const dict = {
   "command.model.variant.cycle.description": "Переключиться к следующему уровню усилий",
   "command.prompt.mode.shell": "Оболочка",
   "command.prompt.mode.normal": "Промпт",
+  "command.prompt.queue": "Queue prompt",
+  "command.prompt.queue.description": "Send after the current turn instead of steering it",
   "command.permissions.autoaccept.enable": "Автоматически принимать разрешения",
   "command.permissions.autoaccept.disable": "Остановить автоматическое принятие разрешений",
   "command.workspace.toggle": "Переключить рабочие пространства",

@@ -172,6 +172,8 @@ export const dict = {
   "command.model.variant.cycle.description": "Chuyển sang mức nỗ lực tiếp theo",
   "command.prompt.mode.shell": "Shell",
   "command.prompt.mode.normal": "Lời nhắc",
+  "command.prompt.queue": "Queue prompt",
+  "command.prompt.queue.description": "Send after the current turn instead of steering it",
   "command.permissions.autoaccept.enable": "Tự động chấp nhận quyền",
   "command.permissions.autoaccept.disable": "Dừng tự động chấp nhận quyền",
   "command.workspace.toggle": "Bật/tắt không gian làm việc",

@@ -181,6 +181,8 @@ export const dict = {
   "command.model.variant.cycle.description": "切換到下一個強度等級",
   "command.prompt.mode.shell": "Shell",
   "command.prompt.mode.normal": "Prompt",
+  "command.prompt.queue": "Queue prompt",
+  "command.prompt.queue.description": "Send after the current turn instead of steering it",
   "command.permissions.autoaccept.enable": "自動接受權限",
   "command.permissions.autoaccept.disable": "停止自動接受權限",
   "command.workspace.toggle": "切換工作區",

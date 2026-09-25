@@ -165,6 +165,8 @@ export const dict = {
   "command.model.variant.cycle.description": "ប្តូរទៅកម្រិតនៃកិច្ចខិតខំប្រឹងប្រែងបន្ទាប់",
   "command.prompt.mode.shell": "សែល",
   "command.prompt.mode.normal": "ប្រអប់បញ្ចូល",
+  "command.prompt.queue": "Queue prompt",
+  "command.prompt.queue.description": "Send after the current turn instead of steering it",
   "command.permissions.autoaccept.enable": "ការអនុញ្ញាតដោយស្វ័យប្រវត្តិ",
   "command.permissions.autoaccept.disable": "បញ្ឈប់ការអនុញ្ញាតដោយស្វ័យប្រវត្តិ",
   "command.workspace.toggle": "បិទ/បើកកន្លែងធ្វើការ",

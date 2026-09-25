@@ -166,6 +166,8 @@ export const dict = {
   "command.model.variant.cycle.description": "Kalo në nivelin tjetër të përpjekjes",
   "command.prompt.mode.shell": "Shell",
   "command.prompt.mode.normal": "Kërkesë",
+  "command.prompt.queue": "Queue prompt",
+  "command.prompt.queue.description": "Send after the current turn instead of steering it",
   "command.permissions.autoaccept.enable": "Prano automatikisht lejet",
   "command.permissions.autoaccept.disable": "Ndalo pranimin automatik të lejeve",
   "command.workspace.toggle": "Ndrysho hapësirat e punës",

@@ -165,6 +165,8 @@ export const dict = {
   "command.model.variant.cycle.description": "Tukar ke tahap usaha seterusnya",
   "command.prompt.mode.shell": "Shell",
   "command.prompt.mode.normal": "Arahan",
+  "command.prompt.queue": "Queue prompt",
+  "command.prompt.queue.description": "Send after the current turn instead of steering it",
   "command.permissions.autoaccept.enable": "Terima kebenaran secara automatik",
   "command.permissions.autoaccept.disable": "Henti terima kebenaran automatik",
   "command.workspace.toggle": "Togol ruang kerja",

@@ -167,6 +167,8 @@ export const dict = {
   "command.model.variant.cycle.description": "နောက်ထပ်ကြိုးစားမှုအဆင့်သို့ ပြောင်းပါ။",
   "command.prompt.mode.shell": "Shell",
   "command.prompt.mode.normal": "Prompt",
+  "command.prompt.queue": "Queue prompt",
+  "command.prompt.queue.description": "Send after the current turn instead of steering it",
   "command.permissions.autoaccept.enable": "ခွင့်ပြုချက်များကို အလိုအလျောက် လက်ခံသည်။",
   "command.permissions.autoaccept.disable": "ခွင့်ပြုချက်များကို အလိုအလျောက်လက်ခံခြင်းကို ရပ်ပါ။",
   "command.workspace.toggle": "အလုပ်နေရာများ ပြောင်းရန်",

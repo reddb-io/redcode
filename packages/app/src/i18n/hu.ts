@@ -169,6 +169,8 @@ export const dict = {
   "command.model.variant.cycle.description": "Váltson a következő erőfeszítési szintre",
   "command.prompt.mode.shell": "Shell",
   "command.prompt.mode.normal": "Utasítás",
+  "command.prompt.queue": "Queue prompt",
+  "command.prompt.queue.description": "Send after the current turn instead of steering it",
   "command.permissions.autoaccept.enable": "Engedélyek automatikus elfogadása",
   "command.permissions.autoaccept.disable": "Állítsa le az engedélyek automatikus elfogadását",
   "command.workspace.toggle": "Munkaterületek váltása",

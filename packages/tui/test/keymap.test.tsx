@@ -9,9 +9,12 @@ import { TuiKeybind } from "../src/config/keybind"
 import {
   bindsAltReturn,
   distinctShiftReturn,
-  steerKeyActive,
+  promptKeyActive,
+  promptKeyRejects,
+  queueKeyIntent,
   steerKeyIntent,
-  steerKeyRejects,
+  type KeyReport,
+  type PromptIntent,
 } from "../src/prompt/steer"
 import { getOpencodeModeStack, OPENCODE_BASE_MODE, OpencodeKeymapProvider, registerOpencodeKeymap } from "../src/keymap"
 
@@ -177,32 +180,32 @@ async function mountSteer(input: {
       <OpencodeKeymapProvider keymap={keymap}>
         <textarea
           initialValue="draft"
+          // Enter: the prompt sends it as a steer while the session works.
           onSubmit={() => calls.push("submit")}
           ref={(r: TextareaRenderable) => {
             textarea = r
             r.focus()
-            // Mirrors the prompt's steer layer: always on, the intent judged per press, and a bare
-            // ESC CR rejected so it falls through to the newline until the terminal has shown its
-            // Shift+Enter is something else.
+            // Mirrors the prompt's queue and steer key layer: always on, the intent judged per
+            // press, and a bare ESC CR rejected so it falls through to the newline until the
+            // terminal has shown its Shift+Enter is something else.
+            const promptKey = (name: string, intentFor: (statusType: string) => PromptIntent) => ({
+              name,
+              run: (ctx: { event?: KeyReport }) => {
+                const escCr = {
+                  shiftReturnReported,
+                  newlineOnAltReturn: bindsAltReturn(config.keybinds.get("input.newline")),
+                }
+                if (promptKeyRejects(ctx.event, escCr)) return false
+                const intent = intentFor(input.busy ? "busy" : "idle")
+                calls.push(intent === "submit" ? `submit:${name}` : intent)
+              },
+            })
             offSteer = keymap.registerLayer({
               target: r,
               priority: 1,
-              enabled: () => steerKeyActive({ focused: true, disabled: false }),
-              commands: [
-                {
-                  name: "input.steer",
-                  run: (ctx) => {
-                    const escCr = {
-                      shiftReturnReported,
-                      newlineOnAltReturn: bindsAltReturn(config.keybinds.get("input.newline")),
-                    }
-                    if (steerKeyRejects(ctx.event, escCr)) return false
-                    const intent = steerKeyIntent(input.busy ? "busy" : "idle")
-                    calls.push(intent === "steer" ? "steer" : "submit:steer-key")
-                  },
-                },
-              ],
-              bindings: config.keybinds.gather("prompt.steer", ["input.steer"]),
+              enabled: () => promptKeyActive({ focused: true, disabled: false }),
+              commands: [promptKey("input.queue", queueKeyIntent), promptKey("input.steer", steerKeyIntent)],
+              bindings: config.keybinds.gather("prompt.send", ["input.queue", "input.steer"]),
             })
           }}
         />
@@ -215,23 +218,23 @@ async function mountSteer(input: {
   return { app, calls, text: () => textarea?.plainText }
 }
 
-test("while busy, alt+return steers and return still submits", async () => {
+test("while busy, alt+return queues and return still submits (as a steer)", async () => {
   const { app, calls, text } = await mountSteer({ busy: true })
   try {
     app.mockInput.pressEnter({ meta: true })
     app.mockInput.pressEnter()
-    expect(calls).toEqual(["steer", "submit"])
+    expect(calls).toEqual(["queue", "submit"])
     expect(text()).toBe("draft")
   } finally {
     app.renderer.destroy()
   }
 })
 
-test("while idle, alt+return submits through the steer layer", async () => {
+test("while idle, alt+return submits through the queue layer", async () => {
   const { app, calls, text } = await mountSteer({ busy: false })
   try {
     app.mockInput.pressEnter({ meta: true })
-    expect(calls).toEqual(["submit:steer-key"])
+    expect(calls).toEqual(["submit:input.queue"])
     expect(text()).toBe("draft")
   } finally {
     app.renderer.destroy()
@@ -253,7 +256,7 @@ test("shift+return inserts a newline whether busy or idle", async () => {
 
 test("a bare ESC CR stays a newline whether busy or idle", async () => {
   // Legacy alt+return and a Shift+Enter mapped to ESC CR (VS Code sendSequence, Alacritty chars,
-  // tmux) send the same two bytes, so they cannot steer or submit.
+  // tmux) send the same two bytes, so they cannot queue or submit.
   for (const busy of [true, false]) {
     for (const kittyKeyboard of [false, true]) {
       const { app, calls, text } = await mountSteer({ busy, kittyKeyboard })
@@ -278,12 +281,12 @@ const enterReports = [
   { name: "ctrl+return, modifyOtherKeys (CSI 27;5;13~)", bytes: "\x1b[27;5;13~", idle: "newline", busy: "newline" },
   { name: "ctrl+j (LF)", bytes: "\n", idle: "newline", busy: "newline" },
   { name: "legacy alt+return or mapped shift+return (ESC CR)", bytes: "\x1b\r", idle: "newline", busy: "newline" },
-  { name: "alt+return, kitty (CSI 13;3u)", bytes: "\x1b[13;3u", idle: "submit:steer-key", busy: "steer" },
+  { name: "alt+return, kitty (CSI 13;3u)", bytes: "\x1b[13;3u", idle: "submit:input.queue", busy: "queue" },
   {
     name: "alt+return, modifyOtherKeys (CSI 27;3;13~)",
     bytes: "\x1b[27;3;13~",
-    idle: "submit:steer-key",
-    busy: "steer",
+    idle: "submit:input.queue",
+    busy: "queue",
   },
 ] as const
 
@@ -331,6 +334,17 @@ test("an explicit input_steer on shift+return still steers while busy", async ()
   }
 })
 
+test("an explicit input_steer on alt+return, from when it was the steer key, still steers while busy", async () => {
+  const { app, calls, text } = await mountSteer({ busy: true, keybinds: { input_steer: "alt+return" } })
+  try {
+    app.mockInput.pressEnter({ meta: true })
+    expect(calls).toEqual(["steer"])
+    expect(text()).toBe("draft")
+  } finally {
+    app.renderer.destroy()
+  }
+})
+
 test("ESC CR split across two reads still arrives as one alt+return", async () => {
   // OpenTUI holds a lone ESC briefly for the rest of its sequence, so a meta prefix and its CR that
   // land in separate reads are joined instead of turning into Escape then Enter.
@@ -339,14 +353,14 @@ test("ESC CR split across two reads still arrives as one alt+return", async () =
     app.renderer.stdin.emit("data", Buffer.from("\x1b"))
     app.renderer.stdin.emit("data", Buffer.from("\r"))
     await Bun.sleep(40)
-    expect(calls).toEqual(["steer"])
+    expect(calls).toEqual(["queue"])
     expect(text()).toBe("draft")
   } finally {
     app.renderer.destroy()
   }
 })
 
-test("once the terminal has reported shift+return on its own, ESC CR is alt+return and steers", async () => {
+test("once the terminal has reported shift+return on its own, ESC CR is alt+return and queues", async () => {
   // zellij without the kitty protocol, tmux and legacy terminals send ESC CR for Alt+Enter. A
   // terminal that sent Shift+Enter as CSI 13;2u cannot also be mapping Shift+Enter to ESC CR.
   for (const shiftReturn of ["\x1b[13;2u", "\x1b[27;2;13~"]) {
@@ -359,7 +373,7 @@ test("once the terminal has reported shift+return on its own, ESC CR is alt+retu
         app.renderer.stdin.emit("data", Buffer.from(shiftReturn))
         expect(text()).toBe("\n\ndraft")
         app.renderer.stdin.emit("data", Buffer.from("\x1b\r"))
-        expect(calls).toEqual([busy ? "steer" : "submit:steer-key"])
+        expect(calls).toEqual([busy ? "queue" : "submit:input.queue"])
         expect(text()).toBe("\n\ndraft")
       } finally {
         app.renderer.destroy()
@@ -368,7 +382,7 @@ test("once the terminal has reported shift+return on its own, ESC CR is alt+retu
   }
 })
 
-test("a config that keeps alt+return off input_newline makes ESC CR steer from the first press", async () => {
+test("a config that keeps alt+return off input_newline makes ESC CR queue from the first press", async () => {
   const { app, calls, text } = await mountSteer({
     busy: true,
     kittyKeyboard: false,
@@ -376,7 +390,7 @@ test("a config that keeps alt+return off input_newline makes ESC CR steer from t
   })
   try {
     app.renderer.stdin.emit("data", Buffer.from("\x1b\r"))
-    expect(calls).toEqual(["steer"])
+    expect(calls).toEqual(["queue"])
     expect(text()).toBe("draft")
   } finally {
     app.renderer.destroy()

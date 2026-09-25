@@ -165,6 +165,8 @@ export const dict = {
   "command.model.variant.cycle.description": "ປ່ຽນໄປສູ່ລະດັບຄວາມພະຍາຍາມຕໍ່ໄປ",
   "command.prompt.mode.shell": "Shell",
   "command.prompt.mode.normal": "Prompt",
+  "command.prompt.queue": "Queue prompt",
+  "command.prompt.queue.description": "Send after the current turn instead of steering it",
   "command.permissions.autoaccept.enable": "ຍອມຮັບການອະນຸຍາດອັດຕະໂນມັດ",
   "command.permissions.autoaccept.disable": "ຢຸດການຍອມຮັບອັດຕະໂນມັດ",
   "command.workspace.toggle": "ສະຫຼັບພື້ນທີ່ເຮັດວຽກ",

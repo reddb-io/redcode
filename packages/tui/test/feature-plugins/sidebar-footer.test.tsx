@@ -65,10 +65,10 @@ describe("sidebar location lines", () => {
     expect(locationLines({ directory: path.join(home, "notes"), home, width: 40 })).toEqual(["~" + path.sep + "notes"])
   })
 
-  test("long lines lose their start to fit the width", () => {
+  test("long lines lose their middle to fit the width", () => {
     const directory = path.join(project, ".red", "worktrees", "a-rather-long-worktree-name")
     const lines = locationLines({ directory, branch: "a-rather-long-worktree-name", home, width: 16 })
-    expect(lines.slice(1)).toEqual(["⎇ …worktree-name", "⑂ …worktree-name"])
+    expect(lines.slice(1)).toEqual(["⎇ .red/wo…e-name", "⑂ a-rathe…e-name"])
     expect(lines.every((line) => line.length <= 16)).toBe(true)
   })
 })

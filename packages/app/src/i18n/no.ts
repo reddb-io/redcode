@@ -177,6 +177,8 @@ export const dict = {
   "command.model.variant.cycle.description": "Bytt til neste innsatsnivå",
   "command.prompt.mode.shell": "Shell",
   "command.prompt.mode.normal": "Prompt",
+  "command.prompt.queue": "Queue prompt",
+  "command.prompt.queue.description": "Send after the current turn instead of steering it",
   "command.permissions.autoaccept.enable": "Aksepter tillatelser automatisk",
   "command.permissions.autoaccept.disable": "Stopp automatisk akseptering av tillatelser",
   "command.workspace.toggle": "Veksle arbeidsområder",

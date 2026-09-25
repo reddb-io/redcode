@@ -166,6 +166,8 @@ export const dict: Record<string, string> = {
   "command.model.variant.cycle.description": "পরবর্তী প্রচেষ্টা স্তরে স্যুইচ করুন",
   "command.prompt.mode.shell": "শেল",
   "command.prompt.mode.normal": "প্রম্পট",
+  "command.prompt.queue": "Queue prompt",
+  "command.prompt.queue.description": "Send after the current turn instead of steering it",
   "command.permissions.autoaccept.enable": "স্বয়ংক্রিয়ভাবে অনুমতি গ্রহণ করুন",
   "command.permissions.autoaccept.disable": "স্বয়ংক্রিয়ভাবে অনুমতি নেওয়া বন্ধ করুন",
   "command.workspace.toggle": "ওয়ার্কস্পেস টগল করুন",

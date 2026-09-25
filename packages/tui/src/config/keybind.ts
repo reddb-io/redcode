@@ -39,7 +39,7 @@ type Definition = {
 }
 
 export const LeaderDefault = "ctrl+x"
-const STEER_DEFAULT = "alt+return"
+const QUEUE_DEFAULT = "alt+return"
 
 const keybind = (value: Definition["default"], description: string): Definition => ({ default: value, description })
 
@@ -169,9 +169,13 @@ export const Definitions = {
     "shift+return,ctrl+return,alt+return,ctrl+j",
     "Insert newline in input. alt+return covers terminals that send ESC CR for Shift+Enter; ctrl+j works in every terminal",
   ),
+  input_queue: keybind(
+    QUEUE_DEFAULT,
+    "While the agent works, queue the prompt: it waits until the running turn ends instead of steering it at the next step like input_submit does; idle, the key submits like input_submit. alt+return queues only when the terminal reports it unambiguously (kitty keyboard protocol or modifyOtherKeys); a bare ESC CR, which legacy terminals and Shift+Enter mappings send alike, stays a newline. WezTerm and Windows Terminal bind alt+enter to fullscreen and macOS Terminal.app needs Option set to act as Meta until changed. /queue <text> works everywhere",
+  ),
   input_steer: keybind(
-    STEER_DEFAULT,
-    "While the agent works, steer it: deliver the prompt at its next step instead of queueing it; idle, the key submits like input_submit. alt+return steers only when the terminal reports it unambiguously (kitty keyboard protocol or modifyOtherKeys); a bare ESC CR, which legacy terminals and Shift+Enter mappings send alike, stays a newline. WezTerm and Windows Terminal bind alt+enter to fullscreen and macOS Terminal.app needs Option set to act as Meta until changed. /steer <text> works everywhere",
+    "none",
+    "While the agent works, steer it: deliver the prompt at its next step, as input_submit does; idle, the key submits like input_submit. Unbound by default since input_submit steers; /steer <text> works everywhere",
   ),
   input_move_left: keybind("left,ctrl+b", "Move cursor left in input"),
   input_move_right: keybind("right,ctrl+f", "Move cursor right in input"),
@@ -389,6 +393,7 @@ export const CommandMap = {
   input_paste: "prompt.paste",
   input_submit: "input.submit",
   input_newline: "input.newline",
+  input_queue: "input.queue",
   input_steer: "input.steer",
   input_move_left: "input.move.left",
   input_move_right: "input.move.right",
@@ -474,7 +479,7 @@ export function defaultValue(name: KeybindName) {
 export function parse(keybinds: KeybindOverrides): Keybinds {
   const invalid = unknownKeys(keybinds)
   if (invalid.length) throw new Error(`Unrecognized keybind${invalid.length === 1 ? "" : "s"}: ${invalid.join(", ")}`)
-  const defaults: Partial<Record<KeybindName, BindingValueSchema>> = { input_steer: steerDefault(keybinds) }
+  const defaults: Partial<Record<KeybindName, BindingValueSchema>> = { input_queue: queueDefault(keybinds) }
   return Object.fromEntries(
     Object.entries(Definitions).map(([name, item]) => [
       name,
@@ -500,17 +505,17 @@ function bindingKeys(value: unknown): string[] {
   return []
 }
 
-// A config that puts the steer key on `input_newline` without mentioning `input_steer` asked for a
-// newline on that key: the steer default steps aside there instead of taking it over. Steer used
-// to live on shift+return; a config that lists shift+return under `input_newline` is no longer a
-// conflict, while one that lists alt+return gives up the key and the busy hint points at `/steer`,
-// so a terminal set up to send alt+return as its newline keeps it. The defaults share alt+return
-// on purpose: the steer layer rejects a bare ESC CR, so that legacy encoding reaches
-// `input_newline` and only an alt+return the terminal reports unambiguously steers.
-function steerDefault(keybinds: KeybindOverrides): BindingValueSchema {
-  if (keybinds.input_newline === undefined) return STEER_DEFAULT
-  const taken = new Set(bindingKeys(keybinds.input_newline))
-  const keys = STEER_DEFAULT.split(",").filter((key) => !taken.has(normalizeKey(key)))
+// A config that puts the queue key on `input_newline` or `input_steer` without mentioning
+// `input_queue` asked for that key to do something else: the queue default steps aside there
+// instead of taking it over. alt+return used to be the steer key, so a config written back then
+// with `input_steer: "alt+return"` keeps steering on it and the busy hint points at `/queue`. A
+// config that lists alt+return under `input_newline` gives up the key the same way, so a terminal
+// set up to send alt+return as its newline keeps it. The defaults share alt+return on purpose: the
+// queue layer rejects a bare ESC CR, so that legacy encoding reaches `input_newline` and only an
+// alt+return the terminal reports unambiguously queues.
+function queueDefault(keybinds: KeybindOverrides): BindingValueSchema {
+  const taken = new Set([...bindingKeys(keybinds.input_newline), ...bindingKeys(keybinds.input_steer)])
+  const keys = QUEUE_DEFAULT.split(",").filter((key) => !taken.has(normalizeKey(key)))
   return keys.length > 0 ? keys.join(",") : "none"
 }
 
