@@ -1135,6 +1135,8 @@ export const dict = {
   "settings.providers.section.popular": "Populaarsed pakkujad",
   "settings.providers.custom.description": "Lisage OpenAI-ga ühilduv pakkuja baasi URL alusel.",
   "settings.providers.tag.environment": "Keskkond",
+  "settings.providers.tag.adminKey": "Admin key",
+  "settings.providers.tag.standardKey": "Standard key",
   "settings.providers.tag.config": "Konfig",
   "settings.providers.tag.custom": "Kohandatud",
   "settings.providers.tag.other": "muud",

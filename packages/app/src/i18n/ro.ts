@@ -1147,6 +1147,8 @@ export const dict = {
   "settings.providers.section.popular": "Furnizori populari",
   "settings.providers.custom.description": "Adaugă un furnizor compatibil OpenAI prin URL de bază.",
   "settings.providers.tag.environment": "Mediu",
+  "settings.providers.tag.adminKey": "Admin key",
+  "settings.providers.tag.standardKey": "Standard key",
   "settings.providers.tag.config": "Configurare",
   "settings.providers.tag.custom": "Personalizat",
   "settings.providers.tag.other": "Altele",

@@ -1048,6 +1048,8 @@ export const dict = {
   "settings.providers.connected.empty": "接続済みプロバイダーはありません",
   "settings.providers.section.popular": "人気のプロバイダー",
   "settings.providers.tag.environment": "環境",
+  "settings.providers.tag.adminKey": "Admin key",
+  "settings.providers.tag.standardKey": "Standard key",
   "settings.providers.tag.config": "設定",
   "settings.providers.tag.custom": "カスタム",
   "settings.providers.tag.other": "その他",

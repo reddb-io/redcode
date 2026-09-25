@@ -772,6 +772,8 @@ export const dict = {
   "settings.providers.connected.empty": "연결된 공급자 없음",
   "settings.providers.section.popular": "인기 공급자",
   "settings.providers.tag.environment": "환경",
+  "settings.providers.tag.adminKey": "Admin key",
+  "settings.providers.tag.standardKey": "Standard key",
   "settings.providers.tag.config": "구성",
   "settings.providers.tag.custom": "사용자 지정",
   "settings.providers.tag.other": "기타",

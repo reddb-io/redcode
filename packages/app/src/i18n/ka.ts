@@ -1140,6 +1140,8 @@ export const dict = {
   "settings.providers.section.popular": "პოპულარული პროვაიდერები",
   "settings.providers.custom.description": "დაამატე OpenAI-თავსებადი პროვაიდერი ბაზის მიხედვით: URL.",
   "settings.providers.tag.environment": "გარემო",
+  "settings.providers.tag.adminKey": "Admin key",
+  "settings.providers.tag.standardKey": "Standard key",
   "settings.providers.tag.config": "კონფიგურაცია",
   "settings.providers.tag.custom": "მორგებული",
   "settings.providers.tag.other": "სხვა",

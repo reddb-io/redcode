@@ -1068,6 +1068,8 @@ export const dict = {
   "settings.providers.connected.empty": "Brak połączonych dostawców",
   "settings.providers.section.popular": "Popularni dostawcy",
   "settings.providers.tag.environment": "Środowisko",
+  "settings.providers.tag.adminKey": "Admin key",
+  "settings.providers.tag.standardKey": "Standard key",
   "settings.providers.tag.config": "Konfiguracja",
   "settings.providers.tag.custom": "Niestandardowe",
   "settings.providers.tag.other": "Inne",

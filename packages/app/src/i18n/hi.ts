@@ -1148,6 +1148,8 @@ export const dict = {
   "settings.providers.section.popular": "लोकप्रिय प्रोवाइडर",
   "settings.providers.custom.description": "आधार URL द्वारा एक OpenAI-संगत प्रोवाइडर जोड़ें।",
   "settings.providers.tag.environment": "एनवायरनमेंट",
+  "settings.providers.tag.adminKey": "Admin key",
+  "settings.providers.tag.standardKey": "Standard key",
   "settings.providers.tag.config": "कॉन्फ़िगरेशन",
   "settings.providers.tag.custom": "कस्टम",
   "settings.providers.tag.other": "अन्य",

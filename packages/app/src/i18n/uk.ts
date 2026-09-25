@@ -1246,6 +1246,8 @@ export const dict = {
   "settings.providers.section.popular": "Популярні провайдери",
   "settings.providers.custom.description": "Додайте провайдера, сумісного з OpenAI, за базовим URL.",
   "settings.providers.tag.environment": "Середовище",
+  "settings.providers.tag.adminKey": "Admin key",
+  "settings.providers.tag.standardKey": "Standard key",
   "settings.providers.tag.config": "Конфігурація",
   "settings.providers.tag.custom": "Користувацький",
   "settings.providers.tag.other": "Інше",

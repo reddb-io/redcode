@@ -1152,6 +1152,8 @@ export const dict = {
   "settings.providers.section.popular": "Populyar provayderlər",
   "settings.providers.custom.description": "Əsas URL ilə OpenAI-uyğun provayder əlavə edin.",
   "settings.providers.tag.environment": "Mühit",
+  "settings.providers.tag.adminKey": "Admin key",
+  "settings.providers.tag.standardKey": "Standard key",
   "settings.providers.tag.config": "Konfiqurasiya",
   "settings.providers.tag.custom": "Fərdi",
   "settings.providers.tag.other": "Digər",

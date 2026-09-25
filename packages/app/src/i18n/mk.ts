@@ -1151,6 +1151,8 @@ export const dict = {
   "settings.providers.section.popular": "Популарни провајдери",
   "settings.providers.custom.description": "Додадете OpenAI-компатибилен провајдер по база URL.",
   "settings.providers.tag.environment": "Животна средина",
+  "settings.providers.tag.adminKey": "Admin key",
+  "settings.providers.tag.standardKey": "Standard key",
   "settings.providers.tag.config": "Конфигурација",
   "settings.providers.tag.custom": "Прилагодено",
   "settings.providers.tag.other": "Друго",

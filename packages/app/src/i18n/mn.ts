@@ -1152,6 +1152,8 @@ export const dict = {
   "settings.providers.section.popular": "Алдартай үйлчилгээ үзүүлэгчид",
   "settings.providers.custom.description": "OpenAI нийцтэй үйлчилгээ үзүүлэгчийг URL үндсэн дээр нэмнэ үү.",
   "settings.providers.tag.environment": "Байгаль орчин",
+  "settings.providers.tag.adminKey": "Admin key",
+  "settings.providers.tag.standardKey": "Standard key",
   "settings.providers.tag.config": "Тохиргоо",
   "settings.providers.tag.custom": "Захиалгат",
   "settings.providers.tag.other": "Бусад",

@@ -1159,6 +1159,8 @@ export const dict = {
   "settings.providers.section.popular": "މަޝްހޫރު ޕްރޮވައިޑަރުންނެވެ",
   "settings.providers.custom.description": "ބޭސް URL އިން OpenAI އާއި އެއްގޮތްވާ ޕްރޮވައިޑަރެއް އިތުރުކުރުން.",
   "settings.providers.tag.environment": "މާޙައުލު",
+  "settings.providers.tag.adminKey": "Admin key",
+  "settings.providers.tag.standardKey": "Standard key",
   "settings.providers.tag.config": "ކޮންފިގް",
   "settings.providers.tag.custom": "ސަޤާފަތް",
   "settings.providers.tag.other": "އެހެން",

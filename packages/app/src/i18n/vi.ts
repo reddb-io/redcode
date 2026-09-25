@@ -1153,6 +1153,8 @@ export const dict = {
   "settings.providers.section.popular": "Nhà cung cấp phổ biến",
   "settings.providers.custom.description": "Thêm nhà cung cấp tương thích OpenAI bằng URL cơ sở.",
   "settings.providers.tag.environment": "Môi trường",
+  "settings.providers.tag.adminKey": "Admin key",
+  "settings.providers.tag.standardKey": "Standard key",
   "settings.providers.tag.config": "Cấu hình",
   "settings.providers.tag.custom": "Tùy chỉnh",
   "settings.providers.tag.other": "Khác",

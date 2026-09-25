@@ -1162,6 +1162,8 @@ export const dict: Record<string, string> = {
   "settings.providers.section.popular": "ཡོངས་གྲགས་ཅན་གྱི་བྱིན་མི་ཚུ།",
   "settings.providers.custom.description": "གཞི་རྟེན་ URLགིས་ OpenAI-མཐུན་འགྱུར་བྱིན་མི་ཅིག་ཁ་སྐོང་བརྐྱབ།",
   "settings.providers.tag.environment": "མཐའ་འཁོར",
+  "settings.providers.tag.adminKey": "Admin key",
+  "settings.providers.tag.standardKey": "Standard key",
   "settings.providers.tag.config": "རིམ་སྒྲིག།",
   "settings.providers.tag.custom": "ལུགས་སྲོལ",
   "settings.providers.tag.other": "གཞན",

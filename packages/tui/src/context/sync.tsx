@@ -454,7 +454,8 @@ export const {
         case "permission.asked": {
           const request = event.properties
           snapshot?.permissions.add(request.id)
-          if (permission.mode !== "normal") {
+          // A protected action is the person's to allow, whatever the auto mode.
+          if (permission.mode !== "normal" && !request.protected) {
             void sdk.client.permission.reply({
               requestID: request.id,
               reply: "once",
@@ -1160,6 +1161,7 @@ export const {
           if (snapshot === tracker) snapshot = undefined
           if (permission.mode !== "normal") {
             for (const request of Object.values(store.permission).flat()) {
+              if (request.protected) continue
               void sdk.client.permission.reply({ requestID: request.id, reply: "once", workspace }).catch(() => {})
             }
           }

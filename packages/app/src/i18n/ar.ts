@@ -1057,6 +1057,8 @@ export const dict = {
   "settings.providers.connected.empty": "لا يوجد موفرون متصلون",
   "settings.providers.section.popular": "الموفرون الشائعون",
   "settings.providers.tag.environment": "البيئة",
+  "settings.providers.tag.adminKey": "Admin key",
+  "settings.providers.tag.standardKey": "Standard key",
   "settings.providers.tag.config": "التكوين",
   "settings.providers.tag.custom": "مخصص",
   "settings.providers.tag.other": "أخرى",

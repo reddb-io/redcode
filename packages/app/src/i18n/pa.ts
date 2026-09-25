@@ -1145,6 +1145,8 @@ export const dict = {
   "settings.providers.section.popular": "مقبول پرووائیڈر",
   "settings.providers.custom.description": "بیس URL نال OpenAI دے نال رلدا پرووائیڈر شامل کرو۔",
   "settings.providers.tag.environment": "ماحول",
+  "settings.providers.tag.adminKey": "Admin key",
+  "settings.providers.tag.standardKey": "Standard key",
   "settings.providers.tag.config": "ترتیب",
   "settings.providers.tag.custom": "مخصوص",
   "settings.providers.tag.other": "ہور",

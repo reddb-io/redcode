@@ -1148,6 +1148,8 @@ export const dict = {
   "settings.providers.section.popular": "مقبول فراہم کنندگان",
   "settings.providers.custom.description": "بیس URL کے ذریعے ایک OpenAI-مطابق فراہم کنندہ شامل کریں۔",
   "settings.providers.tag.environment": "ماحول",
+  "settings.providers.tag.adminKey": "Admin key",
+  "settings.providers.tag.standardKey": "Standard key",
   "settings.providers.tag.config": "ترتیب",
   "settings.providers.tag.custom": "حسب ضرورت",
   "settings.providers.tag.other": "دیگر",

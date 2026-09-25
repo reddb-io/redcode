@@ -1105,6 +1105,8 @@ export const dict = {
   "settings.providers.connected.empty": "沒有已連線的提供者",
   "settings.providers.section.popular": "熱門提供者",
   "settings.providers.tag.environment": "環境",
+  "settings.providers.tag.adminKey": "Admin key",
+  "settings.providers.tag.standardKey": "Standard key",
   "settings.providers.tag.config": "設定",
   "settings.providers.tag.custom": "自訂",
   "settings.providers.tag.other": "其他",

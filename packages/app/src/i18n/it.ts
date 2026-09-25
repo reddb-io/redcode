@@ -1066,6 +1066,8 @@ export const dict = {
   "settings.providers.section.popular": "Provider più diffusi",
   "settings.providers.custom.description": "Aggiungi un provider compatibile con OpenAI tramite l'URL di base.",
   "settings.providers.tag.environment": "Ambiente",
+  "settings.providers.tag.adminKey": "Admin key",
+  "settings.providers.tag.standardKey": "Standard key",
   "settings.providers.tag.config": "Configurazione",
   "settings.providers.tag.custom": "Personalizzato",
   "settings.providers.tag.other": "Altro",

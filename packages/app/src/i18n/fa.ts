@@ -1139,6 +1139,8 @@ export const dict = {
   "settings.providers.section.popular": "ارائه دهندگان محبوب",
   "settings.providers.custom.description": "یک ارائه دهنده سازگار با OpenAI توسط پایه URL اضافه کنید.",
   "settings.providers.tag.environment": "محیط زیست",
+  "settings.providers.tag.adminKey": "Admin key",
+  "settings.providers.tag.standardKey": "Standard key",
   "settings.providers.tag.config": "پیکربندی",
   "settings.providers.tag.custom": "سفارشی",
   "settings.providers.tag.other": "دیگر",

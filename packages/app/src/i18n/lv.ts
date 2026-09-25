@@ -1146,6 +1146,8 @@ export const dict = {
   "settings.providers.section.popular": "Populāri pakalpojumi",
   "settings.providers.custom.description": "Pievienojiet OpenAI saderīgu pakalpojumu, norādot bāzes URL.",
   "settings.providers.tag.environment": "Vide",
+  "settings.providers.tag.adminKey": "Admin key",
+  "settings.providers.tag.standardKey": "Standard key",
   "settings.providers.tag.config": "Konfigurācija",
   "settings.providers.tag.custom": "Pielāgots",
   "settings.providers.tag.other": "Citi",

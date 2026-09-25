@@ -1144,6 +1144,8 @@ export const dict = {
   "settings.providers.section.popular": "Populárni poskytovatelia",
   "settings.providers.custom.description": "Pridajte poskytovateľa kompatibilného s OpenAI pomocou základnej URL.",
   "settings.providers.tag.environment": "Prostredie",
+  "settings.providers.tag.adminKey": "Admin key",
+  "settings.providers.tag.standardKey": "Standard key",
   "settings.providers.tag.config": "Konfigurácia",
   "settings.providers.tag.custom": "Vlastné",
   "settings.providers.tag.other": "Iné",

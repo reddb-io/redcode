@@ -1144,6 +1144,8 @@ export const dict = {
   "settings.providers.connected.empty": "Bağlı sağlayıcı yok",
   "settings.providers.section.popular": "Popüler sağlayıcılar",
   "settings.providers.tag.environment": "Ortam",
+  "settings.providers.tag.adminKey": "Admin key",
+  "settings.providers.tag.standardKey": "Standard key",
   "settings.providers.tag.config": "Yapılandırma",
   "settings.providers.tag.custom": "Özel",
   "settings.providers.tag.other": "Diğer",
