@@ -16,7 +16,14 @@ import { useTheme } from "./theme"
 import { useToast } from "../ui/toast"
 import { useRoute } from "./route"
 import { usePermission } from "./permission"
-import { latestServed, migrateModelState, resolveModel, routerLabel, servingVariants } from "../util/model-origin"
+import {
+  latestServed,
+  migrateModelState,
+  missingModelMessage,
+  resolveModel,
+  routerLabel,
+  servingVariants,
+} from "../util/model-origin"
 
 export type LocalTheme = {
   secondary: RGBA
@@ -315,6 +322,23 @@ export const {
             fallbackModel,
           ) ?? undefined
         )
+      })
+
+      // A saved choice its provider no longer lists (a RedRouter flat id whose offers were all
+      // switched off, a removed model) falls back to another model; say so once, not silently.
+      const announced = new Set<string>()
+      createEffect(() => {
+        const a = agent.current()
+        const saved = a && modelStore.model[a.name]
+        if (!saved || !modelStore.ready || sync.status !== "complete" || isModelValid(saved)) return
+        const key = `${saved.providerID}/${saved.modelID}`
+        if (announced.has(key)) return
+        announced.add(key)
+        toast.show({
+          variant: "warning",
+          message: missingModelMessage(sync.data.provider, saved, currentModel()),
+          duration: 6000,
+        })
       })
 
       return {

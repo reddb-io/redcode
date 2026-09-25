@@ -197,4 +197,27 @@ describe("flat model ids", () => {
     expect(flatOffers(claude, () => false).map((row) => row.pin)).toEqual([undefined, undefined])
     expect(flatOffers({ ...claude, flat: false }, () => true)).toEqual([])
   })
+
+  test("keeps an offer switched off for the flat id pinnable and marks it off", () => {
+    const off = {
+      ...claude,
+      offers: [
+        ...claude.offers,
+        {
+          id: "nano-gpt/anthropic/claude-sonnet-4.5",
+          pinID: "nano-gpt/anthropic/claude-sonnet-4.5",
+          provider: { id: "nano-gpt", name: "NanoGPT" },
+          via: [],
+          available: false,
+          free: false,
+        },
+      ],
+    }
+    const rows = flatOffers(off, () => true)
+    expect(rows.map((row) => [row.route, row.off, row.pin])).toEqual([
+      ["RedRouter » Anthropic", false, undefined],
+      ["RedRouter » Office RedRouter » OpenRouter", false, "openrouter/anthropic/claude-sonnet-4.5"],
+      ["RedRouter » NanoGPT", true, "nano-gpt/anthropic/claude-sonnet-4.5"],
+    ])
+  })
 })

@@ -970,9 +970,7 @@ const layer = Layer.effect(
       // A fallback combo's member other than its lead that served the session is planned for.
       if (Exit.isSuccess(exit)) return ComboMember.model(sessionID, exit.value)
       const err = Cause.squash(exit.cause)
-      const message = Provider.ModelNotFoundError.isInstance(err)
-        ? `Model not found: ${err.providerID}/${err.modelID}.${err.suggestions?.length ? ` Did you mean: ${err.suggestions.join(", ")}?` : ""}`
-        : errorMessage(err)
+      const message = Provider.ModelNotFoundError.isInstance(err) ? err.message : errorMessage(err)
       yield* events
         .publish(Session.Event.Error, {
           sessionID,

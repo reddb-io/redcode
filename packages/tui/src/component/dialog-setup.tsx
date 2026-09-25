@@ -7,6 +7,7 @@ import { Provider } from "@reddb-io/redcode-schema/provider"
 import { Router } from "@reddb-io/redcode-schema/router"
 import { useSDK } from "../context/sdk"
 import { useSync } from "../context/sync"
+import { useTheme } from "../context/theme"
 import { useLocal } from "../context/local"
 import { useDialog } from "../ui/dialog"
 import { useToast } from "../ui/toast"
@@ -74,6 +75,7 @@ export function DialogSetup(
   const sync = useSync()
   const local = props.onModelSelected ? undefined : useLocal()
   const dialog = useDialog()
+  const { theme } = useTheme()
   const toast = useToast()
   const abort = new AbortController()
   let active = true
@@ -274,6 +276,10 @@ export function DialogSetup(
                     ? [
                         {
                           title: `  ↳ ${row.route}`,
+                          // Switched off for the flat model: greyed out, but its pin id still routes to it.
+                          titleView: row.off ? (
+                            <span style={{ fg: theme.textMuted }}>{`  ↳ ${row.route}`}</span>
+                          ) : undefined,
                           value: { providerID: Provider.ID.make(provider.id), id: Model.ID.make(row.pin) },
                           description: [row.detail, ...(row.offer.free ? ["free"] : [])].filter(Boolean).join(" · "),
                           footer: undefined,

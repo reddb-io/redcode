@@ -5,6 +5,7 @@ import {
   flatOffers,
   latestServed,
   migrateModelState,
+  missingModelMessage,
   modeBadge,
   modeID,
   originCategory,
@@ -425,5 +426,47 @@ describe("flat model ids", () => {
     )
     // An offer the model does not list is read from its chained id.
     expect(servedRoute(jev, "red-router/opencode-zen/jev-1.13")).toBe("RedRouter » opencode-zen · jev-1.13")
+  })
+
+  test("greys an offer switched off for the flat id but keeps it pinnable, and says when the order is custom", () => {
+    const off = model("red-router", "nano-gpt/typesafe/jev-1.13", { upstream: openrouter, pinOf: "typesafe/jev-1.13" })
+    const custom = {
+      ...jev,
+      offerOrder: "custom" as const,
+      offers: [
+        ...jev.offers!,
+        {
+          id: "nano-gpt/typesafe/jev-1.13",
+          pinID: "nano-gpt/typesafe/jev-1.13",
+          provider: { id: "nano-gpt", name: "NanoGPT" },
+          via: [],
+          available: false,
+          price: { input: 0.04, output: 0 },
+          free: false,
+        },
+      ],
+    }
+    const connection = provider("red-router", "RedRouter", [custom, off], { router: { kind: "red-router" } })
+    const row = flatOffers(connection, custom).at(-1)
+    expect(row).toMatchObject({ route: "RedRouter » NanoGPT", off: true, pin: "nano-gpt/typesafe/jev-1.13" })
+    expect(row?.detail).toBe("off · $0.04/$0 per 1M")
+    expect(flatOffers(connection, custom)[0].off).toBe(false)
+    expect(originDescription(originIndex([connection]), connection, custom)).toBe(
+      "via RedRouter » RedRouter » Office RedRouter » OpenCode Go · 3 offers · custom order",
+    )
+    expect(originDescription(originIndex([flat]), flat, jev)).not.toContain("custom order")
+  })
+
+  test("says why a saved choice its provider no longer lists is not used", () => {
+    const saved = { providerID: "red-router", modelID: "typesafe/jev-1.14" }
+    expect(missingModelMessage([flat], saved, { providerID: "red-router", modelID: "typesafe/jev-1.13" })).toBe(
+      "RedRouter no longer lists typesafe/jev-1.14: it was removed, or all its offers were switched off. Using red-router/typesafe/jev-1.13 instead. Pick another model with /model.",
+    )
+    expect(missingModelMessage([anthropicDirect], { providerID: "anthropic", modelID: "gone" }, undefined)).toBe(
+      "Anthropic no longer lists gone. Pick another model with /model.",
+    )
+    expect(missingModelMessage([], saved, undefined)).toBe(
+      "red-router is not connected, so typesafe/jev-1.14 is unavailable. Pick another model with /model.",
+    )
   })
 })

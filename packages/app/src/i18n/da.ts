@@ -244,7 +244,8 @@ export const dict = {
   "model.flat.offers": "Offers",
   "model.flat.pin": "Pin this offer",
   "model.flat.unpinnable": "This offer cannot be pinned",
-  "model.flat.unavailable": "unavailable",
+  "model.flat.off": "off",
+  "model.flat.customOrder": "custom order",
   "model.catalog.updated": "{{name}} catalog updated: +{{added}}/−{{removed}} models, {{renamed}} renamed",
 
   "model.provider.anthropic": "Anthropic",

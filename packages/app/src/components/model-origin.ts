@@ -129,7 +129,10 @@ export function flatOffers(
       .filter(Boolean)
       .join(Router.HOP_SEPARATOR),
     price: offerPrice(offer),
-    pin: offer.pinID && offer.available && pinnable(offer.pinID) ? offer.pinID : undefined,
+    // An offer switched off for the flat model is never served for its id, but its pin id still
+    // routes to it, so it stays pinnable; `off` greys it out.
+    off: !offer.available,
+    pin: offer.pinID && pinnable(offer.pinID) ? offer.pinID : undefined,
   }))
 }
 

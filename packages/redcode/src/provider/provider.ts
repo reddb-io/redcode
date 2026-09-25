@@ -1159,7 +1159,11 @@ export const Model = Schema.Struct({
   }),
   canonical: optional(Schema.String).annotate({ description: "The catalog id of a flat model, when known." }),
   offers: optional(Schema.Array(Router.Offer)).annotate({
-    description: "The offers a flat model is served by, in the router's policy order.",
+    description:
+      "The offers a flat model is served by, in the router's order. One that is not `available` is switched off for the flat model but can still be pinned.",
+  }),
+  offerOrder: optional(Schema.Literals(["price", "custom"])).annotate({
+    description: "How the router orders a flat model's offers: by `price`, or in a `custom` order the user set.",
   }),
   pinOf: optional(Schema.String).annotate({
     description:
@@ -1221,11 +1225,12 @@ export class ModelNotFoundError extends Schema.TaggedErrorClass<ModelNotFoundErr
   providerID: ProviderV2.ID,
   modelID: ModelV2.ID,
   suggestions: Schema.optional(Schema.Array(Schema.String)),
+  hint: Schema.optional(Schema.String),
   cause: Schema.optional(Schema.Defect()),
 }) {
   override get message() {
     const suggestions = this.suggestions?.length ? ` Did you mean: ${this.suggestions.join(", ")}?` : ""
-    return `Model not found: ${this.providerID}/${this.modelID}.${suggestions}`
+    return `Model not found: ${this.providerID}/${this.modelID}.${this.hint ? ` ${this.hint}` : ""}${suggestions}`
   }
 
   static isInstance(input: unknown): input is ModelNotFoundError {
@@ -1488,6 +1493,7 @@ function routedModel(router: RouterInfo | undefined) {
     ...(router.flat ? { flat: true } : {}),
     ...(router.canonical ? { canonical: router.canonical } : {}),
     ...(offers?.length ? { offers } : {}),
+    ...(router.flat && router.offer_order ? { offerOrder: router.offer_order } : {}),
   }
 }
 
@@ -1505,7 +1511,8 @@ function publicUpstream(upstream: ConfigProviderV1.RouterUpstream): Router.Upstr
  * The offers of a flat model a user can pin, each as a model of its own under its pin id, so a
  * pinned choice resolves, labels and plans like any routed model: the offer's provider and routers,
  * its price, and its own limits and thinking levels when the router listed them. An offer without a
- * pin id cannot be pinned: its id may be the flat id itself, which asks for the flat model.
+ * pin id cannot be pinned: its id may be the flat id itself, which asks for the flat model. An offer
+ * switched off for the flat model (not `available`) is still pinnable: its pin id still routes.
  */
 function pinnedModels(flat: Model, router: RouterInfo | undefined): Model[] {
   if (!flat.flat) return []
@@ -1513,7 +1520,17 @@ function pinnedModels(flat: Model, router: RouterInfo | undefined): Model[] {
     if (!offer.pinID || offer.pinID === flat.id) return []
     const parameters = router?.member_parameters?.find((item) => item.id === offer.id)?.parameters
     const model: Model = {
-      ...omit(flat, ["flat", "canonical", "offers", "comboMembers", "aliases", "routerVariants", "modes", "via"]),
+      ...omit(flat, [
+        "flat",
+        "canonical",
+        "offers",
+        "offerOrder",
+        "comboMembers",
+        "aliases",
+        "routerVariants",
+        "modes",
+        "via",
+      ]),
       id: ModelV2.ID.make(offer.pinID),
       api: { ...flat.api, id: offer.pinID },
       upstream: { ...offer.provider },
@@ -2173,7 +2190,13 @@ const layer = Layer.effect(
         const suggestions = current.length
           ? current
           : modelSuggestions(s.catalog[providerID], modelID, runtimeFlags.enableExperimentalModels)
-        return yield* new ModelNotFoundError({ providerID, modelID, suggestions })
+        // RedRouter drops a flat model id once every offer is switched off, so a saved choice of it
+        // disappears from one catalog refresh to the next.
+        const hint =
+          provider.router?.kind === "red-router"
+            ? `${provider.name} no longer lists this model: it was removed, or all its offers were switched off. Pick another model with /model.`
+            : undefined
+        return yield* new ModelNotFoundError({ providerID, modelID, suggestions, ...(hint ? { hint } : {}) })
       }
       // A limit the provider taught us caps the declared one; the person's own limit, set or
       // changed after the lesson, wins over it.

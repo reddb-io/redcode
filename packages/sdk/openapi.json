@@ -6058,6 +6058,10 @@
                                   "required": ["id", "pin_id", "provider", "via", "available", "free"],
                                   "additionalProperties": false
                                 }
+                              },
+                              "offer_order": {
+                                "type": "string",
+                                "enum": ["price", "custom"]
                               }
                             },
                             "additionalProperties": false
@@ -6535,6 +6539,10 @@
                                   "required": ["id", "pin_id", "provider", "via", "available", "free"],
                                   "additionalProperties": false
                                 }
+                              },
+                              "offer_order": {
+                                "type": "string",
+                                "enum": ["price", "custom"]
                               }
                             },
                             "additionalProperties": false
@@ -7076,6 +7084,10 @@
                                   "required": ["id", "pin_id", "provider", "via", "available", "free"],
                                   "additionalProperties": false
                                 }
+                              },
+                              "offer_order": {
+                                "type": "string",
+                                "enum": ["price", "custom"]
                               }
                             },
                             "additionalProperties": false
@@ -7544,6 +7556,10 @@
                                   "required": ["id", "pin_id", "provider", "via", "available", "free"],
                                   "additionalProperties": false
                                 }
+                              },
+                              "offer_order": {
+                                "type": "string",
+                                "enum": ["price", "custom"]
                               }
                             },
                             "additionalProperties": false
@@ -35874,6 +35890,10 @@
                         "required": ["id", "pin_id", "provider", "via", "available", "free"],
                         "additionalProperties": false
                       }
+                    },
+                    "offer_order": {
+                      "type": "string",
+                      "enum": ["price", "custom"]
                     }
                   },
                   "additionalProperties": false
@@ -37225,6 +37245,10 @@
             "items": {
               "$ref": "#/components/schemas/RouterOffer"
             }
+          },
+          "offerOrder": {
+            "type": "string",
+            "enum": ["price", "custom"]
           },
           "pinOf": {
             "type": "string"
