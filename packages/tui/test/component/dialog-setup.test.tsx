@@ -90,7 +90,7 @@ const intelligence = {
   environment: "/global",
   evaluators: [
     {
-      name: "Cloudflare AI Gateway",
+      name: "Cloudflare AI Gateway · TypeSafe Jev",
       configured: true,
       evaluator: {
         transport: "cloudflare-ai-gateway",
@@ -99,7 +99,7 @@ const intelligence = {
       },
     },
     {
-      name: "OpenCode Zen — Jev Free (recommended)",
+      name: "OpenCode Zen · Jev Free",
       configured: false,
       evaluator: {
         transport: "opencode-zen",
@@ -108,7 +108,7 @@ const intelligence = {
       },
     },
     {
-      name: "OpenRouter",
+      name: "OpenRouter · TypeSafe Jev 1.13",
       configured: false,
       evaluator: {
         transport: "openrouter",
@@ -117,7 +117,7 @@ const intelligence = {
       },
     },
     {
-      name: "Vercel AI Gateway",
+      name: "Vercel AI Gateway · TypeSafe Jev",
       configured: false,
       evaluator: {
         transport: "vercel",
@@ -162,11 +162,13 @@ test("global setup selects System Two models and offers provider connection in t
         !setup.app.renderer.currentFocusedRenderable.isDestroyed,
     )
     await setup.app.mockInput.pressEnter()
-    await wait(() => setup.app.captureCharFrame().includes("3/3 · S1 connection"))
+    await wait(() => setup.app.captureCharFrame().includes("3/3 · S1 evaluator"))
+    // Only connected providers and Zen's free offer are listed; manual entry comes last.
     const evaluators = setup.app.captureCharFrame()
-    expect(evaluators).toContain("Cloudflare AI Gateway")
-    expect(evaluators).toContain("Configured connection")
-    expect(evaluators).toContain("OpenRouter")
+    expect(evaluators).toContain("Cloudflare AI Gateway · TypeSafe Jev")
+    expect(evaluators).toContain("OpenCode Zen · Jev Free")
+    expect(evaluators).not.toContain("OpenRouter")
+    expect(evaluators.indexOf("OpenCode Zen · Jev Free")).toBeLessThan(evaluators.indexOf("Enter model manually…"))
   } finally {
     setup.app.renderer.destroy()
   }
@@ -387,7 +389,7 @@ test("dual setup with a saved S2 offers Continue and goes straight to S1", async
     expect(principal).toContain("Change System Two model…")
 
     await setup.app.mockInput.pressEnter()
-    await ready(setup.app, "3/3 · S1 connection")
+    await ready(setup.app, "3/3 · S1 evaluator")
     expect(setup.app.captureCharFrame()).toContain("Continue with OpenCode Zen · jev-1.13-free")
     await setup.app.mockInput.pressEnter()
     await wait(() => setup.app.captureCharFrame().includes("Save global intelligence setup"))
@@ -455,8 +457,6 @@ test("failed OpenRouter probe stays in setup and can be retried with the entered
     (url) => {
       if (url.pathname === "/api/intelligence") return json({ ...intelligence, settings })
       if (url.pathname === "/config/providers") return json({ providers: [provider], default: { mock: "model" } })
-      if (url.pathname === "/api/intelligence/models")
-        return json({ models: [{ id: "typesafe/jev-1.13", name: "typesafe/jev-1.13" }], manual: false })
       if (url.pathname === "/api/intelligence/test-model") return json({ ok: true, message: "Connection checked" })
       if (url.pathname === "/api/intelligence/test") {
         probes++
@@ -474,10 +474,13 @@ test("failed OpenRouter probe stays in setup and can be retried with the entered
     await ready(setup.app, "S2 transformations")
     await setup.app.mockInput.pressEnter()
     await ready(setup.app, "Continue with OpenCode Zen · jev-1.13-free")
-    // Continue, Cloudflare (connected), OpenCode Zen, then OpenRouter below the visible rows.
-    await setup.app.mockInput.pressArrow("down")
-    await setup.app.mockInput.pressArrow("down")
-    await setup.app.mockInput.pressArrow("down")
+    // An unconnected provider is reached through manual entry: connection, address, key, model id.
+    await setup.app.mockInput.typeText("manual")
+    await wait(() => !setup.app.captureCharFrame().includes("OpenCode Zen · Jev Free"))
+    await setup.app.mockInput.pressEnter()
+    await ready(setup.app, "3/3 · S1 connection")
+    await setup.app.mockInput.typeText("openrouter")
+    await wait(() => !setup.app.captureCharFrame().includes("Vercel AI Gateway"))
     await setup.app.mockInput.pressEnter()
     await wait(() => setup.app.captureCharFrame().includes("S1 API base URL"))
     expect(setup.app.captureCharFrame()).toContain("openrouter.ai")
@@ -491,7 +494,13 @@ test("failed OpenRouter probe stays in setup and can be retried with the entered
     if (!(key instanceof TextareaRenderable)) throw new Error("S1 key input is not focused")
     key.setText("openrouter-secret")
     await setup.app.mockInput.pressEnter()
-    await wait(() => setup.app.captureCharFrame().includes("S1 evaluator"))
+    await wait(
+      () =>
+        setup.app.captureCharFrame().includes("S1 model") &&
+        setup.app.renderer.currentFocusedEditor instanceof TextareaRenderable &&
+        !setup.app.renderer.currentFocusedEditor.isDestroyed,
+    )
+    expect(setup.app.captureCharFrame()).toContain("typesafe/jev-1.13")
     await setup.app.mockInput.pressEnter()
     await wait(() => setup.app.captureCharFrame().includes("Save global intelligence setup"))
 
@@ -500,7 +509,7 @@ test("failed OpenRouter probe stays in setup and can be retried with the entered
 
     // The failed S1 probe leaves the cursor on the option that fixes it.
     await setup.app.mockInput.pressEnter()
-    await ready(setup.app, "3/3 · S1 connection")
+    await ready(setup.app, "Continue with OpenRouter · typesafe/jev-1.13")
     await setup.app.mockInput.pressEnter()
     await ready(setup.app, "Save global intelligence setup")
     await setup.app.mockInput.pressEnter()
@@ -511,7 +520,7 @@ test("failed OpenRouter probe stays in setup and can be retried with the entered
   }
 })
 
-test("a detected RedRouter is the first S1 option and saves its evaluator with the provider credential", async () => {
+test("the S1 picker lists the RedRouter's models first and saves the chosen one with the router connection", async () => {
   await using tmp = await tmpdir()
   await Bun.write(`${tmp.path}/kv.json`, "{}")
   const router = {
@@ -521,7 +530,7 @@ test("a detected RedRouter is the first S1 option and saves its evaluator with t
       kind: "red-router",
       instanceID: "studio",
       features: ["capabilities", "systemone"],
-      systemOne: { available: true, models: ["jev-1.13.0"] },
+      systemOne: { available: true, models: ["jev-1.13.0", "openrouter/typesafe/jev-1.13"] },
       checkedAt: 0,
     },
     evaluator: {
@@ -538,6 +547,7 @@ test("a detected RedRouter is the first S1 option and saves its evaluator with t
   } as Intelligence.Settings
   const saved: unknown[] = []
   const probed: unknown[] = []
+  const discovered: unknown[] = []
   const setup = await mount(
     async (url, input) => {
       if (url.pathname === "/api/intelligence" && input instanceof Request && input.method === "PUT") {
@@ -546,6 +556,16 @@ test("a detected RedRouter is the first S1 option and saves its evaluator with t
       }
       if (url.pathname === "/api/intelligence") return json({ ...intelligence, settings, router })
       if (url.pathname === "/config/providers") return json({ providers: [provider], default: { mock: "model" } })
+      if (url.pathname === "/api/intelligence/models") {
+        if (input instanceof Request) discovered.push(await input.json())
+        return json({
+          models: [
+            { id: "openrouter/typesafe/jev-1.13", name: "OpenRouter · TypeSafe JEV 1.13" },
+            { id: "jev-1.13.0", name: "TypeSafe · Jev 1.13" },
+          ],
+          manual: false,
+        })
+      }
       if (url.pathname === "/api/intelligence/test-model") return json({ ok: true, message: "Connection checked" })
       if (url.pathname === "/api/intelligence/test") {
         if (input instanceof Request) probed.push(await input.json())
@@ -554,29 +574,116 @@ test("a detected RedRouter is the first S1 option and saves its evaluator with t
     },
     tmp.path,
     () => <Dialogs resume={{ settings, step: "fast", reasoning: "dual" }} />,
+    { height: 44 },
   )
   try {
     await ready(setup.app, "S2 transformations")
     await setup.app.mockInput.pressEnter()
-    await ready(setup.app, "Use RedRouter studio (detected)")
+    await ready(setup.app, "RedRouter · OpenRouter · TypeSafe JEV 1.13")
     const options = setup.app.captureCharFrame()
-    expect(options).toContain("3/3 · S1 connection")
-    expect(options.indexOf("Use RedRouter studio (detected)")).toBeLessThan(options.indexOf("Cloudflare AI Gateway"))
+    expect(options).toContain("3/3 · S1 evaluator")
+    expect(options).toContain("openrouter/typesafe/jev-1.13")
+    expect(options).toContain("RedRouter · TypeSafe · Jev 1.13")
+    // RedRouter models, then connected direct providers, then Zen; manual entry is the last option.
+    expect(options.indexOf("RedRouter · OpenRouter")).toBeLessThan(options.indexOf("Cloudflare AI Gateway"))
+    expect(options.indexOf("Cloudflare AI Gateway")).toBeLessThan(options.indexOf("OpenCode Zen · Jev Free"))
+    expect(options.indexOf("OpenCode Zen · Jev Free")).toBeLessThan(options.indexOf("Enter model manually…"))
+    expect(options).not.toContain("Vercel AI Gateway")
+    expect(discovered).toEqual([{ evaluator: router.evaluator }])
+
+    // The cursor starts on the first RedRouter model; choosing it skips address, key and model entry.
     await setup.app.mockInput.pressEnter()
     await ready(setup.app, "Save global intelligence setup")
     expect(setup.app.captureCharFrame()).not.toContain("S1 API key")
     await setup.app.mockInput.pressEnter()
     await wait(() => saved.length === 1)
-    expect(probed).toEqual([{ evaluator: router.evaluator }])
+    const evaluator = { ...router.evaluator, model: "openrouter/typesafe/jev-1.13" }
+    expect(probed).toEqual([{ evaluator }])
     expect(saved[0]).toEqual({
       settings: {
         enabled: true,
         reasoning: "dual",
         onboarding: "completed",
         principal: { providerID: "mock", id: "model" },
-        evaluator: router.evaluator,
+        evaluator,
       },
     })
+  } finally {
+    setup.app.renderer.destroy()
+  }
+})
+
+test("a failed RedRouter discovery shows why with Retry, and manual entry stays reachable", async () => {
+  await using tmp = await tmpdir()
+  await Bun.write(`${tmp.path}/kv.json`, "{}")
+  const router = {
+    providerID: "red-router",
+    baseURL: "http://127.0.0.1:25050/v1",
+    detection: {
+      kind: "red-router",
+      features: ["capabilities", "systemone"],
+      systemOne: { available: true, models: ["openrouter/typesafe/jev-1.13"] },
+      checkedAt: 0,
+    },
+    evaluator: {
+      transport: "red-router",
+      baseURL: "http://127.0.0.1:25050/v1",
+      model: "openrouter/typesafe/jev-1.13",
+      credentialID: "cred_router",
+    },
+  }
+  const settings = {
+    enabled: false,
+    onboarding: "pending",
+    principal: { providerID: "mock", id: "model" },
+  } as Intelligence.Settings
+  let discoveries = 0
+  const setup = await mount(
+    (url) => {
+      if (url.pathname === "/api/intelligence") return json({ ...intelligence, settings, router })
+      if (url.pathname === "/config/providers") return json({ providers: [provider], default: { mock: "model" } })
+      if (url.pathname === "/api/intelligence/models") {
+        discoveries++
+        if (discoveries === 1)
+          return json(
+            {
+              _tag: "InvalidRequestError",
+              kind: "intelligence",
+              message: "RedRouter rejected the credential (HTTP 401). Reconnect it or enter a key.",
+            },
+            { status: 400 },
+          )
+        return json({
+          models: [{ id: "openrouter/typesafe/jev-1.13", name: "OpenRouter · TypeSafe JEV 1.13" }],
+          manual: false,
+        })
+      }
+    },
+    tmp.path,
+    () => <Dialogs resume={{ settings, step: "fast", reasoning: "dual" }} />,
+    { height: 44 },
+  )
+  try {
+    await ready(setup.app, "S2 transformations")
+    await setup.app.mockInput.pressEnter()
+    await ready(setup.app, "Retry RedRouter")
+    const failed = setup.app.captureCharFrame()
+    expect(failed).toContain("3/3 · S1 evaluator")
+    expect(failed).toContain("rejected the credential (HTTP 401)")
+    expect(failed).toContain("Enter model manually…")
+    expect(failed).not.toContain("S1 model")
+
+    // The cursor sits on the first connected provider, just below Retry.
+    await setup.app.mockInput.pressArrow("up")
+    await setup.app.mockInput.pressEnter()
+    await wait(() => discoveries === 2)
+    await wait(() => setup.app.captureCharFrame().includes("RedRouter · OpenRouter · TypeSafe JEV 1.13"))
+    expect(setup.app.captureCharFrame()).not.toContain("Retry RedRouter")
+
+    await setup.app.mockInput.typeText("manual")
+    await wait(() => !setup.app.captureCharFrame().includes("OpenCode Zen · Jev Free"))
+    await setup.app.mockInput.pressEnter()
+    await ready(setup.app, "3/3 · S1 connection")
   } finally {
     setup.app.renderer.destroy()
   }
@@ -815,6 +922,14 @@ test("a RedRouter's recommendations come first and are preselected for S2 and S1
           providers: [provider, routerProvider],
           default: { mock: "model", "red-router": "cc/claude-opus-5-5" },
         })
+      if (url.pathname === "/api/intelligence/models")
+        return json({
+          models: [
+            { id: "jev-latest", name: "Jev · Jev Latest" },
+            { id: "jev-1.13.0", name: "Jev · Jev 1.13" },
+          ],
+          manual: false,
+        })
       if (url.pathname === "/api/intelligence/test-model") return json({ ok: true, message: "Connection checked" })
       if (url.pathname === "/api/intelligence/test") return json({ ok: true, message: "Connection checked" })
     },
@@ -841,8 +956,13 @@ test("a RedRouter's recommendations come first and are preselected for S2 and S1
     expect(fast.indexOf("Recommended: GPT-6 Luna")).toBeLessThan(fast.indexOf("Reuse System Two principal"))
 
     await setup.app.mockInput.pressEnter()
-    await ready(setup.app, "Use RedRouter studio (detected)")
-    expect(setup.app.captureCharFrame()).toContain("Use RedRouter studio (detected) jev-1.13.0")
+    // The router's recommended System One model comes first and holds the cursor.
+    await ready(setup.app, "RedRouter · Jev · Jev 1.13")
+    const evaluators = setup.app.captureCharFrame()
+    expect(evaluators).toContain("jev-1.13.0 · recommended")
+    expect(evaluators.indexOf("RedRouter · Jev · Jev 1.13")).toBeLessThan(
+      evaluators.indexOf("RedRouter · Jev · Jev Latest"),
+    )
     await setup.app.mockInput.pressEnter()
     await ready(setup.app, "Save global intelligence setup")
     await setup.app.mockInput.pressEnter()

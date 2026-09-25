@@ -12,6 +12,7 @@ import { useToast } from "../ui/toast"
 import { DialogSelect, type DialogSelectOption, type DialogSelectRef } from "../ui/dialog-select"
 import { DialogPrompt } from "../ui/dialog-prompt"
 import { DialogProvider } from "./dialog-provider"
+import { errorMessage } from "../util/error"
 import {
   modeBadge,
   originCategory,
@@ -21,7 +22,7 @@ import {
   routerLabel,
 } from "../util/model-origin"
 
-type Step = "mode" | "principal" | "fast" | "transport" | "url" | "key" | "models" | "manual" | "confirm"
+type Step = "mode" | "principal" | "fast" | "evaluator" | "connection" | "url" | "key" | "manual" | "confirm"
 type Scope = "all" | "system-one" | "system-two"
 type ModelChoice =
   | Model.Ref
@@ -31,7 +32,7 @@ type ModelChoice =
   | "reuse"
   | "continue"
   | "change"
-type TransportChoice = Intelligence.Evaluator["transport"] | "continue" | "detected"
+type EvaluatorChoice = { evaluator: Intelligence.Evaluator } | "continue" | "loading" | "retry" | "manual"
 
 export function createDialogSetupState(resume?: {
   settings: Intelligence.Settings
@@ -52,6 +53,9 @@ export function createDialogSetupState(resume?: {
     loaded: !!resume,
     environment: "",
     providerID: "",
+    // The RedRouter's System One catalog, read when the S1 picker opens.
+    discovery: "idle" as "idle" | "loading" | "ready" | "failed",
+    discoveryError: "",
     models: [] as { id: string; name: string }[],
     evaluators: [] as Intelligence.EvaluatorOption[],
     router: undefined as Intelligence.DetectedRouter | undefined,
@@ -285,39 +289,109 @@ export function DialogSetup(
     return `${role}${provider ? ` · ${provider.name}` : ""}`
   }
   const afterSystemTwo = (): Step =>
-    state.reasoning === "single" || state.scope === "system-two" ? "confirm" : "transport"
-  const transportOptions = (): DialogSelectOption<TransportChoice>[] => [
-    // A connected RedRouter that serves System One comes first: it shares the provider's key.
-    ...(state.router?.evaluator
-      ? [
-          {
-            title: `Use RedRouter ${routerName(state.router)} (detected)`,
-            value: "detected" as const,
-            description: [
-              state.router.evaluator.model,
-              ...(state.router.recommended?.systemone?.id === state.router.evaluator.model ? ["recommended"] : []),
-              "shares the provider connection",
-            ].join(" · "),
-            category: "Detected",
-          },
-        ]
-      : []),
-    ...(state.settings.evaluator
-      ? [
-          {
-            title: `Continue with ${evaluatorLabel(state.settings.evaluator)}`,
-            value: "continue" as const,
-            category: "Current",
-          },
-        ]
-      : []),
-    ...state.evaluators.map((option) => ({
-      title: option.name,
-      value: option.evaluator.transport,
-      description: option.configured ? "Configured connection" : undefined,
-      category: option.configured ? "Connected" : "Available",
-    })),
-  ]
+    state.reasoning === "single" || state.scope === "system-two" ? "confirm" : "evaluator"
+  // The RedRouter whose System One models the picker lists: the detected one, else a configured
+  // RedRouter connection. Both carry the provider's credential.
+  const routerEvaluator = () =>
+    state.router?.evaluator ??
+    state.evaluators.find((option) => option.configured && option.evaluator.transport === "red-router")?.evaluator
+  const discoverRouter = () => {
+    const evaluator = routerEvaluator()
+    if (!evaluator) return
+    set("discovery", "loading")
+    api
+      .discover({ evaluator })
+      .then((result) => {
+        if (!active) return
+        batch(() => {
+          set("models", result.models)
+          set("discovery", "ready")
+        })
+      })
+      .catch((error) => {
+        if (!active) return
+        batch(() => {
+          set("discoveryError", errorMessage(error))
+          set("discovery", "failed")
+        })
+      })
+  }
+  createEffect(
+    on([() => state.step, routerEvaluator], ([step, evaluator]) => {
+      if (step === "evaluator" && evaluator && state.discovery === "idle") discoverRouter()
+    }),
+  )
+  // Every System One model usable right now, without typing: the RedRouter's catalog (recommended
+  // first), connected direct providers, then OpenCode Zen's free offer. Manual entry comes last.
+  const evaluatorOptions = (): DialogSelectOption<EvaluatorChoice>[] => {
+    const router = routerEvaluator()
+    const category = state.router ? `RedRouter ${routerName(state.router)}` : "RedRouter"
+    const recommended = state.router?.recommended?.systemone?.id
+    const failure =
+      state.discovery === "failed"
+        ? state.discoveryError
+        : state.discovery === "ready" && !state.models.length
+          ? "RedRouter lists no System One models. Connect OpenRouter or OpenCode Zen in the router."
+          : undefined
+    return [
+      ...(state.settings.evaluator
+        ? [
+            {
+              title: `Continue with ${evaluatorLabel(state.settings.evaluator)}`,
+              value: "continue" as const,
+              category: "Current",
+            },
+          ]
+        : []),
+      ...(!router
+        ? []
+        : failure !== undefined
+          ? [{ title: "Retry RedRouter", value: "retry" as const, details: wrap(failure, 50), category }]
+          : state.discovery !== "ready"
+            ? [{ title: "Loading RedRouter System One models…", value: "loading" as const, category }]
+            : state.models
+                .toSorted((a, b) => Number(b.id === recommended) - Number(a.id === recommended))
+                .map((model) => ({
+                  title: `RedRouter · ${model.name}`,
+                  value: { evaluator: { ...router, model: model.id } },
+                  // The full routed id on its own line: the dialog is too narrow to follow the title.
+                  details: [[model.id, ...(model.id === recommended ? ["recommended"] : [])].join(" · ")],
+                  category,
+                }))),
+      ...state.evaluators
+        .filter(
+          (option) =>
+            option.configured &&
+            option.evaluator.transport !== "red-router" &&
+            option.evaluator.transport !== "opencode-zen",
+        )
+        .map((option) => ({
+          title: option.name,
+          value: { evaluator: option.evaluator },
+          description: option.evaluator.model,
+          category: "Connected providers",
+        })),
+      ...state.evaluators
+        .filter((option) => option.evaluator.transport === "opencode-zen")
+        .map((option) => ({
+          title: option.name,
+          value: { evaluator: option.evaluator },
+          description: "Free offer; no paid fallback",
+          category: "OpenCode Zen",
+        })),
+      {
+        title: "Enter model manually…",
+        value: "manual" as const,
+        description: "Any connection, address and model id",
+        category: "Manual",
+      },
+    ]
+  }
+  // The cursor starts on the saved evaluator, else the first model offered (the RedRouter's recommendation).
+  const evaluatorCurrent = (): EvaluatorChoice | undefined =>
+    state.settings.evaluator
+      ? "continue"
+      : evaluatorOptions().flatMap((option) => (typeof option.value === "object" ? [option.value] : []))[0]
   // A failed probe leaves the cursor on the option that changes the failing role.
   const failed = (fix: "s2" | "back", message: string) => {
     set("busy", false)
@@ -415,7 +489,7 @@ export function DialogSetup(
             if (!state.loaded) return
             if (option.value === "close") return dialog.clear()
             if (option.value === "system-one")
-              return set((current) => ({ ...current, scope: "system-one", reasoning: "dual", step: "transport" }))
+              return set((current) => ({ ...current, scope: "system-one", reasoning: "dual", step: "evaluator" }))
             if (option.value === "system-two")
               return set((current) => ({ ...current, scope: "system-two", changing: true, step: "principal" }))
             set((current) => ({
@@ -458,21 +532,37 @@ export function DialogSetup(
           }}
         />
       </Match>
-      <Match when={state.step === "transport"}>
+      <Match when={state.step === "evaluator"}>
+        <DialogSelect
+          title={title("s1", "S1 evaluator")}
+          current={evaluatorCurrent()}
+          options={evaluatorOptions()}
+          onSelect={(option) => {
+            if (option.value === "loading") return
+            if (option.value === "continue") return set("step", "confirm")
+            if (option.value === "retry") return discoverRouter()
+            if (option.value === "manual") return set("step", "connection")
+            // Each entry is a whole evaluator: transport, address, credential and model together.
+            const evaluator = option.value.evaluator
+            batch(() => {
+              set("settings", (settings) => ({ ...settings, evaluator }))
+              set("key", "")
+              set("step", "confirm")
+            })
+          }}
+        />
+      </Match>
+      <Match when={state.step === "connection"}>
         <DialogSelect
           title={title("s1", "S1 connection")}
-          current={state.settings.evaluator ? "continue" : state.router?.evaluator ? "detected" : "opencode-zen"}
-          options={transportOptions()}
+          current={state.settings.evaluator?.transport ?? "opencode-zen"}
+          options={state.evaluators.map((option) => ({
+            title: TRANSPORT_NAMES[option.evaluator.transport] ?? option.evaluator.transport,
+            value: option.evaluator.transport,
+            description: option.configured ? "Configured connection" : undefined,
+            category: option.configured ? "Connected" : "Available",
+          }))}
           onSelect={(option) => {
-            if (option.value === "continue") return set("step", "confirm")
-            // The router's own S1 model at its connected address, with the provider's credential.
-            const detected = state.router?.evaluator
-            if (option.value === "detected" && detected)
-              return batch(() => {
-                set("settings", (settings) => ({ ...settings, evaluator: detected }))
-                set("key", "")
-                set("step", "confirm")
-              })
             const selected = state.evaluators.find((item) => item.evaluator.transport === option.value)
             if (!selected) return
             batch(() => {
@@ -530,40 +620,10 @@ export function DialogSetup(
                   : "API key, or empty to use the server environment"
             }
             value={state.key}
-            busy={state.busy}
             onConfirm={(value) => {
-              set("key", value)
-              set("busy", true)
-              void api
-                .discover({ evaluator: evaluator(), ...(value ? { apiKey: value } : {}) })
-                .then((result) => {
-                  if (!active) return
-                  set("models", result.models)
-                  set("busy", false)
-                  set("step", result.models.length ? "models" : "manual")
-                })
-                .catch(fail)
-            }}
-          />
-        )}
-      </Match>
-      <Match when={state.step === "models" && state.settings.evaluator}>
-        {(evaluator) => (
-          <DialogSelect
-            title={title("s1", "S1 evaluator")}
-            current={evaluator().model}
-            options={[
-              { title: evaluator().model, value: evaluator().model },
-              ...state.models
-                .filter((model) => model.id !== evaluator().model)
-                .map((model) => ({ title: model.name, value: model.id })),
-              { title: "Enter model manually", value: "manual" },
-            ]}
-            onSelect={(option) => {
-              if (option.value === "manual") return set("step", "manual")
               batch(() => {
-                set("settings", (settings) => ({ ...settings, evaluator: { ...evaluator(), model: option.value } }))
-                set("step", "confirm")
+                set("key", value)
+                set("step", "manual")
               })
             }}
           />
@@ -601,12 +661,12 @@ export function DialogSetup(
                     : `Sends sources to ${state.settings.evaluator?.transport ?? "S1"}`,
               ],
             },
-            ...(afterSystemTwo() === "transport" ? [{ title: "Back to S1 connection", value: "back" }] : []),
+            ...(afterSystemTwo() === "evaluator" ? [{ title: "Back to S1 evaluator", value: "back" }] : []),
             ...(state.scope === "system-one" ? [] : [{ title: "Change S2 model", value: "s2" }]),
           ]}
           onSelect={(option) => {
             if (state.busy) return
-            if (option.value === "back") return set("step", "transport")
+            if (option.value === "back") return set("step", "evaluator")
             if (option.value === "s2") return set((current) => ({ ...current, changing: true, step: "principal" }))
             void finish().catch(fail)
           }}

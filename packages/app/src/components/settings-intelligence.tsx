@@ -342,7 +342,17 @@ function IntelligenceForm() {
             variant="secondary"
             onClick={() =>
               void run(async () => {
-                const result = await api().discover(probe())
+                // A failed discovery says why (auth, HTTP status, unreachable) next to the manual hint.
+                const result = await api()
+                  .discover(probe())
+                  .catch((error: unknown) => {
+                    const reason =
+                      typeof error === "object" && error && "message" in error && typeof error.message === "string"
+                        ? error.message
+                        : language.t("settings.intelligence.error")
+                    set("message", `${reason} ${language.t("settings.intelligence.manual")}`)
+                  })
+                if (!result) return
                 set("discovered", result.models)
                 if (result.manual) set("message", language.t("settings.intelligence.manual"))
               })
