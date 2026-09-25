@@ -2,6 +2,7 @@ import { loadSessionRoute } from "../../util/session-navigation"
 import { DialogGoalBudget } from "../../component/dialog-goal-budget"
 import { Budget } from "../../util/budget"
 import { DialogMonitors } from "../../component/dialog-monitors"
+import { DialogPendingPrompts } from "../../component/dialog-pending-prompts"
 import { DesignApprovalNotice } from "../../component/design-approval"
 import { DesignFeedbackNotice } from "../../component/design-feedback"
 import { Effect, Schema } from "effect"
@@ -1319,6 +1320,13 @@ export function Session() {
       category: "Session",
       slash: { name: "monitors" },
       run: () => dialog.replace(() => <DialogMonitors sessionID={route.sessionID} />),
+    },
+    {
+      title: "Pending prompts",
+      value: "session.pending_prompts",
+      category: "Session",
+      slash: { name: "pending" },
+      run: () => dialog.replace(() => <DialogPendingPrompts sessionID={route.sessionID} />),
     },
     {
       title: "Go to child session",

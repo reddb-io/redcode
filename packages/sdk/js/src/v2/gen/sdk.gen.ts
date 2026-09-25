@@ -350,10 +350,14 @@ import type {
   SessionMessageResponses,
   SessionMessagesErrors,
   SessionMessagesResponses,
+  SessionPendingPromptsErrors,
+  SessionPendingPromptsResponses,
   SessionPromptAsyncErrors,
   SessionPromptAsyncResponses,
   SessionPromptDeliveryErrors,
   SessionPromptDeliveryResponses,
+  SessionPromptDiscardErrors,
+  SessionPromptDiscardResponses,
   SessionPromptErrors,
   SessionPromptResponses,
   SessionRevertErrors,
@@ -5143,7 +5147,7 @@ export class Session2 extends HeyApiClient {
   /**
    * Send async message
    *
-   * Create and send a new message to a session asynchronously, starting the session if needed and returning immediately.
+   * Create and send a new message to a session asynchronously. Returns once the prompt is durably admitted, without waiting for the turn; a retry that names the same messageID is idempotent.
    */
   public promptAsync<ThrowOnError extends boolean = false>(
     parameters: {
@@ -5244,6 +5248,80 @@ export class Session2 extends HeyApiClient {
         ...options?.headers,
         ...params.headers,
       },
+    })
+  }
+
+  /**
+   * List pending prompts
+   *
+   * List the prompts admitted to a session and not yet promoted: steers waiting for the next safe boundary, queued prompts waiting for the session to go idle, and stale queued prompts that wait for an explicit send or discard.
+   */
+  public pendingPrompts<ThrowOnError extends boolean = false>(
+    parameters: {
+      sessionID: string
+      directory?: string
+      workspace?: string
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "path", key: "sessionID" },
+            { in: "query", key: "directory" },
+            { in: "query", key: "workspace" },
+          ],
+        },
+      ],
+    )
+    return (options?.client ?? this.client).get<
+      SessionPendingPromptsResponses,
+      SessionPendingPromptsErrors,
+      ThrowOnError
+    >({
+      url: "/session/{sessionID}/prompt",
+      ...options,
+      ...params,
+    })
+  }
+
+  /**
+   * Discard pending prompt
+   *
+   * Discard a prompt that is still waiting, so it never reaches the model. Fails with 404 when the prompt is not pending (unknown, already promoted or removed).
+   */
+  public promptDiscard<ThrowOnError extends boolean = false>(
+    parameters: {
+      sessionID: string
+      messageID: string
+      directory?: string
+      workspace?: string
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "path", key: "sessionID" },
+            { in: "path", key: "messageID" },
+            { in: "query", key: "directory" },
+            { in: "query", key: "workspace" },
+          ],
+        },
+      ],
+    )
+    return (options?.client ?? this.client).delete<
+      SessionPromptDiscardResponses,
+      SessionPromptDiscardErrors,
+      ThrowOnError
+    >({
+      url: "/session/{sessionID}/prompt/{messageID}",
+      ...options,
+      ...params,
     })
   }
 
