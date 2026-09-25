@@ -13,6 +13,7 @@ import { WorkspaceLabel } from "../../component/workspace-label"
 import { useRedskilled } from "../../context/redskilled"
 import { Workers } from "../workers"
 import { SidebarSubagents } from "./subagent"
+import { visibleTodos } from "../../feature-plugins/sidebar/todo"
 
 export const SIDEBAR_TABS = ["context", "workers", "subagents"] as const
 export type SidebarTab = (typeof SIDEBAR_TABS)[number]
@@ -44,6 +45,14 @@ export function Sidebar(props: {
     () => redskilled.status()?.payload?.workers.filter((item) => item.display?.failed).length ?? 0,
   )
   const subagentCount = createMemo(() => sync.data.session.filter((item) => item.parentID === props.sessionID).length)
+  const tasks = createMemo(() => visibleTodos(sync.data.todo[props.sessionID] ?? []).length > 0)
+  // Directory, worktree and branch sit outside the scrollbox so no amount of content can push them
+  // out of sight: above a task list, which can run long, and at the bottom otherwise.
+  const location = (edge: "top" | "bottom") => (
+    <box flexShrink={0} paddingTop={edge === "bottom" ? 1 : 0} paddingBottom={edge === "top" ? 1 : 0}>
+      <pluginRuntime.Slot name="sidebar_footer" mode="single_winner" session_id={props.sessionID} />
+    </box>
+  )
 
   return (
     <Show when={session()}>
@@ -149,8 +158,11 @@ export function Sidebar(props: {
         </box>
 
         <box visible={props.tab === "context"} flexGrow={1} minHeight={0}>
+          <Show when={tasks()}>{location("top")}</Show>
           <scrollbox
             flexGrow={1}
+            flexShrink={1}
+            minHeight={0}
             scrollAcceleration={scrollAcceleration()}
             verticalScrollbarOptions={{
               trackOptions: {
@@ -164,10 +176,7 @@ export function Sidebar(props: {
               <pluginRuntime.Slot name="sidebar_project" session_id={props.sessionID} />
             </box>
           </scrollbox>
-
-          <box flexShrink={0} gap={1} paddingTop={1}>
-            <pluginRuntime.Slot name="sidebar_footer" mode="single_winner" session_id={props.sessionID} />
-          </box>
+          <Show when={!tasks()}>{location("bottom")}</Show>
         </box>
 
         <box visible={props.tab === "workers"} flexGrow={1} minHeight={0}>
