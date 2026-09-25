@@ -1506,6 +1506,7 @@ export type GlobalEvent = {
             messageID: string
             callID: string
           }
+          protected?: boolean
         }
       }
     | {
@@ -2973,6 +2974,7 @@ export type PermissionRequest = {
     messageID: string
     callID: string
   }
+  protected?: boolean
 }
 
 export type PermissionNotFoundError = {
@@ -4592,10 +4594,14 @@ export type ConfigV2ReferenceLocal = {
   hidden?: boolean
 }
 
+export type RouterKeyRole = "standard" | "admin"
+
 export type RouterConnection = {
   kind: "red-router" | "9router"
   instanceID?: string
   version?: string
+  role?: RouterKeyRole
+  mcp?: string
 }
 
 export type ConfigV2DesignSystem = {
@@ -7325,6 +7331,7 @@ export type PermissionAsked = {
       messageID: string
       callID: string
     }
+    protected?: boolean
   }
 }
 
@@ -8735,6 +8742,7 @@ export type EventPermissionAsked = {
       messageID: string
       callID: string
     }
+    protected?: boolean
   }
 }
 
@@ -11770,6 +11778,7 @@ export type ProviderOpenaiCompatibleConnectResponses = {
      */
     configPath: string
     movedFrom?: string
+    keyRole?: RouterKeyRole
     projectReferences?: Array<string>
   }
 }

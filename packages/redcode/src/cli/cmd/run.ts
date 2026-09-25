@@ -866,7 +866,8 @@ export const RunCommand = effectCmd({
               const permission = event.properties
               if (!sessions.has(permission.sessionID)) continue
 
-              if (auto) {
+              // A protected action is never auto-approved: only a person may allow it.
+              if (auto && !permission.protected) {
                 await client.permission.reply({
                   requestID: permission.id,
                   reply: "once",

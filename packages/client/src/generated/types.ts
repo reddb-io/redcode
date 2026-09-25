@@ -6917,6 +6917,8 @@ export type ProvidersListOutput = {
       readonly kind: "red-router" | "9router"
       readonly instanceID?: string
       readonly version?: string
+      readonly role?: "standard" | "admin"
+      readonly mcp?: string
     }
   }>
 }
@@ -6955,6 +6957,8 @@ export type ProvidersGetOutput = {
       readonly kind: "red-router" | "9router"
       readonly instanceID?: string
       readonly version?: string
+      readonly role?: "standard" | "admin"
+      readonly mcp?: string
     }
   }
 }

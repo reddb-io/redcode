@@ -6568,6 +6568,9 @@
                     "movedFrom": {
                       "type": "string"
                     },
+                    "keyRole": {
+                      "$ref": "#/components/schemas/RouterKeyRole"
+                    },
                     "projectReferences": {
                       "type": "array",
                       "items": {
@@ -34575,6 +34578,9 @@
                         },
                         "required": ["messageID", "callID"],
                         "additionalProperties": false
+                      },
+                      "protected": {
+                        "type": "boolean"
                       }
                     },
                     "required": ["id", "sessionID", "permission", "patterns", "metadata", "always"],
@@ -38950,6 +38956,9 @@
             },
             "required": ["messageID", "callID"],
             "additionalProperties": false
+          },
+          "protected": {
+            "type": "boolean"
           }
         },
         "required": ["id", "sessionID", "permission", "patterns", "metadata", "always"],
@@ -44227,6 +44236,10 @@
         "required": ["path"],
         "additionalProperties": false
       },
+      "RouterKeyRole": {
+        "type": "string",
+        "enum": ["standard", "admin"]
+      },
       "RouterConnection": {
         "type": "object",
         "properties": {
@@ -44238,6 +44251,12 @@
             "type": "string"
           },
           "version": {
+            "type": "string"
+          },
+          "role": {
+            "$ref": "#/components/schemas/RouterKeyRole"
+          },
+          "mcp": {
             "type": "string"
           }
         },
@@ -53229,6 +53248,9 @@
                 },
                 "required": ["messageID", "callID"],
                 "additionalProperties": false
+              },
+              "protected": {
+                "type": "boolean"
               }
             },
             "required": ["id", "sessionID", "permission", "patterns", "metadata", "always"],
@@ -57422,6 +57444,9 @@
                 },
                 "required": ["messageID", "callID"],
                 "additionalProperties": false
+              },
+              "protected": {
+                "type": "boolean"
               }
             },
             "required": ["id", "sessionID", "permission", "patterns", "metadata", "always"],

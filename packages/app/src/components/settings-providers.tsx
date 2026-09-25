@@ -73,6 +73,14 @@ const SettingsProvidersContent: Component<{ onBack?: () => void }> = (props) => 
     return
   }
 
+  // A RedRouter connection says what its key may do: an admin key also manages keys over MCP.
+  const keyRole = (item: ProviderItem) => {
+    const role = item.router?.role
+    if (role === "admin") return language.t("settings.providers.tag.adminKey")
+    if (role === "standard") return language.t("settings.providers.tag.standardKey")
+    return undefined
+  }
+
   const type = (item: ProviderItem) => {
     const router = routerName(item)
     if (router) return router
@@ -125,6 +133,7 @@ const SettingsProvidersContent: Component<{ onBack?: () => void }> = (props) => 
                       <ProviderIcon id={item.id} class="size-5 shrink-0 icon-strong-base" />
                       <span class="text-14-medium text-text-strong truncate">{item.name}</span>
                       <Tag>{type(item)}</Tag>
+                      <Show when={keyRole(item)}>{(role) => <Tag>{role()}</Tag>}</Show>
                     </div>
                     <Button size="large" variant="ghost" onClick={() => void removeProvider(item.id, item.name)}>
                       {language.t("provider.remove.button")}

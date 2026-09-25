@@ -51,6 +51,13 @@ export const Detection = Schema.Struct({
 export interface Detection extends Schema.Schema.Type<typeof Detection> {}
 
 /**
+ * What a RedRouter API key may do. A `standard` key calls models; an `admin` key also manages keys
+ * (create, list, read their usage) through the router's MCP server.
+ */
+export const KeyRole = Schema.Literals(["standard", "admin"]).annotate({ identifier: "Router.KeyRole" })
+export type KeyRole = typeof KeyRole.Type
+
+/**
  * The router a provider connection was found to be, saved on the provider when it is connected or
  * its models are refreshed. Clients read it to tell a RedRouter connection from a direct provider
  * without relying on the provider id.
@@ -59,6 +66,12 @@ export const Connection = Schema.Struct({
   kind: Schema.Literals(["red-router", "9router"]),
   instanceID: Schema.String.pipe(optional),
   version: Schema.String.pipe(optional),
+  role: KeyRole.pipe(optional).annotate({
+    description: "What the connection's RedRouter API key may do: `admin` keys also get key-management MCP tools.",
+  }),
+  mcp: Schema.String.pipe(optional).annotate({
+    description: "The URL of the RedRouter's MCP server for this key, registered as an MCP server with the same key.",
+  }),
 }).annotate({ identifier: "Router.Connection" })
 export interface Connection extends Schema.Schema.Type<typeof Connection> {}
 

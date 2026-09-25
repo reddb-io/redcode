@@ -201,6 +201,8 @@ export const dict = {
 
   "command.prompt.mode.shell": "Shell",
   "command.prompt.mode.normal": "Prompt",
+  "command.prompt.queue": "Queue prompt",
+  "command.prompt.queue.description": "Send after the current turn instead of steering it",
 
   "command.permissions.autoaccept.enable": "自动接受权限",
   "command.permissions.autoaccept.disable": "停止自动接受权限",
@@ -1105,6 +1107,8 @@ export const dict = {
   "settings.providers.connected.empty": "没有已连接的提供商",
   "settings.providers.section.popular": "热门提供商",
   "settings.providers.tag.environment": "环境",
+  "settings.providers.tag.adminKey": "Admin key",
+  "settings.providers.tag.standardKey": "Standard key",
   "settings.providers.tag.config": "配置",
   "settings.providers.tag.custom": "自定义",
   "settings.providers.tag.other": "其他",

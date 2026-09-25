@@ -732,3 +732,121 @@ it.effect("a router connection saves what answered, moves renamed models and the
     expect(fake.credentials.rr).toMatchObject({ metadata: { baseURL, router: "red-router" } })
   }).pipe(Effect.ensuring(Effect.sync(() => ProviderRouter.forget()))),
 )
+
+describe("RedRouter key roles", () => {
+  const models = { data: [{ id: "codex/gpt-5.6-sol", name: "GPT-5.6 Sol" }] }
+
+  it.effect("the model list's headers tell the key's role and MCP server, with no extra request", () =>
+    Effect.gen(function* () {
+      const paths: string[] = []
+      const server = yield* serve((request) => {
+        paths.push(new URL(request.url).pathname)
+        return Response.json(models, {
+          headers: {
+            "x-redrouter-key-role": "admin",
+            "x-redrouter-mcp": "/v1/mcp",
+          },
+        })
+      })
+      const baseURL = `${server.url.href}v1`
+      const fake = fakes()
+      const http = yield* HttpClient.HttpClient
+      const result = yield* OpenAICompatible.connect(
+        { http, config: fake.config, auth: fake.auth },
+        { providerID: "red-router", baseURL, apiKey: "sk-admin" },
+      )
+      expect(paths).toEqual(["/v1/models"])
+      expect(provider(fake.writes[0]!, "red-router").router).toEqual({
+        kind: "red-router",
+        role: "admin",
+        mcp: `${server.url.href}v1/mcp`,
+      })
+      expect(result.keyRole).toBe("admin")
+    }),
+  )
+
+  it.effect("a saved RedRouter whose model list says nothing is asked at /key with the key", () =>
+    Effect.gen(function* () {
+      const seen: Array<string | null> = []
+      const server = yield* serve((request) => {
+        const url = new URL(request.url)
+        if (url.pathname === "/v1/key") {
+          seen.push(request.headers.get("authorization"))
+          return Response.json({
+            object: "api_key",
+            id: "key_1",
+            role: "standard",
+            mcp: { url: `${url.origin}/v1/mcp`, transport: "streamable-http", schema_version: 3, admin_tools: false },
+          })
+        }
+        return Response.json(models)
+      })
+      const baseURL = `${server.url.href}v1`
+      const fake = fakes({
+        data: { provider: { "red-router": { options: { baseURL }, router: { kind: "red-router" }, models: {} } } },
+        auth: { "red-router": api("sk-standard") },
+      })
+      const http = yield* HttpClient.HttpClient
+      const result = yield* OpenAICompatible.connect(
+        { http, config: fake.config, auth: fake.auth },
+        { providerID: "red-router", baseURL },
+      )
+      expect(seen).toEqual(["Bearer sk-standard"])
+      expect(provider(fake.writes[0]!, "red-router").router).toEqual({
+        kind: "red-router",
+        role: "standard",
+        mcp: `${server.url.href}v1/mcp`,
+      })
+      expect(result.keyRole).toBe("standard")
+    }),
+  )
+
+  it.effect("a key the router no longer describes loses the role and MCP server saved for the old one", () =>
+    Effect.gen(function* () {
+      const server = yield* serve((request) =>
+        new URL(request.url).pathname === "/v1/key"
+          ? Response.json({ error: { message: "Invalid API key" } }, { status: 401 })
+          : Response.json(models),
+      )
+      const baseURL = `${server.url.href}v1`
+      const fake = fakes({
+        data: {
+          provider: {
+            "red-router": {
+              options: { baseURL },
+              router: { kind: "red-router", role: "admin", mcp: `${server.url.href}v1/mcp` },
+              models: {},
+            },
+          },
+        },
+      })
+      const http = yield* HttpClient.HttpClient
+      const result = yield* OpenAICompatible.connect(
+        { http, config: fake.config, auth: fake.auth },
+        { providerID: "red-router", baseURL, apiKey: "sk-new" },
+      )
+      expect(fake.writes[0]!.remove).toEqual(
+        expect.arrayContaining([
+          ["provider", "red-router", "router", "role"],
+          ["provider", "red-router", "router", "mcp"],
+        ]),
+      )
+      expect(result.keyRole).toBeUndefined()
+    }),
+  )
+
+  it.effect("an MCP server on another origin is never saved: the key must not follow it", () =>
+    Effect.gen(function* () {
+      const server = yield* serve(() =>
+        Response.json(models, {
+          headers: { "x-redrouter-key-role": "admin", "x-redrouter-mcp": "https://elsewhere.example/v1/mcp" },
+        }),
+      )
+      const discovered = yield* ProviderDiscovery.discover(yield* HttpClient.HttpClient, {
+        baseURL: `${server.url.href}v1`,
+        apiKey: "sk",
+      })
+      expect(discovered.key).toEqual({ role: "admin" })
+    }),
+  )
+})

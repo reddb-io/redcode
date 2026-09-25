@@ -15,6 +15,7 @@ import { normalizePromptHistoryEntry, promptLength, type PromptHistoryComment } 
 import { createPersistedPromptInputHistory } from "@/components/prompt-input/history-store"
 import { promptDesignPlaceholder, promptPlaceholder } from "@/components/prompt-input/placeholder"
 import { createPromptSubmit } from "@/components/prompt-input/submit"
+import { QUEUE_SLASH } from "@/components/prompt-input/queue-command"
 import { selectionFromLines, type SelectedLineRange, useFile } from "@/context/file"
 import { useComments } from "@/context/comments"
 import { useCommand } from "@/context/command"
@@ -301,6 +302,19 @@ export function usePromptInputV2Controller(props: PromptInputV2ControllerProps):
       description: item.description,
       type: "custom" as const,
     })),
+    // `/queue <text>` is read by the submit, so picking it only leaves `/queue ` in the prompt,
+    // like a server command. A server command named `queue` keeps precedence.
+    ...(sync().data.command.some((item) => item.name === QUEUE_SLASH)
+      ? []
+      : [
+          {
+            id: "prompt.queue",
+            trigger: QUEUE_SLASH,
+            title: language.t("command.prompt.queue"),
+            description: language.t("command.prompt.queue.description"),
+            type: "custom" as const,
+          },
+        ]),
     ...command.options
       .filter((item) => !item.disabled && !item.id.startsWith("suggested.") && item.slash)
       .map((item) => ({
@@ -407,7 +421,7 @@ export function usePromptInputV2Controller(props: PromptInputV2ControllerProps):
       submit: {
         stopping,
         working,
-        onSubmit: () => void submission.handleSubmit(new Event("submit")),
+        onSubmit: (options) => void submission.handleSubmit(new Event("submit"), options),
         onStop: () => void submission.abort(),
       },
     },

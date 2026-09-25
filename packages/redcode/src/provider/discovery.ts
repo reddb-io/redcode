@@ -2,6 +2,7 @@ import { Effect, Schema, Stream } from "effect"
 import { FetchHttpClient, HttpClient, HttpClientRequest } from "effect/unstable/http"
 import { ModelLimit } from "@reddb-io/redcode-core/model-limit"
 import { ProviderRouter } from "@reddb-io/redcode-core/provider/router"
+import { RouterMCP } from "@reddb-io/redcode-core/provider/router-mcp"
 import { ConfigProviderV1 } from "@reddb-io/redcode-core/v1/config/provider"
 import { Router } from "@reddb-io/redcode-schema/router"
 import { isRecord } from "@/util/record"
@@ -353,7 +354,15 @@ export const discover = Effect.fn("ProviderDiscovery.discover")(function* (
       })
     }
     const catalogVersion = ProviderRouter.header(response.headers, ProviderRouter.Header.catalogVersion)
-    return { baseURL, models, ...(catalogVersion ? { catalogVersion } : {}) }
+    // A RedRouter says what the key is and where its MCP server is, with no extra request.
+    const role = RouterMCP.keyRole(ProviderRouter.header(response.headers, ProviderRouter.Header.keyRole))
+    const mcp = role ? RouterMCP.mcpURL(baseURL, ProviderRouter.header(response.headers, ProviderRouter.Header.mcp)) : undefined
+    return {
+      baseURL,
+      models,
+      ...(catalogVersion ? { catalogVersion } : {}),
+      ...(role ? { key: { role, ...(mcp ? { mcp } : {}) } } : {}),
+    }
   }).pipe(
     Effect.timeoutOrElse({
       duration: "10 seconds",
