@@ -57,7 +57,7 @@ import { IntelligenceIndicator } from "../dialog-intelligence"
 import { ReasoningAuto } from "@reddb-io/redcode-core/session/reasoning-auto"
 import { reasoningLabel } from "../../util/reasoning"
 import { useArgs } from "../../context/args"
-import { OPENCODE_BASE_MODE, useBindings, useCommandShortcut, useLeaderActive } from "../../keymap"
+import { OPENCODE_BASE_MODE, useBindings, useCommandShortcut, useLeaderActive, useOpencodeKeymap } from "../../keymap"
 import { useTuiConfig } from "../../config"
 import { usePromptWorkspace } from "./workspace"
 import { usePromptMove } from "./move"
@@ -65,12 +65,15 @@ import { readLocalAttachment } from "./local-attachment"
 import { useLocation } from "../../context/location"
 import { useRedskilled } from "../../context/redskilled"
 import {
+  bindsAltReturn,
   busyHint,
+  distinctShiftReturn,
+  escCrIsAltReturn,
   latestQueuedPrompt,
   parseSteerCommand,
   promptDelivery,
-  legacyAltReturn,
   STEER_SLASH,
+  steerKeyRejects,
   steerKeyActive,
   steerKeyIntent,
   stripSteerCommand,
@@ -122,6 +125,9 @@ const money = new Intl.NumberFormat("en-US", {
 })
 
 const DRAFT_RETENTION_MIN_CHARS = 20
+
+/** Renderers whose terminal has reported Shift+Enter distinctly (see `distinctShiftReturn`). */
+const shiftReturnReporters = new WeakSet<object>()
 
 function randomIndex(count: number) {
   if (count <= 0) return 0
@@ -205,6 +211,7 @@ export function Prompt(props: PromptProps) {
   const agentShortcut = useCommandShortcut("agent.cycle")
   const paletteShortcut = useCommandShortcut("command.palette.show")
   const renderer = useRenderer()
+  const keymap = useOpencodeKeymap()
   const submitShortcut = useCommandShortcut("input.submit")
   const steerShortcut = useCommandShortcut("input.steer")
   // The terminal answers the capability query after startup, so the steer hint re-reads it then.
@@ -213,6 +220,21 @@ export function Prompt(props: PromptProps) {
     setKittyKeyboard(capabilities?.kitty_keyboard)
   renderer.on("capabilities", onCapabilities)
   onCleanup(() => renderer.off("capabilities", onCapabilities))
+  // A terminal that has sent Shift+Enter as a CSI report of its own does not map it to ESC CR, so
+  // from then on a bare ESC CR is alt+return and steers. Kept per renderer so the home and session
+  // prompts share it.
+  const [shiftReturnReported, setShiftReturnReported] = createSignal(shiftReturnReporters.has(renderer))
+  // Observed ahead of the bindings: the newline binding consumes the key before plain listeners.
+  const offShiftReturn = keymap.intercept("key", ({ event }) => {
+    if (!distinctShiftReturn(event)) return
+    shiftReturnReporters.add(renderer)
+    setShiftReturnReported(true)
+  })
+  onCleanup(offShiftReturn)
+  const escCr = createMemo(() => ({
+    shiftReturnReported: shiftReturnReported(),
+    newlineOnAltReturn: bindsAltReturn(tuiConfig.keybinds.get("input.newline")),
+  }))
   const exit = useExit()
   const dimensions = useTerminalDimensions()
   const { theme, syntax } = useTheme()
@@ -970,7 +992,8 @@ export function Prompt(props: PromptProps) {
   // steers, delivering at the next step instead of queueing; idle it submits exactly like Enter.
   // It sits above the managed textarea layer, where `input_newline` also lists alt+return: a bare
   // ESC CR is rejected here and falls through to that newline, because terminals that map
-  // Shift+Enter to ESC CR send exactly what a legacy alt+return sends.
+  // Shift+Enter to ESC CR send exactly what a legacy alt+return sends, unless the terminal has
+  // shown its Shift+Enter is something else or the config keeps alt+return off `input_newline`.
   useBindings(() => ({
     target: inputTarget,
     enabled: steerKeyActive({ focused: inputTarget() !== undefined, disabled: Boolean(props.disabled) }),
@@ -982,7 +1005,7 @@ export function Prompt(props: PromptProps) {
         category: "Prompt",
         // IME: double-defer like the textarea's native submit so the last composed character lands.
         run: (ctx: { event?: KeyReport }) => {
-          if (legacyAltReturn(ctx.event)) return false
+          if (steerKeyRejects(ctx.event, escCr())) return false
           setTimeout(
             () =>
               setTimeout(() => {
@@ -1911,6 +1934,7 @@ export function Prompt(props: PromptProps) {
                     kittyKeyboard: kittyKeyboard(),
                     env: { TERM_PROGRAM: process.env.TERM_PROGRAM, WT_SESSION: process.env.WT_SESSION },
                     queued: !store.prompt.input.trim() && queuedPrompt() !== undefined,
+                    escCrSteers: escCrIsAltReturn(escCr()),
                   })}
                 </text>
                 <text fg={store.interrupt > 0 ? theme.primary : theme.text}>
