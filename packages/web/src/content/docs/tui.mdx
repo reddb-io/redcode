@@ -143,6 +143,19 @@ Export current conversation to Markdown and open in your default editor. Uses th
 
 ---
 
+### goal
+
+Set the session's goal, or control the current one. `/goal` alone shows the goal's status and the actions that apply to it.
+
+```bash frame="none"
+/goal make the settings form pass its tests; verify: bun test
+/goal [drop|pause|resume|budget|status] …
+```
+
+`/goal budget` takes `$5`, `5$`, `200k tokens` or `40 turns`. `pause`, `resume`, `drop` and `status` are subcommands only on their own, so `/goal drop support for Node 16` sets a goal; `/goal set …` sets any text as the goal. With dual reasoning, other text in any language is read by System One as a new goal or a control, and you are asked when it is unsure. `/goal-pause`, `/goal-resume`, `/goal-drop` and `/goal-budget` still work when typed.
+
+---
+
 ### help
 
 Show the help dialog.

@@ -1830,6 +1830,29 @@ const scenarios: Scenario[] = [
       )
     }),
   http.protected
+    .post("/session/{sessionID}/goal/command", "session.goal.command")
+    .seeded((ctx) =>
+      Effect.gen(function* () {
+        const session = yield* ctx.session({ title: "Goal command session" })
+        yield* ctx.sessionMetadata(session.id, goalMetadata("active"))
+        return session
+      }),
+    )
+    .at((ctx) => ({
+      path: route("/session/{sessionID}/goal/command", { sessionID: ctx.state.id }),
+      headers: ctx.headers(),
+      body: { text: "pause" },
+    }))
+    .jsonEffect(200, (body, ctx) =>
+      Effect.gen(function* () {
+        check(isRecord(body) && body.action === "pause", "an explicit subcommand resolves to its action")
+        check(isRecord(body) && Array.isArray(body.options) && body.options.length === 0, "nothing is asked")
+        const stored = yield* ctx.sessionGet(ctx.state.id)
+        const goal = stored?.metadata?.["goal"]
+        check(isRecord(goal) && goal.status === "active", "resolving a command does not act on the goal")
+      }),
+    ),
+  http.protected
     .get("/session/{sessionID}/budget", "session.budget")
     .seeded((ctx) => ctx.session({ title: "Budget session" }))
     .at((ctx) => ({ path: route("/session/{sessionID}/budget", { sessionID: ctx.state.id }), headers: ctx.headers() }))

@@ -11,6 +11,8 @@ import { MessageV2 } from "@/session/message-v2"
 import { SessionPrompt } from "@/session/prompt"
 import { SessionGoal } from "@/session/goal"
 import { GoalRuntime } from "@/session/goal-runtime"
+import { GoalCommand } from "@reddb-io/redcode-core/session/goal-command"
+import { Intelligence } from "@reddb-io/redcode-core/intelligence"
 import { SessionBudget } from "@/session/budget"
 import { SessionSpend } from "@/session/spend"
 import { Config } from "@/config/config"
@@ -32,6 +34,7 @@ import {
   DiffQuery,
   ForkPayload,
   GoalBudgetPayload,
+  GoalCommandPayload,
   InitPayload,
   SessionBudgetPayload,
   ListQuery,
@@ -59,6 +62,7 @@ export const sessionHandlers = HttpApiBuilder.group(InstanceHttpApi, "session", 
     const shareSvc = yield* SessionShare.Service
     const promptSvc = yield* SessionPrompt.Service
     const goals = yield* GoalRuntime.Service
+    const intelligence = yield* Intelligence.Service
     const spend = yield* SessionSpend.Service
     const config = yield* Config.Service
     const revertSvc = yield* SessionRevert.Service
@@ -368,6 +372,27 @@ export const sessionHandlers = HttpApiBuilder.group(InstanceHttpApi, "session", 
       return next
     })
 
+    const goalCommand = Effect.fn("SessionHttpApi.goalCommand")(function* (ctx: {
+      params: { sessionID: SessionID }
+      payload: typeof GoalCommandPayload.Type
+    }) {
+      yield* requireSession(ctx.params.sessionID)
+      const goal = yield* goals.get(ctx.params.sessionID)
+      // Unreadable settings classify, and a failed classification asks: nothing is guessed.
+      const mode = yield* intelligence.read().pipe(
+        Effect.map(Intelligence.mode),
+        Effect.orElseSucceed(() => "dual" as const),
+      )
+      return yield* GoalCommand.resolve({
+        text: ctx.payload.text,
+        mode,
+        status: goal?.status,
+        classify: intelligence.evaluate(
+          GoalCommand.evaluation({ sessionID: ctx.params.sessionID, text: ctx.payload.text, goal }),
+        ),
+      })
+    })
+
     const budgetGet = Effect.fn("SessionHttpApi.budget")(function* (ctx: { params: { sessionID: SessionID } }) {
       yield* requireSession(ctx.params.sessionID)
       return yield* spend.view(ctx.params.sessionID)
@@ -618,6 +643,7 @@ export const sessionHandlers = HttpApiBuilder.group(InstanceHttpApi, "session", 
       .handle("goalResume", goalResume)
       .handle("goalDrop", goalDrop)
       .handle("goalBudget", goalBudget)
+      .handle("goalCommand", goalCommand)
       .handle("budget", budgetGet)
       .handle("budgetSet", budgetSet)
       .handle("prompt", prompt)

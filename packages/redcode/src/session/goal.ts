@@ -399,7 +399,7 @@ function decideTurn(input: Parameters<typeof decide>[0]): Decision {
 }
 
 export function budgetReason(goal: Goal) {
-  return `used all ${goal.turns.max} turns without the goal holding — running out of turns is not completion; use /goal-budget to increase the limit, then /goal-resume to keep going`
+  return `used all ${goal.turns.max} turns without the goal holding — running out of turns is not completion; use /goal budget to increase the limit, then /goal resume to keep going`
 }
 
 /** Tolerant: the judge is asked for one JSON object, and models fence, prefix and trail. */

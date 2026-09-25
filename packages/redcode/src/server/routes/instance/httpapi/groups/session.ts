@@ -6,6 +6,7 @@ import { Session } from "@/session/session"
 import { MessageV2 } from "@/session/message-v2"
 import { SessionPrompt } from "@/session/prompt"
 import { SessionGoal } from "@/session/goal"
+import { GoalCommand } from "@reddb-io/redcode-core/session/goal-command"
 import { SessionBudget } from "@/session/budget"
 import { SessionRevert } from "@/session/revert"
 import { SessionStatus } from "@/session/status"
@@ -92,6 +93,18 @@ export const GoalBudgetPayload = Schema.Struct({
   ...SessionBudget.UpdatePayload.fields,
 })
 export const SessionBudgetPayload = SessionBudget.UpdatePayload
+export const GoalCommandPayload = Schema.Struct({
+  text: Schema.String.annotate({ description: "What the user typed after /goal" }),
+})
+export const GoalCommandResult = Schema.Struct({
+  action: Schema.optional(GoalCommand.Action).annotate({
+    description: "The action to take; absent when the user has to choose between the options",
+  }),
+  options: Schema.Array(GoalCommand.Action).annotate({
+    description: "When the user has to choose, the likely interpretations, the most likely first",
+  }),
+  confidence: Schema.optional(Schema.Number).annotate({ description: "How sure System One was of its reading" }),
+}).annotate({ identifier: "SessionGoalCommand" })
 export const GoalResult = Schema.NullOr(SessionGoal.Info)
 export const GoalSetResult = Schema.Struct({
   ...SessionGoal.Info.fields,
@@ -135,6 +148,7 @@ export const SessionPaths = {
   goalResume: `${root}/:sessionID/goal/resume`,
   goalDrop: `${root}/:sessionID/goal/drop`,
   goalBudget: `${root}/:sessionID/goal/budget`,
+  goalCommand: `${root}/:sessionID/goal/command`,
   budget: `${root}/:sessionID/budget`,
   prompt: `${root}/:sessionID/message`,
   promptAsync: `${root}/:sessionID/prompt_async`,
@@ -409,6 +423,20 @@ export const SessionApi = HttpApi.make("session")
             summary: "Set goal budget",
             description:
               "Change the goal's turn budget and, optionally, its spend limits. A number sets a limit, null removes it, an absent field is kept.",
+          }),
+        ),
+        HttpApiEndpoint.post("goalCommand", SessionPaths.goalCommand, {
+          params: { sessionID: SessionID },
+          query: WorkspaceRoutingQuery,
+          payload: GoalCommandPayload,
+          success: described(GoalCommandResult, "What the /goal text asks for, or what to ask the user"),
+          error: ApiNotFoundError,
+        }).annotateMerge(
+          OpenApi.annotations({
+            identifier: "session.goalCommand",
+            summary: "Resolve a /goal command",
+            description:
+              "Reads what the user typed after /goal without acting on it. An explicit subcommand (set, pause, resume, drop, budget, status) resolves directly; other text is a new goal in single reasoning, and in dual reasoning System One classifies it. Dropping or replacing a goal on a reading below 0.85 confidence, or any unavailable reading, returns options to ask the user instead of an action.",
           }),
         ),
         HttpApiEndpoint.get("budget", SessionPaths.budget, {

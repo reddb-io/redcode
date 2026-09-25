@@ -34,6 +34,8 @@ type CommandSlashEntry = {
   display: string
   description?: string
   aliases?: string[]
+  /** Offered only when typed in full: a retired spelling kept working without cluttering the list. */
+  hidden?: boolean
   onSelect: () => void
 }
 type Command = ReturnType<OpenTuiKeymap["getCommands"]>[number]
@@ -48,6 +50,11 @@ const modeStacks = new WeakMap<OpenTuiKeymap, OpencodeModeStack>()
 
 function isVisiblePaletteCommand(command: Command) {
   return command.hidden !== true && command.name !== COMMAND_PALETTE_COMMAND
+}
+
+/** A palette command with `slashHidden: true` keeps its slash name, reachable only by typing it in full. */
+function isSlashCommand(command: Command) {
+  return isVisiblePaletteCommand(command) || (command.slashHidden === true && command.name !== COMMAND_PALETTE_COMMAND)
 }
 
 export function createOpencodeModeStack(keymap: OpenTuiKeymap) {
@@ -263,7 +270,7 @@ export function useCommandSlashes(): Accessor<readonly CommandSlashEntry[]> {
     keymap.getCommandEntries({
       visibility: "reachable",
       namespace: "palette",
-      filter: isVisiblePaletteCommand,
+      filter: isSlashCommand,
     }),
   )
 
@@ -283,6 +290,7 @@ export function useCommandSlashes(): Accessor<readonly CommandSlashEntry[]> {
         aliases: Array.isArray(slashAliases)
           ? slashAliases.filter((alias): alias is string => typeof alias === "string").map((alias) => `/${alias}`)
           : undefined,
+        hidden: entry.command.slashHidden === true,
         onSelect: () => keymap.dispatchCommand(entry.command.name),
       }
     }),

@@ -65,6 +65,8 @@ export type AutocompleteOption = {
   display: string
   value?: string
   aliases?: string[]
+  /** Listed only when the query names it exactly. */
+  hidden?: boolean
   disabled?: boolean
   description?: string
   isDirectory?: boolean
@@ -489,7 +491,9 @@ export function Autocomplete(props: {
     // it shouldn't be additionally sorted by fuzzysort as it will loose the results
     const fileOptions: AutocompleteOption[] = store.visible === "@" ? filesValue || [] : []
     const nonFileOptions: AutocompleteOption[] =
-      store.visible === "@" ? [...referenceAliasesValue, ...agentsValue, ...mcpResources()] : [...commandsValue]
+      store.visible === "@"
+        ? [...referenceAliasesValue, ...agentsValue, ...mcpResources()]
+        : commandsValue.filter((item) => !item.hidden || item.display.trimEnd() === `/${searchValue}`)
 
     if (!searchValue) {
       return [...nonFileOptions, ...fileOptions]

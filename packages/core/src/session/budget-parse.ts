@@ -34,12 +34,12 @@ export function parseNumber(raw: string): Parsed<number> {
   return ok(value)
 }
 
-/** "$5", "5", "2,50 usd" → dollars. */
+/** "$5", "5$", "5", "2,50 usd" → dollars. */
 export function parseCost(raw: string): Parsed<number> {
   const text = raw
     .trim()
     .replace(/^\$\s*/, "")
-    .replace(/\s*usd$/i, "")
+    .replace(/\s*(?:usd|\$)$/i, "")
   if (!text) return fail("a cost needs an amount, such as $2.50")
   return parseNumber(text)
 }
@@ -73,7 +73,7 @@ export interface LimitsChange {
 }
 
 /**
- * What `/budget` and `/goal-budget` accept: `$5`, `200k tokens`, `$2,50 1,5m`, `40 turns $3`, a
+ * What `/budget` and `/goal budget` accept: `$5` (or `5$`), `200k tokens`, `$2,50 1,5m`, `40 turns $3`, a
  * bare whole number (turns), or `off` to remove both spend limits.
  */
 export function parseLimits(raw: string): Parsed<LimitsChange> {
@@ -85,7 +85,7 @@ export function parseLimits(raw: string): Parsed<LimitsChange> {
   for (let index = 0; index < words.length; index++) {
     const word = words[index]!
     const next = words[index + 1]
-    if (word.startsWith("$") || word.endsWith("usd")) {
+    if (word.startsWith("$") || word.endsWith("$") || word.endsWith("usd")) {
       const cost = parseCost(word)
       if (!cost.ok) return cost
       out.max_cost_usd = cost.value

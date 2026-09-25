@@ -1,5 +1,6 @@
 import { loadSessionRoute } from "../../util/session-navigation"
-import { DialogGoalBudget } from "../../component/dialog-goal-budget"
+import { useGoalCommand } from "../../component/goal-command"
+import { GoalCommand } from "@reddb-io/redcode-core/session/goal-command"
 import { Budget } from "../../util/budget"
 import { DialogMonitors } from "../../component/dialog-monitors"
 import { DialogPendingPrompts } from "../../component/dialog-pending-prompts"
@@ -399,6 +400,7 @@ export function Session() {
   }
   const keymap = useOpencodeKeymap()
   const dialog = useDialog()
+  const goal = useGoalCommand()
   const renderer = useRenderer()
 
   const selectSidebarTab = (tab: SidebarTab) => {
@@ -651,54 +653,27 @@ export function Session() {
       },
     },
     {
-      title: "Set goal",
+      title: "Goal",
+      description: `${GoalCommand.USAGE} — set, pause, resume, drop or budget the goal`,
       value: "session.goal",
       category: "Session",
       slash: { name: "goal" },
-      run: async () => {
-        // No arguments travel with a slash command, so the goal is typed in a prompt: free text,
-        // plus optional lines — verify:, constraints:, boundaries:, stop when:, gate:, and the
-        // opt-in spend limits max cost: and max tokens: (no limit unless typed).
-        const text = await DialogPrompt.show(dialog, "What does done look like?", {
-          placeholder: "make the tests pass; verify: bun test; gate: bun test; constraints: …; stop when: …",
-        })
-        if (!text?.trim()) return
-        const result = await sdk.client.session
-          .goalSet({ sessionID: route.sessionID, text: text.trim(), agent: local.agent.current()?.name })
-          .catch(() => undefined)
-        const goal = result?.data
-        const limits = Budget.limitsOf(goal?.budget)
-        const refusal = (result?.error as { message?: string } | undefined)?.message
-        toast.show({
-          variant: goal && !goal.warnings?.length ? "success" : "warning",
-          message: goal
-            ? `Goal set · ${goal.turns.max} turns${Budget.hasLimits(limits) ? ` · budget ${Budget.describeLimits(limits)}` : ""}. Ctrl+C pauses it; /goal-resume continues.${goal.warnings?.length ? ` ${goal.warnings.join(" ")}` : ""}`
-            : `Could not set the goal${refusal ? `: ${refusal}` : "."}`,
-          duration: goal?.warnings?.length ? 8000 : 4000,
-        })
-      },
+      run: () => goal.run(route.sessionID, { type: "menu" }),
     },
-    {
-      title: "Pause goal",
-      value: "session.goal.pause",
+    // The retired `/goal-*` commands: off the slash list and the palette, still dispatchable and
+    // still run when typed in full, for one release.
+    ...(["pause", "budget", "resume", "drop"] as const).map((action) => ({
+      title: GoalCommand.LABELS[action],
+      value: `session.goal.${action}`,
       category: "Session",
-      slash: { name: "goal-pause" },
-      run: async () => {
-        const result = await sdk.client.session.goalPause({ sessionID: route.sessionID }).catch(() => undefined)
-        toast.show({ variant: "info", message: result?.data ? "Goal paused" : "No goal to pause", duration: 3000 })
-        dialog.clear()
-      },
-    },
-    {
-      title: "Change goal budget",
-      value: "session.goal.budget",
-      category: "Session",
-      slash: { name: "goal-budget" },
+      hidden: true,
+      slashName: `goal-${action}`,
+      slashHidden: true,
       run: () => {
-        const sessionID = route.sessionID
-        dialog.replace(() => <DialogGoalBudget sessionID={sessionID} />)
+        dialog.clear()
+        void goal.run(route.sessionID, { type: "action", action, argument: "" })
       },
-    },
+    })),
     {
       title: "Set session budget",
       value: "session.budget",
@@ -714,7 +689,7 @@ export function Session() {
           toast.show({
             variant: "warning",
             message: change.ok
-              ? "Turns belong to /goal-budget; enter an amount such as $5, 200k tokens, or off."
+              ? "Turns belong to /goal budget; enter an amount such as $5, 200k tokens, or off."
               : change.error,
             duration: 4000,
           })
@@ -734,37 +709,6 @@ export function Session() {
             : "Could not set the session budget.",
           duration: 4000,
         })
-      },
-    },
-    {
-      title: "Resume goal",
-      value: "session.goal.resume",
-      category: "Session",
-      slash: { name: "goal-resume" },
-      run: async () => {
-        const result = await sdk.client.session.goalResume({ sessionID: route.sessionID }).catch(() => undefined)
-        const goal = result?.data
-        toast.show({
-          variant: goal?.status === "active" ? "success" : "warning",
-          message: goal
-            ? goal.status === "active"
-              ? `Goal resumed · turn ${Number(goal.turns.used) + 1} of ${goal.turns.max}`
-              : `Goal ${goal.status}: ${goal.reason ?? "could not resume"}. ${goal.turns.used >= goal.turns.max ? "Use /goal-budget to increase the total, then /goal-resume." : ""}`
-            : "No goal to resume",
-          duration: 3000,
-        })
-        dialog.clear()
-      },
-    },
-    {
-      title: "Drop goal",
-      value: "session.goal.drop",
-      category: "Session",
-      slash: { name: "goal-drop" },
-      run: async () => {
-        const result = await sdk.client.session.goalDrop({ sessionID: route.sessionID }).catch(() => undefined)
-        toast.show({ variant: "info", message: result?.data ? "Goal dropped" : "No goal to drop", duration: 3000 })
-        dialog.clear()
       },
     },
     {
