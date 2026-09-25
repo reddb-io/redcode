@@ -1,4 +1,5 @@
 import { Popover as Kobalte } from "@kobalte/core/popover"
+import { Router } from "@reddb-io/redcode-schema/router"
 import { Component, ComponentProps, createEffect, createMemo, For, JSX, Show } from "solid-js"
 import { createStore } from "solid-js/store"
 import { useLocal } from "@/context/local"
@@ -54,26 +55,27 @@ const sortModelGroups = (a: { category: string; items: ModelItem[] }, b: { categ
 const visibleModels = (model: ModelState) =>
   model.list().filter((item) => model.visible({ modelID: item.id, providerID: item.provider.id }))
 
-/** `direct`, or `via RedRouter · OpenAI Codex · subscription`, plus where else the same model is offered. */
+/** `direct`, or `via RedRouter » OpenAI Codex · subscription`, plus where else the same model is offered. */
 function originLabel(
   language: ReturnType<typeof useLanguage>,
   item: ModelItem,
   alternatives: ModelAlternatives | undefined,
 ) {
-  const origin = modelOrigin(item)
-  const source =
-    origin.type === "direct"
-      ? [language.t("model.origin.direct")]
-      : [
-          language.t("model.origin.via", { router: routerPath(origin) }),
-          ...(origin.upstream ? [origin.upstream] : []),
-          ...(origin.subscription ? [language.t("model.origin.subscription")] : []),
-        ]
   return [
-    ...source,
+    ...originRoute(language, modelOrigin(item)),
     ...(alternatives?.direct ? [language.t("model.origin.alsoDirect")] : []),
     ...(alternatives?.routers ?? []).map((router) => language.t("model.origin.alsoVia", { router })),
   ].join(" · ")
+}
+
+/** The route segment: `direct`, or `via RedRouter » OpenAI Codex` with the upstream joined as a hop. */
+function originRoute(language: ReturnType<typeof useLanguage>, origin: ReturnType<typeof modelOrigin>) {
+  if (origin.type === "direct") return [language.t("model.origin.direct")]
+  const via = language.t("model.origin.via", { router: routerPath(origin) })
+  return [
+    origin.upstream ? `${via}${Router.HOP_SEPARATOR}${origin.upstream}` : via,
+    ...(origin.subscription ? [language.t("model.origin.subscription")] : []),
+  ]
 }
 
 const ModelList: Component<{

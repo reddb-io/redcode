@@ -1,4 +1,5 @@
 import type { Model, Provider, RouterConnection } from "@reddb-io/redcode-sdk/v2/client"
+import { Router } from "@reddb-io/redcode-schema/router"
 
 type OriginProvider = Pick<Provider, "id" | "name" | "router">
 type OriginModel = Pick<Model, "id" | "upstream" | "via"> & { provider: OriginProvider }
@@ -38,7 +39,7 @@ export function modelOrigin(model: OriginModel) {
 
 /** The router a model is reached through, naming the router in between (a remote RedRouter) too. */
 export function routerPath(origin: { router: string; via?: string }) {
-  return origin.via ? `${origin.router} → ${origin.via}` : origin.router
+  return origin.via ? `${origin.router}${Router.HOP_SEPARATOR}${origin.via}` : origin.router
 }
 
 /**
@@ -66,11 +67,14 @@ function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null
 }
 
-/** Routed models are grouped by the provider behind them, e.g. `RedRouter · OpenAI Codex`. */
+/** Routed models are grouped by the provider behind them, e.g. `RedRouter » OpenAI Codex`. */
 export function modelGroup(model: OriginModel) {
   const upstream = routerKind(model.provider) ? model.upstream : undefined
   if (!upstream) return { key: model.provider.id, label: model.provider.name }
-  return { key: `${model.provider.id}:${upstream.id}`, label: `${model.provider.name} · ${upstream.name}` }
+  return {
+    key: `${model.provider.id}:${upstream.id}`,
+    label: `${model.provider.name}${Router.HOP_SEPARATOR}${upstream.name}`,
+  }
 }
 
 /**
