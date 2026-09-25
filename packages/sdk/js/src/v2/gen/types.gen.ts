@@ -3145,8 +3145,8 @@ export type SessionPendingPrompt = {
   id: string
   delivery: "steer" | "queue"
   text: string
-  files: number | "NaN" | "Infinity" | "-Infinity" | "Infinity" | "-Infinity" | "NaN"
-  time: number | "NaN" | "Infinity" | "-Infinity" | "Infinity" | "-Infinity" | "NaN"
+  files: number
+  time: number
   /**
    * Queued before the session last went idle without taking it up. A stale prompt is never promoted on its own: it waits to be sent as a steer or discarded
    */
