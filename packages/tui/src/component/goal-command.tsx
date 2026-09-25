@@ -50,7 +50,7 @@ export function createGoalCommand(deps: GoalCommandDeps) {
     const confidence =
       resolution?.confidence === undefined
         ? "System One could not read it"
-        : `System One is ${Math.round(resolution.confidence * 100)}% sure`
+        : `System One is ${Math.round(Number(resolution.confidence) * 100)}% sure`
     const offered: readonly GoalCommand.Action[] = resolution?.options.length ? resolution.options : ["set"]
     const chosen = await deps.choose({
       title: `What should /goal do? ${confidence}`,
