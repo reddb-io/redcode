@@ -34,7 +34,9 @@ for (const mode of ["abort", "timeout", "success"] as const)
       const parent = path.join(directory, "parent")
       const signalled = path.join(directory, "signalled")
       const controller = new AbortController()
-      const child = `const fs = require('node:fs'); process.on('SIGTERM', () => fs.writeFileSync(${JSON.stringify(signalled)}, 'received')); fs.writeFileSync(${JSON.stringify(ready)}, String(process.pid)); setInterval(() => {}, 60000)`
+      // writeFileSync creates the file before writing it, so a poll can see an empty ready file and
+      // read pid 0. The child renames each file into place so an existing file is always complete.
+      const child = `const fs = require('node:fs'); const publish = (file, text) => { fs.writeFileSync(file + '.tmp', text); fs.renameSync(file + '.tmp', file) }; process.on('SIGTERM', () => publish(${JSON.stringify(signalled)}, 'received')); publish(${JSON.stringify(ready)}, String(process.pid)); setInterval(() => {}, 60000)`
       const command = ChildProcess.make(
         process.execPath,
         [

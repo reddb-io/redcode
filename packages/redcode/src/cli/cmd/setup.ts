@@ -224,7 +224,7 @@ function configureSystemOne(service: Intelligence.Interface, previous: Settings,
     if (
       selected.configured &&
       selected.evaluator.transport === "red-router" &&
-      selected.name.startsWith("RedRouter · ")
+      /^RedRouter [·→] /.test(selected.name)
     )
       return { evaluator: selected.evaluator, key: "" }
     const transport = selected.evaluator.transport

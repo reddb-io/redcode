@@ -560,8 +560,8 @@ test("the S1 picker lists the RedRouter's models first and saves the chosen one 
         if (input instanceof Request) discovered.push(await input.json())
         return json({
           models: [
-            { id: "openrouter/typesafe/jev-1.13", name: "OpenRouter · TypeSafe JEV 1.13" },
-            { id: "jev-1.13.0", name: "TypeSafe · Jev 1.13" },
+            { id: "openrouter/typesafe/jev-1.13", name: "RedRouter · OpenRouter · TypeSafe JEV 1.13" },
+            { id: "jev-1.13.0", name: "RedRouter · TypeSafe · Jev 1.13" },
           ],
           manual: false,
         })
@@ -654,7 +654,7 @@ test("a failed RedRouter discovery shows why with Retry, and manual entry stays 
             { status: 400 },
           )
         return json({
-          models: [{ id: "openrouter/typesafe/jev-1.13", name: "OpenRouter · TypeSafe JEV 1.13" }],
+          models: [{ id: "openrouter/typesafe/jev-1.13", name: "RedRouter · OpenRouter · TypeSafe JEV 1.13" }],
           manual: false,
         })
       }
@@ -925,8 +925,8 @@ test("a RedRouter's recommendations come first and are preselected for S2 and S1
       if (url.pathname === "/api/intelligence/models")
         return json({
           models: [
-            { id: "jev-latest", name: "Jev · Jev Latest" },
-            { id: "jev-1.13.0", name: "Jev · Jev 1.13" },
+            { id: "jev-latest", name: "RedRouter · Jev · Jev Latest" },
+            { id: "jev-1.13.0", name: "RedRouter · Jev · Jev 1.13" },
           ],
           manual: false,
         })

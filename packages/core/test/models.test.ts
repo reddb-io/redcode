@@ -188,6 +188,15 @@ describe("ModelsDev Service", () => {
     )
   })
 
+  test("judges a routed id by the upstream and model at its end, through any number of routers", () => {
+    expect(ModelsDev.systemOneOffer("openrouter", "typesafe/jev-1.13")).toBe(true)
+    expect(ModelsDev.systemOneOffer("red-router", "opencode-zen/jev-1.13")).toBe(true)
+    expect(ModelsDev.systemOneOffer("red-router", "red-router/opencode-go/jev-1.13")).toBe(true)
+    expect(ModelsDev.systemOneOffer("studio", "red-router/red-router/openrouter/typesafe/jev-1.13")).toBe(true)
+    expect(ModelsDev.systemOneOffer("red-router", "red-router/red-router/codex/gpt-5.6-sol")).toBe(false)
+    expect(ModelsDev.systemOneOffer("openrouter", "anthropic/claude-opus-5-5")).toBe(false)
+  })
+
   it.live("get() returns empty catalog when disk empty, fetch disabled, and no bundled snapshot is injected", () =>
     Effect.gen(function* () {
       const state = yield* Ref.make(initialState)

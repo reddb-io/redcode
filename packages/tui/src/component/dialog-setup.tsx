@@ -352,7 +352,8 @@ export function DialogSetup(
             : state.models
                 .toSorted((a, b) => Number(b.id === recommended) - Number(a.id === recommended))
                 .map((model) => ({
-                  title: `RedRouter · ${model.name}`,
+                  // Discovery names the whole route: `RedRouter → RedRouter → OpenCode Zen · JEV 1.13`.
+                  title: model.name,
                   value: { evaluator: { ...router, model: model.id } },
                   // The full routed id on its own line: the dialog is too narrow to follow the title.
                   details: [[model.id, ...(model.id === recommended ? ["recommended"] : [])].join(" · ")],

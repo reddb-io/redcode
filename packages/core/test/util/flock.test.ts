@@ -15,7 +15,6 @@ type Msg = {
   maxDelayMs?: number
   holdMs?: number
   ready?: string
-  active?: string
   done?: string
 }
 
@@ -113,12 +112,19 @@ async function readJson<T>(p: string): Promise<T> {
   return JSON.parse(await fs.readFile(p, "utf8"))
 }
 
+// Every holder's start is followed by its own end before anyone else starts.
+function expectSerialized(journal: string, holders: number) {
+  const lines = journal.split("\n").filter(Boolean)
+  const pids = lines.filter((line) => line.startsWith("start ")).map((line) => line.slice("start ".length))
+  expect(lines).toEqual(pids.flatMap((pid) => [`start ${pid}`, `end ${pid}`]))
+  expect(new Set(pids).size).toBe(holders)
+}
+
 describe("util.flock", () => {
   test("enforces mutual exclusion under process contention", async () => {
     await using tmp = await tmpdir()
     const dir = path.join(tmp.path, "locks")
     const done = path.join(tmp.path, "done.log")
-    const active = path.join(tmp.path, "active")
     const key = "flock:stress"
     const n = 16
 
@@ -128,7 +134,6 @@ describe("util.flock", () => {
           key,
           dir,
           done,
-          active,
           holdMs: 30,
           staleMs: 1_000,
           timeoutMs: 15_000,
@@ -136,15 +141,28 @@ describe("util.flock", () => {
       ),
     )
 
-    expect(out.map((x) => x.code)).toEqual(Array.from({ length: n }, () => 0))
-    expect(out.map((x) => x.stderr.toString()).filter(Boolean)).toEqual([])
-
-    const lines = (await fs.readFile(done, "utf8"))
-      .split("\n")
-      .map((x) => x.trim())
-      .filter(Boolean)
-    expect(lines.length).toBe(n)
+    expect(out.map((x) => ({ code: x.code, stderr: x.stderr.toString() }))).toEqual(
+      Array.from({ length: n }, () => ({ code: 0, stderr: "" })),
+    )
+    expectSerialized(await fs.readFile(done, "utf8"), n)
   }, 20_000)
+
+  test("a contender's open handle inside the lock delays release and acquisition instead of failing them", async () => {
+    await using tmp = await tmpdir()
+    const dir = path.join(tmp.path, "locks")
+    const key = "flock:handle"
+    const lease = await Flock.acquire(key, { dir })
+    // A contender checking staleness has the heartbeat open while the owner releases. On Windows
+    // the removed names stay reserved until that handle closes.
+    const handle = await fs.open(path.join(lock(dir, key), "heartbeat"), "r")
+    const released = lease.release()
+    const next = Flock.acquire(key, { dir, baseDelayMs: 10, maxDelayMs: 20, timeoutMs: 5_000 })
+    await sleep(100)
+    await handle.close()
+    await released
+    await (await next).release()
+    expect(await exists(lock(dir, key))).toBe(false)
+  })
 
   test("times out while waiting when lock is still healthy", async () => {
     await using tmp = await tmpdir()

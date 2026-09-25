@@ -94,6 +94,14 @@ export namespace EffectFlock {
 
   const isPathGone = (e: PlatformError) => e.reason._tag === "NotFound" || e.reason._tag === "Unknown"
 
+  // Windows keeps a removed name reserved until every handle to it closes, and contenders hold
+  // short-lived handles inside a lock while they check it for staleness. Until then creating the
+  // lock directory fails with EPERM/EACCES and removing it with ENOTEMPTY/EBUSY (EPERM and
+  // ENOTEMPTY surface as Unknown). That is contention on the lock, not a failure.
+  const isContended = (e: PlatformError) =>
+    process.platform === "win32" &&
+    (e.reason._tag === "PermissionDenied" || e.reason._tag === "Busy" || e.reason._tag === "Unknown")
+
   const layer: Layer.Layer<Service, never, Global.Service | FSUtil.Service> = Layer.effect(
     Service,
     Effect.gen(function* () {
@@ -118,10 +126,17 @@ export namespace EffectFlock {
         fs.makeDirectory(dir, { mode: 0o700 }).pipe(
           Effect.as(true),
           Effect.catchIf(
-            (e) => e.reason._tag === "AlreadyExists",
+            (e) => e.reason._tag === "AlreadyExists" || isContended(e),
             () => Effect.succeed(false),
           ),
           Effect.orDie,
+        )
+
+      /** Release races the same handles; ignoring a failed removal leaves the lock held until stale. */
+      const removeLockDir = (lockDir: string) =>
+        fs.remove(lockDir, { recursive: true }).pipe(
+          Effect.retry({ while: isContended, times: 20, schedule: Schedule.spaced(20) }),
+          Effect.ignore,
         )
 
       /** Write with exclusive create — compromised error if file already exists. */
@@ -245,7 +260,7 @@ export namespace EffectFlock {
 
           if (parsed.token !== handle.token) return yield* Effect.die(new ReleaseError({ detail: "token mismatch" }))
 
-          yield* forceRemove(handle.lockDir)
+          yield* removeLockDir(handle.lockDir)
         })
 
       // -- build service --

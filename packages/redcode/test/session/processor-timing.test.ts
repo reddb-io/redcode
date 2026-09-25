@@ -7,6 +7,7 @@ import { OperationHookBridge } from "@/operation-hook-bridge"
 import { expect } from "bun:test"
 import { APICallError } from "ai"
 import { Duration, Effect, Fiber, Layer, Stream } from "effect"
+import { TestClock } from "effect/testing"
 import { Provider } from "@/provider/provider"
 import { Session } from "@/session/session"
 import { LLM } from "../../src/session/llm"
@@ -35,8 +36,14 @@ import { OperationHook } from "@reddb-io/redcode-core/operation-hook"
 // without loosening what a passing run proves.
 const slowCpu = { timeout: 20_000, retry: 2 }
 
+// A virtual script runs on a TestClock instead. The provider sends every event at its scripted time
+// before the processor handles any, so arrival stamps are exact and handling takes no clock time
+// unless a hook advances it. Scenarios that assert a window's length or whether it was a burst use
+// it: with real sleeps a loaded runner stretches the window and makes handling look like a burst.
+const virtualClock = <A, E, R>(effect: Effect.Effect<A, E, R>) => effect.pipe(Effect.provide(TestClock.layer()))
+
 type Step = { readonly after?: number } & ({ readonly event: LLMEvent } | { readonly fail: unknown })
-type Script = { readonly prep?: number; readonly steps: readonly Step[] }
+type Script = { readonly prep?: number; readonly virtual?: boolean; readonly steps: readonly Step[] }
 
 let scripts: Script[] = []
 let calls = 0
@@ -48,6 +55,25 @@ const scriptedLLM = Layer.succeed(
       Stream.unwrap(
         Effect.gen(function* () {
           const script = scripts[Math.min(calls++, scripts.length - 1)]!
+          if (script.virtual) {
+            if (script.prep) yield* TestClock.adjust(Duration.millis(script.prep))
+            input.timing?.request()
+            const sent = yield* Effect.forEach(script.steps, (step) =>
+              Effect.gen(function* () {
+                if (step.after) yield* TestClock.adjust(Duration.millis(step.after))
+                if ("event" in step && GenerationTiming.carriesToken(step.event)) input.timing?.arrived()
+                return step
+              }),
+            )
+            return Stream.fromIterable(sent).pipe(
+              Stream.mapEffect((step) =>
+                Effect.gen(function* () {
+                  if ("fail" in step) return yield* Effect.fail(step.fail)
+                  return step.event
+                }),
+              ),
+            )
+          }
           // Local request preparation happens before the provider is called, so it is not latency.
           if (script.prep) yield* Effect.sleep(Duration.millis(script.prep))
           input.timing?.request()
@@ -68,14 +94,14 @@ const scriptedLLM = Layer.succeed(
 )
 
 // The text-end waterfall is where plugins and hooks run in the middle of a stream: a slow one holds up
-// handling while the provider keeps sending.
+// handling while the provider keeps sending. It runs in a virtual scenario, so it advances the TestClock.
 let textCompleteDelayMs = 0
 const slowHooks = Layer.succeed(
   OperationHookBridge.Service,
   OperationHookBridge.Service.of({
     waterfall: (definition, data) =>
       definition === OperationHook.Operation.Text.Complete && textCompleteDelayMs > 0
-        ? Effect.sleep(Duration.millis(textCompleteDelayMs)).pipe(Effect.as(data))
+        ? TestClock.adjust(Duration.millis(textCompleteDelayMs)).pipe(Effect.as(data))
         : Effect.succeed(data),
     serial: () => Effect.void,
     parallel: () => Effect.void,
@@ -338,14 +364,14 @@ it.live(
   slowCpu,
 )
 
-it.live(
-  "a slow hook while handling does not stretch the window: tokens are timed on arrival",
-  () =>
-    provideTmpdirInstance(
-      (dir) =>
+it.live("a slow hook while handling does not stretch the window: tokens are timed on arrival", () =>
+  provideTmpdirInstance(
+    (dir) =>
+      virtualClock(
         Effect.gen(function* () {
           reset([
             {
+              virtual: true,
               steps: [
                 ...opening,
                 ...text(6, 40, 50),
@@ -366,15 +392,15 @@ it.live(
           yield* handle.process(streamInput)
           const timing = (yield* stored(chat.id, msg.id)).timing!
 
-          // Twelve deltas 40 ms apart arrive over about 440 ms; stamping when handled would add the hook's 900.
-          expect(timing.genMs).toBeGreaterThanOrEqual(400)
-          expect(timing.genMs).toBeLessThan(750)
-          // The hook waited on a timer, not on the event loop: the stream is still a stream.
+          // Twelve deltas arrive 440 ms apart end to end. Every one is handled after the last arrived,
+          // and the second part only after the hook's 900: stamping when handled would read 900.
+          expect(timing.genMs).toBe(440)
+          // The hook waited outside the event loop: the stream is still a stream.
           expect(timing.burst).toBeUndefined()
         }),
-      { config: cfg },
-    ),
-  slowCpu,
+      ),
+    { config: cfg },
+  ),
 )
 
 it.live(
@@ -555,16 +581,16 @@ it.live(
   slowCpu,
 )
 
-it.live(
-  "reasoning that only streamed as a summary rates the visible output alone",
-  () =>
-    provideTmpdirInstance(
-      (dir) =>
+it.live("reasoning that only streamed as a summary rates the visible output alone", () =>
+  provideTmpdirInstance(
+    (dir) =>
+      virtualClock(
         Effect.gen(function* () {
           // 1,200 reasoning tokens happen before the first byte; only a one-line summary streams, then 80 text
-          // tokens over about 400 ms. Rating all 1,280 tokens over that window would show thousands of tk/s.
+          // tokens over 360 ms. Rating all 1,280 tokens over that window would show thousands of tk/s.
           reset([
             {
+              virtual: true,
               steps: [
                 { event: LLMEvent.stepStart({ index: 0 }) },
                 { event: LLMEvent.reasoningStart({ id: "r-1" }) },
@@ -581,15 +607,20 @@ it.live(
           const info = yield* stored(chat.id, msg.id)
           const speed = GenerationTiming.meter([info])?.step.speed
 
-          expect(info.timing).toMatchObject({ outputTokens: 80, reasoningTokens: 1200, reasoningChars: 23 })
+          expect(info.timing).toMatchObject({
+            outputTokens: 80,
+            reasoningTokens: 1200,
+            reasoningChars: 23,
+            genMs: 380,
+            visibleGenMs: 360,
+          })
           expect(speed).toMatchObject({ type: "rate", hidden: true })
           const value = speed?.type === "rate" ? speed.value : 0
-          expect(value).toBeGreaterThan(80)
-          expect(value).toBeLessThan(400)
+          expect(value).toBeCloseTo(80 / 0.36)
         }),
-      { config: cfg },
-    ),
-  slowCpu,
+      ),
+    { config: cfg },
+  ),
 )
 
 it.live(

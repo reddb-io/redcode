@@ -32,6 +32,8 @@ import { SubagentReview } from "@reddb-io/redcode-core/session/subagent-review"
 import { makeGlobalNode } from "@reddb-io/redcode-core/effect/app-node"
 import { Todo } from "../../src/session/todo"
 import { Provider } from "@/provider/provider"
+import { HookV2Bridge } from "@/hook-v2-bridge"
+import type { Hook } from "@reddb-io/redcode-schema/hook"
 import path from "path"
 
 afterEach(async () => {
@@ -88,6 +90,20 @@ const intelligenceNode = makeGlobalNode({
   ),
 })
 
+/** What the SubagentStart and SubagentStop hooks were asked, and how they answer. */
+const hookRuns: Array<Omit<Hook.Input, "cwd">> = []
+let hookOutput: (input: Omit<Hook.Input, "cwd">) => Hook.Output = () => ({ continue: true })
+const hookBridge = Layer.succeed(
+  HookV2Bridge.Service,
+  HookV2Bridge.Service.of({
+    run: (input) =>
+      Effect.sync(() => {
+        hookRuns.push(input)
+        return hookOutput(input)
+      }),
+  }),
+)
+
 const nodes = () =>
   LayerNode.group([
     Agent.node,
@@ -109,10 +125,14 @@ const nodes = () =>
     SessionPlan.node,
     SessionSpend.node,
     Provider.node,
+    HookV2Bridge.node,
   ])
 
 const layer = (flags: Partial<RuntimeFlags.Info> = {}) =>
-  LayerNode.compile(nodes(), [[RuntimeFlags.node, RuntimeFlags.layer(flags)]])
+  LayerNode.compile(nodes(), [
+    [RuntimeFlags.node, RuntimeFlags.layer(flags)],
+    [HookV2Bridge.node, hookBridge],
+  ])
 
 const it = testEffect(layer())
 const background = testEffect(layer({ experimentalBackgroundSubagents: true }))
@@ -121,12 +141,14 @@ const dual = testEffect(
   LayerNode.compile(nodes(), [
     [RuntimeFlags.node, RuntimeFlags.layer({})],
     [Intelligence.node, intelligenceNode],
+    [HookV2Bridge.node, hookBridge],
   ]),
 )
 const dualBackground = testEffect(
   LayerNode.compile(nodes(), [
     [RuntimeFlags.node, RuntimeFlags.layer({ experimentalBackgroundSubagents: true })],
     [Intelligence.node, intelligenceNode],
+    [HookV2Bridge.node, hookBridge],
   ]),
 )
 
@@ -1300,6 +1322,67 @@ function context(chat: SessionID, assistant: MessageID, promptOps: TaskPromptOps
 }
 
 const failure = (exit: Exit.Exit<unknown, unknown>) => (Exit.isFailure(exit) ? String(Cause.squash(exit.cause)) : "")
+
+describe("tool.task hooks", () => {
+  it.instance("SubagentStart adds its context; a SubagentStop that blocks sends its reason back once", () =>
+    Effect.gen(function* () {
+      hookRuns.length = 0
+      hookOutput = (input) =>
+        input.event === "SubagentStart"
+          ? { continue: true, additionalContext: "Hook context: prefer tables." }
+          : { continue: false, reason: "Cite the files you read." }
+      const { chat, assistant } = yield* seed()
+      const tool = yield* TaskTool
+      const def = yield* tool.init()
+      const prompts: SessionPrompt.PromptInput[] = []
+      const promptOps: TaskPromptOps = {
+        ...stubOps(),
+        prompt: (input) =>
+          Effect.sync(() => {
+            prompts.push(input)
+            return reply(input, prompts.length === 1 ? "The cache key is built in one place." : "cache.ts:12 builds it.")
+          }),
+      }
+
+      const result = yield* def
+        .execute(
+          { description: "inspect bug", prompt: "look into the cache key path", subagent_type: "general" },
+          {
+            sessionID: chat.id,
+            messageID: assistant.id,
+            agent: "build",
+            abort: new AbortController().signal,
+            extra: { promptOps },
+            messages: [],
+            metadata: () => Effect.void,
+            ask: () => Effect.void,
+          },
+        )
+        .pipe(Effect.ensuring(Effect.sync(() => (hookOutput = () => ({ continue: true })))))
+
+      const child = result.metadata.sessionId
+      expect(hookRuns.filter((input) => input.event === "SubagentStart")).toEqual([
+        { event: "SubagentStart", matcher: "general", session_id: chat.id, agent_id: child, agent_type: "general" },
+      ])
+      expect(hookRuns.filter((input) => input.event === "SubagentStop")).toEqual([
+        {
+          event: "SubagentStop",
+          matcher: "general",
+          session_id: chat.id,
+          agent_id: child,
+          agent_type: "general",
+          last_assistant_message: "The cache key is built in one place.",
+        },
+      ])
+      expect(prompts[0]?.parts).toContainEqual(
+        expect.objectContaining({ type: "text", text: "Hook context: prefer tables." }),
+      )
+      expect(prompts).toHaveLength(2)
+      expect(prompts[1]?.parts).toEqual([expect.objectContaining({ type: "text", text: "Cite the files you read." })])
+      expect(result.output).toContain("cache.ts:12 builds it.")
+    }),
+  )
+})
 
 describe("tool.task brief review", () => {
   dual.instance("a brief S1 rejects fails the call with the issues and launches nothing", () =>

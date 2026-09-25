@@ -12,6 +12,7 @@ import { Credential } from "./credential"
 import { Database } from "./database/database"
 import { Global } from "./global"
 import { Integration } from "@reddb-io/redcode-schema/integration"
+import { Router } from "@reddb-io/redcode-schema/router"
 import { makeGlobalNode } from "./effect/app-node"
 import { ModelsDev } from "./models-dev"
 import { IntelligenceAnswerTable, IntelligenceEvaluationTable } from "./intelligence.sql"
@@ -55,8 +56,10 @@ const JevIDs = new Set([
 ])
 /** Persistence safeguard for old settings and catalogs that prefix models with routing providers. */
 export const isJev = (id: string) => {
-  const segments = id.toLowerCase().split("/")
-  return [id.toLowerCase(), segments.at(-1), segments.slice(-2).join("/")].some((candidate) =>
+  const lower = id.toLowerCase()
+  const segments = lower.split("/")
+  // A routed id, through any number of routers, is judged by the model at its end.
+  return [lower, Router.route(lower).model, segments.at(-1), segments.slice(-2).join("/")].some((candidate) =>
     candidate ? JevIDs.has(candidate) : false,
   )
 }
@@ -409,8 +412,11 @@ export const make = (
         }),
       )
       // A connected RedRouter is the source of truth for what it serves: one option per model its
-      // System One catalog lists, named after the upstream that serves it. While that catalog cannot
-      // be read it stays one RedRouter option, whose discovery in setup says why.
+      // System One catalog lists, named by its route, the router's recommendation first. While that
+      // catalog cannot be read it stays one RedRouter option, whose discovery in setup says why.
+      const recommended = items.some((item) => item.configured && item.evaluator.transport === "red-router")
+        ? (yield* router().pipe(Effect.catch(() => Effect.succeed(undefined))))?.recommended?.systemone?.id
+        : undefined
       const routed = yield* Effect.forEach(items, (item) =>
         item.configured && item.evaluator.transport === "red-router"
           ? discover({ evaluator: item.evaluator }).pipe(
@@ -418,13 +424,16 @@ export const make = (
               Effect.map((listed) =>
                 Option.match(listed, {
                   onNone: () => [item],
-                  onSome: (catalog) =>
-                    catalog.models.length
-                      ? catalog.models.map((model) => ({
-                          ...item,
-                          name: `RedRouter · ${model.name}`,
-                          evaluator: { ...item.evaluator, model: model.id },
-                        }))
+                  onSome: (listing) =>
+                    listing.models.length
+                      ? listing.models
+                          .toSorted((a, b) => Number(b.id === recommended) - Number(a.id === recommended))
+                          .map((model) => ({
+                            ...item,
+                            name: model.name,
+                            // The exact id the connected router expects, every hop included.
+                            evaluator: { ...item.evaluator, model: model.id },
+                          }))
                       : [item],
                 }),
               ),
@@ -584,6 +593,7 @@ export const make = (
               id: Schema.String,
               name: Schema.String.pipe(Schema.optional),
               provider: Schema.Struct({
+                id: Schema.String.pipe(Schema.optional),
                 name: Schema.String.pipe(Schema.optional),
                 via: Schema.Struct({ name: Schema.String.pipe(Schema.optional) }).pipe(Schema.optional),
               }).pipe(Schema.optional),
@@ -592,27 +602,55 @@ export const make = (
           models: Schema.Array(Schema.Struct({ name: Schema.String })).pipe(Schema.optional),
         }),
       )(result).pipe(Effect.mapError(() => new Error({ message: "Invalid System One catalog" })))
+      if (router)
+        return {
+          // One entry per route: the same model reached through several routers stays listed once
+          // for each, and never under the same name.
+          models: (parsed.data ?? [])
+            .filter((model, index, list) => list.findIndex((item) => item.id === model.id) === index)
+            .map((model) => ({ id: model.id, name: routedName(model) }))
+            .map((model, index, list) =>
+              list.findIndex((item) => item.name === model.name) === index
+                ? model
+                : { ...model, name: `${model.name} (${model.id})` },
+            ),
+          manual: false,
+        }
       return {
         models: [
-          // A router names each model with the upstream provider that serves it, and the connection
-          // that lends the key when it is another provider's: "OpenCode Zen (via OpenCode Go) · JEV 1.13".
           ...(parsed.data ?? []).map((model) => ({
             id: model.id,
-            name:
-              [
-                model.provider?.name && model.provider.via?.name
-                  ? `${model.provider.name} (via ${model.provider.via.name})`
-                  : model.provider?.name,
-                model.name,
-              ]
-                .filter(Boolean)
-                .join(" · ") || model.id,
+            name: [model.provider?.name, model.name].filter(Boolean).join(" · ") || model.id,
           })),
           ...(parsed.models ?? []).map((model) => ({ id: model.name, name: model.name })),
-        ].filter((model) => router || isJev(model.id)),
+        ].filter((model) => isJev(model.id)),
         manual: false,
       }
     })
+    // A RedRouter model named by its route: the connected router, every router the id passes through,
+    // then the upstream that serves it (with the account that lends the key when it is another
+    // provider's) and the model, e.g. "RedRouter → RedRouter → OpenCode Zen (via OpenCode Go) · JEV 1.13".
+    const routedName = (model: {
+      id: string
+      name?: string
+      provider?: { id?: string; name?: string; via?: { name?: string } }
+    }) => {
+      const routed = Router.route(model.id)
+      // The provider block names the upstream, unless it names a router in between.
+      const block =
+        model.provider?.id && Router.hopName(model.provider.id) !== model.provider.id ? undefined : model.provider
+      const upstream = block?.name
+        ? block.via?.name
+          ? `${block.name} (via ${block.via.name})`
+          : block.name
+        : routed.provider &&
+          (Object.values(catalog).find((item) => item.id === routed.provider)?.name ?? routed.provider)
+      return Router.routeName({
+        routers: [TRANSPORT_LABELS["red-router"], ...routed.hops.map(Router.hopName)],
+        upstream: upstream || undefined,
+        model: model.name ?? routed.model,
+      })
+    }
     const probe = Effect.fn("Intelligence.probe")(function* (input: typeof Intelligence.Probe.Type) {
       if (input.evaluator.transport === "opencode-zen") {
         const catalog = yield* discover(input).pipe(Effect.result)
