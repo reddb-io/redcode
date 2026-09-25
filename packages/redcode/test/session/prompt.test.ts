@@ -2524,6 +2524,166 @@ it.instance("a retried publication of a pending message promotes nothing and sta
   }),
 )
 
+const occurrences = (hit: { body: Record<string, unknown> }, text: string) =>
+  JSON.stringify(messagesOf(hit)).split(text).length - 1
+
+unix(
+  "a prompt sent again while it is still queued is admitted and promoted once across later turns",
+  () =>
+    Effect.gen(function* () {
+      if (!(yield* hasBash)) return
+      const { dir, llm } = yield* useServerConfig(providerCfg)
+      const { db } = yield* Database.Service
+      const prompt = yield* SessionPrompt.Service
+      const sessions = yield* Session.Service
+      const chat = yield* sessions.create({
+        title: "Resent queue",
+        permission: [{ permission: "*", pattern: "*", action: "allow" }],
+      })
+      const held = heldTool(dir)
+      yield* llm.tool("bash", held.input)
+      yield* llm.text("steer answered")
+      yield* llm.text("queued answered")
+      yield* llm.text("next answered")
+      yield* llm.text("last answered")
+
+      const run = yield* prompt
+        .prompt({ sessionID: chat.id, agent: "build", model: ref, parts: [{ type: "text", text: "run the tool" }] })
+        .pipe(Effect.forkChild)
+      yield* llm.wait(1)
+      yield* waitForBusy(chat.id)
+      yield* toolRunning(chat.id)
+
+      // What the TUI sends: no message ID. The person sends the queued prompt again (the first
+      // send looked failed, or it waited too long), and steers something else in between.
+      const send = (text: string, delivery: "steer" | "queue") =>
+        prompt.prompt({
+          sessionID: chat.id,
+          agent: "build",
+          model: ref,
+          noReply: true,
+          delivery,
+          parts: [{ type: "text", text }],
+        })
+      const first = yield* send("resent-queued-prompt", "queue")
+      yield* send("other-steer-prompt", "steer")
+      const again = yield* send("resent-queued-prompt", "queue")
+      expect(again.info.id).toBe(first.info.id)
+      const pending = yield* SessionInput.listPending(db, chat.id)
+      expect(pending.filter((row) => row.prompt.text === "resent-queued-prompt")).toHaveLength(1)
+
+      yield* held.release
+      yield* awaitWithTimeout(Fiber.join(run), "the drain never finished", "20 seconds")
+      yield* prompt.prompt({ sessionID: chat.id, agent: "build", model: ref, parts: [{ type: "text", text: "next" }] })
+      yield* prompt.prompt({ sessionID: chat.id, agent: "build", model: ref, parts: [{ type: "text", text: "last" }] })
+
+      const hits = yield* llm.hits
+      expect(hits).toHaveLength(5)
+      expect(occurrences(hits[1]!, "other-steer-prompt")).toBe(1)
+      expect(occurrences(hits[1]!, "resent-queued-prompt")).toBe(0)
+      // Promoted at the idle boundary, then read once in every later turn: never a second time.
+      for (const hit of hits.slice(2)) expect(occurrences(hit, "resent-queued-prompt")).toBe(1)
+      const history = yield* sessions.messages({ sessionID: chat.id })
+      expect(
+        history.filter((msg) => msg.parts.some((part) => part.type === "text" && part.text === "resent-queued-prompt")),
+      ).toHaveLength(1)
+      expect(yield* SessionInput.listPending(db, chat.id)).toHaveLength(0)
+      expect(yield* llm.pending).toBe(0)
+    }),
+  30_000,
+)
+
+unix(
+  "steering a prompt that is still queued moves the waiting one ahead instead of adding a second",
+  () =>
+    Effect.gen(function* () {
+      if (!(yield* hasBash)) return
+      const { dir, llm } = yield* useServerConfig(providerCfg)
+      const prompt = yield* SessionPrompt.Service
+      const sessions = yield* Session.Service
+      const chat = yield* sessions.create({
+        title: "Resent as steer",
+        permission: [{ permission: "*", pattern: "*", action: "allow" }],
+      })
+      const held = heldTool(dir)
+      yield* llm.tool("bash", held.input)
+      yield* llm.text("steered answered")
+      yield* llm.text("later answered")
+
+      const run = yield* prompt
+        .prompt({ sessionID: chat.id, agent: "build", model: ref, parts: [{ type: "text", text: "run the tool" }] })
+        .pipe(Effect.forkChild)
+      yield* llm.wait(1)
+      yield* waitForBusy(chat.id)
+      yield* toolRunning(chat.id)
+
+      const send = (delivery: "steer" | "queue") =>
+        prompt.prompt({
+          sessionID: chat.id,
+          agent: "build",
+          model: ref,
+          noReply: true,
+          delivery,
+          parts: [{ type: "text", text: "push-me-prompt" }],
+        })
+      const queued = yield* send("queue")
+      const steered = yield* send("steer")
+      expect(steered.info.id).toBe(queued.info.id)
+      expect((yield* admittedRow(queued.info.id))?.delivery).toBe("steer")
+
+      yield* held.release
+      yield* awaitWithTimeout(Fiber.join(run), "the drain never finished", "20 seconds")
+      yield* prompt.prompt({ sessionID: chat.id, agent: "build", model: ref, parts: [{ type: "text", text: "later" }] })
+
+      const hits = yield* llm.hits
+      expect(hits).toHaveLength(3)
+      // Taken up at the next step boundary, and not promoted again once the session goes idle.
+      expect(occurrences(hits[1]!, "push-me-prompt")).toBe(1)
+      expect(occurrences(hits[2]!, "push-me-prompt")).toBe(1)
+      expect(yield* llm.pending).toBe(0)
+    }),
+  30_000,
+)
+
+it.instance("an exact retry by message ID returns the stored message without moving it; a conflicting one fails", () =>
+  Effect.gen(function* () {
+    const { llm } = yield* useServerConfig(providerCfg)
+    const prompt = yield* SessionPrompt.Service
+    const sessions = yield* Session.Service
+    const chat = yield* sessions.create({ title: "Retry by ID" })
+    yield* llm.text("first answered")
+    yield* llm.text("second answered")
+
+    const id = MessageID.ascending()
+    const request = {
+      sessionID: chat.id,
+      messageID: id,
+      agent: "build",
+      model: ref,
+      parts: [{ type: "text" as const, text: "retried-prompt" }],
+    }
+    yield* prompt.prompt(request)
+    yield* prompt.prompt({ sessionID: chat.id, agent: "build", model: ref, parts: [{ type: "text", text: "second" }] })
+    const before = yield* sessions.messages({ sessionID: chat.id })
+    const promoted = yield* admittedRow(id)
+
+    const retried = yield* prompt.prompt({ ...request, noReply: true })
+    expect(retried.info.id).toBe(id)
+    const after = yield* sessions.messages({ sessionID: chat.id })
+    // Same rows, same order: the promoted message was not re-stamped to the end of history.
+    expect(after.map((msg) => [msg.info.id, msg.info.time.created, msg.parts.length])).toEqual(
+      before.map((msg) => [msg.info.id, msg.info.time.created, msg.parts.length]),
+    )
+    expect((yield* admittedRow(id))?.promotedSeq).toBe(promoted?.promotedSeq)
+
+    const conflicting = yield* prompt
+      .prompt({ ...request, noReply: true, parts: [{ type: "text", text: "something else" }] })
+      .pipe(Effect.exit)
+    expect(Exit.isFailure(conflicting)).toBe(true)
+    expect(yield* llm.calls).toBe(2)
+  }),
+)
+
 it.instance("an orphan queue head is skipped and the next queued prompt is promoted", () =>
   Effect.gen(function* () {
     const { llm } = yield* useServerConfig(providerCfg)
