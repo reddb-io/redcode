@@ -153,7 +153,7 @@ interface ProcessorContext extends Input {
   /** A failed attempt is waiting out its retry delay: a model switch may end the wait. */
   retrying: boolean
   /** A model switch ended a retry wait. */
-  switched: boolean
+  retargeted: boolean
   exhausted?: SessionRetry.Exhausted
 }
 
@@ -202,7 +202,7 @@ const layer = Layer.effect(
         reconnect: false,
         stepUsage: undefined,
         retrying: false,
-        switched: false,
+        retargeted: false,
       }
       let aborted = false
       // Stamped as events are read: the generation window, the provider's wait and the local work
@@ -837,7 +837,7 @@ const layer = Layer.effect(
         })
         ctx.needsCompaction = false
         ctx.overflow = undefined
-        ctx.switched = false
+        ctx.retargeted = false
         ctx.exhausted = undefined
         ctx.shouldBreak = (yield* config.get()).experimental?.continue_loop_on_deny !== true
 
@@ -848,7 +848,7 @@ const layer = Layer.effect(
               while (true) {
                 yield* switched
                 if (!ctx.retrying) continue
-                ctx.switched = true
+                ctx.retargeted = true
                 return
               }
             })
@@ -998,7 +998,7 @@ const layer = Layer.effect(
             Effect.ensuring(cleanup()),
           )
 
-          if (ctx.switched) return "switch"
+          if (ctx.retargeted) return "switch"
           if (ctx.needsCompaction) return "compact"
           if (ctx.reconnect) return "reconnect"
           if (ctx.blocked || ctx.assistantMessage.error) return "stop"

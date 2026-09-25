@@ -1665,12 +1665,11 @@ it.instance(
       expect(attempts).toEqual([1])
       const messages = yield* sessions.messages({ sessionID: chat.id })
       const assistants = messages.filter((message) => message.info.role === "assistant")
-      expect(assistants.map((message) => message.info.role === "assistant" && message.info.modelID)).toEqual([
-        "test-other",
-      ])
+      const served = assistants.map((message) => (message.info.role === "assistant" ? String(message.info.modelID) : ""))
+      expect(served).toEqual(["test-other"])
       expect(JSON.stringify(assistants[0]?.parts)).toContain("answered by the other model")
       const user = messages.find((message) => message.info.role === "user")
-      expect(user?.info.role === "user" && user.info.model.modelID).toBe("test-other")
+      expect(user?.info.role === "user" ? String(user.info.model.modelID) : undefined).toBe("test-other")
     }),
   30_000,
 )
