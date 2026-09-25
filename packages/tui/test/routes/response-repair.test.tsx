@@ -1,17 +1,22 @@
 /** @jsxImportSource @opentui/solid */
 import { expect, test } from "bun:test"
 import type { Part } from "@reddb-io/redcode-sdk/v2"
-import { responseRepairIssues, responseRevisions, ResponseRevisionNote } from "../../src/routes/session/response-repair"
+import {
+  responseQuestionReason,
+  responseRepairIssues,
+  responseRevisions,
+  ResponseRevisionNote,
+} from "../../src/routes/session/response-repair"
 import { mountDialog } from "../fixture/dialog"
 import { wait } from "../cli/cmd/tui/sync-fixture"
 import { tmpdir } from "../fixture/fixture"
 
 const text = (id: string, messageID: string, value: string, extra: Record<string, unknown> = {}) =>
   ({ id, sessionID: "ses", messageID, type: "text", text: value, ...extra }) as Part
-const repair = (id: string, issues: string[]) =>
+const repair = (id: string, issues: string[], confidence: Record<string, number> = {}) =>
   text(`${id}-part`, id, "[system:response-quality-repair]", {
     synthetic: true,
-    metadata: { responseRepair: { issues } },
+    metadata: { responseRepair: { issues, confidence } },
   })
 
 const messages = [
@@ -23,14 +28,16 @@ const messages = [
 const parts = {
   user: [text("p1", "user", "teste")],
   answer: [text("p2", "answer", "Olá! Funcionando. Em que posso ajudar?")],
-  repair: [repair("repair", ["unsupported"])],
+  repair: [repair("repair", ["unsupported"], { unsupported: 0.82 })],
   revision: [text("p4", "revision", "Olá! Em que posso ajudar?")],
 }
 
 test("a repaired answer folds into its revision, which carries the revision note", () => {
   const revisions = responseRevisions(messages, parts)
   expect([...revisions.superseded]).toEqual(["answer"])
-  expect([...revisions.notes]).toEqual([["revision", { issues: ["unsupported"], originals: ["answer"] }]])
+  expect([...revisions.notes]).toEqual([
+    ["revision", { issues: ["unsupported"], originals: ["answer"], confidence: { unsupported: 0.82 } }],
+  ])
   expect(revisions.pending.size).toBe(0)
   expect(responseRepairIssues({ responseRepair: { issues: ["omission"] } })).toEqual(["omission"])
 })
@@ -40,14 +47,21 @@ test("a second repair extends the same reply and the note lands on the last answ
     [...messages, { id: "repair-2", role: "user" }, { id: "final", role: "assistant" }, { id: "next", role: "user" }],
     {
       ...parts,
-      "repair-2": [repair("repair-2", ["omission", "unsupported"])],
+      "repair-2": [repair("repair-2", ["omission", "unsupported"], { omission: 0.7 })],
       final: [text("p5", "final", "Pronto.")],
       next: [text("p6", "next", "another question")],
     },
   )
   expect([...revisions.superseded]).toEqual(["answer", "revision"])
   expect([...revisions.notes]).toEqual([
-    ["final", { issues: ["unsupported", "omission"], originals: ["answer", "revision"] }],
+    [
+      "final",
+      {
+        issues: ["unsupported", "omission"],
+        originals: ["answer", "revision"],
+        confidence: { unsupported: 0.82, omission: 0.7 },
+      },
+    ],
   ])
 })
 
@@ -71,13 +85,22 @@ test("an answer followed by a real prompt or another synthetic note is not revis
   expect(responseRepairIssues({ responseRepair: "omission" })).toBeUndefined()
 })
 
-test("the revision note follows the final answer and opens the original on demand", async () => {
+test("responseQuestionReason names every response question in plain words, and falls back for an unknown key", () => {
+  expect(responseQuestionReason("omission")).toBe("missed part of your request")
+  expect(responseQuestionReason("unsupported")).toBe("claimed work it couldn't prove")
+  expect(responseQuestionReason("tool_evidence")).toBe("relied on a failed or unrelated result")
+  expect(responseQuestionReason("premature")).toBe("said done with work still open")
+  expect(responseQuestionReason("writing")).toBe("was hard to follow")
+  expect(responseQuestionReason("made_up_key")).toBe("didn't pass S1 review")
+})
+
+test("the revision note follows the final answer and opens the original with S1's confidence on demand", async () => {
   await using tmp = await tmpdir()
   function Reply() {
     return (
       <>
         <text>Olá! Em que posso ajudar?</text>
-        <ResponseRevisionNote issues={["unsupported"]}>
+        <ResponseRevisionNote issues={["unsupported"]} confidence={{ unsupported: 0.82 }}>
           <text>Thinking: the user greets</text>
           <text>Olá! Funcionando. Em que posso ajudar?</text>
         </ResponseRevisionNote>
@@ -90,7 +113,7 @@ test("the revision note follows the final answer and opens the original on deman
     await wait(() => !!setup.renderer.currentFocusedEditor)
     await setup.renderOnce()
     const screen = setup.captureCharFrame()
-    const note = "↻ revised after S1 review (unsupported) · show original"
+    const note = "↻ revised by S1 — claimed work it couldn't prove · show original"
     expect(screen).toContain(note)
     expect(screen.indexOf("Olá! Em que posso ajudar?")).toBeLessThan(screen.indexOf(note))
     expect(screen).not.toContain("Funcionando")
@@ -101,6 +124,7 @@ test("the revision note follows the final answer and opens the original on deman
     await setup.renderOnce()
     const opened = setup.captureCharFrame()
     expect(opened).toContain("hide original")
+    expect(opened).toContain("S1: 82% sure the answer claimed work it couldn't prove")
     expect(opened).toContain("the user greets")
     expect(opened.indexOf("hide original")).toBeLessThan(opened.indexOf("Olá! Funcionando. Em que posso ajudar?"))
   } finally {
