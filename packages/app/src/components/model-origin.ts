@@ -44,6 +44,16 @@ export function routerPath(origin: { router: string; via?: string }) {
 }
 
 /**
+ * A model named with its whole route, the routers and upstream joined by ` » `: `RedRouter » Anthropic
+ * · Claude Sonnet 4.5`. A model connected directly is its name alone.
+ */
+export function routedName(model: OriginModel & { name: string }) {
+  const origin = modelOrigin(model)
+  if (origin.type === "direct") return model.name
+  return Router.routeName({ routers: [routerPath(origin)], upstream: origin.upstream, model: model.name })
+}
+
+/**
  * What a router catalog refresh changed, when a model was added, removed or renamed. A refresh
  * that only changed limits or modes updates the pickers without an announcement.
  */

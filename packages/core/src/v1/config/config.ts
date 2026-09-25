@@ -200,6 +200,10 @@ export const Info = Schema.Struct({
       primary_tools: Schema.optional(Schema.mutable(Schema.Array(Schema.String))).annotate({
         description: "Tools that should only be available to primary agents.",
       }),
+      model_suggestions: Schema.optional(Schema.Boolean).annotate({
+        description:
+          "Suggest another model or combo of a connected RedRouter (MCP schema 2 or later) when the session needs vision or tools the model lacks, nears its context limit, keeps failing at the provider, or has a much cheaper equivalent. A suggestion only switches the model when you accept it (default: true).",
+      }),
       continue_loop_on_deny: Schema.optional(Schema.Boolean).annotate({
         description: "Continue the agent loop when a tool call is denied",
       }),

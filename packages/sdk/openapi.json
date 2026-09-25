@@ -19499,6 +19499,107 @@
         ]
       }
     },
+    "/session/{sessionID}/model-suggestion": {
+      "post": {
+        "tags": ["modelSuggestion"],
+        "operationId": "modelSuggestion.resolve",
+        "parameters": [
+          {
+            "name": "sessionID",
+            "in": "path",
+            "schema": {
+              "type": "string",
+              "pattern": "^ses"
+            },
+            "required": true
+          },
+          {
+            "name": "directory",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            },
+            "required": false
+          },
+          {
+            "name": "workspace",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            },
+            "required": false
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Answered",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "boolean",
+                  "description": "Answered"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "BadRequest | InvalidRequestError",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/effect_HttpApiError_BadRequest"
+                    },
+                    {
+                      "$ref": "#/components/schemas/InvalidRequestError"
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "NotFoundError",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/NotFoundError"
+                }
+              }
+            }
+          }
+        },
+        "description": "Record the person's answer to a model suggestion. `switch` only tells other clients the card is answered: the client that switched sets the model itself. `keep` also stops suggestions for that trigger in the session.",
+        "summary": "Answer a model suggestion",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "trigger": {
+                    "$ref": "#/components/schemas/ModelSuggestionTrigger"
+                  },
+                  "choice": {
+                    "type": "string",
+                    "enum": ["switch", "keep"]
+                  }
+                },
+                "required": ["trigger", "choice"],
+                "additionalProperties": false
+              }
+            }
+          }
+        },
+        "x-codeSamples": [
+          {
+            "lang": "js",
+            "source": "import { createRedcodeClient } from \"@reddb-io/redcode-sdk\"\n\nconst client = createRedcodeClient()\nawait client.modelSuggestion.resolve({\n  ...\n})"
+          }
+        ]
+      }
+    },
     "/api/health": {
       "get": {
         "tags": ["Redcode HttpApi"],
@@ -29878,6 +29979,12 @@
             "$ref": "#/components/schemas/EventSessionIdle"
           },
           {
+            "$ref": "#/components/schemas/EventSessionModelSuggested"
+          },
+          {
+            "$ref": "#/components/schemas/EventSessionModelSuggestionResolved"
+          },
+          {
             "$ref": "#/components/schemas/EventQuestionAsked"
           },
           {
@@ -31893,6 +32000,51 @@
             "additionalProperties": false
           }
         ]
+      },
+      "ModelSuggestion": {
+        "type": "object",
+        "properties": {
+          "trigger": {
+            "$ref": "#/components/schemas/ModelSuggestionTrigger"
+          },
+          "current": {
+            "$ref": "#/components/schemas/ModelSuggestionRef"
+          },
+          "model": {
+            "$ref": "#/components/schemas/ModelSuggestionRef"
+          },
+          "name": {
+            "type": "string"
+          },
+          "kind": {
+            "type": "string",
+            "description": "model, combo or flat, as the router lists it."
+          },
+          "why": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "code": {
+                  "type": "string"
+                },
+                "detail": {
+                  "type": "string"
+                }
+              },
+              "required": ["code", "detail"],
+              "additionalProperties": false
+            }
+          },
+          "whyText": {
+            "type": "string"
+          },
+          "delta": {
+            "$ref": "#/components/schemas/ModelSuggestionDelta"
+          }
+        },
+        "required": ["trigger", "current", "model", "name", "kind", "why", "whyText"],
+        "additionalProperties": false
       },
       "QuestionOption": {
         "type": "object",
@@ -34806,6 +34958,68 @@
                   },
                   "type": {
                     "type": "string",
+                    "enum": ["session.model.suggested"]
+                  },
+                  "properties": {
+                    "type": "object",
+                    "properties": {
+                      "sessionID": {
+                        "type": "string",
+                        "pattern": "^ses"
+                      },
+                      "suggestion": {
+                        "$ref": "#/components/schemas/ModelSuggestion"
+                      }
+                    },
+                    "required": ["sessionID", "suggestion"],
+                    "additionalProperties": false
+                  }
+                },
+                "required": ["id", "type", "properties"],
+                "additionalProperties": false
+              },
+              {
+                "type": "object",
+                "properties": {
+                  "id": {
+                    "type": "string",
+                    "pattern": "^evt_"
+                  },
+                  "type": {
+                    "type": "string",
+                    "enum": ["session.model.suggestion.resolved"]
+                  },
+                  "properties": {
+                    "type": "object",
+                    "properties": {
+                      "sessionID": {
+                        "type": "string",
+                        "pattern": "^ses"
+                      },
+                      "trigger": {
+                        "$ref": "#/components/schemas/ModelSuggestionTrigger"
+                      },
+                      "choice": {
+                        "type": "string",
+                        "enum": ["switch", "keep"]
+                      }
+                    },
+                    "required": ["sessionID", "trigger", "choice"],
+                    "additionalProperties": false
+                  }
+                },
+                "required": ["id", "type", "properties"],
+                "additionalProperties": false
+              },
+              {
+                "type": "object",
+                "properties": {
+                  "id": {
+                    "type": "string",
+                    "pattern": "^evt_"
+                  },
+                  "type": {
+                    "type": "string",
                     "enum": ["question.asked"]
                   },
                   "properties": {
@@ -36644,6 +36858,9 @@
                 "items": {
                   "type": "string"
                 }
+              },
+              "model_suggestions": {
+                "type": "boolean"
               },
               "continue_loop_on_deny": {
                 "type": "boolean"
@@ -40977,6 +41194,12 @@
             "$ref": "#/components/schemas/SessionIdle"
           },
           {
+            "$ref": "#/components/schemas/SessionModelSuggested"
+          },
+          {
+            "$ref": "#/components/schemas/SessionModelSuggestionResolved"
+          },
+          {
             "$ref": "#/components/schemas/QuestionAsked"
           },
           {
@@ -41682,6 +41905,48 @@
           }
         },
         "required": ["created", "updated"],
+        "additionalProperties": false
+      },
+      "ModelSuggestionTrigger": {
+        "type": "string",
+        "enum": ["vision", "tools", "context", "provider_errors", "cheaper"]
+      },
+      "ModelSuggestionRef": {
+        "type": "object",
+        "properties": {
+          "providerID": {
+            "type": "string"
+          },
+          "modelID": {
+            "type": "string"
+          }
+        },
+        "required": ["providerID", "modelID"],
+        "additionalProperties": false
+      },
+      "ModelSuggestionDelta": {
+        "type": "object",
+        "properties": {
+          "pricePct": {
+            "type": "number"
+          },
+          "context": {
+            "type": "number"
+          },
+          "gained": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "lost": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          }
+        },
+        "required": ["pricePct", "context", "gained", "lost"],
         "additionalProperties": false
       },
       "EventServerInstanceDisposed": {
@@ -53529,6 +53794,112 @@
         "required": ["id", "type", "data"],
         "additionalProperties": false
       },
+      "SessionModelSuggested": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "pattern": "^evt_"
+          },
+          "metadata": {
+            "type": "object"
+          },
+          "type": {
+            "type": "string",
+            "enum": ["session.model.suggested"]
+          },
+          "durable": {
+            "type": "object",
+            "properties": {
+              "aggregateID": {
+                "type": "string"
+              },
+              "seq": {
+                "type": "integer"
+              },
+              "version": {
+                "type": "integer"
+              }
+            },
+            "required": ["aggregateID", "seq", "version"],
+            "additionalProperties": false
+          },
+          "location": {
+            "$ref": "#/components/schemas/LocationRef"
+          },
+          "data": {
+            "type": "object",
+            "properties": {
+              "sessionID": {
+                "type": "string",
+                "pattern": "^ses"
+              },
+              "suggestion": {
+                "$ref": "#/components/schemas/ModelSuggestion"
+              }
+            },
+            "required": ["sessionID", "suggestion"],
+            "additionalProperties": false
+          }
+        },
+        "required": ["id", "type", "data"],
+        "additionalProperties": false
+      },
+      "SessionModelSuggestionResolved": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "pattern": "^evt_"
+          },
+          "metadata": {
+            "type": "object"
+          },
+          "type": {
+            "type": "string",
+            "enum": ["session.model.suggestion.resolved"]
+          },
+          "durable": {
+            "type": "object",
+            "properties": {
+              "aggregateID": {
+                "type": "string"
+              },
+              "seq": {
+                "type": "integer"
+              },
+              "version": {
+                "type": "integer"
+              }
+            },
+            "required": ["aggregateID", "seq", "version"],
+            "additionalProperties": false
+          },
+          "location": {
+            "$ref": "#/components/schemas/LocationRef"
+          },
+          "data": {
+            "type": "object",
+            "properties": {
+              "sessionID": {
+                "type": "string",
+                "pattern": "^ses"
+              },
+              "trigger": {
+                "$ref": "#/components/schemas/ModelSuggestionTrigger"
+              },
+              "choice": {
+                "type": "string",
+                "enum": ["switch", "keep"]
+              }
+            },
+            "required": ["sessionID", "trigger", "choice"],
+            "additionalProperties": false
+          }
+        },
+        "required": ["id", "type", "data"],
+        "additionalProperties": false
+      },
       "QuestionAsked": {
         "type": "object",
         "properties": {
@@ -57287,6 +57658,68 @@
         "required": ["id", "type", "properties"],
         "additionalProperties": false
       },
+      "EventSessionModelSuggested": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "pattern": "^evt_"
+          },
+          "type": {
+            "type": "string",
+            "enum": ["session.model.suggested"]
+          },
+          "properties": {
+            "type": "object",
+            "properties": {
+              "sessionID": {
+                "type": "string",
+                "pattern": "^ses"
+              },
+              "suggestion": {
+                "$ref": "#/components/schemas/ModelSuggestion"
+              }
+            },
+            "required": ["sessionID", "suggestion"],
+            "additionalProperties": false
+          }
+        },
+        "required": ["id", "type", "properties"],
+        "additionalProperties": false
+      },
+      "EventSessionModelSuggestionResolved": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "pattern": "^evt_"
+          },
+          "type": {
+            "type": "string",
+            "enum": ["session.model.suggestion.resolved"]
+          },
+          "properties": {
+            "type": "object",
+            "properties": {
+              "sessionID": {
+                "type": "string",
+                "pattern": "^ses"
+              },
+              "trigger": {
+                "$ref": "#/components/schemas/ModelSuggestionTrigger"
+              },
+              "choice": {
+                "type": "string",
+                "enum": ["switch", "keep"]
+              }
+            },
+            "required": ["sessionID", "trigger", "choice"],
+            "additionalProperties": false
+          }
+        },
+        "required": ["id", "type", "properties"],
+        "additionalProperties": false
+      },
       "EventQuestionAsked": {
         "type": "object",
         "properties": {
@@ -57806,6 +58239,10 @@
     {
       "name": "redskilled",
       "description": "Native RedDB Worker integration."
+    },
+    {
+      "name": "modelSuggestion",
+      "description": "Suggestions of another RedRouter model or combo, applied only when the person accepts."
     },
     {
       "name": "Redcode HttpApi",
