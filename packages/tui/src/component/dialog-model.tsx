@@ -8,12 +8,23 @@ import { DialogVariant } from "./dialog-variant"
 import * as fuzzysort from "fuzzysort"
 import { useConnected } from "./use-connected"
 import { useSync } from "../context/sync"
-import { modeBadge, originCategory, originDescription, originIndex, routerLabel } from "../util/model-origin"
+import {
+  modeBadge,
+  originCategory,
+  originDescription,
+  originDescriptionDetail,
+  originIndex,
+  routeLabel,
+  routerLabel,
+} from "../util/model-origin"
 
 export function DialogModel(props: { providerID?: string }) {
   const local = useLocal()
   const sync = useSync()
   const dialog = useDialog()
+  // Model names plus their route suffix (e.g. "via RedRouter → RedRouter") need more room than the
+  // default dialog width gives before being cut off.
+  dialog.setSize("large")
   const [query, setQuery] = createSignal("")
 
   const connected = useConnected()
@@ -21,6 +32,27 @@ export function DialogModel(props: { providerID?: string }) {
 
   const showExtra = createMemo(() => connected() && !props.providerID)
   const origins = createMemo(() => originIndex(sync.data.provider))
+  // Counts every active model by name, so entries that render with the same title (e.g. the same
+  // upstream model served both directly via RedRouter and via a remote RedRouter it forwards to) can
+  // get a distinguishing route suffix. `originIndex.also` cannot catch this by itself: it tracks
+  // distinct router labels, and both entries here share the "RedRouter" label.
+  const duplicateNames = createMemo(() => {
+    const counts = new Map<string, number>()
+    sync.data.provider.forEach((provider) =>
+      Object.values(provider.models).forEach((model) => {
+        if (model.status === "deprecated") return
+        const name = model.name ?? model.id
+        counts.set(name, (counts.get(name) ?? 0) + 1)
+      }),
+    )
+    return counts
+  })
+
+  function routeSuffix(provider: (typeof sync.data.provider)[number], model: (typeof provider.models)[string]) {
+    const name = model.name ?? model.id
+    if ((duplicateNames().get(name) ?? 0) <= 1) return undefined
+    return routeLabel(provider, model)
+  }
 
   const options = createMemo(() => {
     const needle = query().trim()
@@ -36,12 +68,18 @@ export function DialogModel(props: { providerID?: string }) {
         if (!provider) return []
         const model = provider.models[item.modelID]
         if (!model) return []
-        const origin = originDescription(index, provider, model)
+        const route = routeSuffix(provider, model)
+        // The route already shows in the title suffix below; the description drops it to avoid repeating it.
+        const origin = route
+          ? originDescriptionDetail(index, provider, model)
+          : originDescription(index, provider, model)
         return [
           {
             key: item,
             value: { providerID: provider.id, modelID: model.id },
-            title: model.name ?? item.modelID,
+            // The route suffix keeps duplicates (same model via different connections) distinguishable
+            // even when the description gets cut off by a narrow row.
+            title: route ? `${model.name ?? item.modelID} · ${route}` : (model.name ?? item.modelID),
             // Outside its provider's section the row names the provider unless the router label already does.
             description: routerLabel(provider) === provider.name ? origin : `${provider.name} · ${origin}`,
             category,
@@ -75,20 +113,29 @@ export function DialogModel(props: { providerID?: string }) {
           entries(),
           filter(([_, info]) => info.status !== "deprecated"),
           filter(([_, info]) => (props.providerID ? info.providerID === props.providerID : true)),
-          map(([model, info]) => ({
-            value: { providerID: provider.id, modelID: model },
-            title: info.name ?? model,
-            releaseDate: info.release_date,
-            description: favorites.some((item) => item.providerID === provider.id && item.modelID === model)
-              ? `${originDescription(index, provider, info)} (Favorite)`
-              : originDescription(index, provider, info),
-            category: connected() ? originCategory(provider, info) : undefined,
-            disabled: provider.id === "opencode" && model.includes("-nano"),
-            footer: info.cost?.input === 0 && provider.id === "opencode" ? "Free" : modeBadge(info),
-            onSelect() {
-              onSelect(provider.id, model)
-            },
-          })),
+          map(([model, info]) => {
+            const route = routeSuffix(provider, info)
+            // The route already shows in the title suffix below; the description drops it to avoid repeating it.
+            const origin = route
+              ? originDescriptionDetail(index, provider, info)
+              : originDescription(index, provider, info)
+            return {
+              value: { providerID: provider.id, modelID: model },
+              // The route suffix keeps duplicates (same model via different connections)
+              // distinguishable even when the description gets cut off by a narrow row.
+              title: route ? `${info.name ?? model} · ${route}` : (info.name ?? model),
+              releaseDate: info.release_date,
+              description: favorites.some((item) => item.providerID === provider.id && item.modelID === model)
+                ? `${origin} (Favorite)`
+                : origin,
+              category: connected() ? originCategory(provider, info) : undefined,
+              disabled: provider.id === "opencode" && model.includes("-nano"),
+              footer: info.cost?.input === 0 && provider.id === "opencode" ? "Free" : modeBadge(info),
+              onSelect() {
+                onSelect(provider.id, model)
+              },
+            }
+          }),
           filter((option) => {
             if (!showSections) return true
             if (
