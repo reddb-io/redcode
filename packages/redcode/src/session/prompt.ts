@@ -1936,7 +1936,7 @@ const layer = Layer.effect(
           const settings = yield* intelligence.read().pipe(Effect.orElseSucceed(() => undefined))
           const asked = !!settings && Intelligence.mode(settings) === "dual" && !readOnly
           const step = input.step
-          const memory = SessionStopLoss.current(stopLoss, step)
+          const memory = SessionStopLoss.current(stopLoss, step, trajectory.idle)
           const checkpoint = SessionStopLoss.due({ step, memory, limits: bounds, signals: found, interval: asked })
           if (checkpoint.type === "none") return false
           const started = Date.now()
@@ -2006,7 +2006,8 @@ const layer = Layer.effect(
               sessionID,
               messageID: message.id,
               type: "text",
-              text: SessionStopLoss.steer(trajectory, verdict),
+              // Legacy bash can wait on a status check in the background (its `monitor` parameter).
+              text: SessionStopLoss.steer(trajectory, verdict, { monitor: true }),
               synthetic: true,
               metadata: notice,
             })
@@ -2037,7 +2038,7 @@ const layer = Layer.effect(
             sessionID,
             messageID: message.id,
             type: "text",
-            text: SessionStopLoss.final(trajectory, verdict, { subagent }),
+            text: SessionStopLoss.final(trajectory, verdict, { subagent, monitor: true }),
             synthetic: true,
             metadata: notice,
           })
