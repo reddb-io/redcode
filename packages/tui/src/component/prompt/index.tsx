@@ -9,7 +9,18 @@ import {
   type Renderable,
 } from "@opentui/core"
 import type { CommandContext } from "@opentui/keymap"
-import { createEffect, createMemo, onMount, createSignal, onCleanup, on, Show, Switch, Match } from "solid-js"
+import {
+  createEffect,
+  createMemo,
+  createResource,
+  onMount,
+  createSignal,
+  onCleanup,
+  on,
+  Show,
+  Switch,
+  Match,
+} from "solid-js"
 import { registerOpencodeSpinner } from "../register-spinner"
 import path from "path"
 import { fileURLToPath } from "url"
@@ -62,6 +73,8 @@ import { useTuiConfig } from "../../config"
 import { usePromptWorkspace } from "./workspace"
 import { usePromptMove } from "./move"
 import { readLocalAttachment } from "./local-attachment"
+import { admitPrompt } from "../../prompt/admit"
+import { heldNotice } from "../../prompt/pending"
 import { useLocation } from "../../context/location"
 import { useRedskilled } from "../../context/redskilled"
 import {
@@ -312,6 +325,39 @@ export function Prompt(props: PromptProps) {
   const pasteStyleId = syntax().getStyleId("extmark.paste")!
   let promptPartTypeId = 0
   const event = useEvent()
+
+  // What this session has admitted and not promoted, for the held-prompt notice. Staleness is
+  // decided when a drain ends, which the session reports by going idle, so that refetches too.
+  const [pendingPrompts, { refetch: refetchPending }] = createResource(
+    () => props.sessionID,
+    async (sessionID) => {
+      const result = await sdk.client.session.pendingPrompts({ sessionID }).catch(() => undefined)
+      return Array.isArray(result?.data) ? result.data : []
+    },
+  )
+  const held = createMemo(() => heldNotice(pendingPrompts.latest ?? []))
+  const refreshPending = (sessionID: string) => {
+    if (sessionID === props.sessionID) void refetchPending()
+  }
+  event.on("session.next.prompt.admitted", (evt) => refreshPending(evt.properties.sessionID))
+  event.on("session.next.prompt.delivery", (evt) => refreshPending(evt.properties.sessionID))
+  event.on("message.promoted", (evt) => refreshPending(evt.properties.sessionID))
+  event.on("message.removed", (evt) => refreshPending(evt.properties.sessionID))
+  event.on("session.status", (evt) => {
+    if (evt.properties.status.type === "idle") refreshPending(evt.properties.sessionID)
+  })
+  // Said once when prompts turn held (or a session is opened with some), not on every render.
+  createEffect(
+    on(held, (notice, previous) => {
+      if (!notice || notice === previous) return
+      toast.show({
+        variant: "warning",
+        title: "Queued prompts were not sent",
+        message: `${notice}: send them now or discard them.`,
+        duration: 8000,
+      })
+    }),
+  )
 
   event.on("tui.prompt.append", (evt, { workspace }) => {
     if (workspace !== project.workspace.current()) return
@@ -1372,12 +1418,14 @@ export function Prompt(props: PromptProps) {
       move.startSubmit()
       // Enter queues behind a running turn, the steer key delivers at its next step. Both run right
       // away on an idle session, so the delivery is always sent: no client-side status to race.
+      // Nothing is cleared until the server has admitted the prompt (see `admitPrompt`): a send
+      // that fails leaves the text where it was, to send again, instead of losing it.
       const delivery = promptDelivery(intent)
-      sdk.client.session
-        .prompt(
-          {
+      const admitted = await admitPrompt({
+        send: (messageID) =>
+          sdk.client.session.promptAsync({
             sessionID,
-            ...selectedModel,
+            messageID,
             agent: agent.name,
             model: selectedModel,
             variant,
@@ -1390,16 +1438,17 @@ export function Prompt(props: PromptProps) {
               },
               ...nonTextParts,
             ],
-          },
-          { throwOnError: true },
-        )
-        .catch((error) => {
-          toast.show({
-            title: "Failed to send prompt",
-            message: errorMessage(error),
-            variant: "error",
-          })
+          }),
+      })
+      if (!admitted.ok) {
+        if (finishMoveProgress) move.finishSubmit()
+        toast.show({
+          title: "Failed to send prompt",
+          message: `The prompt is still in the input. ${errorMessage(admitted.error)}`,
+          variant: "error",
         })
+        return false
+      }
       if (editorParts.length > 0) editor.markSelectionSent()
     }
     history.append({
@@ -2021,6 +2070,7 @@ export function Prompt(props: PromptProps) {
           </Switch>
           <Show when={status().type !== "retry"}>
             <box gap={2} flexDirection="row">
+              <Show when={held()}>{(notice) => <text fg={theme.warning}>{notice()}</text>}</Show>
               <Show when={editorContextLabelState() !== "none" ? editorFileLabelDisplay() : undefined}>
                 {(file) => (
                   <text fg={editorContextLabelState() === "pending" ? theme.secondary : theme.textMuted}>{file()}</text>

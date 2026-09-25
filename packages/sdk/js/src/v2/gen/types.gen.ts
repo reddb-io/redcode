@@ -3141,6 +3141,18 @@ export type SubtaskPartInput = {
   command?: string
 }
 
+export type SessionPendingPrompt = {
+  id: string
+  delivery: "steer" | "queue"
+  text: string
+  files: number
+  time: number
+  /**
+   * Queued before the session last went idle without taking it up. A stale prompt is never promoted on its own: it waits to be sent as a steer or discarded
+   */
+  stale: boolean
+}
+
 export type SessionBusyError = {
   _tag: "SessionBusyError"
   sessionID: string
@@ -13045,6 +13057,75 @@ export type SessionPromptDeliveryResponses = {
 }
 
 export type SessionPromptDeliveryResponse = SessionPromptDeliveryResponses[keyof SessionPromptDeliveryResponses]
+
+export type SessionPendingPromptsData = {
+  body?: never
+  path: {
+    sessionID: string
+  }
+  query?: {
+    directory?: string
+    workspace?: string
+  }
+  url: "/session/{sessionID}/prompt"
+}
+
+export type SessionPendingPromptsErrors = {
+  /**
+   * Bad request
+   */
+  400: BadRequestError
+  /**
+   * NotFoundError
+   */
+  404: NotFoundError
+}
+
+export type SessionPendingPromptsError = SessionPendingPromptsErrors[keyof SessionPendingPromptsErrors]
+
+export type SessionPendingPromptsResponses = {
+  /**
+   * Prompts waiting to be promoted, oldest first
+   */
+  200: Array<SessionPendingPrompt>
+}
+
+export type SessionPendingPromptsResponse = SessionPendingPromptsResponses[keyof SessionPendingPromptsResponses]
+
+export type SessionPromptDiscardData = {
+  body?: never
+  path: {
+    sessionID: string
+    messageID: string
+  }
+  query?: {
+    directory?: string
+    workspace?: string
+  }
+  url: "/session/{sessionID}/prompt/{messageID}"
+}
+
+export type SessionPromptDiscardErrors = {
+  /**
+   * Bad request
+   */
+  400: BadRequestError
+  /**
+   * NotFoundError
+   */
+  404: NotFoundError
+}
+
+export type SessionPromptDiscardError = SessionPromptDiscardErrors[keyof SessionPromptDiscardErrors]
+
+export type SessionPromptDiscardResponses = {
+  /**
+   * Prompt discarded
+   */
+  204: void
+}
+
+export type SessionPromptDiscardResponse = SessionPromptDiscardResponses[keyof SessionPromptDiscardResponses]
 
 export type SessionCommandData = {
   body?: {

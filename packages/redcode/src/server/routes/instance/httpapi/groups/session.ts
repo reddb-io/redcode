@@ -139,6 +139,8 @@ export const SessionPaths = {
   prompt: `${root}/:sessionID/message`,
   promptAsync: `${root}/:sessionID/prompt_async`,
   promptDelivery: `${root}/:sessionID/prompt/:messageID/delivery`,
+  pendingPrompts: `${root}/:sessionID/prompt`,
+  promptDiscard: `${root}/:sessionID/prompt/:messageID`,
   command: `${root}/:sessionID/command`,
   shell: `${root}/:sessionID/shell`,
   revert: `${root}/:sessionID/revert`,
@@ -453,7 +455,7 @@ export const SessionApi = HttpApi.make("session")
             identifier: "session.prompt_async",
             summary: "Send async message",
             description:
-              "Create and send a new message to a session asynchronously, starting the session if needed and returning immediately.",
+              "Create and send a new message to a session asynchronously. Returns once the prompt is durably admitted, without waiting for the turn; a retry that names the same messageID is idempotent.",
           }),
         ),
         HttpApiEndpoint.post("promptDelivery", SessionPaths.promptDelivery, {
@@ -468,6 +470,32 @@ export const SessionApi = HttpApi.make("session")
             summary: "Change prompt delivery",
             description:
               "Change how a prompt that is still waiting reaches the model: turn a queued prompt into a steer, delivered at the next safe boundary of the running turn, or send a steer back to the queue. Fails with 404 when the prompt is not pending (unknown, already promoted or removed).",
+          }),
+        ),
+        HttpApiEndpoint.get("pendingPrompts", SessionPaths.pendingPrompts, {
+          params: { sessionID: SessionID },
+          query: WorkspaceRoutingQuery,
+          success: described(Schema.Array(SessionPrompt.PendingPrompt), "Prompts waiting to be promoted, oldest first"),
+          error: ApiNotFoundError,
+        }).annotateMerge(
+          OpenApi.annotations({
+            identifier: "session.pendingPrompts",
+            summary: "List pending prompts",
+            description:
+              "List the prompts admitted to a session and not yet promoted: steers waiting for the next safe boundary, queued prompts waiting for the session to go idle, and stale queued prompts that wait for an explicit send or discard.",
+          }),
+        ),
+        HttpApiEndpoint.delete("promptDiscard", SessionPaths.promptDiscard, {
+          params: { sessionID: SessionID, messageID: MessageID },
+          query: WorkspaceRoutingQuery,
+          success: described(HttpApiSchema.NoContent, "Prompt discarded"),
+          error: ApiNotFoundError,
+        }).annotateMerge(
+          OpenApi.annotations({
+            identifier: "session.promptDiscard",
+            summary: "Discard pending prompt",
+            description:
+              "Discard a prompt that is still waiting, so it never reaches the model. Fails with 404 when the prompt is not pending (unknown, already promoted or removed).",
           }),
         ),
         HttpApiEndpoint.post("command", SessionPaths.command, {
