@@ -137,7 +137,12 @@ export function systemOneOffers(catalog: Record<string, Provider>) {
   return Object.entries(SYSTEM_ONE_OFFERS).flatMap(([providerID, modelIDs]) => {
     const provider = Object.values(catalog).find((candidate) => candidate.id === providerID)
     if (!provider) return []
-    return [...modelIDs].map((model) => ({ providerID, provider: provider.name, model }))
+    return [...modelIDs].map((model) => ({
+      providerID,
+      provider: provider.name,
+      model,
+      name: provider.models[model]?.name ?? model,
+    }))
   })
 }
 
