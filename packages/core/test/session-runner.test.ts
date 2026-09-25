@@ -40,6 +40,7 @@ import { SessionInput } from "@reddb-io/redcode-core/session/input"
 import { SessionMessage } from "@reddb-io/redcode-core/session/message"
 import { SessionRetry } from "@reddb-io/redcode-core/session/retry"
 import { ToolInterrupted } from "@reddb-io/redcode-core/session/tool-interrupted"
+import { SessionStopLoss } from "@reddb-io/redcode-core/session/stop-loss"
 import { Prompt } from "@reddb-io/redcode-core/session/prompt"
 import { SessionProjector } from "@reddb-io/redcode-core/session/projector"
 import { SessionExecution } from "@reddb-io/redcode-core/session/execution"
@@ -152,7 +153,12 @@ const echo = Layer.effectDiscard(
     registry.register({
       echo: Tool.make({
         description: "Echo text",
-        input: Schema.Struct({ text: Schema.String, variant: Schema.String.pipe(Schema.optional) }),
+        input: Schema.Struct({
+          text: Schema.String,
+          variant: Schema.String.pipe(Schema.optional),
+          // Lets a test stand in for a shell status check, which the stop-loss reads by its command.
+          command: Schema.String.pipe(Schema.optional),
+        }),
         output: Schema.Struct({ text: Schema.String }),
         toModelOutput: ({ output }) => [{ type: "text", text: output.text }],
         execute: ({ text }, context) =>
@@ -2740,6 +2746,58 @@ describe("SessionRunnerLLM", () => {
       expect(yield* database.db.select().from(SessionGuardTripTable).all().pipe(Effect.orDie)).toContainEqual(
         expect.objectContaining({ session_id: sessionID, guard: "stop_loss", action: "stop" }),
       )
+    }),
+  )
+
+  it.effect("the stop-loss steers a repeated outside status check twice before it stops it, as legacy does", () =>
+    Effect.gen(function* () {
+      yield* setup
+      const agents = yield* AgentV2.Service
+      yield* agents.transform((editor) =>
+        editor.update(AgentV2.ID.make("build"), (agent) => {
+          agent.steps = 20
+        }),
+      )
+      const session = yield* SessionV2.Service
+      yield* session.prompt({
+        sessionID,
+        prompt: Prompt.make({ text: "Ship the release once CI is green" }),
+        resume: false,
+      })
+      // S1 gives no verdict, so the mechanical rules decide, as in single reasoning.
+      requests.length = 0
+      executions.length = 0
+      // The same answer from a CI status check whose job is still running; the drifting variant keeps
+      // the loop guard out of it.
+      responses = Array.from({ length: 10 }, (_, index) => [
+        LLMEvent.stepStart({ index: 0 }),
+        LLMEvent.toolCall({
+          id: `call-poll-${index}`,
+          name: "echo",
+          input: { text: "in_progress", variant: `${index}`, command: "gh run view 42 --json status" },
+        }),
+        LLMEvent.stepFinish({ index: 0, reason: "tool-calls" }),
+        LLMEvent.finish({ reason: "tool-calls" }),
+      ])
+
+      yield* session.resume(sessionID)
+
+      expect(requests).toHaveLength(8)
+      const synthetic = (yield* session.context(sessionID)).flatMap((message) =>
+        message.type === "synthetic" ? [message.text] : [],
+      )
+      const steers = synthetic.filter((text) => text.startsWith(SessionStopLoss.STEER))
+      expect(steers).toHaveLength(2)
+      expect(steers[0]).toContain("Stop polling it")
+      // This runtime's bash cannot wait in the background, so no monitor call is offered.
+      expect(steers[0]).not.toContain('"monitor"')
+      expect(synthetic.at(-1)).toContain("waiting on an outside job")
+      expect(synthetic.at(-1)).toContain("Reply `c` to check it again and continue")
+      const database = yield* Database.Service
+      const trips = (yield* database.db.select().from(SessionGuardTripTable).all().pipe(Effect.orDie)).filter(
+        (trip) => trip.session_id === sessionID && trip.guard === "stop_loss",
+      )
+      expect(trips.map((trip) => trip.action)).toEqual(["correct", "correct", "stop"])
     }),
   )
 

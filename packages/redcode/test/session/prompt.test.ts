@@ -71,6 +71,7 @@ import { SessionRevert } from "../../src/session/revert"
 import { SessionRunState } from "../../src/session/run-state"
 import { MessageID, PartID, SessionID } from "../../src/session/schema"
 import { SessionStatus } from "../../src/session/status"
+import { SessionModelSwitch } from "../../src/session/model-switch"
 import { SessionV2 } from "@reddb-io/redcode-core/session"
 import { SessionEvent } from "@reddb-io/redcode-core/session/event"
 import { SessionInput } from "@reddb-io/redcode-core/session/input"
@@ -359,6 +360,7 @@ const promptRoot = LayerNode.group([
   BackgroundJob.node,
   MonitorRuntime.node,
   SessionStatus.node,
+  SessionModelSwitch.node,
   SessionRunState.node,
   Database.node,
   EventV2Bridge.node,
@@ -1583,6 +1585,127 @@ it.instance("loop calls LLM and returns assistant message", () =>
     expect(parts.some((p) => p.type === "text" && p.text === "world")).toBe(true)
     expect(yield* llm.hits).toHaveLength(1)
   }),
+)
+
+// A second model on the test provider, for a turn to switch to.
+function otherModelCfg(url: string) {
+  const base = providerCfg(url)
+  return {
+    ...base,
+    provider: {
+      ...base.provider,
+      test: {
+        ...base.provider.test,
+        models: {
+          ...base.provider.test.models,
+          "test-other": { ...base.provider.test.models["test-model"], id: "test-other", name: "Test Other" },
+        },
+      },
+    },
+  }
+}
+
+const startRetryWait = Effect.fn("test.startRetryWait")(function* () {
+  const { llm } = yield* useServerConfig(otherModelCfg)
+  const prompt = yield* SessionPrompt.Service
+  const sessions = yield* Session.Service
+  const status = yield* SessionStatus.Service
+  const chat = yield* sessions.create({
+    title: "Pinned",
+    permission: [{ permission: "*", pattern: "*", action: "allow" }],
+  })
+  yield* prompt.prompt({
+    sessionID: chat.id,
+    agent: "build",
+    model: ref,
+    noReply: true,
+    parts: [{ type: "text", text: "hello" }],
+  })
+  // Well inside the two minutes a retry still waits out, and far longer than any test runs.
+  yield* llm.error(429, { error: { message: "Too many requests", type: "rate_limit_error" } }, { "retry-after": "90" })
+  const run = yield* prompt.loop({ sessionID: chat.id }).pipe(Effect.forkChild)
+  const waiting = yield* pollWithTimeout(
+    status.get(chat.id).pipe(Effect.map((value) => (value.type === "retry" ? value : undefined))),
+    "the turn never waited to retry",
+    "10 seconds",
+  )
+  return { llm, prompt, sessions, status, chat, run, waiting }
+})
+
+it.instance(
+  "a model selected while a retry waits takes the same request at once, with fresh attempts",
+  () =>
+    Effect.gen(function* () {
+      const { llm, sessions, chat, run, waiting } = yield* startRetryWait()
+      const switches = yield* SessionModelSwitch.Service
+      const other = { providerID: ref.providerID, modelID: ModelV2.ID.make("test-other") }
+      expect(waiting.message).toStartWith("test · Test Model: ")
+      expect(waiting.attempt).toBe(1)
+      // The first request on the new model fails too: its retry counts from one again.
+      yield* llm.error(
+        429,
+        { error: { message: "Too many requests", type: "rate_limit_error" } },
+        { "retry-after-ms": "50" },
+      )
+      yield* llm.text("answered by the other model")
+      const attempts: number[] = []
+      const events = yield* EventV2Bridge.Service
+      const off = yield* events.listen((evt) => {
+        if (evt.type !== SessionStatus.Event.Status.type) return Effect.void
+        const data = evt.data as typeof SessionStatus.Event.Status.data.Type
+        if (data.sessionID === chat.id && data.status.type === "retry") attempts.push(data.status.attempt)
+        return Effect.void
+      })
+
+      expect(yield* switches.select(chat.id, other)).toBe(true)
+      yield* awaitWithTimeout(Fiber.join(run), "the switch did not retry at once", "10 seconds")
+      yield* off
+
+      expect((yield* llm.hits).map((hit) => hit.body.model)).toEqual(["test-model", "test-other", "test-other"])
+      expect(attempts).toEqual([1])
+      const messages = yield* sessions.messages({ sessionID: chat.id })
+      const assistants = messages.filter((message) => message.info.role === "assistant")
+      const served = assistants.map((message) => (message.info.role === "assistant" ? String(message.info.modelID) : ""))
+      expect(served).toEqual(["test-other"])
+      expect(JSON.stringify(assistants[0]?.parts)).toContain("answered by the other model")
+      const user = messages.find((message) => message.info.role === "user")
+      expect(user?.info.role === "user" ? String(user.info.model.modelID) : undefined).toBe("test-other")
+    }),
+  30_000,
+)
+
+it.instance(
+  "selecting the model already in use does not cut a retry wait short",
+  () =>
+    Effect.gen(function* () {
+      const { chat, run, prompt } = yield* startRetryWait()
+      const switches = yield* SessionModelSwitch.Service
+      expect(yield* switches.select(chat.id, ref)).toBe(false)
+      yield* prompt.cancel(chat.id)
+      yield* awaitWithTimeout(Fiber.await(run), "Esc did not end the wait", "10 seconds")
+    }),
+  30_000,
+)
+
+it.instance(
+  "Esc while a retry waits ends the turn at once",
+  () =>
+    Effect.gen(function* () {
+      const { llm, prompt, sessions, status, chat, run } = yield* startRetryWait()
+      yield* prompt.cancel(chat.id)
+      yield* awaitWithTimeout(Fiber.await(run), "Esc did not end the wait", "10 seconds")
+
+      expect(yield* llm.hits).toHaveLength(1)
+      yield* pollWithTimeout(
+        status.get(chat.id).pipe(Effect.map((value) => (value.type === "idle" ? true : undefined))),
+        "the session never went idle",
+      )
+      const last = (yield* sessions.messages({ sessionID: chat.id })).findLast(
+        (message) => message.info.role === "assistant",
+      )
+      expect(last?.info.role === "assistant" && last.info.error?.name).toBe("MessageAbortedError")
+    }),
+  30_000,
 )
 
 withMcpInstructions.instance(
@@ -7537,7 +7660,7 @@ unix(
 )
 
 unix(
-  "in single reasoning the stop-loss hints once, then stops a check that keeps coming back the same",
+  "in single reasoning the stop-loss hints twice, then stops a check that keeps coming back the same",
   () =>
     Effect.gen(function* () {
       // With the loop guard off, as yolo used to leave it, nothing else would ever end this turn.
@@ -7560,18 +7683,64 @@ unix(
 
       const result = yield* awaitWithTimeout(prompt.loop({ sessionID: chat.id }), "the turn never ended", "30 seconds")
 
-      // A hint after the third, the cooldown, then a stop once it persisted to the stop threshold.
-      expect(yield* llm.calls).toBe(6)
+      // A hint after the third, the cooldown, a second hint, and a stop only when it persisted past both.
+      expect(yield* llm.calls).toBe(9)
       const bodies = (yield* llm.hits).map((hit) => JSON.stringify(hit.body))
       expect(bodies[2]).not.toContain(SessionStopLoss.STEER)
       expect(bodies[3]).toContain(SessionStopLoss.STEER)
+      expect(bodies[6]!.split(SessionStopLoss.STEER).length - 1).toBe(2)
       const final = stopLossNotice(result)
       expect(final.text).toStartWith("**Stop-loss (unverified)")
       expect(final.text).toContain("I stopped here")
+      expect(final.text).toContain("Reply `c` to continue from here")
       expect(final.notice).toMatchObject({ action: "stop", verified: false })
       const trips = (yield* guards.recent()).filter((trip) => trip.sessionID === chat.id && trip.guard === "stop_loss")
-      expect(trips.map((trip) => trip.action).toReversed()).toEqual(["correct", "stop"])
+      expect(trips.map((trip) => trip.action).toReversed()).toEqual(["correct", "correct", "stop"])
       expect(yield* intelligence.history(chat.id, { operation: "session_progress" })).toEqual([])
+      yield* intelligence.save({ settings: saved })
+    }),
+  60_000,
+)
+
+unix(
+  "in single reasoning the stop-loss points a repeated outside status check at a monitor, and stops it only after two hints",
+  () =>
+    Effect.gen(function* () {
+      // The loop guard would refuse the identical call on its own; this is about the stop-loss alone.
+      const { llm } = yield* useServerConfig((url) => ({ ...providerCfg(url), experimental: { loop_guard: false } }))
+      const intelligence = yield* Intelligence.Service
+      const saved = yield* intelligence.read()
+      yield* intelligence.save({ settings: { ...saved, reasoning: "single" } })
+      const prompt = yield* SessionPrompt.Service
+      const sessions = yield* Session.Service
+      const guards = yield* SessionGuardLog.Service
+      const chat = yield* sessions.create({ title: "Waiting on CI, single" })
+      yield* prompt.prompt({
+        sessionID: chat.id,
+        agent: "build",
+        noReply: true,
+        parts: [{ type: "text", text: "Ship the release once CI is green" }],
+      })
+      // A status CLI whose job is still running: it answers the same every time it is asked.
+      const run = { command: "gh() { printf 'in_progress\\n'; }; gh run view 42 --json status" }
+      for (let i = 0; i < 10; i++) yield* llm.tool("bash", run)
+      yield* llm.text("never reached")
+
+      const result = yield* awaitWithTimeout(prompt.loop({ sessionID: chat.id }), "the turn never ended", "30 seconds")
+
+      // Waiting is steered from the second identical answer, again after the cooldown, and only then stopped.
+      expect(yield* llm.calls).toBe(8)
+      const bodies = (yield* llm.hits).map((hit) => JSON.stringify(hit.body))
+      expect(bodies[1]).not.toContain(SessionStopLoss.STEER)
+      expect(bodies[2]).toContain(SessionStopLoss.STEER)
+      expect(bodies[2]).toContain("Stop polling it")
+      expect(bodies[2]).toContain('\\"until\\":\\"changed\\"')
+      const final = stopLossNotice(result)
+      expect(final.text).toContain("waiting on an outside job")
+      expect(final.text).toContain("Reply `c` to continue, or `w` to wait for it")
+      expect(final.notice).toMatchObject({ action: "stop", verified: false })
+      const trips = (yield* guards.recent()).filter((trip) => trip.sessionID === chat.id && trip.guard === "stop_loss")
+      expect(trips.map((trip) => trip.action).toReversed()).toEqual(["correct", "correct", "stop"])
       yield* intelligence.save({ settings: saved })
     }),
   60_000,
@@ -7619,7 +7788,7 @@ unix(
           "30 seconds",
         )
 
-        expect(yield* llm.calls).toBe(6)
+        expect(yield* llm.calls).toBe(9)
         const final = stopLossNotice(result)
         expect(final.text).toContain("Stopped by the stop-loss before finishing")
         expect(final.notice).toMatchObject({ action: "stop", verified: false })
@@ -7627,9 +7796,9 @@ unix(
         expect(yield* intelligence.history(child.id, { operation: "session_progress" })).toEqual([])
         // The parent's task row reads where the checkpoints left the child from its metadata.
         const kept = SubagentView.checkpoints((yield* sessions.get(child.id)).metadata)
-        expect(kept.map((item) => item.action)).toEqual(["steer", "stop"])
+        expect(kept.map((item) => item.action)).toEqual(["steer", "steer", "stop"])
         expect(SubagentView.checkpointState(kept)).toMatchObject({ type: "stopped" })
-        expect(kept[1]?.reason).toBeTruthy()
+        expect(kept[2]?.reason).toBeTruthy()
       }),
     ),
   60_000,

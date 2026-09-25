@@ -74,6 +74,7 @@ import {
   type PromptInputSubmission,
 } from "./prompt-input/contracts"
 import { createPromptSubmit } from "./prompt-input/submit"
+import { QUEUE_SLASH } from "./prompt-input/queue-command"
 import { PromptPopover, type AtOption, type SlashCommand } from "./prompt-input/slash-popover"
 import { PromptContextItems } from "./prompt-input/context-items"
 import { PromptImageAttachments } from "./prompt-input/image-attachments"
@@ -713,7 +714,21 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
       // source: cmd.source,
     }))
 
-    return [...custom, ...builtin]
+    // `/queue <text>` is read by the submit, so picking it only leaves `/queue ` in the prompt,
+    // like a server command. A server command named `queue` keeps precedence.
+    const queue = custom.some((cmd) => cmd.trigger === QUEUE_SLASH)
+      ? []
+      : [
+          {
+            id: "prompt.queue",
+            trigger: QUEUE_SLASH,
+            title: language.t("command.prompt.queue"),
+            description: language.t("command.prompt.queue.description"),
+            type: "custom" as const,
+          },
+        ]
+
+    return [...custom, ...queue, ...builtin]
   })
 
   const handleSlashSelect = (cmd: SlashCommand | undefined) => {
@@ -1391,7 +1406,8 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
       ) {
         return
       }
-      void handleSubmit(event)
+      // Alt+Enter queues the prompt behind a running turn; Enter steers it.
+      void handleSubmit(event, { queue: event.altKey })
     }
   }
 

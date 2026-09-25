@@ -83,6 +83,7 @@ import { CorsConfig, isAllowedCorsOrigin, type CorsOptions } from "@reddb-io/red
 import { serveUIEffect } from "@/server/shared/ui"
 import { GoalRuntime } from "@/session/goal-runtime"
 import { SessionModelSuggestion } from "@/session/model-suggestion"
+import { SessionModelSwitch } from "@/session/model-switch"
 import { SessionSpend } from "@/session/spend"
 import { ServerAuth } from "@/server/auth"
 import { InstanceHttpApi, RootHttpApi } from "./api"
@@ -319,6 +320,7 @@ const app = LayerNode.group([
   PtyTicket.node,
   GoalRuntime.node,
   SessionModelSuggestion.node,
+  SessionModelSwitch.node,
   SessionSpend.node,
   SessionGoal.node,
   SessionPlan.node,

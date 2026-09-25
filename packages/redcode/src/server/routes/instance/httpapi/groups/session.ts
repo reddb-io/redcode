@@ -59,6 +59,16 @@ export const UpdatePayload = Schema.Struct({
       archived: Schema.optional(Session.ArchivedTimestamp),
     }),
   ),
+  model: Schema.optional(
+    Schema.Struct({
+      providerID: ProviderV2.ID,
+      modelID: ModelV2.ID,
+      variant: Schema.optional(Schema.String),
+    }),
+  ).annotate({
+    description:
+      "Select the session's model. A turn waiting out a provider retry delay retries its request on this model at once.",
+  }),
 })
 export const ForkPayload = Schema.Struct(Struct.omit(Session.ForkInput.fields, ["sessionID"]))
 export const InitPayload = Schema.Struct({

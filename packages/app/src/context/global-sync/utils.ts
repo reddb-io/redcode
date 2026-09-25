@@ -169,6 +169,8 @@ function routerOf(provider: object): Pick<Provider, "router"> {
       kind,
       ...(typeof router.instanceID === "string" ? { instanceID: router.instanceID } : {}),
       ...(typeof router.version === "string" ? { version: router.version } : {}),
+      ...(router.role === "admin" || router.role === "standard" ? { role: router.role } : {}),
+      ...(typeof router.mcp === "string" ? { mcp: router.mcp } : {}),
     },
   }
 }

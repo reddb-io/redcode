@@ -145,7 +145,8 @@ test("Enter sends through prompt_async under a client message ID, and retries a 
     expect(first!.body.messageID).toStartWith("msg_")
     // The same ID: the server takes the retry as the same prompt, never a second one.
     expect(retry!.body.messageID).toBe(first!.body.messageID!)
-    expect(first!.body.delivery).toBe("queue")
+    // Enter steers: on an idle session that runs right away, like any send.
+    expect(first!.body.delivery).toBe("steer")
     expect(first!.body.parts?.some((part) => part.text === "hello admission")).toBe(true)
     // Admitted, then cleared; the long synchronous send is not used.
     expect(app.input.plainText).toBe("")

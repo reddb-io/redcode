@@ -4342,6 +4342,11 @@ export class Session2 extends HeyApiClient {
       time?: {
         archived?: number
       }
+      model?: {
+        providerID: string
+        modelID: string
+        variant?: string
+      }
     },
     options?: Options<never, ThrowOnError>,
   ) {
@@ -4357,6 +4362,7 @@ export class Session2 extends HeyApiClient {
             { in: "body", key: "metadata" },
             { in: "body", key: "permission" },
             { in: "body", key: "time" },
+            { in: "body", key: "model" },
           ],
         },
       ],

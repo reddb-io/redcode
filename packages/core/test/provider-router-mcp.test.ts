@@ -254,6 +254,60 @@ describe("RouterMCP", () => {
   })
 })
 
+describe("RouterMCP.key", () => {
+  function keyServer(respond: (request: Request, origin: string) => Response) {
+    const seen: Array<string | null> = []
+    const server = Bun.serve({
+      hostname: "127.0.0.1",
+      port: 0,
+      fetch: (request) => {
+        seen.push(request.headers.get("authorization"))
+        return respond(request, new URL(request.url).origin)
+      },
+    })
+    servers.push(server)
+    return { baseURL: `http://127.0.0.1:${server.port}/v1`, seen }
+  }
+
+  test("reads the key's role and MCP server with the key", async () => {
+    const router = keyServer((_, origin) =>
+      Response.json({
+        object: "api_key",
+        id: "key_1",
+        name: "redcode",
+        role: "admin",
+        id_format: "flat",
+        mcp: { url: `${origin}/v1/mcp`, transport: "streamable-http", schema_version: 3, admin_tools: true },
+      }),
+    )
+    expect(await Effect.runPromise(RouterMCP.key({ baseURL: router.baseURL, apiKey: "sk-admin" }))).toEqual({
+      role: "admin",
+      mcp: `${router.baseURL}/mcp`,
+      version: 3,
+    })
+    expect(router.seen).toEqual(["Bearer sk-admin"])
+  })
+
+  test("a refused key, an older router or no key tells nothing", async () => {
+    const refused = keyServer(() => Response.json({ error: {} }, { status: 401 }))
+    expect(await Effect.runPromise(RouterMCP.key({ baseURL: refused.baseURL, apiKey: "sk-bad" }))).toBeUndefined()
+    const older = keyServer(() => new Response("not found", { status: 404 }))
+    expect(await Effect.runPromise(RouterMCP.key({ baseURL: older.baseURL, apiKey: "sk" }))).toBeUndefined()
+    expect(await Effect.runPromise(RouterMCP.key({ baseURL: older.baseURL }))).toBeUndefined()
+    expect(older.seen).toEqual(["Bearer sk"])
+  })
+
+  test("an MCP server on another origin is dropped, and an unknown role is none", async () => {
+    const router = keyServer(() => Response.json({ role: "standard", mcp: { url: "https://elsewhere.example/v1/mcp" } }))
+    expect(await Effect.runPromise(RouterMCP.key({ baseURL: router.baseURL, apiKey: "sk" }))).toEqual({
+      role: "standard",
+    })
+    expect(RouterMCP.keyRole("owner")).toBeUndefined()
+    expect(RouterMCP.mcpURL("http://127.0.0.1:25050/v1", "/v1/mcp")).toBe("http://127.0.0.1:25050/v1/mcp")
+    expect(RouterMCP.mcpURL("http://127.0.0.1:25050/v1", "http://user:pw@127.0.0.1:25050/v1/mcp")).toBeUndefined()
+  })
+})
+
 function record(value: unknown) {
   return typeof value === "object" && value !== null ? (value as Record<string, unknown>) : {}
 }

@@ -13,6 +13,13 @@ export function routerLabel(provider: Pick<Provider, "id" | "router">) {
   return undefined
 }
 
+/** A RedRouter key's role in words, e.g. `admin key`; undefined when the router did not say. */
+export function keyRoleLabel(role: string | undefined) {
+  if (role === "admin") return "admin key"
+  if (role === "standard") return "standard key"
+  return undefined
+}
+
 /** Finds, for every model, the other connections that serve the same upstream model. */
 export function originIndex(providers: Provider[]) {
   const routed = new Map<string, string[]>()

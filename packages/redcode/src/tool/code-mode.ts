@@ -6,6 +6,7 @@ import { PermissionV1 } from "@reddb-io/redcode-core/v1/permission"
 import { JsonSchemaValidate } from "@reddb-io/redcode-core/util/json-schema-validate"
 import { MCP } from "@/mcp"
 import { McpCatalog } from "@/mcp/catalog"
+import { McpProtected } from "@/mcp/protected"
 import { McpAttachments } from "@/mcp/attachments"
 import { Agent } from "@/agent/agent"
 import { Session } from "@/session/session"
@@ -432,7 +433,7 @@ export const CodeModeTool = Tool.define(
                     tool: entry.path,
                     args,
                   })
-                  yield* ask({ permission: entry.key, metadata: {}, patterns: ["*"], always: ["*"] })
+                  yield* ask(McpProtected.ask(entry.key, entry.tool, args))
                   const result = yield* callMcp(entry, args, signalFor(child)).pipe(
                     Effect.withSpan("Tool.execute", {
                       attributes: {

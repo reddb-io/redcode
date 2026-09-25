@@ -84,14 +84,18 @@ import {
   busyHint,
   distinctShiftReturn,
   escCrIsAltReturn,
+  isBusy,
   latestQueuedPrompt,
-  parseSteerCommand,
+  parseSlashCommand,
   promptDelivery,
+  promptKeyActive,
+  promptKeyRejects,
+  QUEUE_SLASH,
+  queueKeyIntent,
   STEER_SLASH,
-  steerKeyRejects,
-  steerKeyActive,
   steerKeyIntent,
-  stripSteerCommand,
+  stripSlashCommand,
+  type DeliverySlash,
   type KeyReport,
   type PromptIntent,
 } from "../../prompt/steer"
@@ -229,15 +233,15 @@ export function Prompt(props: PromptProps) {
   const renderer = useRenderer()
   const keymap = useOpencodeKeymap()
   const submitShortcut = useCommandShortcut("input.submit")
-  const steerShortcut = useCommandShortcut("input.steer")
-  // The terminal answers the capability query after startup, so the steer hint re-reads it then.
+  const queueShortcut = useCommandShortcut("input.queue")
+  // The terminal answers the capability query after startup, so the busy hint re-reads it then.
   const [kittyKeyboard, setKittyKeyboard] = createSignal(renderer.capabilities?.kitty_keyboard)
   const onCapabilities = (capabilities: { kitty_keyboard?: boolean } | null | undefined) =>
     setKittyKeyboard(capabilities?.kitty_keyboard)
   renderer.on("capabilities", onCapabilities)
   onCleanup(() => renderer.off("capabilities", onCapabilities))
   // A terminal that has sent Shift+Enter as a CSI report of its own does not map it to ESC CR, so
-  // from then on a bare ESC CR is alt+return and steers. Kept per renderer so the home and session
+  // from then on a bare ESC CR is alt+return and queues. Kept per renderer so the home and session
   // prompts share it.
   const [shiftReturnReported, setShiftReturnReported] = createSignal(shiftReturnReporters.has(renderer))
   // Observed ahead of the bindings: the newline binding consumes the key before plain listeners.
@@ -390,8 +394,8 @@ export function Prompt(props: PromptProps) {
   })
 
   // The prompt already waiting behind the running turn, which an empty steer acts on: rather than
-  // sending nothing, the steer key moves that prompt to the front instead of making the person
-  // type the same direction again.
+  // sending nothing, Enter (or an empty `/steer`) moves that prompt to the front instead of making
+  // the person type the same direction again.
   const queuedPrompt = createMemo(() => {
     if (!props.sessionID) return undefined
     return latestQueuedPrompt({
@@ -567,27 +571,24 @@ export function Prompt(props: PromptProps) {
         },
       },
       {
+        title: "Queue prompt",
+        desc: "Send the prompt after the agent's current turn instead of at its next step",
+        name: "prompt.queue",
+        category: "Prompt",
+        // A server command named `queue` owns the slash; the palette entry steps aside.
+        hidden: serverCommand(QUEUE_SLASH),
+        slashName: serverCommand(QUEUE_SLASH) ? undefined : QUEUE_SLASH,
+        run: () => runDeliveryCommand(QUEUE_SLASH),
+      },
+      {
         title: "Steer running agent",
-        desc: "Deliver the prompt at the agent's next step instead of queueing it",
+        desc: "Deliver the prompt at the agent's next step, as Enter does while it works",
         name: "prompt.steer",
         category: "Prompt",
         // A server command named `steer` owns the slash; the palette entry steps aside.
-        hidden: serverSteerCommand(),
-        slashName: serverSteerCommand() ? undefined : STEER_SLASH,
-        run: async () => {
-          dialog.clear()
-          const text = input.plainText
-          // Picked from the slash list or the palette with nothing to send yet: leave `/steer `
-          // in the prompt so the direction can be typed and sent with enter.
-          if (!text.trim() || /^\/\S*$/.test(text)) {
-            input.setText(`/${STEER_SLASH} `)
-            setStore("prompt", "input", input.plainText)
-            input.gotoBufferEnd()
-            input.focus()
-            return
-          }
-          await submit("steer")
-        },
+        hidden: serverCommand(STEER_SLASH),
+        slashName: serverCommand(STEER_SLASH) ? undefined : STEER_SLASH,
+        run: () => runDeliveryCommand(STEER_SLASH),
       },
       {
         title: "Steer queued prompt",
@@ -1037,44 +1038,40 @@ export function Prompt(props: PromptProps) {
     }
   })
 
-  // The steer key (alt+return by default) is "send now" in both states: while the session works it
-  // steers, delivering at the next step instead of queueing; idle it submits exactly like Enter.
-  // It sits above the managed textarea layer, where `input_newline` also lists alt+return: a bare
-  // ESC CR is rejected here and falls through to that newline, because terminals that map
+  // Enter steers while the session works. The queue key (alt+return by default) is "send" in both
+  // states: while the session works it queues, delivering when the turn ends instead of at its next
+  // step; idle it submits exactly like Enter. An explicitly configured steer key does what Enter
+  // does. Both sit above the managed textarea layer, where `input_newline` also lists alt+return: a
+  // bare ESC CR is rejected here and falls through to that newline, because terminals that map
   // Shift+Enter to ESC CR send exactly what a legacy alt+return sends, unless the terminal has
   // shown its Shift+Enter is something else or the config keeps alt+return off `input_newline`.
+  const promptKey = (name: string, title: string, intentFor: (statusType: string | undefined) => PromptIntent) => ({
+    name,
+    title,
+    category: "Prompt",
+    // IME: double-defer like the textarea's native submit so the last composed character lands.
+    run: (ctx: { event?: KeyReport }) => {
+      if (promptKeyRejects(ctx.event, escCr())) return false
+      setTimeout(
+        () =>
+          setTimeout(() => {
+            // Judged at press time, not when the layer was set up: a press as the turn ends still
+            // does the right thing.
+            void submit(intentFor(status().type))
+          }, 0),
+        0,
+      )
+    },
+  })
   useBindings(() => ({
     target: inputTarget,
-    enabled: steerKeyActive({ focused: inputTarget() !== undefined, disabled: Boolean(props.disabled) }),
+    enabled: promptKeyActive({ focused: inputTarget() !== undefined, disabled: Boolean(props.disabled) }),
     priority: 1,
     commands: [
-      {
-        name: "input.steer",
-        title: "Steer running agent",
-        category: "Prompt",
-        // IME: double-defer like the textarea's native submit so the last composed character lands.
-        run: (ctx: { event?: KeyReport }) => {
-          if (steerKeyRejects(ctx.event, escCr())) return false
-          setTimeout(
-            () =>
-              setTimeout(() => {
-                // Judged at press time, not when the layer was set up: a press as the turn ends
-                // still does the right thing.
-                const intent = steerKeyIntent(status().type)
-                // Nothing typed while busy: steer what is already queued instead of sending an
-                // empty prompt.
-                if (intent === "steer" && !store.prompt.input.trim() && queuedPrompt()) {
-                  void steerQueuedPrompt()
-                  return
-                }
-                void submit(intent)
-              }, 0),
-            0,
-          )
-        },
-      },
+      promptKey("input.queue", "Queue prompt", queueKeyIntent),
+      promptKey("input.steer", "Steer running agent", steerKeyIntent),
     ],
-    bindings: tuiConfig.keybinds.gather("prompt.steer", ["input.steer"]),
+    bindings: tuiConfig.keybinds.gather("prompt.send", ["input.queue", "input.steer"]),
   }))
 
   useBindings(() => {
@@ -1199,12 +1196,27 @@ export function Prompt(props: PromptProps) {
     }
   })
 
-  function serverSteerCommand() {
-    return sync.data.command.some((x) => x.name === STEER_SLASH)
+  function serverCommand(name: string) {
+    return sync.data.command.some((x) => x.name === name)
   }
 
-  function steerCommandAvailable() {
-    return store.mode !== "shell" && !serverSteerCommand()
+  function slashCommandAvailable(name: DeliverySlash) {
+    return store.mode !== "shell" && !serverCommand(name)
+  }
+
+  async function runDeliveryCommand(name: DeliverySlash) {
+    dialog.clear()
+    const text = input.plainText
+    // Picked from the slash list or the palette with nothing to send yet: leave `/queue ` or
+    // `/steer ` in the prompt so the text can be typed and sent with enter.
+    if (!text.trim() || /^\/\S*$/.test(text)) {
+      input.setText(`/${name} `)
+      setStore("prompt", "input", input.plainText)
+      input.gotoBufferEnd()
+      input.focus()
+      return
+    }
+    await submit(name)
   }
 
   let submitting = false
@@ -1238,6 +1250,10 @@ export function Prompt(props: PromptProps) {
     if (props.disabled) return false
     if (workspace.creating() || move.creating()) return false
     if (auto()?.visible) return false
+    // Enter (or a configured steer key) on an empty prompt while the session works steers the
+    // prompt already queued behind the running turn, the only thing an empty steer can mean.
+    if (intent !== "queue" && !store.prompt.input.trim() && isBusy(status().type) && queuedPrompt())
+      return steerQueuedPrompt()
     if (!promptMessageText(store.prompt.input)) return false
     const agent = local.agent.current()
     if (!agent) return false
@@ -1273,7 +1289,7 @@ export function Prompt(props: PromptProps) {
 
     // An empty `/steer` sends nothing, and must not create a session on the way. With a prompt
     // already queued it steers that one, which is the only thing an empty steer can mean.
-    if (steerCommandAvailable() && parseSteerCommand(store.prompt.input)?.trim() === "") {
+    if (slashCommandAvailable(STEER_SLASH) && parseSlashCommand(STEER_SLASH, store.prompt.input)?.trim() === "") {
       if (!queuedPrompt()) return false
       // Cleared only once the steer is accepted, so a refused one leaves the text to try again.
       if (!(await steerQueuedPrompt())) return false
@@ -1334,14 +1350,17 @@ export function Prompt(props: PromptProps) {
     // Filter out text parts (pasted content) since they're now expanded inline
     let nonTextParts = store.prompt.parts.filter((part) => part.type !== "text")
 
-    // `/steer <text>` steers from any terminal, including those that report alt+return as a
-    // plain return. A server command with the same name keeps precedence.
-    const steerCommand = steerCommandAvailable() ? stripSteerCommand(inputText, nonTextParts) : undefined
-    if (steerCommand) {
-      if (!steerCommand.text.trim()) return false
-      inputText = steerCommand.text
-      nonTextParts = steerCommand.parts
-      intent = "steer"
+    // `/queue <text>` queues from any terminal, including those that report alt+return as a plain
+    // return, and `/steer <text>` steers. A server command with the same name keeps precedence.
+    const slashDelivery = ([QUEUE_SLASH, STEER_SLASH] as const).flatMap((name) => {
+      const stripped = slashCommandAvailable(name) ? stripSlashCommand(name, inputText, nonTextParts) : undefined
+      return stripped ? [{ ...stripped, intent: name }] : []
+    })[0]
+    if (slashDelivery) {
+      if (!slashDelivery.text.trim()) return false
+      inputText = slashDelivery.text
+      nonTextParts = slashDelivery.parts
+      intent = slashDelivery.intent
     }
 
     // `/goal <text>`, its subcommands and the retired `/goal-*` spellings; a server command with the
@@ -1406,7 +1425,7 @@ export function Prompt(props: PromptProps) {
       move.startSubmit()
       void goals.run(sessionID, goalCommand)
     } else if (
-      !steerCommand &&
+      !slashDelivery &&
       inputText.startsWith("/") &&
       sync.data.command.some((x) => x.name === inputText.split("\n")[0].split(" ")[0].slice(1))
     ) {
@@ -1429,8 +1448,9 @@ export function Prompt(props: PromptProps) {
       })
     } else {
       move.startSubmit()
-      // Enter queues behind a running turn, the steer key delivers at its next step. Both run right
-      // away on an idle session, so the delivery is always sent: no client-side status to race.
+      // Enter steers a running turn at its next step, the queue key waits for the turn to end. Both
+      // run right away on an idle session, so the delivery is always sent: no client-side status to
+      // race.
       // Nothing is cleared until the server has admitted the prompt (see `admitPrompt`): a send
       // that fails leaves the text where it was, to send again, instead of losing it.
       const delivery = promptDelivery(intent)
@@ -1992,11 +2012,11 @@ export function Prompt(props: PromptProps) {
                 <text fg={theme.textMuted} flexShrink={1}>
                   {busyHint({
                     submitKey: submitShortcut(),
-                    steerKey: steerShortcut(),
+                    queueKey: queueShortcut(),
                     kittyKeyboard: kittyKeyboard(),
                     env: { TERM_PROGRAM: process.env.TERM_PROGRAM, WT_SESSION: process.env.WT_SESSION },
                     queued: !store.prompt.input.trim() && queuedPrompt() !== undefined,
-                    escCrSteers: escCrIsAltReturn(escCr()),
+                    escCrQueues: escCrIsAltReturn(escCr()),
                   })}
                 </text>
                 <text fg={store.interrupt > 0 ? theme.primary : theme.text}>

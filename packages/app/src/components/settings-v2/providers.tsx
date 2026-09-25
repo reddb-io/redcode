@@ -70,6 +70,14 @@ export const SettingsProvidersV2: Component<{
     return
   }
 
+  // A RedRouter connection says what its key may do: an admin key also manages keys over MCP.
+  const keyRole = (item: ProviderItem) => {
+    const role = item.router?.role
+    if (role === "admin") return language.t("settings.providers.tag.adminKey")
+    if (role === "standard") return language.t("settings.providers.tag.standardKey")
+    return undefined
+  }
+
   const type = (item: ProviderItem) => {
     const router = routerName(item)
     if (router) return router
@@ -123,6 +131,7 @@ export const SettingsProvidersV2: Component<{
                       <div class="settings-v2-provider-main">
                         <span class="settings-v2-provider-name truncate">{item.name}</span>
                         <Tag>{type(item)}</Tag>
+                      <Show when={keyRole(item)}>{(role) => <Tag>{role()}</Tag>}</Show>
                       </div>
                     </div>
                     <ButtonV2
