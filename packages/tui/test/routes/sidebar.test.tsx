@@ -1,9 +1,10 @@
 import { afterEach, expect, mock, test } from "bun:test"
-import type { TuiPluginApi } from "@reddb-io/redcode-plugin/tui"
+import type { TuiPluginApi, TuiPluginMeta, TuiSlotPlugin } from "@reddb-io/redcode-plugin/tui"
 import { createTestRenderer } from "@opentui/core/testing"
 import { Effect } from "effect"
 import { AppNodeBuilder } from "@reddb-io/redcode-core/effect/app-node-builder"
 import { Global } from "@reddb-io/redcode-core/global"
+import { createBuiltinPlugins } from "../../src/feature-plugins/builtins"
 import { createTuiResolvedConfig } from "../fixture/tui-runtime"
 import { createEventSource, createFetch, directory, json, worktree } from "../fixture/tui-sdk"
 
@@ -141,7 +142,39 @@ async function mountSidebar(input: {
       events: createEventSource().source,
       args: {},
       pluginHost: {
+        // Only the built-in sidebar plugins, registered the way the real host does it, so the sidebar
+        // renders its real sections without loading any other plugin.
         async start(started) {
+          const slots = started.runtime.setupSlots(started.api)
+          const sidebarPlugins = createBuiltinPlugins({ experimentalEventSystem: false }).filter((plugin) =>
+            plugin.id.startsWith("internal:sidebar-"),
+          )
+          for (const plugin of sidebarPlugins) {
+            await plugin.tui(
+              {
+                ...started.api,
+                slots: {
+                  register(slot: TuiSlotPlugin) {
+                    slots.register({ ...slot, id: plugin.id })
+                    return plugin.id
+                  },
+                },
+              },
+              undefined,
+              {
+                id: plugin.id,
+                source: "internal",
+                spec: plugin.id,
+                target: plugin.id,
+                first_time: 0,
+                last_time: 0,
+                time_changed: 0,
+                load_count: 1,
+                fingerprint: "test",
+                state: "same",
+              } satisfies TuiPluginMeta,
+            )
+          }
           ready.resolve(started.api)
         },
         async dispose() {},
