@@ -41,18 +41,44 @@ export function originIndex(providers: Provider[]) {
 
 export type OriginIndex = ReturnType<typeof originIndex>
 
-/** Where a model comes from: `direct`, or `via RedRouter · OpenAI Codex · subscription`, plus duplicates. */
-export function originDescription(index: OriginIndex, provider: Provider, model: Model) {
+/**
+ * The connection a model is served through: `via RedRouter[ → RedRouter]`, or `direct`. Shown as a
+ * title suffix when another catalog entry renders with the same name, so two entries reachable
+ * through different router chains (e.g. one direct via RedRouter, one via a remote RedRouter) stay
+ * distinguishable even when the row is filtered or truncated before the description is reached.
+ * `originIndex.also` only tracks distinct router *labels*, so it does not by itself catch two
+ * entries served by the same router through a different chain; callers decide when names collide.
+ */
+export function routeLabel(provider: Provider, model: Model) {
+  const router = routerLabel(provider)
+  if (!router) return "direct"
+  // A router serving the model through another router (a remote RedRouter) names that one too.
+  return model.via ? `via ${router} → ${model.via}` : `via ${router}`
+}
+
+/** The parts of `originDescription` after the route: upstream name, subscription, and duplicate connections. */
+function originDetails(index: OriginIndex, provider: Provider, model: Model) {
   const router = routerLabel(provider)
   const also = index.also(provider, model)
-  if (!router) return ["direct", ...(also.length ? [`also via ${also.join(", ")}`] : [])].join(" · ")
+  if (!router) return also.length ? [`also via ${also.join(", ")}`] : []
   return [
-    // A router serving the model through another router (a remote RedRouter) names that one too.
-    model.via ? `via ${router} → ${model.via}` : `via ${router}`,
     ...(model.upstream ? [model.upstream.name] : []),
     ...(model.upstream?.subscription ? ["subscription"] : []),
     ...(also.length ? [`also ${also.join(", ")}`] : []),
-  ].join(" · ")
+  ]
+}
+
+/** Where a model comes from: `direct`, or `via RedRouter · OpenAI Codex · subscription`, plus duplicates. */
+export function originDescription(index: OriginIndex, provider: Provider, model: Model) {
+  return [routeLabel(provider, model), ...originDetails(index, provider, model)].join(" · ")
+}
+
+/**
+ * `originDescription` without its `via <router>` (or `direct`) route, for callers that already show
+ * the route elsewhere (e.g. as a title suffix) and would otherwise repeat it.
+ */
+export function originDescriptionDetail(index: OriginIndex, provider: Provider, model: Model) {
+  return originDetails(index, provider, model).join(" · ")
 }
 
 /** Routed models are grouped per upstream provider inside their router connection. */
