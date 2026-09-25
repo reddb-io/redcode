@@ -125,6 +125,7 @@ const nodes = () =>
     SessionPlan.node,
     SessionSpend.node,
     Provider.node,
+    HookV2Bridge.node,
   ])
 
 const layer = (flags: Partial<RuntimeFlags.Info> = {}) =>
