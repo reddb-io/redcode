@@ -71,6 +71,7 @@ import { SessionRevert } from "../../src/session/revert"
 import { SessionRunState } from "../../src/session/run-state"
 import { MessageID, PartID, SessionID } from "../../src/session/schema"
 import { SessionStatus } from "../../src/session/status"
+import { SessionModelSwitch } from "../../src/session/model-switch"
 import { SessionV2 } from "@reddb-io/redcode-core/session"
 import { SessionEvent } from "@reddb-io/redcode-core/session/event"
 import { SessionInput } from "@reddb-io/redcode-core/session/input"
@@ -359,6 +360,7 @@ const promptRoot = LayerNode.group([
   BackgroundJob.node,
   MonitorRuntime.node,
   SessionStatus.node,
+  SessionModelSwitch.node,
   SessionRunState.node,
   Database.node,
   EventV2Bridge.node,
@@ -1583,6 +1585,128 @@ it.instance("loop calls LLM and returns assistant message", () =>
     expect(parts.some((p) => p.type === "text" && p.text === "world")).toBe(true)
     expect(yield* llm.hits).toHaveLength(1)
   }),
+)
+
+// A second model on the test provider, for a turn to switch to.
+function otherModelCfg(url: string) {
+  const base = providerCfg(url)
+  return {
+    ...base,
+    provider: {
+      ...base.provider,
+      test: {
+        ...base.provider.test,
+        models: {
+          ...base.provider.test.models,
+          "test-other": { ...base.provider.test.models["test-model"], id: "test-other", name: "Test Other" },
+        },
+      },
+    },
+  }
+}
+
+const startRetryWait = Effect.fn("test.startRetryWait")(function* () {
+  const { llm } = yield* useServerConfig(otherModelCfg)
+  const prompt = yield* SessionPrompt.Service
+  const sessions = yield* Session.Service
+  const status = yield* SessionStatus.Service
+  const chat = yield* sessions.create({
+    title: "Pinned",
+    permission: [{ permission: "*", pattern: "*", action: "allow" }],
+  })
+  yield* prompt.prompt({
+    sessionID: chat.id,
+    agent: "build",
+    model: ref,
+    noReply: true,
+    parts: [{ type: "text", text: "hello" }],
+  })
+  // Well inside the two minutes a retry still waits out, and far longer than any test runs.
+  yield* llm.error(429, { error: { message: "Too many requests", type: "rate_limit_error" } }, { "retry-after": "90" })
+  const run = yield* prompt.loop({ sessionID: chat.id }).pipe(Effect.forkChild)
+  const waiting = yield* pollWithTimeout(
+    status.get(chat.id).pipe(Effect.map((value) => (value.type === "retry" ? value : undefined))),
+    "the turn never waited to retry",
+    "10 seconds",
+  )
+  return { llm, prompt, sessions, status, chat, run, waiting }
+})
+
+it.instance(
+  "a model selected while a retry waits takes the same request at once, with fresh attempts",
+  () =>
+    Effect.gen(function* () {
+      const { llm, sessions, chat, run, waiting } = yield* startRetryWait()
+      const switches = yield* SessionModelSwitch.Service
+      const other = { providerID: ref.providerID, modelID: ModelV2.ID.make("test-other") }
+      expect(waiting.message).toStartWith("test · Test Model: ")
+      expect(waiting.attempt).toBe(1)
+      // The first request on the new model fails too: its retry counts from one again.
+      yield* llm.error(
+        429,
+        { error: { message: "Too many requests", type: "rate_limit_error" } },
+        { "retry-after-ms": "50" },
+      )
+      yield* llm.text("answered by the other model")
+      const attempts: number[] = []
+      const events = yield* EventV2Bridge.Service
+      const off = yield* events.listen((evt) => {
+        if (evt.type !== SessionStatus.Event.Status.type) return Effect.void
+        const data = evt.data as typeof SessionStatus.Event.Status.data.Type
+        if (data.sessionID === chat.id && data.status.type === "retry") attempts.push(data.status.attempt)
+        return Effect.void
+      })
+
+      expect(yield* switches.select(chat.id, other)).toBe(true)
+      yield* awaitWithTimeout(Fiber.join(run), "the switch did not retry at once", "10 seconds")
+      yield* off
+
+      expect((yield* llm.hits).map((hit) => hit.body.model)).toEqual(["test-model", "test-other", "test-other"])
+      expect(attempts).toEqual([1])
+      const messages = yield* sessions.messages({ sessionID: chat.id })
+      const assistants = messages.filter((message) => message.info.role === "assistant")
+      expect(assistants.map((message) => message.info.role === "assistant" && message.info.modelID)).toEqual([
+        "test-other",
+      ])
+      expect(JSON.stringify(assistants[0]?.parts)).toContain("answered by the other model")
+      const user = messages.find((message) => message.info.role === "user")
+      expect(user?.info.role === "user" && user.info.model.modelID).toBe("test-other")
+    }),
+  30_000,
+)
+
+it.instance(
+  "selecting the model already in use does not cut a retry wait short",
+  () =>
+    Effect.gen(function* () {
+      const { chat, run, prompt } = yield* startRetryWait()
+      const switches = yield* SessionModelSwitch.Service
+      expect(yield* switches.select(chat.id, ref)).toBe(false)
+      yield* prompt.cancel(chat.id)
+      yield* awaitWithTimeout(Fiber.await(run), "Esc did not end the wait", "10 seconds")
+    }),
+  30_000,
+)
+
+it.instance(
+  "Esc while a retry waits ends the turn at once",
+  () =>
+    Effect.gen(function* () {
+      const { llm, prompt, sessions, status, chat, run } = yield* startRetryWait()
+      yield* prompt.cancel(chat.id)
+      yield* awaitWithTimeout(Fiber.await(run), "Esc did not end the wait", "10 seconds")
+
+      expect(yield* llm.hits).toHaveLength(1)
+      yield* pollWithTimeout(
+        status.get(chat.id).pipe(Effect.map((value) => (value.type === "idle" ? true : undefined))),
+        "the session never went idle",
+      )
+      const last = (yield* sessions.messages({ sessionID: chat.id })).findLast(
+        (message) => message.info.role === "assistant",
+      )
+      expect(last?.info.role === "assistant" && last.info.error?.name).toBe("MessageAbortedError")
+    }),
+  30_000,
 )
 
 withMcpInstructions.instance(

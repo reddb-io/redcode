@@ -5,7 +5,7 @@ import { EventV2Bridge } from "@/event-v2-bridge"
 import { OperationHookBridge } from "@/operation-hook-bridge"
 import { expect } from "bun:test"
 import { tool } from "ai"
-import { Cause, Effect, Exit, Fiber, Layer, Stream } from "effect"
+import { Cause, Deferred, Effect, Exit, Fiber, Layer, Stream } from "effect"
 import path from "path"
 import z from "zod"
 import type { Agent } from "../../src/agent/agent"
@@ -824,6 +824,151 @@ it.live("session.processor effect tests publish retry status updates", () =>
         expect(value).toBe("continue")
         expect(yield* llm.calls).toBe(2)
         expect(states).toStrictEqual([1])
+      }),
+    { config: (url) => providerCfg(url) },
+  ),
+)
+
+// One step of the chat below, sent through a fresh handle for its first assistant message.
+const retryStep = Effect.fn("test.retryStep")(function* (
+  dir: string,
+  text: string,
+  options?: { switched?: Effect.Effect<unknown> },
+) {
+  const { processors, session, provider } = yield* boot()
+  const chat = yield* session.create({})
+  const parent = yield* user(chat.id, text)
+  const msg = yield* assistant(chat.id, parent.id, path.resolve(dir))
+  const mdl = yield* provider.getModel(ref.providerID, ref.modelID)
+  const handle = yield* processors.create({
+    assistantMessage: msg,
+    sessionID: chat.id,
+    model: mdl,
+    switched: options?.switched,
+  })
+  const run = handle.process({
+    user: {
+      id: parent.id,
+      sessionID: chat.id,
+      role: "user",
+      time: parent.time,
+      agent: parent.agent,
+      model: { providerID: ref.providerID, modelID: ref.modelID },
+    } satisfies SessionV1.User,
+    sessionID: chat.id,
+    model: mdl,
+    agent: agent(),
+    system: [],
+    messages: [{ role: "user", content: text }],
+    tools: {},
+  })
+  return { chat, handle, run }
+})
+
+const retryStatus = (sessionID: SessionID) =>
+  Effect.gen(function* () {
+    const status = yield* SessionStatus.Service
+    const stop = Date.now() + 10_000
+    while (Date.now() < stop) {
+      const value = yield* status.get(sessionID)
+      if (value.type === "retry") return value
+      yield* Effect.sleep("10 millis")
+    }
+    return yield* Effect.fail(new Error("the step never waited to retry"))
+  })
+
+const rateLimited = { error: { message: "Too many requests", type: "rate_limit_error" } }
+
+it.live("session.processor effect tests end the step at once on a quota that resets far off", () =>
+  provideTmpdirServer(
+    ({ dir, llm }) =>
+      Effect.gen(function* () {
+        const at = new Date(Date.now() + 3_600_000).toISOString()
+        yield* llm.error(
+          429,
+          { error: { message: "The usage limit has been reached" } },
+          { "x-9router-reason": "quota_exhausted", "x-9router-retry-at": at },
+        )
+        yield* llm.text("never asked for")
+        const { handle, run } = yield* retryStep(dir, "quota")
+
+        const value = yield* run
+
+        expect(value).toBe("stop")
+        expect(yield* llm.calls).toBe(1)
+        expect(handle.exhausted?.quota).toBe(true)
+        const error = handle.message.error
+        if (!SessionV1.APIError.isInstance(error)) throw new Error("expected APIError")
+        expect(error.data.message).toStartWith("test · Test Model quota exhausted until ")
+        expect(error.data.message).toEndWith("; switch model with /model or wait")
+      }),
+    { config: (url) => providerCfg(url) },
+  ),
+)
+
+it.live("session.processor effect tests retry a short Retry-After and name the model waited for", () =>
+  provideTmpdirServer(
+    ({ dir, llm }) =>
+      Effect.gen(function* () {
+        const events = yield* EventV2Bridge.Service
+        yield* llm.error(429, rateLimited, { "retry-after-ms": "50" })
+        yield* llm.text("recovered")
+        const { chat, handle, run } = yield* retryStep(dir, "short wait")
+        const messages: string[] = []
+        const off = yield* events.listen((evt) => {
+          if (evt.type !== SessionStatus.Event.Status.type) return Effect.void
+          const data = evt.data as typeof SessionStatus.Event.Status.data.Type
+          if (data.sessionID === chat.id && data.status.type === "retry") messages.push(data.status.message)
+          return Effect.void
+        })
+
+        const value = yield* run
+        yield* off
+
+        expect(value).toBe("continue")
+        expect(yield* llm.calls).toBe(2)
+        expect(handle.exhausted).toBeUndefined()
+        expect(messages).toHaveLength(1)
+        expect(messages[0]).toStartWith("test · Test Model: ")
+      }),
+    { config: (url) => providerCfg(url) },
+  ),
+)
+
+it.live("session.processor effect tests end a retry wait at once when another model is selected", () =>
+  provideTmpdirServer(
+    ({ dir, llm }) =>
+      Effect.gen(function* () {
+        const picked = yield* Deferred.make<void>()
+        yield* llm.error(429, rateLimited, { "retry-after": "90" })
+        const { chat, run } = yield* retryStep(dir, "switch", { switched: Deferred.await(picked) })
+        const fiber = yield* run.pipe(Effect.forkChild)
+
+        yield* retryStatus(chat.id)
+        yield* Deferred.succeed(picked, undefined)
+        const value = yield* Fiber.join(fiber).pipe(Effect.timeout("5 seconds"))
+
+        expect(value).toBe("switch")
+        expect(yield* llm.calls).toBe(1)
+      }),
+    { config: (url) => providerCfg(url) },
+  ),
+)
+
+it.live("session.processor effect tests stop a retry wait on interrupt", () =>
+  provideTmpdirServer(
+    ({ dir, llm }) =>
+      Effect.gen(function* () {
+        yield* llm.error(429, rateLimited, { "retry-after": "90" })
+        const { chat, run } = yield* retryStep(dir, "esc")
+        const fiber = yield* run.pipe(Effect.forkChild)
+
+        yield* retryStatus(chat.id)
+        yield* Fiber.interrupt(fiber).pipe(Effect.timeout("5 seconds"))
+        const exit = yield* Fiber.await(fiber)
+
+        expect(Exit.isFailure(exit) && Cause.hasInterruptsOnly(exit.cause)).toBe(true)
+        expect(yield* llm.calls).toBe(1)
       }),
     { config: (url) => providerCfg(url) },
   ),

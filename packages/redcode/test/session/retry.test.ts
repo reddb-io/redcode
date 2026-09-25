@@ -606,6 +606,37 @@ describe("router retry headers", () => {
     expect(parsed.message).toContain(`router: quota exhausted until ${at}`)
   })
 
+  test("an exhausted quota that resets far off is not waited for", () => {
+    const at = new Date(Date.now() + 3_600_000).toISOString()
+    const error = MessageV2.fromError(
+      new APICallError({
+        message: "The usage limit has been reached",
+        url: "http://127.0.0.1:25050/v1/chat/completions",
+        requestBodyValues: {},
+        statusCode: 429,
+        responseHeaders: { "x-9router-reason": "quota_exhausted", "x-9router-retry-at": at },
+        responseBody: '{"error":{"message":"The usage limit has been reached"}}',
+        isRetryable: true,
+      }),
+      { providerID },
+    )
+    if (!SessionV1.APIError.isInstance(error)) throw new Error("expected APIError")
+    expect(SessionRetry.retryable(error, retryProvider)).toBeUndefined()
+    const exhausted = SessionRetry.exhausted(error)
+    expect(exhausted?.quota).toBe(true)
+    expect(Math.abs((exhausted?.until ?? 0) - Date.parse(at))).toBeLessThan(1_000)
+  })
+
+  test("a provider wait over two minutes is not waited for; a shorter one still is", () => {
+    const long = apiError({ "retry-after": "300" })
+    expect(SessionRetry.exhausted(long)).toBeDefined()
+    expect(SessionRetry.retryable(long, retryProvider)).toBeUndefined()
+    const short = apiError({ "retry-after": "90" })
+    expect(SessionRetry.exhausted(short)).toBeUndefined()
+    expect(SessionRetry.retryable(short, retryProvider)).toBeDefined()
+    expect(SessionRetry.delay(1, short)).toBe(90_000)
+  })
+
   test("no active credentials is not retried, whatever the status", () => {
     const error = MessageV2.fromError(routerError(503, { "x-9router-reason": "no_active_credentials" }), {
       providerID,

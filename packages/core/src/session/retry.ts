@@ -28,6 +28,11 @@ export const RETRY_MAX_DELAY_NO_HEADERS = 30_000 // 30 seconds
 /** Bounds provider-requested waits so a hostile or buggy retry-after cannot stall a session for hours. */
 export const RETRY_MAX_DELAY = 15 * 60 * 1000 // 15 minutes
 export const RETRY_MAX_RETRIES = 5
+/**
+ * The longest reset a retry waits out. A quota or rate limit that frees up later is surfaced at once,
+ * so the person can switch models instead of watching a countdown on one they cannot use.
+ */
+export const RETRY_MAX_RESET_WAIT = 2 * 60 * 1000
 export const CONNECTION_CONTINUATION_MAX_RETRIES = 3
 export const CONNECTION_CONTINUATION_PROMPT =
   "The provider connection was interrupted after producing durable output. Continue the task from the existing assistant output and completed tool results. Do not repeat completed tools or text already present."
@@ -59,40 +64,26 @@ function cap(ms: number) {
 }
 
 export function delay(attempt: number, error?: SessionV1.APIError, random = Math.random()) {
-  if (error) {
-    const headers = error.data.responseHeaders
-    if (headers) {
-      const retryAfterMs = headers["retry-after-ms"]
-      if (retryAfterMs) {
-        const parsedMs = Number.parseFloat(retryAfterMs)
-        if (!Number.isNaN(parsedMs)) {
-          return cap(parsedMs)
-        }
-      }
-
-      // 9Router and RedRouter name the instant an account frees up; Retry-After rounds it up a second.
-      const retryAt = Date.parse(ProviderRouter.header(headers, ProviderRouter.Header.retryAt) ?? "") - Date.now()
-      if (!Number.isNaN(retryAt) && retryAt > 0) return cap(Math.ceil(retryAt))
-
-      const retryAfter = headers["retry-after"]
-      if (retryAfter) {
-        const parsedSeconds = Number.parseFloat(retryAfter)
-        if (!Number.isNaN(parsedSeconds)) {
-          // convert seconds to milliseconds
-          return cap(Math.ceil(parsedSeconds * 1000))
-        }
-        // Try parsing as HTTP date format
-        const parsed = Date.parse(retryAfter) - Date.now()
-        if (!Number.isNaN(parsed) && parsed > 0) {
-          return cap(Math.ceil(parsed))
-        }
-      }
-
-      return cap(exponential(attempt, random))
-    }
-  }
-
+  const headers = error?.data.responseHeaders
+  if (headers) return cap(requested(headers) ?? exponential(attempt, random))
   return cap(Math.min(exponential(attempt, random), RETRY_MAX_DELAY_NO_HEADERS))
+}
+
+/** How long the provider asked to wait, uncapped: retry-after-ms, a router's retry-at, then retry-after. */
+function requested(headers: Readonly<Record<string, string>>, now = Date.now()) {
+  const retryAfterMs = Number.parseFloat(headers["retry-after-ms"] ?? "")
+  if (!Number.isNaN(retryAfterMs)) return retryAfterMs
+  // 9Router and RedRouter name the instant an account frees up; Retry-After rounds it up a second.
+  const retryAt = Date.parse(ProviderRouter.header(headers, ProviderRouter.Header.retryAt) ?? "") - now
+  if (!Number.isNaN(retryAt) && retryAt > 0) return Math.ceil(retryAt)
+  const retryAfter = headers["retry-after"]
+  if (!retryAfter) return undefined
+  const seconds = Number.parseFloat(retryAfter)
+  if (!Number.isNaN(seconds)) return Math.ceil(seconds * 1000)
+  // An HTTP date
+  const date = Date.parse(retryAfter) - now
+  if (!Number.isNaN(date) && date > 0) return Math.ceil(date)
+  return undefined
 }
 
 function exponential(attempt: number, random: number) {
@@ -108,6 +99,7 @@ export function retryable(error: Err, _provider: string): Retryable | undefined 
     if (STREAM_REFUSALS.has(error.data.metadata?.classification ?? "")) return undefined
     const headers = error.data.responseHeaders
     if (!routerRetryable(headers)) return undefined
+    if (exhausted(error)) return undefined
     const status = error.data.statusCode
     // A router that names its reason owns the decision: its `quota_exhausted` is a cooling-down account.
     if (!routed(headers) && refused({ status, body: error.data.responseBody, message: error.data.message }))
@@ -192,6 +184,7 @@ export function retryableLLM(error: LLMError): Retryable | undefined {
   const body = "http" in reason ? reason.http?.body : undefined
   const headers = "http" in reason ? reason.http?.response?.headers : undefined
   if (!routerRetryable(headers)) return undefined
+  if (exhaustedLLM(error)) return undefined
   if (reason._tag === "QuotaExceeded" || reason._tag === "ContentPolicy") return undefined
   if (!routed(headers) && refused({ status, body, message: reason.message })) return undefined
   if (
@@ -229,10 +222,113 @@ export function delayLLM(attempt: number, error: LLMError, random = Math.random(
   return delay(attempt, error_, random)
 }
 
+/** A provider that will not serve the model before `until`: a quota, or a rate limit, that resets too far off to wait for. */
+export type Exhausted = {
+  readonly until: number
+  /** Whether the failure names a quota or usage limit rather than a plain wait. */
+  readonly quota: boolean
+}
+
+/** When the failure's reset is further off than RETRY_MAX_RESET_WAIT: the instant it frees up. */
+export function exhausted(error: Err, now = Date.now()): Exhausted | undefined {
+  if (!SessionV1.APIError.isInstance(error)) return undefined
+  return farReset({
+    headers: error.data.responseHeaders,
+    status: error.data.statusCode,
+    texts: [error.data.message, error.data.responseBody],
+    now,
+  })
+}
+
+/** `exhausted` over the v2 runner's typed `LLMError`, which also carries a parsed `retryAfterMs`. */
+export function exhaustedLLM(error: LLMError, now = Date.now()): Exhausted | undefined {
+  const reason = error.reason
+  const headers = "http" in reason ? reason.http?.response?.headers : undefined
+  const lower: Record<string, string> = Object.fromEntries(
+    Object.entries(headers ?? {}).map(([key, value]) => [key.toLowerCase(), value]),
+  )
+  // As delayLLM: the typed wait stands in only for a response that sent no retry-after of its own.
+  if (error.retryAfterMs !== undefined && lower["retry-after-ms"] === undefined && lower["retry-after"] === undefined)
+    lower["retry-after-ms"] = String(error.retryAfterMs)
+  return farReset({
+    headers: lower,
+    status: "status" in reason ? reason.status : "http" in reason ? reason.http?.response?.status : undefined,
+    texts: [reason.message, "http" in reason ? reason.http?.body : undefined],
+    now,
+    quota: reason._tag === "QuotaExceeded",
+  })
+}
+
+/** What the person reads when a model is exhausted: which one, until when, and what to do about it. */
+export function exhaustedMessage(model: string, info: Exhausted, now = Date.now()) {
+  return `${model} ${info.quota ? "quota exhausted" : "unavailable"} until ${clock(info.until, now)}; switch model with /model or wait`
+}
+
+/** A reset instant in local time: the time alone today, with the date on another day. */
+export function clock(at: number, now = Date.now()) {
+  const date = new Date(at)
+  const time = date.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })
+  if (date.toDateString() === new Date(now).toDateString()) return time
+  return `${date.toLocaleDateString([], { month: "short", day: "numeric" })} ${time}`
+}
+
+/** Whether a failure names a quota or usage limit, which is what a long reset usually is. */
+export function quota(error: Err) {
+  if (!SessionV1.APIError.isInstance(error)) return false
+  return quotaNamed({
+    headers: error.data.responseHeaders,
+    status: error.data.statusCode,
+    texts: [error.data.message, error.data.responseBody],
+  })
+}
+
+// An explicit reset in the error text, as routers write it: "quota exhausted until 2026-09-25T18:00:00Z".
+const UNTIL_PATTERN = /\buntil\s+(\d{4}-\d{2}-\d{2}[T ]\d{2}:\d{2}(?::\d{2}(?:\.\d+)?)?(?:Z|[+-]\d{2}:?\d{2})?)/i
+const QUOTA_PATTERN = /quota|usage limit|insufficient[_\s]credits|credit balance/i
+
+function farReset(input: {
+  readonly headers?: Readonly<Record<string, string>>
+  readonly status?: number
+  readonly texts: ReadonlyArray<unknown>
+  readonly now: number
+  readonly quota?: boolean
+}): Exhausted | undefined {
+  const wait = (input.headers ? requested(input.headers, input.now) : undefined) ?? untilIn(input.texts, input.now)
+  if (wait === undefined || wait <= RETRY_MAX_RESET_WAIT) return undefined
+  return { until: input.now + wait, quota: input.quota === true || quotaNamed(input) }
+}
+
+function untilIn(texts: ReadonlyArray<unknown>, now: number) {
+  const waits = texts.flatMap((text) => {
+    if (typeof text !== "string") return []
+    const match = UNTIL_PATTERN.exec(text)
+    const at = match ? Date.parse(match[1].replace(" ", "T")) - now : Number.NaN
+    return Number.isNaN(at) || at <= 0 ? [] : [at]
+  })
+  return waits.length ? Math.max(...waits) : undefined
+}
+
+function quotaNamed(input: {
+  readonly headers?: Readonly<Record<string, string>>
+  readonly status?: number
+  readonly texts: ReadonlyArray<unknown>
+}) {
+  if (input.status === 402) return true
+  if (ProviderRouter.header(input.headers, ProviderRouter.Header.reason) === "quota_exhausted") return true
+  return input.texts.some((text) => typeof text === "string" && QUOTA_PATTERN.test(text))
+}
+
 export function policy(opts: {
   provider: string
   parse: (error: unknown) => Err
-  set: (input: { attempt: number; message: string; action?: Retryable["action"]; next: number }) => Effect.Effect<void>
+  set: (input: {
+    attempt: number
+    message: string
+    action?: Retryable["action"]
+    next: number
+    /** The failure names a quota or usage limit, so `next` is when it resets. */
+    quota: boolean
+  }) => Effect.Effect<void>
 }) {
   return Schedule.fromStepWithMetadata(
     Effect.succeed((meta: Schedule.InputMetadata<unknown>) => {
@@ -248,6 +344,7 @@ export function policy(opts: {
           message: retry.message,
           action: retry.action,
           next: now + wait,
+          quota: quota(error),
         })
         return [meta.attempt, Duration.millis(wait)] as [number, Duration.Duration]
       })
