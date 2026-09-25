@@ -653,7 +653,7 @@ export const ShellTool = Tool.define(
             Effect.gen(function* () {
               const instanceCtx = yield* InstanceState.context
               const cwd = yield* AutoWorktree.workdir(
-                { sessions, events, sessionID: ctx.sessionID, agent: ctx.agent },
+                { sessions, events, config, sessionID: ctx.sessionID, agent: ctx.agent },
                 params.workdir
                   ? yield* resolvePath(params.workdir, instanceCtx.directory, shell)
                   : instanceCtx.directory,

@@ -2162,6 +2162,9 @@ export type Config = {
     ignore?: Array<string>
   }
   snapshot?: boolean
+  worktree?: {
+    auto?: boolean
+  }
   plugin?: Array<
     | string
     | [

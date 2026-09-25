@@ -1,7 +1,8 @@
 import { RepositoryGuard } from "@reddb-io/redcode-core/repository-guard"
 import { Schema } from "effect"
 import * as path from "path"
-import { Effect } from "effect"
+import { Effect, Option } from "effect"
+import { Config } from "@/config/config"
 import * as Tool from "./tool"
 import { LSP } from "@/lsp/lsp"
 import { createTwoFilesPatch } from "diff"
@@ -35,6 +36,8 @@ export const WriteTool = Tool.define(
     const events = yield* EventV2Bridge.Service
     const format = yield* Format.Service
     const sessions = yield* Session.Service
+    // Optional so the tool still builds where no config is provided; the registry always has one.
+    const config = Option.getOrUndefined(yield* Effect.serviceOption(Config.Service))
 
     return {
       description: DESCRIPTION,
@@ -43,7 +46,7 @@ export const WriteTool = Tool.define(
         Effect.gen(function* () {
           const instance = yield* InstanceState.context
           const filepath = yield* AutoWorktree.route(
-            { sessions, events, sessionID: ctx.sessionID, agent: ctx.agent },
+            { sessions, events, config, sessionID: ctx.sessionID, agent: ctx.agent },
             path.isAbsolute(params.filePath) ? params.filePath : path.join(instance.directory, params.filePath),
           )
           yield* RepositoryGuard.assertWrite(filepath).pipe(Effect.orDie)

@@ -8,7 +8,8 @@ import { SessionInput } from "@reddb-io/redcode-core/session/input"
 import path from "path"
 import { createHash } from "node:crypto"
 import { SessionV1 } from "@reddb-io/redcode-core/v1/session"
-import { Effect, Schema } from "effect"
+import { Effect, Option, Schema } from "effect"
+import { Config } from "@/config/config"
 import { Tool } from "./tool"
 import { Question } from "../question"
 import { GoalRuntime } from "@/session/goal-runtime"
@@ -29,10 +30,12 @@ export const WorktreePrepareTool = Tool.define(
   "worktree_prepare",
   Effect.gen(function* () {
     const sessions = yield* Session.Service
+    // Optional so the tool still builds where no config is provided; the registry always has one.
+    const config = Option.getOrUndefined(yield* Effect.serviceOption(Config.Service))
     const events = yield* EventV2Bridge.Service
     return {
       description:
-        "Create or reuse this session's linked worktree now instead of on the first edit, and return its absolute paths, branch and status. The harness moves the session into it; the source checkout is preserved. Non-Git directories and YOLO keep their directory.",
+        "Create or reuse this session's linked worktree now instead of on the first edit, and return its absolute paths, branch and status. The harness moves the session into it, in YOLO mode too; the source checkout is preserved. Non-Git directories, and sessions with automatic worktrees turned off, keep their directory.",
       parameters: Parameters,
       execute: (_input: {}, ctx: Tool.Context) =>
         Effect.gen(function* () {
@@ -45,7 +48,13 @@ export const WorktreePrepareTool = Tool.define(
           })
           const info = yield* sessions.get(ctx.sessionID).pipe(Effect.orDie)
           // Writing agents get the same session worktree the first edit would create; plan and design keep theirs.
-          const claim = yield* AutoWorktree.ensure({ sessions, events, sessionID: ctx.sessionID, agent: ctx.agent })
+          const claim = yield* AutoWorktree.ensure({
+            sessions,
+            events,
+            config,
+            sessionID: ctx.sessionID,
+            agent: ctx.agent,
+          })
           const directory = claim
             ? yield* Effect.promise(() => RepositoryGuard.relocate(claim, instance.directory))
             : instance.directory

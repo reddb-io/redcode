@@ -36539,6 +36539,15 @@
           "snapshot": {
             "type": "boolean"
           },
+          "worktree": {
+            "type": "object",
+            "properties": {
+              "auto": {
+                "type": "boolean"
+              }
+            },
+            "additionalProperties": false
+          },
           "plugin": {
             "type": "array",
             "items": {
