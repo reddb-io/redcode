@@ -45,6 +45,7 @@ export namespace TimelineRow {
     messageID: string
     issues: readonly string[]
     originals: readonly string[]
+    confidence: Readonly<Record<string, number>>
   }> {}
   /** An S1 repair nothing has answered yet: the revision is on its way. */
   export class Revising extends Data.TaggedClass("Revising")<{

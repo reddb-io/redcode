@@ -3,6 +3,7 @@ import { createStore } from "solid-js/store"
 import { useTerminalDimensions } from "@opentui/solid"
 import { IntelligenceClient } from "@reddb-io/redcode-client"
 import { Intelligence } from "@reddb-io/redcode-schema/intelligence"
+import { responseQuestionReason } from "@reddb-io/redcode-core/session/response-revision"
 import { useLocal } from "../context/local"
 import { useSDK } from "../context/sdk"
 import { useSync } from "../context/sync"
@@ -89,15 +90,18 @@ export function evaluationWarning(evaluation: Intelligence.Evaluation | undefine
   const operation = evaluation.operation.replaceAll("_", " ")
   if (evaluation.decision === "unavailable")
     return `S1 was unavailable for the last ${operation} check; it is not verified.`
+  // Only a response review's issues have a plain-language reason; other checks keep their raw key.
+  const humanize = (id: string) =>
+    evaluation.operation === "response_quality" ? responseQuestionReason(id) : id.replaceAll("_", " ")
   if (evaluation.decision === "needs_revision")
-    return `The last ${operation} check needs revision: ${evaluation.issues.join(", ").replaceAll("_", " ")}.`
+    return `The last ${operation} check needs revision: ${evaluation.issues.map(humanize).join(", ")}.`
   // A response review establishes an issue at the repair threshold; one still there was not settled.
   const unresolved = evaluation.issues.filter((id) => {
     const answer = evaluation.answers[id]
     return answer?.type === "noul" && answer.noul >= Intelligence.REPAIR_CONFIDENCE
   })
   if (evaluation.operation === "response_quality" && unresolved.length)
-    return `The final answer still has ${unresolved.join(", ").replaceAll("_", " ")} after the S1 repair.`
+    return `The final answer still ${unresolved.map(humanize).join(", ")} after the S1 repair.`
   return undefined
 }
 
