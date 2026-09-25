@@ -14,6 +14,8 @@ import { ClipboardProvider, useClipboard, type ClipboardService } from "./contex
 import { ExitProvider, useExit } from "./context/exit"
 import { EpilogueProvider } from "./context/epilogue"
 import * as Selection from "./util/selection"
+import { accidentalExitKey, createExitPresses, EXIT_CONFIRM_WINDOW, exitKeyAction } from "./util/dialog-request"
+import { isBusy } from "./prompt/steer"
 import { createCliRenderer, MouseButton } from "@opentui/core"
 import { RouteProvider, useRoute } from "./context/route"
 import {
@@ -411,6 +413,8 @@ function App(props: { onSnapshot?: () => Promise<string[]>; pluginHost: TuiPlugi
   const project = useProject()
   const exit = useExit()
   const promptRef = usePromptRef()
+  // A bare Ctrl+C or Ctrl+D outside a dialog exits only on a second press (see `exitKeyAction`).
+  const exitPresses = createExitPresses(EXIT_CONFIRM_WINDOW)
   const pluginRuntime = usePluginRuntime()
   const attention = createTuiAttention({ renderer, config: tuiConfig, kv })
   const clipboard = useClipboard()
@@ -957,7 +961,22 @@ function App(props: { onSnapshot?: () => Promise<string[]>; pluginHost: TuiPlugi
         title: "Exit the app",
         slashName: "exit",
         slashAliases: ["quit", "q"],
-        run: () => exit(),
+        run: (ctx?: { event?: { name?: string; ctrl?: boolean; meta?: boolean; shift?: boolean } }) => {
+          const key = accidentalExitKey(ctx?.event)
+          const sessionID = route.data.type === "session" ? route.data.sessionID : undefined
+          const busy = sessionID !== undefined && isBusy(sync.data.session_status?.[sessionID]?.type)
+          // Only a press that is not interrupting counts toward the double press.
+          const repeated = key !== undefined && !busy && exitPresses.press(key)
+          const action = exitKeyAction({ key, busy, repeated })
+          if (action === "exit") return exit()
+          if (action === "interrupt") {
+            exitPresses.reset()
+            if (sessionID) void sdk.client.session.abort({ sessionID }).catch(toast.error)
+            toast.show({ variant: "info", message: "Interrupted", duration: EXIT_CONFIRM_WINDOW })
+            return
+          }
+          toast.show({ variant: "info", message: `Press ${key} again to exit`, duration: EXIT_CONFIRM_WINDOW })
+        },
         category: "System",
       },
       {

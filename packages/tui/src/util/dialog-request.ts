@@ -6,6 +6,8 @@ export const DIALOG_REQUEST_TIMEOUT = 10_000
 export const REMOTE_DIALOG_REQUEST_TIMEOUT = 30_000
 /** Same window the prompt uses for a repeated interrupt press. */
 export const EXIT_PRESS_WINDOW = 5_000
+/** How long a first Ctrl+C or Ctrl+D outside a dialog waits for the second press that exits. */
+export const EXIT_CONFIRM_WINDOW = 2_000
 /** The in-process worker transport the TUI uses when no external server was requested. */
 const LOCAL_WORKER_URL = "http://opencode.internal"
 
@@ -92,4 +94,28 @@ export function createExitPresses(window = EXIT_PRESS_WINDOW) {
       last = undefined
     },
   }
+}
+
+/**
+ * The exit keys that are easy to hit by accident, bare ctrl+c and ctrl+d, named for the hint.
+ * Anything else that runs `app.exit` (a leader chord, `/exit`, the palette) was meant and exits.
+ */
+export function accidentalExitKey(
+  event: { name?: string; ctrl?: boolean; meta?: boolean; shift?: boolean } | undefined,
+) {
+  if (!event?.ctrl || event.meta || event.shift) return
+  if (event.name === "c" || event.name === "d") return `ctrl+${event.name}`
+}
+
+export type ExitKeyAction = "exit" | "interrupt" | "confirm"
+
+/**
+ * What `app.exit` does for the key that ran it. An accidental exit key never exits on its first
+ * press: while the session works it interrupts the turn, otherwise it asks for the same key again
+ * within `EXIT_CONFIRM_WINDOW`. `repeated` is whether this press is that second one.
+ */
+export function exitKeyAction(input: { key: string | undefined; busy: boolean; repeated: boolean }): ExitKeyAction {
+  if (!input.key) return "exit"
+  if (input.busy) return "interrupt"
+  return input.repeated ? "exit" : "confirm"
 }

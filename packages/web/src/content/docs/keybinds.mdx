@@ -266,6 +266,12 @@ The OpenCode desktop app prompt input supports common Readline/Emacs-style short
 
 ---
 
+## Ctrl+C and Ctrl+D
+
+`Ctrl+C` and `Ctrl+D` never exit on the first press. With text in the prompt, `Ctrl+C` clears it; while the agent works, it interrupts the turn; in a dialog, it closes the dialog. On an idle, empty prompt, the first press shows `Press ctrl+c again to exit` and a second press of the same key within two seconds exits. `<leader>q` and `/exit` exit right away.
+
+---
+
 ## Shift+Enter
 
 Some terminals don't send modifier keys with Enter by default. You may need to configure your terminal to send `Shift+Enter` as an escape sequence.
@@ -311,7 +317,7 @@ Save the file and restart Windows Terminal or open a new tab.
 
 While the agent is working, `Enter` queues your prompt for after the current turn and `Alt+Enter` (`input_steer`) steers: the prompt is delivered at the agent's next step instead. With an empty prompt, `Alt+Enter` steers the most recently queued prompt. When the session is idle, `Alt+Enter` submits like `Enter`. `Shift+Enter` always inserts a newline. `/steer <text>` does the same as `Alt+Enter` and works in every terminal.
 
-`Alt+Enter` steers only when the terminal reports it unambiguously: through the kitty keyboard protocol (`CSI 13;3u`, Kitty, Ghostty, Alacritty, foot) or xterm's modifyOtherKeys (`CSI 27;3;13~`). A bare escape-prefixed return (`ESC CR`) stays a newline, because it is also what a `Shift+Enter` mapped to `\x1b\r` sends (the VS Code and Cursor `sendSequence` binding, Alacritty `chars`, tmux), and the two cannot be told apart. In a terminal that only sends `ESC CR` for `Alt+Enter`, use `/steer <text>`; the hint next to the prompt says `/steer` instead of `alt+return` whenever the key may not arrive. `Ctrl+J` inserts a newline in every terminal.
+`Alt+Enter` steers only when the terminal reports it unambiguously: through the kitty keyboard protocol (`CSI 13;3u`, Kitty, Ghostty, Alacritty, foot) or xterm's modifyOtherKeys (`CSI 27;3;13~`). A bare escape-prefixed return (`ESC CR`) stays a newline at first, because it is also what a `Shift+Enter` mapped to `\x1b\r` sends (the VS Code and Cursor `sendSequence` binding, Alacritty `chars`, tmux), and the bytes cannot be told apart. It becomes `Alt+Enter` and steers as soon as the terminal has sent `Shift+Enter` some other way (`CSI 13;2u` or `CSI 27;2;13~`), which rules the mapping out, or from the start when your `input_newline` does not list `alt+return`. Multiplexers that forward legacy bytes, such as zellij without the kitty protocol and tmux, send `ESC CR` for `Alt+Enter`, so this is what makes the key steer there. Until then, use `/steer <text>`; the hint next to the prompt says `/steer` instead of `alt+return` whenever the key may not arrive. `Ctrl+J` inserts a newline in every terminal.
 
 WezTerm sends `Shift+Enter` as `CSI 27;2;13~` with its defaults, so it is always a newline there. Some terminals keep `Alt+Enter` for themselves until you change a setting:
 
