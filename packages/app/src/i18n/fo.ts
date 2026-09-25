@@ -165,6 +165,8 @@ export const dict = {
   "command.model.variant.cycle.description": "Skift til næsta átaksstig",
   "command.prompt.mode.shell": "Shell",
   "command.prompt.mode.normal": "Prompt",
+  "command.prompt.queue": "Queue prompt",
+  "command.prompt.queue.description": "Send after the current turn instead of steering it",
   "command.permissions.autoaccept.enable": "Sjálvvirkandi góðtaka loyvi",
   "command.permissions.autoaccept.disable": "Steðga sjálvvirkandi góðkenning av loyvum",
   "command.workspace.toggle": "Skift workspace",

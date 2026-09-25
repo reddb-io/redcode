@@ -179,6 +179,8 @@ export const dict = {
   "command.model.variant.cycle.description": "Перемкнути на наступний рівень зусилля",
   "command.prompt.mode.shell": "Команда",
   "command.prompt.mode.normal": "Запит",
+  "command.prompt.queue": "Queue prompt",
+  "command.prompt.queue.description": "Send after the current turn instead of steering it",
   "command.permissions.autoaccept.enable": "Автоматично приймати дозволи",
   "command.permissions.autoaccept.disable": "Зупинити автоматичне прийняття дозволів",
   "command.workspace.toggle": "Перемкнути робочі області",

@@ -166,6 +166,8 @@ export const dict = {
   "command.model.variant.cycle.description": "Växla till nästa resonemangsnivå",
   "command.prompt.mode.shell": "Shell",
   "command.prompt.mode.normal": "Prompt",
+  "command.prompt.queue": "Queue prompt",
+  "command.prompt.queue.description": "Send after the current turn instead of steering it",
   "command.permissions.autoaccept.enable": "Autoacceptera behörigheter",
   "command.permissions.autoaccept.disable": "Sluta att automatiskt acceptera behörigheter",
   "command.workspace.toggle": "Växla arbetsytor",

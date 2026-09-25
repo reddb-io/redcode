@@ -26,6 +26,8 @@ export type PromptInputV2SelectControl = {
   keybind?: Accessor<string[]>
 }
 
+export type PromptInputV2SubmitOptions = { queue?: boolean }
+
 export type PromptInputV2ViewConfig = {
   placeholder?: Accessor<string>
   add?: {
@@ -37,7 +39,8 @@ export type PromptInputV2ViewConfig = {
   submit: {
     stopping: Accessor<boolean>
     working?: Accessor<boolean>
-    onSubmit: () => void
+    /** `queue` asks for the prompt to wait until the running turn ends instead of steering it. */
+    onSubmit: (options?: PromptInputV2SubmitOptions) => void
     onStop: () => void
   }
   shell?: {
@@ -357,8 +360,8 @@ export function createPromptInputV2Controller(input: {
     closeShell() {
       dispatch({ type: "mode.normal" })
     },
-    submit() {
-      input.view.submit.onSubmit()
+    submit(options?: PromptInputV2SubmitOptions) {
+      input.view.submit.onSubmit(options)
       dispatch({ type: "popover.close" })
     },
     stop() {

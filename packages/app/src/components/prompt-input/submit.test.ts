@@ -635,3 +635,87 @@ describe("prompt submit worktree selection", () => {
     expect(optimisticSeeded).toEqual([true])
   })
 })
+
+describe("prompt delivery", () => {
+  const aborts: string[] = []
+  const submitFor = (working: boolean) =>
+    createPromptSubmit({
+      prompt,
+      info: () => ({ id: "session-1" }),
+      imageAttachments: () => [],
+      commentCount: () => 0,
+      autoAccept: () => false,
+      mode: () => "normal",
+      working: () => working,
+      editor: () => undefined,
+      queueScroll: () => undefined,
+      promptLength: (value) => value.reduce((sum, part) => sum + ("content" in part ? part.content.length : 0), 0),
+      addToHistory: () => undefined,
+      resetHistoryNavigation: () => undefined,
+      setMode: () => undefined,
+      setPopover: () => undefined,
+      onAbort: () => aborts.push("abort"),
+    })
+  const event = { preventDefault: () => undefined } as unknown as Event
+  const sent = () => promptInputs as Array<{ delivery?: string; text?: string }>
+
+  beforeEach(() => {
+    params = { id: "session-1" }
+    aborts.length = 0
+  })
+
+  test("Enter while the agent works steers: no delivery, the server default", async () => {
+    await submitFor(true).handleSubmit(event)
+    await Bun.sleep(0)
+    expect(sent()).toHaveLength(1)
+    expect(sent()[0]?.delivery).toBeUndefined()
+  })
+
+  test("Alt+Enter while the agent works queues", async () => {
+    await submitFor(true).handleSubmit(event, { queue: true })
+    await Bun.sleep(0)
+    expect(sent()[0]).toMatchObject({ delivery: "queue", text: "ls" })
+  })
+
+  test("Alt+Enter on an idle session just sends", async () => {
+    await submitFor(false).handleSubmit(event, { queue: true })
+    await Bun.sleep(0)
+    expect(sent()).toHaveLength(1)
+    expect(sent()[0]?.delivery).toBeUndefined()
+  })
+
+  test("/queue <text> queues the text without the command, busy or idle", async () => {
+    for (const working of [true, false]) {
+      promptInputs.length = 0
+      promptValue = [
+        { type: "text", content: "/queue check ", start: 0, end: 13 },
+        { type: "file", path: "src/a.ts", content: "@src/a.ts", start: 13, end: 22 },
+      ]
+      await submitFor(working).handleSubmit(event)
+      await Bun.sleep(0)
+      expect(sent()).toHaveLength(1)
+      expect(sent()[0]).toMatchObject({
+        delivery: "queue",
+        text: "check @src/a.ts",
+        files: [{ mention: { text: "@src/a.ts", start: 6, end: 15 } }],
+      })
+    }
+  })
+
+  test("an empty /queue sends nothing and leaves the running turn alone", async () => {
+    promptValue = [{ type: "text", content: "/queue ", start: 0, end: 7 }]
+    await submitFor(true).handleSubmit(event)
+    await Bun.sleep(0)
+    expect(sent()).toEqual([])
+    expect(aborts).toEqual([])
+  })
+
+  test("a server command named queue keeps the slash", async () => {
+    commands.push({ name: "queue" })
+    promptValue = [{ type: "text", content: "/queue later", start: 0, end: 12 }]
+    await submitFor(true).handleSubmit(event)
+    await Bun.sleep(0)
+    expect(sent()).toEqual([])
+    expect(sentCommands).toMatchObject([{ command: "queue", arguments: "later" }])
+  })
+})

@@ -166,6 +166,8 @@ export const dict = {
   "command.model.variant.cycle.description": "Ба сатҳи навбатии кӯшишҳо гузаред",
   "command.prompt.mode.shell": "Shell",
   "command.prompt.mode.normal": "Промпт",
+  "command.prompt.queue": "Queue prompt",
+  "command.prompt.queue.description": "Send after the current turn instead of steering it",
   "command.permissions.autoaccept.enable": "Иҷозатҳоро худкор қабул кунед",
   "command.permissions.autoaccept.disable": "Қабули худкори иҷозатҳоро қатъ кунед",
   "command.workspace.toggle": "Ҷойҳои корӣ иваз кунед",

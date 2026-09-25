@@ -167,6 +167,8 @@ export const dict = {
   "command.model.variant.cycle.description": "Дараагийн хүчин чармайлтын түвшинд шилжинэ",
   "command.prompt.mode.shell": "Shell",
   "command.prompt.mode.normal": "Промпт",
+  "command.prompt.queue": "Queue prompt",
+  "command.prompt.queue.description": "Send after the current turn instead of steering it",
   "command.permissions.autoaccept.enable": "Зөвшөөрлийг автоматаар хүлээн авах",
   "command.permissions.autoaccept.disable": "Зөвшөөрлийг автоматаар хүлээн авахаа зогсоо",
   "command.workspace.toggle": "Ажлын талбаруудыг сэлгэх",

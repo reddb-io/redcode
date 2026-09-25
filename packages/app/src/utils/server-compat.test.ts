@@ -108,6 +108,16 @@ describe("createCompatibleApi", () => {
       ],
     })
     expect(body.parts[2]).not.toHaveProperty("source")
+    // No delivery chosen: the server steers.
+    expect(body).not.toHaveProperty("delivery")
+  })
+
+  test("forwards an explicit queue delivery to the V1 prompt contract", async () => {
+    const { api, requests } = setup("v1")
+    const result = await api.session.prompt({ sessionID: "ses_1", id: "msg_1", text: "later", delivery: "queue" })
+
+    expect((await requests[0]!.json()).delivery).toBe("queue")
+    expect(result.delivery).toBe("queue")
   })
 
   test("preserves original parts for V1 optimistic reconciliation", async () => {

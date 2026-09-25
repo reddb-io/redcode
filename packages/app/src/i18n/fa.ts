@@ -166,6 +166,8 @@ export const dict = {
   "command.model.variant.cycle.description": "به سطح تلاش بعدی بروید",
   "command.prompt.mode.shell": "پوسته",
   "command.prompt.mode.normal": "پرامپت",
+  "command.prompt.queue": "Queue prompt",
+  "command.prompt.queue.description": "Send after the current turn instead of steering it",
   "command.permissions.autoaccept.enable": "پذیرش خودکار مجوزها",
   "command.permissions.autoaccept.disable": "پذیرش خودکار مجوزها را متوقف کنید",
   "command.workspace.toggle": "جابجایی فضاهای کاری",
