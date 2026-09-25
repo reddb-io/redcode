@@ -25,14 +25,14 @@ export const ModelSuggestionApi = HttpApi.make("modelSuggestion")
           params: { sessionID: SessionID },
           query: WorkspaceRoutingQuery,
           payload: ResolvePayload,
-          success: described(Schema.Boolean, "Answered"),
+          success: described(Schema.Boolean, "Answered; false when the suggested model is no longer available"),
           error: [HttpApiError.BadRequest, ApiNotFoundError],
         }).annotateMerge(
           OpenApi.annotations({
             identifier: "modelSuggestion.resolve",
             summary: "Answer a model suggestion",
             description:
-              "Record the person's answer to a model suggestion. `switch` only tells other clients the card is answered: the client that switched sets the model itself. `keep` also stops suggestions for that trigger in the session.",
+              "Record the person's answer to a model suggestion. `switch` first asks the router whether the suggested model is still usable: `false` means it is not, and the client must not switch; otherwise the client sets the model itself. Either answer tells other clients the card is answered. `keep` also stops suggestions for that trigger in the session.",
           }),
         ),
       )

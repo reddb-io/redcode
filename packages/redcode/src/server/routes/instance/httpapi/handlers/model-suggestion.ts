@@ -17,12 +17,11 @@ export const modelSuggestionHandlers = HttpApiBuilder.group(InstanceHttpApi, "mo
       payload: { trigger: ModelSuggestion.Trigger; choice: ModelSuggestion.Choice }
     }) {
       yield* mapStorageNotFound(sessions.get(ctx.params.sessionID))
-      yield* suggestions.resolve({
+      return yield* suggestions.resolve({
         sessionID: ctx.params.sessionID,
         trigger: ctx.payload.trigger,
         choice: ctx.payload.choice,
       })
-      return true
     })
 
     return handlers.handle("resolve", resolve)

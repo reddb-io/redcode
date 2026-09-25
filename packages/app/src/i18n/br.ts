@@ -380,6 +380,8 @@ export const dict = {
   "session.modelSuggestion.title": "Sugestão: {{model}}",
   "session.modelSuggestion.switch": "Trocar",
   "session.modelSuggestion.keep": "Manter",
+  "session.modelSuggestion.quotaUntil": "quota until {{time}}",
+  "session.modelSuggestion.unavailable": "{{model}} is no longer available; kept the current model",
   "model.provider.anthropic": "Anthropic",
   "model.provider.openai": "OpenAI",
   "model.provider.google": "Google",

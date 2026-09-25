@@ -5,6 +5,7 @@ import { DockTray } from "@reddb-io/redcode-ui/dock-surface"
 import { useLanguage } from "@/context/language"
 import { useLocal } from "@/context/local"
 import { useSDK } from "@/context/sdk"
+import { showToast } from "@/utils/toast"
 import { answerSuggestion, suggestionCard } from "./model-suggestion"
 
 /**
@@ -38,7 +39,9 @@ export function SessionModelSuggestionDock(props: { sessionID?: string }) {
     const suggestion = pending()
     if (!suggestion) return
     const view = suggestionCard({ suggestion, selected: local.model.current(), models: local.model.list() })
-    return view ? { ...view, suggestion } : undefined
+    if (!view) return
+    const quota = view.quota ? language.t("session.modelSuggestion.quotaUntil", { time: view.quota }) : ""
+    return { ...view, suggestion, details: [quota, view.deltas].filter(Boolean).join(" · ") }
   })
 
   const answer = (choice: ModelSuggestion.Choice) => {
@@ -50,7 +53,12 @@ export function SessionModelSuggestionDock(props: { sessionID?: string }) {
       suggestion: current.suggestion,
       choice,
       select: (model) => local.model.set(model, { recent: true }),
-      resolve: (value) => sdk().client.modelSuggestion.resolve({ sessionID, ...value }),
+      unavailable: () =>
+        showToast({ title: language.t("session.modelSuggestion.unavailable", { model: current.label }) }),
+      resolve: (value) =>
+        sdk()
+          .client.modelSuggestion.resolve({ sessionID, ...value })
+          .then((result) => result.data),
     })
   }
 
@@ -66,8 +74,8 @@ export function SessionModelSuggestionDock(props: { sessionID?: string }) {
                   <span class="text-13-regular text-text-base"> — {view().why}</span>
                 </Show>
               </span>
-              <Show when={view().deltas}>
-                <span class="truncate text-12-regular text-text-weak">{view().deltas}</span>
+              <Show when={view().details}>
+                <span class="truncate text-12-regular text-text-weak">{view().details}</span>
               </Show>
             </div>
             <Button size="small" variant="secondary" class="shrink-0" onClick={() => answer("switch")}>
