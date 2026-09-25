@@ -66,6 +66,7 @@ import { animate } from "motion"
 import { attached, inline, kind, typeLabel } from "./message-file"
 import { readPartText } from "./message-part-text"
 import { taskCardDetail } from "./task-card-detail"
+import { designDocumentSummary } from "./design-document"
 import { SessionProgressIndicatorV2 } from "../v2/components/session-progress-indicator-v2"
 
 async function writeClipboard(text: string): Promise<boolean> {
@@ -2653,5 +2654,31 @@ ToolRegistry.register({
     )
 
     return <BasicTool icon="brain" status={props.status} trigger={trigger()} hideDetails />
+  },
+})
+
+// A created design leads with its chip (target and design system) and the design-system line, as
+// the TUI and the adoption question show them; other design_document calls stay generic.
+ToolRegistry.register({
+  name: "design_document",
+  render(props) {
+    const summary = createMemo(() => designDocumentSummary(props.metadata))
+    return (
+      <Show
+        when={summary()}
+        fallback={
+          <GenericTool tool={props.tool} status={props.status} hideDetails={props.hideDetails} input={props.input} />
+        }
+      >
+        {(summary) => (
+          <BasicTool {...props} icon="window-cursor" trigger={{ title: summary().title, subtitle: summary().system }}>
+            <div data-component="design-document-summary" class="text-12-regular text-text-weak">
+              <Show when={summary().system}>{(system) => <div>{system()}</div>}</Show>
+              <Show when={summary().change}>{(change) => <div>{change()}</div>}</Show>
+            </div>
+          </BasicTool>
+        )}
+      </Show>
+    )
   },
 })

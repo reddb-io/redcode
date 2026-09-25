@@ -39,6 +39,17 @@ export namespace TimelineRow {
   export class Retry extends Data.TaggedClass("Retry")<{
     userMessageID: string
   }> {}
+  /** The footnote under an answer S1 review revised; the superseded answers open from it. */
+  export class Revision extends Data.TaggedClass("Revision")<{
+    userMessageID: string
+    messageID: string
+    issues: readonly string[]
+    originals: readonly string[]
+  }> {}
+  /** An S1 repair nothing has answered yet: the revision is on its way. */
+  export class Revising extends Data.TaggedClass("Revising")<{
+    userMessageID: string
+  }> {}
 
   export type TimelineRow =
     | TurnGap
@@ -50,6 +61,8 @@ export namespace TimelineRow {
     | DiffSummary
     | Error
     | Retry
+    | Revision
+    | Revising
 
   export const key = (row: TimelineRow) => {
     switch (row._tag) {
@@ -71,6 +84,10 @@ export namespace TimelineRow {
         return `error:${row.userMessageID}`
       case "Retry":
         return `retry:${row.userMessageID}`
+      case "Revision":
+        return `revision:${row.userMessageID}:${row.messageID}`
+      case "Revising":
+        return `revising:${row.userMessageID}`
     }
   }
 

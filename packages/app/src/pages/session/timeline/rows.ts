@@ -5,6 +5,7 @@ import { groupParts, renderable, type PartGroup } from "@reddb-io/redcode-sessio
 import { TimelineRow, type SummaryDiff } from "./timeline-row"
 import { uniqueSummaryDiffs } from "./summary-diffs"
 import { compareMessages } from "@/utils/session-message"
+import { responseRepair, responseRevisions } from "@reddb-io/redcode-core/session/response-revision"
 
 export { TimelineRow, type SummaryDiff } from "./timeline-row"
 
@@ -30,6 +31,15 @@ export type TimelineRowMap = {
   Retry: { userMessageID: string }
   DiffSummary: { userMessageID: string; diffs: SummaryDiff[] }
   Error: { userMessageID: string; text: string }
+  Revision: { userMessageID: string; messageID: string; issues: readonly string[]; originals: readonly string[] }
+  Revising: { userMessageID: string }
+}
+
+/** How S1 response repairs fold into one turn: see `responseRevisions`. */
+export type TurnRevision = {
+  superseded: ReadonlySet<string>
+  notes: ReadonlyMap<string, { issues: readonly string[]; originals: readonly string[] }>
+  pending: boolean
 }
 
 export namespace Timeline {
@@ -80,10 +90,33 @@ export namespace Timeline {
       if (index >= 0) turns.splice(index, 0, turn)
       turnByUserID.set(user.id, turn)
     })
-    const activeMessageID = turns.at(-1)?.user.id
+    const ordered = turns.flatMap((turn) => [turn.user, ...turn.assistants])
+    const revisions = responseRevisions(
+      ordered,
+      Object.fromEntries(ordered.map((message) => [message.id, getMessageParts(message.id)])),
+    )
+    // An S1 response repair continues the reply it revises, so it joins that turn instead of opening
+    // one: the reply reads as the final answer with a footnote, like the TUI.
+    const replies = turns.reduce<{ user: UserMessage; assistants: AssistantMessage[]; repairs: string[] }[]>(
+      (result, turn) => {
+        const previous = result.at(-1)
+        if (!previous?.assistants.length || !responseRepair(getMessageParts(turn.user.id)))
+          return [...result, { ...turn, repairs: [] }]
+        return [
+          ...result.slice(0, -1),
+          {
+            user: previous.user,
+            assistants: [...previous.assistants, ...turn.assistants],
+            repairs: [...previous.repairs, turn.user.id],
+          },
+        ]
+      },
+      [],
+    )
+    const activeMessageID = replies.at(-1)?.user.id
     return {
       activeMessageID,
-      rows: turns.flatMap((turn, index) =>
+      rows: replies.flatMap((turn, index) =>
         constructMessageRows(
           turn.user,
           getMessageParts,
@@ -93,6 +126,11 @@ export namespace Timeline {
           status,
           turn.user.id === activeMessageID,
           inlineComments,
+          {
+            superseded: revisions.superseded,
+            notes: revisions.notes,
+            pending: turn.repairs.some((id) => revisions.pending.has(id)),
+          },
         ),
       ),
     }
@@ -108,6 +146,7 @@ export namespace Timeline {
     isActive: boolean,
     // v2 renders comments inside the user message attachments row instead of a strip row
     inlineComments: boolean,
+    revision?: TurnRevision,
   ) {
     const rows: TimelineRow.TimelineRow[] = []
 
@@ -123,6 +162,8 @@ export namespace Timeline {
     const assistantPartRefs = assistantMessages.flatMap((message, messageIndex) =>
       getMessageParts(message.id)
         .filter((part) => renderable(part, showReasoning))
+        // A superseded answer keeps its tool calls, which really ran; its text gives way to the revision.
+        .filter((part) => !revision?.superseded.has(message.id) || (part.type !== "text" && part.type !== "reasoning"))
         .map((part) => ({ messageID: message.id, messageIndex, part })),
     )
     const assistantItems =
@@ -190,7 +231,28 @@ export namespace Timeline {
       assistantGroupIndex += 1
     })
 
-    if (isActive && status === "busy" && !error && (showReasoning ? assistantPartRefs.length === 0 : true)) {
+    assistantMessages.forEach((message) => {
+      const note = revision?.notes.get(message.id)
+      if (!note) return
+      rows.push(
+        new TimelineRow.Revision({
+          userMessageID: userMessage.id,
+          messageID: message.id,
+          issues: note.issues,
+          originals: note.originals,
+        }),
+      )
+    })
+
+    if (revision?.pending) rows.push(new TimelineRow.Revising({ userMessageID: userMessage.id }))
+
+    if (
+      isActive &&
+      status === "busy" &&
+      !error &&
+      !revision?.pending &&
+      (showReasoning ? assistantPartRefs.length === 0 : true)
+    ) {
       const heading = assistantMessages
         .flatMap((message) => getMessageParts(message.id))
         .map((part) => (part.type === "reasoning" && part.text ? reasoningHeading(part.text) : undefined))

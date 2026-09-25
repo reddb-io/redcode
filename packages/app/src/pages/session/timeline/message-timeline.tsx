@@ -1201,6 +1201,63 @@ export function MessageTimeline(props: {
           </TimelineRowFrame>
         )
       }
+      case "Revision": {
+        const revisionRow = row as Accessor<TimelineRowByTag<"Revision">>
+        const [open, setOpen] = createSignal(false)
+        // The superseded answers, reduced to what the revision replaced: their text and thought.
+        const originals = createMemo(() =>
+          revisionRow().originals.flatMap((id) => {
+            const message = messageByID().get(id)
+            if (message?.role !== "assistant") return []
+            return getMsgParts(id)
+              .filter((part) => part.type === "text" || part.type === "reasoning")
+              .map((part) => ({ message, part }))
+          }),
+        )
+        return (
+          <TimelineRowFrame row={revisionRow}>
+            <div data-slot="session-turn-message-container" class="w-full px-4 md:px-5">
+              <button
+                type="button"
+                data-slot="session-turn-revision"
+                class="text-12-regular text-text-weak hover:text-text-base text-left"
+                aria-expanded={open()}
+                onClick={() => {
+                  setOpen((value) => !value)
+                  onSizeChange?.()
+                }}
+              >
+                {language.t(
+                  revisionRow().issues.length ? "intelligence.revision.noteIssues" : "intelligence.revision.note",
+                  { issues: revisionRow().issues.join(", ") },
+                )}
+                {" · "}
+                {language.t(open() ? "intelligence.revision.hideOriginal" : "intelligence.revision.showOriginal")}
+              </button>
+              <Show when={open()}>
+                <div
+                  data-slot="session-turn-revision-original"
+                  class="mt-2 border-l border-border-weak-base pl-3 opacity-80"
+                >
+                  <For each={originals()}>
+                    {(item) => <MessagePart part={item.part} message={item.message} onContentRendered={onSizeChange} />}
+                  </For>
+                </div>
+              </Show>
+            </div>
+          </TimelineRowFrame>
+        )
+      }
+      case "Revising": {
+        const revisingRow = row as Accessor<TimelineRowByTag<"Revising">>
+        return (
+          <TimelineRowFrame row={revisingRow}>
+            <div data-slot="session-turn-message-container" class="w-full px-4 md:px-5">
+              <TextShimmer text={language.t("intelligence.revision.revising")} active />
+            </div>
+          </TimelineRowFrame>
+        )
+      }
       case "DiffSummary": {
         const diffSummaryRow = row as Accessor<TimelineRowByTag<"DiffSummary">>
         return (
