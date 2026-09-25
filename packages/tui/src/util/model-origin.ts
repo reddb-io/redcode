@@ -1,4 +1,5 @@
 import type { Message, Model, Part, Provider } from "@reddb-io/redcode-sdk/v2"
+import { Router } from "@reddb-io/redcode-schema/router"
 import { parse } from "./model"
 
 type ModelRef = { providerID: string; modelID: string }
@@ -52,8 +53,10 @@ export type OriginIndex = ReturnType<typeof originIndex>
 export function routeLabel(provider: Provider, model: Model) {
   const router = routerLabel(provider)
   if (!router) return "direct"
-  // A router serving the model through another router (a remote RedRouter) names that one too.
-  return model.via ? `via ${router} → ${model.via}` : `via ${router}`
+  // A router serving the model through other routers (remote RedRouters) names them too: the one it
+  // reported, else every router hop in the model id, at any depth.
+  const hops = model.via ? [model.via] : Router.route(model.id).hops.map(Router.hopName)
+  return `via ${[router, ...hops].join(" → ")}`
 }
 
 /** The parts of `originDescription` after the route: upstream name, subscription, and duplicate connections. */
@@ -225,8 +228,8 @@ export function migrateModelState(
 
 function upstreamKeys(model: Model) {
   if (!model.upstream) return []
-  // A routed id is `<upstream>/<model>`; the model part is what the upstream provider calls it.
-  const part = model.id.slice(model.id.indexOf("/") + 1)
+  // A routed id is `[<router>/…]<upstream>/<model>`; the model part is what the upstream provider calls it.
+  const part = Router.route(model.id).model
   return [model.upstream.id, model.upstream.slug]
     .filter((id, index, list): id is string => !!id && list.indexOf(id) === index)
     .map((id) => `${id}/${part}`)

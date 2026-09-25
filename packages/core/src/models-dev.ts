@@ -3,6 +3,7 @@ import { Cause, Context, Duration, Effect, Layer, Option, Ref, Schedule, Schema,
 import { HttpClient, HttpClientRequest, type HttpClientResponse } from "effect/unstable/http"
 import { type ParseError, parse as parseJsonc } from "jsonc-parser"
 import { ModelsDev } from "@reddb-io/redcode-schema/models-dev"
+import { Router } from "@reddb-io/redcode-schema/router"
 import { Global } from "./global"
 import { Flag } from "./flag/flag"
 import { Flock } from "./util/flock"
@@ -149,9 +150,18 @@ export function systemOneOffers(catalog: Record<string, Provider>) {
   })
 }
 
+const SYSTEM_ONE_MODELS = new Set(Object.values(SYSTEM_ONE_OFFERS).flatMap((ids) => [...ids]))
+
 /** Whether the catalog serves this model as a System One evaluator rather than as a language model. */
 export function systemOneOffer(providerID: string, modelID: string) {
-  return SYSTEM_ONE_OFFERS[providerID]?.has(modelID) ?? false
+  if (SYSTEM_ONE_OFFERS[providerID]?.has(modelID)) return true
+  // A routed id, through any number of routers, is judged by the upstream and model at its end:
+  // `opencode-zen/jev-1.13` and `red-router/red-router/opencode-go/jev-1.13` are both Jev.
+  const routed = Router.route(modelID)
+  return (
+    routed.provider !== undefined &&
+    (SYSTEM_ONE_OFFERS[routed.provider]?.has(routed.model) === true || SYSTEM_ONE_MODELS.has(routed.model))
+  )
 }
 
 function classify(catalog: Record<string, Provider>): Record<string, Provider> {
