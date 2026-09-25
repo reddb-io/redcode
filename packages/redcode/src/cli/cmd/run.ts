@@ -264,6 +264,11 @@ export const RunCommand = effectCmd({
         describe: "auto-approve permissions that are not explicitly denied (dangerous!)",
         default: false,
       })
+      .option("tmp", {
+        type: "boolean",
+        describe: "put automatic session worktrees in the temporary directory instead of <repo>/.red/worktrees",
+        default: false,
+      })
       .option("yolo", {
         type: "boolean",
         hidden: true,
@@ -292,6 +297,7 @@ export const RunCommand = effectCmd({
       }),
   handler: Effect.fn("Cli.run")(function* (args) {
     if (args.yolo || args["dangerously-skip-permissions"]) process.env.REDCODE_YOLO = "1"
+    if (args.tmp) process.env.REDCODE_WORKTREE_LOCATION = "tmp"
     const { Agent } = yield* Effect.promise(() => import("@/agent/agent"))
     const { RuntimeFlags } = yield* Effect.promise(() => import("@/effect/runtime-flags"))
     const { InstanceRef } = yield* Effect.promise(() => import("@/effect/instance-ref"))

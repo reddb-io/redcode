@@ -1,0 +1,5 @@
+---
+"@reddb-io/redcode": minor
+---
+
+Session worktrees can live in the temporary directory instead of the repository. Pass `--tmp` to `redcode`, `redcode run` or `redcode serve`, or set `"worktree": { "location": "tmp" }` in the global or project config (`.red/code/config.jsonc`, `redcode.json`), and the automatic worktree goes to `<tmpdir>/redcode-worktrees/<repository>-<hash>/<name>` on the same `<name>` branch, created with `git worktree add` from the repository, and `.git/info/exclude` is left alone. `worktree.tmpdir` replaces the system temporary directory, and `REDCODE_WORKTREE_LOCATION=tmp|repo` overrides the config like the flag does. The sidebar shows the path, middle-truncated, with a `tmp` marker, and the toast names the temporary worktree. `/worktrees` and `redcode worktrees` list temporary worktrees with the rest. `clean` removes the merged or stale ones and prunes those whose directory is gone. A worktree with uncommitted changes is never removed without force. `worktree.auto: false` and `REDCODE_AUTO_WORKTREE=0` still turn automatic worktrees off.

@@ -2,6 +2,7 @@ import { describe, expect, test } from "bun:test"
 import path from "node:path"
 import { mkdir, realpath, rm } from "node:fs/promises"
 import { WorktreeInventory } from "../src/worktree-inventory"
+import { RepositoryGuard } from "../src/repository-guard"
 import { tmpdir } from "./fixture/tmpdir"
 
 const git = (directory: string, ...args: string[]) => {
@@ -142,6 +143,38 @@ describe("worktree inventory", () => {
     const left = await WorktreeInventory.list({ directory: repo.root })
     expect(left.worktrees.map((item) => item.branch).toSorted()).toEqual(["dirty", "feature", "main"])
     expect(git(repo.root, "branch", "--list", "merged").trim()).toBe("")
+  })
+
+  test("lists temporary session worktrees and cleans them like nested ones", async () => {
+    await using tmp = await tmpdir()
+    const repo = await fixture(tmp.path)
+    const system = path.join(tmp.path, "system-tmp")
+    const claim = (session: string, name: string) =>
+      RepositoryGuard.claim({ directory: repo.root, session, name, tmp: system })
+    const tidy = await claim("ses_tidy", "Tidy docs")
+    const draft = await claim("ses_draft", "Draft notes")
+    const gone = await claim("ses_gone", "Gone work")
+    if (!tidy || !draft || !gone) throw new Error("expected temporary worktrees")
+    expect(path.dirname(tidy.worktree)).toBe(await realpath(RepositoryGuard.temporaryBase(repo.root, system)))
+    await Bun.write(path.join(draft.worktree, "notes.txt"), "unsaved\n")
+    await rm(gone.worktree, { recursive: true, force: true })
+
+    const inventory = await WorktreeInventory.list({ directory: repo.root })
+    const listed = inventory.worktrees.find((item) => item.path === tidy.worktree)
+    expect(listed).toMatchObject({ branch: "tidy-docs", merged: true, prunable: false })
+    expect(listed?.relative).toBeUndefined()
+    expect(WorktreeInventory.summary(listed!).location).toBe(`⎇ tmp ${tidy.worktree}`)
+    expect(inventory.worktrees.find((item) => item.branch === "gone-work")?.prunable).toBe(true)
+
+    const result = await WorktreeInventory.clean({ directory: repo.root })
+    expect(result.removed).toContain(tidy.worktree)
+    expect(result.removed).not.toContain(draft.worktree)
+    expect(result.pruned).toContain("gone-work")
+    expect(await Bun.file(path.join(draft.worktree, "notes.txt")).text()).toBe("unsaved\n")
+    expect(await Bun.file(path.join(tidy.worktree, "source.txt")).exists()).toBe(false)
+    await expect(WorktreeInventory.remove({ directory: repo.root, target: draft.worktree })).rejects.toThrow(
+      "uncommitted change",
+    )
   })
 
   test("clean by staleness keeps recently active worktrees", async () => {

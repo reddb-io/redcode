@@ -61,6 +61,18 @@ describe("sidebar location lines", () => {
     ])
   })
 
+  test("a temporary session worktree shows its middle-truncated path with a tmp marker", () => {
+    const worktree = path.join(path.sep, "tmp", "redcode-worktrees", "redcode-1a2b3c4d", "setup-flow")
+    const directory = path.join(worktree, "packages", "tui")
+    const lines = locationLines({ directory, checkout: project, branch: "setup-flow", home, width: 30 })
+    expect(lines[0]).toBe("~" + path.sep + path.join("Work", "redcode"))
+    expect(lines[1]).toStartWith("⎇ tmp " + path.sep + "tmp")
+    expect(lines[1]).toContain("…")
+    expect(lines[1]).toEndWith("setup-flow")
+    expect(lines[2]).toBe("⑂ setup-flow")
+    expect(lines.every((line) => line.length <= 30)).toBe(true)
+  })
+
   test("a non-Git directory keeps only the directory", () => {
     expect(locationLines({ directory: path.join(home, "notes"), home, width: 40 })).toEqual(["~" + path.sep + "notes"])
   })
