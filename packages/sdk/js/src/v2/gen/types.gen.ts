@@ -85,6 +85,8 @@ export type Event =
   | EventProjectUpdated
   | EventSessionStatus
   | EventSessionIdle
+  | EventSessionModelSuggested
+  | EventSessionModelSuggestionResolved
   | EventQuestionAsked
   | EventQuestionReplied
   | EventQuestionRejected
@@ -746,6 +748,23 @@ export type SessionStatus =
       step?: number
       since?: number
     }
+
+export type ModelSuggestion = {
+  trigger: ModelSuggestionTrigger
+  current: ModelSuggestionRef
+  model: ModelSuggestionRef
+  name: string
+  /**
+   * model, combo or flat, as the router lists it.
+   */
+  kind: string
+  why: Array<{
+    code: string
+    detail: string
+  }>
+  whyText: string
+  delta?: ModelSuggestionDelta
+}
 
 export type QuestionOption = {
   /**
@@ -1605,6 +1624,23 @@ export type GlobalEvent = {
       }
     | {
         id: string
+        type: "session.model.suggested"
+        properties: {
+          sessionID: string
+          suggestion: ModelSuggestion
+        }
+      }
+    | {
+        id: string
+        type: "session.model.suggestion.resolved"
+        properties: {
+          sessionID: string
+          trigger: ModelSuggestionTrigger
+          choice: "switch" | "keep"
+        }
+      }
+    | {
+        id: string
         type: "question.asked"
         properties: {
           id: string
@@ -2242,6 +2278,7 @@ export type Config = {
     batch_tool?: boolean
     openTelemetry?: boolean
     primary_tools?: Array<string>
+    model_suggestions?: boolean
     continue_loop_on_deny?: boolean
     mcp_timeout?: number
     /**
@@ -3566,6 +3603,8 @@ export type V2Event =
   | ProjectUpdated
   | SessionStatus2
   | SessionIdle
+  | SessionModelSuggested
+  | SessionModelSuggestionResolved
   | QuestionAsked
   | QuestionReplied2
   | QuestionRejected2
@@ -3836,6 +3875,20 @@ export type ProjectTime = {
   created: number
   updated: number
   initialized?: number
+}
+
+export type ModelSuggestionTrigger = "vision" | "tools" | "context" | "provider_errors" | "cheaper"
+
+export type ModelSuggestionRef = {
+  providerID: string
+  modelID: string
+}
+
+export type ModelSuggestionDelta = {
+  pricePct: number
+  context: number
+  gained: Array<string>
+  lost: Array<string>
 }
 
 export type EventServerInstanceDisposed = {
@@ -7467,6 +7520,43 @@ export type SessionIdle = {
   }
 }
 
+export type SessionModelSuggested = {
+  id: string
+  metadata?: {
+    [key: string]: unknown
+  }
+  type: "session.model.suggested"
+  durable?: {
+    aggregateID: string
+    seq: number
+    version: number
+  }
+  location?: LocationRef
+  data: {
+    sessionID: string
+    suggestion: ModelSuggestion
+  }
+}
+
+export type SessionModelSuggestionResolved = {
+  id: string
+  metadata?: {
+    [key: string]: unknown
+  }
+  type: "session.model.suggestion.resolved"
+  durable?: {
+    aggregateID: string
+    seq: number
+    version: number
+  }
+  location?: LocationRef
+  data: {
+    sessionID: string
+    trigger: ModelSuggestionTrigger
+    choice: "switch" | "keep"
+  }
+}
+
 export type QuestionAsked = {
   id: string
   metadata?: {
@@ -8700,6 +8790,25 @@ export type EventSessionIdle = {
   type: "session.idle"
   properties: {
     sessionID: string
+  }
+}
+
+export type EventSessionModelSuggested = {
+  id: string
+  type: "session.model.suggested"
+  properties: {
+    sessionID: string
+    suggestion: ModelSuggestion
+  }
+}
+
+export type EventSessionModelSuggestionResolved = {
+  id: string
+  type: "session.model.suggestion.resolved"
+  properties: {
+    sessionID: string
+    trigger: ModelSuggestionTrigger
+    choice: "switch" | "keep"
   }
 }
 
@@ -15238,6 +15347,43 @@ export type RedskilledWorkerSteerStatusResponses = {
 
 export type RedskilledWorkerSteerStatusResponse =
   RedskilledWorkerSteerStatusResponses[keyof RedskilledWorkerSteerStatusResponses]
+
+export type ModelSuggestionResolveData = {
+  body?: {
+    trigger: ModelSuggestionTrigger
+    choice: "switch" | "keep"
+  }
+  path: {
+    sessionID: string
+  }
+  query?: {
+    directory?: string
+    workspace?: string
+  }
+  url: "/session/{sessionID}/model-suggestion"
+}
+
+export type ModelSuggestionResolveErrors = {
+  /**
+   * BadRequest | InvalidRequestError
+   */
+  400: EffectHttpApiErrorBadRequest | InvalidRequestError
+  /**
+   * NotFoundError
+   */
+  404: NotFoundError
+}
+
+export type ModelSuggestionResolveError = ModelSuggestionResolveErrors[keyof ModelSuggestionResolveErrors]
+
+export type ModelSuggestionResolveResponses = {
+  /**
+   * Answered
+   */
+  200: boolean
+}
+
+export type ModelSuggestionResolveResponse = ModelSuggestionResolveResponses[keyof ModelSuggestionResolveResponses]
 
 export type V2HealthGetData = {
   body?: never
