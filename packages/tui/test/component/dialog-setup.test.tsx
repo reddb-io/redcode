@@ -479,8 +479,8 @@ test("failed OpenRouter probe stays in setup and can be retried with the entered
     await wait(() => !setup.app.captureCharFrame().includes("OpenCode Zen · Jev Free"))
     await setup.app.mockInput.pressEnter()
     await ready(setup.app, "3/3 · S1 connection")
-    await setup.app.mockInput.typeText("openrouter")
-    await wait(() => !setup.app.captureCharFrame().includes("Vercel AI Gateway"))
+    // Cloudflare (connected), then OpenCode Zen (the saved connection, under the cursor) and OpenRouter.
+    await setup.app.mockInput.pressArrow("down")
     await setup.app.mockInput.pressEnter()
     await wait(() => setup.app.captureCharFrame().includes("S1 API base URL"))
     expect(setup.app.captureCharFrame()).toContain("openrouter.ai")
