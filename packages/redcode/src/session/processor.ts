@@ -3,7 +3,7 @@ import { Verbose } from "@reddb-io/redcode-core/observability/verbose"
 import { PermissionV1 } from "@reddb-io/redcode-core/v1/permission"
 import { Image } from "@/image/image"
 import { SessionV1 } from "@reddb-io/redcode-core/v1/session"
-import { Cause, DateTime, Deferred, Duration, Effect, Exit, Layer, Context, Scope, Schema } from "effect"
+import { Cause, Clock, DateTime, Deferred, Duration, Effect, Exit, Layer, Context, Scope, Schema } from "effect"
 import * as Stream from "effect/Stream"
 import { Agent } from "@/agent/agent"
 import { Config } from "@/config/config"
@@ -188,9 +188,16 @@ const layer = Layer.effect(
       }
       let aborted = false
       // Stamped as events are read: the generation window, the provider's wait and the local work
-      // before the request, per attempt. See GenerationTiming for what each number covers.
-      const timing = GenerationTiming.recorder({ created: input.assistantMessage.time.created })
-      const arrived = GenerationTiming.arrivals()
+      // before the request, per attempt. See GenerationTiming for what each number covers. Read from
+      // the fiber's clock, which is monotonic by default and lets a TestClock script arrival times.
+      const clock = yield* Clock.Clock
+      const now = () => Number(clock.currentTimeNanosUnsafe()) / 1_000_000
+      const timing = GenerationTiming.recorder({
+        created: input.assistantMessage.time.created,
+        now,
+        epoch: () => clock.currentTimeMillisUnsafe(),
+      })
+      const arrived = GenerationTiming.arrivals(now)
 
       /** A fresh part id, remembered so the attempt's output can be discarded if it is retried. */
       const nextPartID = () => {
@@ -836,10 +843,10 @@ const layer = Layer.effect(
                 // Timed by when the event arrived, which llm.ts stamped while reading the provider;
                 // the time spent here handling it is what the window must not count as generation.
                 return Effect.gen(function* () {
-                  const start = performance.now()
+                  const start = now()
                   if (timing.observe(event, arrived.take(event))) yield* recordFirstToken()
                   yield* handleEvent(event)
-                  timing.busy(event, start, performance.now())
+                  timing.busy(event, start, now())
                 })
               }),
               Stream.takeUntil(() => ctx.needsCompaction),

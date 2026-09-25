@@ -39,7 +39,6 @@ type Msg = {
   dir: string
   holdMs?: number
   ready?: string
-  active?: string
   done?: string
 }
 
@@ -336,26 +335,21 @@ describe("util.effect-flock", () => {
         const done = path.join(tmp, "done.log")
         const n = 16
 
-        // The `active` marker is intentionally omitted here: it sits OUTSIDE the flock
-        // directory, so its `wx` create races between a holder's `fs.rm(active)` and the
-        // next holder's `fs.writeFile(active)`. On Windows the race window is wide enough to
-        // produce intermittent non-zero exits even though the flock itself is correct. The
-        // serialized work and `done.log` line count below are sufficient to prove
-        // mutual exclusion.
-
         try {
           const out = await Promise.all(
             Array.from({ length: n }, () => run({ key: "eflock:stress", dir, done, holdMs: 30 })),
           )
 
-          expect(out.map((x) => x.code)).toEqual(Array.from({ length: n }, () => 0))
-          expect(out.map((x) => x.stderr.toString()).filter(Boolean)).toEqual([])
+          expect(out.map((x) => ({ code: x.code, stderr: x.stderr.toString() }))).toEqual(
+            Array.from({ length: n }, () => ({ code: 0, stderr: "" })),
+          )
 
-          const lines = (await fs.readFile(done, "utf8"))
-            .split("\n")
-            .map((x) => x.trim())
-            .filter(Boolean)
-          expect(lines.length).toBe(n)
+          // Each holder brackets its work with start/end lines: no other holder may start
+          // between them.
+          const lines = (await fs.readFile(done, "utf8")).split("\n").filter(Boolean)
+          const pids = lines.filter((line) => line.startsWith("start ")).map((line) => line.slice("start ".length))
+          expect(lines).toEqual(pids.flatMap((pid) => [`start ${pid}`, `end ${pid}`]))
+          expect(new Set(pids).size).toBe(n)
         } finally {
           await fs.rm(tmp, { recursive: true, force: true })
         }

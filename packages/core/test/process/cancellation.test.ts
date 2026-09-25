@@ -1,66 +1,67 @@
-import { expect, test } from "bun:test"
+import { expect } from "bun:test"
 import { mkdtemp, rm } from "node:fs/promises"
 import { tmpdir } from "node:os"
 import path from "node:path"
-import { Effect } from "effect"
+import { Effect, Fiber } from "effect"
+import { TestClock } from "effect/testing"
 import { ChildProcess } from "effect/unstable/process"
 import { AppProcess } from "../../src/process"
 import { LayerNode } from "../../src/effect/layer-node"
+import { testEffect } from "../lib/effect"
 
-test.each(["abort", "timeout"] as const)(
-  "%s escalates for an owned child that ignores SIGTERM",
-  async (mode) => {
-    if (process.platform === "win32") return
-    const directory = await mkdtemp(path.join(tmpdir(), "redcode-cancel-test-"))
-    const ready = path.join(directory, "ready")
-    const signalled = path.join(directory, "signalled")
-    const controller = new AbortController()
-    const command = ChildProcess.make(process.execPath, [
-      "-e",
-      `
+const it = testEffect(LayerNode.compile(AppProcess.node))
+
+// The child renames each file into place, so an existing file always holds its full contents.
+const waitForFile = (file: string) =>
+  Effect.promise(async () => {
+    while (!(await Bun.file(file).exists())) await Bun.sleep(10)
+    return Bun.file(file).text()
+  })
+
+for (const mode of ["abort", "timeout"] as const)
+  it.effect(
+    `${mode} escalates for an owned child that ignores SIGTERM`,
+    Effect.gen(function* () {
+      if (process.platform === "win32") return
+      const directory = yield* Effect.promise(() => mkdtemp(path.join(tmpdir(), "redcode-cancel-test-")))
+      yield* Effect.addFinalizer(() => Effect.promise(() => rm(directory, { recursive: true, force: true })))
+      const ready = path.join(directory, "ready")
+      const signalled = path.join(directory, "signalled")
+      const controller = new AbortController()
+      const command = ChildProcess.make(process.execPath, [
+        "-e",
+        `
     const fs = require('node:fs');
-    process.on('SIGTERM', () => fs.writeFileSync(${JSON.stringify(signalled)}, 'received'));
-    fs.writeFileSync(${JSON.stringify(ready)}, String(process.pid));
+    const publish = (file, text) => {
+      fs.writeFileSync(file + '.tmp', text);
+      fs.renameSync(file + '.tmp', file);
+    };
+    process.on('SIGTERM', () => publish(${JSON.stringify(signalled)}, 'received'));
+    publish(${JSON.stringify(ready)}, String(process.pid));
     setInterval(() => {}, 60000);
   `,
-    ])
-    const running = Effect.runPromise(
-      Effect.gen(function* () {
-        const processes = yield* AppProcess.Service
-        return yield* processes.run(
-          command,
-          mode === "abort" ? { signal: controller.signal } : { timeout: "2 seconds" },
-        )
-      }).pipe(Effect.exit, Effect.provide(LayerNode.compile(AppProcess.node))),
-    )
-    const delay = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms))
-    let pid = 0
-    let watchdog: ReturnType<typeof setTimeout> | undefined
-    try {
-      const deadline = performance.now() + 1500
-      while (!(await Bun.file(ready).exists()) && performance.now() < deadline) await delay(10)
-      pid = Number(await Bun.file(ready).text())
-      if (mode === "abort") controller.abort()
-      const result = await Promise.race([
-        running,
-        new Promise<never>((_, reject) => {
-          watchdog = setTimeout(() => reject(new Error("Child cancellation did not settle")), 7500)
-        }),
       ])
+      const processes = yield* AppProcess.Service
+      // The run timeout and the force-kill grace period both run on the TestClock, so a child
+      // that starts slowly on a loaded machine cannot be timed out before it installs its handler.
+      const running = yield* processes
+        .run(command, mode === "abort" ? { signal: controller.signal } : { timeout: "2 seconds" })
+        .pipe(Effect.exit, Effect.forkScoped)
+      const pid = Number(yield* waitForFile(ready))
+      // Runs before the run fiber is interrupted, so a failed assertion never waits on the TestClock.
+      yield* Effect.addFinalizer(() =>
+        Effect.try({ try: () => process.kill(-pid, "SIGKILL"), catch: (error) => error }).pipe(Effect.ignore),
+      )
+
+      if (mode === "abort") controller.abort()
+      if (mode === "timeout") yield* TestClock.adjust("2 seconds")
+      expect(yield* waitForFile(signalled)).toBe("received")
+      // The child ignored SIGTERM; elapsing the force-kill grace period must escalate to SIGKILL.
+      yield* TestClock.adjust("3 seconds")
+      const result = yield* Fiber.join(running)
+
       expect(result._tag).toBe("Failure")
-      expect(await Bun.file(signalled).text()).toBe("received")
       expect(() => process.kill(pid, 0)).toThrow()
-    } finally {
-      clearTimeout(watchdog)
-      if (pid) {
-        try {
-          process.kill(-pid, "SIGKILL")
-        } catch {}
-      }
-      controller.abort()
-      await running
-      await rm(directory, { recursive: true, force: true })
-    }
-  },
-  15000,
-)
+    }),
+    15000,
+  )

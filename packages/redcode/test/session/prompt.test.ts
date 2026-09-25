@@ -8274,7 +8274,10 @@ it.instance("an overflow recovered by compaction publishes no session error", ()
 )
 
 const wrapUpRun = Effect.fn("test.wrapUpRun")(function* () {
-  const { llm } = yield* useServerConfig((url) => windowCfg(url, 40_000))
+  // The wrap-up band sits inside the band where a summary is prepared in the background, and that
+  // speculative request races the turn to the server: whether it lands before the loop discards it
+  // is scheduling, not behavior. Background preparation has its own tests; keep it out of the count.
+  const { llm } = yield* useServerConfig((url) => windowCfg(url, 40_000, { background: false }))
   const { chat, prompt } = yield* startChat("Do the work.")
   // Usable is 39,000 tokens; both steps leave less than 5% of it.
   yield* llm.push(reply().tool("glob", { pattern: "**/*.nothing-1" }).usage({ input: 37_200, output: 10 }))
