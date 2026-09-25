@@ -16,6 +16,15 @@ export function reasoningLabel(metadata: Record<string, unknown> | undefined) {
   return cause ? `auto → ${level} · ${cause}` : `auto → ${level}`
 }
 
+/**
+ * A variant label tightened for the compact prompt footer, where it sits right after the model name
+ * with no room for the padded arrow: "auto → xhigh" becomes "auto→xhigh". Labels without an arrow
+ * (a plain level, or a `router:` prefix) pass through unchanged.
+ */
+export function compactVariantLabel(label: string) {
+  return label.replace(/ → /g, "→")
+}
+
 /** The level an assistant message applied for an `auto` turn, for its footer: "auto → high". */
 export function appliedLabel(asked: string | undefined, applied: string | undefined) {
   if (asked !== ReasoningAuto.AUTO || !applied || applied === ReasoningAuto.AUTO) return undefined
