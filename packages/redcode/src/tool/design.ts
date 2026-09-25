@@ -329,8 +329,14 @@ export const DesignTools = Effect.gen(function* () {
               return {
                 ...result(
                   `${chip}\n${describe(reported(created.value.document, created.report))}\n${created.value.target.note}`,
-                  // The TUI shows the chip in place of the tool call, even with details hidden.
-                  { designChip: chip },
+                  // The TUI shows the chip in place of the tool call, even with details hidden; the web
+                  // shows it with the identification's one-line result (kind, paths, confidence, verified).
+                  {
+                    designChip: chip,
+                    ...(created.decision.identification
+                      ? { designSystem: DesignIdentify.headline(created.decision.identification) }
+                      : {}),
+                  },
                 ),
                 // The web app shows the tool title.
                 title: chip.split(" — ")[0]!,
