@@ -44,10 +44,13 @@ describe("AppProcess", () => {
       "captures stdout and stderr in emission order",
       Effect.gen(function* () {
         const svc = yield* AppProcess.Service
+        // stdout and stderr are separate pipes merged as they are read, so their relative order holds
+        // only for writes that land far enough apart. Timers armed together at 10 and 20 ms fire back
+        // to back when a loaded runner schedules the child late, so each write arms the next one, and
+        // the gap leaves a busy reader time to drain one pipe before the other has data.
         const script = [
           'process.stdout.write("out 1\\n")',
-          'setTimeout(() => process.stderr.write("err 1\\n"), 10)',
-          'setTimeout(() => process.stdout.write("out 2\\n"), 20)',
+          'setTimeout(() => { process.stderr.write("err 1\\n"); setTimeout(() => process.stdout.write("out 2\\n"), 100) }, 100)',
         ].join(";")
         const result = yield* svc.run(cmd("-e", script), { combineOutput: true })
         expect(result.output?.toString("utf8")).toBe("out 1\nerr 1\nout 2\n")

@@ -10,7 +10,6 @@ type Msg = {
   dir: string
   holdMs?: number
   ready?: string
-  active?: string
   done?: string
 }
 
@@ -34,14 +33,10 @@ const testLayer = AppNodeBuilder.build(EffectFlock.node, [[Global.node, testGlob
 
 async function job() {
   if (msg.ready) await fs.writeFile(msg.ready, String(process.pid))
-  if (msg.active) await fs.writeFile(msg.active, String(process.pid), { flag: "wx" })
-
-  try {
-    if (msg.holdMs && msg.holdMs > 0) await sleep(msg.holdMs)
-    if (msg.done) await fs.appendFile(msg.done, "1\n")
-  } finally {
-    if (msg.active) await fs.rm(msg.active, { force: true })
-  }
+  // Bracket the critical section in the shared journal; see flock-worker.ts.
+  if (msg.done) await fs.appendFile(msg.done, `start ${process.pid}\n`)
+  if (msg.holdMs && msg.holdMs > 0) await sleep(msg.holdMs)
+  if (msg.done) await fs.appendFile(msg.done, `end ${process.pid}\n`)
 }
 
 await Effect.runPromise(
