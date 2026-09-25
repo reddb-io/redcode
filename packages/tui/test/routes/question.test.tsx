@@ -43,12 +43,31 @@ const PENDING = {
   questions: [{ header: "Build Agent", question: "x", options: [] }],
 }
 
+// Same ceiling as `wait`: CI runs test files in parallel and a loaded runner can take seconds to render.
+// ThemeProvider renders nothing until its palette and theme discovery settle, so keys pressed before the
+// dialog is on screen hit no binding. Tests wait for the dialog itself instead of sleeping.
 async function waitForFrame(setup: { app: { renderOnce(): Promise<void>; captureCharFrame(): string } }, text: string) {
   const start = Date.now()
   for (;;) {
     await setup.app.renderOnce()
     if (setup.app.captureCharFrame().includes(text)) return
-    if (Date.now() - start > 2000) throw new Error(`timed out waiting for "${text}"`)
+    if (Date.now() - start > 10_000) throw new Error(`timed out waiting for "${text}"`)
+    await Bun.sleep(10)
+  }
+}
+
+// The plan body is markdown that lays out after the dialog's answers appear, so a fixed number of
+// PgDn presses can run out before the body is complete. Scroll until the end marker shows instead.
+async function scrollUntil(
+  setup: { app: { renderOnce(): Promise<void>; captureCharFrame(): string; mockInput: { pressKey(key: string): void } } },
+  text: string,
+) {
+  const start = Date.now()
+  for (;;) {
+    setup.app.mockInput.pressKey("\u001b[6~")
+    await setup.app.renderOnce()
+    if (setup.app.captureCharFrame().includes(text)) return
+    if (Date.now() - start > 10_000) throw new Error(`timed out scrolling to "${text}"`)
     await Bun.sleep(10)
   }
 }
@@ -139,14 +158,10 @@ test("long plan approval keeps answers and dismiss visible and keyboard usable",
     () => <Prompt />,
   )
   try {
-    await setup.app.renderOnce()
-    await Bun.sleep(50)
-    await setup.app.renderOnce()
+    await waitForFrame(setup, "A detailed implementation step")
     expect(setup.app.captureCharFrame()).toContain("1. Approve")
     expect(setup.app.captureCharFrame()).toContain("dismiss")
-    for (let index = 0; index < 30; index++) setup.app.mockInput.pressKey("\u001b[6~")
-    await setup.app.renderOnce()
-    expect(setup.app.captureCharFrame()).toContain("END OF PLAN")
+    await scrollUntil(setup, "END OF PLAN")
     expect(setup.app.captureCharFrame()).toContain("1. Approve")
     setup.app.mockInput.pressKey("2")
     await wait(() => replies.length === 1)
@@ -172,16 +187,11 @@ test("plan_exit with a Design handoff renders and Yes submits", async () => {
     { width: 200, height: 50 },
   )
   try {
-    await setup.app.renderOnce()
-    await Bun.sleep(50)
-    await setup.app.renderOnce()
+    await waitForFrame(setup, "Implementation plan")
     const approval = setup.app.captureCharFrame()
     expect(approval).toContain("1. Yes")
-    expect(approval).toContain("Implementation plan")
     expect(approval).not.toContain("# Implementation plan")
-    for (let index = 0; index < 40; index++) setup.app.mockInput.pressKey("\u001b[6~")
-    await setup.app.renderOnce()
-    expect(setup.app.captureCharFrame()).toContain("END OF HANDOFF")
+    await scrollUntil(setup, "END OF HANDOFF")
     setup.app.mockInput.pressKey("\r")
     await wait(() => replies.length === 1)
     expect(replies).toEqual([{ answers: [["Yes"]] }])
@@ -214,9 +224,7 @@ for (const [name, key, route] of [
       setup.sync.set("question", "ses_test", [
         { id: "que_exit", sessionID: "ses_test", questions: [{ header: "Build Agent", question: "x", options: [] }] },
       ])
-      await setup.app.renderOnce()
-      await Bun.sleep(50)
-      await setup.app.renderOnce()
+      await waitForFrame(setup, "1. Yes")
       setup.app.mockInput.pressKey(key)
       await wait(() => calls.length === 1)
       await wait(() => (setup.sync.data.question.ses_test ?? []).length === 0)
@@ -246,9 +254,7 @@ test("a plan approval the server never answers is dismissed with a retry hint", 
     setup.sync.set("question", "ses_test", [
       { id: "que_exit", sessionID: "ses_test", questions: [{ header: "Build Agent", question: "x", options: [] }] },
     ])
-    await setup.app.renderOnce()
-    await Bun.sleep(50)
-    await setup.app.renderOnce()
+    await waitForFrame(setup, "1. Yes")
     setup.app.mockInput.pressKey("\r")
     await wait(() => calls.length === 1)
     await wait(() => (setup.sync.data.question.ses_test ?? []).length === 0)
@@ -274,9 +280,7 @@ test("a second Ctrl+C leaves the app while the question's reject is still hangin
     () => <PlanExitPrompt question={handoff} onExit={() => exits++} />,
   )
   try {
-    await setup.app.renderOnce()
-    await Bun.sleep(50)
-    await setup.app.renderOnce()
+    await waitForFrame(setup, "1. Yes")
     setup.app.mockInput.pressKey("c", { ctrl: true })
     await wait(() => calls.length === 1)
     expect(exits).toBe(0)
@@ -304,9 +308,7 @@ test("a slow server that still holds the plan approval keeps the dialog and keep
   )
   try {
     setup.sync.set("question", "ses_test", [PENDING])
-    await setup.app.renderOnce()
-    await Bun.sleep(50)
-    await setup.app.renderOnce()
+    await waitForFrame(setup, "1. Yes")
     setup.app.mockInput.pressKey("\r")
     await wait(() => calls.length === 1)
     await waitForFrame(setup, "Still waiting")
@@ -332,9 +334,7 @@ test("a plan approval reply that fails with a server error stays open to retry",
   )
   try {
     setup.sync.set("question", "ses_test", [PENDING])
-    await setup.app.renderOnce()
-    await Bun.sleep(50)
-    await setup.app.renderOnce()
+    await waitForFrame(setup, "1. Yes")
     setup.app.mockInput.pressKey("\r")
     await wait(() => calls.length === 1)
     await waitForFrame(setup, "failed")
@@ -362,9 +362,7 @@ test("Ctrl+C that dismissed one question does not arm an exit on the next", asyn
     () => <PlanExitPrompt question={handoff} requestID={requestID} onExit={() => exits++} />,
   )
   try {
-    await setup.app.renderOnce()
-    await Bun.sleep(50)
-    await setup.app.renderOnce()
+    await waitForFrame(setup, "1. Yes")
     setup.app.mockInput.pressKey("c", { ctrl: true })
     await wait(() => calls.length === 1)
     setRequestID("que_next")
