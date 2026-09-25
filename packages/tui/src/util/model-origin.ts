@@ -60,6 +60,20 @@ export function routeLabel(provider: Provider, model: Model) {
   return `via ${[router, ...hops].join(Router.HOP_SEPARATOR)}`
 }
 
+/**
+ * A model named with its whole route, the routers and upstream joined by ` » `: `RedRouter » Anthropic
+ * · Claude Sonnet 4.5`. A model connected directly is its name alone.
+ */
+export function routedName(provider: Provider, model: Model) {
+  const router = routerLabel(provider)
+  const hops = model.via ? [model.via] : Router.routeOf(model).hops.map(Router.hopName)
+  return Router.routeName({
+    routers: router ? [router, ...hops] : [],
+    upstream: router ? model.upstream?.name : undefined,
+    model: model.name,
+  })
+}
+
 /** The parts of `originDescription` after the route: upstream name, subscription, and duplicate connections. */
 function originDetails(index: OriginIndex, provider: Provider, model: Model) {
   const router = routerLabel(provider)

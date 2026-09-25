@@ -2,6 +2,7 @@ import { describe, expect, test } from "bun:test"
 import { FileSystem, Integration, Permission, Project, Reference, Session, Workspace } from "../src"
 import { EventManifest } from "../src/event-manifest"
 import { IdeEvent } from "../src/ide-event"
+import { ModelSuggestion } from "../src/model-suggestion"
 import { SessionEvent } from "../src/session-event"
 import { SessionTodo } from "../src/session-todo"
 import { SessionV1 } from "../src/session-v1"
@@ -70,5 +71,13 @@ describe("public event manifest", () => {
     ])
     expect(EventManifest.Durable.has("session.next.step.ended.1")).toBe(false)
     expect(EventManifest.Durable.get("session.next.step.ended.2")).toBe(SessionEvent.Step.Ended)
+  })
+
+  test("carries model suggestions live on the legacy stream only", () => {
+    const server: string[] = EventManifest.ServerDefinitions.map((definition) => definition.type)
+    expect(EventManifest.Latest.get("session.model.suggested")).toBe(ModelSuggestion.Suggested)
+    expect(EventManifest.Latest.get("session.model.suggestion.resolved")).toBe(ModelSuggestion.Resolved)
+    expect(server).not.toContain("session.model.suggested")
+    expect(ModelSuggestion.Suggested.durable).toBeUndefined()
   })
 })
