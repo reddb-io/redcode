@@ -174,7 +174,8 @@ export function PromptInputV2(props: PromptInputV2Props) {
               if (event.key === "Enter" && !event.shiftKey && !event.isComposing) {
                 event.preventDefault()
                 if (event.repeat) return
-                props.controller.submit()
+                // Alt+Enter queues the prompt behind a running turn; Enter steers it.
+                props.controller.submit({ queue: event.altKey })
               }
             }}
             onKeyUp={updateCursor}
@@ -260,7 +261,7 @@ export function PromptInputV2(props: PromptInputV2Props) {
             disabled={!props.controller.canSubmit()}
             sendLabel={i18n.t("ui.promptInput.send")}
             stopLabel={i18n.t("ui.promptInput.stop")}
-            onSubmit={props.controller.submit}
+            onSubmit={() => props.controller.submit()}
             onStop={props.controller.stop}
           />
         </div>

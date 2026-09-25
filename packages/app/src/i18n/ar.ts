@@ -171,6 +171,8 @@ export const dict = {
   "command.model.variant.cycle.description": "التبديل إلى مستوى الجهد التالي",
   "command.prompt.mode.shell": "Shell",
   "command.prompt.mode.normal": "موجّه",
+  "command.prompt.queue": "Queue prompt",
+  "command.prompt.queue.description": "Send after the current turn instead of steering it",
   "command.permissions.autoaccept.enable": "قبول الأذونات تلقائيًا",
   "command.permissions.autoaccept.disable": "إيقاف قبول الأذونات تلقائيًا",
   "command.workspace.toggle": "تبديل مساحات العمل",

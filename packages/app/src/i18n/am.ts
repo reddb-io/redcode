@@ -165,6 +165,8 @@ export const dict = {
   "command.model.variant.cycle.description": "ወደሚቀጥለው የጥረት ደረጃ ቀይር",
   "command.prompt.mode.shell": "ሼል",
   "command.prompt.mode.normal": "ፕሮምፕት",
+  "command.prompt.queue": "Queue prompt",
+  "command.prompt.queue.description": "Send after the current turn instead of steering it",
   "command.permissions.autoaccept.enable": "በራስ-ተቀበል ፈቃዶች",
   "command.permissions.autoaccept.disable": "በራስ-መቀበል ፍቃዶችን አቁም",
   "command.workspace.toggle": "Workspace ቀይር",

@@ -177,6 +177,8 @@ export const dict = {
   "command.model.variant.cycle.description": "สลับไปยังระดับความพยายามถัดไป",
   "command.prompt.mode.shell": "เชลล์",
   "command.prompt.mode.normal": "พรอมต์",
+  "command.prompt.queue": "Queue prompt",
+  "command.prompt.queue.description": "Send after the current turn instead of steering it",
   "command.permissions.autoaccept.enable": "ยอมรับสิทธิ์โดยอัตโนมัติ",
   "command.permissions.autoaccept.disable": "หยุดยอมรับสิทธิ์โดยอัตโนมัติ",
   "command.workspace.toggle": "สลับพื้นที่ทำงาน",

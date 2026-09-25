@@ -183,6 +183,8 @@ export const dict = {
   "command.model.variant.cycle.description": "Sonraki efor seviyesine geç",
   "command.prompt.mode.shell": "Kabuk",
   "command.prompt.mode.normal": "İstem",
+  "command.prompt.queue": "Queue prompt",
+  "command.prompt.queue.description": "Send after the current turn instead of steering it",
   "command.permissions.autoaccept.enable": "İzinleri otomatik kabul et",
   "command.permissions.autoaccept.disable": "İzinleri otomatik kabul etmeyi durdur",
   "command.workspace.toggle": "Çalışma alanlarını aç/kapat",

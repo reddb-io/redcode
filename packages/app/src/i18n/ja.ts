@@ -171,6 +171,8 @@ export const dict = {
   "command.model.variant.cycle.description": "次の思考レベルに切り替え",
   "command.prompt.mode.shell": "シェル",
   "command.prompt.mode.normal": "プロンプト",
+  "command.prompt.queue": "Queue prompt",
+  "command.prompt.queue.description": "Send after the current turn instead of steering it",
   "command.permissions.autoaccept.enable": "権限を自動承認する",
   "command.permissions.autoaccept.disable": "権限の自動承認を停止する",
   "command.workspace.toggle": "ワークスペースを切り替え",

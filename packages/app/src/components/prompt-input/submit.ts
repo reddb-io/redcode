@@ -25,6 +25,7 @@ import { createPromptSubmissionState } from "./submission-state"
 import { normalizeSessionInfo } from "@/utils/session"
 import { Event } from "@reddb-io/redcode-schema/event"
 import { blobDataUrl } from "@/utils/draft-store"
+import { QUEUE_SLASH, stripQueueCommand } from "./queue-command"
 
 type PendingPrompt = {
   abort: AbortController
@@ -41,6 +42,8 @@ export type FollowupDraft = {
   agent: string
   model: { providerID: string; modelID: string }
   variant?: string
+  /** Set when the prompt waits for the running turn to end; omitted, the server steers it. */
+  delivery?: "queue"
 }
 
 type FollowupSendInput = {
@@ -77,7 +80,7 @@ export async function sendFollowupDraft(input: FollowupSendInput) {
   }
 
   const [head, ...tail] = text.split(" ")
-  const cmd = head?.startsWith("/") ? head.slice(1) : undefined
+  const cmd = head?.startsWith("/") && !input.draft.delivery ? head.slice(1) : undefined
   if (cmd && input.sync.data.command.find((item) => item.name === cmd)) {
     setBusy()
     try {
@@ -173,6 +176,7 @@ export async function sendFollowupDraft(input: FollowupSendInput) {
       agent: input.draft.agent,
       model: input.draft.model,
       variant: input.draft.variant,
+      delivery: input.draft.delivery,
       legacyParts: requestParts,
       text: requestParts.flatMap((part) => (part.type === "text" ? [part.text] : [])).join("\n"),
       files: requestParts.flatMap((part) => {
@@ -319,7 +323,7 @@ export function createPromptSubmit(input: PromptSubmitInput) {
     })
   }
 
-  const handleSubmit = async (event: Event) => {
+  const handleSubmit = async (event: Event, options?: { queue?: boolean }) => {
     event.preventDefault()
 
     const target = prompt.capture()
@@ -328,14 +332,23 @@ export function createPromptSubmit(input: PromptSubmitInput) {
       prompt: target.current(),
       context: target.context.items().slice(),
     })
-    const currentPrompt = submission.prompt
+    const mode = input.mode()
+    // `/queue <text>` queues from any keyboard. A server command named `queue` keeps precedence.
+    const queueCommand =
+      mode === "normal" && !sync().data.command.some((item) => item.name === QUEUE_SLASH)
+        ? stripQueueCommand(submission.prompt)
+        : undefined
+    const currentPrompt = queueCommand ?? submission.prompt
     const context = submission.context
     const text = currentPrompt.map((part) => ("content" in part ? part.content : "")).join("")
     const images = input.imageAttachments().slice()
-    const mode = input.mode()
+    // Enter steers a running turn at its next step; Alt+Enter and `/queue` wait for the turn to end.
+    // Idle, Alt+Enter just sends, while `/queue` still asks for a queue the server runs right away.
+    const delivery = queueCommand || (options?.queue && input.working()) ? ("queue" as const) : undefined
 
     if (text.trim().length === 0 && images.length === 0 && input.commentCount() === 0) {
-      if (input.working()) void abort()
+      // An empty `/queue` sends nothing, and must not stop the running turn either.
+      if (input.working() && !queueCommand) void abort()
       return
     }
 
@@ -363,7 +376,7 @@ export function createPromptSubmit(input: PromptSubmitInput) {
       return
     }
 
-    input.addToHistory(currentPrompt, mode)
+    input.addToHistory(submission.prompt, mode)
     input.resetHistoryNavigation()
 
     const projectDirectory = sdk().directory
@@ -469,6 +482,7 @@ export function createPromptSubmit(input: PromptSubmitInput) {
       agent,
       model,
       variant,
+      delivery,
     }
 
     const clearInput = () => {
@@ -524,7 +538,7 @@ export function createPromptSubmit(input: PromptSubmitInput) {
       return
     }
 
-    if (text.startsWith("/")) {
+    if (!queueCommand && text.startsWith("/")) {
       const [cmdName, ...args] = text.split(" ")
       const commandName = cmdName.slice(1)
       const customCommand = sync().data.command.find((c) => c.name === commandName)

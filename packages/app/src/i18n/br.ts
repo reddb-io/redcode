@@ -213,6 +213,8 @@ export const dict = {
   "command.model.variant.cycle.description": "Mudar para o próximo nível de esforço",
   "command.prompt.mode.shell": "Shell",
   "command.prompt.mode.normal": "Prompt",
+  "command.prompt.queue": "Queue prompt",
+  "command.prompt.queue.description": "Send after the current turn instead of steering it",
   "command.permissions.autoaccept.enable": "Aceitar permissões automaticamente",
   "command.permissions.autoaccept.disable": "Parar de aceitar permissões automaticamente",
   "command.workspace.toggle": "Alternar espaços de trabalho",

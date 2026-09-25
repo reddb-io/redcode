@@ -166,6 +166,8 @@ export const dict = {
   "command.model.variant.cycle.description": "Indiki synanyşyk derejesine geçiň",
   "command.prompt.mode.shell": "Shell",
   "command.prompt.mode.normal": "Prompt",
+  "command.prompt.queue": "Queue prompt",
+  "command.prompt.queue.description": "Send after the current turn instead of steering it",
   "command.permissions.autoaccept.enable": "Rugsatlary awtomatiki kabul ediň",
   "command.permissions.autoaccept.disable": "Awto-kabul ediş rugsatlaryny bes ediň",
   "command.workspace.toggle": "Workspace-lary çalşyň",

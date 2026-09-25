@@ -165,6 +165,8 @@ export const dict = {
   "command.model.variant.cycle.description": "Pārslēgt uz nākamo līmeni",
   "command.prompt.mode.shell": "Čaula",
   "command.prompt.mode.normal": "Uzvedne",
+  "command.prompt.queue": "Queue prompt",
+  "command.prompt.queue.description": "Send after the current turn instead of steering it",
   "command.permissions.autoaccept.enable": "Automātiski pieņemt atļaujas",
   "command.permissions.autoaccept.disable": "Apturēt automātisku atļauju pieņemšanu",
   "command.workspace.toggle": "Pārslēgt darbvietas",

@@ -171,6 +171,8 @@ export const dict = {
   "command.model.variant.cycle.description": "محنت دی اگلی سطح تے جاؤ",
   "command.prompt.mode.shell": "Shell",
   "command.prompt.mode.normal": "پرامپٹ",
+  "command.prompt.queue": "Queue prompt",
+  "command.prompt.queue.description": "Send after the current turn instead of steering it",
   "command.permissions.autoaccept.enable": "خودکار اجازتاں قبول کرو",
   "command.permissions.autoaccept.disable": "خودکار اجازتاں قبول کرنا بند کرو",
   "command.workspace.toggle": "ورک سپیس ٹوگل کرو",

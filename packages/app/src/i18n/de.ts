@@ -76,6 +76,8 @@ export const dict = {
   "command.model.variant.cycle.description": "Zum nächsten Aufwandslevel wechseln",
   "command.prompt.mode.shell": "Shell",
   "command.prompt.mode.normal": "Prompt",
+  "command.prompt.queue": "Queue prompt",
+  "command.prompt.queue.description": "Send after the current turn instead of steering it",
   "command.permissions.autoaccept.enable": "Berechtigungen automatisch akzeptieren",
   "command.permissions.autoaccept.disable": "Automatische Akzeptanz von Berechtigungen stoppen",
   "command.workspace.toggle": "Arbeitsbereiche umschalten",
