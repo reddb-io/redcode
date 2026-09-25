@@ -196,11 +196,12 @@ describe("SessionStopLoss.decide", () => {
     })
   })
 
-  test("single: a hint on the first signal, then a stop once it persists", () => {
+  test("single: a hint on the first signal, a second hint, and a stop only on the third", () => {
     expect(decide(probes(3))).toMatchObject({ action: "steer", verified: false })
     expect(decide(probes(4), { memory: { last: 3, steers: 1 } })).toMatchObject({ action: "steer" })
-    expect(decide(probes(6), { memory: { last: 3, steers: 1 } })).toMatchObject({ action: "stop", verified: false })
-    // Severe without a hint first still gets the hint.
+    expect(decide(probes(6), { memory: { last: 3, steers: 1 } })).toMatchObject({ action: "steer" })
+    expect(decide(probes(9), { memory: { last: 6, steers: 2 } })).toMatchObject({ action: "stop", verified: false })
+    // Severe without the hints first still gets a hint.
     expect(decide(probes(6))).toMatchObject({ action: "steer" })
   })
 
@@ -354,5 +355,179 @@ describe("SessionStopLoss.evaluation", () => {
     }
     expect(criteria("state")[0]).toBe("progressing")
     expect(criteria("decision")[0]).toBe("continue")
+  })
+})
+
+describe("SessionStopLoss spend in a large session", () => {
+  // Every step re-sends a ~700k context, mostly cached, while adding a few thousand tokens to it.
+  const large = (parts: SessionStopLoss.Part[], index: number) =>
+    step(parts, { tokens: 2_000, context: 700_000 + index * 3_000, cost: 0.69 })
+  const read = call("read", { filePath: "a.ts" }, "a")
+  // Steps that only think and answer: no progress, and nothing repeated for another signal to see.
+  const idle = (count: number) => [large([read], 0), ...Array.from({ length: count }, (_, index) => large([], index + 1))]
+
+  test("counts the work each step added, not the context it re-read", () => {
+    const trajectory = observe(idle(2))
+    expect(trajectory.idle).toBe(2)
+    expect(trajectory.spent.tokens).toBe(2 * (2_000 + 3_000))
+    expect(trajectory.spent.cost).toBeCloseTo(1.38)
+    expect(trajectory.context).toBe(706_000)
+  })
+
+  test("the legacy history counts a step's re-read context apart from what it generated", () => {
+    const message = (index: number) => ({
+      info: {
+        id: `msg_${index}`,
+        role: "assistant",
+        time: { created: index, completed: index },
+        cost: 0.69,
+        // A provider that reports no cache: the whole context arrives as input.
+        tokens: { input: 690_000 + index * 3_000, output: 1_500, reasoning: 500, cache: { read: 0, write: 0 } },
+      },
+      parts: [read],
+    })
+    const user = { info: { id: "msg_user", role: "user", time: { created: 0 } }, parts: [{ type: "text", text: "go" }] }
+    const turn = SessionStopLoss.legacy([user, message(1), message(2), message(3)] as unknown as Parameters<
+      typeof SessionStopLoss.legacy
+    >[0])
+    expect(turn.steps.map((item) => [item.tokens, item.context])).toEqual([
+      [2_000, 693_000],
+      [2_000, 696_000],
+      [2_000, 699_000],
+    ])
+    expect(observe(turn.steps).spent.tokens).toBe(2 * (2_000 + 3_000))
+  })
+
+  test("two steps over a large context are no signal, and the session keeps going", () => {
+    expect(SessionStopLoss.signals(observe(idle(2)), LIMITS)).toEqual([])
+    expect(
+      SessionStopLoss.decide({
+        trajectory: observe(idle(2)),
+        limits: LIMITS,
+        memory: { last: 1, steers: 1 },
+        asked: false,
+        subagent: false,
+      }),
+    ).toMatchObject({ action: "continue" })
+  })
+
+  test("the spend thresholds grow with the context", () => {
+    // 200k of new work in two steps is a signal at a small context, not at a 700k one.
+    const heavy = (context: number) => [
+      step([read], { context }),
+      step([], { tokens: 100_000, context }),
+      step([], { tokens: 100_000, context }),
+    ]
+    expect(SessionStopLoss.signals(observe(heavy(50_000)), LIMITS)).toEqual(["spend"])
+    expect(SessionStopLoss.signals(observe(heavy(700_000)), LIMITS)).toEqual([])
+  })
+
+  test("spend alone ends the turn only after enough steps without progress", () => {
+    const spent = (count: number) => [
+      step([read]),
+      ...Array.from({ length: count }, () => step([], { tokens: 400_000 })),
+    ]
+    expect(SessionStopLoss.signals(observe(spent(2)), LIMITS)).toEqual(["spend"])
+    expect(SessionStopLoss.severe(observe(spent(2)), LIMITS)).toEqual([])
+    expect(SessionStopLoss.ceiling(observe(spent(2)), LIMITS)).toBe(false)
+    expect(SessionStopLoss.severe(observe(spent(SessionStopLoss.SPEND_STOP_STEPS)), LIMITS)).toContain("spend")
+    const memory = { last: 1, steers: 1 }
+    expect(
+      SessionStopLoss.decide({ trajectory: observe(spent(2)), limits: LIMITS, memory, asked: false, subagent: false }),
+    ).toMatchObject({ action: "steer" })
+  })
+})
+
+describe("SessionStopLoss waiting on an outside job", () => {
+  const RUN = "gh run view 42 --json status,conclusion"
+  const PENDING = '{"conclusion":"","status":"in_progress"}'
+  const poll = (command = RUN, output = PENDING, exit = 0): SessionStopLoss.Part => ({
+    type: "tool",
+    tool: "bash",
+    state: { status: "completed", input: { command, workdir: "/repo" }, output, metadata: { exit } },
+  })
+  const polls = (count: number, part = poll()) => Array.from({ length: count }, () => step([part]))
+  const decide = (
+    steps: SessionStopLoss.Step[],
+    input: Partial<Omit<Parameters<typeof SessionStopLoss.decide>[0], "trajectory" | "limits">> & { now?: number } = {},
+  ) =>
+    SessionStopLoss.decide({
+      trajectory: observe(steps, input.now),
+      limits: LIMITS,
+      memory: SessionStopLoss.FRESH,
+      asked: false,
+      subagent: false,
+      ...input,
+    })
+
+  test("the same answer from a read-only status check of something outside is polling, not a loop", () => {
+    const trajectory = observe(polls(2))
+    expect(trajectory.repeat).toMatchObject({ tool: "bash", count: 2, probe: RUN })
+    expect(SessionStopLoss.signals(trajectory, LIMITS)).toEqual(["polling"])
+  })
+
+  test("a local check, a failing check or a command that changes something is not polling", () => {
+    expect(observe(probes(3)).repeat?.probe).toBeUndefined()
+    expect(observe(polls(3, poll(RUN, "HTTP 404: run not found", 1))).repeat?.probe).toBeUndefined()
+    expect(SessionStopLoss.signals(observe(polls(3, poll(RUN, "HTTP 404", 1))), LIMITS)).toEqual(["same_result"])
+    expect(observe(polls(3, poll("gh pr merge 7 --squash", "already merged"))).repeat?.probe).toBeUndefined()
+    const failing = Array.from({ length: 3 }, () =>
+      step([call("bash", { command: RUN }, "gh: not authenticated", "error")]),
+    )
+    expect(SessionStopLoss.signals(observe(failing), LIMITS)).toEqual(["same_error"])
+  })
+
+  test("is steered to a monitor instead of stopped, and its steps do not count as stalled", () => {
+    expect(decide(polls(2))).toMatchObject({ action: "steer", signals: ["polling"] })
+    // Many polls inside the wait budget: no no-progress or ceiling stop, only the polling signal.
+    expect(SessionStopLoss.signals(observe(polls(16)), LIMITS)).toEqual(["polling"])
+    expect(SessionStopLoss.ceiling(observe(polls(16)), LIMITS)).toBe(false)
+  })
+
+  test("the steer hands the model the monitor call that waits for the answer to change", () => {
+    const verdict = decide(polls(2))
+    const text = SessionStopLoss.steer(observe(polls(2)), verdict, { monitor: true })
+    expect(text).toStartWith(SessionStopLoss.STEER)
+    expect(text).toContain("waiting on an outside job")
+    expect(text).toContain(`\`${RUN}\` answered the same 2 times`)
+    const suggested = JSON.parse(text.split("\n").find((item) => item.startsWith("{"))!)
+    expect(suggested).toEqual({
+      command: RUN,
+      workdir: "/repo",
+      monitor: { mode: "poll", until: "changed", interval_ms: 60_000, deadline_ms: 3_600_000 },
+    })
+    // Without a shell that can wait in the background there is no monitor to offer.
+    const plain = SessionStopLoss.steer(observe(polls(2)), verdict)
+    expect(plain).not.toContain('"monitor"')
+    expect(plain).toContain("Stop polling it")
+  })
+
+  test("polling that goes on after two hints is stopped, with a one-reply way to wait for it", () => {
+    expect(decide(polls(5), { memory: { last: 2, steers: 1 } })).toMatchObject({ action: "steer" })
+    const verdict = decide(polls(8), { memory: { last: 5, steers: 2 } })
+    expect(verdict).toMatchObject({ action: "stop", signals: ["polling"] })
+    const text = SessionStopLoss.final(observe(polls(8)), verdict, { subagent: false, monitor: true })
+    expect(text).toContain("waiting on an outside job")
+    expect(text).toContain(`\`${RUN}\` was polled 8 times instead of waited for`)
+    expect(text).toContain("Reply `c` to continue, or `w` to wait for it")
+    expect(text).toContain('"until":"changed"')
+    expect(SessionStopLoss.final(observe(polls(8)), verdict, { subagent: false })).toContain(
+      "Reply `c` to check it again and continue",
+    )
+  })
+
+  test("past the wait budget the user is asked whether to keep waiting", () => {
+    const now = (LIMITS.wait + 1) * 60_000
+    const verdict = decide(polls(3), { now })
+    expect(verdict).toMatchObject({ action: "ask_user", signals: ["waited"] })
+    const text = SessionStopLoss.final(observe(polls(3), now), verdict, { subagent: false, monitor: true })
+    expect(text).toContain(`answered the same for ${LIMITS.wait + 1} minutes`)
+    expect(text).toContain("`w` to wait for it")
+  })
+
+  test("progress after a checkpoint gives a later stall its own hints", () => {
+    expect(SessionStopLoss.current({ last: 5, steers: 2 }, 12, 3)).toEqual({ last: 5, steers: 0 })
+    expect(SessionStopLoss.current({ last: 5, steers: 2 }, 12, 8)).toEqual({ last: 5, steers: 2 })
+    expect(SessionStopLoss.current({ last: 5, steers: 2 }, 12)).toEqual({ last: 5, steers: 2 })
   })
 })

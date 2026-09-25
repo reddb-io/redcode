@@ -187,6 +187,7 @@ import { SessionTodo } from "@reddb-io/redcode-core/session/todo"
 import { SessionGoal } from "./goal"
 import { GoalRuntime } from "./goal-runtime"
 import { SessionModelSuggestion } from "./model-suggestion"
+import { SessionModelSwitch } from "./model-switch"
 import { SessionSpend } from "./spend"
 import { SessionBudget } from "./budget"
 import { errorMessage } from "@/util/error"
@@ -305,6 +306,7 @@ const layer = Layer.effect(
     const todos = yield* Todo.Service
     const goals = yield* GoalRuntime.Service
     const suggestions = yield* SessionModelSuggestion.Service
+    const switches = yield* SessionModelSwitch.Service
     const spend = yield* SessionSpend.Service
     const limits = yield* ModelLimit.Service
     const intelligence = yield* Intelligence.Service
@@ -1934,7 +1936,7 @@ const layer = Layer.effect(
           const settings = yield* intelligence.read().pipe(Effect.orElseSucceed(() => undefined))
           const asked = !!settings && Intelligence.mode(settings) === "dual" && !readOnly
           const step = input.step
-          const memory = SessionStopLoss.current(stopLoss, step)
+          const memory = SessionStopLoss.current(stopLoss, step, trajectory.idle)
           const checkpoint = SessionStopLoss.due({ step, memory, limits: bounds, signals: found, interval: asked })
           if (checkpoint.type === "none") return false
           const started = Date.now()
@@ -2004,7 +2006,8 @@ const layer = Layer.effect(
               sessionID,
               messageID: message.id,
               type: "text",
-              text: SessionStopLoss.steer(trajectory, verdict),
+              // Legacy bash can wait on a status check in the background (its `monitor` parameter).
+              text: SessionStopLoss.steer(trajectory, verdict, { monitor: true }),
               synthetic: true,
               metadata: notice,
             })
@@ -2035,7 +2038,7 @@ const layer = Layer.effect(
             sessionID,
             messageID: message.id,
             type: "text",
-            text: SessionStopLoss.final(trajectory, verdict, { subagent }),
+            text: SessionStopLoss.final(trajectory, verdict, { subagent, monitor: true }),
             synthetic: true,
             metadata: notice,
           })
@@ -2902,6 +2905,8 @@ const layer = Layer.effect(
           })
 
           ran = true
+          // The model selected while this step's retry waits, which then takes the request.
+          let selected: SessionModelSwitch.Ref | undefined
           const handle = yield* processor
             .create({
               assistantMessage: msg,
@@ -2914,6 +2919,15 @@ const layer = Layer.effect(
               onFailure: (reason) => goals.block(sessionID, `Provider request failed: ${reason}`),
               // Subagents run the model their agent names; only the person's own session is offered another.
               onRetry: () => (session.parentID ? Effect.void : suggestions.failure({ sessionID, model })),
+              switched: switches
+                .next(sessionID, (ref) => ref.providerID !== model.providerID || ref.modelID !== model.id)
+                .pipe(
+                  Effect.tap((ref) =>
+                    Effect.sync(() => {
+                      selected = ref
+                    }),
+                  ),
+                ),
             })
             .pipe(Effect.onInterrupt(() => finalizeInterruptedAssistant))
 
@@ -3232,6 +3246,17 @@ const layer = Layer.effect(
                 reasoning: { auto, dual, level: effort?.level },
               },
             })
+            // Another model was selected while the provider's retry wait ran: the same request goes
+            // to it now, as a fresh step with its own attempts. The empty attempt on the old model
+            // goes, and the turn's user message carries the model its later steps use.
+            if (result === "switch" && selected) {
+              yield* sessions.removeMessage({ sessionID, messageID: handle.message.id })
+              yield* sessions.updateMessage({
+                ...lastUser,
+                model: { providerID: selected.providerID, modelID: selected.modelID, variant: selected.variant },
+              })
+              return "continue" as const
+            }
             // A router that decided reports its level with the response.
             if (auto) yield* showEffort()
 
@@ -3317,7 +3342,12 @@ const layer = Layer.effect(
 
             const failed = handle.message.error
             if (!session.parentID && SessionV1.APIError.isInstance(failed))
-              yield* suggestions.failure({ sessionID, model, status: failed.data.statusCode })
+              yield* suggestions.failure({
+                sessionID,
+                model,
+                status: failed.data.statusCode,
+                until: handle.exhausted?.until,
+              })
             if (!session.parentID && !failed && handle.message.finish) yield* suggestions.recovered(sessionID)
 
             if (result === "stop") {
@@ -3806,6 +3836,7 @@ export const node = LayerNode.make({
     DesignStudio.node,
     GoalRuntime.node,
     SessionModelSuggestion.node,
+    SessionModelSwitch.node,
     SessionSpend.node,
     SessionPlan.node,
     SessionGuardLog.node,

@@ -12439,6 +12439,11 @@ export type SessionUpdateData = {
     time?: {
       archived?: number
     }
+    model?: {
+      providerID: string
+      modelID: string
+      variant?: string
+    }
   }
   path: {
     sessionID: string
