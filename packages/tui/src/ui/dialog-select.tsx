@@ -97,6 +97,8 @@ export function DialogSelect<T>(props: DialogSelectProps<T>) {
   let selection: { value: T; category?: string } | undefined
   let resetSelection = false
   let visibilityGeneration = 0
+  // Counts cursor moves, so a deferred move to `current` can tell it has been overtaken.
+  let moves = 0
 
   createEffect(
     on(
@@ -274,16 +276,17 @@ export function DialogSelect<T>(props: DialogSelectProps<T>) {
   createEffect(
     on([() => store.filter, () => props.current], ([filter, current]) => {
       if (filter.length > 0) resetSelection = true
-      setTimeout(() => {
-        if (filter.length > 0) {
-          moveTo(0, true, false)
-        } else if (current) {
-          const currentIndex = flat().findIndex((opt) => isDeepEqual(opt.value, current))
-          if (currentIndex >= 0) {
-            moveTo(currentIndex, true)
-          }
-        }
+      const seen = moves
+      // Deferred so the new rows are laid out before scrolling to them. A newer filter or `current`
+      // cancels a pending move, and a cursor move made meanwhile (a key press, or a caller's moveTo)
+      // is never undone by this older `current` value.
+      const timer = setTimeout(() => {
+        if (filter.length > 0) return moveTo(0, true, false)
+        if (!current || moves !== seen) return
+        const currentIndex = flat().findIndex((opt) => isDeepEqual(opt.value, current))
+        if (currentIndex >= 0) moveTo(currentIndex, true)
       }, 0)
+      onCleanup(() => clearTimeout(timer))
     }),
   )
 
@@ -297,6 +300,7 @@ export function DialogSelect<T>(props: DialogSelectProps<T>) {
   }
 
   function moveTo(next: number, center = false, preserve = true) {
+    moves++
     setFocusedAction(undefined)
     setStore("selected", next)
     const option = selected()
