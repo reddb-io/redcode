@@ -26,6 +26,7 @@ import type { PermissionV1 } from "@reddb-io/redcode-core/v1/permission"
 import { ReasoningAuto } from "@reddb-io/redcode-core/session/reasoning-auto"
 import { Provider } from "@/provider/provider"
 import { closest, runnable, selectable } from "./models"
+import { HookV2Bridge } from "@/hook-v2-bridge"
 
 export interface TaskPromptOps {
   notify?(input: SessionPrompt.PromptInput): Effect.Effect<boolean>
@@ -134,6 +135,7 @@ export const TaskTool = Tool.define(
     const plans = yield* SessionPlan.Service
     const spend = yield* SessionSpend.Service
     const provider = yield* Provider.Service
+    const hooks = yield* HookV2Bridge.Service
     // Foreground subagents running per parent session. Checked and taken in one synchronous step,
     // so parallel task calls in one message cannot all slip under the cap.
     const running = new Map<SessionID, number>()
@@ -646,6 +648,28 @@ export const TaskTool = Tool.define(
         return result
       })
 
+      /**
+       * One prompt and the SubagentStop hook, as in the V2 runtime: a hook that blocks the stop sends
+       * its reason back to the child once. A child the stop-loss ended is not sent back.
+       */
+      const round = Effect.fn("TaskTool.round")(function* (
+        messageID: MessageID,
+        parts: SessionPrompt.PromptInput["parts"],
+      ) {
+        const reply = yield* send(messageID, parts)
+        if (reply.parts.some(SessionStopLoss.isNotice)) return reply
+        const stop = yield* hooks.run({
+          event: "SubagentStop",
+          matcher: next.name,
+          session_id: ctx.sessionID,
+          agent_id: nextSession.id,
+          agent_type: next.name,
+          last_assistant_message: reply.parts.findLast((item) => item.type === "text")?.text ?? "",
+        })
+        if ((stop.continue && stop.decision !== "deny") || !stop.reason) return reply
+        return yield* send(MessageID.ascending(), [{ type: "text", text: stop.reason, synthetic: true }])
+      })
+
       /** Keeps the verdict in the child's metadata, where the result's reader finds it, and hands back the text. */
       const settle = (verdict: SubagentReview.ResultReview, reply: SessionV1.WithParts) =>
         sessions
@@ -655,7 +679,17 @@ export const TaskTool = Tool.define(
           })
           .pipe(Effect.as(reply.parts.findLast((item) => item.type === "text")?.text ?? ""))
 
-      const runTask = Effect.fn("TaskTool.runTask")(function* () {
+      /** A run of the child; `start` runs the SubagentStart hook, which more context for a running task does not. */
+      const runTask = Effect.fn("TaskTool.runTask")(function* (start: boolean) {
+        const started = start
+          ? yield* hooks.run({
+              event: "SubagentStart",
+              matcher: next.name,
+              session_id: ctx.sessionID,
+              agent_id: nextSession.id,
+              agent_type: next.name,
+            })
+          : undefined
         const brief = SubagentReview.instructions({
           scope: params.scope,
           criteria: params.done_criteria,
@@ -664,6 +698,9 @@ export const TaskTool = Tool.define(
         const resolved = [
           ...(yield* ops.resolvePromptParts(params.prompt)),
           ...(brief ? [{ type: "text" as const, text: brief, synthetic: true }] : []),
+          ...(started?.additionalContext
+            ? [{ type: "text" as const, text: started.additionalContext, synthetic: true }]
+            : []),
         ]
         // The goal is copied, never shared: a child session is blank by design, so the parent's
         // objective rides in as a synthetic part ahead of the task, read fresh each run — the
@@ -674,7 +711,7 @@ export const TaskTool = Tool.define(
             ? [{ type: "text" as const, text: SessionGoal.inherit(goal), synthetic: true }, ...resolved]
             : resolved
         const from = MessageID.ascending()
-        const first = yield* send(from, parts)
+        const first = yield* round(from, parts)
         // The stop-loss ended the child and its last message says why; a review or a repair round
         // would only send it back into what it was stopped for.
         if (first.parts.some(SessionStopLoss.isNotice))
@@ -689,7 +726,7 @@ export const TaskTool = Tool.define(
         if (verdict.decision !== "needs_revision") return yield* settle(verdict, first)
         // One repair round a run, in the same child session, and one review after it: the parent
         // reads whatever that second review says.
-        const second = yield* send(MessageID.ascending(), [
+        const second = yield* round(MessageID.ascending(), [
           { type: "text", text: SubagentReview.repair(verdict), synthetic: true },
         ])
         return yield* settle(yield* reviewResult({ ...subject, replies: [first, second], repaired: true }), second)
@@ -737,7 +774,7 @@ export const TaskTool = Tool.define(
         )
       })
 
-      if (yield* background.extend({ id: nextSession.id, run: runTask() })) {
+      if (yield* background.extend({ id: nextSession.id, run: runTask(false) })) {
         return {
           title: params.description,
           metadata: {
@@ -786,7 +823,7 @@ export const TaskTool = Tool.define(
           }),
           notify(nextSession.id),
         ]),
-        run: runTask().pipe(Effect.onInterrupt(() => ops.cancel(nextSession.id))),
+        run: runTask(true).pipe(Effect.onInterrupt(() => ops.cancel(nextSession.id))),
       })
 
       function backgroundResult() {
