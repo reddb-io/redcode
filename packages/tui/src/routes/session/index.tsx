@@ -409,7 +409,7 @@ export function Session() {
     if (tab === "context") prompt?.focus()
   }
   const resizeSidebar = (width: number) => {
-    setStoredSidebarWidth(clampSidebarWidth({ width, available: dimensions().width, overlay: !wide() }))
+    setStoredSidebarWidth(() => clampSidebarWidth({ width, available: dimensions().width, overlay: !wide() }))
   }
   const adjustSidebarWidth = (delta: number) => {
     batch(() => {
@@ -422,7 +422,7 @@ export function Session() {
     if (!sidebarDrag()) return
     batch(() => {
       const width = dragSidebarWidth()
-      if (width !== undefined) setStoredSidebarWidth(width)
+      if (width !== undefined) setStoredSidebarWidth(() => width)
       setDragSidebarWidth()
       setSidebarDrag()
     })
