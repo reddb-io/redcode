@@ -6,7 +6,6 @@ import { Effect, Layer, Stream } from "effect"
 import { LLMClient, LLMEvent, Model, type LLMClientShape } from "@reddb-io/redcode-llm"
 import * as OpenAIChat from "@reddb-io/redcode-llm/protocols/openai-chat"
 import { AgentV2 } from "@reddb-io/redcode-core/agent"
-import { Catalog } from "@reddb-io/redcode-core/catalog"
 import { Config } from "@reddb-io/redcode-core/config"
 import { Database } from "@reddb-io/redcode-core/database/database"
 import { AppNodeBuilder } from "@reddb-io/redcode-core/effect/app-node-builder"
@@ -93,7 +92,7 @@ const intelligence = Layer.mock(Intelligence.Service, {
   router: () => Effect.succeed(undefined),
 })
 
-const catalogModel = ModelV2.Info.empty(ProviderV2.ID.make("fake"), ModelV2.ID.make("fake-model"))
+// The real catalog, as in session-runner.test.ts: booting the Location's plugins transforms it.
 const overrides: LayerNode.Replacements = [
   [LayerNodePlatform.llmClient, client],
   [ModelLimit.node, ModelLimit.memoryLayer()],
@@ -106,23 +105,6 @@ const overrides: LayerNode.Replacements = [
   [Config.node, Layer.succeed(Config.Service, Config.Service.of({ entries: () => Effect.succeed([]) }))],
   [Intelligence.node, intelligence],
   [HookV2.node, Layer.mock(HookV2.Service, { run: () => Effect.succeed({ continue: true }) })],
-  [
-    Catalog.node,
-    Layer.mock(Catalog.Service, {
-      provider: {
-        get: () => Effect.succeed(undefined),
-        all: () => Effect.succeed([]),
-        available: () => Effect.succeed([]),
-      },
-      model: {
-        get: () => Effect.succeed(catalogModel),
-        all: () => Effect.succeed([catalogModel]),
-        available: () => Effect.succeed([catalogModel]),
-        default: () => Effect.succeed(catalogModel),
-        small: () => Effect.succeed(undefined),
-      },
-    }),
-  ],
   [
     ProjectV2.node,
     Layer.mock(ProjectV2.Service, {
