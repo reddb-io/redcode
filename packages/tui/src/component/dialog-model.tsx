@@ -22,7 +22,7 @@ export function DialogModel(props: { providerID?: string }) {
   const local = useLocal()
   const sync = useSync()
   const dialog = useDialog()
-  // Model names plus their route suffix (e.g. "via RedRouter → RedRouter") need more room than the
+  // Model names plus their route suffix (e.g. "via RedRouter » RedRouter") need more room than the
   // default dialog width gives before being cut off.
   dialog.setSize("large")
   const [query, setQuery] = createSignal("")

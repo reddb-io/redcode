@@ -31,20 +31,20 @@ describe("Router.route", () => {
     expect(Router.route("red-router/jev-1.13.0")).toEqual({ hops: ["red-router"], provider: undefined, model: "jev-1.13.0" })
   })
 
-  test("names routes: a single router with dots, a chain with arrows", () => {
+  test("names routes: hops joined by », the model kept behind a dot", () => {
     expect(Router.hopName("red-router")).toBe("RedRouter")
     expect(Router.hopName("9router")).toBe("9Router")
     expect(Router.hopName("toString")).toBe("toString")
     expect(
       Router.routeName({ routers: ["RedRouter"], upstream: "OpenCode Zen (via OpenCode Go)", model: "JEV 1.13" }),
-    ).toBe("RedRouter · OpenCode Zen (via OpenCode Go) · JEV 1.13")
+    ).toBe("RedRouter » OpenCode Zen (via OpenCode Go) · JEV 1.13")
     expect(
       Router.routeName({
         routers: ["RedRouter", "RedRouter"],
         upstream: "OpenCode Zen (via OpenCode Go)",
         model: "JEV 1.13",
       }),
-    ).toBe("RedRouter → RedRouter → OpenCode Zen (via OpenCode Go) · JEV 1.13")
+    ).toBe("RedRouter » RedRouter » OpenCode Zen (via OpenCode Go) · JEV 1.13")
     expect(Router.routeName({ routers: ["RedRouter"], model: "jev-1.13.0" })).toBe("RedRouter · jev-1.13.0")
   })
 })

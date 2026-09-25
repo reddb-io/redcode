@@ -629,7 +629,7 @@ export const make = (
     })
     // A RedRouter model named by its route: the connected router, every router the id passes through,
     // then the upstream that serves it (with the account that lends the key when it is another
-    // provider's) and the model, e.g. "RedRouter → RedRouter → OpenCode Zen (via OpenCode Go) · JEV 1.13".
+    // provider's) and the model, e.g. "RedRouter » RedRouter » OpenCode Zen (via OpenCode Go) · JEV 1.13".
     const routedName = (model: {
       id: string
       name?: string

@@ -82,15 +82,15 @@ describe("model origin", () => {
   test("describes routed and direct models and the other connections serving them", () => {
     const index = originIndex([router, direct])
     expect(originDescription(index, router, router.models["codex/gpt-5.6-sol"])).toBe(
-      "via RedRouter · OpenAI Codex · subscription · also direct",
+      "via RedRouter » OpenAI Codex · subscription · also direct",
     )
-    expect(originDescription(index, router, router.models.smart)).toBe("via RedRouter · Combo")
+    expect(originDescription(index, router, router.models.smart)).toBe("via RedRouter » Combo")
     expect(originDescription(index, direct, direct.models["gpt-5.6-sol"])).toBe("direct · also via RedRouter")
     expect(originDescription(index, direct, direct.models["gpt-5.5"])).toBe("direct")
   })
 
   test("groups routed models per upstream provider", () => {
-    expect(originCategory(router, router.models["codex/gpt-5.6-sol"])).toBe("RedRouter · OpenAI Codex")
+    expect(originCategory(router, router.models["codex/gpt-5.6-sol"])).toBe("RedRouter » OpenAI Codex")
     expect(originCategory(direct, direct.models["gpt-5.5"])).toBe("OpenAI Codex")
   })
 
@@ -214,7 +214,7 @@ describe("model origin", () => {
       { router: { kind: "red-router" } },
     )
     expect(originDescription(originIndex([remote]), remote, remote.models["codex/gpt-5.6-sol"])).toBe(
-      "via RedRouter → office · OpenAI Codex · subscription",
+      "via RedRouter » office » OpenAI Codex · subscription",
     )
   })
 
@@ -231,10 +231,10 @@ describe("model origin", () => {
     )
     const index = originIndex([chained, direct])
     expect(originDescription(index, chained, chained.models["red-router/codex/gpt-5.6-sol"])).toBe(
-      "via RedRouter → RedRouter · OpenAI Codex · subscription · also direct",
+      "via RedRouter » RedRouter » OpenAI Codex · subscription · also direct",
     )
     expect(originDescription(index, chained, chained.models["red-router/red-router/codex/gpt-5.5"])).toBe(
-      "via RedRouter → RedRouter → RedRouter · OpenAI Codex · subscription · also direct",
+      "via RedRouter » RedRouter » RedRouter » OpenAI Codex · subscription · also direct",
     )
     expect(originDescription(index, direct, direct.models["gpt-5.5"])).toBe("direct · also via RedRouter")
   })

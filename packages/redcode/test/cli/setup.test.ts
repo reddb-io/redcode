@@ -105,7 +105,7 @@ describe("redcode setup recommendations", () => {
       options: [
         {
           value: "red-router/cc/claude-opus-5-5",
-          label: "Recommended: Claude Opus 5.5 · via RedRouter · Claude Code",
+          label: "Recommended: Claude Opus 5.5 · via RedRouter » Claude Code",
           hint: "Strongest connected coding model.",
         },
         { value: "mock/model", label: "Mock: Model" },

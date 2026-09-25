@@ -123,8 +123,8 @@ test("the model picker labels routed and direct models and follows renamed favor
     expect(frame).toContain("Sol · via RedRouter")
     expect(frame).toContain("Codex · subscription · also direct")
     expect(frame).toContain("review")
-    expect(frame).toContain("RedRouter · Combo")
-    expect(frame).toContain("Smart via RedRouter · Combo")
+    expect(frame).toContain("RedRouter » Combo")
+    expect(frame).toContain("Smart via RedRouter » Combo")
     // The direct connection's Sol is also served via RedRouter, so it gets a route suffix too.
     expect(frame).toContain("Sol · direct")
     expect(frame).toContain("also via RedRouter")
@@ -186,10 +186,10 @@ test("two same-named models reached through different router chains show distinc
   try {
     await wait(() => setup.app.captureCharFrame().includes("Select model"))
     await setup.app.mockInput.typeText("opus")
-    await wait(() => setup.app.captureCharFrame().includes("via RedRouter → RedRouter"))
+    await wait(() => setup.app.captureCharFrame().includes("via RedRouter » RedRouter"))
     const frame = setup.app.captureCharFrame()
     // Same title, distinguishable routes: one served directly via RedRouter, one via a remote one.
-    expect(frame).toContain("Claude Opus 5.5 · via RedRouter → RedRouter")
+    expect(frame).toContain("Claude Opus 5.5 · via RedRouter » RedRouter")
     expect(frame).toContain("Claude Opus 5.5 · via RedRouter")
   } finally {
     setup.app.renderer.destroy()

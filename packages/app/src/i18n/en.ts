@@ -85,7 +85,7 @@ export const dict = {
   "settings.intelligence.connection": "System One connection",
   "settings.intelligence.detectedRouter": "Use RedRouter {{name}} (detected)",
   "settings.intelligence.recommended": "Recommended",
-  "settings.intelligence.recommendedModel": "Recommended: {{name}} · via RedRouter · {{provider}}",
+  "settings.intelligence.recommendedModel": "Recommended: {{name}} · via RedRouter » {{provider}}",
   "settings.intelligence.url": "API base URL",
   "settings.intelligence.key": "API key (empty keeps saved credentials or server environment)",
   "settings.intelligence.discover": "Discover evaluator models",
