@@ -1415,11 +1415,13 @@ const layer = Layer.effect(
 
     // A RedRouter whose models were read again may now have a key of another role (an admin key gets
     // more tools) or no MCP server: its server reconnects, listing its tools again, or goes away.
+    // Through the interface: the implementation's own type lost the optional name to its lock wrapper.
+    const reloadServer: Interface["reload"] = reload
     const unsubscribe = yield* events.listen((event) => {
       if (event.type !== Router.Event.CatalogUpdated.type || !isRecord(event.data)) return Effect.void
       const providerID = event.data.providerID
       if (typeof providerID !== "string") return Effect.void
-      return reload(providerID).pipe(Effect.catchCause(() => Effect.void))
+      return reloadServer(providerID).pipe(Effect.catchCause(() => Effect.void))
     })
     yield* Effect.addFinalizer(() => unsubscribe)
 

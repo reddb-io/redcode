@@ -228,8 +228,10 @@ export const key = (input: Input) =>
   })
 
 /** A key role as RedRouter writes it, or undefined for anything else. */
-export function keyRole(value: unknown) {
-  return value === "admin" || value === "standard" ? value : undefined
+export function keyRole(value: unknown): "standard" | "admin" | undefined {
+  if (value === "admin") return "admin"
+  if (value === "standard") return "standard"
+  return undefined
 }
 
 /**
