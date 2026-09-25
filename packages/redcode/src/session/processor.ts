@@ -994,6 +994,14 @@ const layer = Layer.effect(
               }),
             ),
             Effect.raceFirst(switchedWhileWaiting),
+            // Esc between attempts: no attempt is running to record the abort, so the step does.
+            Effect.onInterrupt(() =>
+              Effect.gen(function* () {
+                if (ctx.assistantMessage.error) return
+                aborted = true
+                yield* halt(new DOMException("Aborted", "AbortError"))
+              }),
+            ),
             Effect.catch(halt),
             Effect.ensuring(cleanup()),
           )

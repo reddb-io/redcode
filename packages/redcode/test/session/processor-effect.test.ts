@@ -960,7 +960,7 @@ it.live("session.processor effect tests stop a retry wait on interrupt", () =>
     ({ dir, llm }) =>
       Effect.gen(function* () {
         yield* llm.error(429, rateLimited, { "retry-after": "90" })
-        const { chat, run } = yield* retryStep(dir, "esc")
+        const { chat, handle, run } = yield* retryStep(dir, "esc")
         const fiber = yield* run.pipe(Effect.forkChild)
 
         yield* retryStatus(chat.id)
@@ -969,6 +969,7 @@ it.live("session.processor effect tests stop a retry wait on interrupt", () =>
 
         expect(Exit.isFailure(exit) && Cause.hasInterruptsOnly(exit.cause)).toBe(true)
         expect(yield* llm.calls).toBe(1)
+        expect(handle.message.error?.name).toBe("MessageAbortedError")
       }),
     { config: (url) => providerCfg(url) },
   ),
