@@ -44,8 +44,9 @@ export function DialogModel(props: { providerID?: string }) {
     ),
   )
   // The flat model a row belongs to: the flat model itself, or the one an offer row pins.
-  function flatKey(value: { providerID: string; modelID: string } | undefined) {
-    if (!value) return undefined
+  function flatKey(value: { providerID: string; modelID: string } | string | undefined) {
+    // Rows that are no model (a provider to connect) carry a string.
+    if (!value || typeof value === "string") return undefined
     const model = sync.data.provider.find((item) => item.id === value.providerID)?.models[value.modelID]
     if (model?.flat) return `${value.providerID}/${model.id}`
     if (model?.pinOf) return `${value.providerID}/${model.pinOf}`

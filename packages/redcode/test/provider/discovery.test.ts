@@ -439,7 +439,10 @@ describe("flat model ids", () => {
         parameters_basis: "lead",
         members: ["anthropic/claude-sonnet-4-5", "openrouter/anthropic/claude-sonnet-4.5"],
       })
-      expect(claude?.router?.member_parameters?.map((item) => item.id)).toEqual(claude?.router?.members)
+      expect(claude?.router?.member_parameters?.map((item) => item.id)).toEqual([
+        "anthropic/claude-sonnet-4-5",
+        "openrouter/anthropic/claude-sonnet-4.5",
+      ])
       expect(claude?.router?.offers).toEqual([
         {
           id: "anthropic/claude-sonnet-4-5",
