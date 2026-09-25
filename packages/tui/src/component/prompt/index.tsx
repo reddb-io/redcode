@@ -64,9 +64,11 @@ import { createFadeIn } from "../../util/signal"
 import { DialogSkill } from "../dialog-skill"
 import { DialogWorkspaceUnavailable } from "../dialog-workspace-unavailable"
 import { DialogSetup } from "../dialog-setup"
-import { IntelligenceIndicator } from "../dialog-intelligence"
+import { IntelligenceIndicator, transportLabel } from "../dialog-intelligence"
 import { ReasoningAuto } from "@reddb-io/redcode-core/session/reasoning-auto"
-import { reasoningLabel } from "../../util/reasoning"
+import { compactVariantLabel, reasoningLabel } from "../../util/reasoning"
+import { compactRouteLabel } from "../../util/model-origin"
+import { footerS1MaxChars, showFooterRoutes } from "./footer-model"
 import { useArgs } from "../../context/args"
 import { OPENCODE_BASE_MODE, useBindings, useCommandShortcut, useLeaderActive, useOpencodeKeymap } from "../../keymap"
 import { useTuiConfig } from "../../config"
@@ -295,12 +297,16 @@ export function Prompt(props: PromptProps) {
   const workspace = usePromptWorkspace(props.sessionID)
   const move = usePromptMove({ projectID: project.project, sessionID: () => props.sessionID })
   const [cursorVersion, setCursorVersion] = createSignal(0)
-  // A routed model names its router (and the upstream provider when there is room) instead of the provider.
-  const currentProviderLabel = createMemo(() => {
+  // The footer's dim, right-aligned route hint: the S2 route, then the S1 route (dual reasoning
+  // only), each in the compact `Router»Upstream` form and joined with the plain `·` separator.
+  const footerRoutesText = createMemo(() => {
     const parsed = local.model.parsed()
-    if (!parsed.router) return parsed.provider
-    if (dimensions().width < 100 || !parsed.upstream) return `via ${parsed.router}`
-    return `via ${parsed.router} · ${parsed.upstream}`
+    const s2 = compactRouteLabel(parsed.router, parsed.upstream)
+    const s1 =
+      local.intelligence.reasoning() === "single"
+        ? undefined
+        : transportLabel(local.intelligence.state.status?.settings.evaluator?.transport)
+    return [s2, s1].filter((value): value is string => !!value).join(" · ")
   })
   const intelligenceOverride = createMemo(() => {
     const principal = local.intelligence.state.status?.settings.principal
@@ -1676,6 +1682,8 @@ export function Prompt(props: PromptProps) {
     return reasoningLabel(props.sessionID ? sync.session.get(props.sessionID)?.metadata : undefined)
   })
 
+  const s1MaxChars = createMemo(() => footerS1MaxChars(dimensions().width))
+
   const agentMetaAlpha = createFadeIn(() => !!local.agent.current(), animationsEnabled)
   const modelMetaAlpha = createFadeIn(() => !!local.agent.current() && store.mode === "normal", animationsEnabled)
   const variantMetaAlpha = createFadeIn(
@@ -1841,32 +1849,31 @@ export function Prompt(props: PromptProps) {
                             flexShrink={0}
                             fg={fadeColor(leader() ? theme.textMuted : theme.text, modelMetaAlpha())}
                           >
-                            S2 {Locale.truncate(local.model.parsed().model, dimensions().width < 100 ? 22 : 40)}
+                            {Locale.truncate(local.model.parsed().model, 60)}
                             {intelligenceOverride() ? "*" : ""}
-                          </text>
-                          <Show when={dimensions().width >= 100 || local.model.parsed().router}>
-                            <text fg={fadeColor(theme.textMuted, modelMetaAlpha())}>{currentProviderLabel()}</text>
-                          </Show>
-                          <IntelligenceIndicator sessionID={props.sessionID} />
-                          <Show when={showVariant()}>
-                            <text fg={fadeColor(theme.textMuted, variantMetaAlpha())}>·</text>
-                            <text>
-                              <span style={{ fg: fadeColor(theme.warning, variantMetaAlpha()), bold: true }}>
-                                {variantLabel()}
+                            <Show when={showVariant()}>
+                              <span style={{ fg: fadeColor(theme.primary, variantMetaAlpha()) }}>
+                                {"·" + compactVariantLabel(variantLabel())}
                               </span>
-                            </text>
-                          </Show>
+                            </Show>
+                          </text>
+                          <IntelligenceIndicator sessionID={props.sessionID} maxChars={s1MaxChars()} />
                         </box>
                       </Show>
                     </>
                   )}
                 </Show>
               </box>
-              <Show when={hasRightContent()}>
-                <box flexDirection="row" gap={1} alignItems="center">
-                  {props.right}
-                </box>
-              </Show>
+              <box flexDirection="row" gap={2} alignItems="center">
+                <Show when={showFooterRoutes(dimensions().width) && footerRoutesText()}>
+                  {(text) => <text fg={fadeColor(theme.textMuted, modelMetaAlpha())}>{text()}</text>}
+                </Show>
+                <Show when={hasRightContent()}>
+                  <box flexDirection="row" gap={1} alignItems="center">
+                    {props.right}
+                  </box>
+                </Show>
+              </box>
             </box>
           </box>
         </box>

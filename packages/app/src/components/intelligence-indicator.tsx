@@ -97,7 +97,7 @@ export function IntelligenceIndicator(props: { model: ModelSelection; sessionID?
             {single()
               ? language.t("intelligence.mode.single")
               : settings()?.evaluator?.model
-                ? `S1 ${settings()!.evaluator!.model.split("/").at(-1)}`
+                ? settings()!.evaluator!.model.split("/").at(-1)
                 : "S1 · S2"}
           </span>
           <Show when={!single() && !intelligence().ready()}>

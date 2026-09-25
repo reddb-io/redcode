@@ -9,9 +9,32 @@ import { useSDK } from "../context/sdk"
 import { useSync } from "../context/sync"
 import { useTheme } from "../context/theme"
 import { useDialog } from "../ui/dialog"
+import { Locale } from "../util/locale"
 import { DialogSetup } from "./dialog-setup"
 
-export function IntelligenceIndicator(props: { sessionID?: string }) {
+/** A saved evaluator's transport, in words, for the footer's dim route hint: "red-router" → "RedRouter". */
+const TRANSPORT_LABELS: Record<Intelligence.Evaluator["transport"], string> = {
+  "opencode-zen": "OpenCode Zen",
+  openrouter: "OpenRouter",
+  typesafe: "TypeSafe",
+  "red-router": "RedRouter",
+  "cloudflare-ai-gateway": "Cloudflare AI Gateway",
+  vercel: "Vercel",
+  vivgrid: "Vivgrid",
+  "nano-gpt": "NanoGPT",
+}
+
+export function transportLabel(transport: Intelligence.Evaluator["transport"] | undefined) {
+  return transport ? (TRANSPORT_LABELS[transport] ?? transport) : undefined
+}
+
+/** The S1 name for the compact footer: the evaluator's model, or a setup hint when S1 is not ready. */
+export function s1Label(input: { ready: boolean; model?: string }) {
+  if (!input.ready) return "S1 setup"
+  return input.model ? (input.model.split("/").at(-1) ?? input.model) : "S1"
+}
+
+export function IntelligenceIndicator(props: { sessionID?: string; maxChars?: number }) {
   const local = useLocal()
   const sdk = useSDK()
   const sync = useSync()
@@ -50,21 +73,20 @@ export function IntelligenceIndicator(props: { sessionID?: string }) {
       failed: state.failed,
       evaluation: state.evaluation,
     })
-  const label = () => {
-    if (single()) return "Single"
-    if (!local.intelligence.ready()) return "S1 Setup"
-    // The S2 model is already shown before this indicator; name the S1 evaluator here.
-    const model = local.intelligence.state.status?.settings.evaluator?.model
-    return model ? `S1 ${model.split("/").at(-1)}` : "S1 · S2"
-  }
+  const label = () =>
+    s1Label({ ready: local.intelligence.ready(), model: local.intelligence.state.status?.settings.evaluator?.model })
+  // Single reasoning shows only the S2 model; there is no S1 name or divider to add after it.
   return (
-    <text
-      fg={warning() ? theme.warning : theme.textMuted}
-      onMouseUp={() => dialog.replace(() => <DialogIntelligence sessionID={props.sessionID} />)}
-    >
-      · {label()}
-      {warning() ? " !" : ""}
-    </text>
+    <Show when={!single()}>
+      <text fg={theme.border}> ⁄ </text>
+      <text
+        fg={warning() ? theme.warning : theme.textMuted}
+        onMouseUp={() => dialog.replace(() => <DialogIntelligence sessionID={props.sessionID} />)}
+      >
+        {Locale.truncate(label(), props.maxChars ?? 24)}
+        {warning() ? " !" : ""}
+      </text>
+    </Show>
   )
 }
 
