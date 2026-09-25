@@ -411,16 +411,31 @@ export function withCliFixture<A, E>(
       // (see src/cli/cmd/serve.ts):
       //   "opencode server listening on http://<host>:<port>"
       const readyRe = /listening on (http:\/\/([^\s:]+):(\d+))/
-      const readyDeferred = yield* Deferred.make<{ url: string; hostname: string; port: number }>()
+      const stdoutLines: string[] = []
+      const readyDeferred = yield* Deferred.make<{ url: string; hostname: string; port: number }, Error>()
       yield* Effect.forkScoped(
         fromBunStream("stdout", () => proc.stdout).pipe(
           Stream.decodeText(),
           Stream.splitLines,
           Stream.runForEach((line) => {
+            stdoutLines.push(line)
             const m = line.match(readyRe)
             return m ? Deferred.succeed(readyDeferred, { url: m[1], hostname: m[2], port: Number(m[3]) }) : Effect.void
           }),
           Effect.ignore({ log: true }),
+          // stdout closing before the sentinel means serve died while starting: report its exit
+          // and output now instead of waiting out the readiness timeout. A no-op once ready.
+          Effect.andThen(Effect.promise(() => proc.exited)),
+          Effect.andThen((code) =>
+            Deferred.fail(
+              readyDeferred,
+              new Error(
+                `opencode serve exited with ${code} before becoming ready\n` +
+                  `stdout (last 2000):\n${stdoutLines.join("\n").slice(-2000)}\n` +
+                  `stderr (last 2000):\n${stderrChunks.join("").slice(-2000)}`,
+              ),
+            ),
+          ),
         ),
       )
 
@@ -432,6 +447,7 @@ export function withCliFixture<A, E>(
             Effect.fail(
               new Error(
                 `opencode serve did not become ready within ${readyTimeoutMs}ms\n` +
+                  `stdout (last 2000):\n${stdoutLines.join("\n").slice(-2000)}\n` +
                   `stderr (last 2000):\n${stderrChunks.join("").slice(-2000)}`,
               ),
             ),
