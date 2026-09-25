@@ -131,3 +131,47 @@ export const CatalogUpdated = define({
   },
 })
 export const Event = { CatalogUpdated, Definitions: inventory(CatalogUpdated) }
+
+/** Model id segments a router serves another router's models under, with the name each is shown by. */
+const HOPS: Record<string, string> = { "red-router": "RedRouter", "9router": "9Router" }
+
+/** The display name of a router hop segment, e.g. `RedRouter` for `red-router`. */
+export function hopName(slug: string) {
+  return (Object.hasOwn(HOPS, slug) ? HOPS[slug] : undefined) ?? slug
+}
+
+/**
+ * A routed model id split into the routers it passes through (`hops`, outermost first), the upstream
+ * provider that serves it and the id that provider knows it by. Any depth parses to the same shape:
+ * `opencode-zen/jev-1.13`, `red-router/opencode-zen/jev-1.13` and
+ * `red-router/red-router/opencode-zen/jev-1.13` all end at provider `opencode-zen`, model `jev-1.13`.
+ * A model id may keep slashes of its own (`openrouter/typesafe/jev-1.13` is model `typesafe/jev-1.13`
+ * at `openrouter`); an id without a provider segment has none. Parsing never rewrites the id: a
+ * router expects the full id, hops included.
+ */
+export function route(id: string) {
+  const segments = id.split("/")
+  const upstream = segments.findIndex(
+    (segment, index) => index === segments.length - 1 || !Object.hasOwn(HOPS, segment),
+  )
+  const rest = segments.slice(upstream)
+  return {
+    hops: segments.slice(0, upstream),
+    provider: rest.length > 1 ? rest[0] : undefined,
+    model: rest.length > 1 ? rest.slice(1).join("/") : (rest[0] ?? id),
+  }
+}
+
+/**
+ * A route in words: the routers joined by arrows, then the upstream and the model. A single router
+ * reads `RedRouter · OpenCode Zen (via OpenCode Go) · JEV 1.13`; a chain continues its arrows into
+ * the upstream: `RedRouter → RedRouter → OpenCode Zen (via OpenCode Go) · JEV 1.13`.
+ */
+export function routeName(input: { routers: ReadonlyArray<string>; upstream?: string; model: string }) {
+  const chain = input.routers.join(" → ")
+  const path =
+    chain && input.upstream
+      ? `${chain}${input.routers.length > 1 ? " → " : " · "}${input.upstream}`
+      : chain || input.upstream
+  return path ? `${path} · ${input.model}` : input.model
+}
