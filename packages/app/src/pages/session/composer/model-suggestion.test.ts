@@ -30,6 +30,7 @@ describe("model suggestion card", () => {
     expect(suggestionCard({ suggestion, selected: models[0], models })).toEqual({
       label: "RedRouter » Bedrock · Claude Sonnet 4.5",
       why: "200,000 tokens of context fit 90,000 in use",
+      quota: undefined,
       deltas: "price +20% · context +1M",
     })
   })
