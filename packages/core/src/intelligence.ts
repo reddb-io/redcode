@@ -329,15 +329,22 @@ export const make = (
     // The newest usable connection saved for the transport's provider integrations.
     // A RedRouter connection's key records the router that answered at its address, so a RedRouter
     // saved under any provider id counts; one saved before that is found by the RedRouter id.
+    // A router connected under a direct provider's id is never that provider's connection.
     const connection = Effect.fn("Intelligence.connection")(function* (transport: Intelligence.Evaluator["transport"]) {
+      const router = transport === "red-router"
       const tagged =
-        transport === "red-router" && credentials.all
+        router && credentials.all
           ? (yield* credentials.all()).filter((item) => stringMetadata(item.value.metadata, "router") === "red-router")
           : []
       const listed = yield* Effect.forEach(providerIntegrations(transport), (integration) =>
         credentials.list(Integration.ID.make(integration)),
       )
-      return [tagged, ...listed]
+      return [
+        tagged,
+        ...listed.map((connections) =>
+          router ? connections : connections.filter((item) => !stringMetadata(item.value.metadata, "router")),
+        ),
+      ]
         .map((connections) => connections.toReversed().find((item) => credentialValue(item.value)))
         .find((item) => item !== undefined)
     })
@@ -383,7 +390,7 @@ export const make = (
           return offer ? [{ transport, name: `${offer.provider} · ${offer.name}`, model: offer.model }] : []
         }),
       ]
-      return yield* Effect.forEach(entries, (entry) =>
+      const items = yield* Effect.forEach(entries, (entry) =>
         Effect.gen(function* () {
           const preset = evaluatorPreset(entry.transport)
           const credential = yield* connection(entry.transport)
@@ -400,7 +407,36 @@ export const make = (
             },
           }
         }),
-      ).pipe(Effect.map((items) => items.toSorted((a, b) => Number(b.configured) - Number(a.configured))))
+      )
+      // A connected RedRouter is the source of truth for what it serves: one option per model its
+      // System One catalog lists, named after the upstream that serves it. While that catalog cannot
+      // be read it stays one RedRouter option, whose discovery in setup says why.
+      const routed = yield* Effect.forEach(items, (item) =>
+        item.configured && item.evaluator.transport === "red-router"
+          ? discover({ evaluator: item.evaluator }).pipe(
+              Effect.timeoutOption(`${ProviderRouter.TIMEOUT} millis`),
+              Effect.map((listed) =>
+                Option.match(listed, {
+                  onNone: () => [item],
+                  onSome: (catalog) =>
+                    catalog.models.length
+                      ? catalog.models.map((model) => ({
+                          ...item,
+                          name: `RedRouter · ${model.name}`,
+                          evaluator: { ...item.evaluator, model: model.id },
+                        }))
+                      : [item],
+                }),
+              ),
+              Effect.catch((error) =>
+                Effect.logWarning("RedRouter System One catalog unavailable", { error: error.message }).pipe(
+                  Effect.as([item]),
+                ),
+              ),
+            )
+          : Effect.succeed([item]),
+      )
+      return routed.flat().toSorted((a, b) => Number(b.configured) - Number(a.configured))
     })
     const save = Effect.fn("Intelligence.save")(function* (input: typeof Intelligence.Save.Type) {
       const settings = yield* Schema.decodeUnknownEffect(Intelligence.Settings)(input.settings).pipe(
@@ -547,7 +583,10 @@ export const make = (
             Schema.Struct({
               id: Schema.String,
               name: Schema.String.pipe(Schema.optional),
-              provider: Schema.Struct({ name: Schema.String.pipe(Schema.optional) }).pipe(Schema.optional),
+              provider: Schema.Struct({
+                name: Schema.String.pipe(Schema.optional),
+                via: Schema.Struct({ name: Schema.String.pipe(Schema.optional) }).pipe(Schema.optional),
+              }).pipe(Schema.optional),
             }),
           ).pipe(Schema.optional),
           models: Schema.Array(Schema.Struct({ name: Schema.String })).pipe(Schema.optional),
@@ -555,10 +594,19 @@ export const make = (
       )(result).pipe(Effect.mapError(() => new Error({ message: "Invalid System One catalog" })))
       return {
         models: [
-          // A router names each model with the upstream provider that serves it: "OpenRouter · TypeSafe JEV 1.13".
+          // A router names each model with the upstream provider that serves it, and the connection
+          // that lends the key when it is another provider's: "OpenCode Zen (via OpenCode Go) · JEV 1.13".
           ...(parsed.data ?? []).map((model) => ({
             id: model.id,
-            name: [model.provider?.name, model.name].filter(Boolean).join(" · ") || model.id,
+            name:
+              [
+                model.provider?.name && model.provider.via?.name
+                  ? `${model.provider.name} (via ${model.provider.via.name})`
+                  : model.provider?.name,
+                model.name,
+              ]
+                .filter(Boolean)
+                .join(" · ") || model.id,
           })),
           ...(parsed.models ?? []).map((model) => ({ id: model.name, name: model.name })),
         ].filter((model) => router || isJev(model.id)),
