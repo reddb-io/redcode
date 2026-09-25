@@ -13,7 +13,7 @@ export function stripQueueCommand(prompt: Prompt): Prompt | undefined {
   const match = /^\/queue(?:[ \t]+|\n|$)/.exec(promptText(prompt))
   if (!match) return undefined
   const cut = match[0].length
-  return prompt.flatMap((part, index) => {
+  return prompt.flatMap<Prompt[number]>((part, index) => {
     if (!("content" in part)) return [part]
     // The prefix ends in whitespace or the end of the text, so only text parts can overlap it.
     const offset = promptText(prompt.slice(0, index)).length
