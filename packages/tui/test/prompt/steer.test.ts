@@ -8,6 +8,7 @@ import {
   promptDelivery,
   steeredAt,
   steeredLabel,
+  steeredMarker,
   promptKeyActive,
   queueKeyAmbiguous,
   queueKeyIntent,
@@ -293,6 +294,13 @@ describe("badges", () => {
     expect(steeredAt([steer], "u2")).toBe("idle")
     expect(steeredLabel("mid-turn")).toBe("↳ steered mid-turn")
     expect(steeredLabel("idle")).toBe("↳ steered")
+  })
+
+  test("a steered message shows a subtle marker, not a text line, unless hovered", () => {
+    expect(steeredMarker(false, "idle")).toBe("› ")
+    expect(steeredMarker(false, "mid-turn")).toBe("› ")
+    expect(steeredMarker(true, "idle")).toBe("↳ steered ")
+    expect(steeredMarker(true, "mid-turn")).toBe("↳ steered mid-turn ")
   })
 })
 

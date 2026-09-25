@@ -271,6 +271,15 @@ export function steeredLabel(at: SteeredAt) {
   return at === "mid-turn" ? "↳ steered mid-turn" : "↳ steered"
 }
 
+/**
+ * The marker shown at the start of a steered message's first line: steer is the normal case now,
+ * so it stays a tiny, muted `›` rather than a labeled line. Hovering expands it to the full label —
+ * the closest the terminal UI has to an accessible hover title.
+ */
+export function steeredMarker(hover: boolean, at: SteeredAt) {
+  return hover ? `${steeredLabel(at)} ` : "› "
+}
+
 type MessageLike = {
   id: string
   role: string
