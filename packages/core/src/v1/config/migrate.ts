@@ -38,6 +38,7 @@ export function migrate(info: typeof ConfigV1.Info.Type) {
     shell: info.shell,
     model: info.model,
     default_agent: info.default_agent,
+    subagent_depth: info.subagent_depth,
     autoupdate: info.autoupdate,
     share: info.share ?? (info.autoshare ? "auto" : undefined),
     enterprise: info.enterprise,
@@ -71,9 +72,19 @@ export function migrate(info: typeof ConfigV1.Info.Type) {
     plugins: info.plugin?.map((plugin) =>
       typeof plugin === "string" ? plugin : { package: plugin[0], options: plugin[1] },
     ),
-    experimental: info.experimental?.policies && { policies: info.experimental.policies },
+    experimental: experimental(info.experimental),
     providers: providers(info.provider),
   }
+}
+
+// The subagent caps keep their legacy names, so one redcode.json limits the task tool in both runtimes.
+function experimental(info: typeof ConfigV1.Info.Type["experimental"]) {
+  const carried = {
+    policies: info?.policies,
+    subagent_limits: info?.subagent_limits,
+    background_subagents_max: info?.background_subagents_max,
+  }
+  return Object.values(carried).some((value) => value !== undefined) ? carried : undefined
 }
 
 function permissions(info?: ConfigPermissionV1.Info, tools?: Readonly<Record<string, boolean>>) {

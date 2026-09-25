@@ -5,6 +5,7 @@ import { and, eq, gte } from "drizzle-orm"
 import { DateTime, Effect, Exit, Layer, Scope, Schema } from "effect"
 import { AgentV2 } from "../agent"
 import { Catalog } from "../catalog"
+import { Config } from "../config"
 import { Database } from "../database/database"
 import { makeLocationNode } from "../effect/app-node"
 import { EventV2 } from "../event"
@@ -17,6 +18,7 @@ import { ProviderV2 } from "../provider"
 import { SessionGoal } from "../session/goal"
 import { SessionHost } from "../session/host"
 import { SessionInput } from "../session/input"
+import { SessionMetadata } from "../session/metadata"
 import { SessionMessage } from "../session/message"
 import { SessionPlan } from "../session/plan"
 import { Prompt } from "../session/prompt"
@@ -34,13 +36,13 @@ import { Tools } from "./tools"
 
 export const name = "task"
 
-/** Nested subagents a chain may reach below the top-level Session, as legacy's `subagent_depth` default. */
+/** Nested subagents a chain may reach below the top-level Session (`subagent_depth`). */
 export const MAX_DEPTH = 1
-/** Foreground subagents one Session may run at once. */
+/** Foreground subagents one Session may run at once (`subagent_limits.concurrent`). */
 export const MAX_CONCURRENT = 4
-/** Subagents one user request may start; resuming one with its task_id does not count. */
+/** Subagents one user request may start, resumed ones aside (`subagent_limits.per_request`). */
 export const MAX_PER_REQUEST = 12
-/** Background subagents one Session may have running. */
+/** Background subagents one Session may have running (`background_subagents_max`). */
 export const MAX_BACKGROUND = 4
 
 /** Tools whose permission tells the brief reviewer what the subagent may do. */
@@ -261,6 +263,7 @@ const layer = Layer.effectDiscard(
     const plans = yield* SessionPlan.Service
     const todos = yield* SessionTodo.Service
     const events = yield* EventV2.Service
+    const config = yield* Config.Service
     const db = (yield* Database.Service).db
     // Background runs outlive the call that started them; they end with this Location.
     const scope = yield* Scope.Scope
@@ -269,6 +272,19 @@ const layer = Layer.effectDiscard(
     const running = new Map<SessionSchema.ID, number>()
     // Background children per parent, while they run.
     const background = new Map<SessionSchema.ID, Set<SessionSchema.ID>>()
+
+    /** The caps in force, under legacy's config keys and defaults, read per call so an edit applies to the next task. */
+    const limits = config.entries().pipe(
+      Effect.map((entries) => {
+        const experimental = Config.latest(entries, "experimental")
+        return {
+          depth: Config.latest(entries, "subagent_depth") ?? MAX_DEPTH,
+          concurrent: experimental?.subagent_limits?.concurrent ?? MAX_CONCURRENT,
+          perRequest: experimental?.subagent_limits?.per_request ?? MAX_PER_REQUEST,
+          background: experimental?.background_subagents_max ?? MAX_BACKGROUND,
+        }
+      }),
+    )
 
     /** An S1 evaluation on the parent's behalf. Failing to evaluate is never an error here. */
     const evaluate = (input: Intelligence.EvaluationInput) =>
@@ -645,7 +661,7 @@ const layer = Layer.effectDiscard(
       if (!SubagentReview.supervised(brief)) return { text: first.run.text }
       const subject = { parentID: input.parent.id, child: input.child, brief, prompt: input.prompt }
       const verdict = yield* reviewResult({ ...subject, run: first.run, repaired: false })
-      if (verdict.decision !== "needs_revision") return { text: first.run.text, verdict }
+      if (verdict.decision !== "needs_revision") return yield* settle(input.child.id, verdict, first.run.text)
       // One repair round a run, in the same child Session, and one review after it: the parent reads
       // whatever that second review says.
       const second = yield* round({
@@ -657,22 +673,30 @@ const layer = Layer.effectDiscard(
         from: first.from,
       })
       if (second.run.stopped) return { text: second.run.stopped, stopped: true }
-      return {
-        text: second.run.text,
-        verdict: yield* reviewResult({ ...subject, run: second.run, repaired: true }),
-      }
+      const revised = yield* reviewResult({ ...subject, run: second.run, repaired: true })
+      return yield* settle(input.child.id, revised, second.run.text)
     })
+
+    /**
+     * Keeps the verdict in the child's metadata, as legacy does, where the sidebar and a later
+     * reader of the result find it without the parent's task part.
+     */
+    const settle = (child: SessionSchema.ID, verdict: SubagentReview.ResultReview, text: string) =>
+      SessionMetadata.update(db, events, child, (metadata) => {
+        const stored = SubagentReview.fromMetadata(metadata)
+        return stored ? SubagentReview.toMetadata(metadata, { ...stored, result: verdict }) : metadata
+      }).pipe(Effect.as({ text, verdict } satisfies Outcome))
 
     /** Foreground calls take a slot of their parent's before anything is created, and give it back. */
     const run = (params: Input, context: Tool.Context) =>
       params.background === true
         ? launch(params, context)
-        : Effect.suspend(() => {
+        : Effect.flatMap(limits, (caps) => {
             const count = running.get(context.sessionID) ?? 0
-            if (count >= MAX_CONCURRENT)
+            if (count >= caps.concurrent)
               return Effect.fail(
                 fail(
-                  `${count} foreground subagent${count === 1 ? " is" : "s are"} already running for this session (limit ${MAX_CONCURRENT}). Wait for one to finish before starting another, or fold this work into a running one.`,
+                  `${count} foreground subagent${count === 1 ? " is" : "s are"} already running for this session (limit ${caps.concurrent}). Wait for one to finish before starting another, or fold this work into a running one.`,
                 ),
               )
             running.set(context.sessionID, count + 1)
@@ -695,12 +719,13 @@ const layer = Layer.effectDiscard(
         return yield* fail("Background subagents are turned off here (REDCODE_EXPERIMENTAL_BACKGROUND_SUBAGENTS=false)")
       const parent = yield* sessions.get(context.sessionID)
       if (!parent) return yield* fail(`Session ${context.sessionID} was not found.`)
+      const caps = yield* limits
       // An unknown task_id starts a fresh task, as in legacy.
       const resumed =
         params.task_id?.startsWith("ses") === true
           ? yield* sessions.get(SessionSchema.ID.make(params.task_id))
           : undefined
-      yield* requireLineage(parent, resumed, params.task_id)
+      yield* requireLineage(parent, resumed, params.task_id, caps.depth)
 
       yield* permissions
         .assert({
@@ -750,9 +775,9 @@ const layer = Layer.effectDiscard(
           .where(and(eq(SessionTable.parent_id, parent.id), gte(SessionTable.time_created, request.created)))
           .all()
           .pipe(Effect.orDie)
-        if (started.length >= MAX_PER_REQUEST)
+        if (started.length >= caps.perRequest)
           return yield* fail(
-            `${started.length} subagent${started.length === 1 ? " was" : "s were"} already started for this request (limit ${MAX_PER_REQUEST}). Finish with the results you have, resume one with its task_id, or do the remaining work directly.`,
+            `${started.length} subagent${started.length === 1 ? " was" : "s were"} already started for this request (limit ${caps.perRequest}). Finish with the results you have, resume one with its task_id, or do the remaining work directly.`,
           )
       }
 
@@ -852,9 +877,9 @@ const layer = Layer.effectDiscard(
 
       if (inBackground) {
         const siblings = background.get(parent.id) ?? new Set<SessionSchema.ID>()
-        if (siblings.size >= MAX_BACKGROUND)
+        if (siblings.size >= caps.background)
           return yield* fail(
-            `${siblings.size} background subagent${siblings.size === 1 ? " is" : "s are"} already running for this session (limit ${MAX_BACKGROUND}). Wait for one to report, or run this task in the foreground.`,
+            `${siblings.size} background subagent${siblings.size === 1 ? " is" : "s are"} already running for this session (limit ${caps.background}). Wait for one to report, or run this task in the foreground.`,
           )
         siblings.add(child.id)
         background.set(parent.id, siblings)
@@ -947,13 +972,14 @@ const layer = Layer.effectDiscard(
       parent: SessionSchema.Info,
       resumed: SessionSchema.Info | undefined,
       taskID: string | undefined,
+      max: number,
     ) {
       const chain = yield* ancestors(resumed ?? parent)
       if (resumed && !chain.includes(parent.id))
         return yield* fail(`task_id ${taskID} must reference a subagent session started from this session`)
       const depth = chain.length + (resumed ? 0 : 1)
-      if (depth > MAX_DEPTH)
-        return yield* fail(`Subagent depth limit reached (${MAX_DEPTH}). Nested subagents are not allowed here.`)
+      if (depth > max)
+        return yield* fail(`Subagent depth limit reached (${max}). Increase "subagent_depth" to allow nested subagents.`)
     })
 
     const ancestors = (session: SessionSchema.Info): Effect.Effect<SessionSchema.ID[]> =>
@@ -1035,6 +1061,7 @@ export const node = makeLocationNode({
     PermissionV2.node,
     SessionStore.node,
     Catalog.node,
+    Config.node,
     HookV2.node,
     Intelligence.node,
     SessionGoal.node,
