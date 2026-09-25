@@ -905,6 +905,16 @@ export function mutating(command: string) {
   return MUTATING.find((entry) => entry.pattern.test(command))?.label
 }
 
+/**
+ * Whether a command only reads the state of something outside this process, such as a CI run, a
+ * deployment or a service: one of its commands is a status CLI, and it neither changes anything
+ * nor waits on its own. Run again, it can only say something new once that outside thing moves.
+ */
+export function observes(command: string) {
+  if (mutating(command) || detect(command)) return false
+  return commandWords(mask(command)).some((word) => STATUS.has(basename(word.text)))
+}
+
 export function mutatingRefusal(label: string) {
   return [
     `Not started: a poll monitor runs its command again every interval_ms, and this command ${label}.`,
