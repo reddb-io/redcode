@@ -55,6 +55,7 @@ import { useRenderer, useTerminalDimensions, type JSX } from "@opentui/solid"
 import { useClient } from "../../context/client"
 import { useEditorContext } from "../../context/editor"
 import { openEditor } from "../../editor"
+import { openUrl } from "@opencode/util/open"
 import { useDialog } from "../../ui/dialog"
 import { DialogSelect } from "../../ui/dialog-select"
 import { DialogSessionRename } from "../../component/dialog-session-rename"
@@ -893,6 +894,28 @@ export function Session(props: {
   ]
 
   const baseCommands = createMemo(() => [
+    {
+      title: "Open Design review",
+      id: "session.design.review",
+      group: "Session",
+      slash: { name: "review" },
+      run: async () => {
+        dialog.clear()
+        const endpoint = client.endpoint
+        if (!endpoint) return toast.show({ message: "The server endpoint is unavailable", variant: "error" })
+        try {
+          const response = await fetch(new URL(`/design/session/${encodeURIComponent(route.sessionID)}/link`, endpoint.url), {
+            headers: endpoint.headers,
+          })
+          if (!response.ok) throw new Error(`Unable to open Design review: HTTP ${response.status}`)
+          const link: unknown = await response.json()
+          if (!isRecord(link) || typeof link.url !== "string") throw new Error("The Design review link is invalid")
+          await openUrl(link.url)
+        } catch (error) {
+          toast.error(error)
+        }
+      },
+    },
     {
       title: "Share session",
       id: "session.share",
