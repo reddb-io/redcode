@@ -1,5 +1,4 @@
 import { SubagentView } from "@reddb-io/redcode-core/session/subagent-view"
-import type { UiI18n } from "@reddb-io/redcode-ui/context/i18n"
 
 export type TaskCardTone = "muted" | "success" | "warning" | "critical"
 
@@ -12,12 +11,18 @@ const DECISION_TONE: Record<SubagentView.Decision, TaskCardTone> = {
   unverified: "muted",
 }
 
+const VERDICT: Record<SubagentView.Decision, string> = {
+  verified: "verified",
+  inconclusive: "inconclusive",
+  needs_revision: "needs revision",
+  unverified: "unverified",
+}
+
 /**
  * The line under a task card's title: the model it ran on, the verdict on its result and where the
  * stop-loss checkpoints left it, read from the task part and the child session's metadata.
  */
 export function taskCardDetail(
-  i18n: Pick<UiI18n, "t">,
   metadata: Record<string, unknown>,
   child?: {
     model?: { id: string; providerID: string; variant?: string }
@@ -32,15 +37,15 @@ export function taskCardDetail(
     ...(decision
       ? [
           {
-            text: `${SubagentView.SYMBOL[decision]} ${i18n.t(`ui.tool.task.verdict.${decision}`)}`,
+            text: `${SubagentView.SYMBOL[decision]} ${VERDICT[decision]}`,
             tone: DECISION_TONE[decision],
           },
         ]
       : []),
     checkpoint.type === "stopped"
-      ? { text: i18n.t("ui.tool.task.checkpoint.stopped", { reason: checkpoint.reason }), tone: "critical" }
+      ? { text: `stopped · ${checkpoint.reason}`, tone: "critical" }
       : checkpoint.type === "corrected"
-        ? { text: i18n.t("ui.tool.task.checkpoint.corrected"), tone: "warning" }
-        : { text: i18n.t("ui.tool.task.checkpoint.in_scope"), tone: "muted" },
+        ? { text: "corrected (hint sent)", tone: "warning" }
+        : { text: "in scope", tone: "muted" },
   ]
 }

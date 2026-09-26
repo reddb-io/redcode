@@ -3,7 +3,6 @@ import { useCommand, type CommandOption } from "@/context/command"
 import { useDialog } from "@reddb-io/redcode-ui/context/dialog"
 import { previewSelectedLines } from "@reddb-io/redcode-session-ui/pierre/selection-bridge"
 import { useFile, selectionFromLines, type FileSelection, type SelectedLineRange } from "@/context/file"
-import { useLanguage } from "@/context/language"
 import { useLayout } from "@/context/layout"
 import { usePermission } from "@/context/permission"
 import { usePrompt } from "@/context/prompt"
@@ -42,7 +41,6 @@ export const useSessionCommands = (actions: SessionCommandContext) => {
   const command = useCommand()
   const dialog = useDialog()
   const file = useFile()
-  const language = useLanguage()
   const permission = usePermission()
   const prompt = usePrompt()
   const sdk = useSDK()
@@ -136,13 +134,13 @@ export const useSessionCommands = (actions: SessionCommandContext) => {
   const setActiveMessage = actions.setActiveMessage
   const focusInput = actions.focusInput
 
-  const sessionCommand = withCategory(language.t("command.category.session"))
-  const fileCommand = withCategory(language.t("command.category.file"))
-  const contextCommand = withCategory(language.t("command.category.context"))
-  const viewCommand = withCategory(language.t("command.category.view"))
-  const terminalCommand = withCategory(language.t("command.category.terminal"))
-  const mcpCommand = withCategory(language.t("command.category.mcp"))
-  const permissionsCommand = withCategory(language.t("command.category.permissions"))
+  const sessionCommand = withCategory("Session")
+  const fileCommand = withCategory("File")
+  const contextCommand = withCategory("Context")
+  const viewCommand = withCategory("View")
+  const terminalCommand = withCategory("Terminal")
+  const mcpCommand = withCategory("MCP")
+  const permissionsCommand = withCategory("Permissions")
 
   const isAutoAcceptActive = () => {
     const sessionID = params.id
@@ -176,15 +174,15 @@ export const useSessionCommands = (actions: SessionCommandContext) => {
   const copyShare = async (url: string, existing: boolean) => {
     if (!(await write(url))) {
       showToast({
-        title: language.t("toast.session.share.copyFailed.title"),
+        title: "Failed to copy URL to clipboard",
         variant: "error",
       })
       return
     }
 
     showToast({
-      title: existing ? language.t("session.share.copy.copied") : language.t("toast.session.share.success.title"),
-      description: language.t("toast.session.share.success.description"),
+      title: existing ? "Copied" : "Session shared",
+      description: "Share URL copied to clipboard!",
       variant: "success",
     })
   }
@@ -205,8 +203,8 @@ export const useSessionCommands = (actions: SessionCommandContext) => {
       .catch(() => undefined)
     if (!url) {
       showToast({
-        title: language.t("toast.session.share.failed.title"),
-        description: language.t("toast.session.share.failed.description"),
+        title: "Failed to share session",
+        description: "An error occurred while sharing the session",
         variant: "error",
       })
       return
@@ -223,15 +221,15 @@ export const useSessionCommands = (actions: SessionCommandContext) => {
       .client.session.unshare({ sessionID })
       .then(() =>
         showToast({
-          title: language.t("toast.session.unshare.success.title"),
-          description: language.t("toast.session.unshare.success.description"),
+          title: "Session unshared",
+          description: "Session unshared successfully!",
           variant: "success",
         }),
       )
       .catch(() =>
         showToast({
-          title: language.t("toast.session.unshare.failed.title"),
-          description: language.t("toast.session.unshare.failed.description"),
+          title: "Failed to unshare session",
+          description: "An error occurred while unsharing the session",
           variant: "error",
         }),
       )
@@ -250,14 +248,14 @@ export const useSessionCommands = (actions: SessionCommandContext) => {
       showToast({
         variant: "success",
         icon: "circle-check",
-        title: language.t("toast.session.export.success.title"),
-        description: language.t("toast.session.export.success.description", { filename }),
+        title: "Session exported",
+        description: `Saved session to ${filename}`,
       })
     } catch (err) {
       showToast({
         variant: "error",
-        title: language.t("toast.session.export.failed.title"),
-        description: err instanceof Error ? err.message : language.t("toast.session.export.failed.description"),
+        title: "Failed to export session",
+        description: err instanceof Error ? err.message : "An error occurred while exporting the session",
       })
     }
   }
@@ -285,8 +283,8 @@ export const useSessionCommands = (actions: SessionCommandContext) => {
     const range = file.selectedLines(path) as SelectedLineRange | null | undefined
     if (!range) {
       showToast({
-        title: language.t("toast.context.noLineSelection.title"),
-        description: language.t("toast.context.noLineSelection.description"),
+        title: "No line selection",
+        description: "Select a line range in a file tab first.",
       })
       return
     }
@@ -325,11 +323,11 @@ export const useSessionCommands = (actions: SessionCommandContext) => {
       : permission.isAutoAcceptingDirectory(sdk().directory)
     showToast({
       title: active
-        ? language.t("toast.permissions.autoaccept.on.title")
-        : language.t("toast.permissions.autoaccept.off.title"),
+        ? "Auto-accepting permissions"
+        : "Stopped auto-accepting permissions",
       description: active
-        ? language.t("toast.permissions.autoaccept.on.description")
-        : language.t("toast.permissions.autoaccept.off.description"),
+        ? "Permission requests will be automatically approved"
+        : "Permission requests will require approval",
     })
   }
 
@@ -404,8 +402,8 @@ export const useSessionCommands = (actions: SessionCommandContext) => {
     const model = local.model.current()
     if (!model) {
       showToast({
-        title: language.t("toast.model.none.title"),
-        description: language.t("toast.model.none.description"),
+        title: "No model selected",
+        description: "Connect a provider to summarize this session",
       })
       return
     }
@@ -428,18 +426,18 @@ export const useSessionCommands = (actions: SessionCommandContext) => {
     return [
       sessionCommand({
         id: "session.share",
-        title: info()?.share?.url ? language.t("session.share.copy.copyLink") : language.t("command.session.share"),
+        title: info()?.share?.url ? "Copy link" : "Share session",
         description: info()?.share?.url
-          ? language.t("toast.session.share.success.description")
-          : language.t("command.session.share.description"),
+          ? "Share URL copied to clipboard!"
+          : "Share this session and copy the URL to clipboard",
         slash: "share",
         disabled: !params.id,
         onSelect: share,
       }),
       sessionCommand({
         id: "session.unshare",
-        title: language.t("command.session.unshare"),
-        description: language.t("command.session.unshare.description"),
+        title: "Unshare session",
+        description: "Stop sharing this session",
         slash: "unshare",
         disabled: !params.id || !info()?.share?.url,
         onSelect: unshare,
@@ -450,7 +448,7 @@ export const useSessionCommands = (actions: SessionCommandContext) => {
   const sessionCmds = () => [
     sessionCommand({
       id: "session.new",
-      title: language.t("command.session.new"),
+      title: "New session",
       keybind: "mod+shift+s",
       slash: "new",
       onSelect: (source) => {
@@ -463,24 +461,24 @@ export const useSessionCommands = (actions: SessionCommandContext) => {
     }),
     sessionCommand({
       id: "session.undo",
-      title: language.t("command.session.undo"),
-      description: language.t("command.session.undo.description"),
+      title: "Undo",
+      description: "Undo the last message",
       slash: "undo",
       disabled: !params.id || visibleUserMessages().length === 0,
       onSelect: undo,
     }),
     sessionCommand({
       id: "session.redo",
-      title: language.t("command.session.redo"),
-      description: language.t("command.session.redo.description"),
+      title: "Redo",
+      description: "Redo the last undone message",
       slash: "redo",
       disabled: !params.id || !info()?.revert?.messageID,
       onSelect: redo,
     }),
     sessionCommand({
       id: "session.goal",
-      title: language.t("command.session.goal"),
-      description: language.t("command.session.goal.description"),
+      title: "Set goal",
+      description: "Give this session a definition of done and pursue it until it holds",
       slash: "goal",
       disabled: !params.id,
       onSelect: () =>
@@ -505,11 +503,8 @@ export const useSessionCommands = (actions: SessionCommandContext) => {
                     ...(options.executePlan ? { stopAfter: "build" } : {}),
                   })
                   showToast({
-                    title: language.t("command.session.goal"),
-                    description: language.t("session.goal.providerBudget", {
-                      used: goal.turns.used,
-                      max: goal.turns.max,
-                    }),
+                    title: "Set goal",
+                    description: `${goal.turns.used}/${goal.turns.max} provider turns`,
                   })
                   return
                 }
@@ -521,12 +516,12 @@ export const useSessionCommands = (actions: SessionCommandContext) => {
                 })
                 if (result.data) {
                   showToast({
-                    title: language.t("command.session.goal"),
+                    title: "Set goal",
                     description: `${result.data.turns.max} turns`,
                   })
                 } else {
                   showToast({
-                    title: language.t("command.session.goal"),
+                    title: "Set goal",
                     description: "Could not set the goal.",
                   })
                 }
@@ -537,7 +532,7 @@ export const useSessionCommands = (actions: SessionCommandContext) => {
     }),
     sessionCommand({
       id: "session.goal.pause",
-      title: language.t("command.session.goal.pause"),
+      title: "Pause goal",
       slash: "goal-pause",
       disabled: !params.id,
       onSelect: async () => {
@@ -549,7 +544,7 @@ export const useSessionCommands = (actions: SessionCommandContext) => {
     }),
     sessionCommand({
       id: "session.goal.resume",
-      title: language.t("command.session.goal.resume"),
+      title: "Resume goal",
       slash: "goal-resume",
       disabled: !params.id,
       onSelect: async () => {
@@ -561,7 +556,7 @@ export const useSessionCommands = (actions: SessionCommandContext) => {
     }),
     sessionCommand({
       id: "session.goal.drop",
-      title: language.t("command.session.goal.drop"),
+      title: "Drop goal",
       slash: "goal-drop",
       disabled: !params.id,
       onSelect: async () => {
@@ -573,31 +568,31 @@ export const useSessionCommands = (actions: SessionCommandContext) => {
     }),
     sessionCommand({
       id: "session.compact",
-      title: language.t("command.session.compact"),
-      description: language.t("command.session.compact.description"),
+      title: "Compact session",
+      description: "Summarize the session to reduce context size",
       slash: "compact",
       disabled: !params.id || visibleUserMessages().length === 0,
       onSelect: compact,
     }),
     sessionCommand({
       id: "session.fork",
-      title: language.t("command.session.fork"),
-      description: language.t("command.session.fork.description"),
+      title: "Fork from message",
+      description: "Create a new session from a previous message",
       slash: "fork",
       disabled: !params.id || visibleUserMessages().length === 0,
       onSelect: fork,
     }),
     sessionCommand({
       id: "session.export",
-      title: language.t("command.session.export"),
-      description: language.t("command.session.export.description"),
+      title: "Export session",
+      description: "Export the full session transcript as JSON",
       slash: "export",
       disabled: !params.id,
       onSelect: exportSession,
     }),
     sessionCommand({
       id: "session.archive",
-      title: language.t("command.session.archive"),
+      title: "Archive session",
       keybind: "mod+shift+backspace",
       disabled: !params.id,
       onSelect: () => {
@@ -612,8 +607,8 @@ export const useSessionCommands = (actions: SessionCommandContext) => {
     return [
       fileCommand({
         id: "file.open",
-        title: language.t("command.file.open"),
-        description: language.t("palette.search.placeholder"),
+        title: "Open file",
+        description: "Search files, commands, and sessions",
         keybind: "mod+p",
         slash: "open",
         onSelect: openFile,
@@ -621,7 +616,7 @@ export const useSessionCommands = (actions: SessionCommandContext) => {
       tab &&
         fileCommand({
           id: "tab.close",
-          title: language.t("command.tab.close"),
+          title: "Close tab",
           keybind: "mod+w",
           onSelect: closeTab,
         }),
@@ -631,8 +626,8 @@ export const useSessionCommands = (actions: SessionCommandContext) => {
   const contextCmds = () => [
     contextCommand({
       id: "context.addSelection",
-      title: language.t("command.context.addSelection"),
-      description: language.t("command.context.addSelection.description"),
+      title: "Add selection to context",
+      description: "Add selected lines from the current file",
       keybind: "mod+shift+l",
       disabled: !canAddSelectionContext(),
       onSelect: addSelection,
@@ -642,7 +637,7 @@ export const useSessionCommands = (actions: SessionCommandContext) => {
   const viewCmds = () => [
     viewCommand({
       id: "terminal.toggle",
-      title: language.t("command.terminal.toggle"),
+      title: "Toggle terminal",
       keybind: "ctrl+`",
       slash: "terminal",
       onSelect: () => {
@@ -657,7 +652,7 @@ export const useSessionCommands = (actions: SessionCommandContext) => {
     }),
     viewCommand({
       id: "review.toggle",
-      title: language.t("command.review.toggle"),
+      title: "Toggle review",
       keybind: "mod+shift+r",
       onSelect: () => view().reviewPanel.toggle(),
     }),
@@ -665,7 +660,7 @@ export const useSessionCommands = (actions: SessionCommandContext) => {
       ? [
           viewCommand({
             id: "fileTree.toggle",
-            title: language.t("command.fileTree.toggle"),
+            title: "Toggle file tree",
             keybind: "mod+\\",
             onSelect: () => layout.fileTree.toggle(),
           }),
@@ -673,7 +668,7 @@ export const useSessionCommands = (actions: SessionCommandContext) => {
       : []),
     viewCommand({
       id: "input.focus",
-      title: language.t("command.input.focus"),
+      title: "Focus input",
       keybind: "ctrl+l",
       onSelect: focusInput,
     }),
@@ -682,7 +677,7 @@ export const useSessionCommands = (actions: SessionCommandContext) => {
   const terminalCmds = () => [
     terminalCommand({
       id: "terminal.close",
-      title: language.t("terminal.close"),
+      title: "Close terminal",
       keybind: "mod+w",
       hidden: true,
       when: (event) => event.target instanceof Element && !!event.target.closest('[data-component="terminal"]'),
@@ -690,8 +685,8 @@ export const useSessionCommands = (actions: SessionCommandContext) => {
     }),
     terminalCommand({
       id: "terminal.new",
-      title: language.t("command.terminal.new"),
-      description: language.t("command.terminal.new.description"),
+      title: "New terminal",
+      description: "Create a new terminal tab",
       keybind: "ctrl+alt+t",
       onSelect: openTerminal,
     }),
@@ -700,16 +695,16 @@ export const useSessionCommands = (actions: SessionCommandContext) => {
   const messageCmds = () => [
     sessionCommand({
       id: "message.previous",
-      title: language.t("command.message.previous"),
-      description: language.t("command.message.previous.description"),
+      title: "Previous message",
+      description: "Go to the previous user message",
       keybind: "mod+alt+[",
       disabled: !params.id,
       onSelect: () => navigateMessageByOffset(-1),
     }),
     sessionCommand({
       id: "message.next",
-      title: language.t("command.message.next"),
-      description: language.t("command.message.next.description"),
+      title: "Next message",
+      description: "Go to the next user message",
       keybind: "mod+alt+]",
       disabled: !params.id,
       onSelect: () => navigateMessageByOffset(1),
@@ -719,8 +714,8 @@ export const useSessionCommands = (actions: SessionCommandContext) => {
   const mcpCmds = () => [
     mcpCommand({
       id: "mcp.toggle",
-      title: language.t("command.mcp.toggle"),
-      description: language.t("command.mcp.toggle.description"),
+      title: "Toggle MCPs",
+      description: "Toggle MCPs",
       keybind: "mod+;",
       slash: "mcp",
       onSelect: chooseMcp,
@@ -731,8 +726,8 @@ export const useSessionCommands = (actions: SessionCommandContext) => {
     permissionsCommand({
       id: "permissions.autoaccept",
       title: isAutoAcceptActive()
-        ? language.t("command.permissions.autoaccept.disable")
-        : language.t("command.permissions.autoaccept.enable"),
+        ? "Stop auto-accepting permissions"
+        : "Auto-accept permissions",
       keybind: "mod+shift+a",
       disabled: false,
       onSelect: toggleAutoAccept,

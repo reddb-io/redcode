@@ -12,7 +12,6 @@ import {
 import { Portal } from "solid-js/web"
 import { createResizeObserver } from "@solid-primitives/resize-observer"
 import { createStore } from "solid-js/store"
-import { useI18n } from "../context/i18n"
 
 export type ScrollViewThumbVisibility = "hover" | "scroll"
 
@@ -97,7 +96,6 @@ export function scrollTopFromThumbPointer(input: {
 }
 
 export function ScrollView(props: ScrollViewProps) {
-  const i18n = useI18n()
   const merged = mergeProps({ orientation: "vertical", thumbVisibility: "hover" }, props)
   const [local, events, rest] = splitProps(
     merged,
@@ -368,7 +366,7 @@ export function ScrollView(props: ScrollViewProps) {
         onClick={events.onClick as any}
         tabIndex={0}
         role="region"
-        aria-label={i18n.t("ui.scrollView.ariaLabel")}
+        aria-label={"scrollable content"}
         onKeyDown={(e) => {
           onKeyDown(e)
           if (typeof events.onKeyDown === "function") events.onKeyDown(e as any)

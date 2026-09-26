@@ -1,6 +1,5 @@
 import { createEffect, For, Match, on, onCleanup, onMount, Show, Switch, type Accessor, type JSX } from "solid-js"
 import { animate, type AnimationPlaybackControls } from "motion"
-import { useI18n } from "@reddb-io/redcode-ui/context/i18n"
 import { createStore } from "solid-js/store"
 import { Collapsible } from "@reddb-io/redcode-ui/collapsible"
 import type { IconProps } from "@reddb-io/redcode-ui/icon"
@@ -326,14 +325,13 @@ export function GenericTool(props: {
   hideDetails?: boolean
   input?: Record<string, unknown>
 }) {
-  const i18n = useI18n()
 
   return (
     <BasicTool
       icon="mcp"
       status={props.status}
       trigger={{
-        title: i18n.t("ui.basicTool.called", { tool: props.tool }),
+        title: `Called \`${props.tool}\``,
         subtitle: label(props.input),
         args: args(props.input),
       }}

@@ -5,7 +5,6 @@ import { Icon } from "@reddb-io/redcode-ui/icon"
 import { For, Show } from "solid-js"
 import { type LocalProject, getAvatarColors } from "@/context/layout"
 import { Avatar } from "@reddb-io/redcode-ui/avatar"
-import { useLanguage } from "@/context/language"
 import { getProjectAvatarSource } from "@/pages/layout/helpers"
 import { ServerConnection } from "@/context/server"
 import { createEditProjectModel } from "./edit-project"
@@ -13,24 +12,23 @@ import { createEditProjectModel } from "./edit-project"
 const AVATAR_COLOR_KEYS = ["pink", "mint", "orange", "purple", "cyan", "lime"] as const
 
 export function DialogEditProject(props: { project: LocalProject; server: ServerConnection.Any }) {
-  const language = useLanguage()
   const model = createEditProjectModel(props)
 
   return (
-    <Dialog title={language.t("dialog.project.edit.title")} class="w-full max-w-[480px] mx-auto">
+    <Dialog title={"Edit project"} class="w-full max-w-[480px] mx-auto">
       <form onSubmit={model.submit} class="flex flex-col gap-6 p-6 pt-0">
         <div class="flex flex-col gap-4">
           <TextField
             autofocus
             type="text"
-            label={language.t("dialog.project.edit.name")}
+            label={"Name"}
             placeholder={model.folderName()}
             value={model.store.name}
             onChange={(v) => model.setStore("name", v)}
           />
 
           <div class="flex flex-col gap-2">
-            <label class="text-12-medium text-text-weak">{language.t("dialog.project.edit.icon")}</label>
+            <label class="text-12-medium text-text-weak">{"Icon"}</label>
             <div class="flex gap-3 items-start">
               <div
                 class="relative"
@@ -68,7 +66,7 @@ export function DialogEditProject(props: { project: LocalProject; server: Server
                     {(src) => (
                       <img
                         src={src()}
-                        alt={language.t("dialog.project.edit.icon.alt")}
+                        alt={"Project icon"}
                         class="size-full object-cover"
                       />
                     )}
@@ -104,21 +102,21 @@ export function DialogEditProject(props: { project: LocalProject; server: Server
                 onChange={model.inputChange}
               />
               <div class="flex flex-col gap-1.5 text-12-regular text-text-weak self-center">
-                <span>{language.t("dialog.project.edit.icon.hint")}</span>
-                <span>{language.t("dialog.project.edit.icon.recommended")}</span>
+                <span>{"Click or drag an image"}</span>
+                <span>{"Recommended: 128x128px"}</span>
               </div>
             </div>
           </div>
 
           <Show when={!model.store.iconOverride}>
             <div class="flex flex-col gap-2">
-              <label class="text-12-medium text-text-weak">{language.t("dialog.project.edit.color")}</label>
+              <label class="text-12-medium text-text-weak">{"Color"}</label>
               <div class="flex gap-1.5">
                 <For each={AVATAR_COLOR_KEYS}>
                   {(color) => (
                     <button
                       type="button"
-                      aria-label={language.t("dialog.project.edit.color.select", { color })}
+                      aria-label={`Select ${color} color`}
                       aria-pressed={model.store.color === color}
                       classList={{
                         "flex items-center justify-center size-10 p-0.5 rounded-lg overflow-hidden transition-colors cursor-default": true,
@@ -146,9 +144,9 @@ export function DialogEditProject(props: { project: LocalProject; server: Server
 
           <TextField
             multiline
-            label={language.t("dialog.project.edit.worktree.startup")}
-            description={language.t("dialog.project.edit.worktree.startup.description")}
-            placeholder={language.t("dialog.project.edit.worktree.startup.placeholder")}
+            label={"Workspace startup script"}
+            description={"Runs after creating a new workspace (worktree)."}
+            placeholder={"e.g. bun install"}
             value={model.store.startup}
             onChange={(v) => model.setStore("startup", v)}
             spellcheck={false}
@@ -158,10 +156,10 @@ export function DialogEditProject(props: { project: LocalProject; server: Server
 
         <div class="flex justify-end gap-2">
           <Button type="button" variant="ghost" size="large" onClick={model.close}>
-            {language.t("common.cancel")}
+            {"Cancel"}
           </Button>
           <Button type="submit" variant="primary" size="large" disabled={model.save.isPending}>
-            {model.save.isPending ? language.t("common.saving") : language.t("common.save")}
+            {model.save.isPending ? "Saving..." : "Save"}
           </Button>
         </div>
       </form>

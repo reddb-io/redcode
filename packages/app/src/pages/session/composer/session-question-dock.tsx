@@ -7,7 +7,6 @@ import { Icon } from "@reddb-io/redcode-ui/icon"
 import { useSpring } from "@reddb-io/redcode-ui/motion-spring"
 import { showToast } from "@/utils/toast"
 import type { QuestionAnswer, QuestionRequest } from "@reddb-io/redcode-sdk/v2"
-import { useLanguage } from "@/context/language"
 import { useSDK } from "@/context/sdk"
 import { makeEventListener } from "@solid-primitives/event-listener"
 import { createResizeObserver } from "@solid-primitives/resize-observer"
@@ -64,7 +63,6 @@ function Option(props: {
 export const SessionQuestionDock: Component<{ request: QuestionRequest; onSubmit: () => void }> = (props) => {
   const sdk = useSDK()
   const serverSDK = useServerSDK()
-  const language = useLanguage()
   const cacheKey = ScopedKey.from(serverSDK().scope, props.request.id)
 
   const questions = createMemo(() => props.request.questions)
@@ -98,10 +96,10 @@ export const SessionQuestionDock: Component<{ request: QuestionRequest; onSubmit
 
   const summary = createMemo(() => {
     const n = Math.min(store.tab + 1, total())
-    return language.t("session.question.progress", { current: n, total: total() })
+    return `${n} of ${total()} questions`
   })
-  const customLabel = () => language.t("ui.messagePart.option.typeOwnAnswer")
-  const customPlaceholder = () => language.t("ui.question.custom.placeholder")
+  const customLabel = () => "Type your own answer"
+  const customPlaceholder = () => "Type your answer..."
 
   const last = createMemo(() => store.tab >= total() - 1)
   const collapse = useSpring(() => (store.minimized ? 1 : 0), { visualDuration: 0.3, bounce: 0 })
@@ -219,7 +217,7 @@ export const SessionQuestionDock: Component<{ request: QuestionRequest; onSubmit
 
   const fail = (err: unknown) => {
     const message = err instanceof Error ? err.message : String(err)
-    showToast({ title: language.t("common.requestFailed"), description: message })
+    showToast({ title: "Request failed", description: message })
   }
 
   const replyMutation = useMutation(() => ({
@@ -472,7 +470,7 @@ export const SessionQuestionDock: Component<{ request: QuestionRequest; onSubmit
                         data-answered={answered(i())}
                         disabled={sending()}
                         onClick={() => jump(i())}
-                        aria-label={language.t("ui.tool.questions.numbered", { number: i() + 1 })}
+                        aria-label={`Questions ${i() + 1}`}
                       />
                     )}
                   </For>
@@ -487,7 +485,7 @@ export const SessionQuestionDock: Component<{ request: QuestionRequest; onSubmit
                 disabled={sending()}
                 style={{ transform: `rotate(${hidden() * 180}deg)` }}
                 onClick={store.minimized ? restore : minimize}
-                aria-label={language.t(store.minimized ? "session.question.restore" : "session.question.minimize")}
+                aria-label={store.minimized ? "Restore question" : "Minimize question"}
               >
                 <Icon name="chevron-down" size="small" />
               </button>
@@ -497,12 +495,12 @@ export const SessionQuestionDock: Component<{ request: QuestionRequest; onSubmit
         footer={
           <>
             <Button variant="ghost" size="large" disabled={sending()} onClick={reject} aria-keyshortcuts="Escape">
-              {language.t("ui.common.dismiss")}
+              {"Dismiss"}
             </Button>
             <div data-slot="question-footer-actions">
               <Show when={store.tab > 0}>
                 <Button variant="secondary" size="large" disabled={sending()} onClick={back}>
-                  {language.t("ui.common.back")}
+                  {"Back"}
                 </Button>
               </Show>
               <Button
@@ -512,7 +510,7 @@ export const SessionQuestionDock: Component<{ request: QuestionRequest; onSubmit
                 onClick={next}
                 aria-keyshortcuts="Meta+Enter Control+Enter"
               >
-                {last() ? language.t("ui.common.submit") : language.t("ui.common.next")}
+                {last() ? "Submit" : "Next"}
               </Button>
             </div>
           </>
@@ -530,8 +528,8 @@ export const SessionQuestionDock: Component<{ request: QuestionRequest; onSubmit
           {question()?.question}
         </div>
         <Show when={!store.minimized}>
-          <Show when={multi()} fallback={<div data-slot="question-hint">{language.t("ui.question.singleHint")}</div>}>
-            <div data-slot="question-hint">{language.t("ui.question.multiHint")}</div>
+          <Show when={multi()} fallback={<div data-slot="question-hint">{"Select one answer"}</div>}>
+            <div data-slot="question-hint">{"Select all answers that apply"}</div>
           </Show>
         </Show>
         <div

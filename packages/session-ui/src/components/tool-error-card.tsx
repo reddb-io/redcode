@@ -5,7 +5,6 @@ import { Collapsible } from "@reddb-io/redcode-ui/collapsible"
 import { Icon } from "@reddb-io/redcode-ui/icon"
 import { IconButton } from "@reddb-io/redcode-ui/icon-button"
 import { Tooltip } from "@reddb-io/redcode-ui/tooltip"
-import { useI18n } from "@reddb-io/redcode-ui/context/i18n"
 
 export interface ToolErrorCardProps extends Omit<ComponentProps<typeof Card>, "children" | "variant"> {
   tool: string
@@ -20,7 +19,6 @@ export interface ToolErrorCardProps extends Omit<ComponentProps<typeof Card>, "c
 }
 
 export function ToolErrorCard(props: ToolErrorCardProps) {
-  const i18n = useI18n()
   const [state, setState] = createStore({
     open: props.defaultOpen ?? false,
     copied: false,
@@ -45,23 +43,21 @@ export function ToolErrorCard(props: ToolErrorCardProps) {
   const name = createMemo(() => {
     if (split.title) return split.title
     const map: Record<string, string> = {
-      read: "ui.tool.read",
-      list: "ui.tool.list",
-      glob: "ui.tool.glob",
-      grep: "ui.tool.grep",
-      task: "ui.tool.task",
-      webfetch: "ui.tool.webfetch",
-      websearch: "ui.tool.websearch",
-      bash: "ui.tool.shell",
-      shell: "ui.tool.shell",
-      patch: "ui.tool.patch",
-      apply_patch: "ui.tool.patch",
-      question: "ui.tool.questions",
+      read: "Read",
+      list: "List",
+      glob: "Glob",
+      grep: "Grep",
+      task: "Task",
+      webfetch: "Webfetch",
+      websearch: "Web Search",
+      bash: "Shell",
+      shell: "Shell",
+      patch: "Patch",
+      apply_patch: "Patch",
+      question: "Questions",
     }
-    const key = map[split.tool]
-    if (!key) return split.tool
-    if (!key.includes(".")) return key
-    return i18n.t(key)
+    const title = map[split.tool]
+    return title ?? split.tool
   })
   const cleaned = createMemo(() => split.error.replace(/^Error:\s*/, "").trim())
   const tail = createMemo(() => {
@@ -74,10 +70,10 @@ export function ToolErrorCard(props: ToolErrorCardProps) {
   const subtitle = createMemo(() => {
     if (split.subtitle) return split.subtitle
     const parts = tail().split(": ")
-    if (parts.length <= 1) return i18n.t("ui.toolErrorCard.failed")
+    if (parts.length <= 1) return "Failed"
     const head = (parts[0] ?? "").trim()
-    if (!head) return i18n.t("ui.toolErrorCard.failed")
-    return head[0] ? head[0].toUpperCase() + head.slice(1) : i18n.t("ui.toolErrorCard.failed")
+    if (!head) return "Failed"
+    return head[0] ? head[0].toUpperCase() + head.slice(1) : "Failed"
   })
 
   const body = createMemo(() => {
@@ -135,7 +131,7 @@ export function ToolErrorCard(props: ToolErrorCardProps) {
             <Show when={open()}>
               <div data-slot="tool-error-card-copy">
                 <Tooltip
-                  value={copied() ? i18n.t("ui.message.copied") : i18n.t("ui.toolErrorCard.copyError")}
+                  value={copied() ? "Copied" : "Copy error"}
                   placement="top"
                   gutter={4}
                 >
@@ -148,7 +144,7 @@ export function ToolErrorCard(props: ToolErrorCardProps) {
                       e.stopPropagation()
                       void copy()
                     }}
-                    aria-label={copied() ? i18n.t("ui.message.copied") : i18n.t("ui.toolErrorCard.copyError")}
+                    aria-label={copied() ? "Copied" : "Copy error"}
                   />
                 </Tooltip>
               </div>

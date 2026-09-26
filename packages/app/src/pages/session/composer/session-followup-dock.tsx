@@ -3,7 +3,6 @@ import { createStore } from "solid-js/store"
 import { Button } from "@reddb-io/redcode-ui/button"
 import { DockTray } from "@reddb-io/redcode-ui/dock-surface"
 import { IconButton } from "@reddb-io/redcode-ui/icon-button"
-import { useLanguage } from "@/context/language"
 
 export function SessionFollowupDock(props: {
   items: { id: string; text: string }[]
@@ -11,14 +10,15 @@ export function SessionFollowupDock(props: {
   onSend: (id: string) => void
   onEdit: (id: string) => void
 }) {
-  const language = useLanguage()
   const [store, setStore] = createStore({
     collapsed: false,
   })
 
   const toggle = () => setStore("collapsed", (value) => !value)
   const total = createMemo(() => props.items.length)
-  const label = createMemo(() => language.plural("session.followupDock.summary", total()))
+  const label = createMemo(() =>
+    total() === 1 ? "1 queued message" : `${total()} queued messages`,
+  )
   const preview = createMemo(() => props.items[0]?.text ?? "")
 
   return (
@@ -61,7 +61,7 @@ export function SessionFollowupDock(props: {
               toggle()
             }}
             aria-label={
-              store.collapsed ? language.t("session.followupDock.expand") : language.t("session.followupDock.collapse")
+              store.collapsed ? "Expand queued messages" : "Collapse queued messages"
             }
           />
         </div>
@@ -84,7 +84,7 @@ export function SessionFollowupDock(props: {
                   disabled={!!props.sending}
                   onClick={() => props.onSend(item.id)}
                 >
-                  {language.t("session.followupDock.sendNow")}
+                  {"Send now"}
                 </Button>
                 <Button
                   size="small"
@@ -93,7 +93,7 @@ export function SessionFollowupDock(props: {
                   disabled={!!props.sending}
                   onClick={() => props.onEdit(item.id)}
                 >
-                  {language.t("session.followupDock.edit")}
+                  {"Edit"}
                 </Button>
               </div>
             )}

@@ -39,7 +39,6 @@ import { SessionContextTab, SessionDesignTab, SortableTab, SortableTabV2, FileVi
 import { OpenInAppV2 } from "@/components/session/open-in-app-v2"
 import { useCommand } from "@/context/command"
 import { useFile, type SelectedLineRange } from "@/context/file"
-import { useLanguage } from "@/context/language"
 import { useLayout } from "@/context/layout"
 import { useSDK } from "@/context/sdk"
 import { useSync } from "@/context/sync"
@@ -89,7 +88,6 @@ export function SessionSidePanel(props: {
   const layout = useLayout()
   const settings = useSettings()
   const file = useFile()
-  const language = useLanguage()
   const command = useCommand()
   const dialog = useDialog()
   const sdk = useSDK()
@@ -251,8 +249,8 @@ export function SessionSidePanel(props: {
   command.register("design-review", () => [
     {
       id: "session.design",
-      title: language.t("session.tab.design"),
-      category: language.t("command.category.view"),
+      title: "Design",
+      category: "View",
       onSelect: () => {
         tabs().open(SESSION_DESIGN_TAB)
         openReviewPanel()
@@ -326,7 +324,7 @@ export function SessionSidePanel(props: {
     <Show when={isDesktop() && !(settings.general.newLayoutDesigns() && !params.id)}>
       <aside
         id="review-panel"
-        aria-label={language.t("session.panel.reviewAndFiles")}
+        aria-label={"Review and files"}
         aria-hidden={!open()}
         inert={!open()}
         class="relative min-w-0 flex overflow-hidden"
@@ -391,7 +389,7 @@ export function SessionSidePanel(props: {
                                   aria-controls={activeTab() === "review" ? reviewTabPanelID : undefined}
                                 >
                                   <div class="flex items-center gap-1.5">
-                                    <div>{language.t("session.tab.review")}</div>
+                                    <div>{"Review"}</div>
                                     <Show when={props.hasReview()}>
                                       <div>{props.reviewCount()}</div>
                                     </Show>
@@ -403,7 +401,7 @@ export function SessionSidePanel(props: {
                                   value="context"
                                   closeButton={
                                     <TooltipKeybind
-                                      title={language.t("common.closeTab")}
+                                      title={"Close tab"}
                                       keybind={command.keybind("tab.close")}
                                       placement="bottom"
                                       gutter={10}
@@ -413,7 +411,7 @@ export function SessionSidePanel(props: {
                                         variant="ghost"
                                         class="h-5 w-5"
                                         onClick={() => tabs().close("context")}
-                                        aria-label={language.t("common.closeTab")}
+                                        aria-label={"Close tab"}
                                       />
                                     </TooltipKeybind>
                                   }
@@ -422,7 +420,7 @@ export function SessionSidePanel(props: {
                                 >
                                   <div class="flex items-center gap-2">
                                     <SessionContextUsage variant="indicator" />
-                                    <div>{language.t("session.tab.context")}</div>
+                                    <div>{"Context"}</div>
                                   </div>
                                 </Tabs.Trigger>
                               </Show>
@@ -447,7 +445,7 @@ export function SessionSidePanel(props: {
                                             value={SESSION_OPEN_FILE_TAB}
                                             closeButton={
                                               <TooltipKeybind
-                                                title={language.t("common.closeTab")}
+                                                title={"Close tab"}
                                                 keybind={command.keybind("tab.close")}
                                                 placement="bottom"
                                                 gutter={10}
@@ -457,7 +455,7 @@ export function SessionSidePanel(props: {
                                                   variant="ghost"
                                                   class="h-5 w-5"
                                                   onClick={() => tabs().close(SESSION_OPEN_FILE_TAB)}
-                                                  aria-label={language.t("common.closeTab")}
+                                                  aria-label={"Close tab"}
                                                 />
                                               </TooltipKeybind>
                                             }
@@ -466,7 +464,7 @@ export function SessionSidePanel(props: {
                                           >
                                             <div class="flex items-center gap-1.5 italic">
                                               <Icon name="open-file" size="small" />
-                                              <span>{language.t("command.file.open")}</span>
+                                              <span>{"Open file"}</span>
                                             </div>
                                           </Tabs.Trigger>
                                         </Show>
@@ -476,7 +474,7 @@ export function SessionSidePanel(props: {
                                         value={SESSION_DESIGN_TAB}
                                         closeButton={
                                           <TooltipKeybind
-                                            title={language.t("common.closeTab")}
+                                            title={"Close tab"}
                                             keybind={command.keybind("tab.close")}
                                             placement="bottom"
                                             gutter={10}
@@ -486,7 +484,7 @@ export function SessionSidePanel(props: {
                                               variant="ghost"
                                               class="h-5 w-5"
                                               onClick={() => tabs().close(SESSION_DESIGN_TAB)}
-                                              aria-label={language.t("common.closeTab")}
+                                              aria-label={"Close tab"}
                                             />
                                           </TooltipKeybind>
                                         }
@@ -494,7 +492,7 @@ export function SessionSidePanel(props: {
                                         onMiddleClick={() => tabs().close(SESSION_DESIGN_TAB)}
                                       >
                                         <div class="flex items-center gap-1.5">
-                                          <span>{language.t("session.tab.design")}</span>
+                                          <span>{"Design"}</span>
                                         </div>
                                       </Tabs.Trigger>
                                     </Show>
@@ -509,7 +507,7 @@ export function SessionSidePanel(props: {
                                 }}
                               >
                                 <TooltipKeybind
-                                  title={language.t("command.file.open")}
+                                  title={"Open file"}
                                   keybind={command.keybind("file.open")}
                                   class="flex items-center"
                                 >
@@ -523,7 +521,7 @@ export function SessionSidePanel(props: {
                                         dialog.show(() => <x.DialogSelectFile mode="files" onOpenFile={showAllFiles} />)
                                       })
                                     }}
-                                    aria-label={language.t("command.file.open")}
+                                    aria-label={"Open file"}
                                   />
                                 </TooltipKeybind>
                               </div>
@@ -549,7 +547,7 @@ export function SessionSidePanel(props: {
                                 <div class="h-full px-6 pb-42 -mt-4 flex flex-col items-center justify-center text-center gap-6">
                                   <Mark class="w-14 opacity-10" />
                                   <div class="text-14-regular text-text-weak max-w-56">
-                                    {language.t("session.files.selectToOpen")}
+                                    {"Select a file to open"}
                                   </div>
                                 </div>
                               </div>
@@ -642,8 +640,8 @@ export function SessionSidePanel(props: {
                                 aria-controls={activeTab() === "review" ? reviewTabPanelID : undefined}
                               >
                                 {props.hasReview()
-                                  ? language.t("session.review.filesChanged", { count: props.reviewCount() })
-                                  : language.t("session.tab.review")}
+                                  ? `Files Changed ${props.reviewCount()}`
+                                  : "Review"}
                               </Tabs.Trigger>
                             </Show>
                             <Show when={contextOpen()}>
@@ -653,7 +651,7 @@ export function SessionSidePanel(props: {
                                   <TooltipV2
                                     value={
                                       <>
-                                        {language.t("common.closeTab")}
+                                        {"Close tab"}
                                         <Show when={closeTabKeybind().length > 0}>
                                           <KeybindV2 keys={closeTabKeybind()} variant="neutral" />
                                         </Show>
@@ -667,7 +665,7 @@ export function SessionSidePanel(props: {
                                       variant="ghost"
                                       class="h-5 w-5"
                                       onClick={() => tabs().close("context")}
-                                      aria-label={language.t("common.closeTab")}
+                                      aria-label={"Close tab"}
                                     />
                                   </TooltipV2>
                                 }
@@ -676,7 +674,7 @@ export function SessionSidePanel(props: {
                               >
                                 <div class="flex items-center gap-2">
                                   <SessionContextUsage variant="indicator" />
-                                  <div>{language.t("session.tab.context")}</div>
+                                  <div>{"Context"}</div>
                                 </div>
                               </Tabs.Trigger>
                             </Show>
@@ -703,7 +701,7 @@ export function SessionSidePanel(props: {
                                           <TooltipV2
                                             value={
                                               <>
-                                                {language.t("common.closeTab")}
+                                                {"Close tab"}
                                                 <Show when={closeTabKeybind().length > 0}>
                                                   <KeybindV2 keys={closeTabKeybind()} variant="neutral" />
                                                 </Show>
@@ -717,7 +715,7 @@ export function SessionSidePanel(props: {
                                               variant="ghost"
                                               class="h-5 w-5"
                                               onClick={() => tabs().close(SESSION_OPEN_FILE_TAB)}
-                                              aria-label={language.t("common.closeTab")}
+                                              aria-label={"Close tab"}
                                             />
                                           </TooltipV2>
                                         }
@@ -726,7 +724,7 @@ export function SessionSidePanel(props: {
                                       >
                                         <div class="flex items-center gap-1.5 italic">
                                           <Icon name="open-file" size="small" />
-                                          <span>{language.t("command.file.open")}</span>
+                                          <span>{"Open file"}</span>
                                         </div>
                                       </Tabs.Trigger>
                                     </Show>
@@ -738,7 +736,7 @@ export function SessionSidePanel(props: {
                                       <TooltipV2
                                         value={
                                           <>
-                                            {language.t("common.closeTab")}
+                                            {"Close tab"}
                                             <Show when={closeTabKeybind().length > 0}>
                                               <KeybindV2 keys={closeTabKeybind()} variant="neutral" />
                                             </Show>
@@ -752,7 +750,7 @@ export function SessionSidePanel(props: {
                                           variant="ghost"
                                           class="h-5 w-5"
                                           onClick={() => tabs().close(SESSION_DESIGN_TAB)}
-                                          aria-label={language.t("common.closeTab")}
+                                          aria-label={"Close tab"}
                                         />
                                       </TooltipV2>
                                     }
@@ -760,7 +758,7 @@ export function SessionSidePanel(props: {
                                     onMiddleClick={() => tabs().close(SESSION_DESIGN_TAB)}
                                   >
                                     <div class="flex items-center gap-1.5">
-                                      <span>{language.t("session.tab.design")}</span>
+                                      <span>{"Design"}</span>
                                     </div>
                                   </Tabs.Trigger>
                                 </Show>
@@ -776,7 +774,7 @@ export function SessionSidePanel(props: {
                               <TooltipV2
                                 value={
                                   <>
-                                    {language.t("command.file.open")}
+                                    {"Open file"}
                                     <Show when={openFileKeybind().length > 0}>
                                       <KeybindV2 keys={openFileKeybind()} variant="neutral" />
                                     </Show>
@@ -790,7 +788,7 @@ export function SessionSidePanel(props: {
                                   variant="ghost-muted"
                                   size="large"
                                   onClick={() => openFileBrowser()}
-                                  aria-label={language.t("command.file.open")}
+                                  aria-label={"Open file"}
                                 />
                               </TooltipV2>
                             </div>
@@ -823,7 +821,7 @@ export function SessionSidePanel(props: {
                               <div class="h-full px-6 pb-42 -mt-4 flex flex-col items-center justify-center text-center gap-6">
                                 <Mark class="w-14 opacity-10" />
                                 <div class="text-14-regular text-text-weak max-w-56">
-                                  {language.t("session.files.selectToOpen")}
+                                  {"Select a file to open"}
                                 </div>
                               </div>
                             </div>
@@ -905,17 +903,15 @@ export function SessionSidePanel(props: {
                           fallback={
                             <>
                               {props.reviewCount()}{" "}
-                              {language.t(
-                                props.reviewCount() === 1 ? "session.review.change.one" : "session.review.change.other",
-                              )}
+                              {props.reviewCount() === 1 ? "Change" : "Changes"}
                             </>
                           }
                         >
-                          {language.t("session.review.filesChanged", { count: props.reviewCount() })}
+                          {`Files Changed ${props.reviewCount()}`}
                         </Show>
                       </Tabs.Trigger>
                       <Tabs.Trigger value="all" class="flex-1" classes={{ button: "w-full" }}>
-                        {language.t("session.files.all")}
+                        {"All files"}
                       </Tabs.Trigger>
                     </Tabs.List>
                     <Show when={fileTreeTab() === "changes"}>
@@ -926,8 +922,8 @@ export function SessionSidePanel(props: {
                               when={props.diffsReady()}
                               fallback={
                                 <div class="px-2 py-2 text-12-regular text-text-weak">
-                                  {language.t("common.loading")}
-                                  {language.t("common.loading.ellipsis")}
+                                  {"Loading"}
+                                  {"..."}
                                 </div>
                               }
                             >
@@ -948,7 +944,7 @@ export function SessionSidePanel(props: {
                     <Show when={fileTreeTab() === "all"}>
                       <Tabs.Content value="all" class="bg-background-stronger px-3 py-0">
                         <Switch>
-                          <Match when={nofiles()}>{empty(language.t("session.files.empty"))}</Match>
+                          <Match when={nofiles()}>{empty("No files")}</Match>
                           <Match when={true}>
                             <FileTree
                               path=""

@@ -62,7 +62,6 @@ import { useFileComponent } from "@reddb-io/redcode-ui/context/file"
 import { shouldMarkBoundaryGesture, normalizeWheelDelta } from "@/pages/session/message-gesture"
 import { SessionContextUsage } from "@/components/session-context-usage"
 import { useDialog } from "@reddb-io/redcode-ui/context/dialog"
-import { useLanguage } from "@/context/language"
 import { useSessionKey } from "@/pages/session/session-layout"
 import { useSessionArchive } from "@/pages/session/session-archive"
 import { useServerSDK } from "@/context/server-sdk"
@@ -131,11 +130,10 @@ const markBoundaryGesture = (input: {
 }
 
 function TimelineThinkingRow(props: { reasoningHeading?: string; showReasoningSummaries: boolean }) {
-  const language = useLanguage()
 
   return (
     <div data-slot="session-turn-thinking">
-      <TextShimmer text={language.t("ui.sessionTurn.status.thinking")} />
+      <TextShimmer text={"Thinking"} />
       <Show when={!props.showReasoningSummaries}>
         <TextReveal text={props.reasoningHeading} class="session-turn-thinking-heading" travel={25} duration={700} />
       </Show>
@@ -144,7 +142,6 @@ function TimelineThinkingRow(props: { reasoningHeading?: string; showReasoningSu
 }
 
 function TimelineDiffSummaryRow(props: { diffs: SummaryDiff[] }) {
-  const language = useLanguage()
   const maxFiles = 10
   const [state, setState] = createStore({
     showAll: false,
@@ -163,12 +160,12 @@ function TimelineDiffSummaryRow(props: { diffs: SummaryDiff[] }) {
     >
       <div data-slot="session-turn-diffs-header">
         <span data-slot="session-turn-diffs-label">
-          {language.plural("ui.sessionTurn.diffs.changed", props.diffs.length)}
+          {props.diffs.length === 1 ? "1 Changed file" : `${props.diffs.length} Changed files`}
         </span>
         <DiffChanges changes={props.diffs} />
         <Show when={overflow() > 0}>
           <span data-slot="session-turn-diffs-toggle" onClick={() => setState("showAll", !showAll())}>
-            {showAll() ? language.t("ui.sessionTurn.diffs.showLess") : language.t("ui.sessionTurn.diffs.showAll")}
+            {showAll() ? "Show less" : "Show all"}
           </span>
         </Show>
       </div>
@@ -217,7 +214,7 @@ function TimelineDiffSummaryRow(props: { diffs: SummaryDiff[] }) {
         </Accordion>
         <Show when={!showAll() && overflow() > 0}>
           <div data-slot="session-turn-diffs-more" onClick={() => setState("showAll", true)}>
-            {language.t("ui.sessionTurn.diffs.more", { count: String(overflow()) })}
+            {`+${String(overflow())} more files`}
           </div>
         </Show>
       </div>
@@ -266,7 +263,6 @@ export function MessageTimeline(props: {
   const settings = useSettings()
   const dialog = useDialog()
   const sessionArchive = useSessionArchive()
-  const language = useLanguage()
   const { params, sessionKey } = useSessionKey()
   const ownerSessionKey = sessionKey()
   const cached = timelineCache.get(ownerSessionKey)
@@ -312,7 +308,7 @@ export function MessageTimeline(props: {
     if (!id) return emptyMessages
     return sync().data.message[id] ?? emptyMessages
   })
-  const parentTitle = createMemo(() => sessionTitle(parent()?.title) ?? language.t("command.session.new"))
+  const parentTitle = createMemo(() => sessionTitle(parent()?.title) ?? "New session")
   const getMsgParts = (msgId: string) => sync().data.part[msgId] ?? emptyParts
   const getMsgPart = (messageID: string, partID: string) => getMsgParts(messageID).find((part) => part.id === partID)
   const childTaskDescription = createMemo(() => {
@@ -328,7 +324,7 @@ export function MessageTimeline(props: {
     if (childTaskDescription()) return childTaskDescription()
     const value = titleLabel()?.replace(/\s+\(@[^)]+ subagent\)$/, "")
     if (value) return value
-    return language.t("command.session.new")
+    return "New session"
   })
   const showHeader = createMemo(() => !!(titleValue() || parentID()))
   const projection = createTimelineProjection({
@@ -656,7 +652,7 @@ export function MessageTimeline(props: {
       if (data?.message) return data.message
     }
     if (err instanceof Error) return err.message
-    return language.t("common.requestFailed")
+    return "Request failed"
   }
 
   const shareMutation = useMutation(() => ({
@@ -687,7 +683,7 @@ export function MessageTimeline(props: {
     },
     onError: (err) => {
       showToast({
-        title: language.t("common.requestFailed"),
+        title: "Request failed",
         description: errorMessage(err),
       })
     },
@@ -715,13 +711,13 @@ export function MessageTimeline(props: {
         showToast({
           variant: "success",
           icon: "circle-check",
-          title: language.t("session.share.copy.copied"),
+          title: "Copied",
           description: url,
         }),
       )
       .catch((err: unknown) =>
         showToast({
-          title: language.t("common.requestFailed"),
+          title: "Request failed",
           description: errorMessage(err),
         }),
       )
@@ -803,14 +799,14 @@ export function MessageTimeline(props: {
       showToast({
         variant: "success",
         icon: "circle-check",
-        title: language.t("toast.session.export.success.title"),
-        description: language.t("toast.session.export.success.description", { filename }),
+        title: "Session exported",
+        description: `Saved session to ${filename}`,
       })
     } catch (err) {
       showToast({
         variant: "error",
-        title: language.t("toast.session.export.failed.title"),
-        description: err instanceof Error ? err.message : language.t("toast.session.export.failed.description"),
+        title: "Failed to export session",
+        description: err instanceof Error ? err.message : "An error occurred while exporting the session",
       })
     }
   }
@@ -828,7 +824,7 @@ export function MessageTimeline(props: {
       .then(() => true)
       .catch((err) => {
         showToast({
-          title: language.t("session.delete.failed.title"),
+          title: "Failed to delete session",
           description: errorMessage(err),
         })
         return false
@@ -889,7 +885,7 @@ export function MessageTimeline(props: {
 
   function DialogDeleteSession(props: { sessionID: string }) {
     const name = createMemo(
-      () => sessionTitle(sync().session.get(props.sessionID)?.title) ?? language.t("command.session.new"),
+      () => sessionTitle(sync().session.get(props.sessionID)?.title) ?? "New session",
     )
     const handleDelete = async () => {
       await deleteSession(props.sessionID)
@@ -901,35 +897,35 @@ export function MessageTimeline(props: {
         <DialogV2 fit>
           <DialogHeader hideClose>
             <DialogTitleGroup
-              title={language.t("session.delete.title")}
-              description={language.t("session.delete.confirm", { name: name() })}
+              title={"Delete session"}
+              description={`Delete session "${name()}"?`}
             />
           </DialogHeader>
           <DialogFooter>
             <ButtonV2 variant="ghost" onClick={() => dialog.close()}>
-              {language.t("common.cancel")}
+              {"Cancel"}
             </ButtonV2>
             <ButtonV2 variant="danger" onClick={handleDelete}>
-              {language.t("session.delete.button")}
+              {"Delete session"}
             </ButtonV2>
           </DialogFooter>
         </DialogV2>
       )
 
     return (
-      <Dialog title={language.t("session.delete.title")} fit>
+      <Dialog title={"Delete session"} fit>
         <div class="flex flex-col gap-4 pl-6 pr-2.5 pb-3">
           <div class="flex flex-col gap-1">
             <span class="text-14-regular text-text-strong">
-              {language.t("session.delete.confirm", { name: name() })}
+              {`Delete session "${name()}"?`}
             </span>
           </div>
           <div class="flex justify-end gap-2">
             <Button variant="ghost" size="large" onClick={() => dialog.close()}>
-              {language.t("common.cancel")}
+              {"Cancel"}
             </Button>
             <Button variant="primary" size="large" onClick={handleDelete}>
-              {language.t("session.delete.button")}
+              {"Delete session"}
             </Button>
           </div>
         </div>
@@ -1155,9 +1151,7 @@ export function MessageTimeline(props: {
             <div data-slot="session-turn-message-container" class="w-full px-4 md:px-5">
               <div data-slot="session-turn-compaction">
                 <MessageDivider
-                  label={language.t(
-                    turnDividerRow().label === "compaction" ? "ui.messagePart.compaction" : "ui.message.interrupted",
-                  )}
+                  label={turnDividerRow().label === "compaction" ? "Session compacted" : "Interrupted"}
                 />
               </div>
             </div>
@@ -1236,12 +1230,9 @@ export function MessageTimeline(props: {
                   onSizeChange?.()
                 }}
               >
-                {language.t(
-                  reasons().length ? "intelligence.revision.noteIssues" : "intelligence.revision.note",
-                  { issues: reasons().join(", ") },
-                )}
+                {reasons().length ? `↻ revised by S1 — ${reasons().join(", ")}` : "↻ revised by S1"}
                 {" · "}
-                {language.t(open() ? "intelligence.revision.hideOriginal" : "intelligence.revision.showOriginal")}
+                {open() ? "hide original" : "show original"}
               </button>
               <Show when={open()}>
                 <div
@@ -1251,10 +1242,7 @@ export function MessageTimeline(props: {
                   <For each={confidences()}>
                     {(item) => (
                       <p data-slot="session-turn-revision-confidence" class="text-12-regular text-text-weak">
-                        {language.t("intelligence.revision.confidence", {
-                          percent: String(Math.round(item.confidence * 100)),
-                          reason: item.reason,
-                        })}
+                        {`S1: ${String(Math.round(item.confidence * 100))}% sure the answer ${item.reason}`}
                       </p>
                     )}
                   </For>
@@ -1272,7 +1260,7 @@ export function MessageTimeline(props: {
         return (
           <TimelineRowFrame row={revisingRow}>
             <div data-slot="session-turn-message-container" class="w-full px-4 md:px-5">
-              <TextShimmer text={language.t("intelligence.revision.revising")} active />
+              <TextShimmer text={"↻ Revising the answer after S1 review…"} active />
             </div>
           </TimelineRowFrame>
         )
@@ -1390,7 +1378,7 @@ export function MessageTimeline(props: {
           fallback={
             <button
               type="button"
-              aria-label={language.t("session.messages.jumpToLatest")}
+              aria-label={"Jump to latest"}
               class="pointer-events-auto flex items-center justify-center w-10 h-8 bg-transparent border-none cursor-pointer p-0 group"
               onClick={props.onResumeScroll}
             >
@@ -1408,7 +1396,7 @@ export function MessageTimeline(props: {
         >
           <button
             type="button"
-            aria-label={language.t("session.messages.jumpToLatest")}
+            aria-label={"Jump to latest"}
             class="pointer-events-auto flex items-center justify-center w-8 h-7 px-2 py-1.5 rounded-lg border-none cursor-pointer text-v2-text-text-base backdrop-blur-[2px]"
             style={{
               background: "color-mix(in srgb, var(--v2-background-bg-base) 92%, transparent)",
@@ -1575,7 +1563,7 @@ export function MessageTimeline(props: {
                               classList={{
                                 "bg-surface-base-active": share.open || title.pendingShare,
                               }}
-                              aria-label={language.t("common.moreOptions")}
+                              aria-label={"More options"}
                               aria-expanded={title.menuOpen || share.open || title.pendingShare}
                               ref={(el: HTMLButtonElement) => {
                                 more = el
@@ -1606,7 +1594,7 @@ export function MessageTimeline(props: {
                                     setTitle("menuOpen", false)
                                   }}
                                 >
-                                  <DropdownMenu.ItemLabel>{language.t("common.rename")}</DropdownMenu.ItemLabel>
+                                  <DropdownMenu.ItemLabel>{"Rename"}</DropdownMenu.ItemLabel>
                                 </DropdownMenu.Item>
                                 <Show when={shareEnabled()}>
                                   <DropdownMenu.Item
@@ -1615,21 +1603,21 @@ export function MessageTimeline(props: {
                                     }}
                                   >
                                     <DropdownMenu.ItemLabel>
-                                      {language.t("session.share.action.share")}
+                                      {"Share"}
                                     </DropdownMenu.ItemLabel>
                                   </DropdownMenu.Item>
                                 </Show>
                                 <DropdownMenu.Item onSelect={() => exportSession(id)}>
-                                  <DropdownMenu.ItemLabel>{language.t("common.export")}</DropdownMenu.ItemLabel>
+                                  <DropdownMenu.ItemLabel>{"Export"}</DropdownMenu.ItemLabel>
                                 </DropdownMenu.Item>
                                 <DropdownMenu.Item onSelect={() => void sessionArchive.archive(id)}>
-                                  <DropdownMenu.ItemLabel>{language.t("common.archive")}</DropdownMenu.ItemLabel>
+                                  <DropdownMenu.ItemLabel>{"Archive"}</DropdownMenu.ItemLabel>
                                 </DropdownMenu.Item>
                                 <DropdownMenu.Separator />
                                 <DropdownMenu.Item
                                   onSelect={() => dialog.show(() => <DialogDeleteSession sessionID={id} />)}
                                 >
-                                  <DropdownMenu.ItemLabel>{language.t("common.delete")}</DropdownMenu.ItemLabel>
+                                  <DropdownMenu.ItemLabel>{"Delete"}</DropdownMenu.ItemLabel>
                                 </DropdownMenu.Item>
                               </DropdownMenu.Content>
                             </DropdownMenu.Portal>
@@ -1651,7 +1639,7 @@ export function MessageTimeline(props: {
                             variant="ghost-muted"
                             size="large"
                             state={share.open || title.pendingShare ? "pressed" : undefined}
-                            aria-label={language.t("common.moreOptions")}
+                            aria-label={"More options"}
                             aria-expanded={title.menuOpen || share.open || title.pendingShare}
                             ref={(el: HTMLButtonElement) => {
                               more = el
@@ -1682,7 +1670,7 @@ export function MessageTimeline(props: {
                                   setTitle("menuOpen", false)
                                 }}
                               >
-                                {language.t("common.rename")}
+                                {"Rename"}
                               </MenuV2.Item>
                               <Show when={shareEnabled()}>
                                 <MenuV2.Item
@@ -1690,18 +1678,18 @@ export function MessageTimeline(props: {
                                     setTitle({ pendingShare: true, menuOpen: false })
                                   }}
                                 >
-                                  {language.t("session.share.action.share")}...
+                                  {"Share"}...
                                 </MenuV2.Item>
                               </Show>
                               <MenuV2.Item onSelect={() => exportSession(id)}>
-                                {language.t("common.export")}...
+                                {"Export"}...
                               </MenuV2.Item>
                               <MenuV2.Item onSelect={() => void sessionArchive.archive(id)}>
-                                {language.t("common.archive")}
+                                {"Archive"}
                               </MenuV2.Item>
                               <MenuV2.Separator />
                               <MenuV2.Item onSelect={() => dialog.show(() => <DialogDeleteSession sessionID={id} />)}>
-                                {language.t("common.delete")}...
+                                {"Delete"}...
                               </MenuV2.Item>
                             </MenuV2.Content>
                           </MenuV2.Portal>
@@ -1749,12 +1737,12 @@ export function MessageTimeline(props: {
                                 <div class="flex flex-col p-3">
                                   <div class="flex flex-col gap-1">
                                     <div class="text-13-medium text-text-strong">
-                                      {language.t("session.share.popover.title")}
+                                      {"Publish on web"}
                                     </div>
                                     <div class="text-12-regular text-text-weak">
                                       {shareUrl()
-                                        ? language.t("session.share.popover.description.shared")
-                                        : language.t("session.share.popover.description.unshared")}
+                                        ? "This session is public on the web. It is accessible to anyone with the link."
+                                        : "Share session publicly on the web. It will be accessible to anyone with the link."}
                                     </div>
                                   </div>
                                   <div class="mt-3 flex flex-col gap-2">
@@ -1769,8 +1757,8 @@ export function MessageTimeline(props: {
                                           disabled={shareMutation.isPending}
                                         >
                                           {shareMutation.isPending
-                                            ? language.t("session.share.action.publishing")
-                                            : language.t("session.share.action.publish")}
+                                            ? "Publishing..."
+                                            : "Publish"}
                                         </Button>
                                       }
                                     >
@@ -1792,8 +1780,8 @@ export function MessageTimeline(props: {
                                             disabled={unshareMutation.isPending}
                                           >
                                             {unshareMutation.isPending
-                                              ? language.t("session.share.action.unpublishing")
-                                              : language.t("session.share.action.unpublish")}
+                                              ? "Unpublishing..."
+                                              : "Unpublish"}
                                           </Button>
                                           <Button
                                             size="large"
@@ -1802,7 +1790,7 @@ export function MessageTimeline(props: {
                                             onClick={viewShare}
                                             disabled={unshareMutation.isPending}
                                           >
-                                            {language.t("session.share.action.view")}
+                                            {"View"}
                                           </Button>
                                         </div>
                                       </div>
@@ -1813,12 +1801,12 @@ export function MessageTimeline(props: {
                             >
                               <div class="flex w-full flex-col gap-1.5 px-0.5 pt-0.5">
                                 <div class="select-none text-[13px] font-[530] leading-none tracking-[-0.04px] text-v2-text-text-base [font-variation-settings:'slnt'_0]">
-                                  {language.t("session.share.popover.title")}
+                                  {"Publish on web"}
                                 </div>
                                 <div class="select-none text-[13px] font-[440] leading-5 tracking-[-0.04px] text-v2-text-text-muted [font-variation-settings:'slnt'_0]">
                                   {shareUrl()
-                                    ? language.t("session.share.popover.description.shared")
-                                    : language.t("session.share.popover.description.unshared")}
+                                    ? "This session is public on the web. It is accessible to anyone with the link."
+                                    : "Share session publicly on the web. It will be accessible to anyone with the link."}
                                 </div>
                               </div>
                               <div class="flex w-full flex-col gap-2">
@@ -1832,8 +1820,8 @@ export function MessageTimeline(props: {
                                       disabled={shareMutation.isPending}
                                     >
                                       {shareMutation.isPending
-                                        ? language.t("session.share.action.publishing")
-                                        : language.t("session.share.action.publish")}
+                                        ? "Publishing..."
+                                        : "Publish"}
                                     </ButtonV2>
                                   }
                                 >
@@ -1856,7 +1844,7 @@ export function MessageTimeline(props: {
                                         size="small"
                                         variant="ghost-muted"
                                         icon={<IconV2 name="outline-copy" />}
-                                        aria-label={language.t("session.share.copy.copyLink")}
+                                        aria-label={"Copy link"}
                                         onClick={copyShareUrl}
                                       />
                                       <IconButtonV2
@@ -1864,7 +1852,7 @@ export function MessageTimeline(props: {
                                         size="small"
                                         variant="ghost-muted"
                                         icon={<IconV2 name="outline-square-arrow" />}
-                                        aria-label={language.t("session.share.action.view")}
+                                        aria-label={"View"}
                                         onClick={viewShare}
                                         disabled={unshareMutation.isPending}
                                       />
@@ -1877,8 +1865,8 @@ export function MessageTimeline(props: {
                                         disabled={unshareMutation.isPending}
                                       >
                                         {unshareMutation.isPending
-                                          ? language.t("session.share.action.unpublishing")
-                                          : language.t("session.share.action.unpublish")}
+                                          ? "Unpublishing..."
+                                          : "Unpublish"}
                                       </ButtonV2>
                                     </div>
                                   </div>

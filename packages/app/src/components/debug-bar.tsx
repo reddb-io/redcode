@@ -4,7 +4,6 @@ import { createStore } from "solid-js/store"
 import { makeEventListener } from "@solid-primitives/event-listener"
 import { Tooltip } from "@reddb-io/redcode-ui/tooltip"
 import { TooltipV2 } from "@reddb-io/redcode-ui/v2/tooltip-v2"
-import { useLanguage } from "@/context/language"
 import { usePlatform } from "@/context/platform"
 
 type Mem = Performance & {
@@ -167,7 +166,6 @@ function ToggleCell(props: {
 }
 
 export function DebugBar(props: { inline?: boolean } = {}) {
-  const language = useLanguage()
   const platform = usePlatform()
   const location = useLocation()
   const routing = useIsRouting()
@@ -194,7 +192,7 @@ export function DebugBar(props: { inline?: boolean } = {}) {
     },
   })
 
-  const na = () => language.t("debugBar.na").toUpperCase()
+  const na = () => "n/a".toUpperCase()
   const heap = () => (state.heap.limit ? (state.heap.used ?? 0) / state.heap.limit : undefined)
   const heapv = () => {
     const value = heap()
@@ -465,7 +463,7 @@ export function DebugBar(props: { inline?: boolean } = {}) {
 
   return (
     <aside
-      aria-label={language.t("debugBar.ariaLabel")}
+      aria-label={"Development performance diagnostics"}
       classList={{
         "pointer-events-auto hidden overflow-hidden text-text-strong md:block": true,
         "mt-[-6px] w-full shrink-0 px-3 py-1": !!props.inline,
@@ -484,78 +482,75 @@ export function DebugBar(props: { inline?: boolean } = {}) {
         }}
       >
         <Cell
-          label={language.t("debugBar.nav.label")}
-          tip={language.t("debugBar.nav.tip")}
+          label={"NAV"}
+          tip={"Last completed route transition touching a session page, measured from router start until the first paint after it settles."}
           value={navv()}
           bad={bad(state.nav.dur, 400)}
           dim={state.nav.dur === undefined && !state.nav.pending}
           inline={props.inline}
         />
         <Cell
-          label={language.t("debugBar.fps.label")}
-          tip={language.t("debugBar.fps.tip")}
+          label={"FPS"}
+          tip={"Rolling frames per second over the last 5 seconds."}
           value={state.fps === undefined ? na() : `${Math.round(state.fps)}`}
           bad={bad(state.fps, 50, true)}
           dim={state.fps === undefined}
           inline={props.inline}
         />
         <Cell
-          label={language.t("debugBar.frame.label")}
-          tip={language.t("debugBar.frame.tip")}
+          label={"FRAME"}
+          tip={"Worst frame time over the last 5 seconds."}
           value={time(state.gap) ?? na()}
           bad={bad(state.gap, 50)}
           dim={state.gap === undefined}
           inline={props.inline}
         />
         <Cell
-          label={language.t("debugBar.jank.label")}
-          tip={language.t("debugBar.jank.tip")}
+          label={"JANK"}
+          tip={"Frames over 32ms in the last 5 seconds."}
           value={state.jank === undefined ? na() : `${state.jank}`}
           bad={bad(state.jank, 8)}
           dim={state.jank === undefined}
           inline={props.inline}
         />
         <Cell
-          label={language.t("debugBar.long.label")}
-          tip={language.t("debugBar.long.tip", { max: ms(state.long.max) ?? na() })}
+          label={"LONG"}
+          tip={`Blocked time and long-task count in the last 5 seconds. Max task: ${ms(state.long.max) ?? na()}.`}
           value={longv()}
           bad={bad(state.long.block, 200)}
           dim={state.long.count === undefined}
           inline={props.inline}
         />
         <Cell
-          label={language.t("debugBar.delay.label")}
-          tip={language.t("debugBar.delay.tip")}
+          label={"DELAY"}
+          tip={"Worst observed input delay in the last 5 seconds."}
           value={time(state.delay) ?? na()}
           bad={bad(state.delay, 100)}
           dim={state.delay === undefined}
           inline={props.inline}
         />
         <Cell
-          label={language.t("debugBar.inp.label")}
-          tip={language.t("debugBar.inp.tip")}
+          label={"INP"}
+          tip={"Approximate interaction duration over the last 5 seconds. This is INP-like, not the official Web Vitals INP."}
           value={time(state.inp) ?? na()}
           bad={bad(state.inp, 200)}
           dim={state.inp === undefined}
           inline={props.inline}
         />
         <Cell
-          label={language.t("debugBar.cls.label")}
-          tip={language.t("debugBar.cls.tip")}
+          label={"CLS"}
+          tip={"Cumulative layout shift for the current app lifetime."}
           value={state.cls === undefined ? na() : state.cls.toFixed(2)}
           bad={bad(state.cls, 0.1)}
           dim={state.cls === undefined}
           inline={props.inline}
         />
         <Cell
-          label={language.t("debugBar.mem.label")}
+          label={"MEM"}
           tip={
             state.heap.used === undefined
-              ? language.t("debugBar.mem.tipUnavailable")
-              : language.t("debugBar.mem.tip", {
-                  used: mb(state.heap.used) ?? na(),
-                  limit: mb(state.heap.limit) ?? na(),
-                })
+              ? "Used JS heap vs heap limit. Chromium only."
+              : `Used JS heap vs heap limit. ${mb(state.heap.used) ?? na()} of ${mb(state.heap.limit) ?? na()}.`
           }
           value={heapv()}
           bad={bad(heap(), 0.8)}
@@ -563,21 +558,13 @@ export function DebugBar(props: { inline?: boolean } = {}) {
           inline={props.inline}
           span={platform.setForceFocus ? 2 : 3}
         />
-        <ToggleCell
-          active={language.direction() === "rtl"}
-          inline={props.inline}
-          label={language.t("debugBar.direction.label")}
-          tip={language.t("debugBar.direction.tip")}
-          value={language.t(`debugBar.direction.${language.direction()}`)}
-          onClick={() => language.setDirection(language.direction() === "rtl" ? "ltr" : "rtl")}
-        />
         {platform.setForceFocus && (
           <ToggleCell
             active={state.focus}
             inline={props.inline}
-            label={language.t("debugBar.focus.label")}
-            tip={language.t("debugBar.focus.tip")}
-            value={language.t(state.focus ? "debugBar.focus.on" : "debugBar.focus.off")}
+            label={"FOCUS"}
+            tip={"Force focus styles on all interactive elements"}
+            value={state.focus ? "ON" : "OFF"}
             onClick={() => void toggleFocus()}
           />
         )}

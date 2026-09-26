@@ -8,7 +8,6 @@ import { Icon as IconV2 } from "@reddb-io/redcode-ui/v2/icon"
 import { useCommand } from "@/context/command"
 import { DESKTOP_MENU, desktopMenuVisible, type DesktopMenuAction, type DesktopMenuEntry } from "@/desktop-menu"
 import { usePlatform } from "@/context/platform"
-import { useLanguage } from "@/context/language"
 
 export function WindowsAppMenu(props: {
   command: ReturnType<typeof useCommand>
@@ -16,7 +15,6 @@ export function WindowsAppMenu(props: {
   variant?: "legacy" | "v2"
 }) {
   let lastFocused: HTMLElement | undefined
-  const language = useLanguage()
 
   const rememberFocus = () => {
     const active = document.activeElement
@@ -60,7 +58,7 @@ export function WindowsAppMenu(props: {
             variant="ghost-muted"
             size="large"
             icon={<IconV2 name="menu" />}
-            aria-label={language.t("desktop.menu.ariaLabel")}
+            aria-label={"Redcode menu"}
             onPointerDown={rememberFocus}
             onKeyDown={rememberFocus}
           />
@@ -71,7 +69,7 @@ export function WindowsAppMenu(props: {
           icon="menu"
           variant="ghost"
           class="titlebar-icon rounded-md shrink-0"
-          aria-label={language.t("desktop.menu.ariaLabel")}
+          aria-label={"Redcode menu"}
           onPointerDown={rememberFocus}
           onKeyDown={rememberFocus}
         />
@@ -81,7 +79,7 @@ export function WindowsAppMenu(props: {
           <DropdownMenu.Group>
             <DropdownMenu.GroupLabel class="desktop-app-menu-heading">Redcode</DropdownMenu.GroupLabel>
             {DESKTOP_MENU.filter((menu) => desktopMenuVisible(menu, "windows")).map((menu) => (
-              <DesktopMenuSubmenu label={language.t(menu.labelKey)}>
+              <DesktopMenuSubmenu label={menuLabels[menu.labelKey] ?? menu.labelKey}>
                 {menu.items
                   ?.filter((entry) => desktopMenuVisible(entry, "windows"))
                   .map((entry) =>
@@ -89,7 +87,7 @@ export function WindowsAppMenu(props: {
                       <DropdownMenu.Separator />
                     ) : (
                       <DesktopMenuItem
-                        label={entry.labelKey ? language.t(entry.labelKey) : ""}
+                        label={entry.labelKey ? (menuLabels[entry.labelKey] ?? entry.labelKey) : ""}
                         keybind={entry.command ? props.command.keybind(entry.command) : entry.accelerator?.windows}
                         disabled={entry.command ? commandDisabled(entry.command) : false}
                         onSelect={() => runEntry(entry)}
@@ -130,4 +128,51 @@ function DesktopMenuItem(props: { label: string; keybind?: string; disabled?: bo
       </Show>
     </DropdownMenu.Item>
   )
+}
+
+const menuLabels: Record<string, string> = {
+  "desktop.menu.app": "Redcode",
+  "desktop.menu.file": "File",
+  "desktop.menu.edit": "Edit",
+  "desktop.menu.view": "View",
+  "desktop.menu.go": "Go",
+  "desktop.menu.window": "Window",
+  "desktop.menu.help": "Help",
+  "desktop.menu.checkForUpdates": "Check for Updates...",
+  "desktop.menu.settings": "Settings",
+  "desktop.menu.reloadWebview": "Reload Webview",
+  "desktop.menu.restart": "Restart",
+  "desktop.menu.exportLogs": "Export Logs...",
+  "desktop.menu.newSession": "New Session",
+  "desktop.menu.openProject": "Open Project...",
+  "desktop.menu.newWindow": "New Window",
+  "desktop.menu.closeWindow": "Close Window",
+  "desktop.menu.undo": "Undo",
+  "desktop.menu.redo": "Redo",
+  "desktop.menu.cut": "Cut",
+  "desktop.menu.copy": "Copy",
+  "desktop.menu.paste": "Paste",
+  "desktop.menu.delete": "Delete",
+  "desktop.menu.selectAll": "Select All",
+  "desktop.menu.toggleSidebar": "Toggle Sidebar",
+  "desktop.menu.toggleTerminal": "Toggle Terminal",
+  "desktop.menu.toggleFileTree": "Toggle File Tree",
+  "desktop.menu.reload": "Reload",
+  "desktop.menu.toggleDeveloperTools": "Toggle Developer Tools",
+  "desktop.menu.actualSize": "Actual Size",
+  "desktop.menu.zoomIn": "Zoom In",
+  "desktop.menu.zoomOut": "Zoom Out",
+  "desktop.menu.toggleFullScreen": "Toggle Full Screen",
+  "desktop.menu.back": "Back",
+  "desktop.menu.forward": "Forward",
+  "desktop.menu.previousSession": "Previous Session",
+  "desktop.menu.nextSession": "Next Session",
+  "desktop.menu.previousProject": "Previous Project",
+  "desktop.menu.nextProject": "Next Project",
+  "desktop.menu.minimize": "Minimize",
+  "desktop.menu.maximize": "Maximize",
+  "desktop.menu.documentation": "Redcode Documentation",
+  "desktop.menu.supportForum": "Support Forum",
+  "desktop.menu.shareFeedback": "Share Feedback",
+  "desktop.menu.reportBug": "Report a Bug",
 }

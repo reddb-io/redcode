@@ -4,7 +4,6 @@ import { Dialog } from "@reddb-io/redcode-ui/dialog"
 import { ButtonV2 } from "@reddb-io/redcode-ui/v2/button-v2"
 import { DialogBody, DialogFooter, DialogHeader, DialogTitleGroup, DialogV2 } from "@reddb-io/redcode-ui/v2/dialog-v2"
 import { type Accessor, createMemo, createSignal, For } from "solid-js"
-import { useLanguage } from "@/context/language"
 import { useServerSDK } from "@/context/server-sdk"
 import { useServerSync } from "@/context/server-sync"
 import { showToast } from "@/utils/toast"
@@ -14,7 +13,6 @@ import { providerRemoveSummary, type ProviderRemoval } from "./provider-remove"
 // does not see that scope, so the server calls are bound here and handed to the dialog.
 export function useProviderRemove(options: { v2?: boolean; directory?: Accessor<string | undefined> } = {}) {
   const dialog = useDialog()
-  const language = useLanguage()
   const serverSDK = useServerSDK()
   const serverSync = useServerSync()
 
@@ -23,7 +21,7 @@ export function useProviderRemove(options: { v2?: boolean; directory?: Accessor<
 
   const failed = (err: unknown) =>
     showToast({
-      title: language.t("common.requestFailed"),
+      title: "Request failed",
       description: err instanceof Error ? err.message : String(err),
     })
 
@@ -37,8 +35,8 @@ export function useProviderRemove(options: { v2?: boolean; directory?: Accessor<
         showToast({
           variant: "success",
           icon: "circle-check",
-          title: language.t("provider.remove.toast.title", { provider: name }),
-          description: language.t("provider.remove.toast.description", { provider: name }),
+          title: `${name} removed`,
+          description: `${name} and the settings that used it were removed.`,
         })
       })
       .catch(failed)
@@ -65,9 +63,8 @@ function DialogRemoveProvider(props: {
   onConfirm: () => Promise<unknown>
 }) {
   const dialog = useDialog()
-  const language = useLanguage()
   const [pending, setPending] = createSignal(false)
-  const summary = createMemo(() => providerRemoveSummary(props.result, props.name, language.t))
+  const summary = createMemo(() => providerRemoveSummary(props.result, props.name))
 
   const confirm = () => {
     setPending(true)
@@ -88,33 +85,33 @@ function DialogRemoveProvider(props: {
       <DialogV2 fit>
         <DialogHeader hideClose>
           <DialogTitleGroup
-            title={language.t("provider.remove.title", { provider: props.name })}
-            description={language.t("provider.remove.description")}
+            title={`Remove ${props.name}?`}
+            description={"This removes the provider and every setting that points at it."}
           />
         </DialogHeader>
         <DialogBody class="px-4">{details()}</DialogBody>
         <DialogFooter>
           <ButtonV2 variant="ghost" onClick={() => dialog.close()}>
-            {language.t("common.cancel")}
+            {"Cancel"}
           </ButtonV2>
           <ButtonV2 variant="danger" disabled={pending()} onClick={confirm}>
-            {language.t("provider.remove.button")}
+            {"Remove"}
           </ButtonV2>
         </DialogFooter>
       </DialogV2>
     )
 
   return (
-    <Dialog title={language.t("provider.remove.title", { provider: props.name })} fit>
+    <Dialog title={`Remove ${props.name}?`} fit>
       <div class="flex flex-col gap-4 pl-6 pr-2.5 pb-3">
-        <span class="text-14-regular text-text-strong">{language.t("provider.remove.description")}</span>
+        <span class="text-14-regular text-text-strong">{"This removes the provider and every setting that points at it."}</span>
         {details()}
         <div class="flex justify-end gap-2">
           <Button variant="ghost" size="large" onClick={() => dialog.close()}>
-            {language.t("common.cancel")}
+            {"Cancel"}
           </Button>
           <Button variant="primary" size="large" disabled={pending()} onClick={confirm}>
-            {language.t("provider.remove.button")}
+            {"Remove"}
           </Button>
         </div>
       </div>

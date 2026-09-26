@@ -10,7 +10,6 @@ import { createResizeObserver } from "@solid-primitives/resize-observer"
 import { Index, createEffect, createMemo } from "solid-js"
 import { Dynamic } from "solid-js/web"
 import { createStore } from "solid-js/store"
-import { useLanguage } from "@/context/language"
 import { useSettings } from "@/context/settings"
 
 const doneToken = "\u0000done\u0000"
@@ -49,7 +48,6 @@ export function SessionTodoDock(props: {
   expandLabel: string
   dockProgress: number
 }) {
-  const language = useLanguage()
   const settings = useSettings()
   const [store, setStore] = createStore({
     height: 78,
@@ -57,12 +55,8 @@ export function SessionTodoDock(props: {
 
   const total = createMemo(() => props.todos.length)
   const done = createMemo(() => props.todos.filter((todo) => todo.status === "completed").length)
-  const label = createMemo(() => language.t("session.todo.progress", { done: done(), total: total() }))
-  const progress = createMemo(() =>
-    language
-      .t("session.todo.progress", { done: doneToken, total: totalToken })
-      .split(/(\u0000done\u0000|\u0000total\u0000)/),
-  )
+  const label = createMemo(() => `${done()} of ${total()} todos completed`)
+  const progress = createMemo(() => `${doneToken} of ${totalToken} todos completed`.split(/(\u0000done\u0000|\u0000total\u0000)/))
 
   const active = createMemo(
     () =>

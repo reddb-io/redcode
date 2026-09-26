@@ -6,7 +6,6 @@ import { TextInputV2 } from "@reddb-io/redcode-ui/v2/text-input-v2"
 import { useDialog } from "@reddb-io/redcode-ui/context/dialog"
 import { createEffect, createMemo, createResource, createSignal, For, onCleanup, onMount, Show } from "solid-js"
 import { useGlobal } from "@/context/global"
-import { useLanguage } from "@/context/language"
 import { ServerConnection } from "@/context/server"
 import type { Path } from "@reddb-io/redcode-sdk/v2/client"
 import {
@@ -44,11 +43,10 @@ export function DialogSelectDirectoryV2(props: DialogSelectDirectoryV2Props) {
   const global = useGlobal()
   const { sync, sdk } = global.ensureServerCtx(props.server)
   const dialog = useDialog()
-  const language = useLanguage()
   const policy = pickerMode(props.mode ?? "directory", props.start)
   const action = {
-    file: language.t("dialog.directory.action.selectFile"),
-    directory: language.t("dialog.directory.action.selectFolder"),
+    file: "Select file",
+    directory: "Select folder",
   }
   const [root, setRoot] = createSignal("")
   const [input, setInput] = createSignal("")
@@ -286,7 +284,7 @@ export function DialogSelectDirectoryV2(props: DialogSelectDirectoryV2Props) {
   return (
     <Dialog size="large" class="directory-picker-v2">
       <DialogHeader>
-        <DialogTitle>{props.title ?? language.t("command.project.open")}</DialogTitle>
+        <DialogTitle>{props.title ?? "Open project"}</DialogTitle>
       </DialogHeader>
       <DividerV2 />
       <DialogBody class="directory-picker-v2-body pt-4!">
@@ -317,10 +315,10 @@ export function DialogSelectDirectoryV2(props: DialogSelectDirectoryV2Props) {
               ~
             </ButtonV2>
             <ButtonV2 size="small" variant="ghost" onClick={() => void navigate(pickerRoot(root()) || root())}>
-              {language.t("dialog.directory.root")}
+              {"Root"}
             </ButtonV2>
             <ButtonV2 size="small" variant="ghost" onClick={() => void navigate(pickerParent(root()))}>
-              {language.t("dialog.directory.parent")}
+              {"Parent"}
             </ButtonV2>
           </div>
           <Show when={suggestionsOpen() && currentSuggestions().length > 0}>
@@ -365,17 +363,17 @@ export function DialogSelectDirectoryV2(props: DialogSelectDirectoryV2Props) {
           }}
         >
           <Show when={loading()}>
-            <div class="directory-picker-v2-state">{language.t("common.loading")}</div>
+            <div class="directory-picker-v2-state">{"Loading"}</div>
           </Show>
           <Show when={!loading() && error()}>
-            <div class="directory-picker-v2-state">{language.t("dialog.directory.readError")}</div>
+            <div class="directory-picker-v2-state">{"Unable to read this folder"}</div>
           </Show>
         </div>
         <div class="directory-picker-v2-selection">{policy.result(root(), selected(), rootValid())}</div>
       </DialogBody>
       <DialogFooter>
         <ButtonV2 variant="neutral" onClick={() => dialog.close()}>
-          {language.t("common.cancel")}
+          {"Cancel"}
         </ButtonV2>
         <ButtonV2 variant="contrast" disabled={!policy.result(root(), selected(), rootValid())} onClick={resolve}>
           {action[policy.action]}

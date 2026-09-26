@@ -5,7 +5,6 @@ import type { HomeScrollController } from "./home-scroll-controller"
 export function HomeProjects(props: { projects: HomeProjectsController; scroll: HomeScrollController }) {
   return (
     <HomeProjectsView
-      language={props.projects.copy.language}
       servers={props.projects.server.list}
       projects={props.projects.project.list}
       recentlyClosed={props.projects.project.recentlyClosed}

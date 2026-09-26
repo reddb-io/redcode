@@ -1,6 +1,5 @@
 import { createEffect, createMemo } from "solid-js"
 import { createStore } from "solid-js/store"
-import { useLanguage } from "@/context/language"
 import { usePlatform } from "@/context/platform"
 import { useServer } from "@/context/server"
 import { Persist, persisted } from "@/utils/persist"
@@ -113,10 +112,10 @@ export function openAppsForOS(os: OpenAppOS) {
   return LINUX_OPEN_APPS
 }
 
-const showRequestError = (language: ReturnType<typeof useLanguage>, err: unknown) => {
+const showRequestError = (err: unknown) => {
   showToast({
     variant: "error",
-    title: language.t("common.requestFailed"),
+    title: "Request failed",
     description: err instanceof Error ? err.message : String(err),
   })
 }
@@ -124,7 +123,6 @@ const showRequestError = (language: ReturnType<typeof useLanguage>, err: unknown
 export function useOpenInApp(input: { directory: () => string }) {
   const platform = usePlatform()
   const server = useServer()
-  const language = useLanguage()
 
   const os = createMemo(() => detectOpenAppOS(platform))
   const apps = createMemo(() => openAppsForOS(os()))
@@ -156,10 +154,10 @@ export function useOpenInApp(input: { directory: () => string }) {
 
   const options = createMemo(() => {
     return [
-      { id: "finder", label: language.t(fileManager().label), icon: fileManager().icon },
+      { id: "finder", label: openAppLabels[fileManager().label] ?? fileManager().label, icon: fileManager().icon },
       ...apps()
         .filter((app) => exists[app.id])
-        .map((app) => ({ ...app, label: language.t(app.label) })),
+        .map((app) => ({ ...app, label: openAppLabels[app.label] ?? app.label })),
     ] as const
   })
 
@@ -174,7 +172,7 @@ export function useOpenInApp(input: { directory: () => string }) {
     () =>
       options().find((o) => o.id === prefs.app) ??
       options()[0] ??
-      ({ id: "finder", label: fileManager().label, icon: fileManager().icon } as const),
+      ({ id: "finder", label: openAppLabels[fileManager().label] ?? fileManager().label, icon: fileManager().icon } as const),
   )
   const opening = createMemo(() => openRequest.app !== undefined)
 
@@ -193,7 +191,7 @@ export function useOpenInApp(input: { directory: () => string }) {
     setOpenRequest("app", app)
     platform
       .openPath(directory, openWith)
-      .catch((err: unknown) => showRequestError(language, err))
+      .catch((err: unknown) => showRequestError(err))
       .finally(() => {
         setOpenRequest("app", undefined)
       })
@@ -208,11 +206,11 @@ export function useOpenInApp(input: { directory: () => string }) {
         showToast({
           variant: "success",
           icon: "circle-check",
-          title: language.t("session.share.copy.copied"),
+          title: "Copied",
           description: directory,
         })
       })
-      .catch((err: unknown) => showRequestError(language, err))
+      .catch((err: unknown) => showRequestError(err))
   }
 
   return {
@@ -226,4 +224,23 @@ export function useOpenInApp(input: { directory: () => string }) {
     selectApp,
     copyPath,
   }
+}
+
+const openAppLabels: Record<string, string> = {
+  "session.header.open.finder": "Finder",
+  "session.header.open.fileExplorer": "File Explorer",
+  "session.header.open.fileManager": "File Manager",
+  "session.header.open.app.vscode": "VS Code",
+  "session.header.open.app.cursor": "Cursor",
+  "session.header.open.app.zed": "Zed",
+  "session.header.open.app.textmate": "TextMate",
+  "session.header.open.app.antigravity": "Antigravity",
+  "session.header.open.app.terminal": "Terminal",
+  "session.header.open.app.iterm2": "iTerm2",
+  "session.header.open.app.ghostty": "Ghostty",
+  "session.header.open.app.warp": "Warp",
+  "session.header.open.app.xcode": "Xcode",
+  "session.header.open.app.androidStudio": "Android Studio",
+  "session.header.open.app.powershell": "PowerShell",
+  "session.header.open.app.sublimeText": "Sublime Text",
 }

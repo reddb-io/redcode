@@ -1,6 +1,5 @@
 import "@/index.css"
 import * as Sentry from "@sentry/solid"
-import { I18nProvider } from "@reddb-io/redcode-ui/context"
 import { DialogProvider } from "@reddb-io/redcode-ui/context/dialog"
 import { FileComponentProvider } from "@reddb-io/redcode-ui/context/file"
 import { File } from "@reddb-io/redcode-session-ui/file"
@@ -44,7 +43,6 @@ import { ServerSDKProvider } from "@/context/server-sdk"
 import { ServerSyncProvider, useServerSync } from "@/context/server-sync"
 import { GlobalProvider, useGlobal } from "@/context/global"
 import { HighlightsProvider } from "@/context/highlights"
-import { LanguageProvider, type Locale, useLanguage } from "@/context/language"
 import { LayoutProvider, useLayout } from "@/context/layout"
 import { ModelsProvider } from "@/context/models"
 import { NotificationProvider } from "@/context/notification"
@@ -231,17 +229,6 @@ function ResolvedDraftRoute(props: { draft: DraftTab }) {
   )
 }
 
-function UiI18nBridge(props: ParentProps) {
-  const language = useLanguage()
-  return (
-    <I18nProvider
-      value={{ locale: language.intl, layoutLocale: language.layoutLocale, t: language.t, plural: language.plural }}
-    >
-      {props.children}
-    </I18nProvider>
-  )
-}
-
 function LayoutCompatibility(props: ParentProps) {
   const global = useGlobal()
   const navigate = useNavigate()
@@ -324,7 +311,6 @@ function SharedProviders(props: ParentProps) {
 
 function DesktopCommands() {
   const command = useCommand()
-  const language = useLanguage()
   const platform = usePlatform()
 
   command.register("desktop", () => {
@@ -332,8 +318,8 @@ function DesktopCommands() {
     if (platform.platform === "desktop" && platform.exportDebugLogs) {
       commands.push({
         id: "logs.export",
-        title: language.t("command.logs.export"),
-        category: language.t("command.category.settings"),
+        title: "Export logs",
+        category: "Settings",
         onSelect: () => {
           void platform.exportDebugLogs?.()
         },
@@ -390,12 +376,7 @@ function DraftProviders(props: ParentProps) {
   )
 }
 
-export function AppBaseProviders(
-  props: ParentProps<{
-    locale?: Locale
-    onNativeTranslations?: Parameters<typeof LanguageProvider>[0]["onNativeTranslations"]
-  }>,
-) {
+export function AppBaseProviders(props: ParentProps) {
   return (
     <MetaProvider>
       <Font />
@@ -404,24 +385,20 @@ export function AppBaseProviders(
           void window.api?.setTitlebar?.({ mode, scheme })
         }}
       >
-        <LanguageProvider locale={props.locale} onNativeTranslations={props.onNativeTranslations}>
-          <UiI18nBridge>
-            <ErrorBoundary
-              fallback={(error) => {
-                Sentry.captureException(error)
-                return <ErrorPage error={error} />
-              }}
-            >
-              <QueryProvider>
-                <WslServersProvider>
-                  <DialogProvider>
-                    <FileComponentProvider component={File}>{props.children}</FileComponentProvider>
-                  </DialogProvider>
-                </WslServersProvider>
-              </QueryProvider>
-            </ErrorBoundary>
-          </UiI18nBridge>
-        </LanguageProvider>
+        <ErrorBoundary
+          fallback={(error) => {
+            Sentry.captureException(error)
+            return <ErrorPage error={error} />
+          }}
+        >
+          <QueryProvider>
+            <WslServersProvider>
+              <DialogProvider>
+                <FileComponentProvider component={File}>{props.children}</FileComponentProvider>
+              </DialogProvider>
+            </WslServersProvider>
+          </QueryProvider>
+        </ErrorBoundary>
       </ThemeProvider>
     </MetaProvider>
   )
@@ -529,12 +506,11 @@ function ConnectionShell(props: ParentProps<{ loading?: boolean }>) {
 }
 
 function ConnectionError(props: { onRetry?: () => void; onServerSelected?: (key: ServerConnection.Key) => void }) {
-  const language = useLanguage()
   const server = useServer()
   const others = () => server.list.filter((s) => ServerConnection.key(s) !== server.key)
   const name = createMemo(() => server.name || server.key)
   const serverToken = "\u0000server\u0000"
-  const unreachable = createMemo(() => language.t("app.server.unreachable", { server: serverToken }).split(serverToken))
+  const unreachable = createMemo(() => `Could not reach ${serverToken}`.split(serverToken))
 
   const timer = setInterval(() => props.onRetry?.(), 1000)
   onCleanup(() => clearInterval(timer))
@@ -548,11 +524,11 @@ function ConnectionError(props: { onRetry?: () => void; onServerSelected?: (key:
             <span class="text-text-strong font-medium">{name()}</span>
             {unreachable()[1]}
           </p>
-          <p class="mt-1 text-12-regular text-text-weak">{language.t("app.server.retrying")}</p>
+          <p class="mt-1 text-12-regular text-text-weak">{"Retrying automatically..."}</p>
         </div>
         <Show when={others().length > 0}>
           <div class="flex w-full max-w-sm flex-col gap-2">
-            <span class="text-12-regular text-text-base text-center">{language.t("app.server.otherServers")}</span>
+            <span class="text-12-regular text-text-base text-center">{"Other servers"}</span>
             <div class="flex flex-col gap-1 rounded-lg bg-surface-base p-2">
               <For each={others()}>
                 {(conn) => {

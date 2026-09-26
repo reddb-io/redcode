@@ -8,12 +8,10 @@ import { DropdownMenu } from "@reddb-io/redcode-ui/dropdown-menu"
 import { Icon } from "@reddb-io/redcode-ui/icon"
 import { isDefaultTitle as isDefaultTerminalTitle } from "@/context/terminal-title"
 import { useTerminal, type LocalPTY } from "@/context/terminal"
-import { useLanguage } from "@/context/language"
 import { focusTerminalById } from "@/pages/session/helpers"
 
 export function SortableTerminalTab(props: { terminal: LocalPTY; onClose?: () => void }): JSX.Element {
   const terminal = useTerminal()
-  const language = useLanguage()
   const sortable = createSortable(props.terminal.id)
   const [store, setStore] = createStore({
     editing: false,
@@ -33,13 +31,12 @@ export function SortableTerminalTab(props: { terminal: LocalPTY; onClose?: () =>
   }
 
   const label = () => {
-    language.locale()
     if (props.terminal.title && !isDefaultTitle()) return props.terminal.title
 
     const number = props.terminal.titleNumber
-    if (Number.isFinite(number) && number > 0) return language.t("terminal.title.numbered", { number })
+    if (Number.isFinite(number) && number > 0) return `Terminal ${number}`
     if (props.terminal.title) return props.terminal.title
-    return language.t("terminal.title")
+    return "Terminal"
   }
 
   const close = () => {
@@ -139,7 +136,7 @@ export function SortableTerminalTab(props: { terminal: LocalPTY; onClose?: () =>
                 e.stopPropagation()
                 close()
               }}
-              aria-label={language.t("terminal.close")}
+              aria-label={"Close terminal"}
             />
           }
         >
@@ -178,11 +175,11 @@ export function SortableTerminalTab(props: { terminal: LocalPTY; onClose?: () =>
             >
               <DropdownMenu.Item onSelect={() => (editRequested = true)}>
                 <Icon name="edit" class="w-4 h-4 mr-2" />
-                {language.t("common.rename")}
+                {"Rename"}
               </DropdownMenu.Item>
               <DropdownMenu.Item onSelect={close}>
                 <Icon name="close" class="w-4 h-4 mr-2" />
-                {language.t("common.close")}
+                {"Close"}
               </DropdownMenu.Item>
             </DropdownMenu.Content>
           </DropdownMenu.Portal>

@@ -12,7 +12,6 @@ import {
   type HomeSessionEvents,
 } from "@/context/global-sync/home-session-index"
 import type { LocalProject } from "@/context/layout"
-import { useLanguage } from "@/context/language"
 import { ServerConnection } from "@/context/server"
 import { sessionHasOpenTab, useTabs } from "@/context/tabs"
 import { compareSessionTime, displayName, errorMessage, projectForSession } from "@/pages/layout/helpers"
@@ -42,7 +41,6 @@ export function createHomeSessionsController(home: HomeController) {
   const tabs = useTabs()
   const command = useCommand()
   const dialog = useDialog()
-  const language = useLanguage()
   const projectDirectories = createMemo(() => {
     const project = home.project.selected()
     if (!project) return home.project.list().flatMap(directories)
@@ -95,7 +93,7 @@ export function createHomeSessionsController(home: HomeController) {
     }),
   )
   const records = createMemo(() => allRecords().slice(0, HOME_SESSION_LIMIT))
-  const groups = createMemo(() => groupSessions(records(), language))
+  const groups = createMemo(() => groupSessions(records()))
   const prefetched = new Set<string>()
 
   createEffect(() => {
@@ -134,7 +132,7 @@ export function createHomeSessionsController(home: HomeController) {
   command.register("home.palette", () => [
     {
       id: "command.palette",
-      title: language.t("command.palette"),
+      title: "Command palette",
       hidden: true,
       onSelect: async () => {
         const conn = home.server.focused()
@@ -165,7 +163,6 @@ export function createHomeSessionsController(home: HomeController) {
 
   return {
     copy: {
-      language,
     },
     data: {
       records,
@@ -230,8 +227,8 @@ export function createHomeSessionsController(home: HomeController) {
           },
           onError: (cause) =>
             showToast({
-              title: language.t("common.requestFailed"),
-              description: errorMessage(cause, language.t("common.requestFailed")),
+              title: "Request failed",
+              description: errorMessage(cause, "Request failed"),
             }),
         })
       },
@@ -275,7 +272,7 @@ export function homeSessionSearchKey(record: HomeSessionRecord) {
   return `${pathKey(record.session.directory)}:${record.session.id}`
 }
 
-function groupSessions(records: HomeSessionRecord[], language: ReturnType<typeof useLanguage>): HomeSessionGroup[] {
+function groupSessions(records: HomeSessionRecord[]): HomeSessionGroup[] {
   const now = DateTime.local()
   const yesterday = now.minus({ days: 1 })
   const todaySessions = records.filter((record) =>
@@ -290,11 +287,11 @@ function groupSessions(records: HomeSessionRecord[], language: ReturnType<typeof
   })
   const olderTitle =
     todaySessions.length === 0 && yesterdaySessions.length === 0
-      ? language.t("sidebar.project.recentSessions")
-      : language.t("home.sessions.group.older")
+      ? "Recent sessions"
+      : "Older"
   return [
-    { id: "today" as const, title: language.t("home.sessions.group.today"), sessions: todaySessions },
-    { id: "yesterday" as const, title: language.t("home.sessions.group.yesterday"), sessions: yesterdaySessions },
+    { id: "today" as const, title: "Today", sessions: todaySessions },
+    { id: "yesterday" as const, title: "Yesterday", sessions: yesterdaySessions },
     { id: "older" as const, title: olderTitle, sessions: olderSessions },
   ].filter((group) => group.sessions.length > 0)
 }

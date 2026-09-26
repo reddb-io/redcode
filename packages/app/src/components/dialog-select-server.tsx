@@ -13,7 +13,6 @@ import { createEffect, createMemo, createResource, Show } from "solid-js"
 import { createStore } from "solid-js/store"
 import { ServerHealthIndicator, ServerRow } from "@/components/server/server-row"
 import { useGlobal } from "@/context/global"
-import { useLanguage } from "@/context/language"
 import { usePlatform } from "@/context/platform"
 import { normalizeServerUrl, ServerConnection, useServer } from "@/context/server"
 import { detectServerProtocol } from "@/utils/server-protocol"
@@ -40,16 +39,15 @@ interface ServerFormProps {
   onBack: () => void
 }
 
-function showRequestError(language: ReturnType<typeof useLanguage>, err: unknown) {
+function showRequestError(err: unknown) {
   showToast({
     variant: "error",
-    title: language.t("common.requestFailed"),
+    title: "Request failed",
     description: err instanceof Error ? err.message : String(err),
   })
 }
 
 function useDefaultServer() {
-  const language = useLanguage()
   const platform = usePlatform()
   const [defaultKey, defaultUrlActions] = createResource(
     async () => {
@@ -58,7 +56,7 @@ function useDefaultServer() {
         if (!key) return null
         return key
       } catch (err) {
-        showRequestError(language, err)
+        showRequestError(err)
         return null
       }
     },
@@ -71,7 +69,7 @@ function useDefaultServer() {
       await platform.setDefaultServer?.(key)
       defaultUrlActions.mutate(key)
     } catch (err) {
-      showRequestError(language, err)
+      showRequestError(err)
     }
   }
 
@@ -111,7 +109,6 @@ function useServerPreview() {
 }
 
 function ServerForm(props: ServerFormProps) {
-  const language = useLanguage()
   const keyDown = (event: KeyboardEvent) => {
     event.stopPropagation()
     if (event.key === "Escape") {
@@ -130,7 +127,7 @@ function ServerForm(props: ServerFormProps) {
         <div class="flex-1 min-w-0 [&_[data-slot=input-wrapper]]:relative">
           <TextField
             type="text"
-            label={language.t("dialog.server.add.url")}
+            label={"Server address"}
             placeholder={props.placeholder}
             value={props.value}
             autofocus
@@ -143,8 +140,8 @@ function ServerForm(props: ServerFormProps) {
         </div>
         <TextField
           type="text"
-          label={language.t("dialog.server.add.name")}
-          placeholder={language.t("dialog.server.add.namePlaceholder")}
+          label={"Server name (optional)"}
+          placeholder={"Localhost"}
           defaultValue={props.name}
           disabled={props.busy}
           onChange={props.onNameChange}
@@ -153,8 +150,8 @@ function ServerForm(props: ServerFormProps) {
         <div class="grid grid-cols-2 gap-2 min-w-0">
           <TextField
             type="text"
-            label={language.t("dialog.server.add.username")}
-            placeholder={language.t("dialog.server.add.usernamePlaceholder")}
+            label={"Username (optional)"}
+            placeholder={"username"}
             defaultValue={props.username}
             disabled={props.busy}
             onChange={props.onUsernameChange}
@@ -162,8 +159,8 @@ function ServerForm(props: ServerFormProps) {
           />
           <TextField
             type="password"
-            label={language.t("dialog.server.add.password")}
-            placeholder={language.t("dialog.server.add.passwordPlaceholder")}
+            label={"Password (optional)"}
+            placeholder={"password"}
             defaultValue={props.password}
             disabled={props.busy}
             onChange={props.onPasswordChange}
@@ -196,7 +193,6 @@ export function useServerManagementController(options: { onSelect?: () => void; 
   const tabs = useTabs()
   const global = useGlobal()
   const platform = usePlatform()
-  const language = useLanguage()
   const { defaultKey, canDefault, setDefault } = useDefaultServer()
   const { previewStatus } = useServerPreview()
   const checkServerHealth = useCheckServerHealth()
@@ -261,14 +257,14 @@ export function useServerManagementController(options: { onSelect?: () => void; 
       if (store.addServer.password && store.addServer.username) conn.http.username = store.addServer.username
       const result = await checkServerHealth(conn.http)
       if (!result.healthy) {
-        setStore("addServer", { error: language.t("dialog.server.add.error") })
+        setStore("addServer", { error: "Could not connect to server" })
         return
       }
       if (
         !settings.general.newLayoutDesigns() &&
         (await detectServerProtocol(conn.http, platform.fetch ?? globalThis.fetch)) === "v2"
       ) {
-        setStore("addServer", { error: language.t("dialog.server.add.error") })
+        setStore("addServer", { error: "Could not connect to server" })
         return
       }
 
@@ -312,14 +308,14 @@ export function useServerManagementController(options: { onSelect?: () => void; 
       }
       const result = await checkServerHealth(conn.http)
       if (!result.healthy) {
-        setStore("editServer", { error: language.t("dialog.server.add.error") })
+        setStore("editServer", { error: "Could not connect to server" })
         return
       }
       if (
         !settings.general.newLayoutDesigns() &&
         (await detectServerProtocol(conn.http, platform.fetch ?? globalThis.fetch)) === "v2"
       ) {
-        setStore("editServer", { error: language.t("dialog.server.add.error") })
+        setStore("editServer", { error: "Could not connect to server" })
         return
       }
       if (normalized === input.original.http.url) {
@@ -512,11 +508,11 @@ export function useServerManagementController(options: { onSelect?: () => void; 
   const formBusy = createMemo(() => (isAddMode() ? addMutation.isPending : editMutation.isPending))
 
   const formTitle = createMemo(() => {
-    if (!isFormMode()) return language.t("dialog.server.title")
+    if (!isFormMode()) return "Servers"
     return (
       <div class="flex items-center gap-2 -ml-2">
-        <IconButton icon="arrow-left" variant="ghost" onClick={resetForm} aria-label={language.t("common.goBack")} />
-        <span>{isAddMode() ? language.t("dialog.server.add.title") : language.t("dialog.server.edit.title")}</span>
+        <IconButton icon="arrow-left" variant="ghost" onClick={resetForm} aria-label={"Navigate back"} />
+        <span>{isAddMode() ? "Add server" : "Edit server"}</span>
       </div>
     )
   })
@@ -536,7 +532,7 @@ export function useServerManagementController(options: { onSelect?: () => void; 
         await setDefault(null)
       }
     } catch (err) {
-      showRequestError(language, err)
+      showRequestError(err)
     }
   }
 
@@ -571,7 +567,6 @@ export function useServerManagementController(options: { onSelect?: () => void; 
 }
 
 export function ServerConnectionList(props: { controller: ReturnType<typeof useServerManagementController> }) {
-  const language = useLanguage()
   const settings = useSettings()
 
   return (
@@ -579,11 +574,11 @@ export function ServerConnectionList(props: { controller: ReturnType<typeof useS
       <List
         class="flex-1 min-h-0 [&_[data-slot=list-search-wrapper]]:w-full [&_[data-slot=list-scroll]]:flex-1 [&_[data-slot=list-scroll]]:overflow-y-auto [&_[data-slot=list-items]]:bg-surface-base [&_[data-slot=list-items]]:rounded-md [&_[data-slot=list-item]]:min-h-14 [&_[data-slot=list-item]]:p-3 [&_[data-slot=list-item]]:!bg-transparent"
         search={{
-          placeholder: language.t("dialog.server.search.placeholder"),
+          placeholder: "Search servers",
           autofocus: false,
         }}
         noInitialSelection
-        emptyMessage={language.t("dialog.server.empty")}
+        emptyMessage={"No servers yet"}
         items={props.controller.sortedItems}
         key={(x) => x.http.url}
         onSelect={(x) => {
@@ -606,7 +601,7 @@ export function ServerConnectionList(props: { controller: ReturnType<typeof useS
                 badge={
                   <Show when={props.controller.defaultKey() === ServerConnection.key(i)}>
                     <span class="text-text-base bg-surface-base text-14-regular px-1.5 rounded-xs">
-                      {language.t("dialog.server.status.default")}
+                      {"Default"}
                     </span>
                   </Show>
                 }
@@ -635,17 +630,17 @@ export function ServerConnectionList(props: { controller: ReturnType<typeof useS
                             props.controller.startEdit(i)
                           }}
                         >
-                          <DropdownMenu.ItemLabel>{language.t("dialog.server.menu.edit")}</DropdownMenu.ItemLabel>
+                          <DropdownMenu.ItemLabel>{"Edit"}</DropdownMenu.ItemLabel>
                         </DropdownMenu.Item>
                         <Show when={props.controller.canDefault() && props.controller.defaultKey() !== key}>
                           <DropdownMenu.Item onSelect={() => props.controller.setDefault(key)}>
-                            <DropdownMenu.ItemLabel>{language.t("dialog.server.menu.default")}</DropdownMenu.ItemLabel>
+                            <DropdownMenu.ItemLabel>{"Set as default"}</DropdownMenu.ItemLabel>
                           </DropdownMenu.Item>
                         </Show>
                         <Show when={props.controller.canDefault() && props.controller.defaultKey() === key}>
                           <DropdownMenu.Item onSelect={() => props.controller.setDefault(null)}>
                             <DropdownMenu.ItemLabel>
-                              {language.t("dialog.server.menu.defaultRemove")}
+                              {"Remove default"}
                             </DropdownMenu.ItemLabel>
                           </DropdownMenu.Item>
                         </Show>
@@ -654,7 +649,7 @@ export function ServerConnectionList(props: { controller: ReturnType<typeof useS
                           onSelect={() => props.controller.handleRemove(ServerConnection.key(i))}
                           class="text-text-on-critical-base hover:bg-surface-critical-weak"
                         >
-                          <DropdownMenu.ItemLabel>{language.t("dialog.server.menu.delete")}</DropdownMenu.ItemLabel>
+                          <DropdownMenu.ItemLabel>{"Delete"}</DropdownMenu.ItemLabel>
                         </DropdownMenu.Item>
                       </DropdownMenu.Content>
                     </DropdownMenu.Portal>
@@ -674,7 +669,7 @@ export function ServerConnectionList(props: { controller: ReturnType<typeof useS
           onClick={props.controller.startAdd}
           class="py-1.5 pl-1.5 pr-3 flex items-center gap-1.5"
         >
-          {language.t("dialog.server.add.button")}
+          {"Add server"}
         </Button>
       </div>
     </div>
@@ -682,7 +677,6 @@ export function ServerConnectionList(props: { controller: ReturnType<typeof useS
 }
 
 export function ServerConnectionForm(props: { controller: ReturnType<typeof useServerManagementController> }) {
-  const language = useLanguage()
 
   return (
     <div class="flex flex-1 min-h-0 flex-col gap-4">
@@ -691,7 +685,7 @@ export function ServerConnectionForm(props: { controller: ReturnType<typeof useS
         name={props.controller.formName()}
         username={props.controller.formUsername()}
         password={props.controller.formPassword()}
-        placeholder={language.t("dialog.server.add.placeholder")}
+        placeholder={"http://localhost:4096"}
         busy={props.controller.formBusy()}
         error={props.controller.formError()}
         status={props.controller.formStatus()}
@@ -711,10 +705,10 @@ export function ServerConnectionForm(props: { controller: ReturnType<typeof useS
           class="px-3 py-1.5"
         >
           {props.controller.formBusy()
-            ? language.t("dialog.server.add.checking")
+            ? "Checking..."
             : props.controller.isAddMode()
-              ? language.t("dialog.server.add.button")
-              : language.t("common.save")}
+              ? "Add server"
+              : "Save"}
         </Button>
       </div>
     </div>

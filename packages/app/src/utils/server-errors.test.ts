@@ -3,35 +3,6 @@ import type { SessionNotFoundError } from "@reddb-io/redcode-sdk/v2/client"
 import type { ConfigInvalidError, ProviderModelNotFoundError } from "./server-errors"
 import { formatServerError, isSessionNotFoundError, parseReadableConfigInvalidError } from "./server-errors"
 
-function fill(text: string, vars?: Record<string, string | number>) {
-  if (!vars) return text
-  return text.replace(/{{\s*(\w+)\s*}}/g, (_, key: string) => {
-    const value = vars[key]
-    if (value === undefined) return ""
-    return String(value)
-  })
-}
-
-function useLanguageMock() {
-  const dict: Record<string, string> = {
-    "error.chain.unknown": "Erro desconhecido",
-    "error.chain.configInvalid": "Arquivo de config em {{path}} invalido",
-    "error.chain.configInvalidWithMessage": "Arquivo de config em {{path}} invalido: {{message}}",
-    "error.chain.modelNotFound": "Modelo nao encontrado: {{provider}}/{{model}}",
-    "error.chain.didYouMean": "Voce quis dizer: {{suggestions}}",
-    "error.chain.checkConfig": "Revise provider/model no config",
-  }
-  return {
-    t(key: string, vars?: Record<string, string | number>) {
-      const text = dict[key]
-      if (!text) return key
-      return fill(text, vars)
-    },
-  }
-}
-
-const language = useLanguageMock()
-
 describe("parseReadableConfigInvalidError", () => {
   test("formats issues with file path", () => {
     const error = {
@@ -45,10 +16,10 @@ describe("parseReadableConfigInvalidError", () => {
       },
     } satisfies ConfigInvalidError
 
-    const result = parseReadableConfigInvalidError(error, language.t)
+    const result = parseReadableConfigInvalidError(error)
 
     expect(result).toBe(
-      ["Arquivo de config em opencode.config.ts invalido: settings.host: Required", "mode: Invalid"].join("\n"),
+      ["Config file at opencode.config.ts is invalid: settings.host: Required", "mode: Invalid"].join("\n"),
     )
   })
 
@@ -61,9 +32,9 @@ describe("parseReadableConfigInvalidError", () => {
       },
     } satisfies ConfigInvalidError
 
-    const result = parseReadableConfigInvalidError(error, language.t)
+    const result = parseReadableConfigInvalidError(error)
 
-    expect(result).toBe("Arquivo de config em config invalido: Bad value")
+    expect(result).toBe("Config file at config is invalid: Bad value")
   })
 })
 
@@ -76,29 +47,25 @@ describe("formatServerError", () => {
       },
     } satisfies ConfigInvalidError
 
-    const result = formatServerError(error, language.t)
+    const result = formatServerError(error)
 
-    expect(result).toBe("Arquivo de config em config invalido: Missing host")
+    expect(result).toBe("Config file at config is invalid: Missing host")
   })
 
   test("returns error messages", () => {
-    expect(formatServerError(new Error("Request failed with status 503"), language.t)).toBe(
-      "Request failed with status 503",
-    )
+    expect(formatServerError(new Error("Request failed with status 503"))).toBe("Request failed with status 503")
   })
 
   test("returns provided string errors", () => {
-    expect(formatServerError("Failed to connect to server", language.t)).toBe("Failed to connect to server")
+    expect(formatServerError("Failed to connect to server")).toBe("Failed to connect to server")
   })
 
-  test("uses translated unknown fallback", () => {
-    expect(formatServerError(0, language.t)).toBe("Erro desconhecido")
+  test("uses unknown fallback", () => {
+    expect(formatServerError(0)).toBe("Unknown error")
   })
 
   test("falls back for unknown error objects and names", () => {
-    expect(formatServerError({ name: "ServerTimeoutError", data: { seconds: 30 } }, language.t)).toBe(
-      "Erro desconhecido",
-    )
+    expect(formatServerError({ name: "ServerTimeoutError", data: { seconds: 30 } })).toBe("Unknown error")
   })
 
   test("formats provider model errors using provider/model", () => {
@@ -110,8 +77,8 @@ describe("formatServerError", () => {
       },
     } satisfies ProviderModelNotFoundError
 
-    expect(formatServerError(error, language.t)).toBe(
-      ["Modelo nao encontrado: openai/gpt-4.1", "Revise provider/model no config"].join("\n"),
+    expect(formatServerError(error)).toBe(
+      ["Model not found: openai/gpt-4.1", "Check your config (opencode.json) provider/model names"].join("\n"),
     )
   })
 
@@ -125,8 +92,10 @@ describe("formatServerError", () => {
       },
     } satisfies ProviderModelNotFoundError
 
-    expect(formatServerError(error, language.t)).toBe(
-      ["Modelo nao encontrado: x/y", "Voce quis dizer: x/y2, x/y3", "Revise provider/model no config"].join("\n"),
+    expect(formatServerError(error)).toBe(
+      ["Model not found: x/y", "Did you mean: x/y2, x/y3", "Check your config (opencode.json) provider/model names"].join(
+        "\n",
+      ),
     )
   })
 
@@ -140,7 +109,7 @@ describe("formatServerError", () => {
 
     const wrapped = new Error("ConfigInvalidError", { cause: { body, status: 400 } })
 
-    expect(formatServerError(wrapped, language.t)).toBe("Arquivo de config em config invalido: Missing host")
+    expect(formatServerError(wrapped)).toBe("Config file at config is invalid: Missing host")
   })
 })
 

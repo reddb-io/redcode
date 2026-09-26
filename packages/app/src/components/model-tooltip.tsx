@@ -1,5 +1,4 @@
 import { Show, type Component, type JSX } from "solid-js"
-import { useLanguage } from "@/context/language"
 import { modelOrigin, routerKind, routerPath } from "./model-origin"
 
 type InputKey = "text" | "image" | "audio" | "video" | "pdf"
@@ -46,40 +45,39 @@ function ModelTooltipRow(props: { name: JSX.Element; value: JSX.Element }) {
 export const ModelTooltip: Component<{ model: ModelInfo; latest?: boolean; free?: boolean; v2?: boolean }> = (
   props,
 ) => {
-  const language = useLanguage()
   const sourceName = (model: ModelInfo) => {
     // A router names the provider that really serves the model; guessing from the id would call
     // every routed GPT or Codex model OpenAI.
     if (routerKind(model.provider)) return model.upstream?.name ?? model.provider.name
     const value = `${model.id} ${model.name}`.toLowerCase()
 
-    if (/claude|anthropic/.test(value)) return language.t("model.provider.anthropic")
-    if (/gpt|o[1-4]|codex|openai/.test(value)) return language.t("model.provider.openai")
-    if (/gemini|palm|bard|google/.test(value)) return language.t("model.provider.google")
-    if (/grok|xai/.test(value)) return language.t("model.provider.xai")
-    if (/llama|meta/.test(value)) return language.t("model.provider.meta")
+    if (/claude|anthropic/.test(value)) return "Anthropic"
+    if (/gpt|o[1-4]|codex|openai/.test(value)) return "OpenAI"
+    if (/gemini|palm|bard|google/.test(value)) return "Google"
+    if (/grok|xai/.test(value)) return "xAI"
+    if (/llama|meta/.test(value)) return "Meta"
 
     return model.provider.name
   }
   const inputLabel = (value: string) => {
-    if (value === "text") return language.t("model.input.text")
-    if (value === "image") return language.t("model.input.image")
-    if (value === "audio") return language.t("model.input.audio")
-    if (value === "video") return language.t("model.input.video")
-    if (value === "pdf") return language.t("model.input.pdf")
+    if (value === "text") return "text"
+    if (value === "image") return "image"
+    if (value === "audio") return "audio"
+    if (value === "video") return "video"
+    if (value === "pdf") return "pdf"
     return value
   }
   const title = () => {
     const tags: Array<string> = []
-    if (props.latest) tags.push(language.t("model.tag.latest"))
-    if (props.free) tags.push(language.t("model.tag.free"))
+    if (props.latest) tags.push("Latest")
+    if (props.free) tags.push("Free")
     const suffix = tags.length ? ` (${tags.join(", ")})` : ""
     return `${sourceName(props.model)} ${props.model.name}${suffix}`
   }
   const name = () => {
     const tags: Array<string> = []
-    if (props.latest) tags.push(language.t("model.tag.latest"))
-    if (props.free) tags.push(language.t("model.tag.free"))
+    if (props.latest) tags.push("Latest")
+    if (props.free) tags.push("Free")
     const suffix = tags.length ? ` (${tags.join(", ")})` : ""
     return `${props.model.name}${suffix}`
   }
@@ -98,37 +96,37 @@ export const ModelTooltip: Component<{ model: ModelInfo; latest?: boolean; free?
   const reasoning = () => {
     if (props.model.capabilities)
       return props.model.capabilities.reasoning
-        ? language.t("model.tooltip.reasoning.allowed")
-        : language.t("model.tooltip.reasoning.none")
+        ? "Allows reasoning"
+        : "No reasoning"
     return props.model.reasoning
-      ? language.t("model.tooltip.reasoning.allowed")
-      : language.t("model.tooltip.reasoning.none")
+      ? "Allows reasoning"
+      : "No reasoning"
   }
   const connection = () => {
     const origin = modelOrigin(props.model)
-    if (origin.type === "direct") return language.t("model.origin.direct")
+    if (origin.type === "direct") return "direct"
     return [
-      language.t("model.origin.via", { router: routerPath(origin) }),
-      ...(origin.subscription ? [language.t("model.origin.subscription")] : []),
+      `via ${routerPath(origin)}`,
+      ...(origin.subscription ? ["subscription"] : []),
     ].join(" · ")
   }
-  const context = () => language.t("model.tooltip.context", { limit: props.model.limit.context.toLocaleString() })
-  const contextLimit = () => props.model.limit.context.toLocaleString(language.intl())
+  const context = () => `Context limit ${props.model.limit.context.toLocaleString()}`
+  const contextLimit = () => props.model.limit.context.toLocaleString("en")
 
   if (props.v2) {
     return (
       <div class="flex w-[180px] flex-col gap-2">
-        <ModelTooltipRow name={language.t("model.tooltip.model")} value={name()} />
+        <ModelTooltipRow name={"Model"} value={name()} />
         <ModelTooltipRow
-          name={language.t("model.tooltip.provider")}
+          name={"Provider"}
           value={routerKind(props.model.provider) ? sourceName(props.model) : props.model.provider.name}
         />
-        <ModelTooltipRow name={language.t("model.tooltip.connection")} value={connection()} />
+        <ModelTooltipRow name={"Connection"} value={connection()} />
         <Show when={inputs()}>
-          {(value) => <ModelTooltipRow name={language.t("model.tooltip.inputs")} value={value()} />}
+          {(value) => <ModelTooltipRow name={"Inputs"} value={value()} />}
         </Show>
-        <ModelTooltipRow name={language.t("model.tooltip.reasoning")} value={reasoning()} />
-        <ModelTooltipRow name={language.t("model.tooltip.context.label")} value={contextLimit()} />
+        <ModelTooltipRow name={"Reasoning"} value={reasoning()} />
+        <ModelTooltipRow name={"Context"} value={contextLimit()} />
       </div>
     )
   }
@@ -140,7 +138,7 @@ export const ModelTooltip: Component<{ model: ModelInfo; latest?: boolean; free?
       <Show when={inputs()}>
         {(value) => (
           <div class="text-12-regular text-text-invert-base">
-            {language.t("model.tooltip.allows", { inputs: value() })}
+            {`Allows: ${value()}`}
           </div>
         )}
       </Show>

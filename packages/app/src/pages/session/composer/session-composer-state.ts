@@ -4,7 +4,6 @@ import type { PermissionRequest, QuestionRequest, Todo } from "@reddb-io/redcode
 import { useParams } from "@solidjs/router"
 import { showToast } from "@/utils/toast"
 import { useServerSync } from "@/context/server-sync"
-import { useLanguage } from "@/context/language"
 import { usePermission } from "@/context/permission"
 import { useSDK } from "@/context/sdk"
 import { useSync } from "@/context/sync"
@@ -30,7 +29,6 @@ export function createSessionComposerController(options?: { closeMs?: number | (
   const sdk = useSDK()
   const sync = useSync()
   const serverSync = useServerSync()
-  const language = useLanguage()
   const permission = usePermission()
 
   const questionRequest = createMemo((): QuestionRequest | undefined => {
@@ -85,7 +83,7 @@ export function createSessionComposerController(options?: { closeMs?: number | (
       .api.permission.reply({ sessionID: perm.sessionID, requestID: perm.id, reply: response })
       .catch((err: unknown) => {
         const description = err instanceof Error ? err.message : String(err)
-        showToast({ title: language.t("common.requestFailed"), description })
+        showToast({ title: "Request failed", description })
       })
       .finally(() => {
         setStore("responding", (id) => (id === perm.id ? undefined : id))

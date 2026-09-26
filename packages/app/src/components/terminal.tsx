@@ -8,7 +8,6 @@ import type { FitAddon, Ghostty, Terminal as Term } from "ghostty-web"
 import { type ComponentProps, createEffect, createMemo, onCleanup, onMount, splitProps } from "solid-js"
 import { SerializeAddon } from "@/addons/serialize"
 import { matchKeybind, parseKeybind } from "@/context/command"
-import { useLanguage } from "@/context/language"
 import { usePlatform } from "@/context/platform"
 import { useSDK } from "@/context/sdk"
 import { useServerSDK } from "@/context/server-sdk"
@@ -174,7 +173,6 @@ export const Terminal = (props: TerminalProps) => {
   const sdk = useSDK()
   const settings = useSettings()
   const theme = useTheme()
-  const language = useLanguage()
   // Terminal captures its connection for the PTY lifetime, so callers must key it per server/session.
   const connection = useServerSDK()().server
   const directory = sdk().directory
@@ -573,8 +571,8 @@ export const Terminal = (props: TerminalProps) => {
           if (!result) return
           if (result.response.status === 200 && result.data?.ticket) return result.data.ticket
           if (result.response.status === 404 || result.response.status === 405) return
-          if (result.response.status === 403) throw new Error(language.t("terminal.connectTicket.csrfError"))
-          throw new Error(language.t("terminal.connectTicket.statusError", { status: result.response.status }))
+          if (result.response.status === 403) throw new Error("PTY connect ticket rejected by origin or CSRF checks. Check the server CORS config.")
+          throw new Error(`PTY connect ticket failed with ${result.response.status}`)
         }
         // return sdk()
         //   .api.pty.connectToken({
@@ -692,7 +690,7 @@ export const Terminal = (props: TerminalProps) => {
           socket.removeEventListener("close", handleClose)
           if (disposed) return
           if (event.code === 1000) return
-          retry(new Error(language.t("terminal.connectionLost.abnormalClose", { code: event.code })))
+          retry(new Error(`WebSocket closed abnormally: ${event.code}`))
         }
 
         drop = stop
@@ -709,8 +707,8 @@ export const Terminal = (props: TerminalProps) => {
       if (disposed) return
       showToast({
         variant: "error",
-        title: language.t("terminal.connectionLost.title"),
-        description: err instanceof Error ? err.message : language.t("terminal.connectionLost.description"),
+        title: "Connection Lost",
+        description: err instanceof Error ? err.message : "The terminal connection was interrupted. This can happen when the server restarts.",
       })
       local.onConnectError?.(err)
     })

@@ -4,7 +4,6 @@ import { TooltipV2 } from "@reddb-io/redcode-ui/v2/tooltip-v2"
 import { Icon } from "@reddb-io/redcode-ui/icon"
 import { Icon as IconV2 } from "@reddb-io/redcode-ui/v2/icon"
 import { getFilename } from "@reddb-io/redcode-core/util/path"
-import { useLanguage } from "@/context/language"
 
 export function PromptWorkspaceSelector(props: {
   value: string
@@ -14,7 +13,6 @@ export function PromptWorkspaceSelector(props: {
   onChange: (value: string) => void
   onDone: () => void
 }) {
-  const language = useLanguage()
   let pending: string | undefined
   const selected = () => (props.value === props.projectRoot ? "main" : props.value)
   const icon = () => {
@@ -33,8 +31,8 @@ export function PromptWorkspaceSelector(props: {
     props.onDone()
   }
   const label = () => {
-    if (selected() === "main") return language.t("session.new.workspace.triggerLocal")
-    if (props.value === "create") return language.t("workspace.new")
+    if (selected() === "main") return "Local"
+    if (props.value === "create") return "New workspace"
     return getFilename(props.value)
   }
 
@@ -50,17 +48,17 @@ export function PromptWorkspaceSelector(props: {
         <MenuV2.Portal>
           <MenuV2.Content class="w-[180px]">
             <MenuV2.Group>
-              <MenuV2.GroupLabel>{language.t("session.new.workspace.runIn")}</MenuV2.GroupLabel>
+              <MenuV2.GroupLabel>{"Run session in"}</MenuV2.GroupLabel>
               <MenuV2.Item onSelect={() => select("main")}>
                 <IconV2 name="monitor" />
-                <span class="min-w-0 flex-1 truncate">{language.t("session.new.workspace.local")}</span>
+                <span class="min-w-0 flex-1 truncate">{"Local repository"}</span>
                 <Show when={selected() === "main"}>
                   <Icon name="check" size="small" class="shrink-0" />
                 </Show>
               </MenuV2.Item>
               <MenuV2.Item onSelect={() => select("create")}>
                 <IconV2 name="workspace-new" />
-                <span class="min-w-0 flex-1 truncate">{language.t("workspace.new")}</span>
+                <span class="min-w-0 flex-1 truncate">{"New workspace"}</span>
                 <Show when={selected() === "create"}>
                   <Icon name="check" size="small" class="shrink-0" />
                 </Show>
@@ -71,7 +69,7 @@ export function PromptWorkspaceSelector(props: {
               <MenuV2.Sub gutter={0} overlap overflowPadding={8}>
                 <MenuV2.SubTrigger>
                   <IconV2 name="workspace" />
-                  {language.t("session.new.workspace.existing")}
+                  {"Workspace…"}
                 </MenuV2.SubTrigger>
                 <MenuV2.Portal>
                   <MenuV2.SubContent class="max-w-[200px]">
@@ -99,9 +97,8 @@ export function PromptWorkspaceSelector(props: {
 }
 
 export function PromptGitStatus(props: { branch?: string; noGit?: boolean }) {
-  const language = useLanguage()
   const label = () => {
-    if (props.noGit) return language.t("session.new.git.none")
+    if (props.noGit) return "No Git"
     return props.branch
   }
 

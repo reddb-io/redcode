@@ -3,21 +3,31 @@ import type { PermissionRequest } from "@reddb-io/redcode-sdk/v2"
 import { Button } from "@reddb-io/redcode-ui/button"
 import { DockPrompt } from "@reddb-io/redcode-session-ui/dock-prompt"
 import { Icon } from "@reddb-io/redcode-ui/icon"
-import { useLanguage } from "@/context/language"
+
+const TOOL_DESCRIPTIONS: Record<string, string> = {
+  read: "Reading a file (matches the file path)",
+  edit: "Modify files, including edits, writes, and patches",
+  glob: "Match files using glob patterns",
+  grep: "Search file contents using regular expressions",
+  list: "List files within a directory",
+  bash: "Run shell commands",
+  task: "Launch sub-agents",
+  skill: "Load a skill by name",
+  lsp: "Run language server queries",
+  todowrite: "Update the todo list",
+  webfetch: "Fetch content from a URL",
+  websearch: "Search the web",
+  external_directory: "Access files outside the project directory",
+  doom_loop: "Detect repeated tool calls with identical input",
+}
 
 export function SessionPermissionDock(props: {
   request: PermissionRequest
   responding: boolean
   onDecide: (response: "once" | "always" | "reject") => void
 }) {
-  const language = useLanguage()
 
-  const toolDescription = () => {
-    const key = `settings.permissions.tool.${props.request.permission}.description`
-    const value = language.t(key as Parameters<typeof language.t>[0])
-    if (value === key) return ""
-    return value
-  }
+  const toolDescription = () => TOOL_DESCRIPTIONS[props.request.permission] ?? ""
 
   return (
     <DockPrompt
@@ -27,7 +37,7 @@ export function SessionPermissionDock(props: {
           <span data-slot="permission-icon">
             <Icon name="warning" size="normal" />
           </span>
-          <div data-slot="permission-header-title">{language.t("notification.permission.title")}</div>
+          <div data-slot="permission-header-title">{"Permission required"}</div>
         </div>
       }
       footer={
@@ -35,7 +45,7 @@ export function SessionPermissionDock(props: {
           <div />
           <div data-slot="permission-footer-actions">
             <Button variant="ghost" size="normal" onClick={() => props.onDecide("reject")} disabled={props.responding}>
-              {language.t("ui.permission.deny")}
+              {"Deny"}
             </Button>
             <Button
               variant="secondary"
@@ -43,10 +53,10 @@ export function SessionPermissionDock(props: {
               onClick={() => props.onDecide("always")}
               disabled={props.responding}
             >
-              {language.t("ui.permission.allowAlways")}
+              {"Allow always"}
             </Button>
             <Button variant="primary" size="normal" onClick={() => props.onDecide("once")} disabled={props.responding}>
-              {language.t("ui.permission.allowOnce")}
+              {"Allow once"}
             </Button>
           </div>
         </>

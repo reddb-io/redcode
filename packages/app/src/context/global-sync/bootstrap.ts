@@ -92,11 +92,10 @@ function runAll(list: Array<() => Promise<unknown>>) {
 function showErrors(input: {
   errors: unknown[]
   title: string
-  translate: (key: string, vars?: Record<string, string | number>) => string
   formatMoreCount: (count: number) => string
 }) {
   if (input.errors.length === 0) return
-  const message = formatServerError(input.errors[0], input.translate)
+  const message = formatServerError(input.errors[0])
   const more = input.errors.length > 1 ? input.formatMoreCount(input.errors.length - 1) : ""
   showToast({
     variant: "error",
@@ -146,7 +145,6 @@ export async function bootstrapGlobal(input: {
   protocol?: Promise<ServerProtocol>
   scope: ServerScope
   requestFailedTitle: string
-  translate: (key: string, vars?: Record<string, string | number>) => string
   formatMoreCount: (count: number) => string
   setGlobalStore: SetStoreFunction<GlobalStore>
   queryClient: QueryClient
@@ -347,7 +345,6 @@ export async function bootstrapDirectory(input: {
   setStore: SetStoreFunction<State>
   vcsCache: VcsCache
   loadSessions: (directory: string) => Promise<void> | void
-  translate: (key: string, vars?: Record<string, string | number>) => string
   global: {
     config: Config
     path: Path
@@ -531,8 +528,8 @@ export async function bootstrapDirectory(input: {
             const project = getFilename(input.directory)
             showToast({
               variant: "error",
-              title: input.translate("toast.project.reloadFailed.title", { project }),
-              description: formatServerError(err, input.translate),
+              title: `Failed to reload ${project}`,
+              description: formatServerError(err),
             })
           }),
     ].filter(Boolean) as (() => Promise<any>)[]
@@ -544,8 +541,8 @@ export async function bootstrapDirectory(input: {
       const project = getFilename(input.directory)
       showToast({
         variant: "error",
-        title: input.translate("toast.project.reloadFailed.title", { project }),
-        description: formatServerError(slowErrs[0], input.translate),
+        title: `Failed to reload ${project}`,
+        description: formatServerError(slowErrs[0]),
       })
     }
 

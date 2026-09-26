@@ -2,7 +2,6 @@ import { type FilteredListProps, useFilteredList } from "@reddb-io/redcode-ui/ho
 import { createEffect, For, type JSX, on, Show } from "solid-js"
 import { createStore } from "solid-js/store"
 import { makeEventListener } from "@solid-primitives/event-listener"
-import { useI18n } from "../context/i18n"
 import { Icon, type IconProps } from "./icon"
 import { IconButton } from "./icon-button"
 import { TextField } from "./text-field"
@@ -56,7 +55,6 @@ export interface ListRef {
 }
 
 export function List<T>(props: ListProps<T> & { ref?: (ref: ListRef) => void }) {
-  const i18n = useI18n()
   let inputRef: HTMLInputElement | HTMLTextAreaElement | undefined
   const [store, setStore] = createStore({
     mouseActive: false,
@@ -241,16 +239,16 @@ export function List<T>(props: ListProps<T> & { ref?: (ref: ListRef) => void }) 
   }
 
   const emptyMessage = () => {
-    if (grouped.loading) return props.loadingMessage ?? i18n.t("ui.list.loading")
+    if (grouped.loading) return props.loadingMessage ?? "Loading"
     if (props.emptyMessage) return props.emptyMessage
 
     const query = filter()
-    if (!query) return i18n.t("ui.list.empty")
+    if (!query) return "No results"
 
-    const suffix = i18n.t("ui.list.emptyWithFilter.suffix")
+    const suffix = ""
     return (
       <>
-        <span>{i18n.t("ui.list.emptyWithFilter.prefix")}</span>
+        <span>{"No results for"}</span>
         <span data-slot="list-filter">&quot;{query}&quot;</span>
         <Show when={suffix}>
           <span>{suffix}</span>
@@ -308,7 +306,7 @@ export function List<T>(props: ListProps<T> & { ref?: (ref: ListRef) => void }) 
                   setInternalFilter("")
                   queueMicrotask(() => inputRef?.focus())
                 }}
-                aria-label={i18n.t("ui.list.clearFilter")}
+                aria-label={"Clear filter"}
               />
             </Show>
           </div>

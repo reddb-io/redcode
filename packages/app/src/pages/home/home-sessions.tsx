@@ -10,7 +10,6 @@ export function HomeSessions(props: {
 }) {
   return (
     <HomeSessionsView
-      language={props.sessions.copy.language}
       groups={props.sessions.data.groups}
       showProjectName={props.sessions.session.showProjectName}
       server={props.sessions.session.server}

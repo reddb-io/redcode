@@ -7,14 +7,12 @@ import type { Intelligence } from "@reddb-io/redcode-schema/intelligence"
 import type { ModelSelection } from "@/context/local"
 import { useServerSDK } from "@/context/server-sdk"
 import { useSync } from "@/context/sync"
-import { useLanguage } from "@/context/language"
 import { useSettingsDialog } from "./settings-dialog"
 
 export function IntelligenceIndicator(props: { model: ModelSelection; sessionID?: string }) {
   const server = useServerSDK()
   const sync = useSync()
   const params = useParams<{ id?: string }>()
-  const language = useLanguage()
   const configure = useSettingsDialog("intelligence")
   const [state, set] = createStore({
     open: false,
@@ -39,19 +37,17 @@ export function IntelligenceIndicator(props: { model: ModelSelection; sessionID?
         latest()?.decision === "needs_revision" ||
         latest()?.decision === "inconclusive"))
   const status = () =>
-    language.t(
-      !intelligence().state.loaded
-        ? "intelligence.loading"
-        : intelligence().state.failed
-          ? "intelligence.connectionFailed"
-          : single()
-            ? "intelligence.singleStatus"
-            : !intelligence().ready()
-              ? "intelligence.setupRequired"
-              : latest()
-                ? `settings.intelligence.decision.${latest()!.decision}`
-                : "intelligence.configured",
-    )
+    !intelligence().state.loaded
+      ? "Checking…"
+      : intelligence().state.failed
+        ? "Cannot check the S1/S2 configuration. Reconnect and retry."
+        : single()
+          ? "Single reasoning: S2 only. Completion checks keep their structural evidence and report S1 as not verified."
+          : !intelligence().ready()
+            ? "Configure S1 and S2 to continue"
+            : latest()
+              ? (decisionText[latest()!.decision] ?? latest()!.decision)
+              : "Configured. Connection health is reported by each evaluation."
   createEffect(() => {
     const id = sessionID()
     const service = intelligence()
@@ -86,29 +82,29 @@ export function IntelligenceIndicator(props: { model: ModelSelection; sessionID?
         size: "normal",
         class: "min-w-0 max-w-[100px] sm:max-w-[160px] h-7 text-12-regular text-text-weak",
         "data-action": "prompt-intelligence",
-        "aria-label": language.t("intelligence.details"),
+        "aria-label": "System One / System Two",
         title: single()
           ? status()
-          : `${language.t("intelligence.systemOne")}: ${settings()?.evaluator?.model ?? status()}`,
+          : `${"S1 · evaluator"}: ${settings()?.evaluator?.model ?? status()}`,
       }}
       trigger={
         <>
           <span classList={{ "text-icon-warning-base": attention() }}>
             {single()
-              ? language.t("intelligence.mode.single")
+              ? "Single"
               : settings()?.evaluator?.model
                 ? `S1 ${settings()!.evaluator!.model.split("/").at(-1)}`
                 : "S1 · S2"}
           </span>
           <Show when={!single() && !intelligence().ready()}>
-            <span class="truncate">{language.t("intelligence.setup")}</span>
+            <span class="truncate">{"Set up"}</span>
           </Show>
           <Show when={attention()}>
             <span aria-label={status()}>!</span>
           </Show>
         </>
       }
-      title={language.t("intelligence.details")}
+      title={"System One / System Two"}
       class="w-[380px] max-w-[calc(100vw-24px)]"
       placement="top-start"
     >
@@ -118,24 +114,24 @@ export function IntelligenceIndicator(props: { model: ModelSelection; sessionID?
         </p>
         <dl class="grid grid-cols-[auto_1fr] gap-x-4 gap-y-2">
           <Show when={!single()}>
-            <dt class="text-text-weak">{language.t("intelligence.systemOne")}</dt>
+            <dt class="text-text-weak">{"S1 · evaluator"}</dt>
             <dd class="min-w-0 break-words">
-              {settings()?.evaluator?.model ?? language.t("intelligence.setupRequired")}
+              {settings()?.evaluator?.model ?? "Configure S1 and S2 to continue"}
               <div class="text-text-weak">{settings()?.evaluator?.transport}</div>
             </dd>
           </Show>
-          <dt class="text-text-weak">{language.t("intelligence.systemTwo")}</dt>
+          <dt class="text-text-weak">{"S2 · working model"}</dt>
           <dd class="min-w-0 break-words">
-            {current() ? `${current()!.provider.name} / ${current()!.name}` : language.t("dialog.model.select.title")}
+            {current() ? `${current()!.provider.name} / ${current()!.name}` : "Select model"}
             <div class="text-text-weak">
-              {language.t(override() ? "intelligence.override" : "intelligence.globalDefault")}
+              {override() ? "Session or agent override" : "Global S2 default"}
             </div>
           </dd>
-          <dt class="text-text-weak">{language.t("intelligence.globalDefault")}</dt>
+          <dt class="text-text-weak">{"Global S2 default"}</dt>
           <dd class="min-w-0 break-words">
             {settings()?.principal
               ? `${settings()!.principal!.providerID}/${settings()!.principal!.id}`
-              : language.t("intelligence.setupRequired")}
+              : "Configure S1 and S2 to continue"}
           </dd>
         </dl>
         <Button
@@ -145,40 +141,36 @@ export function IntelligenceIndicator(props: { model: ModelSelection; sessionID?
             configure()
           }}
         >
-          {language.t(single() ? "intelligence.enableDual" : "settings.intelligence.configure")}
+          {single() ? "Enable dual reasoning (S1 + S2)" : "Configure"}
         </Button>
         <div class="border-t border-border-base pt-3">
-          <h3 class="text-12-medium mb-2">{language.t("intelligence.sessionHistory")}</h3>
+          <h3 class="text-12-medium mb-2">{"Session evaluations"}</h3>
           <Show when={state.loading}>
-            <p role="status">{language.t("intelligence.loading")}</p>
+            <p role="status">{"Checking…"}</p>
           </Show>
           <Show when={state.failed}>
-            <p role="status">{language.t("intelligence.historyFailed")}</p>
+            <p role="status">{"Could not load evaluations. Reopen to retry."}</p>
           </Show>
           <Show when={!state.loading && !state.failed && !state.evaluations.length}>
-            <p class="text-text-weak">{language.t("intelligence.emptyHistory")}</p>
+            <p class="text-text-weak">{"No evaluations recorded for this session."}</p>
           </Show>
           <div class="max-h-64 overflow-y-auto">
             <For each={state.evaluations}>
               {(evaluation) => (
                 <details class="border-b border-border-base py-2">
                   <summary class="cursor-pointer">
-                    {language.t(`settings.intelligence.operation.${evaluation.operation}`)} ·{" "}
-                    {language.t(`settings.intelligence.decision.${evaluation.decision}`)}
+                    {operationText[evaluation.operation] ?? evaluation.operation} ·{" "}
+                    {decisionText[evaluation.decision] ?? evaluation.decision}
                   </summary>
                   <div class="pt-2 flex flex-col gap-1 break-words text-text-weak">
                     <p>
                       {evaluation.model} · {new Date(evaluation.created).toLocaleTimeString()}
                     </p>
                     <p>
-                      {language.t("settings.intelligence.usage", {
-                        input: evaluation.usage.input_tokens,
-                        output: evaluation.usage.output_tokens,
-                        duration: evaluation.duration,
-                      })}
+                      {`${evaluation.usage.input_tokens} input tokens · ${evaluation.usage.output_tokens} output tokens · ${evaluation.duration} ms`}
                     </p>
                     <Show when={evaluation.subjectID}>
-                      <p>{language.t("intelligence.subject", { id: evaluation.subjectID! })}</p>
+                      <p>{`Prompt: ${evaluation.subjectID!}`}</p>
                     </Show>
                     <For each={evaluation.issues}>{(issue) => <p class="text-icon-warning-base">{issue}</p>}</For>
                     <For each={Object.entries(evaluation.answers)}>
@@ -200,4 +192,32 @@ export function IntelligenceIndicator(props: { model: ModelSelection; sessionID?
       </div>
     </Popover>
   )
+}
+
+const operationText: Record<string, string> = {
+  prompt_classification: "Prompt classification",
+  response_quality: "Response quality",
+  tool_usage: "Tool usage",
+  task_quality: "Task quality",
+  todos: "Tasks",
+  plan: "Plan",
+  feedback: "Design feedback",
+  design_completion: "Design completion",
+  compaction: "Checkpoint summary",
+  compact_now: "Compaction timing",
+  task_completion: "Task completion",
+  goal_completion: "Goal completion",
+  subagent_brief: "Subagent brief",
+  session_progress: "Session progress",
+  subagent_result: "Subagent result",
+  design_target: "Design target",
+  design_system_detect: "Design system",
+  goal_command: "Goal command",
+}
+
+const decisionText: Record<string, string> = {
+  accepted: "Accepted",
+  needs_revision: "Needs revision",
+  inconclusive: "Inconclusive",
+  unavailable: "Unavailable",
 }

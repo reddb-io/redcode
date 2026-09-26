@@ -45,7 +45,6 @@ import { CommentsProvider, useComments } from "@/context/comments"
 import { useCommand } from "@/context/command"
 import { DirectoryDataProvider } from "@/pages/directory-layout"
 import { useServerSync } from "@/context/server-sync"
-import { useLanguage } from "@/context/language"
 import { useLayout } from "@/context/layout"
 import { ModelsProvider } from "@/context/models"
 import { useNotification } from "@/context/notification"
@@ -201,7 +200,6 @@ export function SessionRouteErrorBoundary(
 }
 
 function SessionErrorFallback(props: { error: unknown; sessionID?: string; serverKey?: ServerConnection.Key }) {
-  const language = useLanguage()
   const server = useServer()
   const tabs = useTabs()
   const displayServer = createMemo(() => {
@@ -218,9 +216,9 @@ function SessionErrorFallback(props: { error: unknown; sessionID?: string; serve
       <div class="flex-1 min-h-0 overflow-hidden">
         <div class="h-full px-6 pb-42 -mt-4 flex flex-col items-center justify-center text-center gap-4">
           <div class="flex flex-col items-center gap-2">
-            <div class="text-16-medium text-text max-w-md">{language.t("session.error.notFound")}</div>
+            <div class="text-16-medium text-text max-w-md">{"This session cannot be found"}</div>
             <div class="text-13-regular text-text-weak max-w-md">
-              {language.t("session.error.notFound.description")}
+              {"This tab points to a session that no longer exists on this server."}
             </div>
           </div>
           <Show when={props.sessionID}>
@@ -234,7 +232,7 @@ function SessionErrorFallback(props: { error: unknown; sessionID?: string; serve
             )}
           </Show>
           <ButtonV2 variant="neutral" size="normal" icon="xmark-small" onClick={closeTab}>
-            {language.t("session.error.notFound.closeTab")}
+            {"Close Tab"}
           </ButtonV2>
         </div>
       </div>
@@ -358,7 +356,6 @@ export default function Page() {
   const sync = useSync()
   const queryClient = useQueryClient()
   const dialog = useDialog()
-  const language = useLanguage()
   const sdk = useSDK()
   const serverSDK = useServerSDK()
   const settings = useSettings()
@@ -855,8 +852,8 @@ export default function Page() {
     onError: (err) => {
       showToast({
         variant: "error",
-        title: language.t("common.requestFailed"),
-        description: formatServerError(err, language.t),
+        title: "Request failed",
+        description: formatServerError(err),
       })
     },
   }))
@@ -1024,10 +1021,10 @@ export default function Page() {
   }
 
   const reviewCommentActions = createMemo(() => ({
-    moreLabel: language.t("common.moreOptions"),
-    editLabel: language.t("common.edit"),
-    deleteLabel: language.t("common.delete"),
-    saveLabel: language.t("common.save"),
+    moreLabel: "More options",
+    editLabel: "Edit",
+    deleteLabel: "Delete",
+    saveLabel: "Save",
   }))
 
   const isEditableTarget = (target: EventTarget | null | undefined) => {
@@ -1149,7 +1146,7 @@ export default function Page() {
   command.register("session-palette", () => [
     {
       id: "command.palette",
-      title: language.t("command.palette"),
+      title: "Command palette",
       hidden: true,
       onSelect: () => command.trigger("file.open", "palette"),
     },
@@ -1164,9 +1161,9 @@ export default function Page() {
   })
 
   const changesLabel = (option: ChangeMode) => {
-    if (option === "git") return language.t("ui.sessionReview.title.git")
-    if (option === "branch") return language.t("ui.sessionReview.title.branch")
-    return language.t("ui.sessionReview.title.lastTurn")
+    if (option === "git") return "Git changes"
+    if (option === "branch") return "Branch changes"
+    return "Last turn changes"
   }
 
   const changesTitle = () => {
@@ -1214,28 +1211,28 @@ export default function Page() {
   const createGit = (input: { emptyClass: string }) => (
     <div class={input.emptyClass}>
       <div class="flex flex-col gap-3">
-        <div class="text-14-medium text-text-strong">{language.t("session.review.noVcs.createGit.title")}</div>
+        <div class="text-14-medium text-text-strong">{"Create a Git repository"}</div>
         <div class="text-14-regular text-text-base max-w-md" style={{ "line-height": "var(--line-height-normal)" }}>
-          {language.t("session.review.noVcs.createGit.description")}
+          {"Track, review, and undo changes in this project"}
         </div>
       </div>
       <Button size="large" disabled={gitMutation.isPending} onClick={initGit}>
         {gitMutation.isPending
-          ? language.t("session.review.noVcs.createGit.actionLoading")
-          : language.t("session.review.noVcs.createGit.action")}
+          ? "Creating Git repository..."
+          : "Create Git repository"}
       </Button>
     </div>
   )
 
   const reviewEmptyText = createMemo(() => {
-    if (reviewMode() === "git") return language.t("session.review.noUncommittedChanges")
-    if (reviewMode() === "branch") return language.t("session.review.noBranchChanges")
-    return language.t("session.review.noChanges")
+    if (reviewMode() === "git") return "No uncommitted changes yet"
+    if (reviewMode() === "branch") return "No branch changes yet"
+    return "No changes"
   })
 
   const reviewEmpty = (input: { loadingClass: string; emptyClass: string }) => {
     if (reviewMode() === "git" || reviewMode() === "branch") {
-      if (!reviewReady()) return <div class={input.loadingClass}>{language.t("session.review.loadingChanges")}</div>
+      if (!reviewReady()) return <div class={input.loadingClass}>{"Loading changes..."}</div>
       return empty(reviewEmptyText())
     }
 
@@ -1253,7 +1250,7 @@ export default function Page() {
 
   const reviewEmptyV2 = () => {
     if ((reviewMode() === "git" || reviewMode() === "branch") && !reviewReady()) {
-      return <div class="px-6 py-4 text-text-weak">{language.t("session.review.loadingChanges")}</div>
+      return <div class="px-6 py-4 text-text-weak">{"Loading changes..."}</div>
     }
     if (reviewMode() === "turn" && nogit()) {
       return <SessionReviewEmptyNoGitV2 pending={gitMutation.isPending} onInitGit={initGit} />
@@ -1673,7 +1670,7 @@ export default function Page() {
   const draft = (id: string) =>
     extractPromptFromParts(sync().data.part[id] ?? [], {
       directory: sdk().directory,
-      attachmentName: language.t("common.attachment"),
+      attachmentName: "attachment",
     })
 
   const line = (id: string) => {
@@ -1683,14 +1680,14 @@ export default function Page() {
       .replace(/\s+/g, " ")
       .trim()
     if (text) return text
-    return `[${language.t("common.attachment")}]`
+    return `[${"attachment"}]`
   }
 
   const fail = (err: unknown) => {
     showToast({
       variant: "error",
-      title: language.t("common.requestFailed"),
-      description: formatServerError(err, language.t),
+      title: "Request failed",
+      description: formatServerError(err),
     })
   }
 
@@ -1773,7 +1770,7 @@ export default function Page() {
       .find((line) => !!line)
 
     if (text) return text
-    return `[${language.t("common.attachment")}]`
+    return `[${"attachment"}]`
   }
 
   const queueFollowup = (draft: FollowupDraft) => {
@@ -2033,7 +2030,7 @@ export default function Page() {
           classes={{ button: compact ? "w-full !py-2" : "w-full" }}
           onClick={() => setStore("mobileTab", "session")}
         >
-          {language.t("session.tab.session")}
+          {"Session"}
         </Tabs.Trigger>
         <Tabs.Trigger
           value="changes"
@@ -2045,8 +2042,8 @@ export default function Page() {
           onClick={() => setStore("mobileTab", "changes")}
         >
           {hasReview()
-            ? language.t("session.review.filesChanged", { count: reviewCount() })
-            : language.t("session.review.change.other")}
+            ? `Files Changed ${reviewCount()}`
+            : "Changes"}
         </Tabs.Trigger>
       </Tabs.List>
     </Tabs>

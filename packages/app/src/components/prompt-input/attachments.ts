@@ -2,7 +2,6 @@ import { onMount } from "solid-js"
 import { makeEventListener } from "@solid-primitives/event-listener"
 import { showToast } from "@/utils/toast"
 import { type ContentPart, type ImageAttachmentPart, type usePrompt } from "@/context/prompt"
-import { useLanguage } from "@/context/language"
 import { usePlatform } from "@/context/platform"
 import { uuid } from "@/utils/uuid"
 import { getCursorPosition } from "./editor-dom"
@@ -148,7 +147,6 @@ export function createPromptAttachmentsCore(input: PromptAttachmentsCoreInput) {
 }
 
 export function createPromptAttachments(input: PromptAttachmentsInput) {
-  const language = useLanguage()
   const platform = usePlatform()
   const attachments = createPromptAttachmentsCore({
     ...input,
@@ -156,8 +154,8 @@ export function createPromptAttachments(input: PromptAttachmentsInput) {
     capture: input.prompt.capture,
     warn: () => {
       showToast({
-        title: language.t("prompt.toast.pasteUnsupported.title"),
-        description: language.t("prompt.toast.pasteUnsupported.description"),
+        title: "Unsupported attachment",
+        description: "Only images, PDFs, or text files can be attached here.",
       })
     },
   })

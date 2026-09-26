@@ -79,7 +79,7 @@ export const PromptPopover: Component<PromptPopoverProps> = (props) => {
                     "text-text-weak": !props.newLayoutDesigns,
                   }}
                 >
-                  {props.t("prompt.popover.emptyResults")}
+                  {"No matching results"}
                 </div>
               }
             >
@@ -266,7 +266,7 @@ export const PromptPopover: Component<PromptPopoverProps> = (props) => {
                   onInput={(event) => props.onSlashMenuInput(event.currentTarget.value)}
                   onKeyDown={props.onSlashMenuKeyDown}
                   onMouseDown={(event) => event.stopPropagation()}
-                  aria-label={props.t("prompt.menu.commands")}
+                  aria-label={"Commands"}
                   placeholder="/"
                   class="w-full bg-transparent outline-none text-[13px] leading-5 text-v2-text-text-base placeholder:text-v2-text-text-faint"
                 />
@@ -282,7 +282,7 @@ export const PromptPopover: Component<PromptPopoverProps> = (props) => {
                     "text-text-weak": !props.newLayoutDesigns,
                   }}
                 >
-                  {props.t("prompt.popover.emptyCommands")}
+                  {"No matching commands"}
                 </div>
               }
             >
@@ -338,19 +338,19 @@ export const PromptPopover: Component<PromptPopoverProps> = (props) => {
                             fallback={
                               <span class="text-11-regular px-1.5 py-0.5 rounded bg-surface-base text-text-subtle">
                                 {cmd.source === "skill"
-                                  ? props.t("prompt.slash.badge.skill")
+                                  ? "skill"
                                   : cmd.source === "mcp"
-                                    ? props.t("prompt.slash.badge.mcp")
-                                    : props.t("prompt.slash.badge.custom")}
+                                    ? "mcp"
+                                    : "custom"}
                               </span>
                             }
                           >
                             <Tag>
                               {cmd.source === "skill"
-                                ? props.t("prompt.slash.badge.skill")
+                                ? "skill"
                                 : cmd.source === "mcp"
-                                  ? props.t("prompt.slash.badge.mcp")
-                                  : props.t("prompt.slash.badge.custom")}
+                                  ? "mcp"
+                                  : "custom"}
                             </Tag>
                           </Show>
                         </Show>

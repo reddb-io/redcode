@@ -59,7 +59,6 @@ import { TabsInfoPopup } from "@/components/help-button"
 import { Titlebar, type TitlebarUpdate } from "@/components/titlebar"
 import { useDirectoryPicker } from "@/components/directory-picker"
 import { ServerConnection, useServer } from "@/context/server"
-import { useLanguage, type Locale } from "@/context/language"
 import { pathKey } from "@/utils/path-key"
 import {
   displayName,
@@ -121,7 +120,6 @@ export default function LegacyLayout(props: ParentProps) {
   const dialog = useDialog()
   const command = useCommand()
   const theme = useTheme()
-  const language = useLanguage()
   createEffect(() => setV2Toast(false))
   const initialDirectory = decode64(params.dir)
   const route = createMemo(() => {
@@ -138,12 +136,7 @@ export default function LegacyLayout(props: ParentProps) {
   })
   const availableThemeEntries = createMemo(() => theme.ids().map((id) => [id, theme.themes()[id]] as const))
   const colorSchemeOrder: ColorScheme[] = ["system", "light", "dark"]
-  const colorSchemeKey: Record<ColorScheme, "theme.scheme.system" | "theme.scheme.light" | "theme.scheme.dark"> = {
-    system: "theme.scheme.system",
-    light: "theme.scheme.light",
-    dark: "theme.scheme.dark",
-  }
-  const colorSchemeLabel = (scheme: ColorScheme) => language.t(colorSchemeKey[scheme])
+  const colorSchemeLabel = (scheme: ColorScheme) => ({ system: "System", light: "Light", dark: "Dark" })[scheme]
   const currentDir = createMemo(() => route().dir)
 
   const [state, setState] = createStore({
@@ -337,7 +330,7 @@ export default function LegacyLayout(props: ParentProps) {
     const nextThemeId = ids[nextIndex]
     theme.setTheme(nextThemeId)
     showToast({
-      title: language.t("toast.theme.title"),
+      title: "Theme switched",
       description: theme.name(nextThemeId),
     })
   }
@@ -350,27 +343,9 @@ export default function LegacyLayout(props: ParentProps) {
     const next = colorSchemeOrder[nextIndex]
     theme.setColorScheme(next)
     showToast({
-      title: language.t("toast.scheme.title"),
+      title: "Color scheme",
       description: colorSchemeLabel(next),
     })
-  }
-
-  function setLocale(next: Locale) {
-    if (next === language.locale()) return
-    language.setLocale(next)
-    showToast({
-      title: language.t("toast.language.title"),
-      description: language.t("toast.language.description", { language: language.label(next) }),
-    })
-  }
-
-  function cycleLanguage(direction = 1) {
-    const locales = language.locales
-    const currentIndex = locales.indexOf(language.locale())
-    const nextIndex = currentIndex === -1 ? 0 : (currentIndex + direction + locales.length) % locales.length
-    const next = locales[nextIndex]
-    if (!next) return
-    setLocale(next)
   }
 
   const useSDKNotificationToasts = () =>
@@ -399,7 +374,7 @@ export default function LegacyLayout(props: ParentProps) {
           WorktreeState.failed(
             serverSDK().scope,
             e.name,
-            e.details.properties?.message ?? language.t("common.requestFailed"),
+            e.details.properties?.message ?? "Request failed",
           )
           return
         }
@@ -418,8 +393,8 @@ export default function LegacyLayout(props: ParentProps) {
         if (e.details?.type !== "permission.asked" && e.details?.type !== "question.asked") return
         const title =
           e.details.type === "permission.asked"
-            ? language.t("notification.permission.title")
-            : language.t("notification.question.title")
+            ? "Permission required"
+            : "Question"
         const icon = e.details.type === "permission.asked" ? ("checklist" as const) : ("bubble-5" as const)
         const directory = e.name
         const props = e.details.properties
@@ -429,12 +404,12 @@ export default function LegacyLayout(props: ParentProps) {
         const session = store.session.find((s) => s.id === props.sessionID)
         const sessionKey = `${directory}:${props.sessionID}`
 
-        const sessionTitle = session?.title ?? language.t("command.session.new")
+        const sessionTitle = session?.title ?? "New session"
         const projectName = getFilename(directory)
         const description =
           e.details.type === "permission.asked"
-            ? language.t("notification.permission.description", { sessionTitle, projectName })
-            : language.t("notification.question.description", { sessionTitle, projectName })
+            ? `${sessionTitle} in ${projectName} needs permission`
+            : `${sessionTitle} in ${projectName} has a question`
         const href = `/${base64Encode(directory)}/session/${props.sessionID}`
 
         const now = Date.now()
@@ -470,11 +445,11 @@ export default function LegacyLayout(props: ParentProps) {
           description,
           actions: [
             {
-              label: language.t("notification.action.goToSession"),
+              label: "Go to session",
               onClick: () => navigate(href),
             },
             {
-              label: language.t("common.dismiss"),
+              label: "Dismiss",
               onClick: "dismiss",
             },
           ],
@@ -900,83 +875,83 @@ export default function LegacyLayout(props: ParentProps) {
     const commands: CommandOption[] = [
       {
         id: "sidebar.toggle",
-        title: language.t("command.sidebar.toggle"),
-        category: language.t("command.category.view"),
+        title: "Toggle sidebar",
+        category: "View",
         keybind: "mod+b",
         onSelect: () => layout.sidebar.toggle(),
       },
       {
         id: "project.open",
-        title: language.t("command.project.open"),
-        category: language.t("command.category.project"),
+        title: "Open project",
+        category: "Project",
         keybind: "mod+o",
         onSelect: () => chooseProject(),
       },
       {
         id: "project.previous",
-        title: language.t("command.project.previous"),
-        category: language.t("command.category.project"),
+        title: "Previous project",
+        category: "Project",
         keybind: "mod+alt+arrowup",
         onSelect: () => navigateProjectByOffset(-1),
       },
       {
         id: "project.next",
-        title: language.t("command.project.next"),
-        category: language.t("command.category.project"),
+        title: "Next project",
+        category: "Project",
         keybind: "mod+alt+arrowdown",
         onSelect: () => navigateProjectByOffset(1),
       },
       {
         id: "provider.connect",
-        title: language.t("command.provider.connect"),
-        category: language.t("command.category.provider"),
+        title: "Connect provider",
+        category: "Provider",
         onSelect: () => connectProvider(),
       },
       {
         id: "server.switch",
-        title: language.t("command.server.switch"),
-        category: language.t("command.category.server"),
+        title: "Switch server",
+        category: "Server",
         onSelect: () => openServer(),
       },
       {
         id: "settings.open",
-        title: language.t("command.settings.open"),
-        category: language.t("command.category.settings"),
+        title: "Open settings",
+        category: "Settings",
         keybind: "mod+comma",
         onSelect: () => openSettings(),
       },
       {
         id: "session.previous",
-        title: language.t("command.session.previous"),
-        category: language.t("command.category.session"),
+        title: "Previous session",
+        category: "Session",
         keybind: "alt+arrowup",
         onSelect: () => navigateSessionByOffset(-1),
       },
       {
         id: "session.next",
-        title: language.t("command.session.next"),
-        category: language.t("command.category.session"),
+        title: "Next session",
+        category: "Session",
         keybind: "alt+arrowdown",
         onSelect: () => navigateSessionByOffset(1),
       },
       {
         id: "session.previous.unseen",
-        title: language.t("command.session.previous.unseen"),
-        category: language.t("command.category.session"),
+        title: "Previous unread session",
+        category: "Session",
         keybind: "shift+alt+arrowup",
         onSelect: () => navigateSessionByUnseen(-1),
       },
       {
         id: "session.next.unseen",
-        title: language.t("command.session.next.unseen"),
-        category: language.t("command.category.session"),
+        title: "Next unread session",
+        category: "Session",
         keybind: "shift+alt+arrowdown",
         onSelect: () => navigateSessionByUnseen(1),
       },
       {
         id: "workspace.new",
-        title: language.t("workspace.new"),
-        category: language.t("command.category.workspace"),
+        title: "New workspace",
+        category: "Workspace",
         keybind: "mod+shift+w",
         disabled: !workspaceSetting(),
         onSelect: () => {
@@ -987,9 +962,9 @@ export default function LegacyLayout(props: ParentProps) {
       },
       {
         id: "workspace.toggle",
-        title: language.t("command.workspace.toggle"),
-        description: language.t("command.workspace.toggle.description"),
-        category: language.t("command.category.workspace"),
+        title: "Toggle workspaces",
+        description: "Enable or disable multiple workspaces in the sidebar",
+        category: "Workspace",
         slash: "workspace",
         disabled: !currentProject() || currentProject()?.vcs !== "git",
         onSelect: () => {
@@ -1000,18 +975,18 @@ export default function LegacyLayout(props: ParentProps) {
           layout.sidebar.toggleWorkspaces(project.worktree)
           showToast({
             title: wasEnabled
-              ? language.t("toast.workspace.disabled.title")
-              : language.t("toast.workspace.enabled.title"),
+              ? "Workspaces disabled"
+              : "Workspaces enabled",
             description: wasEnabled
-              ? language.t("toast.workspace.disabled.description")
-              : language.t("toast.workspace.enabled.description"),
+              ? "Only the main worktree is shown in the sidebar"
+              : "Multiple worktrees are now shown in the sidebar",
           })
         },
       },
       {
         id: "theme.cycle",
-        title: language.t("command.theme.cycle"),
-        category: language.t("command.category.theme"),
+        title: "Cycle theme",
+        category: "Theme",
         keybind: "mod+shift+t",
         onSelect: () => cycleTheme(1),
       },
@@ -1022,7 +997,7 @@ export default function LegacyLayout(props: ParentProps) {
       const number = index + 1
       commands.push({
         id: `project.${number}`,
-        category: language.t("command.category.project"),
+        category: "Project",
         title: `Open Project {number}`,
         keybind: `mod+${number}`,
         disabled: layout.projects.list().length <= index,
@@ -1034,8 +1009,8 @@ export default function LegacyLayout(props: ParentProps) {
     for (const [id] of availableThemeEntries()) {
       commands.push({
         id: `theme.set.${id}`,
-        title: language.t("command.theme.set", { theme: theme.name(id) }),
-        category: language.t("command.category.theme"),
+        title: `Use theme: ${theme.name(id)}`,
+        category: "Theme",
         onSelect: () => theme.commitPreview(),
         onHighlight: () => {
           theme.previewTheme(id)
@@ -1046,8 +1021,8 @@ export default function LegacyLayout(props: ParentProps) {
 
     commands.push({
       id: "theme.scheme.cycle",
-      title: language.t("command.theme.scheme.cycle"),
-      category: language.t("command.category.theme"),
+      title: "Cycle color scheme",
+      category: "Theme",
       keybind: "mod+shift+s",
       onSelect: () => cycleColorScheme(1),
     })
@@ -1055,29 +1030,13 @@ export default function LegacyLayout(props: ParentProps) {
     for (const scheme of colorSchemeOrder) {
       commands.push({
         id: `theme.scheme.${scheme}`,
-        title: language.t("command.theme.scheme.set", { scheme: colorSchemeLabel(scheme) }),
-        category: language.t("command.category.theme"),
+        title: `Use color scheme: ${colorSchemeLabel(scheme)}`,
+        category: "Theme",
         onSelect: () => theme.commitPreview(),
         onHighlight: () => {
           theme.previewColorScheme(scheme)
           return () => theme.cancelPreview()
         },
-      })
-    }
-
-    commands.push({
-      id: "language.cycle",
-      title: language.t("command.language.cycle"),
-      category: language.t("command.category.language"),
-      onSelect: () => cycleLanguage(1),
-    })
-
-    for (const locale of language.locales) {
-      commands.push({
-        id: `language.set.${locale}`,
-        title: language.t("command.language.set", { language: language.label(locale) }),
-        category: language.t("command.category.language"),
-        onSelect: () => setLocale(locale),
       })
     }
 
@@ -1371,7 +1330,7 @@ export default function LegacyLayout(props: ParentProps) {
 
     pickDirectory({
       server: conn,
-      title: language.t("command.project.open"),
+      title: "Open project",
       multiple: true,
       onSelect: resolve,
     })
@@ -1395,8 +1354,8 @@ export default function LegacyLayout(props: ParentProps) {
       .then((x) => x.data)
       .catch((err) => {
         showToast({
-          title: language.t("workspace.delete.failed.title"),
-          description: errorMessage(err, language.t("common.requestFailed")),
+          title: "Failed to delete workspace",
+          description: errorMessage(err, "Request failed"),
         })
         return false
       })
@@ -1443,8 +1402,8 @@ export default function LegacyLayout(props: ParentProps) {
 
     const progress = showToast({
       persistent: true,
-      title: language.t("workspace.resetting.title"),
-      description: language.t("workspace.resetting.description"),
+      title: "Resetting workspace",
+      description: "This may take a minute.",
     })
     const dismiss = () => dismissToast(progress)
 
@@ -1465,8 +1424,8 @@ export default function LegacyLayout(props: ParentProps) {
       .then((x) => x.data)
       .catch((err) => {
         showToast({
-          title: language.t("workspace.reset.failed.title"),
-          description: errorMessage(err, language.t("common.requestFailed")),
+          title: "Failed to reset workspace",
+          description: errorMessage(err, "Request failed"),
         })
         return false
       })
@@ -1496,11 +1455,11 @@ export default function LegacyLayout(props: ParentProps) {
     dismiss()
 
     showToast({
-      title: language.t("workspace.reset.success.title"),
-      description: language.t("workspace.reset.success.description"),
+      title: "Workspace reset",
+      description: "Workspace now matches the default branch.",
       actions: [
         {
-          label: language.t("command.session.new"),
+          label: "New session",
           onClick: () => {
             const href = `/${base64Encode(directory)}/session`
             navigate(href)
@@ -1508,7 +1467,7 @@ export default function LegacyLayout(props: ParentProps) {
           },
         },
         {
-          label: language.t("common.dismiss"),
+          label: "Dismiss",
           onClick: "dismiss",
         },
       ],
@@ -1545,27 +1504,27 @@ export default function LegacyLayout(props: ParentProps) {
     }
 
     const description = () => {
-      if (data.status === "loading") return language.t("workspace.status.checking")
-      if (data.status === "error") return language.t("workspace.status.error")
-      if (!data.dirty) return language.t("workspace.status.clean")
-      return language.t("workspace.status.dirty")
+      if (data.status === "loading") return "Checking for unmerged changes..."
+      if (data.status === "error") return "Unable to verify git status."
+      if (!data.dirty) return "No unmerged changes detected."
+      return "Unmerged changes detected in this workspace."
     }
 
     return (
-      <Dialog title={language.t("workspace.delete.title")} fit>
+      <Dialog title={"Delete workspace"} fit>
         <div class="flex flex-col gap-4 pl-6 pr-2.5 pb-3">
           <div class="flex flex-col gap-1">
             <span class="text-14-regular text-text-strong">
-              {language.t("workspace.delete.confirm", { name: name() })}
+              {`Delete workspace "${name()}"?`}
             </span>
             <span class="text-12-regular text-text-weak">{description()}</span>
           </div>
           <div class="flex justify-end gap-2">
             <Button variant="ghost" size="large" onClick={() => dialog.close()}>
-              {language.t("common.cancel")}
+              {"Cancel"}
             </Button>
             <Button variant="primary" size="large" disabled={data.status === "loading"} onClick={handleDelete}>
-              {language.t("workspace.delete.button")}
+              {"Delete workspace"}
             </Button>
           </div>
         </div>
@@ -1612,36 +1571,36 @@ export default function LegacyLayout(props: ParentProps) {
     const archivedCount = () => state.sessions.length
 
     const description = () => {
-      if (state.status === "loading") return language.t("workspace.status.checking")
-      if (state.status === "error") return language.t("workspace.status.error")
-      if (!state.dirty) return language.t("workspace.status.clean")
-      return language.t("workspace.status.dirty")
+      if (state.status === "loading") return "Checking for unmerged changes..."
+      if (state.status === "error") return "Unable to verify git status."
+      if (!state.dirty) return "No unmerged changes detected."
+      return "Unmerged changes detected in this workspace."
     }
 
     const archivedLabel = () => {
       const count = archivedCount()
-      if (count === 0) return language.t("workspace.reset.archived.none")
-      if (count === 1) return language.t("workspace.reset.archived.one")
-      return language.t("workspace.reset.archived.many", { count })
+      if (count === 0) return "No active sessions will be archived."
+      if (count === 1) return "1 session will be archived."
+      return `${count} sessions will be archived.`
     }
 
     return (
-      <Dialog title={language.t("workspace.reset.title")} fit>
+      <Dialog title={"Reset workspace"} fit>
         <div class="flex flex-col gap-4 pl-6 pr-2.5 pb-3">
           <div class="flex flex-col gap-1">
             <span class="text-14-regular text-text-strong">
-              {language.t("workspace.reset.confirm", { name: name() })}
+              {`Reset workspace "${name()}"?`}
             </span>
             <span class="text-12-regular text-text-weak">
-              {description()} {archivedLabel()} {language.t("workspace.reset.note")}
+              {description()} {archivedLabel()} {"This will reset the workspace to match the default branch."}
             </span>
           </div>
           <div class="flex justify-end gap-2">
             <Button variant="ghost" size="large" onClick={() => dialog.close()}>
-              {language.t("common.cancel")}
+              {"Cancel"}
             </Button>
             <Button variant="primary" size="large" disabled={state.status === "loading"} onClick={handleReset}>
-              {language.t("workspace.reset.button")}
+              {"Reset workspace"}
             </Button>
           </div>
         </div>
@@ -1827,8 +1786,8 @@ export default function LegacyLayout(props: ParentProps) {
       .then((x) => x.data)
       .catch((err) => {
         showToast({
-          title: language.t("workspace.create.failed.title"),
-          description: errorMessage(err, language.t("common.requestFailed")),
+          title: "Failed to create workspace",
+          description: errorMessage(err, "Request failed"),
         })
         return undefined
       })
@@ -1985,13 +1944,13 @@ export default function LegacyLayout(props: ParentProps) {
               <div class="flex-1 min-h-0 -mt-4 flex items-center justify-center px-6 pb-64 text-center">
                 <div class="mt-8 flex max-w-60 flex-col items-center gap-6 text-center">
                   <div class="flex flex-col gap-3">
-                    <div class="text-14-medium text-text-strong">{language.t("sidebar.empty.title")}</div>
+                    <div class="text-14-medium text-text-strong">{"No projects open"}</div>
                     <div class="text-14-regular text-text-base" style={{ "line-height": "var(--line-height-normal)" }}>
-                      {language.t("sidebar.empty.description")}
+                      {"Open a project to get started"}
                     </div>
                   </div>
                   <Button size="large" icon="folder-add-left" onClick={chooseProject}>
-                    {language.t("command.project.open")}
+                    {"Open project"}
                   </Button>
                 </div>
               </div>
@@ -2044,7 +2003,7 @@ export default function LegacyLayout(props: ParentProps) {
                         "opacity-0 group-hover/project:opacity-100 group-focus-within/project:opacity-100 data-[expanded]:opacity-100":
                           !panelProps.mobile && !merged(),
                       }}
-                      aria-label={language.t("common.moreOptions")}
+                      aria-label={"More options"}
                     />
                     <DropdownMenu.Portal>
                       <DropdownMenu.Content class="mt-1">
@@ -2053,7 +2012,7 @@ export default function LegacyLayout(props: ParentProps) {
                             showEditProjectDialog(server.current!, project)
                           }}
                         >
-                          <DropdownMenu.ItemLabel>{language.t("common.edit")}</DropdownMenu.ItemLabel>
+                          <DropdownMenu.ItemLabel>{"Edit"}</DropdownMenu.ItemLabel>
                         </DropdownMenu.Item>
                         <DropdownMenu.Item
                           data-action="project-workspaces-toggle"
@@ -2065,8 +2024,8 @@ export default function LegacyLayout(props: ParentProps) {
                         >
                           <DropdownMenu.ItemLabel>
                             {workspacesEnabled()
-                              ? language.t("sidebar.workspaces.disable")
-                              : language.t("sidebar.workspaces.enable")}
+                              ? "Disable workspaces"
+                              : "Enable workspaces"}
                           </DropdownMenu.ItemLabel>
                         </DropdownMenu.Item>
                         <DropdownMenu.Item
@@ -2076,7 +2035,7 @@ export default function LegacyLayout(props: ParentProps) {
                           onSelect={clearNotifications}
                         >
                           <DropdownMenu.ItemLabel>
-                            {language.t("sidebar.project.clearNotifications")}
+                            {"Clear notifications"}
                           </DropdownMenu.ItemLabel>
                         </DropdownMenu.Item>
                         <DropdownMenu.Separator />
@@ -2089,7 +2048,7 @@ export default function LegacyLayout(props: ParentProps) {
                             closeProject(dir)
                           }}
                         >
-                          <DropdownMenu.ItemLabel>{language.t("common.close")}</DropdownMenu.ItemLabel>
+                          <DropdownMenu.ItemLabel>{"Close"}</DropdownMenu.ItemLabel>
                         </DropdownMenu.Item>
                       </DropdownMenu.Content>
                     </DropdownMenu.Portal>
@@ -2113,7 +2072,7 @@ export default function LegacyLayout(props: ParentProps) {
                           }}
                         >
                           <IconV2 name="edit" size="small" />
-                          {language.t("command.session.new")}
+                          {"New session"}
                         </Button>
                       </div>
                       <div class="flex-1 min-h-0">
@@ -2137,7 +2096,7 @@ export default function LegacyLayout(props: ParentProps) {
                           void createWorkspace(project)
                         }}
                       >
-                        {language.t("workspace.new")}
+                        {"New workspace"}
                       </Button>
                     </div>
                     <div class="relative flex-1 min-h-0">
@@ -2194,20 +2153,20 @@ export default function LegacyLayout(props: ParentProps) {
           <div class="rounded-xl bg-background-base shadow-xs-border-base" data-component="getting-started">
             <div class="p-3 flex flex-col gap-6">
               <div class="flex flex-col gap-2">
-                <div class="text-14-medium text-text-strong">{language.t("sidebar.gettingStarted.title")}</div>
+                <div class="text-14-medium text-text-strong">{"Getting started"}</div>
                 <div class="text-14-regular text-text-base" style={{ "line-height": "var(--line-height-normal)" }}>
-                  {language.t("sidebar.gettingStarted.line1")}
+                  {"Redcode includes free models so you can start immediately."}
                 </div>
                 <div class="text-14-regular text-text-base" style={{ "line-height": "var(--line-height-normal)" }}>
-                  {language.t("sidebar.gettingStarted.line2")}
+                  {"Connect any provider to use models, inc. Claude, GPT, Gemini etc."}
                 </div>
               </div>
               <div data-component="getting-started-actions">
                 <Button size="large" icon="plus-small" onClick={connectProvider}>
-                  {language.t("command.provider.connect")}
+                  {"Connect provider"}
                 </Button>
                 <Button size="large" variant="ghost" onClick={() => setStore("gettingStartedDismissed", true)}>
-                  {language.t("toast.update.action.notYet")}
+                  {"Not yet"}
                 </Button>
               </div>
             </div>
@@ -2231,14 +2190,14 @@ export default function LegacyLayout(props: ParentProps) {
       handleDragStart={handleDragStart}
       handleDragEnd={handleDragEnd}
       handleDragOver={handleDragOver}
-      openProjectLabel={language.t("command.project.open")}
+      openProjectLabel={"Open project"}
       openProjectKeybind={() => command.keybind("project.open")}
       onOpenProject={chooseProject}
       renderProjectOverlay={projectOverlay}
-      settingsLabel={() => language.t("sidebar.settings")}
+      settingsLabel={() => "Settings"}
       settingsKeybind={() => command.keybind("settings.open")}
       onOpenSettings={openSettings}
-      helpLabel={() => language.t("sidebar.help")}
+      helpLabel={() => "Help"}
       onOpenHelp={() => platform.openExternal("https://github.com/reddb-io/redcode/issues/new?template=bug-report.yml")}
       renderPanel={() =>
         mobile ? <SidebarPanel project={currentProject} mobile /> : <SidebarPanel project={currentProject} merged />
@@ -2259,13 +2218,13 @@ export default function LegacyLayout(props: ParentProps) {
         }
       />
       <Show when={updateVersion() !== undefined}>
-        <UpdateAvailableToast version={updateVersion() ?? ""} install={installUpdate} language={language} />
+        <UpdateAvailableToast version={updateVersion() ?? ""} install={installUpdate} />
       </Show>
       <div class="flex-1 min-h-0 min-w-0 flex">
         <div class="flex-1 min-h-0 relative">
           <div class="size-full relative overflow-x-hidden">
             <nav
-              aria-label={language.t("sidebar.nav.projectsAndSessions")}
+              aria-label={"Projects and sessions"}
               data-component="sidebar-nav-desktop"
               classList={{
                 "hidden xl:block": true,
@@ -2327,7 +2286,7 @@ export default function LegacyLayout(props: ParentProps) {
                 }}
               />
               <nav
-                aria-label={language.t("sidebar.nav.projectsAndSessions")}
+                aria-label={"Projects and sessions"}
                 data-component="sidebar-nav-mobile"
                 classList={{
                   "@container fixed top-10 bottom-0 start-0 z-50 w-full max-w-[400px] overflow-hidden border-e border-border-weaker-base bg-background-base transition-transform duration-200 ease-out": true,
@@ -2414,7 +2373,6 @@ export default function LegacyLayout(props: ParentProps) {
 function UpdateAvailableToast(props: {
   version: string
   install: () => void
-  language: ReturnType<typeof useLanguage>
 }) {
   let toastId: number | undefined
 
@@ -2422,15 +2380,15 @@ function UpdateAvailableToast(props: {
     toastId = showToast({
       persistent: true,
       icon: "download",
-      title: props.language.t("toast.update.title"),
-      description: props.language.t("toast.update.description", { version: props.version }),
+      title: "Update available",
+      description: `A new version of Redcode (${props.version}) is now available to install.`,
       actions: [
         {
-          label: props.language.t("toast.update.action.installRestart"),
+          label: "Install and restart",
           onClick: props.install,
         },
         {
-          label: props.language.t("toast.update.action.notYet"),
+          label: "Not yet",
           onClick: "dismiss",
         },
       ],

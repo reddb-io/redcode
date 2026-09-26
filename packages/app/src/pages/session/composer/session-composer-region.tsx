@@ -1,5 +1,4 @@
 import { Show, type JSX, createMemo } from "solid-js"
-import { useLanguage } from "@/context/language"
 import { useSettings } from "@/context/settings"
 import { SessionPermissionDock } from "@/pages/session/composer/session-permission-dock"
 import { SessionQuestionDock } from "@/pages/session/composer/session-question-dock"
@@ -16,7 +15,6 @@ export function SessionComposerRegion(props: {
   controller: SessionComposerRegionController
   promptInput: JSX.Element
 }) {
-  const language = useLanguage()
   const controller = props.controller
   const sync = useSync()
   const params = useParams()
@@ -88,8 +86,8 @@ export function SessionComposerRegion(props: {
                   todos={controller.state.todos()}
                   collapsed={controller.todo.collapsed()}
                   onToggle={controller.todo.onToggle}
-                  collapseLabel={language.t("session.todo.collapse")}
-                  expandLabel={language.t("session.todo.expand")}
+                  collapseLabel={"Collapse"}
+                  expandLabel={"Expand"}
                   dockProgress={controller.dockProgress()}
                 />
               </div>
@@ -115,7 +113,7 @@ export function SessionComposerRegion(props: {
                   class="w-full min-h-32 md:min-h-40 rounded-md border border-border-weak-base bg-background-base/50 px-4 py-3 text-text-weak whitespace-pre-wrap pointer-events-none"
                   style={{ "margin-top": `${-36 * controller.dockProgress()}px` }}
                 >
-                  {controller.handoffPrompt() || language.t("prompt.loading")}
+                  {controller.handoffPrompt() || "Loading prompt..."}
                 </div>
               </>
             }
@@ -160,14 +158,14 @@ export function SessionComposerRegion(props: {
                   ref={controller.setPromptRef}
                   class="w-full rounded-[12px] border border-border-weak-base bg-background-base p-3 text-16-regular text-text-weak"
                 >
-                  <span>{language.t("session.child.promptDisabled")} </span>
+                  <span>{"Subagent sessions cannot be prompted."} </span>
                   <Show when={controller.parentID()}>
                     <button
                       type="button"
                       class="text-text-base transition-colors hover:text-text-strong"
                       onClick={controller.openParent}
                     >
-                      {language.t("session.child.backToParent")}
+                      {"Back to main session."}
                     </button>
                   </Show>
                 </div>

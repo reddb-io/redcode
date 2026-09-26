@@ -1,7 +1,6 @@
 import { useParams } from "@solidjs/router"
 import { onCleanup } from "solid-js"
 import { useCommand } from "@/context/command"
-import { useLanguage } from "@/context/language"
 import { useDialog } from "@reddb-io/redcode-ui/context/dialog"
 
 export function useSettingsDialog(defaultValue?: string) {
@@ -26,14 +25,13 @@ export function useSettingsDialog(defaultValue?: string) {
 
 export function useSettingsCommand() {
   const command = useCommand()
-  const language = useLanguage()
   const show = useSettingsDialog()
 
   command.register("settings", () => [
     {
       id: "settings.open",
-      title: language.t("command.settings.open"),
-      category: language.t("command.category.settings"),
+      title: "Open settings",
+      category: "Settings",
       keybind: "mod+comma",
       onSelect: show,
     },

@@ -6,7 +6,6 @@ import { IconButtonV2 } from "@reddb-io/redcode-ui/v2/icon-button-v2"
 import { TextInputV2 } from "@reddb-io/redcode-ui/v2/text-input-v2"
 import { type Component, For, Show } from "solid-js"
 import { createStore } from "solid-js/store"
-import { useLanguage } from "@/context/language"
 import { useModels } from "@/context/models"
 import { useServerSDK } from "@/context/server-sdk"
 import { popularProviders } from "@/hooks/use-providers"
@@ -20,7 +19,6 @@ type ModelItem = ReturnType<ReturnType<typeof useModels>["list"]>[number]
 const PROVIDER_ICON_SIZE = 16
 
 export const SettingsModelsV2: Component = () => {
-  const language = useLanguage()
   const models = useModels()
   const serverSdk = useServerSDK()
   const [store, setStore] = persisted(
@@ -53,19 +51,19 @@ export const SettingsModelsV2: Component = () => {
   return (
     <>
       <div class="settings-v2-tab-header settings-v2-tab-header--stacked">
-        <h2 class="settings-v2-tab-title">{language.t("settings.models.title")}</h2>
+        <h2 class="settings-v2-tab-title">{"Models"}</h2>
         <div class="settings-v2-tab-search">
           <TextInputV2
             type="search"
             appearance="base"
             value={list.filter()}
             onInput={(event) => list.onInput(event.currentTarget.value)}
-            placeholder={language.t("dialog.model.search.placeholder")}
+            placeholder={"Search models"}
             spellcheck={false}
             autocorrect="off"
             autocomplete="off"
             autocapitalize="off"
-            aria-label={language.t("dialog.model.search.placeholder")}
+            aria-label={"Search models"}
           />
           <Show when={list.filter()}>
             <IconButtonV2
@@ -85,8 +83,8 @@ export const SettingsModelsV2: Component = () => {
           when={!list.grouped.loading}
           fallback={
             <div class="settings-v2-models-status">
-              {language.t("common.loading")}
-              {language.t("common.loading.ellipsis")}
+              {"Loading"}
+              {"..."}
             </div>
           }
         >
@@ -94,7 +92,7 @@ export const SettingsModelsV2: Component = () => {
             when={list.flat().length > 0}
             fallback={
               <div class="settings-v2-models-status">
-                <span>{language.t("dialog.model.empty")}</span>
+                <span>{"No model results"}</span>
                 <Show when={list.filter()}>
                   <span class="settings-v2-models-status-filter">&quot;{list.filter()}&quot;</span>
                 </Show>

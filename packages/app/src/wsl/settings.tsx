@@ -9,7 +9,6 @@ import fuzzysort from "fuzzysort"
 import { type Accessor, For, Show, createMemo } from "solid-js"
 import type { useServerManagementController } from "@/components/dialog-select-server"
 import { ServerHealthIndicator } from "@/components/server/server-row"
-import { useLanguage } from "@/context/language"
 import { usePlatform } from "@/context/platform"
 import { ServerConnection } from "@/context/server"
 import { showToast } from "@/utils/toast"
@@ -26,7 +25,6 @@ export function isWslServer(server: ServerConnection.Any) {
 export function AddServerMenu(props: { onAddServer: () => void }) {
   const platform = usePlatform()
   const dialog = useDialog()
-  const language = useLanguage()
   const openAddWsl = () => {
     dialog.push(() => <DialogAddWslServer />)
   }
@@ -35,18 +33,18 @@ export function AddServerMenu(props: { onAddServer: () => void }) {
       when={platform.wslServers}
       fallback={
         <ButtonV2 variant="ghost-muted" icon="plus" onClick={props.onAddServer}>
-          {language.t("dialog.server.add.button")}
+          {"Add server"}
         </ButtonV2>
       }
     >
       <MenuV2 gutter={4} modal={false} placement="bottom-end">
         <MenuV2.Trigger as={ButtonV2} variant="ghost-muted" icon="plus">
-          {language.t("dialog.server.add.button")}
+          {"Add server"}
         </MenuV2.Trigger>
         <MenuV2.Portal>
           <MenuV2.Content>
-            <MenuV2.Item onSelect={props.onAddServer}>{language.t("dialog.server.add.button")}</MenuV2.Item>
-            <MenuV2.Item onSelect={openAddWsl}>{language.t("wsl.server.add")}</MenuV2.Item>
+            <MenuV2.Item onSelect={props.onAddServer}>{"Add server"}</MenuV2.Item>
+            <MenuV2.Item onSelect={openAddWsl}>{"Add WSL server"}</MenuV2.Item>
           </MenuV2.Content>
         </MenuV2.Portal>
       </MenuV2>
@@ -71,7 +69,6 @@ export function WslServerSettings(props: {
   servers: ReturnType<typeof useFilteredWslServers>
 }) {
   const platform = usePlatform()
-  const language = useLanguage()
   const wsl = useWslServers()
   const api = platform.wslServers
 
@@ -80,7 +77,7 @@ export function WslServerSettings(props: {
     onError: (error) =>
       showToast({
         variant: "error",
-        title: language.t("common.requestFailed"),
+        title: "Request failed",
         description: error instanceof Error ? error.message : String(error),
       }),
   }))
@@ -105,7 +102,7 @@ export function WslServerSettings(props: {
                   <span class="flex min-w-0 items-center gap-1">
                     <span class="settings-v2-servers-name">{item.config.distro}</span>
                     <span class="shrink-0 rounded-[3px] border border-v2-border-border-base px-1 py-0.5 text-[9px] leading-none text-v2-text-text-muted">
-                      {language.t("wsl.server.label")}
+                      {"WSL"}
                     </span>
                   </span>
                   <span class="settings-v2-servers-meta">
@@ -115,7 +112,7 @@ export function WslServerSettings(props: {
               </div>
               <div class="settings-v2-servers-actions">
                 <Show when={props.controller.canDefault() && props.controller.defaultKey() === key}>
-                  <Tag>{language.t("dialog.server.status.default")}</Tag>
+                  <Tag>{"Default"}</Tag>
                 </Show>
                 <Show when={opencodeAction()}>
                   {(label) => (
@@ -124,7 +121,11 @@ export function WslServerSettings(props: {
                       disabled={busy() || request.isPending}
                       onClick={() => api && request.mutate(() => api.installOpencode(item.config.distro))}
                     >
-                      {busy() ? language.t("wsl.server.updating") : language.t(label())}
+                      {busy()
+                        ? "Updating..."
+                        : label() === "wsl.onboarding.updateOpencode"
+                          ? "Update Redcode"
+                          : "Install Redcode"}
                     </ButtonV2>
                   )}
                 </Show>
@@ -134,30 +135,30 @@ export function WslServerSettings(props: {
                     variant="ghost-muted"
                     size="small"
                     icon={<IconV2 name="outline-dots" />}
-                    aria-label={language.t("common.moreOptions")}
+                    aria-label={"More options"}
                   />
                   <MenuV2.Portal>
                     <MenuV2.Content>
                       <MenuV2.Group>
-                        <MenuV2.GroupLabel>{language.t("wsl.server.menu.label")}</MenuV2.GroupLabel>
+                        <MenuV2.GroupLabel>{"WSL server"}</MenuV2.GroupLabel>
                         <Show when={wslRuntimeRetryable(item.runtime)}>
                           <MenuV2.Item onSelect={() => api && request.mutate(() => api.startServer(key))}>
-                            {language.t("wsl.server.retryStart")}
+                            {"Retry start"}
                           </MenuV2.Item>
                         </Show>
                         <Show when={props.controller.canDefault() && props.controller.defaultKey() !== key}>
                           <MenuV2.Item onSelect={() => props.controller.setDefault(key)}>
-                            {language.t("dialog.server.menu.default")}
+                            {"Set as default"}
                           </MenuV2.Item>
                         </Show>
                         <Show when={props.controller.canDefault() && props.controller.defaultKey() === key}>
                           <MenuV2.Item onSelect={() => props.controller.setDefault(null)}>
-                            {language.t("dialog.server.menu.defaultRemove")}
+                            {"Remove default"}
                           </MenuV2.Item>
                         </Show>
                         <MenuV2.Separator />
                         <MenuV2.Item onSelect={() => remove(key)}>
-                          {language.t("dialog.server.menu.delete")}
+                          {"Delete"}
                         </MenuV2.Item>
                       </MenuV2.Group>
                     </MenuV2.Content>

@@ -6,7 +6,6 @@ import { ButtonV2 } from "@reddb-io/redcode-ui/v2/button-v2"
 import { Icon as IconV2 } from "@reddb-io/redcode-ui/v2/icon"
 import { IconButtonV2 } from "@reddb-io/redcode-ui/v2/icon-button-v2"
 import { TooltipV2 } from "@reddb-io/redcode-ui/v2/tooltip-v2"
-import { useLanguage } from "@/context/language"
 import { ServerConnection } from "@/context/server"
 import { SessionTabAvatarView } from "@/pages/layout/session-tab-avatar"
 import { sessionTitle } from "@/utils/session-title"
@@ -37,7 +36,6 @@ function isBackgroundOpen(event: MouseEvent) {
 }
 
 export type HomeSessionsViewProps = {
-  language: ReturnType<typeof useLanguage>
   groups: Accessor<HomeSessionGroup[]>
   showProjectName: Accessor<boolean>
   server: Accessor<ServerConnection.Key>
@@ -76,7 +74,7 @@ export function HomeSessionsView(props: HomeSessionsViewProps) {
     <section
       ref={props.onSetHoverTarget}
       class="min-h-0 min-w-0 flex-1 flex flex-col"
-      aria-label={props.language.t("sidebar.project.recentSessions")}
+      aria-label={"Recent sessions"}
     >
       <div class="sticky top-0 z-30 shrink-0 bg-v2-background-bg-base pb-3 pt-6 lg:pt-12" onWheel={props.onWheel}>
         <HomeSessionSearch {...props} />
@@ -91,7 +89,7 @@ export function HomeSessionsView(props: HomeSessionsViewProps) {
                 class="pointer-events-auto h-7 px-2 [font-weight:530]"
                 onClick={props.onCreateSession}
               >
-                {props.language.t("command.session.new")}
+                {"New session"}
               </ButtonV2>
             </div>
           </Show>
@@ -108,7 +106,7 @@ export function HomeSessionsView(props: HomeSessionsViewProps) {
         <Suspense
           fallback={
             <div class="pt-3">
-              <HomeSessionSkeleton label={props.language.t("common.loading")} />
+              <HomeSessionSkeleton label={"Loading"} />
             </div>
           }
         >
@@ -117,8 +115,7 @@ export function HomeSessionsView(props: HomeSessionsViewProps) {
             fallback={
               <HomeSessionsEmpty
                 onNewSession={props.canCreateSession() ? props.onCreateSession : undefined}
-                language={props.language}
-              />
+                              />
             }
           >
             <div ref={props.onSetContent} class="flex flex-col pt-3 pr-3 pb-16">
@@ -244,7 +241,7 @@ function HomeSessionSearch(props: HomeSessionsViewProps) {
                           text-v2-text-text-muted [font-weight:440]
                         `}
                       >
-                        {props.language.t("home.sessions.search.sessions")}
+                        {"Sessions"}
                       </p>
                       <ScrollView class="max-h-80" viewportRef={props.onSetSearchList}>
                         <div class="flex flex-col gap-px pb-2">
@@ -460,13 +457,13 @@ function HomeSessionRow(props: HomeSessionsViewProps & { record: HomeSessionReco
             group-hover/session:opacity-100 focus-within:opacity-100
           `}
         >
-          <TooltipV2 class="flex shrink-0 items-center" placement="bottom" value={props.language.t("common.archive")}>
+          <TooltipV2 class="flex shrink-0 items-center" placement="bottom" value={"Archive"}>
             <IconButtonV2
               data-action="home-session-archive"
               variant="ghost-muted"
               size="large"
               icon={<IconV2 name="archive" />}
-              aria-label={props.language.t("common.archive")}
+              aria-label={"Archive"}
               onClick={(event) => {
                 event.preventDefault()
                 event.stopPropagation()
@@ -506,7 +503,7 @@ function HomeSessionProjectName(props: { name: string; search?: boolean }) {
   )
 }
 
-function HomeSessionsEmpty(props: { onNewSession?: () => void; language: ReturnType<typeof useLanguage> }) {
+function HomeSessionsEmpty(props: { onNewSession?: () => void }) {
   return (
     <div class="flex min-h-full flex-col items-center gap-4 px-6 pt-[52px] text-center">
       <div
@@ -515,7 +512,7 @@ function HomeSessionsEmpty(props: { onNewSession?: () => void; language: ReturnT
           text-v2-text-text-base [font-weight:530]
         `}
       >
-        {props.language.t("home.sessions.empty")}
+        {"Nothing here yet"}
       </div>
       <p
         class={`
@@ -523,12 +520,12 @@ function HomeSessionsEmpty(props: { onNewSession?: () => void; language: ReturnT
           text-v2-text-text-muted [font-weight:440]
         `}
       >
-        {props.language.t("home.sessions.empty.description")}
+        {"Create a session to get started"}
       </p>
       <Show when={props.onNewSession}>
         {(onNewSession) => (
           <ButtonV2 data-action="home-new-session" variant="neutral" size="normal" icon="edit" onClick={onNewSession()}>
-            {props.language.t("command.session.new")}
+            {"New session"}
           </ButtonV2>
         )}
       </Show>

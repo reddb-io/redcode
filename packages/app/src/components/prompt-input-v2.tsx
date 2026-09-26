@@ -19,7 +19,6 @@ import { QUEUE_SLASH } from "@/components/prompt-input/queue-command"
 import { selectionFromLines, type SelectedLineRange, useFile } from "@/context/file"
 import { useComments } from "@/context/comments"
 import { useCommand } from "@/context/command"
-import { useLanguage } from "@/context/language"
 import { useLayout } from "@/context/layout"
 import { usePermission } from "@/context/permission"
 import { type ImageAttachmentPart, usePrompt } from "@/context/prompt"
@@ -49,7 +48,6 @@ export type PromptInputV2ComposerController = PromptInputV2Interaction & {
 export function PromptInputV2Composer(props: PromptInputV2ComposerProps) {
   const dialog = useDialog()
   const command = useCommand()
-  const language = useLanguage()
 
   return (
     <div class="flex flex-col gap-3">
@@ -66,11 +64,11 @@ export function PromptInputV2Composer(props: PromptInputV2ComposerProps) {
             <PromptInputV2ModelControl
               loading={props.controller.model.loading}
               paid={props.controller.model.paid}
-              title={language.t("command.model.choose")}
+              title={"Choose model"}
               keybind={command.keybindParts("model.choose")}
               model={props.controller.model.selection}
               providerID={props.controller.model.selection.current()?.provider?.id}
-              modelName={props.controller.model.selection.current()?.name ?? language.t("dialog.model.select.title")}
+              modelName={props.controller.model.selection.current()?.name ?? "Select model"}
               onClose={props.controller.restoreFocus}
               onUnpaidClick={() =>
                 dialog.show(() => <DialogSelectModelUnpaidV2 model={props.controller.model.selection} />)
@@ -92,7 +90,6 @@ export function usePromptInputV2Controller(props: PromptInputV2ControllerProps):
   const dialog = useDialog()
   const command = useCommand()
   const permission = usePermission()
-  const language = useLanguage()
   const platform = usePlatform()
   const prompt = props.state ?? usePrompt()
   let editor: HTMLDivElement | undefined
@@ -139,13 +136,10 @@ export function usePromptInputV2Controller(props: PromptInputV2ControllerProps):
       commentCount: commentCount(),
       example: mode() === "shell" ? "git status" : "",
       suggest: false,
-      t: (key, params) => language.t(key as Parameters<typeof language.t>[0], params as never),
+      t,
     }),
   )
-  const designPlaceholder = () =>
-    promptDesignPlaceholder(mode(), placeholder(), (key, params) =>
-      language.t(key as Parameters<typeof language.t>[0], params as never),
-    )
+  const designPlaceholder = () => promptDesignPlaceholder(mode(), placeholder(), t)
 
   const historyComments = () => {
     const byID = new Map(comments.all().map((item) => [`${item.file}\n${item.id}`, item] as const))
@@ -310,8 +304,8 @@ export function usePromptInputV2Controller(props: PromptInputV2ControllerProps):
           {
             id: "prompt.queue",
             trigger: QUEUE_SLASH,
-            title: language.t("command.prompt.queue"),
-            description: language.t("command.prompt.queue.description"),
+            title: "Queue prompt",
+            description: "Send after the current turn instead of steering it",
             type: "custom" as const,
           },
         ]),
@@ -386,14 +380,14 @@ export function usePromptInputV2Controller(props: PromptInputV2ControllerProps):
       isDialogActive: () => !!dialog.active,
       warn: () =>
         showToast({
-          title: language.t("prompt.toast.pasteUnsupported.title"),
-          description: language.t("prompt.toast.pasteUnsupported.description"),
+          title: "Unsupported attachment",
+          description: "Only images, PDFs, or text files can be attached here.",
         }),
-      duplicate: () => showToast({ title: language.t("prompt.toast.attachmentDuplicate.title") }),
+      duplicate: () => showToast({ title: "This file has already been uploaded" }),
       onError: (error) =>
         showToast({
           variant: "error",
-          title: language.t("common.requestFailed"),
+          title: "Request failed",
           description: error instanceof Error ? error.message : String(error),
         }),
       readClipboardImage: platform.readClipboardImage,
@@ -431,24 +425,24 @@ export function usePromptInputV2Controller(props: PromptInputV2ControllerProps):
   command.register("prompt-input", () => [
     {
       id: "file.attach",
-      title: language.t("prompt.action.attachFile"),
-      category: language.t("command.category.file"),
+      title: "Add files",
+      category: "File",
       keybind: "mod+u",
       disabled: controller.state.mode !== "normal",
       onSelect: () => controller.attach(),
     },
     {
       id: "prompt.mode.shell",
-      title: language.t("command.prompt.mode.shell"),
-      category: language.t("command.category.session"),
+      title: "Shell",
+      category: "Session",
       keybind: "mod+shift+x",
       disabled: controller.state.mode === "shell",
       onSelect: () => controller.dispatch({ type: "mode.shell" }),
     },
     {
       id: "prompt.mode.normal",
-      title: language.t("command.prompt.mode.normal"),
-      category: language.t("command.category.session"),
+      title: "Prompt",
+      category: "Session",
       keybind: "mod+shift+e",
       disabled: controller.state.mode === "normal",
       onSelect: () => controller.dispatch({ type: "mode.normal" }),
@@ -607,4 +601,17 @@ function openComment(
   void props.controls.session.tabs.open(tab)
   props.controls.session.tabs.setActive(tab)
   void Promise.resolve(files.load(item.path)).finally(() => queueFocus())
+}
+
+const tDict: Record<string, string> = {
+  "ui.promptInput.placeholder.normal": "Ask anything, {{slash}} for commands, {{at}} for context...",
+}
+
+function t(key: string, params?: Record<string, string | number | boolean>) {
+  const text = tDict[key]
+  if (!text) return key
+  return text.replace(/\{\{(\w+)\}\}/g, (match, name: string) => {
+    const value = params?.[name]
+    return value === undefined ? match : String(value)
+  })
 }

@@ -32,7 +32,7 @@ import { useParams } from "@solidjs/router"
 import { ExternalLink } from "@/components/external-link"
 import { useServerSDK } from "@/context/server-sdk"
 import { useServerSync } from "@/context/server-sync"
-import { useLanguage } from "@/context/language"
+
 import { usePlatform } from "@/context/platform"
 import { useSettings } from "@/context/settings"
 import { popularProviders, useProviders } from "@/hooks/use-providers"
@@ -59,7 +59,6 @@ export const DialogConnectProvider: Component<{
 }> = (props) => {
   const fallback = useProviderConnectController()
   const controller = props.controller ?? fallback
-  const language = useLanguage()
   const settings = useSettings()
   const newLayout = settings.general.newLayoutDesigns
   const reset = controller.back
@@ -106,13 +105,13 @@ export const DialogConnectProvider: Component<{
           class="h-full"
           transition
           title={
-            <Show when={controller.selected()} fallback={language.t("command.provider.connect")}>
+            <Show when={controller.selected()} fallback={"Connect provider"}>
               <IconButton
                 tabIndex={-1}
                 icon="arrow-left"
                 variant="ghost"
                 onClick={() => back.current()}
-                aria-label={language.t("common.goBack")}
+                aria-label={"Navigate back"}
               />
             </Show>
           }
@@ -125,16 +124,16 @@ export const DialogConnectProvider: Component<{
         containerClass="!h-[min(calc(100vh_-_16px),512px)] !w-[min(calc(100vw_-_16px),640px)]"
         class="[font-family:var(--v2-font-family-sans)] [&_[data-slot=dialog-header]]:!px-5 [&_[data-slot=dialog-header-title]]:!text-[15px] [&_[data-slot=dialog-header-title]]:!tracking-[-0.13px]"
       >
-        <DialogHeader closeLabel={language.t("common.close")}>
+        <DialogHeader closeLabel={"Close"}>
           <Show
             when={controller.selected()}
-            fallback={<DialogTitle>{language.t("command.provider.connect")}</DialogTitle>}
+            fallback={<DialogTitle>{"Connect provider"}</DialogTitle>}
           >
             <button
               type="button"
               class="flex size-5 items-center justify-center rounded-sm text-v2-icon-icon-muted hover:bg-v2-overlay-simple-overlay-hover focus-visible:bg-v2-overlay-simple-overlay-hover focus-visible:outline-none"
               onClick={() => back.current()}
-              aria-label={language.t("common.goBack")}
+              aria-label={"Navigate back"}
             >
               <Icon name="arrow-left" size="small" />
             </button>
@@ -159,27 +158,25 @@ function ProviderPicker(props: {
   if (settings.general.newLayoutDesigns())
     return <ProviderPickerV2 directory={props.directory} onSelect={props.onSelect} onPrepare={props.onPrepare} />
   const providers = useProviders(() => props.directory?.())
-  const language = useLanguage()
-  const popularGroup = () => language.t("dialog.provider.group.popular")
-  const otherGroup = () => language.t("dialog.provider.group.other")
-  const customLabel = () => language.t("settings.providers.tag.custom")
+  const popularGroup = () => "Popular"
+  const otherGroup = () => "Other"
+  const customLabel = () => "Custom"
   const note = (id: string) => {
-    if (id === "anthropic") return language.t("dialog.provider.anthropic.note")
-    if (id === "openai") return language.t("dialog.provider.openai.note")
-    if (id.startsWith("github-copilot")) return language.t("dialog.provider.copilot.note")
-    if (id === "opencode-go") return language.t("dialog.provider.opencodeGo.tagline")
+    if (id === "anthropic") return "Direct access to Claude models, including Pro and Max"
+    if (id === "openai") return "GPT models for fast, capable general AI tasks"
+    if (id.startsWith("github-copilot")) return "AI models for coding assistance via GitHub Copilot"
+    if (id === "opencode-go") return "Low cost subscription for everyone"
     return undefined
   }
 
   return (
     <List
       class="px-3"
-      search={{ placeholder: language.t("dialog.provider.search.placeholder"), autofocus: true }}
-      emptyMessage={language.t("dialog.provider.empty")}
+      search={{ placeholder: "Search providers", autofocus: true }}
+      emptyMessage={"No providers found"}
       activeIcon="plus-small"
       key={(x) => x?.id}
       items={() => {
-        language.locale()
         return [{ id: CUSTOM_ID, name: customLabel() }, ...providers.all().values()]
       }}
       filterKeys={["id", "name"]}
@@ -207,17 +204,17 @@ function ProviderPicker(props: {
           <ProviderIcon data-slot="list-item-extra-icon" id={i.id} />
           <span>{i.name}</span>
           <Show when={i.id === "opencode"}>
-            <div class="text-14-regular text-text-weak">{language.t("dialog.provider.opencode.tagline")}</div>
+            <div class="text-14-regular text-text-weak">{"Reliable optimized models"}</div>
           </Show>
           <Show when={i.id === CUSTOM_ID}>
-            <Tag>{language.t("settings.providers.tag.custom")}</Tag>
+            <Tag>{"Custom"}</Tag>
           </Show>
           <Show when={i.id === "opencode"}>
-            <Tag>{language.t("dialog.provider.tag.recommended")}</Tag>
+            <Tag>{"Recommended"}</Tag>
           </Show>
           <Show when={note(i.id)}>{(value) => <div class="text-14-regular text-text-weak">{value()}</div>}</Show>
           <Show when={i.id === "opencode-go"}>
-            <Tag>{language.t("dialog.provider.tag.recommended")}</Tag>
+            <Tag>{"Recommended"}</Tag>
           </Show>
         </div>
       )}
@@ -231,16 +228,14 @@ function ProviderPickerV2(props: {
   onPrepare?: () => void
 }) {
   const providers = useProviders(() => props.directory?.())
-  const language = useLanguage()
   const [store, setStore] = createStore({
     filter: "",
     active: undefined as string | undefined,
     connecting: undefined as string | undefined,
   })
   const featured = ["opencode", "opencode-go", "anthropic", "openai", "google", "openrouter", "vercel"]
-  const custom = () => ({ id: CUSTOM_ID, name: language.t("dialog.provider.custom.label") })
+  const custom = () => ({ id: CUSTOM_ID, name: "Custom OpenAI-compatible provider" })
   const all = createMemo(() => {
-    language.locale()
     const query = store.filter.trim().toLowerCase()
     const values = [custom(), ...providers.all().values()]
     if (!query) return values
@@ -299,7 +294,7 @@ function ProviderPickerV2(props: {
           type="search"
           class="!w-full [font-family:var(--v2-font-family-sans)]"
           leadingIcon={<Icon name="magnifying-glass" size="small" />}
-          placeholder={language.t("dialog.provider.search.placeholder")}
+          placeholder={"Search providers"}
           value={store.filter}
           onInput={(event) => {
             setStore({ filter: event.currentTarget.value, active: undefined })
@@ -310,8 +305,8 @@ function ProviderPickerV2(props: {
         <div class="flex size-full min-h-0 flex-col gap-4 overflow-y-auto pb-8 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
           <For
             each={[
-              { title: language.t("dialog.provider.group.popular"), items: popular },
-              { title: language.t("dialog.provider.group.other"), items: other },
+              { title: "Popular", items: popular },
+              { title: "Other", items: other },
             ]}
           >
             {(group) => (
@@ -336,19 +331,17 @@ function ProviderPickerV2(props: {
                         <span class="min-w-0 truncate font-[530] text-v2-text-text-base">{provider.name}</span>
                         <Show when={provider.id === "opencode" || provider.id === "opencode-go"}>
                           <span class="min-w-0 truncate font-[440] text-v2-text-text-muted">
-                            {language.t(
-                              provider.id === "opencode"
-                                ? "dialog.provider.opencode.tagline"
-                                : "dialog.provider.opencodeGo.tagline",
-                            )}
+                            {provider.id === "opencode"
+                              ? "Reliable optimized models"
+                              : "Low cost subscription for everyone"}
                           </span>
                           <span class="flex h-4 shrink-0 items-center rounded-xs border-[0.5px] border-v2-border-border-base bg-v2-background-bg-layer-03 px-1 text-[11px] font-[530] leading-none tracking-[0.05px] text-v2-text-text-muted">
-                            {language.t("dialog.provider.tag.recommended")}
+                            {"Recommended"}
                           </span>
                         </Show>
                         <Show when={provider.id === CUSTOM_ID}>
                           <span class="flex h-4 shrink-0 items-center rounded-xs border-[0.5px] border-v2-border-border-base bg-v2-background-bg-layer-03 px-1 text-[11px] font-[530] leading-none tracking-[0.05px] text-v2-text-text-muted">
-                            {language.t("settings.providers.tag.custom")}
+                            {"Custom"}
                           </span>
                         </Show>
                         <Show when={store.connecting === provider.id}>
@@ -363,7 +356,7 @@ function ProviderPickerV2(props: {
           </For>
           <Show when={rows().length === 0}>
             <div class="flex h-24 items-center justify-center text-[13px] font-[440] text-v2-text-text-muted">
-              {language.t("dialog.provider.empty")}
+              {"No providers found"}
             </div>
           </Show>
         </div>
@@ -386,7 +379,6 @@ function ProviderConnection(props: {
   const serverSync = useServerSync()
   const serverSDK = useServerSDK()
   const params = useParams()
-  const language = useLanguage()
   const platform = usePlatform()
   const settings = useSettings()
   const newLayout = settings.general.newLayoutDesigns
@@ -413,7 +405,7 @@ function ProviderConnection(props: {
   const fallback = createMemo<ConnectMethod[]>(() => [
     {
       type: "key" as const,
-      label: language.t("provider.connect.method.apiKey"),
+      label: "API key",
     },
   ])
   const [integration] = createResource(
@@ -501,7 +493,7 @@ function ProviderConnection(props: {
 
   const methodLabel = (value?: { type?: string; label?: string }) => {
     if (!value) return ""
-    if (value.type === "key") return language.t("provider.connect.method.apiKey")
+    if (value.type === "key") return "API key"
     return value.label ?? ""
   }
 
@@ -513,9 +505,9 @@ function ProviderConnection(props: {
       label: suffix ? label.slice(0, -suffix[0].length) : label,
       hint:
         hint?.toLowerCase() === "headless"
-          ? language.t("provider.connect.method.headless")
+          ? "Headless"
           : hint?.toLowerCase() === "browser" || (!hint && value?.type === "key")
-            ? language.t("provider.connect.method.browser")
+            ? "Browser"
             : undefined,
     }
   }
@@ -571,7 +563,7 @@ function ProviderConnection(props: {
         })
         .catch((e) => {
           if (!alive.value) return
-          dispatch({ type: "auth.error", error: formatError(e, language.t("common.requestFailed")) })
+          dispatch({ type: "auth.error", error: formatError(e, "Request failed") })
         })
     }
   }
@@ -654,7 +646,7 @@ function ProviderConnection(props: {
               }}
             />
             <Button class="w-auto" type="submit" size="large" variant="primary" disabled={!valid()}>
-              {language.t("common.continue")}
+              {"Continue"}
             </Button>
           </Match>
           <Match when={item()?.prompt.type === "select"}>
@@ -723,8 +715,8 @@ function ProviderConnection(props: {
     showToast({
       variant: "success",
       icon: "circle-check",
-      title: language.t("provider.connect.toast.connected.title", { provider: provider().name }),
-      description: language.t("provider.connect.toast.connected.description", { provider: provider().name }),
+      title: `${provider().name} connected`,
+      description: `${provider().name} models are now available to use.`,
     })
   }
 
@@ -743,7 +735,7 @@ function ProviderConnection(props: {
       return (
         <div class="flex flex-col gap-2">
           <div class="px-3 text-[13px] font-[440] leading-5 tracking-[-0.04px] text-v2-text-text-muted">
-            {language.t("provider.connect.selectMethod", { provider: provider().name })}
+            {`Select login method for ${provider().name}.`}
           </div>
           <div class="flex flex-col">
             <For each={methods()}>
@@ -773,7 +765,7 @@ function ProviderConnection(props: {
     return (
       <>
         <div class="text-14-regular text-text-base">
-          {language.t("provider.connect.selectMethod", { provider: provider().name })}
+          {`Select login method for ${provider().name}.`}
         </div>
         <div>
           <List
@@ -823,7 +815,7 @@ function ProviderConnection(props: {
       const apiKey = formData.get("apiKey") as string
 
       if (!apiKey?.trim()) {
-        setFormStore("error", language.t("provider.connect.apiKey.required"))
+        setFormStore("error", "API key is required")
         return
       }
 
@@ -841,32 +833,32 @@ function ProviderConnection(props: {
         <div class="flex flex-col gap-5 px-3 text-[13px] font-[440] leading-5 tracking-[-0.04px] text-v2-text-text-muted">
           <Show
             when={provider().id === "opencode"}
-            fallback={language.t("provider.connect.apiKey.description", { provider: provider().name })}
+            fallback={`Enter your ${provider().name} API key to connect your account and use ${provider().name} models in Redcode.`}
           >
             <div class="flex flex-col gap-5">
-              <div>{language.t("provider.connect.opencodeZen.line1")}</div>
-              <div>{language.t("provider.connect.opencodeZen.line2")}</div>
+              <div>{"OpenCode Zen gives you access to a curated set of reliable optimized models for coding agents."}</div>
+              <div>{"With a single API key you'll get access to models such as Claude, GPT, Gemini, GLM and more."}</div>
               <div>
-                {language.t("provider.connect.opencodeZen.visit.prefix")}
+                {"Visit "}
                 <ExternalLink
                   href="https://opencode.ai/zen"
                   class="text-v2-text-text-base focus-visible:rounded-xs focus-visible:outline-2 focus-visible:outline-v2-border-border-focus"
                 >
-                  {language.t("provider.connect.opencodeZen.visit.link")}
+                  {"opencode.ai/zen"}
                 </ExternalLink>
-                {language.t("provider.connect.opencodeZen.visit.suffix")}
+                {" to collect your API key."}
               </div>
             </div>
           </Show>
           <form onSubmit={handleSubmit} class="flex flex-col items-start gap-5 self-stretch">
             <label class="flex w-full flex-col gap-1 font-[530] leading-4 text-v2-text-text-base">
-              {language.t("provider.connect.apiKey.label", { provider: provider().name })}
+              {`${provider().name} API key`}
               <TextInputV2
                 ref={apiKey}
                 class="!w-full"
                 name="apiKey"
                 data-input="provider-api-key"
-                placeholder={language.t("provider.connect.apiKey.placeholder")}
+                placeholder={"API key"}
                 value={formStore.value}
                 invalid={formStore.error !== undefined}
                 aria-describedby={formStore.error ? errorID : undefined}
@@ -883,7 +875,7 @@ function ProviderConnection(props: {
               )}
             </Show>
             <ButtonV2 type="submit" variant="contrast" data-action="provider-connect-submit">
-              {language.t("common.continue")}
+              {"Continue"}
             </ButtonV2>
           </form>
         </div>
@@ -894,20 +886,20 @@ function ProviderConnection(props: {
         <Switch>
           <Match when={provider().id === "opencode"}>
             <div class="flex flex-col gap-4">
-              <div class="text-14-regular text-text-base">{language.t("provider.connect.opencodeZen.line1")}</div>
-              <div class="text-14-regular text-text-base">{language.t("provider.connect.opencodeZen.line2")}</div>
+              <div class="text-14-regular text-text-base">{"OpenCode Zen gives you access to a curated set of reliable optimized models for coding agents."}</div>
+              <div class="text-14-regular text-text-base">{"With a single API key you'll get access to models such as Claude, GPT, Gemini, GLM and more."}</div>
               <div class="text-14-regular text-text-base">
-                {language.t("provider.connect.opencodeZen.visit.prefix")}
+                {"Visit "}
                 <ExternalLink href="https://opencode.ai/zen" tabIndex={-1}>
-                  {language.t("provider.connect.opencodeZen.visit.link")}
+                  {"opencode.ai/zen"}
                 </ExternalLink>
-                {language.t("provider.connect.opencodeZen.visit.suffix")}
+                {" to collect your API key."}
               </div>
             </div>
           </Match>
           <Match when={true}>
             <div class="text-14-regular text-text-base">
-              {language.t("provider.connect.apiKey.description", { provider: provider().name })}
+              {`Enter your ${provider().name} API key to connect your account and use ${provider().name} models in Redcode.`}
             </div>
           </Match>
         </Switch>
@@ -916,8 +908,8 @@ function ProviderConnection(props: {
             autofocus={!newLayout()}
             ref={apiKey}
             type="text"
-            label={language.t("provider.connect.apiKey.label", { provider: provider().name })}
-            placeholder={language.t("provider.connect.apiKey.placeholder")}
+            label={`${provider().name} API key`}
+            placeholder={"API key"}
             name="apiKey"
             value={formStore.value}
             onChange={(v) => setFormStore("value", v)}
@@ -925,7 +917,7 @@ function ProviderConnection(props: {
             error={formStore.error}
           />
           <Button class="w-auto" type="submit" size="large" variant="primary">
-            {language.t("common.continue")}
+            {"Continue"}
           </Button>
         </form>
       </div>
@@ -953,7 +945,7 @@ function ProviderConnection(props: {
       const code = formData.get("code") as string
 
       if (!code?.trim()) {
-        setFormStore("error", language.t("provider.connect.oauth.code.required"))
+        setFormStore("error", "Authorization code is required")
         return
       }
 
@@ -971,27 +963,27 @@ function ProviderConnection(props: {
         await complete()
         return
       }
-      setFormStore("error", formatError(result.error, language.t("provider.connect.oauth.code.invalid")))
+      setFormStore("error", formatError(result.error, "Invalid authorization code"))
     }
 
     if (newLayout())
       return (
         <div class="flex flex-col gap-5 px-3 text-[13px] font-[440] leading-5 tracking-[-0.04px] text-v2-text-text-muted">
           <div>
-            {language.t("provider.connect.oauth.code.visit.prefix")}
+            {"Visit "}
             <ExternalLink href={store.authorization!.url} class="text-v2-text-text-base">
-              {language.t("provider.connect.oauth.code.visit.link")}
+              {"this link"}
             </ExternalLink>
-            {language.t("provider.connect.oauth.code.visit.suffix", { provider: provider().name })}
+            {` to collect your authorization code to connect your account and use ${provider().name} models in Redcode.`}
           </div>
           <form onSubmit={handleSubmit} class="flex flex-col items-start gap-5 self-stretch">
             <label class="flex w-full flex-col gap-1 font-[530] leading-4 text-v2-text-text-base">
-              {language.t("provider.connect.oauth.code.label", { method: method()?.label ?? "" })}
+              {`${method()?.label ?? ""} authorization code`}
               <TextInputV2
                 ref={codeInput}
                 class="!w-full"
                 name="code"
-                placeholder={language.t("provider.connect.oauth.code.placeholder")}
+                placeholder={"Authorization code"}
                 value={formStore.value}
                 invalid={formStore.error !== undefined}
                 aria-describedby={formStore.error ? errorID : undefined}
@@ -1008,7 +1000,7 @@ function ProviderConnection(props: {
               )}
             </Show>
             <ButtonV2 type="submit" variant="contrast">
-              {language.t("common.continue")}
+              {"Continue"}
             </ButtonV2>
           </form>
         </div>
@@ -1017,19 +1009,19 @@ function ProviderConnection(props: {
     return (
       <div class="flex flex-col gap-6">
         <div class="text-14-regular text-text-base">
-          {language.t("provider.connect.oauth.code.visit.prefix")}
+          {"Visit "}
           <ExternalLink href={store.authorization!.url}>
-            {language.t("provider.connect.oauth.code.visit.link")}
+            {"this link"}
           </ExternalLink>
-          {language.t("provider.connect.oauth.code.visit.suffix", { provider: provider().name })}
+          {` to collect your authorization code to connect your account and use ${provider().name} models in Redcode.`}
         </div>
         <form onSubmit={handleSubmit} class="flex flex-col items-start gap-4">
           <TextField
             autofocus={!newLayout()}
             ref={codeInput}
             type="text"
-            label={language.t("provider.connect.oauth.code.label", { method: method()?.label ?? "" })}
-            placeholder={language.t("provider.connect.oauth.code.placeholder")}
+            label={`${method()?.label ?? ""} authorization code`}
+            placeholder={"Authorization code"}
             name="code"
             value={formStore.value}
             onChange={(v) => setFormStore("value", v)}
@@ -1037,7 +1029,7 @@ function ProviderConnection(props: {
             error={formStore.error}
           />
           <Button class="w-auto" type="submit" size="large" variant="primary">
-            {language.t("common.continue")}
+            {"Continue"}
           </Button>
         </form>
       </div>
@@ -1067,7 +1059,7 @@ function ProviderConnection(props: {
           .catch((error) => ({ ok: false as const, error }))
         if (!alive.value) return
         if (!result.ok) {
-          dispatch({ type: "auth.error", error: formatError(result.error, language.t("common.requestFailed")) })
+          dispatch({ type: "auth.error", error: formatError(result.error, "Request failed") })
           return
         }
         if (result.status.status === "complete") {
@@ -1079,7 +1071,7 @@ function ProviderConnection(props: {
           return
         }
         if (result.status.status === "expired") {
-          dispatch({ type: "auth.error", error: language.t("common.requestFailed") })
+          dispatch({ type: "auth.error", error: "Request failed" })
           return
         }
         timer.current = setTimeout(poll, 1_000)
@@ -1090,14 +1082,14 @@ function ProviderConnection(props: {
     return (
       <div class="flex flex-col gap-6">
         <div class="text-14-regular text-text-base">
-          {language.t("provider.connect.oauth.auto.visit.prefix")}
+          {"Visit "}
           <ExternalLink href={store.authorization!.url}>
-            {language.t("provider.connect.oauth.auto.visit.link")}
+            {"this link"}
           </ExternalLink>
-          {language.t("provider.connect.oauth.auto.visit.suffix", { provider: provider().name })}
+          {` and enter the code below to connect your account and use ${provider().name} models in Redcode.`}
         </div>
         <TextField
-          label={language.t("provider.connect.oauth.auto.confirmationCode")}
+          label={"Confirmation code"}
           class="font-mono"
           value={code()}
           readOnly
@@ -1105,7 +1097,7 @@ function ProviderConnection(props: {
         />
         <div class="text-14-regular text-text-base flex items-center gap-4">
           <Spinner />
-          <span>{language.t("provider.connect.status.waiting")}</span>
+          <span>{"Waiting for authorization..."}</span>
         </div>
       </div>
     )
@@ -1127,9 +1119,9 @@ function ProviderConnection(props: {
         >
           <Switch>
             <Match when={props.provider === "anthropic" && method()?.label?.toLowerCase().includes("max")}>
-              {language.t("provider.connect.title.anthropicProMax")}
+              {"Login with Claude Pro/Max"}
             </Match>
-            <Match when={true}>{language.t("provider.connect.title", { provider: provider().name })}</Match>
+            <Match when={true}>{`Connect ${provider().name}`}</Match>
           </Switch>
         </div>
       </div>
@@ -1144,7 +1136,7 @@ function ProviderConnection(props: {
               <div class="text-14-regular text-text-base">
                 <div class="flex items-center gap-x-2">
                   <Spinner />
-                  <span>{language.t("provider.connect.status.inProgress")}</span>
+                  <span>{"Authorization in progress..."}</span>
                 </div>
               </div>
             </Match>
@@ -1155,7 +1147,7 @@ function ProviderConnection(props: {
               <div class="text-14-regular text-text-base">
                 <div class="flex items-center gap-x-2">
                   <Spinner />
-                  <span>{language.t("provider.connect.status.inProgress")}</span>
+                  <span>{"Authorization in progress..."}</span>
                 </div>
               </div>
             </Match>
@@ -1166,7 +1158,7 @@ function ProviderConnection(props: {
               <div class="text-14-regular text-text-base">
                 <div class="flex items-center gap-x-2">
                   <Icon name="circle-ban-sign" class="text-icon-critical-base" />
-                  <span>{language.t("provider.connect.status.failed", { error: store.error ?? "" })}</span>
+                  <span>{`Authorization failed: ${store.error ?? ""}`}</span>
                 </div>
               </div>
             </Match>

@@ -14,7 +14,6 @@ import { ScrollView } from "@reddb-io/redcode-ui/scroll-view"
 import type { Message, Part, UserMessage } from "@reddb-io/redcode-sdk/v2/client"
 import { showToast } from "@/utils/toast"
 import { downloadSessionExport, fetchSessionExport, sessionExportFilename } from "@/utils/session-export"
-import { useLanguage } from "@/context/language"
 import { useProviders } from "@/hooks/use-providers"
 import { useSDK } from "@/context/sdk"
 import { useSessionLayout } from "@/pages/session/session-layout"
@@ -96,7 +95,6 @@ const emptyUserMessages: UserMessage[] = []
 
 export function SessionContextTab() {
   const sync = useSync()
-  const language = useLanguage()
   const sdk = useSDK()
   const providers = useProviders(() => sdk().directory)
   const { params, view } = useSessionLayout()
@@ -132,14 +130,14 @@ export function SessionContextTab() {
 
   const usd = createMemo(
     () =>
-      new Intl.NumberFormat(language.intl(), {
+      new Intl.NumberFormat("en", {
         style: "currency",
         currency: "USD",
       }),
   )
 
   const ctx = createMemo(() => getSessionContext(messages(), [...providers.all().values()]))
-  const formatter = createMemo(() => createSessionContextFormatter(language.intl()))
+  const formatter = createMemo(() => createSessionContextFormatter("en"))
 
   const cost = createMemo(() => {
     return usd().format(info()?.cost ?? 0)
@@ -194,18 +192,18 @@ export function SessionContextTab() {
   )
 
   const breakdownLabel = (key: SessionContextBreakdownKey) => {
-    if (key === "system") return language.t("context.breakdown.system")
-    if (key === "user") return language.t("context.breakdown.user")
-    if (key === "assistant") return language.t("context.breakdown.assistant")
-    if (key === "tool") return language.t("context.breakdown.tool")
-    return language.t("context.breakdown.other")
+    if (key === "system") return "System"
+    if (key === "user") return "User"
+    if (key === "assistant") return "Assistant"
+    if (key === "tool") return "Tool Calls"
+    return "Other"
   }
 
   // A finished or aborted step's numbers describe the past: dimmed and labeled rather than shown as live.
   const timed = (value: string) => {
     const step = ctx()?.meter?.step
     if (!step?.stale || value === "—") return value
-    const note = language.t(step.aborted ? "context.stats.aborted" : "context.stats.stale")
+    const note = step.aborted ? "aborted" : "last step"
     return (
       <span class="text-text-weak">
         {value} <span class="text-text-weaker">({note})</span>
@@ -214,48 +212,48 @@ export function SessionContextTab() {
   }
 
   const speedLabels = () => ({
-    burst: language.t("context.stats.burst"),
-    hidden: language.t("context.stats.reasoningHidden"),
+    burst: "Not streamed (burst)",
+    hidden: "reasoning hidden",
   })
 
-  const stats = [
-    { label: "context.stats.session", value: () => info()?.title ?? params.id ?? "—" },
-    { label: "context.stats.messages", value: () => counts().all.toLocaleString(language.intl()) },
-    { label: "context.stats.provider", value: providerLabel },
-    { label: "context.stats.model", value: modelLabel },
-    { label: "context.stats.limit", value: () => formatter().number(ctx()?.limit) },
-    { label: "context.stats.totalTokens", value: () => formatter().number(ctx()?.total) },
-    { label: "context.stats.usage", value: () => formatter().percent(ctx()?.usage) },
-    { label: "context.stats.inputTokens", value: () => formatter().number(ctx()?.input) },
-    { label: "context.stats.outputTokens", value: () => formatter().number(ctx()?.message.tokens.output) },
-    { label: "context.stats.reasoningTokens", value: () => formatter().number(ctx()?.message.tokens.reasoning) },
+const stats = [
+    { label: "Session", value: () => info()?.title ?? params.id ?? "—" },
+    { label: "Messages", value: () => counts().all.toLocaleString("en") },
+    { label: "Provider", value: providerLabel },
+    { label: "Model", value: modelLabel },
+    { label: "Context Limit", value: () => formatter().number(ctx()?.limit) },
+    { label: "Total Tokens", value: () => formatter().number(ctx()?.total) },
+    { label: "Usage", value: () => formatter().percent(ctx()?.usage) },
+    { label: "Input Tokens", value: () => formatter().number(ctx()?.input) },
+    { label: "Output Tokens", value: () => formatter().number(ctx()?.message.tokens.output) },
+    { label: "Reasoning Tokens", value: () => formatter().number(ctx()?.message.tokens.reasoning) },
     {
-      label: "context.stats.cacheTokens",
+      label: "Cache Tokens (read/write)",
       value: () =>
         `${formatter().number(ctx()?.message.tokens.cache.read)} / ${formatter().number(ctx()?.message.tokens.cache.write)}`,
     },
-    { label: "context.stats.userMessages", value: () => counts().user.toLocaleString(language.intl()) },
-    { label: "context.stats.assistantMessages", value: () => counts().assistant.toLocaleString(language.intl()) },
-    { label: "context.stats.totalCost", value: cost },
-    { label: "context.stats.latency", value: () => timed(formatLatency(ctx()?.meter?.step.latency, language.intl())) },
-    { label: "context.stats.visible", value: () => timed(formatLatency(ctx()?.meter?.step.visible, language.intl())) },
+    { label: "User Messages", value: () => counts().user.toLocaleString("en") },
+    { label: "Assistant Messages", value: () => counts().assistant.toLocaleString("en") },
+    { label: "Total Cost", value: cost },
+    { label: "Latency (first token)", value: () => timed(formatLatency(ctx()?.meter?.step.latency, "en")) },
+    { label: "First visible token", value: () => timed(formatLatency(ctx()?.meter?.step.visible, "en")) },
     {
-      label: "context.stats.speed",
-      value: () => timed(formatSpeed(ctx()?.meter?.step.speed, language.intl(), speedLabels())),
+      label: "Output speed",
+      value: () => timed(formatSpeed(ctx()?.meter?.step.speed, "en", speedLabels())),
     },
     {
-      label: "context.stats.turnSpeed",
+      label: "Output speed (turn)",
       value: () => {
         const turn = ctx()?.meter?.turn
-        const speed = formatSpeed(turn?.speed, language.intl(), speedLabels())
+        const speed = formatSpeed(turn?.speed, "en", speedLabels())
         // Some steps are left out (bursts, too short, unfinished); subagents never count toward the turn.
         if (!turn || speed === "—" || turn.rated === turn.steps) return speed
-        return `${speed} · ${language.t("context.stats.rated", { rated: turn.rated, steps: turn.steps })}`
+        return `${speed} · ${`${turn.rated}/${turn.steps} steps rated`}`
       },
     },
-    { label: "context.stats.prep", value: () => formatLatency(ctx()?.meter?.step.prep, language.intl()) },
-    { label: "context.stats.sessionCreated", value: () => formatter().time(info()?.time.created) },
-    { label: "context.stats.lastActivity", value: () => formatter().time(ctx()?.message.time.created) },
+    { label: "Local preparation", value: () => formatLatency(ctx()?.meter?.step.prep, "en") },
+    { label: "Session Created", value: () => formatter().time(info()?.time.created) },
+    { label: "Last Activity", value: () => formatter().time(ctx()?.message.time.created) },
   ] satisfies { label: string; value: () => JSX.Element }[]
 
   const exportSession = async () => {
@@ -271,14 +269,14 @@ export function SessionContextTab() {
       showToast({
         variant: "success",
         icon: "circle-check",
-        title: language.t("toast.session.export.success.title"),
-        description: language.t("toast.session.export.success.description", { filename }),
+        title: "Session exported",
+        description: `Saved session to ${filename}`,
       })
     } catch (err) {
       showToast({
         variant: "error",
-        title: language.t("toast.session.export.failed.title"),
-        description: err instanceof Error ? err.message : language.t("toast.session.export.failed.description"),
+        title: "Failed to export session",
+        description: err instanceof Error ? err.message : "An error occurred while exporting the session",
       })
     }
   }
@@ -344,13 +342,13 @@ export function SessionContextTab() {
       <div class="px-6 pt-4 pb-10 flex flex-col gap-10">
         <div class="grid grid-cols-1 @[32rem]:grid-cols-2 gap-4">
           <For each={stats}>
-            {(stat) => <Stat label={language.t(stat.label as Parameters<typeof language.t>[0])} value={stat.value()} />}
+            {(stat) => <Stat label={stat.label} value={stat.value()} />}
           </For>
         </div>
 
         <Show when={breakdown().length > 0}>
           <div class="flex flex-col gap-2">
-            <div class="text-12-regular text-text-weak">{language.t("context.breakdown.title")}</div>
+            <div class="text-12-regular text-text-weak">{"Context Breakdown"}</div>
             <div class="h-2 w-full rounded-full bg-surface-base overflow-hidden flex">
               <For each={breakdown()}>
                 {(segment) => (
@@ -370,19 +368,19 @@ export function SessionContextTab() {
                   <div class="flex items-center gap-1 text-11-regular text-text-weak">
                     <div class="size-2 rounded-sm" style={{ "background-color": BREAKDOWN_COLOR[segment.key] }} />
                     <div>{breakdownLabel(segment.key)}</div>
-                    <div class="text-text-weaker">{segment.percent.toLocaleString(language.intl())}%</div>
+                    <div class="text-text-weaker">{segment.percent.toLocaleString("en")}%</div>
                   </div>
                 )}
               </For>
             </div>
-            <div class="hidden text-11-regular text-text-weaker">{language.t("context.breakdown.note")}</div>
+            <div class="hidden text-11-regular text-text-weaker">{"Approximate breakdown of input tokens. \"Other\" includes tool definitions and overhead."}</div>
           </div>
         </Show>
 
         <Show when={systemPrompt()}>
           {(prompt) => (
             <div class="flex flex-col gap-2">
-              <div class="text-12-regular text-text-weak">{language.t("context.systemPrompt.title")}</div>
+              <div class="text-12-regular text-text-weak">{"System Prompt"}</div>
               <div class="border border-border-base rounded-md bg-surface-base px-3 py-2">
                 <Markdown text={prompt()} class="text-12-regular" />
               </div>
@@ -392,7 +390,7 @@ export function SessionContextTab() {
 
         <div class="flex flex-col gap-2">
           <div class="flex items-center justify-between">
-            <div class="text-12-regular text-text-weak">{language.t("context.rawMessages.title")}</div>
+            <div class="text-12-regular text-text-weak">{"Raw messages"}</div>
             <Button
               size="small"
               variant="ghost"
@@ -400,7 +398,7 @@ export function SessionContextTab() {
               onClick={exportSession}
             >
               <Icon name="download" size="small" />
-              <span>{language.t("context.export.session")}</span>
+              <span>{"Export session"}</span>
             </Button>
           </div>
           <Accordion multiple>

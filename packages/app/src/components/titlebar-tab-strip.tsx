@@ -11,7 +11,6 @@ import { tabHref, tabKey, type SessionTab, type Tab } from "@/context/tabs"
 import { ServerConnection } from "@/context/server"
 import { DraftTabItem, TabNavItem } from "@/components/titlebar-tab-nav"
 import { useGlobal, type ServerCtx } from "@/context/global"
-import { useLanguage } from "@/context/language"
 import { useCommand } from "@/context/command"
 import { useTabs } from "@/context/tabs"
 import { createTabPromptState } from "@/context/prompt"
@@ -82,7 +81,6 @@ function SessionTabEntry(props: {
   onClose: () => void
 }) {
   const tabs = useTabs()
-  const language = useLanguage()
   const sdk = createMemo(() => props.serverCtx()?.sdk ?? null)
   const cachedSession = createMemo(() => props.serverCtx()?.sync.session.peek(props.tab.sessionId))
   const persisted = createMemo(() => tabs.info[props.id])
@@ -111,7 +109,7 @@ function SessionTabEntry(props: {
       const currentCtx = props.serverCtx()
       if (current && currentCtx) currentCtx.sync.session.remember({ ...current, title: value.title })
       showToast({
-        title: language.t("common.requestFailed"),
+        title: "Request failed",
         description: err instanceof Error ? err.message : undefined,
       })
     }
@@ -158,7 +156,7 @@ function SessionTabEntry(props: {
         active={props.active}
         forceTruncate={props.forceTruncate}
         session={session}
-        fallbackTitle={persisted()?.title ?? (missingSession() ? language.t("session.tab.unknown") : undefined)}
+        fallbackTitle={persisted()?.title ?? (missingSession() ? "Unknown Session" : undefined)}
         onRename={rename}
         onNavigate={props.onNavigate}
         onClose={props.onClose}
@@ -219,7 +217,6 @@ export function TitlebarTabStrip(props: {
   onOverflowChange: (overflowing: boolean) => void
 }) {
   const global = useGlobal()
-  const language = useLanguage()
   const command = useCommand()
   let scrollRef!: HTMLDivElement
   let listRef!: HTMLDivElement
@@ -370,7 +367,7 @@ export function TitlebarTabStrip(props: {
                     id={id}
                     index={visibleIndex}
                     active={() => props.currentTab() === tab}
-                    title={language.t("command.session.new")}
+                    title={"New session"}
                     onNavigate={(element) => {
                       ref = element
                       props.onNavigate(tab, element)

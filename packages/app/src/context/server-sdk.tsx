@@ -5,7 +5,6 @@ import { createGlobalEmitter } from "@solid-primitives/event-bus"
 import { makeEventListener } from "@solid-primitives/event-listener"
 import { type Accessor, batch, createMemo, createResource, onCleanup, onMount } from "solid-js"
 import { createApiForServer, createSdkForServer, type ServerApi } from "@/utils/server"
-import { useLanguage } from "./language"
 import { usePlatform } from "./platform"
 import { ServerConnection, useServer } from "./server"
 import { createRefCountMap } from "@/utils/refcount"
@@ -406,12 +405,11 @@ export const { use: useServerSDK, provider: ServerSDKProvider } = createSimpleCo
   // /new-session draft retargeting its server) without re-instantiating the subtree.
   init: (props: { server?: Accessor<ServerConnection.Any | undefined> }) => {
     const global = useGlobal()
-    const language = useLanguage()
     const server = useServer()
 
     return createMemo<ServerSDK>(() => {
       const conn = props.server?.() ?? server.current
-      if (!conn) throw new Error(language.t("error.serverSDK.noServerAvailable"))
+      if (!conn) throw new Error("No server available")
       return global.ensureServerCtx(conn).sdk
     })
   },

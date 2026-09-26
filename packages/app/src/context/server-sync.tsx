@@ -10,7 +10,6 @@ import { showToast } from "@/utils/toast"
 import { getFilename } from "@reddb-io/redcode-core/util/path"
 import { type Accessor, batch, createMemo, getOwner, onCleanup, onMount, untrack } from "solid-js"
 import { createStore, produce, reconcile } from "solid-js/store"
-import { useLanguage } from "@/context/language"
 import type { InitError } from "../pages/error"
 import { ServerSDK } from "./server-sdk"
 import {
@@ -206,7 +205,6 @@ function makeQueryOptionsApi(
 export type QueryOptionsApi = ReturnType<typeof makeQueryOptionsApi>
 
 export function createServerSyncContextInner(serverSDK: ServerSDK) {
-  const language = useLanguage()
   const platform = usePlatform()
   const owner = getOwner()
   if (!owner) throw new Error("ServerSync must be created within owner")
@@ -329,9 +327,8 @@ export function createServerSyncContextInner(serverSDK: ServerSDK) {
         serverAPI: serverSDK.api,
         protocol: serverSDK.protocol,
         scope: serverSDK.scope,
-        requestFailedTitle: language.t("common.requestFailed"),
-        translate: language.t,
-        formatMoreCount: (count) => language.t("common.moreCountSuffix", { count }),
+        requestFailedTitle: "Request failed",
+        formatMoreCount: (count) => ` (+${count} more)`,
         setGlobalStore: setBootStore,
         queryClient,
       })
@@ -372,8 +369,8 @@ export function createServerSyncContextInner(serverSDK: ServerSDK) {
         .catch((err) => {
           showToast({
             variant: "error",
-            title: language.t("toast.project.reloadFailed.title", { project: getFilename(directory) }),
-            description: formatServerError(err, language.t),
+            title: `Failed to reload ${getFilename(directory)}`,
+            description: formatServerError(err),
           })
         })
     },
@@ -384,7 +381,6 @@ export function createServerSyncContextInner(serverSDK: ServerSDK) {
       sdkCache.delete(key)
       clearProviderRev(serverSDK.scope, key)
     },
-    translate: language.t,
     queryOptions: queryOptionsApi,
     global: {
       provider: globalStore.provider,
@@ -456,8 +452,8 @@ export function createServerSyncContextInner(serverSDK: ServerSDK) {
               const project = getFilename(directory)
               showToast({
                 variant: "error",
-                title: language.t("toast.session.listFailed.title", { project }),
-                description: formatServerError(err, language.t),
+                title: `Failed to load sessions for ${project}`,
+                description: formatServerError(err),
               })
             })
             .then(() => null),
@@ -500,7 +496,6 @@ export function createServerSyncContextInner(serverSDK: ServerSDK) {
         setStore: child[1],
         vcsCache: cache,
         loadSessions,
-        translate: language.t,
         queryClient,
         session,
         protocol: serverSDK.protocol,
@@ -550,20 +545,23 @@ export function createServerSyncContextInner(serverSDK: ServerSDK) {
     if (eventType === "provider.catalog.updated") {
       void refreshProviders()
       const update = catalogUpdate(event)
-      if (update) showToast({ variant: "default", title: language.t("model.catalog.updated", update) })
+      if (update)
+        showToast({
+          variant: "default",
+          title: `${update.name} catalog updated: +${update.added}/−${update.removed} models, ${update.renamed} renamed`,
+        })
     }
     // Without a browser the MCP OAuth flow stalls silently unless the user gets the authorization URL.
     const browserOpenFailed = readMcpBrowserOpenFailed(event)
     if (browserOpenFailed)
       showToast(
         mcpBrowserOpenFailedToast(browserOpenFailed, {
-          t: (key, params) => language.t(key, params),
           openExternal: (url) => platform.openExternal(url),
           copy: (url) =>
             void navigator.clipboard
               .writeText(url)
               .then(() =>
-                showToast({ variant: "success", icon: "circle-check", title: language.t("session.share.copy.copied") }),
+                showToast({ variant: "success", icon: "circle-check", title: "Copied" }),
               )
               .catch(() => {}),
         }),
@@ -769,12 +767,11 @@ export const { use: useServerSync, provider: ServerSyncProvider } = createSimple
   // re-instantiating the subtree (mirrors useServerSDK).
   init: (props: { server?: Accessor<ServerConnection.Any | undefined> }) => {
     const global = useGlobal()
-    const language = useLanguage()
     const server = useServer()
 
     return createMemo<ServerSync>(() => {
       const conn = props.server?.() ?? server.current
-      if (!conn) throw new Error(language.t("error.serverSDK.noServerAvailable"))
+      if (!conn) throw new Error("No server available")
       return global.ensureServerCtx(conn).sync
     })
   },

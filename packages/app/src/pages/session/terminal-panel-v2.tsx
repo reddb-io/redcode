@@ -17,7 +17,6 @@ import { KeybindV2 } from "@reddb-io/redcode-ui/v2/keybind-v2"
 import { SortableTerminalTabV2 } from "@/components/session/session-sortable-terminal-tab-v2"
 import { Terminal } from "@/components/terminal"
 import { useCommand } from "@/context/command"
-import { useLanguage } from "@/context/language"
 import { useLayout } from "@/context/layout"
 import { useSettings } from "@/context/settings"
 import { useTerminal } from "@/context/terminal"
@@ -31,7 +30,6 @@ export function TerminalPanelV2(props: { stacked?: boolean } = {}) {
   const layout = useLayout()
   const terminal = useTerminal()
   const sdk = useSDK()
-  const language = useLanguage()
   const command = useCommand()
   const settings = useSettings()
   const { workspaceKey, view } = useSessionLayout()
@@ -117,7 +115,6 @@ export function TerminalPanelV2(props: { stacked?: boolean } = {}) {
     const dir = sdk().directory
     if (!dir) return
     if (!terminal.ready()) return
-    language.locale()
 
     setTerminalHandoff(
       workspaceKey(),
@@ -125,7 +122,6 @@ export function TerminalPanelV2(props: { stacked?: boolean } = {}) {
         terminalTabLabel({
           title: pty.title,
           titleNumber: pty.titleNumber,
-          t: language.t as (key: string, vars?: Record<string, string | number | boolean>) => string,
         }),
       ),
     )
@@ -169,7 +165,7 @@ export function TerminalPanelV2(props: { stacked?: boolean } = {}) {
       ref={root}
       id="terminal-panel"
       role="region"
-      aria-label={language.t("terminal.title")}
+      aria-label={"Terminal"}
       aria-hidden={!opened()}
       inert={!opened()}
       class="relative shrink-0 overflow-hidden bg-v2-background-bg-base"
@@ -224,11 +220,11 @@ export function TerminalPanelV2(props: { stacked?: boolean } = {}) {
                 </For>
                 <div class="flex-1" />
                 <div class="text-text-weak pr-2">
-                  {language.t("common.loading")}
-                  {language.t("common.loading.ellipsis")}
+                  {"Loading"}
+                  {"..."}
                 </div>
               </div>
-              <div class="flex-1 flex items-center justify-center text-text-weak">{language.t("terminal.loading")}</div>
+              <div class="flex-1 flex items-center justify-center text-text-weak">{"Loading terminal..."}</div>
             </div>
           }
         >
@@ -281,7 +277,7 @@ export function TerminalPanelV2(props: { stacked?: boolean } = {}) {
                       when={newLayout()}
                       fallback={
                         <TooltipKeybind
-                          title={language.t("command.terminal.new")}
+                          title={"New terminal"}
                           keybind={command.keybind("terminal.new")}
                           class="flex items-center"
                         >
@@ -290,7 +286,7 @@ export function TerminalPanelV2(props: { stacked?: boolean } = {}) {
                             variant="ghost"
                             iconSize="large"
                             onClick={() => terminal.new({ focus: true })}
-                            aria-label={language.t("command.terminal.new")}
+                            aria-label={"New terminal"}
                           />
                         </TooltipKeybind>
                       }
@@ -298,7 +294,7 @@ export function TerminalPanelV2(props: { stacked?: boolean } = {}) {
                       <TooltipV2
                         value={
                           <>
-                            {language.t("command.terminal.new")}
+                            {"New terminal"}
                             <Show when={newTerminalKeybind().length > 0}>
                               <KeybindV2 keys={newTerminalKeybind()} variant="neutral" />
                             </Show>
@@ -312,7 +308,7 @@ export function TerminalPanelV2(props: { stacked?: boolean } = {}) {
                           variant="ghost"
                           iconSize="large"
                           onClick={() => terminal.new({ focus: true })}
-                          aria-label={language.t("command.terminal.new")}
+                          aria-label={"New terminal"}
                         />
                       </TooltipV2>
                     </Show>

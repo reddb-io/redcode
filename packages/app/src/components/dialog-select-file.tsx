@@ -7,7 +7,6 @@ import { getDirectory, getFilename } from "@reddb-io/redcode-core/util/path"
 import { createMemo, createSignal, lazy, Match, Show, Switch } from "solid-js"
 import { formatKeybind } from "@/context/command"
 import { useServerSDK } from "@/context/server-sdk"
-import { useLanguage } from "@/context/language"
 import { usePlatform } from "@/context/platform"
 import { useSettings } from "@/context/settings"
 import { useSessionLayout } from "@/pages/session/session-layout"
@@ -44,7 +43,6 @@ export function DialogSelectFile(props: { mode?: DialogSelectFileMode; onOpenFil
 }
 
 function DialogSelectFileDesktopV2(props: { onOpenFile?: (path: string) => void }) {
-  const language = useLanguage()
   const serverSDK = useServerSDK()
   const { params } = useSessionLayout()
   const projectDirectory = createMemo(() => decode64(params.dir) ?? "")
@@ -55,7 +53,7 @@ function DialogSelectFileDesktopV2(props: { onOpenFile?: (path: string) => void 
       server={serverSDK().server}
       mode="file"
       start={projectDirectory()}
-      title={language.t("session.header.searchFiles")}
+      title={"Search files"}
       onSelect={(result) => {
         if (typeof result !== "string") return
         openFile(result)
@@ -90,7 +88,7 @@ function DialogSelectFileLegacy(props: { filesOnly: () => boolean; onOpenFile?: 
 
     if (props.filesOnly()) {
       const files = await palette.file.searchFiles(query)
-      const category = palette.language.t("palette.group.files")
+      const category = palette."Files"
       return files.map((path) => createCommandPaletteFileEntry(path, category))
     }
 
@@ -98,7 +96,7 @@ function DialogSelectFileLegacy(props: { filesOnly: () => boolean; onOpenFile?: 
       palette.file.searchFiles(query),
       Promise.resolve(palette.sessions(query)),
     ])
-    const category = palette.language.t("palette.group.files")
+    const category = palette."Files"
     const entries = files.map((path) => createCommandPaletteFileEntry(path, category))
     return [...palette.commandEntries(), ...nextSessions, ...entries]
   }
@@ -109,13 +107,13 @@ function DialogSelectFileLegacy(props: { filesOnly: () => boolean; onOpenFile?: 
         class="px-3"
         search={{
           placeholder: props.filesOnly()
-            ? palette.language.t("session.header.searchFiles")
-            : palette.language.t("palette.search.placeholder"),
+            ? palette."Search files"
+            : palette."Search files, commands, and sessions",
           autofocus: true,
           hideIcon: true,
         }}
-        emptyMessage={palette.language.t("palette.empty")}
-        loadingMessage={palette.language.t("common.loading")}
+        emptyMessage={palette."No results found"}
+        loadingMessage={palette."Loading"}
         items={items}
         key={(item) => item.id}
         filterKeys={["title", "description", "category"]}
@@ -149,7 +147,7 @@ function DialogSelectFileLegacy(props: { filesOnly: () => boolean; onOpenFile?: 
                   </Show>
                 </div>
                 <Show when={item.keybind}>
-                  <Keybind class="rounded-[4px]">{formatKeybind(item.keybind ?? "", palette.language.t)}</Keybind>
+                  <Keybind class="rounded-[4px]">{formatKeybind(item.keybind ?? "")}</Keybind>
                 </Show>
               </div>
             </Match>
@@ -176,7 +174,7 @@ function DialogSelectFileLegacy(props: { filesOnly: () => boolean; onOpenFile?: 
                 </div>
                 <Show when={item.updated}>
                   <span class="text-12-regular text-text-weak whitespace-nowrap ml-2">
-                    {getRelativeTime(new Date(item.updated!).toISOString(), palette.language.t)}
+                    {getRelativeTime(new Date(item.updated!).toISOString())}
                   </span>
                 </Show>
               </div>

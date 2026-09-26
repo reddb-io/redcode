@@ -3,7 +3,6 @@ import { Component, createMemo, createSignal, startTransition } from "solid-js"
 import { Dialog } from "@reddb-io/redcode-ui/v2/dialog-v2"
 import { TabsV2 } from "@reddb-io/redcode-ui/v2/tabs-v2"
 import { Icon } from "@reddb-io/redcode-ui/icon"
-import { useLanguage } from "@/context/language"
 import { usePlatform } from "@/context/platform"
 import { SettingsGeneralV2 } from "./general"
 import { SettingsKeybinds } from "../settings-keybinds"
@@ -20,7 +19,6 @@ export const DialogSettings: Component<{
   sessionID?: string
   defaultValue?: string
 }> = (props) => {
-  const language = useLanguage()
   const platform = usePlatform()
   const dialog = useDialog()
   const layout = useLayout()
@@ -56,44 +54,44 @@ export const DialogSettings: Component<{
             <div class="flex flex-col gap-3 w-full">
               <div class="flex flex-col gap-3">
                 <div class="flex flex-col gap-1.5">
-                  <TabsV2.SectionTitle>{language.t("settings.section.desktop")}</TabsV2.SectionTitle>
+                  <TabsV2.SectionTitle>{"Desktop"}</TabsV2.SectionTitle>
                   <div class="flex flex-col gap-1.5 w-full">
                     <TabsV2.Trigger value="general">
                       <Icon name="sliders" />
-                      {language.t("settings.tab.general")}
+                      {"General"}
                     </TabsV2.Trigger>
                     <TabsV2.Trigger value="shortcuts">
                       <Icon name="keyboard" />
-                      {language.t("settings.tab.shortcuts")}
+                      {"Shortcuts"}
                     </TabsV2.Trigger>
                   </div>
                 </div>
 
                 <div class="flex flex-col gap-1.5">
-                  <TabsV2.SectionTitle>{language.t("settings.section.server")}</TabsV2.SectionTitle>
+                  <TabsV2.SectionTitle>{"Server"}</TabsV2.SectionTitle>
                   <div class="flex flex-col gap-1.5 w-full">
                     <TabsV2.Trigger value="servers">
                       <Icon name="server" />
-                      {language.t("status.popover.tab.servers")}
+                      {"Servers"}
                     </TabsV2.Trigger>
                     <TabsV2.Trigger value="providers">
                       <Icon name="providers" />
-                      {language.t("settings.providers.title")}
+                      {"Providers"}
                     </TabsV2.Trigger>
                     <TabsV2.Trigger value="intelligence">
                       <Icon name="models" />
-                      {language.t("settings.intelligence.title")}
+                      {"Intelligence"}
                     </TabsV2.Trigger>
                     <TabsV2.Trigger value="models">
                       <Icon name="models" />
-                      {language.t("settings.models.title")}
+                      {"Models"}
                     </TabsV2.Trigger>
                   </div>
                 </div>
               </div>
             </div>
             <div class="settings-v2-nav-footer">
-              <span>{language.t("app.name.desktop")}</span>
+              <span>{"Redcode Desktop"}</span>
               <span>v{platform.version}</span>
             </div>
           </div>

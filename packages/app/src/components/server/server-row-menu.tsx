@@ -3,7 +3,6 @@ import { IconButtonV2 } from "@reddb-io/redcode-ui/v2/icon-button-v2"
 import { MenuV2 } from "@reddb-io/redcode-ui/v2/menu-v2"
 import { type Component, Show } from "solid-js"
 import { useServerManagementController } from "@/components/dialog-select-server"
-import { useLanguage } from "@/context/language"
 import { ServerConnection } from "@/context/server"
 
 export const ServerRowMenu: Component<{
@@ -13,12 +12,11 @@ export const ServerRowMenu: Component<{
   open?: boolean
   onOpenChange?: (open: boolean) => void
 }> = (props) => {
-  const language = useLanguage()
   const key = ServerConnection.key(props.server)
   return (
     <ServerRowMenuView
       server={props.server}
-      labels={serverMenuLabels(language)}
+      labels={serverMenuLabels()}
       canDefault={props.controller.canDefault()}
       isDefault={props.controller.defaultKey() === key}
       onEdit={props.onEdit}
@@ -31,14 +29,14 @@ export const ServerRowMenu: Component<{
   )
 }
 
-export function serverMenuLabels(language: ReturnType<typeof useLanguage>) {
+export function serverMenuLabels() {
   return {
-    more: language.t("common.moreOptions"),
-    server: language.t("settings.section.server"),
-    edit: language.t("dialog.server.menu.edit"),
-    default: language.t("dialog.server.menu.default"),
-    defaultRemove: language.t("dialog.server.menu.defaultRemove"),
-    delete: language.t("dialog.server.menu.delete"),
+    more: "More options",
+    server: "Server",
+    edit: "Edit",
+    default: "Set as default",
+    defaultRemove: "Remove default",
+    delete: "Delete",
   }
 }
 

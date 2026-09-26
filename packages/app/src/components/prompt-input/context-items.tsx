@@ -81,7 +81,7 @@ export const PromptContextItems: Component<ContextItemsProps> = (props) => {
                         e.stopPropagation()
                         props.remove(item)
                       }}
-                      aria-label={props.t("prompt.context.removeFile")}
+                      aria-label={"Remove file from context"}
                     />
                   </div>
                   <Show when={item.comment}>

@@ -8,7 +8,6 @@ import { Icon } from "@reddb-io/redcode-ui/icon"
 import { createSortable } from "@thisbeyond/solid-dnd"
 import { useLayout, type LocalProject } from "@/context/layout"
 import { useServerSync } from "@/context/server-sync"
-import { useLanguage } from "@/context/language"
 import { useNotification } from "@/context/notification"
 import { ProjectIcon, SessionItem, type SessionItemProps } from "./sidebar-items"
 import { displayName, sortedRootSessions } from "./helpers"
@@ -71,7 +70,6 @@ const ProjectTile = (props: {
   setMenu: (value: boolean) => void
   setOpen: (value: boolean) => void
   setSuppressHover: (value: boolean) => void
-  language: ReturnType<typeof useLanguage>
 }): JSX.Element => {
   const notification = useNotification()
   const layout = useLayout()
@@ -149,7 +147,7 @@ const ProjectTile = (props: {
       <ContextMenu.Portal>
         <ContextMenu.Content>
           <ContextMenu.Item onSelect={() => props.showEditProjectDialog(props.project)}>
-            <ContextMenu.ItemLabel>{props.language.t("common.edit")}</ContextMenu.ItemLabel>
+            <ContextMenu.ItemLabel>{"Edit"}</ContextMenu.ItemLabel>
           </ContextMenu.Item>
           <ContextMenu.Item
             data-action="project-workspaces-toggle"
@@ -159,8 +157,8 @@ const ProjectTile = (props: {
           >
             <ContextMenu.ItemLabel>
               {props.workspacesEnabled(props.project)
-                ? props.language.t("sidebar.workspaces.disable")
-                : props.language.t("sidebar.workspaces.enable")}
+                ? "Disable workspaces"
+                : "Enable workspaces"}
             </ContextMenu.ItemLabel>
           </ContextMenu.Item>
           <ContextMenu.Item
@@ -169,7 +167,7 @@ const ProjectTile = (props: {
             disabled={unseenCount() === 0}
             onSelect={clear}
           >
-            <ContextMenu.ItemLabel>{props.language.t("sidebar.project.clearNotifications")}</ContextMenu.ItemLabel>
+            <ContextMenu.ItemLabel>{"Clear notifications"}</ContextMenu.ItemLabel>
           </ContextMenu.Item>
           <ContextMenu.Separator />
           <ContextMenu.Item
@@ -177,7 +175,7 @@ const ProjectTile = (props: {
             data-project={base64Encode(props.project.worktree)}
             onSelect={() => props.closeProject(props.project.worktree)}
           >
-            <ContextMenu.ItemLabel>{props.language.t("common.close")}</ContextMenu.ItemLabel>
+            <ContextMenu.ItemLabel>{"Close"}</ContextMenu.ItemLabel>
           </ContextMenu.Item>
         </ContextMenu.Content>
       </ContextMenu.Portal>
@@ -195,13 +193,12 @@ const ProjectPreviewPanel = (props: {
   projectSessions: Accessor<ReturnType<typeof sortedRootSessions>>
   workspaceSessions: (directory: string) => ReturnType<typeof sortedRootSessions>
   ctx: ProjectSidebarContext
-  language: ReturnType<typeof useLanguage>
 }): JSX.Element => (
   <div class="-m-3 p-2 flex flex-col w-72">
     <div class="px-4 pt-2 pb-1 flex items-center gap-2">
       <div class="text-14-medium text-text-strong truncate grow">{displayName(props.project)}</div>
     </div>
-    <div class="px-4 pb-2 text-12-medium text-text-weak">{props.language.t("sidebar.project.recentSessions")}</div>
+    <div class="px-4 pb-2 text-12-medium text-text-weak">{"Recent sessions"}</div>
     <div class="px-2 pb-2 flex flex-col gap-2">
       <Show
         when={props.workspaceEnabled()}
@@ -262,7 +259,7 @@ const ProjectPreviewPanel = (props: {
           props.ctx.navigateToProject(props.project.worktree)
         }}
       >
-        {props.language.t("sidebar.project.viewAllSessions")}
+        {"View all sessions"}
       </Button>
     </div>
   </div>
@@ -275,7 +272,6 @@ export const SortableProject = (props: {
   sortNow: Accessor<number>
 }): JSX.Element => {
   const serverSync = useServerSync()
-  const language = useLanguage()
   const sortable = createSortable(props.project.worktree)
   const selected = createMemo(() => props.ctx.currentProject()?.worktree === props.project.worktree)
   const workspaces = createMemo(() => props.ctx.workspaceIds(props.project).slice(0, 2))
@@ -296,7 +292,7 @@ export const SortableProject = (props: {
   const label = (directory: string) => {
     const [data] = serverSync().child(directory, { bootstrap: false })
     const kind =
-      directory === props.project.worktree ? language.t("workspace.type.local") : language.t("workspace.type.sandbox")
+      directory === props.project.worktree ? "local" : "sandbox"
     const name = props.ctx.workspaceLabel(directory, data.vcs?.branch, props.project.id)
     return `${kind} : ${name}`
   }
@@ -337,7 +333,6 @@ export const SortableProject = (props: {
       setMenu={(value) => setState("menu", value)}
       setOpen={(value) => props.ctx.onHoverOpenChanged(props.project.worktree, value)}
       setSuppressHover={(value) => setState("suppressHover", value)}
-      language={language}
     />
   )
 
@@ -368,7 +363,6 @@ export const SortableProject = (props: {
             projectSessions={projectSessions}
             workspaceSessions={workspaceSessions}
             ctx={props.ctx}
-            language={language}
           />
         </HoverCard>
       </Show>

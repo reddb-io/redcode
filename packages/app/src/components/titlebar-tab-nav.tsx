@@ -7,7 +7,6 @@ import { IconButtonV2 } from "@reddb-io/redcode-ui/v2/icon-button-v2"
 import { Icon as IconV2 } from "@reddb-io/redcode-ui/v2/icon"
 import { MenuV2 } from "@reddb-io/redcode-ui/v2/menu-v2"
 import { useGlobal } from "@/context/global"
-import { useLanguage } from "@/context/language"
 import { ServerConnection, serverName } from "@/context/server"
 import { displayName, projectForSession } from "@/pages/layout/helpers"
 import { SessionTabAvatar } from "@/pages/layout/session-tab-avatar"
@@ -35,7 +34,6 @@ export function TabNavItem(props: {
   pressed?: boolean
   hidden?: boolean
 }) {
-  const language = useLanguage()
   const [menu, setMenu] = createStore({ open: false, rename: false })
   const [editing, setEditing] = createSignal(false)
   const [titleOverflowing, setTitleOverflowing] = createSignal(false)
@@ -297,7 +295,7 @@ export function TabNavItem(props: {
           }}
           onClick={closeTab}
           icon={<IconV2 name="xmark-small" />}
-          aria-label={language.t("common.closeTab")}
+          aria-label={"Close tab"}
         />
       </div>
     </div>
@@ -334,9 +332,9 @@ export function TabNavItem(props: {
           }}
         >
           <MenuV2.Item disabled={!props.session() || rename.isPending} onSelect={() => setMenu("rename", true)}>
-            {language.t("common.rename")}
+            {"Rename"}
           </MenuV2.Item>
-          <MenuV2.Item onSelect={props.onClose}>{language.t("common.closeTab")}</MenuV2.Item>
+          <MenuV2.Item onSelect={props.onClose}>{"Close tab"}</MenuV2.Item>
         </MenuV2.Context.Content>
       </MenuV2.Context.Portal>
     </MenuV2.Context>
@@ -355,7 +353,6 @@ export function DraftTabItem(props: {
   pressed?: boolean
   hidden?: boolean
 }) {
-  const language = useLanguage()
   const closeTab = (event: MouseEvent) => {
     event.preventDefault()
     event.stopPropagation()
@@ -430,7 +427,7 @@ export function DraftTabItem(props: {
           class="hover-reveal relative z-10 group-hover:opacity-100 group-data-[active=true]:opacity-100 group-data-[editing=true]:opacity-100"
           onClick={closeTab}
           icon={<IconV2 name="xmark-small" />}
-          aria-label={language.t("common.closeTab")}
+          aria-label={"Close tab"}
         />
       </div>
     </div>

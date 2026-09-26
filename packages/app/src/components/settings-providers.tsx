@@ -4,7 +4,6 @@ import { ProviderIcon } from "@reddb-io/redcode-ui/provider-icon"
 import { Tag } from "@reddb-io/redcode-ui/tag"
 import { popularProviders, useProviders } from "@/hooks/use-providers"
 import { createMemo, type Component, For, Show } from "solid-js"
-import { useLanguage } from "@/context/language"
 import { useServerProtocol } from "@/context/server-sdk"
 import { useServerSync } from "@/context/server-sync"
 import { DialogConnectProvider, useProviderConnectController } from "./dialog-connect-provider"
@@ -18,14 +17,14 @@ type ProviderSource = "env" | "api" | "config" | "custom"
 type ProviderItem = ReturnType<ReturnType<typeof useProviders>["connected"]>[number]
 
 const PROVIDER_NOTES = [
-  { match: (id: string) => id === "opencode", key: "dialog.provider.opencode.note" },
-  { match: (id: string) => id === "opencode-go", key: "dialog.provider.opencodeGo.tagline" },
-  { match: (id: string) => id === "anthropic", key: "dialog.provider.anthropic.note" },
-  { match: (id: string) => id.startsWith("github-copilot"), key: "dialog.provider.copilot.note" },
-  { match: (id: string) => id === "openai", key: "dialog.provider.openai.note" },
-  { match: (id: string) => id === "google", key: "dialog.provider.google.note" },
-  { match: (id: string) => id === "openrouter", key: "dialog.provider.openrouter.note" },
-  { match: (id: string) => id === "vercel", key: "dialog.provider.vercel.note" },
+  { match: (id: string) => id === "opencode", key: "Curated models including Claude, GPT, Gemini and more" },
+  { match: (id: string) => id === "opencode-go", key: "Low cost subscription for everyone" },
+  { match: (id: string) => id === "anthropic", key: "Direct access to Claude models, including Pro and Max" },
+  { match: (id: string) => id.startsWith("github-copilot"), key: "AI models for coding assistance via GitHub Copilot" },
+  { match: (id: string) => id === "openai", key: "GPT models for fast, capable general AI tasks" },
+  { match: (id: string) => id === "google", key: "Gemini models for fast, structured responses" },
+  { match: (id: string) => id === "openrouter", key: "Access all supported models from one provider" },
+  { match: (id: string) => id === "vercel", key: "Unified access to AI models with smart routing" },
 ] as const
 
 export const SettingsProviders: Component<{ onBack?: () => void }> = (props) => {
@@ -38,7 +37,6 @@ export const SettingsProviders: Component<{ onBack?: () => void }> = (props) => 
 
 const SettingsProvidersContent: Component<{ onBack?: () => void }> = (props) => {
   const dialog = useDialog()
-  const language = useLanguage()
   const protocol = useServerProtocol()
   const serverSync = useServerSync()
   const providers = useProviders(() => undefined)
@@ -76,8 +74,8 @@ const SettingsProvidersContent: Component<{ onBack?: () => void }> = (props) => 
   // A RedRouter connection says what its key may do: an admin key also manages keys over MCP.
   const keyRole = (item: ProviderItem) => {
     const role = item.router?.role
-    if (role === "admin") return language.t("settings.providers.tag.adminKey")
-    if (role === "standard") return language.t("settings.providers.tag.standardKey")
+    if (role === "admin") return "Admin key"
+    if (role === "standard") return "Standard key"
     return undefined
   }
 
@@ -85,14 +83,14 @@ const SettingsProvidersContent: Component<{ onBack?: () => void }> = (props) => 
     const router = routerName(item)
     if (router) return router
     const current = source(item)
-    if (current === "env") return language.t("settings.providers.tag.environment")
-    if (current === "api") return language.t("provider.connect.method.apiKey")
+    if (current === "env") return "Environment"
+    if (current === "api") return "API key"
     if (current === "config") {
-      if (isConfigCustom(item.id)) return language.t("settings.providers.tag.custom")
-      return language.t("settings.providers.tag.config")
+      if (isConfigCustom(item.id)) return "Custom"
+      return "Config"
     }
-    if (current === "custom") return language.t("settings.providers.tag.custom")
-    return language.t("settings.providers.tag.other")
+    if (current === "custom") return "Custom"
+    return "Other"
   }
 
   const note = (id: string) => PROVIDER_NOTES.find((item) => item.match(id))?.key
@@ -109,20 +107,20 @@ const SettingsProvidersContent: Component<{ onBack?: () => void }> = (props) => 
     <div class="flex flex-col h-full overflow-y-auto no-scrollbar px-4 pb-10 sm:px-10 sm:pb-10">
       <div class="sticky top-0 z-10 bg-[linear-gradient(to_bottom,var(--surface-stronger-non-alpha)_calc(100%_-_24px),transparent)]">
         <div class="flex items-center justify-between gap-4 pt-6 pb-8 max-w-[720px]">
-          <h2 class="text-16-medium text-text-strong">{language.t("settings.providers.title")}</h2>
+          <h2 class="text-16-medium text-text-strong">{"Providers"}</h2>
           <SettingsServerPicker />
         </div>
       </div>
 
       <div class="flex flex-col gap-8 max-w-[720px]">
         <div class="flex flex-col gap-1" data-component="connected-providers-section">
-          <h3 class="text-14-medium text-text-strong pb-2">{language.t("settings.providers.section.connected")}</h3>
+          <h3 class="text-14-medium text-text-strong pb-2">{"Connected providers"}</h3>
           <SettingsList>
             <Show
               when={connected().length > 0}
               fallback={
                 <div class="py-4 text-14-regular text-text-weak">
-                  {language.t("settings.providers.connected.empty")}
+                  {"No connected providers"}
                 </div>
               }
             >
@@ -136,7 +134,7 @@ const SettingsProvidersContent: Component<{ onBack?: () => void }> = (props) => 
                       <Show when={keyRole(item)}>{(role) => <Tag>{role()}</Tag>}</Show>
                     </div>
                     <Button size="large" variant="ghost" onClick={() => void removeProvider(item.id, item.name)}>
-                      {language.t("provider.remove.button")}
+                      {"Remove"}
                     </Button>
                   </div>
                 )}
@@ -146,7 +144,7 @@ const SettingsProvidersContent: Component<{ onBack?: () => void }> = (props) => 
         </div>
 
         <div class="flex flex-col gap-1">
-          <h3 class="text-14-medium text-text-strong pb-2">{language.t("settings.providers.section.popular")}</h3>
+          <h3 class="text-14-medium text-text-strong pb-2">{"Popular providers"}</h3>
           <SettingsList>
             <For each={popular()}>
               {(item) => (
@@ -156,18 +154,18 @@ const SettingsProvidersContent: Component<{ onBack?: () => void }> = (props) => 
                       <ProviderIcon id={item.id} class="size-5 shrink-0 icon-strong-base" />
                       <span class="text-14-medium text-text-strong">{item.name}</span>
                       <Show when={item.id === "opencode"}>
-                        <Tag>{language.t("dialog.provider.tag.recommended")}</Tag>
+                        <Tag>{"Recommended"}</Tag>
                       </Show>
                       <Show when={item.id === "opencode-go"}>
-                        <Tag>{language.t("dialog.provider.tag.recommended")}</Tag>
+                        <Tag>{"Recommended"}</Tag>
                       </Show>
                     </div>
                     <Show when={note(item.id)}>
-                      {(key) => <span class="text-12-regular text-text-weak pl-8">{language.t(key())}</span>}
+                      {(key) => <span class="text-12-regular text-text-weak pl-8">{key()}</span>}
                     </Show>
                   </div>
                   <Button size="large" variant="secondary" icon="plus-small" onClick={() => connect(item.id)}>
-                    {language.t("common.connect")}
+                    {"Connect"}
                   </Button>
                 </div>
               )}
@@ -181,11 +179,11 @@ const SettingsProvidersContent: Component<{ onBack?: () => void }> = (props) => 
                 <div class="flex flex-col min-w-0">
                   <div class="flex flex-wrap items-center gap-x-3 gap-y-1">
                     <ProviderIcon id="synthetic" class="size-5 shrink-0 icon-strong-base" />
-                    <span class="text-14-medium text-text-strong">{language.t("provider.custom.title")}</span>
-                    <Tag>{language.t("settings.providers.tag.custom")}</Tag>
+                    <span class="text-14-medium text-text-strong">{"Custom provider"}</span>
+                    <Tag>{"Custom"}</Tag>
                   </div>
                   <span class="text-12-regular text-text-weak pl-8">
-                    {language.t("settings.providers.custom.description")}
+                    {"Add an OpenAI-compatible provider by base URL."}
                   </span>
                 </div>
                 <Button
@@ -196,7 +194,7 @@ const SettingsProvidersContent: Component<{ onBack?: () => void }> = (props) => 
                     dialog.show(() => <DialogCustomProvider onBack={dialog.close} />)
                   }}
                 >
-                  {language.t("common.connect")}
+                  {"Connect"}
                 </Button>
               </div>
             </Show>
@@ -207,7 +205,7 @@ const SettingsProvidersContent: Component<{ onBack?: () => void }> = (props) => 
             class="px-0 py-0 mt-5 text-14-medium text-text-interactive-base text-left justify-start hover:bg-transparent active:bg-transparent"
             onClick={() => connect()}
           >
-            {language.t("dialog.provider.viewAll")}
+            {"Show more providers"}
           </Button>
         </div>
       </div>

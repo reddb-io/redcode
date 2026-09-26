@@ -24,7 +24,6 @@ import { TextShimmer } from "@reddb-io/redcode-ui/text-shimmer"
 import { SessionRetry } from "./session-retry"
 import { TextReveal } from "@reddb-io/redcode-ui/text-reveal"
 import { createAutoScroll } from "@reddb-io/redcode-ui/hooks"
-import { useI18n } from "@reddb-io/redcode-ui/context/i18n"
 import { normalize } from "./session-diff"
 
 function record(value: unknown): value is Record<string, unknown> {
@@ -170,7 +169,6 @@ export function SessionTurn(
   }>,
 ) {
   const data = useData()
-  const i18n = useI18n()
   const fileComponent = useFileComponent()
 
   const emptyMessages: MessageType[] = []
@@ -291,8 +289,8 @@ export function SessionTurn(
 
   const interrupted = createMemo(() => assistantMessages().some((m) => m.error?.name === "MessageAbortedError"))
   const divider = createMemo(() => {
-    if (compaction()) return i18n.t("ui.messagePart.compaction")
-    if (interrupted()) return i18n.t("ui.message.interrupted")
+    if (compaction()) return "Session compacted"
+    if (interrupted()) return "Interrupted"
     return ""
   })
   const error = createMemo(
@@ -421,7 +419,7 @@ export function SessionTurn(
               </Show>
               <Show when={showThinking()}>
                 <div data-slot="session-turn-thinking">
-                  <TextShimmer text={i18n.t("ui.sessionTurn.status.thinking")} />
+                  <TextShimmer text={"Thinking"} />
                   <Show when={!showReasoningSummaries()}>
                     <TextReveal
                       text={reasoningHeading()}
@@ -441,12 +439,12 @@ export function SessionTurn(
                 >
                   <div data-slot="session-turn-diffs-header">
                     <span data-slot="session-turn-diffs-label">
-                      {i18n.plural("ui.sessionTurn.diffs.changed", edited())}
+                      {edited() === 1 ? "1 Changed file" : `${edited()} Changed files`}
                     </span>
                     <DiffChanges changes={diffs()} />
                     <Show when={overflow() > 0}>
                       <span data-slot="session-turn-diffs-toggle" onClick={toggleAll}>
-                        {showAll() ? i18n.t("ui.sessionTurn.diffs.showLess") : i18n.t("ui.sessionTurn.diffs.showAll")}
+                        {showAll() ? "Show less" : "Show all"}
                       </span>
                     </Show>
                   </div>
@@ -519,7 +517,7 @@ export function SessionTurn(
                     </Accordion>
                     <Show when={!showAll() && overflow() > 0}>
                       <div data-slot="session-turn-diffs-more" onClick={toggleAll}>
-                        {i18n.t("ui.sessionTurn.diffs.more", { count: String(overflow()) })}
+                        {`+${String(overflow())} more files`}
                       </div>
                     </Show>
                   </div>

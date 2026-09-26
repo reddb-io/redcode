@@ -5,7 +5,6 @@ import { List } from "@reddb-io/redcode-ui/list"
 import type { ListRef } from "@reddb-io/redcode-ui/list"
 import { getDirectory, getFilename } from "@reddb-io/redcode-core/util/path"
 import { createMemo, createResource, createSignal } from "solid-js"
-import { useLanguage } from "@/context/language"
 import { ServerConnection } from "@/context/server"
 import { useGlobal } from "@/context/global"
 import { cleanPickerInput, createDirectorySearch, displayPickerPath } from "./directory-picker-domain"
@@ -54,7 +53,6 @@ export function DialogSelectDirectory(props: DialogSelectDirectoryProps) {
   const global = useGlobal()
   const { sync, sdk, ...serverCtx } = global.ensureServerCtx(props.server)
   const dialog = useDialog()
-  const language = useLanguage()
 
   const [filter, setFilter] = createSignal("")
   let list: ListRef | undefined
@@ -129,12 +127,12 @@ export function DialogSelectDirectory(props: DialogSelectDirectoryProps) {
   }
 
   return (
-    <Dialog title={props.title ?? language.t("command.project.open")}>
+    <Dialog title={props.title ?? "Open project"}>
       <List
         class="px-3"
-        search={{ placeholder: language.t("dialog.directory.search.placeholder"), autofocus: true }}
-        emptyMessage={language.t("dialog.directory.empty")}
-        loadingMessage={language.t("common.loading")}
+        search={{ placeholder: "Search folders", autofocus: true }}
+        emptyMessage={"No folders found"}
+        loadingMessage={"Loading"}
         items={items}
         key={(x) => x.absolute}
         filterKeys={["search"]}
@@ -144,7 +142,7 @@ export function DialogSelectDirectory(props: DialogSelectDirectoryProps) {
           return a.category === "recent" ? -1 : 1
         }}
         groupHeader={(group) =>
-          group.category === "recent" ? language.t("home.recentProjects") : language.t("command.project.open")
+          group.category === "recent" ? "Recent projects" : "Open project"
         }
         ref={(r) => (list = r)}
         onFilter={(value) => setFilter(cleanPickerInput(value))}

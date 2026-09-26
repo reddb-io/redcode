@@ -9,7 +9,6 @@ import { getFilename } from "@reddb-io/redcode-core/util/path"
 import { A, useParams } from "@solidjs/router"
 import { type Accessor, createMemo, For, type JSX, Match, Show, Switch } from "solid-js"
 import { useServerSync } from "@/context/server-sync"
-import { useLanguage } from "@/context/language"
 import { getAvatarColors, type LocalProject, useLayout } from "@/context/layout"
 import { useNotification } from "@/context/notification"
 import { usePermission } from "@/context/permission"
@@ -146,7 +145,6 @@ const SessionRow = (props: {
 export const SessionItem = (props: SessionItemProps): JSX.Element => {
   const params = useParams()
   const layout = useLayout()
-  const language = useLanguage()
   const notification = useNotification()
   const permission = usePermission()
   const serverSync = useServerSync()
@@ -251,12 +249,12 @@ export const SessionItem = (props: SessionItemProps): JSX.Element => {
                 "group-focus-within/session:w-6 group-focus-within/session:opacity-100 group-focus-within/session:pointer-events-auto": true,
               }}
             >
-              <Tooltip value={language.t("common.archive")} placement="top">
+              <Tooltip value={"Archive"} placement="top">
                 <IconButton
                   icon="archive"
                   variant="ghost"
                   class="size-6 rounded-md"
-                  aria-label={language.t("common.archive")}
+                  aria-label={"Archive"}
                   onClick={(event) => {
                     event.preventDefault()
                     event.stopPropagation()
@@ -287,8 +285,7 @@ export const NewSessionItem = (props: {
   clearHoverProjectSoon: () => void
 }): JSX.Element => {
   const layout = useLayout()
-  const language = useLanguage()
-  const label = language.t("command.session.new")
+  const label = "New session"
   const tooltip = () => props.mobile || !props.sidebarExpanded()
   const item = (
     <A

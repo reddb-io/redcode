@@ -14,7 +14,6 @@ import { Icon } from "@reddb-io/redcode-ui/icon"
 import { Icon as IconV2 } from "@reddb-io/redcode-ui/v2/icon"
 import { ProjectAvatar } from "@reddb-io/redcode-ui/v2/project-avatar-v2"
 import { getProjectAvatarVariant } from "@/context/layout"
-import { useLanguage } from "@/context/language"
 import { displayName, getProjectAvatarSource } from "@/pages/layout/helpers"
 import { pathKey } from "@/utils/path-key"
 import { handleDocumentSearchKeydown } from "@/utils/search-keydown"
@@ -52,7 +51,6 @@ export function createPromptProjectController(input: {
   controls: Accessor<PromptProjectControls>
   onDone: () => void
 }) {
-  const language = useLanguage()
   const [store, setStore] = createStore({ open: false, search: "", active: "" })
   let searchRef: HTMLInputElement | undefined
 
@@ -111,7 +109,7 @@ export function createPromptProjectController(input: {
   }
   const add = (server?: string) => {
     setStore({ open: false, search: "", active: "" })
-    input.controls().add(language.t("command.project.open"), server)
+    input.controls().add("Open project", server)
   }
   const setSearch = (value: string) => {
     const search = value.trim().toLowerCase()
@@ -135,10 +133,10 @@ export function createPromptProjectController(input: {
     search: () => store.search,
     active: () => store.active,
     labels: {
-      add: () => language.t("session.new.project.add"),
-      clear: () => language.t("common.clear"),
-      new: () => language.t("session.new.project.new"),
-      search: () => language.t("session.new.project.search"),
+      add: () => "Add project",
+      clear: () => "Clear",
+      new: () => "New project",
+      search: () => "Search projects",
     },
     add,
     select,

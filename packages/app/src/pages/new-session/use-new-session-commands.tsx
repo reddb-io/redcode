@@ -1,7 +1,6 @@
 import { useDialog } from "@reddb-io/redcode-ui/context/dialog"
 import { useSettingsCommand } from "@/components/settings-dialog"
 import { useCommand } from "@/context/command"
-import { useLanguage } from "@/context/language"
 
 export function useNewSessionCommands(input: {
   restoreFocus: () => void
@@ -12,13 +11,12 @@ export function useNewSessionCommands(input: {
 }) {
   const command = useCommand()
   const dialog = useDialog()
-  const language = useLanguage()
 
   useSettingsCommand()
   command.register("new-session", () => [
     {
       id: "command.palette",
-      title: language.t("command.palette"),
+      title: "Command palette",
       hidden: true,
       onSelect: async () => {
         const { DialogSelectFile } = await import("@/components/dialog-select-file")
@@ -27,15 +25,15 @@ export function useNewSessionCommands(input: {
     },
     {
       id: "input.focus",
-      title: language.t("command.input.focus"),
-      category: language.t("command.category.view"),
+      title: "Focus input",
+      category: "View",
       keybind: "ctrl+l",
       onSelect: input.restoreFocus,
     },
     {
       id: "project.select",
-      title: language.t("session.new.project.search"),
-      category: language.t("command.category.project"),
+      title: "Search projects",
+      category: "Project",
       keybind: "mod+shift+o",
       disabled: input.project.empty(),
       onSelect: input.project.open,

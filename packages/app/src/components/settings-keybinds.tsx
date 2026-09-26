@@ -11,7 +11,6 @@ import { TextInputV2 } from "@reddb-io/redcode-ui/v2/text-input-v2"
 import { showToast } from "@/utils/toast"
 import fuzzysort from "fuzzysort"
 import { DEFAULT_PALETTE_KEYBIND, formatKeybind, parseKeybind, useCommand } from "@/context/command"
-import { useLanguage } from "@/context/language"
 import { useSettings } from "@/context/settings"
 import { SettingsList } from "./settings-list"
 import { SettingsListV2 } from "./settings-v2/parts/list"
@@ -30,26 +29,19 @@ type KeybindMeta = {
 
 type KeybindMap = Record<string, string | undefined>
 type CommandContext = ReturnType<typeof useCommand>
-type LanguageContext = ReturnType<typeof useLanguage>
 type SettingsContext = ReturnType<typeof useSettings>
 
 const GROUPS: KeybindGroup[] = ["General", "Session", "Navigation", "Model and agent", "Terminal", "Prompt"]
 
-type GroupKey =
-  | "settings.shortcuts.group.general"
-  | "settings.shortcuts.group.session"
-  | "settings.shortcuts.group.navigation"
-  | "settings.shortcuts.group.modelAndAgent"
-  | "settings.shortcuts.group.terminal"
-  | "settings.shortcuts.group.prompt"
+type GroupKey = KeybindGroup
 
 const groupKey: Record<KeybindGroup, GroupKey> = {
-  General: "settings.shortcuts.group.general",
-  Session: "settings.shortcuts.group.session",
-  Navigation: "settings.shortcuts.group.navigation",
-  "Model and agent": "settings.shortcuts.group.modelAndAgent",
-  Terminal: "settings.shortcuts.group.terminal",
-  Prompt: "settings.shortcuts.group.prompt",
+  General: "General",
+  Session: "Session",
+  Navigation: "Navigation",
+  "Model and agent": "Model and agent",
+  Terminal: "Terminal",
+  Prompt: "Prompt",
 }
 
 function groupFor(id: string): KeybindGroup {
@@ -206,7 +198,6 @@ function useKeyCapture(input: {
   stop: () => void
   set: (id: string, keybind: string) => void
   used: () => Map<string, { id: string; title: string }[]>
-  language: ReturnType<typeof useLanguage>
 }) {
   onMount(() => {
     const handle = (event: KeyboardEvent) => {
@@ -247,11 +238,8 @@ function useKeyCapture(input: {
 
       if (conflicts.size > 0) {
         showToast({
-          title: input.language.t("settings.shortcuts.conflict.title"),
-          description: input.language.t("settings.shortcuts.conflict.description", {
-            keybind: formatKeybind(next, input.language.t),
-            titles: [...conflicts.values()].join(", "),
-          }),
+          title: "Shortcut already in use",
+          description: `${formatKeybind(next)} is already assigned to ${[...conflicts.values()].join(", ")}.`,
         })
         return
       }
@@ -274,13 +262,10 @@ export function createKeybindSettingsController(
     target?: Document
     notify?: (toast: { title: string; description: string }) => void
   },
-  language: Pick<LanguageContext, "locale" | "t"> = useLanguage(),
 ) {
   const [store, setStore] = createStore({ active: null as string | null })
   const overrides = createMemo(() => keybinds(input.settings.current.keybinds))
-  const list = createMemo(() => {
-    language.locale()
-    return listFor(input.command, overrides(), language.t("command.palette"))
+  const list = createMemo(() => listFor(input.command, overrides(), "Command palette")
   })
   const grouped = createMemo(() => groupedFor(list()))
   const title = (id: string) => list().get(id)?.title ?? ""
@@ -364,11 +349,8 @@ export function createKeybindSettingsController(
 
     if (conflicts.size > 0) {
       notify({
-        title: language.t("settings.shortcuts.conflict.title"),
-        description: language.t("settings.shortcuts.conflict.description", {
-          keybind: formatKeybind(next, language.t),
-          titles: [...conflicts.values()].join(", "),
-        }),
+        title: "Shortcut already in use",
+        description: `${formatKeybind(next)} is already assigned to ${[...conflicts.values()].join(", ")}.`,
       })
       return
     }
@@ -388,9 +370,9 @@ export function createKeybindSettingsController(
     catalog: {
       groups: GROUPS,
       filtered: (query: string) =>
-        filteredFor(query, list(), grouped(), (id) => formatKeybind(effective(id) ?? "", language.t)),
+        filteredFor(query, list(), grouped(), (id) => formatKeybind(effective(id) ?? "")),
       title,
-      keybind: (id: string) => formatKeybind(effective(id) ?? "", language.t),
+      keybind: (id: string) => formatKeybind(effective(id) ?? ""),
     },
     capture: {
       active: () => store.active,
@@ -402,8 +384,8 @@ export function createKeybindSettingsController(
         stop()
         input.settings.keybinds.resetAll()
         notify({
-          title: language.t("settings.shortcuts.reset.toast.title"),
-          description: language.t("settings.shortcuts.reset.toast.description"),
+          title: "Shortcuts reset",
+          description: "Keyboard shortcuts have been reset to defaults.",
         })
       },
     },
@@ -442,7 +424,6 @@ function SettingsKeybindsV2View(props: {
   hasOverrides: () => boolean
   onReset: () => void
 }) {
-  const language = useLanguage()
   const [store, setStore] = createStore({ filter: "" })
   const filtered = createMemo(() => props.filtered(store.filter))
   const hasResults = createMemo(() => props.groups.some((group) => (filtered().get(group)?.length ?? 0) > 0))
@@ -451,9 +432,9 @@ function SettingsKeybindsV2View(props: {
     <>
       <div class="settings-v2-tab-header settings-v2-tab-header--stacked">
         <div class="settings-v2-tab-header-row">
-          <h2 class="settings-v2-tab-title">{language.t("settings.shortcuts.title")}</h2>
+          <h2 class="settings-v2-tab-title">{"Keyboard shortcuts"}</h2>
           <ButtonV2 variant="ghost" onClick={props.onReset} disabled={!props.hasOverrides()}>
-            {language.t("settings.shortcuts.reset.button")}
+            {"Reset to defaults"}
           </ButtonV2>
         </div>
         <div class="settings-v2-tab-search">
@@ -462,12 +443,12 @@ function SettingsKeybindsV2View(props: {
             appearance="base"
             value={store.filter}
             onInput={(event) => setStore("filter", event.currentTarget.value)}
-            placeholder={language.t("settings.shortcuts.search.placeholder")}
+            placeholder={"Search shortcuts"}
             spellcheck={false}
             autocorrect="off"
             autocomplete="off"
             autocapitalize="off"
-            aria-label={language.t("settings.shortcuts.search.placeholder")}
+            aria-label={"Search shortcuts"}
           />
           <Show when={store.filter}>
             <IconButtonV2
@@ -487,7 +468,7 @@ function SettingsKeybindsV2View(props: {
             {(group) => (
               <Show when={(filtered().get(group) ?? []).length > 0}>
                 <div class="settings-v2-section">
-                  <h3 class="settings-v2-section-title">{language.t(groupKey[group])}</h3>
+                  <h3 class="settings-v2-section-title">{groupKey[group]}</h3>
                   <SettingsListV2>
                     <For each={filtered().get(group) ?? []}>
                       {(id) => (
@@ -504,9 +485,9 @@ function SettingsKeybindsV2View(props: {
                           >
                             <Show
                               when={props.active() === id}
-                              fallback={props.keybind(id) || language.t("settings.shortcuts.unassigned")}
+                              fallback={props.keybind(id) || "Unassigned"}
                             >
-                              {language.t("settings.shortcuts.pressKeys")}
+                              {"Press keys"}
                             </Show>
                           </button>
                         </div>
@@ -519,7 +500,7 @@ function SettingsKeybindsV2View(props: {
           </For>
           <Show when={store.filter && !hasResults()}>
             <div class="settings-v2-shortcuts-status">
-              <span>{language.t("settings.shortcuts.search.empty")}</span>
+              <span>{"No shortcuts found"}</span>
               <span class="settings-v2-shortcuts-status-filter">&quot;{store.filter}&quot;</span>
             </div>
           </Show>
@@ -533,7 +514,6 @@ export const SettingsKeybinds: Component<{ v2?: boolean }> = (props) => {
   if (props.v2) return <SettingsKeybindsV2 />
 
   const command = useCommand()
-  const language = useLanguage()
   const settings = useSettings()
 
   const [store, setStore] = createStore({
@@ -567,14 +547,12 @@ export const SettingsKeybinds: Component<{ v2?: boolean }> = (props) => {
     stop()
     settings.keybinds.resetAll()
     showToast({
-      title: language.t("settings.shortcuts.reset.toast.title"),
-      description: language.t("settings.shortcuts.reset.toast.description"),
+      title: "Shortcuts reset",
+      description: "Keyboard shortcuts have been reset to defaults.",
     })
   }
 
-  const list = createMemo(() => {
-    language.locale()
-    return listFor(command, map(), language.t("command.palette"))
+  const list = createMemo(() => listFor(command, map(), "Command palette")
   })
 
   const title = (id: string) => list().get(id)?.title ?? ""
@@ -638,7 +616,6 @@ export const SettingsKeybinds: Component<{ v2?: boolean }> = (props) => {
     stop,
     set: setKeybind,
     used,
-    language,
   })
 
   onCleanup(() => {
@@ -658,7 +635,7 @@ export const SettingsKeybinds: Component<{ v2?: boolean }> = (props) => {
             "text-14-regular text-text-weak": !props.v2,
           }}
         >
-          {language.t("settings.shortcuts.search.empty")}
+          {"No shortcuts found"}
         </span>
         <Show when={store.filter}>
           <span
@@ -698,7 +675,7 @@ export const SettingsKeybinds: Component<{ v2?: boolean }> = (props) => {
                   "text-14-medium text-text-strong pb-2": !props.v2,
                 }}
               >
-                {language.t(groupKey[group])}
+                {groupKey[group]}
               </h3>
               <List>
                 <For each={filtered().get(group) ?? []}>
@@ -727,9 +704,9 @@ export const SettingsKeybinds: Component<{ v2?: boolean }> = (props) => {
                       >
                         <Show
                           when={store.active === id}
-                          fallback={command.keybind(id) || language.t("settings.shortcuts.unassigned")}
+                          fallback={command.keybind(id) || "Unassigned"}
                         >
-                          {language.t("settings.shortcuts.pressKeys")}
+                          {"Press keys"}
                         </Show>
                       </button>
                     </div>
@@ -749,9 +726,9 @@ export const SettingsKeybinds: Component<{ v2?: boolean }> = (props) => {
       <div class="sticky top-0 z-10 bg-[linear-gradient(to_bottom,var(--surface-stronger-non-alpha)_calc(100%_-_24px),transparent)]">
         <div class="flex flex-col gap-4 pt-6 pb-6 max-w-[720px]">
           <div class="flex items-center justify-between gap-4">
-            <h2 class="text-16-medium text-text-strong">{language.t("settings.shortcuts.title")}</h2>
+            <h2 class="text-16-medium text-text-strong">{"Keyboard shortcuts"}</h2>
             <Button size="small" variant="secondary" onClick={resetAll} disabled={!hasOverrides()}>
-              {language.t("settings.shortcuts.reset.button")}
+              {"Reset to defaults"}
             </Button>
           </div>
 
@@ -762,7 +739,7 @@ export const SettingsKeybinds: Component<{ v2?: boolean }> = (props) => {
               type="text"
               value={store.filter}
               onChange={(v) => setStore("filter", v)}
-              placeholder={language.t("settings.shortcuts.search.placeholder")}
+              placeholder={"Search shortcuts"}
               spellcheck={false}
               autocorrect="off"
               autocomplete="off"

@@ -8,7 +8,6 @@ import {
   type LineCommentShape,
   type LineCommentStateProps,
 } from "../../components/line-comment-annotations"
-import { useI18n } from "@reddb-io/redcode-ui/context/i18n"
 import { cloneSelectedLineRange, formatSelectedLineLabel } from "../../pierre/selection-bridge"
 import { LineCommentEditorV2, LineCommentV2 } from "@reddb-io/redcode-ui/v2/line-comment-v2"
 import type { LineCommentEditorV2Mention } from "@reddb-io/redcode-ui/v2/line-comment-v2"
@@ -98,7 +97,6 @@ function lineCommentDraftElementV2(view: Accessor<DraftProps>) {
 }
 
 export function createLineCommentControllerV2<T extends LineCommentShape>(props: LineCommentControllerV2Props<T>) {
-  const i18n = useI18n()
   const note = createLineCommentState<string>(props.state)
 
   const annotations = createLineCommentAnnotations({
@@ -124,7 +122,7 @@ export function createLineCommentControllerV2<T extends LineCommentShape>(props:
       return {
         id: comment.id,
         comment: comment.comment,
-        selection: formatSelectedLineLabel(comment.selection, i18n.t),
+        selection: formatSelectedLineLabel(comment.selection),
         get actions() {
           return props.renderCommentActions?.(comment, { edit, remove })
         },
@@ -134,7 +132,7 @@ export function createLineCommentControllerV2<T extends LineCommentShape>(props:
                 get value() {
                   return note.draft()
                 },
-                selection: formatSelectedLineLabel(comment.selection, i18n.t),
+                selection: formatSelectedLineLabel(comment.selection),
                 onInput: note.setDraft,
                 onCancel: note.cancelDraft,
                 onSubmit: (value: string) => {
@@ -145,7 +143,7 @@ export function createLineCommentControllerV2<T extends LineCommentShape>(props:
                   })
                   note.cancelDraft()
                 },
-                cancelLabel: i18n.t("ui.lineComment.cancel"),
+                cancelLabel: "Cancel",
                 submitLabel: props.editSubmitLabel,
                 mention: props.mention,
               }
@@ -165,7 +163,7 @@ export function createLineCommentControllerV2<T extends LineCommentShape>(props:
       get value() {
         return note.draft()
       },
-      selection: formatSelectedLineLabel(range, i18n.t),
+      selection: formatSelectedLineLabel(range),
       onInput: note.setDraft,
       onCancel: () => {
         note.cancelDraft()
@@ -176,8 +174,8 @@ export function createLineCommentControllerV2<T extends LineCommentShape>(props:
         note.cancelDraft()
         note.select(null)
       },
-      cancelLabel: i18n.t("ui.lineComment.cancel"),
-      submitLabel: i18n.t("ui.lineComment.submit"),
+      cancelLabel: "Cancel",
+      submitLabel: "Comment",
       mention: props.mention,
     }),
   })

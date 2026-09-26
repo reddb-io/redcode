@@ -1,7 +1,6 @@
 import { DialogSelectServer } from "@/components/dialog-select-server"
 import { useDirectoryPicker } from "@/components/directory-picker"
 import { useGlobal } from "@/context/global"
-import { useLanguage } from "@/context/language"
 import { type ServerConnection, useServer } from "@/context/server"
 import { useServerSync } from "@/context/server-sync"
 import { base64Encode } from "@reddb-io/redcode-core/util/encode"
@@ -20,7 +19,6 @@ export function LegacyHome() {
   const navigate = useNavigate()
   const global = useGlobal()
   const server = useServer()
-  const language = useLanguage()
   const homedir = createMemo(() => sync().data.path.home)
   const serverUnreachable = createMemo(() => global.servers.health[server.key]?.healthy === false)
   const recent = createMemo(() => {
@@ -59,7 +57,7 @@ export function LegacyHome() {
 
     pickDirectory({
       server: conn,
-      title: language.t("command.project.open"),
+      title: "Open project",
       multiple: true,
       onSelect: resolve,
     })
@@ -86,7 +84,7 @@ export function LegacyHome() {
         <Match when={sync().data.project.length > 0}>
           <div class="mt-20 w-full flex flex-col gap-4">
             <div class="flex gap-2 items-center justify-between pl-3">
-              <div class="text-14-medium text-text-strong">{language.t("home.recentProjects")}</div>
+              <div class="text-14-medium text-text-strong">{"Recent projects"}</div>
               <Button
                 icon="folder-add-left"
                 size="normal"
@@ -94,7 +92,7 @@ export function LegacyHome() {
                 disabled={serverUnreachable()}
                 onClick={chooseProject}
               >
-                {language.t("command.project.open")}
+                {"Open project"}
               </Button>
             </div>
             <ul class="flex flex-col gap-2">
@@ -118,9 +116,9 @@ export function LegacyHome() {
         </Match>
         <Match when={!sync().ready}>
           <div class="mt-30 mx-auto flex flex-col items-center gap-3">
-            <div class="text-12-regular text-text-weak">{language.t("common.loading")}</div>
+            <div class="text-12-regular text-text-weak">{"Loading"}</div>
             <Button class="px-3" disabled={serverUnreachable()} onClick={chooseProject}>
-              {language.t("command.project.open")}
+              {"Open project"}
             </Button>
           </div>
         </Match>
@@ -128,11 +126,11 @@ export function LegacyHome() {
           <div class="mt-30 mx-auto flex flex-col items-center gap-3">
             <Icon name="folder-add-left" size="large" />
             <div class="flex flex-col gap-1 items-center justify-center">
-              <div class="text-14-medium text-text-strong">{language.t("home.empty.title")}</div>
-              <div class="text-12-regular text-text-weak">{language.t("home.empty.description")}</div>
+              <div class="text-14-medium text-text-strong">{"No recent projects"}</div>
+              <div class="text-12-regular text-text-weak">{"Get started by opening a local project"}</div>
             </div>
             <Button class="px-3 mt-1" disabled={serverUnreachable()} onClick={chooseProject}>
-              {language.t("command.project.open")}
+              {"Open project"}
             </Button>
           </div>
         </Match>

@@ -12,7 +12,6 @@ import { ConstrainDragYAxis, getDraggableId } from "@/utils/solid-dnd"
 import { SortableTerminalTab } from "@/components/session"
 import { Terminal } from "@/components/terminal"
 import { useCommand } from "@/context/command"
-import { useLanguage } from "@/context/language"
 import { useLayout } from "@/context/layout"
 import { useSettings } from "@/context/settings"
 import { useTerminal } from "@/context/terminal"
@@ -27,7 +26,6 @@ export function TerminalPanel() {
   const layout = useLayout()
   const terminal = useTerminal()
   const sdk = useSDK()
-  const language = useLanguage()
   const command = useCommand()
   const settings = useSettings()
   const { workspaceKey, view } = useSessionLayout()
@@ -129,7 +127,6 @@ export function TerminalPanel() {
     const dir = sdk().directory
     if (!dir) return
     if (!terminal.ready()) return
-    language.locale()
 
     setTerminalHandoff(
       workspaceKey(),
@@ -137,7 +134,6 @@ export function TerminalPanel() {
         terminalTabLabel({
           title: pty.title,
           titleNumber: pty.titleNumber,
-          t: language.t as (key: string, vars?: Record<string, string | number | boolean>) => string,
         }),
       ),
     )
@@ -201,7 +197,7 @@ export function TerminalPanel() {
       ref={root}
       id="terminal-panel"
       role="region"
-      aria-label={language.t("terminal.title")}
+      aria-label={"Terminal"}
       aria-hidden={!opened()}
       inert={!opened()}
       class="relative w-full shrink-0 bg-background-stronger"
@@ -250,11 +246,11 @@ export function TerminalPanel() {
                 </For>
                 <div class="flex-1" />
                 <div class="text-text-weak pr-2">
-                  {language.t("common.loading")}
-                  {language.t("common.loading.ellipsis")}
+                  {"Loading"}
+                  {"..."}
                 </div>
               </div>
-              <div class="flex-1 flex items-center justify-center text-text-weak">{language.t("terminal.loading")}</div>
+              <div class="flex-1 flex items-center justify-center text-text-weak">{"Loading terminal..."}</div>
             </div>
           }
         >
@@ -279,7 +275,7 @@ export function TerminalPanel() {
                   </SortableProvider>
                   <div class="h-full flex items-center justify-center">
                     <TooltipKeybind
-                      title={language.t("command.terminal.new")}
+                      title={"New terminal"}
                       keybind={command.keybind("terminal.new")}
                       class="flex items-center"
                     >
@@ -288,7 +284,7 @@ export function TerminalPanel() {
                         variant="ghost"
                         iconSize="large"
                         onClick={() => terminal.new()}
-                        aria-label={language.t("command.terminal.new")}
+                        aria-label={"New terminal"}
                       />
                     </TooltipKeybind>
                   </div>
@@ -327,7 +323,6 @@ export function TerminalPanel() {
                         {terminalTabLabel({
                           title: t().title,
                           titleNumber: t().titleNumber,
-                          t: language.t as (key: string, vars?: Record<string, string | number | boolean>) => string,
                         })}
                       </div>
                     )}

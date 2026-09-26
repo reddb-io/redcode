@@ -5,7 +5,6 @@ import { createSimpleContext } from "@reddb-io/redcode-ui/context"
 import type { ServerSDK } from "./server-sdk"
 import type { ServerSync } from "./server-sync"
 import { usePlatform } from "@/context/platform"
-import { useLanguage } from "@/context/language"
 import { useSettings } from "@/context/settings"
 import { base64Encode } from "@reddb-io/redcode-core/util/encode"
 import { decode64 } from "@/utils/base64"
@@ -121,7 +120,6 @@ export const { use: useNotification, provider: NotificationProvider } = createSi
     const navigate = useNavigate()
     const platform = usePlatform()
     const settings = useSettings()
-    const language = useLanguage()
     const owner = getOwner()
     const states = new Map<ServerScope, { dispose: () => void; state: NotificationState }>()
 
@@ -153,7 +151,6 @@ export const { use: useNotification, provider: NotificationProvider } = createSi
             sessionID: activeSession,
             platform,
             settings,
-            language,
             navigate,
           }),
         }),
@@ -218,14 +215,12 @@ function createServerNotificationState(input: {
   sessionID: Accessor<string | undefined>
   platform: ReturnType<typeof usePlatform>
   settings: ReturnType<typeof useSettings>
-  language: ReturnType<typeof useLanguage>
   navigate: (href: string) => void
 }) {
   const serverSDK = () => input.sdk
   const serverSync = () => input.sync
   const platform = input.platform
   const settings = input.settings
-  const language = input.language
 
   const empty: Notification[] = []
 
@@ -356,7 +351,7 @@ function createServerNotificationState(input: {
 
       const href = `/${base64Encode(directory)}/session/${sessionID}`
       if (settings.notifications.agent()) {
-        void platform.notify(language.t("notification.session.responseReady.title"), session.title ?? sessionID, () =>
+        void platform.notify("Response ready", session.title ?? sessionID, () =>
           input.navigate(href),
         )
       }
@@ -388,10 +383,10 @@ function createServerNotificationState(input: {
       })
       const description =
         session?.title ??
-        (typeof error === "string" ? error : language.t("notification.session.error.fallbackDescription"))
+        (typeof error === "string" ? error : "An error occurred")
       const href = sessionID ? `/${base64Encode(directory)}/session/${sessionID}` : `/${base64Encode(directory)}`
       if (settings.notifications.errors()) {
-        void platform.notify(language.t("notification.session.error.title"), description, () => input.navigate(href))
+        void platform.notify("Session error", description, () => input.navigate(href))
       }
     })
   }

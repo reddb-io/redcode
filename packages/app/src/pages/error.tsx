@@ -5,7 +5,6 @@ import { Button } from "@reddb-io/redcode-ui/button"
 import { Component, createSignal, onMount, Show } from "solid-js"
 import { createStore } from "solid-js/store"
 import { usePlatform } from "@/context/platform"
-import { useLanguage } from "@/context/language"
 import { Icon } from "@reddb-io/redcode-ui/icon"
 import { errorDescriptionKey } from "./error-description"
 
@@ -14,7 +13,6 @@ export type InitError = {
   data: Record<string, unknown>
 }
 
-type Translator = ReturnType<typeof useLanguage>["t"]
 const CHAIN_SEPARATOR = "\n" + "─".repeat(40) + "\n"
 
 function isIssue(value: unknown): value is { message: string; path: string[] } {
@@ -54,33 +52,33 @@ function safeJson(value: unknown, circular: string): string {
   return json ?? String(value)
 }
 
-function formatInitError(error: InitError, t: Translator): string {
+function formatInitError(error: InitError): string {
   const data = error.data
-  const json = (value: unknown) => safeJson(value, t("error.page.circular"))
+  const json = (value: unknown) => safeJson(value, "[Circular]")
   switch (error.name) {
     case "MCPFailed": {
       const name = typeof data.name === "string" ? data.name : ""
-      return t("error.chain.mcpFailed", { name })
+      return `MCP server "${name}" failed. Note, Redcode does not support MCP authentication yet.`
     }
     case "ProviderAuthError": {
-      const providerID = typeof data.providerID === "string" ? data.providerID : t("common.unknown")
+      const providerID = typeof data.providerID === "string" ? data.providerID : "unknown"
       const message = typeof data.message === "string" ? data.message : json(data.message)
-      return t("error.chain.providerAuthFailed", { provider: providerID, message })
+      return `Provider authentication failed (${providerID}): ${message}`
     }
     case "APIError": {
-      const message = typeof data.message === "string" ? data.message : t("error.chain.apiError")
+      const message = typeof data.message === "string" ? data.message : "API error"
       const lines: string[] = [message]
 
       if (typeof data.statusCode === "number") {
-        lines.push(t("error.chain.status", { status: data.statusCode }))
+        lines.push(`Status: ${data.statusCode}`)
       }
 
       if (typeof data.isRetryable === "boolean") {
-        lines.push(t("error.chain.retryable", { retryable: data.isRetryable }))
+        lines.push(`Retryable: ${data.isRetryable}`)
       }
 
       if (typeof data.responseBody === "string" && data.responseBody) {
-        lines.push(t("error.chain.responseBody", { body: data.responseBody }))
+        lines.push(`Response body:\n${data.responseBody}`)
       }
 
       return lines.join("\n")
@@ -94,35 +92,35 @@ function formatInitError(error: InitError, t: Translator): string {
 
       const suggestionsLine =
         Array.isArray(suggestions) && suggestions.length
-          ? [t("error.chain.didYouMean", { suggestions: suggestions.join(", ") })]
+          ? [`Did you mean: ${suggestions.join(", ")}`]
           : []
 
       return [
-        t("error.chain.modelNotFound", { provider: providerID, model: modelID }),
+        `Model not found: ${providerID}/${modelID}`,
         ...suggestionsLine,
-        t("error.chain.checkConfig"),
+        "Check your config (opencode.json) provider/model names",
       ].join("\n")
     }
     case "ProviderInitError": {
-      const providerID = typeof data.providerID === "string" ? data.providerID : t("common.unknown")
-      return t("error.chain.providerInitFailed", { provider: providerID })
+      const providerID = typeof data.providerID === "string" ? data.providerID : "unknown"
+      return `Failed to initialize provider "${providerID}". Check credentials and configuration.`
     }
     case "ConfigJsonError": {
       const path = typeof data.path === "string" ? data.path : json(data.path)
       const message = typeof data.message === "string" ? data.message : ""
-      if (message) return t("error.chain.configJsonInvalidWithMessage", { path, message })
-      return t("error.chain.configJsonInvalid", { path })
+      if (message) return `Config file at ${path} is not valid JSON(C): ${message}`
+      return `Config file at ${path} is not valid JSON(C)`
     }
     case "ConfigDirectoryTypoError": {
       const path = typeof data.path === "string" ? data.path : json(data.path)
       const dir = typeof data.dir === "string" ? data.dir : json(data.dir)
       const suggestion = typeof data.suggestion === "string" ? data.suggestion : json(data.suggestion)
-      return t("error.chain.configDirectoryTypo", { dir, path, suggestion })
+      return `Directory "${dir}" in ${path} is not valid. Rename the directory to "${suggestion}" or remove it. This is a common typo.`
     }
     case "ConfigFrontmatterError": {
       const path = typeof data.path === "string" ? data.path : json(data.path)
       const message = typeof data.message === "string" ? data.message : json(data.message)
-      return t("error.chain.configFrontmatterError", { path, message })
+      return `Failed to parse frontmatter in ${path}:\n${message}`
     }
     case "ConfigInvalidError": {
       const issues = Array.isArray(data.issues)
@@ -132,8 +130,8 @@ function formatInitError(error: InitError, t: Translator): string {
       const path = typeof data.path === "string" ? data.path : json(data.path)
 
       const line = message
-        ? t("error.chain.configInvalidWithMessage", { path, message })
-        : t("error.chain.configInvalid", { path })
+        ? `Config file at ${path} is invalid: ${message}`
+        : `Config file at ${path} is invalid`
 
       return [line, ...issues].join("\n")
     }
@@ -145,21 +143,21 @@ function formatInitError(error: InitError, t: Translator): string {
   }
 }
 
-function formatErrorChain(error: unknown, t: Translator, depth = 0, parentMessage?: string): string {
-  const json = (value: unknown) => safeJson(value, t("error.page.circular"))
-  if (!error) return t("error.chain.unknown")
+function formatErrorChain(error: unknown, depth = 0, parentMessage?: string): string {
+  const json = (value: unknown) => safeJson(value, "[Circular]")
+  if (!error) return "Unknown error"
 
   if (isInitError(error)) {
-    const message = formatInitError(error, t)
+    const message = formatInitError(error)
     if (depth > 0 && parentMessage === message) return ""
-    const indent = depth > 0 ? `\n${CHAIN_SEPARATOR}${t("error.chain.causedBy")}\n` : ""
+    const indent = depth > 0 ? `\n${CHAIN_SEPARATOR}Caused by:\n` : ""
     return indent + `${error.name}\n${message}`
   }
 
   if (error instanceof Error) {
     const isDuplicate = depth > 0 && parentMessage === error.message
     const parts: string[] = []
-    const indent = depth > 0 ? `\n${CHAIN_SEPARATOR}${t("error.chain.causedBy")}\n` : ""
+    const indent = depth > 0 ? `\n${CHAIN_SEPARATOR}Caused by:\n` : ""
 
     const header = `${error.name}${error.message ? `: ${error.message}` : ""}`
     const stack = error.stack?.trim()
@@ -203,16 +201,16 @@ function formatErrorChain(error: unknown, t: Translator, depth = 0, parentMessag
 
   if (typeof error === "string") {
     if (depth > 0 && parentMessage === error) return ""
-    const indent = depth > 0 ? `\n${CHAIN_SEPARATOR}${t("error.chain.causedBy")}\n` : ""
+    const indent = depth > 0 ? `\n${CHAIN_SEPARATOR}Caused by:\n` : ""
     return indent + error
   }
 
-  const indent = depth > 0 ? `\n${CHAIN_SEPARATOR}${t("error.chain.causedBy")}\n` : ""
+  const indent = depth > 0 ? `\n${CHAIN_SEPARATOR}Caused by:\n` : ""
   return indent + json(error)
 }
 
-function formatError(error: unknown, t: Translator): string {
-  return formatErrorChain(error, t, 0)
+function formatError(error: unknown): string {
+  return formatErrorChain(error, 0)
 }
 
 interface ErrorPageProps {
@@ -221,8 +219,7 @@ interface ErrorPageProps {
 
 export const ErrorPage: Component<ErrorPageProps> = (props) => {
   const platform = usePlatform()
-  const language = useLanguage()
-  const formattedError = () => formatError(props.error, language.t)
+  const formattedError = () => formatError(props.error)
   let recordedFatalError: Promise<void> | undefined
   const [store, setStore] = createStore({
     actionError: undefined as string | undefined,
@@ -254,7 +251,7 @@ export const ErrorPage: Component<ErrorPageProps> = (props) => {
       ?.install()
       .then(() => setStore("actionError", undefined))
       .catch((err) => {
-        setStore("actionError", formatError(err, language.t))
+        setStore("actionError", formatError(err))
       })
   }
 
@@ -271,7 +268,7 @@ export const ErrorPage: Component<ErrorPageProps> = (props) => {
       .then(() => exportLogs())
       .then(() => setStore("actionError", undefined))
       .catch((err) => {
-        setStore("actionError", formatError(err, language.t))
+        setStore("actionError", formatError(err))
       })
   }
 
@@ -283,8 +280,13 @@ export const ErrorPage: Component<ErrorPageProps> = (props) => {
       <div class="w-2/3 max-w-3xl flex flex-col items-center justify-center gap-8">
         <Logo class="w-58.5 opacity-12 shrink-0" />
         <div class="flex flex-col items-center gap-2 text-center">
-          <h1 class="text-lg font-medium text-text-strong">{language.t("error.page.title")}</h1>
-          <p class="text-sm text-text-weak">{language.t(errorDescriptionKey(props.error))}</p>
+          <h1 class="text-lg font-medium text-text-strong">{"Something went wrong"}</h1>
+          <p class="text-sm text-text-weak">
+            {({
+              "error.page.description": "An error occurred while loading the application.",
+              "error.page.description.localServerStartup": "An error occurred while starting the local server.",
+            })[errorDescriptionKey(props.error)]}
+          </p>
         </div>
         <TextField
           value={formattedError()}
@@ -292,16 +294,16 @@ export const ErrorPage: Component<ErrorPageProps> = (props) => {
           copyable
           multiline
           class="max-h-96 w-full font-mono text-xs no-scrollbar"
-          label={language.t("error.page.details.label")}
+          label={"Error Details"}
           hideLabel
         />
         <div class="flex flex-row items-center justify-center gap-3 flex-wrap max-w-64">
           <Button size="large" onClick={platform.restart}>
-            {language.t("error.page.action.restart")}
+            {"Restart"}
           </Button>
           <Show when={platform.platform === "desktop" && platform.exportDebugLogs}>
             <Button size="large" variant="ghost" onClick={exportDebugLogs}>
-              {language.t("error.page.action.exportLogs")}
+              {"Export Logs"}
             </Button>
           </Show>
           <Show when={Sentry.isEnabled}>
@@ -316,7 +318,7 @@ export const ErrorPage: Component<ErrorPageProps> = (props) => {
                     setReported(true)
                   }}
                 >
-                  {language.t(reported() ? "error.page.action.reported" : "error.page.action.report")}
+                  {reported() ? "Error Reported" : "Report Error"}
                 </Button>
               )
             }}
@@ -332,14 +334,14 @@ export const ErrorPage: Component<ErrorPageProps> = (props) => {
                   disabled={["checking", "downloading", "installing"].includes(platform.updater?.state().status ?? "")}
                 >
                   {platform.updater?.state().status === "checking"
-                    ? language.t("error.page.action.checking")
-                    : language.t("error.page.action.checkUpdates")}
+                    ? "Checking..."
+                    : "Check for updates"}
                 </Button>
               }
             >
               {(version) => (
                 <Button size="large" onClick={installUpdate}>
-                  {language.t("error.page.action.updateTo", { version: version() })}
+                  {`Update to ${version()}`}
                 </Button>
               )}
             </Show>
@@ -350,7 +352,7 @@ export const ErrorPage: Component<ErrorPageProps> = (props) => {
         </Show>
         <div class="flex flex-col items-center gap-2">
           <div class="flex items-center justify-center gap-1">
-            {language.t("error.page.report.prefix")}
+            {"Please report this error to the Redcode team"}
             <button
               type="button"
               class="flex items-center text-text-interactive-base gap-1"
@@ -358,13 +360,13 @@ export const ErrorPage: Component<ErrorPageProps> = (props) => {
                 platform.openExternal("https://github.com/reddb-io/redcode/issues/new?template=bug-report.yml")
               }
             >
-              <div>{language.t("error.page.report.discord")}</div>
+              <div>{"on Discord"}</div>
               <Icon name="discord" class="text-text-interactive-base" />
             </button>
           </div>
           <Show when={platform.version}>
             {(version) => (
-              <p class="text-xs text-text-weak">{language.t("error.page.version", { version: version() })}</p>
+              <p class="text-xs text-text-weak">{`Version: ${version()}`}</p>
             )}
           </Show>
         </div>

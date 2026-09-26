@@ -1,12 +1,10 @@
 import { createEffect, createMemo, createSignal, on, onCleanup, Show } from "solid-js"
 import type { SessionStatus } from "@reddb-io/redcode-sdk/v2/client"
-import { useI18n } from "@reddb-io/redcode-ui/context/i18n"
 import { Card } from "@reddb-io/redcode-ui/card"
 import { Tooltip } from "@reddb-io/redcode-ui/tooltip"
 import { Spinner } from "@reddb-io/redcode-ui/spinner"
 
 export function SessionRetry(props: { status: SessionStatus; show?: boolean }) {
-  const i18n = useI18n()
   const retry = createMemo(() => {
     if (props.status.type !== "retry") return
     return props.status
@@ -29,7 +27,7 @@ export function SessionRetry(props: { status: SessionStatus; show?: boolean }) {
     const current = retry()
     if (!current) return ""
     if (current.message.includes("exceeded your current quota") && current.message.includes("gemini")) {
-      return i18n.t("ui.sessionTurn.retry.geminiHot")
+      return "gemini is way too hot right now"
     }
     if (current.message.length > 80) return current.message.slice(0, 80) + "..."
     return current.message
@@ -43,11 +41,11 @@ export function SessionRetry(props: { status: SessionStatus; show?: boolean }) {
     const current = retry()
     if (!current) return ""
     const count = Math.max(0, seconds())
-    const delay = count > 0 ? i18n.t("ui.sessionTurn.retry.inSeconds", { seconds: count }) : ""
-    const retrying = i18n.t("ui.sessionTurn.retry.retrying")
+    const delay = count > 0 ? `in ${count}s` : ""
+    const retrying = "retrying"
     const line = [retrying, delay].filter(Boolean).join(" ")
-    if (!line) return i18n.t("ui.sessionTurn.retry.attempt", { attempt: current.attempt })
-    return i18n.t("ui.sessionTurn.retry.attemptLine", { line, attempt: current.attempt })
+    if (!line) return `attempt #${current.attempt}`
+    return `${line} - attempt #${current.attempt}`
   })
 
   return (

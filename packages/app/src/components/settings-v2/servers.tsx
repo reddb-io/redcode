@@ -8,7 +8,6 @@ import { type Component, For, Show, createMemo } from "solid-js"
 import { createStore } from "solid-js/store"
 import { ServerRowMenu } from "@/components/server/server-row-menu"
 import { ServerHealthIndicator } from "@/components/server/server-row"
-import { useLanguage } from "@/context/language"
 import { ServerConnection, serverName } from "@/context/server"
 import { useServerManagementController } from "../dialog-select-server"
 import { DialogServerV2 } from "./dialog-server-v2"
@@ -18,7 +17,6 @@ import "./settings-v2.css"
 
 export const SettingsServersV2: Component = () => {
   const dialog = useDialog()
-  const language = useLanguage()
   const controller = useServerManagementController()
   const [store, setStore] = createStore({ filter: "" })
   const wslServers = useFilteredWslServers(() => store.filter)
@@ -53,7 +51,7 @@ export const SettingsServersV2: Component = () => {
         classList={{ "settings-v2-tab-header--stacked": showSearch() }}
       >
         <div class="settings-v2-tab-header-row">
-          <h2 class="settings-v2-tab-title">{language.t("status.popover.tab.servers")}</h2>
+          <h2 class="settings-v2-tab-title">{"Servers"}</h2>
           <AddServerMenu onAddServer={openAdd} />
         </div>
         <Show when={showSearch()}>
@@ -63,12 +61,12 @@ export const SettingsServersV2: Component = () => {
               appearance="base"
               value={store.filter}
               onInput={(event) => setStore("filter", event.currentTarget.value)}
-              placeholder={language.t("dialog.server.search.placeholder")}
+              placeholder={"Search servers"}
               spellcheck={false}
               autocorrect="off"
               autocomplete="off"
               autocapitalize="off"
-              aria-label={language.t("dialog.server.search.placeholder")}
+              aria-label={"Search servers"}
             />
             <Show when={store.filter}>
               <IconButtonV2
@@ -89,7 +87,7 @@ export const SettingsServersV2: Component = () => {
           when={filtered().length > 0 || wslServers().length > 0}
           fallback={
             <div class="settings-v2-servers-status">
-              <span>{store.filter ? language.t("palette.empty") : language.t("dialog.server.empty")}</span>
+              <span>{store.filter ? "No results found" : "No servers yet"}</span>
               <Show when={store.filter}>
                 <span class="settings-v2-servers-status-filter">&quot;{store.filter}&quot;</span>
               </Show>
@@ -114,7 +112,7 @@ export const SettingsServersV2: Component = () => {
                           <Show when={health()?.version && item.type === "http"}> • </Show>
                           <Show
                             when={item.type === "http" && item.http.username}
-                            fallback={<Show when={item.type === "http"}>{language.t("server.row.noUsername")}</Show>}
+                            fallback={<Show when={item.type === "http"}>{"no username"}</Show>}
                           >
                             {item.http.username}
                           </Show>
@@ -123,7 +121,7 @@ export const SettingsServersV2: Component = () => {
                     </div>
                     <div class="settings-v2-servers-actions">
                       <Show when={controller.canDefault() && isDefault()}>
-                        <Tag>{language.t("dialog.server.status.default")}</Tag>
+                        <Tag>{"Default"}</Tag>
                       </Show>
                       <ServerRowMenu server={item} controller={controller} onEdit={openEdit} />
                     </div>

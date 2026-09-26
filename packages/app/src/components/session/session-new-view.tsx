@@ -2,7 +2,6 @@ import { Show, createMemo } from "solid-js"
 import { DateTime } from "luxon"
 import { useSync } from "@/context/sync"
 import { useSDK } from "@/context/sdk"
-import { useLanguage } from "@/context/language"
 import { Icon } from "@reddb-io/redcode-ui/icon"
 import { Mark } from "@reddb-io/redcode-ui/logo"
 import { getDirectory, getFilename } from "@reddb-io/redcode-core/util/path"
@@ -18,7 +17,6 @@ interface NewSessionViewProps {
 export function NewSessionView(props: NewSessionViewProps) {
   const sync = useSync()
   const sdk = useSDK()
-  const language = useLanguage()
 
   const sandboxes = createMemo(() => sync().project?.sandboxes ?? [])
   const options = createMemo(() => [MAIN_WORKTREE, ...sandboxes(), CREATE_WORKTREE])
@@ -36,13 +34,13 @@ export function NewSessionView(props: NewSessionViewProps) {
 
   const label = (value: string) => {
     if (value === MAIN_WORKTREE) {
-      if (isWorktree()) return language.t("session.new.worktree.main")
+      if (isWorktree()) return "Main branch"
       const branch = sync().data.vcs?.branch
-      if (branch) return language.t("session.new.worktree.mainWithBranch", { branch })
-      return language.t("session.new.worktree.main")
+      if (branch) return `Main branch (${branch})`
+      return "Main branch"
     }
 
-    if (value === CREATE_WORKTREE) return language.t("session.new.worktree.create")
+    if (value === CREATE_WORKTREE) return "Create new worktree"
 
     return getFilename(value)
   }
@@ -54,7 +52,7 @@ export function NewSessionView(props: NewSessionViewProps) {
         <div class="w-full max-w-200 flex flex-col items-center text-center gap-4">
           <div class="flex flex-col items-center gap-6">
             <Mark class="w-10" />
-            <div class="text-20-medium text-text-strong">{language.t("session.new.title")}</div>
+            <div class="text-20-medium text-text-strong">{"Build anything"}</div>
           </div>
           <div class="w-full flex flex-col gap-4 items-center">
             <div class="flex items-start justify-center gap-3 min-h-5">
@@ -73,10 +71,10 @@ export function NewSessionView(props: NewSessionViewProps) {
               {(project) => (
                 <div class="flex items-start justify-center gap-3 min-h-5">
                   <div class="text-12-medium text-text-weak leading-5 min-w-0 max-w-160 break-words text-center">
-                    {language.t("session.new.lastModified")}&nbsp;
+                    {"Last modified"}&nbsp;
                     <span class="text-text-strong">
                       {DateTime.fromMillis(project().time.updated ?? project().time.created)
-                        .setLocale(language.intl())
+                        .setLocale("en")
                         .toRelative()}
                     </span>
                   </div>

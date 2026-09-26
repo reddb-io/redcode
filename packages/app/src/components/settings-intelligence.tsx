@@ -8,7 +8,6 @@ import { IntelligenceClient } from "@reddb-io/redcode-client"
 import { Intelligence } from "@reddb-io/redcode-schema/intelligence"
 import { Model } from "@reddb-io/redcode-schema/model"
 import { Provider } from "@reddb-io/redcode-schema/provider"
-import { useLanguage } from "@/context/language"
 import { useServerSDK } from "@/context/server-sdk"
 import { effective } from "@/context/intelligence"
 import { usePlatform } from "@/context/platform"
@@ -24,7 +23,6 @@ export function SettingsIntelligence() {
   )
 }
 function IntelligenceForm() {
-  const language = useLanguage()
   const server = useServerSDK()
   const platform = usePlatform()
   const models = useModels()
@@ -108,7 +106,7 @@ function IntelligenceForm() {
   const run = async (action: () => Promise<void>) => {
     set("busy", true)
     set("message", "")
-    await action().catch(() => set("message", language.t("settings.intelligence.error")))
+    await action().catch(() => set("message", "Setup failed. Check your connection and model selections, then retry. Previous settings are preserved."))
     set("busy", false)
   }
   const loadHistory = async (reset: boolean) => {
@@ -161,7 +159,7 @@ function IntelligenceForm() {
   const save = () =>
     run(async () => {
       if (!state.principal) {
-        set("message", language.t("settings.intelligence.principalRequired"))
+        set("message", "Select an S2 principal to continue")
         return
       }
       const client = api()
@@ -197,23 +195,23 @@ function IntelligenceForm() {
       set("saved", settings.evaluator)
       server().intelligence.accept(settings)
       set("key", "")
-      set("message", language.t("settings.intelligence.saved"))
+      set("message", "Global intelligence setup saved.")
     })
   const inputClass = "w-full rounded-md border border-border-base bg-background-base p-2 text-text-strong"
   return (
     <div class="flex flex-col gap-5 p-6 max-w-2xl">
       <SettingsServerPicker />
-      <h2 class="text-16-medium text-text-strong">{language.t("settings.intelligence.title")}</h2>
+      <h2 class="text-16-medium text-text-strong">{"Intelligence"}</h2>
       <p class="text-12-regular text-text-weak">
-        {language.t("settings.intelligence.environment", { environment: state.environment || server().url })}
+        {`Global setup on ${state.environment || server().url}`}
       </p>
-      <p>{language.t("settings.intelligence.description")}</p>
+      <p>{"Configure System Two for generation and System One for semantic decisions. These roles are shared across projects on this server."}</p>
       <Button variant="secondary" onClick={openProviders}>
-        {language.t("settings.intelligence.connect")}
+        {"Connect providers"}
       </Button>
       <fieldset disabled={state.busy || !state.loaded} class="flex flex-col gap-4">
         <label class="flex flex-col gap-1">
-          <span>{language.t("settings.intelligence.reasoning")}</span>
+          <span>{"Reasoning mode"}</span>
           <select
             class={inputClass}
             value={state.reasoning}
@@ -224,31 +222,28 @@ function IntelligenceForm() {
               )
             }
           >
-            <option value="single">{language.t("settings.intelligence.single")}</option>
-            <option value="dual">{language.t("settings.intelligence.dual")}</option>
+            <option value="single">{"Simple — one model"}</option>
+            <option value="dual">{"Dual — S1 classifies and validates, S2 executes"}</option>
           </select>
         </label>
         <Show when={state.flag}>
           <p class="text-12-regular text-text-weak">
-            {language.t("settings.intelligence.flag", { mode: state.flag })}
+            {`This server runs with --reasoning ${state.flag}. The saved mode applies when it starts without the flag.`}
           </p>
         </Show>
         <label class="flex flex-col gap-1">
-          <span>{language.t("settings.intelligence.principal")}</span>
+          <span>{"System Two — principal"}</span>
           <select class={inputClass} value={state.principal} onChange={(event) => set("principal", event.currentTarget.value)}>
             <Show when={recommendation()}>
               {(recommended) => (
-                <optgroup label={language.t("settings.intelligence.recommended")}>
+                <optgroup label={"Recommended"}>
                   <option value={recommended().value}>
-                    {language.t("settings.intelligence.recommendedModel", {
-                      name: recommended().pick.name,
-                      provider: recommended().pick.provider.name,
-                    })}
+                    {`Recommended: ${recommended().pick.name} · via RedRouter » ${recommended().pick.provider.name}`}
                   </option>
                 </optgroup>
               )}
             </Show>
-            <option value="">{language.t("settings.intelligence.select")}</option>
+            <option value="">{"Select a connected model"}</option>
             <For each={models.list().filter((model) => model.capabilities.protocol !== "systemone")}>
               {(model) => (
                 <option value={`${model.provider.id}/${model.id}`}>
@@ -267,7 +262,7 @@ function IntelligenceForm() {
         </label>
         <Show when={state.reasoning === "dual"}>
           <label class="flex flex-col gap-1">
-            <span>{language.t("settings.intelligence.connection")}</span>
+            <span>{"System One connection"}</span>
             <select
               class={inputClass}
               value={state.detected ? "detected" : String(selectedOption())}
@@ -288,11 +283,8 @@ function IntelligenceForm() {
               <Show when={state.router?.evaluator && state.router}>
                 {(router) => (
                   <option value="detected">
-                    {language.t("settings.intelligence.detectedRouter", {
-                      name:
-                        router().detection.instanceID ??
-                        (URL.canParse(router().baseURL) ? new URL(router().baseURL).host : router().baseURL),
-                    })}
+                    {`Use RedRouter ${router().detection.instanceID ??
+                        (URL.canParse(router().baseURL) ? new URL(router().baseURL).host : router().baseURL)} (detected)`}
                   </option>
                 )}
               </Show>
@@ -307,18 +299,18 @@ function IntelligenceForm() {
             </select>
           </label>
           <Show when={state.transport === "opencode-zen"}>
-            <p class="text-12-regular text-text-weak">{language.t("settings.intelligence.zenNotice")}</p>
+            <p class="text-12-regular text-text-weak">{"Jev Free is a temporary offer. Session sources are sent to Zen after activation. If it becomes unavailable, choose another evaluator; Redcode never switches to a paid model automatically. A blank key reuses an existing OpenCode Zen connection, OPENCODE_API_KEY, or Zen's public free access."}</p>
             <a
               href="https://opencode.ai/zen"
               target="_blank"
               rel="noreferrer"
               class="text-text-interactive-base underline"
             >
-              {language.t("settings.intelligence.connectZen")}
+              {"Connect OpenCode Zen / get an API key"}
             </a>
           </Show>
           <label class="flex flex-col gap-1">
-            <span>{language.t("settings.intelligence.url")}</span>
+            <span>{"API base URL"}</span>
             <input
               class={inputClass}
               value={state.baseURL}
@@ -326,7 +318,7 @@ function IntelligenceForm() {
             />
           </label>
           <label class="flex flex-col gap-1">
-            <span>{language.t("settings.intelligence.key")}</span>
+            <span>{"API key (empty keeps saved credentials or server environment)"}</span>
             <input
               type="password"
               autocomplete="off"
@@ -346,19 +338,19 @@ function IntelligenceForm() {
                     const reason =
                       typeof error === "object" && error && "message" in error && typeof error.message === "string"
                         ? error.message
-                        : language.t("settings.intelligence.error")
-                    set("message", `${reason} ${language.t("settings.intelligence.manual")}`)
+                        : "Setup failed. Check your connection and model selections, then retry. Previous settings are preserved."
+                    set("message", `${reason} ${"Model discovery is unavailable. Enter a model ID and test the connection."}`)
                   })
                 if (!result) return
                 set("discovered", result.models)
-                if (result.manual) set("message", language.t("settings.intelligence.manual"))
+                if (result.manual) set("message", "Model discovery is unavailable. Enter a model ID and test the connection.")
               })
             }
           >
-            {language.t("settings.intelligence.discover")}
+            {"Discover evaluator models"}
           </Button>
           <label class="flex flex-col gap-1">
-            <span>{language.t("settings.intelligence.evaluator")}</span>
+            <span>{"System One — evaluator model"}</span>
             <input
               class={inputClass}
               list="system-one-models"
@@ -369,13 +361,13 @@ function IntelligenceForm() {
               <For each={state.discovered}>{(model) => <option value={model.id}>{model.name}</option>}</For>
             </datalist>
           </label>
-          <p class="text-12-regular text-text-weak">{language.t("settings.intelligence.disclosure")}</p>
+          <p class="text-12-regular text-text-weak">{"Sources and candidates are sent to this evaluator. Activation tests the connection with a synthetic example. Model judgments can be uncertain or incorrect."}</p>
         </Show>
-        <Button onClick={() => void save()}>{language.t("settings.intelligence.activate")}</Button>
+        <Button onClick={() => void save()}>{"Test and activate"}</Button>
       </fieldset>
       <Show when={state.loaded}>
         <details>
-          <summary>{language.t("settings.intelligence.history")}</summary>
+          <summary>{"Recent semantic evaluations"}</summary>
           <div class="flex gap-2 py-2">
             <select
               class={inputClass}
@@ -391,7 +383,7 @@ function IntelligenceForm() {
               <option value="">All operations</option>
               <For each={Intelligence.Operation.literals}>
                 {(operation) => (
-                  <option value={operation}>{language.t(`settings.intelligence.operation.${operation}`)}</option>
+                  <option value={operation}>{operationText[operation] ?? operation}</option>
                 )}
               </For>
             </select>
@@ -409,7 +401,7 @@ function IntelligenceForm() {
               <option value="">All decisions</option>
               <For each={Intelligence.Decision.literals}>
                 {(decision) => (
-                  <option value={decision}>{language.t(`settings.intelligence.decision.${decision}`)}</option>
+                  <option value={decision}>{decisionText[decision] ?? decision}</option>
                 )}
               </For>
             </select>
@@ -418,22 +410,18 @@ function IntelligenceForm() {
             {(evaluation) => (
               <div class="border-b border-border-base py-2 text-12-regular">
                 <div>
-                  {language.t(`settings.intelligence.operation.${evaluation.operation}`)} ·{" "}
-                  {language.t(`settings.intelligence.decision.${evaluation.decision}`)} · {evaluation.model}
+                  {operationText[evaluation.operation] ?? evaluation.operation} ·{" "}
+                  {decisionText[evaluation.decision] ?? evaluation.decision} · {evaluation.model}
                 </div>
                 <For each={evaluation.issues}>{(issue) => <p class="text-icon-warning-base">{issue}</p>}</For>
                 <Show when={(evaluation.attempt ?? 0) > 0}>
                   <div>Corrective review attempt {evaluation.attempt}</div>
                 </Show>
                 <div>
-                  {language.t("settings.intelligence.usage", {
-                    input: evaluation.usage.input_tokens,
-                    output: evaluation.usage.output_tokens,
-                    duration: evaluation.duration,
-                  })}
+                  {`${evaluation.usage.input_tokens} input tokens · ${evaluation.usage.output_tokens} output tokens · ${evaluation.duration} ms`}
                 </div>
                 <details>
-                  <summary>{language.t("settings.intelligence.details")}</summary>
+                  <summary>{"Evaluation details"}</summary>
                   <For each={Object.entries(evaluation.answers)}>
                     {([id, answer]) => (
                       <div class="py-1">
@@ -471,7 +459,7 @@ function IntelligenceForm() {
         </details>
       </Show>
       <Show when={state.busy}>
-        <p role="status">{language.t("settings.intelligence.checking")}</p>
+        <p role="status">{"Checking configuration…"}</p>
       </Show>
       <Show when={state.message}>
         <p role="status">{state.message}</p>
@@ -484,7 +472,6 @@ function IntelligenceForm() {
 export function IntelligenceOnboarding() {
   const server = useServerSDK()
   const platform = usePlatform()
-  const language = useLanguage()
   const configure = useSettingsDialog("intelligence")
   const offered = new Set<string>()
   createEffect(() => {
@@ -509,12 +496,12 @@ export function IntelligenceOnboarding() {
         )
           return
         showToast({
-          title: language.t("settings.intelligence.title"),
-          description: language.t("intelligence.setupDescription"),
+          title: "Intelligence",
+          description: "Choose a System One evaluator and a System Two model before sending prompts. Your draft is preserved.",
           persistent: true,
           actions: [
             {
-              label: language.t("settings.intelligence.configure"),
+              label: "Configure",
               onClick: configure,
             },
           ],
@@ -523,4 +510,32 @@ export function IntelligenceOnboarding() {
       .catch(() => {})
   })
   return null
+}
+
+const operationText: Record<string, string> = {
+  prompt_classification: "Prompt classification",
+  response_quality: "Response quality",
+  tool_usage: "Tool usage",
+  task_quality: "Task quality",
+  todos: "Tasks",
+  plan: "Plan",
+  feedback: "Design feedback",
+  design_completion: "Design completion",
+  compaction: "Checkpoint summary",
+  compact_now: "Compaction timing",
+  task_completion: "Task completion",
+  goal_completion: "Goal completion",
+  subagent_brief: "Subagent brief",
+  session_progress: "Session progress",
+  subagent_result: "Subagent result",
+  design_target: "Design target",
+  design_system_detect: "Design system",
+  goal_command: "Goal command",
+}
+
+const decisionText: Record<string, string> = {
+  accepted: "Accepted",
+  needs_revision: "Needs revision",
+  inconclusive: "Inconclusive",
+  unavailable: "Unavailable",
 }

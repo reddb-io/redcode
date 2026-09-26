@@ -1,5 +1,4 @@
 import { useCommand } from "@/context/command"
-import { useLanguage } from "@/context/language"
 import { serverName } from "@/context/server"
 import { displayName } from "@/pages/layout/helpers"
 import { makeEventListener } from "@solid-primitives/event-listener"
@@ -12,7 +11,6 @@ type HomeSessionSearchSource = Pick<HomeSessionsController, "data" | "session">
 
 export function createHomeSessionSearchController(home: HomeController, sessions: HomeSessionSearchSource) {
   const command = useCommand()
-  const language = useLanguage()
   const [state, setState] = createStore({ value: "", focused: false, highlighted: "" })
   let root: HTMLDivElement | undefined
   let input: HTMLInputElement | undefined
@@ -33,12 +31,12 @@ export function createHomeSessionSearchController(home: HomeController, sessions
   const open = createMemo(() => state.focused && query().length > 0)
   const placeholder = createMemo(() => {
     const project = home.project.selected()
-    if (project) return language.t("home.sessions.search.placeholder.scoped", { scope: displayName(project) })
+    if (project) return `Search sessions in ${displayName(project)}`
     if (home.server.list().length > 1) {
       const conn = home.server.focused()
-      if (conn) return language.t("home.sessions.search.placeholder.scoped", { scope: serverName(conn) })
+      if (conn) return `Search sessions in ${serverName(conn)}`
     }
-    return language.t("home.sessions.search.placeholder")
+    return "Search sessions"
   })
 
   onCleanup(
@@ -87,7 +85,7 @@ export function createHomeSessionSearchController(home: HomeController, sessions
       loading: sessions.data.loading,
       list: results,
       active,
-      noResultsLabel: () => language.t("home.sessions.search.noResults", { query: query() }),
+      noResultsLabel: () => `No sessions found for ${query()}`,
       highlight: (record: HomeSessionRecord) => setState("highlighted", homeSessionSearchKey(record)),
       move: (delta: number) => {
         const records = results()

@@ -9,7 +9,6 @@ import { createMediaQuery } from "@solid-primitives/media"
 import { useFile } from "@/context/file"
 import { useLayout } from "@/context/layout"
 import { useSync } from "@/context/sync"
-import { useLanguage } from "@/context/language"
 import { useProviders } from "@/hooks/use-providers"
 import { useSDK } from "@/context/sdk"
 import { formatLatency, formatSpeed, getSessionContext } from "@/components/session/session-context-metrics"
@@ -47,7 +46,6 @@ export function SessionContextUsage(props: SessionContextUsageProps) {
   const sync = useSync()
   const file = useFile()
   const layout = useLayout()
-  const language = useLanguage()
   const sdk = useSDK()
   const settings = useSettings()
   const providers = useProviders(() => sdk().directory)
@@ -67,7 +65,7 @@ export function SessionContextUsage(props: SessionContextUsageProps) {
 
   const usd = createMemo(
     () =>
-      new Intl.NumberFormat(language.intl(), {
+      new Intl.NumberFormat("en", {
         style: "currency",
         currency: "USD",
       }),
@@ -127,30 +125,30 @@ export function SessionContextUsage(props: SessionContextUsageProps) {
 
   const tooltipValue = () => (
     <div class="flex w-[120px] flex-col gap-2">
-      <ContextTooltipRow name={language.t("context.usage.cost")} value={cost()} />
+      <ContextTooltipRow name={"Cost"} value={cost()} />
       <ContextTooltipRow
-        name={language.t("context.usage.latency")}
+        name={"Latency"}
         value={
           <span classList={{ "opacity-60": context()?.meter?.step.stale }}>
-            {formatLatency(context()?.meter?.step.latency, language.intl())}
+            {formatLatency(context()?.meter?.step.latency, "en")}
           </span>
         }
       />
       <ContextTooltipRow
-        name={language.t("context.usage.speed")}
+        name={"Output speed"}
         value={
           <span classList={{ "opacity-60": context()?.meter?.step.stale }}>
-            {formatSpeed(context()?.meter?.step.speed, language.intl(), {
-              burst: language.t("context.usage.burst"),
-              hidden: language.t("context.stats.reasoningHidden"),
+            {formatSpeed(context()?.meter?.step.speed, "en", {
+              burst: "Burst",
+              hidden: "reasoning hidden",
             })}
           </span>
         }
       />
-      <ContextTooltipRow name={language.t("context.usage.usage")} value={`${context()?.usage ?? 0}%`} />
+      <ContextTooltipRow name={"Usage"} value={`${context()?.usage ?? 0}%`} />
       <ContextTooltipRow
-        name={language.t("context.usage.tokens")}
-        value={context()?.total.toLocaleString(language.intl()) ?? "0"}
+        name={"Tokens"}
+        value={context()?.total.toLocaleString("en") ?? "0"}
       />
     </div>
   )
@@ -167,7 +165,7 @@ export function SessionContextUsage(props: SessionContextUsageProps) {
               size="large"
               icon={circleV2()}
               onClick={openContext}
-              aria-label={language.t("context.usage.view")}
+              aria-label={"View context usage"}
             />
           </Match>
           <Match when={true}>
@@ -176,7 +174,7 @@ export function SessionContextUsage(props: SessionContextUsageProps) {
               variant="ghost"
               class="size-6"
               onClick={openContext}
-              aria-label={language.t("context.usage.view")}
+              aria-label={"View context usage"}
             >
               {circle()}
             </Button>

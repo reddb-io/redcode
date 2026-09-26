@@ -6,7 +6,6 @@
   "exports": {
     ".": "./src/index.ts",
     "./desktop-menu": "./src/desktop-menu.ts",
-    "./i18n/desktop-native": "./src/i18n/desktop-native.ts",
     "./updater": "./src/updater.ts",
     "./wsl/types": "./src/wsl/types.ts",
     "./vite": "./vite.js",
@@ -69,8 +68,7 @@
     "@solid-primitives/audio": "1.4.2",
     "@solid-primitives/event-bus": "1.1.2",
     "@solid-primitives/event-listener": "2.4.5",
-    "@solid-primitives/i18n": "2.2.1",
-    "@solid-primitives/media": "2.3.3",
+        "@solid-primitives/media": "2.3.3",
     "@solid-primitives/resize-observer": "2.1.5",
     "@solid-primitives/scheduled": "1.5.3",
     "@solid-primitives/scroll": "2.1.3",

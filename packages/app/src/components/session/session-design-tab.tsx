@@ -1,6 +1,5 @@
 import { useParams } from "@solidjs/router"
 import { useSDK } from "@/context/sdk"
-import { useLanguage } from "@/context/language"
 import { useServerSDK } from "@/context/server-sdk"
 import { usePlatform } from "@/context/platform"
 import { authTokenFromCredentials } from "@/utils/server"
@@ -17,13 +16,11 @@ export function SessionDesignTab() {
   const sdk = useSDK()
   const server = useServerSDK()
   const platform = usePlatform()
-  const language = useLanguage()
   const root = document.createElement("div")
   root.className = "h-full w-full"
   createSessionDesignMount({
     root,
     load: () => import("@reddb-io/redcode-design/review"),
-    translate: language.t,
     // While the user looks at the design here, the panel follows the review feed (ignoring its entries)
     // so the server counts it as a connected review page and the agent's publishes open no browser tab.
     presence: (options, signal) =>

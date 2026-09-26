@@ -1,5 +1,4 @@
 import { FileIcon } from "@reddb-io/redcode-ui/file-icon"
-import { useI18n } from "@reddb-io/redcode-ui/context/i18n"
 import { ButtonV2 } from "@reddb-io/redcode-ui/v2/button-v2"
 import "./session-review-v2.css"
 
@@ -9,19 +8,18 @@ export type SessionReviewEmptyNoGitV2Props = {
 }
 
 export function SessionReviewEmptyNoGitV2(props: SessionReviewEmptyNoGitV2Props) {
-  const i18n = useI18n()
 
   return (
     <div data-slot="session-review-v2-empty-no-git">
       <FileIcon node={{ path: ".gitignore", type: "file" }} mono />
-      <div data-slot="session-review-v2-empty-no-git-title">{i18n.t("ui.sessionReviewV2.empty.noGit.title")}</div>
+      <div data-slot="session-review-v2-empty-no-git-title">{"No tracked changes"}</div>
       <div data-slot="session-review-v2-empty-no-git-description">
-        {i18n.t("ui.sessionReviewV2.empty.noGit.description")}
+        {"Track, review, and undo changes in this project"}
       </div>
       <ButtonV2 variant="neutral" size="normal" disabled={props.pending} onClick={props.onInitGit}>
         {props.pending
-          ? i18n.t("ui.sessionReviewV2.empty.noGit.actionLoading")
-          : i18n.t("ui.sessionReviewV2.empty.noGit.action")}
+          ? "Creating Git repository..."
+          : "Create Git repository"}
       </ButtonV2>
     </div>
   )

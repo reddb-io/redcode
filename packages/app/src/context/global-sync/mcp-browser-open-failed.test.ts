@@ -1,11 +1,7 @@
 import { describe, expect, test } from "bun:test"
-import { dict } from "../../i18n/en"
 import { mcpBrowserOpenFailedToast, readMcpBrowserOpenFailed } from "./mcp-browser-open-failed"
 
 const url = "https://auth.example.com/authorize?client_id=redcode&state=abc"
-
-const t = (key: keyof typeof dict, params?: Record<string, string>) =>
-  Object.entries(params ?? {}).reduce((text, [name, value]) => text.replace(`{{${name}}}`, value), dict[key])
 
 describe("mcp.browser.open.failed", () => {
   test("reads the authorization URL from the server event", () => {
@@ -32,7 +28,6 @@ describe("mcp.browser.open.failed", () => {
     const copied: string[] = []
     const event = readMcpBrowserOpenFailed({ type: "mcp.browser.open.failed", properties: { mcpName: "linear", url } })
     const toast = mcpBrowserOpenFailedToast(event!, {
-      t,
       openExternal: (value) => opened.push(value),
       copy: (value) => copied.push(value),
     })

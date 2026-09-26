@@ -29,7 +29,6 @@ export function createChildStoreManager(input: {
   onBootstrap: (directory: string) => void
   onMcp: (directory: string, setStore: SetStoreFunction<State>) => void
   onDispose: (directory: string) => void
-  translate: (key: string, vars?: Record<string, string | number>) => string
   queryOptions: QueryOptionsApi
   global: {
     provider: NormalizedProviderListResponse
@@ -159,7 +158,7 @@ export function createChildStoreManager(input: {
           createStore({ value: undefined as VcsInfo | undefined }),
         ),
       )
-      if (!vcs) throw new Error(input.translate("error.childStore.persistedCacheCreateFailed"))
+      if (!vcs) throw new Error("Failed to create persisted cache")
       const vcsStore = vcs[0]
       vcsCache.set(key, { store: vcsStore, setStore: vcs[1], ready: vcs[3] })
 
@@ -169,7 +168,7 @@ export function createChildStoreManager(input: {
           createStore({ value: undefined as ProjectMeta | undefined }),
         ),
       )
-      if (!meta) throw new Error(input.translate("error.childStore.persistedProjectMetadataCreateFailed"))
+      if (!meta) throw new Error("Failed to create persisted project metadata")
       metaCache.set(key, { store: meta[0], setStore: meta[1], ready: meta[3] })
 
       const icon = runWithOwner(input.owner, () =>
@@ -178,7 +177,7 @@ export function createChildStoreManager(input: {
           createStore({ value: undefined as string | undefined }),
         ),
       )
-      if (!icon) throw new Error(input.translate("error.childStore.persistedProjectIconCreateFailed"))
+      if (!icon) throw new Error("Failed to create persisted project icon")
       iconCache.set(key, { store: icon[0], setStore: icon[1], ready: icon[3] })
 
       const init = () =>
@@ -293,7 +292,7 @@ export function createChildStoreManager(input: {
     }
     markKey(key)
     const childStore = children[key]
-    if (!childStore) throw new Error(input.translate("error.childStore.storeCreateFailed"))
+    if (!childStore) throw new Error("Failed to create store")
     return childStore
   }
 

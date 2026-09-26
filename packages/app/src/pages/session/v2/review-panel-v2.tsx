@@ -19,7 +19,6 @@ import type {
   SessionReviewLineComment,
 } from "@reddb-io/redcode-session-ui/session-review"
 import FileTreeV2 from "@/components/file-tree-v2"
-import { useLanguage } from "@/context/language"
 import { useSDK } from "@/context/sdk"
 import {
   filterRenderableDiff,
@@ -179,7 +178,6 @@ function ReviewPanelV2Sidebar(props: {
   kinds: () => ReturnType<typeof reviewDiffKinds>
   activeDiff: () => string | undefined
 }) {
-  const language = useLanguage()
   const [explicitHighlight, setExplicitHighlight] = createSignal<string | undefined>()
   const highlightedPath = createMemo(() => {
     if (!props.searching()) return undefined
@@ -216,8 +214,8 @@ function ReviewPanelV2Sidebar(props: {
         when={props.diffsReady()}
         fallback={
           <div class="px-2 py-2 text-12-regular text-text-weak">
-            {language.t("common.loading")}
-            {language.t("common.loading.ellipsis")}
+            {"Loading"}
+            {"..."}
           </div>
         }
       >
@@ -235,7 +233,7 @@ function ReviewPanelV2Sidebar(props: {
         >
           <Show
             when={props.filteredFiles().length > 0}
-            fallback={<div class="px-2 py-2 text-12-regular text-text-weak">{language.t("palette.empty")}</div>}
+            fallback={<div class="px-2 py-2 text-12-regular text-text-weak">{"No results found"}</div>}
           >
             <SessionFileListV2
               files={props.filteredFiles()}

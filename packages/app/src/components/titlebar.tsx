@@ -4,7 +4,6 @@ import {
   createResource,
   createSignal,
   Match,
-  on,
   onMount,
   Show,
   Switch,
@@ -24,7 +23,6 @@ import { TooltipV2 } from "@reddb-io/redcode-ui/v2/tooltip-v2"
 import { LayoutRoute, useLayout } from "@/context/layout"
 import { usePlatform } from "@/context/platform"
 import { useCommand } from "@/context/command"
-import { useLanguage } from "@/context/language"
 import { useSettings } from "@/context/settings"
 import { WindowsAppMenu } from "./windows-app-menu"
 import { applyPath, backPath, forwardPath } from "./titlebar-history"
@@ -37,7 +35,6 @@ import { ServerConnection, useServer } from "@/context/server"
 import { tabKey, useTabs } from "@/context/tabs"
 import type { PromptSession } from "@/context/prompt"
 import "./titlebar.css"
-import { newTabTooltipKeybind } from "./command-tooltip-keybind"
 import { normalizeSessionInfo } from "@/utils/session"
 import { RedcodeWordmark } from "./redcode-wordmark"
 
@@ -54,11 +51,9 @@ export type TitlebarUpdate = {
 }
 
 export function useTitlebarRightMount() {
-  const language = useLanguage()
   const [mount, setMount] = createSignal<HTMLElement | null>(null)
   const sync = () => setMount(document.getElementById("opencode-titlebar-right"))
   onMount(sync)
-  createEffect(on(language.direction, sync, { defer: true }))
   return mount
 }
 
@@ -66,7 +61,6 @@ export function Titlebar(props: { update?: TitlebarUpdate; debugTools?: { visibl
   const layout = useLayout()
   const platform = usePlatform()
   const command = useCommand()
-  const language = useLanguage()
   const settings = useSettings()
   const server = useServer()
   const navigate = useNavigate()
@@ -128,9 +122,9 @@ export function Titlebar(props: { update?: TitlebarUpdate; debugTools?: { visibl
     return {
       visible: version !== undefined || installing,
       installing,
-      label: language.t("titlebar.update"),
-      ariaLabel: language.t("toast.update.action.installRestart"),
-      title: version ? language.t("titlebar.updateVersion", { version }) : undefined,
+      label: "Update",
+      ariaLabel: "Install and restart",
+      title: version ? `Update ${version}` : undefined,
       onInstall: () => props.update?.install(),
     }
   })
@@ -155,15 +149,15 @@ export function Titlebar(props: { update?: TitlebarUpdate; debugTools?: { visibl
   command.register(() => [
     {
       id: "common.goBack",
-      title: language.t("common.goBack"),
-      category: language.t("command.category.view"),
+      title: "Navigate back",
+      category: "View",
       keybind: "mod+[",
       onSelect: back,
     },
     {
       id: "common.goForward",
-      title: language.t("common.goForward"),
-      category: language.t("command.category.view"),
+      title: "Navigate forward",
+      category: "View",
       keybind: "mod+]",
       onSelect: forward,
     },
@@ -317,8 +311,8 @@ export function Titlebar(props: { update?: TitlebarUpdate; debugTools?: { visibl
             command.register("titlebar-home", () => [
               {
                 id: "home.toggle",
-                title: language.t("home.title"),
-                category: language.t("command.category.view"),
+                title: "Home",
+                category: "View",
                 keybind: "mod+b",
                 hidden: true,
                 onSelect: toggleHome,
@@ -332,7 +326,7 @@ export function Titlebar(props: { update?: TitlebarUpdate; debugTools?: { visibl
                 {
                   id: "tab.new",
                   category: "tab",
-                  title: language.t("command.session.new"),
+                  title: "New session",
                   keybind: "mod+t,mod+n",
                   hidden: true,
                   onSelect: openNewTab,
@@ -340,7 +334,7 @@ export function Titlebar(props: { update?: TitlebarUpdate; debugTools?: { visibl
                 current && {
                   id: "tab.close",
                   category: "tab",
-                  title: language.t("command.tab.close"),
+                  title: "Close tab",
                   keybind: "mod+w",
                   hidden: true,
                   onSelect: () => {
@@ -349,8 +343,8 @@ export function Titlebar(props: { update?: TitlebarUpdate; debugTools?: { visibl
                 },
                 {
                   id: "tab.reopenClosed",
-                  category: language.t("command.category.file"),
-                  title: language.t("command.tab.reopenClosed"),
+                  category: "File",
+                  title: "Reopen closed tab",
                   keybind: "mod+shift+t",
                   onSelect: () => tabsStoreActions.reopenClosedTab(),
                 },
@@ -378,7 +372,7 @@ export function Titlebar(props: { update?: TitlebarUpdate; debugTools?: { visibl
                   placement="bottom"
                   value={
                     <>
-                      {language.t("home.title")}
+                      {"Home"}
                       <KeybindV2 keys={command.keybindParts("home.toggle")} variant="neutral" />
                     </>
                   }
@@ -392,7 +386,7 @@ export function Titlebar(props: { update?: TitlebarUpdate; debugTools?: { visibl
                     icon={<IconV2 name="grid-plus" />}
                     state={layout.route().type === "home" ? "pressed" : undefined}
                     onClick={toggleHome}
-                    aria-label={language.t("home.title")}
+                    aria-label={"Home"}
                     aria-pressed={layout.route().type === "home"}
                   />
                 </TooltipV2>
@@ -416,7 +410,7 @@ export function Titlebar(props: { update?: TitlebarUpdate; debugTools?: { visibl
                   placement="bottom"
                   value={
                     <>
-                      {language.t("command.session.new")}
+                      {"New session"}
                       <KeybindV2 keys={newTabTooltipKeybind(command)} variant="neutral" />
                     </>
                   }
@@ -428,7 +422,7 @@ export function Titlebar(props: { update?: TitlebarUpdate; debugTools?: { visibl
                     class="shrink-0"
                     icon={<IconV2 name="plus" />}
                     onClick={openNewTab}
-                    aria-label={language.t("command.session.new")}
+                    aria-label={"New session"}
                   />
                 </TooltipV2>
                 <div class="flex-1" />
@@ -462,7 +456,7 @@ export function Titlebar(props: { update?: TitlebarUpdate; debugTools?: { visibl
                     variant="ghost"
                     class="titlebar-icon rounded-md"
                     onClick={layout.mobileSidebar.toggle}
-                    aria-label={language.t("sidebar.menu.toggle")}
+                    aria-label={"Toggle menu"}
                     aria-expanded={layout.mobileSidebar.opened()}
                   />
                 </div>
@@ -474,7 +468,7 @@ export function Titlebar(props: { update?: TitlebarUpdate; debugTools?: { visibl
                     variant="ghost"
                     class="titlebar-icon rounded-md"
                     onClick={layout.mobileSidebar.toggle}
-                    aria-label={language.t("sidebar.menu.toggle")}
+                    aria-label={"Toggle menu"}
                     aria-expanded={layout.mobileSidebar.opened()}
                   />
                 </div>
@@ -483,14 +477,14 @@ export function Titlebar(props: { update?: TitlebarUpdate; debugTools?: { visibl
                 <TooltipKeybind
                   class={web() ? "hidden xl:flex shrink-0 ml-14" : "hidden xl:flex shrink-0 ml-2"}
                   placement="bottom"
-                  title={language.t("command.sidebar.toggle")}
+                  title={"Toggle sidebar"}
                   keybind={command.keybind("sidebar.toggle")}
                 >
                   <Button
                     variant="ghost"
                     class="group/sidebar-toggle titlebar-icon w-8 h-6 p-0 box-border"
                     onClick={layout.sidebar.toggle}
-                    aria-label={language.t("command.sidebar.toggle")}
+                    aria-label={"Toggle sidebar"}
                     aria-expanded={layout.sidebar.opened()}
                   >
                     <Icon size="small" name={layout.sidebar.opened() ? "sidebar-active" : "sidebar"} />
@@ -511,7 +505,7 @@ export function Titlebar(props: { update?: TitlebarUpdate; debugTools?: { visibl
                       >
                         <TooltipKeybind
                           placement="bottom"
-                          title={language.t("command.session.new")}
+                          title={"New session"}
                           keybind={command.keybind("session.new")}
                           openDelay={800}
                         >
@@ -524,7 +518,7 @@ export function Titlebar(props: { update?: TitlebarUpdate; debugTools?: { visibl
                               if (!params.dir) return
                               navigate(`/${params.dir}/session`)
                             }}
-                            aria-label={language.t("command.session.new")}
+                            aria-label={"New session"}
                             aria-current={creating() ? "page" : undefined}
                           >
                             <IconV2 name="edit" size="small" />
@@ -543,24 +537,24 @@ export function Titlebar(props: { update?: TitlebarUpdate; debugTools?: { visibl
                   >
                     <Show when={hasProjects() && nav()}>
                       <div class="flex items-center gap-0 transition-transform">
-                        <Tooltip placement="bottom" value={language.t("common.goBack")} openDelay={800}>
+                        <Tooltip placement="bottom" value={"Navigate back"} openDelay={800}>
                           <Button
                             variant="ghost"
                             icon="chevron-left"
                             class="titlebar-icon w-6 h-6 p-0 box-border"
                             disabled={!canBack()}
                             onClick={back}
-                            aria-label={language.t("common.goBack")}
+                            aria-label={"Navigate back"}
                           />
                         </Tooltip>
-                        <Tooltip placement="bottom" value={language.t("common.goForward")} openDelay={800}>
+                        <Tooltip placement="bottom" value={"Navigate forward"} openDelay={800}>
                           <Button
                             variant="ghost"
                             icon="chevron-right"
                             class="titlebar-icon w-6 h-6 p-0 box-border"
                             disabled={!canForward()}
                             onClick={forward}
-                            aria-label={language.t("common.goForward")}
+                            aria-label={"Navigate forward"}
                           />
                         </Tooltip>
                       </div>

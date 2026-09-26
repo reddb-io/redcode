@@ -14,7 +14,6 @@ import {
   type PromptProjectController,
 } from "@/components/prompt-project-selector"
 import { StatusPopoverV2 } from "@/components/status-popover"
-import { useLanguage } from "@/context/language"
 import { useSDK } from "@/context/sdk"
 import { useServerSync } from "@/context/server-sync"
 import { useProviders } from "@/hooks/use-providers"
@@ -73,14 +72,13 @@ export function NewSessionView(props: {
 }
 
 export function NewSessionStatus(props: { mount: Accessor<HTMLElement | null>; visible: Accessor<boolean> }) {
-  const language = useLanguage()
 
   return (
     <Show when={props.mount()} keyed>
       {(mount) => (
         <Portal mount={mount}>
           <Show when={props.visible()}>
-            <Tooltip placement="bottom" value={language.t("status.popover.trigger")}>
+            <Tooltip placement="bottom" value={"Status"}>
               <StatusPopoverV2 />
             </Tooltip>
           </Show>
@@ -91,7 +89,6 @@ export function NewSessionStatus(props: { mount: Accessor<HTMLElement | null>; v
 }
 
 function ProviderTip() {
-  const language = useLanguage()
   const dialog = useDialog()
   const sdk = useSDK()
   const serverSync = useServerSync()
@@ -133,7 +130,7 @@ function ProviderTip() {
             class="flex h-6 min-w-0 items-center rounded-[4px] pl-1.5 text-[13px] leading-none tracking-[-0.04px] text-v2-text-text-faint transition-[background-color,color] duration-150 ease-in-out hover:bg-v2-overlay-simple-overlay-hover hover:text-v2-text-text-muted focus-visible:bg-v2-overlay-simple-overlay-hover focus-visible:text-v2-text-text-muted focus-visible:outline-none"
             onClick={openProviders}
           >
-            <span class="truncate">{language.t("home.providerTip")}</span>
+            <span class="truncate">{"Connect to 75+ providers to use other models, including Claude, GPT, Gemini, etc"}</span>
             <span class="flex size-6 shrink-0 items-center justify-center" aria-hidden="true">
               <IconV2 name="chevron-down" size="small" class="-rotate-90" />
             </span>
@@ -142,12 +139,12 @@ function ProviderTip() {
             class="hover-reveal absolute left-full top-0 flex h-6 w-7 items-center justify-end delay-0 duration-0 group-hover/provider-tip:delay-[250ms] group-hover/provider-tip:duration-150 group-hover/provider-tip:opacity-100 focus-within:delay-0 focus-within:duration-0 focus-within:opacity-100"
             placement="top"
             openDelay={1000}
-            value={language.t("common.dismiss")}
+            value={"Dismiss"}
           >
             <button
               type="button"
               class="flex size-6 items-center justify-center rounded-[4px] text-v2-icon-icon-muted transition-[background-color,color] duration-150 ease-in-out hover:bg-v2-overlay-simple-overlay-hover hover:text-v2-icon-icon-base focus-visible:bg-v2-overlay-simple-overlay-hover focus-visible:text-v2-icon-icon-base focus-visible:outline-none"
-              aria-label={language.t("common.dismiss")}
+              aria-label={"Dismiss"}
               onClick={() => setPersistedState("dismissedAt", Date.now())}
             >
               <IconV2 name="xmark-small" />

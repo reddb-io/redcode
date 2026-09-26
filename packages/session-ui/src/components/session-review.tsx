@@ -10,7 +10,6 @@ import { StickyAccordionHeader } from "@reddb-io/redcode-ui/sticky-accordion-hea
 import { Tooltip } from "@reddb-io/redcode-ui/tooltip"
 import { ScrollView } from "@reddb-io/redcode-ui/scroll-view"
 import { useFileComponent } from "@reddb-io/redcode-ui/context/file"
-import { useI18n } from "@reddb-io/redcode-ui/context/i18n"
 import { getDirectory, getFilename } from "@reddb-io/redcode-core/util/path"
 import { checksum } from "@reddb-io/redcode-core/util/encode"
 import { createEffect, createMemo, For, Match, onCleanup, Show, Switch, untrack, type JSX } from "solid-js"
@@ -166,7 +165,6 @@ export const SessionReview = (props: SessionReviewProps) => {
   let scroll: HTMLDivElement | undefined
   let focusToken = 0
   let frame: number | undefined
-  const i18n = useI18n()
   const fileComponent = useFileComponent()
   const anchors = new Map<string, HTMLElement>()
   const nodes = new Map<string, HTMLDivElement>()
@@ -272,7 +270,7 @@ export const SessionReview = (props: SessionReviewProps) => {
     handleChange(next)
   }
 
-  const openFileLabel = () => i18n.t("ui.sessionReview.openFile")
+  const openFileLabel = () => "Open file"
 
   const selectionSide = (range: SelectedLineRange) => range.endSide ?? range.side ?? "additions"
 
@@ -341,7 +339,7 @@ export const SessionReview = (props: SessionReviewProps) => {
     <div data-component="session-review" class={props.class} classList={props.classList}>
       <div data-slot="session-review-header" class={props.classes?.header}>
         <div data-slot="session-review-title">
-          {props.title === undefined ? i18n.t("ui.sessionReview.title") : props.title}
+          {props.title === undefined ? "Session changes" : props.title}
         </div>
         <div data-slot="session-review-actions">
           <Show when={hasDiffs() && props.onDiffStyleChange}>
@@ -351,7 +349,7 @@ export const SessionReview = (props: SessionReviewProps) => {
               size="small"
               value={(style) => style}
               label={(style) =>
-                i18n.t(style === "unified" ? "ui.sessionReview.diffStyle.unified" : "ui.sessionReview.diffStyle.split")
+                style === "unified" ? "Unified" : "Split"
               }
               onSelect={(style) => style && props.onDiffStyleChange?.(style)}
             />
@@ -364,8 +362,8 @@ export const SessionReview = (props: SessionReviewProps) => {
               onClick={handleExpandOrCollapseAll}
             >
               <Switch>
-                <Match when={open().length > 0}>{i18n.t("ui.sessionReview.collapseAll")}</Match>
-                <Match when={true}>{i18n.t("ui.sessionReview.expandAll")}</Match>
+                <Match when={open().length > 0}>{"Collapse all"}</Match>
+                <Match when={true}>{"Expand all"}</Match>
               </Switch>
             </Button>
           </Show>
@@ -434,7 +432,7 @@ export const SessionReview = (props: SessionReviewProps) => {
 
                     const commentsUi = createLineCommentController<SessionReviewComment>({
                       comments,
-                      label: i18n.t("ui.lineComment.submit"),
+                      label: "Comment",
                       draftKey: () => file,
                       mention: props.lineCommentMention,
                       state: {
@@ -542,19 +540,19 @@ export const SessionReview = (props: SessionReviewProps) => {
                                   <Match when={isAdded()}>
                                     <div data-slot="session-review-change-group" data-type="added">
                                       <span data-slot="session-review-change" data-type="added">
-                                        {i18n.t("ui.sessionReview.change.added")}
+                                        {"Added"}
                                       </span>
                                       <DiffChanges changes={diff()} />
                                     </div>
                                   </Match>
                                   <Match when={isDeleted()}>
                                     <span data-slot="session-review-change" data-type="removed">
-                                      {i18n.t("ui.sessionReview.change.removed")}
+                                      {"Removed"}
                                     </span>
                                   </Match>
                                   <Match when={!!mediaKind()}>
                                     <span data-slot="session-review-change" data-type="modified">
-                                      {i18n.t("ui.sessionReview.change.modified")}
+                                      {"Modified"}
                                     </span>
                                   </Match>
                                   <Match when={true}>
@@ -591,13 +589,10 @@ export const SessionReview = (props: SessionReviewProps) => {
                                 <Match when={tooLarge()}>
                                   <div data-slot="session-review-large-diff">
                                     <div data-slot="session-review-large-diff-title">
-                                      {i18n.t("ui.sessionReview.largeDiff.title")}
+                                      {"Diff too large to render"}
                                     </div>
                                     <div data-slot="session-review-large-diff-meta">
-                                      {i18n.t("ui.sessionReview.largeDiff.meta", {
-                                        limit: MAX_DIFF_CHANGED_LINES.toLocaleString(),
-                                        current: changedLines().toLocaleString(),
-                                      })}
+                                      {`Limit: ${MAX_DIFF_CHANGED_LINES.toLocaleString()} changed lines. Current: ${changedLines().toLocaleString()} changed lines.`}
                                     </div>
                                     <div data-slot="session-review-large-diff-actions">
                                       <Button
@@ -605,7 +600,7 @@ export const SessionReview = (props: SessionReviewProps) => {
                                         variant="secondary"
                                         onClick={() => setStore("force", file, true)}
                                       >
-                                        {i18n.t("ui.sessionReview.largeDiff.renderAnyway")}
+                                        {"Render anyway"}
                                       </Button>
                                     </div>
                                   </div>

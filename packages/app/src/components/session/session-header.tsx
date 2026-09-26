@@ -13,7 +13,6 @@ import { createStore } from "solid-js/store"
 import { createMediaQuery } from "@solid-primitives/media"
 import { Portal } from "solid-js/web"
 import { useCommand } from "@/context/command"
-import { useLanguage } from "@/context/language"
 import { useLayout } from "@/context/layout"
 import { usePlatform } from "@/context/platform"
 import { useServer } from "@/context/server"
@@ -57,63 +56,63 @@ type OS = "macos" | "windows" | "linux" | "unknown"
 const MAC_APPS = [
   {
     id: "vscode",
-    label: "session.header.open.app.vscode",
+    label: "VS Code",
     icon: "vscode",
     openWith: "Visual Studio Code",
   },
-  { id: "cursor", label: "session.header.open.app.cursor", icon: "cursor", openWith: "Cursor" },
-  { id: "zed", label: "session.header.open.app.zed", icon: "zed", openWith: "Zed" },
-  { id: "textmate", label: "session.header.open.app.textmate", icon: "textmate", openWith: "TextMate" },
+  { id: "cursor", label: "Cursor", icon: "cursor", openWith: "Cursor" },
+  { id: "zed", label: "Zed", icon: "zed", openWith: "Zed" },
+  { id: "textmate", label: "TextMate", icon: "textmate", openWith: "TextMate" },
   {
     id: "antigravity",
-    label: "session.header.open.app.antigravity",
+    label: "Antigravity",
     icon: "antigravity",
     openWith: "Antigravity",
   },
-  { id: "terminal", label: "session.header.open.app.terminal", icon: "terminal", openWith: "Terminal" },
-  { id: "iterm2", label: "session.header.open.app.iterm2", icon: "iterm2", openWith: "iTerm" },
-  { id: "ghostty", label: "session.header.open.app.ghostty", icon: "ghostty", openWith: "Ghostty" },
-  { id: "warp", label: "session.header.open.app.warp", icon: "warp", openWith: "Warp" },
-  { id: "xcode", label: "session.header.open.app.xcode", icon: "xcode", openWith: "Xcode" },
+  { id: "terminal", label: "Terminal", icon: "terminal", openWith: "Terminal" },
+  { id: "iterm2", label: "iTerm2", icon: "iterm2", openWith: "iTerm" },
+  { id: "ghostty", label: "Ghostty", icon: "ghostty", openWith: "Ghostty" },
+  { id: "warp", label: "Warp", icon: "warp", openWith: "Warp" },
+  { id: "xcode", label: "Xcode", icon: "xcode", openWith: "Xcode" },
   {
     id: "android-studio",
-    label: "session.header.open.app.androidStudio",
+    label: "Android Studio",
     icon: "android-studio",
     openWith: "Android Studio",
   },
   {
     id: "sublime-text",
-    label: "session.header.open.app.sublimeText",
+    label: "Sublime Text",
     icon: "sublime-text",
     openWith: "Sublime Text",
   },
 ] as const
 
 const WINDOWS_APPS = [
-  { id: "vscode", label: "session.header.open.app.vscode", icon: "vscode", openWith: "code" },
-  { id: "cursor", label: "session.header.open.app.cursor", icon: "cursor", openWith: "cursor" },
-  { id: "zed", label: "session.header.open.app.zed", icon: "zed", openWith: "zed" },
+  { id: "vscode", label: "VS Code", icon: "vscode", openWith: "code" },
+  { id: "cursor", label: "Cursor", icon: "cursor", openWith: "cursor" },
+  { id: "zed", label: "Zed", icon: "zed", openWith: "zed" },
   {
     id: "powershell",
-    label: "session.header.open.app.powershell",
+    label: "PowerShell",
     icon: "powershell",
     openWith: "powershell",
   },
   {
     id: "sublime-text",
-    label: "session.header.open.app.sublimeText",
+    label: "Sublime Text",
     icon: "sublime-text",
     openWith: "Sublime Text",
   },
 ] as const
 
 const LINUX_APPS = [
-  { id: "vscode", label: "session.header.open.app.vscode", icon: "vscode", openWith: "code" },
-  { id: "cursor", label: "session.header.open.app.cursor", icon: "cursor", openWith: "cursor" },
-  { id: "zed", label: "session.header.open.app.zed", icon: "zed", openWith: "zed" },
+  { id: "vscode", label: "VS Code", icon: "vscode", openWith: "code" },
+  { id: "cursor", label: "Cursor", icon: "cursor", openWith: "cursor" },
+  { id: "zed", label: "Zed", icon: "zed", openWith: "zed" },
   {
     id: "sublime-text",
-    label: "session.header.open.app.sublimeText",
+    label: "Sublime Text",
     icon: "sublime-text",
     openWith: "Sublime Text",
   },
@@ -129,10 +128,10 @@ const detectOS = (platform: ReturnType<typeof usePlatform>): OS => {
   return "unknown"
 }
 
-const showRequestError = (language: ReturnType<typeof useLanguage>, err: unknown) => {
+const showRequestError = (err: unknown) => {
   showToast({
     variant: "error",
-    title: language.t("common.requestFailed"),
+    title: "Request failed",
     description: err instanceof Error ? err.message : String(err),
   })
 }
@@ -142,7 +141,6 @@ export function SessionHeader() {
   const command = useCommand()
   const server = useServer()
   const platform = usePlatform()
-  const language = useLanguage()
   const settings = useSettings()
   const sync = useSync()
   const terminal = useTerminal()
@@ -200,10 +198,10 @@ export function SessionHeader() {
 
   const options = createMemo(() => {
     return [
-      { id: "finder", label: language.t(fileManager().label), icon: fileManager().icon },
+      { id: "finder", label: fileManagerLabels[fileManager().label] ?? fileManager().label, icon: fileManager().icon },
       ...apps()
         .filter((app) => exists[app.id])
-        .map((app) => ({ ...app, label: language.t(app.label) })),
+        .map((app) => ({ ...app, label: app.label })),
     ] as const
   })
 
@@ -228,7 +226,7 @@ export function SessionHeader() {
     () =>
       options().find((o) => o.id === prefs.app) ??
       options()[0] ??
-      ({ id: "finder", label: fileManager().label, icon: fileManager().icon } as const),
+      ({ id: "finder", label: fileManagerLabels[fileManager().label] ?? fileManager().label, icon: fileManager().icon } as const),
   )
   const opening = createMemo(() => openRequest.app !== undefined)
   const tint = createMemo(() =>
@@ -236,8 +234,8 @@ export function SessionHeader() {
   )
   const v2ActionsState = createMemo<SessionHeaderV2ActionsState>(() => ({
     statusVisible: status(),
-    statusLabel: language.t("status.popover.trigger"),
-    reviewLabel: language.t("command.review.toggle"),
+    statusLabel: "Status",
+    reviewLabel: "Toggle review",
     reviewKeybind: reviewTooltipKeybind(command),
     reviewVisible: isDesktop(),
     reviewOpened: view().reviewPanel.opened(),
@@ -259,7 +257,7 @@ export function SessionHeader() {
     setOpenRequest("app", app)
     platform
       .openPath(directory, openWith)
-      .catch((err: unknown) => showRequestError(language, err))
+      .catch((err: unknown) => showRequestError(err))
       .finally(() => {
         setOpenRequest("app", undefined)
       })
@@ -274,11 +272,11 @@ export function SessionHeader() {
         showToast({
           variant: "success",
           icon: "circle-check",
-          title: language.t("session.share.copy.copied"),
+          title: "Copied",
           description: directory,
         })
       })
-      .catch((err: unknown) => showRequestError(language, err))
+      .catch((err: unknown) => showRequestError(err))
   }
 
   const [centerMount, setCenterMount] = createSignal<HTMLElement | null>(null)
@@ -298,13 +296,11 @@ export function SessionHeader() {
               size="small"
               class="hidden md:flex w-[240px] max-w-full min-w-0 items-center gap-2 justify-between rounded-md border border-border-weak-base bg-surface-panel shadow-none cursor-default"
               onClick={() => command.trigger("file.open")}
-              aria-label={language.t("session.header.searchFiles")}
+              aria-label={"Search files"}
             >
               <div class="flex min-w-0 flex-1 items-center overflow-visible">
                 <span class="flex-1 min-w-0 text-12-regular text-text-weak truncate text-left">
-                  {language.t("session.header.search.placeholder", {
-                    project: name(),
-                  })}
+                  {`Search ${name()}`}
                 </span>
               </div>
 
@@ -336,11 +332,11 @@ export function SessionHeader() {
                               variant="ghost"
                               class="rounded-none h-full py-0 pr-3 pl-0.5 gap-1.5 border-none shadow-none"
                               onClick={copyPath}
-                              aria-label={language.t("session.header.open.copyPath")}
+                              aria-label={"Copy path"}
                             >
                               <Icon name="copy" size="small" class="text-icon-base" />
                               <span class="text-12-regular text-text-strong">
-                                {language.t("session.header.open.copyPath")}
+                                {"Copy path"}
                               </span>
                             </Button>
                           </div>
@@ -356,7 +352,7 @@ export function SessionHeader() {
                               }}
                               onClick={() => openDir(current().id)}
                               disabled={opening()}
-                              aria-label={language.t("session.header.open.ariaLabel", { app: current().label })}
+                              aria-label={`Open in ${current().label}`}
                             >
                               <div class="flex size-5 shrink-0 items-center justify-center [&_[data-component=app-icon]]:size-5">
                                 <Show when={opening()} fallback={<AppIcon id={current().icon} />}>
@@ -379,13 +375,13 @@ export function SessionHeader() {
                                 classList={{
                                   "bg-surface-raised-base-active": opening(),
                                 }}
-                                aria-label={language.t("session.header.open.menu")}
+                                aria-label={"Open options"}
                               />
                               <DropdownMenu.Portal>
                                 <DropdownMenu.Content class="[&_[data-slot=dropdown-menu-item]]:pl-1 [&_[data-slot=dropdown-menu-radio-item]]:pl-1 [&_[data-slot=dropdown-menu-radio-item]+[data-slot=dropdown-menu-radio-item]]:mt-1">
                                   <DropdownMenu.Group>
                                     <DropdownMenu.GroupLabel class="!px-1 !py-1">
-                                      {language.t("session.header.openIn")}
+                                      {"Open in"}
                                     </DropdownMenu.GroupLabel>
                                     <DropdownMenu.RadioGroup
                                       class="mt-1"
@@ -428,7 +424,7 @@ export function SessionHeader() {
                                       <Icon name="copy" size="small" class="text-icon-weak" />
                                     </div>
                                     <DropdownMenu.ItemLabel>
-                                      {language.t("session.header.open.copyPath")}
+                                      {"Copy path"}
                                     </DropdownMenu.ItemLabel>
                                   </DropdownMenu.Item>
                                 </DropdownMenu.Content>
@@ -441,19 +437,19 @@ export function SessionHeader() {
                   </Show>
                   <div class="flex items-center gap-1">
                     <Show when={status()}>
-                      <Tooltip placement="bottom" value={language.t("status.popover.trigger")}>
+                      <Tooltip placement="bottom" value={"Status"}>
                         <StatusPopover />
                       </Tooltip>
                     </Show>
                     <TooltipKeybind
-                      title={language.t("command.terminal.toggle")}
+                      title={"Toggle terminal"}
                       keybind={command.keybind("terminal.toggle")}
                     >
                       <Button
                         variant="ghost"
                         class="group/terminal-toggle titlebar-icon w-8 h-6 p-0 box-border shrink-0"
                         onClick={toggleTerminal}
-                        aria-label={language.t("command.terminal.toggle")}
+                        aria-label={"Toggle terminal"}
                         aria-expanded={view().terminal.opened()}
                         aria-controls="terminal-panel"
                       >
@@ -463,14 +459,14 @@ export function SessionHeader() {
 
                     <div class="hidden md:flex items-center gap-1 shrink-0">
                       <TooltipKeybind
-                        title={language.t("command.review.toggle")}
+                        title={"Toggle review"}
                         keybind={command.keybind("review.toggle")}
                       >
                         <Button
                           variant="ghost"
                           class="group/review-toggle titlebar-icon w-8 h-6 p-0 box-border"
                           onClick={() => view().reviewPanel.toggle()}
-                          aria-label={language.t("command.review.toggle")}
+                          aria-label={"Toggle review"}
                           aria-expanded={view().reviewPanel.opened()}
                           aria-controls="review-panel"
                         >
@@ -479,14 +475,14 @@ export function SessionHeader() {
                       </TooltipKeybind>
 
                       <TooltipKeybind
-                        title={language.t("command.fileTree.toggle")}
+                        title={"Toggle file tree"}
                         keybind={command.keybind("fileTree.toggle")}
                       >
                         <Button
                           variant="ghost"
                           class="titlebar-icon w-8 h-6 p-0 box-border"
                           onClick={() => layout.fileTree.toggle()}
-                          aria-label={language.t("command.fileTree.toggle")}
+                          aria-label={"Toggle file tree"}
                           aria-expanded={layout.fileTree.opened()}
                           aria-controls="file-tree-panel"
                         >
@@ -527,7 +523,6 @@ type SessionHeaderV2ActionsState = {
 }
 
 function SessionHeaderV2Actions(props: { state: SessionHeaderV2ActionsState }) {
-  const language = useLanguage()
 
   return (
     <div class="flex items-center gap-2">
@@ -565,4 +560,10 @@ function SessionHeaderV2Actions(props: { state: SessionHeaderV2ActionsState }) {
       </Show>
     </div>
   )
+}
+
+const fileManagerLabels: Record<string, string> = {
+  "session.header.open.finder": "Finder",
+  "session.header.open.fileExplorer": "File Explorer",
+  "session.header.open.fileManager": "File Manager",
 }

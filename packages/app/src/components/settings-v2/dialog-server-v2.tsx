@@ -4,7 +4,6 @@ import { DividerV2 } from "@reddb-io/redcode-ui/v2/divider-v2"
 import { TextInputV2 } from "@reddb-io/redcode-ui/v2/text-input-v2"
 import { useDialog } from "@reddb-io/redcode-ui/context/dialog"
 import { type Component, Show, createEffect, createSignal, onCleanup, onMount } from "solid-js"
-import { useLanguage } from "@/context/language"
 import { type ServerConnection } from "@/context/server"
 import { useServerManagementController } from "../dialog-select-server"
 import "./settings-v2.css"
@@ -14,7 +13,6 @@ export const DialogServerV2: Component<{
   server?: ServerConnection.Http
 }> = (props) => {
   const dialog = useDialog()
-  const language = useLanguage()
   const controller = useServerManagementController({
     onSelect: () => dialog.close(),
     navigateOnAdd: false,
@@ -44,12 +42,12 @@ export const DialogServerV2: Component<{
   }
 
   const title = () =>
-    props.mode === "add" ? language.t("dialog.server.add.title") : language.t("dialog.server.edit.title")
+    props.mode === "add" ? "Add server" : "Edit server"
 
   const submitLabel = () => {
-    if (controller.formBusy()) return language.t("dialog.server.add.checking")
-    if (props.mode === "add") return language.t("dialog.server.add.button")
-    return language.t("common.save")
+    if (controller.formBusy()) return "Checking..."
+    if (props.mode === "add") return "Add server"
+    return "Save"
   }
 
   return (
@@ -61,13 +59,13 @@ export const DialogServerV2: Component<{
       <DialogBody class="flex w-full min-w-0 flex-1 flex-col px-4 pt-4 pb-2">
         <div class="flex w-full min-w-0 flex-col gap-6">
           <div class="flex w-full min-w-0 flex-col gap-2">
-            <label class="settings-v2-server-dialog-label">{language.t("dialog.server.add.url")}</label>
+            <label class="settings-v2-server-dialog-label">{"Server address"}</label>
             <TextInputV2
               type="text"
               appearance="large"
               class="!w-full self-stretch"
               value={controller.formValue()}
-              placeholder={language.t("dialog.server.add.placeholder")}
+              placeholder={"http://localhost:4096"}
               invalid={!!controller.formError()}
               disabled={controller.formBusy()}
               autofocus
@@ -79,13 +77,13 @@ export const DialogServerV2: Component<{
             </Show>
           </div>
           <div class="flex w-full min-w-0 flex-col gap-2">
-            <label class="settings-v2-server-dialog-label">{language.t("dialog.server.add.name")}</label>
+            <label class="settings-v2-server-dialog-label">{"Server name (optional)"}</label>
             <TextInputV2
               type="text"
               appearance="large"
               class="!w-full self-stretch"
               value={controller.formName()}
-              placeholder={language.t("dialog.server.add.namePlaceholder")}
+              placeholder={"Localhost"}
               disabled={controller.formBusy()}
               onInput={(event) => controller.handleFormNameChange()(event.currentTarget.value)}
               onKeyDown={keyDown}
@@ -93,26 +91,26 @@ export const DialogServerV2: Component<{
           </div>
           <div class="grid w-full min-w-0 grid-cols-2 gap-4">
             <div class="flex min-w-0 flex-col gap-2">
-              <label class="settings-v2-server-dialog-label">{language.t("dialog.server.add.username")}</label>
+              <label class="settings-v2-server-dialog-label">{"Username (optional)"}</label>
               <TextInputV2
                 type="text"
                 appearance="large"
                 class="!w-full self-stretch"
                 value={controller.formUsername()}
-                placeholder={language.t("dialog.server.add.usernamePlaceholder")}
+                placeholder={"username"}
                 disabled={controller.formBusy()}
                 onInput={(event) => controller.handleFormUsernameChange()(event.currentTarget.value)}
                 onKeyDown={keyDown}
               />
             </div>
             <div class="flex min-w-0 flex-col gap-2">
-              <label class="settings-v2-server-dialog-label">{language.t("dialog.server.add.password")}</label>
+              <label class="settings-v2-server-dialog-label">{"Password (optional)"}</label>
               <TextInputV2
                 type="password"
                 appearance="large"
                 class="!w-full self-stretch"
                 value={controller.formPassword()}
-                placeholder={language.t("dialog.server.add.passwordPlaceholder")}
+                placeholder={"password"}
                 disabled={controller.formBusy()}
                 onInput={(event) => controller.handleFormPasswordChange()(event.currentTarget.value)}
                 onKeyDown={keyDown}
@@ -123,7 +121,7 @@ export const DialogServerV2: Component<{
       </DialogBody>
       <DialogFooter>
         <ButtonV2 variant="neutral" disabled={controller.formBusy()} onClick={() => dialog.close()}>
-          {language.t("common.cancel")}
+          {"Cancel"}
         </ButtonV2>
         <ButtonV2 variant="contrast" disabled={controller.formBusy()} onClick={controller.submitForm}>
           {submitLabel()}

@@ -9,7 +9,6 @@ import { Tag } from "@reddb-io/redcode-ui/v2/badge-v2"
 import { useTheme, type ColorScheme } from "@reddb-io/redcode-ui/theme/context"
 import { useDialog } from "@reddb-io/redcode-ui/context/dialog"
 import { useParams } from "@solidjs/router"
-import { useLanguage } from "@/context/language"
 import { usePermission } from "@/context/permission"
 import { usePlatform, type DisplayBackend } from "@/context/platform"
 import { useServerSync } from "@/context/server-sync"
@@ -84,7 +83,6 @@ const playDemoSound = (id: string | undefined) => {
 
 export const SettingsGeneral: Component = () => {
   const theme = useTheme()
-  const language = useLanguage()
   const permission = usePermission()
   const platform = usePlatform()
   const dialog = useDialog()
@@ -154,7 +152,7 @@ export const SettingsGeneral: Component = () => {
     void theme.loadThemes()
   })
 
-  const autoOption = { id: "auto", value: "", label: language.t("settings.general.row.shell.autoDefault") }
+  const autoOption = { id: "auto", value: "", label: "Auto (Default)" }
   const currentShell = createMemo(() => serverSync().data.config.shell ?? "")
 
   const shellOptions = createMemo<ShellSelectOption[]>(() => {
@@ -171,7 +169,7 @@ export const SettingsGeneral: Component = () => {
       ...list.map((s) => {
         const ambiguousName = (nameCounts.get(s.name) || 0) > 1
         const text = ambiguousName ? s.path : s.name
-        const label = s.acceptable ? text : `${text} (${language.t("settings.general.row.shell.terminalOnly")})`
+        const label = s.acceptable ? text : `${text} (${"terminal only"})`
         return {
           id: s.path,
           // Prefer name over path - "bash" is much cleaner than the explicit full route even when it may change due to PATH.
@@ -204,17 +202,10 @@ export const SettingsGeneral: Component = () => {
   }
 
   const colorSchemeOptions = createMemo((): { value: ColorScheme; label: string }[] => [
-    { value: "system", label: language.t("theme.scheme.system") },
-    { value: "light", label: language.t("theme.scheme.light") },
-    { value: "dark", label: language.t("theme.scheme.dark") },
+    { value: "system", label: "System" },
+    { value: "light", label: "Light" },
+    { value: "dark", label: "Dark" },
   ])
-
-  const languageOptions = createMemo(() =>
-    language.locales.map((locale) => ({
-      value: locale,
-      label: language.label(locale),
-    })),
-  )
 
   const noneSound = { id: "none", label: "sound.option.none" } as const
   const soundOptions = [noneSound, ...SOUND_OPTIONS]
@@ -231,7 +222,7 @@ export const SettingsGeneral: Component = () => {
     options: soundOptions,
     current: enabled() ? (soundOptions.find((o) => o.id === current()) ?? noneSound) : noneSound,
     value: (o: (typeof soundOptions)[number]) => o.id,
-    label: (o: (typeof soundOptions)[number]) => language.t(o.label),
+    label: (o: (typeof soundOptions)[number]) => soundLabels[o.label] ?? o.label,
     onHighlight: (option: (typeof soundOptions)[number] | undefined) => {
       if (!option) return
       playDemoSound(option.id === "none" ? undefined : option.id)
@@ -258,11 +249,11 @@ export const SettingsGeneral: Component = () => {
         <SettingsRow
           title={
             <span class="flex items-center gap-2">
-              {language.t("settings.general.row.newInterface.title")}
-              <Tag variant="accent">{language.t("settings.general.row.newInterface.badge")}</Tag>
+              {"New layout"}
+              <Tag variant="accent">{"New"}</Tag>
             </span>
           }
-          description={language.t("settings.general.row.newInterface.description")}
+          description={"Use the new tabs and home layout. Switch between layouts for a limited time."}
         >
           <div data-action="settings-new-layout-designs">
             <Switch
@@ -285,11 +276,11 @@ export const SettingsGeneral: Component = () => {
     <div class="flex flex-col gap-1">
       <SettingsList>
         <SettingsRow
-          title={language.t("settings.general.row.newInterfaceNotice.title")}
-          description={language.t("settings.general.row.newInterfaceNotice.description")}
+          title={"You're now using new layout"}
+          description={"The previous layout is no longer available"}
         >
           <Button size="small" variant="ghost" onClick={settings.general.dismissNewInterfaceNotice}>
-            {language.t("settings.general.row.newInterfaceNotice.dismiss")}
+            {"Dismiss"}
           </Button>
         </SettingsRow>
       </SettingsList>
@@ -300,25 +291,8 @@ export const SettingsGeneral: Component = () => {
     <div class="flex flex-col gap-1">
       <SettingsList>
         <SettingsRow
-          title={language.t("settings.general.row.language.title")}
-          description={language.t("settings.general.row.language.description")}
-        >
-          <Select
-            data-action="settings-language"
-            options={languageOptions()}
-            current={languageOptions().find((o) => o.value === language.locale())}
-            value={(o) => o.value}
-            label={(o) => o.label}
-            onSelect={(option) => option && language.setLocale(option.value)}
-            variant="secondary"
-            size="small"
-            triggerVariant="settings"
-          />
-        </SettingsRow>
-
-        <SettingsRow
-          title={language.t("command.permissions.autoaccept.enable")}
-          description={language.t("toast.permissions.autoaccept.on.description")}
+          title={"Auto-accept permissions"}
+          description={"Permission requests will be automatically approved"}
         >
           <div data-action="settings-auto-accept-permissions">
             <Switch checked={accepting()} disabled={!dir()} onChange={toggleAccept} />
@@ -326,8 +300,8 @@ export const SettingsGeneral: Component = () => {
         </SettingsRow>
 
         <SettingsRow
-          title={language.t("settings.general.row.shell.title")}
-          description={language.t("settings.general.row.shell.description")}
+          title={"Terminal shell"}
+          description={"Shell used by the terminal and agent tools"}
         >
           <Select
             data-action="settings-shell"
@@ -348,8 +322,8 @@ export const SettingsGeneral: Component = () => {
         </SettingsRow>
 
         <SettingsRow
-          title={language.t("settings.general.row.reasoningSummaries.title")}
-          description={language.t("settings.general.row.reasoningSummaries.description")}
+          title={"Show reasoning summaries"}
+          description={"Display model reasoning summaries in the timeline"}
         >
           <div data-action="settings-feed-reasoning-summaries">
             <Switch
@@ -360,8 +334,8 @@ export const SettingsGeneral: Component = () => {
         </SettingsRow>
 
         <SettingsRow
-          title={language.t("settings.general.row.shellToolPartsExpanded.title")}
-          description={language.t("settings.general.row.shellToolPartsExpanded.description")}
+          title={"Expand shell tool parts"}
+          description={"Show shell tool parts expanded by default in the timeline"}
         >
           <div data-action="settings-feed-shell-tool-parts-expanded">
             <Switch
@@ -372,8 +346,8 @@ export const SettingsGeneral: Component = () => {
         </SettingsRow>
 
         <SettingsRow
-          title={language.t("settings.general.row.editToolPartsExpanded.title")}
-          description={language.t("settings.general.row.editToolPartsExpanded.description")}
+          title={"Expand edit tool parts"}
+          description={"Show edit, write, and patch tool parts expanded by default in the timeline"}
         >
           <div data-action="settings-feed-edit-tool-parts-expanded">
             <Switch
@@ -388,12 +362,12 @@ export const SettingsGeneral: Component = () => {
 
   const AdvancedSection = () => (
     <div class="flex flex-col gap-1">
-      <h3 class="text-14-medium text-text-strong pb-2">{language.t("settings.general.section.advanced")}</h3>
+      <h3 class="text-14-medium text-text-strong pb-2">{"Advanced"}</h3>
 
       <SettingsList>
         <SettingsRow
-          title={language.t("settings.general.row.showFileTree.title")}
-          description={language.t("settings.general.row.showFileTree.description")}
+          title={"File tree"}
+          description={"Show the file tree panel in sessions"}
         >
           <div data-action="settings-show-file-tree">
             <Switch
@@ -404,8 +378,8 @@ export const SettingsGeneral: Component = () => {
         </SettingsRow>
 
         <SettingsRow
-          title={language.t("settings.general.row.showNavigation.title")}
-          description={language.t("settings.general.row.showNavigation.description")}
+          title={"Navigation controls"}
+          description={"Show the back and forward buttons in the desktop title bar"}
         >
           <div data-action="settings-show-navigation">
             <Switch
@@ -416,8 +390,8 @@ export const SettingsGeneral: Component = () => {
         </SettingsRow>
 
         <SettingsRow
-          title={language.t("settings.general.row.showSearch.title")}
-          description={language.t("settings.general.row.showSearch.description")}
+          title={"Command palette"}
+          description={"Show the search and command palette button in the title bar"}
         >
           <div data-action="settings-show-search">
             <Switch
@@ -428,8 +402,8 @@ export const SettingsGeneral: Component = () => {
         </SettingsRow>
 
         <SettingsRow
-          title={language.t("settings.general.row.showStatus.title")}
-          description={language.t("settings.general.row.showStatus.description")}
+          title={"Server status"}
+          description={"Show the server status button in the title bar"}
         >
           <div data-action="settings-show-status">
             <Switch
@@ -440,8 +414,8 @@ export const SettingsGeneral: Component = () => {
         </SettingsRow>
 
         <SettingsRow
-          title={language.t("settings.general.row.showCustomAgents.title")}
-          description={language.t("settings.general.row.showCustomAgents.description")}
+          title={"Show agent"}
+          description={"Switch between agents in the composer. When hidden, defaults to Build agent."}
         >
           <div data-action="settings-show-custom-agents">
             <Switch
@@ -456,12 +430,12 @@ export const SettingsGeneral: Component = () => {
 
   const AppearanceSection = () => (
     <div class="flex flex-col gap-1">
-      <h3 class="text-14-medium text-text-strong pb-2">{language.t("settings.general.section.appearance")}</h3>
+      <h3 class="text-14-medium text-text-strong pb-2">{"Appearance"}</h3>
 
       <SettingsList>
         <SettingsRow
-          title={language.t("settings.general.row.colorScheme.title")}
-          description={language.t("settings.general.row.colorScheme.description")}
+          title={"Color scheme"}
+          description={"Choose whether Redcode follows the system, light, or dark theme"}
         >
           <Select
             data-action="settings-color-scheme"
@@ -478,11 +452,11 @@ export const SettingsGeneral: Component = () => {
         </SettingsRow>
 
         <SettingsRow
-          title={language.t("settings.general.row.theme.title")}
+          title={"Theme"}
           description={
             <>
-              {language.t("settings.general.row.theme.description")}{" "}
-              <ExternalLink href="https://github.com/reddb-io/redcode">{language.t("common.learnMore")}</ExternalLink>
+              {"Customise how Redcode is themed."}{" "}
+              <ExternalLink href="https://github.com/reddb-io/redcode">{"Learn more"}</ExternalLink>
             </>
           }
         >
@@ -503,13 +477,13 @@ export const SettingsGeneral: Component = () => {
         </SettingsRow>
 
         <SettingsRow
-          title={language.t("settings.general.row.uiFont.title")}
-          description={language.t("settings.general.row.uiFont.description")}
+          title={"UI Font"}
+          description={"Customise the font used throughout the interface"}
         >
           <div class="w-full sm:w-[220px]">
             <TextField
               data-action="settings-ui-font"
-              label={language.t("settings.general.row.uiFont.title")}
+              label={"UI Font"}
               hideLabel
               type="text"
               value={sans()}
@@ -526,13 +500,13 @@ export const SettingsGeneral: Component = () => {
         </SettingsRow>
 
         <SettingsRow
-          title={language.t("settings.general.row.font.title")}
-          description={language.t("settings.general.row.font.description")}
+          title={"Code Font"}
+          description={"Customise the font used in code blocks"}
         >
           <div class="w-full sm:w-[220px]">
             <TextField
               data-action="settings-code-font"
-              label={language.t("settings.general.row.font.title")}
+              label={"Code Font"}
               hideLabel
               type="text"
               value={mono()}
@@ -549,13 +523,13 @@ export const SettingsGeneral: Component = () => {
         </SettingsRow>
 
         <SettingsRow
-          title={language.t("settings.general.row.terminalFont.title")}
-          description={language.t("settings.general.row.terminalFont.description")}
+          title={"Terminal Font"}
+          description={"Customise the font used in the terminal"}
         >
           <div class="w-full sm:w-[220px]">
             <TextField
               data-action="settings-terminal-font"
-              label={language.t("settings.general.row.terminalFont.title")}
+              label={"Terminal Font"}
               hideLabel
               type="text"
               value={terminal()}
@@ -576,12 +550,12 @@ export const SettingsGeneral: Component = () => {
 
   const NotificationsSection = () => (
     <div class="flex flex-col gap-1">
-      <h3 class="text-14-medium text-text-strong pb-2">{language.t("settings.general.section.notifications")}</h3>
+      <h3 class="text-14-medium text-text-strong pb-2">{"System notifications"}</h3>
 
       <SettingsList>
         <SettingsRow
-          title={language.t("settings.general.notifications.agent.title")}
-          description={language.t("settings.general.notifications.agent.description")}
+          title={"Agent"}
+          description={"Show system notification when the agent is complete or needs attention"}
         >
           <div data-action="settings-notifications-agent">
             <Switch
@@ -592,8 +566,8 @@ export const SettingsGeneral: Component = () => {
         </SettingsRow>
 
         <SettingsRow
-          title={language.t("settings.general.notifications.permissions.title")}
-          description={language.t("settings.general.notifications.permissions.description")}
+          title={"Permissions"}
+          description={"Show system notification when a permission is required"}
         >
           <div data-action="settings-notifications-permissions">
             <Switch
@@ -604,8 +578,8 @@ export const SettingsGeneral: Component = () => {
         </SettingsRow>
 
         <SettingsRow
-          title={language.t("settings.general.notifications.errors.title")}
-          description={language.t("settings.general.notifications.errors.description")}
+          title={"Errors"}
+          description={"Show system notification when an error occurs"}
         >
           <div data-action="settings-notifications-errors">
             <Switch
@@ -620,12 +594,12 @@ export const SettingsGeneral: Component = () => {
 
   const SoundsSection = () => (
     <div class="flex flex-col gap-1">
-      <h3 class="text-14-medium text-text-strong pb-2">{language.t("settings.general.section.sounds")}</h3>
+      <h3 class="text-14-medium text-text-strong pb-2">{"Sound effects"}</h3>
 
       <SettingsList>
         <SettingsRow
-          title={language.t("settings.general.sounds.agent.title")}
-          description={language.t("settings.general.sounds.agent.description")}
+          title={"Agent"}
+          description={"Play sound when the agent is complete or needs attention"}
         >
           <Select
             data-action="settings-sounds-agent"
@@ -639,8 +613,8 @@ export const SettingsGeneral: Component = () => {
         </SettingsRow>
 
         <SettingsRow
-          title={language.t("settings.general.sounds.permissions.title")}
-          description={language.t("settings.general.sounds.permissions.description")}
+          title={"Permissions"}
+          description={"Play sound when a permission is required"}
         >
           <Select
             data-action="settings-sounds-permissions"
@@ -654,8 +628,8 @@ export const SettingsGeneral: Component = () => {
         </SettingsRow>
 
         <SettingsRow
-          title={language.t("settings.general.sounds.errors.title")}
-          description={language.t("settings.general.sounds.errors.description")}
+          title={"Errors"}
+          description={"Play sound when an error occurs"}
         >
           <Select
             data-action="settings-sounds-errors"
@@ -673,12 +647,12 @@ export const SettingsGeneral: Component = () => {
 
   const UpdatesSection = () => (
     <div class="flex flex-col gap-1">
-      <h3 class="text-14-medium text-text-strong pb-2">{language.t("settings.general.section.updates")}</h3>
+      <h3 class="text-14-medium text-text-strong pb-2">{"Updates"}</h3>
 
       <SettingsList>
         <SettingsRow
-          title={language.t("settings.general.row.releaseNotes.title")}
-          description={language.t("settings.general.row.releaseNotes.description")}
+          title={"Release notes"}
+          description={"Show What's New popups after updates"}
         >
           <div data-action="settings-release-notes">
             <Switch
@@ -689,11 +663,11 @@ export const SettingsGeneral: Component = () => {
         </SettingsRow>
 
         <SettingsRow
-          title={language.t("settings.updates.row.check.title")}
-          description={language.t("settings.updates.row.check.description")}
+          title={"Check for updates"}
+          description={"Manually check for updates and install if available"}
         >
           <Button size="small" variant="secondary" disabled={!updater.action().run} onClick={updater.run}>
-            {language.t(updater.action().label)}
+            {updaterLabels[updater.action().label] ?? updater.action().label}
           </Button>
         </SettingsRow>
       </SettingsList>
@@ -703,12 +677,12 @@ export const SettingsGeneral: Component = () => {
   const DisplaySection = () => (
     <Show when={desktop()}>
       <div class="flex flex-col gap-1">
-        <h3 class="text-14-medium text-text-strong pb-2">{language.t("settings.general.section.display")}</h3>
+        <h3 class="text-14-medium text-text-strong pb-2">{"Display"}</h3>
 
         <SettingsList>
           <SettingsRow
-            title={language.t("settings.general.row.pinchZoom.title")}
-            description={language.t("settings.general.row.pinchZoom.description")}
+            title={"Pinch to zoom"}
+            description={"Allow trackpad pinch and Ctrl-scroll gestures to zoom"}
           >
             <div data-action="settings-pinch-zoom">
               <Switch checked={pinchZoom.latest} onChange={onPinchZoomChange} />
@@ -719,15 +693,15 @@ export const SettingsGeneral: Component = () => {
             <SettingsRow
               title={
                 <div class="flex items-center gap-2">
-                  <span>{language.t("settings.general.row.wayland.title")}</span>
-                  <Tooltip value={language.t("settings.general.row.wayland.tooltip")} placement="top">
+                  <span>{"Use native Wayland"}</span>
+                  <Tooltip value={"On Linux with mixed refresh-rate monitors, native Wayland can be more stable."} placement="top">
                     <span class="text-text-weak">
                       <Icon name="help" size="small" />
                     </span>
                   </Tooltip>
                 </div>
               }
-              description={language.t("settings.general.row.wayland.description")}
+              description={"Disable X11 fallback on Wayland. Requires restart."}
             >
               <div data-action="settings-wayland">
                 <Switch checked={displayBackend.latest === "wayland"} onChange={onDisplayBackendChange} />
@@ -743,7 +717,7 @@ export const SettingsGeneral: Component = () => {
     <div class="flex flex-col h-full overflow-y-auto no-scrollbar px-4 pb-10 sm:px-10 sm:pb-10">
       <div class="sticky top-0 z-10 bg-[linear-gradient(to_bottom,var(--surface-stronger-non-alpha)_calc(100%_-_24px),transparent)]">
         <div class="flex flex-col gap-1 pt-6 pb-8">
-          <h2 class="text-16-medium text-text-strong">{language.t("settings.tab.general")}</h2>
+          <h2 class="text-16-medium text-text-strong">{"General"}</h2>
         </div>
       </div>
 
@@ -792,4 +766,61 @@ const SettingsRow: Component<SettingsRowProps> = (props) => {
       <div class="flex w-full justify-end sm:w-auto sm:shrink-0">{props.children}</div>
     </div>
   )
+}
+
+const soundLabels: Record<string, string> = {
+  "sound.option.none": "None",
+  "sound.option.alert01": "Alert 01",
+  "sound.option.alert02": "Alert 02",
+  "sound.option.alert03": "Alert 03",
+  "sound.option.alert04": "Alert 04",
+  "sound.option.alert05": "Alert 05",
+  "sound.option.alert06": "Alert 06",
+  "sound.option.alert07": "Alert 07",
+  "sound.option.alert08": "Alert 08",
+  "sound.option.alert09": "Alert 09",
+  "sound.option.alert10": "Alert 10",
+  "sound.option.bipbop01": "Bip-bop 01",
+  "sound.option.bipbop02": "Bip-bop 02",
+  "sound.option.bipbop03": "Bip-bop 03",
+  "sound.option.bipbop04": "Bip-bop 04",
+  "sound.option.bipbop05": "Bip-bop 05",
+  "sound.option.bipbop06": "Bip-bop 06",
+  "sound.option.bipbop07": "Bip-bop 07",
+  "sound.option.bipbop08": "Bip-bop 08",
+  "sound.option.bipbop09": "Bip-bop 09",
+  "sound.option.bipbop10": "Bip-bop 10",
+  "sound.option.staplebops01": "Staplebops 01",
+  "sound.option.staplebops02": "Staplebops 02",
+  "sound.option.staplebops03": "Staplebops 03",
+  "sound.option.staplebops04": "Staplebops 04",
+  "sound.option.staplebops05": "Staplebops 05",
+  "sound.option.staplebops06": "Staplebops 06",
+  "sound.option.staplebops07": "Staplebops 07",
+  "sound.option.nope01": "Nope 01",
+  "sound.option.nope02": "Nope 02",
+  "sound.option.nope03": "Nope 03",
+  "sound.option.nope04": "Nope 04",
+  "sound.option.nope05": "Nope 05",
+  "sound.option.nope06": "Nope 06",
+  "sound.option.nope07": "Nope 07",
+  "sound.option.nope08": "Nope 08",
+  "sound.option.nope09": "Nope 09",
+  "sound.option.nope10": "Nope 10",
+  "sound.option.nope11": "Nope 11",
+  "sound.option.nope12": "Nope 12",
+  "sound.option.yup01": "Yup 01",
+  "sound.option.yup02": "Yup 02",
+  "sound.option.yup03": "Yup 03",
+  "sound.option.yup04": "Yup 04",
+  "sound.option.yup05": "Yup 05",
+  "sound.option.yup06": "Yup 06",
+}
+
+const updaterLabels: Record<string, string> = {
+  "settings.updates.action.checkNow": "Check now",
+  "settings.updates.action.checking": "Checking...",
+  "settings.updates.action.downloading": "Downloading...",
+  "settings.updates.action.installing": "Installing...",
+  "toast.update.action.installRestart": "Install and restart",
 }

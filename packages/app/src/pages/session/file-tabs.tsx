@@ -17,7 +17,6 @@ import { ScrollView } from "@reddb-io/redcode-ui/scroll-view"
 import { showToast } from "@/utils/toast"
 import { selectionFromLines, useFile, type FileSelection, type SelectedLineRange } from "@/context/file"
 import { useComments } from "@/context/comments"
-import { useLanguage } from "@/context/language"
 import { usePrompt } from "@/context/prompt"
 import { useSettings } from "@/context/settings"
 import { getSessionHandoff } from "@/pages/session/handoff"
@@ -226,7 +225,6 @@ export function SessionFileView(props: SessionFileViewProps) {
 function SessionFileViewV1(props: { tab: string }) {
   const file = useFile()
   const comments = useComments()
-  const language = useLanguage()
   const prompt = usePrompt()
   const fileComponent = useFileComponent()
   const { sessionKey, tabs, view } = useSessionLayout()
@@ -345,7 +343,7 @@ function SessionFileViewV1(props: { tab: string }) {
 
   const commentsUi = createLineCommentController({
     comments: fileComments,
-    label: language.t("ui.lineComment.submit"),
+    label: "Comment",
     draftKey: () => path() ?? props.tab,
     mention: {
       items: file.searchFilesAndDirectories,
@@ -378,12 +376,12 @@ function SessionFileViewV1(props: { tab: string }) {
       if (!p) return
       removeCommentFromContext({ id: comment.id, file: p })
     },
-    editSubmitLabel: language.t("common.save"),
+    editSubmitLabel: "Save",
     renderCommentActions: (_, controls) => (
       <FileCommentMenu
-        moreLabel={language.t("common.moreOptions")}
-        editLabel={language.t("common.edit")}
-        deleteLabel={language.t("common.delete")}
+        moreLabel={"More options"}
+        editLabel={"Edit"}
+        deleteLabel={"Delete"}
         onEdit={controls.edit}
         onDelete={controls.remove}
       />
@@ -483,7 +481,7 @@ function SessionFileViewV1(props: { tab: string }) {
             if (args.kind !== "svg") return
             showToast({
               variant: "error",
-              title: language.t("toast.file.loadFailed.title"),
+              title: "Failed to load file",
             })
           },
         }}
@@ -497,7 +495,7 @@ function SessionFileViewV1(props: { tab: string }) {
         <Switch>
           <Match when={state()?.loaded}>{renderFile(contents())}</Match>
           <Match when={state()?.loading}>
-            <div class="px-6 py-4 text-text-weak">{language.t("common.loading")}...</div>
+            <div class="px-6 py-4 text-text-weak">{"Loading"}...</div>
           </Match>
           <Match when={state()?.error}>{(err) => <div class="px-6 py-4 text-text-weak">{err()}</div>}</Match>
         </Switch>
@@ -511,7 +509,6 @@ function SessionFileViewV1(props: { tab: string }) {
 function SessionFileViewV2(props: { tab: string }) {
   const file = useFile()
   const comments = useComments()
-  const language = useLanguage()
   const prompt = usePrompt()
   const fileComponent = useFileComponent()
   const { sessionKey, tabs, view } = useSessionLayout()
@@ -630,7 +627,7 @@ function SessionFileViewV2(props: { tab: string }) {
 
   const commentsUi = createLineCommentControllerV2({
     comments: fileComments,
-    label: language.t("ui.lineComment.submit"),
+    label: "Comment",
     draftKey: () => path() ?? props.tab,
     mention: {
       items: file.searchFilesAndDirectories,
@@ -661,12 +658,12 @@ function SessionFileViewV2(props: { tab: string }) {
       if (!p) return
       removeCommentFromContext({ id: comment.id, file: p })
     },
-    editSubmitLabel: language.t("common.save"),
+    editSubmitLabel: "Save",
     renderCommentActions: (_, controls) => (
       <FileCommentMenuV2
-        moreLabel={language.t("common.moreOptions")}
-        editLabel={language.t("common.edit")}
-        deleteLabel={language.t("common.delete")}
+        moreLabel={"More options"}
+        editLabel={"Edit"}
+        deleteLabel={"Delete"}
         onEdit={controls.edit}
         onDelete={controls.remove}
       />
@@ -774,7 +771,7 @@ function SessionFileViewV2(props: { tab: string }) {
             if (args.kind !== "svg") return
             showToast({
               variant: "error",
-              title: language.t("toast.file.loadFailed.title"),
+              title: "Failed to load file",
             })
           },
         }}
@@ -788,7 +785,7 @@ function SessionFileViewV2(props: { tab: string }) {
         <Switch>
           <Match when={state()?.loaded}>{renderFile(contents())}</Match>
           <Match when={state()?.loading}>
-            <div class="px-6 py-4 text-text-weak">{language.t("common.loading")}...</div>
+            <div class="px-6 py-4 text-text-weak">{"Loading"}...</div>
           </Match>
           <Match when={state()?.error}>{(err) => <div class="px-6 py-4 text-text-weak">{err()}</div>}</Match>
         </Switch>

@@ -1,13 +1,6 @@
 import { describe, expect, test } from "bun:test"
 import { SubagentView } from "@reddb-io/redcode-core/session/subagent-view"
-import { dict as en } from "@reddb-io/redcode-ui/i18n/en"
-import { dict as br } from "@reddb-io/redcode-ui/i18n/br"
 import { taskCardDetail } from "./task-card-detail"
-
-const i18n = (dict: Record<string, string>) => ({
-  t: (key: string, params?: Record<string, string | number | boolean>) =>
-    (dict[key] ?? key).replace(/{{\s*(\w+)\s*}}/g, (_, name: string) => String(params?.[name] ?? "")),
-})
 
 const task = (extra: Record<string, unknown> = {}) => ({
   sessionId: "ses_child",
@@ -17,7 +10,7 @@ const task = (extra: Record<string, unknown> = {}) => ({
 
 describe("taskCardDetail", () => {
   test("shows the model and variant, the verdict badge and an in-scope checkpoint", () => {
-    expect(taskCardDetail(i18n(en), task({ variant: "high", review: { decision: "verified" } }))).toEqual([
+    expect(taskCardDetail(task({ variant: "high", review: { decision: "verified" } }))).toEqual([
       { text: "claude-opus-5 (high)", tone: "muted" },
       { text: "✓ verified", tone: "success" },
       { text: "in scope", tone: "muted" },
@@ -29,7 +22,7 @@ describe("taskCardDetail", () => {
     ["needs_revision", "! needs revision", "critical"],
     ["unverified", "~ unverified", "muted"],
   ] as const)("renders the %s verdict with its badge", (decision, text, tone) => {
-    expect(taskCardDetail(i18n(en), task({ review: { decision } }))[1]).toEqual({ text, tone })
+    expect(taskCardDetail(task({ review: { decision } }))[1]).toEqual({ text, tone })
   })
 
   test("reads a background task's verdict, model and checkpoints from the child session", () => {
@@ -43,21 +36,17 @@ describe("taskCardDetail", () => {
         { action: "stop", line: "S1 · no progress for 9 steps", reason: "it is going around in circles", at: 2 },
       ),
     }
-    expect(taskCardDetail(i18n(en), { sessionId: "ses_child" }, child)).toEqual([
+    expect(taskCardDetail({ sessionId: "ses_child" }, child)).toEqual([
       { text: "gpt-6 (max)", tone: "muted" },
       { text: "? inconclusive", tone: "warning" },
       { text: "stopped · it is going around in circles", tone: "critical" },
     ])
   })
 
-  test("says a hint was sent while the latest checkpoint corrected the subagent, in the viewer's language", () => {
+  test("says a hint was sent while the latest checkpoint corrected the subagent", () => {
     const child = {
       metadata: SubagentView.withCheckpoint(undefined, { action: "steer", line: "S1 · looping", at: 1 }),
     }
-    expect(taskCardDetail(i18n(en), task(), child).at(-1)).toEqual({ text: "corrected (hint sent)", tone: "warning" })
-    expect(taskCardDetail(i18n(br), task(), child).at(-1)).toEqual({
-      text: "corrigido (dica enviada)",
-      tone: "warning",
-    })
+    expect(taskCardDetail(task(), child).at(-1)).toEqual({ text: "corrected (hint sent)", tone: "warning" })
   })
 })

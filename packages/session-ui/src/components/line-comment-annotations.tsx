@@ -2,7 +2,6 @@ import { type DiffLineAnnotation, type SelectedLineRange } from "@pierre/diffs"
 import { createEffect, createMemo, createSignal, onCleanup, Show, type Accessor, type JSX } from "solid-js"
 import { createStore } from "solid-js/store"
 import { render as renderSolid } from "solid-js/web"
-import { useI18n } from "@reddb-io/redcode-ui/context/i18n"
 import { createHoverCommentUtility } from "../pierre/comment-hover"
 import { cloneSelectedLineRange, formatSelectedLineLabel, lineInSelectedRange } from "../pierre/selection-bridge"
 import { LineComment, LineCommentEditor, type LineCommentEditorProps } from "./line-comment"
@@ -349,7 +348,6 @@ export function createLineCommentController<T extends LineCommentShape>(
 export function createLineCommentController<T extends LineCommentShape>(
   props: LineCommentControllerProps<T> | LineCommentControllerWithSideProps<T>,
 ) {
-  const i18n = useI18n()
   const note = createLineCommentState<string>(props.state)
 
   const annotations =
@@ -387,7 +385,7 @@ export function createLineCommentController<T extends LineCommentShape>(
           return note.isOpen(comment.id) || note.isEditing(comment.id)
         },
         comment: comment.comment,
-        selection: formatSelectedLineLabel(comment.selection, i18n.t),
+        selection: formatSelectedLineLabel(comment.selection),
         get actions() {
           return props.renderCommentActions?.(comment, { edit, remove })
         },
@@ -397,7 +395,7 @@ export function createLineCommentController<T extends LineCommentShape>(
                 get value() {
                   return note.draft()
                 },
-                selection: formatSelectedLineLabel(comment.selection, i18n.t),
+                selection: formatSelectedLineLabel(comment.selection),
                 mention: props.mention,
                 onInput: note.setDraft,
                 onCancel: note.cancelDraft,
@@ -424,7 +422,7 @@ export function createLineCommentController<T extends LineCommentShape>(
       get value() {
         return note.draft()
       },
-      selection: formatSelectedLineLabel(range, i18n.t),
+      selection: formatSelectedLineLabel(range),
       mention: props.mention,
       onInput: note.setDraft,
       onCancel: () => {

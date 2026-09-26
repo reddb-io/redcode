@@ -7,7 +7,6 @@ import { base64Encode } from "@reddb-io/redcode-core/util/encode"
 import { getFilename } from "@reddb-io/redcode-core/util/path"
 import { useSDK } from "./sdk"
 import { useSync } from "./sync"
-import { useLanguage } from "@/context/language"
 import { useLayout } from "@/context/layout"
 import { createPathHelpers } from "./file/path"
 import {
@@ -60,7 +59,6 @@ export const { use: useFile, provider: FileProvider } = createSimpleContext({
     useSync()
     const params = useParams()
     const serverSDK = useServerSDK()
-    const language = useLanguage()
     const layout = useLayout()
 
     const scope = createMemo(() => sdk().directory)
@@ -86,7 +84,7 @@ export const { use: useFile, provider: FileProvider } = createSimpleContext({
       onError: (message) => {
         showToast({
           variant: "error",
-          title: language.t("toast.file.listFailed.title"),
+          title: "Failed to list files",
           description: message,
         })
       },
@@ -159,7 +157,7 @@ export const { use: useFile, provider: FileProvider } = createSimpleContext({
       )
       showToast({
         variant: "error",
-        title: language.t("toast.file.loadFailed.title"),
+        title: "Failed to load file",
         description: message,
       })
     }
@@ -193,7 +191,7 @@ export const { use: useFile, provider: FileProvider } = createSimpleContext({
         })
         .catch((e) => {
           if (scope() !== directory) return
-          setLoadError(file, errorMessage(e, language.t("error.chain.unknown")))
+          setLoadError(file, errorMessage(e, "Unknown error"))
         })
         .finally(() => {
           inflight.delete(key)

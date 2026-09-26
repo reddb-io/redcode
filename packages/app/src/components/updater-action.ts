@@ -1,7 +1,6 @@
 import { createMemo } from "solid-js"
 import type { UpdaterState } from "@/updater"
 import { usePlatform } from "@/context/platform"
-import { useLanguage } from "@/context/language"
 import { showToast } from "@/utils/toast"
 
 export function updaterAction(state: UpdaterState | undefined) {
@@ -24,7 +23,6 @@ export function updaterAction(state: UpdaterState | undefined) {
 
 export function useUpdaterAction() {
   const platform = usePlatform()
-  const language = useLanguage()
   const action = createMemo(() => updaterAction(platform.updater?.state()))
 
   return {
@@ -39,12 +37,12 @@ export function useUpdaterAction() {
         showToast({
           variant: "success",
           icon: "circle-check",
-          title: language.t("settings.updates.toast.latest.title"),
-          description: language.t("settings.updates.toast.latest.description", { version: platform.version ?? "" }),
+          title: "You're up to date",
+          description: "You're running the latest version of Redcode.",
         })
       }
       if (state?.status === "error") {
-        showToast({ title: language.t("common.requestFailed"), description: state.message })
+        showToast({ title: "Request failed", description: state.message })
       }
     },
   }

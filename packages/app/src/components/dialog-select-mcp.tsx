@@ -3,20 +3,18 @@ import { useSync } from "@/context/sync"
 import { Dialog } from "@reddb-io/redcode-ui/dialog"
 import { List } from "@reddb-io/redcode-ui/list"
 import { Switch } from "@reddb-io/redcode-ui/switch"
-import { useLanguage } from "@/context/language"
 import { useMcpToggle } from "@/context/mcp"
 
 const statusLabels = {
-  connected: "mcp.status.connected",
-  failed: "mcp.status.failed",
-  needs_auth: "mcp.status.needs_auth",
-  needs_client_registration: "mcp.status.needs_client_registration",
-  disabled: "mcp.status.disabled",
+  connected: "connected",
+  failed: "failed",
+  needs_auth: "needs auth",
+  needs_client_registration: "needs client registration",
+  disabled: "disabled",
 } as const
 
 export const DialogSelectMcp: Component = () => {
   const sync = useSync()
-  const language = useLanguage()
 
   const items = createMemo(() =>
     Object.entries(sync().data.mcp ?? {})
@@ -31,13 +29,13 @@ export const DialogSelectMcp: Component = () => {
 
   return (
     <Dialog
-      title={language.t("dialog.mcp.title")}
-      description={language.t("dialog.mcp.description", { enabled: enabledCount(), total: totalCount() })}
+      title={"MCPs"}
+      description={`${enabledCount()} of ${totalCount()} enabled`}
     >
       <List
         class="px-3"
-        search={{ placeholder: language.t("common.search.placeholder"), autofocus: true }}
-        emptyMessage={language.t("dialog.mcp.empty")}
+        search={{ placeholder: "Search", autofocus: true }}
+        emptyMessage={"No MCPs configured"}
         key={(x) => x?.name ?? ""}
         items={items}
         filterKeys={["name", "status"]}
@@ -51,9 +49,9 @@ export const DialogSelectMcp: Component = () => {
           const mcpStatus = () => sync().data.mcp[i.name]
           const status = () => mcpStatus()?.status
           const statusLabel = () => {
-            const key = status() ? statusLabels[status() as keyof typeof statusLabels] : undefined
-            if (!key) return
-            return language.t(key)
+            const label = status() ? statusLabels[status() as keyof typeof statusLabels] : undefined
+            if (!label) return
+            return label
           }
           const error = () => {
             const s = mcpStatus()

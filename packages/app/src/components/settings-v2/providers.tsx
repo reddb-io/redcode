@@ -4,7 +4,6 @@ import { useDialog } from "@reddb-io/redcode-ui/context/dialog"
 import { ProviderIcon } from "@reddb-io/redcode-ui/provider-icon"
 import { popularProviders, useProviders } from "@/hooks/use-providers"
 import { createMemo, type Accessor, type Component, For, Show } from "solid-js"
-import { useLanguage } from "@/context/language"
 import { useServerProtocol } from "@/context/server-sdk"
 import { useServerSync } from "@/context/server-sync"
 import { DialogConnectProvider, useProviderConnectController } from "../dialog-connect-provider"
@@ -18,14 +17,14 @@ type ProviderSource = "env" | "api" | "config" | "custom"
 type ProviderItem = ReturnType<ReturnType<typeof useProviders>["connected"]>[number]
 
 const PROVIDER_NOTES = [
-  { match: (id: string) => id === "opencode", key: "dialog.provider.opencode.note" },
-  { match: (id: string) => id === "opencode-go", key: "dialog.provider.opencodeGo.tagline" },
-  { match: (id: string) => id === "anthropic", key: "dialog.provider.anthropic.note" },
-  { match: (id: string) => id.startsWith("github-copilot"), key: "dialog.provider.copilot.note" },
-  { match: (id: string) => id === "openai", key: "dialog.provider.openai.note" },
-  { match: (id: string) => id === "google", key: "dialog.provider.google.note" },
-  { match: (id: string) => id === "openrouter", key: "dialog.provider.openrouter.note" },
-  { match: (id: string) => id === "vercel", key: "dialog.provider.vercel.note" },
+  { match: (id: string) => id === "opencode", key: "Curated models including Claude, GPT, Gemini and more" },
+  { match: (id: string) => id === "opencode-go", key: "Low cost subscription for everyone" },
+  { match: (id: string) => id === "anthropic", key: "Direct access to Claude models, including Pro and Max" },
+  { match: (id: string) => id.startsWith("github-copilot"), key: "AI models for coding assistance via GitHub Copilot" },
+  { match: (id: string) => id === "openai", key: "GPT models for fast, capable general AI tasks" },
+  { match: (id: string) => id === "google", key: "Gemini models for fast, structured responses" },
+  { match: (id: string) => id === "openrouter", key: "Access all supported models from one provider" },
+  { match: (id: string) => id === "vercel", key: "Unified access to AI models with smart routing" },
 ] as const
 
 const PROVIDER_ICON_SIZE = 16
@@ -35,7 +34,6 @@ export const SettingsProvidersV2: Component<{
   onBack?: () => void
 }> = (props) => {
   const dialog = useDialog()
-  const language = useLanguage()
   const protocol = useServerProtocol()
   const serverSync = useServerSync()
   const providers = useProviders(props.directory)
@@ -73,8 +71,8 @@ export const SettingsProvidersV2: Component<{
   // A RedRouter connection says what its key may do: an admin key also manages keys over MCP.
   const keyRole = (item: ProviderItem) => {
     const role = item.router?.role
-    if (role === "admin") return language.t("settings.providers.tag.adminKey")
-    if (role === "standard") return language.t("settings.providers.tag.standardKey")
+    if (role === "admin") return "Admin key"
+    if (role === "standard") return "Standard key"
     return undefined
   }
 
@@ -82,14 +80,14 @@ export const SettingsProvidersV2: Component<{
     const router = routerName(item)
     if (router) return router
     const current = source(item)
-    if (current === "env") return language.t("settings.providers.tag.environment")
-    if (current === "api") return language.t("provider.connect.method.apiKey")
+    if (current === "env") return "Environment"
+    if (current === "api") return "API key"
     if (current === "config") {
-      if (isConfigCustom(item.id)) return language.t("settings.providers.tag.custom")
-      return language.t("settings.providers.tag.config")
+      if (isConfigCustom(item.id)) return "Custom"
+      return "Config"
     }
-    if (current === "custom") return language.t("settings.providers.tag.custom")
-    return language.t("settings.providers.tag.other")
+    if (current === "custom") return "Custom"
+    return "Other"
   }
 
   const note = (id: string) => PROVIDER_NOTES.find((item) => item.match(id))?.key
@@ -105,17 +103,17 @@ export const SettingsProvidersV2: Component<{
   return (
     <>
       <div class="settings-v2-tab-header">
-        <h2 class="settings-v2-tab-title">{language.t("settings.providers.title")}</h2>
+        <h2 class="settings-v2-tab-title">{"Providers"}</h2>
       </div>
 
       <div class="settings-v2-tab-body settings-v2-providers">
         <div class="settings-v2-section" data-component="connected-providers-section">
-          <h3 class="settings-v2-section-title">{language.t("settings.providers.section.connected")}</h3>
+          <h3 class="settings-v2-section-title">{"Connected providers"}</h3>
           <SettingsListV2>
             <Show
               when={connected().length > 0}
               fallback={
-                <div class="settings-v2-provider-empty">{language.t("settings.providers.connected.empty")}</div>
+                <div class="settings-v2-provider-empty">{"No connected providers"}</div>
               }
             >
               <For each={connected()}>
@@ -139,7 +137,7 @@ export const SettingsProvidersV2: Component<{
                       variant="ghost-muted"
                       onClick={() => void removeProvider(item.id, item.name)}
                     >
-                      {language.t("provider.remove.button")}
+                      {"Remove"}
                     </ButtonV2>
                   </div>
                 )}
@@ -149,7 +147,7 @@ export const SettingsProvidersV2: Component<{
         </div>
 
         <div class="settings-v2-section">
-          <h3 class="settings-v2-section-title">{language.t("settings.providers.section.popular")}</h3>
+          <h3 class="settings-v2-section-title">{"Popular providers"}</h3>
           <SettingsListV2>
             <For each={popular()}>
               {(item) => (
@@ -165,16 +163,16 @@ export const SettingsProvidersV2: Component<{
                       <div class="settings-v2-provider-main">
                         <span class="settings-v2-provider-name">{item.name}</span>
                         <Show when={item.id === "opencode" || item.id === "opencode-go"}>
-                          <Tag>{language.t("dialog.provider.tag.recommended")}</Tag>
+                          <Tag>{"Recommended"}</Tag>
                         </Show>
                       </div>
                       <Show when={note(item.id)}>
-                        {(key) => <p class="settings-v2-provider-description">{language.t(key())}</p>}
+                        {(key) => <p class="settings-v2-provider-description">{key()}</p>}
                       </Show>
                     </div>
                   </div>
                   <ButtonV2 size="normal" variant="neutral" icon="plus" onClick={() => connect(item.id)}>
-                    {language.t("common.connect")}
+                    {"Connect"}
                   </ButtonV2>
                 </div>
               )}
@@ -191,11 +189,11 @@ export const SettingsProvidersV2: Component<{
                   />
                   <div class="settings-v2-provider-copy">
                     <div class="settings-v2-provider-main">
-                      <span class="settings-v2-provider-name">{language.t("provider.custom.title")}</span>
-                      <Tag>{language.t("settings.providers.tag.custom")}</Tag>
+                      <span class="settings-v2-provider-name">{"Custom provider"}</span>
+                      <Tag>{"Custom"}</Tag>
                     </div>
                     <p class="settings-v2-provider-description">
-                      {language.t("settings.providers.custom.description")}
+                      {"Add an OpenAI-compatible provider by base URL."}
                     </p>
                   </div>
                 </div>
@@ -207,14 +205,14 @@ export const SettingsProvidersV2: Component<{
                     dialog.show(() => <DialogCustomProvider onBack={dialog.close} />)
                   }}
                 >
-                  {language.t("common.connect")}
+                  {"Connect"}
                 </ButtonV2>
               </div>
             </Show>
           </SettingsListV2>
 
           <button type="button" class="settings-v2-providers-view-all" onClick={() => connect()}>
-            {language.t("dialog.provider.viewAll")}
+            {"Show more providers"}
           </button>
         </div>
       </div>

@@ -17,7 +17,6 @@ import { Tag as TagV2 } from "@reddb-io/redcode-ui/v2/badge-v2"
 import { MenuV2 } from "@reddb-io/redcode-ui/v2/menu-v2"
 import { TooltipV2 } from "@reddb-io/redcode-ui/v2/tooltip-v2"
 import { ModelTooltip } from "./model-tooltip"
-import { useLanguage } from "@/context/language"
 import { decode64 } from "@/utils/base64"
 import { handleDocumentSearchKeydown } from "@/utils/search-keydown"
 import { createMenuDismissController } from "@/utils/menu-dismiss-controller"
@@ -58,25 +57,24 @@ const visibleModels = (model: ModelState) =>
 
 /** `direct`, or `via RedRouter » OpenAI Codex · subscription`, plus where else the same model is offered. */
 function originLabel(
-  language: ReturnType<typeof useLanguage>,
   item: ModelItem,
   alternatives: ModelAlternatives | undefined,
 ) {
   return [
-    ...originRoute(language, modelOrigin(item)),
-    ...(item.flat && item.offerOrder === "custom" ? [language.t("model.flat.customOrder")] : []),
-    ...(alternatives?.direct ? [language.t("model.origin.alsoDirect")] : []),
-    ...(alternatives?.routers ?? []).map((router) => language.t("model.origin.alsoVia", { router })),
+    ...originRoute(modelOrigin(item)),
+    ...(item.flat && item.offerOrder === "custom" ? ["custom order"] : []),
+    ...(alternatives?.direct ? ["also direct"] : []),
+    ...(alternatives?.routers ?? []).map((router) => `also via ${router}`),
   ].join(" · ")
 }
 
 /** The route segment: `direct`, or `via RedRouter » OpenAI Codex` with the upstream joined as a hop. */
-function originRoute(language: ReturnType<typeof useLanguage>, origin: ReturnType<typeof modelOrigin>) {
-  if (origin.type === "direct") return [language.t("model.origin.direct")]
-  const via = language.t("model.origin.via", { router: routerPath(origin) })
+function originRoute(origin: ReturnType<typeof modelOrigin>) {
+  if (origin.type === "direct") return ["direct"]
+  const via = `via ${routerPath(origin)}`
   return [
     origin.upstream ? `${via}${Router.HOP_SEPARATOR}${origin.upstream}` : via,
-    ...(origin.subscription ? [language.t("model.origin.subscription")] : []),
+    ...(origin.subscription ? ["subscription"] : []),
   ]
 }
 
@@ -88,7 +86,6 @@ const ModelList: Component<{
   model?: ModelState
 }> = (props) => {
   const model = props.model ?? useLocal().model
-  const language = useLanguage()
 
   const visible = createMemo(() => visibleModels(model))
   // A pinned offer of a flat model is listed under that model (see the offers below), not on its own.
@@ -104,8 +101,8 @@ const ModelList: Component<{
   return (
     <List
       class={`flex-1 px-3 min-h-0 [&_[data-slot=list-scroll]]:flex-1 [&_[data-slot=list-scroll]]:min-h-0 ${props.class ?? ""}`}
-      search={{ placeholder: language.t("dialog.model.search.placeholder"), autofocus: true, action: props.action }}
-      emptyMessage={language.t("dialog.model.empty")}
+      search={{ placeholder: "Search models", autofocus: true, action: props.action }}
+      emptyMessage={"No model results"}
       key={(x) => `${x.provider.id}:${x.id}`}
       items={models}
       current={model.current()}
@@ -142,14 +139,14 @@ const ModelList: Component<{
         <div class="w-full flex items-center gap-x-2 text-13-regular">
           <span class="truncate">{i.name}</span>
           <Show when={isFree(i.provider.id, i.cost)}>
-            <Tag>{language.t("model.tag.free")}</Tag>
+            <Tag>{"Free"}</Tag>
           </Show>
           <Show when={i.latest}>
-            <Tag>{language.t("model.tag.latest")}</Tag>
+            <Tag>{"Latest"}</Tag>
           </Show>
           <For each={i.modes ?? []}>{(mode) => <Tag>{mode}</Tag>}</For>
           <span class="ml-auto min-w-0 truncate text-12-regular text-text-weak">
-            {originLabel(language, i, alternatives().get(modelKey(i)))}
+            {originLabel(i, alternatives().get(modelKey(i)))}
           </span>
           <Show when={i.flat && i.offers?.length}>
             <IconButton
@@ -157,7 +154,7 @@ const ModelList: Component<{
               variant="ghost"
               iconSize="normal"
               class="size-5 shrink-0"
-              aria-label={language.t("model.flat.offers")}
+              aria-label={"Offers"}
               aria-expanded={!!expanded[modelKey(i)]}
               onClick={(event) => {
                 event.stopPropagation()
@@ -175,7 +172,7 @@ const ModelList: Component<{
                   class="w-full flex items-center gap-x-2 py-0.5 text-12-regular text-left disabled:opacity-50"
                   classList={{ "text-text-weak": row.off }}
                   disabled={!row.pin}
-                  title={row.pin ? language.t("model.flat.pin") : language.t("model.flat.unpinnable")}
+                  title={row.pin ? "Pin this offer" : "This offer cannot be pinned"}
                   onClick={(event) => {
                     event.stopPropagation()
                     if (!row.pin) return
@@ -186,10 +183,10 @@ const ModelList: Component<{
                 >
                   <span class="truncate">{row.route}</span>
                   <Show when={row.offer.free}>
-                    <Tag>{language.t("model.tag.free")}</Tag>
+                    <Tag>{"Free"}</Tag>
                   </Show>
                   <Show when={row.off}>
-                    <span>{language.t("model.flat.off")}</span>
+                    <span>{"off"}</span>
                   </Show>
                   <span class="ml-auto shrink-0 text-text-weak">{row.price}</span>
                 </button>
@@ -242,7 +239,6 @@ export function ModelSelectorPopover(props: {
       void dialog.show(() => <x.DialogConnectProvider directory={directory} />)
     })
   }
-  const language = useLanguage()
 
   return (
     <Kobalte
@@ -276,7 +272,7 @@ export function ModelSelectorPopover(props: {
             setStore("dismiss", null)
           }}
         >
-          <Kobalte.Title class="sr-only">{language.t("dialog.model.select.title")}</Kobalte.Title>
+          <Kobalte.Title class="sr-only">{"Select model"}</Kobalte.Title>
           <ModelList
             provider={props.provider}
             model={props.model}
@@ -284,23 +280,23 @@ export function ModelSelectorPopover(props: {
             class="p-1"
             action={
               <div class="flex items-center gap-1">
-                <Tooltip placement="top" value={language.t("command.provider.connect")}>
+                <Tooltip placement="top" value={"Connect provider"}>
                   <IconButton
                     icon="plus-small"
                     variant="ghost"
                     iconSize="normal"
                     class="size-6"
-                    aria-label={language.t("command.provider.connect")}
+                    aria-label={"Connect provider"}
                     onClick={handleConnectProvider}
                   />
                 </Tooltip>
-                <Tooltip placement="top" value={language.t("dialog.model.manage")}>
+                <Tooltip placement="top" value={"Manage models"}>
                   <IconButton
                     icon="sliders"
                     variant="ghost"
                     iconSize="normal"
                     class="size-6"
-                    aria-label={language.t("dialog.model.manage")}
+                    aria-label={"Manage models"}
                     onClick={handleManage}
                   />
                 </Tooltip>
@@ -350,7 +346,6 @@ function createModelSelectorController(input: {
   onSelect: () => void
 }) {
   const model = input.model ?? useLocal().model
-  const language = useLanguage()
   const visible = createMemo(() => visibleModels(model))
   const allModels = createMemo(() =>
     visible().filter((item) => (input.provider() ? item.provider.id === input.provider() : true)),
@@ -375,7 +370,7 @@ function createModelSelectorController(input: {
       }
       return Array.from(byGroup, ([category, items]) => ({ category, items })).sort(sortModelGroups)
     },
-    origin: (item: ModelItem) => originLabel(language, item, alternatives().get(modelKey(item))),
+    origin: (item: ModelItem) => originLabel(item, alternatives().get(modelKey(item))),
     current: () => {
       const value = model.current()
       return value ? modelKey(value) : undefined
@@ -397,7 +392,6 @@ function ModelSelectorPopoverV2View(props: {
   onManage: () => void
   onClose: () => void
 }) {
-  const language = useLanguage()
   const [store, setStore] = createStore({ open: false, search: "", active: "" })
   let searchRef: HTMLInputElement | undefined
   let contentRef: HTMLDivElement | undefined
@@ -486,7 +480,7 @@ function ModelSelectorPopoverV2View(props: {
               <input
                 ref={(el) => (searchRef = el)}
                 value={store.search}
-                placeholder={language.t("dialog.model.search.placeholder")}
+                placeholder={"Search models"}
                 class="h-7 min-w-0 flex-1 border-0 bg-transparent text-[13px] font-[440] leading-5 tracking-[-0.04px] text-v2-text-text-base outline-none placeholder:text-v2-text-text-faint"
                 spellcheck={false}
                 autocorrect="off"
@@ -526,7 +520,7 @@ function ModelSelectorPopoverV2View(props: {
                   class="flex size-5 items-center justify-center rounded-sm text-v2-icon-icon-muted hover:bg-v2-overlay-simple-overlay-hover"
                   onPointerDown={(event) => event.preventDefault()}
                   onClick={() => setSearch("")}
-                  aria-label={language.t("common.clear")}
+                  aria-label={"Clear"}
                 >
                   <Icon name="close" size="small" />
                 </button>
@@ -540,7 +534,7 @@ function ModelSelectorPopoverV2View(props: {
                 when={models().length > 0}
                 fallback={
                   <div class="flex h-12 items-center px-3 text-[13px] font-[440] leading-5 tracking-[-0.04px] text-v2-text-text-faint">
-                    {language.t("dialog.model.empty")}
+                    {"No model results"}
                   </div>
                 }
               >
@@ -581,10 +575,10 @@ function ModelSelectorPopoverV2View(props: {
                               >
                                 <span class="min-w-0 truncate leading-5">{item.name}</span>
                                 <Show when={isFree(item.provider.id, item.cost)}>
-                                  <TagV2 class="shrink-0">{language.t("model.tag.free")}</TagV2>
+                                  <TagV2 class="shrink-0">{"Free"}</TagV2>
                                 </Show>
                                 <Show when={item.latest}>
-                                  <TagV2 class="shrink-0">{language.t("model.tag.latest")}</TagV2>
+                                  <TagV2 class="shrink-0">{"Latest"}</TagV2>
                                 </Show>
                                 <For each={item.modes ?? []}>{(mode) => <TagV2 class="shrink-0">{mode}</TagV2>}</For>
                                 <span class="ml-auto min-w-0 truncate text-[12px] leading-5 text-v2-text-text-faint">
@@ -613,7 +607,7 @@ function ModelSelectorPopoverV2View(props: {
               onSelect={manage}
             >
               <Icon name="outline-sliders" size="small" />
-              <span class="min-w-0 flex-1 truncate leading-5">{language.t("dialog.model.manage")}</span>
+              <span class="min-w-0 flex-1 truncate leading-5">{"Manage models"}</span>
             </MenuV2.Item>
           </div>
         </MenuV2.Content>
@@ -624,7 +618,6 @@ function ModelSelectorPopoverV2View(props: {
 
 export const DialogSelectModel: Component<{ provider?: string; model?: ModelState }> = (props) => {
   const dialog = useDialog()
-  const language = useLanguage()
   const local = useLocal()
   const directory = () => decode64(local.slug())
 
@@ -642,16 +635,16 @@ export const DialogSelectModel: Component<{ provider?: string; model?: ModelStat
 
   return (
     <Dialog
-      title={language.t("dialog.model.select.title")}
+      title={"Select model"}
       action={
         <Button class="h-7 -my-1 text-14-medium" icon="plus-small" tabIndex={-1} onClick={provider}>
-          {language.t("command.provider.connect")}
+          {"Connect provider"}
         </Button>
       }
     >
       <ModelList provider={props.provider} model={props.model} onSelect={() => dialog.close()} />
       <Button variant="ghost" class="ml-3 mt-5 mb-6 text-text-base self-start" onClick={manage}>
-        {language.t("dialog.model.manage")}
+        {"Manage models"}
       </Button>
     </Dialog>
   )

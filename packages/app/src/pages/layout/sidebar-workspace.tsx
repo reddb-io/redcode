@@ -17,7 +17,6 @@ import { Tooltip } from "@reddb-io/redcode-ui/tooltip"
 import { type Session } from "@reddb-io/redcode-sdk/v2/client"
 import { type LocalProject } from "@/context/layout"
 import { useServerSync, useQueryOptions } from "@/context/server-sync"
-import { useLanguage } from "@/context/language"
 import { pathKey } from "@/utils/path-key"
 import { NewSessionItem, SessionItem, SessionSkeleton } from "./sidebar-items"
 import { sortedRootSessions } from "./helpers"
@@ -63,7 +62,6 @@ export const WorkspaceDragOverlay = (props: {
   workspaceLabel: (directory: string, branch?: string, projectId?: string) => string
 }): JSX.Element => {
   const serverSync = useServerSync()
-  const language = useLanguage()
   const label = createMemo(() => {
     const project = props.sidebarProject()
     if (!project) return
@@ -72,7 +70,7 @@ export const WorkspaceDragOverlay = (props: {
 
     const [workspaceStore] = serverSync().child(directory, { bootstrap: false })
     const kind =
-      directory === project.worktree ? language.t("workspace.type.local") : language.t("workspace.type.sandbox")
+      directory === project.worktree ? "local" : "sandbox"
     const name = props.workspaceLabel(directory, workspaceStore.vcs?.branch, project.id)
     return `${kind} : ${name}`
   })
@@ -89,7 +87,6 @@ const WorkspaceHeader = (props: {
   busy: Accessor<boolean>
   open: Accessor<boolean>
   directory: string
-  language: ReturnType<typeof useLanguage>
   branch: Accessor<string | undefined>
   workspaceValue: Accessor<string>
   workspaceEditActive: Accessor<boolean>
@@ -105,7 +102,7 @@ const WorkspaceHeader = (props: {
       </Show>
     </div>
     <span class="text-14-medium text-text-base shrink-0">
-      {props.local() ? props.language.t("workspace.type.local") : props.language.t("workspace.type.sandbox")} :
+      {props.local() ? "local" : "sandbox"} :
     </span>
     <Show
       when={!props.local()}
@@ -147,7 +144,6 @@ const WorkspaceActions = (props: {
   setPendingRename: (value: boolean) => void
   sidebarHovering: Accessor<boolean>
   touch: Accessor<boolean>
-  language: ReturnType<typeof useLanguage>
   workspaceValue: Accessor<string>
   openEditor: WorkspaceSidebarContext["openEditor"]
   showResetWorkspaceDialog: WorkspaceSidebarContext["showResetWorkspaceDialog"]
@@ -170,7 +166,7 @@ const WorkspaceActions = (props: {
       open={props.menuOpen()}
       onOpenChange={(open) => props.setMenuOpen(open)}
     >
-      <Tooltip value={props.language.t("common.moreOptions")} placement="top">
+      <Tooltip value={"More options"} placement="top">
         <DropdownMenu.Trigger
           as={IconButton}
           icon="dot-grid"
@@ -178,7 +174,7 @@ const WorkspaceActions = (props: {
           class="size-6 rounded-md"
           data-action="workspace-menu"
           data-workspace={base64Encode(props.directory)}
-          aria-label={props.language.t("common.moreOptions")}
+          aria-label={"More options"}
         />
       </Tooltip>
       <DropdownMenu.Portal>
@@ -197,25 +193,25 @@ const WorkspaceActions = (props: {
               props.setMenuOpen(false)
             }}
           >
-            <DropdownMenu.ItemLabel>{props.language.t("common.rename")}</DropdownMenu.ItemLabel>
+            <DropdownMenu.ItemLabel>{"Rename"}</DropdownMenu.ItemLabel>
           </DropdownMenu.Item>
           <DropdownMenu.Item
             disabled={props.local() || props.busy()}
             onSelect={() => props.showResetWorkspaceDialog(props.root, props.directory)}
           >
-            <DropdownMenu.ItemLabel>{props.language.t("common.reset")}</DropdownMenu.ItemLabel>
+            <DropdownMenu.ItemLabel>{"Reset"}</DropdownMenu.ItemLabel>
           </DropdownMenu.Item>
           <DropdownMenu.Item
             disabled={props.local() || props.busy()}
             onSelect={() => props.showDeleteWorkspaceDialog(props.root, props.directory)}
           >
-            <DropdownMenu.ItemLabel>{props.language.t("common.delete")}</DropdownMenu.ItemLabel>
+            <DropdownMenu.ItemLabel>{"Delete"}</DropdownMenu.ItemLabel>
           </DropdownMenu.Item>
         </DropdownMenu.Content>
       </DropdownMenu.Portal>
     </DropdownMenu>
     <Show when={!props.touch()}>
-      <Tooltip value={props.language.t("command.session.new")} placement="top">
+      <Tooltip value={"New session"} placement="top">
         <IconButtonV2
           icon={<IconV2 name="edit" size="small" />}
           variant="ghost"
@@ -223,7 +219,7 @@ const WorkspaceActions = (props: {
           class="size-6 rounded-md opacity-0 pointer-events-none group-hover/workspace:opacity-100 group-hover/workspace:pointer-events-auto group-focus-within/workspace:opacity-100 group-focus-within/workspace:pointer-events-auto"
           data-action="workspace-new-session"
           data-workspace={base64Encode(props.directory)}
-          aria-label={props.language.t("command.session.new")}
+          aria-label={"New session"}
           onClick={(event) => {
             event.preventDefault()
             event.stopPropagation()
@@ -245,7 +241,6 @@ const WorkspaceSessionList = (props: {
   sessions: Accessor<Session[]>
   hasMore: Accessor<boolean>
   loadMore: () => Promise<void>
-  language: ReturnType<typeof useLanguage>
 }): JSX.Element => (
   <nav class="flex flex-col gap-1">
     <Show when={props.showNew()}>
@@ -286,7 +281,7 @@ const WorkspaceSessionList = (props: {
             ;(e.currentTarget as HTMLButtonElement).blur()
           }}
         >
-          {props.language.t("common.loadMore")}
+          {"Load more"}
         </Button>
       </div>
     </Show>
@@ -304,7 +299,6 @@ export const SortableWorkspace = (props: {
   const params = useParams()
   const serverSync = useServerSync()
   const queryOptions = useQueryOptions()
-  const language = useLanguage()
   const sortable = createSortable(props.directory)
   const [workspaceStore, setWorkspaceStore] = serverSync().child(props.directory, { bootstrap: false })
   const [menu, setMenu] = createStore({
@@ -341,7 +335,6 @@ export const SortableWorkspace = (props: {
       busy={busy}
       open={open}
       directory={props.directory}
-      language={language}
       branch={() => workspaceStore.vcs?.branch}
       workspaceValue={workspaceValue}
       workspaceEditActive={workspaceEditActive}
@@ -412,7 +405,6 @@ export const SortableWorkspace = (props: {
                 setPendingRename={(value) => setMenu("pendingRename", value)}
                 sidebarHovering={props.ctx.sidebarHovering}
                 touch={touch}
-                language={language}
                 workspaceValue={workspaceValue}
                 openEditor={props.ctx.openEditor}
                 showResetWorkspaceDialog={props.ctx.showResetWorkspaceDialog}
@@ -435,7 +427,6 @@ export const SortableWorkspace = (props: {
             sessions={sessions}
             hasMore={hasMore}
             loadMore={loadMore}
-            language={language}
           />
         </Collapsible.Content>
       </Collapsible>
@@ -451,7 +442,6 @@ export const LocalWorkspace = (props: {
 }): JSX.Element => {
   const serverSync = useServerSync()
   const queryOptions = useQueryOptions()
-  const language = useLanguage()
   const workspace = createMemo(() => {
     const [store, setStore] = serverSync().child(props.project.worktree)
     return { store, setStore }
@@ -481,7 +471,6 @@ export const LocalWorkspace = (props: {
         sessions={sessions}
         hasMore={hasMore}
         loadMore={loadMore}
-        language={language}
       />
     </div>
   )

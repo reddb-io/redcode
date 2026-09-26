@@ -13,7 +13,6 @@ import { MenuV2 } from "@reddb-io/redcode-ui/v2/menu-v2"
 import { TooltipV2 } from "@reddb-io/redcode-ui/v2/tooltip-v2"
 import { getProjectAvatarVariant, type HomeProjectSelection, type LocalProject } from "@/context/layout"
 import { ServerConnection } from "@/context/server"
-import { useLanguage } from "@/context/language"
 import { usePlatform } from "@/context/platform"
 import { displayName, getProjectAvatarSource } from "@/pages/layout/helpers"
 import { ServerRowMenuView, serverMenuLabels } from "@/components/server/server-row-menu"
@@ -28,7 +27,6 @@ const projectContextMenuID = (server: ServerConnection.Any, directory: string) =
   `project:${ServerConnection.key(server)}:${directory}`
 
 export type HomeProjectsViewProps = {
-  language: ReturnType<typeof useLanguage>
   servers: Accessor<ServerConnection.Any[]>
   projects: Accessor<LocalProject[]>
   recentlyClosed: Accessor<LocalProject[]>
@@ -72,18 +70,18 @@ export function HomeProjectsView(props: HomeProjectsViewProps) {
         mt-6 flex min-h-0 min-w-0 flex-col gap-4 overflow-hidden
         lg:sticky lg:top-14 lg:mt-14 lg:h-[calc(100cqh-56px)] lg:self-start lg:pt-[52px]
       `}
-      aria-label={props.language.t("home.projects")}
+      aria-label={"Projects"}
       onWheel={(event) => {
         if (event.target === event.currentTarget) return
         props.onWheel(event)
       }}
     >
       <div class="flex h-7 min-w-0 shrink-0 items-center justify-between pl-1.5 pr-3">
-        <div class="text-v2-text-text-muted [font-weight:530]">{props.language.t("home.projects")}</div>
+        <div class="text-v2-text-text-muted [font-weight:530]">{"Projects"}</div>
         <Show
           when={props.servers().length === 1 && !(props.projects().length === 0 && props.recentlyClosed().length > 0)}
         >
-          <TooltipV2 placement="bottom" value={props.language.t("home.project.add")}>
+          <TooltipV2 placement="bottom" value={"Add project"}>
             <IconButtonV2
               data-action="home-add-project"
               variant="ghost-muted"
@@ -92,7 +90,7 @@ export function HomeProjectsView(props: HomeProjectsViewProps) {
               icon={<IconV2 name="folder-add-left" />}
               disabled={props.serverHealth(props.servers()[0])?.healthy === false}
               onClick={() => props.onChooseProject(props.servers()[0])}
-              aria-label={props.language.t("home.project.add")}
+              aria-label={"Add project"}
             />
           </TooltipV2>
         </Show>
@@ -148,7 +146,6 @@ export function HomeProjectsView(props: HomeProjectsViewProps) {
         class="mb-8 mt-4 hidden shrink-0 lg:flex"
         onOpenSettings={props.onOpenSettings}
         onOpenHelp={props.onOpenHelp}
-        language={props.language}
       />
     </aside>
   )
@@ -158,7 +155,6 @@ export function HomeUtilityNav(props: {
   class?: string
   onOpenSettings: () => void
   onOpenHelp: () => void
-  language: ReturnType<typeof useLanguage>
 }) {
   return (
     <div class={`${props.class ?? ""} min-w-0 flex-col gap-1 pr-3`}>
@@ -168,7 +164,7 @@ export function HomeUtilityNav(props: {
         onClick={props.onOpenSettings}
       >
         <IconV2 name="settings-gear" size="small" />
-        <span class={HOME_PROJECT_NAV_LABEL}>{props.language.t("sidebar.settings")}</span>
+        <span class={HOME_PROJECT_NAV_LABEL}>{"Settings"}</span>
       </HomeProjectNavButton>
       <HomeProjectNavButton
         type="button"
@@ -176,14 +172,13 @@ export function HomeUtilityNav(props: {
         onClick={props.onOpenHelp}
       >
         <IconV2 name="help" size="small" />
-        <span class={HOME_PROJECT_NAV_LABEL}>{props.language.t("sidebar.help")}</span>
+        <span class={HOME_PROJECT_NAV_LABEL}>{"Help"}</span>
       </HomeProjectNavButton>
     </div>
   )
 }
 
 function HomeServerRow(props: {
-  language: HomeProjectsViewProps["language"]
   projectsForServer: HomeProjectsViewProps["projectsForServer"]
   contextMenuOpen: HomeProjectsContextMenuProps["contextMenuOpen"]
   canDefaultServer: HomeProjectsViewProps["canDefaultServer"]
@@ -227,7 +222,7 @@ function HomeServerRow(props: {
             "cursor-default opacity-40": !canToggle(),
           }}
           aria-label={
-            props.collapsed ? props.language.t("home.server.expand") : props.language.t("home.server.collapse")
+            props.collapsed ? "Expand server projects" : "Collapse server projects"
           }
           aria-disabled={!canToggle()}
           aria-expanded={canToggle() ? !props.collapsed : undefined}
@@ -274,7 +269,7 @@ function HomeServerRow(props: {
       >
         <ServerRowMenuView
           server={props.server}
-          labels={serverMenuLabels(props.language)}
+          labels={serverMenuLabels()}
           canDefault={props.canDefaultServer()}
           isDefault={props.defaultServerKey() === ServerConnection.key(props.server)}
           onEdit={props.onEditServer}
@@ -284,13 +279,13 @@ function HomeServerRow(props: {
           open={props.contextMenuOpen(contextMenuID())}
           onOpenChange={(open) => props.onSetContextMenuOpen(contextMenuID(), open)}
         />
-        <TooltipV2 class="flex shrink-0 items-center" placement="bottom" value={props.language.t("home.project.add")}>
+        <TooltipV2 class="flex shrink-0 items-center" placement="bottom" value={"Add project"}>
           <IconButtonV2
             data-action="home-add-project"
             variant="ghost-muted"
             size="small"
             icon={<IconV2 name="folder-add-left" />}
-            aria-label={props.language.t("home.project.add")}
+            aria-label={"Add project"}
             disabled={props.health?.healthy === false}
             onClick={() => props.onChooseProject(props.server)}
           />
@@ -400,11 +395,11 @@ function HomeProjectEmpty(
         onClick={() => props.onChooseProject(props.server)}
       >
         <IconV2 name="folder-add-left" size="small" />
-        <span class={HOME_PROJECT_NAV_LABEL}>{props.language.t("home.project.add")}</span>
+        <span class={HOME_PROJECT_NAV_LABEL}>{"Add project"}</span>
       </HomeProjectNavButton>
       <Show when={props.items.length > 0}>
         <div class="mt-3 flex h-7 min-w-0 shrink-0 items-center pl-1.5 pr-3">
-          <div class="text-v2-text-text-faint [font-weight:530]">{props.language.t("home.recentlyClosed")}</div>
+          <div class="text-v2-text-text-faint [font-weight:530]">{"Recently closed"}</div>
         </div>
         <For each={props.items}>
           {(project) => <HomeRecentlyClosedRow {...props} project={project} server={props.server} />}
@@ -541,33 +536,39 @@ function HomeProjectRow(
             variant="ghost-muted"
             size="small"
             icon={<IconV2 name="outline-dots" />}
-            aria-label={props.language.t("common.moreOptions")}
+            aria-label={"More options"}
           />
           <MenuV2.Portal>
             <MenuV2.Content>
               <MenuV2.Item onSelect={() => props.onOpenProjectNewSession(props.server, props.project.worktree)}>
-                {props.language.t("command.session.new")}
+                {"New session"}
               </MenuV2.Item>
               <MenuV2.Item onSelect={() => props.onEditProject(props.server, props.project)}>
-                {props.language.t("dialog.project.edit.title")}
+                {"Edit project"}
               </MenuV2.Item>
               <Show when={props.canRevealProject(props.server)}>
                 <MenuV2.Item onSelect={() => props.onRevealProject(props.server, props.project)}>
-                  {props.language.t(
-                    fileManagerApp(platform.platform === "desktop" ? (platform.os ?? "unknown") : "unknown")
-                      .actionLabel,
-                  )}
+                  {
+                    ({
+                      "session.header.reveal.finder": "Reveal in Finder",
+                      "session.header.reveal.fileExplorer": "Reveal in File Explorer",
+                      "session.header.reveal.containingFolder": "Open containing folder",
+                    })[
+                      fileManagerApp(platform.platform === "desktop" ? (platform.os ?? "unknown") : "unknown")
+                        .actionLabel
+                    ]
+                  }
                 </MenuV2.Item>
               </Show>
               <MenuV2.Item
                 disabled={props.unseen === 0}
                 onSelect={() => props.onClearNotifications(props.server, props.project)}
               >
-                {props.language.t("sidebar.project.clearNotifications")}
+                {"Clear notifications"}
               </MenuV2.Item>
               <MenuV2.Separator />
               <MenuV2.Item onSelect={() => props.onCloseProject(props.server, props.project.worktree)}>
-                {props.language.t("common.close")}
+                {"Close"}
               </MenuV2.Item>
             </MenuV2.Content>
           </MenuV2.Portal>
@@ -577,7 +578,7 @@ function HomeProjectRow(
           variant="ghost-muted"
           size="small"
           icon={<IconV2 name="edit" />}
-          aria-label={props.language.t("command.session.new")}
+          aria-label={"New session"}
           onClick={() => props.onOpenProjectNewSession(props.server, props.project.worktree)}
         />
       </div>

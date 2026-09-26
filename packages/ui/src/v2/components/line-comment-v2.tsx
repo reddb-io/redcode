@@ -1,6 +1,5 @@
 import { For, Show, createSignal, onMount, splitProps, type ComponentProps, type JSX } from "solid-js"
 import { FileIcon } from "../../components/file-icon"
-import { useI18n } from "../../context/i18n"
 import { useFilteredList } from "../../hooks"
 import { ButtonV2 } from "./button-v2"
 import "./line-comment-v2.css"
@@ -87,7 +86,6 @@ function pathDirectory(path: string) {
 }
 
 export function LineCommentEditorV2(props: LineCommentEditorV2Props) {
-  const i18n = useI18n()
   let textareaRef: HTMLTextAreaElement | undefined
   const [mentionOpen, setMentionOpen] = createSignal(false)
 
@@ -108,7 +106,7 @@ export function LineCommentEditorV2(props: LineCommentEditorV2Props) {
     "classList",
   ])
 
-  const heading = () => local.heading ?? i18n.t("ui.lineComment.submit")
+  const heading = () => local.heading ?? "Comment"
   const canSubmit = () => local.value.trim().length > 0
 
   const closeMention = () => {
@@ -213,7 +211,7 @@ export function LineCommentEditorV2(props: LineCommentEditorV2Props) {
             }}
             data-slot="line-comment-v2-textarea"
             rows={local.rows ?? 3}
-            placeholder={local.placeholder ?? i18n.t("ui.lineComment.contextPlaceholder")}
+            placeholder={local.placeholder ?? "Add context for this change"}
             value={local.value}
             onInput={(e) => {
               local.onInput(e.currentTarget.value)
@@ -293,10 +291,10 @@ export function LineCommentEditorV2(props: LineCommentEditorV2Props) {
           <div data-slot="line-comment-v2-footer-meta">{local.selection}</div>
           <div data-slot="line-comment-v2-footer-actions">
             <ButtonV2 type="button" size="normal" variant="neutral" onClick={() => local.onCancel()}>
-              {local.cancelLabel ?? i18n.t("ui.lineComment.cancel")}
+              {local.cancelLabel ?? "Cancel"}
             </ButtonV2>
             <ButtonV2 type="button" size="normal" variant="contrast" disabled={!canSubmit()} onClick={submit}>
-              {local.submitLabel ?? i18n.t("ui.lineComment.submit")}
+              {local.submitLabel ?? "Comment"}
             </ButtonV2>
           </div>
         </div>

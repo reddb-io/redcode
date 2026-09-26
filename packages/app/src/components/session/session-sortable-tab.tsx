@@ -7,7 +7,6 @@ import { TooltipKeybind } from "@reddb-io/redcode-ui/tooltip"
 import { Tabs } from "@reddb-io/redcode-ui/tabs"
 import { getFilename } from "@reddb-io/redcode-core/util/path"
 import { useFile } from "@/context/file"
-import { useLanguage } from "@/context/language"
 import { useCommand } from "@/context/command"
 
 export function FileVisual(props: { path: string; active?: boolean; temporary?: boolean }): JSX.Element {
@@ -36,7 +35,6 @@ export function SortableTab(props: {
   onTabDoubleClick?: (tab: string) => void
 }): JSX.Element {
   const file = useFile()
-  const language = useLanguage()
   const command = useCommand()
   const sortable = createSortable(props.tab)
   const path = createMemo(() => file.pathFromTab(props.tab))
@@ -52,7 +50,7 @@ export function SortableTab(props: {
           value={props.tab}
           closeButton={
             <TooltipKeybind
-              title={language.t("common.closeTab")}
+              title={"Close tab"}
               keybind={command.keybind("tab.close")}
               placement="bottom"
               gutter={10}
@@ -62,7 +60,7 @@ export function SortableTab(props: {
                 variant="ghost"
                 class="h-5 w-5"
                 onClick={() => props.onTabClose(props.tab)}
-                aria-label={language.t("common.closeTab")}
+                aria-label={"Close tab"}
               />
             </TooltipKeybind>
           }

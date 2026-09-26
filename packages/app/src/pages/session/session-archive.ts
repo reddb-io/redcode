@@ -1,7 +1,6 @@
 import { useNavigate } from "@solidjs/router"
 import { produce } from "solid-js/store"
 import { notifySessionTabsRemoved } from "@/components/titlebar-session-events"
-import { useLanguage } from "@/context/language"
 import { useSDK } from "@/context/sdk"
 import { useServerSync } from "@/context/server-sync"
 import { useSync } from "@/context/sync"
@@ -12,7 +11,6 @@ import { legacySessionHref, requireServerKey, sessionHref } from "@/utils/sessio
 import { showToast } from "@/utils/toast"
 
 export function useSessionArchive() {
-  const language = useLanguage()
   const navigate = useNavigate()
   const sdk = useSDK()
   const sync = useSync()
@@ -64,8 +62,8 @@ export function useSessionArchive() {
       })
       .catch((err) => {
         showToast({
-          title: language.t("common.requestFailed"),
-          description: errorMessage(err, language.t("common.requestFailed")),
+          title: "Request failed",
+          description: errorMessage(err, "Request failed"),
         })
       })
   }

@@ -4,7 +4,6 @@ import { IconButtonV2 } from "@reddb-io/redcode-ui/v2/icon-button-v2"
 import { Icon as IconV2 } from "@reddb-io/redcode-ui/v2/icon"
 import { Popover } from "@reddb-io/redcode-ui/popover"
 import { Suspense, createMemo, createSignal, lazy, Show, type JSX } from "solid-js"
-import { useLanguage } from "@/context/language"
 import { ServerConnection, useServer } from "@/context/server"
 import { useServerSDK } from "@/context/server-sdk"
 import { useSync } from "@/context/sync"
@@ -19,7 +18,6 @@ const Body = lazy(() => import("./status-popover-body").then((x) => ({ default: 
 const ServerBody = lazy(() => import("./status-popover-body").then((x) => ({ default: x.StatusPopoverServerBody })))
 
 export function StatusPopover() {
-  const language = useLanguage()
   const server = useServer()
   const global = useGlobal()
   const sync = useSync()
@@ -46,7 +44,7 @@ export function StatusPopover() {
       triggerProps={{
         variant: "ghost",
         class: "titlebar-icon w-8 h-6 p-0 box-border",
-        "aria-label": language.t("status.popover.trigger"),
+        "aria-label": "Status",
         style: { scale: 1 },
       }}
       trigger={
@@ -88,7 +86,6 @@ export function StatusPopoverV2(props: { scope?: "server" }) {
 }
 
 function DirectoryStatusPopover() {
-  const language = useLanguage()
   const server = useServerSDK()
   const global = useGlobal()
   const sync = useSync()
@@ -112,7 +109,7 @@ function DirectoryStatusPopover() {
     serverHealth: serverHealth(),
     attention: attention(),
     issue: issue(),
-    label: language.t("status.popover.trigger"),
+    label: "Status",
     onOpenChange: setShown,
     body: () => (
       <StatusPopoverBody shown={shown()}>
@@ -125,7 +122,6 @@ function DirectoryStatusPopover() {
 }
 
 function ServerStatusPopover() {
-  const language = useLanguage()
   const server = useServer()
   const global = useGlobal()
   const [shown, setShown] = createSignal(false)
@@ -136,7 +132,7 @@ function ServerStatusPopover() {
     serverHealth: serverHealth(),
     attention: false,
     issue: false,
-    label: language.t("status.popover.trigger"),
+    label: "Status",
     onOpenChange: setShown,
     body: () => (
       <StatusPopoverBody shown={shown()}>

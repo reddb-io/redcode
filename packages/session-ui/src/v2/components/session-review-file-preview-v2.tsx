@@ -3,7 +3,6 @@ import type { SelectedLineRange } from "@pierre/diffs"
 import { DiffChanges } from "@reddb-io/redcode-ui/v2/diff-changes-v2"
 import { FileIcon } from "@reddb-io/redcode-ui/file-icon"
 import { useFileComponent } from "@reddb-io/redcode-ui/context/file"
-import { useI18n } from "@reddb-io/redcode-ui/context/i18n"
 import { mediaKindFromPath } from "../../pierre/media"
 import { cloneSelectedLineRange, previewSelectedLines } from "../../pierre/selection-bridge"
 import type { FileContent, SnapshotFileDiff, VcsFileDiff } from "@reddb-io/redcode-sdk/v2"
@@ -96,7 +95,6 @@ function ReviewCommentMenuV2(props: {
 }
 
 export function SessionReviewFilePreviewV2(props: SessionReviewFilePreviewV2Props) {
-  const i18n = useI18n()
   const fileComponent = useFileComponent()
   let scrollRef: HTMLDivElement | undefined
   let focusToken = 0
@@ -119,7 +117,7 @@ export function SessionReviewFilePreviewV2(props: SessionReviewFilePreviewV2Prop
 
   const commentsUi = createLineCommentControllerV2<SessionReviewComment>({
     comments,
-    label: i18n.t("ui.lineComment.submit"),
+    label: "Comment",
     draftKey: () => props.file,
     state: {
       opened: () => store.opened,
@@ -278,7 +276,7 @@ export function SessionReviewFilePreviewV2(props: SessionReviewFilePreviewV2Prop
           when={diffCanRender() || mediaKind()}
           fallback={
             <div data-slot="session-review-v2-empty">
-              <span class="text-12-regular text-text-weak">{i18n.t("ui.fileMedia.binary.title")}</span>
+              <span class="text-12-regular text-text-weak">{"Binary file"}</span>
             </div>
           }
         >

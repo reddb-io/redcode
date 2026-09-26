@@ -5,7 +5,6 @@ import { Button } from "@reddb-io/redcode-ui/button"
 import { FileIcon } from "@reddb-io/redcode-ui/file-icon"
 import { Icon } from "@reddb-io/redcode-ui/icon"
 import { installLineCommentStyles } from "./line-comment-styles"
-import { useI18n } from "@reddb-io/redcode-ui/context/i18n"
 
 installLineCommentStyles()
 
@@ -134,7 +133,6 @@ export type LineCommentProps = Omit<LineCommentAnchorProps, "children" | "varian
 }
 
 export const LineComment = (props: LineCommentProps) => {
-  const i18n = useI18n()
   const [split, rest] = splitProps(props, ["comment", "selection", "actions"])
 
   return (
@@ -147,9 +145,9 @@ export const LineComment = (props: LineCommentProps) => {
           </Show>
         </div>
         <div data-slot="line-comment-label">
-          {i18n.t("ui.lineComment.label.prefix")}
+          {"Comment on "}
           {split.selection}
-          {i18n.t("ui.lineComment.label.suffix")}
+          {""}
         </div>
       </div>
     </LineCommentAnchor>
@@ -162,7 +160,6 @@ export type LineCommentAddProps = Omit<LineCommentAnchorProps, "children" | "var
 
 export const LineCommentAdd = (props: LineCommentAddProps) => {
   const [split, rest] = splitProps(props, ["label"])
-  const i18n = useI18n()
 
   return (
     <LineCommentAnchor
@@ -170,7 +167,7 @@ export const LineCommentAdd = (props: LineCommentAddProps) => {
       open={false}
       variant="add"
       icon="plus"
-      buttonLabel={split.label ?? i18n.t("ui.lineComment.submit")}
+      buttonLabel={split.label ?? "Comment"}
     />
   )
 }
@@ -192,7 +189,6 @@ export type LineCommentEditorProps = Omit<LineCommentAnchorProps, "children" | "
 }
 
 export const LineCommentEditor = (props: LineCommentEditorProps) => {
-  const i18n = useI18n()
   const [split, rest] = splitProps(props, [
     "value",
     "selection",
@@ -316,7 +312,7 @@ export const LineCommentEditor = (props: LineCommentEditorProps) => {
           }}
           data-slot="line-comment-textarea"
           rows={split.rows ?? 3}
-          placeholder={split.placeholder ?? i18n.t("ui.lineComment.placeholder")}
+          placeholder={split.placeholder ?? "Add comment"}
           value={split.value}
           on:input={(e) => {
             const value = (e.currentTarget as HTMLTextAreaElement).value
@@ -395,9 +391,9 @@ export const LineCommentEditor = (props: LineCommentEditorProps) => {
         </Show>
         <div data-slot="line-comment-actions">
           <div data-slot="line-comment-editor-label">
-            {i18n.t("ui.lineComment.editorLabel.prefix")}
+            {"Commenting on "}
             {split.selection}
-            {i18n.t("ui.lineComment.editorLabel.suffix")}
+            {""}
           </div>
           <Show
             when={!props.inline}
@@ -410,7 +406,7 @@ export const LineCommentEditor = (props: LineCommentEditorProps) => {
                   on:mousedown={hold as any}
                   on:click={click(split.onCancel) as any}
                 >
-                  {split.cancelLabel ?? i18n.t("ui.common.cancel")}
+                  {split.cancelLabel ?? "Cancel"}
                 </button>
                 <button
                   type="button"
@@ -420,16 +416,16 @@ export const LineCommentEditor = (props: LineCommentEditorProps) => {
                   on:mousedown={hold as any}
                   on:click={click(submit) as any}
                 >
-                  {split.submitLabel ?? i18n.t("ui.lineComment.submit")}
+                  {split.submitLabel ?? "Comment"}
                 </button>
               </>
             }
           >
             <Button size="small" variant="ghost" onClick={split.onCancel}>
-              {split.cancelLabel ?? i18n.t("ui.common.cancel")}
+              {split.cancelLabel ?? "Cancel"}
             </Button>
             <Button size="small" variant="primary" disabled={split.value.trim().length === 0} onClick={submit}>
-              {split.submitLabel ?? i18n.t("ui.lineComment.submit")}
+              {split.submitLabel ?? "Comment"}
             </Button>
           </Show>
         </div>

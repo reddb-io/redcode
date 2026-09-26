@@ -5,7 +5,6 @@ import { SelectV2 } from "@reddb-io/redcode-ui/v2/select-v2"
 import { Switch } from "@reddb-io/redcode-ui/v2/switch-v2"
 import { TextInputV2 } from "@reddb-io/redcode-ui/v2/text-input-v2"
 import { useDialog } from "@reddb-io/redcode-ui/context/dialog"
-import { useLanguage } from "@/context/language"
 import { usePlatform } from "@/context/platform"
 import { useUpdaterAction } from "../updater-action"
 import { useSettings } from "@/context/settings"
@@ -31,22 +30,22 @@ const schemeOptions: ("system" | "light" | "dark")[] = ["system", "light", "dark
 const fontSettings = {
   ui: {
     action: "settings-ui-font",
-    title: "settings.general.row.uiFont.title",
-    description: "settings.general.row.uiFont.description",
+    title: "UI Font",
+    description: "Customise the font used throughout the interface",
     font: "ui",
     input: "setUI",
   },
   code: {
     action: "settings-code-font",
-    title: "settings.general.row.font.title",
-    description: "settings.general.row.font.description",
+    title: "Code Font",
+    description: "Customise the font used in code blocks",
     font: "code",
     input: "setCode",
   },
   terminal: {
     action: "settings-terminal-font",
-    title: "settings.general.row.terminalFont.title",
-    description: "settings.general.row.terminalFont.description",
+    title: "Terminal Font",
+    description: "Customise the font used in the terminal",
     font: "terminal",
     input: "setTerminal",
   },
@@ -54,27 +53,26 @@ const fontSettings = {
 const soundSettings = {
   agent: {
     action: "settings-sounds-agent",
-    title: "settings.general.sounds.agent.title",
-    description: "settings.general.sounds.agent.description",
+    title: "Agent",
+    description: "Play sound when the agent is complete or needs attention",
   },
   permissions: {
     action: "settings-sounds-permissions",
-    title: "settings.general.sounds.permissions.title",
-    description: "settings.general.sounds.permissions.description",
+    title: "Permissions",
+    description: "Play sound when a permission is required",
   },
   errors: {
     action: "settings-sounds-errors",
-    title: "settings.general.sounds.errors.title",
-    description: "settings.general.sounds.errors.description",
+    title: "Errors",
+    description: "Play sound when an error occurs",
   },
 } as const
 
 const PermissionScopeSetting: Component<{ controller: PermissionScopeController }> = (props) => {
-  const language = useLanguage()
   return (
     <SettingsRowV2
-      title={language.t("command.permissions.autoaccept.enable")}
-      description={language.t("toast.permissions.autoaccept.on.description")}
+      title={"Auto-accept permissions"}
+      description={"Permission requests will be automatically approved"}
     >
       <div data-action="settings-auto-accept-permissions">
         <Switch
@@ -88,7 +86,6 @@ const PermissionScopeSetting: Component<{ controller: PermissionScopeController 
 }
 
 const ShellSetting: Component<{ controller: ShellSettingsController }> = (props) => {
-  const language = useLanguage()
   const options = createMemo(() =>
     createShellOptions({
       shells: props.controller.shells(),
@@ -97,8 +94,8 @@ const ShellSetting: Component<{ controller: ShellSettingsController }> = (props)
   )
   return (
     <SettingsRowV2
-      title={language.t("settings.general.row.shell.title")}
-      description={language.t("settings.general.row.shell.description")}
+      title={"Terminal shell"}
+      description={"Shell used by the terminal and agent tools"}
     >
       <SelectV2
         appearance="inline"
@@ -109,9 +106,9 @@ const ShellSetting: Component<{ controller: ShellSettingsController }> = (props)
         gutter={6}
         value={(option) => option.id}
         label={(option) => {
-          if (option.id === "auto") return language.t("settings.general.row.shell.autoDefault")
+          if (option.id === "auto") return "Auto (Default)"
           if (!option.terminalOnly) return option.name
-          return `${option.name} (${language.t("settings.general.row.shell.terminalOnly")})`
+          return `${option.name} (${"terminal only"})`
         }}
         onSelect={(option) => option && props.controller.select(option.value)}
       />
@@ -120,14 +117,13 @@ const ShellSetting: Component<{ controller: ShellSettingsController }> = (props)
 }
 
 const AppearanceSection: Component<{ controller: AppearanceSettingsController }> = (props) => {
-  const language = useLanguage()
   return (
     <div class="settings-v2-section">
-      <h3 class="settings-v2-section-title">{language.t("settings.general.section.appearance")}</h3>
+      <h3 class="settings-v2-section-title">{"Appearance"}</h3>
       <SettingsListV2>
         <SettingsRowV2
-          title={language.t("settings.general.row.colorScheme.title")}
-          description={language.t("settings.general.row.colorScheme.description")}
+          title={"Color scheme"}
+          description={"Choose whether Redcode follows the system, light, or dark theme"}
         >
           <SelectV2
             appearance="inline"
@@ -137,21 +133,21 @@ const AppearanceSection: Component<{ controller: AppearanceSettingsController }>
             placement="bottom-end"
             gutter={6}
             label={(option) => {
-              if (option === "system") return language.t("theme.scheme.system")
-              if (option === "light") return language.t("theme.scheme.light")
-              return language.t("theme.scheme.dark")
+              if (option === "system") return "System"
+              if (option === "light") return "Light"
+              return "Dark"
             }}
             onSelect={(option) => option && props.controller.scheme.select(option)}
           />
         </SettingsRowV2>
 
         <SettingsRowV2
-          title={language.t("settings.general.row.theme.title")}
+          title={"Theme"}
           description={
             <>
-              {language.t("settings.general.row.theme.description")}{" "}
+              {"Customise how Redcode is themed."}{" "}
               <ExternalLink class="settings-v2-link" href="https://github.com/reddb-io/redcode">
-                {language.t("common.learnMore")}
+                {"Learn more"}
               </ExternalLink>
             </>
           }
@@ -181,10 +177,9 @@ const FontSetting: Component<{
   kind: "ui" | "code" | "terminal"
   fonts: AppearanceSettingsController["fonts"]
 }> = (props) => {
-  const language = useLanguage()
   const config = () => fontSettings[props.kind]
   return (
-    <SettingsRowV2 title={language.t(config().title)} description={language.t(config().description)}>
+    <SettingsRowV2 title={config().title} description={config().description}>
       <div class="w-full sm:w-[220px]">
         <TextInputV2
           data-action={config().action}
@@ -197,7 +192,7 @@ const FontSetting: Component<{
           autocorrect="off"
           autocomplete="off"
           autocapitalize="off"
-          aria-label={language.t(config().title)}
+          aria-label={config().title}
           style={{ "font-family": props.fonts[config().font]().family }}
         />
       </div>
@@ -206,10 +201,9 @@ const FontSetting: Component<{
 }
 
 const SoundsSection: Component<{ controller: SoundSettingsController }> = (props) => {
-  const language = useLanguage()
   return (
     <div class="settings-v2-section">
-      <h3 class="settings-v2-section-title">{language.t("settings.general.section.sounds")}</h3>
+      <h3 class="settings-v2-section-title">{"Sound effects"}</h3>
       <SettingsListV2>
         <SoundSetting kind="agent" channel={props.controller.agent} />
         <SoundSetting kind="permissions" channel={props.controller.permissions} />
@@ -223,17 +217,16 @@ const SoundSetting: Component<{
   kind: "agent" | "permissions" | "errors"
   channel: SoundSettingsController["agent"]
 }> = (props) => {
-  const language = useLanguage()
   const config = () => soundSettings[props.kind]
   return (
-    <SettingsRowV2 title={language.t(config().title)} description={language.t(config().description)}>
+    <SettingsRowV2 title={config().title} description={config().description}>
       <SelectV2
         appearance="inline"
         data-action={config().action}
         options={soundOptions}
         current={props.channel.current()}
         value={(option) => option.id}
-        label={(option) => language.t(option.label)}
+        label={(option) => soundLabels[option.label] ?? option.label}
         onHighlight={props.channel.highlight}
         onSelect={props.channel.select}
         placement="bottom-end"
@@ -243,38 +236,9 @@ const SoundSetting: Component<{
   )
 }
 
-const LanguageSetting = () => {
-  const language = useLanguage()
-  const options = createMemo(() =>
-    language.locales.map((locale) => ({
-      value: locale,
-      label: language.label(locale),
-    })),
-  )
-  return (
-    <SettingsRowV2
-      title={language.t("settings.general.row.language.title")}
-      description={language.t("settings.general.row.language.description")}
-    >
-      <SelectV2
-        appearance="inline"
-        data-action="settings-language"
-        options={options()}
-        placement="bottom-end"
-        gutter={6}
-        current={options().find((option) => option.value === language.locale())}
-        value={(option) => option.value}
-        label={(option) => option.label}
-        onSelect={(option) => option && language.setLocale(option.value)}
-      />
-    </SettingsRowV2>
-  )
-}
-
 export const SettingsGeneralV2: Component<{
   sessionID?: string
 }> = (props) => {
-  const language = useLanguage()
   const platform = usePlatform()
   const dialog = useDialog()
   const settings = useSettings()
@@ -301,9 +265,9 @@ export const SettingsGeneralV2: Component<{
 
   const InterfaceSection = () => (
     <LayoutTransitionToggle
-      title={language.t("settings.general.row.newInterface.title")}
-      badge={language.t("settings.general.row.newInterface.badge")}
-      description={language.t("settings.general.row.newInterface.description")}
+      title={"New layout"}
+      badge={"New"}
+      description={"Use the new tabs and home layout. Switch between layouts for a limited time."}
       checked={settings.general.newLayoutDesigns()}
       onChange={(checked) => {
         settings.general.setNewLayoutDesigns(checked)
@@ -317,9 +281,9 @@ export const SettingsGeneralV2: Component<{
 
   const InterfaceNoticeSection = () => (
     <LayoutRetirementNotice
-      title={language.t("settings.general.row.newInterfaceNotice.title")}
-      description={language.t("settings.general.row.newInterfaceNotice.description")}
-      dismiss={language.t("settings.general.row.newInterfaceNotice.dismiss")}
+      title={"You're now using new layout"}
+      description={"The previous layout is no longer available"}
+      dismiss={"Dismiss"}
       onDismiss={() => settings.general.dismissNewInterfaceNotice()}
     />
   )
@@ -327,15 +291,13 @@ export const SettingsGeneralV2: Component<{
   const GeneralSection = () => (
     <div class="settings-v2-section">
       <SettingsListV2>
-        <LanguageSetting />
-
         <PermissionScopeSetting controller={permissionScope} />
 
         <ShellSetting controller={shell} />
 
         <SettingsRowV2
-          title={language.t("settings.general.row.reasoningSummaries.title")}
-          description={language.t("settings.general.row.reasoningSummaries.description")}
+          title={"Show reasoning summaries"}
+          description={"Display model reasoning summaries in the timeline"}
         >
           <div data-action="settings-feed-reasoning-summaries">
             <Switch
@@ -346,8 +308,8 @@ export const SettingsGeneralV2: Component<{
         </SettingsRowV2>
 
         <SettingsRowV2
-          title={language.t("settings.general.row.shellToolPartsExpanded.title")}
-          description={language.t("settings.general.row.shellToolPartsExpanded.description")}
+          title={"Expand shell tool parts"}
+          description={"Show shell tool parts expanded by default in the timeline"}
         >
           <div data-action="settings-feed-shell-tool-parts-expanded">
             <Switch
@@ -358,8 +320,8 @@ export const SettingsGeneralV2: Component<{
         </SettingsRowV2>
 
         <SettingsRowV2
-          title={language.t("settings.general.row.editToolPartsExpanded.title")}
-          description={language.t("settings.general.row.editToolPartsExpanded.description")}
+          title={"Expand edit tool parts"}
+          description={"Show edit, write, and patch tool parts expanded by default in the timeline"}
         >
           <div data-action="settings-feed-edit-tool-parts-expanded">
             <Switch
@@ -371,8 +333,8 @@ export const SettingsGeneralV2: Component<{
 
         <Show when={mobile() && import.meta.env.VITE_OPENCODE_CHANNEL !== "prod"}>
           <SettingsRowV2
-            title={language.t("settings.general.row.mobileTitlebarBottom.title")}
-            description={language.t("settings.general.row.mobileTitlebarBottom.description")}
+            title={"Bottom navigation"}
+            description={"Place the title bar and session tabs at the bottom of the screen on mobile"}
           >
             <div data-action="settings-mobile-titlebar-bottom">
               <Switch
@@ -388,12 +350,12 @@ export const SettingsGeneralV2: Component<{
 
   const AdvancedSection = () => (
     <div class="settings-v2-section">
-      <h3 class="settings-v2-section-title">{language.t("settings.general.section.advanced")}</h3>
+      <h3 class="settings-v2-section-title">{"Advanced"}</h3>
 
       <SettingsListV2>
         <SettingsRowV2
-          title={language.t("settings.general.row.showFileTree.title")}
-          description={language.t("settings.general.row.showFileTree.description")}
+          title={"File tree"}
+          description={"Show the file tree panel in sessions"}
         >
           <div data-action="settings-show-file-tree">
             <Switch
@@ -404,8 +366,8 @@ export const SettingsGeneralV2: Component<{
         </SettingsRowV2>
 
         <SettingsRowV2
-          title={language.t("settings.general.row.showSearch.title")}
-          description={language.t("settings.general.row.showSearch.description")}
+          title={"Command palette"}
+          description={"Show the search and command palette button in the title bar"}
         >
           <div data-action="settings-show-search">
             <Switch
@@ -416,8 +378,8 @@ export const SettingsGeneralV2: Component<{
         </SettingsRowV2>
 
         <SettingsRowV2
-          title={language.t("settings.general.row.showStatus.title")}
-          description={language.t("settings.general.row.showStatus.description")}
+          title={"Server status"}
+          description={"Show the server status button in the title bar"}
         >
           <div data-action="settings-show-status">
             <Switch
@@ -428,8 +390,8 @@ export const SettingsGeneralV2: Component<{
         </SettingsRowV2>
 
         <SettingsRowV2
-          title={language.t("settings.general.row.showCustomAgents.title")}
-          description={language.t("settings.general.row.showCustomAgents.description")}
+          title={"Show agent"}
+          description={"Switch between agents in the composer. When hidden, defaults to Build agent."}
         >
           <div data-action="settings-show-custom-agents">
             <Switch
@@ -444,12 +406,12 @@ export const SettingsGeneralV2: Component<{
 
   const NotificationsSection = () => (
     <div class="settings-v2-section">
-      <h3 class="settings-v2-section-title">{language.t("settings.general.section.notifications")}</h3>
+      <h3 class="settings-v2-section-title">{"System notifications"}</h3>
 
       <SettingsListV2>
         <SettingsRowV2
-          title={language.t("settings.general.notifications.agent.title")}
-          description={language.t("settings.general.notifications.agent.description")}
+          title={"Agent"}
+          description={"Show system notification when the agent is complete or needs attention"}
         >
           <div data-action="settings-notifications-agent">
             <Switch
@@ -460,8 +422,8 @@ export const SettingsGeneralV2: Component<{
         </SettingsRowV2>
 
         <SettingsRowV2
-          title={language.t("settings.general.notifications.permissions.title")}
-          description={language.t("settings.general.notifications.permissions.description")}
+          title={"Permissions"}
+          description={"Show system notification when a permission is required"}
         >
           <div data-action="settings-notifications-permissions">
             <Switch
@@ -472,8 +434,8 @@ export const SettingsGeneralV2: Component<{
         </SettingsRowV2>
 
         <SettingsRowV2
-          title={language.t("settings.general.notifications.errors.title")}
-          description={language.t("settings.general.notifications.errors.description")}
+          title={"Errors"}
+          description={"Show system notification when an error occurs"}
         >
           <div data-action="settings-notifications-errors">
             <Switch
@@ -488,12 +450,12 @@ export const SettingsGeneralV2: Component<{
 
   const UpdatesSection = () => (
     <div class="settings-v2-section">
-      <h3 class="settings-v2-section-title">{language.t("settings.general.section.updates")}</h3>
+      <h3 class="settings-v2-section-title">{"Updates"}</h3>
 
       <SettingsListV2>
         <SettingsRowV2
-          title={language.t("settings.general.row.releaseNotes.title")}
-          description={language.t("settings.general.row.releaseNotes.description")}
+          title={"Release notes"}
+          description={"Show What's New popups after updates"}
         >
           <div data-action="settings-release-notes">
             <Switch
@@ -504,11 +466,11 @@ export const SettingsGeneralV2: Component<{
         </SettingsRowV2>
 
         <SettingsRowV2
-          title={language.t("settings.updates.row.check.title")}
-          description={language.t("settings.updates.row.check.description")}
+          title={"Check for updates"}
+          description={"Manually check for updates and install if available"}
         >
           <ButtonV2 size="normal" variant="neutral" disabled={!updater.action().run} onClick={() => updater.run()}>
-            {language.t(updater.action().label)}
+            {updaterLabels[updater.action().label] ?? updater.action().label}
           </ButtonV2>
         </SettingsRowV2>
       </SettingsListV2>
@@ -519,12 +481,12 @@ export const SettingsGeneralV2: Component<{
   const DisplaySection = () => (
     <Show when={desktop()}>
       <div class="settings-v2-section">
-        <h3 class="settings-v2-section-title">{language.t("settings.general.section.display")}</h3>
+        <h3 class="settings-v2-section-title">{"Display"}</h3>
 
         <SettingsListV2>
           <SettingsRowV2
-            title={language.t("settings.general.row.pinchZoom.title")}
-            description={language.t("settings.general.row.pinchZoom.description")}
+            title={"Pinch to zoom"}
+            description={"Allow trackpad pinch and Ctrl-scroll gestures to zoom"}
           >
             <div data-action="settings-pinch-zoom">
               <Switch checked={pinchZoom.latest} onChange={onPinchZoomChange} />
@@ -538,7 +500,7 @@ export const SettingsGeneralV2: Component<{
   return (
     <>
       <div class="settings-v2-tab-header">
-        <h2 class="settings-v2-tab-title">{language.t("settings.tab.general")}</h2>
+        <h2 class="settings-v2-tab-title">{"General"}</h2>
       </div>
 
       <div class="settings-v2-tab-body">
@@ -568,4 +530,61 @@ export const SettingsGeneralV2: Component<{
       </div>
     </>
   )
+}
+
+const soundLabels: Record<string, string> = {
+  "sound.option.none": "None",
+  "sound.option.alert01": "Alert 01",
+  "sound.option.alert02": "Alert 02",
+  "sound.option.alert03": "Alert 03",
+  "sound.option.alert04": "Alert 04",
+  "sound.option.alert05": "Alert 05",
+  "sound.option.alert06": "Alert 06",
+  "sound.option.alert07": "Alert 07",
+  "sound.option.alert08": "Alert 08",
+  "sound.option.alert09": "Alert 09",
+  "sound.option.alert10": "Alert 10",
+  "sound.option.bipbop01": "Bip-bop 01",
+  "sound.option.bipbop02": "Bip-bop 02",
+  "sound.option.bipbop03": "Bip-bop 03",
+  "sound.option.bipbop04": "Bip-bop 04",
+  "sound.option.bipbop05": "Bip-bop 05",
+  "sound.option.bipbop06": "Bip-bop 06",
+  "sound.option.bipbop07": "Bip-bop 07",
+  "sound.option.bipbop08": "Bip-bop 08",
+  "sound.option.bipbop09": "Bip-bop 09",
+  "sound.option.bipbop10": "Bip-bop 10",
+  "sound.option.staplebops01": "Staplebops 01",
+  "sound.option.staplebops02": "Staplebops 02",
+  "sound.option.staplebops03": "Staplebops 03",
+  "sound.option.staplebops04": "Staplebops 04",
+  "sound.option.staplebops05": "Staplebops 05",
+  "sound.option.staplebops06": "Staplebops 06",
+  "sound.option.staplebops07": "Staplebops 07",
+  "sound.option.nope01": "Nope 01",
+  "sound.option.nope02": "Nope 02",
+  "sound.option.nope03": "Nope 03",
+  "sound.option.nope04": "Nope 04",
+  "sound.option.nope05": "Nope 05",
+  "sound.option.nope06": "Nope 06",
+  "sound.option.nope07": "Nope 07",
+  "sound.option.nope08": "Nope 08",
+  "sound.option.nope09": "Nope 09",
+  "sound.option.nope10": "Nope 10",
+  "sound.option.nope11": "Nope 11",
+  "sound.option.nope12": "Nope 12",
+  "sound.option.yup01": "Yup 01",
+  "sound.option.yup02": "Yup 02",
+  "sound.option.yup03": "Yup 03",
+  "sound.option.yup04": "Yup 04",
+  "sound.option.yup05": "Yup 05",
+  "sound.option.yup06": "Yup 06",
+}
+
+const updaterLabels: Record<string, string> = {
+  "settings.updates.action.checkNow": "Check now",
+  "settings.updates.action.checking": "Checking...",
+  "settings.updates.action.downloading": "Downloading...",
+  "settings.updates.action.installing": "Installing...",
+  "toast.update.action.installRestart": "Install and restart",
 }

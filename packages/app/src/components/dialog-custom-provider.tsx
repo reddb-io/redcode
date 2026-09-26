@@ -11,7 +11,6 @@ import { createStore, produce } from "solid-js/store"
 import { ExternalLink } from "@/components/external-link"
 import { useServerSDK } from "@/context/server-sdk"
 import { useServerSync } from "@/context/server-sync"
-import { useLanguage } from "@/context/language"
 import { type FormState, headerRow, modelRow, validateCustomProvider } from "./dialog-custom-provider-form"
 
 type Props = {
@@ -19,7 +18,6 @@ type Props = {
 }
 
 export function DialogCustomProvider(props: Props) {
-  const language = useLanguage()
 
   return (
     <Dialog
@@ -30,7 +28,7 @@ export function DialogCustomProvider(props: Props) {
           icon="arrow-left"
           variant="ghost"
           onClick={props.onBack}
-          aria-label={language.t("common.goBack")}
+          aria-label={"Navigate back"}
         />
       }
       transition
@@ -44,7 +42,6 @@ export function CustomProviderForm(props: { autofocus?: boolean } = {}) {
   const dialog = useDialog()
   const serverSync = useServerSync()
   const serverSDK = useServerSDK()
-  const language = useLanguage()
 
   const [form, setForm] = createStore<FormState>({
     providerID: "",
@@ -117,7 +114,6 @@ export function CustomProviderForm(props: { autofocus?: boolean } = {}) {
   const validate = () => {
     const output = validateCustomProvider({
       form,
-      t: language.t,
       disabledProviders: serverSync().data.config.disabled_providers ?? [],
       existingProviderIDs: new Set(serverSync().data.provider.all.keys()),
     })
@@ -131,7 +127,7 @@ export function CustomProviderForm(props: { autofocus?: boolean } = {}) {
 
   const saveMutation = useMutation(() => ({
     mutationFn: async (result: NonNullable<ReturnType<typeof validate>>) => {
-      if ((await serverSDK().protocol) !== "v1") throw new Error(language.t("provider.custom.unavailable"))
+      if ((await serverSDK().protocol) !== "v1") throw new Error("Custom providers are unavailable on this server")
       const disabledProviders = serverSync().data.config.disabled_providers ?? []
       const nextDisabled = disabledProviders.filter((id) => id !== result.providerID)
 
@@ -156,13 +152,13 @@ export function CustomProviderForm(props: { autofocus?: boolean } = {}) {
       showToast({
         variant: "success",
         icon: "circle-check",
-        title: language.t("provider.connect.toast.connected.title", { provider: result.name }),
-        description: language.t("provider.connect.toast.connected.description", { provider: result.name }),
+        title: `${result.name} connected`,
+        description: `${result.name} models are now available to use.`,
       })
     },
     onError: (err) => {
       const message = err instanceof Error ? err.message : String(err)
-      showToast({ title: language.t("common.requestFailed"), description: message })
+      showToast({ title: "Request failed", description: message })
     },
   }))
 
@@ -179,64 +175,64 @@ export function CustomProviderForm(props: { autofocus?: boolean } = {}) {
     <div class="flex flex-col gap-6 px-2.5 pb-3 overflow-y-auto max-h-[60vh]">
       <div class="px-2.5 flex gap-4 items-center">
         <ProviderIcon id="synthetic" class="size-5 shrink-0 icon-strong-base" />
-        <div class="text-16-medium text-text-strong">{language.t("provider.custom.title")}</div>
+        <div class="text-16-medium text-text-strong">{"Custom provider"}</div>
       </div>
 
       <form onSubmit={save} class="px-2.5 pb-6 flex flex-col gap-6">
         <p class="text-14-regular text-text-base">
-          {language.t("provider.custom.description.prefix")}
+          {"Configure an OpenAI-compatible provider. See the "}
           <ExternalLink href="https://github.com/reddb-io/redcode" tabIndex={-1}>
-            {language.t("provider.custom.description.link")}
+            {"provider config docs"}
           </ExternalLink>
-          {language.t("provider.custom.description.suffix")}
+          {"."}
         </p>
 
         <div class="flex flex-col gap-4">
           <TextField
             autofocus={props.autofocus ?? true}
-            label={language.t("provider.custom.field.providerID.label")}
-            placeholder={language.t("provider.custom.field.providerID.placeholder")}
-            description={language.t("provider.custom.field.providerID.description")}
+            label={"Provider ID"}
+            placeholder={"myprovider"}
+            description={"Lowercase letters, numbers, hyphens, or underscores"}
             value={form.providerID}
             onChange={(v) => setField("providerID", v)}
             validationState={form.err.providerID ? "invalid" : undefined}
             error={form.err.providerID}
           />
           <TextField
-            label={language.t("provider.custom.field.name.label")}
-            placeholder={language.t("provider.custom.field.name.placeholder")}
+            label={"Display name"}
+            placeholder={"My AI Provider"}
             value={form.name}
             onChange={(v) => setField("name", v)}
             validationState={form.err.name ? "invalid" : undefined}
             error={form.err.name}
           />
           <TextField
-            label={language.t("provider.custom.field.baseURL.label")}
-            placeholder={language.t("provider.custom.field.baseURL.placeholder")}
+            label={"Base URL"}
+            placeholder={"https://api.myprovider.com/v1"}
             value={form.baseURL}
             onChange={(v) => setField("baseURL", v)}
             validationState={form.err.baseURL ? "invalid" : undefined}
             error={form.err.baseURL}
           />
           <TextField
-            label={language.t("provider.custom.field.apiKey.label")}
-            placeholder={language.t("provider.custom.field.apiKey.placeholder")}
-            description={language.t("provider.custom.field.apiKey.description")}
+            label={"API key"}
+            placeholder={"API key"}
+            description={"Optional. Leave empty if you manage auth via headers."}
             value={form.apiKey}
             onChange={(v) => setField("apiKey", v)}
           />
         </div>
 
         <div class="flex flex-col gap-3">
-          <label class="text-12-medium text-text-weak">{language.t("provider.custom.models.label")}</label>
+          <label class="text-12-medium text-text-weak">{"Models"}</label>
           <For each={form.models}>
             {(m, i) => (
               <div class="flex gap-2 items-start" data-row={m.row}>
                 <div class="flex-1">
                   <TextField
-                    label={language.t("provider.custom.models.id.label")}
+                    label={"ID"}
                     hideLabel
-                    placeholder={language.t("provider.custom.models.id.placeholder")}
+                    placeholder={"model-id"}
                     value={m.id}
                     onChange={(v) => setModel(i(), "id", v)}
                     validationState={m.err.id ? "invalid" : undefined}
@@ -245,9 +241,9 @@ export function CustomProviderForm(props: { autofocus?: boolean } = {}) {
                 </div>
                 <div class="flex-1">
                   <TextField
-                    label={language.t("provider.custom.models.name.label")}
+                    label={"Name"}
                     hideLabel
-                    placeholder={language.t("provider.custom.models.name.placeholder")}
+                    placeholder={"Display Name"}
                     value={m.name}
                     onChange={(v) => setModel(i(), "name", v)}
                     validationState={m.err.name ? "invalid" : undefined}
@@ -261,26 +257,26 @@ export function CustomProviderForm(props: { autofocus?: boolean } = {}) {
                   class="mt-1.5"
                   onClick={() => removeModel(i())}
                   disabled={form.models.length <= 1}
-                  aria-label={language.t("provider.custom.models.remove")}
+                  aria-label={"Remove model"}
                 />
               </div>
             )}
           </For>
           <Button type="button" size="small" variant="ghost" icon="plus-small" onClick={addModel} class="self-start">
-            {language.t("provider.custom.models.add")}
+            {"Add model"}
           </Button>
         </div>
 
         <div class="flex flex-col gap-3">
-          <label class="text-12-medium text-text-weak">{language.t("provider.custom.headers.label")}</label>
+          <label class="text-12-medium text-text-weak">{"Headers (optional)"}</label>
           <For each={form.headers}>
             {(h, i) => (
               <div class="flex gap-2 items-start" data-row={h.row}>
                 <div class="flex-1">
                   <TextField
-                    label={language.t("provider.custom.headers.key.label")}
+                    label={"Header"}
                     hideLabel
-                    placeholder={language.t("provider.custom.headers.key.placeholder")}
+                    placeholder={"Header-Name"}
                     value={h.key}
                     onChange={(v) => setHeader(i(), "key", v)}
                     validationState={h.err.key ? "invalid" : undefined}
@@ -289,9 +285,9 @@ export function CustomProviderForm(props: { autofocus?: boolean } = {}) {
                 </div>
                 <div class="flex-1">
                   <TextField
-                    label={language.t("provider.custom.headers.value.label")}
+                    label={"Value"}
                     hideLabel
-                    placeholder={language.t("provider.custom.headers.value.placeholder")}
+                    placeholder={"value"}
                     value={h.value}
                     onChange={(v) => setHeader(i(), "value", v)}
                     validationState={h.err.value ? "invalid" : undefined}
@@ -305,13 +301,13 @@ export function CustomProviderForm(props: { autofocus?: boolean } = {}) {
                   class="mt-1.5"
                   onClick={() => removeHeader(i())}
                   disabled={form.headers.length <= 1}
-                  aria-label={language.t("provider.custom.headers.remove")}
+                  aria-label={"Remove header"}
                 />
               </div>
             )}
           </For>
           <Button type="button" size="small" variant="ghost" icon="plus-small" onClick={addHeader} class="self-start">
-            {language.t("provider.custom.headers.add")}
+            {"Add header"}
           </Button>
         </div>
 
@@ -322,7 +318,7 @@ export function CustomProviderForm(props: { autofocus?: boolean } = {}) {
           variant="primary"
           disabled={saveMutation.isPending}
         >
-          {saveMutation.isPending ? language.t("common.saving") : language.t("common.submit")}
+          {saveMutation.isPending ? "Saving..." : "Submit"}
         </Button>
       </form>
     </div>

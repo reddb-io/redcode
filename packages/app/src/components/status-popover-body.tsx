@@ -8,7 +8,6 @@ import { useNavigate } from "@solidjs/router"
 import { type Accessor, createEffect, createMemo, For, type JSXElement, onCleanup, Show } from "solid-js"
 import { createStore } from "solid-js/store"
 import { ServerHealthIndicator, ServerRow } from "@/components/server/server-row"
-import { useLanguage } from "@/context/language"
 import { usePlatform } from "@/context/platform"
 import { ServerConnection, useServer } from "@/context/server"
 import { useSync } from "@/context/sync"
@@ -121,7 +120,6 @@ export function StatusPopoverServerBody() {
   const server = useServer()
   const platform = usePlatform()
   const dialog = useDialog()
-  const language = useLanguage()
   const navigate = useNavigate()
   let dialogRun = 0
   let dialogDead = false
@@ -154,10 +152,10 @@ export function StatusPopoverServerBody() {
       state={{
         servers: serverItems,
         defaultKey: defaultServer.key,
-        ariaLabel: language.t("status.popover.ariaLabel"),
-        serversLabel: language.t("status.popover.tab.servers"),
-        defaultLabel: language.t("common.default"),
-        manageLabel: language.t("status.popover.action.manageServers"),
+        ariaLabel: "Server configurations",
+        serversLabel: "Servers",
+        defaultLabel: "Default",
+        manageLabel: "Manage servers",
         onManage: () => {
           const run = ++dialogRun
           void import("./dialog-select-server").then((x) => {
@@ -255,7 +253,6 @@ export function StatusPopoverBody(props: { shown: Accessor<boolean> }) {
   const server = useServer()
   const platform = usePlatform()
   const dialog = useDialog()
-  const language = useLanguage()
   const navigate = useNavigate()
   const settings = useSettings()
   const protocol = useServerProtocol()
@@ -263,7 +260,7 @@ export function StatusPopoverBody(props: { shown: Accessor<boolean> }) {
   const fail = (err: unknown) => {
     showToast({
       variant: "error",
-      title: language.t("common.requestFailed"),
+      title: "Request failed",
       description: err instanceof Error ? err.message : String(err),
     })
   }
@@ -295,12 +292,12 @@ export function StatusPopoverBody(props: { shown: Accessor<boolean> }) {
     (sync().data.config.plugin ?? []).map((item) => (typeof item === "string" ? item : item[0])),
   )
   const pluginCount = createMemo(() => plugins().length)
-  const pluginEmpty = createMemo(() => pluginEmptyMessage(language.t("dialog.plugins.empty"), "opencode.json"))
+  const pluginEmpty = createMemo(() => pluginEmptyMessage("Plugins configured in opencode.json", "opencode.json"))
 
   return (
     <div class="flex items-center gap-1 w-[360px] rounded-xl shadow-[var(--shadow-lg-border-base)]">
       <Tabs
-        aria-label={language.t("status.popover.ariaLabel")}
+        aria-label={"Server configurations"}
         class="tabs bg-background-strong rounded-xl overflow-hidden"
         data-component="tabs"
         data-active={settings.general.newLayoutDesigns() ? "mcp" : "servers"}
@@ -311,21 +308,21 @@ export function StatusPopoverBody(props: { shown: Accessor<boolean> }) {
           {!settings.general.newLayoutDesigns() && (
             <Tabs.Trigger value="servers" data-slot="tab" class="text-12-regular">
               {sortedServers().length > 0 ? `${sortedServers().length} ` : ""}
-              {language.t("status.popover.tab.servers")}
+              {"Servers"}
             </Tabs.Trigger>
           )}
           <Tabs.Trigger value="mcp" data-slot="tab" class="text-12-regular">
             {mcpConnected() > 0 ? `${mcpConnected()} ` : ""}
-            {language.t("status.popover.tab.mcp")}
+            {"MCP"}
           </Tabs.Trigger>
           <Tabs.Trigger value="lsp" data-slot="tab" class="text-12-regular">
             {lspCount() > 0 ? `${lspCount()} ` : ""}
-            {language.t("status.popover.tab.lsp")}
+            {"LSP"}
           </Tabs.Trigger>
           <Show when={protocol() === "v1"}>
             <Tabs.Trigger value="plugins" data-slot="tab" class="text-12-regular">
               {pluginCount() > 0 ? `${pluginCount()} ` : ""}
-              {language.t("status.popover.tab.plugins")}
+              {"Plugins"}
             </Tabs.Trigger>
           </Show>
         </Tabs.List>
@@ -364,7 +361,7 @@ export function StatusPopoverBody(props: { shown: Accessor<boolean> }) {
                           badge={
                             <Show when={key === defaultServer.key()}>
                               <span class="text-11-regular text-text-base bg-surface-base px-1.5 py-0.5 rounded-md">
-                                {language.t("common.default")}
+                                {"Default"}
                               </span>
                             </Show>
                           }
@@ -390,7 +387,7 @@ export function StatusPopoverBody(props: { shown: Accessor<boolean> }) {
                     })
                   }}
                 >
-                  {language.t("status.popover.action.manageServers")}
+                  {"Manage servers"}
                 </Button>
               </div>
             </div>
@@ -403,7 +400,7 @@ export function StatusPopoverBody(props: { shown: Accessor<boolean> }) {
               <Show
                 when={mcpNames().length > 0}
                 fallback={
-                  <div class="text-14-regular text-text-base text-center my-auto">{language.t("dialog.mcp.empty")}</div>
+                  <div class="text-14-regular text-text-base text-center my-auto">{"No MCPs configured"}</div>
                 }
               >
                 <For each={mcpNames()}>
@@ -436,7 +433,7 @@ export function StatusPopoverBody(props: { shown: Accessor<boolean> }) {
                           </span>
                           <Show when={status() === "needs_auth"}>
                             <span class="text-11-regular text-text-weaker truncate">
-                              {language.t("mcp.auth.clickToAuthenticate")}
+                              {"Click to authenticate"}
                             </span>
                           </Show>
                         </span>
@@ -465,7 +462,7 @@ export function StatusPopoverBody(props: { shown: Accessor<boolean> }) {
               <Show
                 when={lspItems().length > 0}
                 fallback={
-                  <div class="text-14-regular text-text-base text-center my-auto">{language.t("dialog.lsp.empty")}</div>
+                  <div class="text-14-regular text-text-base text-center my-auto">{"LSPs auto-detected from file types"}</div>
                 }
               >
                 <For each={lspItems()}>

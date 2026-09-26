@@ -6,7 +6,6 @@ import { createMemo, onCleanup } from "solid-js"
 import { commandPaletteOptions, useCommand, type CommandOption } from "@/context/command"
 import { useFile } from "@/context/file"
 import { useGlobal } from "@/context/global"
-import { useLanguage } from "@/context/language"
 import { useLayout, type LocalProject } from "@/context/layout"
 import { ServerConnection } from "@/context/server"
 import { useServerSDK } from "@/context/server-sdk"
@@ -81,7 +80,6 @@ export function createCommandPaletteFileOpener(onOpenFile?: (path: string) => vo
 export function createCommandPaletteModel(props: { filesOnly?: () => boolean; onOpenFile?: (path: string) => void }) {
   const command = useCommand()
   const global = useGlobal()
-  const language = useLanguage()
   const file = useFile()
   const dialog = useDialog()
   const serverSDK = useServerSDK()()
@@ -97,7 +95,7 @@ export function createCommandPaletteModel(props: { filesOnly?: () => boolean; on
     return commandPaletteOptions(command.options)
   })
   const commandEntries = createMemo(() => {
-    const category = language.t("palette.group.commands")
+    const category = "Commands"
     return allowedCommands().map((option) => createCommandPaletteCommandEntry(option, category))
   })
   const preferredCommandEntries = createMemo(() => {
@@ -106,7 +104,7 @@ export function createCommandPaletteModel(props: { filesOnly?: () => boolean; on
     const picked = all.filter((option) => order.has(option.id))
     const base = picked.length ? picked : all.slice(0, ENTRY_LIMIT)
     const sorted = picked.length ? [...base].sort((a, b) => (order.get(a.id) ?? 0) - (order.get(b.id) ?? 0)) : base
-    const category = language.t("palette.group.commands")
+    const category = "Commands"
     return sorted.map((option) => createCommandPaletteCommandEntry(option, category))
   })
 
@@ -120,7 +118,7 @@ export function createCommandPaletteModel(props: { filesOnly?: () => boolean; on
     const active = tabState.activeFileTab()
     const order = active ? [active, ...all.filter((item) => item !== active)] : all
     const seen = new Set<string>()
-    const category = language.t("palette.group.files")
+    const category = "Files"
     return order
       .map((item) => file.pathFromTab(item))
       .filter((path): path is string => {
@@ -132,7 +130,7 @@ export function createCommandPaletteModel(props: { filesOnly?: () => boolean; on
       .map((path) => createCommandPaletteFileEntry(path, category))
   })
   const rootFileEntries = createMemo(() => {
-    const category = language.t("palette.group.files")
+    const category = "Files"
     return file.tree
       .children("")
       .filter((node) => node.type === "file")
@@ -147,8 +145,8 @@ export function createCommandPaletteModel(props: { filesOnly?: () => boolean; on
     opened: serverCtx.projects.list,
     stored: () => serverCtx.sync.data.project,
     load: (search, signal) => serverSDK.api.session.list({ parentID: null, search, limit: 50 }, { signal }),
-    untitled: () => language.t("command.session.new"),
-    category: () => language.t("command.category.session"),
+    untitled: () => "New session",
+    category: () => "Session",
   })
 
   const highlight = (item: CommandPaletteEntry | undefined) => {
@@ -191,7 +189,6 @@ export function createCommandPaletteModel(props: { filesOnly?: () => boolean; on
   })
 
   return {
-    language,
     file,
     commandEntries,
     preferredCommandEntries,

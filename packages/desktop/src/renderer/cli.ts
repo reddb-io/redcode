@@ -1,12 +1,9 @@
-import { initI18n, t } from "./i18n"
 
 export async function installCli(): Promise<void> {
-  await initI18n()
-
   try {
     const path = await window.api.installCli()
-    window.alert(t("desktop.cli.installed.message", { path }))
+    window.alert(`CLI installed to ${path}\n\nRestart your terminal to use the 'opencode' command.`)
   } catch (e) {
-    window.alert(t("desktop.cli.failed.message", { error: String(e) }))
+    window.alert(`Failed to install CLI: ${String(e)}`)
   }
 }

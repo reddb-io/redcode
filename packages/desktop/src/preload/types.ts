@@ -1,7 +1,6 @@
 import type { DesktopMenuAction } from "@reddb-io/redcode-app/desktop-menu"
 import type { WslServersPlatform } from "@reddb-io/redcode-app/wsl/types"
 import type { UpdaterState } from "@reddb-io/redcode-app/updater"
-import type { DesktopNativeBundle } from "@reddb-io/redcode-app/i18n/desktop-native"
 export type {
   WslDistroProbe,
   WslInstalledDistro,
@@ -112,5 +111,4 @@ export type ElectronAPI = {
   exportDebugLogs: () => Promise<string>
   setForceFocus: (enabled: boolean) => Promise<void>
   recordFatalRendererError: (error: FatalRendererError) => Promise<void>
-  setNativeTranslations: (bundle: DesktopNativeBundle) => Promise<void>
 }

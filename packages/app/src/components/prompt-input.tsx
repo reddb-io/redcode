@@ -49,7 +49,6 @@ import { DialogSelectModelUnpaid } from "@/components/dialog-select-model-unpaid
 import { DialogSelectModelUnpaidV2 } from "@/components/dialog-select-model-unpaid-v2"
 import { useCommand } from "@/context/command"
 import { usePermission } from "@/context/permission"
-import { useLanguage } from "@/context/language"
 import { usePlatform } from "@/context/platform"
 import { createSessionTabs } from "@/pages/session/helpers"
 import { createTextFragment, getCursorPosition, setCursorPosition, setRangeEdge } from "./prompt-input/editor-dom"
@@ -89,31 +88,31 @@ export { createPromptInputHistory }
 export type { PromptInputControls, PromptInputHistory, PromptInputProps, PromptInputState, PromptInputSubmission }
 
 const EXAMPLES = [
-  "prompt.example.1",
-  "prompt.example.2",
-  "prompt.example.3",
-  "prompt.example.4",
-  "prompt.example.5",
-  "prompt.example.6",
-  "prompt.example.7",
-  "prompt.example.8",
-  "prompt.example.9",
-  "prompt.example.10",
-  "prompt.example.11",
-  "prompt.example.12",
-  "prompt.example.13",
-  "prompt.example.14",
-  "prompt.example.15",
-  "prompt.example.16",
-  "prompt.example.17",
-  "prompt.example.18",
-  "prompt.example.19",
-  "prompt.example.20",
-  "prompt.example.21",
-  "prompt.example.22",
-  "prompt.example.23",
-  "prompt.example.24",
-  "prompt.example.25",
+  "Fix a TODO in the codebase",
+  "What is the tech stack of this project?",
+  "Fix broken tests",
+  "Explain how authentication works",
+  "Find and fix security vulnerabilities",
+  "Add unit tests for the user service",
+  "Refactor this function to be more readable",
+  "What does this error mean?",
+  "Help me debug this issue",
+  "Generate API documentation",
+  "Optimize database queries",
+  "Add input validation",
+  "Create a new component for...",
+  "How do I deploy this project?",
+  "Review my code for best practices",
+  "Add error handling to this function",
+  "Explain this regex pattern",
+  "Convert this to TypeScript",
+  "Add logging throughout the codebase",
+  "What dependencies are outdated?",
+  "Help me write a migration script",
+  "Implement caching for this endpoint",
+  "Add pagination to this list",
+  "Create a CLI command for...",
+  "How do environment variables work here?",
 ] as const
 
 export const PromptInput: Component<PromptInputProps> = (props) => {
@@ -127,7 +126,6 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
   const dialog = useDialog()
   const command = useCommand()
   const permission = usePermission()
-  const language = useLanguage()
   const platform = usePlatform()
   const tabs = () => props.controls.session.tabs
   let editorRef!: HTMLDivElement
@@ -290,15 +288,15 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
     if (stopping()) {
       return (
         <div class="flex items-center gap-2">
-          <span>{language.t("prompt.action.stop")}</span>
-          <span class="text-icon-base text-12-medium text-[10px]!">{language.t("common.key.esc")}</span>
+          <span>{"Stop"}</span>
+          <span class="text-icon-base text-12-medium text-[10px]!">{"ESC"}</span>
         </div>
       )
     }
 
     return (
       <div class="flex items-center gap-2">
-        <span>{language.t("prompt.action.send")}</span>
+        <span>{"Send"}</span>
         <Icon name="enter" size="small" class="text-icon-base" />
       </div>
     )
@@ -326,9 +324,9 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
     promptPlaceholder({
       mode: store.mode,
       commentCount: commentCount(),
-      example: suggest() ? (store.mode === "shell" ? "git status" : language.t(EXAMPLES[store.placeholder])) : "",
+      example: suggest() ? (store.mode === "shell" ? "git status" : EXAMPLES[store.placeholder]) : "",
       suggest: suggest(),
-      t: (key, params) => language.t(key as Parameters<typeof language.t>[0], params as never),
+      t: (key) => key,
     }),
   )
 
@@ -429,7 +427,7 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
       onError: (error) =>
         showToast({
           variant: "error",
-          title: language.t("common.requestFailed"),
+          title: "Request failed",
           description: error instanceof Error ? error.message : String(error),
         }),
     })
@@ -447,24 +445,24 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
   command.register("prompt-input", () => [
     {
       id: "file.attach",
-      title: language.t("prompt.action.attachFile"),
-      category: language.t("command.category.file"),
+      title: "Add files",
+      category: "File",
       keybind: "mod+u",
       disabled: store.mode !== "normal",
       onSelect: pick,
     },
     {
       id: "prompt.mode.shell",
-      title: language.t("command.prompt.mode.shell"),
-      category: language.t("command.category.session"),
+      title: "Shell",
+      category: "Session",
       keybind: shellModeKey,
       disabled: store.mode === "shell",
       onSelect: () => setMode("shell"),
     },
     {
       id: "prompt.mode.normal",
-      title: language.t("command.prompt.mode.normal"),
-      category: language.t("command.category.session"),
+      title: "Prompt",
+      category: "Session",
       keybind: normalModeKey,
       disabled: store.mode === "normal",
       onSelect: () => setMode("normal"),
@@ -722,8 +720,8 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
           {
             id: "prompt.queue",
             trigger: QUEUE_SLASH,
-            title: language.t("command.prompt.queue"),
-            description: language.t("command.prompt.queue.description"),
+            title: "Queue prompt",
+            description: "Send after the current turn instead of steering it",
             type: "custom" as const,
           },
         ]
@@ -1474,7 +1472,7 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
         commandKeybind={command.keybind}
         commandKeybindParts={command.keybindParts}
         newLayoutDesigns={false}
-        t={(key) => language.t(key as Parameters<typeof language.t>[0])}
+        t={(key) => key}
       />
       <DockShellForm
         data-dock-border-underlay="legacy"
@@ -1487,7 +1485,7 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
       >
         <PromptDragOverlay
           type={store.draggingType}
-          label={language.t(store.draggingType === "@mention" ? "prompt.dropzone.file.label" : "prompt.dropzone.label")}
+          label={store.draggingType === "@mention" ? "Drop to @mention file" : "Drop images, PDFs, or text files here"}
         />
         <PromptContextItems
           items={contextItems()}
@@ -1501,7 +1499,7 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
             prompt.context.remove(item.key)
           }}
           newLayoutDesigns={false}
-          t={(key) => language.t(key as Parameters<typeof language.t>[0])}
+          t={(key) => key}
         />
         <PromptImageAttachments
           attachments={imageAttachments()}
@@ -1509,8 +1507,8 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
             dialog.show(() => <ImagePreview src={attachment.blob.url} alt={attachment.filename} />)
           }
           onRemove={removeAttachment}
-          removeLabel={language.t("prompt.attachment.remove")}
-          fileLabel={language.t("ui.common.file")}
+          removeLabel={"Remove attachment"}
+          fileLabel={"File"}
           newLayoutDesigns={false}
         />
         <div
@@ -1601,7 +1599,7 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
                   icon={stopping() ? "stop" : store.mode === "shell" ? "arrow-undo-down" : "arrow-up"}
                   variant="primary"
                   class="size-8"
-                  aria-label={stopping() ? language.t("prompt.action.stop") : language.t("prompt.action.send")}
+                  aria-label={stopping() ? "Stop" : "Send"}
                 />
               </Tooltip>
             </div>
@@ -1617,7 +1615,7 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
             >
               <TooltipKeybind
                 placement="top"
-                title={language.t("prompt.action.attachFile")}
+                title={"Add files"}
                 keybind={command.keybind("file.attach")}
               >
                 <Button
@@ -1629,7 +1627,7 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
                   onClick={pick}
                   disabled={store.mode !== "normal"}
                   tabIndex={store.mode === "normal" ? undefined : -1}
-                  aria-label={language.t("prompt.action.attachFile")}
+                  aria-label={"Add files"}
                 >
                   <Icon name="plus" class="size-4.5" />
                 </Button>
@@ -1650,7 +1648,7 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
                 }}
               >
                 <Icon name="console" />
-                <span class="truncate text-13-medium text-text-base">{language.t("prompt.mode.shell")}</span>
+                <span class="truncate text-13-medium text-text-base">{"Shell"}</span>
                 <div class="flex-1" />
                 <Button
                   variant="ghost"
@@ -1659,7 +1657,7 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
                     setStore("mode", "normal")
                   }}
                 >
-                  {language.t("common.cancel")}
+                  {"Cancel"}
                 </Button>
               </div>
               <div class="flex items-center gap-1.5 min-w-0 flex-1 h-7">
@@ -1671,7 +1669,7 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
                     <TooltipKeybind
                       placement="top"
                       gutter={4}
-                      title={language.t("command.agent.cycle")}
+                      title={"Cycle agent"}
                       keybind={command.keybind("agent.cycle")}
                     >
                       <Select
@@ -1707,7 +1705,7 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
                           <TooltipKeybind
                             placement="top"
                             gutter={4}
-                            title={language.t("command.model.choose")}
+                            title={"Choose model"}
                             keybind={command.keybind("model.choose")}
                           >
                             <Button
@@ -1731,7 +1729,7 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
                               <span class="truncate">
                                 <span class="text-text-weak">S2 </span>
                                 {props.controls.model.selection.current()?.name ??
-                                  language.t("dialog.model.select.title")}
+                                  "Select model"}
                               </span>
                               <Icon name="chevron-down" size="small" class="shrink-0" />
                             </Button>
@@ -1741,7 +1739,7 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
                         <TooltipKeybind
                           placement="top"
                           gutter={4}
-                          title={language.t("command.model.choose")}
+                          title={"Choose model"}
                           keybind={command.keybind("model.choose")}
                         >
                           <ModelSelectorPopover
@@ -1765,7 +1763,7 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
                                 <span class="truncate">
                                   <span class="text-text-weak">S2 </span>
                                   {props.controls.model.selection.current()?.name ??
-                                    language.t("dialog.model.select.title")}
+                                    "Select model"}
                                 </span>
                                 <Icon name="chevron-down" size="small" class="shrink-0" />
                               </Button>
@@ -1783,14 +1781,14 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
                         <TooltipKeybind
                           placement="top"
                           gutter={4}
-                          title={language.t("command.model.variant.cycle")}
+                          title={"Cycle thinking effort"}
                           keybind={command.keybind("model.variant.cycle")}
                         >
                           <Select
                             size="normal"
                             options={variants()}
                             current={props.controls.model.selection.variant.current() ?? "default"}
-                            label={(x) => (x === "default" ? language.t("common.default") : x)}
+                            label={(x) => (x === "default" ? "Default" : x)}
                             onSelect={(value) => {
                               props.controls.model.selection.variant.set(value === "default" ? undefined : value)
                               restoreFocus()

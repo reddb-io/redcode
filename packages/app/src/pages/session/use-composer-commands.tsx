@@ -1,5 +1,4 @@
 import { useCommand, type CommandOption } from "@/context/command"
-import { useLanguage } from "@/context/language"
 import { useLocal, type ModelSelection } from "@/context/local"
 import { useDialog } from "@reddb-io/redcode-ui/context/dialog"
 import { getCursorPosition, setCursorPosition } from "@/components/prompt-input/editor-dom"
@@ -16,13 +15,12 @@ const withCategory = (category: string) => {
 export const useComposerCommands = (input: { model?: ModelSelection } = {}) => {
   const command = useCommand()
   const dialog = useDialog()
-  const language = useLanguage()
   const local = useLocal()
   const { sessionKey } = useSessionLayout()
   const sessionOwnership = createSessionOwnership(sessionKey)
   const model = input.model ?? local.model
-  const modelCommand = withCategory(language.t("command.category.model"))
-  const agentCommand = withCategory(language.t("command.category.agent"))
+  const modelCommand = withCategory("Model")
+  const agentCommand = withCategory("Agent")
 
   const chooseModel = async () => {
     const owner = sessionOwnership.capture()
@@ -49,23 +47,23 @@ export const useComposerCommands = (input: { model?: ModelSelection } = {}) => {
   command.register("composer", () => [
     modelCommand({
       id: "model.choose",
-      title: language.t("command.model.choose"),
-      description: language.t("command.model.choose.description"),
+      title: "Choose model",
+      description: "Select a different model",
       keybind: "mod+'",
       slash: "model",
       onSelect: chooseModel,
     }),
     modelCommand({
       id: "model.variant.cycle",
-      title: language.t("command.model.variant.cycle"),
-      description: language.t("command.model.variant.cycle.description"),
+      title: "Cycle thinking effort",
+      description: "Switch to the next effort level",
       keybind: "shift+mod+d",
       onSelect: () => model.variant.cycle(),
     }),
     agentCommand({
       id: "agent.cycle",
-      title: language.t("command.agent.cycle"),
-      description: language.t("command.agent.cycle.description"),
+      title: "Cycle agent",
+      description: "Switch to the next agent",
       keybind: "mod+.",
       slash: "agent",
       disabled: !local.agent.visible(),
@@ -73,8 +71,8 @@ export const useComposerCommands = (input: { model?: ModelSelection } = {}) => {
     }),
     agentCommand({
       id: "agent.cycle.reverse",
-      title: language.t("command.agent.cycle.reverse"),
-      description: language.t("command.agent.cycle.reverse.description"),
+      title: "Cycle agent backwards",
+      description: "Switch to the previous agent",
       keybind: "shift+mod+.",
       disabled: !local.agent.visible(),
       onSelect: () => local.agent.move(-1),

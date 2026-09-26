@@ -2,7 +2,6 @@ import { createSignal } from "solid-js"
 import { Dialog } from "@reddb-io/redcode-ui/dialog"
 import { Button } from "@reddb-io/redcode-ui/button"
 import { useDialog } from "@reddb-io/redcode-ui/context/dialog"
-import { useLanguage } from "@/context/language"
 import { useSettings } from "@/context/settings"
 
 export type Highlight = {
@@ -17,7 +16,6 @@ export type Highlight = {
 
 export function DialogReleaseNotes(props: { highlights: Highlight[] }) {
   const dialog = useDialog()
-  const language = useLanguage()
   const settings = useSettings()
   const [index, setIndex] = createSignal(0)
 
@@ -85,16 +83,16 @@ export function DialogReleaseNotes(props: { highlights: Highlight[] }) {
             <div class="flex flex-col items-start gap-3">
               {isLast() ? (
                 <Button variant="primary" size="large" onClick={handleClose}>
-                  {language.t("dialog.releaseNotes.action.getStarted")}
+                  {"Get started"}
                 </Button>
               ) : (
                 <Button variant="secondary" size="large" onClick={handleNext}>
-                  {language.t("dialog.releaseNotes.action.next")}
+                  {"Next"}
                 </Button>
               )}
 
               <Button variant="ghost" size="small" onClick={handleDisable}>
-                {language.t("dialog.releaseNotes.action.hideFuture")}
+                {"Don't show these in the future"}
               </Button>
             </div>
 
@@ -130,7 +128,7 @@ export function DialogReleaseNotes(props: { highlights: Highlight[] }) {
             {feature()!.media!.type === "image" ? (
               <img
                 src={feature()!.media!.src}
-                alt={feature()!.media!.alt ?? feature()?.title ?? language.t("dialog.releaseNotes.media.alt")}
+                alt={feature()!.media!.alt ?? feature()?.title ?? "Release preview"}
                 class="w-full h-full object-cover"
               />
             ) : (

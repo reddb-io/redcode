@@ -1,8 +1,6 @@
 const PROVIDER_ID = /^[a-z0-9][a-z0-9-_]*$/
 const OPENAI_COMPATIBLE = "@ai-sdk/openai-compatible"
 
-type Translator = (key: string, vars?: Record<string, string | number | boolean>) => string
-
 export type ModelErr = {
   id?: string
   name?: string
@@ -43,7 +41,6 @@ export type FormState = {
 
 type ValidateArgs = {
   form: FormState
-  t: Translator
   disabledProviders: string[]
   existingProviderIDs: Set<string>
 }
@@ -58,37 +55,37 @@ export function validateCustomProvider(input: ValidateArgs) {
   const key = apiKey && !env ? apiKey : undefined
 
   const idError = !providerID
-    ? input.t("provider.custom.error.providerID.required")
+    ? "Provider ID is required"
     : !PROVIDER_ID.test(providerID)
-      ? input.t("provider.custom.error.providerID.format")
+      ? "Use lowercase letters, numbers, hyphens, or underscores"
       : undefined
 
-  const nameError = !name ? input.t("provider.custom.error.name.required") : undefined
+  const nameError = !name ? "Display name is required" : undefined
   const urlError = !baseURL
-    ? input.t("provider.custom.error.baseURL.required")
+    ? "Base URL is required"
     : !/^https?:\/\//.test(baseURL)
-      ? input.t("provider.custom.error.baseURL.format")
+      ? "Must start with http:// or https://"
       : undefined
 
   const disabled = input.disabledProviders.includes(providerID)
   const existsError = idError
     ? undefined
     : input.existingProviderIDs.has(providerID) && !disabled
-      ? input.t("provider.custom.error.providerID.exists")
+      ? "That provider ID already exists"
       : undefined
 
   const seenModels = new Set<string>()
   const models = input.form.models.map((m) => {
     const id = m.id.trim()
     const idError = !id
-      ? input.t("provider.custom.error.required")
+      ? "Required"
       : seenModels.has(id)
-        ? input.t("provider.custom.error.duplicate")
+        ? "Duplicate"
         : (() => {
             seenModels.add(id)
             return undefined
           })()
-    const nameError = !m.name.trim() ? input.t("provider.custom.error.required") : undefined
+    const nameError = !m.name.trim() ? "Required" : undefined
     return { id: idError, name: nameError }
   })
   const modelsValid = models.every((m) => !m.id && !m.name)
@@ -101,14 +98,14 @@ export function validateCustomProvider(input: ValidateArgs) {
 
     if (!key && !value) return {}
     const keyError = !key
-      ? input.t("provider.custom.error.required")
+      ? "Required"
       : seenHeaders.has(key.toLowerCase())
-        ? input.t("provider.custom.error.duplicate")
+        ? "Duplicate"
         : (() => {
             seenHeaders.add(key.toLowerCase())
             return undefined
           })()
-    const valueError = !value ? input.t("provider.custom.error.required") : undefined
+    const valueError = !value ? "Required" : undefined
     return { key: keyError, value: valueError }
   })
   const headersValid = headers.every((h) => !h.key && !h.value)

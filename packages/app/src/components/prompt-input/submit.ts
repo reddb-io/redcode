@@ -6,7 +6,6 @@ import { useNavigate, useParams, useSearchParams } from "@solidjs/router"
 import { batch, startTransition, type Accessor } from "solid-js"
 import { useTabs } from "@/context/tabs"
 import { useServerSync, type ServerSync } from "@/context/server-sync"
-import { useLanguage } from "@/context/language"
 import { useLayout } from "@/context/layout"
 import { useLocal, type ModelSelection } from "@/context/local"
 import { useServerSDK } from "@/context/server-sdk"
@@ -248,7 +247,6 @@ export function createPromptSubmit(input: PromptSubmitInput) {
   const permission = usePermission()
   const prompt = input.prompt
   const layout = useLayout()
-  const language = useLanguage()
   const params = useParams()
   const [search] = useSearchParams<{ draftId?: string }>()
   const tabs = useTabs()
@@ -261,7 +259,7 @@ export function createPromptSubmit(input: PromptSubmitInput) {
       if (data?.message) return data.message
     }
     if (err instanceof Error) return err.message
-    return language.t("common.requestFailed")
+    return "Request failed"
   }
 
   const abort = async () => {
@@ -358,8 +356,8 @@ export function createPromptSubmit(input: PromptSubmitInput) {
     if (server() !== submissionServer) return
     if (!ready) {
       showToast({
-        title: language.t("intelligence.setupRequired"),
-        description: language.t("intelligence.setupDescription"),
+        title: "Configure S1 and S2 to continue",
+        description: "Choose a System One evaluator and a System Two model before sending prompts. Your draft is preserved.",
       })
       configureIntelligence()
       return
@@ -370,8 +368,8 @@ export function createPromptSubmit(input: PromptSubmitInput) {
     const variant = modelSelection.variant.current()
     if (!currentModel || !currentAgent) {
       showToast({
-        title: language.t("prompt.toast.modelAgentRequired.title"),
-        description: language.t("prompt.toast.modelAgentRequired.description"),
+        title: "Select an agent and model",
+        description: "Choose an agent and model before sending a prompt.",
       })
       return
     }
@@ -394,7 +392,7 @@ export function createPromptSubmit(input: PromptSubmitInput) {
           .then((x) => x.data)
           .catch((err) => {
             showToast({
-              title: language.t("prompt.toast.worktreeCreateFailed.title"),
+              title: "Failed to create worktree",
               description: errorMessage(err),
             })
             return undefined
@@ -402,8 +400,8 @@ export function createPromptSubmit(input: PromptSubmitInput) {
 
         if (!createdWorktree?.directory) {
           showToast({
-            title: language.t("prompt.toast.worktreeCreateFailed.title"),
-            description: language.t("common.requestFailed"),
+            title: "Failed to create worktree",
+            description: "Request failed",
           })
           return
         }
@@ -437,7 +435,7 @@ export function createPromptSubmit(input: PromptSubmitInput) {
         .then(normalizeSessionInfo)
         .catch((err) => {
           showToast({
-            title: language.t("prompt.toast.sessionCreateFailed.title"),
+            title: "Failed to create session",
             description: errorMessage(err),
           })
           return undefined
@@ -463,8 +461,8 @@ export function createPromptSubmit(input: PromptSubmitInput) {
     }
     if (!session) {
       showToast({
-        title: language.t("prompt.toast.promptSendFailed.title"),
-        description: language.t("prompt.toast.promptSendFailed.description"),
+        title: "Failed to send prompt",
+        description: "Unable to retrieve session",
       })
       return
     }
@@ -530,7 +528,7 @@ export function createPromptSubmit(input: PromptSubmitInput) {
         })
         .catch((err) => {
           showToast({
-            title: language.t("prompt.toast.shellSendFailed.title"),
+            title: "Failed to send shell command",
             description: errorMessage(err),
           })
           restoreInput()
@@ -564,8 +562,8 @@ export function createPromptSubmit(input: PromptSubmitInput) {
           .catch((err) => {
             serverSync().session.set("session_status", session.id, { type: "idle" })
             showToast({
-              title: language.t("prompt.toast.commandSendFailed.title"),
-              description: formatServerError(err, language.t, language.t("common.requestFailed")),
+              title: "Failed to send command",
+              description: formatServerError(err, undefined, "Request failed"),
             })
             restoreInput()
           })
@@ -626,7 +624,7 @@ export function createPromptSubmit(input: PromptSubmitInput) {
         timer.id = window.setTimeout(() => {
           resolve({
             status: "failed",
-            message: language.t("workspace.error.stillPreparing"),
+            message: "Workspace is still preparing",
           })
         }, timeoutMs)
       })
@@ -659,7 +657,7 @@ export function createPromptSubmit(input: PromptSubmitInput) {
         sync().set("session_status", session.id, { type: "idle" })
       }
       showToast({
-        title: language.t("prompt.toast.promptSendFailed.title"),
+        title: "Failed to send prompt",
         description: errorMessage(err),
       })
       removeOptimisticMessage()

@@ -6,7 +6,6 @@ import { useDialog } from "@reddb-io/redcode-ui/context/dialog"
 import { Show } from "solid-js"
 import { createStore } from "solid-js/store"
 import { showToast } from "@/utils/toast"
-import { useLanguage } from "@/context/language"
 
 /**
  * Where a goal is typed. No arguments travel with a slash command, so the definition of done
@@ -16,7 +15,6 @@ export function DialogGoal(props: {
   current?: boolean
   onSubmit: (text: string, options: { maxTurns: number; executePlan: boolean }) => Promise<void> | void
 }) {
-  const language = useLanguage()
   const dialog = useDialog()
   const [state, setState] = createStore({ text: "", busy: false, maxTurns: 50, executePlan: false })
 
@@ -29,7 +27,7 @@ export function DialogGoal(props: {
       await props.onSubmit(value, { maxTurns: state.maxTurns, executePlan: state.executePlan })
       dialog.close()
     } catch {
-      showToast({ title: language.t("session.goal.error") })
+      showToast({ title: "Could not update the goal" })
     } finally {
       setState("busy", false)
     }
@@ -39,7 +37,7 @@ export function DialogGoal(props: {
     <Dialog fit>
       <form onSubmit={submit} class="contents">
         <DialogHeader>
-          <DialogTitle>{language.t("session.goal.dialog.title")}</DialogTitle>
+          <DialogTitle>{"What does done look like?"}</DialogTitle>
         </DialogHeader>
         <DialogBody class="flex w-full flex-col gap-4 px-4 pt-4 pb-1">
           <Field>
@@ -47,15 +45,15 @@ export function DialogGoal(props: {
               class="!w-full"
               rows={5}
               value={state.text}
-              placeholder={language.t("session.goal.dialog.placeholder")}
+              placeholder={"make the tests pass; verify: bun test; gate: bun test; constraints: do not touch the app"}
               spellcheck={false}
               autofocus
               onInput={(event) => setState("text", event.currentTarget.value)}
             />
-            <p class="text-12-regular text-text-weak">{language.t("session.goal.dialog.help")}</p>
+            <p class="text-12-regular text-text-weak">{"Free text, plus optional lines: verify:, constraints:, boundaries:, stop when:, gate: (a command that must exit 0)."}</p>
           </Field>
           <label class="flex items-center gap-2 text-12-regular">
-            {language.t("session.goal.turnLimit")}
+            {"Provider-turn limit"}
             <input
               type="number"
               min="1"
@@ -73,16 +71,16 @@ export function DialogGoal(props: {
                 checked={state.executePlan}
                 onChange={(event) => setState("executePlan", event.currentTarget.checked)}
               />
-              {language.t("session.goal.executePlan")}
+              {"Allow implementing this goal's plan without another execution approval"}
             </label>
           </Show>
         </DialogBody>
         <DialogFooter>
           <ButtonV2 type="button" variant="neutral" disabled={state.busy} onClick={() => dialog.close()}>
-            {language.t("common.cancel")}
+            {"Cancel"}
           </ButtonV2>
           <ButtonV2 type="submit" variant="contrast" disabled={state.busy || !state.text.trim()}>
-            {language.t("session.goal.dialog.submit")}
+            {"Start"}
           </ButtonV2>
         </DialogFooter>
       </form>

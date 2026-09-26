@@ -279,12 +279,6 @@ beforeAll(async () => {
     }),
   }))
 
-  mock.module("@/context/language", () => ({
-    useLanguage: () => ({
-      t: (key: string) => key,
-    }),
-  }))
-
   const mod = await import("./submit")
   createPromptSubmit = mod.createPromptSubmit
 })

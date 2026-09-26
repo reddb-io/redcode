@@ -3,7 +3,6 @@ import { showToast } from "@/utils/toast"
 import { base64Encode } from "@reddb-io/redcode-core/util/encode"
 import { useLocation, useNavigate, useParams } from "@solidjs/router"
 import { type Accessor, createEffect, createMemo, createResource, onCleanup, type ParentProps, Show } from "solid-js"
-import { useLanguage } from "@/context/language"
 import { LocalProvider } from "@/context/local"
 import { SDKProvider } from "@/context/sdk"
 import { useSync } from "@/context/sync"
@@ -85,7 +84,6 @@ export function decodeDirectory(dir: string): ProjectDirString | undefined {
 
 export default function Layout(props: ParentProps) {
   const params = useParams()
-  const language = useLanguage()
   const navigate = useNavigate()
   let invalid = ""
 
@@ -105,8 +103,8 @@ export default function Layout(props: ParentProps) {
     invalid = dir
     showToast({
       variant: "error",
-      title: language.t("common.requestFailed"),
-      description: language.t("directory.error.invalidUrl"),
+      title: "Request failed",
+      description: "Invalid directory in URL.",
     })
     navigate("/", { replace: true })
   })

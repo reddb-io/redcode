@@ -1,6 +1,5 @@
 import { createMemo } from "solid-js"
 import { AnimatedNumber } from "@reddb-io/redcode-ui/animated-number"
-import { pluralCategory, pluralKey, useI18n, type UiI18nPluralKey } from "@reddb-io/redcode-ui/context/i18n"
 
 function split(text: string) {
   const match = /{{\s*count\s*}}/.exec(text)
@@ -24,12 +23,25 @@ function common(one: string, other: string) {
   }
 }
 
-export function AnimatedCountLabel(props: { count: number; plural: UiI18nPluralKey; class?: string }) {
-  const i18n = useI18n()
-  const category = createMemo(() => pluralCategory(i18n.locale(), Math.round(props.count)))
-  const one = createMemo(() => split(i18n.t(pluralKey(props.plural, "one"))))
-  const other = createMemo(() => split(i18n.t(pluralKey(props.plural, "other"))))
-  const active = createMemo(() => split(i18n.t(pluralKey(props.plural, category()))))
+export type CountLabelKey =
+  | "ui.sessionTurn.diffs.changed"
+  | "ui.messagePart.context.read"
+  | "ui.messagePart.context.search"
+  | "ui.messagePart.context.list"
+
+const LABELS: Record<CountLabelKey, { one: string; other: string }> = {
+  "ui.sessionTurn.diffs.changed": { one: "{{count}} Changed file", other: "{{count}} Changed files" },
+  "ui.messagePart.context.read": { one: "{{count}} read", other: "{{count}} reads" },
+  "ui.messagePart.context.search": { one: "{{count}} search", other: "{{count}} searches" },
+  "ui.messagePart.context.list": { one: "{{count}} list", other: "{{count}} lists" },
+}
+
+export function AnimatedCountLabel(props: { count: number; plural: CountLabelKey; class?: string }) {
+  const label = createMemo(() => LABELS[props.plural])
+  const category = createMemo(() => (Math.round(props.count) === 1 ? "one" : "other"))
+  const one = createMemo(() => split(label().one))
+  const other = createMemo(() => split(label().other))
+  const active = createMemo(() => split(label()[category()]))
   const suffix = createMemo(() => common(one().after, other().after))
   const splitSuffix = createMemo(
     () =>

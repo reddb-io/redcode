@@ -14,7 +14,6 @@ import { useFilteredList } from "@reddb-io/redcode-ui/hooks"
 import { For, Show, type Component } from "solid-js"
 import { useLocal } from "@/context/local"
 import { popularProviders } from "@/hooks/use-providers"
-import { useLanguage } from "@/context/language"
 import { useDialog } from "@reddb-io/redcode-ui/context/dialog"
 import { DialogConnectProvider } from "./dialog-connect-provider"
 import { decode64 } from "@/utils/base64"
@@ -26,7 +25,6 @@ type ModelItem = ReturnType<ReturnType<typeof useLocal>["model"]["list"]>[number
 
 export const DialogManageModels: Component = () => {
   const local = useLocal()
-  const language = useLanguage()
   const dialog = useDialog()
   const directory = () => decode64(local.slug())
 
@@ -45,18 +43,18 @@ export const DialogManageModels: Component = () => {
 
   return (
     <Dialog
-      title={language.t("dialog.model.manage")}
-      description={language.t("dialog.model.manage.description")}
+      title={"Manage models"}
+      description={"Customize which models appear in the model selector."}
       action={
         <Button class="h-7 -my-1 text-14-medium" icon="plus-small" tabIndex={-1} onClick={handleConnectProvider}>
-          {language.t("command.provider.connect")}
+          {"Connect provider"}
         </Button>
       }
     >
       <List
         class="px-3"
-        search={{ placeholder: language.t("dialog.model.search.placeholder"), autofocus: true }}
-        emptyMessage={language.t("dialog.model.empty")}
+        search={{ placeholder: "Search models", autofocus: true }}
+        emptyMessage={"No model results"}
         key={(x) => `${x?.provider?.id}:${x?.id}`}
         items={local.model.list()}
         filterKeys={["provider.name", "name", "id"]}
@@ -69,7 +67,7 @@ export const DialogManageModels: Component = () => {
               <span>{provider.name}</span>
               <Tooltip
                 placement="top"
-                value={language.t("dialog.model.manage.provider.toggle", { provider: provider.name })}
+                value={`Toggle all ${provider.name} models`}
               >
                 <Switch
                   class="-mr-1"
@@ -118,7 +116,6 @@ export const DialogManageModels: Component = () => {
 
 export const DialogManageModelsV2: Component = () => {
   const local = useLocal()
-  const language = useLanguage()
   const dialog = useDialog()
   const directory = () => decode64(local.slug())
 
@@ -155,13 +152,13 @@ export const DialogManageModelsV2: Component = () => {
 
   return (
     <DialogV2 size="large" variant="settings" class="settings-v2-manage-models-dialog">
-      <DialogHeader hideClose={true} closeLabel={language.t("common.close")}>
+      <DialogHeader hideClose={true} closeLabel={"Close"}>
         <DialogTitleGroup
-          title={language.t("dialog.model.manage")}
-          description={language.t("dialog.model.manage.description")}
+          title={"Manage models"}
+          description={"Customize which models appear in the model selector."}
         />
         <ButtonV2 variant="neutral" icon="plus" onClick={handleConnectProvider}>
-          {language.t("command.provider.connect")}
+          {"Connect provider"}
         </ButtonV2>
       </DialogHeader>
       <DialogBody class="flex min-h-0 flex-1 flex-col">
@@ -173,13 +170,13 @@ export const DialogManageModelsV2: Component = () => {
               class="!w-full self-stretch"
               value={list.filter()}
               onInput={(event) => list.onInput(event.currentTarget.value)}
-              placeholder={language.t("dialog.model.search.placeholder")}
+              placeholder={"Search models"}
               spellcheck={false}
               autocorrect="off"
               autocomplete="off"
               autocapitalize="off"
               autofocus
-              aria-label={language.t("dialog.model.search.placeholder")}
+              aria-label={"Search models"}
             />
             <Show when={list.filter()}>
               <IconButtonV2
@@ -189,7 +186,7 @@ export const DialogManageModelsV2: Component = () => {
                 class="settings-v2-tab-search-clear"
                 icon={<IconV2 name="close" size="large" class="text-v2-icon-icon-muted" />}
                 onClick={() => list.clear()}
-                aria-label={language.t("common.clear")}
+                aria-label={"Clear"}
               />
             </Show>
           </div>
@@ -200,8 +197,8 @@ export const DialogManageModelsV2: Component = () => {
               when={!list.grouped.loading}
               fallback={
                 <div class="settings-v2-models-status">
-                  {language.t("common.loading")}
-                  {language.t("common.loading.ellipsis")}
+                  {"Loading"}
+                  {"..."}
                 </div>
               }
             >
@@ -209,7 +206,7 @@ export const DialogManageModelsV2: Component = () => {
                 when={list.flat().length > 0}
                 fallback={
                   <div class="settings-v2-models-status">
-                    <span>{language.t("dialog.model.empty")}</span>
+                    <span>{"No model results"}</span>
                     <Show when={list.filter()}>
                       <span class="settings-v2-models-status-filter">&quot;{list.filter()}&quot;</span>
                     </Show>

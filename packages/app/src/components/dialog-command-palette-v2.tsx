@@ -9,7 +9,6 @@ import { useDialog } from "@reddb-io/redcode-ui/context/dialog"
 import { createEffect, createMemo, createResource, createSignal, For, Match, onCleanup, Show, Switch } from "solid-js"
 import { commandPaletteOptions, formatKeybindParts, useCommand } from "@/context/command"
 import { useGlobal } from "@/context/global"
-import { useLanguage } from "@/context/language"
 import { ServerConnection } from "@/context/server"
 import { useTabs } from "@/context/tabs"
 import { SessionTabAvatar } from "@/pages/layout/session-tab-avatar"
@@ -42,7 +41,7 @@ export function DialogCommandPaletteV2(props: { onOpenFile?: (path: string) => v
     if (!q) return [...palette.preferredCommandEntries(), ...palette.recentFileEntries()]
 
     const [files, nextSessions] = await Promise.all([palette.file.searchFiles(q), Promise.resolve(palette.sessions(q))])
-    const category = palette.language.t("palette.group.files")
+    const category = palette."Files"
     return [
       ...palette.commandEntries().filter((entry) => matchesEntry(entry, q)),
       ...nextSessions,
@@ -52,7 +51,7 @@ export function DialogCommandPaletteV2(props: { onOpenFile?: (path: string) => v
 
   return (
     <CommandPaletteView
-      placeholder={palette.language.t("palette.search.placeholder")}
+      placeholder={palette."Search files, commands, and sessions"}
       loadItems={loadItems}
       highlight={palette.highlight}
       select={palette.select}
@@ -68,11 +67,10 @@ export function DialogHomeCommandPaletteV2(props: {
   const command = useCommand()
   const dialog = useDialog()
   const global = useGlobal()
-  const language = useLanguage()
   const serverCtx = global.ensureServerCtx(props.server)
   const state = { cleanup: undefined as (() => void) | void, committed: false }
   const commandEntries = createMemo(() => {
-    const category = language.t("palette.group.commands")
+    const category = "Commands"
     return commandPaletteOptions(command.options).map((option) => createCommandPaletteCommandEntry(option, category))
   })
   const sessions = createServerSessionEntries({
@@ -80,8 +78,8 @@ export function DialogHomeCommandPaletteV2(props: {
     opened: serverCtx.projects.list,
     stored: () => serverCtx.sync.data.project,
     load: (search, signal) => serverCtx.sdk.api.session.list({ parentID: null, search, limit: 50 }, { signal }),
-    untitled: () => language.t("command.session.new"),
-    category: () => language.t("command.category.session"),
+    untitled: () => "New session",
+    category: () => "Session",
   })
 
   const highlight = (item: CommandPaletteEntry | undefined) => {
@@ -114,7 +112,7 @@ export function DialogHomeCommandPaletteV2(props: {
 
   return (
     <CommandPaletteView
-      placeholder={language.t("palette.search.placeholder.home")}
+      placeholder={"Search commands and sessions"}
       loadItems={loadItems}
       highlight={highlight}
       select={select}
@@ -130,7 +128,6 @@ function CommandPaletteView(props: {
   select: (item: CommandPaletteEntry | undefined) => void
   close: () => void
 }) {
-  const language = useLanguage()
   const tabs = useTabs()
   const [query, setQuery] = createSignal("")
   const [active, setActive] = createSignal(0)
@@ -209,7 +206,7 @@ function CommandPaletteView(props: {
               when={visibleEntries().length > 0}
               fallback={
                 <div class="command-palette-v2-state">
-                  {entries.loading ? language.t("common.loading") : language.t("palette.empty")}
+                  {entries.loading ? "Loading" : "No results found"}
                 </div>
               }
             >
@@ -224,7 +221,6 @@ function CommandPaletteView(props: {
                         <PaletteRow
                           item={item}
                           active={activeEntry()?.id === item.id}
-                          language={language}
                           sessionOpen={
                             item.server && item.sessionID
                               ? openSessions().has(`${item.server}\0${item.sessionID}`)
@@ -249,7 +245,6 @@ function CommandPaletteView(props: {
 function PaletteRow(props: {
   item: CommandPaletteEntry
   active: boolean
-  language: ReturnType<typeof useLanguage>
   sessionOpen: boolean
   onActive: () => void
   onSelect: () => void
@@ -295,7 +290,7 @@ function PaletteRow(props: {
             </div>
           </div>
           <Show when={props.item.keybind}>
-            <KeybindV2 keys={formatKeybindParts(props.item.keybind ?? "", props.language.t)} variant="neutral" />
+            <KeybindV2 keys={formatKeybindParts(props.item.keybind ?? "")} variant="neutral" />
           </Show>
         </Match>
         <Match when={props.item.type === "session"}>
@@ -332,7 +327,7 @@ function PaletteRow(props: {
           </div>
           <Show when={props.item.updated}>
             <span class="command-palette-v2-meta">
-              {getRelativeTime(new Date(props.item.updated!).toISOString(), props.language.t)}
+              {getRelativeTime(new Date(props.item.updated!).toISOString())}
             </span>
           </Show>
         </Match>

@@ -3,9 +3,24 @@ import { useDialog } from "@reddb-io/redcode-ui/context/dialog"
 import { type Accessor, createEffect, createMemo, onCleanup, onMount } from "solid-js"
 import { createStore } from "solid-js/store"
 import { makeEventListener } from "@solid-primitives/event-listener"
-import { useLanguage } from "@/context/language"
 import { useSettings } from "@/context/settings"
-import { dict as en } from "@/i18n/en"
+const en: Record<KeyLabel, string> = {
+  "common.key.ctrl": "Ctrl",
+  "common.key.alt": "Alt",
+  "common.key.shift": "Shift",
+  "common.key.meta": "Meta",
+  "common.key.space": "Space",
+  "common.key.backspace": "Backspace",
+  "common.key.enter": "Enter",
+  "common.key.tab": "Tab",
+  "common.key.delete": "Delete",
+  "common.key.home": "Home",
+  "common.key.end": "End",
+  "common.key.pageUp": "Page Up",
+  "common.key.pageDown": "Page Down",
+  "common.key.insert": "Insert",
+  "common.key.esc": "ESC",
+}
 import { Persist, persisted } from "@/utils/persist"
 
 const IS_MAC = typeof navigator === "object" && /(Mac|iPod|iPhone|iPad)/.test(navigator.platform)
@@ -266,7 +281,6 @@ export const { use: useCommand, provider: CommandProvider } = createSimpleContex
   init: () => {
     const dialog = useDialog()
     const settings = useSettings()
-    const language = useLanguage()
     const [store, setStore] = createStore({
       registrations: [] as CommandRegistration[],
       suspendCount: 0,
@@ -340,7 +354,7 @@ export const { use: useCommand, provider: CommandProvider } = createSimpleContex
         ...suggested.map((x) => ({
           ...x,
           id: SUGGESTED_PREFIX + x.id,
-          category: language.t("command.category.suggested"),
+          category: "Suggested",
         })),
         ...resolved,
       ]
@@ -454,11 +468,11 @@ export const { use: useCommand, provider: CommandProvider } = createSimpleContex
       keybind(id: string) {
         const config = keybindConfig(id)
         if (!config) return ""
-        return formatKeybind(config, language.t)
+        return formatKeybind(config)
       },
       keybindParts(id: string) {
         const config = keybindConfig(id)
-        return config ? formatKeybindParts(config, language.t) : []
+        return config ? formatKeybindParts(config) : []
       },
       show: showPalette,
       keybinds(enabled: boolean) {

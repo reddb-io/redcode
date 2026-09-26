@@ -1,4 +1,3 @@
-import { useI18n } from "@reddb-io/redcode-ui/context/i18n"
 import morphdom from "morphdom"
 import { checksum } from "@reddb-io/redcode-core/util/encode"
 import {
@@ -371,7 +370,6 @@ export function Markdown(
   },
 ) {
   const [local, others] = splitProps(props, ["text", "cacheKey", "streaming", "class", "classList"])
-  const i18n = useI18n()
   const [root, setRoot] = createSignal<HTMLDivElement>()
   const owner = createUniqueId()
   const activeCodeKeys = new Set<string>()
@@ -506,8 +504,8 @@ export function Markdown(
     }
 
     const labels = {
-      copy: i18n.t("ui.message.copy"),
-      copied: i18n.t("ui.message.copied"),
+      copy: "Copy",
+      copied: "Copied",
     }
     const nextCodeKeys = new Set(content.filter((block) => block.mode === "code").map((block) => block.key))
     activeCodeKeys.forEach((key) => {
@@ -527,8 +525,8 @@ export function Markdown(
       .forEach((button) => setCopyState(button, labels, button.dataset.copied === "true"))
     if (!copyCleanup)
       copyCleanup = setupCodeCopy(container, () => ({
-        copy: i18n.t("ui.message.copy"),
-        copied: i18n.t("ui.message.copied"),
+        copy: "Copy",
+        copied: "Copied",
       }))
   })
 

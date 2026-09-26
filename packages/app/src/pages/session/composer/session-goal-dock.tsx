@@ -4,7 +4,6 @@ import { createStore, reconcile } from "solid-js/store"
 import type { SessionsGoalOutput, SessionsPlansOutput } from "@reddb-io/redcode-client"
 import { useSDK } from "@/context/sdk"
 import { useGoalApi } from "@/utils/goal-api"
-import { useLanguage } from "@/context/language"
 import { showToast } from "@/utils/toast"
 
 /** Legacy Goal metadata; SessionV2 uses the durable Goal endpoint below. */
@@ -28,7 +27,6 @@ export function goalLine(metadata: Record<string, unknown> | undefined) {
 export function SessionGoalDock(props: { metadata: Record<string, unknown> | undefined; sessionID?: string }) {
   const api = useGoalApi()
   const sdk = useSDK()
-  const language = useLanguage()
   const [state, setState] = createStore<{ goal: SessionsGoalOutput; plans: SessionsPlansOutput; busy: boolean }>({
     goal: null,
     plans: [],
@@ -97,7 +95,7 @@ export function SessionGoalDock(props: { metadata: Record<string, unknown> | und
       })
       if (props.sessionID === sessionID) setState("goal", goal)
     } catch {
-      showToast({ title: language.t("session.goal.error") })
+      showToast({ title: "Could not update the goal" })
     } finally {
       if (props.sessionID === sessionID) setState("busy", false)
     }
@@ -112,18 +110,24 @@ export function SessionGoalDock(props: { metadata: Record<string, unknown> | und
             class="px-3 py-2 text-12-regular border-b border-border-weak-base"
           >
             <div class="flex items-center gap-2">
-              <strong>{language.t(`session.goal.state.${goal().status}`)}</strong>
+              <strong>
+                {({ active: "Working", waiting: "Waiting", paused: "Paused", blocked: "Blocked", done: "Verified" }[
+                  goal().status
+                ] ?? goal().status)}
+              </strong>
               <span class="truncate">{goal().objective}</span>
             </div>
             <div class="text-text-weak">
-              {language.t("session.goal.providerBudget", goal().turns)} ·{" "}
-              {language.plural("session.goal.tokenCount", goal().tokens)} ·{" "}
-              {language.plural("session.goal.evidenceCount", goal().evidence.length)}
+              {`${goal().turns.used}/${goal().turns.max} provider turns`} ·{" "}
+              {goal().tokens === 1 ? "1 reported token" : `${goal().tokens} reported tokens`} ·{" "}
+              {goal().evidence.length === 1
+                ? "1 evidence file"
+                : `${goal().evidence.length} evidence files`}
             </div>
             <div class="text-text-weak break-words">{goal().reason}</div>
             <Show when={goal().evidence.length > 0}>
               <details>
-                <summary class="cursor-pointer select-none py-1">{language.t("session.goal.evidence")}</summary>
+                <summary class="cursor-pointer select-none py-1">{"Recorded evidence"}</summary>
                 <For each={goal().evidence}>
                   {(item) => (
                     <div class="break-all text-text-weak py-1">
@@ -135,7 +139,7 @@ export function SessionGoalDock(props: { metadata: Record<string, unknown> | und
             </Show>
             <Show when={goal().checks.length > 0}>
               <details>
-                <summary class="cursor-pointer select-none py-1">{language.t("session.goal.checks")}</summary>
+                <summary class="cursor-pointer select-none py-1">{"Executed checks"}</summary>
                 <For each={goal().checks}>
                   {(item) => (
                     <pre class="max-h-48 overflow-auto whitespace-pre-wrap break-all rounded bg-surface-raised-base p-2">
@@ -155,9 +159,7 @@ export function SessionGoalDock(props: { metadata: Record<string, unknown> | und
                   disabled={state.busy}
                   onClick={() => void control(goal().status === "active" ? "pause" : "resume")}
                 >
-                  {language.t(
-                    goal().status === "active" ? "command.session.goal.pause" : "command.session.goal.resume",
-                  )}
+                  {goal().status === "active" ? "Pause goal" : "Resume goal"}
                 </ButtonV2>
                 <ButtonV2
                   size="small"
@@ -165,7 +167,7 @@ export function SessionGoalDock(props: { metadata: Record<string, unknown> | und
                   disabled={state.busy || goal().turns.max >= 1000}
                   onClick={() => void control("budget")}
                 >
-                  {language.t("session.goal.extend")}
+                  {"Add 20 provider turns"}
                 </ButtonV2>
               </div>
             </Show>
@@ -174,12 +176,13 @@ export function SessionGoalDock(props: { metadata: Record<string, unknown> | und
       </Show>
       <Show when={state.plans.length > 0}>
         <details class="px-3 py-2 text-12-regular" data-component="session-plan-history">
-          <summary class="cursor-pointer select-none py-1">{language.t("session.goal.plans")}</summary>
+          <summary class="cursor-pointer select-none py-1">{"Recorded plans"}</summary>
           <For each={state.plans}>
             {(plan) => (
               <details>
                 <summary class="cursor-pointer select-none py-1">
-                  {language.t(`session.goal.plan.${plan.status}`)} · {plan.revision.slice(0, 12)}
+                  {({ ready: "Ready for review", approved: "Approved for execution" })[plan.status] ?? plan.status} ·{" "}
+                  {plan.revision.slice(0, 12)}
                 </summary>
                 <pre class="max-h-64 overflow-auto whitespace-pre-wrap">{plan.content}</pre>
               </details>

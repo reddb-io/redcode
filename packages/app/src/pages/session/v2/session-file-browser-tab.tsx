@@ -5,7 +5,6 @@ import { SessionFilePanelV2, SessionFilePanelV2Empty } from "@reddb-io/redcode-s
 import { SessionReviewV2Sidebar } from "@reddb-io/redcode-session-ui/v2/session-review-v2"
 import FileTreeV2, { type Kind } from "@/components/file-tree-v2"
 import { useFile } from "@/context/file"
-import { useLanguage } from "@/context/language"
 import { useLayout } from "@/context/layout"
 import { useSDK } from "@/context/sdk"
 import { displayName } from "@/pages/layout/helpers"
@@ -35,7 +34,6 @@ export function SessionFileBrowserTab(props: {
   filterRef?: (element: HTMLInputElement) => void
 }) {
   const file = useFile()
-  const language = useLanguage()
   const layout = useLayout()
   const sdk = useSDK()
   const { workspaceKey } = useSessionLayout()
@@ -126,8 +124,8 @@ export function SessionFileBrowserTab(props: {
               when={!loading()}
               fallback={
                 <div role="status" class="px-2 py-2 text-12-regular text-text-weak">
-                  {language.t("common.loading")}
-                  {language.t("common.loading.ellipsis")}
+                  {"Loading"}
+                  {"..."}
                 </div>
               }
             >
@@ -135,7 +133,7 @@ export function SessionFileBrowserTab(props: {
                 when={files().length > 0}
                 fallback={
                   <div role="status" class="px-2 py-2 text-12-regular text-text-weak">
-                    {language.t("palette.empty")}
+                    {"No results found"}
                   </div>
                 }
               >
@@ -165,8 +163,8 @@ export function SessionFileBrowserTab(props: {
           <SessionFilePanelV2Empty>
             <div class="flex flex-col items-center gap-3 text-center text-text-weak">
               <Icon name="file-tree" size="large" />
-              <div class="text-14-medium text-text-strong">{language.t("command.file.open")}</div>
-              <div class="text-13-regular">{language.t("session.files.selectToOpen")}</div>
+              <div class="text-14-medium text-text-strong">{"Open file"}</div>
+              <div class="text-13-regular">{"Select a file to open"}</div>
             </div>
           </SessionFilePanelV2Empty>
         }

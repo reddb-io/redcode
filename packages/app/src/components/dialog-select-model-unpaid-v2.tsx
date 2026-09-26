@@ -9,7 +9,6 @@ import { createMemo, onCleanup, onMount, type Component, For, Show } from "solid
 import { useLocal } from "@/context/local"
 import { useProviders } from "@/hooks/use-providers"
 import { decode64 } from "@/utils/base64"
-import { useLanguage } from "@/context/language"
 import { ModelTooltip } from "./model-tooltip"
 
 type ModelState = ReturnType<typeof useLocal>["model"]
@@ -23,7 +22,6 @@ export const DialogSelectModelUnpaidV2: Component<{ model?: ModelState }> = (pro
   const theme = useTheme()
   const directory = () => decode64(local.slug())
   const providers = useProviders(directory)
-  const language = useLanguage()
   const modelKey = (item: ReturnType<ModelState["list"]>[number]) => `${item.provider.id}:${item.id}`
   const currentKey = createMemo(() => {
     const c = model.current()
@@ -71,15 +69,15 @@ export const DialogSelectModelUnpaidV2: Component<{ model?: ModelState }> = (pro
       containerClass="!h-auto max-h-[calc(100vh_-_16px)] !w-[min(calc(100vw_-_16px),640px)]"
       class="[font-family:var(--v2-font-family-sans)] [&_[data-slot=dialog-header]]:!px-5 [&_[data-slot=dialog-header-title]]:!text-[15px] [&_[data-slot=dialog-header-title]]:!tracking-[-0.13px]"
     >
-      <DialogHeader closeLabel={language.t("common.close")}>
-        <DialogTitle>{language.t("dialog.model.select.title")}</DialogTitle>
+      <DialogHeader closeLabel={"Close"}>
+        <DialogTitle>{"Select model"}</DialogTitle>
       </DialogHeader>
       <DialogBody class="max-h-[calc(100vh_-_68px)] min-h-0 flex-none gap-0 overflow-y-auto px-2 pb-2">
         <div ref={listEl} class="flex min-h-0 flex-col">
           <div data-section="free-models" class="flex w-full flex-col items-start pb-3">
             <div class="flex h-8 w-full flex-none select-none flex-row items-center px-3 pb-2">
               <div class="flex h-5 items-center text-[13px] font-[440] leading-5 tracking-[-0.04px] text-v2-text-text-muted [font-family:var(--v2-font-family-sans)] [font-variant-numeric:tabular-nums] [font-variation-settings:'slnt'_0]">
-                {language.t("dialog.model.unpaid.freeModels.title")}
+                {"Free models provided by Redcode"}
               </div>
             </div>
             <For each={freeModels()}>
@@ -105,9 +103,9 @@ export const DialogSelectModelUnpaidV2: Component<{ model?: ModelState }> = (pro
                     onClick={() => selectModel(item)}
                   >
                     <span class="min-w-0 truncate">{displayModelName(item.name)}</span>
-                    <Tag class="shrink-0">{language.t("model.tag.free")}</Tag>
+                    <Tag class="shrink-0">{"Free"}</Tag>
                     <Show when={item.latest}>
-                      <Tag class="shrink-0">{language.t("model.tag.latest")}</Tag>
+                      <Tag class="shrink-0">{"Latest"}</Tag>
                     </Show>
                     <Show when={currentKey() === modelKey(item)}>
                       <Icon name="check" class="ml-auto size-4 shrink-0 text-v2-icon-icon-base" />
@@ -122,7 +120,7 @@ export const DialogSelectModelUnpaidV2: Component<{ model?: ModelState }> = (pro
             <div class="flex w-full flex-col items-start rounded-lg border-[0.5px] border-v2-border-border-muted bg-v2-background-bg-layer-02 p-2.5 pt-2">
               <div class="flex h-8 w-full select-none items-center px-0.5 pb-2">
                 <div class="flex h-5 items-center text-[13px] font-[440] leading-5 tracking-[-0.04px] text-v2-text-text-muted [font-family:var(--v2-font-family-sans)] [font-variant-numeric:tabular-nums] [font-variation-settings:'slnt'_0]">
-                  {language.t("dialog.model.unpaid.addMore.title")}
+                  {"Add more models from popular providers"}
                 </div>
               </div>
               <div class="grid w-full grid-cols-1 gap-y-1.5 gap-x-2 sm:grid-cols-2">
@@ -148,11 +146,9 @@ export const DialogSelectModelUnpaidV2: Component<{ model?: ModelState }> = (pro
                         <span class="truncate">{provider.name}</span>
                         <Show when={provider.id === "opencode" || provider.id === "opencode-go"}>
                           <span class="truncate font-[440] text-v2-text-text-muted">
-                            {language.t(
-                              provider.id === "opencode"
-                                ? "dialog.provider.opencode.tagline"
-                                : "dialog.provider.opencodeGo.tagline",
-                            )}
+                            {provider.id === "opencode"
+                              ? "Reliable optimized models"
+                              : "Low cost subscription for everyone"}
                           </span>
                         </Show>
                       </span>
@@ -164,7 +160,7 @@ export const DialogSelectModelUnpaidV2: Component<{ model?: ModelState }> = (pro
                   class="col-span-full flex h-8 w-full scroll-my-3.5 items-center justify-start rounded-md px-3 text-left text-[13px] font-[440] leading-5 tracking-[-0.04px] text-v2-text-text-muted [font-family:var(--v2-font-family-sans)] [font-variation-settings:'slnt'_0] hover:bg-v2-overlay-simple-overlay-hover focus:bg-v2-overlay-simple-overlay-hover focus:outline-none"
                   onClick={() => openProviders()}
                 >
-                  {language.t("dialog.model.unpaid.viewMoreProviders")}
+                  {"See 70+ more providers"}
                 </button>
               </div>
             </div>

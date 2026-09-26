@@ -2,7 +2,6 @@ import { UserMessage } from "@reddb-io/redcode-sdk/v2"
 import { HoverCard } from "@kobalte/core/hover-card"
 import { ComponentProps, For, Match, Show, createSignal, splitProps, Switch } from "solid-js"
 import { DiffChanges } from "@reddb-io/redcode-ui/diff-changes"
-import { useI18n } from "@reddb-io/redcode-ui/context/i18n"
 
 export function MessageNav(
   props: ComponentProps<"ul"> & {
@@ -13,7 +12,6 @@ export function MessageNav(
     getLabel?: (message: UserMessage) => string | undefined
   },
 ) {
-  const i18n = useI18n()
   const [local, others] = splitProps(props, ["messages", "current", "size", "onMessageSelect", "getLabel", "class"])
   const [hovercardOpen, setHovercardOpen] = createSignal(false)
 
@@ -58,7 +56,7 @@ export function MessageNav(
                     >
                       <Show
                         when={local.getLabel?.(message) ?? message.summary?.title}
-                        fallback={i18n.t("ui.messageNav.newMessage")}
+                        fallback={"New message"}
                       >
                         {local.getLabel?.(message) ?? message.summary?.title}
                       </Show>

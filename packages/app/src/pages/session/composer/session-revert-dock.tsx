@@ -6,7 +6,6 @@ import { IconButton } from "@reddb-io/redcode-ui/icon-button"
 import { ButtonV2 } from "@reddb-io/redcode-ui/v2/button-v2"
 import { Icon as IconV2 } from "@reddb-io/redcode-ui/v2/icon"
 import { IconButtonV2 } from "@reddb-io/redcode-ui/v2/icon-button-v2"
-import { useLanguage } from "@/context/language"
 import { useSettings } from "@/context/settings"
 
 export function SessionRevertDock(props: {
@@ -15,7 +14,6 @@ export function SessionRevertDock(props: {
   disabled?: boolean
   onRestore: (id: string) => void
 }) {
-  const language = useLanguage()
   const settings = useSettings()
   const [store, setStore] = createStore({
     collapsed: true,
@@ -29,7 +27,9 @@ export function SessionRevertDock(props: {
 
   const toggle = () => setStore("collapsed", (value) => !value)
   const total = createMemo(() => props.items.length)
-  const label = createMemo(() => language.plural("session.revertDock.summary", total()))
+  const label = createMemo(() =>
+    total() === 1 ? "1 rolled back message" : `${total()} rolled back messages`,
+  )
   const preview = createMemo(() => props.items[0]?.text ?? "")
 
   const onHeaderKeyDown = (event: KeyboardEvent) => {
@@ -69,7 +69,7 @@ export function SessionRevertDock(props: {
                   toggle()
                 }}
                 aria-label={
-                  store.collapsed ? language.t("session.revertDock.expand") : language.t("session.revertDock.collapse")
+                  store.collapsed ? "Expand rolled back messages" : "Collapse rolled back messages"
                 }
               />
             </div>
@@ -92,7 +92,7 @@ export function SessionRevertDock(props: {
                       disabled={props.disabled || !!props.restoring}
                       onClick={() => props.onRestore(item.id)}
                     >
-                      {language.t("session.revertDock.restore")}
+                      {"Restore message"}
                     </Button>
                   </div>
                 )}
@@ -143,7 +143,7 @@ export function SessionRevertDock(props: {
                 toggle()
               }}
               aria-label={
-                store.collapsed ? language.t("session.revertDock.expand") : language.t("session.revertDock.collapse")
+                store.collapsed ? "Expand rolled back messages" : "Collapse rolled back messages"
               }
             />
           </div>
@@ -170,7 +170,7 @@ export function SessionRevertDock(props: {
                     disabled={props.disabled || !!props.restoring}
                     onClick={() => props.onRestore(item.id)}
                   >
-                    {language.t("session.revertDock.restore")}
+                    {"Restore message"}
                   </ButtonV2>
                 </div>
               )}

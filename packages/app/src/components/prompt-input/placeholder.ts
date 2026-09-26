@@ -7,11 +7,11 @@ type PromptPlaceholderInput = {
 }
 
 export function promptPlaceholder(input: PromptPlaceholderInput) {
-  if (input.mode === "shell") return input.t("prompt.placeholder.shell", { example: input.example })
-  if (input.commentCount > 1) return input.t("prompt.placeholder.summarizeComments")
-  if (input.commentCount === 1) return input.t("prompt.placeholder.summarizeComment")
-  if (!input.suggest) return input.t("prompt.placeholder.simple")
-  return input.t("prompt.placeholder.normal", { example: input.example })
+  if (input.mode === "shell") return `Enter shell command... ${input.example}`
+  if (input.commentCount > 1) return "Summarize comments…"
+  if (input.commentCount === 1) return "Summarize comment…"
+  if (!input.suggest) return "Ask anything..."
+  return `Ask anything... "${input.example}"`
 }
 
 export function promptDesignPlaceholder(

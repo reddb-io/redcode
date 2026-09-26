@@ -3,7 +3,6 @@ import { useServerManagementController } from "@/components/dialog-select-server
 import { useSettingsCommand } from "@/components/settings-dialog"
 import { DialogServerV2 } from "@/components/settings-v2/dialog-server-v2"
 import { type LocalProject } from "@/context/layout"
-import { useLanguage } from "@/context/language"
 import { useNotification } from "@/context/notification"
 import { usePlatform } from "@/context/platform"
 import { ServerConnection } from "@/context/server"
@@ -19,7 +18,6 @@ export function createHomeProjectsController(home: HomeController) {
   const platform = usePlatform()
   const pickDirectory = useDirectoryPicker()
   const dialog = useDialog()
-  const language = useLanguage()
   const notification = useNotification()
   const openSettings = useSettingsCommand()
   const serverManagement = useServerManagementController({ navigateOnAdd: false })
@@ -42,7 +40,6 @@ export function createHomeProjectsController(home: HomeController) {
 
   return {
     copy: {
-      language,
     },
     selection: {
       value: home.selection.value,
@@ -90,7 +87,7 @@ export function createHomeProjectsController(home: HomeController) {
         if (home.server.health(conn)?.healthy === false) return
         pickDirectory({
           server: conn,
-          title: language.t("command.project.open"),
+          title: "Open project",
           multiple: true,
           onSelect: (result) => home.project.add(conn, homeProjectDirectories(result)),
         })
@@ -112,8 +109,8 @@ export function createHomeProjectsController(home: HomeController) {
         if (!platform.openPath || !canRevealProject(conn)) return
         platform.openPath(project.worktree).catch((cause: unknown) =>
           showToast({
-            title: language.t("common.requestFailed"),
-            description: errorMessage(cause, language.t("common.requestFailed")),
+            title: "Request failed",
+            description: errorMessage(cause, "Request failed"),
           }),
         )
       },

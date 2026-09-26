@@ -8,7 +8,6 @@ import { RadioGroupV2, RadioItemV2 } from "@reddb-io/redcode-ui/v2/radio-v2"
 import { TextInputV2 } from "@reddb-io/redcode-ui/v2/text-input-v2"
 import { createMemo, For, Show } from "solid-js"
 import { createStore } from "solid-js/store"
-import { useLanguage } from "@/context/language"
 import { usePlatform } from "@/context/platform"
 import { useWslAddServerProbes } from "./add-server-probes"
 import { useWslServers } from "./context"
@@ -20,9 +19,23 @@ function isWslRuntimeMissing(error: string | null | undefined) {
   return /WSL is not installed|not been installed|wsl(?:\.exe)? --install/i.test(error)
 }
 
-function translate(language: ReturnType<typeof useLanguage>, value: AddServerText) {
-  if (value.params) return language.t(value.key, value.params)
-  return language.t(value.key)
+const ADD_SERVER_TEXT: Record<string, string> = {
+  "wsl.server.add": "Add WSL server",
+  "wsl.onboarding.adding": "Adding...",
+  "wsl.onboarding.updatingOpencode": "Updating Redcode...",
+  "wsl.onboarding.updateOpencode": "Update Redcode",
+  "wsl.onboarding.installOpencode": "Install Redcode",
+  "wsl.onboarding.distroStatus.ready": "Ready",
+  "wsl.onboarding.distroStatus.checking": "Checking...",
+  "wsl.onboarding.distroStatus.opencodeMissing": "Redcode not installed",
+  "wsl.onboarding.distroStatus.missingTools": "Missing bash, curl",
+  "wsl.onboarding.distroStatus.unsupported": "Unsupported · Use WSL 2",
+}
+
+function translate(value: AddServerText) {
+  if (value.key === "wsl.onboarding.distroNotInstalled") return `${value.params?.distro} is not installed yet.`
+  if (value.key === "wsl.onboarding.openDistroOnce") return `Open ${value.params?.distro} once to finish setup.`
+  return ADD_SERVER_TEXT[value.key] ?? value.key
 }
 
 interface DialogWslServerProps {
@@ -30,7 +43,6 @@ interface DialogWslServerProps {
 }
 
 export function DialogAddWslServer(props: DialogWslServerProps = {}) {
-  const language = useLanguage()
   const controller = useWslAddServerController(props)
   const model = controller.model
   const primaryButton = () => model().primaryButton
@@ -82,7 +94,7 @@ export function DialogAddWslServer(props: DialogWslServerProps = {}) {
         <Dialog fit class="settings-v2-wsl-dialog">
           <DialogHeader hideClose={true}>
             <DialogTitle>
-              {controller.view() === "main" ? language.t("wsl.server.add") : language.t("wsl.onboarding.installDistro")}
+              {controller.view() === "main" ? "Add WSL server" : "Install distro"}
             </DialogTitle>
           </DialogHeader>
           <DividerV2 />
@@ -94,7 +106,7 @@ export function DialogAddWslServer(props: DialogWslServerProps = {}) {
                   <TextInputV2
                     class="settings-v2-wsl-catalog-search"
                     appearance="large"
-                    placeholder={language.t("wsl.onboarding.searchDistros")}
+                    placeholder={"Search distros"}
                     value={controller.catalogSearch()}
                     disabled={model().busy}
                     onInput={(event) => controller.setCatalogSearch(event.currentTarget.value)}
@@ -103,7 +115,7 @@ export function DialogAddWslServer(props: DialogWslServerProps = {}) {
                     <RadioGroupV2
                       hideLabel
                       class="settings-v2-wsl-distro-group"
-                      label={language.t("wsl.onboarding.installDistro")}
+                      label={"Install distro"}
                       value={model().catalogTarget ?? undefined}
                       onChange={controller.setCatalogTarget}
                       disabled={model().busy}
@@ -123,7 +135,7 @@ export function DialogAddWslServer(props: DialogWslServerProps = {}) {
                 </DialogBody>
                 <DialogFooter>
                   <ButtonV2 variant="neutral" disabled={model().busy} onClick={controller.closeCatalog}>
-                    {language.t("common.cancel")}
+                    {"Cancel"}
                   </ButtonV2>
                   <ButtonV2
                     variant={model().installingCatalogDistro ? "loading" : "contrast"}
@@ -131,7 +143,7 @@ export function DialogAddWslServer(props: DialogWslServerProps = {}) {
                     style={{ width: "99px" }}
                     onClick={controller.installCatalogDistro}
                   >
-                    <Show when={model().installingCatalogDistro} fallback={language.t("wsl.onboarding.installDistro")}>
+                    <Show when={model().installingCatalogDistro} fallback={"Install distro"}>
                       <LoaderV2 />
                     </Show>
                   </ButtonV2>
@@ -141,14 +153,14 @@ export function DialogAddWslServer(props: DialogWslServerProps = {}) {
           >
             <DialogBody class="settings-v2-wsl-dialog-body">
               <div class="settings-v2-wsl-section-header">
-                <span class="settings-v2-wsl-section-title">{language.t("wsl.onboarding.installedDistros")}</span>
+                <span class="settings-v2-wsl-section-title">{"Installed distros"}</span>
                 <ButtonV2
                   variant="ghost-muted"
                   size="small"
                   disabled={model().busy}
                   onClick={controller.refreshDistros}
                 >
-                  {language.t("wsl.onboarding.checkAgain")}
+                  {"Check again"}
                 </ButtonV2>
               </div>
 
@@ -158,8 +170,8 @@ export function DialogAddWslServer(props: DialogWslServerProps = {}) {
                   <div class="settings-v2-wsl-distro-list">
                     <div class="settings-v2-wsl-distro-empty">
                       {model().visibleInstalledDistros.length
-                        ? language.t("wsl.onboarding.allDistrosAdded")
-                        : language.t("wsl.onboarding.noDistros")}
+                        ? "All installed distros are already added."
+                        : "No distros detected yet."}
                     </div>
                   </div>
                 }
@@ -168,7 +180,7 @@ export function DialogAddWslServer(props: DialogWslServerProps = {}) {
                   <RadioGroupV2
                     hideLabel
                     class="settings-v2-wsl-distro-group"
-                    label={language.t("wsl.onboarding.installedDistros")}
+                    label={"Installed distros"}
                     value={model().selectedDistro ?? undefined}
                     onChange={controller.setSelectedDistro}
                     disabled={model().busy}
@@ -186,7 +198,7 @@ export function DialogAddWslServer(props: DialogWslServerProps = {}) {
                               <Show when={status()}>
                                 {(value) => (
                                   <span class="settings-v2-wsl-distro-status" data-tone={value().tone}>
-                                    {translate(language, value().label)}
+                                    {translate(value().label)}
                                   </span>
                                 )}
                               </Show>
@@ -215,9 +227,9 @@ export function DialogAddWslServer(props: DialogWslServerProps = {}) {
                     </svg>
                   </span>
                   <span class="settings-v2-wsl-catalog-copy">
-                    <span class="settings-v2-wsl-catalog-title">{language.t("wsl.onboarding.needAnotherDistro")}</span>
+                    <span class="settings-v2-wsl-catalog-title">{"Need another distro?"}</span>
                     <span class="settings-v2-wsl-catalog-description">
-                      {language.t("wsl.onboarding.needAnotherDistroHint")}
+                      {"Install a Linux distribution from the WSL catalog"}
                     </span>
                   </span>
                   <span class="settings-v2-wsl-catalog-chevron" aria-hidden="true">
@@ -231,7 +243,7 @@ export function DialogAddWslServer(props: DialogWslServerProps = {}) {
 
             <DialogFooter>
               <ButtonV2 variant="neutral" disabled={controller.adding()} onClick={controller.close}>
-                {language.t("common.cancel")}
+                {"Cancel"}
               </ButtonV2>
               <ButtonV2
                 variant={primaryButton().loading ? "loading" : primaryButton().variant}
@@ -239,7 +251,7 @@ export function DialogAddWslServer(props: DialogWslServerProps = {}) {
                 style={primaryButtonStyle()}
                 onClick={controller.runPrimary}
               >
-                <Show when={primaryButton().loading} fallback={translate(language, primaryButton().label)}>
+                <Show when={primaryButton().loading} fallback={translate(primaryButton().label)}>
                   <LoaderV2 />
                 </Show>
               </ButtonV2>
@@ -252,7 +264,6 @@ export function DialogAddWslServer(props: DialogWslServerProps = {}) {
 }
 
 function useWslAddServerController(props: DialogWslServerProps) {
-  const language = useLanguage()
   const platform = usePlatform()
   const dialog = useDialog()
   const wslServers = useWslServers()
@@ -284,7 +295,7 @@ function useWslAddServerController(props: DialogWslServerProps) {
     busy: () => baseModel().busy,
     selectedDistro: () => baseModel().selectedDistro,
     addableInstalledDistros: () => baseModel().addableInstalledDistros,
-    onError: (error) => requestError(language, error),
+    onError: (error) => requestError(error),
   })
   const model = createMemo(() => viewModel(probes.probingAddable()))
 
@@ -301,7 +312,7 @@ function useWslAddServerController(props: DialogWslServerProps) {
     try {
       await action()
     } catch (err) {
-      requestError(language, err)
+      requestError(err)
     }
   }
 
@@ -351,7 +362,7 @@ function useWslAddServerController(props: DialogWslServerProps) {
         dialog.close()
       }
     } catch (err) {
-      requestError(language, err)
+      requestError(err)
     } finally {
       setStore("adding", false)
     }
@@ -359,7 +370,7 @@ function useWslAddServerController(props: DialogWslServerProps) {
 
   const loadError = () => {
     const error = wslServers.error
-    if (!error) return language.t("wsl.onboarding.loadFailed")
+    if (!error) return "Failed to load WSL state."
     return error instanceof Error ? error.message : String(error)
   }
 
@@ -391,18 +402,17 @@ function DialogWslSetup(props: {
   busy: boolean
   onInstall: () => void
 }) {
-  const language = useLanguage()
   const dialog = useDialog()
   const title = () =>
     props.state === "pendingRestart"
-      ? language.t("wsl.onboarding.restartRequired")
+      ? "Windows needs a restart to finish installing WSL."
       : props.installable
-        ? language.t("wsl.onboarding.wslNotInstalled.title")
-        : language.t("wsl.onboarding.wslUnavailable.title")
+        ? "WSL not installed"
+        : "WSL unavailable"
   const description = () => {
-    if (props.state === "pendingRestart") return language.t("wsl.onboarding.windowsRestartRequired")
-    if (!props.installable) return language.t("wsl.onboarding.wslUnavailable.description")
-    return language.t("wsl.onboarding.wslNotInstalled.description")
+    if (props.state === "pendingRestart") return "Restart Windows to finish installing WSL, then reopen Redcode."
+    if (!props.installable) return "Redcode could not verify WSL on this machine."
+    return "WSL (Windows Subsystem for Linux) is required before Redcode can add a WSL server"
   }
 
   return (
@@ -440,12 +450,12 @@ function DialogWslSetup(props: {
         </div>
         <Show when={props.state === "unavailable" && props.installable}>
           <ButtonV2 variant="neutral" disabled={props.busy} onClick={props.onInstall}>
-            {language.t("wsl.onboarding.installWsl")}
+            {"Install WSL"}
           </ButtonV2>
         </Show>
         <Show when={props.state !== "unavailable"}>
           <ButtonV2 variant="neutral" onClick={() => dialog.close()}>
-            {language.t("common.close")}
+            {"Close"}
           </ButtonV2>
         </Show>
       </div>
@@ -453,11 +463,11 @@ function DialogWslSetup(props: {
   )
 }
 
-function requestError(language: ReturnType<typeof useLanguage>, err: unknown) {
+function requestError(err: unknown) {
   console.error("WSL servers request failed", err instanceof Error ? (err.stack ?? err.message) : String(err))
   showToast({
     variant: "error",
-    title: language.t("common.requestFailed"),
+    title: "Request failed",
     description: err instanceof Error ? err.message : String(err),
   })
 }

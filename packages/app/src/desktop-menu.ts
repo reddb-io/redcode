@@ -1,4 +1,3 @@
-import type { DesktopNativeKey } from "./i18n/desktop-native"
 
 export type DesktopMenuPlatform = "macos" | "windows"
 
@@ -46,7 +45,7 @@ export type DesktopMenuRole =
 
 export type DesktopMenuItem = {
   type: "item"
-  labelKey?: DesktopNativeKey
+  labelKey?: string
   command?: string
   action?: DesktopMenuAction
   role?: DesktopMenuRole
@@ -65,7 +64,7 @@ export type DesktopMenuEntry = DesktopMenuItem | DesktopMenuSeparator
 
 export type DesktopMenu = {
   id: string
-  labelKey: DesktopNativeKey
+  labelKey: string
   role?: DesktopMenuRole
   items?: DesktopMenuEntry[]
   platforms?: DesktopMenuPlatform[]
