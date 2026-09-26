@@ -7,6 +7,7 @@ import { and, eq, notExists, sql } from "drizzle-orm"
 import { Context, Effect, Layer } from "effect"
 import { Database } from "../database/database.js"
 import { SessionSchema } from "./schema.js"
+import { SessionGuardLog } from "./guard-log.js"
 import { SessionGoalTable, SessionGoalReviewTable } from "./redcode.sql.js"
 import { SessionInboxTable } from "./sql.js"
 
@@ -15,6 +16,7 @@ const live = (goal: SessionGoal.Info) => goal.status === "active" || goal.status
 
 const make = Effect.gen(function* () {
   const database = yield* Database.Service
+  const guards = yield* SessionGuardLog.Service
   const db = database.db
 
   // Compare-and-swap makes a delayed review unable to undo pause, replacement or budget changes.
@@ -222,10 +224,18 @@ const make = Effect.gen(function* () {
     const goal = yield* get(sessionID)
     if (!goal || !live(goal)) return undefined
     if (goal.turns.used >= goal.turns.max) {
+      const reason = `Used ${goal.turns.max} steps. Budget exhaustion is not completion.`
       yield* save(goal, {
         ...goal,
         status: "paused",
-        reason: `Used ${goal.turns.max} steps. Budget exhaustion is not completion.`,
+        reason,
+      })
+      yield* guards.record({
+        sessionID,
+        guard: "budget",
+        action: "stop",
+        subject: "goal",
+        detail: reason,
       })
       return false
     }
@@ -267,7 +277,11 @@ const make = Effect.gen(function* () {
 })
 
 export class Service extends Context.Service<Service, Effect.Success<typeof make>>()("@redcode/SessionGoal") {}
-export const node = makeGlobalNode({ service: Service, layer: Layer.effect(Service, make), deps: [Database.node] })
+export const node = makeGlobalNode({
+  service: Service,
+  layer: Layer.effect(Service, make),
+  deps: [Database.node, SessionGuardLog.node],
+})
 
 export function guidance(goal: SessionGoal.Info | null) {
   if (!goal) return ""
