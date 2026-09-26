@@ -41,7 +41,7 @@ export function DialogCommandPaletteV2(props: { onOpenFile?: (path: string) => v
     if (!q) return [...palette.preferredCommandEntries(), ...palette.recentFileEntries()]
 
     const [files, nextSessions] = await Promise.all([palette.file.searchFiles(q), Promise.resolve(palette.sessions(q))])
-    const category = palette."Files"
+    const category = "Files"
     return [
       ...palette.commandEntries().filter((entry) => matchesEntry(entry, q)),
       ...nextSessions,
@@ -51,7 +51,7 @@ export function DialogCommandPaletteV2(props: { onOpenFile?: (path: string) => v
 
   return (
     <CommandPaletteView
-      placeholder={palette."Search files, commands, and sessions"}
+      placeholder={"Search files, commands, and sessions"}
       loadItems={loadItems}
       highlight={palette.highlight}
       select={palette.select}

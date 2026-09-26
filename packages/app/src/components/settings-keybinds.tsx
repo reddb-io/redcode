@@ -265,8 +265,7 @@ export function createKeybindSettingsController(
 ) {
   const [store, setStore] = createStore({ active: null as string | null })
   const overrides = createMemo(() => keybinds(input.settings.current.keybinds))
-  const list = createMemo(() => listFor(input.command, overrides(), "Command palette")
-  })
+  const list = createMemo(() => listFor(input.command, overrides(), "Command palette"))
   const grouped = createMemo(() => groupedFor(list()))
   const title = (id: string) => list().get(id)?.title ?? ""
   const effective = (id: string) => {
@@ -552,8 +551,7 @@ export const SettingsKeybinds: Component<{ v2?: boolean }> = (props) => {
     })
   }
 
-  const list = createMemo(() => listFor(command, map(), "Command palette")
-  })
+  const list = createMemo(() => listFor(command, map(), "Command palette"))
 
   const title = (id: string) => list().get(id)?.title ?? ""
 

@@ -88,7 +88,7 @@ function DialogSelectFileLegacy(props: { filesOnly: () => boolean; onOpenFile?: 
 
     if (props.filesOnly()) {
       const files = await palette.file.searchFiles(query)
-      const category = palette."Files"
+      const category = "Files"
       return files.map((path) => createCommandPaletteFileEntry(path, category))
     }
 
@@ -96,7 +96,7 @@ function DialogSelectFileLegacy(props: { filesOnly: () => boolean; onOpenFile?: 
       palette.file.searchFiles(query),
       Promise.resolve(palette.sessions(query)),
     ])
-    const category = palette."Files"
+    const category = "Files"
     const entries = files.map((path) => createCommandPaletteFileEntry(path, category))
     return [...palette.commandEntries(), ...nextSessions, ...entries]
   }
@@ -107,13 +107,13 @@ function DialogSelectFileLegacy(props: { filesOnly: () => boolean; onOpenFile?: 
         class="px-3"
         search={{
           placeholder: props.filesOnly()
-            ? palette."Search files"
-            : palette."Search files, commands, and sessions",
+            ? "Search files"
+            : "Search files, commands, and sessions",
           autofocus: true,
           hideIcon: true,
         }}
-        emptyMessage={palette."No results found"}
-        loadingMessage={palette."Loading"}
+        emptyMessage={"No results found"}
+        loadingMessage={"Loading"}
         items={items}
         key={(item) => item.id}
         filterKeys={["title", "description", "category"]}
