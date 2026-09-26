@@ -44,8 +44,8 @@ point V1 at files after converting them to native V2-only shapes.
 
 ## Redcode remote database
 
-If Redcode V1 used RedDB, export its tables to a new SQLite file before selecting a fresh RedDB database for V2. Keep the
-V1 database available until you have verified the imported sessions and credentials.
+If Redcode V1 used RedDB, stop V1 writes and export its tables to a new SQLite file before selecting a fresh RedDB
+database for V2. Keep the V1 database available until you have verified the imported sessions and credentials.
 
 ```sh
 REDCODE_DATABASE_URL='reds://v1-host/database' redcode db export-redcode --to ./redcode-v1.sqlite

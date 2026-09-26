@@ -53,8 +53,8 @@ const databaseLayer = (lock: Effect.Effect<Semaphore.Semaphore>, remote = false)
     }).pipe(Effect.orDie),
   )
 
-// Two instances over one file bootstrap the same schema, so file databases
-// share a lock per path. Each in-memory database is its own connection.
+// Instances opening the same file or RedDB URL in one process share a bootstrap lock.
+// Remote processes still rely on the journal check inside each migration transaction.
 const locks = new Map<string, Semaphore.Semaphore>()
 
 function lockFor(filename: string) {
@@ -71,7 +71,9 @@ export function layer(options: Options = { path: ":memory:" }) {
       if (options.url) {
         if (options.path) return yield* Effect.die(new Error("Database path and RedDB URL cannot be combined"))
         const { RedDBBackend } = yield* Effect.promise(() => import("#database-reddb"))
-        return databaseLayer(Semaphore.make(1), true).pipe(Layer.provide(RedDBBackend.layer({ url: validateURL(options.url), token: options.token })))
+        return databaseLayer(Effect.succeed(lockFor(`reddb:${options.url}`)), true).pipe(
+          Layer.provide(RedDBBackend.layer({ url: validateURL(options.url), token: options.token })),
+        )
       }
       const provide = (filename: string) =>
         databaseLayer(filename === ":memory:" ? Semaphore.make(1) : Effect.succeed(lockFor(filename)), false).pipe(
@@ -111,7 +113,7 @@ export const node = configured({ path: ":memory:" })
 
 export function validateURL(value: string) {
   const url = new URL(value)
-  if (!["red:", "reds:", "grpc:", "grpcs:", "http:", "https:", "ws:", "wss:", "red+ws:", "red+wss:"].includes(url.protocol))
+  if (!["red:", "reds:", "grpc:", "grpcs:", "http:", "https:"].includes(url.protocol))
     throw new Error(`Unsupported RedDB database URL protocol: ${url.protocol}`)
   if (url.username || url.password || url.search || url.hash)
     throw new Error("RedDB database URL must not contain credentials, query parameters or fragments")

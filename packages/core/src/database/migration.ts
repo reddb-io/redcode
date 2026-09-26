@@ -157,10 +157,12 @@ export function applyOnly(db: Database, input: Migration[], options: { remote?: 
       yield* Effect.logInfo("database migration started", { migration: migration.id })
       const apply = db.transaction((tx) =>
         Effect.gen(function* () {
+          if (yield* tx.get(sql`SELECT id FROM ${sql.identifier("migration")} WHERE id = ${migration.id}`)) return false
           yield* migration.up(tx)
           yield* tx.run(
             sql`INSERT INTO ${sql.identifier("migration")} (id, time_completed) VALUES (${migration.id}, ${Date.now()})`,
           )
+          return true
         }),
       )
       const run =
@@ -174,9 +176,9 @@ export function applyOnly(db: Database, input: Migration[], options: { remote?: 
                 : db.run(sql`PRAGMA defer_foreign_keys = ON`)
               const restoreForeignKeys = supportsForeignKeyToggle ? db.run(sql`PRAGMA foreign_keys = ON`) : Effect.void
               yield* relaxForeignKeys
-              yield* apply.pipe(Effect.ensuring(restoreForeignKeys.pipe(Effect.orDie)))
+              return yield* apply.pipe(Effect.ensuring(restoreForeignKeys.pipe(Effect.orDie)))
             })
-      yield* run.pipe(
+      const applied = yield* run.pipe(
         Effect.tapError((error) =>
           Effect.logError("database migration failed", {
             migration: migration.id,
@@ -185,6 +187,7 @@ export function applyOnly(db: Database, input: Migration[], options: { remote?: 
           }),
         ),
       )
+      if (!applied) continue
       yield* Effect.logInfo("database migration completed", {
         migration: migration.id,
         durationMs: Date.now() - started,
