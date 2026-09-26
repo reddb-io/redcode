@@ -80,6 +80,8 @@ export function root(server: Info, file: string, directory: string, project: str
 export function available(server: Info, root: string, directory: string, downloads: boolean) {
   if (server.id === "oxlint" && server.command[0] === "oxc_language_server")
     return !!resolveCommand(server, root, directory) || !!resolveCommand({ ...server, command: ["oxlint"] }, root, directory)
+  if (server.id === "zls" && server.command[0] === "zls")
+    return !!resolveCommand(server, root, directory) || downloads && !!which("zig")
   if (server.id === "sourcekit-lsp" && server.command[0] === "sourcekit-lsp" && !resolveCommand(server, root, directory))
     return !!which("xcrun")
   if (server.id === "jdtls" && server.command[0] === "java")
@@ -280,6 +282,8 @@ function ancestors(start: string, stop: string) {
 export async function start(server: Info, root: string, directory: string, downloads: boolean): Promise<Handle> {
   const specialized = server.id === "jdtls" && server.command[0] === "java"
     ? await javaLaunch(downloads)
+    : server.id === "zls" && server.command[0] === "zls" && !resolveCommand(server, root, directory)
+      ? await zlsLaunch(downloads)
     : server.id === "kotlin-ls" && server.command[0] === "kotlin-lsp" && !resolveCommand(server, root, directory)
       ? await kotlinLaunch(downloads)
       : server.id === "oxlint" && server.command[0] === "oxc_language_server"
@@ -356,6 +360,40 @@ async function oxlintLaunch(server: Info, root: string, directory: string) {
   const child = Bun.spawn([executable, "--help"], { stdout: "pipe", stderr: "ignore" })
   const [code, output] = await Promise.all([child.exited, new Response(child.stdout).text()])
   return code === 0 && output.includes("--lsp") ? { executable, args: ["--lsp"] } : undefined
+}
+
+async function zlsLaunch(downloads: boolean) {
+  if (!downloads || !which("zig")) return
+  const platform = globalThis.process.platform === "darwin" ? "macos" : globalThis.process.platform === "win32" ? "windows" : globalThis.process.platform
+  const arch = globalThis.process.arch === "arm64" ? "aarch64" : globalThis.process.arch === "x64" ? "x86_64" : globalThis.process.arch === "ia32" ? "x86" : globalThis.process.arch
+  const extension = globalThis.process.platform === "win32" ? "zip" : "tar.xz"
+  const name = `zls-${arch}-${platform}.${extension}`
+  if (!["zls-x86_64-linux.tar.xz", "zls-x86_64-macos.tar.xz", "zls-x86_64-windows.zip", "zls-aarch64-linux.tar.xz", "zls-aarch64-macos.tar.xz", "zls-aarch64-windows.zip", "zls-x86-linux.tar.xz", "zls-x86-windows.zip"].includes(name))
+    throw new Error(`LSP server zls does not support ${platform}-${arch}`)
+  const response = await fetch("https://api.github.com/repos/zigtools/zls/releases/latest")
+  if (!response.ok) throw new Error(`LSP server zls release lookup failed: HTTP ${response.status}`)
+  const release: unknown = await response.json()
+  const assets = typeof release === "object" && release !== null && "assets" in release && Array.isArray(release.assets)
+    ? release.assets as unknown[] : []
+  const asset = assets.find((item) => typeof item === "object" && item !== null && "name" in item && item.name === name)
+  const url = typeof asset === "object" && asset !== null && "browser_download_url" in asset && typeof asset.browser_download_url === "string"
+    ? asset.browser_download_url : undefined
+  if (!url) throw new Error(`LSP server zls release has no ${name} asset`)
+  const download = await fetch(url)
+  if (!download.ok) throw new Error(`LSP server zls download failed: HTTP ${download.status}`)
+  await mkdir(Global.Path.bin, { recursive: true })
+  const archive = path.join(Global.Path.bin, name)
+  await Bun.write(archive, await download.bytes())
+  const command = extension === "zip"
+    ? ["powershell.exe", "-NoProfile", "-NonInteractive", "-Command", `$global:ProgressPreference = 'SilentlyContinue'; Expand-Archive -LiteralPath '${archive.replaceAll("'", "''")}' -DestinationPath '${Global.Path.bin.replaceAll("'", "''")}' -Force`]
+    : ["tar", "-xf", name]
+  const extraction = Bun.spawn(command, { cwd: Global.Path.bin, stdout: "ignore", stderr: "pipe" })
+  const [code, error] = await Promise.all([extraction.exited, new Response(extraction.stderr).text()])
+  await rm(archive, { force: true })
+  const executable = path.join(Global.Path.bin, `zls${globalThis.process.platform === "win32" ? ".exe" : ""}`)
+  if (code !== 0 || !existsSync(executable)) throw new Error(`LSP server zls extraction failed: ${error.trim()}`)
+  if (globalThis.process.platform !== "win32") await chmod(executable, 0o755)
+  return { executable, args: [] }
 }
 
 async function javaLaunch(downloads: boolean) {
