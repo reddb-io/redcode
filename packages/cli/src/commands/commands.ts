@@ -138,6 +138,24 @@ const Root = Spec.make(typeof OPENCODE_CLI_NAME === "string" ? OPENCODE_CLI_NAME
           ],
         }),
         Spec.make("formatter", { description: "List formatter status" }),
+        Spec.make("file", {
+          description: "File system debugging utilities",
+          commands: [
+            Spec.make("read", {
+              description: "Read file contents as JSON",
+              params: { path: Argument.string("path") },
+            }),
+            Spec.make("list", {
+              description: "List files in a directory",
+              params: { path: Argument.string("path") },
+            }),
+            Spec.make("search", {
+              description: "Search files by query",
+              params: { query: Argument.string("query") },
+            }),
+          ],
+        }),
+        Spec.make("skill", { description: "List all available skills" }),
         Spec.make("paths", {
           description: "Show global paths (data, config, cache, state)",
           params: {

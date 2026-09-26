@@ -43,6 +43,12 @@ const Handlers = Runtime.handlers(Commands, {
       "document-symbols": () => import("./commands/handlers/debug/lsp-document-symbols"),
     },
     formatter: () => import("./commands/handlers/debug/formatter"),
+    file: {
+      read: () => import("./commands/handlers/debug/file-read"),
+      list: () => import("./commands/handlers/debug/file-list"),
+      search: () => import("./commands/handlers/debug/file-search"),
+    },
+    skill: () => import("./commands/handlers/debug/skill"),
     paths: () => import("./commands/handlers/debug/paths"),
   },
   mcp: {
