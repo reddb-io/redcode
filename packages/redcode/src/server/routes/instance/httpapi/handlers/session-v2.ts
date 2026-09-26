@@ -51,15 +51,17 @@ export const sessionV2Handlers = HttpApiBuilder.group(RootHttpApi, "server.sessi
       path: { id: SessionV2.ID }
       urlParams: { after?: number }
     }) {
-      return yield* sessions
-        .events({ sessionID: ctx.path.id, ...(ctx.urlParams.after !== undefined ? { after: ctx.urlParams.after } : {}) })
-        .pipe(
-          Effect.mapError(
-            (error) => new SessionNotFoundError({ sessionID: error.sessionID, message: `Session not found: ${error.sessionID}` }),
-          ),
-          Effect.flatMap(Stream.runCollect),
-          Effect.map((chunk) => Array.from(chunk)),
-        )
+      const stream = sessions.events({
+        sessionID: ctx.path.id,
+        ...(ctx.urlParams.after !== undefined ? { after: ctx.urlParams.after } : {}),
+      })
+      const chunk = yield* stream.pipe(
+        Stream.mapError(
+          (error) => new SessionNotFoundError({ sessionID: error.sessionID, message: `Session not found: ${error.sessionID}` }),
+        ),
+        Stream.runCollect,
+      )
+      return Array.from(chunk)
     })
 
     const interrupt = Effect.fn("SessionV2HttpApi.interrupt")(function* (ctx: { path: { id: SessionV2.ID } }) {

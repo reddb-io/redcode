@@ -2,6 +2,8 @@ export * as SessionLegacyMessage from "./legacy-message"
 
 import { DateTime } from "effect"
 import { ToolContent } from "@reddb-io/redcode-schema/llm"
+import { Model } from "@reddb-io/redcode-schema/model"
+import { Provider } from "@reddb-io/redcode-schema/provider"
 import { SessionV1 } from "../v1/session"
 import { SessionMessage } from "./message"
 import { SessionSchema } from "./schema"
@@ -70,7 +72,7 @@ function toolState(part: SessionMessage.AssistantTool, ctx: Context, messageID: 
         status: "running",
         input: safeRecord(part.state.input),
         title: part.name,
-        metadata: { structured: part.state.structured, content: [...(part.state.content ?? [])] },
+        metadata: { structured: { ...part.state.structured }, content: [...(part.state.content ?? [])] },
         time: { start: ran },
       }
     case "completed":
@@ -80,7 +82,7 @@ function toolState(part: SessionMessage.AssistantTool, ctx: Context, messageID: 
         output: outputOf(part.state.content),
         title: part.name,
         metadata: {
-          structured: part.state.structured,
+          structured: { ...part.state.structured },
           outputPaths: [...(part.state.outputPaths ?? [])],
           content: [...(part.state.content ?? [])],
         },
@@ -104,7 +106,7 @@ function toolState(part: SessionMessage.AssistantTool, ctx: Context, messageID: 
         status: "error",
         input: safeRecord(part.state.input),
         error: part.state.error.message,
-        metadata: { structured: part.state.structured, content: [...(part.state.content ?? [])] },
+        metadata: { structured: { ...part.state.structured }, content: [...(part.state.content ?? [])] },
         time: { start: created, end: completed ?? created },
       }
   }
@@ -174,8 +176,8 @@ function assistantMessage(message: SessionMessage.Assistant, ctx: Context, paren
         ...(message.time.completed ? { completed: epoch(message.time.completed) } : {}),
       },
       parentID: SessionV1.MessageID.make(parentID ?? messageID),
-      modelID: message.model.id,
-      providerID: message.model.providerID,
+      modelID: Model.ID.make(message.model.id),
+      providerID: Provider.ID.make(message.model.providerID),
       mode: message.agent,
       agent: message.agent,
       path: ctx.path,
@@ -205,7 +207,7 @@ function userInfo(message: SessionMessage.User | SessionMessage.Synthetic | Sess
     role: "user" as const,
     time: { created: epoch(message.time.created) },
     agent: ctx.agent,
-    model: { providerID: ctx.model.providerID, modelID: ctx.model.modelID },
+    model: { providerID: Provider.ID.make(ctx.model.providerID), modelID: Model.ID.make(ctx.model.modelID) },
   }
 }
 
@@ -221,7 +223,7 @@ function userMessage(message: SessionMessage.User, ctx: Context): LegacyMessage 
       time: { start: created },
     },
   ]
-  message.files.forEach((file, index) =>
+  ;(message.files ?? []).forEach((file, index) =>
     parts.push({
       id: partID(`${message.id}:file:${index}`),
       type: "file",

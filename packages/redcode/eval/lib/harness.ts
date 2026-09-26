@@ -458,7 +458,7 @@ export function run<A>(input: {
       const status = yield* SessionStatus.Service
       const todos = yield* Todo.Service
       const instance = yield* InstanceState.context
-      const context = yield* Effect.context<ProviderSvc.Service>()
+      const context = yield* Effect.context<ProviderSvc.Service | Intelligence.Service>()
 
       const chat = yield* sessions.create({ title: `eval: ${name}`, agent })
       yield* sessions.setPermission({
