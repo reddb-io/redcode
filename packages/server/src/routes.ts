@@ -111,7 +111,7 @@ export function createRoutes(
     options,
     serviceURLs,
     overrides,
-    features.v1Migration !== false,
+    features.v1Migration !== false && !options.database?.url,
   )
 }
 
@@ -124,7 +124,7 @@ export function createEmbeddedRoutes(
   overrides: LayerNode.Replacements = [],
   instances?: InstanceNode,
 ) {
-  return makeRoutes(ServerAuth.Config.configLayer({ password: Option.none() }), options, () => [], overrides, true, instances)
+  return makeRoutes(ServerAuth.Config.configLayer({ password: Option.none() }), options, () => [], overrides, !options.database?.url, instances)
 }
 
 function makeRoutes<AuthError, AuthServices>(

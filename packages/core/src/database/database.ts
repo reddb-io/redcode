@@ -14,6 +14,7 @@ type DatabaseShape = Effect.Success<typeof makeDatabase>
 
 export interface Interface {
   db: DatabaseShape
+  remote?: boolean
 }
 
 export const Options = Schema.Struct({
@@ -48,7 +49,7 @@ const databaseLayer = (lock: Effect.Effect<Semaphore.Semaphore>, remote = false)
       const semaphore = yield* lock
       yield* semaphore.withPermit(remote ? DatabaseMigration.applyRemote(db) : DatabaseMigration.apply(db))
 
-      return { db }
+      return { db, remote }
     }).pipe(Effect.orDie),
   )
 

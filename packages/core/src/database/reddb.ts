@@ -142,20 +142,21 @@ function bindParameters(query: string, count: number) {
 }
 
 export function normalizeSQL(query: string) {
-  const identifiers = query
+  const text = query
     .replace(/`((?:``|[^`])*)`/g, (_, identifier: string) => `"${identifier.replaceAll("``", "`").replaceAll('"', '""')}"`)
+    .replace(/;\s*$/, "")
+  if (/^\s*begin\s+deferred\s*$/i.test(text)) return "BEGIN"
+  if (/^\s*INSERT\s+OR\s+IGNORE\s+INTO\b/i.test(text))
+    return `${text.replace(/^(\s*)INSERT\s+OR\s+IGNORE\s+INTO\b/i, "$1INSERT INTO")} ON CONFLICT DO NOTHING`
+  if (/^\s*CREATE\s+(?:UNIQUE\s+)?INDEX\b/i.test(text))
+    return text.replace(/^(\s*CREATE\s+(?:UNIQUE\s+)?INDEX)\s+(?!IF\s+NOT\s+EXISTS\b)/i, "$1 IF NOT EXISTS ")
+  if (!/^\s*CREATE\s+TABLE\b/i.test(text)) return text
+  const ddl = text
     .replace(/\bDEFAULT\s+(?!\s*=)('(?:''|[^'])*')/gi, "DEFAULT = $1")
     .replace(/\bDEFAULT\s+(?!\s*=)(-?\d+(?:\.\d+)?|true|false)\b/gi, "DEFAULT = $1")
     .replace(/\s+REFERENCES\s+(?:"(?:[^"]|"")*"|[A-Za-z_][\w$]*)(?:\s*\([^)]*\))?(?:\s+ON\s+(?:DELETE|UPDATE)\s+(?:NO\s+ACTION|RESTRICT|CASCADE|SET\s+(?:NULL|DEFAULT)))*/gi, "")
     .replace(/(\bCONSTRAINT\s+"[^"]+"\s+)PRIMARY\s+KEY(?=\s*\()/gi, "$1UNIQUE")
     .replace(/^(\s*CREATE\s+TABLE)\s+(?!IF\s+NOT\s+EXISTS\b)/i, "$1 IF NOT EXISTS ")
-    .replace(/^(\s*CREATE\s+(?:UNIQUE\s+)?INDEX)\s+(?!IF\s+NOT\s+EXISTS\b)/i, "$1 IF NOT EXISTS ")
-    .replace(/;\s*$/, "")
-  if (/^\s*begin\s+deferred\s*$/i.test(identifiers)) return "BEGIN"
-  if (!/^\s*create\s+table\b/i.test(identifiers) || !/\bforeign\s+key\b/i.test(identifiers)) return identifiers
-  return identifiers
-    .split("\n")
-    .filter((line) => !/\bforeign\s+key\b/i.test(line))
-    .join("\n")
-    .replace(/,\s*\)/g, "\n)")
+  if (!/\bFOREIGN\s+KEY\b/i.test(ddl)) return ddl
+  return ddl.split("\n").filter((line) => !/\bFOREIGN\s+KEY\b/i.test(line)).join("\n").replace(/,\s*\)/g, "\n)")
 }

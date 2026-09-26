@@ -42,6 +42,21 @@ You do not need to rewrite everything before starting V2. A practical migration 
 Keep a copy of your V1 setup while validating the migration. V1 and V2 use the same configuration locations, so do not
 point V1 at files after converting them to native V2-only shapes.
 
+## Redcode remote database
+
+If Redcode V1 used RedDB, export its tables to a new SQLite file before selecting a fresh RedDB database for V2. Keep the
+V1 database available until you have verified the imported sessions and credentials.
+
+```sh
+REDCODE_DATABASE_URL='reds://v1-host/database' redcode db export-redcode --to ./redcode-v1.sqlite
+REDCODE_DATABASE_URL='reds://v2-host/database' redcode session import-redcode ./redcode-v1.sqlite
+REDCODE_DATABASE_URL='reds://v2-host/database' redcode db status
+```
+
+Set `REDCODE_DATABASE_TOKEN` for each command when the selected RedDB requires a token. The V2 target must be a separate
+database: starting V2 against the V1 database is blocked so its old session history cannot become hidden by the V2 schema.
+The exported SQLite file contains account credentials; store it with the same care as the original database.
+
 ## Configuration
 
 This section covers both JSON/JSONC configuration and file-based definitions under `.opencode/`.
