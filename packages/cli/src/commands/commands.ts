@@ -412,6 +412,10 @@ const Root = Spec.make(typeof OPENCODE_CLI_NAME === "string" ? OPENCODE_CLI_NAME
       description: "Check out a GitHub pull request and open OpenCode",
       params: { number: Argument.integer("number") },
     }),
+    Spec.make("generate", {
+      description: "Print the server OpenAPI document",
+      params: ServerParams,
+    }),
     Spec.make("agent", {
       description: "Manage agents",
       commands: [

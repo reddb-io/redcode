@@ -81,6 +81,7 @@ const Handlers = Runtime.handlers(Commands, {
     refresh: () => import("./commands/handlers/worktrees/refresh"),
   },
   pr: () => import("./commands/handlers/pr"),
+  generate: () => import("./commands/handlers/generate"),
   agent: {
     list: () => import("./commands/handlers/agent/list"),
     create: () => import("./commands/handlers/agent/create"),
