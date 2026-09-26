@@ -18,6 +18,7 @@ import { Shell } from "../../shell.js"
 import { ShellParse } from "../../shell/parse.js"
 import { ShellSelect } from "../../shell/select.js"
 import { ShellResult } from "../../shell/result.js"
+import { ShellPolling } from "../shell-polling.js"
 
 export const name = "shell"
 export const DEFAULT_TIMEOUT_MS = 2 * 60 * 1_000
@@ -193,8 +194,15 @@ export const Plugin = {
           description: description(),
           input: Input,
           output: Output,
-          execute: (input, context) =>
-            Effect.gen(function* () {
+          execute: (input, context) => {
+            const polling = input.background === true ? undefined : ShellPolling.detect(input.command)
+            if (polling)
+              return Effect.fail(new ToolFailure({
+                message: polling.probe
+                  ? ShellPolling.probeRefusal(polling, input.workdir)
+                  : ShellPolling.boundedRefusal(polling, input.workdir),
+              }))
+            return Effect.gen(function* () {
               const timeout = input.background === true ? (input.timeout ?? 0) : (input.timeout ?? DEFAULT_TIMEOUT_MS)
               let finalTimeout = timeout
               const info = yield* shell.create(
@@ -268,7 +276,8 @@ export const Plugin = {
               Effect.mapError(
                 (error) => new ToolFailure({ message: `Unable to execute command: ${input.command}`, error }),
               ),
-            ),
+            )
+          },
         }),
       )
       .pipe(Effect.orDie)
