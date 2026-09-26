@@ -10,6 +10,8 @@ import { SessionCompaction } from "@/session/compaction"
 import { MessageV2 } from "@/session/message-v2"
 import { SessionPrompt } from "@/session/prompt"
 import { SessionV2 } from "@reddb-io/redcode-core/session"
+import { SessionMessage } from "@reddb-io/redcode-core/session/message"
+import { SessionInput } from "@reddb-io/redcode-schema/session-input"
 import { SessionGoal } from "@/session/goal"
 import { GoalRuntime } from "@/session/goal-runtime"
 import { GoalCommand } from "@reddb-io/redcode-core/session/goal-command"
@@ -100,7 +102,7 @@ const admitV2 = Effect.fn("SessionHttpApi.admitV2")(function* (
           : {}),
         ...(agents.length ? { agents: agents.map((agent) => ({ name: agent.name })) } : {}),
       },
-      ...(input.messageID ? { id: input.messageID } : {}),
+      ...(input.messageID ? { id: SessionMessage.ID.make(input.messageID) } : {}),
       ...(input.delivery ? { delivery: input.delivery } : {}),
       // `noReply` admits without draining: the V1 loop's contract, now the V2 admit-only mode.
       ...(input.noReply ? { resume: false } : {}),

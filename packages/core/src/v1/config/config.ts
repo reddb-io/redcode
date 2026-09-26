@@ -208,6 +208,9 @@ export const Info = Schema.Struct({
   experimental: Schema.optional(
     Schema.Struct({
       disable_paste_summary: Schema.optional(Schema.Boolean),
+      session_engine: Schema.optional(Schema.Literals(["v1", "v2"])).annotate({
+        description: "Which session runtime admits and drives prompts: v1 is the legacy loop, v2 is the durable V2 runner. Default: v1",
+      }),
       batch_tool: Schema.optional(Schema.Boolean).annotate({ description: "Enable the batch tool" }),
       openTelemetry: Schema.optional(Schema.Boolean).annotate({
         description: "Enable OpenTelemetry spans for AI SDK calls (using the 'experimental_telemetry' flag)",
