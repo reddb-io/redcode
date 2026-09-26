@@ -586,7 +586,8 @@ describe("regular expressions off the main thread", () => {
     clearInterval(timer)
     expect(outcome).toEqual({ timedOut: true })
     expect(elapsed).toBeLessThan(5_000)
-    expect(ticks).toBeGreaterThan(5)
+    // Windows timer granularity can clamp a 5ms interval hard; two ticks still prove the loop ran.
+    expect(ticks).toBeGreaterThanOrEqual(2)
     expect(await SafeRegex.exec("b+", "aabbb")).toEqual({ match: "bbb" })
     expect(await SafeRegex.exec("x", "abc")).toEqual({ match: undefined })
   })
