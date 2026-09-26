@@ -38,6 +38,7 @@ opencode [project]
 | <nobr><code>{"--model"}</code></nobr>       | `-m`  | Model to use in the form of provider/model                              |
 | <nobr><code>{"--agent"}</code></nobr>       |       | Agent to use                                                            |
 | <nobr><code>{"--auto"}</code></nobr>        |       | Auto-approve permissions that are not explicitly denied                 |
+| <nobr><code>{"--tmp"}</code></nobr>         |       | Put session worktrees in the temporary directory                        |
 | <nobr><code>{"--port"}</code></nobr>        |       | Port to listen on                                                       |
 | <nobr><code>{"--hostname"}</code></nobr>    |       | Hostname to listen on                                                   |
 | <nobr><code>{"--mdns"}</code></nobr>        |       | Enable mDNS discovery                                                   |
@@ -392,6 +393,7 @@ opencode run --attach http://localhost:4096 "Explain async/await in JavaScript"
 | <nobr><code>{"--variant"}</code></nobr>  |       | Model variant (provider-specific reasoning effort)                         |
 | <nobr><code>{"--thinking"}</code></nobr> |       | Show thinking blocks                                                       |
 | <nobr><code>{"--auto"}</code></nobr>     |       | Auto-approve permissions that are not explicitly denied                    |
+| <nobr><code>{"--tmp"}</code></nobr>      |       | Put session worktrees in the temporary directory                           |
 
 ---
 
@@ -414,6 +416,7 @@ This starts an HTTP server that provides API access to opencode functionality wi
 | <nobr><code>{"--mdns"}</code></nobr>        | Enable mDNS discovery                      |
 | <nobr><code>{"--mdns-domain"}</code></nobr> | Custom mDNS domain name                    |
 | <nobr><code>{"--cors"}</code></nobr>        | Additional browser origin(s) to allow CORS |
+| <nobr><code>{"--tmp"}</code></nobr>         | Put session worktrees in the temporary dir |
 
 ---
 
@@ -707,6 +710,8 @@ OpenCode can be configured using environment variables.
 | Variable                              | Type    | Description                                           |
 | ------------------------------------- | ------- | ----------------------------------------------------- |
 | `OPENCODE_AUTO_SHARE`                 | boolean | Automatically share sessions                          |
+| `REDCODE_AUTO_WORKTREE`               | boolean | Set to `0` to keep sessions out of worktrees          |
+| `REDCODE_WORKTREE_LOCATION`           | string  | `repo` or `tmp`: where session worktrees go (`--tmp`) |
 | `OPENCODE_GIT_BASH_PATH`              | string  | Path to Git Bash executable on Windows                |
 | `OPENCODE_CONFIG`                     | string  | Path to config file                                   |
 | `OPENCODE_TUI_CONFIG`                 | string  | Path to TUI config file                               |

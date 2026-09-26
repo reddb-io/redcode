@@ -1442,6 +1442,8 @@ const layer = Layer.effect(
       // Compaction requests have no tools to resume after, so a reconnect continuation cannot
       // produce a valid checkpoint. Keep the original history and let a later compaction retry.
       if (result === "reconnect") return "stop"
+      // Compaction never listens for a model switch; a switch cannot end its retry wait.
+      if (result === "switch") return "stop"
 
       if (result === "compact") {
         processor.message.error = new SessionV1.ContextOverflowError({

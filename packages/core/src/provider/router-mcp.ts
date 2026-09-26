@@ -18,6 +18,11 @@ import { ProviderRouter } from "./router"
 export const SCHEMA_VERSION = 2
 /** The schema that added `get_quotas`. */
 export const QUOTAS_VERSION = 3
+/**
+ * The schema whose `usable` is true only while an account is free for that exact model, and whose
+ * `status.state` names quota exhaustion (`quota_exhausted`, with `until`).
+ */
+export const USABLE_VERSION = 4
 /** Request and response header carrying the result schema version. */
 export const VERSION_HEADER = "x-redrouter-mcp-version"
 /** The initialize `_meta` key carrying the result schema version. */
@@ -158,6 +163,19 @@ export const version = (input: Input) =>
     })
     return undefined
   })
+
+/**
+ * Whether the router can serve a model, combo or flat model now. From `USABLE_VERSION` on, `usable`
+ * already counts only free accounts; an older router may call a model usable while it is rate
+ * limited, failing, disabled or out of quota, so its state is checked too.
+ */
+export function usable(summary: Summary, version: number) {
+  if (summary.usable !== true) return false
+  return !(version >= USABLE_VERSION ? UNSERVABLE : UNSERVABLE_BEFORE_USABLE).has(summary.status.state)
+}
+
+const UNSERVABLE = new Set(["quota_exhausted", "unavailable", "disabled"])
+const UNSERVABLE_BEFORE_USABLE = new Set([...UNSERVABLE, "rate_limited", "error"])
 
 /** Whether the router at this address serves MCP results of at least `SCHEMA_VERSION`. Never fails. */
 export const available = (input: Input) => version(input).pipe(Effect.map((value) => value !== undefined))

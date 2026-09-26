@@ -1,6 +1,6 @@
 import { expect, test } from "bun:test"
 import type { Intelligence } from "@reddb-io/redcode-schema/intelligence"
-import { evaluationWarning, indicatorWarning } from "../../src/component/dialog-intelligence"
+import { evaluationWarning, indicatorWarning, s1Label, transportLabel } from "../../src/component/dialog-intelligence"
 
 const review = (decision: Intelligence.Evaluation["decision"], answers: Record<string, number>) =>
   ({
@@ -39,10 +39,24 @@ test("the S1 warning lights when S1 is not ready, unavailable, failing or left a
   expect(evaluationWarning(unavailable)).toContain("unavailable")
   const unresolved = review("inconclusive", { unsupported: 0.8, writing: 0.05 })
   expect(warns(unresolved)).toBe(true)
-  expect(evaluationWarning(unresolved)).toContain("unsupported")
+  expect(evaluationWarning(unresolved)).toContain("claimed work it couldn't prove")
   const revision = review("needs_revision", { omission: 0.95 })
   expect(warns(revision)).toBe(true)
   expect(evaluationWarning(revision)).toContain("needs revision")
+  expect(evaluationWarning(revision)).toContain("missed part of your request")
   // Single reasoning has no S1 to warn about once it is set up.
   expect(warns(unavailable, { single: true })).toBe(false)
+})
+
+test("the S1 footer name is the bare model, or a setup hint when S1 is not ready", () => {
+  expect(s1Label({ ready: true, model: "opencode-zen/jev-1.13" })).toBe("jev-1.13")
+  expect(s1Label({ ready: true, model: undefined })).toBe("S1")
+  expect(s1Label({ ready: false, model: "opencode-zen/jev-1.13" })).toBe("S1 setup")
+  expect(s1Label({ ready: false, model: undefined })).toBe("S1 setup")
+})
+
+test("the S1 footer route names the evaluator's transport in words", () => {
+  expect(transportLabel("red-router")).toBe("RedRouter")
+  expect(transportLabel("openrouter")).toBe("OpenRouter")
+  expect(transportLabel(undefined)).toBeUndefined()
 })

@@ -195,6 +195,12 @@ export function hopName(slug: string) {
 export const HOP_SEPARATOR = " » "
 
 /**
+ * The no-space form of `HOP_SEPARATOR`, for cramped spots (the prompt footer's dim route hint) that
+ * cannot afford the padded separator but still want the route read as a single unit.
+ */
+export const HOP_SEPARATOR_COMPACT = "»"
+
+/**
  * A routed model id split into the routers it passes through (`hops`, outermost first), the upstream
  * provider that serves it and the id that provider knows it by. Any depth parses to the same shape:
  * `opencode-zen/jev-1.13`, `red-router/opencode-zen/jev-1.13` and

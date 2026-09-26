@@ -764,6 +764,10 @@ export type ModelSuggestion = {
   }>
   whyText: string
   delta?: ModelSuggestionDelta
+  /**
+   * When the current model's exhausted quota resets, in epoch milliseconds.
+   */
+  until?: number
 }
 
 export type QuestionOption = {
@@ -2162,6 +2166,11 @@ export type Config = {
     ignore?: Array<string>
   }
   snapshot?: boolean
+  worktree?: {
+    auto?: boolean
+    location?: "repo" | "tmp"
+    tmpdir?: string
+  }
   plugin?: Array<
     | string
     | [
@@ -12434,6 +12443,11 @@ export type SessionUpdateData = {
     time?: {
       archived?: number
     }
+    model?: {
+      providerID: string
+      modelID: string
+      variant?: string
+    }
   }
   path: {
     sessionID: string
@@ -15385,7 +15399,7 @@ export type ModelSuggestionResolveError = ModelSuggestionResolveErrors[keyof Mod
 
 export type ModelSuggestionResolveResponses = {
   /**
-   * Answered
+   * Answered; false when the suggested model is no longer available
    */
   200: boolean
 }

@@ -998,7 +998,9 @@ describe("SessionRunnerLLM", () => {
       const repair = context.find(
         (message) => message.type === "synthetic" && message.text.startsWith(Intelligence.RESPONSE_REPAIR),
       )
-      expect(repair?.metadata).toEqual({ responseRepair: { issues: ["omission"] } })
+      expect(repair?.metadata).toEqual({
+        responseRepair: { issues: ["omission"], confidence: { omission: 0.99 } },
+      })
       expect(
         intelligenceInputs.filter((input) => input.operation === "response_quality").map((input) => input.attempt),
       ).toEqual([0, 1])

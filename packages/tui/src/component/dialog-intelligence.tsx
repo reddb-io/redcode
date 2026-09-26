@@ -3,14 +3,38 @@ import { createStore } from "solid-js/store"
 import { useTerminalDimensions } from "@opentui/solid"
 import { IntelligenceClient } from "@reddb-io/redcode-client"
 import { Intelligence } from "@reddb-io/redcode-schema/intelligence"
+import { responseQuestionReason } from "@reddb-io/redcode-core/session/response-revision"
 import { useLocal } from "../context/local"
 import { useSDK } from "../context/sdk"
 import { useSync } from "../context/sync"
 import { useTheme } from "../context/theme"
 import { useDialog } from "../ui/dialog"
+import { Locale } from "../util/locale"
 import { DialogSetup } from "./dialog-setup"
 
-export function IntelligenceIndicator(props: { sessionID?: string }) {
+/** A saved evaluator's transport, in words, for the footer's dim route hint: "red-router" → "RedRouter". */
+const TRANSPORT_LABELS: Record<Intelligence.Evaluator["transport"], string> = {
+  "opencode-zen": "OpenCode Zen",
+  openrouter: "OpenRouter",
+  typesafe: "TypeSafe",
+  "red-router": "RedRouter",
+  "cloudflare-ai-gateway": "Cloudflare AI Gateway",
+  vercel: "Vercel",
+  vivgrid: "Vivgrid",
+  "nano-gpt": "NanoGPT",
+}
+
+export function transportLabel(transport: Intelligence.Evaluator["transport"] | undefined) {
+  return transport ? (TRANSPORT_LABELS[transport] ?? transport) : undefined
+}
+
+/** The S1 name for the compact footer: the evaluator's model, or a setup hint when S1 is not ready. */
+export function s1Label(input: { ready: boolean; model?: string }) {
+  if (!input.ready) return "S1 setup"
+  return input.model ? (input.model.split("/").at(-1) ?? input.model) : "S1"
+}
+
+export function IntelligenceIndicator(props: { sessionID?: string; maxChars?: number }) {
   const local = useLocal()
   const sdk = useSDK()
   const sync = useSync()
@@ -49,21 +73,20 @@ export function IntelligenceIndicator(props: { sessionID?: string }) {
       failed: state.failed,
       evaluation: state.evaluation,
     })
-  const label = () => {
-    if (single()) return "Single"
-    if (!local.intelligence.ready()) return "S1 Setup"
-    // The S2 model is already shown before this indicator; name the S1 evaluator here.
-    const model = local.intelligence.state.status?.settings.evaluator?.model
-    return model ? `S1 ${model.split("/").at(-1)}` : "S1 · S2"
-  }
+  const label = () =>
+    s1Label({ ready: local.intelligence.ready(), model: local.intelligence.state.status?.settings.evaluator?.model })
+  // Single reasoning shows only the S2 model; there is no S1 name or divider to add after it.
   return (
-    <text
-      fg={warning() ? theme.warning : theme.textMuted}
-      onMouseUp={() => dialog.replace(() => <DialogIntelligence sessionID={props.sessionID} />)}
-    >
-      · {label()}
-      {warning() ? " !" : ""}
-    </text>
+    <Show when={!single()}>
+      <text fg={theme.border}> ⁄ </text>
+      <text
+        fg={warning() ? theme.warning : theme.textMuted}
+        onMouseUp={() => dialog.replace(() => <DialogIntelligence sessionID={props.sessionID} />)}
+      >
+        {Locale.truncate(label(), props.maxChars ?? 24)}
+        {warning() ? " !" : ""}
+      </text>
+    </Show>
   )
 }
 
@@ -89,15 +112,18 @@ export function evaluationWarning(evaluation: Intelligence.Evaluation | undefine
   const operation = evaluation.operation.replaceAll("_", " ")
   if (evaluation.decision === "unavailable")
     return `S1 was unavailable for the last ${operation} check; it is not verified.`
+  // Only a response review's issues have a plain-language reason; other checks keep their raw key.
+  const humanize = (id: string) =>
+    evaluation.operation === "response_quality" ? responseQuestionReason(id) : id.replaceAll("_", " ")
   if (evaluation.decision === "needs_revision")
-    return `The last ${operation} check needs revision: ${evaluation.issues.join(", ").replaceAll("_", " ")}.`
+    return `The last ${operation} check needs revision: ${evaluation.issues.map(humanize).join(", ")}.`
   // A response review establishes an issue at the repair threshold; one still there was not settled.
   const unresolved = evaluation.issues.filter((id) => {
     const answer = evaluation.answers[id]
     return answer?.type === "noul" && answer.noul >= Intelligence.REPAIR_CONFIDENCE
   })
   if (evaluation.operation === "response_quality" && unresolved.length)
-    return `The final answer still has ${unresolved.join(", ").replaceAll("_", " ")} after the S1 repair.`
+    return `The final answer still ${unresolved.map(humanize).join(", ")} after the S1 repair.`
   return undefined
 }
 

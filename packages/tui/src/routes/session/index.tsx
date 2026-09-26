@@ -79,7 +79,7 @@ import { DialogTimeline } from "./dialog-timeline"
 import { DialogForkFromTimeline } from "./dialog-fork-from-timeline"
 import { DialogSessionRename } from "../../component/dialog-session-rename"
 import { Sidebar, SIDEBAR_TABS, type SidebarTab } from "./sidebar"
-import { clampSidebarWidth, SIDEBAR_WIDTH_DEFAULT, SIDEBAR_WIDTH_STEP } from "./sidebar-width"
+import { clampSidebarWidth, effectiveSidebarWidth, SIDEBAR_WIDTH_DEFAULT, SIDEBAR_WIDTH_STEP } from "./sidebar-width"
 import { SubagentFooter } from "./subagent-footer.tsx"
 import { GuardTripLine, guardTripsAt, SubagentSummary } from "./subagent"
 import { responseRevisions, ResponseRevisionNote } from "./response-repair"
@@ -296,6 +296,8 @@ export function Session() {
   const [sidebar, setSidebar] = kv.signal<"auto" | "hide">("sidebar", "auto")
   const [sidebarOpen, setSidebarOpen] = createSignal(false)
   const [sidebarTab, setSidebarTab] = kv.signal<SidebarTab>("sidebar_tab", "context")
+  // A stored width equal to SIDEBAR_WIDTH_DEFAULT is indistinguishable from "never resized":
+  // effectiveSidebarWidth() treats it as unset and applies the width-aware default instead.
   const [storedSidebarWidth, setStoredSidebarWidth] = kv.signal("sidebar_width", SIDEBAR_WIDTH_DEFAULT)
   const [dragSidebarWidth, setDragSidebarWidth] = createSignal<number>()
   const [sidebarDrag, setSidebarDrag] = createSignal<{ x: number; width: number }>()
@@ -320,7 +322,7 @@ export function Session() {
   })
   const sidebarWidth = createMemo(() =>
     clampSidebarWidth({
-      width: dragSidebarWidth() ?? storedSidebarWidth(),
+      width: dragSidebarWidth() ?? effectiveSidebarWidth(storedSidebarWidth(), dimensions().width),
       available: dimensions().width,
       overlay: !wide(),
     }),
@@ -503,6 +505,24 @@ export function Session() {
   }
 
   const local = useLocal()
+
+  // A model picked while the turn waits to retry a provider takes that request now, instead of
+  // waiting for a prompt that cannot start until the retry ends. Picks from the suggestion card too.
+  createEffect(
+    on(
+      () => local.model.current(),
+      (model) => {
+        if (!model || sync.data.session_status[route.sessionID]?.type !== "retry") return
+        void sdk.client.session
+          .update({
+            sessionID: route.sessionID,
+            model: { providerID: model.providerID, modelID: model.modelID, variant: local.model.variant.current() },
+          })
+          .catch(() => undefined)
+      },
+      { defer: true },
+    ),
+  )
 
   function enterChild(sessionID: string) {
     navigate({
@@ -1884,7 +1904,11 @@ function AssistantMessage(props: {
   parts: Part[]
   last: boolean
   footer?: boolean
-  revision?: { issues: ReadonlyArray<string>; originals: ReadonlyArray<string> }
+  revision?: {
+    issues: ReadonlyArray<string>
+    originals: ReadonlyArray<string>
+    confidence: Readonly<Record<string, number>>
+  }
 }) {
   const ctx = use()
   const local = useLocal()
@@ -2027,7 +2051,7 @@ function AssistantMessage(props: {
       </Switch>
       <Show when={props.revision}>
         {(revision) => (
-          <ResponseRevisionNote issues={revision().issues}>
+          <ResponseRevisionNote issues={revision().issues} confidence={revision().confidence}>
             <For each={originals()}>
               {(message) => (
                 <AssistantMessage

@@ -1,5 +1,6 @@
 export * as AutoWorktree from "./auto-worktree"
 
+import os from "os"
 import path from "path"
 import { DateTime, Effect, Option } from "effect"
 import { RepositoryGuard } from "@reddb-io/redcode-core/repository-guard"
@@ -9,19 +10,25 @@ import { AbsolutePath, RelativePath } from "@reddb-io/redcode-core/schema"
 import type { EventV2 } from "@reddb-io/redcode-core/event"
 import { InstanceState } from "@/effect/instance-state"
 import { TuiEvent } from "@/server/tui-event"
+import type { Config } from "@/config/config"
 import { Session } from "./session"
 import type { SessionID } from "./schema"
 
 /**
  * The harness, not the model, gives a writing session its own worktree. The first source write or
  * build command a session makes in the primary checkout creates `<root>/.red/worktrees/<slug>`,
- * moves the session tree there and runs the action against the same relative path in it.
+ * moves the session tree there and runs the action against the same relative path in it; with `--tmp`
+ * or `worktree.location: "tmp"` the worktree goes under the temporary directory instead. YOLO mode
+ * only skips permission prompts, so it gets a worktree too; `worktree.auto: false` in the config or
+ * `REDCODE_AUTO_WORKTREE=0` turns this off in every mode.
  */
 export type Input = {
   readonly sessions: Session.Interface
   readonly events: EventV2.Interface
   readonly sessionID: SessionID
   readonly agent: string
+  /** Where `worktree.auto` is read from; without it only the environment opt-out applies. */
+  readonly config?: Config.Interface
 }
 
 /** Agents that never author source: plan and design keep their own placement, the rest only read. */
@@ -39,19 +46,33 @@ export const route = Effect.fn("AutoWorktree.route")(function* (input: Input, ta
 
 /** The working directory a shell command should use; read-only commands stay in the primary checkout. */
 export const workdir = Effect.fn("AutoWorktree.workdir")(function* (input: Input, cwd: string, command: string) {
-  if (RepositoryGuard.forbidden(command) || RepositoryGuard.readOnly(command)) return cwd
+  if (RepositoryGuard.readOnly(command)) return cwd
+  // Outside YOLO the guard refuses a forbidden command before it runs, so it needs no worktree. YOLO
+  // runs it, and it must then run in the session worktree rather than the primary checkout.
+  if (RepositoryGuard.forbidden(command) && !RepositoryGuard.yolo()) return cwd
   return yield* route(input, cwd)
 })
 
 /** Creates or reuses the session tree's worktree for the current instance and moves the sessions into it. */
 export const ensure = Effect.fn("AutoWorktree.ensure")(function* (input: Input) {
   if (READERS.has(input.agent)) return undefined
+  const settings = input.config ? (yield* input.config.get()).worktree : undefined
+  if (settings?.auto === false) return undefined
   const instance = yield* InstanceState.context
   const current = Option.getOrUndefined(yield* input.sessions.get(input.sessionID).pipe(Effect.option))
   const root = current ? yield* rootSession(input.sessions, current) : undefined
   const name = root ? yield* sessionName(input.sessions, root) : ""
   const claim = yield* Effect.promise(() =>
-    RepositoryGuard.claim({ directory: instance.directory, session: root?.id ?? input.sessionID, name }),
+    RepositoryGuard.claim({
+      directory: instance.directory,
+      session: root?.id ?? input.sessionID,
+      name,
+      // `--tmp` (REDCODE_WORKTREE_LOCATION) wins over the config's `worktree.location`.
+      tmp:
+        (process.env.REDCODE_WORKTREE_LOCATION || settings?.location) === "tmp"
+          ? (settings?.tmpdir ?? os.tmpdir())
+          : undefined,
+    }),
   )
   if (!claim) return undefined
   const moved = yield* Effect.forEach(
@@ -64,13 +85,22 @@ export const ensure = Effect.fn("AutoWorktree.ensure")(function* (input: Input) 
   if (claim.created || moved[0])
     yield* input.events
       .publish(TuiEvent.ToastShow, {
-        message: `Working in worktree ${RepositoryGuard.WORKTREES}/${path.basename(claim.worktree)} (branch ${claim.branch})`,
+        message: `Working in ${label(claim)} (branch ${claim.branch}). Uncommitted changes in the primary checkout stay there.`,
         variant: "info",
         duration: 6_000,
       })
       .pipe(Effect.ignore)
   return claim
 })
+
+/** `worktree .red/worktrees/<name>` inside the checkout, else the worktree's absolute path. */
+const label = (claim: RepositoryGuard.Claim) => {
+  const relative = path.relative(claim.root, claim.worktree)
+  if (relative && !relative.startsWith("..") && !path.isAbsolute(relative))
+    return `worktree ${relative.replaceAll("\\", "/")}`
+  if (claim.worktree.split(path.sep).includes(RepositoryGuard.TEMPORARY)) return `temporary worktree ${claim.worktree}`
+  return `worktree ${claim.worktree}`
+}
 
 /** Subagents share their parent's worktree, so the whole session tree is keyed on its root. */
 const rootSession = Effect.fnUntraced(function* (sessions: Session.Interface, session: Session.Info) {

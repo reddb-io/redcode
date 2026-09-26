@@ -221,22 +221,80 @@ describe("session worktree", () => {
     })
   })
 
-  test("does nothing outside Git or in YOLO mode", async () => {
+  test("does nothing outside Git or with REDCODE_AUTO_WORKTREE=0, in YOLO mode too", async () => {
     await using tmp = await tmpdir()
     const plain = path.join(tmp.path, "plain")
     await mkdir(plain)
     expect(await RepositoryGuard.claim({ directory: plain, session: "ses_a", name: "Fix it" })).toBeUndefined()
     const repo = await gitWorktree(tmp.path)
-    const previous = process.env.REDCODE_YOLO
-    process.env.REDCODE_YOLO = "1"
-    const claim = await RepositoryGuard.claim({ directory: repo.root, session: "ses_a", name: "Fix it" }).finally(
-      () => {
-        if (previous === undefined) delete process.env.REDCODE_YOLO
-        else process.env.REDCODE_YOLO = previous
-      },
+    const claim = await withEnv({ REDCODE_YOLO: "1", REDCODE_AUTO_WORKTREE: "0" }, () =>
+      RepositoryGuard.claim({ directory: repo.root, session: "ses_a", name: "Fix it" }),
     )
     expect(claim).toBeUndefined()
     expect(await Bun.file(path.join(repo.root, ".red", "worktrees", "fix", ".git")).exists()).toBe(false)
+    expect(await withEnv({ REDCODE_AUTO_WORKTREE: "0" }, async () => RepositoryGuard.auto())).toBe(false)
+  })
+
+  test("gives a YOLO session its worktree and leaves the primary checkout's changes in place", async () => {
+    await using tmp = await tmpdir()
+    const repo = await gitWorktree(tmp.path)
+    const claim = await withEnv({ REDCODE_YOLO: "1", REDCODE_AUTO_WORKTREE: undefined }, () =>
+      RepositoryGuard.claim({ directory: repo.root, session: "ses_y", name: "Fix it" }),
+    )
+    const worktree = await realpath(path.join(repo.root, ".red", "worktrees", "fix"))
+    expect(claim).toEqual({ root: await realpath(repo.root), worktree, branch: "fix", created: true })
+    expect(await Bun.file(path.join(worktree, "source.txt")).text()).toBe("committed\n")
+    expect(await Bun.file(path.join(repo.root, "source.txt")).text()).toBe("user changes\n")
+    expect(await Bun.file(path.join(repo.root, "untracked.txt")).text()).toBe("keep me\n")
+  })
+
+  test("creates a temporary worktree under the tmp base and reuses it", async () => {
+    await using tmp = await tmpdir()
+    const repo = await gitWorktree(tmp.path)
+    const system = path.join(tmp.path, "system-tmp")
+    const claim = await RepositoryGuard.claim({ directory: repo.root, session: "ses_t", name: "Fix it", tmp: system })
+    const base = RepositoryGuard.temporaryBase(await realpath(repo.root), system)
+    expect(path.basename(base)).toMatch(/^source-[0-9a-f]{8}$/)
+    const worktree = await realpath(path.join(base, "fix"))
+    expect(claim).toEqual({ root: await realpath(repo.root), worktree, branch: "fix", created: true })
+    expect(await Bun.file(path.join(worktree, "source.txt")).text()).toBe("committed\n")
+    expect(await Bun.file(path.join(repo.root, "source.txt")).text()).toBe("user changes\n")
+    expect(await Bun.file(path.join(repo.root, ".red", "worktrees", "fix", ".git")).exists()).toBe(false)
+    expect(
+      await Bun.file(path.join(repo.root, ".git", "info", "exclude"))
+        .text()
+        .catch(() => ""),
+    ).not.toContain(RepositoryGuard.WORKTREES)
+    expect(await RepositoryGuard.claim({ directory: repo.root, session: "ses_t", name: "Other", tmp: system })).toEqual(
+      { root: await realpath(repo.root), worktree, branch: "fix", created: false },
+    )
+    expect(await RepositoryGuard.claim({ directory: worktree, session: "ses_t", name: "Other" })).toMatchObject({
+      worktree,
+      created: false,
+    })
+  })
+
+  test("keeps a YOLO session in an unborn repository's primary checkout", async () => {
+    await using tmp = await tmpdir()
+    const root = path.join(tmp.path, "fresh")
+    await mkdir(root)
+    expect(Bun.spawnSync(["git", "init", "--quiet", root]).exitCode).toBe(0)
+    const claim = await withEnv({ REDCODE_YOLO: "1", REDCODE_AUTO_WORKTREE: undefined }, () =>
+      RepositoryGuard.claim({ directory: root, session: "ses_u", name: "Start it" }),
+    )
+    expect(claim).toBeUndefined()
+    expect(await readdir(root)).toEqual([".git"])
+  })
+
+  test("YOLO instructions keep work isolation unless auto-worktrees are off", async () => {
+    expect(
+      await withEnv({ REDCODE_YOLO: "1", REDCODE_AUTO_WORKTREE: undefined }, async () =>
+        RepositoryGuard.instructions(),
+      ),
+    ).toBe(RepositoryGuard.YOLO_INSTRUCTIONS)
+    expect(
+      await withEnv({ REDCODE_YOLO: "1", REDCODE_AUTO_WORKTREE: "0" }, async () => RepositoryGuard.instructions()),
+    ).toContain("automatic worktrees")
   })
 
   test.each([
@@ -251,3 +309,15 @@ describe("session worktree", () => {
     ["cat a | tee b", false],
   ])("read-only %p is %p", (command, expected) => expect(RepositoryGuard.readOnly(command)).toBe(expected))
 })
+
+/** Runs `body` with the given environment variables set (or removed when undefined), then restores them. */
+async function withEnv<T>(values: Record<string, string | undefined>, body: () => Promise<T>) {
+  const previous = Object.fromEntries(Object.keys(values).map((key) => [key, process.env[key]]))
+  const apply = (entries: Record<string, string | undefined>) =>
+    Object.entries(entries).forEach(([key, value]) => {
+      if (value === undefined) delete process.env[key]
+      else process.env[key] = value
+    })
+  apply(values)
+  return body().finally(() => apply(previous))
+}

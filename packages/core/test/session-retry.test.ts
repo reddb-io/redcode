@@ -115,4 +115,34 @@ describe("SessionRetry over LLMError (v2 runner)", () => {
       ),
     ).toBe(899_999)
   })
+
+  test("stops at once on a reset too far off to wait for, and keeps retrying a short one", () => {
+    const now = Date.parse("2026-09-25T12:00:00Z")
+    const far = failure(new RateLimitReason({ message: "usage limit reached", retryAfterMs: 15 * 60_000 }))
+    expect(SessionRetry.retryableLLM(far)).toBeUndefined()
+    expect(SessionRetry.exhaustedLLM(far, now)).toEqual({ until: now + 15 * 60_000, quota: true })
+    const short = failure(new RateLimitReason({ message: "Too many requests", retryAfterMs: 60_000 }))
+    expect(SessionRetry.exhaustedLLM(short, now)).toBeUndefined()
+    expect(SessionRetry.retryableLLM(short)).toEqual({ message: "Too many requests" })
+  })
+
+  test("reads a reset the error text names", () => {
+    const now = Date.parse("2026-09-25T12:00:00Z")
+    const error = failure(
+      new RateLimitReason({
+        message: "The usage limit has been reached (router: quota exhausted until 2026-09-26T08:00:00.000Z)",
+      }),
+    )
+    expect(SessionRetry.exhaustedLLM(error, now)).toEqual({
+      until: Date.parse("2026-09-26T08:00:00.000Z"),
+      quota: true,
+    })
+    const message = SessionRetry.exhaustedMessage(
+      "red-router · GPT 6.0 Sol",
+      { until: now + 3_600_000, quota: true },
+      now,
+    )
+    expect(message).toStartWith("red-router · GPT 6.0 Sol quota exhausted until ")
+    expect(message).toEndWith("; switch model with /model or wait")
+  })
 })

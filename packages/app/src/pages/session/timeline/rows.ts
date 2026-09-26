@@ -31,14 +31,23 @@ export type TimelineRowMap = {
   Retry: { userMessageID: string }
   DiffSummary: { userMessageID: string; diffs: SummaryDiff[] }
   Error: { userMessageID: string; text: string }
-  Revision: { userMessageID: string; messageID: string; issues: readonly string[]; originals: readonly string[] }
+  Revision: {
+    userMessageID: string
+    messageID: string
+    issues: readonly string[]
+    originals: readonly string[]
+    confidence: Readonly<Record<string, number>>
+  }
   Revising: { userMessageID: string }
 }
 
 /** How S1 response repairs fold into one turn: see `responseRevisions`. */
 export type TurnRevision = {
   superseded: ReadonlySet<string>
-  notes: ReadonlyMap<string, { issues: readonly string[]; originals: readonly string[] }>
+  notes: ReadonlyMap<
+    string,
+    { issues: readonly string[]; originals: readonly string[]; confidence: Readonly<Record<string, number>> }
+  >
   pending: boolean
 }
 
@@ -240,6 +249,7 @@ export namespace Timeline {
           messageID: message.id,
           issues: note.issues,
           originals: note.originals,
+          confidence: note.confidence,
         }),
       )
     })

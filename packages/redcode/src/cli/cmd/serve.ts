@@ -8,12 +8,18 @@ import { RpcPath } from "@reddb-io/redcode-protocol/rpc"
 
 export const ServeCommand = effectCmd({
   command: "serve",
-  builder: (yargs) => withNetworkOptions(yargs),
+  builder: (yargs) =>
+    withNetworkOptions(yargs).option("tmp", {
+      type: "boolean",
+      describe: "put automatic session worktrees in the temporary directory instead of <repo>/.red/worktrees",
+      default: false,
+    }),
   describe: "starts a headless Redcode server",
   // Server loads instances per-request via x-opencode-directory header — no
   // need for an ambient project InstanceContext at startup.
   instance: false,
   handler: Effect.fn("Cli.serve")(function* (args) {
+    if (args.tmp) process.env.REDCODE_WORKTREE_LOCATION = "tmp"
     const { Server } = yield* Effect.promise(() => import("../../server/server"))
     if (!Flag.REDCODE_SERVER_PASSWORD) {
       console.log("Warning: REDCODE_SERVER_PASSWORD is not set; server is unsecured.")

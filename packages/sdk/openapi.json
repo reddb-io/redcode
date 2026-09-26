@@ -8622,6 +8622,22 @@
                       }
                     },
                     "additionalProperties": false
+                  },
+                  "model": {
+                    "type": "object",
+                    "properties": {
+                      "providerID": {
+                        "type": "string"
+                      },
+                      "modelID": {
+                        "type": "string"
+                      },
+                      "variant": {
+                        "type": "string"
+                      }
+                    },
+                    "required": ["providerID", "modelID"],
+                    "additionalProperties": false
                   }
                 },
                 "additionalProperties": false
@@ -19445,12 +19461,12 @@
         ],
         "responses": {
           "200": {
-            "description": "Answered",
+            "description": "Answered; false when the suggested model is no longer available",
             "content": {
               "application/json": {
                 "schema": {
                   "type": "boolean",
-                  "description": "Answered"
+                  "description": "Answered; false when the suggested model is no longer available"
                 }
               }
             }
@@ -19483,7 +19499,7 @@
             }
           }
         },
-        "description": "Record the person's answer to a model suggestion. `switch` only tells other clients the card is answered: the client that switched sets the model itself. `keep` also stops suggestions for that trigger in the session.",
+        "description": "Record the person's answer to a model suggestion. `switch` first asks the router whether the suggested model is still usable: `false` means it is not, and the client must not switch; otherwise the client sets the model itself. Either answer tells other clients the card is answered. `keep` also stops suggestions for that trigger in the session.",
         "summary": "Answer a model suggestion",
         "requestBody": {
           "content": {
@@ -31953,6 +31969,10 @@
           },
           "delta": {
             "$ref": "#/components/schemas/ModelSuggestionDelta"
+          },
+          "until": {
+            "type": "number",
+            "description": "When the current model's exhausted quota resets, in epoch milliseconds."
           }
         },
         "required": ["trigger", "current", "model", "name", "kind", "why", "whyText"],
@@ -36431,6 +36451,22 @@
           },
           "snapshot": {
             "type": "boolean"
+          },
+          "worktree": {
+            "type": "object",
+            "properties": {
+              "auto": {
+                "type": "boolean"
+              },
+              "location": {
+                "type": "string",
+                "enum": ["repo", "tmp"]
+              },
+              "tmpdir": {
+                "type": "string"
+              }
+            },
+            "additionalProperties": false
           },
           "plugin": {
             "type": "array",

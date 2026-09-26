@@ -4340,6 +4340,11 @@ export class Session2 extends HeyApiClient {
       time?: {
         archived?: number
       }
+      model?: {
+        providerID: string
+        modelID: string
+        variant?: string
+      }
     },
     options?: Options<never, ThrowOnError>,
   ) {
@@ -4355,6 +4360,7 @@ export class Session2 extends HeyApiClient {
             { in: "body", key: "metadata" },
             { in: "body", key: "permission" },
             { in: "body", key: "time" },
+            { in: "body", key: "model" },
           ],
         },
       ],
@@ -6516,7 +6522,7 @@ export class ModelSuggestion extends HeyApiClient {
   /**
    * Answer a model suggestion
    *
-   * Record the person's answer to a model suggestion. `switch` only tells other clients the card is answered: the client that switched sets the model itself. `keep` also stops suggestions for that trigger in the session.
+   * Record the person's answer to a model suggestion. `switch` first asks the router whether the suggested model is still usable: `false` means it is not, and the client must not switch; otherwise the client sets the model itself. Either answer tells other clients the card is answered. `keep` also stops suggestions for that trigger in the session.
    */
   public resolve<ThrowOnError extends boolean = false>(
     parameters: {

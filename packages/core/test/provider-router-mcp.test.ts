@@ -254,6 +254,47 @@ describe("RouterMCP", () => {
   })
 })
 
+describe("RouterMCP.usable", () => {
+  const status = (state: string, usable = true) => ({ ...summary, status: { state }, usable })
+
+  test("schema 4 trusts usable, which counts only free accounts, and never an exhausted quota", () => {
+    expect(RouterMCP.usable(status("ok"), 4)).toBe(true)
+    // One account is still free for this very model.
+    expect(RouterMCP.usable(status("rate_limited"), 4)).toBe(true)
+    expect(RouterMCP.usable(status("ok", false), 4)).toBe(false)
+    for (const state of ["quota_exhausted", "unavailable", "disabled"])
+      expect(RouterMCP.usable(status(state), 4)).toBe(false)
+  })
+
+  test("an older schema also drops rate limited, failing and disabled models it still calls usable", () => {
+    expect(RouterMCP.usable(status("ok"), 2)).toBe(true)
+    expect(RouterMCP.usable(status("unknown"), 3)).toBe(true)
+    for (const state of ["rate_limited", "error", "disabled", "quota_exhausted"])
+      expect(RouterMCP.usable(status(state), 3)).toBe(false)
+    expect(RouterMCP.usable(status("ok", false), 2)).toBe(false)
+  })
+
+  test("reads a schema 4 status with its reset and accounts", async () => {
+    const router = serve({
+      version: 4,
+      tools: {
+        get_model: {
+          model: {
+            ...summary,
+            status: { state: "quota_exhausted", until: "2026-09-25T18:00:00Z", accounts: { available: 0, total: 2 } },
+            usable: false,
+          },
+        },
+      },
+    })
+    const input = { baseURL: router.baseURL, apiKey: "sk" }
+    expect(await Effect.runPromise(RouterMCP.version(input))).toBe(4)
+    const model = await Effect.runPromise(RouterMCP.model(input, summary.id))
+    expect(model?.status).toMatchObject({ state: "quota_exhausted", until: "2026-09-25T18:00:00Z" })
+    expect(model && RouterMCP.usable(model, 4)).toBe(false)
+  })
+})
+
 describe("RouterMCP.key", () => {
   function keyServer(respond: (request: Request, origin: string) => Response) {
     const seen: Array<string | null> = []

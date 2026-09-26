@@ -43,6 +43,8 @@ function recommendation(
     lost?: string[]
     pct?: number | null
     offers?: RouterMCP.Offer[]
+    state?: string
+    provider?: string
   } = {},
 ): RouterMCP.Recommendation {
   return {
@@ -51,8 +53,9 @@ function recommendation(
     kind: input.kind ?? "model",
     context_length: 200_000,
     capabilities: input.capabilities ?? ["vision", "tools"],
-    status: { state: "ok" },
+    status: { state: input.state ?? "ok" },
     usable: input.usable ?? true,
+    ...(input.provider ? { provider: { id: input.provider } } : {}),
     why: [{ code: "vision", detail: "supports vision" }],
     why_text: "supports vision",
     delta: {
@@ -159,10 +162,10 @@ describe("SessionModelSuggestion.choose", () => {
       },
       { trigger: "vision", needs: ["vision", "tools"], current, models },
     )
-    expect(chosen?.model).toEqual({ providerID: "red-router", modelID: "vision-model" })
-    expect(chosen?.current).toEqual({ providerID: "red-router", modelID: "text-only" })
-    expect(chosen?.delta).toEqual({ pricePct: 10, context: 72_000, gained: ["vision"], lost: [] })
-    expect(chosen?.whyText).toBe("supports vision")
+    expect(chosen?.suggestion.model).toEqual({ providerID: "red-router", modelID: "vision-model" })
+    expect(chosen?.suggestion.current).toEqual({ providerID: "red-router", modelID: "text-only" })
+    expect(chosen?.suggestion.delta).toEqual({ pricePct: 10, context: 72_000, gained: ["vision"], lost: [] })
+    expect(chosen?.suggestion.whyText).toBe("supports vision")
   })
 
   test("skips what the router cannot serve and what the connection does not list", () => {
@@ -174,6 +177,45 @@ describe("SessionModelSuggestion.choose", () => {
     ).toBeUndefined()
   })
 
+  test("schema 4 offers only what is usable now: never an exhausted quota, the current model or its spent provider", () => {
+    const chosen = SessionModelSuggestion.choose(
+      {
+        current: {
+          ...recommendation("text-only", { usable: false, provider: "claude" }),
+          status: { state: "quota_exhausted", until: "2026-09-25T18:00:00Z" },
+        },
+        recommendations: [
+          recommendation("text-only"),
+          recommendation("vision-lossy", { usable: false, state: "quota_exhausted" }),
+          recommendation("vision-model", { state: "quota_exhausted" }),
+          recommendation("cheap", { capabilities: ["vision", "tools"], provider: "claude" }),
+          recommendation("vision-model", { state: "rate_limited", provider: "codex" }),
+        ],
+      },
+      { trigger: "provider_errors", needs: [], current, models, version: 4 },
+    )
+    // Rate limited with an account still free for that very model is usable from schema 4 on.
+    expect(chosen?.id).toBe("vision-model")
+    expect(chosen?.suggestion.until).toBe(Date.parse("2026-09-25T18:00:00Z"))
+  })
+
+  test("schemas 2 and 3 also drop what the router still calls usable while it is rate limited or failing", () => {
+    const pick = (version: number) =>
+      SessionModelSuggestion.choose(
+        {
+          recommendations: [
+            recommendation("vision-lossy", { capabilities: ["vision", "tools"], state: "rate_limited" }),
+            recommendation("cheap", { capabilities: ["vision", "tools"], state: "error" }),
+            recommendation("vision-model"),
+          ],
+        },
+        { trigger: "vision", needs: ["vision"], current, models, version },
+      )?.id
+    expect(pick(2)).toBe("vision-model")
+    expect(pick(3)).toBe("vision-model")
+    expect(pick(4)).toBe("vision-lossy")
+  })
+
   test("a cheaper equivalent costs at least 40% less and loses nothing", () => {
     const choose = (pct: number | null, lost: string[] = []) =>
       SessionModelSuggestion.choose(
@@ -183,7 +225,7 @@ describe("SessionModelSuggestion.choose", () => {
     expect(choose(-30)).toBeUndefined()
     expect(choose(null)).toBeUndefined()
     expect(choose(-50, ["pdf"])).toBeUndefined()
-    expect(choose(-45)?.model.modelID).toBe("cheap")
+    expect(choose(-45)?.suggestion.model.modelID).toBe("cheap")
   })
 
   test("an equivalent for failing providers loses nothing either", () => {
@@ -211,14 +253,14 @@ describe("SessionModelSuggestion.choose", () => {
       SessionModelSuggestion.choose(
         { recommendations: [flatRecommendation] },
         { trigger: "vision", needs: [], current: pinnedCurrent, models: listed },
-      )?.model.modelID,
+      )?.suggestion.model.modelID,
     ).toBe("pin:claude@bedrock")
     // Otherwise the flat id itself, and the router picks the offer.
     expect(
       SessionModelSuggestion.choose(
         { recommendations: [flatRecommendation] },
         { trigger: "vision", needs: [], current, models: listed },
-      )?.model.modelID,
+      )?.suggestion.model.modelID,
     ).toBe("anthropic/claude")
     // A flat id the connection does not list is selected by an available offer's pin id.
     expect(
@@ -270,6 +312,10 @@ const router = {
   calls: [] as Array<{ name: string; arguments: Record<string, unknown> }>,
   initializes: 0,
   quotas: undefined as unknown,
+  /** `recommend_models` answers; the default fixture when unset. */
+  recommended: undefined as unknown,
+  /** `get_model` answers by id; the current model, healthy, for any other id. */
+  models: {} as Record<string, unknown>,
 }
 
 const recommended = {
@@ -301,11 +347,17 @@ beforeAll(() => {
       }
       const name = message.params.name ?? ""
       router.calls.push({ name, arguments: message.params.arguments ?? {} })
+      const id = String(message.params.arguments?.id)
       const result =
         name === "recommend_models"
-          ? recommended
+          ? (router.recommended ?? recommended)
           : name === "get_model"
-            ? { model: { ...recommendation("text-only"), provider: { id: "claude", name: "Claude" } } }
+            ? {
+                model: router.models[id] ?? {
+                  ...recommendation("text-only"),
+                  provider: { id: "claude", name: "Claude" },
+                },
+              }
             : name === "get_quotas"
               ? router.quotas
               : undefined
@@ -320,6 +372,8 @@ afterEach(() => {
   router.initializes = 0
   router.version = 2
   router.quotas = undefined
+  router.recommended = undefined
+  router.models = {}
 })
 
 afterAll(() => {
@@ -482,6 +536,34 @@ describe("SessionModelSuggestion service", () => {
   )
 
   it.instance(
+    "a quota exhausted until far off asks for an equivalent at once, with the reset as its reason",
+    () =>
+      Effect.gen(function* () {
+        const events = listen()
+        yield* Effect.addFinalizer(() => Effect.sync(events.stop))
+        const suggestions = yield* SessionModelSuggestion.Service
+        yield* suggestions.failure({
+          sessionID,
+          model: yield* getModel("text-only"),
+          status: 429,
+          until: Date.now() + 3_600_000,
+        })
+        expect(yield* until(() => events.seen.some((event) => event.type === "session.model.suggested"))).toBe(true)
+        // No health check first: the failure already says the model cannot serve.
+        expect(router.calls.map((call) => call.name)).toEqual(["recommend_models"])
+        expect(router.calls[0]?.arguments).toMatchObject({ equivalent_to: "text-only" })
+        const suggested = events.seen[0]?.properties as { suggestion: ModelSuggestion.Info }
+        expect(suggested.suggestion.trigger).toBe("provider_errors")
+        expect(suggested.suggestion.model).toEqual({ providerID: "red-router", modelID: "vision-model" })
+        expect(suggested.suggestion.why[0]?.code).toBe("quota_exhausted")
+        expect(suggested.suggestion.whyText).toStartWith("the current model is out of quota")
+        // The card shows the reset in the viewer's local time.
+        expect(suggested.suggestion.until).toBeGreaterThan(Date.now())
+      }),
+    { config: routerConfig() },
+  )
+
+  it.instance(
     "a schema 3 router whose quotas for the model's provider are nearly used up asks for an equivalent",
     () =>
       Effect.gen(function* () {
@@ -507,6 +589,103 @@ describe("SessionModelSuggestion service", () => {
         expect(router.calls.map((call) => call.name)).toEqual(["get_model", "get_quotas", "recommend_models"])
         expect(router.calls[1]?.arguments).toEqual({ provider: "claude" })
         expect(router.calls[2]?.arguments).toMatchObject({ equivalent_to: "text-only" })
+      }),
+    { config: routerConfig() },
+  )
+
+  it.instance(
+    "schema 4 never suggests a model out of quota, and says when the current one resets",
+    () =>
+      Effect.gen(function* () {
+        router.version = 4
+        const exhausted = {
+          ...recommendation("text-only", { usable: false, provider: "claude" }),
+          status: { state: "quota_exhausted", until: "2099-01-01T18:00:00Z", accounts: { available: 0, total: 1 } },
+        }
+        router.recommended = {
+          current: exhausted,
+          recommendations: [
+            recommendation("other-text", { capabilities: ["tools"], usable: false, state: "quota_exhausted" }),
+            recommendation("other-text", { capabilities: ["tools"], provider: "claude" }),
+            {
+              ...recommendation("vision-model", { provider: "codex" }),
+              why: [{ code: "quota_exhausted", detail: "the current model is out of quota" }],
+              why_text: "the current model is out of quota",
+            },
+          ],
+        }
+        router.models = { "text-only": exhausted }
+        const events = listen()
+        yield* Effect.addFinalizer(() => Effect.sync(events.stop))
+        const suggestions = yield* SessionModelSuggestion.Service
+        yield* suggestions.observe({
+          sessionID,
+          model: yield* getModel("text-only"),
+          messages: [],
+          tools: true,
+          usable: 100_000,
+        })
+        expect(yield* until(() => events.seen.some((event) => event.type === "session.model.suggested"))).toBe(true)
+        // Out of quota already: no quota report is needed to know it.
+        expect(router.calls.map((call) => call.name)).toEqual(["get_model", "recommend_models"])
+        const suggested = events.seen[0]?.properties as { suggestion: ModelSuggestion.Info }
+        expect(suggested.suggestion.trigger).toBe("provider_errors")
+        expect(suggested.suggestion.model).toEqual({ providerID: "red-router", modelID: "vision-model" })
+        expect(suggested.suggestion.until).toBe(Date.parse("2099-01-01T18:00:00Z"))
+        // The router's own quota reason is not repeated.
+        expect(suggested.suggestion.why.map((reason) => reason.code)).toEqual(["quota_exhausted"])
+      }),
+    { config: routerConfig() },
+  )
+
+  it.instance(
+    "one failure of a model the router reports out of quota asks for an equivalent",
+    () =>
+      Effect.gen(function* () {
+        router.version = 4
+        router.models = {
+          "text-only": {
+            ...recommendation("text-only", { usable: false }),
+            status: { state: "quota_exhausted", until: "2099-01-01T18:00:00Z" },
+          },
+        }
+        const events = listen()
+        yield* Effect.addFinalizer(() => Effect.sync(events.stop))
+        const suggestions = yield* SessionModelSuggestion.Service
+        yield* suggestions.failure({ sessionID, model: yield* getModel("text-only"), status: 429 })
+        expect(yield* until(() => events.seen.some((event) => event.type === "session.model.suggested"))).toBe(true)
+        expect(router.calls.map((call) => call.name)).toEqual(["get_model", "recommend_models"])
+        const suggested = events.seen[0]?.properties as { suggestion: ModelSuggestion.Info }
+        expect(suggested.suggestion.why[0]?.code).toBe("quota_exhausted")
+      }),
+    { config: routerConfig() },
+  )
+
+  it.instance(
+    "switch asks the router again and answers false when the suggested model became unusable",
+    () =>
+      Effect.gen(function* () {
+        router.version = 4
+        const events = listen()
+        yield* Effect.addFinalizer(() => Effect.sync(events.stop))
+        const suggestions = yield* SessionModelSuggestion.Service
+        const current = yield* getModel("text-only")
+        const messages = [userMessage([{ mime: "image/png" }])]
+        yield* suggestions.observe({ sessionID, model: current, messages, tools: true, usable: 100_000 })
+        expect(yield* until(() => events.seen.length > 0)).toBe(true)
+        router.models = { "vision-model": recommendation("vision-model", { usable: false, state: "quota_exhausted" }) }
+        expect(yield* suggestions.resolve({ sessionID, trigger: "vision", choice: "switch" })).toBe(false)
+        expect(router.calls.at(-1)).toEqual({ name: "get_model", arguments: { id: "vision-model" } })
+        // Every client drops the card.
+        expect(events.seen.at(-1)?.type).toBe("session.model.suggestion.resolved")
+
+        // Another target is looked for the next time the trigger fires; a usable one switches.
+        router.models = {}
+        yield* suggestions.observe({ sessionID, model: current, messages, tools: true, usable: 100_000 })
+        const suggested = () => events.seen.filter((event) => event.type === "session.model.suggested").length
+        expect(yield* until(() => suggested() === 2)).toBe(true)
+        router.models = { "vision-model": recommendation("vision-model") }
+        expect(yield* suggestions.resolve({ sessionID, trigger: "vision", choice: "switch" })).toBe(true)
       }),
     { config: routerConfig() },
   )

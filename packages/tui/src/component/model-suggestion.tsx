@@ -7,6 +7,7 @@ import { useSync } from "../context/sync"
 import { selectedForeground, useTheme } from "../context/theme"
 import { useBindings } from "../keymap"
 import { SplitBorder } from "../ui/border"
+import { useToast } from "../ui/toast"
 import { routedName } from "../util/model-origin"
 
 type Ref = { readonly providerID: string; readonly modelID: string }
@@ -14,30 +15,41 @@ type Ref = { readonly providerID: string; readonly modelID: string }
 export const SWITCH_COMMAND = "model.suggestion.switch"
 export const KEEP_COMMAND = "model.suggestion.keep"
 
-/** The card's lines: what to switch to and why, then how it compares with the model in use. */
-export function suggestionText(suggestion: ModelSuggestion.Info, label: string) {
+/**
+ * The card's lines: what to switch to and why, then when the current model's quota resets and how
+ * the suggestion compares with it.
+ */
+export function suggestionText(suggestion: ModelSuggestion.Info, label: string, now = Date.now()) {
+  const quota = ModelSuggestion.quotaText(suggestion, now)
   return {
     title: `Suggest: ${label}`,
     why: suggestion.whyText,
-    deltas: ModelSuggestion.deltaParts(suggestion.delta).join(" · "),
+    deltas: [...(quota ? [quota] : []), ...ModelSuggestion.deltaParts(suggestion.delta)].join(" · "),
   }
 }
 
 /**
- * Answers a suggestion. Only `switch` selects the suggested model; either answer goes to the server,
- * which drops the card on every client and, for `keep`, stops that trigger for the session.
+ * Answers a suggestion. Either answer goes to the server, which drops the card on every client and,
+ * for `keep`, stops that trigger for the session. Only `switch` selects the suggested model, after
+ * the server has asked the router again: when it answers false the model became unusable since, and
+ * nothing is selected. A server that cannot be reached does not stop the switch.
  */
-export function answerSuggestion(input: {
+export async function answerSuggestion(input: {
   readonly suggestion: ModelSuggestion.Info
   readonly choice: ModelSuggestion.Choice
   readonly select: (model: Ref) => void
+  readonly unavailable: () => void
   readonly resolve: (answer: {
     readonly trigger: ModelSuggestion.Trigger
     readonly choice: ModelSuggestion.Choice
   }) => Promise<unknown>
 }) {
-  if (input.choice === "switch") input.select(input.suggestion.model)
-  return input.resolve({ trigger: input.suggestion.trigger, choice: input.choice }).catch(() => undefined)
+  const answered = await input
+    .resolve({ trigger: input.suggestion.trigger, choice: input.choice })
+    .catch(() => undefined)
+  if (input.choice !== "switch") return
+  if (answered === false) return input.unavailable()
+  input.select(input.suggestion.model)
 }
 
 /**
@@ -135,6 +147,7 @@ export function ModelSuggestionCard(props: { readonly sessionID: string; readonl
   const sdk = useSDK()
   const sync = useSync()
   const local = useLocal()
+  const toast = useToast()
   // The latest unanswered suggestion per session.
   const [pending, setPending] = createSignal<Readonly<Record<string, ModelSuggestion.Info>>>({})
   const drop = (sessionID: string) =>
@@ -167,12 +180,18 @@ export function ModelSuggestionCard(props: { readonly sessionID: string; readonl
           label={card().label}
           onAnswer={(choice) => {
             const suggestion = card().suggestion
+            const label = card().label
             drop(props.sessionID)
             void answerSuggestion({
               suggestion,
               choice,
               select: (model) => local.model.set(model, { recent: true }),
-              resolve: (answer) => sdk.client.modelSuggestion.resolve({ sessionID: props.sessionID, ...answer }),
+              unavailable: () =>
+                toast.show({ message: `${label} is no longer available; kept the current model`, variant: "warning" }),
+              resolve: (answer) =>
+                sdk.client.modelSuggestion
+                  .resolve({ sessionID: props.sessionID, ...answer })
+                  .then((result) => result.data),
             })
           }}
         />

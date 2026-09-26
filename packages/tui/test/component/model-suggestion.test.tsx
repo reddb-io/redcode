@@ -35,6 +35,19 @@ test("the card reads the route, the reason and the deltas", () => {
   expect(suggestionText({ ...suggestion, delta: undefined }, label).deltas).toBe("")
 })
 
+test("the card says when the current model's exhausted quota resets, in local time", () => {
+  const now = Date.parse("2026-09-25T12:00:00")
+  const until = Date.parse("2026-09-25T14:30:00")
+  const time = new Date(until).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })
+  expect(suggestionText({ ...suggestion, until }, label, now).deltas).toBe(
+    `quota until ${time} · price -45.5% · context +72K · +vision`,
+  )
+  // A reset already past says nothing.
+  expect(suggestionText({ ...suggestion, until }, label, until + 1).deltas).toBe(
+    "price -45.5% · context +72K · +vision",
+  )
+})
+
 test("only switch selects the suggested model, a flat offer by its pin id; keep selects nothing", async () => {
   const selected: unknown[] = []
   const resolved: unknown[] = []
@@ -43,7 +56,13 @@ test("only switch selects the suggested model, a flat offer by its pin id; keep 
       suggestion,
       choice,
       select: (model) => selected.push(model),
-      resolve: async (value) => resolved.push(value),
+      unavailable: () => {
+        throw new Error("the model is still available")
+      },
+      resolve: async (value) => {
+        resolved.push(value)
+        return true
+      },
     })
   await answer("keep")
   expect(selected).toEqual([])
@@ -59,9 +78,24 @@ test("a failed answer to the server still switches and never throws", async () =
     suggestion,
     choice: "switch",
     select: (model) => selected.push(model),
+    unavailable: () => {},
     resolve: () => Promise.reject(new Error("offline")),
   })
   expect(selected).toHaveLength(1)
+})
+
+test("switch selects nothing when the server says the model is no longer available", async () => {
+  const selected: unknown[] = []
+  const gone: unknown[] = []
+  await answerSuggestion({
+    suggestion,
+    choice: "switch",
+    select: (model) => selected.push(model),
+    unavailable: () => gone.push(suggestion.model),
+    resolve: async () => false,
+  })
+  expect(selected).toEqual([])
+  expect(gone).toHaveLength(1)
 })
 
 test("the card answers by click and by command, and leaves the prompt its keys", async () => {

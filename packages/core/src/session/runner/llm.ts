@@ -1587,7 +1587,15 @@ const layer = Layer.effect(
               : undefined
           if (llmFailure && !publisher.hasProviderError() && !retryable) {
             yield* withPublication(publisher.failUnsettledTools("Provider did not return a tool result", true))
-            yield* withPublication(publisher.failAssistant(llmFailure.reason.message))
+            // A reset too far off to wait for: say which model, until when, and what to do instead.
+            const exhausted = SessionRetry.exhaustedLLM(llmFailure)
+            yield* withPublication(
+              publisher.failAssistant(
+                exhausted
+                  ? SessionRetry.exhaustedMessage(`${model.provider} · ${model.id}`, exhausted)
+                  : llmFailure.reason.message,
+              ),
+            )
           }
           if (stream._tag === "Failure" && Cause.hasInterrupts(stream.cause)) yield* FiberSet.clear(toolFibers)
           const settled = yield* restore(
@@ -1969,7 +1977,14 @@ const layer = Layer.effect(
                     text: Intelligence.repairPrompt(verdict.repair),
                   },
                   // Surfaces show the revision and the answer it replaces as one reply, as legacy's repair part does.
-                  { metadata: { responseRepair: { issues: verdict.repair } } },
+                  {
+                    metadata: {
+                      responseRepair: {
+                        issues: verdict.repair,
+                        confidence: Intelligence.responseRepairConfidence(evaluation, verdict.repair),
+                      },
+                    },
+                  },
                 )
                 repairedIssues = [...repairedIssues, ...verdict.repair]
                 repairedResponse = review.text

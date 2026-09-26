@@ -8,7 +8,7 @@ import { SessionID } from "./session-id"
 /**
  * Why a session was offered another model: images the model cannot see (`vision`), tools it cannot
  * call (`tools`), a context close to its limit (`context`), repeated provider failures or a router
- * reporting it rate limited or unhealthy (`provider_errors`), or a much cheaper equivalent
+ * reporting it rate limited, out of quota or unhealthy (`provider_errors`), or a much cheaper equivalent
  * (`cheaper`). A session is offered at most one suggestion per trigger until its situation changes.
  */
 export const Trigger = Schema.Literals(["vision", "tools", "context", "provider_errors", "cheaper"]).annotate({
@@ -33,7 +33,8 @@ export type Delta = typeof Delta.Type
 /**
  * A model the session could switch to. `model` is what a client selects when the person accepts:
  * a model of the same router connection, a flat model's pinned offer when one offer is suggested.
- * Nothing switches until the person says so.
+ * It is one the router called usable when it was suggested. Nothing switches until the person says
+ * so, and not when the router says it has become unusable since.
  */
 export const Info = Schema.Struct({
   trigger: Trigger,
@@ -44,6 +45,9 @@ export const Info = Schema.Struct({
   why: Schema.Array(Schema.Struct({ code: Schema.String, detail: Schema.String })),
   whyText: Schema.String,
   delta: optional(Delta),
+  until: optional(
+    Schema.Finite.annotate({ description: "When the current model's exhausted quota resets, in epoch milliseconds." }),
+  ),
 }).annotate({ identifier: "ModelSuggestion" })
 export type Info = typeof Info.Type
 
@@ -82,6 +86,23 @@ export function deltaParts(delta: Delta | undefined) {
     ...delta.gained.map((capability) => `+${capability}`),
     ...delta.lost.map((capability) => `-${capability}`),
   ]
+}
+
+/**
+ * `quota until <local time>` while the current model's quota is exhausted, for the card; undefined
+ * when no reset is known or it has passed.
+ */
+export function quotaText(suggestion: Info, now = Date.now()) {
+  if (suggestion.until === undefined || suggestion.until <= now) return
+  return `quota until ${clock(suggestion.until, now)}`
+}
+
+/** A reset instant in local time: the time alone today, with the date on another day. */
+export function clock(at: number, now = Date.now()) {
+  const date = new Date(at)
+  const time = date.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })
+  if (date.toDateString() === new Date(now).toDateString()) return time
+  return `${date.toLocaleDateString([], { month: "short", day: "numeric" })} ${time}`
 }
 
 function signed(value: number | string) {

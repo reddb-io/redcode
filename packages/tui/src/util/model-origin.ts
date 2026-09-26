@@ -68,6 +68,15 @@ export function routeLabel(provider: Provider, model: Model) {
 }
 
 /**
+ * A route in the prompt footer's compact form: the router and upstream joined by the no-space `»`
+ * separator, with no `via` prefix, e.g. `RedRouter»Antigravity`. Undefined for a direct connection.
+ */
+export function compactRouteLabel(router: string | undefined, upstream: string | undefined) {
+  if (!router) return undefined
+  return upstream ? `${router}${Router.HOP_SEPARATOR_COMPACT}${upstream}` : router
+}
+
+/**
  * A model named with its whole route, the routers and upstream joined by ` » `: `RedRouter » Anthropic
  * · Claude Sonnet 4.5`. A model connected directly is its name alone.
  */

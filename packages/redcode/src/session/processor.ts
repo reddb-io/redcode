@@ -37,7 +37,8 @@ import { ProviderRouter } from "@reddb-io/redcode-core/provider/router"
 
 /** Steps of one turn to look back over. Comfortably more than any sane `stop_at`. */
 const LOOP_WINDOW = 16
-export type Result = "compact" | "stop" | "continue" | "reconnect"
+/** `switch`: another model was selected while a retry waited, and the request goes to it instead. */
+export type Result = "compact" | "stop" | "continue" | "reconnect" | "switch"
 
 export interface Handle {
   readonly message: SessionV1.Assistant
@@ -59,6 +60,8 @@ export interface Handle {
    * not recorded on the message, so the turn loop reads what the provider said here.
    */
   readonly overflow?: NonNullable<SessionV1.Assistant["error"]>
+  /** The provider will not serve the model before a reset too far off to wait for; the turn ended on it. */
+  readonly exhausted?: SessionRetry.Exhausted
   readonly updateToolCall: (
     toolCallID: string,
     update: (part: SessionV1.ToolPart) => SessionV1.ToolPart,
@@ -95,6 +98,12 @@ type Input = {
   onFailure?: (reason: string) => Effect.Effect<void>
   /** A provider attempt failed and is about to be retried. */
   onRetry?: () => Effect.Effect<void>
+  /**
+   * Completes when the person next selects another model; each run waits for a new selection. While
+   * a retry waits out its delay, that ends the wait and `process` returns `switch`; at any other time
+   * it is ignored.
+   */
+  switched?: Effect.Effect<unknown>
   /** The handle writes a compaction summary: every phase it reports is `compacting`. */
   compacting?: boolean
 }
@@ -141,6 +150,11 @@ interface ProcessorContext extends Input {
   reconnect: boolean
   /** The step's visible output and reasoning tokens once the provider reported usage. */
   stepUsage: { output: number; reasoning: number } | undefined
+  /** A failed attempt is waiting out its retry delay: a model switch may end the wait. */
+  retrying: boolean
+  /** A model switch ended a retry wait. */
+  retargeted: boolean
+  exhausted?: SessionRetry.Exhausted
 }
 
 type StreamEvent = LLMEvent
@@ -187,6 +201,8 @@ const layer = Layer.effect(
         attemptExecuted: false,
         reconnect: false,
         stepUsage: undefined,
+        retrying: false,
+        retargeted: false,
       }
       let aborted = false
       // Stamped as events are read: the generation window, the provider's wait and the local work
@@ -769,7 +785,20 @@ const layer = Layer.effect(
           error: errorMessage(e),
           stack: e instanceof Error ? e.stack : undefined,
         })
-        const error = parse(e)
+        const parsed = parse(e)
+        const exhausted = SessionRetry.exhausted(parsed)
+        ctx.exhausted = exhausted
+        // A reset too far off to wait for: say which model, until when, and what to do instead.
+        const error =
+          exhausted && SessionV1.APIError.isInstance(parsed)
+            ? {
+                ...parsed,
+                data: {
+                  ...parsed.data,
+                  message: SessionRetry.exhaustedMessage(modelLabel(input.model), exhausted),
+                },
+              }
+            : parsed
         if (SessionV1.ContextOverflowError.isInstance(error)) {
           if ((yield* config.get()).compaction?.auto === false && !ctx.assistantMessage.summary) {
             ctx.assistantMessage.error = error
@@ -808,10 +837,26 @@ const layer = Layer.effect(
         })
         ctx.needsCompaction = false
         ctx.overflow = undefined
+        ctx.retargeted = false
+        ctx.exhausted = undefined
         ctx.shouldBreak = (yield* config.get()).experimental?.continue_loop_on_deny !== true
+
+        // A model selected while an attempt streams is no reason to drop it: only a retry wait ends.
+        const switched = input.switched
+        const switchedWhileWaiting: Effect.Effect<void> = switched
+          ? Effect.gen(function* () {
+              while (true) {
+                yield* switched
+                if (!ctx.retrying) continue
+                ctx.retargeted = true
+                return
+              }
+            })
+          : Effect.never
 
         return yield* Effect.gen(function* () {
           yield* Effect.gen(function* () {
+            ctx.retrying = false
             timing.attempt()
             arrived.clear()
             if (input.beforeAttempt && !(yield* input.beforeAttempt())) {
@@ -927,11 +972,19 @@ const layer = Layer.effect(
                         reason: info.message.length > 80 ? info.message.slice(0, 77) + "..." : info.message,
                       })),
                     ),
+                    // From here the attempt only waits, so a model switch may end the wait. Set before
+                    // the status says so: whoever sees the retry status can already switch.
+                    Effect.andThen(
+                      Effect.sync(() => {
+                        ctx.retrying = true
+                      }),
+                    ),
                     Effect.andThen(
                       status.set(ctx.sessionID, {
                         type: "retry",
                         attempt: info.attempt,
-                        message: info.message,
+                        // Which model the wait is for and, for a quota, when it resets.
+                        message: `${modelLabel(input.model)}${info.quota ? ` quota exhausted until ${SessionRetry.clock(info.next)}` : ""}: ${info.message}`,
                         action: info.action,
                         next: info.next,
                       }),
@@ -940,10 +993,20 @@ const layer = Layer.effect(
                   ),
               }),
             ),
+            Effect.raceFirst(switchedWhileWaiting),
+            // Esc between attempts: no attempt is running to record the abort, so the step does.
+            Effect.onInterrupt(() =>
+              Effect.gen(function* () {
+                if (ctx.assistantMessage.error) return
+                aborted = true
+                yield* halt(new DOMException("Aborted", "AbortError"))
+              }),
+            ),
             Effect.catch(halt),
             Effect.ensuring(cleanup()),
           )
 
+          if (ctx.retargeted) return "switch"
           if (ctx.needsCompaction) return "compact"
           if (ctx.reconnect) return "reconnect"
           if (ctx.blocked || ctx.assistantMessage.error) return "stop"
@@ -1032,6 +1095,9 @@ const layer = Layer.effect(
         get overflow() {
           return ctx.overflow
         },
+        get exhausted() {
+          return ctx.exhausted
+        },
         get message() {
           return ctx.assistantMessage
         },
@@ -1045,6 +1111,11 @@ const layer = Layer.effect(
     return Service.of({ create })
   }),
 )
+
+/** How the person knows the model: its provider and name, as the status line and errors name it. */
+function modelLabel(model: Provider.Model) {
+  return `${model.providerID} · ${model.name || model.id}`
+}
 
 export const node = LayerNode.make({
   service: Service,

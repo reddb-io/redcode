@@ -252,6 +252,8 @@ export const dict = {
   "session.modelSuggestion.title": "Suggest: {{model}}",
   "session.modelSuggestion.switch": "Switch",
   "session.modelSuggestion.keep": "Keep",
+  "session.modelSuggestion.quotaUntil": "quota until {{time}}",
+  "session.modelSuggestion.unavailable": "{{model}} is no longer available; kept the current model",
 
   "model.provider.anthropic": "Anthropic",
   "model.provider.openai": "OpenAI",
