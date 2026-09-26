@@ -1,9 +1,26 @@
 import { Location } from "@opencode/schema/location"
+import { SessionGuard } from "@opencode/schema/session-guard"
+import { NonNegativeInt, PositiveInt } from "@opencode/schema/schema"
 import { Schema } from "effect"
 import { HttpApiEndpoint, HttpApiGroup, HttpApiSchema, OpenApi } from "effect/unstable/httpapi"
 import { LocationQuery, locationQueryOpenApi } from "./location.js"
 
 export const DebugGroup = HttpApiGroup.make("server.debug")
+  .add(
+    HttpApiEndpoint.get("debug.guards", "/api/debug/guards", {
+      query: Schema.Struct({
+        since: Schema.NumberFromString.pipe(Schema.decodeTo(NonNegativeInt), Schema.optional),
+        limit: Schema.NumberFromString.pipe(Schema.decodeTo(PositiveInt), Schema.optional),
+      }),
+      success: SessionGuard.Report,
+    }).annotateMerge(
+      OpenApi.annotations({
+        identifier: "debug.guards",
+        summary: "Inspect session guard interventions",
+        description: "List recent guard interventions and their counts by guard and action.",
+      }),
+    ),
+  )
   .add(
     HttpApiEndpoint.get("debug.location", "/api/debug/location", {
       success: Schema.Array(Location.PublicRef),

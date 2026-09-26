@@ -4053,6 +4053,47 @@ export interface VcsApi<E = never> {
   readonly diff: VcsDiffOperation<E>
 }
 
+export type DebugGuardsInput = { readonly since?: number | undefined; readonly limit?: number | undefined }
+export type DebugGuardsOutput = {
+  readonly summary: ReadonlyArray<{
+    readonly guard:
+      | "stall"
+      | "tool_timeout"
+      | "loop"
+      | "steps"
+      | "aux"
+      | "orphan"
+      | "goal"
+      | "compaction"
+      | "budget"
+      | "intelligence"
+      | "stop_loss"
+    readonly action: "warn" | "correct" | "stop"
+    readonly count: number
+  }>
+  readonly recent: ReadonlyArray<{
+    readonly id: string
+    readonly sessionID: Session.ID
+    readonly guard:
+      | "stall"
+      | "tool_timeout"
+      | "loop"
+      | "steps"
+      | "aux"
+      | "orphan"
+      | "goal"
+      | "compaction"
+      | "budget"
+      | "intelligence"
+      | "stop_loss"
+    readonly action: "warn" | "correct" | "stop"
+    readonly subject?: string | undefined
+    readonly detail: string
+    readonly at: number
+  }>
+}
+export type DebugGuardsOperation<E = never> = (input?: DebugGuardsInput) => Effect.Effect<DebugGuardsOutput, E>
+
 export type DebugLocationListOutput = ReadonlyArray<Location.PublicRef>
 export type DebugLocationListOperation<E = never> = () => Effect.Effect<DebugLocationListOutput, E>
 
@@ -4063,6 +4104,7 @@ export type DebugLocationEvictOperation<E = never> = (
 ) => Effect.Effect<DebugLocationEvictOutput, E>
 
 export interface DebugApi<E = never> {
+  readonly guards: DebugGuardsOperation<E>
   readonly location: { readonly list: DebugLocationListOperation<E>; readonly evict: DebugLocationEvictOperation<E> }
 }
 

@@ -163,6 +163,22 @@ const Root = Spec.make(typeof OPENCODE_CLI_NAME === "string" ? OPENCODE_CLI_NAME
             forget: Flag.string("forget").pipe(Flag.optional),
           },
         }),
+        Spec.make("guards", {
+          description: "Inspect session guard interventions",
+          params: {
+            days: Flag.integer("days").pipe(
+              Flag.withSchema(Schema.Int.check(Schema.isGreaterThanOrEqualTo(0))),
+              Flag.withDescription("Look back this many days"),
+              Flag.withDefault(7),
+            ),
+            limit: Flag.integer("limit").pipe(
+              Flag.withSchema(Schema.Int.check(Schema.isGreaterThanOrEqualTo(1))),
+              Flag.withDescription("Number of recent interventions"),
+              Flag.withDefault(20),
+            ),
+            json: Flag.boolean("json").pipe(Flag.withDefault(false)),
+          },
+        }),
         Spec.make("paths", {
           description: "Show global paths (data, config, cache, state)",
           params: {

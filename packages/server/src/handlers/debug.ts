@@ -1,4 +1,5 @@
 import { LocationServiceMap } from "@opencode/core/location-service-map"
+import { SessionGuardLog } from "@opencode/core/session/guard-log"
 import { Effect, Option, RcMap } from "effect"
 import { HttpApiBuilder } from "effect/unstable/httpapi"
 import { Api } from "../api"
@@ -6,6 +7,16 @@ import { requestRef } from "../location"
 
 export const DebugHandler = HttpApiBuilder.group(Api, "server.debug", (handlers) =>
   handlers
+    .handle(
+      "debug.guards",
+      Effect.fn(function* (ctx) {
+        const guards = yield* SessionGuardLog.Service
+        return {
+          summary: yield* guards.summary({ since: ctx.query.since }),
+          recent: yield* guards.recent({ since: ctx.query.since, limit: ctx.query.limit ?? 20 }),
+        }
+      }),
+    )
     .handle(
       "debug.location",
       Effect.fn(function* () {

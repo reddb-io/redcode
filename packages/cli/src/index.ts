@@ -50,6 +50,7 @@ const Handlers = Runtime.handlers(Commands, {
     },
     skill: () => import("./commands/handlers/debug/skill"),
     limits: () => import("./commands/handlers/debug/limits"),
+    guards: () => import("./commands/handlers/debug/guards"),
     paths: () => import("./commands/handlers/debug/paths"),
   },
   mcp: {

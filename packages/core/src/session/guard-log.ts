@@ -1,25 +1,15 @@
 export * as SessionGuardLog from "./guard-log.js"
 
 import { makeGlobalNode } from "@opencode/util/effect/app-node"
+import { SessionGuard } from "@opencode/schema/session-guard"
 import { desc, gte } from "drizzle-orm"
 import { Context, Effect, Layer } from "effect"
 import { Database } from "../database/database.js"
 import { SessionSchema } from "./schema.js"
 import { SessionGuardTripTable } from "./redcode.sql.js"
 
-export type Guard =
-  | "stall"
-  | "tool_timeout"
-  | "loop"
-  | "steps"
-  | "aux"
-  | "orphan"
-  | "goal"
-  | "compaction"
-  | "budget"
-  | "intelligence"
-  | "stop_loss"
-export type Action = "warn" | "correct" | "stop"
+export type Guard = SessionGuard.Guard
+export type Action = SessionGuard.Action
 
 export interface Trip {
   readonly sessionID: SessionSchema.ID
@@ -29,16 +19,8 @@ export interface Trip {
   readonly detail: string
 }
 
-export interface Entry extends Trip {
-  readonly id: string
-  readonly at: number
-}
-
-export interface Summary {
-  readonly guard: Guard
-  readonly action: Action
-  readonly count: number
-}
+export type Entry = SessionGuard.Entry
+export type Summary = SessionGuard.Summary
 
 const make = Effect.gen(function* () {
   const db = (yield* Database.Service).db

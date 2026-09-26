@@ -19,6 +19,7 @@ import { Session } from "@opencode/core/session"
 import { SessionExecution } from "@opencode/core/session/execution"
 import { SessionInbox } from "@opencode/core/session/inbox"
 import { SessionGoal } from "@opencode/core/session/goal"
+import { SessionGuardLog } from "@opencode/core/session/guard-log"
 import { Intelligence } from "@opencode/core/intelligence"
 import { DesignAppConnection } from "@opencode/core/design/app-connection"
 import { Instance } from "@opencode/core/instance/service"
@@ -70,6 +71,7 @@ const applicationServiceNodes = [
   SessionExecution.node,
   SessionInbox.node,
   SessionGoal.node,
+  SessionGuardLog.node,
   Intelligence.node,
   DesignAppConnection.node,
   Instance.node,

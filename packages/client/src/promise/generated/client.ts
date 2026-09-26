@@ -279,6 +279,8 @@ import type {
   VcsBranchListOutput,
   VcsDiffInput,
   VcsDiffOutput,
+  DebugGuardsInput,
+  DebugGuardsOutput,
   DebugLocationListOutput,
   DebugLocationEvictInput,
   DebugLocationEvictOutput,
@@ -2347,6 +2349,18 @@ export function make(options: ClientOptions) {
         ),
     },
     debug: {
+      guards: (input?: DebugGuardsInput, requestOptions?: RequestOptions) =>
+        request<DebugGuardsOutput>(
+          {
+            method: "GET",
+            path: `/api/debug/guards`,
+            query: { since: input?.["since"], limit: input?.["limit"] },
+            successStatus: 200,
+            declaredStatuses: [400, 401],
+            empty: false,
+          },
+          requestOptions,
+        ),
       location: {
         list: (requestOptions?: RequestOptions) =>
           request<DebugLocationListOutput>(

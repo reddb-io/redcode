@@ -2533,6 +2533,7 @@ export type ConfigEntry =
         experimental?: {
           portable_shell_scanner?: boolean
           subagent_depth?: number
+          loop_guard?: false | { correct_at?: number; stop_at?: number; nudge_at?: number }
           policies?: Array<{ action: "provider.use" | "permission"; resource: string; effect: "allow" | "deny" }>
         }
       }
@@ -8219,6 +8220,50 @@ export type VcsDiffInput = {
 }
 
 export type VcsDiffOutput = { location: LocationPublicRef; data: Array<FileDiffInfo> }
+
+export type DebugGuardsInput = {
+  readonly since?: { readonly since?: number | undefined; readonly limit?: number | undefined }["since"]
+  readonly limit?: { readonly since?: number | undefined; readonly limit?: number | undefined }["limit"]
+}
+
+export type DebugGuardsOutput = {
+  summary: Array<{
+    guard:
+      | "stall"
+      | "tool_timeout"
+      | "loop"
+      | "steps"
+      | "aux"
+      | "orphan"
+      | "goal"
+      | "compaction"
+      | "budget"
+      | "intelligence"
+      | "stop_loss"
+    action: "warn" | "correct" | "stop"
+    count: number
+  }>
+  recent: Array<{
+    id: string
+    sessionID: string
+    guard:
+      | "stall"
+      | "tool_timeout"
+      | "loop"
+      | "steps"
+      | "aux"
+      | "orphan"
+      | "goal"
+      | "compaction"
+      | "budget"
+      | "intelligence"
+      | "stop_loss"
+    action: "warn" | "correct" | "stop"
+    subject?: string | undefined
+    detail: string
+    at: number
+  }>
+}
 
 export type DebugLocationListOutput = Array<LocationPublicRef>
 
