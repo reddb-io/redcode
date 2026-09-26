@@ -90,7 +90,6 @@ describe("createChildStoreManager", () => {
       onBootstrap() {},
       onMcp() {},
       onDispose() {},
-      translate: (key) => key,
       queryOptions: queryOptionsApi,
       global: { provider },
     })
@@ -123,7 +122,6 @@ describe("createChildStoreManager", () => {
         },
         onMcp() {},
         onDispose() {},
-        translate: (key) => key,
         queryOptions: queryOptionsApi,
         global: { provider },
       })
@@ -155,7 +153,6 @@ describe("createChildStoreManager", () => {
         onBootstrap() {},
         onMcp() {},
         onDispose() {},
-        translate: (key) => key,
         queryOptions: queryOptionsApi,
         global: { provider },
       })
@@ -190,7 +187,6 @@ describe("createChildStoreManager", () => {
           mcpLoads.push(directory)
         },
         onDispose() {},
-        translate: (key) => key,
         queryOptions: queryOptionsApi,
         global: { provider },
       })
@@ -239,7 +235,6 @@ describe("createChildStoreManager", () => {
         },
         onMcp() {},
         onDispose() {},
-        translate: (key) => key,
         queryOptions: queryOptionsApi,
         global: { provider },
       })

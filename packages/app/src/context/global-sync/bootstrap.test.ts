@@ -131,7 +131,6 @@ describe("bootstrapDirectory", () => {
       setStore,
       vcsCache: { setStore() {} } as unknown as VcsCache,
       loadSessions() {},
-      translate: (key) => key,
       queryClient: new QueryClient(),
       protocol: Promise.resolve("v1"),
     })
@@ -170,7 +169,6 @@ describe("bootstrapDirectory", () => {
       setStore,
       vcsCache: { setStore() {} } as unknown as VcsCache,
       loadSessions() {},
-      translate: (key) => key,
       queryClient: new QueryClient(),
       protocol: Promise.resolve("v2"),
     })

@@ -1,9 +1,9 @@
 import { Index, createMemo } from "solid-js"
-import type { UiI18nPluralKey } from "@reddb-io/redcode-ui/context"
+import type { CountLabelKey } from "./tool-count-label"
 import { AnimatedCountLabel } from "./tool-count-label"
 
 export type CountItem = {
-  key: UiI18nPluralKey
+  key: CountLabelKey
   count: number
 }
 

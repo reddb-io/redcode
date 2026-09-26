@@ -190,7 +190,7 @@ function formatErrorChain(error: unknown, depth = 0, parentMessage?: string): st
     }
 
     if (error.cause) {
-      const causeResult = formatErrorChain(error.cause, t, depth + 1, error.message)
+      const causeResult = formatErrorChain(error.cause, depth + 1, error.message)
       if (causeResult) {
         parts.push(causeResult)
       }

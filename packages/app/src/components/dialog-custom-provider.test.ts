@@ -1,8 +1,6 @@
 import { describe, expect, test } from "bun:test"
 import { validateCustomProvider } from "./dialog-custom-provider-form"
 
-const t = (key: string) => key
-
 describe("validateCustomProvider", () => {
   test("builds trimmed config payload", () => {
     const result = validateCustomProvider({
@@ -18,7 +16,6 @@ describe("validateCustomProvider", () => {
         ],
         err: {},
       },
-      t,
       disabledProviders: [],
       existingProviderIDs: new Set(),
     })
@@ -61,7 +58,6 @@ describe("validateCustomProvider", () => {
         ],
         err: {},
       },
-      t,
       disabledProviders: ["custom-provider"],
       existingProviderIDs: new Set(["custom-provider"]),
     })
