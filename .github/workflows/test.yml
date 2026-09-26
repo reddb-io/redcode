@@ -3,15 +3,15 @@ name: test
 on:
   push:
     branches:
-      - dev
-      - v2
+      - main
   pull_request:
+    branches:
+      - main
   workflow_dispatch:
 
 concurrency:
-  # Keep every run on dev so cancelled checks do not pollute the default branch
-  # commit history. PRs and other branches still share a group and cancel stale runs.
-  group: ${{ case(github.ref == 'refs/heads/dev', format('{0}-{1}', github.workflow, github.run_id), format('{0}-{1}', github.workflow, github.event.pull_request.number || github.ref)) }}
+  # Preserve every main run; pull requests can cancel superseded checks.
+  group: ${{ case(github.ref == 'refs/heads/main', format('{0}-{1}', github.workflow, github.run_id), format('{0}-{1}', github.workflow, github.event.pull_request.number || github.ref)) }}
   cancel-in-progress: true
 
 permissions:
@@ -190,7 +190,7 @@ jobs:
             host: blacksmith-4vcpu-windows-2025
     runs-on: ${{ matrix.settings.host }}
     env:
-      E2E_ENABLED: ${{ needs.affected.outputs.app == 'true' && github.ref_name != 'v2' && github.head_ref != 'v2' }}
+      E2E_ENABLED: ${{ needs.affected.outputs.app == 'true' }}
       PLAYWRIGHT_BROWSERS_PATH: ${{ github.workspace }}/.playwright-browsers
     defaults:
       run:
