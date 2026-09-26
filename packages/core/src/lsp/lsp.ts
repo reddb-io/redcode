@@ -3,6 +3,7 @@ export * as LSP from "./lsp.js"
 import path from "node:path"
 import { pathToFileURL } from "node:url"
 import { Context, Effect, Layer } from "effect"
+import { CancellationTokenSource } from "vscode-jsonrpc/node"
 import { makeLocationNode } from "@opencode/util/effect/app-node"
 import type { Info } from "@opencode/schema/config"
 import { Config } from "../config.js"
@@ -40,7 +41,7 @@ export interface Interface {
   readonly hasClients: (file: string) => Effect.Effect<boolean>
   readonly touchFile: (file: string, diagnostics?: "document" | "full") => Effect.Effect<void>
   readonly diagnostics: () => Effect.Effect<Record<string, LSPClient.Diagnostic[]>>
-  readonly request: (operation: Operation, position: Position) => Effect.Effect<unknown[]>
+  readonly request: (operation: Operation, position: Position, abort?: AbortSignal) => Effect.Effect<unknown[]>
 }
 
 export class Service extends Context.Service<Service, Interface>()("@opencode/LSP") {}
@@ -216,41 +217,59 @@ const layer = Layer.effect(
       }, {})
     })
 
-    const request = Effect.fn("LSP.request")(function* (operation: Operation, position: Position) {
-      const matching = operation === "workspaceSymbol"
-        ? (yield* Effect.promise(async () => {
-            await get(position.file)
-            return Promise.all(active())
-          })).filter((client): client is LSPClient.Info => client !== undefined)
-        : yield* Effect.promise(() => get(position.file))
-      const uri = pathToFileURL(position.file).href
-      const at = { line: position.line, character: position.character }
-      return yield* Effect.promise(() => Promise.all(matching.map(async (client) => {
-        if (operation === "workspaceSymbol")
-          return client.connection.sendRequest<unknown[]>("workspace/symbol", { query: position.query ?? "" })
-        await client.notify.open({ path: position.file })
-        if (operation === "documentSymbol")
-          return client.connection.sendRequest<unknown[]>("textDocument/documentSymbol", { textDocument: { uri } })
-        const item = { textDocument: { uri }, position: at }
-        if (operation === "incomingCalls" || operation === "outgoingCalls") {
-          const prepared = await client.connection.sendRequest<unknown[]>("textDocument/prepareCallHierarchy", item)
-          if (!prepared?.length) return []
-          return client.connection.sendRequest<unknown[]>(`callHierarchy/${operation}`, { item: prepared[0] })
+    const request = Effect.fn("LSP.request")((operation: Operation, position: Position, abort?: AbortSignal) =>
+      Effect.promise(async () => {
+        const cancellation = new CancellationTokenSource()
+        const stop = () => cancellation.cancel()
+        abort?.addEventListener("abort", stop, { once: true })
+        if (abort?.aborted) stop()
+        try {
+          if (operation === "workspaceSymbol") await get(position.file)
+          const matching = operation === "workspaceSymbol"
+            ? (await Promise.all(active())).filter((client): client is LSPClient.Info => client !== undefined)
+            : await get(position.file)
+          if (abort?.aborted) return []
+          const uri = pathToFileURL(position.file).href
+          const at = { line: position.line, character: position.character }
+          const results = await Promise.all(matching.map(async (client) => {
+            if (operation === "workspaceSymbol")
+              return client.connection.sendRequest<unknown[]>(
+                "workspace/symbol", { query: position.query ?? "" }, cancellation.token,
+              )
+            await client.notify.open({ path: position.file })
+            if (abort?.aborted) return []
+            if (operation === "documentSymbol")
+              return client.connection.sendRequest<unknown[]>(
+                "textDocument/documentSymbol", { textDocument: { uri } }, cancellation.token,
+              )
+            const item = { textDocument: { uri }, position: at }
+            if (operation === "incomingCalls" || operation === "outgoingCalls") {
+              const prepared = await client.connection.sendRequest<unknown[]>(
+                "textDocument/prepareCallHierarchy", item, cancellation.token,
+              )
+              if (!prepared?.length || abort?.aborted) return []
+              return client.connection.sendRequest<unknown[]>(
+                `callHierarchy/${operation}`, { item: prepared[0] }, cancellation.token,
+              )
+            }
+            const method = {
+              goToDefinition: "textDocument/definition",
+              findReferences: "textDocument/references",
+              hover: "textDocument/hover",
+              goToImplementation: "textDocument/implementation",
+              prepareCallHierarchy: "textDocument/prepareCallHierarchy",
+            }[operation]
+            return client.connection.sendRequest<unknown>(method, operation === "findReferences"
+              ? { ...item, context: { includeDeclaration: true } }
+              : item, cancellation.token)
+          }).then((result) => result ?? []).catch(() => [])))
+          return results.flatMap((result) => Array.isArray(result) ? result : [result])
+        } finally {
+          abort?.removeEventListener("abort", stop)
+          cancellation.dispose()
         }
-        const method = {
-          goToDefinition: "textDocument/definition",
-          findReferences: "textDocument/references",
-          hover: "textDocument/hover",
-          goToImplementation: "textDocument/implementation",
-          prepareCallHierarchy: "textDocument/prepareCallHierarchy",
-        }[operation]
-        return client.connection.sendRequest<unknown>(method, operation === "findReferences"
-          ? { ...item, context: { includeDeclaration: true } }
-          : item)
-      }).then((result) => result ?? []).catch(() => []))).pipe(
-        Effect.map((results) => results.flatMap((result) => Array.isArray(result) ? result : [result])),
-      )
-    })
+      }),
+    )
 
     return Service.of({ status, hasClients, touchFile, diagnostics, request })
   }),

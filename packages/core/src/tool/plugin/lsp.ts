@@ -64,7 +64,7 @@ export const Plugin = {
           line: input.line - 1,
           character: input.character - 1,
           query: input.query,
-        })
+        }, context.abort)
         const resource = path.relative(location.directory, target.absolute)
         return {
           output: result,
