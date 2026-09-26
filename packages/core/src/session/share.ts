@@ -11,6 +11,7 @@ import { Credential } from "../credential.js"
 import { Bus } from "../bus.js"
 import { Database } from "../database/database.js"
 import { LocationServiceMap } from "../location-service-map.js"
+import { Plugin } from "../plugin.js"
 import { Session } from "../session.js"
 import { SessionEvent } from "./event.js"
 import { SessionMessage } from "./message.js"
@@ -164,6 +165,7 @@ const layer = Layer.effect(
       if (!share) return yield* Effect.fail(new Error("This session has no recoverable local share secret"))
       if (share.resource !== "share" || share.credential_id || share.account_id || share.org_id)
         return yield* Effect.fail(new Error("This share already has backend provenance"))
+      yield* Plugin.awaitActivation.pipe(Effect.provide(locations.get(info.location)))
       const account = (yield* ConsoleOrganization.list(credentialID).pipe(
         Effect.provide(locations.get(info.location)),
         Effect.provideService(HttpClient.HttpClient, http),
