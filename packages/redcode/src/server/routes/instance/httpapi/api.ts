@@ -57,7 +57,7 @@ export const ServerApi = makeApi({
 export const RootHttpApi = HttpApi.make("redcode-root")
   .addHttpApi(ControlApi)
   .addHttpApi(ControlPlaneApi)
-  .addHttpApi(HttpApi.make("sessionV2").add(SessionV2Group))
+  .addHttpApi(HttpApi.make("server.sessionV2").add(SessionV2Group))
   .addHttpApi(GlobalApi)
   .middleware(SchemaErrorMiddleware)
   .middleware(Authorization)
