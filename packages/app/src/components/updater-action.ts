@@ -4,20 +4,20 @@ import { usePlatform } from "@/context/platform"
 import { showToast } from "@/utils/toast"
 
 export function updaterAction(state: UpdaterState | undefined) {
-  if (!state) return { label: "settings.updates.action.checkNow" as const }
+  if (!state) return { label: "Check now" as const }
   switch (state.status) {
     case "checking":
-      return { label: "settings.updates.action.checking" as const }
+      return { label: "Checking..." as const }
     case "downloading":
-      return { label: "settings.updates.action.downloading" as const }
+      return { label: "Downloading..." as const }
     case "ready":
-      return { label: "toast.update.action.installRestart" as const, run: "install" as const }
+      return { label: "Install and restart" as const, run: "install" as const }
     case "installing":
-      return { label: "settings.updates.action.installing" as const }
+      return { label: "Installing..." as const }
     case "disabled":
-      return { label: "settings.updates.action.checkNow" as const }
+      return { label: "Check now" as const }
     default:
-      return { label: "settings.updates.action.checkNow" as const, run: "check" as const }
+      return { label: "Check now" as const, run: "check" as const }
   }
 }
 

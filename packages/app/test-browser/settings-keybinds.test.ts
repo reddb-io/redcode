@@ -100,7 +100,7 @@ describe("keybind settings controller", () => {
 
     state.controller.settings.reset()
     expect(state.resets()).toBe(1)
-    expect(state.notifications[0]?.title).toBe("settings.shortcuts.reset.toast.title")
+    expect(state.notifications[0]?.title).toBe("Shortcuts reset")
 
     state.dispose()
   })
