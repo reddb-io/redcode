@@ -454,6 +454,15 @@ function normalizeExperimental(
         )
         if (value !== undefined) result.turn_stall = value
       }
+      if (own(experimental, "tool_timeout")) {
+        const value = decodeEncoded(
+          ConfigExperimental.Info.fields.tool_timeout,
+          experimental.tool_timeout,
+          ["experimental", "tool_timeout"],
+          diagnostics,
+        )
+        if (value !== undefined) result.tool_timeout = value
+      }
       native.push(
         ...decodeList(
           experimental.policies,

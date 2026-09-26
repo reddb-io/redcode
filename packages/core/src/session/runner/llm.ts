@@ -331,6 +331,7 @@ const layer = Layer.effect(
         const stallLimits = SessionStall.limits(Config.latestExperimental(yield* config.entries(), "turn_stall"), {
           attended: SessionStall.attended(process.env.OPENCODE_CLIENT ?? ""),
         })
+        const toolTimeout = Config.latestExperimental(yield* config.entries(), "tool_timeout")
         if (stepLimitReached && loaded.agent.info.steps !== undefined)
           yield* guards.record({
             sessionID,
@@ -422,6 +423,7 @@ const layer = Layer.effect(
             "allow",
           loopLimits,
           stallLimits,
+          toolTimeout,
         })
         const completed = yield* SessionStep.Outcome.$match(outcome, {
           Completed: Effect.fnUntraced(function* (outcome) {

@@ -23,10 +23,12 @@ import { StepFailedError } from "../error.js"
 import { SessionGoalCompletion } from "../goal-completion.js"
 import { SessionGoal } from "../goal.js"
 import { SessionGuardLog } from "../guard-log.js"
+import { HumanWait } from "../human-wait.js"
 import { SessionLoopGuard } from "../loop-guard-v2.js"
 import { LoopGuard } from "../loop-guard.js"
 import { SessionStore } from "../store.js"
 import { SessionStall } from "../stall.js"
+import { ToolDeadline } from "../tool-deadline.js"
 import { SessionEvent } from "../event.js"
 import { SessionMessage } from "../message.js"
 import { SessionModelRequest } from "../model-request.js"
@@ -69,6 +71,7 @@ interface Input {
   readonly allowLoop: (tool: string) => boolean
   readonly loopLimits?: LoopGuard.Limits
   readonly stallLimits: SessionStall.StallLimits
+  readonly toolTimeout?: number | false
 }
 
 const TOOLS_INTERRUPTED = { type: "aborted", message: "Tool execution interrupted" } as const
@@ -125,16 +128,34 @@ export const make = Effect.gen(function* () {
           return yield* new Tool.Error({ message: decision.message })
         }
       }
-      return yield* input.prepared.executeTool({
+      const run = (abort?: AbortSignal) => input.prepared.executeTool({
         sessionID: input.sessionID,
         agent: input.agent,
         messageID: input.assistantMessageID,
         call,
+        ...(abort ? { abort } : {}),
         progress: (update) =>
           Effect.sync(() => {
             lastEventAt = Date.now()
           }).pipe(Effect.zipRight(publisher.progress(call.id, update))),
       })
+      const ms = ToolDeadline.deadlineMs({ tool: call.name, configured: input.toolTimeout })
+      if (ms === undefined) return yield* run()
+      return yield* Effect.suspend(() => {
+        HumanWait.claim(input.sessionID, call.id)
+        return ToolDeadline.guard(run, {
+          tool: call.name,
+          ms,
+          waitedMs: (now) => HumanWait.waited(input.sessionID, call.id, now),
+          onExpire: guards.record({
+            sessionID: input.sessionID,
+            guard: "tool_timeout",
+            action: "stop",
+            subject: call.name,
+            detail: ToolDeadline.message({ tool: call.name, ms }),
+          }),
+        })
+      }).pipe(Effect.ensuring(Effect.sync(() => HumanWait.forget(input.sessionID, call.id))))
     })
 
     // Provider and tool fibers retain per-source order without a shared writer queue.

@@ -17,6 +17,7 @@ export interface Context {
   readonly messageID: SessionMessage.ID
   readonly id: CallID
   readonly progress: (update: Metadata) => Effect.Effect<void>
+  readonly abort?: AbortSignal
 }
 
 export interface Namespace {

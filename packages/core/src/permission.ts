@@ -9,6 +9,7 @@ import { Agent } from "./agent.js"
 import { SessionErrors } from "./session/error.js"
 import { SessionSchema } from "./session/schema.js"
 import { SessionStore } from "./session/store.js"
+import { HumanWait } from "./session/human-wait.js"
 import { Wildcard } from "./util/wildcard.js"
 import { PermissionSaved } from "./permission/saved.js"
 import { PluginHooks } from "./plugin/hooks.js"
@@ -259,6 +260,7 @@ const layer = Layer.effect(
             }
             if (result.effect === "allow") return
             const item = yield* create(request(input, result.message), input.agent)
+            const endWait = input.source?.type === "tool" ? HumanWait.start(input.sessionID, input.source.id) : () => {}
             return yield* restore(Deferred.await(item.deferred)).pipe(
               // Deliberate defect tunnel: leaves wrap execution in blanket `mapError`, which
               // must not convert a user's decline into model-facing tool output. The decline
@@ -269,6 +271,7 @@ const layer = Layer.effect(
               Effect.ensuring(
                 Effect.sync(() => {
                   pending.delete(item.request.id)
+                  endWait()
                 }),
               ),
             )

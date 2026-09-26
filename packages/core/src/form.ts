@@ -4,6 +4,7 @@ import { Form } from "@opencode/schema/form"
 import { Cache, Context, Deferred, Duration, Effect, Exit, Layer, Option, Schema } from "effect"
 import { makeLocationNode } from "@opencode/util/effect/app-node"
 import { Bus } from "./bus.js"
+import { HumanWait } from "./session/human-wait.js"
 
 const RETENTION = Duration.minutes(10)
 
@@ -150,8 +151,14 @@ export const layer = Layer.effect(
         Effect.gen(function* () {
           const form = yield* create(input)
           const entry = yield* requireEntry(form.id).pipe(Effect.orDie)
+          const tool = input.metadata?.tool
+          const endWait =
+            typeof tool === "object" && tool !== null && "id" in tool && typeof tool.id === "string"
+              ? HumanWait.start(input.sessionID, tool.id)
+              : () => {}
           return yield* restore(Deferred.await(entry.deferred)).pipe(
             Effect.onInterrupt(() => Effect.ignore(cancel(form.id))),
+            Effect.ensuring(Effect.sync(endWait)),
           )
         }),
       ),

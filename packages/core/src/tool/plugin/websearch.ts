@@ -75,7 +75,7 @@ export const Plugin = {
                         const response = yield* forms.ask({
                           sessionID: context.sessionID,
                           title: "Web Search",
-                          metadata: { kind: "websearch.provider" },
+                          metadata: { kind: "websearch.provider", tool: { messageID: context.messageID, id: context.id } },
                           fields: [
                             {
                               key: "choice",
@@ -108,7 +108,7 @@ export const Plugin = {
                             ? yield* forms.ask({
                                 sessionID: context.sessionID,
                                 title: "Choose a web search provider",
-                                metadata: { kind: "websearch.provider" },
+                                metadata: { kind: "websearch.provider", tool: { messageID: context.messageID, id: context.id } },
                                 fields: [
                                   {
                                     key: "provider",

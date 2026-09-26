@@ -31,6 +31,9 @@ export class Info extends Schema.Class<Info>("ConfigExperimental.Info")({
   ]).pipe(optional).annotate({
     description: "Warn when a Step produces no output, and end unattended Steps after a longer silence.",
   }),
+  tool_timeout: Schema.Union([Schema.Literal(false), NonNegativeInt]).pipe(optional).annotate({
+    description: "Deadline in milliseconds for a local tool call, excluding time spent waiting for a person; false disables it.",
+  }),
   policies: ConfigPolicy.Info.pipe(Schema.Array, optional).annotate({
     description: "Ordered policies controlling access to configured resources",
   }),

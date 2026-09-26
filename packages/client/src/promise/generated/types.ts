@@ -2562,6 +2562,8 @@ export type ConfigEntry =
           subagent_depth?: number
           loop_guard?: false | { correct_at?: number; stop_at?: number; nudge_at?: number }
           aux_timeout?: false | number
+          turn_stall?: false | { warn_ms?: number; abort_ms?: number }
+          tool_timeout?: false | number
           policies?: Array<{ action: "provider.use" | "permission"; resource: string; effect: "allow" | "deny" }>
         }
       }
