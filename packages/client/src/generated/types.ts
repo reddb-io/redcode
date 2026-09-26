@@ -7851,6 +7851,543 @@ export type HooksImportOutput = {
   readonly data: { readonly imported: number; readonly target: string; readonly restart_required: boolean }
 }
 
+export type IntelligenceGetOutput = {
+  readonly settings: {
+    readonly enabled: boolean
+    readonly reasoning?: "single" | "dual"
+    readonly onboarding: "pending" | "deferred" | "completed"
+    readonly principal?: { readonly id: string; readonly providerID: string; readonly variant?: string }
+    readonly evaluator?: {
+      readonly transport:
+        | "opencode-zen"
+        | "openrouter"
+        | "typesafe"
+        | "red-router"
+        | "cloudflare-ai-gateway"
+        | "vercel"
+        | "vivgrid"
+        | "nano-gpt"
+      readonly baseURL: string
+      readonly model: string
+      readonly credentialID?: string
+    }
+  }
+  readonly environment: string
+  readonly evaluators: ReadonlyArray<{
+    readonly name: string
+    readonly configured: boolean
+    readonly evaluator: {
+      readonly transport:
+        | "opencode-zen"
+        | "openrouter"
+        | "typesafe"
+        | "red-router"
+        | "cloudflare-ai-gateway"
+        | "vercel"
+        | "vivgrid"
+        | "nano-gpt"
+      readonly baseURL: string
+      readonly model: string
+      readonly credentialID?: string
+    }
+  }>
+  readonly effective: { readonly reasoning: "single" | "dual"; readonly source: "flag" | "config" | "default" }
+  readonly router?: {
+    readonly providerID: string
+    readonly baseURL: string
+    readonly detection: {
+      readonly kind: "red-router" | "9router" | "none"
+      readonly version?: string
+      readonly instanceID?: string
+      readonly catalogVersion?: string
+      readonly features: ReadonlyArray<
+        | "capabilities"
+        | "systemone"
+        | "combos"
+        | "decision"
+        | "hint"
+        | "token-saver"
+        | "session-affinity"
+        | "served-model"
+        | "cost"
+        | "stream-usage-cost"
+        | "catalog"
+        | "reasoning"
+        | "reasoning-auto"
+        | "reasoning-applies"
+        | "hint-signals"
+        | "recommendations"
+      >
+      readonly systemOne?: { readonly available: boolean; readonly models: ReadonlyArray<string> }
+      readonly checkedAt: number
+    }
+    readonly evaluator?: {
+      readonly transport:
+        | "opencode-zen"
+        | "openrouter"
+        | "typesafe"
+        | "red-router"
+        | "cloudflare-ai-gateway"
+        | "vercel"
+        | "vivgrid"
+        | "nano-gpt"
+      readonly baseURL: string
+      readonly model: string
+      readonly credentialID?: string
+    }
+    readonly recommended?: {
+      readonly default?: {
+        readonly id: string
+        readonly name: string
+        readonly provider: { readonly slug: string; readonly name: string }
+        readonly reason: string
+      }
+      readonly review?: {
+        readonly id: string
+        readonly name: string
+        readonly provider: { readonly slug: string; readonly name: string }
+        readonly reason: string
+      }
+      readonly systemone?: {
+        readonly id: string
+        readonly name: string
+        readonly provider: { readonly slug: string; readonly name: string }
+        readonly reason: string
+      }
+      readonly vision?: {
+        readonly id: string
+        readonly name: string
+        readonly provider: { readonly slug: string; readonly name: string }
+        readonly reason: string
+      }
+    }
+  }
+}
+
+export type IntelligenceSaveInput = {
+  readonly settings: {
+    readonly settings: {
+      readonly enabled: boolean
+      readonly reasoning?: "single" | "dual"
+      readonly onboarding: "pending" | "deferred" | "completed"
+      readonly principal?: { readonly id: string; readonly providerID: string; readonly variant?: string }
+      readonly evaluator?: {
+        readonly transport:
+          | "opencode-zen"
+          | "openrouter"
+          | "typesafe"
+          | "red-router"
+          | "cloudflare-ai-gateway"
+          | "vercel"
+          | "vivgrid"
+          | "nano-gpt"
+        readonly baseURL: string
+        readonly model: string
+        readonly credentialID?: string
+      }
+    }
+    readonly apiKey?: string
+  }["settings"]
+  readonly apiKey?: {
+    readonly settings: {
+      readonly enabled: boolean
+      readonly reasoning?: "single" | "dual"
+      readonly onboarding: "pending" | "deferred" | "completed"
+      readonly principal?: { readonly id: string; readonly providerID: string; readonly variant?: string }
+      readonly evaluator?: {
+        readonly transport:
+          | "opencode-zen"
+          | "openrouter"
+          | "typesafe"
+          | "red-router"
+          | "cloudflare-ai-gateway"
+          | "vercel"
+          | "vivgrid"
+          | "nano-gpt"
+        readonly baseURL: string
+        readonly model: string
+        readonly credentialID?: string
+      }
+    }
+    readonly apiKey?: string
+  }["apiKey"]
+}
+
+export type IntelligenceSaveOutput = {
+  readonly enabled: boolean
+  readonly reasoning?: "single" | "dual"
+  readonly onboarding: "pending" | "deferred" | "completed"
+  readonly principal?: { readonly id: string; readonly providerID: string; readonly variant?: string }
+  readonly evaluator?: {
+    readonly transport:
+      | "opencode-zen"
+      | "openrouter"
+      | "typesafe"
+      | "red-router"
+      | "cloudflare-ai-gateway"
+      | "vercel"
+      | "vivgrid"
+      | "nano-gpt"
+    readonly baseURL: string
+    readonly model: string
+    readonly credentialID?: string
+  }
+}
+
+export type IntelligenceDiscoverInput = {
+  readonly evaluator: {
+    readonly evaluator: {
+      readonly transport:
+        | "opencode-zen"
+        | "openrouter"
+        | "typesafe"
+        | "red-router"
+        | "cloudflare-ai-gateway"
+        | "vercel"
+        | "vivgrid"
+        | "nano-gpt"
+      readonly baseURL: string
+      readonly model: string
+      readonly credentialID?: string
+    }
+    readonly apiKey?: string
+  }["evaluator"]
+  readonly apiKey?: {
+    readonly evaluator: {
+      readonly transport:
+        | "opencode-zen"
+        | "openrouter"
+        | "typesafe"
+        | "red-router"
+        | "cloudflare-ai-gateway"
+        | "vercel"
+        | "vivgrid"
+        | "nano-gpt"
+      readonly baseURL: string
+      readonly model: string
+      readonly credentialID?: string
+    }
+    readonly apiKey?: string
+  }["apiKey"]
+}
+
+export type IntelligenceDiscoverOutput = {
+  readonly models: ReadonlyArray<{ readonly id: string; readonly name: string }>
+  readonly manual: boolean
+}
+
+export type IntelligenceProbeInput = {
+  readonly evaluator: {
+    readonly evaluator: {
+      readonly transport:
+        | "opencode-zen"
+        | "openrouter"
+        | "typesafe"
+        | "red-router"
+        | "cloudflare-ai-gateway"
+        | "vercel"
+        | "vivgrid"
+        | "nano-gpt"
+      readonly baseURL: string
+      readonly model: string
+      readonly credentialID?: string
+    }
+    readonly apiKey?: string
+  }["evaluator"]
+  readonly apiKey?: {
+    readonly evaluator: {
+      readonly transport:
+        | "opencode-zen"
+        | "openrouter"
+        | "typesafe"
+        | "red-router"
+        | "cloudflare-ai-gateway"
+        | "vercel"
+        | "vivgrid"
+        | "nano-gpt"
+      readonly baseURL: string
+      readonly model: string
+      readonly credentialID?: string
+    }
+    readonly apiKey?: string
+  }["apiKey"]
+}
+
+export type IntelligenceProbeOutput = { readonly ok: boolean; readonly message: string }
+
+export type IntelligenceHistoryInput = {
+  readonly sessionID?: {
+    readonly sessionID?: string | undefined
+    readonly operation?:
+      | "prompt_classification"
+      | "response_quality"
+      | "tool_usage"
+      | "task_quality"
+      | "todos"
+      | "plan"
+      | "feedback"
+      | "design_completion"
+      | "compaction"
+      | "compact_now"
+      | "task_completion"
+      | "goal_completion"
+      | "subagent_brief"
+      | "session_progress"
+      | "subagent_result"
+      | "design_target"
+      | "design_system_detect"
+      | "goal_command"
+      | undefined
+    readonly subjectID?: string | undefined
+    readonly candidateID?: string | undefined
+    readonly decision?: "accepted" | "needs_revision" | "inconclusive" | "unavailable" | undefined
+    readonly limit?: number | undefined
+    readonly offset?: number | undefined
+  }["sessionID"]
+  readonly operation?: {
+    readonly sessionID?: string | undefined
+    readonly operation?:
+      | "prompt_classification"
+      | "response_quality"
+      | "tool_usage"
+      | "task_quality"
+      | "todos"
+      | "plan"
+      | "feedback"
+      | "design_completion"
+      | "compaction"
+      | "compact_now"
+      | "task_completion"
+      | "goal_completion"
+      | "subagent_brief"
+      | "session_progress"
+      | "subagent_result"
+      | "design_target"
+      | "design_system_detect"
+      | "goal_command"
+      | undefined
+    readonly subjectID?: string | undefined
+    readonly candidateID?: string | undefined
+    readonly decision?: "accepted" | "needs_revision" | "inconclusive" | "unavailable" | undefined
+    readonly limit?: number | undefined
+    readonly offset?: number | undefined
+  }["operation"]
+  readonly subjectID?: {
+    readonly sessionID?: string | undefined
+    readonly operation?:
+      | "prompt_classification"
+      | "response_quality"
+      | "tool_usage"
+      | "task_quality"
+      | "todos"
+      | "plan"
+      | "feedback"
+      | "design_completion"
+      | "compaction"
+      | "compact_now"
+      | "task_completion"
+      | "goal_completion"
+      | "subagent_brief"
+      | "session_progress"
+      | "subagent_result"
+      | "design_target"
+      | "design_system_detect"
+      | "goal_command"
+      | undefined
+    readonly subjectID?: string | undefined
+    readonly candidateID?: string | undefined
+    readonly decision?: "accepted" | "needs_revision" | "inconclusive" | "unavailable" | undefined
+    readonly limit?: number | undefined
+    readonly offset?: number | undefined
+  }["subjectID"]
+  readonly candidateID?: {
+    readonly sessionID?: string | undefined
+    readonly operation?:
+      | "prompt_classification"
+      | "response_quality"
+      | "tool_usage"
+      | "task_quality"
+      | "todos"
+      | "plan"
+      | "feedback"
+      | "design_completion"
+      | "compaction"
+      | "compact_now"
+      | "task_completion"
+      | "goal_completion"
+      | "subagent_brief"
+      | "session_progress"
+      | "subagent_result"
+      | "design_target"
+      | "design_system_detect"
+      | "goal_command"
+      | undefined
+    readonly subjectID?: string | undefined
+    readonly candidateID?: string | undefined
+    readonly decision?: "accepted" | "needs_revision" | "inconclusive" | "unavailable" | undefined
+    readonly limit?: number | undefined
+    readonly offset?: number | undefined
+  }["candidateID"]
+  readonly decision?: {
+    readonly sessionID?: string | undefined
+    readonly operation?:
+      | "prompt_classification"
+      | "response_quality"
+      | "tool_usage"
+      | "task_quality"
+      | "todos"
+      | "plan"
+      | "feedback"
+      | "design_completion"
+      | "compaction"
+      | "compact_now"
+      | "task_completion"
+      | "goal_completion"
+      | "subagent_brief"
+      | "session_progress"
+      | "subagent_result"
+      | "design_target"
+      | "design_system_detect"
+      | "goal_command"
+      | undefined
+    readonly subjectID?: string | undefined
+    readonly candidateID?: string | undefined
+    readonly decision?: "accepted" | "needs_revision" | "inconclusive" | "unavailable" | undefined
+    readonly limit?: number | undefined
+    readonly offset?: number | undefined
+  }["decision"]
+  readonly limit?: {
+    readonly sessionID?: string | undefined
+    readonly operation?:
+      | "prompt_classification"
+      | "response_quality"
+      | "tool_usage"
+      | "task_quality"
+      | "todos"
+      | "plan"
+      | "feedback"
+      | "design_completion"
+      | "compaction"
+      | "compact_now"
+      | "task_completion"
+      | "goal_completion"
+      | "subagent_brief"
+      | "session_progress"
+      | "subagent_result"
+      | "design_target"
+      | "design_system_detect"
+      | "goal_command"
+      | undefined
+    readonly subjectID?: string | undefined
+    readonly candidateID?: string | undefined
+    readonly decision?: "accepted" | "needs_revision" | "inconclusive" | "unavailable" | undefined
+    readonly limit?: number | undefined
+    readonly offset?: number | undefined
+  }["limit"]
+  readonly offset?: {
+    readonly sessionID?: string | undefined
+    readonly operation?:
+      | "prompt_classification"
+      | "response_quality"
+      | "tool_usage"
+      | "task_quality"
+      | "todos"
+      | "plan"
+      | "feedback"
+      | "design_completion"
+      | "compaction"
+      | "compact_now"
+      | "task_completion"
+      | "goal_completion"
+      | "subagent_brief"
+      | "session_progress"
+      | "subagent_result"
+      | "design_target"
+      | "design_system_detect"
+      | "goal_command"
+      | undefined
+    readonly subjectID?: string | undefined
+    readonly candidateID?: string | undefined
+    readonly decision?: "accepted" | "needs_revision" | "inconclusive" | "unavailable" | undefined
+    readonly limit?: number | undefined
+    readonly offset?: number | undefined
+  }["offset"]
+}
+
+export type IntelligenceHistoryOutput = ReadonlyArray<{
+  readonly id: string
+  readonly fingerprint: string
+  readonly sessionID: string
+  readonly operation:
+    | "prompt_classification"
+    | "response_quality"
+    | "tool_usage"
+    | "task_quality"
+    | "todos"
+    | "plan"
+    | "feedback"
+    | "design_completion"
+    | "compaction"
+    | "compact_now"
+    | "task_completion"
+    | "goal_completion"
+    | "subagent_brief"
+    | "session_progress"
+    | "subagent_result"
+    | "design_target"
+    | "design_system_detect"
+    | "goal_command"
+  readonly kind?: "classification" | "gate"
+  readonly subjectID?: string
+  readonly candidateID?: string
+  readonly attempt?: number
+  readonly policy: string
+  readonly decision: "accepted" | "needs_revision" | "inconclusive" | "unavailable"
+  readonly model: string
+  readonly answers: {
+    readonly [x: string]:
+      | { readonly type: "noul"; readonly noul: number }
+      | {
+          readonly type: "choice"
+          readonly choice: string
+          readonly probabilities: { readonly [x: string]: number }
+          readonly confidence: number
+        }
+      | {
+          readonly type: "score"
+          readonly score: number
+          readonly legend: { readonly [x: string]: JsonValue }
+          readonly probabilities: { readonly [x: string]: number }
+          readonly confidence: number
+        }
+  }
+  readonly issues: ReadonlyArray<string>
+  readonly created: number
+  readonly duration: number
+  readonly evaluator?: {
+    readonly transport:
+      | "opencode-zen"
+      | "openrouter"
+      | "typesafe"
+      | "red-router"
+      | "cloudflare-ai-gateway"
+      | "vercel"
+      | "vivgrid"
+      | "nano-gpt"
+    readonly baseURL: string
+    readonly model: string
+  }
+  readonly usage: { readonly input_tokens: number; readonly output_tokens: number }
+}>
+
+export type IntelligenceModelsTestInput = {
+  readonly id: { readonly id: string; readonly providerID: string; readonly variant?: string }["id"]
+  readonly providerID: { readonly id: string; readonly providerID: string; readonly variant?: string }["providerID"]
+  readonly variant?: { readonly id: string; readonly providerID: string; readonly variant?: string }["variant"]
+}
+
+export type IntelligenceModelsTestOutput = { readonly ok: boolean; readonly message: string }
+
 export type SessionsV2PromptInput = {
   readonly sessionID: {
     readonly sessionID: string
@@ -8673,540 +9210,3 @@ export type SessionsV2EventsOutput = ReadonlyArray<
 export type SessionsV2InterruptInput = { readonly id: { readonly id: string }["id"] }
 
 export type SessionsV2InterruptOutput = void
-
-export type IntelligenceGetOutput = {
-  readonly settings: {
-    readonly enabled: boolean
-    readonly reasoning?: "single" | "dual"
-    readonly onboarding: "pending" | "deferred" | "completed"
-    readonly principal?: { readonly id: string; readonly providerID: string; readonly variant?: string }
-    readonly evaluator?: {
-      readonly transport:
-        | "opencode-zen"
-        | "openrouter"
-        | "typesafe"
-        | "red-router"
-        | "cloudflare-ai-gateway"
-        | "vercel"
-        | "vivgrid"
-        | "nano-gpt"
-      readonly baseURL: string
-      readonly model: string
-      readonly credentialID?: string
-    }
-  }
-  readonly environment: string
-  readonly evaluators: ReadonlyArray<{
-    readonly name: string
-    readonly configured: boolean
-    readonly evaluator: {
-      readonly transport:
-        | "opencode-zen"
-        | "openrouter"
-        | "typesafe"
-        | "red-router"
-        | "cloudflare-ai-gateway"
-        | "vercel"
-        | "vivgrid"
-        | "nano-gpt"
-      readonly baseURL: string
-      readonly model: string
-      readonly credentialID?: string
-    }
-  }>
-  readonly effective: { readonly reasoning: "single" | "dual"; readonly source: "flag" | "config" | "default" }
-  readonly router?: {
-    readonly providerID: string
-    readonly baseURL: string
-    readonly detection: {
-      readonly kind: "red-router" | "9router" | "none"
-      readonly version?: string
-      readonly instanceID?: string
-      readonly catalogVersion?: string
-      readonly features: ReadonlyArray<
-        | "capabilities"
-        | "systemone"
-        | "combos"
-        | "decision"
-        | "hint"
-        | "token-saver"
-        | "session-affinity"
-        | "served-model"
-        | "cost"
-        | "stream-usage-cost"
-        | "catalog"
-        | "reasoning"
-        | "reasoning-auto"
-        | "reasoning-applies"
-        | "hint-signals"
-        | "recommendations"
-      >
-      readonly systemOne?: { readonly available: boolean; readonly models: ReadonlyArray<string> }
-      readonly checkedAt: number
-    }
-    readonly evaluator?: {
-      readonly transport:
-        | "opencode-zen"
-        | "openrouter"
-        | "typesafe"
-        | "red-router"
-        | "cloudflare-ai-gateway"
-        | "vercel"
-        | "vivgrid"
-        | "nano-gpt"
-      readonly baseURL: string
-      readonly model: string
-      readonly credentialID?: string
-    }
-    readonly recommended?: {
-      readonly default?: {
-        readonly id: string
-        readonly name: string
-        readonly provider: { readonly slug: string; readonly name: string }
-        readonly reason: string
-      }
-      readonly review?: {
-        readonly id: string
-        readonly name: string
-        readonly provider: { readonly slug: string; readonly name: string }
-        readonly reason: string
-      }
-      readonly systemone?: {
-        readonly id: string
-        readonly name: string
-        readonly provider: { readonly slug: string; readonly name: string }
-        readonly reason: string
-      }
-      readonly vision?: {
-        readonly id: string
-        readonly name: string
-        readonly provider: { readonly slug: string; readonly name: string }
-        readonly reason: string
-      }
-    }
-  }
-}
-
-export type IntelligenceSaveInput = {
-  readonly settings: {
-    readonly settings: {
-      readonly enabled: boolean
-      readonly reasoning?: "single" | "dual"
-      readonly onboarding: "pending" | "deferred" | "completed"
-      readonly principal?: { readonly id: string; readonly providerID: string; readonly variant?: string }
-      readonly evaluator?: {
-        readonly transport:
-          | "opencode-zen"
-          | "openrouter"
-          | "typesafe"
-          | "red-router"
-          | "cloudflare-ai-gateway"
-          | "vercel"
-          | "vivgrid"
-          | "nano-gpt"
-        readonly baseURL: string
-        readonly model: string
-        readonly credentialID?: string
-      }
-    }
-    readonly apiKey?: string
-  }["settings"]
-  readonly apiKey?: {
-    readonly settings: {
-      readonly enabled: boolean
-      readonly reasoning?: "single" | "dual"
-      readonly onboarding: "pending" | "deferred" | "completed"
-      readonly principal?: { readonly id: string; readonly providerID: string; readonly variant?: string }
-      readonly evaluator?: {
-        readonly transport:
-          | "opencode-zen"
-          | "openrouter"
-          | "typesafe"
-          | "red-router"
-          | "cloudflare-ai-gateway"
-          | "vercel"
-          | "vivgrid"
-          | "nano-gpt"
-        readonly baseURL: string
-        readonly model: string
-        readonly credentialID?: string
-      }
-    }
-    readonly apiKey?: string
-  }["apiKey"]
-}
-
-export type IntelligenceSaveOutput = {
-  readonly enabled: boolean
-  readonly reasoning?: "single" | "dual"
-  readonly onboarding: "pending" | "deferred" | "completed"
-  readonly principal?: { readonly id: string; readonly providerID: string; readonly variant?: string }
-  readonly evaluator?: {
-    readonly transport:
-      | "opencode-zen"
-      | "openrouter"
-      | "typesafe"
-      | "red-router"
-      | "cloudflare-ai-gateway"
-      | "vercel"
-      | "vivgrid"
-      | "nano-gpt"
-    readonly baseURL: string
-    readonly model: string
-    readonly credentialID?: string
-  }
-}
-
-export type IntelligenceDiscoverInput = {
-  readonly evaluator: {
-    readonly evaluator: {
-      readonly transport:
-        | "opencode-zen"
-        | "openrouter"
-        | "typesafe"
-        | "red-router"
-        | "cloudflare-ai-gateway"
-        | "vercel"
-        | "vivgrid"
-        | "nano-gpt"
-      readonly baseURL: string
-      readonly model: string
-      readonly credentialID?: string
-    }
-    readonly apiKey?: string
-  }["evaluator"]
-  readonly apiKey?: {
-    readonly evaluator: {
-      readonly transport:
-        | "opencode-zen"
-        | "openrouter"
-        | "typesafe"
-        | "red-router"
-        | "cloudflare-ai-gateway"
-        | "vercel"
-        | "vivgrid"
-        | "nano-gpt"
-      readonly baseURL: string
-      readonly model: string
-      readonly credentialID?: string
-    }
-    readonly apiKey?: string
-  }["apiKey"]
-}
-
-export type IntelligenceDiscoverOutput = {
-  readonly models: ReadonlyArray<{ readonly id: string; readonly name: string }>
-  readonly manual: boolean
-}
-
-export type IntelligenceProbeInput = {
-  readonly evaluator: {
-    readonly evaluator: {
-      readonly transport:
-        | "opencode-zen"
-        | "openrouter"
-        | "typesafe"
-        | "red-router"
-        | "cloudflare-ai-gateway"
-        | "vercel"
-        | "vivgrid"
-        | "nano-gpt"
-      readonly baseURL: string
-      readonly model: string
-      readonly credentialID?: string
-    }
-    readonly apiKey?: string
-  }["evaluator"]
-  readonly apiKey?: {
-    readonly evaluator: {
-      readonly transport:
-        | "opencode-zen"
-        | "openrouter"
-        | "typesafe"
-        | "red-router"
-        | "cloudflare-ai-gateway"
-        | "vercel"
-        | "vivgrid"
-        | "nano-gpt"
-      readonly baseURL: string
-      readonly model: string
-      readonly credentialID?: string
-    }
-    readonly apiKey?: string
-  }["apiKey"]
-}
-
-export type IntelligenceProbeOutput = { readonly ok: boolean; readonly message: string }
-
-export type IntelligenceHistoryInput = {
-  readonly sessionID?: {
-    readonly sessionID?: string | undefined
-    readonly operation?:
-      | "prompt_classification"
-      | "response_quality"
-      | "tool_usage"
-      | "task_quality"
-      | "todos"
-      | "plan"
-      | "feedback"
-      | "design_completion"
-      | "compaction"
-      | "compact_now"
-      | "task_completion"
-      | "goal_completion"
-      | "subagent_brief"
-      | "session_progress"
-      | "subagent_result"
-      | "design_target"
-      | "design_system_detect"
-      | "goal_command"
-      | undefined
-    readonly subjectID?: string | undefined
-    readonly candidateID?: string | undefined
-    readonly decision?: "accepted" | "needs_revision" | "inconclusive" | "unavailable" | undefined
-    readonly limit?: number | undefined
-    readonly offset?: number | undefined
-  }["sessionID"]
-  readonly operation?: {
-    readonly sessionID?: string | undefined
-    readonly operation?:
-      | "prompt_classification"
-      | "response_quality"
-      | "tool_usage"
-      | "task_quality"
-      | "todos"
-      | "plan"
-      | "feedback"
-      | "design_completion"
-      | "compaction"
-      | "compact_now"
-      | "task_completion"
-      | "goal_completion"
-      | "subagent_brief"
-      | "session_progress"
-      | "subagent_result"
-      | "design_target"
-      | "design_system_detect"
-      | "goal_command"
-      | undefined
-    readonly subjectID?: string | undefined
-    readonly candidateID?: string | undefined
-    readonly decision?: "accepted" | "needs_revision" | "inconclusive" | "unavailable" | undefined
-    readonly limit?: number | undefined
-    readonly offset?: number | undefined
-  }["operation"]
-  readonly subjectID?: {
-    readonly sessionID?: string | undefined
-    readonly operation?:
-      | "prompt_classification"
-      | "response_quality"
-      | "tool_usage"
-      | "task_quality"
-      | "todos"
-      | "plan"
-      | "feedback"
-      | "design_completion"
-      | "compaction"
-      | "compact_now"
-      | "task_completion"
-      | "goal_completion"
-      | "subagent_brief"
-      | "session_progress"
-      | "subagent_result"
-      | "design_target"
-      | "design_system_detect"
-      | "goal_command"
-      | undefined
-    readonly subjectID?: string | undefined
-    readonly candidateID?: string | undefined
-    readonly decision?: "accepted" | "needs_revision" | "inconclusive" | "unavailable" | undefined
-    readonly limit?: number | undefined
-    readonly offset?: number | undefined
-  }["subjectID"]
-  readonly candidateID?: {
-    readonly sessionID?: string | undefined
-    readonly operation?:
-      | "prompt_classification"
-      | "response_quality"
-      | "tool_usage"
-      | "task_quality"
-      | "todos"
-      | "plan"
-      | "feedback"
-      | "design_completion"
-      | "compaction"
-      | "compact_now"
-      | "task_completion"
-      | "goal_completion"
-      | "subagent_brief"
-      | "session_progress"
-      | "subagent_result"
-      | "design_target"
-      | "design_system_detect"
-      | "goal_command"
-      | undefined
-    readonly subjectID?: string | undefined
-    readonly candidateID?: string | undefined
-    readonly decision?: "accepted" | "needs_revision" | "inconclusive" | "unavailable" | undefined
-    readonly limit?: number | undefined
-    readonly offset?: number | undefined
-  }["candidateID"]
-  readonly decision?: {
-    readonly sessionID?: string | undefined
-    readonly operation?:
-      | "prompt_classification"
-      | "response_quality"
-      | "tool_usage"
-      | "task_quality"
-      | "todos"
-      | "plan"
-      | "feedback"
-      | "design_completion"
-      | "compaction"
-      | "compact_now"
-      | "task_completion"
-      | "goal_completion"
-      | "subagent_brief"
-      | "session_progress"
-      | "subagent_result"
-      | "design_target"
-      | "design_system_detect"
-      | "goal_command"
-      | undefined
-    readonly subjectID?: string | undefined
-    readonly candidateID?: string | undefined
-    readonly decision?: "accepted" | "needs_revision" | "inconclusive" | "unavailable" | undefined
-    readonly limit?: number | undefined
-    readonly offset?: number | undefined
-  }["decision"]
-  readonly limit?: {
-    readonly sessionID?: string | undefined
-    readonly operation?:
-      | "prompt_classification"
-      | "response_quality"
-      | "tool_usage"
-      | "task_quality"
-      | "todos"
-      | "plan"
-      | "feedback"
-      | "design_completion"
-      | "compaction"
-      | "compact_now"
-      | "task_completion"
-      | "goal_completion"
-      | "subagent_brief"
-      | "session_progress"
-      | "subagent_result"
-      | "design_target"
-      | "design_system_detect"
-      | "goal_command"
-      | undefined
-    readonly subjectID?: string | undefined
-    readonly candidateID?: string | undefined
-    readonly decision?: "accepted" | "needs_revision" | "inconclusive" | "unavailable" | undefined
-    readonly limit?: number | undefined
-    readonly offset?: number | undefined
-  }["limit"]
-  readonly offset?: {
-    readonly sessionID?: string | undefined
-    readonly operation?:
-      | "prompt_classification"
-      | "response_quality"
-      | "tool_usage"
-      | "task_quality"
-      | "todos"
-      | "plan"
-      | "feedback"
-      | "design_completion"
-      | "compaction"
-      | "compact_now"
-      | "task_completion"
-      | "goal_completion"
-      | "subagent_brief"
-      | "session_progress"
-      | "subagent_result"
-      | "design_target"
-      | "design_system_detect"
-      | "goal_command"
-      | undefined
-    readonly subjectID?: string | undefined
-    readonly candidateID?: string | undefined
-    readonly decision?: "accepted" | "needs_revision" | "inconclusive" | "unavailable" | undefined
-    readonly limit?: number | undefined
-    readonly offset?: number | undefined
-  }["offset"]
-}
-
-export type IntelligenceHistoryOutput = ReadonlyArray<{
-  readonly id: string
-  readonly fingerprint: string
-  readonly sessionID: string
-  readonly operation:
-    | "prompt_classification"
-    | "response_quality"
-    | "tool_usage"
-    | "task_quality"
-    | "todos"
-    | "plan"
-    | "feedback"
-    | "design_completion"
-    | "compaction"
-    | "compact_now"
-    | "task_completion"
-    | "goal_completion"
-    | "subagent_brief"
-    | "session_progress"
-    | "subagent_result"
-    | "design_target"
-    | "design_system_detect"
-    | "goal_command"
-  readonly kind?: "classification" | "gate"
-  readonly subjectID?: string
-  readonly candidateID?: string
-  readonly attempt?: number
-  readonly policy: string
-  readonly decision: "accepted" | "needs_revision" | "inconclusive" | "unavailable"
-  readonly model: string
-  readonly answers: {
-    readonly [x: string]:
-      | { readonly type: "noul"; readonly noul: number }
-      | {
-          readonly type: "choice"
-          readonly choice: string
-          readonly probabilities: { readonly [x: string]: number }
-          readonly confidence: number
-        }
-      | {
-          readonly type: "score"
-          readonly score: number
-          readonly legend: { readonly [x: string]: JsonValue }
-          readonly probabilities: { readonly [x: string]: number }
-          readonly confidence: number
-        }
-  }
-  readonly issues: ReadonlyArray<string>
-  readonly created: number
-  readonly duration: number
-  readonly evaluator?: {
-    readonly transport:
-      | "opencode-zen"
-      | "openrouter"
-      | "typesafe"
-      | "red-router"
-      | "cloudflare-ai-gateway"
-      | "vercel"
-      | "vivgrid"
-      | "nano-gpt"
-    readonly baseURL: string
-    readonly model: string
-  }
-  readonly usage: { readonly input_tokens: number; readonly output_tokens: number }
-}>
-
-export type IntelligenceModelsTestInput = {
-  readonly id: { readonly id: string; readonly providerID: string; readonly variant?: string }["id"]
-  readonly providerID: { readonly id: string; readonly providerID: string; readonly variant?: string }["providerID"]
-  readonly variant?: { readonly id: string; readonly providerID: string; readonly variant?: string }["variant"]
-}
-
-export type IntelligenceModelsTestOutput = { readonly ok: boolean; readonly message: string }

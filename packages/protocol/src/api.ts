@@ -37,7 +37,6 @@ const makeApiFromGroup = <
   eventGroup: Group,
   locationMiddleware: Context.Key<LocationId, LocationService>,
   sessionLocationMiddleware: Context.Key<SessionLocationId, SessionLocationService>,
-  ...extra: readonly HttpApiGroup.Any[]
 ) =>
   HttpApi.make("server")
     .add(HealthGroup)
@@ -61,7 +60,6 @@ const makeApiFromGroup = <
     .add(ReferenceGroup.middleware(locationMiddleware))
     .add(ProjectCopyGroup.middleware(locationMiddleware))
     .add(HookGroup.middleware(locationMiddleware))
-    .add(...extra)
     .add(IntelligenceGroup)
     .add(IntelligenceModelGroup.middleware(locationMiddleware))
     .annotateMerge(
@@ -94,4 +92,4 @@ export const makeDefaultApi = <
 >(options: {
   readonly locationMiddleware: Context.Key<LocationId, LocationService>
   readonly sessionLocationMiddleware: Context.Key<SessionLocationId, SessionLocationService>
-}) => makeApiFromGroup(EventGroup, options.locationMiddleware, options.sessionLocationMiddleware, SessionV2Group)
+}) => makeApiFromGroup(EventGroup, options.locationMiddleware, options.sessionLocationMiddleware).add(SessionV2Group)
