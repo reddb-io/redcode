@@ -1,6 +1,7 @@
 export * as LSPServer from "./server.js"
 
 import { spawn } from "node:child_process"
+import { existsSync } from "node:fs"
 import { readFile, readdir, stat } from "node:fs/promises"
 import { createRequire } from "node:module"
 import path from "node:path"
@@ -16,13 +17,12 @@ export interface Info {
   readonly root?: (file: string, directory: string, project: string) => Promise<string | undefined>
 }
 
-const packages = ["package-lock.json", "bun.lockb", "bun.lock", "pnpm-lock.yaml", "yarn.lock"]
+const packages = ["package.json", "package-lock.json", "bun.lockb", "bun.lock", "pnpm-lock.yaml", "yarn.lock"]
 const javascript = [".ts", ".tsx", ".js", ".jsx", ".mjs", ".cjs", ".mts", ".cts"]
 
-/** Resolve installed servers in PATH and the current project's package bins. */
-export function installed(directory: string, project: string): Info[] {
-  const bins = [...new Set([directory, project])].map((root) => path.join(root, "node_modules", ".bin")).join(path.delimiter)
-  return ([
+/** Keep candidates until their file root is known, so nested package bins are discoverable. */
+export function installed(_directory: string, _project: string): Info[] {
+  return [
     { id: "deno", command: ["deno", "lsp"], extensions: [".ts", ".tsx", ".js", ".jsx", ".mjs"], root: nearest(["deno.json", "deno.jsonc"], { strict: true }) },
     { id: "typescript", command: ["typescript-language-server", "--stdio"], extensions: javascript, root: nearest(packages, { exclude: ["deno.json", "deno.jsonc"] }) },
     { id: "vue", command: ["vue-language-server", "--stdio"], extensions: [".vue"], root: nearest(packages) },
@@ -55,10 +55,7 @@ export function installed(directory: string, project: string): Info[] {
     { id: "tinymist", command: ["tinymist"], extensions: [".typ", ".typc"], root: nearest(["typst.toml"]) },
     { id: "haskell-language-server", command: ["haskell-language-server-wrapper", "--lsp"], extensions: [".hs", ".lhs"], root: nearest(["stack.yaml", "cabal.project", "hie.yaml", "*.cabal"]) },
     { id: "julials", command: ["julia", "--startup-file=no", "--history-file=no", "-e", "using LanguageServer; runserver()"], extensions: [".jl"], root: nearest(["Project.toml", "Manifest.toml", "*.jl"]) },
-  ] satisfies Info[]).flatMap((server) => {
-    const executable = which(server.command[0], undefined, bins)
-    return executable ? [{ ...server, command: [executable, ...server.command.slice(1)] }] : []
-  })
+  ] satisfies Info[]
 }
 
 export function matches(server: Info, file: string) {
@@ -68,6 +65,32 @@ export function matches(server: Info, file: string) {
 
 export function root(server: Info, file: string, directory: string, project: string) {
   return server.root?.(file, directory, project) ?? Promise.resolve(directory)
+}
+
+export function available(server: Info, root: string, directory: string) {
+  if (!resolveCommand(server, root, directory)) return false
+  if (server.id === "typescript" || server.id === "astro") return typescriptPath(root, directory) !== undefined
+  return true
+}
+
+function resolveCommand(server: Info, root: string, directory: string) {
+  const command = server.command[0]
+  if (!command) return
+  if (command.includes("/") || command.includes("\\"))
+    return existsSync(path.resolve(root, command)) ? command : undefined
+  const bins = [...new Set([...ancestors(root, directory), directory])]
+    .map((base) => path.join(base, "node_modules", ".bin"))
+  return which(command, { PATH: [...bins, globalThis.process.env.PATH ?? ""].join(path.delimiter) }) ?? undefined
+}
+
+function typescriptPath(root: string, directory: string) {
+  return [root, directory].map((base) => {
+    try {
+      return createRequire(path.join(base, "package.json")).resolve("typescript/lib/tsserver.js")
+    } catch {
+      return undefined
+    }
+  }).find((value) => value !== undefined)
 }
 
 function nearest(markers: readonly string[], options?: { readonly strict?: boolean; readonly exclude?: readonly string[] }) {
@@ -116,15 +139,10 @@ function ancestors(start: string, stop: string) {
 }
 
 export async function start(server: Info, root: string, directory: string): Promise<Handle> {
-  if (!server.command.length) throw new Error(`LSP server ${server.id} has no command`)
+  const executable = resolveCommand(server, root, directory)
+  if (!executable) throw new Error(`LSP server ${server.id} is not installed`)
   const tsserver = server.id === "typescript" || server.id === "astro"
-    ? [root, directory].map((base) => {
-        try {
-          return createRequire(path.join(base, "package.json")).resolve("typescript/lib/tsserver.js")
-        } catch {
-          return undefined
-        }
-      }).find((value) => value !== undefined)
+    ? typescriptPath(root, directory)
     : undefined
   if ((server.id === "typescript" || server.id === "astro") && !tsserver)
     throw new Error(`LSP server ${server.id} requires TypeScript in the workspace`)
@@ -141,7 +159,7 @@ export async function start(server: Info, root: string, directory: string): Prom
     ...(python ? { pythonPath: python } : {}),
     ...server.initialization,
   }
-  const process = spawn(server.command[0], server.command.slice(1), {
+  const process = spawn(executable, server.command.slice(1), {
     cwd: root,
     env: { ...globalThis.process.env, ...server.env },
     stdio: "pipe",

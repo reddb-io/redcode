@@ -13,6 +13,10 @@ export function root(_server: LSPServer.Info, _file: string, _directory: string,
   return Promise.resolve(undefined)
 }
 
+export function available(_server: LSPServer.Info, _root: string, _directory: string) {
+  return false
+}
+
 export function start(_server: LSPServer.Info, _root: string, _directory: string): Handle {
   throw new Error("Language servers are unavailable on the workerd runtime")
 }

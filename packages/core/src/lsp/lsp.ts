@@ -117,7 +117,9 @@ const layer = Layer.effect(
         server,
         root: await backend.root(server, file, location.directory, location.project.directory),
       })))
-      return Promise.all(matching.filter((item): item is { server: LSPServer.Info; root: string } => item.root !== undefined).map(async ({ server, root }) => {
+      return Promise.all(matching.filter((item): item is { server: LSPServer.Info; root: string } =>
+        item.root !== undefined && backend.available(item.server, item.root, location.directory),
+      ).map(async ({ server, root }) => {
         const key = `${server.id}\0${root}`
         if (!available(key)) return undefined
         const pending = clients.get(key)
@@ -190,7 +192,7 @@ const layer = Layer.effect(
       if (!fileInside(location.directory, file)) return false
       const roots = yield* Effect.promise(() => Promise.all(servers.filter((server) => backend.matches(server, file)).map((server) =>
         backend.root(server, file, location.directory, location.project.directory).then((root) =>
-          root && available(`${server.id}\0${root}`) ? root : undefined,
+          root && backend.available(server, root, location.directory) && available(`${server.id}\0${root}`) ? root : undefined,
         ),
       )))
       return roots.some((root) => root !== undefined)
