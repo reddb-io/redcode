@@ -3,8 +3,9 @@ export * as SessionTitle from "./title.js"
 import { isDeepStrictEqual } from "node:util"
 import { LLMClient, LLMEvent, Message, SystemPart } from "@opencode/ai"
 import type { Agent } from "@opencode/schema/agent"
-import { Context, DateTime, Effect, Layer, Stream } from "effect"
+import { Context, DateTime, Duration, Effect, Layer, Stream } from "effect"
 import { Database } from "../database/database.js"
+import { Config } from "../config.js"
 import { Bus } from "../bus.js"
 import { makeLocationNode } from "@opencode/util/effect/app-node"
 import { isExactRootFallback } from "@opencode/util/session-title-fallback"
@@ -16,6 +17,8 @@ import type { SessionRunnerModel } from "./runner/model.js"
 import { SessionSchema } from "./schema.js"
 import { SessionUsage } from "./usage.js"
 import { SessionStore } from "./store.js"
+import { SessionGuardLog } from "./guard-log.js"
+import { AuxDeadline } from "./aux-deadline.js"
 
 const MAX_LENGTH = 100
 const MAX_CONTEXT_LENGTH = 8_000
@@ -43,6 +46,8 @@ export const layer = Layer.effect(
     const llm = yield* LLMClient.Service
     const context = yield* SessionContext.Service
     const store = yield* SessionStore.Service
+    const config = yield* Config.Service
+    const guards = yield* SessionGuardLog.Service
     const db = (yield* Database.Service).db
 
     const attempt = Effect.fn("SessionTitle.attempt")(function* (input: {
@@ -126,11 +131,31 @@ export const layer = Layer.effect(
         : firstUser.text
       const selection = yield* context.selectTitle(session)
       if (!selection) return
-      const title =
-        (yield* attempt({ session, agent: selection.agent, text, model: selection.selected })) ??
-        (selection.primary && !isDeepStrictEqual(selection.selected.ref, selection.primary.ref)
-          ? yield* attempt({ session, agent: selection.agent, text, model: selection.primary })
-          : undefined)
+      const deadline = AuxDeadline.deadlineMs("title", Config.latest(yield* config.entries(), "experimental")?.aux_timeout)
+      const title = yield* Effect.gen(function* () {
+        const preferred = yield* attempt({ session, agent: selection.agent, text, model: selection.selected })
+        if (preferred) return preferred
+        if (!selection.primary || isDeepStrictEqual(selection.selected.ref, selection.primary.ref)) return undefined
+        return yield* attempt({ session, agent: selection.agent, text, model: selection.primary })
+      }).pipe(
+        deadline === undefined
+          ? (effect) => effect
+          : Effect.timeoutOrElse({
+              duration: Duration.millis(deadline),
+              orElse: () =>
+                Effect.gen(function* () {
+                  yield* guards.record({
+                    sessionID,
+                    guard: "aux",
+                    action: "stop",
+                    subject: "title",
+                    detail: AuxDeadline.message("title", deadline),
+                  })
+                  yield* Effect.logWarning(AuxDeadline.message("title", deadline), { sessionID })
+                  return undefined
+                }),
+            }),
+      )
       if (!title) return
       const expectedSequence = (yield* Bus.latestSequence(db, sessionID)) + 1
       const current = yield* store.get(sessionID)
@@ -153,5 +178,5 @@ export const layer = Layer.effect(
 export const node = makeLocationNode({
   service: Service,
   layer,
-  deps: [Bus.node, llmClient, SessionContext.node, SessionStore.node, Database.node],
+  deps: [Bus.node, llmClient, SessionContext.node, SessionStore.node, Database.node, Config.node, SessionGuardLog.node],
 })

@@ -436,6 +436,15 @@ function normalizeExperimental(
         )
         if (value !== undefined) result.loop_guard = value
       }
+      if (own(experimental, "aux_timeout")) {
+        const value = decodeEncoded(
+          ConfigExperimental.Info.fields.aux_timeout,
+          experimental.aux_timeout,
+          ["experimental", "aux_timeout"],
+          diagnostics,
+        )
+        if (value !== undefined) result.aux_timeout = value
+      }
       native.push(
         ...decodeList(
           experimental.policies,
