@@ -1350,58 +1350,6 @@ const Endpoint22_0 = (raw: RawClient["server.intelligence.model"]) => (input: En
 
 const adaptGroup22 = (raw: RawClient["server.intelligence.model"]) => ({ test: Endpoint22_0(raw) })
 
-type Endpoint23_0Request = Parameters<RawClient["server.sessionV2"]["sessionV2.prompt"]>[0]
-type Endpoint23_0Input = {
-  readonly sessionID: Endpoint23_0Request["payload"]["sessionID"]
-  readonly prompt: Endpoint23_0Request["payload"]["prompt"]
-  readonly id?: Endpoint23_0Request["payload"]["id"]
-  readonly delivery?: Endpoint23_0Request["payload"]["delivery"]
-  readonly resume?: Endpoint23_0Request["payload"]["resume"]
-}
-const Endpoint23_0 = (raw: RawClient["server.sessionV2"]) => (input: Endpoint23_0Input) =>
-  raw["sessionV2.prompt"]({
-    payload: {
-      sessionID: input["sessionID"],
-      prompt: input["prompt"],
-      id: input["id"],
-      delivery: input["delivery"],
-      resume: input["resume"],
-    },
-  }).pipe(Effect.mapError(mapClientError))
-
-type Endpoint23_1Request = Parameters<RawClient["server.sessionV2"]["sessionV2.session"]>[0]
-type Endpoint23_1Input = { readonly id: Endpoint23_1Request["params"]["id"] }
-const Endpoint23_1 = (raw: RawClient["server.sessionV2"]) => (input: Endpoint23_1Input) =>
-  raw["sessionV2.session"]({ params: { id: input["id"] } }).pipe(Effect.mapError(mapClientError))
-
-type Endpoint23_2Request = Parameters<RawClient["server.sessionV2"]["sessionV2.messages"]>[0]
-type Endpoint23_2Input = { readonly id: Endpoint23_2Request["params"]["id"] }
-const Endpoint23_2 = (raw: RawClient["server.sessionV2"]) => (input: Endpoint23_2Input) =>
-  raw["sessionV2.messages"]({ params: { id: input["id"] } }).pipe(Effect.mapError(mapClientError))
-
-type Endpoint23_3Request = Parameters<RawClient["server.sessionV2"]["sessionV2.events"]>[0]
-type Endpoint23_3Input = {
-  readonly id: Endpoint23_3Request["params"]["id"]
-  readonly after?: Endpoint23_3Request["query"]["after"]
-}
-const Endpoint23_3 = (raw: RawClient["server.sessionV2"]) => (input: Endpoint23_3Input) =>
-  raw["sessionV2.events"]({ params: { id: input["id"] }, query: { after: input["after"] } }).pipe(
-    Effect.mapError(mapClientError),
-  )
-
-type Endpoint23_4Request = Parameters<RawClient["server.sessionV2"]["sessionV2.interrupt"]>[0]
-type Endpoint23_4Input = { readonly id: Endpoint23_4Request["params"]["id"] }
-const Endpoint23_4 = (raw: RawClient["server.sessionV2"]) => (input: Endpoint23_4Input) =>
-  raw["sessionV2.interrupt"]({ params: { id: input["id"] } }).pipe(Effect.mapError(mapClientError))
-
-const adaptGroup23 = (raw: RawClient["server.sessionV2"]) => ({
-  prompt: Endpoint23_0(raw),
-  session: Endpoint23_1(raw),
-  messages: Endpoint23_2(raw),
-  events: Endpoint23_3(raw),
-  interrupt: Endpoint23_4(raw),
-})
-
 const adaptClient = (raw: RawClient) => ({
   health: adaptGroup0(raw["server.health"]),
   location: adaptGroup1(raw["server.location"]),
@@ -1426,7 +1374,6 @@ const adaptClient = (raw: RawClient) => ({
   hooks: adaptGroup20(raw["server.hook"]),
   intelligence: adaptGroup21(raw["server.intelligence"]),
   intelligenceModels: adaptGroup22(raw["server.intelligence.model"]),
-  sessionsV2: adaptGroup23(raw["server.sessionV2"]),
 })
 
 export const make = (options?: { readonly baseUrl?: URL | string }) =>

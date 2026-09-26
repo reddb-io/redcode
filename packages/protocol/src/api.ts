@@ -92,4 +92,4 @@ export const makeDefaultApi = <
 >(options: {
   readonly locationMiddleware: Context.Key<LocationId, LocationService>
   readonly sessionLocationMiddleware: Context.Key<SessionLocationId, SessionLocationService>
-}) => makeApiFromGroup(EventGroup, options.locationMiddleware, options.sessionLocationMiddleware).add(SessionV2Group)
+}) => makeApiFromGroup(EventGroup, options.locationMiddleware, options.sessionLocationMiddleware)

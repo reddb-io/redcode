@@ -203,16 +203,6 @@ import type {
   IntelligenceHistoryOutput,
   IntelligenceModelsTestInput,
   IntelligenceModelsTestOutput,
-  SessionsV2PromptInput,
-  SessionsV2PromptOutput,
-  SessionsV2SessionInput,
-  SessionsV2SessionOutput,
-  SessionsV2MessagesInput,
-  SessionsV2MessagesOutput,
-  SessionsV2EventsInput,
-  SessionsV2EventsOutput,
-  SessionsV2InterruptInput,
-  SessionsV2InterruptOutput,
 } from "./types"
 import { ClientError } from "./client-error"
 
@@ -1725,71 +1715,6 @@ export function make(options: ClientOptions) {
             successStatus: 200,
             declaredStatuses: [400, 401],
             empty: false,
-          },
-          requestOptions,
-        ),
-    },
-    sessionsV2: {
-      prompt: (input: SessionsV2PromptInput, requestOptions?: RequestOptions) =>
-        request<SessionsV2PromptOutput>(
-          {
-            method: "POST",
-            path: `/experimental/session-v2/prompt`,
-            body: {
-              sessionID: input["sessionID"],
-              prompt: input["prompt"],
-              id: input["id"],
-              delivery: input["delivery"],
-              resume: input["resume"],
-            },
-            successStatus: 200,
-            declaredStatuses: [400, 404, 409],
-            empty: false,
-          },
-          requestOptions,
-        ),
-      session: (input: SessionsV2SessionInput, requestOptions?: RequestOptions) =>
-        request<SessionsV2SessionOutput>(
-          {
-            method: "GET",
-            path: `/experimental/session-v2/${encodeURIComponent(input.id)}`,
-            successStatus: 200,
-            declaredStatuses: [404],
-            empty: false,
-          },
-          requestOptions,
-        ),
-      messages: (input: SessionsV2MessagesInput, requestOptions?: RequestOptions) =>
-        request<SessionsV2MessagesOutput>(
-          {
-            method: "GET",
-            path: `/experimental/session-v2/${encodeURIComponent(input.id)}/messages`,
-            successStatus: 200,
-            declaredStatuses: [404],
-            empty: false,
-          },
-          requestOptions,
-        ),
-      events: (input: SessionsV2EventsInput, requestOptions?: RequestOptions) =>
-        request<SessionsV2EventsOutput>(
-          {
-            method: "GET",
-            path: `/experimental/session-v2/${encodeURIComponent(input.id)}/events`,
-            query: { after: input["after"] },
-            successStatus: 200,
-            declaredStatuses: [404],
-            empty: false,
-          },
-          requestOptions,
-        ),
-      interrupt: (input: SessionsV2InterruptInput, requestOptions?: RequestOptions) =>
-        request<SessionsV2InterruptOutput>(
-          {
-            method: "POST",
-            path: `/experimental/session-v2/${encodeURIComponent(input.id)}/interrupt`,
-            successStatus: 204,
-            declaredStatuses: [],
-            empty: true,
           },
           requestOptions,
         ),
