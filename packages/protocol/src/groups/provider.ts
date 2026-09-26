@@ -1,8 +1,9 @@
 import { Provider } from "@opencode/schema/provider"
+import { ProviderRemoval } from "@opencode/schema/provider-removal"
 import { Location } from "@opencode/schema/location"
 import { Schema } from "effect"
 import { HttpApiEndpoint, HttpApiGroup, OpenApi } from "effect/unstable/httpapi"
-import { ProviderNotFoundError, ServiceUnavailableError } from "../errors.js"
+import { InvalidRequestError, ProviderNotFoundError, ServiceUnavailableError } from "../errors.js"
 import { LocationQuery, locationQueryOpenApi } from "./location.js"
 
 export const ProviderGroup = HttpApiGroup.make("server.provider")
@@ -36,6 +37,21 @@ export const ProviderGroup = HttpApiGroup.make("server.provider")
           description: "Retrieve a single AI provider so clients can inspect its availability and endpoint settings.",
         }),
       ),
+  )
+  .add(
+    HttpApiEndpoint.post("provider.remove", "/api/experimental/provider/:providerID/remove", {
+      params: { providerID: Provider.ID },
+      query: LocationQuery,
+      payload: Schema.Struct({ dryRun: Schema.Boolean }),
+      success: Location.response(ProviderRemoval.Result),
+      error: InvalidRequestError,
+    })
+      .annotateMerge(locationQueryOpenApi)
+      .annotateMerge(OpenApi.annotations({
+        identifier: "experimental.provider.remove",
+        summary: "Remove provider",
+        description: "Preview or remove saved provider credentials, global references, and learned model limits.",
+      })),
   )
   .annotateMerge(
     OpenApi.annotations({

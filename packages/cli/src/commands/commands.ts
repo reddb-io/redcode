@@ -205,6 +205,7 @@ const Root = Spec.make(typeof OPENCODE_CLI_NAME === "string" ? OPENCODE_CLI_NAME
     }),
     Spec.make("auth", {
       description: "manage integrations and credentials",
+      aliases: ["providers"],
       commands: [
         Spec.make("list", {
           description: "list integrations and credentials",
@@ -257,6 +258,14 @@ const Root = Spec.make(typeof OPENCODE_CLI_NAME === "string" ? OPENCODE_CLI_NAME
               Argument.withDescription("Credential ID or label (opens an account picker when omitted)"),
               Argument.optional,
             ),
+          },
+        }),
+        Spec.make("remove", {
+          description: "Remove a provider, its credentials, and global settings that use it",
+          params: {
+            ...ServerParams,
+            target: Argument.string("provider").pipe(Argument.optional),
+            yes: Flag.boolean("yes").pipe(Flag.withAlias("y"), Flag.withDefault(false)),
           },
         }),
       ],

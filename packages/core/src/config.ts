@@ -18,6 +18,7 @@ import { ConfigVariable } from "./config/variable.js"
 import { ConfigNormalize } from "./config/normalize.js"
 import { ConfigDiscovery } from "./config/discovery.js"
 import { ConfigWatch } from "./config/watch.js"
+import { ConfigProviderRemove } from "./config/provider-remove.js"
 import { WellKnown } from "./wellknown.js"
 
 export function latest<K extends keyof Info>(entries: readonly Entry[], key: K): Info[K] | undefined {
@@ -50,6 +51,15 @@ export interface Interface {
   readonly changes: () => Stream.Stream<Watcher.Update>
   /** Updates supported global config fields while preserving unrelated JSONC content. */
   readonly update?: (patch: Patch) => Effect.Effect<void, FSUtil.Error>
+  /** Removes authored global references to a provider and can hide ambient credentials. */
+  readonly removeProvider?: (providerID: string, options: { hide: boolean; dryRun?: boolean }) => Effect.Effect<{
+    path: string
+    configured: boolean
+    references: string[]
+    hidden: boolean
+  }, FSUtil.Error>
+  /** Clears only a provider-removal policy after a new credential is connected. */
+  readonly enableProvider?: (providerID: string) => Effect.Effect<void, FSUtil.Error>
 }
 
 export const Options = Schema.Struct({
@@ -365,6 +375,71 @@ export const layer = (options?: Options) =>
         (effect) => updateLock.withPermit(effect),
       )
 
+      const removeProvider = Effect.fn("Config.removeProvider")(
+        function* (providerID: string, options: { hide: boolean; dryRun?: boolean }) {
+          const directory = initial.global ?? AbsolutePath.make(globalService.config)
+          const candidates = ConfigDiscovery.names.map((name) => path.join(directory, name))
+          const filepath = (yield* Effect.filter(candidates, fs.isFile)).at(-1) ?? path.join(directory, "opencode.jsonc")
+          const text = (yield* fs.readFileStringSafe(filepath)) ?? "{}\n"
+          const errors: ParseError[] = []
+          const data: unknown = parse(text, errors, { allowTrailingComma: true })
+          if (errors.length || !data || typeof data !== "object" || Array.isArray(data))
+            return yield* Effect.fail(new FSUtil.FileSystemError({
+              method: "config.removeProvider",
+              cause: new Error(`Invalid JSONC configuration: ${filepath}`),
+            }))
+          const plan = ConfigProviderRemove.plan(data, providerID, options.hide)
+          if (!options.dryRun && plan.edits.length) {
+            const updated = yield* Effect.try({
+              try: () => plan.edits.reduce(
+                (current, edit) => applyEdits(current, modify(current, [...edit.path], edit.value, {
+                  formattingOptions: { tabSize: 2, insertSpaces: true },
+                })),
+                text,
+              ),
+              catch: (cause) => new FSUtil.FileSystemError({ method: "config.removeProvider", cause }),
+            })
+            yield* fs.writeWithDirs(filepath, updated.endsWith("\n") ? updated : `${updated}\n`)
+            yield* requestReload
+          }
+          return {
+            path: filepath,
+            configured: plan.configured,
+            references: plan.references,
+            hidden: plan.hidden,
+          }
+        },
+        (effect) => updateLock.withPermit(effect),
+      )
+
+      const enableProvider = Effect.fn("Config.enableProvider")(
+        function* (providerID: string) {
+          const directory = initial.global ?? AbsolutePath.make(globalService.config)
+          const candidates = ConfigDiscovery.names.map((name) => path.join(directory, name))
+          const filepath = (yield* Effect.filter(candidates, fs.isFile)).at(-1)
+          if (!filepath) return
+          const text = yield* fs.readFileStringSafe(filepath)
+          if (!text) return
+          const errors: ParseError[] = []
+          const data: unknown = parse(text, errors, { allowTrailingComma: true })
+          if (errors.length) return
+          const edits = ConfigProviderRemove.unhide(data, providerID)
+          if (!edits.length) return
+          const updated = yield* Effect.try({
+            try: () => edits.reduce(
+              (current, edit) => applyEdits(current, modify(current, [...edit.path], edit.value, {
+                formattingOptions: { tabSize: 2, insertSpaces: true },
+              })),
+              text,
+            ),
+            catch: (cause) => new FSUtil.FileSystemError({ method: "config.enableProvider", cause }),
+          })
+          yield* fs.writeWithDirs(filepath, updated.endsWith("\n") ? updated : `${updated}\n`)
+          yield* requestReload
+        },
+        (effect) => updateLock.withPermit(effect),
+      )
+
       return Service.of({
         entries: Effect.fnUntraced(function* () {
           return configs
@@ -376,6 +451,8 @@ export const layer = (options?: Options) =>
           }),
         changes: () => Stream.fromPubSub(updates),
         update,
+        removeProvider,
+        enableProvider,
       })
     }),
   )

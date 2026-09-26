@@ -19,6 +19,7 @@ import {
 } from "effect"
 import { Integration } from "@opencode/schema/integration"
 import { Credential } from "./credential.js"
+import { Config } from "./config.js"
 import { State } from "./state.js"
 import { Bus } from "./bus.js"
 import { IntegrationConnection } from "./integration/connection.js"
@@ -274,6 +275,7 @@ const layer = Layer.effect(
   Service,
   Effect.gen(function* () {
     const credentials = yield* Credential.Service
+    const config = yield* Config.Service
     const bus = yield* Bus.Service
     const processes = yield* AppProcess.Service
     const scope = yield* Scope.Scope
@@ -345,6 +347,7 @@ const layer = Layer.effect(
     })
 
     const createCredential = Effect.fnUntraced(function* (input: Parameters<Credential.Interface["create"]>[0]) {
+      if (config.enableProvider) yield* config.enableProvider(input.integrationID)
       if (input.label !== undefined) return yield* credentials.create(input)
       const name = state.get().integrations.get(input.integrationID)?.ref.name ?? input.integrationID
       const labels = new Set((yield* credentials.list(input.integrationID)).map((credential) => credential.label))
@@ -809,5 +812,5 @@ const layer = Layer.effect(
 export const node = makeLocationNode({
   service: Service,
   layer,
-  deps: [Credential.node, Bus.node, AppProcess.node],
+  deps: [Credential.node, Config.node, Bus.node, AppProcess.node],
 })

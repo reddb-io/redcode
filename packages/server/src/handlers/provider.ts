@@ -1,5 +1,6 @@
 import { Provider } from "@opencode/core/provider"
-import { ProviderNotFoundError } from "@opencode/protocol/errors"
+import { ProviderRemove } from "@opencode/core/provider-removal"
+import { InvalidRequestError, ProviderNotFoundError } from "@opencode/protocol/errors"
 import { Effect } from "effect"
 import { HttpApiBuilder } from "effect/unstable/httpapi"
 import { Api } from "../api"
@@ -26,6 +27,15 @@ export const ProviderHandler = HttpApiBuilder.group(Api, "server.provider", (han
               message: `Provider not found: ${ctx.params.providerID}`,
             })
           return yield* response(Effect.succeed(provider))
+        }),
+      )
+      .handle(
+        "provider.remove",
+        Effect.fn(function* (ctx) {
+          const removal = yield* ProviderRemove.Service
+          return yield* response(removal.remove(ctx.params.providerID, ctx.payload).pipe(
+            Effect.mapError((error) => new InvalidRequestError({ message: error.message })),
+          ))
         }),
       )
   }),

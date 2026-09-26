@@ -157,6 +157,8 @@ import type {
   ProviderListOutput,
   ProviderGetInput,
   ProviderGetOutput,
+  ProviderRemoveInput,
+  ProviderRemoveOutput,
   IntegrationConsoleOrganizationsInput,
   IntegrationConsoleOrganizationsOutput,
   IntegrationConsoleOrganizationSelectInput,
@@ -1150,9 +1152,19 @@ const EndpointProviderGet = (raw: RawClient["server.provider"]) => (input: Provi
     ),
   )
 
+const EndpointProviderRemove = (raw: RawClient["server.provider"]) => (input: ProviderRemoveInput) =>
+  preserveEffect<ProviderRemoveOutput>()(
+    raw["provider.remove"]({
+      params: { providerID: input["providerID"] },
+      query: { location: input["location"] },
+      payload: { dryRun: input["dryRun"] },
+    }).pipe(Effect.mapError(mapClientError)),
+  )
+
 const adaptGroupProvider = (raw: RawClient["server.provider"]) => ({
   list: EndpointProviderList(raw),
   get: EndpointProviderGet(raw),
+  remove: EndpointProviderRemove(raw),
 })
 
 const EndpointIntegrationConsoleOrganizations =

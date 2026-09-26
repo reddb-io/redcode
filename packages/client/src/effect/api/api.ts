@@ -3343,9 +3343,34 @@ export type ProviderGetInput = {
 export type ProviderGetOutput = { readonly location: Location.PublicRef; readonly data: Provider.Info }
 export type ProviderGetOperation<E = never> = (input: ProviderGetInput) => Effect.Effect<ProviderGetOutput, E>
 
+export type ProviderRemoveInput = {
+  readonly providerID: Provider.ID
+  readonly location?: { readonly directory?: string | undefined } | undefined
+  readonly dryRun: boolean
+}
+export type ProviderRemoveOutput = {
+  readonly location: Location.PublicRef
+  readonly data: {
+    readonly providerID: string
+    readonly dryRun: boolean
+    readonly removed: {
+      readonly credentials: number
+      readonly config: boolean
+      readonly references: ReadonlyArray<string>
+      readonly learnedLimits: number
+      readonly hidden: boolean
+    }
+    readonly configPath: string
+    readonly referencingFiles: ReadonlyArray<string>
+    readonly envVariables: ReadonlyArray<string>
+  }
+}
+export type ProviderRemoveOperation<E = never> = (input: ProviderRemoveInput) => Effect.Effect<ProviderRemoveOutput, E>
+
 export interface ProviderApi<E = never> {
   readonly list: ProviderListOperation<E>
   readonly get: ProviderGetOperation<E>
+  readonly remove: ProviderRemoveOperation<E>
 }
 
 export type IntegrationConsoleOrganizationsInput = {

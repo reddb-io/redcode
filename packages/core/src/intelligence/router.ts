@@ -10,6 +10,10 @@ import { IntelligenceEvaluation } from "./evaluation.js"
 const decodeRecommendation = Schema.decodeUnknownOption(Router.Recommendation)
 const cache = new Map<string, { expires: number; value: Intelligence.DetectedRouter | undefined }>()
 
+export function clearCache() {
+  cache.clear()
+}
+
 export const detect = Effect.fn("IntelligenceRouter.detect")(function* (connection: Credential.Info | undefined) {
   const key =
     connection?.value.type === "key"

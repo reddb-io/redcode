@@ -9,6 +9,7 @@ import { Bus } from "@opencode/core/bus"
 import { EventLogger } from "@opencode/core/event-logger"
 import { FileSystemSearch } from "@opencode/core/filesystem/search"
 import { Credential } from "@opencode/core/credential"
+import { ProviderRemove } from "@opencode/core/provider-removal"
 import { Config } from "@opencode/core/config"
 import { PermissionSaved } from "@opencode/core/permission/saved"
 import { PtyTicket } from "@opencode/core/pty/ticket"
@@ -84,6 +85,7 @@ const applicationServiceNodes = [
   PtyTicket.node,
   PersistentPty.node,
   Credential.node,
+  ProviderRemove.node,
   WellKnown.node,
   PtyEnvironment.node,
   ServerPairing.node,

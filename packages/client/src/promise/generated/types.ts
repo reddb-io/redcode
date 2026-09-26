@@ -375,6 +375,15 @@ export type MoneyUSDPerMillionTokens = number
 
 export type GenerateTextResponse = { data: { text: string } }
 
+export type ProviderRemovalResult = {
+  providerID: string
+  dryRun: boolean
+  removed: { credentials: number; config: boolean; references: Array<string>; learnedLimits: number; hidden: boolean }
+  configPath: string
+  referencingFiles: Array<string>
+  envVariables: Array<string>
+}
+
 export type IntegrationCommandMethod = { id: string; type: "command"; label: string; command: Array<string> }
 
 export type IntegrationEnvMethod = { type: "env"; names: Array<string> }
@@ -2566,7 +2575,12 @@ export type ConfigEntry =
           aux_timeout?: false | number
           turn_stall?: false | { warn_ms?: number; abort_ms?: number }
           tool_timeout?: false | number
-          policies?: Array<{ action: "provider.use" | "permission"; resource: string; effect: "allow" | "deny" }>
+          policies?: Array<{
+            action: "provider.use" | "permission"
+            resource: string
+            effect: "allow" | "deny"
+            source?: "provider-removal" | null
+          }>
         }
       }
     }
@@ -7465,6 +7479,14 @@ export type ProviderGetInput = {
 }
 
 export type ProviderGetOutput = { location: LocationPublicRef; data: ProviderInfo }
+
+export type ProviderRemoveInput = {
+  readonly providerID: { readonly providerID: string }["providerID"]
+  readonly location?: { readonly location?: { readonly directory?: string | undefined } | undefined }["location"]
+  readonly dryRun: { readonly dryRun: boolean }["dryRun"]
+}
+
+export type ProviderRemoveOutput = { location: LocationPublicRef; data: ProviderRemovalResult }
 
 export type IntegrationConsoleOrganizationsInput = {
   readonly location?: { readonly location?: { readonly directory?: string | undefined } | undefined }["location"]

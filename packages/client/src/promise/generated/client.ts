@@ -151,6 +151,8 @@ import type {
   ProviderListOutput,
   ProviderGetInput,
   ProviderGetOutput,
+  ProviderRemoveInput,
+  ProviderRemoveOutput,
   IntegrationConsoleOrganizationsInput,
   IntegrationConsoleOrganizationsOutput,
   IntegrationConsoleOrganizationSelectInput,
@@ -1481,6 +1483,19 @@ export function make(options: ClientOptions) {
             query: { location: input["location"] },
             successStatus: 200,
             declaredStatuses: [400, 401, 404, 503],
+            empty: false,
+          },
+          requestOptions,
+        ),
+      remove: (input: ProviderRemoveInput, requestOptions?: RequestOptions) =>
+        request<ProviderRemoveOutput>(
+          {
+            method: "POST",
+            path: `/api/experimental/provider/${encodeURIComponent(input.providerID)}/remove`,
+            query: { location: input["location"] },
+            body: { dryRun: input["dryRun"] },
+            successStatus: 200,
+            declaredStatuses: [400, 401],
             empty: false,
           },
           requestOptions,

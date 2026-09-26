@@ -9,5 +9,7 @@ export const Info = Schema.Struct({
   action: Schema.Literals(["provider.use", "permission"]),
   resource: Schema.String,
   effect: Effect,
+  /** Marks a reversible deny added by provider removal, separate from user-authored policy. */
+  source: Schema.Literal("provider-removal").pipe(Schema.optional),
 })
 export type Info = typeof Info.Type
