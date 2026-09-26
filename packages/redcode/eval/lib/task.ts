@@ -10,6 +10,7 @@ import { Expectations, format } from "./assert"
 import { EvalHistory } from "./history"
 import { EvalJudge, type Rubric, type Transport } from "./judge"
 import { ScriptedProvider } from "./scripted-provider"
+import { Intelligence } from "@reddb-io/redcode-core/intelligence"
 
 export class Run extends Expectations {
   readonly warnings: string[] = []
@@ -54,6 +55,38 @@ export class Run extends Expectations {
       `judge(${verdict.judge})`,
       verdict.pass,
       `score ${verdict.score.toFixed(2)}: ${verdict.scores.map((item) => `${item.name}=${item.score}`).join(", ")}`,
+    )
+  }
+
+  /** JEV runs through the session's configured, typed System One evaluator with REDCODE_EVAL_JEV=1. */
+  async jev(name: string, instruction: string, options: { candidate?: string; expectIssue?: boolean } = {}) {
+    if (!this.outcome.evaluate) return this.that(`jev(${name})`, true, "skipped: JEV not enabled in this run")
+    if (!this.outcome.sessionID || !(options.candidate ?? this.record.text).trim())
+      return this.that(`jev(${name})`, false, "no session or final response to evaluate")
+    const evaluation = await this.outcome.evaluate({
+      sessionID: this.outcome.sessionID,
+      operation: "response_quality",
+      kind: "gate",
+      sources: {
+        request: Intelligence.evidence(this.spec.prompt),
+        tool_results: Intelligence.evidence(
+          this.record.tools.map((call) => ({ tool: call.tool, status: call.status })),
+        ),
+      },
+      candidate: Intelligence.evidence(options.candidate ?? this.record.text),
+      questions: Intelligence.questions({ [name]: instruction }),
+    })
+    const answer = evaluation?.answers[name]
+    const passed = options.expectIssue
+      ? answer?.type === "noul" && answer.noul >= 0.75
+      : evaluation?.decision === "accepted" ||
+        (evaluation?.decision === "inconclusive" && (answer?.type !== "noul" || answer.noul < 0.5))
+    return this.that(
+      `jev(${name})`,
+      passed,
+      evaluation
+        ? `${evaluation.decision} (${evaluation.id}), noul: ${answer?.type === "noul" ? answer.noul : "n/a"}, issues: ${evaluation.issues.join(", ") || "none"}`
+        : "System One returned no evaluation",
     )
   }
 }
@@ -119,7 +152,12 @@ function report(name: string, opts: Options, run: Run) {
     })
     return
   }
-  const row = EvalHistory.row({ runId: opts.runId, record, assertions: run.results, commit: process.env.REDCODE_EVAL_COMMIT })
+  const row = EvalHistory.row({
+    runId: opts.runId,
+    record,
+    assertions: run.results,
+    commit: process.env.REDCODE_EVAL_COMMIT,
+  })
   EvalHistory.append(opts.history, row)
   const lines = [
     `[eval] ${name} · ${opts.model} · ${record.outcome}${record.reason ? ` (${record.reason})` : ""}`,

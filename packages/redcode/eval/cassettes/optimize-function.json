@@ -1,0 +1,34 @@
+{
+  "version": 1,
+  "name": "optimize-function",
+  "source": "hand-written",
+  "steps": [
+    {
+      "tools": [{ "name": "read", "input": { "filePath": "{{workspace}}/unique.js" } }],
+      "usage": { "input": 5000, "output": 30 }
+    },
+    {
+      "tools": [
+        {
+          "name": "edit",
+          "input": {
+            "filePath": "{{workspace}}/unique.js",
+            "oldString": "  const result = []\n  for (const value of values) {\n    if (!result.includes(value)) result.push(value)\n  }",
+            "newString": "  const seen = new Set()\n  const result = []\n  for (const value of values) {\n    if (seen.has(value)) continue\n    seen.add(value)\n    result.push(value)\n  }"
+          }
+        }
+      ],
+      "usage": { "input": 5200, "output": 70 }
+    },
+    {
+      "tools": [
+        { "name": "bash", "input": { "command": "node verify.js", "description": "Verify the optimized function" } }
+      ],
+      "usage": { "input": 5400, "output": 20 }
+    },
+    {
+      "text": "The function now uses a Set for constant-time membership checks while preserving output order and the first value's sign. node verify.js passes.",
+      "usage": { "input": 5600, "output": 65 }
+    }
+  ]
+}

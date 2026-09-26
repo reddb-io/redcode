@@ -118,12 +118,15 @@ export interface Spec {
 
 export interface Outcome {
   readonly record: RunRecord
+  readonly sessionID?: string
   readonly workspace: string
   readonly mcp: readonly Connected[]
   readonly estimate?: Estimate
   readonly messages: readonly { info: any; parts: any[] }[]
   /** Live only: one completion from a real `provider/model`, for the judge. */
   readonly complete?: (model: string, prompt: string) => Promise<string>
+  /** Live only: ask the configured System One evaluator a typed question about this run. */
+  readonly evaluate?: (input: Intelligence.EvaluationInput) => Promise<Intelligence.Evaluation | undefined>
 }
 
 export const DEFAULT_BUDGET = { steps: 20, ms: 120_000 } as const
@@ -392,6 +395,26 @@ export function run<A>(input: {
           },
         })
       }
+      if (!scripted && process.env.REDCODE_EVAL_JEV === "1") {
+        const slash = model.indexOf("/")
+        const intelligence = yield* Intelligence.Service
+        yield* intelligence.save({
+          settings: {
+            enabled: true,
+            reasoning: "dual",
+            onboarding: "completed",
+            principal: {
+              providerID: Provider.ID.make(model.slice(0, slash)),
+              id: Model.ID.make(model.slice(slash + 1)),
+            },
+            evaluator: {
+              transport: "red-router",
+              baseURL: process.env.REDCODE_EVAL_ROUTER_URL ?? "http://127.0.0.1:25050/v1",
+              model: process.env.REDCODE_EVAL_JEV_MODEL ?? "openrouter/typesafe/jev-1.13",
+            },
+          },
+        })
+      }
       const agentSteps = { steps: budget.steps }
       const config = {
         $schema: "https://opencode.ai/config.json",
@@ -400,7 +423,6 @@ export function run<A>(input: {
         ...spec.config,
         agent: { build: agentSteps, [agent]: agentSteps, ...((spec.config?.agent as object) ?? {}) },
       }
-      if (!scripted) delete (config as { provider?: unknown }).provider
       fs.writeFileSync(path.join(directory, "opencode.json"), JSON.stringify(config, null, 2))
     })
 
@@ -618,14 +640,26 @@ export function run<A>(input: {
             const { generateText } = await import("ai")
             return (await generateText({ model: language, prompt: text })).text
           }
+      const evaluate =
+        scripted || process.env.REDCODE_EVAL_JEV !== "1"
+          ? undefined
+          : (input: Intelligence.EvaluationInput) =>
+              Effect.runPromiseWith(context)(
+                Effect.gen(function* () {
+                  const intelligence = yield* Intelligence.Service
+                  return yield* intelligence.evaluate(input)
+                }),
+              )
       return yield* Effect.promise(() =>
         input.inspect({
           record,
+          sessionID: chat.id,
           workspace: directory,
           mcp: connected,
           messages,
           ...(estimate ? { estimate } : {}),
           ...(complete ? { complete } : {}),
+          ...(evaluate ? { evaluate } : {}),
         }),
       )
     }).pipe(provideInstance(directory))

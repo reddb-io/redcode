@@ -1,0 +1,15 @@
+{
+  "version": 1,
+  "name": "performance-advice",
+  "source": "hand-written",
+  "steps": [
+    {
+      "tools": [{ "name": "read", "input": { "filePath": "{{workspace}}/unique.js" } }],
+      "usage": { "input": 5000, "output": 30 }
+    },
+    {
+      "text": "result.includes scans the growing array on every iteration, giving O(n²) work for distinct values. Keep a Set for membership checks and a separate array for insertion order; pushing the original value preserves -0. No files were changed.",
+      "usage": { "input": 5200, "output": 65 }
+    }
+  ]
+}
