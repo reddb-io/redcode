@@ -27,6 +27,7 @@ export function installed(_directory: string, _project: string): Info[] {
     { id: "deno", command: ["deno", "lsp"], extensions: [".ts", ".tsx", ".js", ".jsx", ".mjs"], root: nearest(["deno.json", "deno.jsonc"], { strict: true }) },
     { id: "typescript", command: ["typescript-language-server", "--stdio"], extensions: javascript, root: nearest(packages, { exclude: ["deno.json", "deno.jsonc"] }), download: { package: "typescript-language-server", bin: "typescript-language-server" } },
     { id: "vue", command: ["vue-language-server", "--stdio"], extensions: [".vue"], root: nearest(packages), download: { package: "@vue/language-server", bin: "vue-language-server" } },
+    { id: "eslint", command: ["vscode-eslint-language-server", "--stdio"], extensions: [...javascript, ".vue"], root: nearest(["eslint.config.js", "eslint.config.mjs", "eslint.config.cjs", ".eslintrc", ".eslintrc.js", ".eslintrc.cjs", ".eslintrc.json", ...packages]), download: { package: "vscode-langservers-extracted", bin: "vscode-eslint-language-server" } },
     { id: "oxlint", command: ["oxc_language_server"], extensions: [...javascript, ".vue", ".astro", ".svelte"], root: nearest([".oxlintrc.json", "oxlint.config.ts", "oxlint.config.js", "oxlint.config.mjs", ...packages]) },
     { id: "biome", command: ["biome", "lsp-proxy", "--stdio"], extensions: [...javascript, ".json", ".jsonc", ".vue", ".astro", ".svelte", ".css", ".graphql", ".gql", ".html"], root: nearest(["biome.json", "biome.jsonc"], { strict: true }), download: { package: "@biomejs/biome", bin: "biome" } },
     { id: "gopls", command: ["gopls"], extensions: [".go"], root: nearest(["go.work", "go.mod", "go.sum"]) },
@@ -71,6 +72,7 @@ export function root(server: Info, file: string, directory: string, project: str
 export function available(server: Info, root: string, directory: string, downloads: boolean) {
   if (!resolveCommand(server, root, directory) && !(downloads && server.download)) return false
   if (server.id === "typescript" || server.id === "astro") return typescriptPath(root, directory) !== undefined
+  if (server.id === "eslint") return modulePath("eslint", root, directory) !== undefined
   return true
 }
 
@@ -85,9 +87,13 @@ function resolveCommand(server: Info, root: string, directory: string) {
 }
 
 function typescriptPath(root: string, directory: string) {
+  return modulePath("typescript/lib/tsserver.js", root, directory)
+}
+
+function modulePath(name: string, root: string, directory: string) {
   return [root, directory].map((base) => {
     try {
-      return createRequire(path.join(base, "package.json")).resolve("typescript/lib/tsserver.js")
+      return createRequire(path.join(base, "package.json")).resolve(name)
     } catch {
       return undefined
     }
@@ -148,6 +154,8 @@ export async function start(server: Info, root: string, directory: string, downl
     : undefined
   if ((server.id === "typescript" || server.id === "astro") && !tsserver)
     throw new Error(`LSP server ${server.id} requires TypeScript in the workspace`)
+  if (server.id === "eslint" && !modulePath("eslint", root, directory))
+    throw new Error("LSP server eslint requires ESLint in the workspace")
   const venvs = server.id === "pyright"
     ? [globalThis.process.env["VIRTUAL_ENV"], path.join(root, ".venv"), path.join(root, "venv")].filter((value): value is string => value !== undefined)
     : []
