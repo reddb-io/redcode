@@ -16,7 +16,7 @@ export function promptPlaceholder(input: PromptPlaceholderInput) {
 export function promptDesignPlaceholder(
   mode: PromptPlaceholderInput["mode"],
   placeholder: string,
-  t: PromptPlaceholderInput["t"],
+  t: (key: string, params?: Record<string, string>) => string,
 ) {
   if (mode === "shell") return placeholder
   return t("ui.promptInput.placeholder.normal", { slash: "/", at: "@" })
