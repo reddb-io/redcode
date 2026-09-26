@@ -45,7 +45,7 @@ const safeRecord = (input: string | Record<string, unknown>): Record<string, unk
   }
 }
 
-const outputOf = (content: ToolContent[] | undefined) =>
+const outputOf = (content: readonly ToolContent[] | undefined) =>
   (content ?? [])
     .map((item) => (item.type === "text" ? item.text : `[file] ${item.name ?? item.uri}`))
     .join("\n")
@@ -265,7 +265,7 @@ function compactionMessage(message: SessionMessage.Compaction, ctx: Context): Le
         sessionID: ctx.sessionID,
         messageID: SessionV1.MessageID.make(message.id),
         auto: message.reason === "auto",
-        ...(message.tools ? { tools: { loaded: message.tools.loaded, mcpDeferred: message.tools.mcpDeferred } } : {}),
+        ...(message.tools ? { tools: { loaded: [...message.tools.loaded], mcpDeferred: message.tools.mcpDeferred } } : {}),
       },
       {
         id: partID(`${message.id}:summary`),

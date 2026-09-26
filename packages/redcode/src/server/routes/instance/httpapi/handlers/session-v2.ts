@@ -69,10 +69,10 @@ export const sessionV2Handlers = HttpApiBuilder.group(RootHttpApi, "server.sessi
     })
 
     return handlers
-      .handle("prompt", prompt)
-      .handle("session", session)
-      .handle("messages", messages)
-      .handle("events", events)
-      .handle("interrupt", interrupt)
+      .handle("sessionV2.prompt", prompt)
+      .handle("sessionV2.session", session)
+      .handle("sessionV2.messages", messages)
+      .handle("sessionV2.events", events)
+      .handle("sessionV2.interrupt", interrupt)
   }),
 )
