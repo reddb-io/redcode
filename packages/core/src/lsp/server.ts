@@ -82,6 +82,10 @@ export function available(server: Info, root: string, directory: string, downloa
     return !!resolveCommand(server, root, directory) || !!resolveCommand({ ...server, command: ["oxlint"] }, root, directory)
   if (server.id === "zls" && server.command[0] === "zls")
     return !!resolveCommand(server, root, directory) || downloads && !!which("zig")
+  if (server.id === "clangd" && server.command[0] === "clangd")
+    return !!resolveCommand(server, root, directory) || !!clangdCache() || downloads
+  if (server.id === "lua-ls" && server.command[0] === "lua-language-server")
+    return !!resolveCommand(server, root, directory) || existsSync(luaExecutable()) || downloads
   if (server.id === "terraform" && server.command[0] === "terraform-ls")
     return !!resolveCommand(server, root, directory) || downloads
   if ((server.id === "texlab" || server.id === "tinymist") && server.command[0] === server.id)
@@ -345,6 +349,8 @@ async function specializedLaunch(server: Info, root: string, directory: string, 
     return oxlintLaunch(server, root, directory)
   if (resolveCommand(server, root, directory)) return
   if (server.id === "zls" && server.command[0] === "zls") return zlsLaunch(downloads)
+  if (server.id === "clangd" && server.command[0] === "clangd") return clangdLaunch(downloads)
+  if (server.id === "lua-ls" && server.command[0] === "lua-language-server") return luaLaunch(downloads)
   if (server.id === "terraform" && server.command[0] === "terraform-ls") return terraformLaunch(downloads)
   if (server.id === "texlab" && server.command[0] === "texlab") return texlabLaunch(downloads)
   if (server.id === "tinymist" && server.command[0] === "tinymist") return tinymistLaunch(downloads)
@@ -380,6 +386,77 @@ async function zlsLaunch(downloads: boolean) {
   await unpack(await githubAsset("zigtools/zls", name), name, Global.Path.bin)
   const executable = path.join(Global.Path.bin, `zls${globalThis.process.platform === "win32" ? ".exe" : ""}`)
   if (!existsSync(executable)) throw new Error("LSP server zls archive has no executable")
+  if (globalThis.process.platform !== "win32") await chmod(executable, 0o755)
+  return { executable, args: [] }
+}
+
+function clangdCache() {
+  const name = `clangd${globalThis.process.platform === "win32" ? ".exe" : ""}`
+  try {
+    return readdirSync(Global.Path.bin, { withFileTypes: true })
+      .filter((entry) => entry.isDirectory() && entry.name.startsWith("clangd_"))
+      .map((entry) => path.join(Global.Path.bin, entry.name, "bin", name))
+      .find((candidate) => existsSync(candidate))
+  } catch {
+    return undefined
+  }
+}
+
+async function clangdLaunch(downloads: boolean) {
+  const cached = clangdCache()
+  if (cached) return { executable: cached, args: ["--background-index", "--clang-tidy"] }
+  if (!downloads) return
+  const platform = globalThis.process.platform === "darwin" ? "mac" : globalThis.process.platform === "win32" ? "windows" : "linux"
+  const response = await fetch("https://api.github.com/repos/clangd/clangd/releases/latest")
+  if (!response.ok) throw new Error(`LSP server clangd release lookup failed: HTTP ${response.status}`)
+  const release: unknown = await response.json()
+  const tag = typeof release === "object" && release !== null && "tag_name" in release && typeof release.tag_name === "string"
+    ? release.tag_name : undefined
+  const assets = typeof release === "object" && release !== null && "assets" in release && Array.isArray(release.assets)
+    ? release.assets as unknown[] : []
+  if (!tag) throw new Error("LSP server clangd release has no tag")
+  const candidates = assets.filter((item) => typeof item === "object" && item !== null && "name" in item && typeof item.name === "string" && item.name.includes(tag) && item.name.includes(platform))
+  const asset = candidates.find((item) => typeof item === "object" && item !== null && "name" in item && typeof item.name === "string" && item.name.endsWith(".zip"))
+    ?? candidates.find((item) => typeof item === "object" && item !== null && "name" in item && typeof item.name === "string" && item.name.endsWith(".tar.xz"))
+  const name = typeof asset === "object" && asset !== null && "name" in asset && typeof asset.name === "string" ? asset.name : undefined
+  const url = typeof asset === "object" && asset !== null && "browser_download_url" in asset && typeof asset.browser_download_url === "string"
+    ? asset.browser_download_url : undefined
+  if (!name || !url) throw new Error(`LSP server clangd release has no ${platform} archive`)
+  await unpack(url, name, Global.Path.bin)
+  const executable = path.join(Global.Path.bin, `clangd_${tag}`, "bin", `clangd${globalThis.process.platform === "win32" ? ".exe" : ""}`)
+  if (!existsSync(executable)) throw new Error("LSP server clangd archive has no executable")
+  if (globalThis.process.platform !== "win32") await chmod(executable, 0o755)
+  return { executable, args: ["--background-index", "--clang-tidy"] }
+}
+
+function luaExecutable() {
+  return path.join(Global.Path.bin, `lua-language-server-${globalThis.process.arch}-${globalThis.process.platform}`, "bin", `lua-language-server${globalThis.process.platform === "win32" ? ".exe" : ""}`)
+}
+
+async function luaLaunch(downloads: boolean) {
+  const executable = luaExecutable()
+  if (existsSync(executable)) return { executable, args: [] }
+  if (!downloads) return
+  const extension = globalThis.process.platform === "win32" ? "zip" : "tar.gz"
+  const combination = `${globalThis.process.platform}-${globalThis.process.arch}.${extension}`
+  if (!["darwin-arm64.tar.gz", "darwin-x64.tar.gz", "linux-x64.tar.gz", "linux-arm64.tar.gz", "win32-x64.zip", "win32-ia32.zip"].includes(combination))
+    throw new Error(`LSP server lua-ls does not support ${combination}`)
+  const response = await fetch("https://api.github.com/repos/LuaLS/lua-language-server/releases/latest")
+  if (!response.ok) throw new Error(`LSP server lua-ls release lookup failed: HTTP ${response.status}`)
+  const release: unknown = await response.json()
+  const tag = typeof release === "object" && release !== null && "tag_name" in release && typeof release.tag_name === "string"
+    ? release.tag_name : undefined
+  const name = `lua-language-server-${tag}-${combination}`
+  const assets = typeof release === "object" && release !== null && "assets" in release && Array.isArray(release.assets)
+    ? release.assets as unknown[] : []
+  const asset = assets.find((item) => typeof item === "object" && item !== null && "name" in item && item.name === name)
+  const url = typeof asset === "object" && asset !== null && "browser_download_url" in asset && typeof asset.browser_download_url === "string"
+    ? asset.browser_download_url : undefined
+  if (!tag || !url) throw new Error(`LSP server lua-ls release has no ${combination} archive`)
+  const directory = path.dirname(path.dirname(executable))
+  await rm(directory, { recursive: true, force: true })
+  await unpack(url, name, directory)
+  if (!existsSync(executable)) throw new Error("LSP server lua-ls archive has no executable")
   if (globalThis.process.platform !== "win32") await chmod(executable, 0o755)
   return { executable, args: [] }
 }
