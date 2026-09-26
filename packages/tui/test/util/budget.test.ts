@@ -45,6 +45,8 @@ describe("parsing /budget input", () => {
 
   test("dollars, tokens, both, and off", () => {
     expect(value("$5")).toEqual({ max_cost_usd: 5 })
+    expect(value("5$")).toEqual({ max_cost_usd: 5 })
+    expect(value("2,50$ 200k")).toEqual({ max_cost_usd: 2.5, max_tokens: 200_000 })
     expect(value("200k tokens")).toEqual({ max_tokens: 200_000 })
     expect(value("$2.50 1.5m")).toEqual({ max_cost_usd: 2.5, max_tokens: 1_500_000 })
     expect(value("off")).toEqual({ max_cost_usd: null, max_tokens: null })

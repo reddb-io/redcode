@@ -41,6 +41,7 @@ export const dict = {
   "settings.intelligence.operation.subagent_result": "Resultado do subagente",
   "settings.intelligence.operation.design_target": "Alvo do design",
   "settings.intelligence.operation.design_system_detect": "Sistema de design",
+  "settings.intelligence.operation.goal_command": "Comando de objetivo",
   "desktop.menu.app": "Redcode",
   "desktop.menu.file": "Arquivo",
   "desktop.menu.edit": "Editar",

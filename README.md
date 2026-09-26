@@ -770,8 +770,17 @@ constraints: preserve the existing API
 ```
 
 Put verification criteria, constraints and stopping conditions in the objective. `gate:` clauses
-become executable checks and obey shell permissions. In the full-screen TUI, `/goal` opens a
-dialog; in `redcode design`, `/goal objective` starts directly.
+become executable checks and obey shell permissions. `/goal objective` starts directly; `/goal`
+alone shows the goal's status and the actions that apply to it.
+
+One command controls the goal: `/goal [drop|pause|resume|budget|status] …`. A leading subcommand
+always wins, and `pause`, `resume`, `drop` and `status` count only as the whole argument, so
+`/goal drop support for Node 16` is an objective. `/goal set …` sets a goal whose text starts with
+a subcommand. In dual reasoning the full-screen TUI has System One read any other text, in any
+language, as a new goal or a control ("pausa isso por enquanto"); it asks with the likely
+readings when unsure, and never drops or replaces a goal on a reading below 85% confidence
+without asking. The older `/goal-pause`, `/goal-resume`, `/goal-drop` and `/goal-budget` still
+work when typed, but are no longer listed.
 
 SessionV2 stores the Goal's scope, status, budget, evidence and checks. `goal_complete` reads
 actual artifacts, checks pending work, runs gates and requests an independent review. Completion
@@ -785,11 +794,11 @@ attempts for SessionV2; the legacy TUI defaults to 20, configurable under `exper
 
 | Control | Full-screen TUI | `redcode design` |
 | --- | --- | --- |
-| Start or inspect | `/goal` dialog and Goal status line | `/goal objective`, `/goal-status` |
-| Pause | `/goal-pause` or Ctrl+C | `/goal-pause` or Ctrl+C |
-| Change total budget | `/goal-budget` opens a dialog | `/goal-budget N` |
-| Continue | `/goal-resume` | `/goal-resume` |
-| Remove | `/goal-drop` | `/goal-drop` |
+| Start or inspect | `/goal objective`, `/goal` menu, `/goal status` and the Goal status line | `/goal objective`, `/goal status` |
+| Pause | `/goal pause` or Ctrl+C | `/goal pause` or Ctrl+C |
+| Change budget | `/goal budget $5`, `/goal budget 200k tokens`, `/goal budget 40 turns`; alone it opens a dialog | `/goal budget N` |
+| Continue | `/goal resume` | `/goal resume` |
+| Remove | `/goal drop` | `/goal drop` |
 
 After exhaustion, increase the total budget and then resume. Opening an existing session or
 reconnecting its event stream does not automatically resume execution. A Goal started in Plan

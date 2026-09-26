@@ -10487,6 +10487,96 @@
         ]
       }
     },
+    "/session/{sessionID}/goal/command": {
+      "post": {
+        "tags": ["session"],
+        "operationId": "session.goalCommand",
+        "parameters": [
+          {
+            "name": "sessionID",
+            "in": "path",
+            "schema": {
+              "type": "string",
+              "pattern": "^ses"
+            },
+            "required": true
+          },
+          {
+            "name": "directory",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            },
+            "required": false
+          },
+          {
+            "name": "workspace",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            },
+            "required": false
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "What the /goal text asks for, or what to ask the user",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SessionGoalCommand"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BadRequestError"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "NotFoundError",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/NotFoundError"
+                }
+              }
+            }
+          }
+        },
+        "description": "Reads what the user typed after /goal without acting on it. An explicit subcommand (set, pause, resume, drop, budget, status) resolves directly; other text is a new goal in single reasoning, and in dual reasoning System One classifies it. Dropping or replacing a goal on a reading below 0.85 confidence, or any unavailable reading, returns options to ask the user instead of an action.",
+        "summary": "Resolve a /goal command",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "text": {
+                    "type": "string",
+                    "description": "What the user typed after /goal"
+                  }
+                },
+                "required": ["text"],
+                "additionalProperties": false
+              }
+            }
+          }
+        },
+        "x-codeSamples": [
+          {
+            "lang": "js",
+            "source": "import { createRedcodeClient } from \"@reddb-io/redcode-sdk\"\n\nconst client = createRedcodeClient()\nawait client.session.goalCommand({\n  ...\n})"
+          }
+        ]
+      }
+    },
     "/session/{sessionID}/budget": {
       "get": {
         "tags": ["session"],
@@ -29412,7 +29502,8 @@
                 "session_progress",
                 "subagent_result",
                 "design_target",
-                "design_system_detect"
+                "design_system_detect",
+                "goal_command"
               ]
             },
             "required": false
@@ -39727,6 +39818,51 @@
           }
         },
         "required": ["id", "objective", "contract", "gates", "status", "turns", "judgeFailures", "created", "updated"],
+        "additionalProperties": false
+      },
+      "SessionGoalCommandAction": {
+        "type": "string",
+        "enum": ["set", "pause", "resume", "drop", "budget", "status"]
+      },
+      "SessionGoalCommand": {
+        "type": "object",
+        "properties": {
+          "action": {
+            "$ref": "#/components/schemas/SessionGoalCommandAction"
+          },
+          "options": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/SessionGoalCommandAction"
+            },
+            "description": "When the user has to choose, the likely interpretations, the most likely first"
+          },
+          "confidence": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "string",
+                "enum": ["NaN"]
+              },
+              {
+                "type": "string",
+                "enum": ["Infinity"]
+              },
+              {
+                "type": "string",
+                "enum": ["-Infinity"]
+              },
+              {
+                "type": "string",
+                "enum": ["Infinity", "-Infinity", "NaN"]
+              }
+            ],
+            "description": "How sure System One was of its reading"
+          }
+        },
+        "required": ["options"],
         "additionalProperties": false
       },
       "SessionBudget": {
@@ -54796,7 +54932,8 @@
               "session_progress",
               "subagent_result",
               "design_target",
-              "design_system_detect"
+              "design_system_detect",
+              "goal_command"
             ]
           },
           "kind": {

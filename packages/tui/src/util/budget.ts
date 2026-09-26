@@ -98,7 +98,7 @@ export function sidebar(input: { metadata: unknown; configured: unknown; child: 
   }
 }
 
-/** What `/budget` and `/goal-budget` accept; see `BudgetParse.parseLimits`. */
+/** What `/budget` and `/goal budget` accept; see `BudgetParse.parseLimits`. */
 export const parse = BudgetParse.parseLimits
 
 export * as Budget from "./budget"

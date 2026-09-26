@@ -2210,7 +2210,7 @@ const layer = Layer.effect(
             // The turn ends before `afterTurn` is reached, so the goal has to be parked here or it
             // stays active on an idle session.
             yield* goals
-              .pause(sessionID, `stopped at the step ceiling after ${step} steps; /goal-resume starts a fresh turn`)
+              .pause(sessionID, `stopped at the step ceiling after ${step} steps; /goal resume starts a fresh turn`)
               .pipe(Effect.ignore)
             yield* events.publish(Session.Event.Error, {
               sessionID,

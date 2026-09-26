@@ -111,7 +111,7 @@ const layer = Layer.effect(
     })
 
     const goalNotice = (status: SessionBudget.Status) =>
-      `Goal paused at its budget: ${status.reason}. Raise it with /goal-budget, then /goal-resume.`
+      `Goal paused at its budget: ${status.reason}. Raise it with /goal budget, then /goal resume.`
 
     const budgetNotice = (sessionID: SessionID, status: SessionBudget.Status) =>
       spend.notify({ sessionID, action: "stop", subject: "goal", message: goalNotice(status) })
@@ -373,7 +373,7 @@ const layer = Layer.effect(
               ),
             )
         // The decision is taken on a record and written back only if that record is still the
-        // one stored: `/goal-budget` and `/goal-resume` write the same record from another fiber.
+        // one stored: `/goal budget` and `/goal resume` write the same record from another fiber.
         const record = Effect.fn("GoalRuntime.record")(function* (base: SessionGoal.Goal) {
           const current = yield* get(sessionID)
           if (
