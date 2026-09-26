@@ -86,6 +86,8 @@ export function available(server: Info, root: string, directory: string, downloa
     return !!resolveCommand(server, root, directory) || !!clangdCache() || downloads
   if (server.id === "lua-ls" && server.command[0] === "lua-language-server")
     return !!resolveCommand(server, root, directory) || existsSync(luaExecutable()) || downloads
+  if (server.id === "elixir-ls" && server.command[0] === "elixir-ls")
+    return !!resolveCommand(server, root, directory) || existsSync(elixirExecutable()) || downloads && !!which("elixir") && !!which("mix")
   if (server.id === "terraform" && server.command[0] === "terraform-ls")
     return !!resolveCommand(server, root, directory) || downloads
   if ((server.id === "texlab" || server.id === "tinymist") && server.command[0] === server.id)
@@ -351,6 +353,7 @@ async function specializedLaunch(server: Info, root: string, directory: string, 
   if (server.id === "zls" && server.command[0] === "zls") return zlsLaunch(downloads)
   if (server.id === "clangd" && server.command[0] === "clangd") return clangdLaunch(downloads)
   if (server.id === "lua-ls" && server.command[0] === "lua-language-server") return luaLaunch(downloads)
+  if (server.id === "elixir-ls" && server.command[0] === "elixir-ls") return elixirLaunch(downloads)
   if (server.id === "terraform" && server.command[0] === "terraform-ls") return terraformLaunch(downloads)
   if (server.id === "texlab" && server.command[0] === "texlab") return texlabLaunch(downloads)
   if (server.id === "tinymist" && server.command[0] === "tinymist") return tinymistLaunch(downloads)
@@ -457,6 +460,28 @@ async function luaLaunch(downloads: boolean) {
   await rm(directory, { recursive: true, force: true })
   await unpack(url, name, directory)
   if (!existsSync(executable)) throw new Error("LSP server lua-ls archive has no executable")
+  if (globalThis.process.platform !== "win32") await chmod(executable, 0o755)
+  return { executable, args: [] }
+}
+
+function elixirExecutable() {
+  return path.join(Global.Path.bin, "elixir-ls-master", "release", globalThis.process.platform === "win32" ? "language_server.bat" : "language_server.sh")
+}
+
+async function elixirLaunch(downloads: boolean) {
+  const executable = elixirExecutable()
+  if (existsSync(executable)) return { executable, args: [] }
+  const mix = which("mix")
+  if (!downloads || !which("elixir") || !mix) return
+  await unpack("https://github.com/elixir-lsp/elixir-ls/archive/refs/heads/master.zip", "elixir-ls.zip", Global.Path.bin)
+  const directory = path.join(Global.Path.bin, "elixir-ls-master")
+  const env = { ...globalThis.process.env, MIX_ENV: "prod" }
+  for (const args of [["deps.get"], ["compile"], ["elixir_ls.release2", "-o", "release"]]) {
+    const child = Bun.spawn([mix, ...args], { cwd: directory, env, stdout: "ignore", stderr: "pipe" })
+    const [code, error] = await Promise.all([child.exited, new Response(child.stderr).text()])
+    if (code !== 0) throw new Error(`LSP server elixir-ls build failed: mix ${args[0]}: ${error.trim()}`)
+  }
+  if (!existsSync(executable)) throw new Error("LSP server elixir-ls release has no executable")
   if (globalThis.process.platform !== "win32") await chmod(executable, 0o755)
   return { executable, args: [] }
 }
