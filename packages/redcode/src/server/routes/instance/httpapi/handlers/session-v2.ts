@@ -62,8 +62,16 @@ export const sessionV2Handlers = HttpApiBuilder.group(RootHttpApi, "server.sessi
         ),
         Stream.runCollect,
       )
-      return yield* Effect.forEach(Array.from(chunk), (event) =>
-        Schema.decodeUnknownEffect(SessionEvent.Durable)({ type: event.type, ...event.data }).pipe(Effect.orDie),
+      // The durable stream elements may arrive as envelopes (`{ type, data }`) or flat wire events.
+      const unwrapped = Array.from(chunk).map((event) => {
+        const record = event as Record<string, unknown>
+        const data = record.data
+        return typeof data === "object" && data !== null
+          ? { type: record.type, ...(data as Record<string, unknown>) }
+          : event
+      })
+      return yield* Effect.forEach(unwrapped, (event) =>
+        Schema.decodeUnknownEffect(SessionEvent.Durable)(event).pipe(Effect.orDie),
       )
     })
 
