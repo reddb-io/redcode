@@ -326,7 +326,6 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
       commentCount: commentCount(),
       example: suggest() ? (store.mode === "shell" ? "git status" : EXAMPLES[store.placeholder]) : "",
       suggest: suggest(),
-      t: (key) => key,
     }),
   )
 

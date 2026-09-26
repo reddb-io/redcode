@@ -3,7 +3,6 @@ type PromptPlaceholderInput = {
   commentCount: number
   example: string
   suggest: boolean
-  t: (key: string, params?: Record<string, string>) => string
 }
 
 export function promptPlaceholder(input: PromptPlaceholderInput) {

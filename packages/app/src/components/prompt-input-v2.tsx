@@ -136,7 +136,6 @@ export function usePromptInputV2Controller(props: PromptInputV2ControllerProps):
       commentCount: commentCount(),
       example: mode() === "shell" ? "git status" : "",
       suggest: false,
-      t,
     }),
   )
   const designPlaceholder = () => promptDesignPlaceholder(mode(), placeholder(), t)
