@@ -296,6 +296,8 @@ import type {
   ConfigUpdateOutput,
   LspStatusInput,
   LspStatusOutput,
+  FormatterStatusInput,
+  FormatterStatusOutput,
   ServerIntelligenceStatusOutput,
   ServerIntelligenceSaveInput,
   ServerIntelligenceSaveOutput,
@@ -1789,6 +1791,13 @@ const EndpointLspStatus = (raw: RawClient["server.lsp"]) => (input?: LspStatusIn
 
 const adaptGroupLsp = (raw: RawClient["server.lsp"]) => ({ status: EndpointLspStatus(raw) })
 
+const EndpointFormatterStatus = (raw: RawClient["server.formatter"]) => (input?: FormatterStatusInput) =>
+  preserveEffect<FormatterStatusOutput>()(
+    raw["formatter.status"]({ query: { location: input?.["location"] } }).pipe(Effect.mapError(mapClientError)),
+  )
+
+const adaptGroupFormatter = (raw: RawClient["server.formatter"]) => ({ status: EndpointFormatterStatus(raw) })
+
 const EndpointServerIntelligenceStatus = (raw: RawClient["server.intelligence"]) => () =>
   preserveEffect<ServerIntelligenceStatusOutput>()(raw["intelligence.status"]({}).pipe(Effect.mapError(mapClientError)))
 
@@ -1855,6 +1864,7 @@ const adaptClient = (raw: RawClient) => ({
   websearch: adaptGroupWebsearch(raw["server.websearch"]),
   config: adaptGroupConfig(raw["server.config"]),
   lsp: adaptGroupLsp(raw["server.lsp"]),
+  formatter: adaptGroupFormatter(raw["server.formatter"]),
   "server.intelligence": adaptGroupServerIntelligence(raw["server.intelligence"]),
 })
 

@@ -19,6 +19,7 @@ export type Editor = {
 }
 
 export interface Interface extends State.Transformable<Editor> {
+  readonly status: () => Effect.Effect<{ name: string; extensions: string[]; enabled: boolean }[]>
   readonly file: (filepath: string) => Effect.Effect<boolean>
 }
 
@@ -53,18 +54,29 @@ const layer = Layer.effect(
       return result
     })
 
+    const status = Effect.fn("Formatter.status")(function* () {
+      return yield* Effect.forEach(state.get().formatters, (formatter) =>
+        command(formatter).pipe(Effect.map((enabled) => ({
+          name: formatter.name,
+          extensions: [...formatter.extensions],
+          enabled: enabled !== false,
+        }))),
+      )
+    })
+
     const file = Effect.fn("Formatter.file")(function* (filepath: string) {
       const extension = path.extname(filepath)
       const matching = state.get().formatters.filter((formatter) => formatter.extensions.includes(extension))
+      const enabled = (yield* Effect.forEach(matching, (formatter) =>
+        command(formatter).pipe(Effect.map((cmd) => cmd === false ? undefined : { formatter, cmd })),
+      )).filter((item): item is { formatter: Info; cmd: string[] } => item !== undefined)
 
-      for (const formatter of matching) {
-        const enabled = yield* command(formatter)
-        if (enabled === false) continue
-        const cmd = enabled.map((argument) => argument.replace("$FILE", filepath))
-        yield* Effect.logInfo("formatting file", { file: filepath, command: cmd })
+      yield* Effect.forEach(enabled, ({ formatter, cmd }) => Effect.gen(function* () {
+        const replaced = cmd.map((argument) => argument.replace("$FILE", filepath))
+        yield* Effect.logInfo("formatting file", { file: filepath, command: replaced })
         const result = yield* processes
           .run(
-            ChildProcess.make(cmd[0], cmd.slice(1), {
+            ChildProcess.make(replaced[0], replaced.slice(1), {
               cwd: location.directory,
               env: formatter.environment,
               extendEnv: true,
@@ -77,23 +89,22 @@ const layer = Layer.effect(
             Effect.catch((error) =>
               Effect.logError("failed to format file", {
                 file: filepath,
-                command: cmd,
+                command: replaced,
                 error: error.message,
               }).pipe(Effect.as(undefined)),
             ),
           )
-        if (!result) continue
-        if (result.exitCode === 0) return true
+        if (!result || result.exitCode === 0) return
         yield* Effect.logError("formatter exited unsuccessfully", {
           file: filepath,
-          command: cmd,
+          command: replaced,
           exitCode: result.exitCode,
         })
-      }
-      return false
+      }), { discard: true })
+      return enabled.length > 0
     })
 
-    return Service.of({ transform: state.transform, reload: state.reload, file })
+    return Service.of({ transform: state.transform, reload: state.reload, status, file })
   }),
 )
 

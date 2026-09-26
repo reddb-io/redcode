@@ -294,6 +294,8 @@ import type {
   ConfigUpdateOutput,
   LspStatusInput,
   LspStatusOutput,
+  FormatterStatusInput,
+  FormatterStatusOutput,
   ServerIntelligenceStatusOutput,
   ServerIntelligenceSaveInput,
   ServerIntelligenceSaveOutput,
@@ -2444,6 +2446,20 @@ export function make(options: ClientOptions) {
           {
             method: "GET",
             path: `/api/lsp`,
+            query: { location: input?.["location"] },
+            successStatus: 200,
+            declaredStatuses: [400, 401],
+            empty: false,
+          },
+          requestOptions,
+        ),
+    },
+    formatter: {
+      status: (input?: FormatterStatusInput, requestOptions?: RequestOptions) =>
+        request<FormatterStatusOutput>(
+          {
+            method: "GET",
+            path: `/api/formatter`,
             query: { location: input?.["location"] },
             successStatus: 200,
             declaredStatuses: [400, 401],

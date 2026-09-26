@@ -32,6 +32,7 @@ import { MigrationHandler } from "./handlers/migration"
 import { ConfigHandler } from "./handlers/config"
 import { IntelligenceHandler } from "./handlers/intelligence"
 import { LSPHandler } from "./handlers/lsp"
+import { FormatterHandler } from "./handlers/formatter"
 
 export const handlers = Layer.mergeAll(
   ServerHandler,
@@ -66,4 +67,5 @@ export const handlers = Layer.mergeAll(
   ConfigHandler,
   IntelligenceHandler,
   LSPHandler,
+  FormatterHandler,
 )

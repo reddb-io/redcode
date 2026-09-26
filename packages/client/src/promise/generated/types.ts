@@ -587,6 +587,8 @@ export type ConfigShellOption = { path: string; name: string; acceptable: boolea
 
 export type LSPStatus = { id: string; root: string; status: "connected" | "error"; error?: string | undefined }
 
+export type FormatterStatus = { name: string; extensions: Array<string>; enabled: boolean }
+
 export type IntelligenceReasoning = "single" | "dual"
 
 export type IntelligenceEvaluator = {
@@ -8245,6 +8247,12 @@ export type LspStatusInput = {
 }
 
 export type LspStatusOutput = { location: LocationPublicRef; data: Array<LSPStatus> }
+
+export type FormatterStatusInput = {
+  readonly location?: { readonly location?: { readonly directory?: string | undefined } | undefined }["location"]
+}
+
+export type FormatterStatusOutput = { location: LocationPublicRef; data: Array<FormatterStatus> }
 
 export type ServerIntelligenceStatusOutput = IntelligenceStatus
 

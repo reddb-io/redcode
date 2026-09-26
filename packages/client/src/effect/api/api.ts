@@ -39,6 +39,7 @@ import type { Vcs } from "@opencode/schema/vcs"
 import type { WebSearch } from "@opencode/schema/websearch"
 import type { Config } from "@opencode/schema/config"
 import type { LSP } from "@opencode/schema/lsp"
+import type { Formatter } from "@opencode/schema/formatter"
 
 export type ServerInfoOutput = {
   readonly version: string
@@ -4133,6 +4134,19 @@ export interface LspApi<E = never> {
   readonly status: LspStatusOperation<E>
 }
 
+export type FormatterStatusInput = { readonly location?: { readonly directory?: string | undefined } | undefined }
+export type FormatterStatusOutput = {
+  readonly location: Location.PublicRef
+  readonly data: ReadonlyArray<Formatter.Status>
+}
+export type FormatterStatusOperation<E = never> = (
+  input?: FormatterStatusInput,
+) => Effect.Effect<FormatterStatusOutput, E>
+
+export interface FormatterApi<E = never> {
+  readonly status: FormatterStatusOperation<E>
+}
+
 export type ServerIntelligenceStatusOutput = {
   readonly settings: {
     readonly enabled: boolean
@@ -4400,5 +4414,6 @@ export interface AppApi<E = never> {
   readonly websearch: WebsearchApi<E>
   readonly config: ConfigApi<E>
   readonly lsp: LspApi<E>
+  readonly formatter: FormatterApi<E>
   readonly "server.intelligence": ServerIntelligenceApi<E>
 }
