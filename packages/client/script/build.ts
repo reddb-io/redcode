@@ -13,6 +13,7 @@ import { Form } from "@opencode/schema/form"
 import { InstructionEntry } from "@opencode/schema/instruction-entry"
 import { Integration } from "@opencode/schema/integration"
 import { Location } from "@opencode/schema/location"
+import { LSP } from "@opencode/schema/lsp"
 import { Mcp } from "@opencode/schema/mcp"
 import { Model } from "@opencode/schema/model"
 import { Permission } from "@opencode/schema/permission"
@@ -54,6 +55,7 @@ const effectTypeReferences = [
   ...namespaceTypes("Integration", "@opencode/schema/integration", Integration),
   typeReference("Location.PublicRef", "@opencode/schema/location", Location.PublicRef),
   typeReference("Location.PublicInfo", "@opencode/schema/location", Location.PublicInfo),
+  ...namespaceTypes("LSP", "@opencode/schema/lsp", LSP),
   ...namespaceTypes("Mcp", "@opencode/schema/mcp", Mcp),
   ...namespaceTypes("Model", "@opencode/schema/model", Model),
   ...namespaceTypes("Permission", "@opencode/schema/permission", Permission),

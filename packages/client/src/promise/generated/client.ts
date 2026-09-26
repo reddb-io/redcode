@@ -292,6 +292,8 @@ import type {
   ConfigShellsOutput,
   ConfigUpdateInput,
   ConfigUpdateOutput,
+  LspStatusInput,
+  LspStatusOutput,
   ServerIntelligenceStatusOutput,
   ServerIntelligenceSaveInput,
   ServerIntelligenceSaveOutput,
@@ -2432,6 +2434,20 @@ export function make(options: ClientOptions) {
             successStatus: 204,
             declaredStatuses: [400, 401],
             empty: true,
+          },
+          requestOptions,
+        ),
+    },
+    lsp: {
+      status: (input?: LspStatusInput, requestOptions?: RequestOptions) =>
+        request<LspStatusOutput>(
+          {
+            method: "GET",
+            path: `/api/lsp`,
+            query: { location: input?.["location"] },
+            successStatus: 200,
+            declaredStatuses: [400, 401],
+            empty: false,
           },
           requestOptions,
         ),

@@ -585,6 +585,8 @@ export type ConfigWorktree = {
 
 export type ConfigShellOption = { path: string; name: string; acceptable: boolean }
 
+export type LSPStatus = { id: string; root: string; status: "connected" | "error"; error?: string | undefined }
+
 export type IntelligenceReasoning = "single" | "dual"
 
 export type IntelligenceEvaluator = {
@@ -8237,6 +8239,12 @@ export type ConfigShellsOutput = Array<ConfigShellOption>
 export type ConfigUpdateInput = { readonly shell: { readonly shell: string | null }["shell"] }
 
 export type ConfigUpdateOutput = void
+
+export type LspStatusInput = {
+  readonly location?: { readonly location?: { readonly directory?: string | undefined } | undefined }["location"]
+}
+
+export type LspStatusOutput = { location: LocationPublicRef; data: Array<LSPStatus> }
 
 export type ServerIntelligenceStatusOutput = IntelligenceStatus
 

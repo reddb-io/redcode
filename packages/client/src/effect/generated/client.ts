@@ -294,6 +294,8 @@ import type {
   ConfigShellsOutput,
   ConfigUpdateInput,
   ConfigUpdateOutput,
+  LspStatusInput,
+  LspStatusOutput,
   ServerIntelligenceStatusOutput,
   ServerIntelligenceSaveInput,
   ServerIntelligenceSaveOutput,
@@ -1780,6 +1782,13 @@ const adaptGroupConfig = (raw: RawClient["server.config"]) => ({
   update: EndpointConfigUpdate(raw),
 })
 
+const EndpointLspStatus = (raw: RawClient["server.lsp"]) => (input?: LspStatusInput) =>
+  preserveEffect<LspStatusOutput>()(
+    raw["lsp.status"]({ query: { location: input?.["location"] } }).pipe(Effect.mapError(mapClientError)),
+  )
+
+const adaptGroupLsp = (raw: RawClient["server.lsp"]) => ({ status: EndpointLspStatus(raw) })
+
 const EndpointServerIntelligenceStatus = (raw: RawClient["server.intelligence"]) => () =>
   preserveEffect<ServerIntelligenceStatusOutput>()(raw["intelligence.status"]({}).pipe(Effect.mapError(mapClientError)))
 
@@ -1845,6 +1854,7 @@ const adaptClient = (raw: RawClient) => ({
   migration: adaptGroupMigration(raw["server.migration"]),
   websearch: adaptGroupWebsearch(raw["server.websearch"]),
   config: adaptGroupConfig(raw["server.config"]),
+  lsp: adaptGroupLsp(raw["server.lsp"]),
   "server.intelligence": adaptGroupServerIntelligence(raw["server.intelligence"]),
 })
 

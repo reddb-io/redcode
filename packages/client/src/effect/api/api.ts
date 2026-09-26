@@ -38,6 +38,7 @@ import type { Worktree } from "@opencode/schema/worktree"
 import type { Vcs } from "@opencode/schema/vcs"
 import type { WebSearch } from "@opencode/schema/websearch"
 import type { Config } from "@opencode/schema/config"
+import type { LSP } from "@opencode/schema/lsp"
 
 export type ServerInfoOutput = {
   readonly version: string
@@ -4124,6 +4125,14 @@ export interface ConfigApi<E = never> {
   readonly update: ConfigUpdateOperation<E>
 }
 
+export type LspStatusInput = { readonly location?: { readonly directory?: string | undefined } | undefined }
+export type LspStatusOutput = { readonly location: Location.PublicRef; readonly data: ReadonlyArray<LSP.Status> }
+export type LspStatusOperation<E = never> = (input?: LspStatusInput) => Effect.Effect<LspStatusOutput, E>
+
+export interface LspApi<E = never> {
+  readonly status: LspStatusOperation<E>
+}
+
 export type ServerIntelligenceStatusOutput = {
   readonly settings: {
     readonly enabled: boolean
@@ -4390,5 +4399,6 @@ export interface AppApi<E = never> {
   readonly migration: MigrationApi<E>
   readonly websearch: WebsearchApi<E>
   readonly config: ConfigApi<E>
+  readonly lsp: LspApi<E>
   readonly "server.intelligence": ServerIntelligenceApi<E>
 }

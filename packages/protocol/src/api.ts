@@ -34,6 +34,7 @@ import { VcsGroup } from "./groups/vcs.js"
 import { MigrationGroup } from "./groups/migration.js"
 import { ConfigGroup } from "./groups/config.js"
 import { IntelligenceGroup } from "./groups/intelligence.js"
+import { LSPGroup } from "./groups/lsp.js"
 
 type LocationGroups<LocationId extends HttpApiMiddleware.AnyId> =
   | HttpApiGroup.AddMiddleware<typeof AgentGroup, LocationId>
@@ -53,6 +54,7 @@ type LocationGroups<LocationId extends HttpApiMiddleware.AnyId> =
   | HttpApiGroup.AddMiddleware<typeof ReferenceGroup, LocationId>
   | HttpApiGroup.AddMiddleware<typeof VcsGroup, LocationId>
   | HttpApiGroup.AddMiddleware<typeof ConfigGroup, LocationId>
+  | HttpApiGroup.AddMiddleware<typeof LSPGroup, LocationId>
 
 type SessionGroups<
   SessionLocationId extends HttpApiMiddleware.AnyId,
@@ -185,6 +187,7 @@ const makeApiFromGroup = <
     .add(MigrationGroup)
     .add(WebSearchGroup.middleware(locationMiddleware))
     .add(ConfigGroup.middleware(locationMiddleware))
+    .add(LSPGroup.middleware(locationMiddleware))
     .add(IntelligenceGroup)
     .annotateMerge(
       OpenApi.annotations({
