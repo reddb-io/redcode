@@ -5,7 +5,7 @@ import { SessionMessage } from "./message.js"
 import { LoopGuard } from "./loop-guard.js"
 
 /** Adapt projected V2 messages to the detector's settled-call history. */
-export function assess(messages: readonly SessionMessage.Info[], next: ToolCall) {
+export function assess(messages: readonly SessionMessage.Info[], next: ToolCall, limits: LoopGuard.Limits) {
   const ordered = messages.toReversed()
   const lastUser = ordered.findLastIndex((message) => message.type === "user")
   // A bounded read without its user boundary could join two separate turns.
@@ -36,5 +36,5 @@ export function assess(messages: readonly SessionMessage.Info[], next: ToolCall)
       return []
     })
   })
-  return LoopGuard.assess({ parts, next: { tool: next.name, input: next.input }, limits: LoopGuard.LIMITS })
+  return LoopGuard.assess({ parts, next: { tool: next.name, input: next.input }, limits })
 }

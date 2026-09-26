@@ -24,6 +24,7 @@ import { SessionGoalCompletion } from "../goal-completion.js"
 import { SessionGoal } from "../goal.js"
 import { SessionGuardLog } from "../guard-log.js"
 import { SessionLoopGuard } from "../loop-guard-v2.js"
+import { LoopGuard } from "../loop-guard.js"
 import { SessionStore } from "../store.js"
 import { SessionEvent } from "../event.js"
 import { SessionMessage } from "../message.js"
@@ -65,6 +66,7 @@ interface Input {
   readonly recoverOverflow: (failure: unknown) => Effect.Effect<boolean>
   readonly accepted: (input: number) => Effect.Effect<void>
   readonly allowLoop: (tool: string) => boolean
+  readonly loopLimits?: LoopGuard.Limits
 }
 
 const TOOLS_INTERRUPTED = { type: "aborted", message: "Tool execution interrupted" } as const
@@ -102,9 +104,9 @@ export const make = Effect.gen(function* () {
     const executeTool = Effect.fnUntraced(function* (call: ToolCall) {
       if (input.prepared.request.toolChoice?.type === "none")
         return yield* new Tool.Error({ message: "Tools are disabled after the maximum agent steps" })
-      if (!input.allowLoop(call.name)) {
+      if (input.loopLimits && !input.allowLoop(call.name)) {
         const recent = yield* store.messages({ sessionID: input.sessionID, limit: 120 }).pipe(Effect.orElseSucceed(() => []))
-        const decision = SessionLoopGuard.assess(recent, call)
+        const decision = SessionLoopGuard.assess(recent, call, input.loopLimits)
         if (decision.type !== "ok") {
           yield* guards.record({
             sessionID: input.sessionID,

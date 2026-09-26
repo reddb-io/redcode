@@ -42,6 +42,8 @@ import { SessionStep } from "./step.js"
 import { ToolOutput } from "../../tool-output.js"
 import { Plugin } from "../../plugin.js"
 import { Permission } from "../../permission.js"
+import { Config } from "../../config.js"
+import { LoopGuard } from "../loop-guard.js"
 import { MAX_STEPS_PROMPT } from "./max-steps.js"
 
 const CONTINUE_AFTER_INCOMPLETE_STREAM =
@@ -59,6 +61,7 @@ const layer = Layer.effect(
     const compaction = yield* SessionCompaction.Service
     const limits = yield* ModelLimit.Service
     const plugins = yield* Plugin.Service
+    const config = yield* Config.Service
     const title = yield* SessionTitle.Service
     const todos = yield* SessionTodoStore.Service
     const goals = yield* SessionGoal.Service
@@ -323,6 +326,7 @@ const layer = Layer.effect(
           continue
         }
         const stepLimitReached = loaded.agent.info.steps !== undefined && step >= loaded.agent.info.steps
+        const loopLimits = LoopGuard.limits(Config.latest(yield* config.entries(), "experimental")?.loop_guard)
         if (stepLimitReached && loaded.agent.info.steps !== undefined)
           yield* guards.record({
             sessionID,
@@ -412,6 +416,7 @@ const layer = Layer.effect(
           allowLoop: (tool) =>
             Permission.evaluate("doom_loop", tool, loaded.agent.info.permissions, loaded.session.permissions ?? []).effect ===
             "allow",
+          loopLimits,
         })
         const completed = yield* SessionStep.Outcome.$match(outcome, {
           Completed: Effect.fnUntraced(function* (outcome) {
@@ -521,6 +526,7 @@ export const node = makeLocationNode({
     SessionStore.node,
     SessionCompaction.node,
     Plugin.node,
+    Config.node,
     SessionTitle.node,
     SessionTodoStore.node,
     SessionGoal.node,

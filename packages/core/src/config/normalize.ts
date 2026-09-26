@@ -427,6 +427,15 @@ function normalizeExperimental(
         )
         if (value !== undefined) result.subagent_depth = value
       }
+      if (own(experimental, "loop_guard")) {
+        const value = decodeEncoded(
+          ConfigExperimental.Info.fields.loop_guard,
+          experimental.loop_guard,
+          ["experimental", "loop_guard"],
+          diagnostics,
+        )
+        if (value !== undefined) result.loop_guard = value
+      }
       native.push(
         ...decodeList(
           experimental.policies,
