@@ -10,6 +10,7 @@ import { Question } from "@/question"
 import { ConfigApi } from "./groups/config"
 import { ControlApi } from "./groups/control"
 import { ControlPlaneApi } from "./groups/control-plane"
+import { SessionV2Api } from "./groups/session-v2"
 import { EventApi } from "./groups/event"
 import { ExperimentalApi } from "./groups/experimental"
 import { FileApi } from "./groups/file"
@@ -56,6 +57,7 @@ export const ServerApi = makeApi({
 export const RootHttpApi = HttpApi.make("redcode-root")
   .addHttpApi(ControlApi)
   .addHttpApi(ControlPlaneApi)
+  .addHttpApi(SessionV2Api)
   .addHttpApi(GlobalApi)
   .middleware(SchemaErrorMiddleware)
   .middleware(Authorization)
