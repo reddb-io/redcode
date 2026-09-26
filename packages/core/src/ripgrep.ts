@@ -64,6 +64,7 @@ export interface GlobInput {
   readonly cwd: string
   readonly pattern: string
   readonly limit: number
+  readonly query?: string
   readonly hidden?: boolean
   readonly follow?: boolean
   readonly signal?: AbortSignal
@@ -178,7 +179,10 @@ const layer = Layer.effect(
             "--glob=!**/.git/**",
             ".",
           ],
-          parse: (line) => Effect.succeed(normalizePath(line)),
+          parse: (line) => {
+            const file = normalizePath(line)
+            return Effect.succeed(!input.query || file.includes(input.query) ? file : undefined)
+          },
         }).pipe(
           Effect.map((result) =>
             result.map((relative) =>

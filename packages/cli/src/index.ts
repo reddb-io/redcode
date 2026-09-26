@@ -59,6 +59,10 @@ const Handlers = Runtime.handlers(Commands, {
     limits: () => import("./commands/handlers/debug/limits"),
     guards: () => import("./commands/handlers/debug/guards"),
     todos: () => import("./commands/handlers/debug/todos"),
+    rg: {
+      files: () => import("./commands/handlers/debug/rg-files"),
+      search: () => import("./commands/handlers/debug/rg-search"),
+    },
     logs: () => import("./commands/handlers/debug/logs"),
     paths: () => import("./commands/handlers/debug/paths"),
   },

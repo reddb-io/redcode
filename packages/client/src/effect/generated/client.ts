@@ -294,6 +294,10 @@ import type {
   VcsBranchListOutput,
   VcsDiffInput,
   VcsDiffOutput,
+  DebugRgFilesInput,
+  DebugRgFilesOutput,
+  DebugRgSearchInput,
+  DebugRgSearchOutput,
   DebugTodosInput,
   DebugTodosOutput,
   DebugGuardsInput,
@@ -1827,6 +1831,20 @@ const adaptGroupVcs = (raw: RawClient["server.vcs"]) => ({
   diff: EndpointVcsDiff(raw),
 })
 
+const EndpointDebugRgFiles = (raw: RawClient["server.debug"]) => (input?: DebugRgFilesInput) =>
+  preserveEffect<DebugRgFilesOutput>()(
+    raw["debug.rg.files"]({
+      query: { location: input?.["location"], glob: input?.["glob"], query: input?.["query"], limit: input?.["limit"] },
+    }).pipe(Effect.mapError(mapClientError)),
+  )
+
+const EndpointDebugRgSearch = (raw: RawClient["server.debug"]) => (input: DebugRgSearchInput) =>
+  preserveEffect<DebugRgSearchOutput>()(
+    raw["debug.rg.search"]({
+      query: { location: input["location"], pattern: input["pattern"], glob: input["glob"], limit: input["limit"] },
+    }).pipe(Effect.mapError(mapClientError)),
+  )
+
 const EndpointDebugTodos = (raw: RawClient["server.debug"]) => (input: DebugTodosInput) =>
   preserveEffect<DebugTodosOutput>()(
     raw["debug.todos"]({ query: { sessionID: input["sessionID"] } }).pipe(Effect.mapError(mapClientError)),
@@ -1848,6 +1866,7 @@ const EndpointDebugLocationEvict = (raw: RawClient["server.debug"]) => (input?: 
   )
 
 const adaptGroupDebug = (raw: RawClient["server.debug"]) => ({
+  rg: { files: EndpointDebugRgFiles(raw), search: EndpointDebugRgSearch(raw) },
   todos: EndpointDebugTodos(raw),
   guards: EndpointDebugGuards(raw),
   location: { list: EndpointDebugLocationList(raw), evict: EndpointDebugLocationEvict(raw) },

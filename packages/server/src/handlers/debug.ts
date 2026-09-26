@@ -3,13 +3,61 @@ import { SessionGuardLog } from "@opencode/core/session/guard-log"
 import { SessionTaskFacts } from "@opencode/core/session/task-facts"
 import { SessionTodoStore } from "@opencode/core/session/todo-store"
 import { refusalKind } from "@opencode/core/session/todo-evidence"
+import { Ripgrep } from "@opencode/core/ripgrep"
+import { Location } from "@opencode/core/location"
 import { Effect, Option, RcMap } from "effect"
 import { HttpApiBuilder } from "effect/unstable/httpapi"
 import { Api } from "../api"
 import { requestRef } from "../location"
+import { InvalidRequestError, ServiceUnavailableError } from "@opencode/protocol/errors"
 
 export const DebugHandler = HttpApiBuilder.group(Api, "server.debug", (handlers) =>
   handlers
+    .handle(
+      "debug.rg.files",
+      Effect.fn(function* (ctx) {
+        const locations = yield* LocationServiceMap.Service
+        return yield* Effect.gen(function* () {
+          const ripgrep = yield* Ripgrep.Service
+          const location = yield* Location.Service
+          return yield* ripgrep
+            .glob({
+              cwd: location.directory,
+              pattern: ctx.query.glob ?? "**/*",
+              query: ctx.query.query,
+              limit: ctx.query.limit ?? 10_000,
+            })
+            .pipe(Effect.mapError((error) => new ServiceUnavailableError({ message: error.message, service: "ripgrep" })))
+        }).pipe(Effect.provide(locations.get(requestRef(ctx.request))))
+      }),
+    )
+    .handle(
+      "debug.rg.search",
+      Effect.fn(function* (ctx) {
+        const locations = yield* LocationServiceMap.Service
+        return yield* Effect.gen(function* () {
+          const ripgrep = yield* Ripgrep.Service
+          const location = yield* Location.Service
+          return yield* ripgrep
+            .grep({
+              cwd: location.directory,
+              pattern: ctx.query.pattern,
+              include: ctx.query.glob,
+              limit: ctx.query.limit ?? 10_000,
+            })
+            .pipe(
+              Effect.catchTag("Ripgrep.InvalidPatternError", (error) =>
+                new InvalidRequestError({ message: error.message, field: "pattern" }),
+              ),
+              Effect.mapError((error) =>
+                error instanceof Ripgrep.Error
+                  ? new ServiceUnavailableError({ message: error.message, service: "ripgrep" })
+                  : error,
+              ),
+            )
+        }).pipe(Effect.provide(locations.get(requestRef(ctx.request))))
+      }),
+    )
     .handle(
       "debug.todos",
       Effect.fn(function* (ctx) {

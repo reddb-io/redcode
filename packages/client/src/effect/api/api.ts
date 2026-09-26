@@ -4144,6 +4144,24 @@ export interface VcsApi<E = never> {
   readonly diff: VcsDiffOperation<E>
 }
 
+export type DebugRgFilesInput = {
+  readonly location?: { readonly directory?: string | undefined } | undefined
+  readonly glob?: string | undefined
+  readonly query?: string | undefined
+  readonly limit?: number | undefined
+}
+export type DebugRgFilesOutput = ReadonlyArray<FileSystem.Entry>
+export type DebugRgFilesOperation<E = never> = (input?: DebugRgFilesInput) => Effect.Effect<DebugRgFilesOutput, E>
+
+export type DebugRgSearchInput = {
+  readonly location?: { readonly directory?: string | undefined } | undefined
+  readonly pattern: string
+  readonly glob?: string | undefined
+  readonly limit?: number | undefined
+}
+export type DebugRgSearchOutput = ReadonlyArray<FileSystem.Match>
+export type DebugRgSearchOperation<E = never> = (input: DebugRgSearchInput) => Effect.Effect<DebugRgSearchOutput, E>
+
 export type DebugTodosInput = { readonly sessionID: Session.ID }
 export type DebugTodosOutput = {
   readonly sessionID: Session.ID
@@ -4229,6 +4247,7 @@ export type DebugLocationEvictOperation<E = never> = (
 ) => Effect.Effect<DebugLocationEvictOutput, E>
 
 export interface DebugApi<E = never> {
+  readonly rg: { readonly files: DebugRgFilesOperation<E>; readonly search: DebugRgSearchOperation<E> }
   readonly todos: DebugTodosOperation<E>
   readonly guards: DebugGuardsOperation<E>
   readonly location: { readonly list: DebugLocationListOperation<E>; readonly evict: DebugLocationEvictOperation<E> }

@@ -292,6 +292,10 @@ import type {
   VcsBranchListOutput,
   VcsDiffInput,
   VcsDiffOutput,
+  DebugRgFilesInput,
+  DebugRgFilesOutput,
+  DebugRgSearchInput,
+  DebugRgSearchOutput,
   DebugTodosInput,
   DebugTodosOutput,
   DebugGuardsInput,
@@ -2455,6 +2459,42 @@ export function make(options: ClientOptions) {
         ),
     },
     debug: {
+      rg: {
+        files: (input?: DebugRgFilesInput, requestOptions?: RequestOptions) =>
+          request<DebugRgFilesOutput>(
+            {
+              method: "GET",
+              path: `/api/debug/rg/files`,
+              query: {
+                location: input?.["location"],
+                glob: input?.["glob"],
+                query: input?.["query"],
+                limit: input?.["limit"],
+              },
+              successStatus: 200,
+              declaredStatuses: [400, 401, 503],
+              empty: false,
+            },
+            requestOptions,
+          ),
+        search: (input: DebugRgSearchInput, requestOptions?: RequestOptions) =>
+          request<DebugRgSearchOutput>(
+            {
+              method: "GET",
+              path: `/api/debug/rg/search`,
+              query: {
+                location: input["location"],
+                pattern: input["pattern"],
+                glob: input["glob"],
+                limit: input["limit"],
+              },
+              successStatus: 200,
+              declaredStatuses: [400, 401, 503],
+              empty: false,
+            },
+            requestOptions,
+          ),
+      },
       todos: (input: DebugTodosInput, requestOptions?: RequestOptions) =>
         request<DebugTodosOutput>(
           {

@@ -577,6 +577,8 @@ export type VcsFileStatus = {
 
 export type VcsBranchList = Array<string>
 
+export type FileSystemSubmatch = { text: string; start: number; end: number }
+
 export type WebSearchProvider = { id: string; name: string }
 
 export type WebSearchResult = { url: string; title?: string; content?: string; time: { published?: number } }
@@ -2000,6 +2002,14 @@ export type ReferenceSource = ReferenceLocalSource | ReferenceGitSource
 export type WorktreeList = Array<WorktreeDirectory>
 
 export type VcsInfo = { provider?: string; branch: VcsBranch }
+
+export type FileSystemMatch = {
+  entry: FileSystemEntry
+  line: number
+  offset: number
+  text: string
+  submatches: Array<FileSystemSubmatch>
+}
 
 export type IntelligenceSettings = {
   enabled: boolean
@@ -8352,6 +8362,64 @@ export type VcsDiffInput = {
 }
 
 export type VcsDiffOutput = { location: LocationPublicRef; data: Array<FileDiffInfo> }
+
+export type DebugRgFilesInput = {
+  readonly location?: {
+    readonly location?: { readonly directory?: string | undefined } | undefined
+    readonly glob?: string | undefined
+    readonly query?: string | undefined
+    readonly limit?: number | undefined
+  }["location"]
+  readonly glob?: {
+    readonly location?: { readonly directory?: string | undefined } | undefined
+    readonly glob?: string | undefined
+    readonly query?: string | undefined
+    readonly limit?: number | undefined
+  }["glob"]
+  readonly query?: {
+    readonly location?: { readonly directory?: string | undefined } | undefined
+    readonly glob?: string | undefined
+    readonly query?: string | undefined
+    readonly limit?: number | undefined
+  }["query"]
+  readonly limit?: {
+    readonly location?: { readonly directory?: string | undefined } | undefined
+    readonly glob?: string | undefined
+    readonly query?: string | undefined
+    readonly limit?: number | undefined
+  }["limit"]
+}
+
+export type DebugRgFilesOutput = Array<FileSystemEntry>
+
+export type DebugRgSearchInput = {
+  readonly location?: {
+    readonly location?: { readonly directory?: string | undefined } | undefined
+    readonly pattern: string
+    readonly glob?: string | undefined
+    readonly limit?: number | undefined
+  }["location"]
+  readonly pattern: {
+    readonly location?: { readonly directory?: string | undefined } | undefined
+    readonly pattern: string
+    readonly glob?: string | undefined
+    readonly limit?: number | undefined
+  }["pattern"]
+  readonly glob?: {
+    readonly location?: { readonly directory?: string | undefined } | undefined
+    readonly pattern: string
+    readonly glob?: string | undefined
+    readonly limit?: number | undefined
+  }["glob"]
+  readonly limit?: {
+    readonly location?: { readonly directory?: string | undefined } | undefined
+    readonly pattern: string
+    readonly glob?: string | undefined
+    readonly limit?: number | undefined
+  }["limit"]
+}
+
+export type DebugRgSearchOutput = Array<FileSystemMatch>
 
 export type DebugTodosInput = { readonly sessionID: { readonly sessionID: string }["sessionID"] }
 

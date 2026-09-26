@@ -190,6 +190,33 @@ const Root = Spec.make(typeof OPENCODE_CLI_NAME === "string" ? OPENCODE_CLI_NAME
             json: Flag.boolean("json").pipe(Flag.withDefault(false)),
           },
         }),
+        Spec.make("rg", {
+          description: "Ripgrep debugging utilities",
+          commands: [
+            Spec.make("files", {
+              description: "List files using ripgrep",
+              params: {
+                query: Flag.string("query").pipe(Flag.optional),
+                glob: Flag.string("glob").pipe(Flag.optional),
+                limit: Flag.integer("limit").pipe(
+                  Flag.withSchema(Schema.Int.check(Schema.isGreaterThanOrEqualTo(1))),
+                  Flag.withDefault(10_000),
+                ),
+              },
+            }),
+            Spec.make("search", {
+              description: "Search file contents using ripgrep",
+              params: {
+                pattern: Argument.string("pattern"),
+                glob: Flag.string("glob").pipe(Flag.atMost(100)),
+                limit: Flag.integer("limit").pipe(
+                  Flag.withSchema(Schema.Int.check(Schema.isGreaterThanOrEqualTo(1))),
+                  Flag.withDefault(10_000),
+                ),
+              },
+            }),
+          ],
+        }),
         Spec.make("logs", {
           description: "Print or open the diagnostic log",
           params: {

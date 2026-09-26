@@ -55,6 +55,7 @@ import { ToolOutput } from "./tool-output.js"
 import { Vcs } from "./vcs.js"
 import { DesignStore } from "./design/store.js"
 import { DesignRenderer } from "./design/renderer.js"
+import { Ripgrep } from "./ripgrep.js"
 
 export * as Instance from "./instance.js"
 export { Service, node, type Interface } from "./instance/service.js"
@@ -83,6 +84,7 @@ const nodes = [
   PluginSupervisor.node,
   WorktreeStrategies.node,
   FileSystemSearch.node,
+  Ripgrep.node,
   FileSystem.node,
   ShellSelect.node,
   Pty.node,
