@@ -9,13 +9,19 @@ export default Runtime.handler(Commands.commands.console.commands.orgs, (input) 
   Effect.gen(function* () {
     const client = yield* createClient({ server: Option.getOrUndefined(input.server), standalone: input.standalone })
     const result = yield* request((signal) => client.integration.console.organizations({ location }, { signal }))
-    const account = result.data
-    if (account.orgs.length === 0) {
+    if (result.data.length === 0) {
+      process.stdout.write("No Console accounts found" + EOL)
+      return
+    }
+    const rows = result.data.flatMap((account) =>
+      account.orgs.map((org) =>
+        `${account.active && org.id === account.activeID ? "*" : " "} ${org.name}  ${account.email}  ${account.server}  ${org.id}  ${account.credentialID}`,
+      ),
+    )
+    if (rows.length === 0) {
       process.stdout.write("No Console organizations found" + EOL)
       return
     }
-    process.stdout.write(
-      account.orgs.map((org) => `${org.id === account.activeID ? "*" : " "} ${org.name}  ${org.id}`).join(EOL) + EOL,
-    )
+    process.stdout.write(rows.join(EOL) + EOL)
   }).pipe(handlePromptErrors),
 )

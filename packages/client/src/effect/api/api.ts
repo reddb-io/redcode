@@ -24,9 +24,9 @@ import type { EventLog } from "@opencode/schema/event-log"
 import type { Shell } from "@opencode/schema/shell"
 import type { Provider } from "@opencode/schema/provider"
 import type { Form } from "@opencode/schema/form"
+import type { Credential } from "@opencode/schema/credential"
 import type { Integration } from "@opencode/schema/integration"
 import type { Mcp } from "@opencode/schema/mcp"
-import type { Credential } from "@opencode/schema/credential"
 import type { PermissionSaved } from "@opencode/schema/permission-saved"
 import type { FileSystem } from "@opencode/schema/filesystem"
 import type { Command } from "@opencode/schema/command"
@@ -3338,12 +3338,14 @@ export type IntegrationConsoleOrganizationsInput = {
 }
 export type IntegrationConsoleOrganizationsOutput = {
   readonly location: Location.PublicRef
-  readonly data: {
+  readonly data: ReadonlyArray<{
+    readonly credentialID: Credential.ID
     readonly server: string
-    readonly email?: string | undefined
+    readonly email: string
+    readonly active: boolean
     readonly activeID?: string | undefined
     readonly orgs: ReadonlyArray<{ readonly id: string; readonly name: string }>
-  }
+  }>
 }
 export type IntegrationConsoleOrganizationsOperation<E = never> = (
   input?: IntegrationConsoleOrganizationsInput,
@@ -3351,6 +3353,7 @@ export type IntegrationConsoleOrganizationsOperation<E = never> = (
 
 export type IntegrationConsoleOrganizationSelectInput = {
   readonly location?: { readonly directory?: string | undefined } | undefined
+  readonly credentialID: Credential.ID
   readonly orgID: string
 }
 export type IntegrationConsoleOrganizationSelectOutput = void

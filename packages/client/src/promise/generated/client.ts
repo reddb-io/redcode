@@ -1492,7 +1492,7 @@ export function make(options: ClientOptions) {
                 method: "POST",
                 path: `/api/integration/opencode/organizations/select`,
                 query: { location: input["location"] },
-                body: { orgID: input["orgID"] },
+                body: { credentialID: input["credentialID"], orgID: input["orgID"] },
                 successStatus: 204,
                 declaredStatuses: [400, 401],
                 empty: true,

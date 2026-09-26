@@ -270,6 +270,7 @@ const Root = Spec.make(typeof OPENCODE_CLI_NAME === "string" ? OPENCODE_CLI_NAME
           params: {
             ...ServerParams,
             org: Argument.string("org").pipe(Argument.withDescription("Organization ID"), Argument.optional),
+            account: Flag.string("account").pipe(Flag.withDescription("Console credential ID"), Flag.optional),
           },
         }),
         Spec.make("open", { description: "open the active Console account in a browser", params: ServerParams }),

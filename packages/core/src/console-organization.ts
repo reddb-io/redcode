@@ -10,47 +10,64 @@ const defaultServer = "https://opencode.ai/console"
 
 export const list = Effect.fn("ConsoleOrganization.list")(function* () {
   const integration = yield* Integration.Service
-  const connection = yield* integration.connection.active(Integration.ID.make("opencode"))
-  if (!connection || connection.type !== "credential")
-    return yield* Effect.fail(new Error("No active OpenCode Console account"))
-  const credential = yield* integration.connection.resolve(connection)
-  if (!credential || credential.type !== "oauth")
-    return yield* Effect.fail(new Error("The active OpenCode Console account does not support organizations"))
-
+  const credentials = yield* Credential.Service
+  const active = yield* integration.connection.active(Integration.ID.make("opencode"))
+  const connections = (yield* integration.get(Integration.ID.make("opencode")))?.connections.filter(
+    (connection) => connection.type === "credential",
+  ) ?? []
   const http = HttpClient.filterStatusOk(yield* HttpClient.HttpClient)
-  const server = typeof credential.metadata?.server === "string" ? credential.metadata.server : defaultServer
-  const orgs = yield* http
-    .execute(
-      HttpClientRequest.get(`${server}/api/orgs`).pipe(
-        HttpClientRequest.acceptJson,
-        HttpClientRequest.bearerToken(credential.access),
-      ),
-    )
-    .pipe(Effect.flatMap(HttpClientResponse.schemaBodyJson(Schema.Array(Org))))
-
-  return {
-    server,
-    email: typeof credential.metadata?.email === "string" ? credential.metadata.email : undefined,
-    activeID: typeof credential.metadata?.orgID === "string" ? credential.metadata.orgID : undefined,
-    orgs: orgs.toSorted((a, b) => a.name.localeCompare(b.name) || a.id.localeCompare(b.id)),
-    credentialID: connection.id,
-  }
+  const accounts = yield* Effect.forEach(
+    connections,
+    (connection) =>
+      Effect.gen(function* () {
+        const saved = yield* credentials.get(connection.id)
+        if (!saved || saved.value.type !== "oauth") return
+        const value = yield* integration.connection.resolve(connection).pipe(
+          Effect.catch(() => Effect.succeed(saved.value)),
+        )
+        if (!value || value.type !== "oauth") return
+        const server = typeof value.metadata?.server === "string" ? value.metadata.server : defaultServer
+        const orgs = yield* http
+          .execute(
+            HttpClientRequest.get(`${server}/api/orgs`).pipe(
+              HttpClientRequest.acceptJson,
+              HttpClientRequest.bearerToken(value.access),
+            ),
+          )
+          .pipe(
+            Effect.flatMap(HttpClientResponse.schemaBodyJson(Schema.Array(Org))),
+            Effect.catch(() => Effect.succeed([])),
+          )
+        return {
+          credentialID: connection.id,
+          server,
+          email: typeof value.metadata?.email === "string" ? value.metadata.email : saved.label,
+          active: active?.type === "credential" && active.id === connection.id,
+          activeID: typeof value.metadata?.orgID === "string" ? value.metadata.orgID : undefined,
+          orgs: orgs.toSorted((a, b) => a.name.localeCompare(b.name) || a.id.localeCompare(b.id)),
+        }
+      }),
+    { concurrency: 3 },
+  )
+  return accounts.filter((account): account is NonNullable<typeof account> => account !== undefined)
 })
 
-export const select = Effect.fn("ConsoleOrganization.select")(function* (orgID: string) {
-  const account = yield* list()
+export const select = Effect.fn("ConsoleOrganization.select")(function* (credentialID: Credential.ID, orgID: string) {
+  const account = (yield* list()).find((item) => item.credentialID === credentialID)
+  if (!account) return yield* Effect.fail(new Error(`OpenCode Console account not found: ${credentialID}`))
   const org = account.orgs.find((item) => item.id === orgID)
   if (!org) return yield* Effect.fail(new Error(`OpenCode organization not found: ${orgID}`))
   const credentials = yield* Credential.Service
   const credential = yield* credentials.get(account.credentialID)
   if (!credential || credential.value.type !== "oauth")
-    return yield* Effect.fail(new Error("The active OpenCode Console account is unavailable"))
-  if (credential.value.metadata?.orgID === org.id && credential.value.metadata?.orgName === org.name) return org
-  yield* credentials.update(credential.id, {
-    value: Credential.OAuth.make({
-      ...credential.value,
-      metadata: { ...credential.value.metadata, orgID: org.id, orgName: org.name },
-    }),
-  })
+    return yield* Effect.fail(new Error("The OpenCode Console account is unavailable"))
+  if (credential.value.metadata?.orgID !== org.id || credential.value.metadata?.orgName !== org.name)
+    yield* credentials.update(credential.id, {
+      value: Credential.OAuth.make({
+        ...credential.value,
+        metadata: { ...credential.value.metadata, orgID: org.id, orgName: org.name },
+      }),
+    })
+  if (!account.active) yield* credentials.activate(credential.id)
   return org
 })

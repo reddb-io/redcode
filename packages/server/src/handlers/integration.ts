@@ -34,7 +34,6 @@ export const IntegrationHandler = HttpApiBuilder.group(Api, "server.integration"
           yield* Plugin.awaitActivation
           return yield* response(
             ConsoleOrganization.list().pipe(
-              Effect.map(({ server, email, activeID, orgs }) => ({ server, email, activeID, orgs })),
               Effect.mapError((error) =>
                 new InvalidRequestError({
                   message: error instanceof Error ? error.message : "Unable to list Console organizations",
@@ -49,7 +48,7 @@ export const IntegrationHandler = HttpApiBuilder.group(Api, "server.integration"
         "integration.console.organization.select",
         Effect.fn(function* (ctx) {
           yield* Plugin.awaitActivation
-          yield* ConsoleOrganization.select(ctx.payload.orgID).pipe(
+          yield* ConsoleOrganization.select(ctx.payload.credentialID, ctx.payload.orgID).pipe(
             Effect.mapError((error) =>
               new InvalidRequestError({
                 message: error instanceof Error ? error.message : "Unable to select Console organization",

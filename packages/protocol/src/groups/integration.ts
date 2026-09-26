@@ -1,4 +1,5 @@
 import { Integration } from "@opencode/schema/integration"
+import { Credential } from "@opencode/schema/credential"
 import { Location } from "@opencode/schema/location"
 import { Form } from "@opencode/schema/form"
 import { Schema } from "effect"
@@ -16,12 +17,16 @@ export const IntegrationGroup = HttpApiGroup.make("server.integration")
     HttpApiEndpoint.get("integration.console.organizations", "/api/integration/opencode/organizations", {
       query: LocationQuery,
       success: Location.response(
-        Schema.Struct({
-          server: Schema.String,
-          email: Schema.optional(Schema.String),
-          activeID: Schema.optional(Schema.String),
-          orgs: Schema.Array(Schema.Struct({ id: Schema.String, name: Schema.String })),
-        }),
+        Schema.Array(
+          Schema.Struct({
+            credentialID: Credential.ID,
+            server: Schema.String,
+            email: Schema.String,
+            active: Schema.Boolean,
+            activeID: Schema.optional(Schema.String),
+            orgs: Schema.Array(Schema.Struct({ id: Schema.String, name: Schema.String })),
+          }),
+        ),
       ),
       error: InvalidRequestError,
     })
@@ -31,7 +36,7 @@ export const IntegrationGroup = HttpApiGroup.make("server.integration")
   .add(
     HttpApiEndpoint.post("integration.console.organization.select", "/api/integration/opencode/organizations/select", {
       query: LocationQuery,
-      payload: Schema.Struct({ orgID: Schema.String }),
+      payload: Schema.Struct({ credentialID: Credential.ID, orgID: Schema.String }),
       success: HttpApiSchema.NoContent,
       error: InvalidRequestError,
     })

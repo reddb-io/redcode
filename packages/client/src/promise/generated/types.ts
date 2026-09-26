@@ -7463,17 +7463,20 @@ export type IntegrationConsoleOrganizationsInput = {
 
 export type IntegrationConsoleOrganizationsOutput = {
   location: LocationPublicRef
-  data: {
+  data: Array<{
+    credentialID: string
     server: string
-    email?: string | undefined
+    email: string
+    active: boolean
     activeID?: string | undefined
     orgs: Array<{ id: string; name: string }>
-  }
+  }>
 }
 
 export type IntegrationConsoleOrganizationSelectInput = {
   readonly location?: { readonly location?: { readonly directory?: string | undefined } | undefined }["location"]
-  readonly orgID: { readonly orgID: string }["orgID"]
+  readonly credentialID: { readonly credentialID: string; readonly orgID: string }["credentialID"]
+  readonly orgID: { readonly credentialID: string; readonly orgID: string }["orgID"]
 }
 
 export type IntegrationConsoleOrganizationSelectOutput = void

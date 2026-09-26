@@ -1151,7 +1151,7 @@ const EndpointIntegrationConsoleOrganizationSelect =
     preserveEffect<IntegrationConsoleOrganizationSelectOutput>()(
       raw["integration.console.organization.select"]({
         query: { location: input["location"] },
-        payload: { orgID: input["orgID"] },
+        payload: { credentialID: input["credentialID"], orgID: input["orgID"] },
       }).pipe(Effect.mapError(mapClientError)),
     )
 
