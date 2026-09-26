@@ -8,12 +8,12 @@ import { Integration } from "./integration.js"
 const Org = Schema.Struct({ id: Schema.String, name: Schema.String })
 const defaultServer = "https://opencode.ai/console"
 
-export const list = Effect.fn("ConsoleOrganization.list")(function* () {
+export const list = Effect.fn("ConsoleOrganization.list")(function* (credentialID?: Credential.ID) {
   const integration = yield* Integration.Service
   const credentials = yield* Credential.Service
   const active = yield* integration.connection.active(Integration.ID.make("opencode"))
   const connections = (yield* integration.get(Integration.ID.make("opencode")))?.connections.filter(
-    (connection) => connection.type === "credential",
+    (connection) => connection.type === "credential" && (!credentialID || connection.id === credentialID),
   ) ?? []
   const http = HttpClient.filterStatusOk(yield* HttpClient.HttpClient)
   const accounts = yield* Effect.forEach(
@@ -22,22 +22,19 @@ export const list = Effect.fn("ConsoleOrganization.list")(function* () {
       Effect.gen(function* () {
         const saved = yield* credentials.get(connection.id)
         if (!saved || saved.value.type !== "oauth") return
-        const value = yield* integration.connection.resolve(connection).pipe(
-          Effect.catch(() => Effect.succeed(saved.value)),
-        )
+        const resolved = integration.connection.resolve(connection)
+        const value = yield* (credentialID ? resolved : resolved.pipe(Effect.catch(() => Effect.succeed(saved.value))))
         if (!value || value.type !== "oauth") return
         const server = typeof value.metadata?.server === "string" ? value.metadata.server : defaultServer
-        const orgs = yield* http
+        const fetched = http
           .execute(
             HttpClientRequest.get(`${server}/api/orgs`).pipe(
               HttpClientRequest.acceptJson,
               HttpClientRequest.bearerToken(value.access),
             ),
           )
-          .pipe(
-            Effect.flatMap(HttpClientResponse.schemaBodyJson(Schema.Array(Org))),
-            Effect.catch(() => Effect.succeed([])),
-          )
+          .pipe(Effect.flatMap(HttpClientResponse.schemaBodyJson(Schema.Array(Org))))
+        const orgs = yield* (credentialID ? fetched : fetched.pipe(Effect.catch(() => Effect.succeed([]))))
         return {
           credentialID: connection.id,
           server,
@@ -53,7 +50,7 @@ export const list = Effect.fn("ConsoleOrganization.list")(function* () {
 })
 
 export const select = Effect.fn("ConsoleOrganization.select")(function* (credentialID: Credential.ID, orgID: string) {
-  const account = (yield* list()).find((item) => item.credentialID === credentialID)
+  const account = (yield* list(credentialID))[0]
   if (!account) return yield* Effect.fail(new Error(`OpenCode Console account not found: ${credentialID}`))
   const org = account.orgs.find((item) => item.id === orgID)
   if (!org) return yield* Effect.fail(new Error(`OpenCode organization not found: ${orgID}`))

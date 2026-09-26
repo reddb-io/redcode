@@ -4449,6 +4449,14 @@ export type SessionUnshareInput = { readonly sessionID: { readonly sessionID: st
 
 export type SessionUnshareOutput = { data: SessionInfo }["data"]
 
+export type SessionRebindShareInput = {
+  readonly sessionID: { readonly sessionID: string }["sessionID"]
+  readonly credentialID: { readonly credentialID: string; readonly orgID: string }["credentialID"]
+  readonly orgID: { readonly credentialID: string; readonly orgID: string }["orgID"]
+}
+
+export type SessionRebindShareOutput = { data: SessionInfo }["data"]
+
 export type SessionGoalGetInput = { readonly sessionID: { readonly sessionID: string }["sessionID"] }
 
 export type SessionGoalGetOutput = { data: SessionGoalInfo | null }["data"]

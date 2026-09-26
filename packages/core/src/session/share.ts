@@ -2,8 +2,12 @@ export * as SessionShare from "./share.js"
 
 import { eq } from "drizzle-orm"
 import { Context, Effect, Layer, Schema, Stream } from "effect"
+import { HttpClient } from "effect/unstable/http"
 import { makeGlobalNode } from "@opencode/util/effect/app-node"
+import { httpClient } from "@opencode/util/effect/app-node-platform"
 import { Config } from "../config.js"
+import { ConsoleOrganization } from "../console-organization.js"
+import { Credential } from "../credential.js"
 import { Bus } from "../bus.js"
 import { Database } from "../database/database.js"
 import { LocationServiceMap } from "../location-service-map.js"
@@ -23,6 +27,7 @@ export interface Interface {
   readonly create: (sessionID: SessionSchema.ID) => Effect.Effect<SessionSchema.Info, Error>
   readonly remove: (sessionID: SessionSchema.ID) => Effect.Effect<SessionSchema.Info, Error>
   readonly sync: (sessionID: SessionSchema.ID) => Effect.Effect<void, Error>
+  readonly rebind: (sessionID: SessionSchema.ID, credentialID: Credential.ID, orgID: string) => Effect.Effect<SessionSchema.Info, Error>
 }
 
 export class Service extends Context.Service<Service, Interface>()("@opencode/SessionShare") {}
@@ -34,6 +39,7 @@ const layer = Layer.effect(
     const database = yield* Database.Service
     const locations = yield* LocationServiceMap.Service
     const sessions = yield* Session.Service
+    const http = yield* HttpClient.HttpClient
     const pending = new Set<SessionSchema.ID>()
 
     const settings = Effect.fn("SessionShare.settings")(function* (info: SessionSchema.Info) {
@@ -148,6 +154,43 @@ const layer = Layer.effect(
       return yield* sessions.get(sessionID)
     })
 
+    const rebind = Effect.fn("SessionShare.rebind")(function* (
+      sessionID: SessionSchema.ID,
+      credentialID: Credential.ID,
+      orgID: string,
+    ) {
+      const info = yield* sessions.get(sessionID)
+      const share = yield* stored(sessionID)
+      if (!share) return yield* Effect.fail(new Error("This session has no recoverable local share secret"))
+      if (share.resource !== "share" || share.credential_id || share.account_id || share.org_id)
+        return yield* Effect.fail(new Error("This share already has backend provenance"))
+      const account = (yield* ConsoleOrganization.list(credentialID).pipe(
+        Effect.provide(locations.get(info.location)),
+        Effect.provideService(HttpClient.HttpClient, http),
+      ))[0]
+      if (!account) return yield* Effect.fail(new Error(`Console account not found: ${credentialID}`))
+      if (!account.orgs.some((org) => org.id === orgID))
+        return yield* Effect.fail(new Error(`Console organization not found: ${orgID}`))
+
+      yield* database.db
+        .update(SessionShareTable)
+        .set({ resource: "shares", credential_id: credentialID, org_id: orgID })
+        .where(eq(SessionShareTable.session_id, sessionID))
+        .run()
+        .pipe(Effect.orDie)
+      yield* sync(sessionID).pipe(
+        Effect.tapError(() =>
+          database.db
+            .update(SessionShareTable)
+            .set({ resource: share.resource, credential_id: share.credential_id, org_id: share.org_id })
+            .where(eq(SessionShareTable.session_id, sessionID))
+            .run()
+            .pipe(Effect.orDie),
+        ),
+      )
+      return yield* sessions.get(sessionID)
+    })
+
     yield* bus
       .subscribe([
         SessionEvent.Created,
@@ -185,12 +228,12 @@ const layer = Layer.effect(
         Effect.forkScoped({ startImmediately: true }),
       )
 
-    return Service.of({ create, remove, sync })
+    return Service.of({ create, remove, sync, rebind })
   }),
 )
 
 export const node = makeGlobalNode({
   service: Service,
   layer,
-  deps: [Bus.node, Database.node, LocationServiceMap.node, Session.node],
+  deps: [Bus.node, Database.node, LocationServiceMap.node, Session.node, httpClient],
 })

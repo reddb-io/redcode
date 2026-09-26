@@ -33,6 +33,8 @@ import type {
   SessionShareOutput,
   SessionUnshareInput,
   SessionUnshareOutput,
+  SessionRebindShareInput,
+  SessionRebindShareOutput,
   SessionGoalGetInput,
   SessionGoalGetOutput,
   SessionGoalStartInput,
@@ -708,6 +710,18 @@ export function make(options: ClientOptions) {
           {
             method: "DELETE",
             path: `/api/session/${encodeURIComponent(input.sessionID)}/share`,
+            successStatus: 200,
+            declaredStatuses: [400, 401, 404, 503],
+            empty: false,
+          },
+          requestOptions,
+        ).then((value) => value.data),
+      rebindShare: (input: SessionRebindShareInput, requestOptions?: RequestOptions) =>
+        request<{ readonly data: SessionRebindShareOutput }>(
+          {
+            method: "POST",
+            path: `/api/session/${encodeURIComponent(input.sessionID)}/share/rebind`,
+            body: { credentialID: input["credentialID"], orgID: input["orgID"] },
             successStatus: 200,
             declaredStatuses: [400, 401, 404, 503],
             empty: false,

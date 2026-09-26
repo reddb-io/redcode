@@ -538,6 +538,15 @@ const Root = Spec.make(typeof OPENCODE_CLI_NAME === "string" ? OPENCODE_CLI_NAME
             file: Argument.string("file").pipe(Argument.withDescription("Path to the Redcode SQLite database")),
           },
         }),
+        Spec.make("rebind-share", {
+          description: "Restore the Console account and organization for an imported V1 share",
+          params: {
+            ...ServerParams,
+            sessionID: Argument.string("sessionID").pipe(Argument.withDescription("Imported session ID")),
+            credentialID: Argument.string("credentialID").pipe(Argument.withDescription("Console credential ID from console orgs")),
+            orgID: Argument.string("orgID").pipe(Argument.withDescription("Console organization ID from console orgs")),
+          },
+        }),
         Spec.make("list", {
           description: "List top-level sessions in the current project, newest first",
           params: {

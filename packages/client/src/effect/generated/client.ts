@@ -39,6 +39,8 @@ import type {
   SessionShareOutput,
   SessionUnshareInput,
   SessionUnshareOutput,
+  SessionRebindShareInput,
+  SessionRebindShareOutput,
   SessionGoalGetInput,
   SessionGoalGetOutput,
   SessionGoalStartInput,
@@ -507,6 +509,17 @@ const EndpointSessionShare = (raw: RawClient["server.session"]) => (input: Sessi
 const EndpointSessionUnshare = (raw: RawClient["server.session"]) => (input: SessionUnshareInput) =>
   preserveEffect<SessionUnshareOutput>()(
     raw["session.unshare"]({ params: { sessionID: input["sessionID"] } }).pipe(
+      Effect.mapError(mapClientError),
+      Effect.map((value) => value.data),
+    ),
+  )
+
+const EndpointSessionRebindShare = (raw: RawClient["server.session"]) => (input: SessionRebindShareInput) =>
+  preserveEffect<SessionRebindShareOutput>()(
+    raw["session.rebindShare"]({
+      params: { sessionID: input["sessionID"] },
+      payload: { credentialID: input["credentialID"], orgID: input["orgID"] },
+    }).pipe(
       Effect.mapError(mapClientError),
       Effect.map((value) => value.data),
     ),
@@ -1018,6 +1031,7 @@ const adaptGroupSession = (raw: RawClient["server.session"]) => ({
   get: EndpointSessionGet(raw),
   share: EndpointSessionShare(raw),
   unshare: EndpointSessionUnshare(raw),
+  rebindShare: EndpointSessionRebindShare(raw),
   goal: {
     get: EndpointSessionGoalGet(raw),
     start: EndpointSessionGoalStart(raw),

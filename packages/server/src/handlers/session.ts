@@ -204,6 +204,17 @@ export const SessionHandler = HttpApiBuilder.group(Api, "server.session", (handl
         }),
       )
       .handle(
+        "session.rebindShare",
+        Effect.fn(function* (ctx) {
+          yield* session.get(ctx.params.sessionID).pipe(Effect.catchTag("Session.NotFoundError", missingSession))
+          return {
+            data: yield* sharing.rebind(ctx.params.sessionID, ctx.payload.credentialID, ctx.payload.orgID).pipe(
+              Effect.mapError((error) => new InvalidRequestError({ message: error.message })),
+            ),
+          }
+        }),
+      )
+      .handle(
         "session.goal.get",
         Effect.fn(function* (ctx) {
           return {

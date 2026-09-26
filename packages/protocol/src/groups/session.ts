@@ -2,6 +2,7 @@ import { SessionMessage } from "@opencode/schema/session-message"
 import { SessionInbox } from "@opencode/schema/session-inbox"
 import { PromptInput } from "@opencode/schema/prompt-input"
 import { Session } from "@opencode/schema/session"
+import { Credential } from "@opencode/schema/credential"
 import { SessionStats } from "@opencode/schema/session-stats"
 import { SessionGoal } from "@opencode/schema/session-goal"
 import { Design } from "@opencode/schema/design"
@@ -333,6 +334,20 @@ export const makeSessionGroup = <I extends HttpApiMiddleware.AnyId, S, FormI ext
           identifier: "session.unshare",
           summary: "Unshare session",
           description: "Revoke the public link for a session.",
+        }),
+      ),
+    )
+    .add(
+      HttpApiEndpoint.post("session.rebindShare", "/api/session/:sessionID/share/rebind", {
+        params: { sessionID: Session.ID },
+        payload: Schema.Struct({ credentialID: Credential.ID, orgID: Schema.String }),
+        success: Schema.Struct({ data: PublicSessionInfo }),
+        error: [SessionNotFoundError, InvalidRequestError, ServiceUnavailableError],
+      }).annotateMerge(
+        OpenApi.annotations({
+          identifier: "session.rebindShare",
+          summary: "Restore imported Console share provenance",
+          description: "Associate an imported share with its Console credential and organization, then verify it by synchronizing.",
         }),
       ),
     )

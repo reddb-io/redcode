@@ -12,6 +12,7 @@ import type { Model } from "@opencode/schema/model"
 import type { DateTime } from "effect"
 import type { Permission } from "@opencode/schema/permission"
 import type { SessionMessage } from "@opencode/schema/session-message"
+import type { Credential } from "@opencode/schema/credential"
 import type { Event } from "@opencode/schema/event"
 import type { SessionInbox } from "@opencode/schema/session-inbox"
 import type { PromptInput } from "@opencode/schema/prompt-input"
@@ -24,7 +25,6 @@ import type { EventLog } from "@opencode/schema/event-log"
 import type { Shell } from "@opencode/schema/shell"
 import type { Provider } from "@opencode/schema/provider"
 import type { Form } from "@opencode/schema/form"
-import type { Credential } from "@opencode/schema/credential"
 import type { Integration } from "@opencode/schema/integration"
 import type { Mcp } from "@opencode/schema/mcp"
 import type { PermissionSaved } from "@opencode/schema/permission-saved"
@@ -236,6 +236,16 @@ export type SessionShareOperation<E = never> = (input: SessionShareInput) => Eff
 export type SessionUnshareInput = { readonly sessionID: Session.ID }
 export type SessionUnshareOutput = Session.Info
 export type SessionUnshareOperation<E = never> = (input: SessionUnshareInput) => Effect.Effect<SessionUnshareOutput, E>
+
+export type SessionRebindShareInput = {
+  readonly sessionID: Session.ID
+  readonly credentialID: Credential.ID
+  readonly orgID: string
+}
+export type SessionRebindShareOutput = Session.Info
+export type SessionRebindShareOperation<E = never> = (
+  input: SessionRebindShareInput,
+) => Effect.Effect<SessionRebindShareOutput, E>
 
 export type SessionGoalGetInput = { readonly sessionID: Session.ID }
 export type SessionGoalGetOutput = {
@@ -3200,6 +3210,7 @@ export interface SessionApi<E = never> {
   readonly get: SessionGetOperation<E>
   readonly share: SessionShareOperation<E>
   readonly unshare: SessionUnshareOperation<E>
+  readonly rebindShare: SessionRebindShareOperation<E>
   readonly goal: {
     readonly get: SessionGoalGetOperation<E>
     readonly start: SessionGoalStartOperation<E>

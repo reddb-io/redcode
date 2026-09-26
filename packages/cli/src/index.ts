@@ -93,6 +93,7 @@ const Handlers = Runtime.handlers(Commands, {
   reload: () => import("./commands/handlers/reload"),
   session: {
     "import-redcode": () => import("./commands/handlers/session/import-redcode"),
+    "rebind-share": () => import("./commands/handlers/session/rebind-share"),
     list: () => import("./commands/handlers/session/list"),
     delete: () => import("./commands/handlers/session/delete"),
     export: () => import("./commands/handlers/session/export"),
