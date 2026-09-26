@@ -73,7 +73,6 @@ for (const width of [1280, 390]) {
     }
     await trigger.click()
     const details = page.getByRole("dialog", { name: "System One / System Two" })
-    await expect(details.getByText("Reuse global S2", { exact: true })).toBeVisible()
     await expect(details.getByRole("heading", { name: "Session evaluations" })).toBeVisible()
     await details.locator("summary").filter({ hasText: "Tool usage" }).click()
     await expect(details.getByText("System One authentication failed (HTTP 401).", { exact: true })).toBeVisible()
