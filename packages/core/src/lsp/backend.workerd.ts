@@ -9,7 +9,11 @@ export function matches(_server: LSPServer.Info, _file: string) {
   return false
 }
 
-export function start(_server: LSPServer.Info, _root: string): Handle {
+export function root(_server: LSPServer.Info, _file: string, _directory: string, _project: string) {
+  return Promise.resolve(undefined)
+}
+
+export function start(_server: LSPServer.Info, _root: string, _directory: string): Handle {
   throw new Error("Language servers are unavailable on the workerd runtime")
 }
 

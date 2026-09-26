@@ -73,40 +73,84 @@ const layer = Layer.effect(
               extensions: entry.extensions ?? existing?.extensions ?? [],
               env: entry.env,
               initialization: entry.initialization,
+              root: existing?.root,
             } satisfies LSPServer.Info
             if (index < 0) return [...result, server]
             return result.map((item) => item.id === id ? server : item)
           }, defaults)
     const clients = new Map<string, Promise<LSPClient.Info | undefined>>()
     const broken = new Map<string, Status>()
+    const failedAt = new Map<string, number>()
+    const used = new Map<string, number>()
+    const ready = new Set<string>()
+    let sequence = 0
+    const configuredLimit = Number(process.env["REDCODE_LSP_MAX_CLIENTS"])
+    const limit = Number.isInteger(configuredLimit) && configuredLimit > 0 ? configuredLimit : 8
     const active = () => [...clients.values()]
+    const available = (key: string) => {
+      if (!broken.has(key)) return true
+      if (Date.now() - (failedAt.get(key) ?? 0) < 30_000) return false
+      broken.delete(key)
+      failedAt.delete(key)
+      return true
+    }
+    const evict = (keep: string) => {
+      while (clients.size > limit) {
+        const key = [...clients.keys()]
+          .filter((item) => item !== keep && ready.has(item))
+          .sort((a, b) => (used.get(a) ?? 0) - (used.get(b) ?? 0))[0]
+        if (!key) return
+        const client = clients.get(key)
+        clients.delete(key)
+        used.delete(key)
+        ready.delete(key)
+        void client?.then((item) => item?.shutdown()).catch(() => undefined)
+      }
+    }
     yield* Effect.addFinalizer(() => Effect.promise(async () => {
       await Promise.all(active().map(async (item) => (await item)?.shutdown()))
     }))
 
-    const get = (file: string) => {
-      if (!fileInside(location.directory, file)) return Promise.resolve([])
-      return Promise.all(servers.filter((server) => backend.matches(server, file)).map(async (server) => {
-        const pending = clients.get(server.id)
-        if (pending) return pending
+    const get = async (file: string) => {
+      if (!fileInside(location.directory, file)) return []
+      const matching = await Promise.all(servers.filter((server) => backend.matches(server, file)).map(async (server) => ({
+        server,
+        root: await backend.root(server, file, location.directory, location.project.directory),
+      })))
+      return Promise.all(matching.filter((item): item is { server: LSPServer.Info; root: string } => item.root !== undefined).map(async ({ server, root }) => {
+        const key = `${server.id}\0${root}`
+        if (!available(key)) return undefined
+        const pending = clients.get(key)
+        if (pending) {
+          used.set(key, ++sequence)
+          return pending
+        }
         const started = Promise.resolve().then(async () => {
-          const handle = backend.start(server, location.directory)
+          const handle = await backend.start(server, root, location.directory)
           return backend.createClient({
               serverID: server.id,
               server: handle,
-              root: location.directory,
+              root,
               directory: location.directory,
             }).then((client) => {
-              broken.delete(server.id)
+              if (clients.get(key) !== started) return client
+              broken.delete(key)
+              failedAt.delete(key)
+              ready.add(key)
+              used.set(key, ++sequence)
+              evict(key)
               void handle.exited.then((code) => {
-                if (clients.get(server.id) !== started) return
-                clients.delete(server.id)
-                broken.set(server.id, {
+                if (clients.get(key) !== started) return
+                clients.delete(key)
+                used.delete(key)
+                ready.delete(key)
+                broken.set(key, {
                   id: server.id,
-                  root: location.directory,
+                  root,
                   status: "error",
                   error: `Language server exited with code ${code}${client.stderr ? `: ${client.stderr}` : ""}`,
                 })
+                failedAt.set(key, Date.now())
                 void client.shutdown().catch(() => undefined)
               })
               return client
@@ -115,15 +159,21 @@ const layer = Layer.effect(
               throw error
             })
         }).catch((error) => {
-          broken.set(server.id, {
+          if (clients.get(key) !== started) return undefined
+          clients.delete(key)
+          used.delete(key)
+          ready.delete(key)
+          broken.set(key, {
             id: server.id,
-            root: location.directory,
+            root,
             status: "error",
             error: error instanceof Error ? error.message : String(error),
           })
+          failedAt.set(key, Date.now())
           return undefined
         })
-        clients.set(server.id, started)
+        clients.set(key, started)
+        used.set(key, ++sequence)
         return started
       })).then((items) => items.filter((item): item is LSPClient.Info => item !== undefined))
     }
@@ -137,7 +187,13 @@ const layer = Layer.effect(
     })
 
     const hasClients = Effect.fn("LSP.hasClients")(function* (file: string) {
-      return fileInside(location.directory, file) && servers.some((server) => backend.matches(server, file))
+      if (!fileInside(location.directory, file)) return false
+      const roots = yield* Effect.promise(() => Promise.all(servers.filter((server) => backend.matches(server, file)).map((server) =>
+        backend.root(server, file, location.directory, location.project.directory).then((root) =>
+          root && available(`${server.id}\0${root}`) ? root : undefined,
+        ),
+      )))
+      return roots.some((root) => root !== undefined)
     })
 
     const touchFile = Effect.fn("LSP.touchFile")(function* (file: string, diagnostics?: "document" | "full") {
