@@ -321,6 +321,32 @@ const Root = Spec.make(typeof OPENCODE_CLI_NAME === "string" ? OPENCODE_CLI_NAME
         }),
       ],
     }),
+    Spec.make("worktrees", {
+      description: "Manage project worktrees",
+      commands: [
+        Spec.make("list", {
+          description: "List registered worktrees for the current project",
+          params: { json: Flag.boolean("json").pipe(Flag.withDefault(false)) },
+        }),
+        Spec.make("create", {
+          description: "Create a worktree using the project's selected strategy",
+          params: {
+            branch: Flag.string("branch").pipe(Flag.optional),
+            name: Flag.string("name").pipe(Flag.optional),
+            from: Flag.string("from").pipe(Flag.optional),
+            directory: Flag.string("directory").pipe(Flag.optional),
+          },
+        }),
+        Spec.make("remove", {
+          description: "Remove a registered worktree",
+          params: {
+            directory: Argument.string("directory"),
+            force: Flag.boolean("force").pipe(Flag.withDefault(false)),
+          },
+        }),
+        Spec.make("refresh", { description: "Discover and reconcile project worktrees" }),
+      ],
+    }),
     Spec.make("models", {
       description: "List all available models",
       params: ServerParams,

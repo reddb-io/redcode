@@ -1,7 +1,7 @@
 export * as Worktree from "./worktree.js"
 
 import { Context, Effect, Layer, Schema } from "effect"
-import { and, asc, desc, eq, isNull, sql } from "drizzle-orm"
+import { and, asc, desc, eq, gte, isNotNull, isNull, or, sql } from "drizzle-orm"
 import path from "path"
 import { AbsolutePath } from "./schema.js"
 import { FSUtil } from "@opencode/util/fs-util"
@@ -23,6 +23,7 @@ import { ProjectTable } from "./project/sql.js"
 import { AppProcess } from "@opencode/util/process"
 import { ChildProcess } from "effect/unstable/process"
 import { WorktreeStrategies } from "./worktree/strategies.js"
+import { SessionTable } from "./session/sql.js"
 
 export type { Strategy, Editor } from "./worktree/strategies.js"
 
@@ -259,6 +260,22 @@ const layer = Layer.effect(
       const worktreeDirectory = yield* canonical(fs, input.directory)
       const stored = yield* ops.find(input.projectID, worktreeDirectory)
       if (!stored?.strategy) return yield* new InvalidDirectoryError({ directory: worktreeDirectory })
+      // A recent update or unreleased execution claim can still own files here, even when force is set.
+      const recent = yield* db
+        .select({ directory: SessionTable.directory })
+        .from(SessionTable)
+        .where(or(gte(SessionTable.time_updated, Date.now() - 3_600_000), isNotNull(SessionTable.time_suspended)))
+        .all()
+        .pipe(Effect.orDie)
+      if (
+        recent.some((session) => {
+          const relative = path.relative(worktreeDirectory, session.directory)
+          return relative === "" || (relative !== ".." && !relative.startsWith(`..${path.sep}`) && !path.isAbsolute(relative))
+        })
+      )
+        return yield* new Worktree.OperationError({
+          message: `Worktree has a recently active session: ${worktreeDirectory}`,
+        })
       const settings = yield* load(row.worktree, current)
       const strategy = yield* getStrategy(StrategyID.make(stored.strategy), settings.strategies)
       yield* strategy
