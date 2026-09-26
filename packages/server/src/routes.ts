@@ -167,7 +167,7 @@ function makeRoutes<AuthError, AuthServices>(
               : {}),
           }
         },
-        database: options.database?.path,
+        database: options.database,
       }),
     ),
     InstructionDiscovery.node.replace(InstructionDiscovery.configured({ project: options.config?.project })),

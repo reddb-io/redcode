@@ -30,6 +30,11 @@
     "./*": "./src/*.ts"
   },
   "imports": {
+    "#database-reddb": {
+      "types": "./src/database/reddb.ts",
+      "workerd": "./src/database/reddb.workerd.ts",
+      "default": "./src/database/reddb.ts"
+    },
     "#model-limit-node": {
       "types": "./src/model-limit.node.ts",
       "workerd": "./src/model-limit.workerd.ts",
@@ -123,6 +128,7 @@
     "vite-plugin-solid": "catalog:"
   },
   "dependencies": {
+    "@reddb-io/client": "1.23.4",
     "@ai-sdk/cohere": "3.0.27",
     "@ai-sdk/gateway": "3.0.104",
     "@ai-sdk/perplexity": "3.0.26",

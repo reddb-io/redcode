@@ -3,6 +3,7 @@
 import path from "node:path"
 import { parseArgs } from "node:util"
 import { DesignApp } from "@opencode/core/design/app"
+import { Database } from "@opencode/core/database/database"
 import { Global } from "@opencode/util/global"
 import pkg from "../package.json"
 
@@ -36,8 +37,14 @@ if (parsed.values.help || parsed.positionals[0] !== "serve" || !parsed.values["h
 }
 
 const database = process.env.OPENCODE_DB
-if (!database || database === ":memory:" || !path.isAbsolute(database))
-  throw new Error("The design app needs the owning redcode server's absolute OPENCODE_DB path")
+const databaseURL = process.env.REDCODE_DATABASE_URL
+const selectedDatabase = databaseURL
+  ? { url: Database.validateURL(databaseURL), token: process.env.REDCODE_DATABASE_TOKEN }
+  : database && database !== ":memory:" && path.isAbsolute(database)
+    ? { path: database }
+    : undefined
+if (!selectedDatabase)
+  throw new Error("The design app needs the owning redcode server's database path or RedDB URL")
 
 const { DesignAppServer } = await import("./server.js")
 const state = path.resolve(parsed.values.state ?? Global.Path.state)
@@ -50,7 +57,7 @@ const app = await DesignAppServer.start({
   hostname: parsed.values.hostname,
   port: Number(parsed.values.port),
   idle: (Number.isFinite(minutes) && minutes > 0 ? minutes : DesignApp.IDLE_MINUTES) * 60_000,
-  database,
+  database: selectedDatabase,
   version,
 })
 console.error(`redcode-design listening on ${app.url}`)

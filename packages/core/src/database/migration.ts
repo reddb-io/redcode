@@ -51,7 +51,41 @@ export function apply(db: Database) {
   })
 }
 
-export function applyOnly(db: Database, input: Migration[]) {
+const REMOTE_BOOTSTRAP = "__redcode_schema_bootstrap__"
+
+export function applyRemote(db: Database) {
+  return Effect.gen(function* () {
+    const journal = yield* db.all<{ id: string }>(sql`SELECT id FROM ${sql.identifier("migration")}`).pipe(Effect.result)
+    if (journal._tag === "Success") {
+      if (journal.success.some((entry) => entry.id === REMOTE_BOOTSTRAP)) return yield* bootstrapRemote(db)
+      if (journal.success.length > 0) return yield* applyOnly(db, migrations, { remote: true })
+    }
+    const session = yield* db.get(sql`SELECT id FROM ${sql.identifier("session_v2")} LIMIT 1`).pipe(Effect.result)
+    const legacy = yield* db.get(sql`SELECT id FROM ${sql.identifier("session")} LIMIT 1`).pipe(Effect.result)
+    if (session._tag === "Success" || legacy._tag === "Success")
+      return yield* Effect.die(new Error("Remote RedDB has session tables but no migration journal"))
+    return yield* bootstrapRemote(db)
+  })
+}
+
+function bootstrapRemote(db: Database) {
+  return Effect.gen(function* () {
+    // RedDB may retain DDL from a failed transaction. The marker makes a retry resume the bootstrap.
+    yield* db.run(sql`CREATE TABLE IF NOT EXISTS ${sql.identifier("migration")} (id TEXT PRIMARY KEY, time_completed INTEGER NOT NULL)`)
+    yield* db.run(sql`INSERT INTO ${sql.identifier("migration")} (id, time_completed) VALUES (${REMOTE_BOOTSTRAP}, ${Date.now()}) ON CONFLICT (id) DO NOTHING`)
+    yield* db.transaction((tx) => schema.up(tx))
+    yield* db.transaction((tx) =>
+      Effect.gen(function* () {
+        yield* Effect.forEach(migrations, (migration) =>
+          tx.run(sql`INSERT INTO ${sql.identifier("migration")} (id, time_completed) VALUES (${migration.id}, ${Date.now()}) ON CONFLICT (id) DO NOTHING`),
+        )
+        yield* tx.run(sql`DELETE FROM ${sql.identifier("migration")} WHERE id = ${REMOTE_BOOTSTRAP}`)
+      }),
+    )
+  })
+}
+
+export function applyOnly(db: Database, input: Migration[], options: { remote?: boolean } = {}) {
   return Effect.gen(function* () {
     yield* db.run(
       sql`CREATE TABLE IF NOT EXISTS ${sql.identifier("migration")} (id TEXT PRIMARY KEY, time_completed INTEGER NOT NULL)`,
@@ -59,7 +93,7 @@ export function applyOnly(db: Database, input: Migration[]) {
     let completed = new Set(
       (yield* db.all<{ id: string }>(sql`SELECT id FROM ${sql.identifier("migration")}`)).map((row) => row.id),
     )
-    if (completed.size === 0) {
+    if (completed.size === 0 && !options.remote) {
       // Existing installs used Drizzle's migration journal. Seed the new
       // journal once so TypeScript migrations don't replay old SQL.
       if (
@@ -117,7 +151,7 @@ export function applyOnly(db: Database, input: Migration[]) {
         }),
       )
       const run =
-        migration.foreignKeys !== false
+        migration.foreignKeys !== false || options.remote
           ? apply
           : Effect.gen(function* () {
               // Durable Object SQLite rejects the foreign_keys toggle; the closest

@@ -36,7 +36,7 @@ export const create = Effect.fn("EmbeddedHost.create")(function* <R = never>(
       {
         ...server,
         app: { ...server.app, name: server.app?.name ?? "sdk" },
-        database: { path: ":memory:", ...server.database },
+        database: server.database?.url ? server.database : { path: ":memory:", ...server.database },
       },
       workspaceProviders
         ? [...(embed.overrides ?? []), WorkspaceDriver.node.replace(WorkspaceDriver.registryNode(workspaceProviders))]

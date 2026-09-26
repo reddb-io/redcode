@@ -18,6 +18,8 @@ export interface Interface {
 
 export const Options = Schema.Struct({
   path: Schema.optional(Schema.String),
+  url: Schema.optional(Schema.String),
+  token: Schema.optional(Schema.String),
 })
 export type Options = typeof Options.Type
 
@@ -28,13 +30,13 @@ export class Service extends Context.Service<Service, Interface>()("@opencode/st
 // releasing a shared semaphore resumes the waiting object's fiber inside the
 // releasing object's I/O context, where its first storage call is rejected as
 // cross-object I/O.
-const databaseLayer = (lock: Effect.Effect<Semaphore.Semaphore>) =>
+const databaseLayer = (lock: Effect.Effect<Semaphore.Semaphore>, remote = false) =>
   Layer.effect(
     Service,
     Effect.gen(function* () {
       const db = yield* makeDatabase
 
-      if (supportsTuningPragmas) {
+      if (!remote && supportsTuningPragmas) {
         yield* db.run("PRAGMA journal_mode = WAL")
         yield* db.run("PRAGMA synchronous = NORMAL")
         yield* db.run("PRAGMA busy_timeout = 5000")
@@ -42,9 +44,9 @@ const databaseLayer = (lock: Effect.Effect<Semaphore.Semaphore>) =>
         yield* db.run("PRAGMA wal_checkpoint(PASSIVE)")
       }
       // Durable Object SQLite always enforces foreign keys and rejects the pragma.
-      if (supportsForeignKeyToggle) yield* db.run("PRAGMA foreign_keys = ON")
+      if (!remote && supportsForeignKeyToggle) yield* db.run("PRAGMA foreign_keys = ON")
       const semaphore = yield* lock
-      yield* semaphore.withPermit(DatabaseMigration.apply(db))
+      yield* semaphore.withPermit(remote ? DatabaseMigration.applyRemote(db) : DatabaseMigration.apply(db))
 
       return { db }
     }).pipe(Effect.orDie),
@@ -65,8 +67,13 @@ function lockFor(filename: string) {
 export function layer(options: Options = { path: ":memory:" }) {
   return Layer.unwrap(
     Effect.gen(function* () {
+      if (options.url) {
+        if (options.path) return yield* Effect.die(new Error("Database path and RedDB URL cannot be combined"))
+        const { RedDBBackend } = yield* Effect.promise(() => import("#database-reddb"))
+        return databaseLayer(Semaphore.make(1), true).pipe(Layer.provide(RedDBBackend.layer({ url: validateURL(options.url), token: options.token })))
+      }
       const provide = (filename: string) =>
-        databaseLayer(filename === ":memory:" ? Semaphore.make(1) : Effect.succeed(lockFor(filename))).pipe(
+        databaseLayer(filename === ":memory:" ? Semaphore.make(1) : Effect.succeed(lockFor(filename)), false).pipe(
           Layer.provide(sqliteLayer({ filename })),
         )
       const filename = options.path ?? ":memory:"
@@ -100,3 +107,12 @@ export function configuredClient(client: Layer.Layer<SqlClient.SqlClient>) {
 }
 
 export const node = configured({ path: ":memory:" })
+
+export function validateURL(value: string) {
+  const url = new URL(value)
+  if (!["red:", "reds:", "grpc:", "grpcs:", "http:", "https:", "ws:", "wss:", "red+ws:", "red+wss:"].includes(url.protocol))
+    throw new Error(`Unsupported RedDB database URL protocol: ${url.protocol}`)
+  if (url.username || url.password || url.search || url.hash)
+    throw new Error("RedDB database URL must not contain credentials, query parameters or fragments")
+  return value
+}

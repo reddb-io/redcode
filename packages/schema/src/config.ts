@@ -22,6 +22,7 @@ import { ConfigWatcher } from "./config/watcher.js"
 import { ConfigWarming } from "./config/warming.js"
 import { ConfigWorktree } from "./config/worktree.js"
 import { ConfigDesign } from "./config/design.js"
+import { ConfigDatabase } from "./config/database.js"
 
 export class Info extends Schema.Class<Info>("Config.Info")({
   $schema: optional(Schema.String).annotate({
@@ -102,6 +103,9 @@ export class Info extends Schema.Class<Info>("Config.Info")({
   }),
   worktree: ConfigWorktree.Info.pipe(optional).annotate({
     description: "Directory defaults for local worktree creation",
+  }),
+  database: ConfigDatabase.Info.pipe(optional).annotate({
+    description: "Remote RedDB database connection used by the local server",
   }),
   design: ConfigDesign.Info.pipe(optional).annotate({
     description: "Design system, application, browser, and review configuration",

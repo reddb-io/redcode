@@ -210,6 +210,7 @@ export function normalize(input: unknown): Result {
     tool_output: Info.fields.tool_output,
     websearch: Info.fields.websearch,
     worktree: Info.fields.worktree,
+    database: Info.fields.database,
     design: Info.fields.design,
     warming: Info.fields.warming,
   }

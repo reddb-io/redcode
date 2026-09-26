@@ -92,6 +92,9 @@ const Handlers = Runtime.handlers(Commands, {
     path: () => import("./commands/handlers/usage/path"),
     backfill: () => import("./commands/handlers/usage/backfill"),
   },
+  db: {
+    migrate: () => import("./commands/handlers/db/migrate"),
+  },
   stats: () => import("./commands/handlers/stats"),
   mini: () => import("./commands/handlers/mini"),
   run: () => import("./commands/handlers/run"),

@@ -19,7 +19,7 @@ export interface Options {
   readonly hostname: string
   readonly port: number
   readonly idle: number
-  readonly database: string
+  readonly database: Database.Options
   readonly version: string
 }
 
@@ -32,7 +32,7 @@ export async function start(options: Options) {
         {
           app: { name: "redcode-design", version: options.version },
           password: options.token,
-          database: { path: options.database },
+          database: options.database,
           fs: { filewatcher: false },
           models: { fetch: false },
         },

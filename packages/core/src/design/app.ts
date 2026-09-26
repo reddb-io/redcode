@@ -11,6 +11,7 @@ import { Design } from "@opencode/schema/design"
 import { Global } from "@opencode/util/global"
 import { Flock } from "@opencode/util/flock"
 import { DesignAppBinary } from "./app-binary.js"
+import type { Database } from "../database/database.js"
 
 /**
  * The contract between redcode and the design app (`redcode-design`), the separate process that serves
@@ -293,7 +294,7 @@ export async function connect(input: {
   readonly host?: Host
   readonly version?: string
   readonly state?: string
-  readonly database?: string
+  readonly database?: Database.Options
 }) {
   const host = input.host ?? served
   if (!host) throw new Error("The design app needs a redcode server for its session routes")
@@ -302,7 +303,15 @@ export async function connect(input: {
     version: input.version,
     state: input.state,
     command: () => DesignAppBinary.command({ protocol: PROTOCOL, version: input.version }),
-    ...(input.database ? { env: { OPENCODE_DB: input.database } } : {}),
+    ...(input.database
+      ? {
+          env: {
+            OPENCODE_DB: input.database.path,
+            REDCODE_DATABASE_URL: input.database.url,
+            REDCODE_DATABASE_TOKEN: input.database.token,
+          },
+        }
+      : {}),
   })
   return { ...started, host } satisfies Connection
 }

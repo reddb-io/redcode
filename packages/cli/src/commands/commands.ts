@@ -483,6 +483,17 @@ const Root = Spec.make(typeof OPENCODE_CLI_NAME === "string" ? OPENCODE_CLI_NAME
         }),
       ],
     }),
+    Spec.make("db", {
+      description: "Database tools",
+      commands: [
+        Spec.make("migrate", {
+          description: "Copy the local SQLite database to RedDB and verify every table",
+          params: {
+            to: Flag.string("to").pipe(Flag.withDescription("Target RedDB URL")),
+          },
+        }),
+      ],
+    }),
     Spec.make("stats", {
       description: "Show shareable usage statistics",
       params: {

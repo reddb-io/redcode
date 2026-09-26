@@ -594,6 +594,8 @@ export type ConfigWorktree = {
   tmpdir?: string | null
 }
 
+export type ConfigDatabase = { url: string }
+
 export type ConfigShellOption = { path: string; name: string; acceptable: boolean }
 
 export type LSPStatus = { id: string; root: string; status: "connected" | "error"; error?: string | undefined }
@@ -2510,6 +2512,7 @@ export type ConfigEntry =
         websearch?: false | { provider: "random" | (string & {}) }
         plugins?: Array<string | { package: string; options?: { [x: string]: JsonValue } }>
         worktree?: ConfigWorktree
+        database?: ConfigDatabase
         design?: {
           system?: {
             paths: Array<string>
