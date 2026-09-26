@@ -9,6 +9,7 @@ import { Session } from "@/session/session"
 import { SessionCompaction } from "@/session/compaction"
 import { MessageV2 } from "@/session/message-v2"
 import { SessionPrompt } from "@/session/prompt"
+import { SessionV2 } from "@reddb-io/redcode-core/session"
 import { SessionGoal } from "@/session/goal"
 import { GoalRuntime } from "@/session/goal-runtime"
 import { GoalCommand } from "@reddb-io/redcode-core/session/goal-command"
@@ -57,11 +58,98 @@ const tryParseJson = (text: string) =>
     catch: () => new HttpApiError.BadRequest({}),
   })
 
+
+/** The V2 engine admission: converts the V1 prompt payload, admits durably and drains through the
+ * V2 runner when `experimental.session_engine` is `v2`. The mirrored user message (the projector
+ * republishes V1 wire events from the durable log) reaches clients through the same paths as V1. */
+const admitV2 = Effect.fn("SessionHttpApi.admitV2")(function* (
+  sessions: SessionV2.Interface,
+  input: {
+    readonly sessionID: SessionID
+    readonly messageID?: MessageID
+    readonly agent?: string
+    readonly model?: { providerID: string; modelID: string }
+    readonly delivery?: typeof SessionInput.Delivery.Type
+    readonly noReply?: boolean
+    readonly parts: ReadonlyArray<
+      | { readonly type: "text"; readonly text: string; readonly synthetic?: boolean }
+      | { readonly type: "file"; readonly mime: string; readonly filename?: string; readonly url: string }
+      | { readonly type: "agent"; readonly name: string }
+      | { readonly type: "subtask"; readonly prompt: string; readonly agent: string }
+    >
+  },
+) => {
+  const texts = input.parts.filter((part): part is Extract<typeof part, { type: "text" }> => part.type === "text")
+  const files = input.parts.filter((part): part is Extract<typeof part, { type: "file" }> => part.type === "file")
+  const agents = input.parts.filter((part): part is Extract<typeof part, { type: "agent" }> => part.type === "agent")
+  const subtasks = input.parts.filter((part) => part.type === "subtask")
+  const text = [...texts.map((part) => part.text), ...subtasks.map((part) => `${part.prompt}`)].join("\n\n")
+  const admitted = yield* sessions
+    .prompt({
+      sessionID: input.sessionID,
+      prompt: {
+        text,
+        ...(files.length
+          ? {
+              files: files.map((file) => ({
+                uri: file.url,
+                mime: file.mime,
+                ...(file.filename ? { name: file.filename } : {}),
+              })),
+            }
+          : {}),
+        ...(agents.length ? { agents: agents.map((agent) => ({ name: agent.name })) } : {}),
+      },
+      ...(input.messageID ? { id: input.messageID } : {}),
+      ...(input.delivery ? { delivery: input.delivery } : {}),
+      // `noReply` admits without draining: the V1 loop's contract, now the V2 admit-only mode.
+      ...(input.noReply ? { resume: false } : {}),
+    })
+    .pipe(Effect.mapError(() => new HttpApiError.BadRequest({})))
+  // The V1 prompt contract returns the user message; build it from the admitted prompt instead of
+  // racing the projector, which materializes the mirrored row asynchronously.
+  const now = Date.now()
+  const info = {
+    id: admitted.id,
+    sessionID: input.sessionID,
+    role: "user" as const,
+    time: { created: now },
+    agent: input.agent ?? "build",
+    model: {
+      providerID: input.model?.providerID ?? "",
+      modelID: input.model?.modelID ?? "",
+    },
+  }
+  const parts = [
+    {
+      id: `prt_${admitted.id}`,
+      type: "text" as const,
+      sessionID: input.sessionID,
+      messageID: admitted.id,
+      text,
+      time: { start: now },
+    },
+    ...files.flatMap((file, index) => [
+      {
+        id: `prt_${admitted.id}:file:${index}`,
+        type: "file" as const,
+        sessionID: input.sessionID,
+        messageID: admitted.id,
+        mime: file.mime,
+        ...(file.filename ? { filename: file.filename } : {}),
+        url: file.url,
+      },
+    ]),
+  ]
+  return { admitted, info, parts }
+})
+
 export const sessionHandlers = HttpApiBuilder.group(InstanceHttpApi, "session", (handlers) =>
   Effect.gen(function* () {
     const session = yield* Session.Service
     const shareSvc = yield* SessionShare.Service
     const promptSvc = yield* SessionPrompt.Service
+    const sessionV2 = yield* SessionV2.Service
     const goals = yield* GoalRuntime.Service
     const intelligence = yield* Intelligence.Service
     const spend = yield* SessionSpend.Service
@@ -485,6 +573,13 @@ export const sessionHandlers = HttpApiBuilder.group(InstanceHttpApi, "session", 
       payload: typeof PromptPayload.Type
     }) {
       yield* requireSession(ctx.params.sessionID)
+      const cfg = yield* config.get()
+      if (cfg.experimental?.session_engine === "v2") {
+        const { info, parts } = yield* admitV2(sessionV2, { ...ctx.payload, sessionID: ctx.params.sessionID })
+        return HttpServerResponse.stream(Stream.make(JSON.stringify({ ...info, parts })).pipe(Stream.encodeText), {
+          contentType: "application/json",
+        })
+      }
       const message = yield* promptSvc
         .prompt({
           ...ctx.payload,
@@ -503,6 +598,12 @@ export const sessionHandlers = HttpApiBuilder.group(InstanceHttpApi, "session", 
       payload: typeof PromptPayload.Type
     }) {
       yield* requireSession(ctx.params.sessionID)
+      const cfg = yield* config.get()
+      if (cfg.experimental?.session_engine === "v2") {
+        yield* admitV2(sessionV2, { ...ctx.payload, sessionID: ctx.params.sessionID })
+        // The V2 runner schedules its own drain; `resume: false` already handled the admit-only case.
+        return HttpApiSchema.NoContent.make()
+      }
       yield* promptSvc
         .prompt({ ...ctx.payload, sessionID: ctx.params.sessionID, noReply: true })
         .pipe(Effect.mapError(() => new HttpApiError.BadRequest({})))
