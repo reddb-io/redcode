@@ -501,6 +501,12 @@ const Root = Spec.make(typeof OPENCODE_CLI_NAME === "string" ? OPENCODE_CLI_NAME
             to: Flag.string("to").pipe(Flag.withDescription("Target RedDB URL")),
           },
         }),
+        Spec.make("export-redcode", {
+          description: "Export a V1 RedDB database to a SQLite file for V2 import",
+          params: {
+            to: Flag.string("to").pipe(Flag.withDescription("New SQLite file path")),
+          },
+        }),
       ],
     }),
     Spec.make("stats", {
@@ -629,7 +635,7 @@ const Root = Spec.make(typeof OPENCODE_CLI_NAME === "string" ? OPENCODE_CLI_NAME
       description: "Manage sessions",
       commands: [
         Spec.make("import-redcode", {
-          description: "Import sessions and Redcode data from a V1 SQLite database",
+          description: "Import sessions and Redcode data from V1 SQLite into the selected V2 database",
           params: {
             file: Argument.string("file").pipe(Argument.withDescription("Path to the Redcode SQLite database")),
           },

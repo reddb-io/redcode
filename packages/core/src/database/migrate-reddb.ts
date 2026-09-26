@@ -27,6 +27,8 @@ export async function migrateToRedDB(source: string, target: string, token?: str
   const sqlite = new Database(source, { readonly: true, create: false })
   const database = await connect(target, token ? { auth: { token } } : undefined)
   try {
+    if ((await database.exists("session")) && !(await database.exists("session_v2")))
+      throw new Error("Target RedDB contains V1 sessions; use a new target for the V2 database")
     const tables = orderedTables(sqlite)
     await database.query(`
       CREATE TABLE IF NOT EXISTS redcode_migration_manifest (

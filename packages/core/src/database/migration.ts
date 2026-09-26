@@ -57,8 +57,21 @@ export function applyRemote(db: Database) {
   return Effect.gen(function* () {
     const journal = yield* db.all<{ id: string }>(sql`SELECT id FROM ${sql.identifier("migration")}`).pipe(Effect.result)
     if (journal._tag === "Success") {
-      if (journal.success.some((entry) => entry.id === REMOTE_BOOTSTRAP)) return yield* bootstrapRemote(db)
-      if (journal.success.length > 0) return yield* applyOnly(db, migrations, { remote: true })
+      const completed = new Set(journal.success.map((entry) => entry.id))
+      if (completed.size > 0) {
+        const v2 = yield* db.get(sql`SELECT id FROM ${sql.identifier("session_v2")} LIMIT 1`).pipe(Effect.result)
+        const v1 = yield* db.get(sql`SELECT id FROM ${sql.identifier("session")} LIMIT 1`).pipe(Effect.result)
+        if (
+          v1._tag === "Success" &&
+          !completed.has("20260804233008_loose_psylocke") &&
+          !completed.has("20260730195856_optional_session_title")
+        )
+          return yield* Effect.die(new Error("V1 RedDB session history requires explicit V1-to-V2 import"))
+        if (completed.has("20260804233008_loose_psylocke") && v2._tag === "Failure")
+          return yield* Effect.die(new Error("Remote RedDB migration journal references a missing session_v2 table"))
+        if (completed.has(REMOTE_BOOTSTRAP)) return yield* bootstrapRemote(db)
+        return yield* applyOnly(db, migrations, { remote: true })
+      }
     }
     const session = yield* db.get(sql`SELECT id FROM ${sql.identifier("session_v2")} LIMIT 1`).pipe(Effect.result)
     const legacy = yield* db.get(sql`SELECT id FROM ${sql.identifier("session")} LIMIT 1`).pipe(Effect.result)

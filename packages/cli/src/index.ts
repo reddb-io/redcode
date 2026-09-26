@@ -97,6 +97,7 @@ const Handlers = Runtime.handlers(Commands, {
     status: () => import("./commands/handlers/db/status"),
     query: () => import("./commands/handlers/db/query"),
     migrate: () => import("./commands/handlers/db/migrate"),
+    "export-redcode": () => import("./commands/handlers/db/export-redcode"),
   },
   stats: () => import("./commands/handlers/stats"),
   mini: () => import("./commands/handlers/mini"),
