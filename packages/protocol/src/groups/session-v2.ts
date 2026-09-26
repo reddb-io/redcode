@@ -1,6 +1,6 @@
 import { Schema } from "effect"
 import { Context } from "effect"
-import { HttpApi, HttpApiEndpoint, HttpApiGroup, HttpApiSchema, OpenApi } from "effect/unstable/httpapi"
+import { HttpApi, HttpApiEndpoint, HttpApiGroup, HttpApiMiddleware, HttpApiSchema, OpenApi } from "effect/unstable/httpapi"
 import { Prompt } from "@reddb-io/redcode-schema/prompt"
 import { Admitted, Delivery } from "@reddb-io/redcode-schema/session-input"
 import { SessionMessage } from "@reddb-io/redcode-schema/session-message"

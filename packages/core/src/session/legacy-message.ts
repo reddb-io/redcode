@@ -29,7 +29,7 @@ export interface LegacyMessage {
 
 const epoch = (time: DateTime.Utc) => DateTime.toEpochMillis(time)
 
-const partID = (id: string) => (id.startsWith("prt") ? id : `prt_${id}`)
+const partID = (id: string) => SessionV1.PartID.make(id.startsWith("prt") ? id : `prt_${id}`)
 
 const zeroTokens = { input: 0, output: 0, reasoning: 0, cache: { read: 0, write: 0 } }
 
@@ -64,16 +64,13 @@ function toolState(part: SessionMessage.AssistantTool, ctx: Context, messageID: 
         status: "pending",
         input: safeRecord(part.state.input),
         raw: part.state.input,
-        title: part.name,
-        metadata: {},
-        time: { start: created },
       }
     case "running":
       return {
         status: "running",
         input: safeRecord(part.state.input),
         title: part.name,
-        metadata: { structured: part.state.structured, content: part.state.content },
+        metadata: { structured: part.state.structured, content: [...(part.state.content ?? [])] },
         time: { start: ran },
       }
     case "completed":
@@ -84,8 +81,8 @@ function toolState(part: SessionMessage.AssistantTool, ctx: Context, messageID: 
         title: part.name,
         metadata: {
           structured: part.state.structured,
-          outputPaths: part.state.outputPaths ?? [],
-          content: part.state.content,
+          outputPaths: [...(part.state.outputPaths ?? [])],
+          content: [...(part.state.content ?? [])],
         },
         time: { start: ran, end: completed ?? ran },
         ...(part.state.attachments
@@ -94,7 +91,7 @@ function toolState(part: SessionMessage.AssistantTool, ctx: Context, messageID: 
                 id: partID(`${part.id}:attachment:${index}`),
                 type: "file" as const,
                 sessionID: session,
-                messageID,
+                messageID: SessionV1.MessageID.make(messageID),
                 mime: file.mime,
                 ...(file.name ? { filename: file.name } : {}),
                 url: file.uri,
@@ -107,7 +104,7 @@ function toolState(part: SessionMessage.AssistantTool, ctx: Context, messageID: 
         status: "error",
         input: safeRecord(part.state.input),
         error: part.state.error.message,
-        metadata: { structured: part.state.structured, content: part.state.content },
+        metadata: { structured: part.state.structured, content: [...(part.state.content ?? [])] },
         time: { start: created, end: completed ?? created },
       }
   }
@@ -122,7 +119,7 @@ function assistantMessage(message: SessionMessage.Assistant, ctx: Context, paren
       id: partID(`${messageID}:step-start`),
       type: "step-start",
       sessionID: session,
-      messageID,
+      messageID: SessionV1.MessageID.make(messageID),
       ...(message.snapshot?.end ? { snapshot: message.snapshot.end } : {}),
     },
   ]
@@ -132,7 +129,7 @@ function assistantMessage(message: SessionMessage.Assistant, ctx: Context, paren
         id: partID(item.id),
         type: "text",
         sessionID: session,
-        messageID,
+        messageID: SessionV1.MessageID.make(messageID),
         text: item.text,
         time: { start: created },
       })
@@ -141,7 +138,7 @@ function assistantMessage(message: SessionMessage.Assistant, ctx: Context, paren
         id: partID(item.id),
         type: "reasoning",
         sessionID: session,
-        messageID,
+        messageID: SessionV1.MessageID.make(messageID),
         text: item.text,
         time: { start: created, ...(item.time?.completed ? { end: epoch(item.time.completed) } : {}) },
       })
@@ -150,7 +147,7 @@ function assistantMessage(message: SessionMessage.Assistant, ctx: Context, paren
         id: partID(item.id),
         type: "tool",
         sessionID: session,
-        messageID,
+        messageID: SessionV1.MessageID.make(messageID),
         callID: item.id,
         tool: item.name,
         state: toolState(item, ctx, messageID),
@@ -161,7 +158,7 @@ function assistantMessage(message: SessionMessage.Assistant, ctx: Context, paren
       id: partID(`${messageID}:snapshot`),
       type: "snapshot",
       sessionID: session,
-      messageID,
+      messageID: SessionV1.MessageID.make(messageID),
       snapshot: message.snapshot.end,
     })
   const tokens = message.tokens
@@ -169,14 +166,14 @@ function assistantMessage(message: SessionMessage.Assistant, ctx: Context, paren
     : zeroTokens
   return {
     info: {
-      id: messageID,
+      id: SessionV1.MessageID.make(messageID),
       sessionID: session,
       role: "assistant",
       time: {
         created,
         ...(message.time.completed ? { completed: epoch(message.time.completed) } : {}),
       },
-      parentID: parentID ?? messageID,
+      parentID: SessionV1.MessageID.make(parentID ?? messageID),
       modelID: message.model.id,
       providerID: message.model.providerID,
       mode: message.agent,
@@ -193,7 +190,7 @@ function assistantMessage(message: SessionMessage.Assistant, ctx: Context, paren
         id: partID(`${messageID}:step-finish`),
         type: "step-finish",
         sessionID: session,
-        messageID,
+        messageID: SessionV1.MessageID.make(messageID),
         cost: message.cost ?? 0,
         tokens,
       },
@@ -219,7 +216,7 @@ function userMessage(message: SessionMessage.User, ctx: Context): LegacyMessage 
       id: partID(`${message.id}:text`),
       type: "text",
       sessionID: ctx.sessionID,
-      messageID: message.id,
+      messageID: SessionV1.MessageID.make(message.id),
       text: message.text,
       time: { start: created },
     },
@@ -229,7 +226,7 @@ function userMessage(message: SessionMessage.User, ctx: Context): LegacyMessage 
       id: partID(`${message.id}:file:${index}`),
       type: "file",
       sessionID: ctx.sessionID,
-      messageID: message.id,
+      messageID: SessionV1.MessageID.make(message.id),
       mime: file.mime,
       ...(file.name ? { filename: file.name } : {}),
       url: file.uri,
@@ -246,7 +243,7 @@ function syntheticMessage(message: SessionMessage.Synthetic, ctx: Context): Lega
         id: partID(`${message.id}:text`),
         type: "text",
         sessionID: ctx.sessionID,
-        messageID: message.id,
+        messageID: SessionV1.MessageID.make(message.id),
         text: message.text,
         synthetic: true,
         time: { start: epoch(message.time.created) },
@@ -263,7 +260,7 @@ function compactionMessage(message: SessionMessage.Compaction, ctx: Context): Le
         id: partID(`${message.id}:compaction`),
         type: "compaction",
         sessionID: ctx.sessionID,
-        messageID: message.id,
+        messageID: SessionV1.MessageID.make(message.id),
         auto: message.reason === "auto",
         ...(message.tools ? { tools: { loaded: message.tools.loaded, mcpDeferred: message.tools.mcpDeferred } } : {}),
       },
@@ -271,7 +268,7 @@ function compactionMessage(message: SessionMessage.Compaction, ctx: Context): Le
         id: partID(`${message.id}:summary`),
         type: "text",
         sessionID: ctx.sessionID,
-        messageID: message.id,
+        messageID: SessionV1.MessageID.make(message.id),
         text: message.summary,
         time: { start: epoch(message.time.created) },
       },

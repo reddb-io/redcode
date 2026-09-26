@@ -78,12 +78,12 @@ const admitV2 = Effect.fn("SessionHttpApi.admitV2")(function* (
       | { readonly type: "subtask"; readonly prompt: string; readonly agent: string }
     >
   },
-) => {
-  const texts = input.parts.filter((part): part is Extract<typeof part, { type: "text" }> => part.type === "text")
-  const files = input.parts.filter((part): part is Extract<typeof part, { type: "file" }> => part.type === "file")
-  const agents = input.parts.filter((part): part is Extract<typeof part, { type: "agent" }> => part.type === "agent")
-  const subtasks = input.parts.filter((part) => part.type === "subtask")
-  const text = [...texts.map((part) => part.text), ...subtasks.map((part) => `${part.prompt}`)].join("\n\n")
+) {
+  const files = input.parts.flatMap((part) => (part.type === "file" ? [part] : []))
+  const agents = input.parts.flatMap((part) => (part.type === "agent" ? [part] : []))
+  const text = input.parts
+    .flatMap((part) => (part.type === "text" ? [part.text] : part.type === "subtask" ? [part.prompt] : []))
+    .join("\n\n")
   const admitted = yield* sessions
     .prompt({
       sessionID: input.sessionID,
