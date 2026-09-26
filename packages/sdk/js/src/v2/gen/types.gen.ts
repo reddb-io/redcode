@@ -181,11 +181,6 @@ export type ConflictError = {
   resource?: string
 }
 
-export type UnauthorizedError = {
-  _tag: "UnauthorizedError"
-  message: string
-}
-
 export type GenerationTiming = {
   requestStarted?: number
   firstToken?: number
@@ -3388,6 +3383,11 @@ export type WorkspaceWarpError = {
 }
 
 export type RedskilledError = {
+  message: string
+}
+
+export type UnauthorizedError = {
+  _tag: "UnauthorizedError"
   message: string
 }
 
