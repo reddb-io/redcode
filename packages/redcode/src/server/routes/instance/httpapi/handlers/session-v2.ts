@@ -1,4 +1,6 @@
 import { SessionV2 } from "@reddb-io/redcode-core/session"
+import { SessionInput } from "@reddb-io/redcode-schema/session-input"
+import { SessionMessage } from "@reddb-io/redcode-schema/session-message"
 import { Effect } from "effect"
 import { HttpApiBuilder } from "effect/unstable/httpapi"
 import { RootHttpApi } from "../api"
@@ -65,10 +67,23 @@ export const sessionV2Handlers = HttpApiBuilder.group(RootHttpApi, "server.sessi
       yield* sessions.interrupt(ctx.params.id)
     })
 
+    const delivery = Effect.fn("SessionV2HttpApi.delivery")(function* (ctx: {
+      params: { id: SessionV2.ID; messageID: SessionMessage.ID }
+      payload: { delivery: SessionInput.Delivery }
+    }) {
+      const changed = yield* sessions.setDelivery({
+        sessionID: ctx.params.id,
+        id: ctx.params.messageID,
+        delivery: ctx.payload.delivery,
+      })
+      if (!changed) return yield* new SessionNotFoundError({ sessionID: ctx.params.id, message: `Prompt is not pending: ${ctx.params.messageID}` })
+    })
+
     return handlers
       .handle("sessionV2.prompt", prompt)
       .handle("sessionV2.session", session)
       .handle("sessionV2.messages", messages)
+      .handle("sessionV2.delivery", delivery)
       .handle("sessionV2.interrupt", interrupt)
       .handle("sessionV2.events", events)
   }),

@@ -182,6 +182,11 @@ export interface Interface {
   readonly active: Effect.Effect<ReadonlySet<SessionSchema.ID>>
   readonly resume: (sessionID: SessionSchema.ID) => Effect.Effect<void, NotFoundError | SessionRunner.RunError>
   readonly interrupt: (sessionID: SessionSchema.ID) => Effect.Effect<void>
+  readonly setDelivery: (input: {
+    sessionID: SessionSchema.ID
+    id: SessionMessage.ID
+    delivery: SessionInput.Delivery
+  }) => Effect.Effect<boolean>
   readonly revert: {
     readonly stage: (input: {
       sessionID: SessionSchema.ID
@@ -468,6 +473,9 @@ const layer = Layer.effect(
       }),
       interrupt: Effect.fn("V2Session.interrupt")((sessionID) =>
         Effect.uninterruptible(execution.interrupt(sessionID)),
+      ),
+      setDelivery: Effect.fn("V2Session.setDelivery")((input) =>
+        Effect.map(SessionInput.setDelivery(db, events, input), (changed) => changed !== undefined),
       ),
       revert: {
         stage: Effect.fn("V2Session.revert.stage")(function* (input) {

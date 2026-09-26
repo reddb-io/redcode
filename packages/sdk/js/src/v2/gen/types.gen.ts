@@ -9257,6 +9257,44 @@ export type SessionV2EventsResponses = {
 
 export type SessionV2EventsResponse = SessionV2EventsResponses[keyof SessionV2EventsResponses]
 
+export type SessionV2DeliveryData = {
+  body?: {
+    delivery: "steer" | "queue"
+  }
+  path: {
+    id: string
+    messageID: string
+  }
+  query?: never
+  url: "/experimental/session-v2/{id}/prompt/{messageID}/delivery"
+}
+
+export type SessionV2DeliveryErrors = {
+  /**
+   * Bad request
+   */
+  400: BadRequestError
+  /**
+   * SessionNotFoundError
+   */
+  404: SessionNotFoundError
+  /**
+   * ConflictError
+   */
+  409: ConflictError
+}
+
+export type SessionV2DeliveryError = SessionV2DeliveryErrors[keyof SessionV2DeliveryErrors]
+
+export type SessionV2DeliveryResponses = {
+  /**
+   * <No Content>
+   */
+  204: void
+}
+
+export type SessionV2DeliveryResponse = SessionV2DeliveryResponses[keyof SessionV2DeliveryResponses]
+
 export type SessionV2InterruptData = {
   body?: never
   path: {

@@ -383,6 +383,8 @@ import type {
   SessionUnshareResponses,
   SessionUpdateErrors,
   SessionUpdateResponses,
+  SessionV2DeliveryErrors,
+  SessionV2DeliveryResponses,
   SessionV2EventsErrors,
   SessionV2EventsResponses,
   SessionV2InterruptErrors,
@@ -1627,6 +1629,43 @@ export class SessionV2 extends HeyApiClient {
       url: "/experimental/session-v2/{id}/events",
       ...options,
       ...params,
+    })
+  }
+
+  /**
+   * Change a pending V2 prompt's delivery
+   *
+   * `steer` promotes the prompt at the next safe boundary of the running turn, `queue` waits until the session would otherwise go idle.
+   */
+  public delivery<ThrowOnError extends boolean = false>(
+    parameters: {
+      id: string
+      messageID: string
+      delivery?: "steer" | "queue"
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "path", key: "id" },
+            { in: "path", key: "messageID" },
+            { in: "body", key: "delivery" },
+          ],
+        },
+      ],
+    )
+    return (options?.client ?? this.client).post<SessionV2DeliveryResponses, SessionV2DeliveryErrors, ThrowOnError>({
+      url: "/experimental/session-v2/{id}/prompt/{messageID}/delivery",
+      ...options,
+      ...params,
+      headers: {
+        "Content-Type": "application/json",
+        ...options?.headers,
+        ...params.headers,
+      },
     })
   }
 

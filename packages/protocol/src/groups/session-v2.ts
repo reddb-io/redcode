@@ -77,6 +77,21 @@ export const SessionV2Group = HttpApiGroup.make("server.sessionV2")
       ),
     )
     .add(
+      HttpApiEndpoint.post("sessionV2.delivery", `${root}/:id/prompt/:messageID/delivery`, {
+        params: { id: SessionID, messageID: SessionMessage.ID },
+        payload: Schema.Struct({ delivery: SessionDelivery.Delivery }),
+        success: HttpApiSchema.NoContent,
+        error: [SessionNotFoundError, ConflictError],
+      }).annotateMerge(
+        OpenApi.annotations({
+          identifier: "sessionV2.delivery",
+          summary: "Change a pending V2 prompt's delivery",
+          description:
+            "`steer` promotes the prompt at the next safe boundary of the running turn, `queue` waits until the session would otherwise go idle.",
+        }),
+      ),
+    )
+    .add(
       HttpApiEndpoint.post("sessionV2.interrupt", `${root}/:id/interrupt`, {
         params: { id: SessionID },
         success: HttpApiSchema.NoContent,

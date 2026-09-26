@@ -630,6 +630,16 @@ export const sessionHandlers = HttpApiBuilder.group(InstanceHttpApi, "session", 
       payload: typeof PromptDeliveryPayload.Type
     }) {
       yield* requireSession(ctx.params.sessionID)
+      const cfg = yield* config.get()
+      if (cfg.experimental?.session_engine === "v2") {
+        const changed = yield* sessionV2.setDelivery({
+          sessionID: ctx.params.sessionID,
+          id: SessionMessage.ID.make(ctx.params.messageID),
+          delivery: ctx.payload.delivery,
+        })
+        if (!changed) return yield* notFound(`Prompt is not pending: ${ctx.params.messageID}`)
+        return HttpApiSchema.NoContent.make()
+      }
       const row = yield* promptSvc.setDelivery({
         sessionID: ctx.params.sessionID,
         messageID: ctx.params.messageID,
