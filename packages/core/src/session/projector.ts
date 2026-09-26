@@ -263,10 +263,37 @@ function mirrorLegacy(db: DatabaseService, events: EventV2.Interface, event: Ses
       path: { cwd: session.directory, root: session.path ?? session.directory },
     }, parentID ? { parentID } : undefined)
     if (!legacy) return
-    yield* events.publish(SessionV1.Event.MessageUpdated, { sessionID: data.sessionID, info: legacy.info })
+    // The mirror writes the V1 read-path tables directly and republishes the live-only V1 wire
+    // events for the clients' SSE. Publishing into the durable log here would collide with the V2
+    // runner's sequence.
+    const time_created = DateTime.toEpochMillis(message.time.created)
+    const infoData = { ...legacy.info } as Record<string, unknown>
+    delete infoData.id
+    delete infoData.sessionID
+    yield* db
+      .insert(MessageTable)
+      .values({ id: legacy.info.id, session_id: data.sessionID, time_created, data: infoData })
+      .onConflictDoUpdate({
+        target: MessageTable.id,
+        set: { data: infoData, time_created: sql`max(${MessageTable.time_created}, excluded.time_created)` },
+      })
+      .run()
+      .pipe(Effect.orDie)
     const time = Date.now()
-    for (const part of legacy.parts)
-      yield* events.publish(SessionV1.Event.PartUpdated, { sessionID: data.sessionID, part, time })
+    for (const part of legacy.parts) {
+      const partData = { ...part } as Record<string, unknown>
+      delete partData.id
+      delete partData.messageID
+      delete partData.sessionID
+      yield* db
+        .insert(PartTable)
+        .values({ id: part.id, message_id: legacy.info.id, session_id: data.sessionID, time_created: time, data: partData })
+        .onConflictDoUpdate({ target: PartTable.id, set: { data: partData } })
+        .run()
+        .pipe(Effect.orDie)
+      yield* events.publish(SessionLegacyMessage.PartUpdated, { sessionID: data.sessionID, part, time })
+    }
+    yield* events.publish(SessionLegacyMessage.MessageUpdated, { sessionID: data.sessionID, info: legacy.info })
   })
 }
 

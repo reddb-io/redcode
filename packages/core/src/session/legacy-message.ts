@@ -1,9 +1,11 @@
 export * as SessionLegacyMessage from "./legacy-message"
 
-import { DateTime } from "effect"
+import { DateTime, Schema } from "effect"
 import { ToolContent } from "@reddb-io/redcode-schema/llm"
 import { Model } from "@reddb-io/redcode-schema/model"
 import { Provider } from "@reddb-io/redcode-schema/provider"
+import { Event } from "@reddb-io/redcode-schema/event"
+import { SessionID } from "@reddb-io/redcode-schema/session-id"
 import { SessionV1 } from "../v1/session"
 import { SessionMessage } from "./message"
 import { SessionSchema } from "./schema"
@@ -278,6 +280,20 @@ function compactionMessage(message: SessionMessage.Compaction, ctx: Context): Le
     ],
   }
 }
+
+/**
+ * Live-only twins of the V1 wire events: the mirror republishes them for the clients' SSE without
+ * entering the durable log, where they would collide with the V2 runner's sequence. The projector
+ * writes the mirror into `MessageTable`/`PartTable` directly.
+ */
+export const MessageUpdated = Event.define({
+  type: "message.updated",
+  schema: { sessionID: SessionID, info: SessionV1.Info },
+})
+export const PartUpdated = Event.define({
+  type: "message.part.updated",
+  schema: { sessionID: SessionID, part: SessionV1.Part, time: Schema.Finite },
+})
 
 /** The V1 mirror of a V2 message, or `undefined` for messages the V1 wire has no shape for. */
 export function toLegacy(
