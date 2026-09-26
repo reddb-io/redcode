@@ -275,7 +275,7 @@ function mirrorLegacy(db: DatabaseService, events: EventV2.Interface, event: Ses
       .values({ id: legacy.info.id, session_id: data.sessionID, time_created, data: infoData as unknown as typeof MessageTable.$inferInsert.data })
       .onConflictDoUpdate({
         target: MessageTable.id,
-        set: { data: infoData, time_created: sql`max(${MessageTable.time_created}, excluded.time_created)` },
+        set: { data: infoData as unknown as typeof MessageTable.$inferInsert.data, time_created: sql`max(${MessageTable.time_created}, excluded.time_created)` },
       })
       .run()
       .pipe(Effect.orDie)
@@ -288,7 +288,7 @@ function mirrorLegacy(db: DatabaseService, events: EventV2.Interface, event: Ses
       yield* db
         .insert(PartTable)
         .values({ id: part.id, message_id: legacy.info.id, session_id: data.sessionID, time_created: time, data: partData as unknown as typeof PartTable.$inferInsert.data })
-        .onConflictDoUpdate({ target: PartTable.id, set: { data: partData } })
+        .onConflictDoUpdate({ target: PartTable.id, set: { data: partData as unknown as typeof PartTable.$inferInsert.data } })
         .run()
         .pipe(Effect.orDie)
       yield* events.publish(SessionLegacyMessage.PartUpdated, { sessionID: data.sessionID, part, time })
