@@ -84,7 +84,7 @@ export function available(server: Info, root: string, directory: string, downloa
     return !!which("java") && (existsSync(path.join(Global.Path.bin, "jdtls", "plugins")) || downloads)
   if (server.id === "kotlin-ls" && server.command[0] === "kotlin-lsp")
     return !!resolveCommand(server, root, directory) || existsSync(kotlinLauncher()) || downloads
-  if (!resolveCommand(server, root, directory) && !(downloads && (server.download || isRoslyn(server) && which("dotnet")))) return false
+  if (!resolveCommand(server, root, directory) && !(downloads && (server.download || isRoslyn(server) && which("dotnet") || nativeInstaller(server)))) return false
   if (server.id === "razor" && isRoslyn(server) && !razorExtension()) return false
   if (server.id === "typescript" || server.id === "astro") return typescriptPath(root, directory) !== undefined
   if (server.id === "eslint") return modulePath("eslint", root, directory) !== undefined
@@ -98,7 +98,7 @@ function resolveCommand(server: Info, root: string, directory: string) {
     return existsSync(path.resolve(root, command)) ? command : undefined
   const bins = [...new Set([...ancestors(root, directory), directory])]
     .map((base) => path.join(base, "node_modules", ".bin"))
-  return which(command, { PATH: [...bins, globalThis.process.env.PATH ?? ""].join(path.delimiter) })
+  return which(command, { PATH: [...bins, globalThis.process.env.PATH ?? "", Global.Path.bin].join(path.delimiter) })
     ?? (server.id === "ty" && command === "ty" ? [globalThis.process.env.VIRTUAL_ENV, path.join(root, ".venv"), path.join(root, "venv")]
       .filter((value): value is string => value !== undefined)
       .map((venv) => path.join(venv, globalThis.process.platform === "win32" ? "Scripts/ty.exe" : "bin/ty"))
@@ -108,6 +108,31 @@ function resolveCommand(server: Info, root: string, directory: string) {
 
 function isRoslyn(server: Info) {
   return (server.id === "csharp" || server.id === "razor") && server.command[0] === "roslyn-language-server"
+}
+
+function nativeInstaller(server: Info) {
+  if (server.id === "gopls" && server.command[0] === "gopls" && which("go"))
+    return ["go", "install", "golang.org/x/tools/gopls@latest"]
+  if (server.id === "ruby-lsp" && server.command[0] === "rubocop" && which("ruby") && which("gem"))
+    return ["gem", "install", "rubocop", "--bindir", Global.Path.bin]
+  if (server.id === "fsharp" && server.command[0] === "fsautocomplete" && which("dotnet"))
+    return ["dotnet", "tool", "install", "fsautocomplete", "--tool-path", Global.Path.bin]
+}
+
+async function installNative(server: Info, downloads: boolean) {
+  const command = downloads && nativeInstaller(server)
+  if (!command) return
+  await mkdir(Global.Path.bin, { recursive: true })
+  const child = Bun.spawn(command, {
+    env: { ...globalThis.process.env, GOBIN: Global.Path.bin },
+    stdout: "ignore",
+    stderr: "ignore",
+  })
+  if (await child.exited !== 0) return
+  const name = server.command[0]
+  if (!name) return
+  const executable = path.join(Global.Path.bin, `${name}${globalThis.process.platform === "win32" ? ".exe" : ""}`)
+  return existsSync(executable) ? executable : undefined
 }
 
 function roslynGlobalPath() {
@@ -241,6 +266,7 @@ export async function start(server: Info, root: string, directory: string, downl
   const executable = resolveCommand(server, root, directory)
     ?? specialized?.executable
     ?? (isRoslyn(server) ? await installRoslyn(downloads) : undefined)
+    ?? await installNative(server, downloads)
     ?? await download(server, downloads)
   if (!executable) throw new Error(`LSP server ${server.id} is not installed`)
   const tsserver = server.id === "typescript" || server.id === "astro"
