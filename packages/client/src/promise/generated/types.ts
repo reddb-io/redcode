@@ -64,6 +64,8 @@ export type SessionStatsToolUsage = {
 
 export type SessionStatsActivity = { date: string; steps: number }
 
+export type UsageMirrorBackfill = { sidecar: string; mirrored: number; skipped: number }
+
 export type SessionMessageAgentSelected = {
   id: string
   metadata?: { [x: string]: JsonValue }
@@ -3386,6 +3388,8 @@ export type SessionStatsInput = {
 }
 
 export type SessionStatsOutput = { data: SessionStatsInfo }["data"]
+
+export type SessionUsageBackfillOutput = { data: UsageMirrorBackfill }["data"]
 
 export type SessionCreateInput = {
   readonly id?: {

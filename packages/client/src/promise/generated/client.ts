@@ -20,6 +20,7 @@ import type {
   SessionListOutput,
   SessionStatsInput,
   SessionStatsOutput,
+  SessionUsageBackfillOutput,
   SessionCreateInput,
   SessionCreateOutput,
   SessionImportInput,
@@ -630,6 +631,19 @@ export function make(options: ClientOptions) {
           },
           requestOptions,
         ).then((value) => value.data),
+      usage: {
+        backfill: (requestOptions?: RequestOptions) =>
+          request<{ readonly data: SessionUsageBackfillOutput }>(
+            {
+              method: "POST",
+              path: `/api/experimental/session/usage/backfill`,
+              successStatus: 200,
+              declaredStatuses: [400, 401, 503],
+              empty: false,
+            },
+            requestOptions,
+          ).then((value) => value.data),
+      },
       create: (input?: SessionCreateInput, requestOptions?: RequestOptions) =>
         request<{ readonly data: SessionCreateOutput }>(
           {

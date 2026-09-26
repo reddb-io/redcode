@@ -35,6 +35,12 @@
       "workerd": "./src/model-limit.workerd.ts",
       "default": "./src/model-limit.node.ts"
     },
+    "#usage-sidecar": {
+      "workerd": "./src/usage/sidecar.workerd.ts",
+      "bun": "./src/usage/sidecar.bun.ts",
+      "node": "./src/usage/sidecar.node.ts",
+      "default": "./src/usage/sidecar.node.ts"
+    },
     "#lsp": {
       "types": "./src/lsp/backend.node.ts",
       "workerd": "./src/lsp/backend.workerd.ts",

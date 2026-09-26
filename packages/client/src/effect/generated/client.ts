@@ -26,6 +26,7 @@ import type {
   SessionListOutput,
   SessionStatsInput,
   SessionStatsOutput,
+  SessionUsageBackfillOutput,
   SessionCreateInput,
   SessionCreateOutput,
   SessionImportInput,
@@ -443,6 +444,14 @@ const EndpointSessionStats = (raw: RawClient["server.session"]) => (input?: Sess
         tools: input?.["tools"],
       },
     }).pipe(
+      Effect.mapError(mapClientError),
+      Effect.map((value) => value.data),
+    ),
+  )
+
+const EndpointSessionUsageBackfill = (raw: RawClient["server.session"]) => () =>
+  preserveEffect<SessionUsageBackfillOutput>()(
+    raw["session.usage.backfill"]({}).pipe(
       Effect.mapError(mapClientError),
       Effect.map((value) => value.data),
     ),
@@ -1026,6 +1035,7 @@ const EndpointSessionView = (raw: RawClient["server.session"]) => (input: Sessio
 const adaptGroupSession = (raw: RawClient["server.session"]) => ({
   list: EndpointSessionList(raw),
   stats: EndpointSessionStats(raw),
+  usage: { backfill: EndpointSessionUsageBackfill(raw) },
   create: EndpointSessionCreate(raw),
   import: EndpointSessionImport(raw),
   export: EndpointSessionExport(raw),

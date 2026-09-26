@@ -455,10 +455,17 @@ const Root = Spec.make(typeof OPENCODE_CLI_NAME === "string" ? OPENCODE_CLI_NAME
       params: ServerParams,
     }),
     Spec.make("usage", {
-      description: "Locate the v2 usage database",
+      description: "Manage the local usage sidecar",
       commands: [
         Spec.make("path", {
-          description: "Print the database path containing v2 session usage",
+          description: "Print the usage sidecar path, or the V2 database path with --v2",
+          params: {
+            v2: Flag.boolean("v2").pipe(Flag.withDescription("Print the V2 session database path"), Flag.withDefault(false)),
+          },
+        }),
+        Spec.make("backfill", {
+          description: "Copy existing V2 usage into the local usage sidecar",
+          params: ServerParams,
         }),
       ],
     }),

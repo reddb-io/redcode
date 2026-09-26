@@ -18,6 +18,7 @@ import { Project } from "@opencode/core/project"
 import { Worktree } from "@opencode/core/worktree"
 import { Session } from "@opencode/core/session"
 import { SessionExecution } from "@opencode/core/session/execution"
+import { SessionUsageMirror } from "@opencode/core/usage/mirror"
 import { SessionInbox } from "@opencode/core/session/inbox"
 import { SessionGoal } from "@opencode/core/session/goal"
 import { SessionGuardLog } from "@opencode/core/session/guard-log"
@@ -71,6 +72,7 @@ const applicationServiceNodes = [
   Worktree.node,
   Session.node,
   SessionExecution.node,
+  SessionUsageMirror.node,
   SessionInbox.node,
   SessionGoal.node,
   SessionGuardLog.node,

@@ -89,6 +89,7 @@ const Handlers = Runtime.handlers(Commands, {
   models: () => import("./commands/handlers/models"),
   usage: {
     path: () => import("./commands/handlers/usage/path"),
+    backfill: () => import("./commands/handlers/usage/backfill"),
   },
   stats: () => import("./commands/handlers/stats"),
   mini: () => import("./commands/handlers/mini"),

@@ -5,6 +5,7 @@ import { DesignFeed } from "@opencode/core/design/feed"
 import { DesignHandoff } from "@opencode/core/design/handoff"
 import { Design } from "@opencode/schema/design"
 import { SessionStats } from "@opencode/core/session/stats"
+import { SessionUsageMirror } from "@opencode/core/usage/mirror"
 import { SessionTitle } from "@opencode/core/session/title"
 import { SessionTransfer } from "@opencode/core/session/transfer"
 import { SessionShare } from "@opencode/core/session/share"
@@ -107,6 +108,17 @@ export const SessionHandler = HttpApiBuilder.group(Api, "server.session", (handl
               tools: ctx.query.tools,
             }).pipe(
               Effect.mapError(() => new InvalidRequestError({ message: "Stats range must end after it starts" })),
+            ),
+          }
+        }),
+      )
+      .handle(
+        "session.usage.backfill",
+        Effect.fn(function* () {
+          const usage = yield* SessionUsageMirror.Service
+          return {
+            data: yield* usage.backfill().pipe(
+              Effect.mapError((error) => new ServiceUnavailableError({ message: error.message, service: "usage sidecar" })),
             ),
           }
         }),

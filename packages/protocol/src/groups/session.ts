@@ -4,6 +4,7 @@ import { PromptInput } from "@opencode/schema/prompt-input"
 import { Session } from "@opencode/schema/session"
 import { Credential } from "@opencode/schema/credential"
 import { SessionStats } from "@opencode/schema/session-stats"
+import { UsageMirror } from "@opencode/schema/usage-mirror"
 import { SessionGoal } from "@opencode/schema/session-goal"
 import { Design } from "@opencode/schema/design"
 import { InstructionEntry } from "@opencode/schema/instruction-entry"
@@ -232,6 +233,18 @@ export const makeSessionGroup = <I extends HttpApiMiddleware.AnyId, S, FormI ext
           identifier: "experimental.session.stats",
           summary: "Get session statistics",
           description: "Aggregate local session activity, usage, and tool reliability for a time range.",
+        }),
+      ),
+    )
+    .add(
+      HttpApiEndpoint.post("session.usage.backfill", "/api/experimental/session/usage/backfill", {
+        success: Schema.Struct({ data: UsageMirror.Backfill }),
+        error: ServiceUnavailableError,
+      }).annotateMerge(
+        OpenApi.annotations({
+          identifier: "experimental.session.usage.backfill",
+          summary: "Backfill the local usage sidecar",
+          description: "Copy V2 assistant usage into the legacy-format local usage database.",
         }),
       ),
     )

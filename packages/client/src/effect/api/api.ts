@@ -198,6 +198,13 @@ export type SessionStatsOutput = {
 }
 export type SessionStatsOperation<E = never> = (input?: SessionStatsInput) => Effect.Effect<SessionStatsOutput, E>
 
+export type SessionUsageBackfillOutput = {
+  readonly sidecar: string
+  readonly mirrored: number
+  readonly skipped: number
+}
+export type SessionUsageBackfillOperation<E = never> = () => Effect.Effect<SessionUsageBackfillOutput, E>
+
 export type SessionCreateInput = {
   readonly id?: Session.ID | undefined
   readonly title?: string | undefined
@@ -3203,6 +3210,7 @@ export type SessionViewOperation<E = never> = (input: SessionViewInput) => Effec
 export interface SessionApi<E = never> {
   readonly list: SessionListOperation<E>
   readonly stats: SessionStatsOperation<E>
+  readonly usage: { readonly backfill: SessionUsageBackfillOperation<E> }
   readonly create: SessionCreateOperation<E>
   readonly import: SessionImportOperation<E>
   readonly export: SessionExportOperation<E>
