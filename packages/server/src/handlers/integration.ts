@@ -1,4 +1,5 @@
 import { Integration } from "@opencode/core/integration"
+import { ConsoleOrganization } from "@opencode/core/console-organization"
 import { Plugin } from "@opencode/core/plugin"
 import { Effect } from "effect"
 import { HttpApiBuilder, HttpApiSchema } from "effect/unstable/httpapi"
@@ -27,6 +28,38 @@ const authorize = <A, R>(effect: Effect.Effect<A, Integration.AuthorizationError
 export const IntegrationHandler = HttpApiBuilder.group(Api, "server.integration", (handlers) =>
   Effect.gen(function* () {
     return handlers
+      .handle(
+        "integration.console.organizations",
+        Effect.fn(function* () {
+          yield* Plugin.awaitActivation
+          return yield* response(
+            ConsoleOrganization.list().pipe(
+              Effect.map(({ server, email, activeID, orgs }) => ({ server, email, activeID, orgs })),
+              Effect.mapError((error) =>
+                new InvalidRequestError({
+                  message: error instanceof Error ? error.message : "Unable to list Console organizations",
+                  kind: "console_organizations",
+                }),
+              ),
+            ),
+          )
+        }),
+      )
+      .handle(
+        "integration.console.organization.select",
+        Effect.fn(function* (ctx) {
+          yield* Plugin.awaitActivation
+          yield* ConsoleOrganization.select(ctx.payload.orgID).pipe(
+            Effect.mapError((error) =>
+              new InvalidRequestError({
+                message: error instanceof Error ? error.message : "Unable to select Console organization",
+                kind: "console_organization_select",
+              }),
+            ),
+          )
+          return HttpApiSchema.NoContent.make()
+        }),
+      )
       .handle(
         "integration.list",
         Effect.fn(function* () {

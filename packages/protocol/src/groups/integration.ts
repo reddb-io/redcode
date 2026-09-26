@@ -13,6 +13,32 @@ import { LocationQuery, locationQueryOpenApi } from "./location.js"
 
 export const IntegrationGroup = HttpApiGroup.make("server.integration")
   .add(
+    HttpApiEndpoint.get("integration.console.organizations", "/api/integration/opencode/organizations", {
+      query: LocationQuery,
+      success: Location.response(
+        Schema.Struct({
+          server: Schema.String,
+          email: Schema.optional(Schema.String),
+          activeID: Schema.optional(Schema.String),
+          orgs: Schema.Array(Schema.Struct({ id: Schema.String, name: Schema.String })),
+        }),
+      ),
+      error: InvalidRequestError,
+    })
+      .annotateMerge(locationQueryOpenApi)
+      .annotateMerge(OpenApi.annotations({ identifier: "integration.console.organizations", summary: "List Console organizations" })),
+  )
+  .add(
+    HttpApiEndpoint.post("integration.console.organization.select", "/api/integration/opencode/organizations/select", {
+      query: LocationQuery,
+      payload: Schema.Struct({ orgID: Schema.String }),
+      success: HttpApiSchema.NoContent,
+      error: InvalidRequestError,
+    })
+      .annotateMerge(locationQueryOpenApi)
+      .annotateMerge(OpenApi.annotations({ identifier: "integration.console.organization.select", summary: "Select Console organization" })),
+  )
+  .add(
     HttpApiEndpoint.get("integration.list", "/api/integration", {
       query: LocationQuery,
       success: Location.response(Schema.Array(Integration.Info)),

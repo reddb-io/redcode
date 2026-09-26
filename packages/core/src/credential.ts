@@ -186,7 +186,7 @@ const layer = Layer.effect(
       update: Effect.fn("Credential.update")(function* (id, updates) {
         if (updates.label === undefined && updates.value === undefined) return
         const credential = yield* db
-          .select({ integrationID: CredentialTable.integration_id, label: CredentialTable.label })
+          .select({ integrationID: CredentialTable.integration_id, label: CredentialTable.label, active: CredentialTable.active })
           .from(CredentialTable)
           .where(eq(CredentialTable.id, id))
           .get()
@@ -232,6 +232,8 @@ const layer = Layer.effect(
         })
         if (updates.label !== undefined && updates.label !== credential.label)
           yield* bus.publish(Event.Updated, {}, { global: true })
+        if (updates.value !== undefined && credential.active)
+          yield* bus.publish(Event.Switched, { integrationID: credential.integrationID, credentialID: id }, { global: true })
       }),
       remove: Effect.fn("Credential.remove")(function* (id) {
         const removed = yield* db

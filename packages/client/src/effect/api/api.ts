@@ -3333,6 +3333,31 @@ export interface ProviderApi<E = never> {
   readonly get: ProviderGetOperation<E>
 }
 
+export type IntegrationConsoleOrganizationsInput = {
+  readonly location?: { readonly directory?: string | undefined } | undefined
+}
+export type IntegrationConsoleOrganizationsOutput = {
+  readonly location: Location.PublicRef
+  readonly data: {
+    readonly server: string
+    readonly email?: string | undefined
+    readonly activeID?: string | undefined
+    readonly orgs: ReadonlyArray<{ readonly id: string; readonly name: string }>
+  }
+}
+export type IntegrationConsoleOrganizationsOperation<E = never> = (
+  input?: IntegrationConsoleOrganizationsInput,
+) => Effect.Effect<IntegrationConsoleOrganizationsOutput, E>
+
+export type IntegrationConsoleOrganizationSelectInput = {
+  readonly location?: { readonly directory?: string | undefined } | undefined
+  readonly orgID: string
+}
+export type IntegrationConsoleOrganizationSelectOutput = void
+export type IntegrationConsoleOrganizationSelectOperation<E = never> = (
+  input: IntegrationConsoleOrganizationSelectInput,
+) => Effect.Effect<IntegrationConsoleOrganizationSelectOutput, E>
+
 export type IntegrationListInput = { readonly location?: { readonly directory?: string | undefined } | undefined }
 export type IntegrationListOutput = {
   readonly location: Location.PublicRef
@@ -3457,6 +3482,10 @@ export type IntegrationCommandCancelOperation<E = never> = (
 ) => Effect.Effect<IntegrationCommandCancelOutput, E>
 
 export interface IntegrationApi<E = never> {
+  readonly console: {
+    readonly organizations: IntegrationConsoleOrganizationsOperation<E>
+    readonly organization: { readonly select: IntegrationConsoleOrganizationSelectOperation<E> }
+  }
   readonly list: IntegrationListOperation<E>
   readonly get: IntegrationGetOperation<E>
   readonly wellknown: { readonly add: IntegrationWellknownAddOperation<E> }

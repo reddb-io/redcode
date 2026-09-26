@@ -7457,6 +7457,27 @@ export type ProviderGetInput = {
 
 export type ProviderGetOutput = { location: LocationPublicRef; data: ProviderInfo }
 
+export type IntegrationConsoleOrganizationsInput = {
+  readonly location?: { readonly location?: { readonly directory?: string | undefined } | undefined }["location"]
+}
+
+export type IntegrationConsoleOrganizationsOutput = {
+  location: LocationPublicRef
+  data: {
+    server: string
+    email?: string | undefined
+    activeID?: string | undefined
+    orgs: Array<{ id: string; name: string }>
+  }
+}
+
+export type IntegrationConsoleOrganizationSelectInput = {
+  readonly location?: { readonly location?: { readonly directory?: string | undefined } | undefined }["location"]
+  readonly orgID: { readonly orgID: string }["orgID"]
+}
+
+export type IntegrationConsoleOrganizationSelectOutput = void
+
 export type IntegrationListInput = {
   readonly location?: { readonly location?: { readonly directory?: string | undefined } | undefined }["location"]
 }

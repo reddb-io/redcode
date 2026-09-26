@@ -155,6 +155,10 @@ import type {
   ProviderListOutput,
   ProviderGetInput,
   ProviderGetOutput,
+  IntegrationConsoleOrganizationsInput,
+  IntegrationConsoleOrganizationsOutput,
+  IntegrationConsoleOrganizationSelectInput,
+  IntegrationConsoleOrganizationSelectOutput,
   IntegrationListInput,
   IntegrationListOutput,
   IntegrationGetInput,
@@ -1134,6 +1138,23 @@ const adaptGroupProvider = (raw: RawClient["server.provider"]) => ({
   get: EndpointProviderGet(raw),
 })
 
+const EndpointIntegrationConsoleOrganizations =
+  (raw: RawClient["server.integration"]) => (input?: IntegrationConsoleOrganizationsInput) =>
+    preserveEffect<IntegrationConsoleOrganizationsOutput>()(
+      raw["integration.console.organizations"]({ query: { location: input?.["location"] } }).pipe(
+        Effect.mapError(mapClientError),
+      ),
+    )
+
+const EndpointIntegrationConsoleOrganizationSelect =
+  (raw: RawClient["server.integration"]) => (input: IntegrationConsoleOrganizationSelectInput) =>
+    preserveEffect<IntegrationConsoleOrganizationSelectOutput>()(
+      raw["integration.console.organization.select"]({
+        query: { location: input["location"] },
+        payload: { orgID: input["orgID"] },
+      }).pipe(Effect.mapError(mapClientError)),
+    )
+
 const EndpointIntegrationList = (raw: RawClient["server.integration"]) => (input?: IntegrationListInput) =>
   preserveEffect<IntegrationListOutput>()(
     raw["integration.list"]({ query: { location: input?.["location"] } }).pipe(Effect.mapError(mapClientError)),
@@ -1229,6 +1250,10 @@ const EndpointIntegrationCommandCancel =
     )
 
 const adaptGroupIntegration = (raw: RawClient["server.integration"]) => ({
+  console: {
+    organizations: EndpointIntegrationConsoleOrganizations(raw),
+    organization: { select: EndpointIntegrationConsoleOrganizationSelect(raw) },
+  },
   list: EndpointIntegrationList(raw),
   get: EndpointIntegrationGet(raw),
   wellknown: { add: EndpointIntegrationWellknownAdd(raw) },

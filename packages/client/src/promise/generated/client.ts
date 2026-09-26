@@ -149,6 +149,10 @@ import type {
   ProviderListOutput,
   ProviderGetInput,
   ProviderGetOutput,
+  IntegrationConsoleOrganizationsInput,
+  IntegrationConsoleOrganizationsOutput,
+  IntegrationConsoleOrganizationSelectInput,
+  IntegrationConsoleOrganizationSelectOutput,
   IntegrationListInput,
   IntegrationListOutput,
   IntegrationGetInput,
@@ -1468,6 +1472,35 @@ export function make(options: ClientOptions) {
         ),
     },
     integration: {
+      console: {
+        organizations: (input?: IntegrationConsoleOrganizationsInput, requestOptions?: RequestOptions) =>
+          request<IntegrationConsoleOrganizationsOutput>(
+            {
+              method: "GET",
+              path: `/api/integration/opencode/organizations`,
+              query: { location: input?.["location"] },
+              successStatus: 200,
+              declaredStatuses: [400, 401],
+              empty: false,
+            },
+            requestOptions,
+          ),
+        organization: {
+          select: (input: IntegrationConsoleOrganizationSelectInput, requestOptions?: RequestOptions) =>
+            request<IntegrationConsoleOrganizationSelectOutput>(
+              {
+                method: "POST",
+                path: `/api/integration/opencode/organizations/select`,
+                query: { location: input["location"] },
+                body: { orgID: input["orgID"] },
+                successStatus: 204,
+                declaredStatuses: [400, 401],
+                empty: true,
+              },
+              requestOptions,
+            ),
+        },
+      },
       list: (input?: IntegrationListInput, requestOptions?: RequestOptions) =>
         request<IntegrationListOutput>(
           {

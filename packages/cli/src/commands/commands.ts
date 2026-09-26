@@ -261,6 +261,20 @@ const Root = Spec.make(typeof OPENCODE_CLI_NAME === "string" ? OPENCODE_CLI_NAME
         }),
       ],
     }),
+    Spec.make("console", {
+      description: "manage OpenCode Console organizations",
+      commands: [
+        Spec.make("orgs", { description: "list organizations for the active Console account", params: ServerParams }),
+        Spec.make("switch", {
+          description: "switch the active Console organization",
+          params: {
+            ...ServerParams,
+            org: Argument.string("org").pipe(Argument.withDescription("Organization ID"), Argument.optional),
+          },
+        }),
+        Spec.make("open", { description: "open the active Console account in a browser", params: ServerParams }),
+      ],
+    }),
     Spec.make("mcp", {
       description: "Manage MCP (Model Context Protocol) servers",
       commands: [
