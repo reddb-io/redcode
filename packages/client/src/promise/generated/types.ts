@@ -8281,6 +8281,32 @@ export type LspDiagnosticsInput = {
 
 export type LspDiagnosticsOutput = { location: LocationPublicRef; data: { [x: string]: Array<LSPDiagnostic> } }
 
+export type LspSymbolsInput = {
+  readonly location?: {
+    readonly location?: { readonly directory?: string | undefined } | undefined
+    readonly query: string
+  }["location"]
+  readonly query: {
+    readonly location?: { readonly directory?: string | undefined } | undefined
+    readonly query: string
+  }["query"]
+}
+
+export type LspSymbolsOutput = { location: LocationPublicRef; data: Array<any> }
+
+export type LspDocumentSymbolsInput = {
+  readonly location?: {
+    readonly location?: { readonly directory?: string | undefined } | undefined
+    readonly path: string
+  }["location"]
+  readonly path: {
+    readonly location?: { readonly directory?: string | undefined } | undefined
+    readonly path: string
+  }["path"]
+}
+
+export type LspDocumentSymbolsOutput = { location: LocationPublicRef; data: Array<any> }
+
 export type FormatterStatusInput = {
   readonly location?: { readonly location?: { readonly directory?: string | undefined } | undefined }["location"]
 }

@@ -298,6 +298,10 @@ import type {
   LspStatusOutput,
   LspDiagnosticsInput,
   LspDiagnosticsOutput,
+  LspSymbolsInput,
+  LspSymbolsOutput,
+  LspDocumentSymbolsInput,
+  LspDocumentSymbolsOutput,
   FormatterStatusInput,
   FormatterStatusOutput,
   ServerIntelligenceStatusOutput,
@@ -1798,9 +1802,25 @@ const EndpointLspDiagnostics = (raw: RawClient["server.lsp"]) => (input: LspDiag
     ),
   )
 
+const EndpointLspSymbols = (raw: RawClient["server.lsp"]) => (input: LspSymbolsInput) =>
+  preserveEffect<LspSymbolsOutput>()(
+    raw["lsp.symbols"]({ query: { location: input["location"], query: input["query"] } }).pipe(
+      Effect.mapError(mapClientError),
+    ),
+  )
+
+const EndpointLspDocumentSymbols = (raw: RawClient["server.lsp"]) => (input: LspDocumentSymbolsInput) =>
+  preserveEffect<LspDocumentSymbolsOutput>()(
+    raw["lsp.documentSymbols"]({ query: { location: input["location"], path: input["path"] } }).pipe(
+      Effect.mapError(mapClientError),
+    ),
+  )
+
 const adaptGroupLsp = (raw: RawClient["server.lsp"]) => ({
   status: EndpointLspStatus(raw),
   diagnostics: EndpointLspDiagnostics(raw),
+  symbols: EndpointLspSymbols(raw),
+  documentSymbols: EndpointLspDocumentSymbols(raw),
 })
 
 const EndpointFormatterStatus = (raw: RawClient["server.formatter"]) => (input?: FormatterStatusInput) =>

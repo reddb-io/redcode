@@ -4140,9 +4140,27 @@ export type LspDiagnosticsOutput = {
 }
 export type LspDiagnosticsOperation<E = never> = (input: LspDiagnosticsInput) => Effect.Effect<LspDiagnosticsOutput, E>
 
+export type LspSymbolsInput = {
+  readonly location?: { readonly directory?: string | undefined } | undefined
+  readonly query: string
+}
+export type LspSymbolsOutput = { readonly location: Location.PublicRef; readonly data: ReadonlyArray<unknown> }
+export type LspSymbolsOperation<E = never> = (input: LspSymbolsInput) => Effect.Effect<LspSymbolsOutput, E>
+
+export type LspDocumentSymbolsInput = {
+  readonly location?: { readonly directory?: string | undefined } | undefined
+  readonly path: string
+}
+export type LspDocumentSymbolsOutput = { readonly location: Location.PublicRef; readonly data: ReadonlyArray<unknown> }
+export type LspDocumentSymbolsOperation<E = never> = (
+  input: LspDocumentSymbolsInput,
+) => Effect.Effect<LspDocumentSymbolsOutput, E>
+
 export interface LspApi<E = never> {
   readonly status: LspStatusOperation<E>
   readonly diagnostics: LspDiagnosticsOperation<E>
+  readonly symbols: LspSymbolsOperation<E>
+  readonly documentSymbols: LspDocumentSymbolsOperation<E>
 }
 
 export type FormatterStatusInput = { readonly location?: { readonly directory?: string | undefined } | undefined }

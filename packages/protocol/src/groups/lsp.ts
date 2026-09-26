@@ -9,6 +9,10 @@ const DiagnosticsQuery = Schema.Struct({
   ...LocationQuery.fields,
   path: Schema.String,
 })
+const SymbolsQuery = Schema.Struct({
+  ...LocationQuery.fields,
+  query: Schema.String,
+})
 
 export const LSPGroup = HttpApiGroup.make("server.lsp")
   .add(
@@ -34,6 +38,31 @@ export const LSPGroup = HttpApiGroup.make("server.lsp")
         identifier: "lsp.diagnostics",
         summary: "Get LSP diagnostics",
         description: "Open a file and return language server diagnostics for the location.",
+      })),
+  )
+  .add(
+    HttpApiEndpoint.get("lsp.symbols", "/api/lsp/symbols", {
+      query: SymbolsQuery,
+      success: Location.response(Schema.Array(Schema.Unknown)),
+    })
+      .annotateMerge(locationQueryOpenApi)
+      .annotateMerge(OpenApi.annotations({
+        identifier: "lsp.symbols",
+        summary: "Search workspace symbols",
+        description: "Search symbols in connected language servers for this location.",
+      })),
+  )
+  .add(
+    HttpApiEndpoint.get("lsp.documentSymbols", "/api/lsp/document-symbols", {
+      query: DiagnosticsQuery,
+      success: Location.response(Schema.Array(Schema.Unknown)),
+      error: InvalidRequestError,
+    })
+      .annotateMerge(locationQueryOpenApi)
+      .annotateMerge(OpenApi.annotations({
+        identifier: "lsp.documentSymbols",
+        summary: "Get document symbols",
+        description: "Get symbols from a file using connected language servers.",
       })),
   )
   .annotateMerge(OpenApi.annotations({ title: "lsp" }))

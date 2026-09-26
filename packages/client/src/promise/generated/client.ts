@@ -296,6 +296,10 @@ import type {
   LspStatusOutput,
   LspDiagnosticsInput,
   LspDiagnosticsOutput,
+  LspSymbolsInput,
+  LspSymbolsOutput,
+  LspDocumentSymbolsInput,
+  LspDocumentSymbolsOutput,
   FormatterStatusInput,
   FormatterStatusOutput,
   ServerIntelligenceStatusOutput,
@@ -2460,6 +2464,30 @@ export function make(options: ClientOptions) {
           {
             method: "GET",
             path: `/api/lsp/diagnostics`,
+            query: { location: input["location"], path: input["path"] },
+            successStatus: 200,
+            declaredStatuses: [400, 401],
+            empty: false,
+          },
+          requestOptions,
+        ),
+      symbols: (input: LspSymbolsInput, requestOptions?: RequestOptions) =>
+        request<LspSymbolsOutput>(
+          {
+            method: "GET",
+            path: `/api/lsp/symbols`,
+            query: { location: input["location"], query: input["query"] },
+            successStatus: 200,
+            declaredStatuses: [400, 401],
+            empty: false,
+          },
+          requestOptions,
+        ),
+      documentSymbols: (input: LspDocumentSymbolsInput, requestOptions?: RequestOptions) =>
+        request<LspDocumentSymbolsOutput>(
+          {
+            method: "GET",
+            path: `/api/lsp/document-symbols`,
             query: { location: input["location"], path: input["path"] },
             successStatus: 200,
             declaredStatuses: [400, 401],

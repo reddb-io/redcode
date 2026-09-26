@@ -127,6 +127,14 @@ const Root = Spec.make(typeof OPENCODE_CLI_NAME === "string" ? OPENCODE_CLI_NAME
               description: "Get diagnostics for a file",
               params: { file: Argument.string("file") },
             }),
+            Spec.make("symbols", {
+              description: "Search workspace symbols",
+              params: { query: Argument.string("query") },
+            }),
+            Spec.make("document-symbols", {
+              description: "Get symbols from a file",
+              params: { file: Argument.string("file") },
+            }),
           ],
         }),
         Spec.make("formatter", { description: "List formatter status" }),
