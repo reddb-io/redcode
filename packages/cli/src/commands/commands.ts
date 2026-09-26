@@ -347,6 +347,10 @@ const Root = Spec.make(typeof OPENCODE_CLI_NAME === "string" ? OPENCODE_CLI_NAME
         Spec.make("refresh", { description: "Discover and reconcile project worktrees" }),
       ],
     }),
+    Spec.make("pr", {
+      description: "Check out a GitHub pull request and open OpenCode",
+      params: { number: Argument.integer("number") },
+    }),
     Spec.make("models", {
       description: "List all available models",
       params: ServerParams,

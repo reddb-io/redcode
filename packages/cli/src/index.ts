@@ -70,6 +70,7 @@ const Handlers = Runtime.handlers(Commands, {
     remove: () => import("./commands/handlers/worktrees/remove"),
     refresh: () => import("./commands/handlers/worktrees/refresh"),
   },
+  pr: () => import("./commands/handlers/pr"),
   models: () => import("./commands/handlers/models"),
   stats: () => import("./commands/handlers/stats"),
   mini: () => import("./commands/handlers/mini"),
