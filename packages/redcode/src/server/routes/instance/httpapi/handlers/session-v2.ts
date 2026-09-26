@@ -2,15 +2,15 @@ import { SessionV2 } from "@reddb-io/redcode-core/session"
 import { Effect, Stream } from "effect"
 import { HttpApiBuilder } from "effect/unstable/httpapi"
 import { RootHttpApi } from "../api"
-import { ConflictError, SessionNotFoundError } from "../errors"
-import { SessionPromptPayload } from "../groups/session-v2"
+import { ConflictError, SessionNotFoundError } from "@reddb-io/redcode-protocol/errors"
+import { SessionV2PromptPayload } from "@reddb-io/redcode-protocol/groups/session-v2"
 
-export const sessionV2Handlers = HttpApiBuilder.group(RootHttpApi, "sessionV2", (handlers) =>
+export const sessionV2Handlers = HttpApiBuilder.group(RootHttpApi, "server.sessionV2", (handlers) =>
   Effect.gen(function* () {
     const sessions = yield* SessionV2.Service
 
     const prompt = Effect.fn("SessionV2HttpApi.prompt")(function* (ctx: {
-      payload: typeof SessionPromptPayload.Type
+      payload: typeof SessionV2PromptPayload.Type
     }) {
       return yield* sessions
         .prompt({
@@ -26,7 +26,7 @@ export const sessionV2Handlers = HttpApiBuilder.group(RootHttpApi, "sessionV2", 
               return new SessionNotFoundError({ sessionID: error.sessionID, message: `Session not found: ${error.sessionID}` })
             if (error instanceof SessionV2.PromptConflictError)
               return new ConflictError({ message: error.message })
-            return new SessionNotFoundError({ sessionID: error instanceof SessionV2.PromptConflictError ? "" : "", message: error.message })
+            return new ConflictError({ message: error.message })
           }),
         )
     })

@@ -73,16 +73,6 @@ import type {
   ExperimentalSessionBackgroundResponses,
   ExperimentalSessionListErrors,
   ExperimentalSessionListResponses,
-  ExperimentalSessionV2EventsErrors,
-  ExperimentalSessionV2EventsResponses,
-  ExperimentalSessionV2InterruptErrors,
-  ExperimentalSessionV2InterruptResponses,
-  ExperimentalSessionV2MessagesErrors,
-  ExperimentalSessionV2MessagesResponses,
-  ExperimentalSessionV2PromptErrors,
-  ExperimentalSessionV2PromptResponses,
-  ExperimentalSessionV2SessionErrors,
-  ExperimentalSessionV2SessionResponses,
   ExperimentalWorkspaceAdapterListErrors,
   ExperimentalWorkspaceAdapterListResponses,
   ExperimentalWorkspaceCreateErrors,
@@ -204,7 +194,6 @@ import type {
   ProjectListResponses,
   ProjectUpdateErrors,
   ProjectUpdateResponses,
-  Prompt,
   PromptInput,
   ProviderAuthErrors,
   ProviderAuthResponses,
@@ -394,6 +383,7 @@ import type {
   SessionUnshareResponses,
   SessionUpdateErrors,
   SessionUpdateResponses,
+  SessionV2PromptPayload,
   SubtaskPartInput,
   SyncHistoryListErrors,
   SyncHistoryListResponses,
@@ -520,18 +510,24 @@ import type {
   V2SessionContextResponses,
   V2SessionCreateErrors,
   V2SessionCreateResponses,
+  V2SessionEvents2Errors,
+  V2SessionEvents2Responses,
   V2SessionEventsErrors,
   V2SessionEventsResponses,
   V2SessionGetErrors,
   V2SessionGetResponses,
   V2SessionHistoryErrors,
   V2SessionHistoryResponses,
+  V2SessionInterrupt2Errors,
+  V2SessionInterrupt2Responses,
   V2SessionInterruptErrors,
   V2SessionInterruptResponses,
   V2SessionListErrors,
   V2SessionListResponses,
   V2SessionMessageErrors,
   V2SessionMessageResponses,
+  V2SessionMessages2Errors,
+  V2SessionMessages2Responses,
   V2SessionMessagesErrors,
   V2SessionMessagesResponses,
   V2SessionPermissionCreateErrors,
@@ -542,6 +538,8 @@ import type {
   V2SessionPermissionListResponses,
   V2SessionPermissionReplyErrors,
   V2SessionPermissionReplyResponses,
+  V2SessionPrompt2Errors,
+  V2SessionPrompt2Responses,
   V2SessionPromptErrors,
   V2SessionPromptResponses,
   V2SessionQuestionListErrors,
@@ -550,6 +548,8 @@ import type {
   V2SessionQuestionRejectResponses,
   V2SessionQuestionReplyErrors,
   V2SessionQuestionReplyResponses,
+  V2SessionReadErrors,
+  V2SessionReadResponses,
   V2SessionRevertClearErrors,
   V2SessionRevertClearResponses,
   V2SessionRevertCommitErrors,
@@ -840,150 +840,6 @@ export class ControlPlane extends HeyApiClient {
         ...options?.headers,
         ...params.headers,
       },
-    })
-  }
-}
-
-export class SessionV2 extends HeyApiClient {
-  /**
-   * Prompt a session through the V2 runtime
-   *
-   * Admits one durable prompt row and schedules the V2 session drain. The prompt becomes a user message at a safe boundary.
-   */
-  public prompt<ThrowOnError extends boolean = false>(
-    parameters?: {
-      sessionID?: string
-      prompt?: Prompt
-      id?: string
-      delivery?: "steer" | "queue"
-      resume?: boolean
-    },
-    options?: Options<never, ThrowOnError>,
-  ) {
-    const params = buildClientParams(
-      [parameters],
-      [
-        {
-          args: [
-            { in: "body", key: "sessionID" },
-            { in: "body", key: "prompt" },
-            { in: "body", key: "id" },
-            { in: "body", key: "delivery" },
-            { in: "body", key: "resume" },
-          ],
-        },
-      ],
-    )
-    return (options?.client ?? this.client).post<
-      ExperimentalSessionV2PromptResponses,
-      ExperimentalSessionV2PromptErrors,
-      ThrowOnError
-    >({
-      url: "/experimental/session-v2/prompt",
-      ...options,
-      ...params,
-      headers: {
-        "Content-Type": "application/json",
-        ...options?.headers,
-        ...params.headers,
-      },
-    })
-  }
-
-  /**
-   * Read a V2 session
-   */
-  public session<ThrowOnError extends boolean = false>(
-    parameters: {
-      id: string
-    },
-    options?: Options<never, ThrowOnError>,
-  ) {
-    const params = buildClientParams([parameters], [{ args: [{ in: "path", key: "id" }] }])
-    return (options?.client ?? this.client).get<
-      ExperimentalSessionV2SessionResponses,
-      ExperimentalSessionV2SessionErrors,
-      ThrowOnError
-    >({
-      url: "/experimental/session-v2/{id}",
-      ...options,
-      ...params,
-    })
-  }
-
-  /**
-   * Read a V2 session's messages
-   */
-  public messages<ThrowOnError extends boolean = false>(
-    parameters: {
-      id: string
-    },
-    options?: Options<never, ThrowOnError>,
-  ) {
-    const params = buildClientParams([parameters], [{ args: [{ in: "path", key: "id" }] }])
-    return (options?.client ?? this.client).get<
-      ExperimentalSessionV2MessagesResponses,
-      ExperimentalSessionV2MessagesErrors,
-      ThrowOnError
-    >({
-      url: "/experimental/session-v2/{id}/messages",
-      ...options,
-      ...params,
-    })
-  }
-
-  /**
-   * Read a V2 session's durable events
-   *
-   * Events after the `after` sequence, oldest first.
-   */
-  public events<ThrowOnError extends boolean = false>(
-    parameters: {
-      id: string
-      after?: string
-    },
-    options?: Options<never, ThrowOnError>,
-  ) {
-    const params = buildClientParams(
-      [parameters],
-      [
-        {
-          args: [
-            { in: "path", key: "id" },
-            { in: "query", key: "after" },
-          ],
-        },
-      ],
-    )
-    return (options?.client ?? this.client).get<
-      ExperimentalSessionV2EventsResponses,
-      ExperimentalSessionV2EventsErrors,
-      ThrowOnError
-    >({
-      url: "/experimental/session-v2/{id}/events",
-      ...options,
-      ...params,
-    })
-  }
-
-  /**
-   * Interrupt a running V2 session
-   */
-  public interrupt<ThrowOnError extends boolean = false>(
-    parameters: {
-      id: string
-    },
-    options?: Options<never, ThrowOnError>,
-  ) {
-    const params = buildClientParams([parameters], [{ args: [{ in: "path", key: "id" }] }])
-    return (options?.client ?? this.client).post<
-      ExperimentalSessionV2InterruptResponses,
-      ExperimentalSessionV2InterruptErrors,
-      ThrowOnError
-    >({
-      url: "/experimental/session-v2/{id}/interrupt",
-      ...options,
-      ...params,
     })
   }
 }
@@ -1647,11 +1503,6 @@ export class Experimental extends HeyApiClient {
   private _controlPlane?: ControlPlane
   get controlPlane(): ControlPlane {
     return (this._controlPlane ??= new ControlPlane({ client: this.client }))
-  }
-
-  private _sessionV2?: SessionV2
-  get sessionV2(): SessionV2 {
-    return (this._sessionV2 ??= new SessionV2({ client: this.client }))
   }
 
   private _capabilities?: Capabilities
@@ -7569,11 +7420,118 @@ export class Session3 extends HeyApiClient {
   }
 
   /**
+   * Prompt a session through the V2 runtime
+   *
+   * Admits one durable prompt row and schedules the V2 session drain. The prompt becomes a user message at a safe provider-turn boundary.
+   */
+  public prompt2<ThrowOnError extends boolean = false>(
+    parameters?: {
+      sessionV2PromptPayload?: SessionV2PromptPayload
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams([parameters], [{ args: [{ key: "sessionV2PromptPayload", map: "body" }] }])
+    return (options?.client ?? this.client).post<V2SessionPrompt2Responses, V2SessionPrompt2Errors, ThrowOnError>({
+      url: "/experimental/session-v2/prompt",
+      ...options,
+      ...params,
+      headers: {
+        "Content-Type": "application/json",
+        ...options?.headers,
+        ...params.headers,
+      },
+    })
+  }
+
+  /**
+   * Read a V2 session
+   */
+  public read<ThrowOnError extends boolean = false>(
+    parameters: {
+      id: string
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams([parameters], [{ args: [{ in: "path", key: "id" }] }])
+    return (options?.client ?? this.client).get<V2SessionReadResponses, V2SessionReadErrors, ThrowOnError>({
+      url: "/experimental/session-v2/{id}",
+      ...options,
+      ...params,
+    })
+  }
+
+  /**
+   * Read a V2 session's messages
+   */
+  public messages<ThrowOnError extends boolean = false>(
+    parameters: {
+      id: string
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams([parameters], [{ args: [{ in: "path", key: "id" }] }])
+    return (options?.client ?? this.client).get<V2SessionMessagesResponses, V2SessionMessagesErrors, ThrowOnError>({
+      url: "/experimental/session-v2/{id}/messages",
+      ...options,
+      ...params,
+    })
+  }
+
+  /**
+   * Read a V2 session's durable events
+   *
+   * Events after the `after` sequence, oldest first.
+   */
+  public events2<ThrowOnError extends boolean = false>(
+    parameters: {
+      id: string
+      after?: string
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "path", key: "id" },
+            { in: "query", key: "after" },
+          ],
+        },
+      ],
+    )
+    return (options?.client ?? this.client).get<V2SessionEvents2Responses, V2SessionEvents2Errors, ThrowOnError>({
+      url: "/experimental/session-v2/{id}/events",
+      ...options,
+      ...params,
+    })
+  }
+
+  /**
+   * Interrupt a running V2 session
+   */
+  public interrupt2<ThrowOnError extends boolean = false>(
+    parameters: {
+      id: string
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams([parameters], [{ args: [{ in: "path", key: "id" }] }])
+    return (options?.client ?? this.client).post<V2SessionInterrupt2Responses, V2SessionInterrupt2Errors, ThrowOnError>(
+      {
+        url: "/experimental/session-v2/{id}/interrupt",
+        ...options,
+        ...params,
+      },
+    )
+  }
+
+  /**
    * Get session messages
    *
    * Retrieve projected messages for a session. Items keep the requested order across pages; use cursor.next or cursor.previous to move through the ordered timeline.
    */
-  public messages<ThrowOnError extends boolean = false>(
+  public messages2<ThrowOnError extends boolean = false>(
     parameters: {
       sessionID: string
       limit?: number
@@ -7595,7 +7553,7 @@ export class Session3 extends HeyApiClient {
         },
       ],
     )
-    return (options?.client ?? this.client).get<V2SessionMessagesResponses, V2SessionMessagesErrors, ThrowOnError>({
+    return (options?.client ?? this.client).get<V2SessionMessages2Responses, V2SessionMessages2Errors, ThrowOnError>({
       url: "/api/session/{sessionID}/message",
       ...options,
       ...params,

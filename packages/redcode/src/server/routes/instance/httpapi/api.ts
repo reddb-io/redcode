@@ -10,7 +10,6 @@ import { Question } from "@/question"
 import { ConfigApi } from "./groups/config"
 import { ControlApi } from "./groups/control"
 import { ControlPlaneApi } from "./groups/control-plane"
-import { SessionV2Api } from "./groups/session-v2"
 import { EventApi } from "./groups/event"
 import { ExperimentalApi } from "./groups/experimental"
 import { FileApi } from "./groups/file"
@@ -29,6 +28,7 @@ import { WorkspaceApi } from "./groups/workspace"
 import { RedskilledApi } from "./groups/redskilled"
 import { ModelSuggestionApi } from "./groups/model-suggestion"
 import { makeApi } from "@reddb-io/redcode-protocol/api"
+import { makeSessionV2Group } from "@reddb-io/redcode-protocol/groups/session-v2"
 import { LocationMiddleware } from "@reddb-io/redcode-server/location"
 import { SessionLocationMiddleware } from "@reddb-io/redcode-server/middleware/session-location"
 import { GlobalApi } from "./groups/global"
@@ -57,7 +57,7 @@ export const ServerApi = makeApi({
 export const RootHttpApi = HttpApi.make("redcode-root")
   .addHttpApi(ControlApi)
   .addHttpApi(ControlPlaneApi)
-  .addHttpApi(SessionV2Api)
+  .addHttpApi(makeSessionV2Group(SessionLocationMiddleware))
   .addHttpApi(GlobalApi)
   .middleware(SchemaErrorMiddleware)
   .middleware(Authorization)
