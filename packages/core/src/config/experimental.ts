@@ -99,6 +99,10 @@ export class Experimental extends Schema.Class<Experimental>("ConfigV2.Experimen
       "How many background subagents one session may have running at once; past it the task tool refuses and asks the model to wait or run the task inline (default: 4)",
   }),
   loop_guard: LoopGuard.pipe(Schema.optional),
+  session_engine: Schema.Literals(["v1", "v2"]).pipe(Schema.optional).annotate({
+    description:
+      "Which session runtime admits and drives prompts: v1 is the legacy loop, v2 is the durable V2 runner. Default: v1",
+  }),
   stop_loss: StopLoss.pipe(Schema.optional),
   tool_timeout: ToolTimeout.pipe(Schema.optional),
   turn_stall: TurnStall.pipe(Schema.optional),
