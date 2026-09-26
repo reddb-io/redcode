@@ -65,11 +65,11 @@ describe("validateCustomProvider", () => {
     expect(result.result).toBeUndefined()
     expect(result.err.providerID).toBeUndefined()
     expect(result.models[1]).toEqual({
-      id: "provider.custom.error.duplicate",
+      id: "Duplicate",
       name: undefined,
     })
     expect(result.headers[1]).toEqual({
-      key: "provider.custom.error.duplicate",
+      key: "Duplicate",
       value: undefined,
     })
   })
