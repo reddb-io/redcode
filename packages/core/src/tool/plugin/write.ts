@@ -13,6 +13,8 @@ import { Bom } from "@opencode/util/bom"
 import { Environment } from "../../environment/index.js"
 import { FileMutation } from "../../file-mutation.js"
 import { Formatter } from "../../formatter.js"
+import { LSP } from "../../lsp/lsp.js"
+import { Diagnostic } from "../../lsp/diagnostic.js"
 import { FileAccess } from "../../file-access.js"
 import { Permission } from "../../permission.js"
 import { fileDiff } from "./file-diff.js"
@@ -41,7 +43,6 @@ export const toModelContent = (output: Output) =>
 /** Deferred write UX integrations remain visible at the model-facing seam. */
 // TODO: Publish watcher/file-edit events after watcher integration exists.
 // TODO: Add snapshots / undo after design exists.
-// TODO: Add LSP notification and diagnostics after LSP runtime exists.
 
 export const Plugin = {
   id: "opencode.tool.write",
@@ -50,6 +51,7 @@ export const Plugin = {
     const fileMutation = yield* FileMutation.Service
     const environment = yield* Environment.Service
     const formatter = yield* Formatter.Service
+    const lsp = yield* LSP.Service
     const permission = yield* Permission.Service
 
     yield* ctx.tool
@@ -89,9 +91,21 @@ export const Plugin = {
               if (yield* formatter.file(target.absolute)) {
                 yield* FileMutation.syncTextBom(environment.files, target.absolute, bom)
               }
-              return result
+              yield* lsp.touchFile(target.absolute, "document").pipe(
+                Effect.catchCause((cause) => Effect.logWarning("LSP notification failed after write", { file: target.absolute, cause })),
+              )
+              const diagnostics = yield* lsp.diagnostics()
+              return {
+                output: result,
+                report: Diagnostic.report(target.absolute, diagnostics[target.absolute] ?? []),
+                diagnostics: Diagnostic.pick(diagnostics, [target.absolute]),
+              }
             }).pipe(
-              Effect.map((output) => ({ output, content: toModelContent(output) })),
+              Effect.map((result) => ({
+                output: result.output,
+                content: `${toModelContent(result.output)}${result.report ? `\n\nLSP errors detected in this file, please fix:\n${result.report}` : ""}`,
+                metadata: { diagnostics: result.diagnostics },
+              })),
               Effect.mapError((error) => new ToolFailure({ message: `Unable to write ${input.path}`, error })),
             ),
         }),

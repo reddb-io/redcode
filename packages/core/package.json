@@ -30,6 +30,11 @@
     "./*": "./src/*.ts"
   },
   "imports": {
+    "#lsp": {
+      "types": "./src/lsp/backend.node.ts",
+      "workerd": "./src/lsp/backend.workerd.ts",
+      "default": "./src/lsp/backend.node.ts"
+    },
     "#sqlite": {
       "workerd": "./src/database/sqlite.workerd.ts",
       "bun": "./src/database/sqlite.bun.ts",
@@ -150,6 +155,8 @@
     "tree-sitter-bash": "0.25.0",
     "tree-sitter-powershell": "0.25.10",
     "venice-ai-sdk-provider": "2.1.1",
+    "vscode-jsonrpc": "9.0.1",
+    "vscode-languageserver-types": "3.17.5",
     "web-tree-sitter": "0.25.10",
     "which": "6.0.1",
     "zod": "catalog:"

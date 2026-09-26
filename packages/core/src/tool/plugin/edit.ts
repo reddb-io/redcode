@@ -14,6 +14,8 @@ import { Effect, Schema } from "effect"
 import { Environment } from "../../environment/index.js"
 import { FileMutation } from "../../file-mutation.js"
 import { Formatter } from "../../formatter.js"
+import { LSP } from "../../lsp/lsp.js"
+import { Diagnostic } from "../../lsp/diagnostic.js"
 import { Location } from "../../location.js"
 import { FileAccess } from "../../file-access.js"
 import { Permission } from "../../permission.js"
@@ -104,7 +106,6 @@ const findLineOccurrences = (content: string, search: string) => {
 /** Deferred edit behavior and UX integrations remain visible at the model-facing seam. */
 // TODO: Publish watcher/file-edit events after watcher integration exists.
 // TODO: Add snapshots / undo after design exists.
-// TODO: Add LSP notification and diagnostics after LSP runtime exists.
 
 export const Plugin = {
   id: "opencode.tool.edit",
@@ -113,6 +114,7 @@ export const Plugin = {
     const fileMutation = yield* FileMutation.Service
     const environment = yield* Environment.Service
     const formatter = yield* Formatter.Service
+    const lsp = yield* LSP.Service
     const location = yield* Location.Service
     const permission = yield* Permission.Service
 
@@ -205,16 +207,24 @@ export const Plugin = {
               const formatted = (yield* formatter.file(target.absolute))
                 ? yield* FileMutation.syncTextBom(environment.files, target.absolute, bom)
                 : (yield* FileMutation.readText(environment.files, target.absolute)).text
+              yield* lsp.touchFile(target.absolute, "document").pipe(
+                Effect.catchCause((cause) => Effect.logWarning("LSP notification failed after edit", { file: target.absolute, cause })),
+              )
+              const diagnostics = yield* lsp.diagnostics()
               return {
-                files: [fileDiff(result.resource, source, formatted)],
-                replacements,
-              } satisfies Output
+                output: {
+                  files: [fileDiff(result.resource, source, formatted)],
+                  replacements,
+                } satisfies Output,
+                report: Diagnostic.report(target.absolute, diagnostics[target.absolute] ?? []),
+                diagnostics: Diagnostic.pick(diagnostics, [target.absolute]),
+              }
             }).pipe(
               fileMutation.withLock([FileAccess.resolvePath(location.directory, input.path)]),
-              Effect.map((output) => ({
-                output,
-                content: `Edited ${output.files[0]?.file} (${output.replacements} replacement${output.replacements === 1 ? "" : "s"})`,
-                metadata: { files: output.files },
+              Effect.map((result) => ({
+                output: result.output,
+                content: `Edited ${result.output.files[0]?.file} (${result.output.replacements} replacement${result.output.replacements === 1 ? "" : "s"})${result.report ? `\n\nLSP errors detected in this file, please fix:\n${result.report}` : ""}`,
+                metadata: { files: result.output.files, diagnostics: result.diagnostics },
               })),
               Effect.mapError((error) =>
                 error instanceof ToolFailure

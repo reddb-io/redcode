@@ -6,6 +6,7 @@ import { ToolFailure } from "@opencode/ai"
 import { Effect, Schema } from "effect"
 import { FSUtil } from "@opencode/util/fs-util"
 import { Location } from "../../location.js"
+import { LSP } from "../../lsp/lsp.js"
 import { FileAccess } from "../../file-access.js"
 import { SessionInstructions } from "../../session/instructions.js"
 import { AbsolutePath } from "../../schema.js"
@@ -34,6 +35,8 @@ export const Plugin = {
     const sessionInstructions = yield* SessionInstructions.Service
     const fs = yield* FSUtil.Service
     const location = yield* Location.Service
+    const lsp = yield* LSP.Service
+    const scope = yield* Effect.scope
 
     yield* ctx.tool
       .transform((editor) =>
@@ -110,6 +113,8 @@ export const Plugin = {
                 !ReadToolFileSystem.MEDIA_MIMES.has(result.content.mime)
               )
                 return yield* Effect.fail(new ReadToolFileSystem.BinaryFileError({ resource: result.target.resource }))
+              if (result.content.type === "file" && result.content.encoding !== "base64")
+                yield* lsp.touchFile(result.target.absolute).pipe(Effect.ignoreCause, Effect.forkIn(scope))
               return { output: result.content, path: result.path }
             }).pipe(
               Effect.map((result) => ({

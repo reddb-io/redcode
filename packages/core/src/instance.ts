@@ -18,6 +18,7 @@ import { Image } from "./image.js"
 import { LocationWatcher } from "./filesystem/location-watcher.js"
 import { Integration } from "./integration.js"
 import { Location } from "./location.js"
+import { LSP } from "./lsp/lsp.js"
 import { LocationLifecycle } from "./location-lifecycle.js"
 import { FileAccess } from "./file-access.js"
 import { ModelResolver } from "./model-resolver.js"
@@ -60,6 +61,7 @@ export { Service, node, type Interface } from "./instance/service.js"
 
 const nodes = [
   Location.node,
+  LSP.node,
   DesignStore.node,
   DesignRenderer.node,
   LocationLifecycle.node,

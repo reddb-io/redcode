@@ -52,6 +52,7 @@ import { Intelligence } from "../intelligence.js"
 import { Job } from "../job.js"
 import { KV } from "../kv.js"
 import { Location } from "../location.js"
+import { LSP } from "../lsp/lsp.js"
 import { MonitorRuntime } from "../monitor.js"
 import { ManagedPolicy } from "../managed-policy.js"
 import { ModelsDev } from "../models-dev.js"
@@ -80,6 +81,7 @@ import { EditTool } from "../tool/plugin/edit.js"
 import { GlobTool } from "../tool/plugin/glob.js"
 import { GoalTool } from "../tool/plugin/goal.js"
 import { GrepTool } from "../tool/plugin/grep.js"
+import { LSPTool } from "../tool/plugin/lsp.js"
 import { McpResourceTools } from "../tool/plugin/mcp-resource.js"
 import { MonitorTool } from "../tool/plugin/monitor.js"
 import { OpenCodeTools } from "../tool/plugin/opencode.js"
@@ -160,6 +162,7 @@ const services = [
   KV.Service,
   LLMClient.Service,
   Location.Service,
+  LSP.Service,
   MonitorRuntime.Service,
   ManagedPolicy.Service,
   ModelsDev.Service,
@@ -223,6 +226,7 @@ export const requirements = LayerNode.group([
   KV.node,
   llmClient,
   Location.node,
+  LSP.node,
   MonitorRuntime.node,
   ManagedPolicy.node,
   ModelsDev.node,
@@ -285,6 +289,7 @@ const pre = [
   GlobTool.Plugin,
   GoalTool.Plugin,
   GrepTool.Plugin,
+  LSPTool.Plugin,
   OpenCodeTools.Plugin,
   McpResourceTools.Plugin,
   MonitorTool.Plugin,
