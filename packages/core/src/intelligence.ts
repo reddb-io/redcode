@@ -10,6 +10,7 @@ import { KVTable } from "./kv/sql.js"
 import { IntelligenceEvaluation } from "./intelligence/evaluation.js"
 import { IntelligenceSettings } from "./intelligence/settings.js"
 import { IntelligenceTransport } from "./intelligence/transport.js"
+import { IntelligenceRouter } from "./intelligence/router.js"
 import { IntelligenceAnswerTable, IntelligenceEvaluationTable } from "./intelligence/sql.js"
 import { SessionSchema } from "./session/schema.js"
 
@@ -300,6 +301,7 @@ const make = Effect.gen(function* () {
 
   const status = Effect.fn("Intelligence.status")(function* () {
     const selected = yield* settings.read()
+    const router = yield* IntelligenceRouter.detect(yield* transport.connection("red-router"))
     const transports = [
       "opencode-zen",
       "openrouter",
@@ -314,6 +316,7 @@ const make = Effect.gen(function* () {
       settings: selected,
       environment: process.env.REDCODE_REASONING ?? "",
       effective: IntelligenceEvaluation.reasoning(selected),
+      ...(router ? { router } : {}),
       evaluators: transports.map((transport) => ({
         name: transport,
         configured: selected.evaluator?.transport === transport,

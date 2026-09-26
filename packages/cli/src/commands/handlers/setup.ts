@@ -31,16 +31,31 @@ export default Runtime.handler(Commands.commands.setup, (input) =>
     const current = status.settings.principal
       ? `${status.settings.principal.providerID}/${status.settings.principal.id}`
       : undefined
+    const recommended = status.router?.recommended?.default
+    const suggested = recommended
+      ? models.find((model) => model.providerID === status.router?.providerID && model.id === recommended.id)
+      : undefined
     const principal = yield* prompt<string>(() =>
       autocomplete({
         message: "System Two model",
         maxItems: 10,
-        initialValue: current,
-        options: models.map((model) => ({
-          value: `${model.providerID}/${model.id}`,
-          label: `${model.providerID}: ${model.name}`,
-          hint: `${model.providerID}/${model.id}` === current ? "current" : model.id,
-        })),
+        initialValue: current ?? (suggested ? `${suggested.providerID}/${suggested.id}` : undefined),
+        options: [
+          ...(suggested
+            ? [{
+                value: `${suggested.providerID}/${suggested.id}`,
+                label: `Recommended: ${suggested.name}`,
+                hint: recommended?.reason,
+              }]
+            : []),
+          ...models
+            .filter((model) => model !== suggested)
+            .map((model) => ({
+              value: `${model.providerID}/${model.id}`,
+              label: `${model.providerID}: ${model.name}`,
+              hint: `${model.providerID}/${model.id}` === current ? "current" : model.id,
+            })),
+        ],
       }),
     )
     const evaluator = reasoning === "dual" ? yield* configureEvaluator(client, status) : undefined
