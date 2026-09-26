@@ -2,6 +2,7 @@ import { loadSessionRoute } from "../../util/session-navigation"
 import { DialogGoalBudget } from "../../component/dialog-goal-budget"
 import { Budget } from "../../util/budget"
 import { DialogMonitors } from "../../component/dialog-monitors"
+import { DialogPendingPrompts } from "../../component/dialog-pending-prompts"
 import { DesignApprovalNotice } from "../../component/design-approval"
 import { DesignFeedbackNotice } from "../../component/design-feedback"
 import { Effect, Schema } from "effect"
@@ -98,7 +99,7 @@ import { PermissionPrompt } from "./permission"
 import { QuestionPrompt } from "./question"
 import { DialogExportOptions } from "../../ui/dialog-export-options"
 import * as Model from "../../util/model"
-import { servedModel } from "../../util/model-origin"
+import { servedModel, servedRoute } from "../../util/model-origin"
 import { formatTranscript } from "../../util/transcript"
 import { sessionEpilogue } from "../../util/presentation"
 import { setPreLayoutSiblingMargin } from "../../util/layout"
@@ -1321,6 +1322,13 @@ export function Session() {
       run: () => dialog.replace(() => <DialogMonitors sessionID={route.sessionID} />),
     },
     {
+      title: "Pending prompts",
+      value: "session.pending_prompts",
+      category: "Session",
+      slash: { name: "pending" },
+      run: () => dialog.replace(() => <DialogPendingPrompts sessionID={route.sessionID} />),
+    },
+    {
       title: "Go to child session",
       value: "session.child.first",
       category: "Session",
@@ -1887,8 +1895,13 @@ function AssistantMessage(props: {
   const sync = useSync()
   const messages = createMemo(() => sync.data.message[props.message.sessionID] ?? [])
   const model = createMemo(() => Model.name(ctx.providers(), props.message.providerID, props.message.modelID))
-  // A router such as RedRouter can serve a combo or alias with another model.
-  const served = createMemo(() => servedModel(props.message, props.parts))
+  // A router such as RedRouter can serve a combo or alias with another model. A flat model id names
+  // no provider, so the offer that served it is named by its route.
+  const served = createMemo(() => {
+    const info = ctx.providers().get(props.message.providerID)?.models[props.message.modelID]
+    const id = servedModel(props.message, props.parts, info?.flat === true)
+    return id && info?.flat ? servedRoute(info, id) : id
+  })
 
   const final = createMemo(() => {
     return props.message.finish && !["tool-calls", "unknown"].includes(props.message.finish)

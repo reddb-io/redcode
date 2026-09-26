@@ -54,8 +54,9 @@ export function routeLabel(provider: Provider, model: Model) {
   const router = routerLabel(provider)
   if (!router) return "direct"
   // A router serving the model through other routers (remote RedRouters) names them too: the one it
-  // reported, else every router hop in the model id, at any depth.
-  const hops = model.via ? [model.via] : Router.route(model.id).hops.map(Router.hopName)
+  // reported, else every router hop in the model id, at any depth. A flat id names no route; its
+  // serving offer's id does.
+  const hops = model.via ? [model.via] : Router.routeOf(model).hops.map(Router.hopName)
   return `via ${[router, ...hops].join(Router.HOP_SEPARATOR)}`
 }
 
@@ -64,9 +65,12 @@ function originDetails(index: OriginIndex, provider: Provider, model: Model) {
   const router = routerLabel(provider)
   const also = index.also(provider, model)
   if (!router) return also.length ? [`also via ${also.join(", ")}`] : []
+  const offers = model.flat ? (model.offers?.length ?? 0) : 0
   return [
     ...(model.upstream ? [model.upstream.name] : []),
     ...(model.upstream?.subscription ? ["subscription"] : []),
+    ...(offers > 1 ? [`${offers} offers`] : []),
+    ...(model.flat && model.offerOrder === "custom" ? ["custom order"] : []),
     ...(also.length ? [`also ${also.join(", ")}`] : []),
   ]
 }
@@ -96,6 +100,62 @@ export function originCategory(provider: Provider, model: Model) {
   return `${provider.name}${Router.HOP_SEPARATOR}${model.upstream.name}`
 }
 
+type Offer = NonNullable<Model["offers"]>[number]
+
+/**
+ * The offers of a flat model as picker rows, in the router's order: the route (the connection's
+ * router, the routers in between and the provider, joined by ` » `), the price, `off` for an offer
+ * switched off for the flat model (`offer.free` is the free badge), and the model to save to pin
+ * the offer. That model is the one listed under the offer's pin id, never the offer id: the
+ * vendor's own offer id can be the flat id itself. Undefined `pin` means the offer cannot be pinned.
+ * An offer that is off is never served for the flat id, but its pin id still routes to it, so it
+ * stays pinnable (`off` tells a picker to grey it out).
+ */
+export function flatOffers(provider: Provider, model: Model) {
+  if (!model.flat) return []
+  return (model.offers ?? []).map((offer) => ({
+    offer,
+    route: offerRoute(provider, offer),
+    off: !offer.available,
+    detail: [
+      ...(offer.available ? [] : ["off"]),
+      offerPrice(offer),
+      ...(offer.pinID ? [] : ["cannot be pinned"]),
+    ]
+      .filter(Boolean)
+      .join(" · "),
+    pin: offer.pinID && provider.models[offer.pinID] ? offer.pinID : undefined,
+  }))
+}
+
+/** Where an offer is served: `RedRouter » OpenRouter`, or `RedRouter » Office RedRouter » OpenCode Go`. */
+export function offerRoute(provider: Pick<Provider, "id" | "router">, offer: Offer) {
+  return [routerLabel(provider), ...offer.via.map((hop) => hop.name), offer.provider.name]
+    .filter(Boolean)
+    .join(Router.HOP_SEPARATOR)
+}
+
+/** An offer's price per million tokens, e.g. `$3/$15 per 1M`, or undefined when unknown. */
+export function offerPrice(offer: Pick<Offer, "price">) {
+  if (offer.price?.input === undefined && offer.price?.output === undefined) return undefined
+  const dollars = (value: number | undefined) => (value === undefined ? "?" : `$${Number(value.toFixed(4))}`)
+  return `${dollars(offer.price.input)}/${dollars(offer.price.output)} per 1M`
+}
+
+/**
+ * The model a router reported serving a flat model's response, in words. The reported id is the
+ * serving offer's full chained id, so it parses as a route; the offer's own names win when listed.
+ */
+export function servedRoute(model: Pick<Model, "offers"> | undefined, served: string) {
+  const routed = Router.route(served)
+  const offer = model?.offers?.find((item) => item.id === served)
+  return Router.routeName({
+    routers: offer ? offer.via.map((hop) => hop.name) : routed.hops.map(Router.hopName),
+    upstream: offer?.provider.name ?? routed.provider,
+    model: routed.model,
+  })
+}
+
 /** Modes a router serves the model in besides its default, shown as a badge. */
 export function modeBadge(model: Pick<Model, "modes">) {
   if (!model.modes?.length) return undefined
@@ -112,6 +172,21 @@ export function modeID(model: Pick<Model, "api" | "modes" | "routerVariants">, v
   return model.routerVariants?.find((item) => item.mode === variant)?.id ?? `${model.api.id}-${variant}`
 }
 
+/**
+ * Why a saved model choice is not used: its provider no longer lists it (RedRouter drops a flat
+ * model id once all its offers are switched off) or is not connected, and the model used instead.
+ */
+export function missingModelMessage(providers: Provider[], saved: ModelRef, fallback: ModelRef | undefined) {
+  const provider = providers.find((item) => item.id === saved.providerID)
+  const reason = !provider
+    ? `${saved.providerID} is not connected, so ${saved.modelID} is unavailable`
+    : routerLabel(provider)
+      ? `${provider.name} no longer lists ${saved.modelID}: it was removed, or all its offers were switched off`
+      : `${provider.name} no longer lists ${saved.modelID}`
+  const using = fallback ? ` Using ${fallback.providerID}/${fallback.modelID} instead.` : ""
+  return `${reason}.${using} Pick another model with /model.`
+}
+
 /** Announces a background router catalog refresh, e.g. `RedRouter catalog updated: +2/−1 models, 3 renamed`. */
 export function catalogUpdateMessage(update: { name: string; added: number; removed: number; renamed: number }) {
   // Limits or modes alone changed: the pickers already show them, nothing to announce.
@@ -120,12 +195,17 @@ export function catalogUpdateMessage(update: { name: string; added: number; remo
   return `${update.name} catalog updated: +${update.added}/−${update.removed} models${renamed}`
 }
 
-/** The model a router reported serving the message, when it differs from the requested one. */
-export function servedModel(message: ModelRef, parts: Part[]) {
+/**
+ * The model a router reported serving the message, when it differs from the requested one. A flat
+ * model id names no provider, so for one (`flat`) whichever offer served is reported, even the
+ * vendor's own offer listed under the same id.
+ */
+export function servedModel(message: ModelRef, parts: Part[], flat = false) {
   const served = parts
     .flatMap((part) => (part.type === "step-finish" && part.servedModel ? [part.servedModel] : []))
     .at(-1)
   if (!served) return undefined
+  if (flat) return served
   // Routers may report the requested model with or without its provider or upstream prefix.
   if ([message.modelID, `${message.providerID}/${message.modelID}`].includes(served)) return undefined
   if (message.modelID.endsWith(`/${served}`)) return undefined
@@ -151,12 +231,15 @@ export function latestServed(messages: Message[], parts: (messageID: string) => 
 /**
  * The variants of a fallback combo while a member other than its lead serves (`served`): that
  * member's. Undefined while the lead serves, for a model that is no such combo, and for a member
- * the model does not list.
+ * the model does not list. A flat model's members are matched exactly: the router reports the full
+ * chained id, and several offers end in the same model id.
  */
-export function servingVariants(model: Pick<Model, "comboMembers">, served: string | undefined) {
+export function servingVariants(model: Pick<Model, "comboMembers" | "flat">, served: string | undefined) {
   const members = model.comboMembers
   if (!served || !members?.length) return undefined
-  const same = (id: string) => id === served || id.endsWith(`/${served}`) || served.endsWith(`/${id}`)
+  const reported = model.flat ? served.replace(/\([^()]+\)\s*$/, "") : served
+  const same = (id: string) =>
+    id === reported || (!model.flat && (id.endsWith(`/${reported}`) || reported.endsWith(`/${id}`)))
   if (same(members[0].id)) return undefined
   return members.find((member) => same(member.id))?.variants
 }
@@ -232,13 +315,19 @@ export function migrateModelState(
   }
 }
 
-function upstreamKeys(model: Model) {
+function upstreamKeys(model: Model): string[] {
+  // A flat id names no provider: each offer is a route of its own, and an offer id is always chained.
+  if (model.flat) return (model.offers ?? []).flatMap((offer) => providerKeys(offer.provider, offer.id))
   if (!model.upstream) return []
+  return providerKeys(model.upstream, model.id)
+}
+
+function providerKeys(upstream: { id: string; slug?: string }, id: string) {
   // A routed id is `[<router>/…]<upstream>/<model>`; the model part is what the upstream provider calls it.
-  const part = Router.route(model.id).model
-  return [model.upstream.id, model.upstream.slug]
-    .filter((id, index, list): id is string => !!id && list.indexOf(id) === index)
-    .map((id) => `${id}/${part}`)
+  const part = Router.route(id).model
+  return [upstream.id, upstream.slug]
+    .filter((item, index, list): item is string => !!item && list.indexOf(item) === index)
+    .map((item) => `${item}/${part}`)
 }
 
 function unique(refs: ModelRef[]) {

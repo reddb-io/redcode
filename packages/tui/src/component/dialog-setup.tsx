@@ -1,4 +1,4 @@
-import { batch, createEffect, createMemo, on, onCleanup, onMount, Switch, Match } from "solid-js"
+import { batch, createEffect, createMemo, createSignal, on, onCleanup, onMount, Switch, Match } from "solid-js"
 import { createStore } from "solid-js/store"
 import { IntelligenceClient } from "@reddb-io/redcode-client"
 import { Intelligence } from "@reddb-io/redcode-schema/intelligence"
@@ -7,6 +7,7 @@ import { Provider } from "@reddb-io/redcode-schema/provider"
 import { Router } from "@reddb-io/redcode-schema/router"
 import { useSDK } from "../context/sdk"
 import { useSync } from "../context/sync"
+import { useTheme } from "../context/theme"
 import { useLocal } from "../context/local"
 import { useDialog } from "../ui/dialog"
 import { useToast } from "../ui/toast"
@@ -15,6 +16,7 @@ import { DialogPrompt } from "../ui/dialog-prompt"
 import { DialogProvider } from "./dialog-provider"
 import { errorMessage } from "../util/error"
 import {
+  flatOffers,
   modeBadge,
   originCategory,
   originDescription,
@@ -72,6 +74,7 @@ export function DialogSetup(
   const sync = useSync()
   const local = props.onModelSelected ? undefined : useLocal()
   const dialog = useDialog()
+  const { theme } = useTheme()
   const toast = useToast()
   const abort = new AbortController()
   let active = true
@@ -135,8 +138,18 @@ export function DialogSetup(
         }}
       />
     ))
+  // A pinned offer of a flat model is listed under that model once its offers are shown.
   const generative = (provider: (typeof sync.data.provider)[number]) =>
-    Object.values(provider.models).filter((model) => model.capabilities.protocol !== "systemone")
+    Object.values(provider.models).filter((model) => model.capabilities.protocol !== "systemone" && !model.pinOf)
+  // Flat models whose offers are listed under them, keyed `provider/model`.
+  const [expanded, setExpanded] = createSignal<ReadonlySet<string>>(new Set())
+  const flatKey = (value: ModelChoice | undefined) => {
+    if (!value || typeof value !== "object" || !("id" in value)) return undefined
+    const model = sync.data.provider.find((item) => item.id === value.providerID)?.models[value.id]
+    if (model?.flat) return `${value.providerID}/${model.id}`
+    if (model?.pinOf) return `${value.providerID}/${model.pinOf}`
+    return undefined
+  }
   const activeProvider = () => {
     const current = local?.model.current()
     const preferred = [state.providerID, current?.providerID, state.settings.principal?.providerID]
@@ -233,6 +246,32 @@ export function DialogSetup(
                 routerLabel(provider) && model.upstream ? originCategory(provider, model) : `${provider.name} models`,
             }))
             .toSorted((a, b) => a.category.localeCompare(b.category))
+            // An expanded flat model lists the offers that can be pinned right under it; picking one
+            // saves its pin id, never the offer id, which can be the flat id itself.
+            .flatMap((option) => {
+              const model = provider.models[option.value.id]
+              if (!model?.flat || !expanded().has(`${provider.id}/${model.id}`)) return [option]
+              return [
+                option,
+                ...flatOffers(provider, model).flatMap((row) =>
+                  row.pin
+                    ? [
+                        {
+                          title: `  ↳ ${row.route}`,
+                          // Switched off for the flat model: greyed out, but its pin id still routes to it.
+                          titleView: row.off ? (
+                            <span style={{ fg: theme.textMuted }}>{`  ↳ ${row.route}`}</span>
+                          ) : undefined,
+                          value: { providerID: Provider.ID.make(provider.id), id: Model.ID.make(row.pin) },
+                          description: [row.detail, ...(row.offer.free ? ["free"] : [])].filter(Boolean).join(" · "),
+                          footer: undefined,
+                          category: option.category,
+                        },
+                      ]
+                    : [],
+                ),
+              ]
+            })
         : []),
     ]
   }
@@ -485,6 +524,23 @@ export function DialogSetup(
           ref={(ref) => (select = ref)}
           current={state.settings.principal ?? sessionModel()}
           options={options()}
+          actions={[
+            {
+              command: "model.dialog.offers",
+              title: "Offers",
+              hidden: !Object.values(activeProvider()?.models ?? {}).some((model) => model.flat),
+              disabled: (option) => !flatKey(option?.value),
+              onTrigger: (option) => {
+                const key = flatKey(option.value)
+                if (!key) return
+                setExpanded((current) => {
+                  const next = new Set(current)
+                  if (!next.delete(key)) next.add(key)
+                  return next
+                })
+              },
+            },
+          ]}
           onSelect={(option) => {
             // Choosing a provider stays on this step and lists that provider's models.
             if (typeof option.value === "object" && "provider" in option.value)

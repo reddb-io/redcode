@@ -3,6 +3,7 @@ import { Effect } from "effect"
 import { FetchHttpClient, HttpClient } from "effect/unstable/http"
 import { ProviderDiscovery } from "../../src/provider/discovery"
 import { testEffect } from "../lib/effect"
+import { FLAT_LIST } from "../fixture/red-router-flat"
 
 const it = testEffect(FetchHttpClient.layer)
 
@@ -421,3 +422,146 @@ it.live("reads a fallback combo's lead parameters and every member's from the mo
     ])
   }),
 )
+
+describe("flat model ids", () => {
+  it.live("reads a flat list's entries as fallback combos with their offers, members and parameters", () =>
+    Effect.gen(function* () {
+      const server = yield* serve(() => Response.json(FLAT_LIST))
+      const http = yield* HttpClient.HttpClient
+      const result = yield* ProviderDiscovery.discover(http, { baseURL: `${server.url}v1`, apiKey: "test" })
+      const claude = result.models.find((model) => model.id === "anthropic/claude-sonnet-4-5")
+      expect(claude?.limit).toEqual({ context: 200000, output: 64000 })
+      expect(claude?.router).toMatchObject({
+        owned_by: "combo",
+        strategy: "fallback",
+        flat: true,
+        canonical: "anthropic/claude-sonnet-4-5",
+        parameters_basis: "lead",
+        members: ["anthropic/claude-sonnet-4-5", "openrouter/anthropic/claude-sonnet-4.5"],
+      })
+      expect(claude?.router?.member_parameters?.map((item) => item.id)).toEqual([
+        "anthropic/claude-sonnet-4-5",
+        "openrouter/anthropic/claude-sonnet-4.5",
+      ])
+      expect(claude?.router?.offers).toEqual([
+        {
+          id: "anthropic/claude-sonnet-4-5",
+          // The vendor's own offer id is the flat id: it cannot be pinned.
+          pin_id: null,
+          provider: { id: "anthropic", slug: "anthropic", name: "Anthropic", category: "apikey", subscription: false },
+          via: [],
+          available: true,
+          price: { input: 3, output: 15 },
+          free: false,
+        },
+        {
+          id: "openrouter/anthropic/claude-sonnet-4.5",
+          pin_id: "openrouter/anthropic/claude-sonnet-4.5",
+          provider: {
+            id: "openrouter",
+            slug: "openrouter",
+            name: "OpenRouter",
+            category: "freeTier",
+            subscription: false,
+          },
+          via: [],
+          available: true,
+          price: { input: 3, output: 15 },
+          free: false,
+        },
+      ])
+      const jev = result.models.find((model) => model.id === "typesafe/jev-1.13")
+      expect(jev?.router?.offers?.[0]?.via).toEqual([
+        { slug: "red-router", name: "RedRouter" },
+        { slug: "red-router", name: "Office RedRouter" },
+      ])
+    }),
+  )
+
+  test("a list without id_format is prefixed: only an entry that says so is flat", () => {
+    const [claude] = FLAT_LIST.data
+    const combo = { ...claude, flat: undefined }
+    // Routers before flat ids never send `flat`, so nothing in a prefixed list becomes one.
+    expect(ProviderDiscovery.routerInfo(combo)?.flat).toBeUndefined()
+    expect(ProviderDiscovery.routerInfo(combo, "prefixed")?.flat).toBeUndefined()
+    expect(ProviderDiscovery.routerInfo(combo, "flat")?.flat).toBe(true)
+    expect(ProviderDiscovery.routerInfo(claude)?.flat).toBe(true)
+    // A prefixed offer keeps parsing as before.
+    expect(
+      ProviderDiscovery.routerInfo({
+        id: "openrouter/anthropic/claude-sonnet-4.5",
+        owned_by: "openrouter",
+        provider: { id: "openrouter", name: "OpenRouter" },
+      }),
+    ).toEqual({ owned_by: "openrouter", provider: { id: "openrouter", name: "OpenRouter" } })
+  })
+
+  it.live("a model list without id_format reads as before", () =>
+    Effect.gen(function* () {
+      const server = yield* serve(() =>
+        Response.json({
+          object: "list",
+          data: [{ id: "openrouter/typesafe/jev-1.13", owned_by: "openrouter", provider: { id: "openrouter" } }],
+        }),
+      )
+      const http = yield* HttpClient.HttpClient
+      const result = yield* ProviderDiscovery.discover(http, { baseURL: `${server.url}v1`, apiKey: "test" })
+      expect(result.models.map((model) => [model.id, model.router])).toEqual([
+        [
+          "openrouter/typesafe/jev-1.13",
+          { owned_by: "openrouter", provider: { id: "openrouter", name: "openrouter" } },
+        ],
+      ])
+    }),
+  )
+
+  test("keeps an offer switched off for the flat id and the router's offer order", () => {
+    const [claude] = FLAT_LIST.data
+    const info = ProviderDiscovery.routerInfo({
+      ...claude,
+      offer_order: "custom",
+      offers: claude.offers.map((offer, index) => (index === 1 ? { ...offer, available: false } : offer)),
+    })
+    expect(info?.offer_order).toBe("custom")
+    expect(info?.offers?.map((offer) => [offer.pin_id, offer.available])).toEqual([
+      [null, true],
+      ["openrouter/anthropic/claude-sonnet-4.5", false],
+    ])
+    expect(ProviderDiscovery.routerInfo({ ...claude, offer_order: "cheapest" })?.offer_order).toBeUndefined()
+    expect(ProviderDiscovery.routerInfo(claude)?.offer_order).toBeUndefined()
+  })
+
+  test("drops malformed offers and never pins through the offer id", () => {
+    const info = ProviderDiscovery.routerInfo(
+      {
+        id: "openai/gpt-5",
+        owned_by: "combo",
+        offers: [
+          { id: "openai/gpt-5", provider: { id: "openai", name: "OpenAI" } },
+          { id: "oai/gpt-5", pin_id: "  ", provider: { id: "openai" }, via: [{ slug: "red-router" }, { name: 1 }] },
+          { id: "no-provider/gpt-5", pin_id: "no-provider/gpt-5" },
+          { pin_id: "x", provider: { id: "openai" } },
+        ],
+      },
+      "flat",
+    )
+    expect(info?.offers).toEqual([
+      {
+        id: "openai/gpt-5",
+        pin_id: null,
+        provider: { id: "openai", name: "OpenAI" },
+        via: [],
+        available: true,
+        free: false,
+      },
+      {
+        id: "oai/gpt-5",
+        pin_id: null,
+        provider: { id: "openai", name: "openai" },
+        via: [{ slug: "red-router", name: "red-router" }],
+        available: true,
+        free: false,
+      },
+    ])
+  })
+})

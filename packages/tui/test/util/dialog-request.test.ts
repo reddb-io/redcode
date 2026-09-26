@@ -2,10 +2,13 @@ import { expect, test } from "bun:test"
 import {
   DIALOG_REQUEST_TIMEOUT,
   DialogTimeoutError,
+  EXIT_CONFIRM_WINDOW,
   EXIT_PRESS_WINDOW,
   REMOTE_DIALOG_REQUEST_TIMEOUT,
+  accidentalExitKey,
   classifyDialogFailure,
   createExitPresses,
+  exitKeyAction,
   dialogRequest,
   dialogTimeout,
   isNotFound,
@@ -54,4 +57,33 @@ test("a repeated exit press counts only for the same key inside the window", () 
   expect(presses.press("que_b", 1_500 + EXIT_PRESS_WINDOW + 2)).toBe(false)
   presses.reset()
   expect(presses.press("que_b", 100_000)).toBe(false)
+})
+
+test("only bare ctrl+c and ctrl+d are guarded exit keys", () => {
+  expect(accidentalExitKey({ name: "c", ctrl: true })).toBe("ctrl+c")
+  expect(accidentalExitKey({ name: "d", ctrl: true })).toBe("ctrl+d")
+  // The leader chord's last key, a palette dispatch and modified variants exit as meant.
+  expect(accidentalExitKey({ name: "q" })).toBeUndefined()
+  expect(accidentalExitKey({ name: "command" })).toBeUndefined()
+  expect(accidentalExitKey({ name: "c", ctrl: true, shift: true })).toBeUndefined()
+  expect(accidentalExitKey(undefined)).toBeUndefined()
+})
+
+test("an exit key never exits on its first press", () => {
+  expect(exitKeyAction({ key: "ctrl+c", busy: false, repeated: false })).toBe("confirm")
+  expect(exitKeyAction({ key: "ctrl+c", busy: false, repeated: true })).toBe("exit")
+  // While the session works it interrupts, however often it is pressed.
+  expect(exitKeyAction({ key: "ctrl+c", busy: true, repeated: false })).toBe("interrupt")
+  expect(exitKeyAction({ key: "ctrl+c", busy: true, repeated: true })).toBe("interrupt")
+  // /exit, the palette and the leader chord were meant.
+  expect(exitKeyAction({ key: undefined, busy: true, repeated: false })).toBe("exit")
+})
+
+test("the second exit press counts only inside the confirm window", () => {
+  const presses = createExitPresses(EXIT_CONFIRM_WINDOW)
+  expect(presses.press("ctrl+c", 1_000)).toBe(false)
+  expect(presses.press("ctrl+c", 1_000 + EXIT_CONFIRM_WINDOW + 1)).toBe(false)
+  expect(presses.press("ctrl+c", 1_000 + EXIT_CONFIRM_WINDOW + 2)).toBe(true)
+  expect(presses.press("ctrl+d", 5_000)).toBe(false)
+  expect(presses.press("ctrl+c", 5_001)).toBe(false)
 })

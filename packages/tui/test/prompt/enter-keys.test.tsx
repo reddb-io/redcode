@@ -11,12 +11,14 @@ import { createEventSource, createFetch, directory, json } from "../fixture/tui-
 // The real prompt, mounted in the app: every way a terminal reports "newline" must insert one,
 // idle or busy. The keymap test covers which reports steer or submit; this one guards the wiring
 // of the prompt's own layers (the always-on steer layer above the textarea bindings).
+// ESC CR goes first: once a terminal has reported Shift+Enter as CSI 13;2u or CSI 27;2;13~, its
+// Shift+Enter cannot be the ESC CR mapping, so a later ESC CR is alt+return and steers.
 const newlineReports = [
+  ["shift+return mapped to ESC CR", "\x1b\r"],
   ["shift+return, modifyOtherKeys (CSI 27;2;13~, WezTerm and xterm)", "\x1b[27;2;13~"],
   ["shift+return, kitty (CSI 13;2u)", "\x1b[13;2u"],
   ["ctrl+return, modifyOtherKeys (CSI 27;5;13~)", "\x1b[27;5;13~"],
   ["ctrl+j (LF)", "\n"],
-  ["shift+return mapped to ESC CR", "\x1b\r"],
 ] as const
 
 const session = {
@@ -69,7 +71,8 @@ for (const busy of [false, true]) {
       if (url.pathname === "/session/status") return json(busy ? { [session.id]: { type: "busy" } } : {})
       if (url.pathname === "/config/providers") return json({ providers: [provider], default: { mock: "model" } })
       if (url.pathname === "/agent") return json([{ name: "build", mode: "primary", permission: [], options: {} }])
-      if (url.pathname.includes("prompt")) {
+      // Sends only: listing the session's pending prompts is not one.
+      if (/\/prompt(_async|\/)/.test(url.pathname)) {
         prompts.push(url.pathname)
         return json({})
       }

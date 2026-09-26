@@ -24,6 +24,7 @@ import { createMenuDismissController } from "@/utils/menu-dismiss-controller"
 import { createEventListener } from "@solid-primitives/event-listener"
 import { matchesModelSearch } from "./dialog-select-model-search"
 import {
+  flatOffers,
   modelAlternatives,
   modelGroup,
   modelKey,
@@ -63,6 +64,7 @@ function originLabel(
 ) {
   return [
     ...originRoute(language, modelOrigin(item)),
+    ...(item.flat && item.offerOrder === "custom" ? [language.t("model.flat.customOrder")] : []),
     ...(alternatives?.direct ? [language.t("model.origin.alsoDirect")] : []),
     ...(alternatives?.routers ?? []).map((router) => language.t("model.origin.alsoVia", { router })),
   ].join(" · ")
@@ -89,8 +91,15 @@ const ModelList: Component<{
   const language = useLanguage()
 
   const visible = createMemo(() => visibleModels(model))
-  const models = createMemo(() => visible().filter((m) => (props.provider ? m.provider.id === props.provider : true)))
+  // A pinned offer of a flat model is listed under that model (see the offers below), not on its own.
+  const models = createMemo(() =>
+    visible().filter((m) => !m.pinOf && (props.provider ? m.provider.id === props.provider : true)),
+  )
   const alternatives = createMemo(() => modelAlternatives(visible()))
+  // Flat models whose offers are shown, by `modelKey`.
+  const [expanded, setExpanded] = createStore<Record<string, boolean>>({})
+  const pinnable = (item: ModelItem) => (id: string) =>
+    model.list().some((entry) => entry.id === id && entry.provider.id === item.provider.id)
 
   return (
     <List
@@ -129,6 +138,7 @@ const ModelList: Component<{
       }}
     >
       {(i) => (
+        <div class="w-full flex flex-col">
         <div class="w-full flex items-center gap-x-2 text-13-regular">
           <span class="truncate">{i.name}</span>
           <Show when={isFree(i.provider.id, i.cost)}>
@@ -141,6 +151,52 @@ const ModelList: Component<{
           <span class="ml-auto min-w-0 truncate text-12-regular text-text-weak">
             {originLabel(language, i, alternatives().get(modelKey(i)))}
           </span>
+          <Show when={i.flat && i.offers?.length}>
+            <IconButton
+              icon={expanded[modelKey(i)] ? "chevron-down" : "chevron-right"}
+              variant="ghost"
+              iconSize="normal"
+              class="size-5 shrink-0"
+              aria-label={language.t("model.flat.offers")}
+              aria-expanded={!!expanded[modelKey(i)]}
+              onClick={(event) => {
+                event.stopPropagation()
+                setExpanded(modelKey(i), (open) => !open)
+              }}
+            />
+          </Show>
+        </div>
+        <Show when={expanded[modelKey(i)]}>
+          <div class="flex flex-col pl-4 pt-1">
+            <For each={flatOffers(i, pinnable(i))}>
+              {(row) => (
+                <button
+                  type="button"
+                  class="w-full flex items-center gap-x-2 py-0.5 text-12-regular text-left disabled:opacity-50"
+                  classList={{ "text-text-weak": row.off }}
+                  disabled={!row.pin}
+                  title={row.pin ? language.t("model.flat.pin") : language.t("model.flat.unpinnable")}
+                  onClick={(event) => {
+                    event.stopPropagation()
+                    if (!row.pin) return
+                    // The pin id, never the offer id: the vendor's own offer id can be the flat id itself.
+                    model.set({ modelID: row.pin, providerID: i.provider.id }, { recent: true })
+                    props.onSelect()
+                  }}
+                >
+                  <span class="truncate">{row.route}</span>
+                  <Show when={row.offer.free}>
+                    <Tag>{language.t("model.tag.free")}</Tag>
+                  </Show>
+                  <Show when={row.off}>
+                    <span>{language.t("model.flat.off")}</span>
+                  </Show>
+                  <span class="ml-auto shrink-0 text-text-weak">{row.price}</span>
+                </button>
+              )}
+            </For>
+          </div>
+        </Show>
         </div>
       )}
     </List>

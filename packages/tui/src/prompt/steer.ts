@@ -1,21 +1,25 @@
 // Steering vs queueing from the prompt.
 //
-// A submitted prompt is admitted to the session inbox with a delivery: `queue` waits until the
-// running turn would otherwise go idle, `steer` is promoted at the next safe step boundary of the
-// running turn without interrupting the tool that is running. On an idle session both run right
+// A submitted prompt is admitted to the session inbox with a delivery: `steer` is promoted at the
+// next safe step boundary of the running turn without interrupting the tool that is running,
+// `queue` waits until the running turn would otherwise go idle. On an idle session both run right
 // away, so the delivery is always sent and no client-side status check can race the server.
-// Enter queues; the steer key (alt+return) or `/steer <text>` steers. Idle, the steer key submits
-// like Enter, so it is always "send now"; shift+return always inserts a newline.
+// Enter steers; the queue key (alt+return) or `/queue <text>` queues. Idle, the queue key submits
+// like Enter, so it is always "send"; shift+return always inserts a newline. `/steer <text>` and an
+// explicitly configured `input_steer` key still steer, like Enter.
 //
-// A bare ESC CR is not a steer key press. Terminals without keyboard enhancements report
-// alt+return that way, but so does every setup that maps Shift+Enter to ESC CR to get a newline
-// out of a legacy terminal (the VS Code and Cursor `sendSequence` binding, Alacritty `chars`,
-// iTerm2 "Send Escape Sequence", tmux). Those two cannot be told apart, and a newline that turns
-// into a send loses a half-written prompt, so the legacy byte pair stays a newline. alt+return
-// steers when the terminal reports it unambiguously: kitty `CSI 13;3u` or modifyOtherKeys
-// `CSI 27;3;13~`.
+// A bare ESC CR is not a queue key press by default. Terminals without keyboard enhancements
+// report alt+return that way, but so does every setup that maps Shift+Enter to ESC CR to get a
+// newline out of a legacy terminal (the VS Code and Cursor `sendSequence` binding, Alacritty
+// `chars`, iTerm2 "Send Escape Sequence", tmux). Those two cannot be told apart from the bytes,
+// and a newline that turns into a send loses a half-written prompt, so the legacy byte pair stays
+// a newline until something rules the Shift+Enter mapping out: the terminal has already reported
+// Shift+Enter in a form of its own (`CSI 13;2u`, `CSI 27;2;13~`), or the config keeps alt+return
+// off `input_newline`. alt+return always queues when the terminal reports it unambiguously: kitty
+// `CSI 13;3u` or modifyOtherKeys `CSI 27;3;13~`. A multiplexer that forwards legacy bytes (zellij
+// without the kitty protocol, tmux) sends ESC CR for Alt+Enter, so this is the common case there.
 
-export type PromptIntent = "submit" | "steer"
+export type PromptIntent = "submit" | "steer" | "queue"
 export type Delivery = "steer" | "queue"
 
 /** Session status type as the TUI stores it (`idle`, `busy`, `retry`, ...). */
@@ -23,50 +27,100 @@ export function isBusy(statusType: string | undefined) {
   return statusType !== undefined && statusType !== "idle"
 }
 
-/** The delivery a prompt is sent with. */
+/** The delivery a prompt is sent with: only the queue key and `/queue` queue, everything else steers. */
 export function promptDelivery(intent: PromptIntent): Delivery {
-  return intent === "steer" ? "steer" : "queue"
+  return intent === "queue" ? "queue" : "steer"
 }
 
 /**
- * The steer key layer is live whenever the prompt takes input, busy or idle: what the key does is
- * decided per press by `steerKeyIntent`, so a press that lands as the turn ends is never lost to
- * a layer that was disabled a moment earlier.
+ * The queue and steer key layer is live whenever the prompt takes input, busy or idle: what a key
+ * does is decided per press by `queueKeyIntent` / `steerKeyIntent`, so a press that lands as the
+ * turn ends is never lost to a layer that was disabled a moment earlier.
  */
-export function steerKeyActive(input: { focused: boolean; disabled: boolean }) {
+export function promptKeyActive(input: { focused: boolean; disabled: boolean }) {
   return input.focused && !input.disabled
 }
 
 /** The parts of a key event that say how the terminal encoded it. */
-export type KeyReport = { raw?: string; sequence?: string; source?: string }
+export type KeyReport = { raw?: string; sequence?: string; source?: string; name?: string; shift?: boolean }
 
 /**
  * Whether a key event is the legacy ESC CR encoding, which a Shift+Enter mapped to ESC CR and a
- * legacy alt+return share. The steer key rejects it so it falls through to `input_newline`.
+ * legacy alt+return share. The queue key rejects it so it falls through to `input_newline`.
  */
 export function legacyAltReturn(event: KeyReport | undefined) {
   if (!event || event.source === "kitty") return false
   return (event.raw ?? event.sequence) === "\x1b\r"
 }
 
-/** While the session works the steer key steers; idle, it submits exactly like Enter. */
+/**
+ * Whether a key event is Shift+Enter in a form no alt+return shares (kitty `CSI 13;2u`,
+ * modifyOtherKeys `CSI 27;2;13~`). Once a terminal has sent one, its Shift+Enter is not mapped to
+ * ESC CR, so a later ESC CR can only be alt+return.
+ */
+export function distinctShiftReturn(event: KeyReport | undefined) {
+  if (!event || event.name !== "return" || event.shift !== true) return false
+  return (event.raw ?? event.sequence ?? "").startsWith("\x1b[")
+}
+
+/** Whether a set of bindings (as the keybind lookup returns them) includes alt+return. */
+export function bindsAltReturn(bindings: readonly { key: unknown }[]) {
+  return bindings.some((binding) => {
+    const key = binding.key
+    if (typeof key === "string")
+      return key.split(",").some((part) => /^(alt|meta|option)\+(return|enter)$/i.test(part.trim()))
+    if (typeof key !== "object" || key === null) return false
+    const stroke = key as { name?: unknown; meta?: unknown; ctrl?: unknown; shift?: unknown }
+    return (
+      (stroke.name === "return" || stroke.name === "enter") && stroke.meta === true && !stroke.ctrl && !stroke.shift
+    )
+  })
+}
+
+export type EscCrContext = {
+  /** The terminal has already sent Shift+Enter as `CSI 13;2u` or `CSI 27;2;13~` this run. */
+  shiftReturnReported: boolean
+  /** `input_newline` lists alt+return, so ESC CR has a newline to fall back to. */
+  newlineOnAltReturn: boolean
+}
+
+/** Whether a bare ESC CR can only be alt+return here (see the note at the top of the file). */
+export function escCrIsAltReturn(context: EscCrContext) {
+  return context.shiftReturnReported || !context.newlineOnAltReturn
+}
+
+/** Whether the queue or steer key lets this press fall through to `input_newline`. */
+export function promptKeyRejects(event: KeyReport | undefined, context: EscCrContext) {
+  return legacyAltReturn(event) && !escCrIsAltReturn(context)
+}
+
+/** While the session works the queue key queues; idle, it submits exactly like Enter. */
+export function queueKeyIntent(statusType: string | undefined): PromptIntent {
+  return isBusy(statusType) ? "queue" : "submit"
+}
+
+/** An explicitly configured steer key steers while the session works; idle, it submits like Enter. */
 export function steerKeyIntent(statusType: string | undefined): PromptIntent {
   return isBusy(statusType) ? "steer" : "submit"
 }
 
 export const STEER_SLASH = "steer"
+export const QUEUE_SLASH = "queue"
+
+export type DeliverySlash = typeof STEER_SLASH | typeof QUEUE_SLASH
 
 /**
- * `/steer <text>` is the steer fallback that works in every terminal. Returns the text to steer
- * with (possibly empty), or `undefined` when the input is not a steer command.
+ * `/queue <text>` and `/steer <text>` pick the delivery from every terminal, whatever it reports
+ * for alt+return. Returns the text to send (possibly empty), or `undefined` when the input is not
+ * that command.
  */
-export function parseSteerCommand(input: string): string | undefined {
-  const prefix = steerPrefixLength(input)
+export function parseSlashCommand(name: DeliverySlash, input: string): string | undefined {
+  const prefix = slashPrefixLength(name, input)
   return prefix === undefined ? undefined : input.slice(prefix)
 }
 
-function steerPrefixLength(input: string) {
-  const match = /^\/steer(?:[ \t]+|\n|$)/.exec(input)
+function slashPrefixLength(name: DeliverySlash, input: string) {
+  const match = new RegExp(`^/${name}(?:[ \\t]+|\\n|$)`).exec(input)
   return match ? match[0].length : undefined
 }
 
@@ -87,15 +141,16 @@ function isSpan(value: unknown): value is Span {
 }
 
 /**
- * Strips `/steer` from the prompt text and moves the parts' text offsets (file and symbol parts
- * keep them under `source.text`, agent parts directly under `source`) by the removed prefix, so a
- * message restored into the prompt still lines its mentions up with the text.
+ * Strips `/queue` or `/steer` from the prompt text and moves the parts' text offsets (file and
+ * symbol parts keep them under `source.text`, agent parts directly under `source`) by the removed
+ * prefix, so a message restored into the prompt still lines its mentions up with the text.
  */
-export function stripSteerCommand<P extends SourcedPart>(
+export function stripSlashCommand<P extends SourcedPart>(
+  name: DeliverySlash,
   text: string,
   parts: readonly P[],
 ): { text: string; parts: P[] } | undefined {
-  const prefix = steerPrefixLength(text)
+  const prefix = slashPrefixLength(name, text)
   if (prefix === undefined) return undefined
   return {
     text: text.slice(prefix),
@@ -123,34 +178,43 @@ export function altReturnUnreported(env: TerminalEnv) {
 }
 
 /**
- * Whether the busy hint should name `/steer` instead of the steer key. shift+return has no legacy
- * encoding at all. alt+return only steers when the terminal reports it unambiguously (see
+ * Whether the busy hint should name `/queue` instead of the queue key. shift+return has no legacy
+ * encoding at all. alt+return only queues when the terminal reports it unambiguously (see
  * `legacyAltReturn`), which a terminal without the kitty protocol may not do, and some hosts keep
  * the key for themselves (`altReturnUnreported`).
  */
-export function steerKeyAmbiguous(steerKey: string, kittyKeyboard: boolean | undefined, env: TerminalEnv = {}) {
-  if (/(alt|meta|option)\+(return|enter)/i.test(steerKey)) return kittyKeyboard === false || altReturnUnreported(env)
+export function queueKeyAmbiguous(
+  queueKey: string,
+  kittyKeyboard: boolean | undefined,
+  env: TerminalEnv = {},
+  escCrQueues = false,
+) {
+  if (/(alt|meta|option)\+(return|enter)/i.test(queueKey)) {
+    if (altReturnUnreported(env)) return true
+    return kittyKeyboard === false && !escCrQueues
+  }
   if (kittyKeyboard !== false) return false
-  return /shift\+(return|enter)/i.test(steerKey)
+  return /shift\+(return|enter)/i.test(queueKey)
 }
 
 /**
- * The hint shown next to the prompt while the session works. With `queued`, the steer key acts on
- * the prompt already waiting in the queue rather than on what is typed, and says so.
+ * The hint shown next to the prompt while the session works. With `queued`, Enter on an empty
+ * prompt steers the prompt already waiting in the queue rather than sending nothing, and says so.
  */
 export function busyHint(input: {
   submitKey: string
-  steerKey: string
+  queueKey: string
   kittyKeyboard?: boolean
   env?: TerminalEnv
   queued?: boolean
+  /** A bare ESC CR queues here (`escCrIsAltReturn`), so the legacy alt+return works too. */
+  escCrQueues?: boolean
 }) {
   const parts: string[] = []
-  const what = input.queued === true ? "steer queued" : "steer"
-  if (input.submitKey) parts.push(`${input.submitKey} queue`)
-  if (input.steerKey && !steerKeyAmbiguous(input.steerKey, input.kittyKeyboard, input.env))
-    parts.push(`${input.steerKey} ${what}`)
-  else parts.push(`/${STEER_SLASH} ${what}`)
+  if (input.submitKey) parts.push(`${input.submitKey} ${input.queued === true ? "steer queued" : "steer"}`)
+  if (input.queueKey && !queueKeyAmbiguous(input.queueKey, input.kittyKeyboard, input.env, input.escCrQueues))
+    parts.push(`${input.queueKey} queue`)
+  else parts.push(`/${QUEUE_SLASH} queue`)
   return parts.join(" · ")
 }
 
@@ -172,7 +236,7 @@ export function pendingAssistantIndex(messages: readonly PendingMessageLike[], s
 
 /**
  * The most recent prompt waiting behind the running turn that is not already a steer — the one
- * "steer queued" acts on. `undefined` when nothing is waiting.
+ * "steer queued" (Enter on an empty prompt while busy) acts on. `undefined` when nothing is waiting.
  */
 export function latestQueuedPrompt(input: {
   messages: readonly PendingMessageLike[]

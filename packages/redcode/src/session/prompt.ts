@@ -252,6 +252,13 @@ export interface Interface {
     messageID: MessageID
     delivery: SessionInput.Delivery
   }) => Effect.Effect<SessionInput.Admitted | undefined>
+  /** The prompts admitted to this session and not yet promoted, oldest first. */
+  readonly pending: (sessionID: SessionID) => Effect.Effect<ReadonlyArray<PendingPrompt>>
+  /**
+   * Discards a prompt that is still waiting, so it is never promoted. Returns `false` when the
+   * prompt is not pending in this session (unknown, already promoted or removed).
+   */
+  readonly discard: (input: { sessionID: SessionID; messageID: MessageID }) => Effect.Effect<boolean>
 }
 
 export class Service extends Context.Service<Service, Interface>()("@redcode/SessionPrompt") {}
@@ -364,6 +371,23 @@ const layer = Layer.effect(
       return observed
     })
     const { db } = database
+    // A queued prompt is taken up where the drain it was admitted into would go idle. One still
+    // pending when that drain ended was skipped — an Esc, a failed turn, a process that died — and
+    // is stale: promoting it at some later idle boundary would put a request the person made long
+    // ago after answers they have had since. Stale prompts wait for an explicit send (turning them
+    // into a steer) or a discard. Drains are process-local, so is this record: per session, the
+    // last admission sequence a finished drain left behind, and anything admitted before this
+    // process started, whose drain can only have died with the process that ran it.
+    const skippedThrough = new Map<SessionID, number>()
+    // The newest queued prompt the running drain's last idle check saw, per session. A drain that
+    // ends normally has passed on exactly those; one admitted after that check is not skipped, it
+    // joined too late and the next drain takes it up.
+    const checkedThrough = new Map<SessionID, number>()
+    const startedAt = DateTime.toEpochMillis(yield* DateTime.now)
+    const stale = (row: SessionInput.Admitted) =>
+      row.delivery === "queue" &&
+      (DateTime.toEpochMillis(row.timeCreated) < startedAt ||
+        row.admittedSeq <= (skippedThrough.get(row.sessionID) ?? -1))
     // Task review is bookkeeping around a turn. A list the store refuses to reconcile keeps its stored
     // state for this step instead of failing the prompt: it runs before every provider step, so a
     // failure here would fail every prompt in the session.
@@ -946,9 +970,7 @@ const layer = Layer.effect(
       // A fallback combo's member other than its lead that served the session is planned for.
       if (Exit.isSuccess(exit)) return ComboMember.model(sessionID, exit.value)
       const err = Cause.squash(exit.cause)
-      const message = Provider.ModelNotFoundError.isInstance(err)
-        ? `Model not found: ${err.providerID}/${err.modelID}.${err.suggestions?.length ? ` Did you mean: ${err.suggestions.join(", ")}?` : ""}`
-        : errorMessage(err)
+      const message = Provider.ModelNotFoundError.isInstance(err) ? err.message : errorMessage(err)
       yield* events
         .publish(Session.Event.Error, {
           sessionID,
@@ -1432,17 +1454,73 @@ const layer = Layer.effect(
         ...(files.length > 0 ? { files } : {}),
         ...(mentions.length > 0 ? { agents: mentions } : {}),
       })
+      const delivery = input.delivery ?? "steer"
+      const earlier = yield* readmission({ sessionID: input.sessionID, messageID: input.messageID, prompt, delivery })
+      if (earlier) return earlier
       yield* SessionInput.admit(db, events, {
         id: SessionMessage.ID.make(info.id),
         sessionID: input.sessionID,
         prompt,
-        delivery: input.delivery ?? "steer",
+        delivery,
       })
       yield* sessions.updateMessage(info)
       for (const part of parts) yield* sessions.updatePart(part)
 
       return { info, parts }
     }, Effect.scoped)
+
+    // The stored message a prompt is a second copy of, returned instead of admitting it again.
+    //
+    // A prompt that names an ID already admitted is a retry. An exact one (same Session, prompt and
+    // delivery) gets the stored message back untouched: writing its rows again would re-stamp a
+    // promoted message to now, moving it to the end of history where the model reads it as the
+    // person asking a second time. A reuse that differs is refused.
+    //
+    // A prompt without an ID that repeats one still waiting in the inbox is the same request sent
+    // again: after a send the client reported as failed although the server had admitted it, or
+    // to get a queued prompt taken up sooner. A second row would be promoted at its own idle
+    // boundary, often long after the first one was answered. The waiting row stands for both, and
+    // a steer moves it ahead of the queue. Callers that need distinct inputs name their IDs.
+    const readmission = Effect.fnUntraced(function* (input: {
+      sessionID: SessionID
+      messageID?: MessageID
+      prompt: Prompt
+      delivery: SessionInput.Delivery
+    }) {
+      if (input.messageID !== undefined) {
+        const admitted = yield* SessionInput.find(db, SessionMessage.ID.make(input.messageID))
+        if (admitted === undefined) return undefined
+        if (!SessionInput.equivalent(admitted, input))
+          return yield* Effect.die(new SessionInput.LifecycleConflict({ id: admitted.id }))
+        // Admitted but its rows never written: the retry writes them.
+        return yield* storedUserMessage(input.sessionID, input.messageID)
+      }
+      // A stale row is not the request being repeated: sending it again is a new request.
+      const waiting = (yield* SessionInput.listPending(db, input.sessionID)).find(
+        (row) => !stale(row) && SessionInput.matchesPrompt(row, input),
+      )
+      if (waiting === undefined) return undefined
+      const stored = yield* storedUserMessage(input.sessionID, MessageID.make(waiting.id))
+      if (stored === undefined) return undefined
+      // Promoted in the meantime is fine too: the request is being delivered either way.
+      if (input.delivery === "steer" && waiting.delivery === "queue")
+        yield* SessionInput.setDelivery(db, events, { sessionID: input.sessionID, id: waiting.id, delivery: "steer" })
+      yield* Effect.logInfo("prompt repeats one still pending; kept the admitted one", {
+        "session.id": input.sessionID,
+        messageID: waiting.id,
+        delivery: input.delivery,
+      })
+      return stored
+    })
+
+    const storedUserMessage = (sessionID: SessionID, messageID: MessageID) =>
+      MessageV2.get({ sessionID, messageID }).pipe(
+        Effect.provideService(Database.Service, database),
+        Effect.option,
+        Effect.map((message) =>
+          Option.isSome(message) && message.value.info.role === "user" ? message.value : undefined,
+        ),
+      )
 
     // Prompt Promotion for a V1 session. The stored user message is published again, re-stamped
     // to now (history is ordered by creation time, and an admitted prompt is older than everything
@@ -1498,12 +1576,15 @@ const layer = Layer.effect(
     })
 
     // The boundary where the session would otherwise go idle: every steer still pending comes
-    // first, then exactly one queued prompt. Returns whether the drain has new work.
+    // first, then exactly one queued prompt that is not stale. Returns whether the drain has new work.
     const promoteAtIdle = Effect.fn("SessionPrompt.promoteAtIdle")(function* (sessionID: SessionID) {
       const steers = yield* SessionInput.listPending(db, sessionID, { delivery: "steer" })
       if ((yield* promote(sessionID, steers)) > 0) return true
       const queued = yield* SessionInput.listPending(db, sessionID, { delivery: "queue" })
-      return (yield* promote(sessionID, queued, 1)) > 0
+      const newest = queued.at(-1)
+      if (newest) checkedThrough.set(sessionID, newest.admittedSeq)
+      const fresh = queued.filter((row) => !stale(row))
+      return (yield* promote(sessionID, fresh, 1)) > 0
     })
 
     const prompt: (input: PromptInput) => Effect.Effect<SessionV1.WithParts, Image.Error> = Effect.fn(
@@ -3332,6 +3413,17 @@ const layer = Layer.effect(
           Effect.ensuring(compaction.discard(input.sessionID)),
           Effect.onExit((exit) =>
             Effect.gen(function* () {
+              // What the drain leaves queued missed its boundary (see `stale`): after a normal end,
+              // what its last idle check passed on; after an Esc or a failure, everything queued.
+              const checked = checkedThrough.get(input.sessionID)
+              checkedThrough.delete(input.sessionID)
+              const failed =
+                Exit.isFailure(exit) || (exit.value.info.role === "assistant" && exit.value.info.error !== undefined)
+              const through = failed
+                ? (yield* SessionInput.listPending(db, input.sessionID, { delivery: "queue" })).at(-1)?.admittedSeq
+                : checked
+              if (through !== undefined)
+                skippedThrough.set(input.sessionID, Math.max(through, skippedThrough.get(input.sessionID) ?? -1))
               if (Exit.isFailure(exit) && !Cause.hasInterruptsOnly(exit.cause))
                 yield* goals.block(input.sessionID, `Execution failed: ${errorMessage(Cause.squash(exit.cause))}`)
               if (Exit.isSuccess(exit) && exit.value.info.role === "assistant" && exit.value.info.error)
@@ -3527,6 +3619,29 @@ const layer = Layer.effect(
       return row
     })
 
+    const pending = Effect.fn("SessionPrompt.pending")(function* (sessionID: SessionID) {
+      return (yield* SessionInput.listPending(db, sessionID)).map((row) =>
+        PendingPrompt.make({
+          id: MessageID.make(row.id),
+          delivery: row.delivery,
+          text: row.prompt.text,
+          files: row.prompt.files?.length ?? 0,
+          time: DateTime.toEpochMillis(row.timeCreated),
+          stale: stale(row),
+        }),
+      )
+    })
+
+    const discard = Effect.fn("SessionPrompt.discard")(function* (input: {
+      sessionID: SessionID
+      messageID: MessageID
+    }) {
+      return yield* SessionInput.discard(db, events, {
+        sessionID: input.sessionID,
+        id: SessionMessage.ID.make(input.messageID),
+      })
+    })
+
     return Service.of({
       cancel,
       prompt,
@@ -3535,6 +3650,8 @@ const layer = Layer.effect(
       command,
       resolvePromptParts,
       setDelivery,
+      pending,
+      discard,
     })
   }),
 )
@@ -3571,6 +3688,21 @@ export const PromptInput = Schema.Struct({
   ),
 })
 export type PromptInput = Schema.Schema.Type<typeof PromptInput>
+
+export const PendingPrompt = Schema.Struct({
+  id: MessageID,
+  delivery: SessionInput.Delivery,
+  text: Schema.String,
+  /** Attached files, which the text alone does not show. */
+  files: Schema.Finite,
+  /** When it was admitted, in epoch milliseconds. */
+  time: Schema.Finite,
+  stale: Schema.Boolean.annotate({
+    description:
+      "Queued before the session last went idle without taking it up. A stale prompt is never promoted on its own: it waits to be sent as a steer or discarded",
+  }),
+}).annotate({ identifier: "SessionPendingPrompt" })
+export type PendingPrompt = Schema.Schema.Type<typeof PendingPrompt>
 
 export class LoopInput extends Schema.Class<LoopInput>("SessionPrompt.LoopInput")({
   sessionID: SessionID,

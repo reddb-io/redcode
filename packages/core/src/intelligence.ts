@@ -58,8 +58,10 @@ const JevIDs = new Set([
 export const isJev = (id: string) => {
   const lower = id.toLowerCase()
   const segments = lower.split("/")
-  // A routed id, through any number of routers, is judged by the model at its end.
-  return [lower, Router.route(lower).model, segments.at(-1), segments.slice(-2).join("/")].some((candidate) =>
+  // Judged by the model at its end, never by a provider read from the id: a routed id through any
+  // number of routers (`red-router/opencode-go/typesafe/jev-1.13`) and a RedRouter flat id, which
+  // names no provider (`typesafe/jev-1.13`), both end in the model's last one or two segments.
+  return [lower, segments.at(-1), segments.slice(-2).join("/")].some((candidate) =>
     candidate ? JevIDs.has(candidate) : false,
   )
 }
@@ -625,6 +627,8 @@ export const make = (
         manual: false,
       }
     })
+    // The System One catalog always lists prefixed ids (flat ids are only for `/v1/models`), so its ids
+    // are routes that can be parsed.
     // A RedRouter model named by its route: the connected router, every router the id passes through,
     // then the upstream that serves it (with the account that lends the key when it is another
     // provider's) and the model, e.g. "RedRouter » RedRouter » OpenCode Zen (via OpenCode Go) · JEV 1.13".

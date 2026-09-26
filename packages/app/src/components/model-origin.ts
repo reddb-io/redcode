@@ -2,7 +2,8 @@ import type { Model, Provider, RouterConnection } from "@reddb-io/redcode-sdk/v2
 import { Router } from "@reddb-io/redcode-schema/router"
 
 type OriginProvider = Pick<Provider, "id" | "name" | "router">
-type OriginModel = Pick<Model, "id" | "upstream" | "via"> & { provider: OriginProvider }
+type OriginModel = Pick<Model, "id" | "upstream" | "via" | "flat" | "offers"> & { provider: OriginProvider }
+type Offer = NonNullable<Model["offers"]>[number]
 
 export type ModelAlternatives = { direct: boolean; routers: string[] }
 
@@ -80,19 +81,25 @@ export function modelGroup(model: OriginModel) {
 /**
  * Pairs models offered both directly and through a RedRouter, keyed by `modelKey`. A RedRouter model
  * matches a direct one when its upstream id or slug is the direct provider's id and its id after the
- * first `/` is the direct model's id.
+ * first `/` is the direct model's id. A flat model id names no provider, so each of its offers is
+ * matched instead (an offer id is always chained).
  */
 export function modelAlternatives(models: OriginModel[]) {
   const direct = new Map(models.filter((model) => !routerKind(model.provider)).map((model) => [modelKey(model), model]))
   const pairs = models.flatMap((routed) => {
-    const upstream = routed.upstream
+    if (routerKind(routed.provider) !== "red-router") return []
     const slash = routed.id.indexOf("/")
-    if (routerKind(routed.provider) !== "red-router" || !upstream || slash < 0) return []
-    const modelID = routed.id.slice(slash + 1)
-    return [...new Set([upstream.id, upstream.slug])].flatMap((providerID) => {
-      const match = providerID ? direct.get(`${providerID}:${modelID}`) : undefined
-      return match ? [{ direct: match, routed }] : []
-    })
+    const routes = routed.flat
+      ? (routed.offers ?? []).map((offer) => ({ upstream: offer.provider, modelID: Router.route(offer.id).model }))
+      : routed.upstream && slash >= 0
+        ? [{ upstream: routed.upstream, modelID: routed.id.slice(slash + 1) }]
+        : []
+    return routes.flatMap((route) =>
+      [...new Set([route.upstream.id, route.upstream.slug])].flatMap((providerID) => {
+        const match = providerID ? direct.get(`${providerID}:${route.modelID}`) : undefined
+        return match ? [{ direct: match, routed }] : []
+      }),
+    )
   })
   return pairs.reduce((result, pair) => {
     const directKey = modelKey(pair.direct)
@@ -103,4 +110,34 @@ export function modelAlternatives(models: OriginModel[]) {
     result.set(modelKey(pair.routed), { direct: true, routers: [] })
     return result
   }, new Map<string, ModelAlternatives>())
+}
+
+/**
+ * The offers of a flat model, in the router's policy order: the route (the connection's router, the
+ * routers in between and the provider, joined by ` » `), the price per million tokens, and the id to
+ * save to pin the offer. That id is the offer's pin id, never the offer id, which can be the flat id
+ * itself; undefined when the offer cannot be pinned or no model is listed under its pin id.
+ */
+export function flatOffers(
+  model: Pick<Model, "flat" | "offers"> & { provider: OriginProvider },
+  pinnable: (id: string) => boolean,
+) {
+  if (!model.flat) return []
+  return (model.offers ?? []).map((offer) => ({
+    offer,
+    route: [routerName(model.provider), ...offer.via.map((hop) => hop.name), offer.provider.name]
+      .filter(Boolean)
+      .join(Router.HOP_SEPARATOR),
+    price: offerPrice(offer),
+    // An offer switched off for the flat model is never served for its id, but its pin id still
+    // routes to it, so it stays pinnable; `off` greys it out.
+    off: !offer.available,
+    pin: offer.pinID && pinnable(offer.pinID) ? offer.pinID : undefined,
+  }))
+}
+
+function offerPrice(offer: Offer) {
+  if (offer.price?.input === undefined && offer.price?.output === undefined) return undefined
+  const dollars = (value: number | undefined) => (value === undefined ? "?" : `$${Number(value.toFixed(4))}`)
+  return `${dollars(offer.price.input)}/${dollars(offer.price.output)}`
 }

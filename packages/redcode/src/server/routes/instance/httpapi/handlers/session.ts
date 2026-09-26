@@ -456,12 +456,18 @@ export const sessionHandlers = HttpApiBuilder.group(InstanceHttpApi, "session", 
       })
     })
 
+    // Answers once the prompt is admitted, so a client learns whether it landed and can retry the
+    // same messageID when it did not; the turn runs detached, in the service scope.
     const promptAsync = Effect.fn("SessionHttpApi.promptAsync")(function* (ctx: {
       params: { sessionID: SessionID }
       payload: typeof PromptPayload.Type
     }) {
       yield* requireSession(ctx.params.sessionID)
-      yield* promptSvc.prompt({ ...ctx.payload, sessionID: ctx.params.sessionID }).pipe(
+      yield* promptSvc
+        .prompt({ ...ctx.payload, sessionID: ctx.params.sessionID, noReply: true })
+        .pipe(Effect.mapError(() => new HttpApiError.BadRequest({})))
+      if (ctx.payload.noReply === true) return HttpApiSchema.NoContent.make()
+      yield* promptSvc.loop({ sessionID: ctx.params.sessionID }).pipe(
         Effect.catchCause((cause) =>
           Effect.gen(function* () {
             yield* Effect.logError("prompt_async failed", { sessionID: ctx.params.sessionID, cause })
@@ -487,6 +493,22 @@ export const sessionHandlers = HttpApiBuilder.group(InstanceHttpApi, "session", 
         delivery: ctx.payload.delivery,
       })
       if (row === undefined) return yield* notFound(`Prompt is not pending: ${ctx.params.messageID}`)
+      return HttpApiSchema.NoContent.make()
+    })
+
+    const pendingPrompts = Effect.fn("SessionHttpApi.pendingPrompts")(function* (ctx: {
+      params: { sessionID: SessionID }
+    }) {
+      yield* requireSession(ctx.params.sessionID)
+      return yield* promptSvc.pending(ctx.params.sessionID)
+    })
+
+    const promptDiscard = Effect.fn("SessionHttpApi.promptDiscard")(function* (ctx: {
+      params: { sessionID: SessionID; messageID: MessageID }
+    }) {
+      yield* requireSession(ctx.params.sessionID)
+      const discarded = yield* promptSvc.discard({ sessionID: ctx.params.sessionID, messageID: ctx.params.messageID })
+      if (!discarded) return yield* notFound(`Prompt is not pending: ${ctx.params.messageID}`)
       return HttpApiSchema.NoContent.make()
     })
 
@@ -601,6 +623,8 @@ export const sessionHandlers = HttpApiBuilder.group(InstanceHttpApi, "session", 
       .handle("prompt", prompt)
       .handle("promptAsync", promptAsync)
       .handle("promptDelivery", promptDelivery)
+      .handle("pendingPrompts", pendingPrompts)
+      .handle("promptDiscard", promptDiscard)
       .handle("command", command)
       .handle("shell", shell)
       .handle("revert", revert)

@@ -2199,6 +2199,67 @@ const scenarios: Scenario[] = [
       check(isRecord(body) && body.name === "NotFoundError", "a prompt that is not pending should be a 404")
     }),
   http.protected
+    .get("/session/{sessionID}/prompt", "session.pendingPrompts")
+    .seeded((ctx) =>
+      Effect.gen(function* () {
+        const session = yield* ctx.session({ title: "Pending prompts" })
+        const message = yield* ctx.admitPrompt(session.id, { text: "still waiting", delivery: "queue" })
+        return { session, message }
+      }),
+    )
+    .at((ctx) => ({
+      path: route("/session/{sessionID}/prompt", { sessionID: ctx.state.session.id }),
+      headers: ctx.headers(),
+    }))
+    .json(200, (body, ctx) => {
+      array(body)
+      check(body.length === 1, "the admitted prompt should be listed")
+      const pending = body[0]
+      check(
+        isRecord(pending) &&
+          pending.id === ctx.state.message.info.id &&
+          pending.delivery === "queue" &&
+          pending.text === "still waiting",
+        "the listed prompt should carry its id, delivery and text",
+      )
+    }),
+  http.protected
+    .delete("/session/{sessionID}/prompt/{messageID}", "session.promptDiscard")
+    .seeded((ctx) =>
+      Effect.gen(function* () {
+        const session = yield* ctx.session({ title: "Discard prompt" })
+        const message = yield* ctx.admitPrompt(session.id, { text: "discard me", delivery: "queue" })
+        return { session, message }
+      }),
+    )
+    .at((ctx) => ({
+      path: route("/session/{sessionID}/prompt/{messageID}", {
+        sessionID: ctx.state.session.id,
+        messageID: ctx.state.message.info.id,
+      }),
+      headers: ctx.headers(),
+    }))
+    .status(204),
+  http.protected
+    .delete("/session/{sessionID}/prompt/{messageID}", "session.promptDiscard.missing")
+    .seeded((ctx) =>
+      Effect.gen(function* () {
+        const session = yield* ctx.session({ title: "Discard missing" })
+        const message = yield* ctx.message(session.id, { text: "never admitted" })
+        return { session, message }
+      }),
+    )
+    .at((ctx) => ({
+      path: route("/session/{sessionID}/prompt/{messageID}", {
+        sessionID: ctx.state.session.id,
+        messageID: ctx.state.message.info.id,
+      }),
+      headers: ctx.headers(),
+    }))
+    .json(404, (body) => {
+      check(isRecord(body) && body.name === "NotFoundError", "a prompt that is not pending should be a 404")
+    }),
+  http.protected
     .post("/session/{sessionID}/command", "session.command")
     .preserveDatabase()
     .withLlm()

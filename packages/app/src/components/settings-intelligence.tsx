@@ -1,3 +1,4 @@
+import { Router } from "@reddb-io/redcode-schema/router"
 import { useSettingsDialog } from "./settings-dialog"
 import { showToast } from "@/utils/toast"
 import { createEffect, For, onCleanup, Show } from "solid-js"
@@ -252,6 +253,10 @@ function IntelligenceForm() {
               {(model) => (
                 <option value={`${model.provider.id}/${model.id}`}>
                   {model.provider.name} / {model.name}
+                  {/* A pinned offer of a flat model shares its name; its route tells them apart. */}
+                  {model.pinOf
+                    ? ` » ${[model.via, model.upstream?.name].filter(Boolean).join(Router.HOP_SEPARATOR)}`
+                    : ""}
                 </option>
               )}
             </For>

@@ -201,6 +201,8 @@ export const dict = {
 
   "command.prompt.mode.shell": "Shell",
   "command.prompt.mode.normal": "Prompt",
+  "command.prompt.queue": "Queue prompt",
+  "command.prompt.queue.description": "Send after the current turn instead of steering it",
 
   "command.permissions.autoaccept.enable": "自动接受权限",
   "command.permissions.autoaccept.disable": "停止自动接受权限",
@@ -363,6 +365,11 @@ export const dict = {
   "model.origin.subscription": "subscription",
   "model.origin.alsoVia": "also via {{router}}",
   "model.origin.alsoDirect": "also direct",
+  "model.flat.offers": "Offers",
+  "model.flat.pin": "Pin this offer",
+  "model.flat.unpinnable": "This offer cannot be pinned",
+  "model.flat.off": "off",
+  "model.flat.customOrder": "custom order",
   "model.catalog.updated": "{{name}} catalog updated: +{{added}}/−{{removed}} models, {{renamed}} renamed",
   "model.provider.anthropic": "Anthropic",
   "model.provider.openai": "OpenAI",

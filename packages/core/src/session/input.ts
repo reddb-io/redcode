@@ -9,6 +9,7 @@ import { SessionEvent } from "./event"
 import { SessionMessage } from "./message"
 import { Prompt } from "./prompt"
 import { SessionSchema } from "./schema"
+import { SessionV1 } from "../v1/session"
 import { SessionInputTable, SessionMessageTable } from "./sql"
 
 type DatabaseService = Database.Interface["db"]
@@ -158,6 +159,40 @@ export const setDelivery = Effect.fn("SessionInput.setDelivery")(function* (
     )
   if (!changed) return undefined
   return Admitted.make({ ...existing, delivery: input.delivery })
+})
+
+// Discards a V1 prompt that is still waiting in the inbox, before its promotion. The admitted
+// message is removed with a durable `message.removed`, whose projection drops the pending row with
+// it (the path a revert takes). The pending check is a commit hook, as in `setDelivery`: the
+// projection only deletes a row that is still pending, so a row left afterwards was promoted in
+// the meantime; the whole write then rolls back and the caller hears "not pending" instead of a
+// promoted message vanishing from history. Returns whether the prompt was discarded.
+export const discard = Effect.fn("SessionInput.discard")(function* (
+  db: DatabaseService,
+  events: EventV2.Interface,
+  input: {
+    readonly sessionID: SessionSchema.ID
+    readonly id: SessionMessage.ID
+  },
+) {
+  const existing = yield* find(db, input.id)
+  if (existing === undefined || existing.sessionID !== input.sessionID || existing.promotedSeq !== undefined)
+    return false
+  return yield* events
+    .publish(
+      SessionV1.Event.MessageRemoved,
+      { sessionID: input.sessionID, messageID: SessionV1.MessageID.make(input.id) },
+      {
+        commit: () =>
+          find(db, input.id).pipe(
+            Effect.flatMap((row) => (row === undefined ? Effect.void : Effect.die(new NotPending({ id: input.id })))),
+          ),
+      },
+    )
+    .pipe(
+      Effect.as(true),
+      Effect.catchDefect((defect) => (defect instanceof NotPending ? Effect.succeed(false) : Effect.die(defect))),
+    )
 })
 
 // Idempotent, because this also runs on replay: a workspace rebuilding its projection, a partial
@@ -358,7 +393,10 @@ export const equivalent = (
   },
 ) => input.delivery === expected.delivery && matchesPrompt(input, expected)
 
-const matchesPrompt = (input: Admitted, expected: { readonly sessionID: SessionSchema.ID; readonly prompt: Prompt }) =>
+export const matchesPrompt = (
+  input: Admitted,
+  expected: { readonly sessionID: SessionSchema.ID; readonly prompt: Prompt },
+) =>
   input.sessionID === expected.sessionID &&
   JSON.stringify(encodePrompt(input.prompt)) === JSON.stringify(encodePrompt(expected.prompt))
 
