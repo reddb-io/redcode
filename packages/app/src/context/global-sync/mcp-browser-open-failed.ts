@@ -2,7 +2,7 @@ import type { ToastOptions } from "@reddb-io/redcode-ui/toast"
 
 export const MCP_BROWSER_OPEN_FAILED = "mcp.browser.open.failed"
 
-export export type McpBrowserOpenFailed = { mcpName: string; url: string }
+export type McpBrowserOpenFailed = { mcpName: string; url: string }
 
 // The server publishes this when the OAuth browser launch fails or REDCODE_NO_BROWSER blocks it.
 export function readMcpBrowserOpenFailed(event: { type: string; properties?: unknown }) {
