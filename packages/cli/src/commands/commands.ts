@@ -276,6 +276,10 @@ const Root = Spec.make(typeof OPENCODE_CLI_NAME === "string" ? OPENCODE_CLI_NAME
         Spec.make("open", { description: "open the active Console account in a browser", params: ServerParams }),
       ],
     }),
+    Spec.make("setup", {
+      description: "configure System Two and optional System One reasoning",
+      params: ServerParams,
+    }),
     Spec.make("mcp", {
       description: "Manage MCP (Model Context Protocol) servers",
       commands: [
