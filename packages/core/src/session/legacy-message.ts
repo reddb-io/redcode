@@ -84,7 +84,7 @@ function toolState(part: SessionMessage.AssistantTool, ctx: Context, messageID: 
         metadata: {
           structured: { ...part.state.structured },
           outputPaths: [...(part.state.outputPaths ?? [])],
-          content: [...(part.state.content ?? [])],
+          content: (part.state.content ?? []).map((item) => ({ ...item })),
         },
         time: { start: ran, end: completed ?? ran },
         ...(part.state.attachments
@@ -193,6 +193,7 @@ function assistantMessage(message: SessionMessage.Assistant, ctx: Context, paren
         type: "step-finish",
         sessionID: session,
         messageID: SessionV1.MessageID.make(messageID),
+        reason: message.finish ?? "stop",
         cost: message.cost ?? 0,
         tokens,
       },
@@ -202,7 +203,7 @@ function assistantMessage(message: SessionMessage.Assistant, ctx: Context, paren
 
 function userInfo(message: SessionMessage.User | SessionMessage.Synthetic | SessionMessage.Compaction, ctx: Context) {
   return {
-    id: message.id,
+    id: SessionV1.MessageID.make(message.id),
     sessionID: ctx.sessionID,
     role: "user" as const,
     time: { created: epoch(message.time.created) },
