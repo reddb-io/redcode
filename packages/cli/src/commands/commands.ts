@@ -179,6 +179,13 @@ const Root = Spec.make(typeof OPENCODE_CLI_NAME === "string" ? OPENCODE_CLI_NAME
             json: Flag.boolean("json").pipe(Flag.withDefault(false)),
           },
         }),
+        Spec.make("logs", {
+          description: "Print or open the diagnostic log",
+          params: {
+            path: Flag.boolean("path").pipe(Flag.withDescription("Print only the log file path"), Flag.withDefault(false)),
+            open: Flag.boolean("open").pipe(Flag.withDescription("Open the log with the system handler"), Flag.withDefault(false)),
+          },
+        }),
         Spec.make("paths", {
           description: "Show global paths (data, config, cache, state)",
           params: {
