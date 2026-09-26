@@ -13,6 +13,9 @@
     },
   },
   "mcp": {},
+  "worktree": {
+    "auto": false,
+  },
   "tools": {
     "github-triage": false,
     "github-pr-search": false,
