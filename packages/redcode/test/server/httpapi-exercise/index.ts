@@ -761,6 +761,18 @@ const scenarios: Scenario[] = [
     }))
     .json(200, array, "status"),
   http.protected
+    .post("/experimental/session-v2/{id}/prompt/{messageID}/delivery", "sessionV2.delivery")
+    .seeded((ctx) => ctx.session({ title: "Session V2 delivery" }))
+    .at((ctx) => ({
+      path: route("/experimental/session-v2/{id}/prompt/{messageID}/delivery", {
+        id: ctx.state.id,
+        messageID: "msg_httpapi_delivery",
+      }),
+      headers: ctx.headers(),
+      body: { delivery: "queue" },
+    }))
+    .status(404),
+  http.protected
     .post("/experimental/session-v2/{id}/interrupt", "sessionV2.interrupt")
     .seeded((ctx) => ctx.session({ title: "Session V2 interrupt" }))
     .at((ctx) => ({
