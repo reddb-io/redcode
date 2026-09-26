@@ -403,6 +403,40 @@ const Root = Spec.make(typeof OPENCODE_CLI_NAME === "string" ? OPENCODE_CLI_NAME
       description: "Check out a GitHub pull request and open OpenCode",
       params: { number: Argument.integer("number") },
     }),
+    Spec.make("agent", {
+      description: "Manage agents",
+      commands: [
+        Spec.make("list", {
+          description: "List available agents",
+          params: ServerParams,
+        }),
+        Spec.make("create", {
+          description: "Generate an agent configuration",
+          params: {
+            ...ServerParams,
+            path: Flag.string("path").pipe(
+              Flag.withDescription("Configuration directory in which to create agents/<name>.md"),
+              Flag.optional,
+            ),
+            description: Flag.string("description").pipe(
+              Flag.withDescription("What the agent should do"),
+              Flag.optional,
+            ),
+            mode: Flag.choice("mode", ["all", "primary", "subagent"]).pipe(Flag.optional),
+            permissions: Flag.string("permissions").pipe(
+              Flag.withAlias("tools"),
+              Flag.withDescription("Comma-separated tool permissions to allow; other listed tools are denied"),
+              Flag.optional,
+            ),
+            model: Flag.string("model").pipe(
+              Flag.withAlias("m"),
+              Flag.withDescription("Generation model as provider/model"),
+              Flag.optional,
+            ),
+          },
+        }),
+      ],
+    }),
     Spec.make("models", {
       description: "List all available models",
       params: ServerParams,
