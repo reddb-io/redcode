@@ -587,6 +587,26 @@ export type ConfigShellOption = { path: string; name: string; acceptable: boolea
 
 export type LSPStatus = { id: string; root: string; status: "connected" | "error"; error?: string | undefined }
 
+export type LSPDiagnostic = {
+  range: { start: { line: number; character: number }; end: { line: number; character: number } }
+  message: string
+  severity?: number | undefined
+  code?: string | number | undefined
+  codeDescription?: { href: string } | undefined
+  source?: string | undefined
+  tags?: Array<number> | undefined
+  relatedInformation?:
+    | Array<{
+        location: {
+          uri: string
+          range: { start: { line: number; character: number }; end: { line: number; character: number } }
+        }
+        message: string
+      }>
+    | undefined
+  data?: any | undefined
+}
+
 export type FormatterStatus = { name: string; extensions: Array<string>; enabled: boolean }
 
 export type IntelligenceReasoning = "single" | "dual"
@@ -8247,6 +8267,19 @@ export type LspStatusInput = {
 }
 
 export type LspStatusOutput = { location: LocationPublicRef; data: Array<LSPStatus> }
+
+export type LspDiagnosticsInput = {
+  readonly location?: {
+    readonly location?: { readonly directory?: string | undefined } | undefined
+    readonly path: string
+  }["location"]
+  readonly path: {
+    readonly location?: { readonly directory?: string | undefined } | undefined
+    readonly path: string
+  }["path"]
+}
+
+export type LspDiagnosticsOutput = { location: LocationPublicRef; data: { [x: string]: Array<LSPDiagnostic> } }
 
 export type FormatterStatusInput = {
   readonly location?: { readonly location?: { readonly directory?: string | undefined } | undefined }["location"]

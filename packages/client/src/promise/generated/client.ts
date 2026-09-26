@@ -294,6 +294,8 @@ import type {
   ConfigUpdateOutput,
   LspStatusInput,
   LspStatusOutput,
+  LspDiagnosticsInput,
+  LspDiagnosticsOutput,
   FormatterStatusInput,
   FormatterStatusOutput,
   ServerIntelligenceStatusOutput,
@@ -2447,6 +2449,18 @@ export function make(options: ClientOptions) {
             method: "GET",
             path: `/api/lsp`,
             query: { location: input?.["location"] },
+            successStatus: 200,
+            declaredStatuses: [400, 401],
+            empty: false,
+          },
+          requestOptions,
+        ),
+      diagnostics: (input: LspDiagnosticsInput, requestOptions?: RequestOptions) =>
+        request<LspDiagnosticsOutput>(
+          {
+            method: "GET",
+            path: `/api/lsp/diagnostics`,
+            query: { location: input["location"], path: input["path"] },
             successStatus: 200,
             declaredStatuses: [400, 401],
             empty: false,

@@ -119,7 +119,16 @@ const Root = Spec.make(typeof OPENCODE_CLI_NAME === "string" ? OPENCODE_CLI_NAME
       commands: [
         Spec.make("agents", { description: "List all agents" }),
         Spec.make("config", { description: "List configuration sources" }),
-        Spec.make("lsp", { description: "List language server status" }),
+        Spec.make("lsp", {
+          description: "Inspect language servers",
+          commands: [
+            Spec.make("status", { description: "List language server status" }),
+            Spec.make("diagnostics", {
+              description: "Get diagnostics for a file",
+              params: { file: Argument.string("file") },
+            }),
+          ],
+        }),
         Spec.make("formatter", { description: "List formatter status" }),
         Spec.make("paths", {
           description: "Show global paths (data, config, cache, state)",

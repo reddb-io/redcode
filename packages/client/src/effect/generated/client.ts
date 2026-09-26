@@ -296,6 +296,8 @@ import type {
   ConfigUpdateOutput,
   LspStatusInput,
   LspStatusOutput,
+  LspDiagnosticsInput,
+  LspDiagnosticsOutput,
   FormatterStatusInput,
   FormatterStatusOutput,
   ServerIntelligenceStatusOutput,
@@ -1789,7 +1791,17 @@ const EndpointLspStatus = (raw: RawClient["server.lsp"]) => (input?: LspStatusIn
     raw["lsp.status"]({ query: { location: input?.["location"] } }).pipe(Effect.mapError(mapClientError)),
   )
 
-const adaptGroupLsp = (raw: RawClient["server.lsp"]) => ({ status: EndpointLspStatus(raw) })
+const EndpointLspDiagnostics = (raw: RawClient["server.lsp"]) => (input: LspDiagnosticsInput) =>
+  preserveEffect<LspDiagnosticsOutput>()(
+    raw["lsp.diagnostics"]({ query: { location: input["location"], path: input["path"] } }).pipe(
+      Effect.mapError(mapClientError),
+    ),
+  )
+
+const adaptGroupLsp = (raw: RawClient["server.lsp"]) => ({
+  status: EndpointLspStatus(raw),
+  diagnostics: EndpointLspDiagnostics(raw),
+})
 
 const EndpointFormatterStatus = (raw: RawClient["server.formatter"]) => (input?: FormatterStatusInput) =>
   preserveEffect<FormatterStatusOutput>()(

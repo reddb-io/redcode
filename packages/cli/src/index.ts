@@ -36,7 +36,10 @@ const Handlers = Runtime.handlers(Commands, {
   debug: {
     agents: () => import("./commands/handlers/debug/agents"),
     config: () => import("./commands/handlers/debug/config"),
-    lsp: () => import("./commands/handlers/debug/lsp"),
+    lsp: {
+      status: () => import("./commands/handlers/debug/lsp"),
+      diagnostics: () => import("./commands/handlers/debug/lsp-diagnostics"),
+    },
     formatter: () => import("./commands/handlers/debug/formatter"),
     paths: () => import("./commands/handlers/debug/paths"),
   },

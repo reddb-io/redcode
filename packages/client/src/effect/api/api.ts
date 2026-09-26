@@ -4130,8 +4130,19 @@ export type LspStatusInput = { readonly location?: { readonly directory?: string
 export type LspStatusOutput = { readonly location: Location.PublicRef; readonly data: ReadonlyArray<LSP.Status> }
 export type LspStatusOperation<E = never> = (input?: LspStatusInput) => Effect.Effect<LspStatusOutput, E>
 
+export type LspDiagnosticsInput = {
+  readonly location?: { readonly directory?: string | undefined } | undefined
+  readonly path: string
+}
+export type LspDiagnosticsOutput = {
+  readonly location: Location.PublicRef
+  readonly data: { readonly [x: string]: ReadonlyArray<LSP.Diagnostic> }
+}
+export type LspDiagnosticsOperation<E = never> = (input: LspDiagnosticsInput) => Effect.Effect<LspDiagnosticsOutput, E>
+
 export interface LspApi<E = never> {
   readonly status: LspStatusOperation<E>
+  readonly diagnostics: LspDiagnosticsOperation<E>
 }
 
 export type FormatterStatusInput = { readonly location?: { readonly directory?: string | undefined } | undefined }
