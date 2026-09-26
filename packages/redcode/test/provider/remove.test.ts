@@ -97,7 +97,6 @@ const everything = (env?: Record<string, string>) =>
       reasoning: "dual",
       onboarding: "completed",
       principal: { providerID: "gone", id: "x" },
-      fast: { providerID: "keep", id: "y" },
       evaluator: {
         transport: "red-router",
         baseURL: "http://localhost:47001/v1",
@@ -159,7 +158,7 @@ describe("ProviderRemove.remove", () => {
     expect(fake.credentials).toEqual({})
     // Dual reasoning lost the models it needs, so it waits for /setup instead of failing every turn.
     expect(fake.saved).toEqual([
-      { enabled: false, reasoning: "dual", onboarding: "completed", fast: { providerID: "keep", id: "y" } },
+      { enabled: false, reasoning: "dual", onboarding: "completed" },
     ])
     expect(fake.forgotten).toEqual([["gone", "a"]])
     // The recorded catalog version was forgotten, so the same version counts as new again.

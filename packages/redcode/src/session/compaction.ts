@@ -749,7 +749,7 @@ const layer = Layer.effect(
       const agent = yield* agents.get("compaction")
       const settings = yield* intelligence.read()
       yield* Intelligence.requireConfigured(settings)
-      const transformation = settings.fast ?? settings.principal
+      const transformation = settings.principal
       const model = transformation
         ? yield* provider.getModel(transformation.providerID, transformation.id).pipe(Effect.orDie)
         : agent.model

@@ -54,10 +54,7 @@ const make = Effect.gen(function* () {
     const session = yield* sessions.get(sessionID)
     if (!session) return yield* new Intelligence.Error({ message: "Session unavailable for semantic transformation" })
     const model = yield* models
-      .resolve({
-        ...session,
-        model: strong ? (session.model ?? settings.principal) : (settings.fast ?? settings.principal ?? session.model),
-      })
+      .resolve({ ...session, model: session.model ?? settings.principal })
       .pipe(
         Effect.mapError(() => new Intelligence.Error({ message: "Configured transformation model is unavailable" })),
       )
@@ -90,7 +87,7 @@ const make = Effect.gen(function* () {
     yield* intelligence.generation({
       sessionID,
       model: `${model.provider}/${model.id}`,
-      role: strong ? "principal" : "fast",
+      role: "principal",
       duration: Date.now() - started,
       finish: finish?.reason,
       ...(usage && "usage" in usage

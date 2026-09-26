@@ -103,13 +103,12 @@ export const Recommendation = Schema.Struct({
 export interface Recommendation extends Schema.Schema.Type<typeof Recommendation> {}
 
 /**
- * The router's recommended model per role: `default` for the principal, `fast` for
- * transformations, `review` for review, `systemone` for the System One evaluator and `vision` for
- * images. A role the router has no model for is absent.
+ * The router's recommended model per role: `default` for the principal, `review` for review,
+ * `systemone` for the System One evaluator and `vision` for images. A role the router has no model
+ * for is absent.
  */
 export const Recommendations = Schema.Struct({
   default: Recommendation.pipe(optional),
-  fast: Recommendation.pipe(optional),
   review: Recommendation.pipe(optional),
   systemone: Recommendation.pipe(optional),
   vision: Recommendation.pipe(optional),

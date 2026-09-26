@@ -7853,7 +7853,6 @@ export type IntelligenceGetOutput = {
     readonly reasoning?: "single" | "dual"
     readonly onboarding: "pending" | "deferred" | "completed"
     readonly principal?: { readonly id: string; readonly providerID: string; readonly variant?: string }
-    readonly fast?: { readonly id: string; readonly providerID: string; readonly variant?: string }
     readonly evaluator?: {
       readonly transport:
         | "opencode-zen"
@@ -7939,12 +7938,6 @@ export type IntelligenceGetOutput = {
         readonly provider: { readonly slug: string; readonly name: string }
         readonly reason: string
       }
-      readonly fast?: {
-        readonly id: string
-        readonly name: string
-        readonly provider: { readonly slug: string; readonly name: string }
-        readonly reason: string
-      }
       readonly review?: {
         readonly id: string
         readonly name: string
@@ -7974,7 +7967,6 @@ export type IntelligenceSaveInput = {
       readonly reasoning?: "single" | "dual"
       readonly onboarding: "pending" | "deferred" | "completed"
       readonly principal?: { readonly id: string; readonly providerID: string; readonly variant?: string }
-      readonly fast?: { readonly id: string; readonly providerID: string; readonly variant?: string }
       readonly evaluator?: {
         readonly transport:
           | "opencode-zen"
@@ -7998,7 +7990,6 @@ export type IntelligenceSaveInput = {
       readonly reasoning?: "single" | "dual"
       readonly onboarding: "pending" | "deferred" | "completed"
       readonly principal?: { readonly id: string; readonly providerID: string; readonly variant?: string }
-      readonly fast?: { readonly id: string; readonly providerID: string; readonly variant?: string }
       readonly evaluator?: {
         readonly transport:
           | "opencode-zen"
@@ -8023,7 +8014,6 @@ export type IntelligenceSaveOutput = {
   readonly reasoning?: "single" | "dual"
   readonly onboarding: "pending" | "deferred" | "completed"
   readonly principal?: { readonly id: string; readonly providerID: string; readonly variant?: string }
-  readonly fast?: { readonly id: string; readonly providerID: string; readonly variant?: string }
   readonly evaluator?: {
     readonly transport:
       | "opencode-zen"

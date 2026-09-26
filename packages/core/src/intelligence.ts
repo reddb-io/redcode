@@ -83,7 +83,7 @@ export type Settings = Intelligence.Settings
 export interface GenerationInput {
   sessionID: string
   model: string
-  role: "fast" | "principal"
+  role: "principal"
   duration: number
   inputTokens?: number
   outputTokens?: number
@@ -457,10 +457,8 @@ export const make = (
         return yield* new Error({ message: "Use an HTTP(S) base URL without credentials, query or fragment" })
       if (settings.principal && (!settings.principal.id.trim() || !settings.principal.providerID.trim()))
         return yield* new Error({ message: "Select a valid principal model" })
-      if ([settings.principal, settings.fast].some((model) => model && isJev(model.id)))
+      if (settings.principal && isJev(settings.principal.id))
         return yield* new Error({ message: "Jev is an evaluator; select a generative model for System Two" })
-      if (settings.fast && (!settings.fast.id.trim() || !settings.fast.providerID.trim()))
-        return yield* new Error({ message: "Select a valid transformation model" })
       // A stored credential that was replaced is saved under its current id.
       const kept =
         !input.apiKey && settings.evaluator?.credentialID ? yield* credentialFor(settings.evaluator) : undefined
@@ -1527,6 +1525,10 @@ export const responseQuestions: Record<string, Intelligence.Question> = {
       "Does candidate present the overall task as complete while sources contain unfinished tasks, an active goal or a blocker?",
     writing:
       "Does candidate have a material writing defect that makes the result, remaining work or next action hard to understand?",
+    // A model that declines to speed up a function or warns about "security" on ordinary code
+    // leaves the user with nothing; declining harmful or falsifying requests is not this issue.
+    refusal:
+      "Does candidate refuse, withhold help on, or add an unwarranted safety or security warning to the latest request in sources when that request is ordinary software work with no concrete sign of harm? Declining a request to cause harm, evade authorization or falsify results is not this issue, and neither is asking for a missing detail.",
   }),
   writing_quality: {
     type: "score",
@@ -1541,13 +1543,14 @@ export const responseQuestions: Record<string, Intelligence.Question> = {
 }
 
 /**
- * The response checks that apply to a turn, or undefined when there is nothing to review. Judging
- * tool evidence needs tool results and judging a premature finish needs tasks or an active goal;
- * asking either without them only invites a false positive. A turn with none of that evidence,
- * which System One reliably routed as a plain answer, has nothing a review could verify.
+ * The response checks that apply to a turn. Judging tool evidence needs tool results and judging a
+ * premature finish needs tasks or an active goal; asking either without them only invites a false
+ * positive. A turn with none of that evidence, which System One reliably routed as a plain answer,
+ * has no work to verify, but can still refuse an ordinary question, so only that is checked.
  */
 export function responseQuestionsFor(turn: { tools: boolean; tasks: boolean; goal: boolean; route?: string }) {
-  if (!turn.tools && !turn.tasks && !turn.goal && turn.route === "answer") return undefined
+  if (!turn.tools && !turn.tasks && !turn.goal && turn.route === "answer")
+    return { refusal: responseQuestions.refusal! }
   return Object.fromEntries(
     Object.entries(responseQuestions).filter(
       ([id]) => (id !== "tool_evidence" || turn.tools) && (id !== "premature" || turn.tasks || turn.goal),
@@ -1583,8 +1586,11 @@ export function responseRepair(evaluation: Intelligence.Evaluation | undefined, 
 
 /** The synthetic prompt that asks S2 to revise its final response for established issues. */
 export function repairPrompt(issues: ReadonlyArray<string>) {
+  const refusal = issues.includes("refusal")
+    ? "\nrefusal: the request is ordinary software work; answer or do it directly, without a safety disclaimer, unless the conversation shows concrete harm."
+    : ""
   return `${RESPONSE_REPAIR}
-System One review found these issues in your final response: ${issues.join(", ")}.
+System One review found these issues in your final response: ${issues.join(", ")}.${refusal}
 Fix what is actually wrong, then write the final response again in full. It replaces the previous one for the user, so do not acknowledge or mention this review. If no issue is real, repeat the previous response unchanged.`
 }
 

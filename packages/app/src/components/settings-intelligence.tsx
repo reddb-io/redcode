@@ -47,7 +47,6 @@ function IntelligenceForm() {
     // Editing the S1 fields rewrites `settings.evaluator`; single reasoning keeps the last saved one.
     saved: undefined as Intelligence.Evaluator | undefined,
     principal: "",
-    fast: "",
     ...IntelligenceClient.evaluatorPreset(),
     key: "",
     busy: false,
@@ -86,10 +85,10 @@ function IntelligenceForm() {
     )
     return exact >= 0 ? exact : state.evaluators.findIndex((option) => option.evaluator.transport === state.transport)
   }
-  // The connected RedRouter's recommended model for a role, when the model list has it.
-  const recommendation = (role: "principal" | "fast") => {
+  // The connected RedRouter's recommended principal model, when the model list has it.
+  const recommendation = () => {
     const router = state.router
-    const pick = router?.recommended?.[role === "principal" ? "default" : "fast"]
+    const pick = router?.recommended?.default
     const listed =
       pick && models.list().find((model) => model.provider.id === router?.providerID && model.id === pick.id)
     if (!pick || !listed) return undefined
@@ -143,9 +142,8 @@ function IntelligenceForm() {
       set("evaluators", result.evaluators)
       set("router", result.router)
       set("detected", false)
-      // With nothing saved yet, the router's recommendations are preselected.
-      set("principal", value(result.settings.principal) || (recommendation("principal")?.value ?? ""))
-      set("fast", result.settings.principal ? value(result.settings.fast) : (recommendation("fast")?.value ?? ""))
+      // With nothing saved yet, the router's recommendation is preselected.
+      set("principal", value(result.settings.principal) || (recommendation()?.value ?? ""))
       set("transport", result.settings.evaluator?.transport ?? IntelligenceClient.evaluatorPreset().transport)
       set("baseURL", result.settings.evaluator?.baseURL ?? IntelligenceClient.evaluatorPreset().baseURL)
       set("model", result.settings.evaluator?.model ?? IntelligenceClient.evaluatorPreset().model)
@@ -175,18 +173,14 @@ function IntelligenceForm() {
           reasoning: state.reasoning,
           onboarding: "completed" as const,
           principal: ref(state.principal),
-          ...(state.fast ? { fast: ref(state.fast) } : {}),
           evaluator: dual ? evaluator() : state.saved,
         },
         ...(dual && state.key ? { apiKey: state.key } : {}),
       }
-      const refs = [input.settings.principal, ...(input.settings.fast ? [input.settings.fast] : [])]
-      for (const model of refs.filter((model, index) => index === 0 || value(model) !== value(refs[0]))) {
-        const check = await client.probeModel(model)
-        if (!check.ok) {
-          set("message", check.message)
-          return
-        }
+      const check = await client.probeModel(input.settings.principal)
+      if (!check.ok) {
+        set("message", check.message)
+        return
       }
       if (dual) {
         const check = await client.probe({ evaluator: evaluator(), apiKey: input.apiKey })
@@ -238,42 +232,34 @@ function IntelligenceForm() {
             {language.t("settings.intelligence.flag", { mode: state.flag })}
           </p>
         </Show>
-        <For each={["principal", "fast"] as const}>
-          {(role) => (
-            <label class="flex flex-col gap-1">
-              <span>
-                {language.t(role === "principal" ? "settings.intelligence.principal" : "settings.intelligence.fast")}
-              </span>
-              <select class={inputClass} value={state[role]} onChange={(event) => set(role, event.currentTarget.value)}>
-                <Show when={recommendation(role)}>
-                  {(recommended) => (
-                    <optgroup label={language.t("settings.intelligence.recommended")}>
-                      <option value={recommended().value}>
-                        {language.t("settings.intelligence.recommendedModel", {
-                          name: recommended().pick.name,
-                          provider: recommended().pick.provider.name,
-                        })}
-                      </option>
-                    </optgroup>
-                  )}
-                </Show>
-                <option value="">
-                  {language.t(role === "principal" ? "settings.intelligence.select" : "settings.intelligence.reuse")}
+        <label class="flex flex-col gap-1">
+          <span>{language.t("settings.intelligence.principal")}</span>
+          <select class={inputClass} value={state.principal} onChange={(event) => set("principal", event.currentTarget.value)}>
+            <Show when={recommendation()}>
+              {(recommended) => (
+                <optgroup label={language.t("settings.intelligence.recommended")}>
+                  <option value={recommended().value}>
+                    {language.t("settings.intelligence.recommendedModel", {
+                      name: recommended().pick.name,
+                      provider: recommended().pick.provider.name,
+                    })}
+                  </option>
+                </optgroup>
+              )}
+            </Show>
+            <option value="">{language.t("settings.intelligence.select")}</option>
+            <For each={models.list().filter((model) => model.capabilities.protocol !== "systemone")}>
+              {(model) => (
+                <option value={`${model.provider.id}/${model.id}`}>
+                  {model.provider.name} / {model.name}
                 </option>
-                <For each={models.list().filter((model) => model.capabilities.protocol !== "systemone")}>
-                  {(model) => (
-                    <option value={`${model.provider.id}/${model.id}`}>
-                      {model.provider.name} / {model.name}
-                    </option>
-                  )}
-                </For>
-              </select>
-              <Show when={recommendation(role)}>
-                {(recommended) => <span class="text-12-regular text-text-weak">{recommended().pick.reason}</span>}
-              </Show>
-            </label>
-          )}
-        </For>
+              )}
+            </For>
+          </select>
+          <Show when={recommendation()}>
+            {(recommended) => <span class="text-12-regular text-text-weak">{recommended().pick.reason}</span>}
+          </Show>
+        </label>
         <Show when={state.reasoning === "dual"}>
           <label class="flex flex-col gap-1">
             <span>{language.t("settings.intelligence.connection")}</span>

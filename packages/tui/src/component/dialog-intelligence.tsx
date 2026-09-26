@@ -172,10 +172,6 @@ export function DialogIntelligence(props: { sessionID?: string }) {
         Global S2:{" "}
         {settings()?.principal ? `${settings()!.principal!.providerID}/${settings()!.principal!.id}` : "Not configured"}
       </text>
-      <text fg={theme.textMuted} wrapMode="word">
-        Transformations:{" "}
-        {settings()?.fast ? `${settings()!.fast!.providerID}/${settings()!.fast!.id}` : "Reuse global S2"}
-      </text>
       <box flexDirection="row" gap={3}>
         <text fg={theme.primary} onMouseUp={() => dialog.replace(() => <DialogSetup />)}>
           Configure /setup

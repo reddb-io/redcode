@@ -34,7 +34,6 @@ export const Settings = Schema.Struct({
   reasoning: Reasoning.pipe(optional),
   onboarding: Schema.Literals(["pending", "deferred", "completed"]),
   principal: Model.Ref.pipe(optional),
-  fast: Model.Ref.pipe(optional),
   evaluator: Evaluator.pipe(optional),
 }).annotate({ identifier: "Intelligence.Settings" })
 export interface Settings extends Schema.Schema.Type<typeof Settings> {}

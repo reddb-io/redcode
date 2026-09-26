@@ -7650,7 +7650,6 @@ export type IntelligenceSettings = {
   reasoning?: IntelligenceReasoning
   onboarding: "pending" | "deferred" | "completed"
   principal?: ModelRef
-  fast?: ModelRef
   evaluator?: IntelligenceEvaluator
 }
 
@@ -7672,7 +7671,6 @@ export type RouterRecommendation = {
 
 export type RouterRecommendations = {
   default?: RouterRecommendation
-  fast?: RouterRecommendation
   review?: RouterRecommendation
   systemone?: RouterRecommendation
   vision?: RouterRecommendation

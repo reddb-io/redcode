@@ -6,6 +6,7 @@ import { type Model } from "@reddb-io/redcode-llm"
 import * as AnthropicMessages from "@reddb-io/redcode-llm/protocols/anthropic-messages"
 import * as OpenAICompatibleChat from "@reddb-io/redcode-llm/protocols/openai-compatible-chat"
 import * as OpenAIResponses from "@reddb-io/redcode-llm/protocols/openai-responses"
+import * as OpenRouter from "@reddb-io/redcode-llm/providers/openrouter"
 import { Auth, type AnyRoute } from "@reddb-io/redcode-llm/route"
 import { Context, Effect, Layer, Schema } from "effect"
 import { produce } from "immer"
@@ -175,6 +176,13 @@ export const fromCatalogModel = (
         .model({ id: resolved.api.id }),
     )
   }
+  if (resolved.api.type === "aisdk" && resolved.api.package === "@openrouter/ai-sdk-provider") {
+    return Effect.succeed(
+      withDefaults(resolved, OpenRouter.route)
+        .with({ auth: key === undefined ? Auth.none : Auth.bearer(key) })
+        .model({ id: resolved.api.id }),
+    )
+  }
   return Effect.fail(
     new UnsupportedApiError({
       providerID: resolved.providerID,
@@ -199,6 +207,7 @@ export const supported = (model: ModelV2.Info) =>
   model.api.type === "aisdk" &&
   (model.api.package === "@ai-sdk/openai" ||
     model.api.package === "@ai-sdk/anthropic" ||
+    model.api.package === "@openrouter/ai-sdk-provider" ||
     (model.api.package === "@ai-sdk/openai-compatible" && model.api.url !== undefined))
 
 /** Resolves models from the catalog belonging to the current Location runtime. */

@@ -221,7 +221,7 @@ describe("ProviderRouter.recommendations", () => {
     version,
     groups: [],
     combos: [],
-    recommended: { default: opus, fast: luna, review: null, systemone: null },
+    recommended: { default: opus, review: null, systemone: null },
   })
 
   test("detects the recommendations feature a RedRouter advertises", async () => {
@@ -245,7 +245,7 @@ describe("ProviderRouter.recommendations", () => {
     const first = await Effect.runPromise(
       ProviderRouter.recommendations({ baseURL: router.baseURL, apiKey: "sk-one", version: "v1" }),
     )
-    expect(first).toEqual({ default: opus, fast: luna })
+    expect(first).toEqual({ default: opus })
     expect(router.hits).toEqual(["/v1/catalog Bearer sk-one"])
 
     await Effect.runPromise(
@@ -265,10 +265,10 @@ describe("ProviderRouter.recommendations", () => {
   test("keeps the well-formed roles of a partly malformed catalog", async () => {
     const router = serve({
       "/v1/catalog": () =>
-        Response.json({ version: "v1", recommended: { default: { id: "", name: "Nothing" }, fast: luna } }),
+        Response.json({ version: "v1", recommended: { default: { id: "", name: "Nothing" }, review: luna } }),
     })
     expect(await Effect.runPromise(ProviderRouter.recommendations({ baseURL: router.baseURL, apiKey: "k" }))).toEqual({
-      fast: luna,
+      review: luna,
     })
   })
 

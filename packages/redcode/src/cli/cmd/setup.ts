@@ -67,17 +67,12 @@ export const SetupCommand = effectCmd({
       )
       const label = (value: string) => choices.find((choice) => choice.value === value)?.label ?? value
       const saved = previous.principal ? `${previous.principal.providerID}/${previous.principal.id}` : undefined
-      const savedFast = previous.fast ? `${previous.fast.providerID}/${previous.fast.id}` : undefined
       const continued = saved
         ? (yield* answer(
             yield* select<"continue" | "change">({
               message: "S2 (System Two)",
               options: [
-                {
-                  value: "continue",
-                  label: `Continue with ${label(saved)}`,
-                  hint: savedFast ? `transformations: ${label(savedFast)}` : undefined,
-                },
+                { value: "continue", label: `Continue with ${label(saved)}` },
                 { value: "change", label: "Change System Two model…" },
               ],
             }),
@@ -94,31 +89,13 @@ export const SetupCommand = effectCmd({
                 initialValue: principalChoices.initialValue ?? saved,
               }),
             )
-      // Continuing, or single reasoning, keeps the saved transformations model (or reuse of the principal).
-      const fastChoices = recommendedFirst(
-        [{ value: principal, label: "Reuse principal" }, ...choices.filter((choice) => choice.value !== principal)],
-        router,
-        "fast",
-      )
-      const fast =
-        continued || reasoning === "single"
-          ? (savedFast ?? principal)
-          : yield* answer(
-              yield* select<string>({
-                message: "S2 (System Two) — transformations (may reuse principal)",
-                options: fastChoices.options,
-                initialValue: fastChoices.initialValue,
-              }),
-            )
       const systemOne = reasoning === "dual" ? yield* configureSystemOne(service, previous, router) : undefined
       const ref = (value: string) => ({
         providerID: ProviderV2.ID.make(value.slice(0, value.indexOf("/"))),
         id: Model.ID.make(value.slice(value.indexOf("/") + 1)),
       })
-      for (const selected of [...new Set([principal, fast])]) {
-        const checked = yield* semantic.probeModel(ref(selected))
-        if (!checked.ok) return yield* fail(checked.message)
-      }
+      const checked = yield* semantic.probeModel(ref(principal))
+      if (!checked.ok) return yield* fail(checked.message)
       const apiKey = systemOne?.key ? { apiKey: systemOne.key } : {}
       if (systemOne) {
         const check = yield* service.probe({ evaluator: systemOne.evaluator, ...apiKey })
@@ -130,7 +107,6 @@ export const SetupCommand = effectCmd({
           reasoning,
           onboarding: "completed",
           principal: ref(principal),
-          ...(fast === principal ? {} : { fast: ref(fast) }),
           // Single reasoning keeps the saved S1 evaluator (runtime ignores it) so dual can continue with it.
           evaluator: systemOne?.evaluator ?? previous.evaluator,
         },
@@ -154,7 +130,7 @@ export const SetupCommand = effectCmd({
 export function recommendedFirst(
   choices: ReadonlyArray<{ value: string; label: string; hint?: string }>,
   router: DetectedRouter | undefined,
-  role: "default" | "fast",
+  role: "default",
 ) {
   const pick = router?.recommended?.[role]
   const listed = pick && choices.find((choice) => choice.value === `${router?.providerID}/${pick.id}`)

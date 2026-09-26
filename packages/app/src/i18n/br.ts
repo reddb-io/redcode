@@ -18,8 +18,6 @@ export const dict = {
   "intelligence.configured": "Configurado. Cada avaliação informa o estado da conexão.",
   "intelligence.override": "Modelo definido para a sessão ou o agente",
   "intelligence.globalDefault": "Modelo S2 padrão global",
-  "intelligence.transformations": "Transformações",
-  "intelligence.reuseS2": "Reutilizar S2 global",
   "intelligence.sessionHistory": "Avaliações da sessão",
   "intelligence.emptyHistory": "Nenhuma avaliação registrada para esta sessão.",
   "intelligence.historyFailed": "Não foi possível carregar as avaliações. Reabra para tentar novamente.",

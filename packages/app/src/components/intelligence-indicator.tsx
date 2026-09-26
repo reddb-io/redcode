@@ -137,12 +137,6 @@ export function IntelligenceIndicator(props: { model: ModelSelection; sessionID?
               ? `${settings()!.principal!.providerID}/${settings()!.principal!.id}`
               : language.t("intelligence.setupRequired")}
           </dd>
-          <dt class="text-text-weak">{language.t("intelligence.transformations")}</dt>
-          <dd class="min-w-0 break-words">
-            {settings()?.fast
-              ? `${settings()!.fast!.providerID}/${settings()!.fast!.id}`
-              : language.t("intelligence.reuseS2")}
-          </dd>
         </dl>
         <Button
           variant="secondary"

@@ -1914,7 +1914,7 @@ test("a RedRouter advertising recommendations carries them and evaluates with it
         })
       if (path === "/v1/catalog") {
         catalogs.push(request.headers.get("authorization") ?? "-")
-        return Response.json({ version: "cat-1", groups: [], combos: [], recommended: { ...recommended, fast: null } })
+        return Response.json({ version: "cat-1", groups: [], combos: [], recommended })
       }
       return new Response("not found", { status: 404 })
     },
@@ -2038,6 +2038,19 @@ test("a response review repairs only issues System One establishes", () => {
   expect(Intelligence.responseRepair(undefined, [])).toEqual({ repair: [], unresolved: [] })
 })
 
+test("a refusal repair tells the model to answer ordinary work directly", () => {
+  const refusal = Intelligence.responseQuestions.refusal
+  expect(refusal?.type).toBe("noul")
+  expect(refusal?.instructions).toContain("ordinary software work")
+  expect(refusal?.instructions).toContain("falsify results is not this issue")
+  expect(Intelligence.responseRepair(responseReview({ refusal: 0.96 }), [])).toEqual({
+    repair: ["refusal"],
+    unresolved: ["refusal"],
+  })
+  expect(Intelligence.repairPrompt(["refusal"])).toContain("without a safety disclaimer")
+  expect(Intelligence.repairPrompt(["omission"])).not.toContain("safety disclaimer")
+})
+
 test("an issue already repaired this turn is not repaired again", () => {
   const again = responseReview({ omission: 0.95, writing: 0.9 })
   expect(Intelligence.responseRepair(again, ["omission"])).toEqual({
@@ -2054,6 +2067,7 @@ test("the unsupported check asks about claimed work, not conversation, under the
   expect(Object.keys(Intelligence.responseQuestions).toSorted()).toEqual([
     "omission",
     "premature",
+    "refusal",
     "tool_evidence",
     "unsupported",
     "writing",
@@ -2068,11 +2082,18 @@ test("the unsupported check asks about claimed work, not conversation, under the
 })
 
 test("response checks follow the evidence a turn has", () => {
+  // A plain answer has no work to verify, but "how do I speed up this function?" can still be refused.
   expect(
-    Intelligence.responseQuestionsFor({ tools: false, tasks: false, goal: false, route: "answer" }),
-  ).toBeUndefined()
+    Object.keys(Intelligence.responseQuestionsFor({ tools: false, tasks: false, goal: false, route: "answer" }) ?? {}),
+  ).toEqual(["refusal"])
   const plain = Intelligence.responseQuestionsFor({ tools: false, tasks: false, goal: false, route: "uncertain" })
-  expect(Object.keys(plain ?? {}).toSorted()).toEqual(["omission", "unsupported", "writing", "writing_quality"])
+  expect(Object.keys(plain ?? {}).toSorted()).toEqual([
+    "omission",
+    "refusal",
+    "unsupported",
+    "writing",
+    "writing_quality",
+  ])
   expect(
     Object.keys(Intelligence.responseQuestionsFor({ tools: true, tasks: false, goal: false, route: "answer" }) ?? {}),
   ).toContain("tool_evidence")

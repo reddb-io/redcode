@@ -155,13 +155,6 @@ test("global setup selects System Two models and offers provider connection in t
 
     // The cursor starts on the first model, below the Providers section.
     await setup.app.mockInput.pressEnter()
-    await wait(() => setup.app.captureCharFrame().includes("2/3 · S2 transformations"))
-    await wait(
-      () =>
-        setup.app.renderer.currentFocusedRenderable instanceof InputRenderable &&
-        !setup.app.renderer.currentFocusedRenderable.isDestroyed,
-    )
-    await setup.app.mockInput.pressEnter()
     await wait(() => setup.app.captureCharFrame().includes("3/3 · S1 evaluator"))
     // Only connected providers and Zen's free offer are listed; manual entry comes last.
     const evaluators = setup.app.captureCharFrame()
@@ -363,7 +356,6 @@ test("dual setup with a saved S2 offers Continue and goes straight to S1", async
       reasoning: "dual",
       onboarding: "completed",
       principal: { providerID: "mock", id: "model" },
-      fast: { providerID: "mock", id: "combo" },
       evaluator: {
         transport: "opencode-zen",
         baseURL: "https://opencode.ai/zen/v1",
@@ -468,10 +460,10 @@ test("failed OpenRouter probe stays in setup and can be retried with the entered
       }
     },
     tmp.path,
-    () => <Dialogs resume={{ settings, step: "fast", reasoning: "dual" }} />,
+    () => <Dialogs resume={{ settings, step: "principal", reasoning: "dual" }} />,
   )
   try {
-    await ready(setup.app, "S2 transformations")
+    await ready(setup.app, "S2 principal")
     await setup.app.mockInput.pressEnter()
     await ready(setup.app, "Continue with OpenCode Zen · jev-1.13-free")
     // An unconnected provider is reached through manual entry: connection, address, key, model id.
@@ -573,11 +565,11 @@ test("the S1 picker lists the RedRouter's models first and saves the chosen one 
       }
     },
     tmp.path,
-    () => <Dialogs resume={{ settings, step: "fast", reasoning: "dual" }} />,
+    () => <Dialogs resume={{ settings, step: "principal", reasoning: "dual" }} />,
     { height: 44 },
   )
   try {
-    await ready(setup.app, "S2 transformations")
+    await ready(setup.app, "S2 principal")
     await setup.app.mockInput.pressEnter()
     await ready(setup.app, "RedRouter » OpenRouter · TypeSafe JEV 1.13")
     const options = setup.app.captureCharFrame()
@@ -660,11 +652,11 @@ test("a failed RedRouter discovery shows why with Retry, and manual entry stays 
       }
     },
     tmp.path,
-    () => <Dialogs resume={{ settings, step: "fast", reasoning: "dual" }} />,
+    () => <Dialogs resume={{ settings, step: "principal", reasoning: "dual" }} />,
     { height: 44 },
   )
   try {
-    await ready(setup.app, "S2 transformations")
+    await ready(setup.app, "S2 principal")
     await setup.app.mockInput.pressEnter()
     await ready(setup.app, "Retry RedRouter")
     const failed = setup.app.captureCharFrame()
@@ -895,12 +887,6 @@ test("a RedRouter's recommendations come first and are preselected for S2 and S1
         provider: { slug: "cc", name: "Claude Code" },
         reason: "Strongest connected coding model (claude-opus family, newest version).",
       },
-      fast: {
-        id: "cx/gpt-6-luna",
-        name: "GPT-6 Luna",
-        provider: { slug: "cx", name: "OpenAI Codex" },
-        reason: "Cheapest capable fast model (gpt-6-luna family).",
-      },
       systemone: {
         id: "jev-1.13.0",
         name: "Jev 1.13",
@@ -948,17 +934,10 @@ test("a RedRouter's recommendations come first and are preselected for S2 and S1
 
     // The cursor starts on the recommendation.
     await setup.app.mockInput.pressEnter()
-    await ready(setup.app, "Recommended: GPT-6 Luna")
-    const fast = setup.app.captureCharFrame()
-    expect(fast).toContain("2/3 · S2 transformations")
-    expect(fast).toContain("via RedRouter » OpenAI Codex")
-    expect(fast).toContain("Reuse System Two principal")
-    expect(fast.indexOf("Recommended: GPT-6 Luna")).toBeLessThan(fast.indexOf("Reuse System Two principal"))
-
-    await setup.app.mockInput.pressEnter()
     // The router's recommended System One model comes first and holds the cursor.
     await ready(setup.app, "RedRouter » Jev · Jev 1.13")
     const evaluators = setup.app.captureCharFrame()
+    expect(evaluators).toContain("3/3 · S1 evaluator")
     expect(evaluators).toContain("jev-1.13.0 · recommended")
     expect(evaluators.indexOf("RedRouter » Jev · Jev 1.13")).toBeLessThan(
       evaluators.indexOf("RedRouter » Jev · Jev Latest"),
@@ -973,7 +952,6 @@ test("a RedRouter's recommendations come first and are preselected for S2 and S1
         reasoning: "dual",
         onboarding: "completed",
         principal: { providerID: "red-router", id: "cc/claude-opus-5-5" },
-        fast: { providerID: "red-router", id: "cx/gpt-6-luna" },
         evaluator: router.evaluator,
       },
     })

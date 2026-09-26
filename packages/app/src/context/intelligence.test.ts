@@ -17,7 +17,7 @@ const configured: Intelligence.Status = {
   effective: { reasoning: "dual", source: "config" },
 }
 
-test("dual requires both configured roles, with optional transformations", async () => {
+test("dual requires both configured roles", async () => {
   const current = {
     status: {
       ...configured,
@@ -31,7 +31,6 @@ test("dual requires both configured roles, with optional transformations", async
   expect(await service.refresh()).toBe(false)
   current.status = configured
   expect(await service.refresh()).toBe(true)
-  expect(service.state.status?.settings.fast).toBeUndefined()
 })
 
 test("unconfigured single reasoning admits prompts without setup", async () => {

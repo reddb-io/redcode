@@ -201,20 +201,17 @@ const intelligenceChanges = Effect.fn("ProviderRemove.intelligenceChanges")(func
     evaluator !== undefined &&
     (credential?.integrationID === providerID || (!ownKey && ProviderRouter.sameEndpoint(evaluator.baseURL, baseURL)))
   const principal = settings.principal?.providerID === providerID
-  const fast = settings.fast?.providerID === providerID
-  if (!principal && !fast && !evaluatorUses) return { labels: [], next: undefined }
-  const { principal: _principal, fast: _fast, evaluator: _evaluator, ...rest } = settings
+  if (!principal && !evaluatorUses) return { labels: [], next: undefined }
+  const { principal: _principal, evaluator: _evaluator, ...rest } = settings
   const next = {
     ...rest,
     ...(principal ? {} : settings.principal ? { principal: settings.principal } : {}),
-    ...(fast ? {} : settings.fast ? { fast: settings.fast } : {}),
     ...(evaluatorUses ? {} : evaluator ? { evaluator } : {}),
   }
   const turnedOff = next.enabled && next.reasoning !== "single" && (!next.principal || !next.evaluator)
   return {
     labels: [
       ...(principal ? ["S2 principal"] : []),
-      ...(fast ? ["S2 fast model"] : []),
       ...(evaluatorUses ? ["S1 evaluator"] : []),
       ...(turnedOff ? ["dual reasoning (turned off until set up again in /setup)"] : []),
     ],

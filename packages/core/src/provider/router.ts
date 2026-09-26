@@ -365,7 +365,6 @@ function recommendationsFrom(value: unknown): Router.Recommendations | undefined
   const pick = (role: keyof Router.Recommendations) => Option.getOrUndefined(decodeRecommendation(document[role]))
   const picks = {
     default: pick("default"),
-    fast: pick("fast"),
     review: pick("review"),
     systemone: pick("systemone"),
     vision: pick("vision"),

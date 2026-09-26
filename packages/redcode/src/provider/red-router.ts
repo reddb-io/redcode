@@ -101,9 +101,9 @@ export const refresh = Effect.fn("RedRouter.refresh")(function* (
 })
 
 /**
- * Points the System Two models chosen in /setup (principal and fast) at the ids a connection or
- * refresh renamed. Settings are only read and saved when the running process provides them, and a
- * failure leaves them as they were: a renamed id still resolves through the model's aliases.
+ * Points the System Two model chosen in /setup (principal) at the id a connection or refresh
+ * renamed. Settings are only read and saved when the running process provides them, and a failure
+ * leaves them as they were: a renamed id still resolves through the model's aliases.
  */
 export const renameIntelligence = Effect.fn("RedRouter.renameIntelligence")(
   function* (providerID: string, renamed: Readonly<Record<string, string>>) {
@@ -114,11 +114,8 @@ export const renameIntelligence = Effect.fn("RedRouter.renameIntelligence")(
     const rename = (ref: ModelV2.Ref) =>
       ref.providerID === providerID && renamed[ref.id] ? { ...ref, id: ModelV2.ID.make(renamed[ref.id]) } : ref
     const principal = settings.principal && rename(settings.principal)
-    const fast = settings.fast && rename(settings.fast)
-    if (principal === settings.principal && fast === settings.fast) return
-    yield* intelligence.save({
-      settings: { ...settings, ...(principal ? { principal } : {}), ...(fast ? { fast } : {}) },
-    })
+    if (principal === settings.principal) return
+    yield* intelligence.save({ settings: { ...settings, ...(principal ? { principal } : {}) } })
   },
   Effect.catchCause(() => Effect.void),
 )

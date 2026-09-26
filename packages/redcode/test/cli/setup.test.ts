@@ -35,8 +35,6 @@ describe("redcode setup", () => {
             terminal.write("\r")
             yield* terminal.waitFor("S2 (System Two) — principal")
             terminal.write("\r")
-            yield* terminal.waitFor("S2 (System Two) — transformations")
-            terminal.write("\r")
             yield* terminal.waitFor("Continue with typesafe/jev-test")
             terminal.write("\u0003")
             yield* terminal.waitFor("Setup cancelled; previous configuration preserved")
@@ -91,12 +89,6 @@ describe("redcode setup recommendations", () => {
         provider: { slug: "cc", name: "Claude Code" },
         reason: "Strongest connected coding model.",
       },
-      fast: {
-        id: "cx/gpt-6-missing",
-        name: "GPT-6 Missing",
-        provider: { slug: "cx", name: "OpenAI Codex" },
-        reason: "Cheapest capable fast model.",
-      },
     },
   }
 
@@ -121,7 +113,6 @@ describe("redcode setup recommendations", () => {
       options: choices,
       initialValue: undefined,
     })
-    expect(recommendedFirst(choices, router, "fast")).toEqual({ options: choices, initialValue: undefined })
   })
 })
 

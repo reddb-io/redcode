@@ -23,21 +23,20 @@ import {
   routerLabel,
 } from "../util/model-origin"
 
-type Step = "mode" | "principal" | "fast" | "evaluator" | "connection" | "url" | "key" | "manual" | "confirm"
+type Step = "mode" | "principal" | "evaluator" | "connection" | "url" | "key" | "manual" | "confirm"
 type Scope = "all" | "system-one" | "system-two"
 type ModelChoice =
   | Model.Ref
   | { recommended: Model.Ref }
   | { provider: string }
   | "connect"
-  | "reuse"
   | "continue"
   | "change"
 type EvaluatorChoice = { evaluator: Intelligence.Evaluator } | "continue" | "loading" | "retry" | "manual"
 
 export function createDialogSetupState(resume?: {
   settings: Intelligence.Settings
-  step: "mode" | "principal" | "fast"
+  step: "mode" | "principal"
   reasoning?: Intelligence.Reasoning
 }) {
   return createStore({
@@ -124,7 +123,7 @@ export function DialogSetup(
       })
       .catch(fail)
   })
-  const connect = (resume: "principal" | "fast") =>
+  const connect = (resume: "principal") =>
     dialog.replace(() => (
       <DialogProvider
         onConnected={(providerID) => {
@@ -159,10 +158,10 @@ export function DialogSetup(
     if (!current) return undefined
     return { providerID: Provider.ID.make(current.providerID), id: Model.ID.make(current.modelID) }
   }
-  // The connected RedRouter's recommended model for a role, when that router lists it.
-  const recommendation = (role: "default" | "fast") => {
+  // The connected RedRouter's recommended model, when that router lists it.
+  const recommendation = () => {
     const router = state.router
-    const pick = router?.recommended?.[role]
+    const pick = router?.recommended?.default
     const provider = sync.data.provider.find((item) => item.id === router?.providerID)
     const found = pick ? resolveModel(provider, pick.id) : undefined
     if (!pick || !provider || !found) return undefined
@@ -172,10 +171,7 @@ export function DialogSetup(
       ref: { providerID: Provider.ID.make(provider.id), id: Model.ID.make(found.modelID) },
     }
   }
-  const stepRecommendation = () =>
-    state.step === "principal" || state.step === "fast"
-      ? recommendation(state.step === "principal" ? "default" : "fast")
-      : undefined
+  const stepRecommendation = () => (state.step === "principal" ? recommendation() : undefined)
   // Memoized so the cursor effect below reruns only when the recommended model changes, not on every
   // router or provider update.
   const recommendedID = createMemo(() => stepRecommendation()?.ref.id)
@@ -183,11 +179,7 @@ export function DialogSetup(
     const principal = state.settings.principal
     if (state.step === "principal" && principal && !state.changing)
       return [
-        {
-          title: `Continue with ${label(principal)}`,
-          value: "continue",
-          description: state.settings.fast ? `Transformations: ${label(state.settings.fast)}` : undefined,
-        },
+        { title: `Continue with ${label(principal)}`, value: "continue" },
         { title: "Change System Two model…", value: "change" },
       ]
     const provider = activeProvider()
@@ -207,16 +199,6 @@ export function DialogSetup(
                   .join(Router.HOP_SEPARATOR),
                 ...wrap(recommended.pick.reason, 50),
               ],
-              category: "Recommended",
-            },
-          ]
-        : []),
-      ...(state.step === "fast" && principal
-        ? [
-            {
-              title: "Reuse System Two principal",
-              value: "reuse" as const,
-              description: label(principal),
               category: "Recommended",
             },
           ]
@@ -263,13 +245,12 @@ export function DialogSetup(
     on(
       [() => state.step, () => state.changing, () => activeProvider()?.id, recommendedID],
       ([step, changing, , recommended], previous) => {
-        if (step !== "principal" && step !== "fast") return
+        if (step !== "principal") return
         const entered = !previous || previous[0] !== step || previous[1] !== changing || previous[3] !== recommended
         const pick = stepRecommendation()
         if (entered && pick) return select?.moveTo({ recommended: pick.ref })
-        if (step === "fast" && previous?.[0] !== "fast" && state.settings.principal) return select?.moveTo("reuse")
         const models = options().flatMap((option) => (isModel(option.value) ? [option.value] : []))
-        const saved = step === "principal" ? [state.settings.principal, sessionModel()] : [state.settings.fast]
+        const saved = [state.settings.principal, sessionModel()]
         const target =
           models.find((model) => saved.some((ref) => ref?.providerID === model.providerID && ref.id === model.id)) ??
           models[0]
@@ -286,7 +267,7 @@ export function DialogSetup(
   const title = (stage: "s1" | "s2", text: string) => `${stages().indexOf(stage) + 1}/${stages().length} · ${text}`
   const modelStepTitle = () => {
     const provider = activeProvider()
-    const role = title("s2", state.step === "principal" ? "S2 principal" : "S2 transformations")
+    const role = title("s2", "S2 principal")
     return `${role}${provider ? ` · ${provider.name}` : ""}`
   }
   const afterSystemTwo = (): Step =>
@@ -405,20 +386,15 @@ export function DialogSetup(
     // Single reasoning keeps a saved S1 evaluator untouched (runtime ignores it) but never probes it.
     const evaluator = state.reasoning === "dual" ? state.settings.evaluator : undefined
     const apiKey = evaluator && state.key ? { apiKey: state.key } : {}
-    const models = [
-      { role: "S2 model", ref: state.settings.principal },
-      { role: "S2 transformations model", ref: state.settings.fast },
-    ].filter(
-      (item, index, list) => item.ref && (index === 0 || JSON.stringify(item.ref) !== JSON.stringify(list[0]?.ref)),
-    )
-    for (const model of models) {
-      if (!model.ref) continue
-      const checked = await api.probeModel(model.ref)
+    const principal = state.settings.principal
+    if (principal) {
+      const checked = await api.probeModel(principal)
       if (!active) return
-      if (checked.ok) continue
-      // "Generative connection failed (HTTP 400): …" reads as "S2 model <name> failed (HTTP 400): …".
-      const reason = checked.message.replace(/^Generative connection failed/, "failed")
-      return failed("s2", `${model.role} ${label(model.ref)}${reason.startsWith("failed") ? " " : ": "}${reason}`)
+      if (!checked.ok) {
+        // "Generative connection failed (HTTP 400): …" reads as "S2 model <name> failed (HTTP 400): …".
+        const reason = checked.message.replace(/^Generative connection failed/, "failed")
+        return failed("s2", `S2 model ${label(principal)}${reason.startsWith("failed") ? " " : ": "}${reason}`)
+      }
     }
     if (evaluator) {
       const checked = await api.probe({ evaluator, ...apiKey })
@@ -431,7 +407,6 @@ export function DialogSetup(
     })
     if (!active) return
     await local?.intelligence.refresh()
-    const principal = state.settings.principal
     if (principal) {
       const selected = { providerID: principal.providerID, modelID: principal.id }
       if (props.onModelSelected) props.onModelSelected(selected)
@@ -504,32 +479,25 @@ export function DialogSetup(
           }}
         />
       </Match>
-      <Match when={state.step === "principal" || state.step === "fast"}>
+      <Match when={state.step === "principal"}>
         <DialogSelect
           title={modelStepTitle()}
           ref={(ref) => (select = ref)}
-          current={state.step === "principal" ? (state.settings.principal ?? sessionModel()) : undefined}
+          current={state.settings.principal ?? sessionModel()}
           options={options()}
           onSelect={(option) => {
             // Choosing a provider stays on this step and lists that provider's models.
             if (typeof option.value === "object" && "provider" in option.value)
               return set("providerID", option.value.provider)
-            if (option.value === "connect") return connect(state.step === "fast" ? "fast" : "principal")
+            if (option.value === "connect") return connect("principal")
             if (option.value === "change") return set("changing", true)
-            // Continuing keeps the saved transformations model, or reuse of the principal.
             if (option.value === "continue") return set("step", afterSystemTwo())
-            const role = state.step === "principal" ? "principal" : "fast"
-            const model =
-              option.value === "reuse"
-                ? undefined
-                : "recommended" in option.value
-                  ? option.value.recommended
-                  : option.value
+            const model = "recommended" in option.value ? option.value.recommended : option.value
             set((current) => ({
               ...current,
-              providerID: model?.providerID ?? current.providerID,
-              settings: { ...current.settings, [role]: model },
-              step: role === "principal" && current.reasoning === "dual" ? "fast" : afterSystemTwo(),
+              providerID: model.providerID,
+              settings: { ...current.settings, principal: model },
+              step: afterSystemTwo(),
             }))
           }}
         />
