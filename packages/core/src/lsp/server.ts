@@ -32,7 +32,7 @@ export function installed(_directory: string, _project: string): Info[] {
     { id: "eslint", command: ["vscode-eslint-language-server", "--stdio"], extensions: [...javascript, ".vue"], root: nearest(["eslint.config.js", "eslint.config.mjs", "eslint.config.cjs", ".eslintrc", ".eslintrc.js", ".eslintrc.cjs", ".eslintrc.json", ...packages]), download: { package: "vscode-langservers-extracted", bin: "vscode-eslint-language-server" } },
     { id: "oxlint", command: ["oxc_language_server"], extensions: [...javascript, ".vue", ".astro", ".svelte"], root: nearest([".oxlintrc.json", "oxlint.config.ts", "oxlint.config.js", "oxlint.config.mjs", ...packages]) },
     { id: "biome", command: ["biome", "lsp-proxy", "--stdio"], extensions: [...javascript, ".json", ".jsonc", ".vue", ".astro", ".svelte", ".css", ".graphql", ".gql", ".html"], root: nearest(["biome.json", "biome.jsonc"], { strict: true }), download: { package: "@biomejs/biome", bin: "biome" } },
-    { id: "gopls", command: ["gopls"], extensions: [".go"], root: nearest(["go.work", "go.mod", "go.sum"]) },
+    { id: "gopls", command: ["gopls"], extensions: [".go"], root: goRoot },
     { id: "ruby-lsp", command: ["rubocop", "--lsp"], extensions: [".rb", ".rake", ".gemspec", ".ru"], root: nearest(["Gemfile"]) },
     ...(["1", "true"].includes(globalThis.process.env.REDCODE_EXPERIMENTAL_LSP_TY?.toLowerCase() ?? "")
       ? [{ id: "ty", command: ["ty", "server"], extensions: [".py", ".pyi"], root: nearest(["pyproject.toml", "ty.toml", "setup.py", "setup.cfg", "requirements.txt", "Pipfile", "pyrightconfig.json"]) }]
@@ -48,7 +48,7 @@ export function installed(_directory: string, _project: string): Info[] {
     { id: "svelte", command: ["svelteserver", "--stdio"], extensions: [".svelte"], root: nearest(packages), download: { package: "svelte-language-server", bin: "svelteserver" } },
     { id: "astro", command: ["astro-ls", "--stdio"], extensions: [".astro"], root: nearest(packages), download: { package: "@astrojs/language-server", bin: "astro-ls" } },
     { id: "jdtls", command: ["java"], extensions: [".java"], root: javaRoot },
-    { id: "kotlin-ls", command: ["kotlin-lsp", "--stdio"], extensions: [".kt", ".kts"], root: nearest(["settings.gradle.kts", "settings.gradle", "gradlew", "gradlew.bat", "build.gradle.kts", "build.gradle", "pom.xml"]) },
+    { id: "kotlin-ls", command: ["kotlin-lsp", "--stdio"], extensions: [".kt", ".kts"], root: kotlinRoot },
     { id: "yaml-ls", command: ["yaml-language-server", "--stdio"], extensions: [".yaml", ".yml"], root: nearest(packages), download: { package: "yaml-language-server", bin: "yaml-language-server" } },
     { id: "lua-ls", command: ["lua-language-server"], extensions: [".lua"], root: nearest([".luarc.json", ".luarc.jsonc", ".luacheckrc", ".stylua.toml", "stylua.toml", "selene.toml", "selene.yml"]) },
     { id: "php intelephense", command: ["intelephense", "--stdio"], extensions: [".php"], root: nearest(["composer.json", "composer.lock", ".php-version"]), initialization: { telemetry: { enabled: false } }, download: { package: "intelephense", bin: "intelephense" } },
@@ -211,11 +211,31 @@ async function cargoRoot(file: string, directory: string, project: string) {
   return roots.findLast((_, index) => workspace[index]) ?? crate
 }
 
+async function goRoot(file: string, directory: string) {
+  return (await nearest(["go.work"], { strict: true })(file, directory))
+    ?? nearest(["go.mod", "go.sum"])(file, directory)
+}
+
+async function kotlinRoot(file: string, directory: string) {
+  for (const markers of [
+    ["settings.gradle.kts", "settings.gradle"],
+    ["gradlew", "gradlew.bat"],
+    ["build.gradle.kts", "build.gradle"],
+    ["pom.xml"],
+  ]) {
+    const found = await nearest(markers, { strict: true })(file, directory)
+    if (found) return found
+  }
+  return directory
+}
+
 async function javaRoot(file: string, directory: string) {
   const wrapper = await nearest(["gradlew", "gradlew.bat"], { strict: true, exclude: ["settings.gradle", "settings.gradle.kts"] })(file, directory)
   if (wrapper) return wrapper
-  const gradle = await nearest(["settings.gradle", "settings.gradle.kts", "build.gradle", "build.gradle.kts"], { strict: true })(file, directory)
-  if (gradle) return gradle
+  const settings = await nearest(["settings.gradle", "settings.gradle.kts"], { strict: true })(file, directory)
+  if (settings) return settings
+  const build = await nearest(["build.gradle", "build.gradle.kts"], { strict: true })(file, directory)
+  if (build) return build
   const poms = ancestors(path.dirname(file), directory).filter((base) => existsSync(path.join(base, "pom.xml")))
   if (poms.length) {
     const parent = await poms.slice(1).reduce(async (selected, base) => {
