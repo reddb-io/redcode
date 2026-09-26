@@ -131,7 +131,7 @@ export const layer = Layer.effect(
         : firstUser.text
       const selection = yield* context.selectTitle(session)
       if (!selection) return
-      const deadline = AuxDeadline.deadlineMs("title", Config.latest(yield* config.entries(), "experimental")?.aux_timeout)
+      const deadline = AuxDeadline.deadlineMs("title", Config.latestExperimental(yield* config.entries(), "aux_timeout"))
       const title = yield* Effect.gen(function* () {
         const preferred = yield* attempt({ session, agent: selection.agent, text, model: selection.selected })
         if (preferred) return preferred

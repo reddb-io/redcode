@@ -326,7 +326,7 @@ const layer = Layer.effect(
           continue
         }
         const stepLimitReached = loaded.agent.info.steps !== undefined && step >= loaded.agent.info.steps
-        const loopLimits = LoopGuard.limits(Config.latest(yield* config.entries(), "experimental")?.loop_guard)
+        const loopLimits = LoopGuard.limits(Config.latestExperimental(yield* config.entries(), "loop_guard"))
         if (stepLimitReached && loaded.agent.info.steps !== undefined)
           yield* guards.record({
             sessionID,

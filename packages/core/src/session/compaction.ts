@@ -234,7 +234,7 @@ export const layer = Layer.effect(
         context.model.compaction?.type === "native"
           ? compactNatively(trigger, budget, settings.keep)
           : summarize(trigger, budget, settings.keep)
-      const deadline = AuxDeadline.deadlineMs("compaction", Config.latest(yield* config.entries(), "experimental")?.aux_timeout)
+      const deadline = AuxDeadline.deadlineMs("compaction", Config.latestExperimental(yield* config.entries(), "aux_timeout"))
       return yield* compaction.pipe(
         deadline === undefined
           ? (effect) => effect
