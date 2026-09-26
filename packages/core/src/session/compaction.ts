@@ -18,8 +18,9 @@ import type { StreamOptions } from "@opencode/ai/route"
 import type { SessionCompactionResult } from "@opencode/plugin/effect/session"
 import type { SessionError } from "@opencode/schema/session-error"
 import { makeLocationNode } from "@opencode/util/effect/app-node"
-import { Context, Effect, Layer, Result, Stream } from "effect"
+import { Context, Duration, Effect, Layer, Result, Stream } from "effect"
 import { Bus } from "../bus.js"
+import { Config } from "../config.js"
 import { Database } from "../database/database.js"
 import { llmClient } from "../effect/app-node-platform.js"
 import { ModelLimit } from "../model-limit.js"
@@ -28,6 +29,8 @@ import { State } from "../state.js"
 import { Token } from "../util/token.js"
 import type { SessionContext } from "./context.js"
 import { SessionEvent } from "./event.js"
+import { SessionGuardLog } from "./guard-log.js"
+import { AuxDeadline } from "./aux-deadline.js"
 import { SessionHistory } from "./history.js"
 import type { SessionMessage } from "./message.js"
 import { SessionModelRequest } from "./model-request.js"
@@ -186,6 +189,8 @@ export const layer = Layer.effect(
     const db = (yield* Database.Service).db
     const limits = yield* ModelLimit.Service
     const requests = yield* SessionModelRequest.Service
+    const config = yield* Config.Service
+    const guards = yield* SessionGuardLog.Service
 
     const state = State.create<Settings, Editor>({
       name: "session-compaction",
@@ -229,7 +234,25 @@ export const layer = Layer.effect(
         context.model.compaction?.type === "native"
           ? compactNatively(trigger, budget, settings.keep)
           : summarize(trigger, budget, settings.keep)
+      const deadline = AuxDeadline.deadlineMs("compaction", Config.latest(yield* config.entries(), "experimental")?.aux_timeout)
       return yield* compaction.pipe(
+        deadline === undefined
+          ? (effect) => effect
+          : Effect.timeoutOrElse({
+              duration: Duration.millis(deadline),
+              orElse: () =>
+                Effect.gen(function* () {
+                  const message = AuxDeadline.message("compaction", deadline)
+                  yield* guards.record({
+                    sessionID: context.session.id,
+                    guard: "aux",
+                    action: "stop",
+                    subject: "compaction",
+                    detail: message,
+                  })
+                  return yield* Effect.fail<Failure>({ error: { type: "compaction.timeout", message } })
+                }),
+            }),
         Effect.matchEffect({
           onSuccess: (result) => publish(trigger, result),
           onFailure: (failure) => publish(trigger, failure),
@@ -669,7 +692,7 @@ export const layer = Layer.effect(
 export const node = makeLocationNode({
   service: Service,
   layer,
-  deps: [Bus.node, Database.node, llmClient, SessionModelRequest.node, modelLimitNode],
+  deps: [Bus.node, Database.node, llmClient, SessionModelRequest.node, modelLimitNode, Config.node, SessionGuardLog.node],
 })
 
 /** History loads from the latest completed compaction, so a previous one is always the first message. */
