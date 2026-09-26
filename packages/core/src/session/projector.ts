@@ -272,7 +272,7 @@ function mirrorLegacy(db: DatabaseService, events: EventV2.Interface, event: Ses
     delete infoData.sessionID
     yield* db
       .insert(MessageTable)
-      .values({ id: legacy.info.id, session_id: data.sessionID, time_created, data: infoData })
+      .values({ id: legacy.info.id, session_id: data.sessionID, time_created, data: infoData as unknown as typeof MessageTable.$inferInsert.data })
       .onConflictDoUpdate({
         target: MessageTable.id,
         set: { data: infoData, time_created: sql`max(${MessageTable.time_created}, excluded.time_created)` },
@@ -287,7 +287,7 @@ function mirrorLegacy(db: DatabaseService, events: EventV2.Interface, event: Ses
       delete partData.sessionID
       yield* db
         .insert(PartTable)
-        .values({ id: part.id, message_id: legacy.info.id, session_id: data.sessionID, time_created: time, data: partData })
+        .values({ id: part.id, message_id: legacy.info.id, session_id: data.sessionID, time_created: time, data: partData as unknown as typeof PartTable.$inferInsert.data })
         .onConflictDoUpdate({ target: PartTable.id, set: { data: partData } })
         .run()
         .pipe(Effect.orDie)
