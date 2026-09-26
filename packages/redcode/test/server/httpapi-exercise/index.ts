@@ -720,6 +720,56 @@ const scenarios: Scenario[] = [
     }))
     .status(400),
   http.protected
+    .post("/experimental/session-v2/prompt", "sessionV2.prompt")
+    .mutating()
+    .seeded((ctx) => ctx.session({ title: "Session V2 prompt" }))
+    .at((ctx) => ({
+      path: "/experimental/session-v2/prompt",
+      headers: ctx.headers(),
+      body: { sessionID: ctx.state.id, prompt: { text: "Session V2 exerciser prompt" } },
+    }))
+    .json(200, (body, ctx) => {
+      object(body)
+      check(body.sessionID === ctx.state.id, "the V2 prompt should admit into the seeded session")
+      check(typeof body.admittedSeq === "number", "the V2 prompt should report its admission sequence")
+    }),
+  http.protected
+    .get("/experimental/session-v2/{id}", "sessionV2.session")
+    .seeded((ctx) => ctx.session({ title: "Session V2 read" }))
+    .at((ctx) => ({
+      path: route("/experimental/session-v2/{id}", { id: ctx.state.id }),
+      headers: ctx.headers(),
+    }))
+    .json(200, (body, ctx) => {
+      object(body)
+      check(body.id === ctx.state.id, "the V2 session read should return the seeded session")
+    }),
+  http.protected
+    .get("/experimental/session-v2/{id}/messages", "sessionV2.messages")
+    .seeded((ctx) => ctx.session({ title: "Session V2 messages" }))
+    .at((ctx) => ({
+      path: route("/experimental/session-v2/{id}/messages", { id: ctx.state.id }),
+      headers: ctx.headers(),
+    }))
+    .json(200, array, "status"),
+  http.protected
+    .get("/experimental/session-v2/{id}/events", "sessionV2.events")
+    .seeded((ctx) => ctx.session({ title: "Session V2 events" }))
+    .at((ctx) => ({
+      path: route("/experimental/session-v2/{id}/events", { id: ctx.state.id }),
+      headers: ctx.headers(),
+    }))
+    .json(200, array, "status"),
+  http.protected
+    .post("/experimental/session-v2/{id}/interrupt", "sessionV2.interrupt")
+    .seeded((ctx) => ctx.session({ title: "Session V2 interrupt" }))
+    .at((ctx) => ({
+      path: route("/experimental/session-v2/{id}/interrupt", { id: ctx.state.id }),
+      headers: ctx.headers(),
+      body: {},
+    }))
+    .status(204),
+  http.protected
     .post("/experimental/control-plane/move-session", "experimental.controlPlane.moveSession")
     .global()
     .at(() => ({

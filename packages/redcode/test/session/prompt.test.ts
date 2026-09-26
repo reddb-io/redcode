@@ -699,8 +699,8 @@ it.instance("persists classifications for every promoted legacy prompt using rea
         .toSorted(),
     ).toEqual([first.info.id, second.info.id].toSorted())
     // The fixture routes both prompts as plain answers, and the turn used no tools, tasks or goal:
-    // there is nothing a response review could verify, so S1 is not asked for one.
-    expect(history.some((evaluation) => evaluation.operation === "response_quality")).toBe(false)
+    // the response review checks refusal only.
+    expect(history.some((evaluation) => evaluation.operation === "response_quality")).toBe(true)
   }),
 )
 

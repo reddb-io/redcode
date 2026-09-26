@@ -17,6 +17,7 @@ type RepairPart = {
  * through `responseQuestionReason` so the wording stays in one place.
  */
 export const responseQuestionReasons: Record<string, string> = {
+  refusal: "refused or warned without cause",
   omission: "missed part of your request",
   unsupported: "claimed work it couldn't prove",
   tool_evidence: "relied on a failed or unrelated result",

@@ -273,8 +273,6 @@ test("configured setup can edit System Two without walking through System One", 
     // The cursor lands on the saved principal, below the Providers section.
     await ready(setup.app, "2/2 · S2 principal")
     await setup.app.mockInput.pressEnter()
-    await ready(setup.app, "Reuse System Two principal")
-    await setup.app.mockInput.pressEnter()
     await wait(() => setup.app.captureCharFrame().includes("Save global intelligence setup"))
     expect(setup.app.captureCharFrame()).not.toContain("S1 connection")
   } finally {

@@ -1,5 +1,5 @@
 import { SessionV2 } from "@reddb-io/redcode-core/session"
-import { Effect, Stream } from "effect"
+import { Effect } from "effect"
 import { HttpApiBuilder } from "effect/unstable/httpapi"
 import { RootHttpApi } from "../api"
 import { ConflictError, SessionNotFoundError } from "@reddb-io/redcode-protocol/errors"
@@ -46,17 +46,19 @@ export const sessionV2Handlers = HttpApiBuilder.group(RootHttpApi, "server.sessi
     })
 
     const events = Effect.fn("SessionV2HttpApi.events")(function* (ctx) {
-      const stream = sessions.events({
-        sessionID: ctx.params.id,
-        ...(ctx.urlParams.after !== undefined ? { after: ctx.urlParams.after } : {}),
-      })
-      const chunk = yield* stream.pipe(
-        Stream.mapError(
-          (error) => new SessionNotFoundError({ sessionID: error.sessionID, message: `Session not found: ${error.sessionID}` }),
-        ),
-        Stream.runCollect,
-      )
-      return Array.from(chunk)
+      const page = yield* sessions
+        .history({
+          sessionID: ctx.params.id,
+          ...(ctx.query?.after !== undefined ? { after: ctx.query.after } : {}),
+          limit: 500,
+        })
+        .pipe(
+          Effect.mapError(
+            (error) =>
+              new SessionNotFoundError({ sessionID: error.sessionID, message: `Session not found: ${error.sessionID}` }),
+          ),
+        )
+      return page.events
     })
 
     const interrupt = Effect.fn("SessionV2HttpApi.interrupt")(function* (ctx) {

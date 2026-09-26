@@ -1007,7 +1007,7 @@ describe("SessionRunnerLLM", () => {
     }),
   )
 
-  it.effect("does not review a plain answer turn without tools, tasks or a goal", () =>
+  it.effect("reviews a plain answer turn for refusal only", () =>
     Effect.gen(function* () {
       yield* setup
       intelligenceEvaluate = (input) =>
@@ -1031,8 +1031,11 @@ describe("SessionRunnerLLM", () => {
 
       yield* session.resume(sessionID)
 
-      expect(requests).toHaveLength(1)
-      expect(intelligenceInputs.map((input) => input.operation)).toEqual(["prompt_classification"])
+      expect(requests).toHaveLength(2)
+      expect(intelligenceInputs.map((input) => input.operation)).toEqual([
+        "prompt_classification",
+        "response_quality",
+      ])
     }),
   )
 
