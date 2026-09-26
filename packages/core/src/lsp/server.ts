@@ -78,6 +78,8 @@ export function root(server: Info, file: string, directory: string, project: str
 }
 
 export function available(server: Info, root: string, directory: string, downloads: boolean) {
+  if (server.id === "oxlint" && server.command[0] === "oxc_language_server")
+    return !!resolveCommand(server, root, directory) || !!resolveCommand({ ...server, command: ["oxlint"] }, root, directory)
   if (server.id === "sourcekit-lsp" && server.command[0] === "sourcekit-lsp" && !resolveCommand(server, root, directory))
     return !!which("xcrun")
   if (server.id === "jdtls" && server.command[0] === "java")
@@ -260,11 +262,13 @@ export async function start(server: Info, root: string, directory: string, downl
     ? await javaLaunch(downloads)
     : server.id === "kotlin-ls" && server.command[0] === "kotlin-lsp" && !resolveCommand(server, root, directory)
       ? await kotlinLaunch(downloads)
+      : server.id === "oxlint" && server.command[0] === "oxc_language_server"
+        ? await oxlintLaunch(server, root, directory)
       : server.id === "sourcekit-lsp" && server.command[0] === "sourcekit-lsp" && !resolveCommand(server, root, directory)
         ? await sourcekitLaunch()
       : undefined
-  const executable = resolveCommand(server, root, directory)
-    ?? specialized?.executable
+  const executable = specialized?.executable
+    ?? resolveCommand(server, root, directory)
     ?? (isRoslyn(server) ? await installRoslyn(downloads) : undefined)
     ?? await installNative(server, downloads)
     ?? await download(server, downloads)
@@ -324,6 +328,14 @@ async function sourcekitLaunch() {
   const [code, output] = await Promise.all([child.exited, new Response(child.stdout).text()])
   const executable = output.trim()
   return code === 0 && executable ? { executable, args: [] } : undefined
+}
+
+async function oxlintLaunch(server: Info, root: string, directory: string) {
+  const executable = resolveCommand({ ...server, command: ["oxlint"] }, root, directory)
+  if (!executable) return
+  const child = Bun.spawn([executable, "--help"], { stdout: "pipe", stderr: "ignore" })
+  const [code, output] = await Promise.all([child.exited, new Response(child.stdout).text()])
+  return code === 0 && output.includes("--lsp") ? { executable, args: ["--lsp"] } : undefined
 }
 
 async function javaLaunch(downloads: boolean) {
