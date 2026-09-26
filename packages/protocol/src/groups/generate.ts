@@ -2,10 +2,12 @@ import { Model } from "@opencode/schema/model"
 import { Schema } from "effect"
 import { HttpApiEndpoint, HttpApiGroup, OpenApi } from "effect/unstable/httpapi"
 import { InvalidRequestError, ServiceUnavailableError } from "../errors.js"
+import { LocationQuery, locationQueryOpenApi } from "./location.js"
 
 export const GenerateGroup = HttpApiGroup.make("server.generate")
   .add(
     HttpApiEndpoint.post("generate.text", "/api/experimental/generate", {
+      query: LocationQuery,
       payload: Schema.Struct({
         prompt: Schema.String,
         model: Model.Ref.pipe(Schema.optional),
@@ -14,7 +16,7 @@ export const GenerateGroup = HttpApiGroup.make("server.generate")
         data: Schema.Struct({ text: Schema.String }),
       }).annotate({ identifier: "GenerateTextResponse" }),
       error: [InvalidRequestError, ServiceUnavailableError],
-    }).annotateMerge(
+    }).annotateMerge(locationQueryOpenApi).annotateMerge(
       OpenApi.annotations({
         identifier: "experimental.generate.text",
         summary: "Generate text",

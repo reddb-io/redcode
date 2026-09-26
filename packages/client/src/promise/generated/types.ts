@@ -7440,6 +7440,7 @@ export type ModelDefaultInput = {
 export type ModelDefaultOutput = { location: LocationPublicRef; data: ModelInfo | null }
 
 export type GenerateTextInput = {
+  readonly location?: { readonly location?: { readonly directory?: string | undefined } | undefined }["location"]
   readonly prompt: {
     readonly prompt: string
     readonly model?: { readonly id: string; readonly providerID: string; readonly variant?: string } | null

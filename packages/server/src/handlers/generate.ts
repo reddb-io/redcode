@@ -12,22 +12,22 @@ export const GenerateHandler = HttpApiBuilder.group(Api, "server.generate", (han
   Effect.gen(function* () {
     const global = yield* Global.Service
     const locations = yield* LocationServiceMap.Service
-    const services = locations.get(Location.Ref.make({ directory: AbsolutePath.make(global.config) }))
     return handlers.handle(
       "generate.text",
       Effect.fn("server.generate.text")(function* (request) {
-        const generate = yield* Generate.Service
-        const text = yield* generate
-          .text(request.payload)
-          .pipe(
+        const directory = request.query.location?.directory ?? global.config
+        return yield* Effect.gen(function* () {
+          const generate = yield* Generate.Service
+          const text = yield* generate.text(request.payload).pipe(
             Effect.mapError((error) =>
               error._tag === "Generate.ModelSelectionError"
                 ? new InvalidRequestError({ message: error.message })
                 : new ServiceUnavailableError({ message: error.message, service: error.service }),
             ),
           )
-        return { data: { text } }
-      }, Effect.provide(services)),
+          return { data: { text } }
+        }).pipe(Effect.provide(locations.get(Location.Ref.make({ directory: AbsolutePath.make(directory) }))))
+      }),
     )
   }),
 )

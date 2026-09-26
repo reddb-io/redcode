@@ -59,6 +59,15 @@ export default Runtime.handler(Commands.commands.setup, (input) =>
       }),
     )
     const evaluator = reasoning === "dual" ? yield* configureEvaluator(client, status) : undefined
+    const separator = principal.indexOf("/")
+    const model = { providerID: principal.slice(0, separator), id: principal.slice(separator + 1) }
+    log.info("Checking the System Two connection...")
+    yield* request((signal) =>
+      client.generate.text(
+        { prompt: "Reply with OK.", model, location },
+        { signal: AbortSignal.any([signal, AbortSignal.timeout(30_000)]) },
+      ),
+    )
     if (evaluator) {
       log.info("Testing System One with a synthetic evaluation...")
       const check = yield* request((signal) =>
@@ -69,7 +78,6 @@ export default Runtime.handler(Commands.commands.setup, (input) =>
       )
       if (!check.ok) return yield* Effect.fail(new Error(check.message))
     }
-    const separator = principal.indexOf("/")
     const saved = yield* request((signal) =>
       client["server.intelligence"].save(
         {
@@ -78,7 +86,7 @@ export default Runtime.handler(Commands.commands.setup, (input) =>
             enabled: true,
             reasoning,
             onboarding: "completed",
-            principal: { providerID: principal.slice(0, separator), id: principal.slice(separator + 1) },
+            principal: model,
             ...(evaluator ? { evaluator: evaluator.evaluator } : {}),
           },
           ...(evaluator?.key ? { apiKey: evaluator.key } : {}),
