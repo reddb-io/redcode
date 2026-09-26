@@ -1212,6 +1212,16 @@ function importRedcodeData(db: Database.Interface["db"], source: SQLiteDatabase)
         .pipe(Effect.andThen(Effect.logInfo("Imported Redcode data", { table: table.name, rows: rows.length })))
     },
     { discard: true },
+  ).pipe(
+    Effect.andThen(
+      db.run(sql`
+        UPDATE session_v2
+        SET share_url = (SELECT url FROM session_share WHERE session_share.session_id = session_v2.id)
+        WHERE share_url IS NULL AND EXISTS (
+          SELECT 1 FROM session_share WHERE session_share.session_id = session_v2.id
+        )
+      `),
+    ),
   )
 }
 

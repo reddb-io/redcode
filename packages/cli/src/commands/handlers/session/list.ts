@@ -43,6 +43,7 @@ const handler = Effect.fn("cli.session.list")(function* (
             created: session.time.created,
             projectId: session.projectID,
             directory: session.location.directory,
+            shareUrl: session.share?.url,
           })),
           null,
           2,

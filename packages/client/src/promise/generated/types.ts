@@ -2352,6 +2352,7 @@ export type SessionInfo = {
   outcome?: "succeeded" | "failed" | "interrupted"
   time: { created: number; updated: number; idle?: number; viewed?: number; archived?: number }
   title?: string
+  share?: { url: string }
   subpath?: string
   metadata?: SessionMetadata
   permissions?: PermissionRuleset
@@ -2561,6 +2562,7 @@ export type ConfigEntry =
           portable_shell_scanner?: boolean
           subagent_depth?: number
           loop_guard?: false | { correct_at?: number; stop_at?: number; nudge_at?: number }
+          stop_loss?: false | { every?: number; cooldown?: number; idle_at?: number; tokens?: number; minutes?: number }
           aux_timeout?: false | number
           turn_stall?: false | { warn_ms?: number; abort_ms?: number }
           tool_timeout?: false | number
@@ -3497,6 +3499,7 @@ export type SessionImportInput = {
         readonly archived?: number
       }
       readonly title?: string
+      readonly share?: { readonly url: string }
       readonly subpath?: string
       readonly metadata?: { readonly [x: string]: JsonValue }
       readonly permissions?: ReadonlyArray<{
@@ -3814,6 +3817,7 @@ export type SessionImportInput = {
         readonly archived?: number
       }
       readonly title?: string
+      readonly share?: { readonly url: string }
       readonly subpath?: string
       readonly metadata?: { readonly [x: string]: JsonValue }
       readonly permissions?: ReadonlyArray<{
@@ -4131,6 +4135,7 @@ export type SessionImportInput = {
         readonly archived?: number
       }
       readonly title?: string
+      readonly share?: { readonly url: string }
       readonly subpath?: string
       readonly metadata?: { readonly [x: string]: JsonValue }
       readonly permissions?: ReadonlyArray<{

@@ -122,6 +122,7 @@ const layer = Layer.effect(
                       tokens_reasoning: input.data.info.tokens.reasoning,
                       tokens_cache_read: input.data.info.tokens.cache.read,
                       tokens_cache_write: input.data.info.tokens.cache.write,
+                      share_url: input.data.info.share?.url ?? null,
                       time_created: DateTime.toEpochMillis(input.data.info.time.created),
                       time_updated: importedAt,
                       time_idle: input.data.info.time.idle ? DateTime.toEpochMillis(input.data.info.time.idle) : null,

@@ -50,6 +50,8 @@ export const Info = Schema.Struct({
     archived: DateTimeUtcFromMillis.pipe(optional),
   }),
   title: Schema.String.pipe(optional),
+  /** Existing public share URL, when this Session has been shared. */
+  share: Schema.Struct({ url: Schema.String }).pipe(optional),
   location: Location.Ref,
   subpath: RelativePath.pipe(optional),
   metadata: Metadata.pipe(optional),
