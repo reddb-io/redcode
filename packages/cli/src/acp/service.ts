@@ -394,13 +394,21 @@ async function submitPrompt(client: OpenCodeClient, session: Attached, prompt: P
         name: prompt.command.name,
         text: prompt.slash?.args ?? "",
         files: prompt.files,
+        metadata: { source: "acp" },
         delivery: "steer",
       },
       { signal },
     )
   }
   return client.session.prompt(
-    { sessionID: session.id, id: prompt.start.id, text: prompt.text, files: prompt.files, delivery: "steer" },
+    {
+      sessionID: session.id,
+      id: prompt.start.id,
+      text: prompt.text,
+      files: prompt.files,
+      metadata: { source: "acp" },
+      delivery: "steer",
+    },
     { signal },
   )
 }

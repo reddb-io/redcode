@@ -1009,6 +1009,7 @@ export function make(options: ClientOptions) {
               files: input["files"],
               agents: input["agents"],
               skills: input["skills"],
+              metadata: input["metadata"],
               delivery: input["delivery"],
             },
             successStatus: 204,

@@ -194,6 +194,7 @@ export interface Interface {
     files?: PromptInput.Prompt["files"]
     agents?: PromptInput.Prompt["agents"]
     skills?: PromptInput.Prompt["skills"]
+    metadata?: SessionInbox.UserPayload["metadata"]
     delivery?: SessionInbox.Delivery
   }) => Effect.Effect<void, NotFoundError | Command.NotFoundError | Command.ExecutionError>
   readonly shell: (

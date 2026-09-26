@@ -328,8 +328,11 @@ const layer = Layer.effect(
         }
         const stepLimitReached = loaded.agent.info.steps !== undefined && step >= loaded.agent.info.steps
         const loopLimits = LoopGuard.limits(Config.latestExperimental(yield* config.entries(), "loop_guard"))
+        const latestUser = loaded.messages.findLast((message) => message.type === "user")
         const stallLimits = SessionStall.limits(Config.latestExperimental(yield* config.entries(), "turn_stall"), {
-          attended: SessionStall.attended(process.env.OPENCODE_CLIENT ?? ""),
+          attended: SessionStall.attended(
+            typeof latestUser?.metadata?.source === "string" ? latestUser.metadata.source : process.env.OPENCODE_CLIENT ?? "",
+          ),
         })
         const toolTimeout = Config.latestExperimental(yield* config.entries(), "tool_timeout")
         if (stepLimitReached && loaded.agent.info.steps !== undefined)

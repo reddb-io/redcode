@@ -15,7 +15,7 @@ export { Event } from "@opencode/schema/command"
 
 export interface Invocation {
   readonly sessionID: Session.ID
-  readonly prompt: PromptInput.Prompt
+  readonly prompt: PromptInput.Prompt & { readonly metadata?: SessionInbox.UserPayload["metadata"] }
   readonly delivery: SessionInbox.Delivery
 }
 

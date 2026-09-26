@@ -15,6 +15,7 @@ export const execute = Effect.fn("SessionCommand.execute")(function* (input: {
   files?: PromptInput.Prompt["files"]
   agents?: PromptInput.Prompt["agents"]
   skills?: PromptInput.Prompt["skills"]
+  metadata?: SessionInbox.UserPayload["metadata"]
   delivery?: SessionInbox.Delivery
 }) {
   const instances = yield* Instance.Service
@@ -28,6 +29,7 @@ export const execute = Effect.fn("SessionCommand.execute")(function* (input: {
         files: input.files,
         agents: input.agents,
         skills: input.skills,
+        ...(input.metadata ? { metadata: input.metadata } : {}),
       },
       delivery: input.delivery ?? "steer",
     },

@@ -1318,6 +1318,7 @@ export function Prompt(props: PromptProps) {
           files: entry.files,
           agents: entry.agents,
           skills: entry.skills?.length ? entry.skills : undefined,
+          metadata: { source: "tui" },
           delivery,
         })
       }
@@ -1359,6 +1360,7 @@ export function Prompt(props: PromptProps) {
           files: entry.files,
           agents: entry.agents,
           skills: entry.skills?.length ? entry.skills : undefined,
+          metadata: { source: "tui" },
           delivery,
           gate: newSession?.gate,
           // Commit the captured selection after earlier admissions, including

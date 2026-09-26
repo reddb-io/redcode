@@ -348,6 +348,7 @@ async function sendCommand(
     files: request.files.map((file) => ({ uri: file.uri, name: file.name, mention: file.mention })),
     agents: request.agents,
     skills: request.skills,
+    metadata: { source: "app" },
     delivery: value.delivery,
   })
 }
@@ -399,6 +400,7 @@ async function sendPrompt(
     agents: request.agents,
     skills: request.skills,
     metadata: {
+      source: "app",
       displayText: request.displayText,
       comments: request.comments,
       attachments: request.attachments,

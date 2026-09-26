@@ -697,6 +697,7 @@ export const makeSessionGroup = <I extends HttpApiMiddleware.AnyId, S, FormI ext
         payload: Schema.Struct({
           name: Schema.String,
           ...PromptInput.Prompt.fields,
+          metadata: SessionInbox.UserPayload.fields.metadata,
           delivery: SessionInbox.Delivery.pipe(Schema.optional),
         }),
         success: HttpApiSchema.NoContent,
