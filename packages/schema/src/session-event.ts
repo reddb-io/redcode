@@ -26,6 +26,7 @@ import { SessionInbox } from "./session-inbox.js"
 import { Project } from "./project.js"
 import { SessionFork } from "./session-fork.js"
 import { Permission } from "./permission.js"
+import { SessionGuard } from "./session-guard.js"
 
 export { FileAttachment }
 
@@ -652,6 +653,20 @@ export namespace RevertEvent {
   })
 }
 
+export namespace Guard {
+  export const Tripped = Event.ephemeral({
+    type: "session.guard.tripped",
+    schema: {
+      ...Base,
+      guard: SessionGuard.Guard,
+      action: SessionGuard.Action,
+      subject: Schema.String.pipe(optional),
+      detail: Schema.String,
+      at: Schema.Number,
+    },
+  })
+}
+
 export const Definitions = Event.inventory(
   Created,
   AgentSelected,
@@ -699,6 +714,7 @@ export const Definitions = Event.inventory(
   Compaction.Delta,
   Compaction.Ended,
   Compaction.Failed,
+  Guard.Tripped,
   RevertEvent.Staged,
   RevertEvent.Cleared,
   RevertEvent.Committed,

@@ -1258,6 +1258,33 @@ export type SessionCompactionDelta = {
   data: { sessionID: string; text: string }
 }
 
+export type SessionGuardTripped = {
+  id: string
+  created: number
+  metadata?: { [x: string]: any }
+  type: "session.guard.tripped"
+  location?: LocationRef
+  data: {
+    sessionID: string
+    guard:
+      | "stall"
+      | "tool_timeout"
+      | "loop"
+      | "steps"
+      | "aux"
+      | "orphan"
+      | "goal"
+      | "compaction"
+      | "budget"
+      | "intelligence"
+      | "stop_loss"
+    action: "warn" | "correct" | "stop"
+    subject?: string
+    detail: string
+    at: number
+  }
+}
+
 export type FilesystemChanged = {
   id: string
   created: number
@@ -2534,6 +2561,7 @@ export type ConfigEntry =
           portable_shell_scanner?: boolean
           subagent_depth?: number
           loop_guard?: false | { correct_at?: number; stop_at?: number; nudge_at?: number }
+          aux_timeout?: false | number
           policies?: Array<{ action: "provider.use" | "permission"; resource: string; effect: "allow" | "deny" }>
         }
       }
@@ -2886,6 +2914,7 @@ export type V2Event =
   | SessionCompactionDelta
   | SessionCompactionEnded
   | SessionCompactionFailed
+  | SessionGuardTripped
   | SessionRevertStaged
   | SessionRevertCleared
   | SessionRevertCommitted

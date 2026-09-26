@@ -5,6 +5,8 @@ import { SessionGuard } from "@opencode/schema/session-guard"
 import { desc, gte } from "drizzle-orm"
 import { Context, Effect, Layer } from "effect"
 import { Database } from "../database/database.js"
+import { Bus } from "../bus.js"
+import { SessionEvent } from "./event.js"
 import { SessionSchema } from "./schema.js"
 import { SessionGuardTripTable } from "./redcode.sql.js"
 
@@ -24,6 +26,7 @@ export type Summary = SessionGuard.Summary
 
 const make = Effect.gen(function* () {
   const db = (yield* Database.Service).db
+  const bus = yield* Bus.Service
 
   const record = Effect.fn("SessionGuardLog.record")(function* (trip: Trip) {
     const at = Date.now()
@@ -41,6 +44,16 @@ const make = Effect.gen(function* () {
       })
       .run()
       .pipe(Effect.catchCause((cause) => Effect.logWarning("Could not record guard intervention", { cause })))
+    yield* bus
+      .publish(SessionEvent.Guard.Tripped, {
+        sessionID: trip.sessionID,
+        guard: trip.guard,
+        action: trip.action,
+        ...(trip.subject ? { subject: trip.subject } : {}),
+        detail: trip.detail,
+        at,
+      })
+      .pipe(Effect.catchCause((cause) => Effect.logWarning("Could not publish guard intervention", { cause })))
   })
 
   const recent = Effect.fn("SessionGuardLog.recent")(function* (input?: { since?: number; limit?: number }) {
@@ -89,4 +102,4 @@ const make = Effect.gen(function* () {
 })
 
 export class Service extends Context.Service<Service, Effect.Success<typeof make>>()("@opencode/SessionGuardLog") {}
-export const node = makeGlobalNode({ service: Service, layer: Layer.effect(Service, make), deps: [Database.node] })
+export const node = makeGlobalNode({ service: Service, layer: Layer.effect(Service, make), deps: [Database.node, Bus.node] })
