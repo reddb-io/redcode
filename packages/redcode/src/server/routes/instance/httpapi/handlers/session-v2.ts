@@ -1,6 +1,5 @@
 import { SessionV2 } from "@reddb-io/redcode-core/session"
-import { SessionEvent } from "@reddb-io/redcode-schema/session-event"
-import { Effect, Schema, Stream } from "effect"
+import { Effect, Stream } from "effect"
 import { HttpApiBuilder } from "effect/unstable/httpapi"
 import { RootHttpApi } from "../api"
 import { ConflictError, SessionNotFoundError } from "@reddb-io/redcode-protocol/errors"
@@ -62,17 +61,7 @@ export const sessionV2Handlers = HttpApiBuilder.group(RootHttpApi, "server.sessi
         ),
         Stream.runCollect,
       )
-      // The durable stream elements may arrive as envelopes (`{ type, data }`) or flat wire events.
-      const unwrapped = Array.from(chunk).map((event) => {
-        const record = event as Record<string, unknown>
-        const data = record.data
-        return typeof data === "object" && data !== null
-          ? { type: record.type, ...(data as Record<string, unknown>) }
-          : event
-      })
-      return yield* Effect.forEach(unwrapped, (event) =>
-        Schema.decodeUnknownEffect(SessionEvent.Durable)(event).pipe(Effect.orDie),
-      )
+      return Array.from(chunk)
     })
 
     const interrupt = Effect.fn("SessionV2HttpApi.interrupt")(function* (ctx: { params: { id: SessionV2.ID } }) {
