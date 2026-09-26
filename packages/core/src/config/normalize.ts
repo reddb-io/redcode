@@ -436,6 +436,15 @@ function normalizeExperimental(
         )
         if (value !== undefined) result.loop_guard = value
       }
+      if (own(experimental, "stop_loss")) {
+        const value = decodeEncoded(
+          ConfigExperimental.Info.fields.stop_loss,
+          experimental.stop_loss,
+          ["experimental", "stop_loss"],
+          diagnostics,
+        )
+        if (value !== undefined) result.stop_loss = value
+      }
       if (own(experimental, "aux_timeout")) {
         const value = decodeEncoded(
           ConfigExperimental.Info.fields.aux_timeout,

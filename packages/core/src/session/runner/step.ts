@@ -140,7 +140,10 @@ export const make = Effect.gen(function* () {
           }).pipe(Effect.zipRight(publisher.progress(call.id, update))),
       })
       const ms = ToolDeadline.deadlineMs({ tool: call.name, configured: input.toolTimeout })
-      if (ms === undefined) return yield* run()
+      if (ms === undefined) {
+        const abort = new AbortController()
+        return yield* run(abort.signal).pipe(Effect.ensuring(Effect.sync(() => abort.abort())))
+      }
       return yield* Effect.suspend(() => {
         HumanWait.claim(input.sessionID, call.id)
         return ToolDeadline.guard(run, {

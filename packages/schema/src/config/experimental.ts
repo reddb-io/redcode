@@ -19,6 +19,18 @@ export class Info extends Schema.Class<Info>("ConfigExperimental.Info")({
       nudge_at: PositiveInt.pipe(optional),
     }),
   ]).pipe(optional).annotate({ description: "Repeated tool-call limits; false disables the loop guard." }),
+  stop_loss: Schema.Union([
+    Schema.Literal(false),
+    Schema.Struct({
+      every: NonNegativeInt.pipe(optional),
+      cooldown: PositiveInt.pipe(optional),
+      idle_at: PositiveInt.pipe(optional),
+      tokens: PositiveInt.pipe(optional),
+      minutes: PositiveInt.pipe(optional),
+    }),
+  ]).pipe(optional).annotate({
+    description: "Progress checkpoints across Steps; false disables the stop-loss.",
+  }),
   aux_timeout: Schema.Union([Schema.Literal(false), NonNegativeInt]).pipe(optional).annotate({
     description: "Deadline in milliseconds for auxiliary model calls; false disables it.",
   }),

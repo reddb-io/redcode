@@ -3,7 +3,7 @@ export * as SessionRunnerLLM from "./llm.js"
 import { AIError, Message, ProviderErrorEvent, SystemPart } from "@opencode/ai"
 import { Monitor } from "@opencode/schema/monitor"
 import { and, desc, eq, sql } from "drizzle-orm"
-import { Cause, Effect, Exit, FiberMap, Layer, Schema } from "effect"
+import { Cause, Clock, Effect, Exit, FiberMap, Layer, Schema } from "effect"
 import { Database } from "../../database/database.js"
 import { Bus } from "../../bus.js"
 import { ModelLimit } from "../../model-limit.js"
@@ -45,6 +45,9 @@ import { Permission } from "../../permission.js"
 import { Config } from "../../config.js"
 import { LoopGuard } from "../loop-guard.js"
 import { SessionStall } from "../stall.js"
+import { SessionStopLoss } from "../stop-loss.js"
+import { Intelligence } from "../../intelligence.js"
+import { IntelligenceEvaluation } from "../../intelligence/evaluation.js"
 import { MAX_STEPS_PROMPT } from "./max-steps.js"
 
 const CONTINUE_AFTER_INCOMPLETE_STREAM =
@@ -67,6 +70,7 @@ const layer = Layer.effect(
     const todos = yield* SessionTodoStore.Service
     const goals = yield* SessionGoal.Service
     const guards = yield* SessionGuardLog.Service
+    const intelligence = yield* Intelligence.Service
     const plans = yield* SessionPlan.Service
     const monitors = yield* MonitorRuntime.Service
     const steps = yield* SessionStep.make
@@ -81,6 +85,7 @@ const layer = Layer.effect(
       let entering = true
       let todoContinuations = 0
       let guardStopped = false
+      let stopLoss = SessionStopLoss.FRESH
       const promotable = input.promotable ?? "input"
       if (!force && !continuing) {
         const pending = yield* SessionInbox.nextPromotable(db, sessionID, "input")
@@ -202,6 +207,8 @@ const layer = Layer.effect(
                   if (promoted > 0) {
                     step = 1
                     todoContinuations = 0
+                    stopLoss = SessionStopLoss.FRESH
+                    guardStopped = false
                   }
                   return { _tag: "Ready" as const, context: yield* context.load(selected) }
                 }),
@@ -236,6 +243,20 @@ const layer = Layer.effect(
         if (Exit.isFailure(result)) return yield* Effect.failCause(result.cause)
         continuing = result.value
         if (
+          continuing &&
+          !guardStopped &&
+          next.context.agent.id !== "question" &&
+          !(yield* SessionInbox.nextPromotable(db, sessionID, "steer")) &&
+          !(yield* monitors.list(sessionID)).some(Monitor.parks)
+        ) {
+          const checked = yield* checkStopLoss(next.context, step, stopLoss)
+          stopLoss = checked.memory
+          if (checked.ended) {
+            continuing = false
+            guardStopped = true
+          }
+        }
+        if (
           !continuing &&
           !guardStopped &&
           next.context.agent.id !== "question" &&
@@ -269,6 +290,103 @@ const layer = Layer.effect(
       // A blocked initial instruction baseline must leave admitted input pending.
       yield* InstructionState.prepare(db, bus, selected.instructions, sessionID)
       return selected
+    })
+
+    const checkStopLoss = Effect.fn("SessionRunner.checkStopLoss")(function* (
+      loaded: SessionContext.Loaded,
+      step: number,
+      memory: SessionStopLoss.Memory,
+    ) {
+      const sessionID = loaded.session.id
+      const entries = yield* config.entries()
+      const bounds = SessionStopLoss.limits(
+        Config.latestExperimental(entries, "stop_loss"),
+        LoopGuard.limits(Config.latestExperimental(entries, "loop_guard")),
+      )
+      if (!bounds) return { memory, ended: false }
+      const user = (yield* store.messages({ sessionID, type: "user", limit: 1 })).at(0)
+      if (!user || user.type !== "user") return { memory, ended: false }
+      const messages = yield* store.messages({
+        sessionID,
+        order: "asc",
+        cursor: { id: user.id, direction: "next" },
+      })
+      const turn = SessionStopLoss.projected([user, ...messages])
+      const trajectory = SessionStopLoss.observe(turn.steps, {
+        now: yield* Clock.currentTimeMillis,
+        started: turn.started,
+      })
+      const settings = yield* intelligence.read()
+      const asked = settings.enabled && IntelligenceEvaluation.mode(settings) === "dual"
+      const remembered = memory === SessionStopLoss.FRESH ? (SessionStopLoss.recover(messages) ?? memory) : memory
+      const current = SessionStopLoss.current(remembered, step, trajectory.idle)
+      const checkpoint = SessionStopLoss.due({
+        step,
+        memory: current,
+        limits: bounds,
+        signals: SessionStopLoss.signals(trajectory, bounds),
+        interval: asked,
+      })
+      if (checkpoint.type === "none") return { memory: current, ended: false }
+      const subagent = loaded.session.parentID !== undefined
+      const evaluation = asked
+        ? yield* intelligence
+            .evaluate(
+              SessionStopLoss.evaluation({
+                sessionID,
+                request: turn.request,
+                steps: turn.steps,
+                trajectory,
+                checkpoint,
+                subagent,
+                directory: loaded.session.location.directory,
+                limits: bounds,
+              }),
+            )
+            .pipe(Effect.orElseSucceed(() => undefined))
+        : undefined
+      const verdict = SessionStopLoss.decide({
+        trajectory,
+        limits: bounds,
+        memory: current,
+        asked,
+        evaluation,
+        subagent,
+      })
+      const next = SessionStopLoss.remember(current, step, verdict)
+      if (verdict.action === "continue") return { memory: next, ended: false }
+      // New input admitted while S1 evaluated takes the next boundary instead of a stale intervention.
+      if (yield* SessionInbox.nextPromotable(db, sessionID, "steer")) return { memory, ended: false }
+      yield* guards.record({
+        sessionID,
+        guard: "stop_loss",
+        action: verdict.action === "steer" ? "correct" : "stop",
+        subject: checkpoint.type === "signal" ? checkpoint.signals.join(",") : "interval",
+        detail: SessionStopLoss.detail(trajectory, verdict),
+      })
+      const text =
+        verdict.action === "steer"
+          ? SessionStopLoss.steer(trajectory, verdict)
+          : SessionStopLoss.final(trajectory, verdict, { subagent })
+      yield* bus.publish(SessionEvent.Synthetic, {
+        sessionID,
+        text,
+        ...(verdict.action === "steer" ? {} : { description: text }),
+        metadata: {
+          [SessionStopLoss.METADATA_KEY]: { ...SessionStopLoss.notice(trajectory, verdict, { subagent }), memory: next },
+        },
+      })
+      if (verdict.action === "steer") return { memory: next, ended: false }
+      const goal = yield* goals.get(sessionID)
+      if (goal?.status === "active")
+        yield* goals
+          .save(goal, {
+            ...goal,
+            status: "paused",
+            reason: `${SessionStopLoss.PAUSE}${SessionStopLoss.reason(trajectory, verdict)}`,
+          })
+          .pipe(Effect.orDie)
+      return { memory: next, ended: true }
     })
 
     const learnOverflow = Effect.fnUntraced(function* (
@@ -539,6 +657,7 @@ export const node = makeLocationNode({
     SessionCompaction.node,
     Plugin.node,
     Config.node,
+    Intelligence.node,
     SessionTitle.node,
     SessionTodoStore.node,
     SessionGoal.node,
