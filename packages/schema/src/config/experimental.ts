@@ -22,6 +22,15 @@ export class Info extends Schema.Class<Info>("ConfigExperimental.Info")({
   aux_timeout: Schema.Union([Schema.Literal(false), NonNegativeInt]).pipe(optional).annotate({
     description: "Deadline in milliseconds for auxiliary model calls; false disables it.",
   }),
+  turn_stall: Schema.Union([
+    Schema.Literal(false),
+    Schema.Struct({
+      warn_ms: PositiveInt.pipe(optional),
+      abort_ms: PositiveInt.pipe(optional),
+    }),
+  ]).pipe(optional).annotate({
+    description: "Warn when a Step produces no output, and end unattended Steps after a longer silence.",
+  }),
   policies: ConfigPolicy.Info.pipe(Schema.Array, optional).annotate({
     description: "Ordered policies controlling access to configured resources",
   }),

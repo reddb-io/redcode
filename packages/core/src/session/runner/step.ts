@@ -10,7 +10,7 @@ import {
   type ToolCall,
 } from "@opencode/ai"
 import type { Agent } from "@opencode/schema/agent"
-import { Cause, Clock, Data, Effect, Exit, Fiber, Option, Stream } from "effect"
+import { Cause, Clock, Data, Duration, Effect, Exit, Fiber, Option, Stream } from "effect"
 import { SessionError } from "@opencode/schema/session-error"
 import { TokenUsage } from "@opencode/schema/token-usage"
 import { Bus } from "../../bus.js"
@@ -26,6 +26,7 @@ import { SessionGuardLog } from "../guard-log.js"
 import { SessionLoopGuard } from "../loop-guard-v2.js"
 import { LoopGuard } from "../loop-guard.js"
 import { SessionStore } from "../store.js"
+import { SessionStall } from "../stall.js"
 import { SessionEvent } from "../event.js"
 import { SessionMessage } from "../message.js"
 import { SessionModelRequest } from "../model-request.js"
@@ -67,6 +68,7 @@ interface Input {
   readonly accepted: (input: number) => Effect.Effect<void>
   readonly allowLoop: (tool: string) => boolean
   readonly loopLimits?: LoopGuard.Limits
+  readonly stallLimits: SessionStall.StallLimits
 }
 
 const TOOLS_INTERRUPTED = { type: "aborted", message: "Tool execution interrupted" } as const
@@ -82,6 +84,7 @@ export const make = Effect.gen(function* () {
   const goalCompletion = yield* SessionGoalCompletion.Service
   const goals = yield* SessionGoal.Service
   const guards = yield* SessionGuardLog.Service
+  const permissions = yield* Permission.Service
   const store = yield* SessionStore.Service
 
   const attempt = Effect.fn("SessionStep.attempt")(function* (input: Input) {
@@ -101,6 +104,9 @@ export const make = Effect.gen(function* () {
     }> = []
     const interruptTools = Effect.suspend(() => Fiber.interruptAll(toolRuns.map((run) => run.fiber)))
     let guardStop: string | undefined
+    let lastEventAt = yield* Clock.currentTimeMillis
+    let activeTools = 0
+    let warnedAt = lastEventAt
     const executeTool = Effect.fnUntraced(function* (call: ToolCall) {
       if (input.prepared.request.toolChoice?.type === "none")
         return yield* new Tool.Error({ message: "Tools are disabled after the maximum agent steps" })
@@ -124,7 +130,10 @@ export const make = Effect.gen(function* () {
         agent: input.agent,
         messageID: input.assistantMessageID,
         call,
-        progress: (update) => publisher.progress(call.id, update),
+        progress: (update) =>
+          Effect.sync(() => {
+            lastEventAt = Date.now()
+          }).pipe(Effect.zipRight(publisher.progress(call.id, update))),
       })
     })
 
@@ -135,6 +144,7 @@ export const make = Effect.gen(function* () {
     const providerStream = llm.stream(input.prepared.request, input.prepared.options).pipe(
       Stream.runForEach((event) =>
         Effect.gen(function* () {
+          lastEventAt = yield* Clock.currentTimeMillis
           if (overflowFailure || publisher.hasProviderError()) return
           if (
             LLMEvent.is.providerError(event) &&
@@ -146,6 +156,7 @@ export const make = Effect.gen(function* () {
           }
           yield* publisher.publish(event)
           if (event.type !== "tool-call" || event.providerExecuted) return
+          activeTools++
           toolRuns.push({
             call: event,
             fiber: yield* Effect.uninterruptibleMask((restore) =>
@@ -155,6 +166,12 @@ export const make = Effect.gen(function* () {
                 Effect.catchTag("Tool.Error", (error) =>
                   publisher.failTool(event.id, toSessionError(error), error.metadata).pipe(Effect.asVoid),
                 ),
+                Effect.ensuring(
+                  Effect.sync(() => {
+                    activeTools--
+                    lastEventAt = Date.now()
+                  }),
+                ),
               ),
             ).pipe(Effect.forkScoped),
           })
@@ -162,11 +179,46 @@ export const make = Effect.gen(function* () {
       ),
       Effect.ensuring(publisher.flush()),
     )
+    const watchdog = Effect.gen(function* () {
+      if (!Number.isFinite(input.stallLimits.warnMs) && !Number.isFinite(input.stallLimits.abortMs))
+        return yield* Effect.never
+      let warned = false
+      while (true) {
+        yield* Effect.sleep(Duration.millis(SessionStall.pollMs(input.stallLimits)))
+        const permissionPending = (yield* permissions.forSession(input.sessionID)).length > 0
+        const decision = SessionStall.decide({
+          quietMs: (yield* Clock.currentTimeMillis) - lastEventAt,
+          activeToolCount: activeTools,
+          permissionPending,
+          limits: input.stallLimits,
+        })
+        if (decision.type === "working") {
+          if (permissionPending) lastEventAt = yield* Clock.currentTimeMillis
+          if (activeTools > 0 || permissionPending) warned = false
+          if (lastEventAt > warnedAt) warned = false
+          continue
+        }
+        if (decision.type === "warn") {
+          if (!warned) {
+            yield* guards.record({
+              sessionID: input.sessionID,
+              guard: "stall",
+              action: "warn",
+              detail: SessionStall.warning(decision.quietMs, input.stallLimits),
+            })
+            warnedAt = lastEventAt
+          }
+          warned = true
+          continue
+        }
+        return yield* new StepFailedError({ error: { type: "aborted", message: `Stopped: ${decision.reason}` } })
+      }
+    })
 
     // Keep the final tool and Step events uninterruptible, even when the work itself is cancelled.
     return yield* Effect.uninterruptibleMask((restore) =>
       Effect.gen(function* () {
-        const stream = yield* restore(providerStream).pipe(Effect.exit)
+        const stream = yield* restore(Effect.raceFirst(providerStream, watchdog)).pipe(Effect.exit)
         const streamFailure = Option.getOrUndefined(Exit.findErrorOption(stream))
         const streamInterrupted = Exit.hasInterrupts(stream)
         if (!overflowFailure && publisher.hasStarted()) yield* publisher.streamed()
@@ -195,6 +247,19 @@ export const make = Effect.gen(function* () {
             : undefined
         const llmFailure = streamFailure instanceof AIError ? streamFailure : unknownFinish
         const llmError = llmFailure && !recorded.providerFailed ? toSessionError(llmFailure) : undefined
+        if (streamFailure instanceof StepFailedError) {
+          yield* guards.record({
+            sessionID: input.sessionID,
+            guard: "stall",
+            action: "stop",
+            detail: streamFailure.error.message,
+          })
+          yield* publisher.failUnsettledTools(streamFailure.error)
+          yield* publisher.failAssistant(streamFailure.error)
+          const goal = yield* goals.get(input.sessionID)
+          if (goal?.status === "active")
+            yield* goals.save(goal, { ...goal, status: "paused", reason: streamFailure.error.message }).pipe(Effect.orDie)
+        }
         if (
           input.recoverContinuation &&
           llmFailure?.reason._tag === "Transport" &&

@@ -44,6 +44,7 @@ import { Plugin } from "../../plugin.js"
 import { Permission } from "../../permission.js"
 import { Config } from "../../config.js"
 import { LoopGuard } from "../loop-guard.js"
+import { SessionStall } from "../stall.js"
 import { MAX_STEPS_PROMPT } from "./max-steps.js"
 
 const CONTINUE_AFTER_INCOMPLETE_STREAM =
@@ -327,6 +328,9 @@ const layer = Layer.effect(
         }
         const stepLimitReached = loaded.agent.info.steps !== undefined && step >= loaded.agent.info.steps
         const loopLimits = LoopGuard.limits(Config.latestExperimental(yield* config.entries(), "loop_guard"))
+        const stallLimits = SessionStall.limits(Config.latestExperimental(yield* config.entries(), "turn_stall"), {
+          attended: SessionStall.attended(process.env.OPENCODE_CLIENT ?? ""),
+        })
         if (stepLimitReached && loaded.agent.info.steps !== undefined)
           yield* guards.record({
             sessionID,
@@ -417,6 +421,7 @@ const layer = Layer.effect(
             Permission.evaluate("doom_loop", tool, loaded.agent.info.permissions, loaded.session.permissions ?? []).effect ===
             "allow",
           loopLimits,
+          stallLimits,
         })
         const completed = yield* SessionStep.Outcome.$match(outcome, {
           Completed: Effect.fnUntraced(function* (outcome) {
