@@ -229,6 +229,14 @@ export type SessionGetInput = { readonly sessionID: Session.ID }
 export type SessionGetOutput = Session.Info
 export type SessionGetOperation<E = never> = (input: SessionGetInput) => Effect.Effect<SessionGetOutput, E>
 
+export type SessionShareInput = { readonly sessionID: Session.ID }
+export type SessionShareOutput = Session.Info
+export type SessionShareOperation<E = never> = (input: SessionShareInput) => Effect.Effect<SessionShareOutput, E>
+
+export type SessionUnshareInput = { readonly sessionID: Session.ID }
+export type SessionUnshareOutput = Session.Info
+export type SessionUnshareOperation<E = never> = (input: SessionUnshareInput) => Effect.Effect<SessionUnshareOutput, E>
+
 export type SessionGoalGetInput = { readonly sessionID: Session.ID }
 export type SessionGoalGetOutput = {
   readonly id: string
@@ -3190,6 +3198,8 @@ export interface SessionApi<E = never> {
   readonly export: SessionExportOperation<E>
   readonly active: SessionActiveOperation<E>
   readonly get: SessionGetOperation<E>
+  readonly share: SessionShareOperation<E>
+  readonly unshare: SessionUnshareOperation<E>
   readonly goal: {
     readonly get: SessionGoalGetOperation<E>
     readonly start: SessionGoalStartOperation<E>

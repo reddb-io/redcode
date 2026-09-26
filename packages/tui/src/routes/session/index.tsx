@@ -922,7 +922,17 @@ export function Session(props: {
       suggested: route.type === "session",
       group: "Session",
       slash: { name: "share" },
-      run: () => unavailable("Sharing"),
+      run: () => {
+        dialog.clear()
+        void client.api.session
+          .share({ sessionID: route.sessionID })
+          .then(async (info) => {
+            if (!info.share?.url) throw new Error("The share service did not return a link")
+            await clipboard.write(info.share.url)
+            toast.show({ message: "Share link copied to clipboard", variant: "success" })
+          })
+          .catch((error) => toast.error(error))
+      },
     },
     {
       title: "Rename session",
@@ -999,9 +1009,15 @@ export function Session(props: {
       title: "Unshare session",
       id: "session.unshare",
       group: "Session",
-      enabled: false,
+      enabled: !!session()?.share,
       slash: { name: "unshare" },
-      run: () => unavailable("Unsharing"),
+      run: () => {
+        dialog.clear()
+        void client.api.session
+          .unshare({ sessionID: route.sessionID })
+          .then(() => toast.show({ message: "Share link revoked", variant: "success" }))
+          .catch((error) => toast.error(error))
+      },
     },
     {
       title: "Undo previous message",

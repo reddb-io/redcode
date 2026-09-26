@@ -1,0 +1,204 @@
+export * as SessionShare from "./share.js"
+
+import { eq } from "drizzle-orm"
+import { Context, Effect, Layer, Schema, Stream } from "effect"
+import { makeGlobalNode } from "@opencode/util/effect/app-node"
+import { Config } from "../config.js"
+import { Bus } from "../bus.js"
+import { Database } from "../database/database.js"
+import { LocationServiceMap } from "../location-service-map.js"
+import { Session } from "../session.js"
+import { SessionEvent } from "./event.js"
+import { SessionMessage } from "./message.js"
+import { SessionShareTable } from "./redcode.sql.js"
+import { revoke } from "./share-remote.js"
+import { SessionSchema } from "./schema.js"
+import { SessionTable } from "./sql.js"
+
+const RemoteShare = Schema.Struct({ id: Schema.String, url: Schema.String, secret: Schema.String })
+const decodeRemoteShare = Schema.decodeUnknownSync(RemoteShare)
+const encodeSession = Schema.encodeSync(SessionSchema.Info)
+const encodeMessages = Schema.encodeSync(Schema.Array(SessionMessage.Info))
+
+export interface Interface {
+  readonly create: (sessionID: SessionSchema.ID) => Effect.Effect<SessionSchema.Info, Error>
+  readonly remove: (sessionID: SessionSchema.ID) => Effect.Effect<SessionSchema.Info, Error>
+  readonly sync: (sessionID: SessionSchema.ID) => Effect.Effect<void, Error>
+}
+
+export class Service extends Context.Service<Service, Interface>()("@opencode/SessionShare") {}
+
+const layer = Layer.effect(
+  Service,
+  Effect.gen(function* () {
+    const bus = yield* Bus.Service
+    const database = yield* Database.Service
+    const locations = yield* LocationServiceMap.Service
+    const sessions = yield* Session.Service
+    const pending = new Set<SessionSchema.ID>()
+
+    const settings = Effect.fn("SessionShare.settings")(function* (info: SessionSchema.Info) {
+      return yield* Effect.gen(function* () {
+        const config = yield* Config.Service
+        const entries = yield* config.entries()
+        return {
+          mode: Config.latest(entries, "share") ?? "manual",
+          url: Config.latest(entries, "enterprise")?.url ?? "https://opncd.ai",
+        }
+      }).pipe(
+        Effect.provide(locations.get(info.location)),
+        Effect.mapError((cause) => cause instanceof Error ? cause : new Error(String(cause))),
+      )
+    })
+
+    const request = Effect.fn("SessionShare.request")(function* (
+      url: string,
+      method: "POST" | "DELETE",
+      body: object,
+    ) {
+      return yield* Effect.tryPromise({
+        try: async (signal) => {
+          const response = await fetch(url, {
+            method,
+            headers: { "content-type": "application/json" },
+            body: JSON.stringify(body),
+            signal,
+          })
+          if (!response.ok) throw new Error(`Share service returned HTTP ${response.status}`)
+          return response.json() as Promise<unknown>
+        },
+        catch: (cause) => cause instanceof Error ? cause : new Error(String(cause)),
+      })
+    })
+
+    const stored = Effect.fn("SessionShare.stored")(function* (sessionID: SessionSchema.ID) {
+      return yield* database.db
+        .select()
+        .from(SessionShareTable)
+        .where(eq(SessionShareTable.session_id, sessionID))
+        .get()
+        .pipe(Effect.orDie)
+    })
+
+    const sync = Effect.fn("SessionShare.sync")(function* (sessionID: SessionSchema.ID) {
+      const share = yield* stored(sessionID)
+      if (!share) return
+      const info = yield* sessions.get(sessionID)
+      const messages = (yield* sessions.messages({ sessionID, order: "asc" })).filter(
+        (message) => message.type !== "system" && message.type !== "skill" && message.type !== "synthetic",
+      )
+      const summary = yield* database.db
+        .select({ diffs: SessionTable.summary_diffs })
+        .from(SessionTable)
+        .where(eq(SessionTable.id, sessionID))
+        .get()
+        .pipe(Effect.orDie)
+      const diffs = summary?.diffs
+        ? summary.diffs.filter((diff) => diff.file !== undefined && diff.patch !== undefined)
+        : yield* sessions.diff({ sessionID }).pipe(
+            Effect.catchAll((error) =>
+              Effect.logWarning("share diff unavailable", { sessionID, error }).pipe(Effect.as([])),
+            ),
+          )
+      const data = [
+        { type: "session", data: encodeSession({ ...info, permissions: undefined, metadata: undefined, revert: undefined }) },
+        { type: "messages", data: { sessionID, messages: encodeMessages(messages) } },
+        { type: "session_diff", data: diffs },
+      ]
+      yield* request(`${new URL(share.url).origin}/api/share/${encodeURIComponent(share.id)}/sync`, "POST", {
+        secret: share.secret,
+        data,
+      })
+    })
+
+    const create = Effect.fn("SessionShare.create")(function* (sessionID: SessionSchema.ID) {
+      const info = yield* sessions.get(sessionID)
+      const config = yield* settings(info)
+      if (process.env["REDCODE_DISABLE_SHARE"] === "true" || process.env["REDCODE_DISABLE_SHARE"] === "1")
+        return yield* Effect.fail(new Error("Sharing is disabled"))
+      if (config.mode === "disabled") return yield* Effect.fail(new Error("Sharing is disabled by configuration"))
+      const existing = yield* stored(sessionID)
+      if (existing) {
+        yield* sync(sessionID)
+        return yield* sessions.get(sessionID)
+      }
+      if (info.share) return yield* Effect.fail(new Error("The existing share has no local secret"))
+      const share = decodeRemoteShare(yield* request(`${config.url.replace(/\/$/, "")}/api/share`, "POST", { sessionID }))
+      yield* database.db
+        .insert(SessionShareTable)
+        .values({ session_id: sessionID, id: share.id, secret: share.secret, url: share.url })
+        .run()
+        .pipe(Effect.orDie)
+      yield* sync(sessionID)
+      yield* database.db
+        .update(SessionTable)
+        .set({ share_url: share.url })
+        .where(eq(SessionTable.id, sessionID))
+        .run()
+        .pipe(Effect.orDie)
+      return yield* sessions.get(sessionID)
+    })
+
+    const remove = Effect.fn("SessionShare.remove")(function* (sessionID: SessionSchema.ID) {
+      const info = yield* sessions.get(sessionID)
+      const share = yield* stored(sessionID)
+      if (!share) {
+        if (info.share) return yield* Effect.fail(new Error("The existing share has no local secret"))
+        return info
+      }
+      yield* revoke(database.db, sessionID)
+      yield* database.db.transaction(() =>
+        Effect.gen(function* () {
+          yield* database.db.delete(SessionShareTable).where(eq(SessionShareTable.session_id, sessionID)).run()
+          yield* database.db.update(SessionTable).set({ share_url: null }).where(eq(SessionTable.id, sessionID)).run()
+        }),
+      ).pipe(Effect.orDie)
+      return yield* sessions.get(sessionID)
+    })
+
+    yield* bus
+      .subscribe([
+        SessionEvent.Created,
+        SessionEvent.InboxDelivered,
+        SessionEvent.Renamed,
+        SessionEvent.Moved,
+        SessionEvent.Step.Ended,
+        SessionEvent.Step.Failed,
+        SessionEvent.Execution.Succeeded,
+        SessionEvent.Execution.Failed,
+        SessionEvent.Execution.Interrupted,
+      ])
+      .pipe(
+        Stream.runForEach((event) =>
+          Effect.gen(function* () {
+            const sessionID = event.data.sessionID
+            if (pending.has(sessionID)) return
+            pending.add(sessionID)
+            yield* Effect.gen(function* () {
+              yield* Effect.sleep("1 second")
+              pending.delete(sessionID)
+              if (event.type === SessionEvent.Created.type) {
+                const info = yield* sessions.get(sessionID)
+                if ((yield* settings(info)).mode === "auto") yield* create(sessionID)
+                return
+              }
+              yield* sync(sessionID)
+            }).pipe(
+              Effect.catchAllCause((cause) => Effect.logWarning("share synchronization failed", { sessionID, cause })),
+              Effect.ensuring(Effect.sync(() => pending.delete(sessionID))),
+              Effect.forkScoped,
+            )
+          }),
+        ),
+        Effect.forkScoped({ startImmediately: true }),
+      )
+
+    return Service.of({ create, remove, sync })
+  }),
+)
+
+export const node = makeGlobalNode({
+  service: Service,
+  layer,
+  deps: [Bus.node, Database.node, LocationServiceMap.node, Session.node],
+})

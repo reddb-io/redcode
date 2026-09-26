@@ -7,6 +7,7 @@ import { Design } from "@opencode/schema/design"
 import { SessionStats } from "@opencode/core/session/stats"
 import { SessionTitle } from "@opencode/core/session/title"
 import { SessionTransfer } from "@opencode/core/session/transfer"
+import { SessionShare } from "@opencode/core/session/share"
 import { InstructionEntry } from "@opencode/core/session/instruction-entry"
 import { Form } from "@opencode/core/form"
 import { DateTime, Effect, Stream } from "effect"
@@ -41,6 +42,7 @@ export const SessionHandler = HttpApiBuilder.group(Api, "server.session", (handl
     const session = yield* Session.Service
     const goals = yield* SessionGoal.Service
     const transfer = yield* SessionTransfer.Service
+    const sharing = yield* SessionShare.Service
     const requireOwnedForm = Effect.fnUntraced(function* (sessionID: Form.Info["sessionID"], formID: Form.ID) {
       const form = yield* Form.Service
       const info = yield* form.get(formID).pipe(Effect.catchTag("Form.NotFoundError", () => missingForm(formID)))
@@ -176,6 +178,28 @@ export const SessionHandler = HttpApiBuilder.group(Api, "server.session", (handl
             data: yield* session
               .get(ctx.params.sessionID)
               .pipe(Effect.catchTag("Session.NotFoundError", missingSession)),
+          }
+        }),
+      )
+      .handle(
+        "session.share",
+        Effect.fn(function* (ctx) {
+          yield* session.get(ctx.params.sessionID).pipe(Effect.catchTag("Session.NotFoundError", missingSession))
+          return {
+            data: yield* sharing.create(ctx.params.sessionID).pipe(
+              Effect.mapError((error) => new ServiceUnavailableError({ message: error.message })),
+            ),
+          }
+        }),
+      )
+      .handle(
+        "session.unshare",
+        Effect.fn(function* (ctx) {
+          yield* session.get(ctx.params.sessionID).pipe(Effect.catchTag("Session.NotFoundError", missingSession))
+          return {
+            data: yield* sharing.remove(ctx.params.sessionID).pipe(
+              Effect.mapError((error) => new ServiceUnavailableError({ message: error.message })),
+            ),
           }
         }),
       )

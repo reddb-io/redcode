@@ -360,6 +360,8 @@ const layer = Layer.effect(
         yield* transport.close(sessionID)
         const children = yield* result.list({ parentID: sessionID })
         yield* Effect.forEach(children.data, (child) => result.remove(child.id), { concurrency: 1, discard: true })
+        const { revoke } = yield* Effect.promise(() => import("./session/share-remote.js"))
+        yield* revoke(db, sessionID).pipe(Effect.orDie)
         yield* environments.clear(sessionID)
         yield* bus.publish(SessionEvent.Deleted, { sessionID })
         yield* bus.remove(sessionID)

@@ -311,6 +311,32 @@ export const makeSessionGroup = <I extends HttpApiMiddleware.AnyId, S, FormI ext
       ),
     )
     .add(
+      HttpApiEndpoint.post("session.share", "/api/session/:sessionID/share", {
+        params: { sessionID: Session.ID },
+        success: Schema.Struct({ data: PublicSessionInfo }),
+        error: [SessionNotFoundError, InvalidRequestError, ServiceUnavailableError],
+      }).annotateMerge(
+        OpenApi.annotations({
+          identifier: "session.share",
+          summary: "Share session",
+          description: "Create or synchronize a public link for a session.",
+        }),
+      ),
+    )
+    .add(
+      HttpApiEndpoint.delete("session.unshare", "/api/session/:sessionID/share", {
+        params: { sessionID: Session.ID },
+        success: Schema.Struct({ data: PublicSessionInfo }),
+        error: [SessionNotFoundError, InvalidRequestError, ServiceUnavailableError],
+      }).annotateMerge(
+        OpenApi.annotations({
+          identifier: "session.unshare",
+          summary: "Unshare session",
+          description: "Revoke the public link for a session.",
+        }),
+      ),
+    )
+    .add(
       HttpApiEndpoint.get("session.goal.get", "/api/experimental/session/:sessionID/goal", {
         params: { sessionID: Session.ID },
         success: Schema.Struct({ data: Schema.NullOr(SessionGoal.Info) }),

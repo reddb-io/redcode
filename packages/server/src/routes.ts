@@ -24,6 +24,7 @@ import { Intelligence } from "@opencode/core/intelligence"
 import { DesignAppConnection } from "@opencode/core/design/app-connection"
 import { Instance } from "@opencode/core/instance/service"
 import { SessionTransfer } from "@opencode/core/session/transfer"
+import { SessionShare } from "@opencode/core/session/share"
 import { ShellSelect } from "@opencode/core/shell/select"
 import { Job } from "@opencode/core/job"
 import { Mcp } from "@opencode/core/mcp/index"
@@ -76,6 +77,7 @@ const applicationServiceNodes = [
   DesignAppConnection.node,
   Instance.node,
   SessionTransfer.node,
+  SessionShare.node,
   SdkPlugins.node,
   PluginUpdate.node,
   PermissionSaved.node,

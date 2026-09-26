@@ -4441,6 +4441,14 @@ export type SessionGetInput = { readonly sessionID: { readonly sessionID: string
 
 export type SessionGetOutput = { data: SessionInfo }["data"]
 
+export type SessionShareInput = { readonly sessionID: { readonly sessionID: string }["sessionID"] }
+
+export type SessionShareOutput = { data: SessionInfo }["data"]
+
+export type SessionUnshareInput = { readonly sessionID: { readonly sessionID: string }["sessionID"] }
+
+export type SessionUnshareOutput = { data: SessionInfo }["data"]
+
 export type SessionGoalGetInput = { readonly sessionID: { readonly sessionID: string }["sessionID"] }
 
 export type SessionGoalGetOutput = { data: SessionGoalInfo | null }["data"]
