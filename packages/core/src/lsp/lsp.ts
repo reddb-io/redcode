@@ -50,6 +50,7 @@ const layer = Layer.effect(
   Effect.gen(function* () {
     const location = yield* Location.Service
     const config = yield* Config.Service
+    const downloads = !["1", "true"].includes(process.env["REDCODE_DISABLE_LSP_DOWNLOAD"]?.toLowerCase() ?? "")
     const backend = yield* Effect.promise(() => import("#lsp"))
     const entries = yield* config.entries()
     const selected = entries.reduce<Info["lsp"]>((value, entry) => {
@@ -118,7 +119,7 @@ const layer = Layer.effect(
         root: await backend.root(server, file, location.directory, location.project.directory),
       })))
       return Promise.all(matching.filter((item): item is { server: LSPServer.Info; root: string } =>
-        item.root !== undefined && backend.available(item.server, item.root, location.directory),
+        item.root !== undefined && backend.available(item.server, item.root, location.directory, downloads),
       ).map(async ({ server, root }) => {
         const key = `${server.id}\0${root}`
         if (!available(key)) return undefined
@@ -128,7 +129,7 @@ const layer = Layer.effect(
           return pending
         }
         const started = Promise.resolve().then(async () => {
-          const handle = await backend.start(server, root, location.directory)
+          const handle = await backend.start(server, root, location.directory, downloads)
           return backend.createClient({
               serverID: server.id,
               server: handle,
@@ -192,7 +193,7 @@ const layer = Layer.effect(
       if (!fileInside(location.directory, file)) return false
       const roots = yield* Effect.promise(() => Promise.all(servers.filter((server) => backend.matches(server, file)).map((server) =>
         backend.root(server, file, location.directory, location.project.directory).then((root) =>
-          root && backend.available(server, root, location.directory) && available(`${server.id}\0${root}`) ? root : undefined,
+          root && backend.available(server, root, location.directory, downloads) && available(`${server.id}\0${root}`) ? root : undefined,
         ),
       )))
       return roots.some((root) => root !== undefined)

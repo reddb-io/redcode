@@ -15,6 +15,7 @@ export interface Info {
   readonly initialization?: Record<string, unknown>
   readonly env?: Record<string, string>
   readonly root?: (file: string, directory: string, project: string) => Promise<string | undefined>
+  readonly download?: { readonly package: string; readonly bin?: string }
 }
 
 const packages = ["package.json", "package-lock.json", "bun.lockb", "bun.lock", "pnpm-lock.yaml", "yarn.lock"]
@@ -24,31 +25,31 @@ const javascript = [".ts", ".tsx", ".js", ".jsx", ".mjs", ".cjs", ".mts", ".cts"
 export function installed(_directory: string, _project: string): Info[] {
   return [
     { id: "deno", command: ["deno", "lsp"], extensions: [".ts", ".tsx", ".js", ".jsx", ".mjs"], root: nearest(["deno.json", "deno.jsonc"], { strict: true }) },
-    { id: "typescript", command: ["typescript-language-server", "--stdio"], extensions: javascript, root: nearest(packages, { exclude: ["deno.json", "deno.jsonc"] }) },
-    { id: "vue", command: ["vue-language-server", "--stdio"], extensions: [".vue"], root: nearest(packages) },
+    { id: "typescript", command: ["typescript-language-server", "--stdio"], extensions: javascript, root: nearest(packages, { exclude: ["deno.json", "deno.jsonc"] }), download: { package: "typescript-language-server", bin: "typescript-language-server" } },
+    { id: "vue", command: ["vue-language-server", "--stdio"], extensions: [".vue"], root: nearest(packages), download: { package: "@vue/language-server", bin: "vue-language-server" } },
     { id: "oxlint", command: ["oxc_language_server"], extensions: [...javascript, ".vue", ".astro", ".svelte"], root: nearest([".oxlintrc.json", "oxlint.config.ts", "oxlint.config.js", "oxlint.config.mjs", ...packages]) },
-    { id: "biome", command: ["biome", "lsp-proxy", "--stdio"], extensions: [...javascript, ".json", ".jsonc", ".vue", ".astro", ".svelte", ".css", ".graphql", ".gql", ".html"], root: nearest(["biome.json", "biome.jsonc"], { strict: true }) },
+    { id: "biome", command: ["biome", "lsp-proxy", "--stdio"], extensions: [...javascript, ".json", ".jsonc", ".vue", ".astro", ".svelte", ".css", ".graphql", ".gql", ".html"], root: nearest(["biome.json", "biome.jsonc"], { strict: true }), download: { package: "@biomejs/biome", bin: "biome" } },
     { id: "gopls", command: ["gopls"], extensions: [".go"], root: nearest(["go.work", "go.mod", "go.sum"]) },
     { id: "ruby-lsp", command: ["rubocop", "--lsp"], extensions: [".rb", ".rake", ".gemspec", ".ru"], root: nearest(["Gemfile"]) },
-    { id: "pyright", command: ["pyright-langserver", "--stdio"], extensions: [".py", ".pyi"], root: nearest(["pyproject.toml", "setup.py", "setup.cfg", "requirements.txt", "Pipfile", "pyrightconfig.json"]) },
+    { id: "pyright", command: ["pyright-langserver", "--stdio"], extensions: [".py", ".pyi"], root: nearest(["pyproject.toml", "setup.py", "setup.cfg", "requirements.txt", "Pipfile", "pyrightconfig.json"]), download: { package: "pyright", bin: "pyright-langserver" } },
     { id: "elixir-ls", command: ["elixir-ls"], extensions: [".ex", ".exs"], root: nearest(["mix.exs", "mix.lock"]) },
     { id: "zls", command: ["zls"], extensions: [".zig", ".zon"], root: nearest(["build.zig"]) },
     { id: "fsharp", command: ["fsautocomplete"], extensions: [".fs", ".fsi", ".fsx", ".fsscript"], root: nearest(["*.slnx", "*.sln", "*.fsproj", "global.json"]) },
     { id: "sourcekit-lsp", command: ["sourcekit-lsp"], extensions: [".swift", ".m", ".mm", ".objc", "objcpp"], root: nearest(["Package.swift", "*.xcodeproj", "*.xcworkspace"]) },
     { id: "rust", command: ["rust-analyzer"], extensions: [".rs"], root: cargoRoot },
     { id: "clangd", command: ["clangd", "--background-index"], extensions: [".c", ".cpp", ".cc", ".cxx", ".c++", ".h", ".hpp", ".hh", ".hxx", ".h++"], root: nearest(["compile_commands.json", "compile_flags.txt", ".clangd"]) },
-    { id: "svelte", command: ["svelteserver", "--stdio"], extensions: [".svelte"], root: nearest(packages) },
-    { id: "astro", command: ["astro-ls", "--stdio"], extensions: [".astro"], root: nearest(packages) },
-    { id: "yaml-ls", command: ["yaml-language-server", "--stdio"], extensions: [".yaml", ".yml"], root: nearest(packages) },
+    { id: "svelte", command: ["svelteserver", "--stdio"], extensions: [".svelte"], root: nearest(packages), download: { package: "svelte-language-server", bin: "svelteserver" } },
+    { id: "astro", command: ["astro-ls", "--stdio"], extensions: [".astro"], root: nearest(packages), download: { package: "@astrojs/language-server", bin: "astro-ls" } },
+    { id: "yaml-ls", command: ["yaml-language-server", "--stdio"], extensions: [".yaml", ".yml"], root: nearest(packages), download: { package: "yaml-language-server", bin: "yaml-language-server" } },
     { id: "lua-ls", command: ["lua-language-server"], extensions: [".lua"], root: nearest([".luarc.json", ".luarc.jsonc", ".luacheckrc", ".stylua.toml", "stylua.toml", "selene.toml", "selene.yml"]) },
-    { id: "php intelephense", command: ["intelephense", "--stdio"], extensions: [".php"], root: nearest(["composer.json", "composer.lock", ".php-version"]) },
+    { id: "php intelephense", command: ["intelephense", "--stdio"], extensions: [".php"], root: nearest(["composer.json", "composer.lock", ".php-version"]), download: { package: "intelephense", bin: "intelephense" } },
     { id: "prisma", command: ["prisma", "language-server"], extensions: [".prisma"], root: nearest(["schema.prisma", "prisma/schema.prisma", "prisma"], { exclude: ["package.json"] }) },
     { id: "dart", command: ["dart", "language-server", "--lsp"], extensions: [".dart"], root: nearest(["pubspec.yaml", "analysis_options.yaml"]) },
     { id: "ocaml-lsp", command: ["ocamllsp"], extensions: [".ml", ".mli"], root: nearest(["dune-project", "dune-workspace", ".merlin", "opam"]) },
-    { id: "bash", command: ["bash-language-server", "start"], extensions: [".sh", ".bash", ".zsh", ".ksh"] },
+    { id: "bash", command: ["bash-language-server", "start"], extensions: [".sh", ".bash", ".zsh", ".ksh"], download: { package: "bash-language-server", bin: "bash-language-server" } },
     { id: "terraform", command: ["terraform-ls", "serve"], extensions: [".tf", ".tfvars"], root: nearest([".terraform.lock.hcl", "terraform.tfstate", "*.tf"]) },
     { id: "texlab", command: ["texlab"], extensions: [".tex", ".bib"], root: nearest([".latexmkrc", "latexmkrc", ".texlabroot", "texlabroot"]) },
-    { id: "dockerfile", command: ["docker-langserver", "--stdio"], extensions: [".dockerfile", "Dockerfile"] },
+    { id: "dockerfile", command: ["docker-langserver", "--stdio"], extensions: [".dockerfile", "Dockerfile"], download: { package: "dockerfile-language-server-nodejs", bin: "docker-langserver" } },
     { id: "gleam", command: ["gleam", "lsp"], extensions: [".gleam"], root: nearest(["gleam.toml"]) },
     { id: "clojure-lsp", command: ["clojure-lsp", "listen"], extensions: [".clj", ".cljs", ".cljc", ".edn"], root: nearest(["deps.edn", "project.clj", "shadow-cljs.edn", "bb.edn", "build.boot"]) },
     { id: "nixd", command: ["nixd"], extensions: [".nix"], root: nearest(["flake.nix"]) },
@@ -67,8 +68,8 @@ export function root(server: Info, file: string, directory: string, project: str
   return server.root?.(file, directory, project) ?? Promise.resolve(directory)
 }
 
-export function available(server: Info, root: string, directory: string) {
-  if (!resolveCommand(server, root, directory)) return false
+export function available(server: Info, root: string, directory: string, downloads: boolean) {
+  if (!resolveCommand(server, root, directory) && !(downloads && server.download)) return false
   if (server.id === "typescript" || server.id === "astro") return typescriptPath(root, directory) !== undefined
   return true
 }
@@ -138,8 +139,9 @@ function ancestors(start: string, stop: string) {
   }
 }
 
-export async function start(server: Info, root: string, directory: string): Promise<Handle> {
+export async function start(server: Info, root: string, directory: string, downloads: boolean): Promise<Handle> {
   const executable = resolveCommand(server, root, directory)
+    ?? await download(server, downloads)
   if (!executable) throw new Error(`LSP server ${server.id} is not installed`)
   const tsserver = server.id === "typescript" || server.id === "astro"
     ? typescriptPath(root, directory)
@@ -173,4 +175,10 @@ export async function start(server: Info, root: string, directory: string): Prom
     process.kill("SIGTERM")
   })
   return { process, exited, initialization }
+}
+
+async function download(server: Info, enabled: boolean) {
+  if (!enabled || !server.download) return
+  const { Npm } = await import("@opencode/util/npm")
+  return Npm.which(server.download.package, server.download.bin)
 }
