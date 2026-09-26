@@ -61,7 +61,10 @@ export const sessionV2Handlers = HttpApiBuilder.group(RootHttpApi, "server.sessi
         ),
         Stream.runCollect,
       )
-      return Array.from(chunk)
+      return Array.from(chunk).map((event) => ({
+        type: event.type,
+        ...(event.data as Record<string, unknown>),
+      }))
     })
 
     const interrupt = Effect.fn("SessionV2HttpApi.interrupt")(function* (ctx: { params: { id: SessionV2.ID } }) {
