@@ -14,17 +14,13 @@ export default Runtime.handler(Commands.commands.auth.commands.remove, (input) =
     if (!target) yield* requireInteractive("Pass a provider ID in a non-interactive terminal")
     if (interactive) intro("Remove provider")
     const integrations = (yield* request((signal) => client.integration.list({ location }, { signal }))).data
-    const available = target
-      ? []
-      : (yield* request((signal) => client.provider.list({ location }, { signal }))).data
     const configured = target
       ? []
       : (yield* request((signal) => client.config.get({ location }, { signal })))
           .filter((entry) => entry.type === "document")
           .flatMap((entry) => Object.keys(entry.info.providers ?? {}))
     const choices = [...new Set([
-      ...integrations.filter((item) => item.connections.some((connection) => connection.type === "credential")).map((item) => item.id),
-      ...available.map((item) => item.id),
+      ...integrations.filter((item) => item.connections.length > 0).map((item) => item.id),
       ...configured,
     ])]
     if (!target && choices.length === 0) return yield* Effect.fail(new Error("No saved or configured providers"))

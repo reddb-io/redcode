@@ -32,7 +32,8 @@ const layer = Layer.effect(
       providerID: string,
       options: { dryRun?: boolean } = {},
     ) {
-      if (!config.removeProvider) return yield* Effect.fail(new Error("Global configuration updates are unavailable"))
+      const removeConfig = config.removeProvider
+      if (!removeConfig) return yield* Effect.fail(new Error("Global configuration updates are unavailable"))
       const entries = yield* config.entries()
       const integration = yield* integrations.get(IntegrationID.make(providerID))
       const saved = (yield* credentials.all()).filter((credential) => credential.integrationID === providerID)
@@ -42,7 +43,7 @@ const layer = Layer.effect(
           ...entries.flatMap((entry) => entry.type === "document" ? entry.info.providers?.[providerID]?.env ?? [] : []),
         ].filter((name) => Boolean(process.env[name]))),
       ]
-      const preview = yield* config.removeProvider(providerID, { hide: envVariables.length > 0, dryRun: true })
+      const preview = yield* removeConfig(providerID, { hide: envVariables.length > 0, dryRun: true })
       const referencingFiles = entries.flatMap((entry) => {
         if (entry.type !== "document" || !entry.path || entry.path === preview.path) return []
         const plan = ConfigProviderRemove.plan(entry.info, providerID, false)
@@ -94,10 +95,12 @@ const layer = Layer.effect(
       } satisfies ProviderRemoval.Result
       if (options.dryRun) return result
 
-      yield* config.removeProvider(providerID, { hide: envVariables.length > 0 })
-      yield* Effect.forEach(saved, (credential) => credentials.remove(credential.id), { discard: true })
-      if (principalUses || evaluatorUses) yield* intelligence.save({ settings: next })
-      yield* Effect.forEach(learned, (entry) => limits.forget(entry.providerID, entry.modelID), { discard: true })
+      yield* Effect.uninterruptible(Effect.gen(function* () {
+        yield* removeConfig(providerID, { hide: envVariables.length > 0 })
+        yield* Effect.forEach(saved, (credential) => credentials.remove(credential.id), { discard: true })
+        if (principalUses || evaluatorUses) yield* intelligence.save({ settings: next })
+        yield* Effect.forEach(learned, (entry) => limits.forget(entry.providerID, entry.modelID), { discard: true })
+      }))
       IntelligenceRouter.clearCache()
       return result
     })
