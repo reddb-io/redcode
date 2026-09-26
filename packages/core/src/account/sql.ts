@@ -2,6 +2,7 @@ import { sqliteTable, text, integer, primaryKey } from "drizzle-orm/sqlite-core"
 
 import { Timestamps } from "../database/schema.sql.js"
 
+// V1 import staging: bridgeAccounts moves rows into V2 credentials, then clears them.
 export const AccountTable = sqliteTable("account", {
   id: text().primaryKey(),
   email: text().notNull(),

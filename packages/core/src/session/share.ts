@@ -84,7 +84,8 @@ const layer = Layer.effect(
         { type: "messages", data: { sessionID, messages: encodeMessages(messages) } },
         { type: "session_diff", data: diffs },
       ]
-      yield* send(yield* backend(database.db, share), "POST", {
+      const target = yield* backend(database.db, share).pipe(Effect.provide(locations.get(info.location)))
+      yield* send(target, "POST", {
         secret: share.secret,
         data,
       }, share.id, true)
@@ -102,7 +103,7 @@ const layer = Layer.effect(
         return yield* sessions.get(sessionID)
       }
       if (info.share) return yield* Effect.fail(new Error("The existing share has no local secret"))
-      const target = yield* active(database.db, config.url)
+      const target = yield* active(config.url).pipe(Effect.provide(locations.get(info.location)))
       const share = yield* Schema.decodeUnknownEffect(RemoteShare)(yield* send(target, "POST", { sessionID })).pipe(
         Effect.mapError(() => new Error("Share service returned an invalid link")),
       )
@@ -114,6 +115,7 @@ const layer = Layer.effect(
           secret: share.secret,
           url: share.url,
           resource: target.resource,
+          credential_id: target.credentialID,
           account_id: target.accountID,
           org_id: target.orgID,
         })
@@ -136,7 +138,7 @@ const layer = Layer.effect(
         if (info.share) return yield* Effect.fail(new Error("The existing share has no local secret"))
         return info
       }
-      yield* revoke(database.db, sessionID)
+      yield* revoke(database.db, sessionID).pipe(Effect.provide(locations.get(info.location)))
       yield* database.db.transaction(() =>
         Effect.gen(function* () {
           yield* database.db.delete(SessionShareTable).where(eq(SessionShareTable.session_id, sessionID)).run()

@@ -1,8 +1,8 @@
 {
   "version": "7",
   "dialect": "sqlite",
-  "id": "bc771d4f-fcc4-4595-a03c-54dcb5447fef",
-  "prevIds": ["b923a953-75f8-4b95-9f56-509276219849"],
+  "id": "e0038461-f3cc-4091-89c4-1b62b488f1ef",
+  "prevIds": ["bc771d4f-fcc4-4595-a03c-54dcb5447fef"],
   "ddl": [
     {
       "name": "redcode_session_context_epoch",
@@ -535,6 +535,16 @@
       "default": "'share'",
       "generated": null,
       "name": "resource",
+      "entityType": "columns",
+      "table": "session_share"
+    },
+    {
+      "type": "text",
+      "notNull": false,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "credential_id",
       "entityType": "columns",
       "table": "session_share"
     },

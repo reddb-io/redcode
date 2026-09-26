@@ -1,15 +1,12 @@
 import { eq } from "drizzle-orm"
-import { Effect, Schema } from "effect"
-import { AccountStateTable, AccountTable } from "../account/sql.js"
+import { Effect } from "effect"
+import { CredentialTable } from "../credential/sql.js"
+import { Integration } from "../integration.js"
+import { Plugin } from "../plugin.js"
+import { Credential } from "@opencode/schema/credential"
 import type { Database } from "../database/database.js"
 import type { SessionSchema } from "./schema.js"
 import { SessionShareTable } from "./redcode.sql.js"
-
-const Token = Schema.Struct({
-  access_token: Schema.String,
-  refresh_token: Schema.String,
-  expires_in: Schema.Number,
-})
 
 type DB = Database.Interface["db"]
 type Share = typeof SessionShareTable.$inferSelect
@@ -17,55 +14,75 @@ export type Backend = {
   readonly resource: "share" | "shares"
   readonly baseUrl: string
   readonly headers: Record<string, string>
+  readonly credentialID?: string
   readonly accountID?: string
   readonly orgID?: string
 }
 
-export const active = Effect.fn("SessionShare.activeBackend")(function* (db: DB, fallback: string) {
-  const state = yield* db.select().from(AccountStateTable).where(eq(AccountStateTable.id, 1)).get().pipe(Effect.orDie)
-  if (!state?.active_account_id || !state.active_org_id)
-    return { resource: "share", baseUrl: fallback, headers: {} } satisfies Backend
-  const account = yield* db
-    .select()
-    .from(AccountTable)
-    .where(eq(AccountTable.id, state.active_account_id))
-    .get()
-    .pipe(Effect.orDie)
-  if (!account) return { resource: "share", baseUrl: fallback, headers: {} } satisfies Backend
-  return {
-    resource: "shares",
-    baseUrl: account.url,
-    headers: {
-      authorization: `Bearer ${yield* token(db, account)}`,
-      "x-org-id": state.active_org_id,
-    },
-    accountID: account.id,
-    orgID: state.active_org_id,
-  } satisfies Backend
+export const active = Effect.fn("SessionShare.activeBackend")(function* (fallback: string) {
+  yield* Plugin.awaitActivation
+  const integration = yield* Integration.Service
+  const connection = yield* integration.connection.active(Integration.ID.make("opencode"))
+  if (connection?.type === "credential") {
+    const credential = yield* integration.connection.resolve(connection)
+    const target = credential && credentialBackend(credential, connection.id)
+    if (target) return target
+  }
+  return { resource: "share", baseUrl: fallback, headers: {} } satisfies Backend
 })
 
 export const backend = Effect.fn("SessionShare.backend")(function* (db: DB, share: Share) {
   if (share.resource !== "shares")
     return { resource: "share", baseUrl: new URL(share.url).origin, headers: {} } satisfies Backend
+  if (share.credential_id) {
+    yield* Plugin.awaitActivation
+    const integration = yield* Integration.Service
+    const credential = yield* integration.connection.resolve({
+      type: "credential",
+      id: Credential.ID.make(share.credential_id),
+      label: "",
+      method: "oauth",
+    })
+    const target = credential && credentialBackend(credential, share.credential_id, share.org_id ?? undefined)
+    if (!target) return yield* Effect.fail(new Error("The credential used to create this share is unavailable"))
+    return target
+  }
   if (!share.account_id || !share.org_id) return yield* Effect.fail(new Error("Share account provenance is missing"))
-  const account = yield* db
-    .select()
-    .from(AccountTable)
-    .where(eq(AccountTable.id, share.account_id))
-    .get()
-    .pipe(Effect.orDie)
-  if (!account) return yield* Effect.fail(new Error("The account used to create this share is unavailable"))
+  const linked = (yield* db.select().from(CredentialTable)
+    .where(eq(CredentialTable.integration_id, Integration.ID.make("opencode")))
+    .all()
+    .pipe(Effect.orDie))
+    .find((entry) => entry.value.metadata?.accountID === share.account_id)
+  if (!linked) return yield* Effect.fail(new Error("The account used to create this share is unavailable"))
+  yield* Plugin.awaitActivation
+  const integration = yield* Integration.Service
+  const credential = yield* integration.connection.resolve({
+    type: "credential",
+    id: linked.id,
+    label: linked.label,
+    method: linked.value.type === "oauth" ? "oauth" : "key",
+  })
+  const target = credential && credentialBackend(credential, linked.id, share.org_id)
+  if (!target) return yield* Effect.fail(new Error("The credential used to create this share is unavailable"))
+  return target
+})
+
+function credentialBackend(value: Credential.Value, credentialID: string, orgID?: string): Backend | undefined {
+  const server = value.metadata?.server
+  const organization = orgID ?? value.metadata?.orgID
+  if (typeof server !== "string" || typeof organization !== "string") return
   return {
     resource: "shares",
-    baseUrl: account.url,
+    baseUrl: server,
     headers: {
-      authorization: `Bearer ${yield* token(db, account)}`,
-      "x-org-id": share.org_id,
+      authorization: `Bearer ${value.type === "oauth" ? value.access : value.key}`,
+      "x-org-id": organization,
     },
-    accountID: account.id,
-    orgID: share.org_id,
-  } satisfies Backend
-})
+    credentialID,
+    accountID: typeof value.metadata?.accountID === "string" ? value.metadata.accountID : undefined,
+    orgID: organization,
+  }
+}
 
 export const send = Effect.fn("SessionShare.send")(function* (
   target: Backend,
@@ -101,38 +118,4 @@ export const revoke = Effect.fn("SessionShare.revoke")(function* (db: DB, sessio
     .pipe(Effect.orDie)
   if (!share) return
   yield* send(yield* backend(db, share), "DELETE", { secret: share.secret }, share.id)
-})
-
-const token = Effect.fn("SessionShare.token")(function* (db: DB, account: typeof AccountTable.$inferSelect) {
-  if (account.token_expiry && account.token_expiry > Date.now() + 5 * 60_000) return account.access_token
-  const renewed = yield* Schema.decodeUnknownEffect(Token)(
-    yield* Effect.tryPromise({
-      try: async (signal) => {
-        const response = await fetch(`${account.url.replace(/\/$/, "")}/auth/device/token`, {
-          method: "POST",
-          headers: { "content-type": "application/json" },
-          body: JSON.stringify({
-            grant_type: "refresh_token",
-            refresh_token: account.refresh_token,
-            client_id: "opencode-cli",
-          }),
-          signal,
-        })
-        if (!response.ok) throw new Error(`Account token refresh returned HTTP ${response.status}`)
-        return response.json() as Promise<unknown>
-      },
-      catch: (cause) => cause instanceof Error ? cause : new Error(String(cause)),
-    }),
-  ).pipe(Effect.mapError(() => new Error("Account token refresh returned invalid credentials")))
-  yield* db
-    .update(AccountTable)
-    .set({
-      access_token: renewed.access_token,
-      refresh_token: renewed.refresh_token,
-      token_expiry: Date.now() + renewed.expires_in * 1000,
-    })
-    .where(eq(AccountTable.id, account.id))
-    .run()
-    .pipe(Effect.orDie)
-  return renewed.access_token
 })

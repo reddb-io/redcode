@@ -75,6 +75,7 @@ const schema: Omit<DatabaseMigration.Migration, "id"> = {
           \`secret\` text NOT NULL,
           \`url\` text NOT NULL,
           \`resource\` text DEFAULT 'share' NOT NULL,
+          \`credential_id\` text,
           \`account_id\` text,
           \`org_id\` text,
           \`time_created\` integer NOT NULL,

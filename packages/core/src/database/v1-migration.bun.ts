@@ -8,6 +8,10 @@ import { SessionMessage } from "../session/message.js"
 import { SessionSchema } from "../session/schema.js"
 import { KVTable } from "../kv/sql.js"
 import { AccountTable, AccountStateTable } from "../account/sql.js"
+import { CredentialTable } from "../credential/sql.js"
+import { SessionShareTable } from "../session/redcode.sql.js"
+import { Credential } from "@opencode/schema/credential"
+import { Integration } from "@opencode/schema/integration"
 import { EventSequenceTable } from "../event/sql.js"
 import { eq, sql } from "drizzle-orm"
 import { Global } from "@opencode/util/global"
@@ -694,6 +698,7 @@ export function run(options: Options = {}): Effect.Effect<RunResult, never, Data
       const db = (yield* Database.Service).db
       const global = yield* Global.Service
       yield* importNextAccounts(db, nextPath(options, global.data))
+      yield* bridgeAccounts(db)
       const state = yield* readState(db)
       if (state?.phase === "completed") return { status: "completed" as const }
       if (!(yield* hasLegacySessions(db))) return { status: "completed" as const }
@@ -874,6 +879,7 @@ export function importRedcode(sourcePath: string): Effect.Effect<RedcodeImportRe
         "redcode",
       )
       yield* importNextAccounts(db, sourcePath)
+      yield* bridgeAccounts(db)
       return result
     }).pipe(Effect.orDie),
   )
@@ -932,6 +938,62 @@ function importNextAccounts(db: Database.Interface["db"], sourcePath: string | u
       yield* Effect.logInfo("Imported Redcode accounts", { count: accounts.length })
     }).pipe(Effect.orDie),
   )
+}
+
+function bridgeAccounts(db: Database.Interface["db"]) {
+  return db.transaction((tx) =>
+    Effect.gen(function* () {
+      const accounts = yield* tx.select().from(AccountTable).all()
+      if (accounts.length === 0) return
+      const state = yield* tx.select().from(AccountStateTable).where(eq(AccountStateTable.id, 1)).get()
+      const integrationID = Integration.ID.make("opencode")
+      const existing = yield* tx.select().from(CredentialTable).where(eq(CredentialTable.integration_id, integrationID)).all()
+      const hasActive = existing.some((credential) => credential.active)
+      yield* Effect.forEach(accounts, (account) =>
+        Effect.gen(function* () {
+          const key = `redcode.account.credential:${createHash("sha256").update(`${account.id}\0${account.url}`).digest("hex")}`
+          const imported = yield* tx.select({ key: KVTable.key }).from(KVTable).where(eq(KVTable.key, key)).get()
+          const linked = existing.find((credential) =>
+            credential.value.type === "oauth" &&
+            credential.value.metadata?.accountID === account.id &&
+            credential.value.metadata?.server === account.url,
+          )
+          const credentialID = linked?.id ?? (imported ? undefined : Credential.ID.create())
+          if (!linked && credentialID) {
+            const selected = state?.active_account_id === account.id
+            yield* tx.insert(CredentialTable).values({
+              id: credentialID,
+              integration_id: integrationID,
+              label: account.email,
+              value: Credential.OAuth.make({
+                type: "oauth",
+                methodID: Integration.MethodID.make("device"),
+                access: account.access_token,
+                refresh: account.refresh_token,
+                expires: Math.max(0, account.token_expiry ?? 0),
+                metadata: {
+                  server: account.url,
+                  accountID: account.id,
+                  email: account.email,
+                  ...(selected && state?.active_org_id
+                    ? { orgID: state.active_org_id, orgName: state.active_org_id }
+                    : {}),
+                },
+              }),
+              active: selected && !hasActive,
+            }).run()
+          }
+          if (credentialID)
+            yield* tx.update(SessionShareTable)
+              .set({ credential_id: credentialID, resource: "shares" })
+              .where(eq(SessionShareTable.account_id, account.id))
+              .run()
+          yield* tx.delete(AccountTable).where(eq(AccountTable.id, account.id)).run()
+          if (!imported) yield* tx.insert(KVTable).values({ key, value: true }).run()
+        }),
+      )
+    }),
+  ).pipe(Effect.orDie)
 }
 
 function countNextSessions(sourcePath: string | undefined) {
