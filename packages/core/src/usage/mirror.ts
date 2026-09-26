@@ -2,8 +2,6 @@ export * as SessionUsageMirror from "./mirror.js"
 
 import { asc, and, eq, gt, gte, isNull, or } from "drizzle-orm"
 import { Context, DateTime, Effect, Layer, Option, Schema, Stream } from "effect"
-import { mkdir } from "node:fs/promises"
-import path from "node:path"
 import { UsageMirror } from "@opencode/schema/usage-mirror"
 import { TokenUsage } from "@opencode/schema/token-usage"
 import { makeGlobalNode } from "@opencode/util/effect/app-node"
@@ -38,10 +36,6 @@ const layer = Layer.effect(
     const openStore = Effect.fn("UsageMirror.open")(function* () {
       if (!supported) return yield* Effect.fail(new Error("Usage sidecar requires a local filesystem"))
       if (!UsagePath.enabled()) return yield* Effect.fail(new Error("Usage sidecar is disabled"))
-      yield* Effect.tryPromise({
-        try: () => mkdir(path.dirname(filename), { recursive: true }),
-        catch: (cause) => new Error(`Cannot create usage directory: ${String(cause)}`),
-      })
       return yield* Effect.try({
         try: () => open(filename),
         catch: (cause) => new Error(`Cannot open usage sidecar: ${String(cause)}`),

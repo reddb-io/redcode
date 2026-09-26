@@ -9,6 +9,10 @@ export default Runtime.handler(Commands.commands.usage.commands.backfill, (input
   Effect.gen(function* () {
     const client = yield* createClient({ server: Option.getOrUndefined(input.server), standalone: input.standalone })
     const result = yield* request((signal) => client.session.usage.backfill({ signal }))
+    if (input.json) {
+      process.stdout.write(JSON.stringify(result, null, 2) + EOL)
+      return
+    }
     process.stdout.write(`Mirrored ${result.mirrored} assistant messages; skipped ${result.skipped}. ${result.sidecar}${EOL}`)
   }).pipe(
     Effect.catch((error) =>

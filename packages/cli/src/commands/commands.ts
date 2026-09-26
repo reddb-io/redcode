@@ -465,7 +465,10 @@ const Root = Spec.make(typeof OPENCODE_CLI_NAME === "string" ? OPENCODE_CLI_NAME
         }),
         Spec.make("backfill", {
           description: "Copy existing V2 usage into the local usage sidecar",
-          params: ServerParams,
+          params: {
+            ...ServerParams,
+            json: Flag.boolean("json").pipe(Flag.withDescription("Print the result as JSON"), Flag.withDefault(false)),
+          },
         }),
       ],
     }),

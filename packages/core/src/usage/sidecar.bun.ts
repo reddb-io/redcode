@@ -1,9 +1,18 @@
 import { Database } from "bun:sqlite"
+import { existsSync, mkdirSync } from "node:fs"
+import path from "node:path"
 import { create, index, upsert, type Store } from "./sidecar.js"
 
 export const supported = true
 
+export function resolve(home: string) {
+  const preferred = path.join(home, ".red", "code", "data", "usage", "opencode.db")
+  const legacy = path.join(home, ".red", "redcode", "data", "usage", "opencode.db")
+  return existsSync(path.dirname(preferred)) || !existsSync(path.dirname(legacy)) ? preferred : legacy
+}
+
 export function open(filename: string): Store {
+  mkdirSync(path.dirname(filename), { recursive: true })
   const db = new Database(filename, { create: true })
   db.exec("PRAGMA busy_timeout = 5000")
   db.exec("PRAGMA journal_mode = WAL")
