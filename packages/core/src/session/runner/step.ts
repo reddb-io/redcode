@@ -59,7 +59,8 @@ interface Input {
   ) => Effect.Effect<{ readonly retry: false } | SessionRunnerRetry.Decision>
   readonly recoverContinuation: boolean
   /** The runner owns compaction policy; the attempt invokes it only before durable output. */
-  readonly recoverOverflow: Effect.Effect<boolean>
+  readonly recoverOverflow: (failure: unknown) => Effect.Effect<boolean>
+  readonly accepted: (input: number) => Effect.Effect<void>
 }
 
 const TOOLS_INTERRUPTED = { type: "aborted", message: "Tool execution interrupted" } as const
@@ -153,7 +154,7 @@ export const make = Effect.gen(function* () {
         if (
           !publisher.record().outputStarted &&
           isContextOverflowFailure(overflowFailure ?? streamFailure) &&
-          (yield* restore(input.recoverOverflow))
+          (yield* restore(input.recoverOverflow(overflowFailure ?? streamFailure)))
         )
           return Outcome.Compacted()
 
@@ -259,6 +260,8 @@ export const make = Effect.gen(function* () {
           !toolFailure &&
           !llmError
         ) {
+          const accepted = record.finish.tokens.input + record.finish.tokens.cache.read + record.finish.tokens.cache.write
+          if (accepted > 0) yield* input.accepted(accepted)
           const completion = yield* goalCompletion.settle(input.sessionID).pipe(Effect.exit)
           if (Exit.isFailure(completion)) {
             yield* Effect.logWarning("Goal completion rejected after tool settlement", {

@@ -156,6 +156,13 @@ const Root = Spec.make(typeof OPENCODE_CLI_NAME === "string" ? OPENCODE_CLI_NAME
           ],
         }),
         Spec.make("skill", { description: "List all available skills" }),
+        Spec.make("limits", {
+          description: "Inspect input limits learned from providers",
+          params: {
+            json: Flag.boolean("json").pipe(Flag.withDefault(false)),
+            forget: Flag.string("forget").pipe(Flag.optional),
+          },
+        }),
         Spec.make("paths", {
           description: "Show global paths (data, config, cache, state)",
           params: {

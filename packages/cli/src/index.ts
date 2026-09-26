@@ -49,6 +49,7 @@ const Handlers = Runtime.handlers(Commands, {
       search: () => import("./commands/handlers/debug/file-search"),
     },
     skill: () => import("./commands/handlers/debug/skill"),
+    limits: () => import("./commands/handlers/debug/limits"),
     paths: () => import("./commands/handlers/debug/paths"),
   },
   mcp: {

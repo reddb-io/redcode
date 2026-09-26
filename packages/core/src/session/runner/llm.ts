@@ -1,11 +1,14 @@
 export * as SessionRunnerLLM from "./llm.js"
 
-import { Message, SystemPart } from "@opencode/ai"
+import { AIError, Message, ProviderErrorEvent, SystemPart } from "@opencode/ai"
 import { Monitor } from "@opencode/schema/monitor"
 import { and, desc, eq, sql } from "drizzle-orm"
-import { Cause, Effect, Exit, FiberMap, Layer } from "effect"
+import { Cause, Effect, Exit, FiberMap, Layer, Schema } from "effect"
 import { Database } from "../../database/database.js"
 import { Bus } from "../../bus.js"
+import { ModelLimit } from "../../model-limit.js"
+import { contextOverflowNumbers } from "../../model-limit-numbers.js"
+import { modelLimitNode } from "#model-limit-node"
 import { LocationLifecycle } from "../../location-lifecycle.js"
 import { InstructionState } from "../instruction-state.js"
 import { SessionCompaction } from "../compaction.js"
@@ -52,6 +55,7 @@ const layer = Layer.effect(
     const modelTransport = yield* SessionModelTransport.Service
     const db = (yield* Database.Service).db
     const compaction = yield* SessionCompaction.Service
+    const limits = yield* ModelLimit.Service
     const plugins = yield* Plugin.Service
     const title = yield* SessionTitle.Service
     const todos = yield* SessionTodoStore.Service
@@ -258,6 +262,39 @@ const layer = Layer.effect(
       return selected
     })
 
+    const learnOverflow = Effect.fnUntraced(function* (
+      loaded: SessionContext.Loaded,
+      request: SessionModelRequest.Prepared["request"],
+      failure: unknown,
+    ) {
+      const message = failure instanceof AIError
+        ? [failure.reason.message, "body" in failure.reason ? failure.reason.body : undefined].filter(Boolean).join("\n")
+        : Schema.is(ProviderErrorEvent)(failure)
+          ? failure.message
+          : ""
+      const numbers = contextOverflowNumbers(message)
+      if (!numbers) return
+      const observed = ModelLimit.fromNumbers({
+        numbers,
+        output: request.generation?.maxTokens ?? loaded.model.limit.output,
+        estimated: request.messages.some((item) => item.content.some((part) => part.type === "media"))
+          ? undefined
+          : SessionCompaction.estimateRequest(request),
+        declared: { context: loaded.model.limit.context, input: loaded.model.limit.input },
+        message: message.split("\n")[0] ?? message,
+      })
+      if (!observed) return
+      yield* limits.learn(loaded.model.ref.providerID, loaded.model.ref.id, observed)
+      yield* Effect.logInfo("learned provider input limit", {
+        sessionID: loaded.session.id,
+        providerID: loaded.model.ref.providerID,
+        modelID: loaded.model.ref.id,
+        limit: observed.limit,
+        counted: observed.counted,
+        estimated: observed.estimated,
+      })
+    })
+
     /** Owns logical Step policy; each attempt owns its streaming, tools, and durable settlement. */
     const runStep = Effect.fn("SessionRunner.runStep")(function* (
       first: SessionContext.Loaded,
@@ -305,6 +342,31 @@ const layer = Layer.effect(
           toolChoice: stepLimitReached ? "none" : undefined,
           webSocket: "session",
         })
+        const output = prepared.request.generation?.maxTokens ?? loaded.model.limit.output
+        const declared = { context: loaded.model.limit.context, input: loaded.model.limit.input }
+        const observed = yield* limits.get(loaded.model.ref.providerID, loaded.model.ref.id, declared)
+        if (
+          observed &&
+          !prepared.request.messages.some((item) => item.content.some((part) => part.type === "media"))
+        ) {
+          const inputLimit = ModelLimit.effectiveInput(
+            { input: loaded.model.limit.input || loaded.model.limit.context },
+            observed,
+            output,
+          )
+          const estimated = ModelLimit.calibrate(SessionCompaction.estimateRequest(prepared.request), observed)
+          if (inputLimit !== undefined && estimated > inputLimit)
+            return yield* new StepFailedError({
+              error: {
+                type: "provider.context-overflow",
+                message: ModelLimit.doomed({
+                  providerID: loaded.model.ref.providerID,
+                  limit: inputLimit,
+                  estimated,
+                }),
+              },
+            })
+        }
         const outcome = yield* steps.attempt({
           isLocationClosed: lifecycle.isClosed,
           sessionID,
@@ -323,13 +385,17 @@ const layer = Layer.effect(
               retry: proposed,
             }),
           recoverContinuation,
-          recoverOverflow: Effect.suspend(() =>
-            recoverOverflow
-              ? compaction
-                  .compact({ reason: "overflow", context: loaded })
-                  .pipe(Effect.map((result) => result.status === "completed"))
-              : Effect.succeed(false),
-          ),
+          recoverOverflow: Effect.fnUntraced(function* (failure: unknown) {
+            yield* learnOverflow(loaded, prepared.request, failure)
+            if (!recoverOverflow) return false
+            return (yield* compaction.compact({ reason: "overflow", context: loaded })).status === "completed"
+          }),
+          accepted: Effect.fnUntraced(function* (accepted: number) {
+            const observed = yield* limits.get(loaded.model.ref.providerID, loaded.model.ref.id, declared)
+            if (!observed) return
+            const raised = ModelLimit.raised(observed, accepted, output)
+            if (raised) yield* limits.learn(loaded.model.ref.providerID, loaded.model.ref.id, raised)
+          }),
         })
         const completed = yield* SessionStep.Outcome.$match(outcome, {
           Completed: (outcome) => Effect.succeed(outcome.needsContinuation),
@@ -440,5 +506,6 @@ export const node = makeLocationNode({
     Snapshot.node,
     ToolOutput.node,
     Database.node,
+    modelLimitNode,
   ],
 })

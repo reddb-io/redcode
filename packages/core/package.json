@@ -30,6 +30,11 @@
     "./*": "./src/*.ts"
   },
   "imports": {
+    "#model-limit-node": {
+      "types": "./src/model-limit.node.ts",
+      "workerd": "./src/model-limit.workerd.ts",
+      "default": "./src/model-limit.node.ts"
+    },
     "#lsp": {
       "types": "./src/lsp/backend.node.ts",
       "workerd": "./src/lsp/backend.workerd.ts",

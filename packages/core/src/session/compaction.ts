@@ -22,6 +22,8 @@ import { Context, Effect, Layer, Result, Stream } from "effect"
 import { Bus } from "../bus.js"
 import { Database } from "../database/database.js"
 import { llmClient } from "../effect/app-node-platform.js"
+import { ModelLimit } from "../model-limit.js"
+import { modelLimitNode } from "#model-limit-node"
 import { State } from "../state.js"
 import { Token } from "../util/token.js"
 import type { SessionContext } from "./context.js"
@@ -182,6 +184,7 @@ export const layer = Layer.effect(
     const bus = yield* Bus.Service
     const llm = yield* LLMClient.Service
     const db = (yield* Database.Service).db
+    const limits = yield* ModelLimit.Service
     const requests = yield* SessionModelRequest.Service
 
     const state = State.create<Settings, Editor>({
@@ -200,15 +203,27 @@ export const layer = Layer.effect(
 
       // Only the user compacts when automatic compaction is off, overflow included.
       if (trigger.reason !== "manual" && !settings.auto) return { status: "skipped" }
-      const ceiling = calculateCeiling(context.model.limit, settings.buffer)
-      if (trigger.reason === "auto" && !due(context, ceiling)) return { status: "skipped" }
+      const declared = context.model.limit
+      const observed = yield* limits.get(context.model.ref.providerID, context.model.ref.id, {
+        context: declared.context,
+        input: declared.input,
+      })
+      const catalog = declared.input || declared.context
+      const learned = observed && ModelLimit.inputOf(observed, declared.output)
+      const limit = learned && learned > 0
+        ? { ...declared, input: catalog > 0 ? Math.min(catalog, learned) : learned }
+        : declared
+      const ceiling = calculateCeiling(limit, settings.buffer)
+      if (trigger.reason === "auto" && !due(context, ceiling, observed)) return { status: "skipped" }
       // An unknown window never triggers auto compaction, but the compaction request still needs a size to aim for.
       const cap = Number.isFinite(ceiling)
         ? ceiling
-        : calculateCeiling({ ...context.model.limit, context: UNKNOWN_WINDOW }, settings.buffer)
+        : calculateCeiling({ ...limit, context: UNKNOWN_WINDOW }, settings.buffer)
       // The provider just rejected this context, so the estimate ran low; the first attempt already aims below it.
       const budget =
-        trigger.reason === "overflow" ? Math.min(cap, Math.floor(estimateContext(context) * SHRINK_STEPS[0])) : cap
+        trigger.reason === "overflow"
+          ? Math.min(cap, Math.floor(estimateContext(context, observed?.ratio) * SHRINK_STEPS[0]))
+          : cap
 
       const compaction =
         context.model.compaction?.type === "native"
@@ -222,7 +237,7 @@ export const layer = Layer.effect(
       )
     })
 
-    const due = (context: SessionContext.Loaded, ceiling: number) => {
+    const due = (context: SessionContext.Loaded, ceiling: number, observed: ModelLimit.Observed | undefined) => {
       const messages = context.messages
       // A compaction just completed; let the runner rebuild the request from it first.
       const last = messages.at(-1)
@@ -230,7 +245,7 @@ export const layer = Layer.effect(
       // An encrypted native window estimates as nothing, so wait for a response to measure it.
       const measured = messages.findLastIndex((message) => hasMeasuredPrompt(message, context.model.ref))
       if (measured < messages.findLastIndex(SessionProviderContext.isCheckpoint)) return false
-      return estimateContext(context) >= ceiling
+      return estimateContext(context, observed?.ratio) >= ceiling
     }
 
     /**
@@ -654,7 +669,7 @@ export const layer = Layer.effect(
 export const node = makeLocationNode({
   service: Service,
   layer,
-  deps: [Bus.node, Database.node, llmClient, SessionModelRequest.node],
+  deps: [Bus.node, Database.node, llmClient, SessionModelRequest.node, modelLimitNode],
 })
 
 /** History loads from the latest completed compaction, so a previous one is always the first message. */
@@ -842,7 +857,7 @@ export const recentUserMessages = (
   return sendable.slice(oldestToDrop(sendable, estimateMessage, keep))
 }
 
-export const estimateContext = (context: SessionContext.Loaded) => {
+export const estimateContext = (context: SessionContext.Loaded, ratio = 1) => {
   const anchorIndex = context.messages.findLastIndex((message) => hasMeasuredPrompt(message, context.model.ref))
   const anchor = context.messages[anchorIndex]
   const base = transcript(context, context.messages.slice(Math.max(0, anchorIndex)))
@@ -856,11 +871,11 @@ export const estimateContext = (context: SessionContext.Loaded) => {
   const unmeasured = sent.filter((message) => message.role !== "assistant" || message.id !== anchor?.id)
 
   if (anchor?.type !== "assistant" || !anchor.tokens)
-    return estimateRequest({ system: base.system, tools: context.tools.definitions, messages: unmeasured })
+    return Math.ceil(estimateRequest({ system: base.system, tools: context.tools.definitions, messages: unmeasured }) * ratio)
 
   const tokens = anchor.tokens
   const measured = tokens.input + tokens.cache.read + tokens.cache.write + tokens.output + tokens.reasoning
-  return measured + unmeasured.reduce((sum, message) => sum + estimateMessage(message), 0)
+  return measured + Math.ceil(unmeasured.reduce((sum, message) => sum + estimateMessage(message), 0) * ratio)
 }
 
 /** The largest request the model takes while leaving room for its reply. */
@@ -883,7 +898,7 @@ const hasMeasuredPrompt = (message: SessionMessage.Info, model: SessionContext.L
   message.tokens !== undefined &&
   message.tokens.input + message.tokens.cache.read + message.tokens.cache.write > 0
 
-const estimateRequest = (request: Pick<LLMRequest, "system" | "tools" | "messages">) =>
+export const estimateRequest = (request: Pick<LLMRequest, "system" | "tools" | "messages">) =>
   request.system.reduce((sum, part) => sum + Token.estimate(part.text), 0) +
   request.tools.reduce((sum, tool) => sum + estimateTool(tool), 0) +
   request.messages.reduce((sum, message) => sum + estimateMessage(message), 0)
