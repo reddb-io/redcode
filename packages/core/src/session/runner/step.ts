@@ -22,6 +22,9 @@ import { QuestionTool } from "../../tool/plugin/question.js"
 import { StepFailedError } from "../error.js"
 import { SessionGoalCompletion } from "../goal-completion.js"
 import { SessionGoal } from "../goal.js"
+import { SessionGuardLog } from "../guard-log.js"
+import { SessionLoopGuard } from "../loop-guard-v2.js"
+import { SessionStore } from "../store.js"
 import { SessionEvent } from "../event.js"
 import { SessionMessage } from "../message.js"
 import { SessionModelRequest } from "../model-request.js"
@@ -33,7 +36,7 @@ import { createLLMEventPublisher } from "./publish-llm-event.js"
 import { SessionRunnerRetry } from "./retry.js"
 
 export type Outcome = Data.TaggedEnum<{
-  Completed: { readonly needsContinuation: boolean }
+  Completed: { readonly needsContinuation: boolean; readonly guardStop?: string }
   Retry: { readonly error: SessionError.Error; readonly decision: SessionRunnerRetry.Decision }
   Continue: {
     readonly error: SessionError.Error
@@ -61,6 +64,7 @@ interface Input {
   /** The runner owns compaction policy; the attempt invokes it only before durable output. */
   readonly recoverOverflow: (failure: unknown) => Effect.Effect<boolean>
   readonly accepted: (input: number) => Effect.Effect<void>
+  readonly allowLoop: (tool: string) => boolean
 }
 
 const TOOLS_INTERRUPTED = { type: "aborted", message: "Tool execution interrupted" } as const
@@ -75,6 +79,8 @@ export const make = Effect.gen(function* () {
   const toolOutput = yield* ToolOutput.Service
   const goalCompletion = yield* SessionGoalCompletion.Service
   const goals = yield* SessionGoal.Service
+  const guards = yield* SessionGuardLog.Service
+  const store = yield* SessionStore.Service
 
   const attempt = Effect.fn("SessionStep.attempt")(function* (input: Input) {
     const startSnapshot = yield* snapshots.capture()
@@ -92,17 +98,33 @@ export const make = Effect.gen(function* () {
       readonly fiber: Fiber.Fiber<void, Permission.DeclinedError | QuestionTool.CancelledError>
     }> = []
     const interruptTools = Effect.suspend(() => Fiber.interruptAll(toolRuns.map((run) => run.fiber)))
-    const executeTool = (call: ToolCall) => {
+    let guardStop: string | undefined
+    const executeTool = Effect.fnUntraced(function* (call: ToolCall) {
       if (input.prepared.request.toolChoice?.type === "none")
-        return new Tool.Error({ message: "Tools are disabled after the maximum agent steps" })
-      return input.prepared.executeTool({
+        return yield* new Tool.Error({ message: "Tools are disabled after the maximum agent steps" })
+      if (!input.allowLoop(call.name)) {
+        const recent = yield* store.messages({ sessionID: input.sessionID, limit: 120 }).pipe(Effect.orElseSucceed(() => []))
+        const decision = SessionLoopGuard.assess(recent, call)
+        if (decision.type !== "ok") {
+          yield* guards.record({
+            sessionID: input.sessionID,
+            guard: "loop",
+            action: decision.type === "stop" ? "stop" : "correct",
+            subject: call.name,
+            detail: decision.message,
+          })
+          if (decision.type === "stop") guardStop = decision.summary
+          return yield* new Tool.Error({ message: decision.message })
+        }
+      }
+      return yield* input.prepared.executeTool({
         sessionID: input.sessionID,
         agent: input.agent,
         messageID: input.assistantMessageID,
         call,
         progress: (update) => publisher.progress(call.id, update),
       })
-    }
+    })
 
     // Provider and tool fibers retain per-source order without a shared writer queue.
     // A local execution starts only after its Tool.Called publication completes.
@@ -294,7 +316,8 @@ export const make = Effect.gen(function* () {
         if (tools.interrupted && Exit.isFailure(joined)) return yield* Effect.failCause(joined.cause)
         if (record.failure) return yield* new StepFailedError({ error: record.failure })
         return Outcome.Completed({
-          needsContinuation: input.prepared.request.toolChoice?.type !== "none" && record.needsContinuation,
+          needsContinuation: !guardStop && input.prepared.request.toolChoice?.type !== "none" && record.needsContinuation,
+          ...(guardStop ? { guardStop } : {}),
         })
       }),
     )

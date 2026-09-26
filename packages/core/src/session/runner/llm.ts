@@ -25,6 +25,7 @@ import { SessionStore } from "../store.js"
 import { SessionMessageTable } from "../sql.js"
 import { SessionTitle } from "../title.js"
 import { SessionGoal } from "../goal.js"
+import { SessionGuardLog } from "../guard-log.js"
 import { SessionPlan } from "../plan.js"
 import { SessionGoalCompletion } from "../goal-completion.js"
 import { SessionTodo } from "../todo.js"
@@ -40,6 +41,7 @@ import { SessionRunnerRetry } from "./retry.js"
 import { SessionStep } from "./step.js"
 import { ToolOutput } from "../../tool-output.js"
 import { Plugin } from "../../plugin.js"
+import { Permission } from "../../permission.js"
 import { MAX_STEPS_PROMPT } from "./max-steps.js"
 
 const CONTINUE_AFTER_INCOMPLETE_STREAM =
@@ -60,6 +62,7 @@ const layer = Layer.effect(
     const title = yield* SessionTitle.Service
     const todos = yield* SessionTodoStore.Service
     const goals = yield* SessionGoal.Service
+    const guards = yield* SessionGuardLog.Service
     const plans = yield* SessionPlan.Service
     const monitors = yield* MonitorRuntime.Service
     const steps = yield* SessionStep.make
@@ -73,6 +76,7 @@ const layer = Layer.effect(
       let step = input.continuation?.step ?? 1
       let entering = true
       let todoContinuations = 0
+      let guardStopped = false
       const promotable = input.promotable ?? "input"
       if (!force && !continuing) {
         const pending = yield* SessionInbox.nextPromotable(db, sessionID, "input")
@@ -229,6 +233,7 @@ const layer = Layer.effect(
         continuing = result.value
         if (
           !continuing &&
+          !guardStopped &&
           next.context.agent.id !== "question" &&
           !(yield* SessionInbox.nextPromotable(db, sessionID, "steer")) &&
           !(yield* monitors.list(sessionID)).some(Monitor.parks) &&
@@ -318,6 +323,14 @@ const layer = Layer.effect(
           continue
         }
         const stepLimitReached = loaded.agent.info.steps !== undefined && step >= loaded.agent.info.steps
+        if (stepLimitReached && loaded.agent.info.steps !== undefined)
+          yield* guards.record({
+            sessionID,
+            guard: "steps",
+            action: "stop",
+            subject: loaded.agent.id,
+            detail: `Tools disabled at agent step ${step} of ${loaded.agent.info.steps}`,
+          })
         const transcript = SessionModelRequest.baseTranscript({
           agent: loaded.agent.info,
           model: loaded.model,
@@ -396,9 +409,20 @@ const layer = Layer.effect(
             const raised = ModelLimit.raised(observed, accepted, output)
             if (raised) yield* limits.learn(loaded.model.ref.providerID, loaded.model.ref.id, raised)
           }),
+          allowLoop: (tool) =>
+            Permission.evaluate("doom_loop", tool, loaded.agent.info.permissions, loaded.session.permissions ?? []).effect ===
+            "allow",
         })
         const completed = yield* SessionStep.Outcome.$match(outcome, {
-          Completed: (outcome) => Effect.succeed(outcome.needsContinuation),
+          Completed: Effect.fnUntraced(function* (outcome) {
+            if (outcome.guardStop) {
+              guardStopped = true
+              const goal = yield* goals.get(sessionID)
+              if (goal?.status === "active")
+                yield* goals.save(goal, { ...goal, status: "paused", reason: outcome.guardStop }).pipe(Effect.orDie)
+            }
+            return outcome.needsContinuation
+          }),
           Retry: (outcome) =>
             retry.wait({
               decision: outcome.decision,
@@ -500,6 +524,7 @@ export const node = makeLocationNode({
     SessionTitle.node,
     SessionTodoStore.node,
     SessionGoal.node,
+    SessionGuardLog.node,
     SessionPlan.node,
     SessionGoalCompletion.node,
     MonitorRuntime.node,
