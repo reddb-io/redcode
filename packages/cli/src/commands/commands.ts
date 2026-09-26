@@ -325,8 +325,17 @@ const Root = Spec.make(typeof OPENCODE_CLI_NAME === "string" ? OPENCODE_CLI_NAME
       description: "Manage project worktrees",
       commands: [
         Spec.make("list", {
-          description: "List registered worktrees for the current project",
+          description: "List worktrees with size, changes, branches, and sessions",
           params: { json: Flag.boolean("json").pipe(Flag.withDefault(false)) },
+        }),
+        Spec.make("clean", {
+          description: "Remove clean merged or stale worktrees",
+          params: {
+            merged: Flag.boolean("merged").pipe(Flag.withDefault(false)),
+            stale: Flag.integer("stale").pipe(Flag.optional),
+            dryRun: Flag.boolean("dry-run").pipe(Flag.withDefault(false)),
+            yes: Flag.boolean("yes").pipe(Flag.withAlias("y"), Flag.withDefault(false)),
+          },
         }),
         Spec.make("create", {
           description: "Create a worktree using the project's selected strategy",
@@ -338,10 +347,11 @@ const Root = Spec.make(typeof OPENCODE_CLI_NAME === "string" ? OPENCODE_CLI_NAME
           },
         }),
         Spec.make("remove", {
-          description: "Remove a registered worktree",
+          description: "Remove a worktree by path, name, or branch",
           params: {
-            directory: Argument.string("directory"),
+            target: Argument.string("target"),
             force: Flag.boolean("force").pipe(Flag.withDefault(false)),
+            deleteBranch: Flag.boolean("delete-branch").pipe(Flag.withDefault(false)),
           },
         }),
         Spec.make("refresh", { description: "Discover and reconcile project worktrees" }),

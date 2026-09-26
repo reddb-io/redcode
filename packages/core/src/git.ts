@@ -674,7 +674,7 @@ const layer = Layer.effect(
       yield* worktreeRun(
         "remove",
         input.repository,
-        ["worktree", "remove", ...(input.force ? ["--force"] : []), input.directory],
+        ["worktree", "remove", ...(input.force ? ["--force", "--force"] : []), input.directory],
         input.directory,
         input.repository.commonDirectory,
       )
