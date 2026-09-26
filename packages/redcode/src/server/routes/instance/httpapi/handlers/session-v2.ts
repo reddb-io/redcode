@@ -31,7 +31,7 @@ export const sessionV2Handlers = HttpApiBuilder.group(RootHttpApi, "server.sessi
         )
     })
 
-    const session = Effect.fn("SessionV2HttpApi.session")(function* (ctx: { path: { id: SessionV2.ID } }) {
+    const session = Effect.fn("SessionV2HttpApi.session")(function* (ctx: { params: { id: SessionV2.ID } }) {
       return yield* sessions.get(ctx.params.id).pipe(
         Effect.mapError(
           (error) => new SessionNotFoundError({ sessionID: error.sessionID, message: `Session not found: ${error.sessionID}` }),
@@ -39,7 +39,7 @@ export const sessionV2Handlers = HttpApiBuilder.group(RootHttpApi, "server.sessi
       )
     })
 
-    const messages = Effect.fn("SessionV2HttpApi.messages")(function* (ctx: { path: { id: SessionV2.ID } }) {
+    const messages = Effect.fn("SessionV2HttpApi.messages")(function* (ctx: { params: { id: SessionV2.ID } }) {
       return yield* sessions.messages({ sessionID: ctx.params.id }).pipe(
         Effect.mapError(
           (error) => new SessionNotFoundError({ sessionID: error.sessionID, message: `Session not found: ${error.sessionID}` }),
@@ -48,7 +48,7 @@ export const sessionV2Handlers = HttpApiBuilder.group(RootHttpApi, "server.sessi
     })
 
     const events = Effect.fn("SessionV2HttpApi.events")(function* (ctx: {
-      path: { id: SessionV2.ID }
+      params: { id: SessionV2.ID }
       urlParams: { after?: number }
     }) {
       const stream = sessions.events({
@@ -64,7 +64,7 @@ export const sessionV2Handlers = HttpApiBuilder.group(RootHttpApi, "server.sessi
       return Array.from(chunk)
     })
 
-    const interrupt = Effect.fn("SessionV2HttpApi.interrupt")(function* (ctx: { path: { id: SessionV2.ID } }) {
+    const interrupt = Effect.fn("SessionV2HttpApi.interrupt")(function* (ctx: { params: { id: SessionV2.ID } }) {
       yield* sessions.interrupt(ctx.params.id)
     })
 
