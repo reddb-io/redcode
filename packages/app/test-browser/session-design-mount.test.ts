@@ -1,58 +1,13 @@
 import { describe, expect, test } from "bun:test"
 import { createRoot } from "solid-js"
-import { createStore } from "solid-js/store"
 import { mountReview, type ReviewOptions } from "@reddb-io/redcode-design/review"
+import { reviewCopy } from "@reddb-io/redcode-design/copy"
 import { stage } from "@reddb-io/redcode-design/stage"
 import { previewLoading } from "@reddb-io/redcode-design/loading"
 import { createSessionDesignMount } from "@/components/session/session-design-mount"
-import { designGoalDictionary } from "@/i18n/design-goal"
-import type { DesktopNativeLocale } from "@/i18n/desktop-native"
 
-describe("Design review translations and lifetime", () => {
-  test("updates translations in place while preserving the intake and preview frames", async () => {
-    const fixture = createFixture()
-    try {
-      fixture.module.resolve({ mountReview: fixture.mount })
-      await fixture.mounted[0].promise
-      expect(fixture.text()).toBe("Create design")
-      const name = fixture.element<HTMLInputElement>("name")
-      const objective = fixture.element<HTMLTextAreaElement>("objective")
-      const engine = fixture.element<HTMLSelectElement>("engine")
-      const preview = fixture.element<HTMLIFrameElement>("preview")
-      const board = fixture.element<HTMLIFrameElement>("board-frame")
-      name.value = "Minha interface"
-      objective.value = "Preservar o que estou escrevendo"
-      engine.value = "solid"
-
-      fixture.locale("br")
-      expect(fixture.text()).toBe("Criar design")
-      expect(fixture.element("name")).toBe(name)
-      expect(fixture.element("objective")).toBe(objective)
-      expect(fixture.element("engine")).toBe(engine)
-      expect(name.value).toBe("Minha interface")
-      expect(objective.value).toBe("Preservar o que estou escrevendo")
-      expect(engine.value).toBe("solid")
-      expect(fixture.element("preview")).toBe(preview)
-      expect(fixture.element("board-frame")).toBe(board)
-      expect(preview.title).toBe(designGoalDictionary("br")["session.design.studio.review"])
-      expect(board.title).toBe(designGoalDictionary("br")["session.design.studio.whiteboard"])
-      expect(fixture.element("designs").getAttribute("aria-label")).toBe(
-        designGoalDictionary("br")["session.design.studio.alternatives"],
-      )
-      expect(fixture.cleanups()).toBe(0)
-
-      fixture.locale("fr")
-      expect(fixture.text()).toBe("Create design")
-      fixture.locale("de")
-      expect(fixture.mounts()).toBe(1)
-      expect(fixture.loads()).toBe(1)
-    } finally {
-      fixture.dispose()
-    }
-    expect(fixture.cleanups()).toBe(1)
-  })
-
-  test("keeps an ongoing request alive across a locale change and aborts it on disposal", async () => {
+describe("Design review lifetime", () => {
+  test("keeps an ongoing request alive across updates and aborts it on disposal", async () => {
     const started = Promise.withResolvers<AbortSignal | null | undefined>()
     const response = Promise.withResolvers<Response>()
     const fixture = createFixture((_url, init) => {
@@ -66,8 +21,7 @@ describe("Design review translations and lifetime", () => {
       expect(signal?.aborted).toBe(false)
       expect(fixture.element("status").textContent).toBe("Working…")
 
-      fixture.locale("br")
-      expect(fixture.element("status").textContent).toBe(designGoalDictionary("br")["session.design.studio.busy"])
+      expect(fixture.element("status").textContent).toBe(reviewCopy.busy)
       expect(signal?.aborted).toBe(false)
       expect(fixture.mounts()).toBe(1)
       expect(fixture.cleanups()).toBe(0)
@@ -77,21 +31,6 @@ describe("Design review translations and lifetime", () => {
     } finally {
       fixture.dispose()
       response.reject(new DOMException("Fixture disposed", "AbortError"))
-    }
-    expect(fixture.cleanups()).toBe(1)
-  })
-
-  test("uses the latest locale when the studio import resolves later", async () => {
-    const fixture = createFixture()
-    try {
-      fixture.locale("br")
-      fixture.module.resolve({ mountReview: fixture.mount })
-      await fixture.mounted[0].promise
-      expect(fixture.text()).toBe("Criar design")
-      expect(fixture.mounts()).toBe(1)
-      expect(fixture.loads()).toBe(1)
-    } finally {
-      fixture.dispose()
     }
     expect(fixture.cleanups()).toBe(1)
   })
@@ -154,7 +93,6 @@ describe("Design review translations and lifetime", () => {
       fixture.module.resolve({ mountReview: fixture.mount })
       await fixture.mounted[0].promise
       expect(held.map((item) => [item.sessionID, item.signal.aborted])).toEqual([["design_locale_fixture", false]])
-      fixture.locale("br")
       expect(held.length).toBe(1)
     } finally {
       fixture.dispose()
@@ -227,7 +165,6 @@ function createFixture(
     )
   }
   return createRoot((dispose) => {
-    const [state, setState] = createStore<{ locale: DesktopNativeLocale }>({ locale: "en" })
     createSessionDesignMount({
       root,
       load: () => {
@@ -241,7 +178,6 @@ function createFixture(
         loading: previewLoading,
         request,
       }),
-      translate: (key) => designGoalDictionary(state.locale)[key],
       presence,
     })
     return {
@@ -250,7 +186,6 @@ function createFixture(
       mounted,
       mount,
       dispose,
-      locale: (locale: DesktopNativeLocale) => setState("locale", locale),
       element: <T extends HTMLElement>(id: string) => root.firstElementChild!.shadowRoot!.getElementById(id) as T,
       text: () => root.firstElementChild?.shadowRoot?.querySelector("#new")?.textContent,
       loads: () => counts.loads,
