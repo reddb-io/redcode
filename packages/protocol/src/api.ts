@@ -6,7 +6,7 @@ import { MessageGroup } from "./groups/message"
 import { ModelGroup } from "./groups/model"
 import { ProviderGroup } from "./groups/provider"
 import { makeSessionGroup } from "./groups/session"
-import { makeSessionV2Group } from "./groups/session-v2"
+import { SessionV2Group } from "./groups/session-v2"
 import { makePermissionGroup } from "./groups/permission"
 import { FileSystemGroup } from "./groups/fs"
 import { CommandGroup } from "./groups/command"
@@ -43,7 +43,7 @@ const makeApiFromGroup = <
     .add(LocationGroup.middleware(locationMiddleware))
     .add(AgentGroup.middleware(locationMiddleware))
     .add(makeSessionGroup(sessionLocationMiddleware))
-    .add(makeSessionV2Group(sessionLocationMiddleware))
+    .add(SessionV2Group)
     .add(makeDesignGroup(sessionLocationMiddleware))
     .add(makeDesignHostGroup(sessionLocationMiddleware))
     .add(MessageGroup.middleware(sessionLocationMiddleware))

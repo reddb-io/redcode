@@ -1,5 +1,4 @@
 import { Schema } from "effect"
-import { Context } from "effect"
 import { HttpApi, HttpApiEndpoint, HttpApiGroup, HttpApiMiddleware, HttpApiSchema, OpenApi } from "effect/unstable/httpapi"
 import { Prompt } from "@reddb-io/redcode-schema/prompt"
 import { Admitted, Delivery } from "@reddb-io/redcode-schema/session-input"
@@ -24,8 +23,7 @@ export const SessionV2EventsQuery = Schema.Struct({
   after: Schema.optional(Schema.NumberFromString),
 }).annotate({ identifier: "SessionV2EventsQuery" })
 
-export const makeSessionV2Group = <I extends HttpApiMiddleware.AnyId, S>(sessionLocationMiddleware: Context.Key<I, S>) =>
-  HttpApiGroup.make("server.sessionV2")
+export const SessionV2Group = HttpApiGroup.make("server.sessionV2")
     .add(
       HttpApiEndpoint.post("sessionV2.prompt", `${root}/prompt`, {
         payload: SessionV2PromptPayload,
@@ -33,7 +31,7 @@ export const makeSessionV2Group = <I extends HttpApiMiddleware.AnyId, S>(session
         error: [InvalidRequestError, SessionNotFoundError, ConflictError],
       }).annotateMerge(
         OpenApi.annotations({
-          identifier: "v2.session.prompt",
+          identifier: "sessionV2.prompt",
           summary: "Prompt a session through the V2 runtime",
           description:
             "Admits one durable prompt row and schedules the V2 session drain. The prompt becomes a user message at a safe provider-turn boundary.",
@@ -47,7 +45,7 @@ export const makeSessionV2Group = <I extends HttpApiMiddleware.AnyId, S>(session
         error: SessionNotFoundError,
       }).annotateMerge(
         OpenApi.annotations({
-          identifier: "v2.session.read",
+          identifier: "sessionV2.session",
           summary: "Read a V2 session",
         }),
       ),
@@ -59,7 +57,7 @@ export const makeSessionV2Group = <I extends HttpApiMiddleware.AnyId, S>(session
         error: SessionNotFoundError,
       }).annotateMerge(
         OpenApi.annotations({
-          identifier: "v2.session.messages",
+          identifier: "sessionV2.messages",
           summary: "Read a V2 session's messages",
         }),
       ),
@@ -72,7 +70,7 @@ export const makeSessionV2Group = <I extends HttpApiMiddleware.AnyId, S>(session
         error: SessionNotFoundError,
       }).annotateMerge(
         OpenApi.annotations({
-          identifier: "v2.session.events",
+          identifier: "sessionV2.events",
           summary: "Read a V2 session's durable events",
           description: "Events after the `after` sequence, oldest first.",
         }),
@@ -84,7 +82,7 @@ export const makeSessionV2Group = <I extends HttpApiMiddleware.AnyId, S>(session
         success: HttpApiSchema.NoContent,
       }).annotateMerge(
         OpenApi.annotations({
-          identifier: "v2.session.interrupt",
+          identifier: "sessionV2.interrupt",
           summary: "Interrupt a running V2 session",
         }),
       ),
@@ -92,4 +90,3 @@ export const makeSessionV2Group = <I extends HttpApiMiddleware.AnyId, S>(session
     .annotateMerge(
       OpenApi.annotations({ title: "sessionV2", description: "V2 session runtime routes (experimental)." }),
     )
-    .middleware(sessionLocationMiddleware)

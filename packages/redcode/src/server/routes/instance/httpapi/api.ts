@@ -28,7 +28,7 @@ import { WorkspaceApi } from "./groups/workspace"
 import { RedskilledApi } from "./groups/redskilled"
 import { ModelSuggestionApi } from "./groups/model-suggestion"
 import { makeApi } from "@reddb-io/redcode-protocol/api"
-import { makeSessionV2Group } from "@reddb-io/redcode-protocol/groups/session-v2"
+import { SessionV2Group } from "@reddb-io/redcode-protocol/groups/session-v2"
 import { LocationMiddleware } from "@reddb-io/redcode-server/location"
 import { SessionLocationMiddleware } from "@reddb-io/redcode-server/middleware/session-location"
 import { GlobalApi } from "./groups/global"
@@ -57,7 +57,7 @@ export const ServerApi = makeApi({
 export const RootHttpApi = HttpApi.make("redcode-root")
   .addHttpApi(ControlApi)
   .addHttpApi(ControlPlaneApi)
-  .addHttpApi(HttpApi.make("sessionV2").add(makeSessionV2Group(SessionLocationMiddleware)))
+  .addHttpApi(HttpApi.make("sessionV2").add(SessionV2Group))
   .addHttpApi(GlobalApi)
   .middleware(SchemaErrorMiddleware)
   .middleware(Authorization)
