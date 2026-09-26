@@ -29,7 +29,9 @@ const called = Ref.makeUnsafe<MoveSession.Input | undefined>(undefined)
 const apiLayer = HttpRouter.serve(
   HttpApiBuilder.layer(RootHttpApi).pipe(
     Layer.provide([controlHandlers, controlPlaneHandlers, globalHandlers, sessionV2Handlers]),
-    Layer.provide(Layer.mock(SessionV2.Service)({})),
+    Layer.provide(Layer.mock(SessionV2.Service)({
+        revert: { stage: () => Effect.never, clear: () => Effect.never, commit: () => Effect.never },
+      })),
     Layer.provide([authorizationLayer, schemaErrorLayer]),
     // Raw HttpApi routes expose an opaque handler context at the request boundary.
     // oxlint-disable-next-line typescript-eslint/no-unsafe-type-assertion
