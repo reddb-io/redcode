@@ -497,6 +497,19 @@ const Root = Spec.make(typeof OPENCODE_CLI_NAME === "string" ? OPENCODE_CLI_NAME
         ...PermissionParams,
       },
     }),
+    Spec.make("github", {
+      description: "Manage the GitHub agent",
+      commands: [
+        Spec.make("install", { description: "Install the GitHub agent workflow in this repository" }),
+        Spec.make("run", {
+          description: "Run the GitHub agent for the current Actions event",
+          params: {
+            event: Flag.string("event").pipe(Flag.withDescription("GitHub event payload for a local run"), Flag.optional),
+            token: Flag.string("token").pipe(Flag.withDescription("GitHub token for a local run"), Flag.optional),
+          },
+        }),
+      ],
+    }),
     Spec.make("session", {
       description: "Manage sessions",
       commands: [

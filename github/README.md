@@ -1,166 +1,66 @@
-# opencode GitHub Action
+# Redcode GitHub Action
 
-A GitHub Action that integrates [opencode](https://opencode.ai) directly into your GitHub workflow.
+Run Redcode from issue comments, pull request comments, reviews, and other GitHub Actions events. The action uses the Redcode V2 CLI and the same session backend as the terminal client.
 
-Mention `/opencode` in your comment, and opencode will execute tasks within your GitHub Actions runner.
+## Install
 
-## Features
-
-#### Explain an issue
-
-Leave the following comment on a GitHub issue. `opencode` will read the entire thread, including all comments, and reply with a clear explanation.
-
-```
-/opencode explain this issue
-```
-
-#### Fix an issue
-
-Leave the following comment on a GitHub issue. opencode will create a new branch, implement the changes, and open a PR with the changes.
-
-```
-/opencode fix this
-```
-
-#### Review PRs and make changes
-
-Leave the following comment on a GitHub PR. opencode will implement the requested change and commit it to the same PR.
-
-```
-Delete the attachment from S3 when the note is removed /oc
-```
-
-#### Review specific code lines
-
-Leave a comment directly on code lines in the PR's "Files" tab. opencode will automatically detect the file, line numbers, and diff context to provide precise responses.
-
-```
-[Comment on specific lines in Files tab]
-/oc add error handling here
-```
-
-When commenting on specific lines, opencode receives:
-
-- The exact file being reviewed
-- The specific lines of code
-- The surrounding diff context
-- Line number information
-
-This allows for more targeted requests without needing to specify file paths or line numbers manually.
-
-## Installation
-
-Run the following command in the terminal from your GitHub repo:
+From the target repository, run:
 
 ```bash
-opencode github install
+redcode github install
 ```
 
-This will walk you through installing the GitHub app, creating the workflow, and setting up secrets.
+The command selects a provider and model, checks the GitHub App installation, and writes `.github/workflows/redcode.yml`. Commit that file and add the provider secrets shown by the installer. The generated workflow responds to `/oc` and `/opencode` comments.
 
-### Manual Setup
+The workflow uses `reddb-io/redcode/github@main`. It installs `@reddb-io/redcode` and runs `redcode github run`. The Action requires `id-token: write` to exchange a GitHub App token. Its `use_github_token` input can use the workflow's `GITHUB_TOKEN` instead.
 
-1. Install the GitHub app https://github.com/apps/opencode-agent. Make sure it is installed on the target repository.
-2. Add the following workflow file to `.github/workflows/opencode.yml` in your repo. Set the appropriate `model` and required API keys in `env`.
+## Supported events
 
-   ```yml
-   name: opencode
+`github run` handles `issue_comment`, `pull_request_review_comment`, `issues`, `pull_request`, `schedule`, and `workflow_dispatch`. Add the extra triggers to your workflow when needed. For `issues`, `schedule`, and `workflow_dispatch`, supply the `prompt` input because there is no command comment to use as a prompt.
 
-   on:
-     issue_comment:
-       types: [created]
-     pull_request_review_comment:
-       types: [created]
+For issue tasks, Redcode creates a branch and opens a pull request when it changes files. For pull requests, it works on the pull request branch and posts its response. For scheduled and manually dispatched runs, it logs the response and opens a pull request when it changes files. A commenter must have write or admin access to the repository.
 
-   jobs:
-     opencode:
-       if: |
-         contains(github.event.comment.body, '/oc') ||
-         contains(github.event.comment.body, '/opencode')
-       runs-on: ubuntu-latest
-       permissions:
-         id-token: write
-       steps:
-          - name: Checkout repository
-            uses: actions/checkout@v6
-            with:
-              fetch-depth: 1
-              persist-credentials: false
+## Manual workflow
 
-          - name: Run opencode
-           uses: anomalyco/opencode/github@latest
-           env:
-             ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
-             GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-           with:
-             model: anthropic/claude-sonnet-4-20250514
-             use_github_token: true
-   ```
-
-3. Store the API keys in secrets. In your organization or project **settings**, expand **Secrets and variables** on the left and select **Actions**. Add the required API keys.
-
-## Support
-
-This is an early release. If you encounter issues or have feedback, please create an issue at https://github.com/anomalyco/opencode/issues.
-
-## Development
-
-To test locally:
-
-1. Navigate to a test repo (e.g. `hello-world`):
-
-   ```bash
-   cd hello-world
-   ```
-
-2. Run:
-
-   ```bash
-   MODEL=anthropic/claude-sonnet-4-20250514 \
-     ANTHROPIC_API_KEY=sk-ant-api03-1234567890 \
-     GITHUB_RUN_ID=dummy \
-     MOCK_TOKEN=github_pat_1234567890 \
-     MOCK_EVENT='{"eventName":"issue_comment",...}' \
-     bun /path/to/opencode/github/index.ts
-   ```
-
-   - `MODEL`: The model used by opencode. Same as the `MODEL` defined in the GitHub workflow.
-   - `ANTHROPIC_API_KEY`: Your model provider API key. Same as the keys defined in the GitHub workflow.
-   - `GITHUB_RUN_ID`: Dummy value to emulate GitHub action environment.
-   - `MOCK_TOKEN`: A GitHub personal access token. This token is used to verify you have `admin` or `write` access to the test repo. Generate a token [here](https://github.com/settings/personal-access-tokens).
-   - `MOCK_EVENT`: Mock GitHub event payload (see templates below).
-   - `/path/to/opencode`: Path to your cloned opencode repo. `bun /path/to/opencode/github/index.ts` runs your local version of `opencode`.
-
-### Issue comment event
-
-```
-MOCK_EVENT='{"eventName":"issue_comment","repo":{"owner":"sst","repo":"hello-world"},"actor":"fwang","payload":{"issue":{"number":4},"comment":{"id":1,"body":"hey opencode, summarize thread"}}}'
+```yaml
+name: redcode
+on:
+  issue_comment:
+    types: [created]
+  pull_request_review_comment:
+    types: [created]
+jobs:
+  redcode:
+    if: contains(github.event.comment.body, '/oc') || contains(github.event.comment.body, '/opencode')
+    runs-on: ubuntu-latest
+    permissions:
+      id-token: write
+      contents: write
+      pull-requests: write
+      issues: write
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          persist-credentials: false
+      - uses: reddb-io/redcode/github@main
+        env:
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+        with:
+          model: anthropic/claude-sonnet-4-20250514
 ```
 
-Replace:
+Adjust the provider, model, and secret for your account. When using `use_github_token: true`, the action reads `github.token` and does not need the GitHub App exchange.
 
-- `"owner":"sst"` with repo owner
-- `"repo":"hello-world"` with repo name
-- `"actor":"fwang"` with the GitHub username of commenter
-- `"number":4` with the GitHub issue id
-- `"body":"hey opencode, summarize thread"` with comment body
+## Local development
 
-### Issue comment with image attachment.
+Use a checkout of this repository with Bun installed. Run the V2 CLI from the repository root with a JSON event context and a GitHub token:
 
-```
-MOCK_EVENT='{"eventName":"issue_comment","repo":{"owner":"sst","repo":"hello-world"},"actor":"fwang","payload":{"issue":{"number":4},"comment":{"id":1,"body":"hey opencode, what is in my image ![Image](https://github.com/user-attachments/assets/xxxxxxxx)"}}}'
-```
-
-Replace the image URL `https://github.com/user-attachments/assets/xxxxxxxx` with a valid GitHub attachment (you can generate one by commenting with an image in any issue).
-
-### PR comment event
-
-```
-MOCK_EVENT='{"eventName":"issue_comment","repo":{"owner":"sst","repo":"hello-world"},"actor":"fwang","payload":{"issue":{"number":4,"pull_request":{}},"comment":{"id":1,"body":"hey opencode, summarize thread"}}}'
+```bash
+MODEL=anthropic/claude-sonnet-4-20250514 \
+GITHUB_RUN_ID=local \
+GITHUB_TOKEN=github_pat_example \
+USE_GITHUB_TOKEN=true \
+bun run dev github run --event '{"eventName":"issue_comment","repo":{"owner":"example","repo":"project"},"actor":"example","payload":{"issue":{"number":1},"comment":{"id":1,"body":"/oc summarize this issue"}}}'
 ```
 
-### PR review comment event
-
-```
-MOCK_EVENT='{"eventName":"pull_request_review_comment","repo":{"owner":"sst","repo":"hello-world"},"actor":"fwang","payload":{"pull_request":{"number":7},"comment":{"id":1,"body":"hey opencode, add error handling","path":"src/components/Button.tsx","diff_hunk":"@@ -45,8 +45,11 @@\n- const handleClick = () => {\n-   console.log('clicked')\n+ const handleClick = useCallback(() => {\n+   console.log('clicked')\n+   doSomething()\n+ }, [doSomething])","line":47,"original_line":45,"position":10,"commit_id":"abc123","original_commit_id":"def456"}}}'
-```
+The event's repository and issue must exist, and the token needs write access. The command runs against a standalone V2 server. It can create comments, branches, and pull requests in that repository.

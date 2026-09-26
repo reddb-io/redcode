@@ -299,6 +299,8 @@ const bundledSnapshot = Effect.suspend(() =>
       ),
 )
 
+export const bundled = bundledSnapshot
+
 function cacheKey(source: string) {
   if (source === defaultSource) return "models-dev:catalog"
   return `models-dev:catalog:${Hash.fast(source)}`

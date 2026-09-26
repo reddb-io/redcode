@@ -26,6 +26,8 @@
   },
   "dependencies": {
     "@agentclientprotocol/sdk": "1.2.1",
+    "@actions/core": "1.11.1",
+    "@actions/github": "6.0.1",
     "@clack/core": "1.0.0-alpha.1",
     "@clack/prompts": "1.0.0-alpha.1",
     "@effect/platform-node": "catalog:",
@@ -33,6 +35,9 @@
     "@opencode/core": "workspace:*",
     "@opencode/plugin": "workspace:*",
     "@opencode-ai/pty": "0.1.13",
+    "@octokit/graphql": "9.0.2",
+    "@octokit/rest": "catalog:",
+    "@octokit/webhooks-types": "7.6.1",
     "@opencode/schema": "workspace:*",
     "@opencode/server": "workspace:*",
     "@opencode/tui": "workspace:*",

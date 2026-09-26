@@ -1,5 +1,5 @@
-name: "opencode GitHub Action"
-description: "Run opencode in GitHub Actions workflows"
+name: "Redcode GitHub Action"
+description: "Run Redcode in GitHub Actions workflows"
 branding:
   icon: "code"
   color: "orange"
@@ -41,34 +41,16 @@ inputs:
 runs:
   using: "composite"
   steps:
-    - name: Get opencode version
-      id: version
+    - name: Install Redcode
       shell: bash
-      run: |
-        VERSION=$(curl -sf https://api.github.com/repos/anomalyco/opencode/releases/latest | grep -o '"tag_name": *"[^"]*"' | cut -d'"' -f4)
-        echo "version=${VERSION:-latest}" >> $GITHUB_OUTPUT
+      run: npm install --prefix "$RUNNER_TEMP/redcode" --no-audit --no-fund @reddb-io/redcode@latest
 
-    - name: Cache opencode
-      id: cache
-      uses: actions/cache@v4
-      with:
-        path: ~/.opencode/bin
-        key: opencode-${{ runner.os }}-${{ runner.arch }}-${{ steps.version.outputs.version }}
-
-    - name: Install opencode
-      if: steps.cache.outputs.cache-hit != 'true'
+    - name: Run Redcode
       shell: bash
-      run: curl -fsSL https://opencode.ai/install | bash
-
-    - name: Add opencode to PATH
-      shell: bash
-      run: echo "$HOME/.opencode/bin" >> $GITHUB_PATH
-
-    - name: Run opencode
-      shell: bash
-      id: run_opencode
-      run: opencode github run
+      id: run_redcode
+      run: "$RUNNER_TEMP/redcode/node_modules/.bin/redcode" github run
       env:
+        GITHUB_TOKEN: ${{ github.token }}
         MODEL: ${{ inputs.model }}
         AGENT: ${{ inputs.agent }}
         SHARE: ${{ inputs.share }}
