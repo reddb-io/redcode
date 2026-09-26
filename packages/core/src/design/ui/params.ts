@@ -28,10 +28,10 @@ export function params(components: readonly Design.ParamComponent[]) {
     if (!data || typeof data !== "object") return
     if (reset) state.values = structuredClone(defaults)
     for (const component of components) {
-      const patch = Reflect.get(data, component.id)
+      const patch = (data as Record<string, unknown>)[component.id]
       if (!patch || typeof patch !== "object") continue
       for (const field of component.fields) {
-        const value = Reflect.get(patch, field.id)
+        const value = (patch as Record<string, unknown>)[field.id]
         if (valid(field, value)) state.values[component.id][field.id] = value
       }
     }

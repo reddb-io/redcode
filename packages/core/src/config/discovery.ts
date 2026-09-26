@@ -60,7 +60,7 @@ export const discover = Effect.fn("ConfigDiscovery.discover")(function* (options
 
   const globalEnabled = options?.global !== false
   const legacyGlobal = globalEnabled
-    ? (yield* Effect.forEach(legacyCandidates, (item) => fs.isDir(item).pipe(Effect.map((present) => ({ item, present }))))
+    ? (yield* Effect.forEach(legacyCandidates, (item) => fs.isDir(item).pipe(Effect.map((present) => ({ item, present })))))
         .filter((candidate) => candidate.present)
         .at(-1)?.item
     : undefined
