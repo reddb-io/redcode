@@ -407,6 +407,14 @@ const Root = Spec.make(typeof OPENCODE_CLI_NAME === "string" ? OPENCODE_CLI_NAME
       description: "List all available models",
       params: ServerParams,
     }),
+    Spec.make("usage", {
+      description: "Locate the v2 usage database",
+      commands: [
+        Spec.make("path", {
+          description: "Print the database path containing v2 session usage",
+        }),
+      ],
+    }),
     Spec.make("stats", {
       description: "Show shareable usage statistics",
       params: {
