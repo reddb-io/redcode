@@ -13,6 +13,13 @@ export function routerLabel(provider: Pick<Provider, "id" | "router">) {
   return undefined
 }
 
+/** A RedRouter key's role in words, e.g. `admin key`; undefined when the router did not say. */
+export function keyRoleLabel(role: string | undefined) {
+  if (role === "admin") return "admin key"
+  if (role === "standard") return "standard key"
+  return undefined
+}
+
 /** Finds, for every model, the other connections that serve the same upstream model. */
 export function originIndex(providers: Provider[]) {
   const routed = new Map<string, string[]>()
@@ -58,6 +65,20 @@ export function routeLabel(provider: Provider, model: Model) {
   // serving offer's id does.
   const hops = model.via ? [model.via] : Router.routeOf(model).hops.map(Router.hopName)
   return `via ${[router, ...hops].join(Router.HOP_SEPARATOR)}`
+}
+
+/**
+ * A model named with its whole route, the routers and upstream joined by ` » `: `RedRouter » Anthropic
+ * · Claude Sonnet 4.5`. A model connected directly is its name alone.
+ */
+export function routedName(provider: Provider, model: Model) {
+  const router = routerLabel(provider)
+  const hops = model.via ? [model.via] : Router.routeOf(model).hops.map(Router.hopName)
+  return Router.routeName({
+    routers: router ? [router, ...hops] : [],
+    upstream: router ? model.upstream?.name : undefined,
+    model: model.name,
+  })
 }
 
 /** The parts of `originDescription` after the route: upstream name, subscription, and duplicate connections. */

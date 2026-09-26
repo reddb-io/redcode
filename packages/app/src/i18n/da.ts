@@ -249,6 +249,9 @@ export const dict = {
   "model.flat.off": "off",
   "model.flat.customOrder": "custom order",
   "model.catalog.updated": "{{name}} catalog updated: +{{added}}/−{{removed}} models, {{renamed}} renamed",
+  "session.modelSuggestion.title": "Suggest: {{model}}",
+  "session.modelSuggestion.switch": "Switch",
+  "session.modelSuggestion.keep": "Keep",
 
   "model.provider.anthropic": "Anthropic",
   "model.provider.openai": "OpenAI",
@@ -1007,6 +1010,8 @@ export const dict = {
   "settings.providers.connected.empty": "Ingen forbundne udbydere",
   "settings.providers.section.popular": "Populære udbydere",
   "settings.providers.tag.environment": "Miljø",
+  "settings.providers.tag.adminKey": "Admin key",
+  "settings.providers.tag.standardKey": "Standard key",
   "settings.providers.tag.config": "Konfiguration",
   "settings.providers.tag.custom": "Brugerdefineret",
   "settings.providers.tag.other": "Andet",

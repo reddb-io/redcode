@@ -37,12 +37,14 @@ function sessionLineage(session: { id: string; parentID?: string }[], sessionID:
   return ids
 }
 
+/** Whether auto-accept answers a permission. Never a protected action: only the person may allow it. */
 export function autoRespondsPermission(
   autoAccept: Record<string, boolean>,
   session: { id: string; parentID?: string }[],
-  permission: { sessionID: string },
+  permission: { sessionID: string; protected?: boolean },
   directory?: string,
 ) {
+  if (permission.protected) return false
   const value = sessionAutoAccept(autoAccept, session, permission, directory)
   if (value !== undefined) return value
   return directory ? isDirectoryAutoAccepting(autoAccept, directory) : false

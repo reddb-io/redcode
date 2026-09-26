@@ -63,7 +63,7 @@ import {
   toolSearchSummary,
   webSearchProviderLabel,
 } from "../../util/tool-display"
-import { pendingAssistantIndex, pendingBadge, steeredLabel } from "../../prompt/steer"
+import { pendingAssistantIndex, pendingBadge, steeredMarker } from "../../prompt/steer"
 import { Dynamic, useRenderer, useTerminalDimensions, type JSX } from "@opentui/solid"
 import { useSDK } from "../../context/sdk"
 import { useEditorContext } from "../../context/editor"
@@ -110,6 +110,7 @@ import { getScrollAcceleration } from "../../util/scroll"
 import { collapseToolOutput } from "../../util/collapse-tool-output"
 import { usePluginRuntime } from "../../plugin/runtime"
 import { DialogRetryAction } from "../../component/dialog-retry-action"
+import { ModelSuggestionCard } from "../../component/model-suggestion"
 import { getRevertDiffFiles } from "../../util/revert-diff"
 import { appliedLabel } from "../../util/reasoning"
 import { OPENCODE_BASE_MODE, useBindings, useCommandShortcut, useOpencodeKeymap } from "../../keymap"
@@ -1646,6 +1647,7 @@ export function Session() {
                   <SubagentFooter />
                 </Show>
                 <VerboseIndicator />
+                <ModelSuggestionCard sessionID={route.sessionID} visible={visible()} />
                 <Show when={visible()}>
                   <pluginRuntime.Slot
                     name="session_prompt"
@@ -1755,7 +1757,7 @@ function UserMessage(props: {
   const steered = createMemo(() => sync.data.prompt_steered[props.message.id])
   const color = createMemo(() => local.agent.color(props.message.agent))
   const queuedFg = createMemo(() => selectedForeground(theme, color()))
-  const metadataVisible = createMemo(() => queued() || steered() !== undefined || ctx.showTimestamps())
+  const metadataVisible = createMemo(() => queued() || ctx.showTimestamps())
 
   const compaction = createMemo(() => props.parts.find((x) => x.type === "compaction"))
   const approvals = createMemo(() =>
@@ -1815,7 +1817,12 @@ function UserMessage(props: {
             backgroundColor={hover() ? theme.backgroundElement : theme.backgroundPanel}
             flexShrink={0}
           >
-            <text fg={theme.text}>{text()}</text>
+            <text fg={theme.text}>
+              <Show when={steered()}>
+                <span style={{ fg: theme.textMuted }}>{steeredMarker(hover(), steered() ?? "idle")}</span>
+              </Show>
+              {text()}
+            </text>
             <Show when={files().length}>
               <box flexDirection="row" paddingBottom={metadataVisible() ? 1 : 0} paddingTop={1} gap={1} flexWrap="wrap">
                 <For each={files()}>
@@ -1836,19 +1843,9 @@ function UserMessage(props: {
             <Show
               when={queued()}
               fallback={
-                <Show when={ctx.showTimestamps() || steered() !== undefined}>
+                <Show when={ctx.showTimestamps()}>
                   <text fg={theme.textMuted}>
-                    <Show when={steered()}>
-                      <span style={{ fg: theme.accent }}>{steeredLabel(steered() ?? "idle")}</span>
-                      <Show when={ctx.showTimestamps()}>
-                        <span style={{ fg: theme.textMuted }}> · </span>
-                      </Show>
-                    </Show>
-                    <Show when={ctx.showTimestamps()}>
-                      <span style={{ fg: theme.textMuted }}>
-                        {Locale.todayTimeOrDateTime(props.message.time.created)}
-                      </span>
-                    </Show>
+                    <span style={{ fg: theme.textMuted }}>{Locale.todayTimeOrDateTime(props.message.time.created)}</span>
                   </text>
                 </Show>
               }

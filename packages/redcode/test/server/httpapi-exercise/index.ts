@@ -468,6 +468,33 @@ const scenarios: Scenario[] = [
     }))
     .json(404, object, "status"),
   http.protected
+    .post("/session/{sessionID}/model-suggestion", "modelSuggestion.resolve")
+    .mutating()
+    .seeded((ctx) => ctx.session({ title: "Model suggestion session" }))
+    .at((ctx) => ({
+      path: route("/session/{sessionID}/model-suggestion", { sessionID: ctx.state.id }),
+      headers: ctx.headers(),
+      body: { trigger: "vision", choice: "keep" },
+    }))
+    .json(200, (body) => check(body === true, "answering a suggestion should return true")),
+  http.protected
+    .post("/session/{sessionID}/model-suggestion", "modelSuggestion.resolve.invalid")
+    .seeded((ctx) => ctx.session({ title: "Model suggestion invalid session" }))
+    .at((ctx) => ({
+      path: route("/session/{sessionID}/model-suggestion", { sessionID: ctx.state.id }),
+      headers: ctx.headers(),
+      body: { trigger: "vision", choice: "maybe" },
+    }))
+    .status(400),
+  http.protected
+    .post("/session/{sessionID}/model-suggestion", "modelSuggestion.resolve.missing")
+    .at((ctx) => ({
+      path: route("/session/{sessionID}/model-suggestion", { sessionID: "ses_httpapi_missing" }),
+      headers: ctx.headers(),
+      body: { trigger: "vision", choice: "keep" },
+    }))
+    .json(404, object, "status"),
+  http.protected
     .post("/question/{requestID}/reject", "question.reject")
     .at((ctx) => ({
       path: route("/question/{requestID}/reject", { requestID: "que_httpapi_reject" }),

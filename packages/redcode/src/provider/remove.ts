@@ -6,6 +6,7 @@ import { Credential } from "@reddb-io/redcode-core/credential"
 import type { Intelligence } from "@reddb-io/redcode-core/intelligence"
 import type { ModelLimit } from "@reddb-io/redcode-core/model-limit"
 import { ProviderRouter } from "@reddb-io/redcode-core/provider/router"
+import { RouterMCP } from "@reddb-io/redcode-core/provider/router-mcp"
 
 export const Result = Schema.Struct({
   providerID: Schema.String,
@@ -107,6 +108,7 @@ export const remove = Effect.fn("ProviderRemove.remove")(function* (
     }),
   )
   if (baseURL) ProviderRouter.forget(baseURL)
+  if (baseURL) RouterMCP.forget(baseURL)
   ProviderRouter.forgetCatalogs(providerID)
   return result
 })

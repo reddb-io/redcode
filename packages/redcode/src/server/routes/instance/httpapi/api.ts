@@ -26,6 +26,7 @@ import { SyncApi } from "./groups/sync"
 import { TuiApi } from "./groups/tui"
 import { WorkspaceApi } from "./groups/workspace"
 import { RedskilledApi } from "./groups/redskilled"
+import { ModelSuggestionApi } from "./groups/model-suggestion"
 import { makeApi } from "@reddb-io/redcode-protocol/api"
 import { LocationMiddleware } from "@reddb-io/redcode-server/location"
 import { SessionLocationMiddleware } from "@reddb-io/redcode-server/middleware/session-location"
@@ -76,6 +77,7 @@ export const InstanceHttpApi = HttpApi.make("redcode-instance")
   .addHttpApi(TuiApi)
   .addHttpApi(WorkspaceApi)
   .addHttpApi(RedskilledApi)
+  .addHttpApi(ModelSuggestionApi)
   .middleware(SchemaErrorMiddleware)
 
 export const RedcodeHttpApi = HttpApi.make("redcode")

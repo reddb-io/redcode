@@ -112,7 +112,10 @@ const layer = Layer.effect(
       let needsAsk = false
 
       for (const pattern of request.patterns) {
-        const rule = evaluate(request.permission, pattern, ruleset, approved)
+        // Yolo never allows a protected action; a configured deny still refuses it.
+        const rule = request.protected
+          ? evaluateConfigured(request.permission, pattern, ruleset, approved)
+          : evaluate(request.permission, pattern, ruleset, approved)
         yield* Effect.logInfo("evaluated", { permission: request.permission, pattern, action: rule })
         if (rule.action === "deny") {
           yield* Verbose.log("permission.denied", () => ({
@@ -131,6 +134,8 @@ const layer = Layer.effect(
       }
       // A forced request asks even where a rule or an earlier approval allows it; a deny still refuses.
       if (request.force && !RepositoryGuard.yolo()) needsAsk = true
+      // A protected action asks every time, yolo, rules and earlier approvals notwithstanding.
+      if (request.protected) needsAsk = true
 
       if (!needsAsk) return
 
@@ -141,8 +146,10 @@ const layer = Layer.effect(
         permission: request.permission,
         patterns: request.patterns,
         metadata: request.metadata,
-        always: request.always,
+        // A protected action is never approved for later: only "once" applies to it.
+        always: request.protected ? [] : request.always,
         tool: request.tool,
+        ...(request.protected ? { protected: true } : {}),
       }
       yield* Effect.logInfo("asking", { id, permission: info.permission, patterns: info.patterns })
       yield* Verbose.log("permission.ask", () => ({
@@ -156,7 +163,7 @@ const layer = Layer.effect(
       }))
 
       const deferred = yield* Deferred.make<void, PermissionV1.RejectedError | PermissionV1.CorrectedError>()
-      pending.set(id, { info, deferred, force: request.force === true })
+      pending.set(id, { info, deferred, force: request.force === true || request.protected === true })
       yield* events.publish(Event.Asked, info)
       const requested = { timestamp: yield* DateTime.now, ...info }
       yield* hooks.parallel(OperationHook.Operation.Permission.Requested, requested)

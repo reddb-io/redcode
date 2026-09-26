@@ -4,6 +4,7 @@ import { Auth } from "@/auth"
 import type { Config } from "@/config/config"
 import { isRecord } from "@/util/record"
 import { ProviderRouter } from "@reddb-io/redcode-core/provider/router"
+import { RouterMCP } from "@reddb-io/redcode-core/provider/router-mcp"
 import { Router } from "@reddb-io/redcode-schema/router"
 import { ProviderDiscovery } from "./discovery"
 import { ProviderRemove } from "./remove"
@@ -85,6 +86,9 @@ export const Result = Schema.Struct({
   }),
   configPath: Schema.String.annotate({ description: "The global configuration file that was written." }),
   movedFrom: Schema.optional(Schema.String),
+  keyRole: Schema.optional(Router.KeyRole).annotate({
+    description: "The RedRouter API key's role, when the router said: admin keys also manage keys over MCP.",
+  }),
   projectReferences: Schema.optional(Schema.Array(Schema.String)).annotate({
     description: "After a move: other configuration files that still mention the old id. They are not edited.",
   }),
@@ -376,6 +380,7 @@ export const connect = Effect.fn("OpenAICompatible.connect")(function* (
 
   let found: Array<typeof ProviderDiscovery.Model.Type>
   let catalogVersion: string | undefined
+  let keyInfo: { role: Router.KeyRole; mcp?: string } | undefined
   if (manual === undefined) {
     if (reference && !discoveryKey) {
       return yield* fail(
@@ -398,6 +403,7 @@ export const connect = Effect.fn("OpenAICompatible.connect")(function* (
     ).pipe(Effect.mapError((error) => fail("discovery", error.message)))
     found = [...discovered.models]
     catalogVersion = discovered.catalogVersion
+    keyInfo = discovered.key
   } else {
     found = manual.map((model) => ({
       id: model.id,
@@ -429,7 +435,23 @@ export const connect = Effect.fn("OpenAICompatible.connect")(function* (
     options.detect && manual === undefined
       ? yield* ProviderRouter.detect({ baseURL, apiKey: discoveryKey, fresh: true })
       : undefined
-  const router = detection && routerConnection(detection)
+  const detected = detection && routerConnection(detection)
+  const savedRouter = record(source.router)
+  // The key's role and MCP server come with the model list; a RedRouter that sent no headers is asked
+  // at /key. Both are read again on every connect and refresh, so a changed key is noticed.
+  const key =
+    keyInfo ??
+    (manual === undefined && (detected?.kind === "red-router" || savedRouter.kind === "red-router")
+      ? yield* RouterMCP.key({ baseURL, apiKey: discoveryKey })
+      : undefined)
+  const router: Router.Connection | undefined = key
+    ? {
+        ...(detected?.kind === "red-router" ? detected : {}),
+        kind: "red-router",
+        role: key.role,
+        ...(key.mcp ? { mcp: key.mcp } : {}),
+      }
+    : detected
 
   const moved = new Set(Object.values(next.moved))
   const name = input.name?.trim() || (typeof source.name === "string" && source.name.trim()) || providerID
@@ -475,6 +497,11 @@ export const connect = Effect.fn("OpenAICompatible.connect")(function* (
   } else {
     Object.assign(patch, renameModelReferences(latest.data, providerID, next.renamed))
     remove.push(...next.remove.map((id) => ["provider", providerID, "models", id]))
+    // A key that no longer reports a role or MCP server loses the ones saved for the old key.
+    if (manual === undefined)
+      for (const field of ["role", "mcp"] as const)
+        if (savedRouter[field] !== undefined && router?.[field] === undefined)
+          remove.push(["provider", providerID, "router", field])
     if ((credential === "stored" || credential === "none") && sourceOptions.apiKey !== undefined)
       remove.push(["provider", providerID, "options", "apiKey"])
     for (const header of Object.keys(savedHeaders))
@@ -536,6 +563,7 @@ export const connect = Effect.fn("OpenAICompatible.connect")(function* (
     credential,
     configPath: latest.path,
     ...(moveFrom ? { movedFrom: moveFrom } : {}),
+    ...(router?.role ? { keyRole: router.role } : {}),
   } satisfies Result
   // Not part of the API result: what the connection changed, for a caller that reports it.
   return {

@@ -7,6 +7,7 @@ import { SessionFollowupDock } from "@/pages/session/composer/session-followup-d
 import { SessionRevertDock } from "@/pages/session/composer/session-revert-dock"
 import { SessionTodoDock } from "@/pages/session/composer/session-todo-dock"
 import { SessionGoalDock } from "./session-goal-dock"
+import { SessionModelSuggestionDock } from "./session-model-suggestion-dock"
 import { useSync } from "@/context/sync"
 import { useParams } from "@solidjs/router"
 import type { SessionComposerRegionController } from "./session-composer-region-controller"
@@ -71,6 +72,7 @@ export function SessionComposerRegion(props: {
 
         <Show when={controller.showComposer()}>
           <SessionGoalDock metadata={goalMetadata()} sessionID={params.id} />
+          <SessionModelSuggestionDock sessionID={params.id} />
           <Show when={controller.dock()}>
             <div
               classList={{

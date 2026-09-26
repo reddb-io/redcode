@@ -17,6 +17,7 @@ import { DialogProvider } from "./dialog-provider"
 import { errorMessage } from "../util/error"
 import {
   flatOffers,
+  keyRoleLabel,
   modeBadge,
   originCategory,
   originDescription,
@@ -346,7 +347,14 @@ export function DialogSetup(
   // first), connected direct providers, then OpenCode Zen's free offer. Manual entry comes last.
   const evaluatorOptions = (): DialogSelectOption<EvaluatorChoice>[] => {
     const router = routerEvaluator()
-    const category = state.router ? `RedRouter ${routerName(state.router)}` : "RedRouter"
+    const detected = state.router
+    const address = detected?.baseURL.replace(/\/+$/, "")
+    const role = keyRoleLabel(
+      sync.data.provider.find(
+        (item) => typeof item.options?.baseURL === "string" && item.options.baseURL.replace(/\/+$/, "") === address,
+      )?.router?.role,
+    )
+    const category = detected ? [`RedRouter ${routerName(detected)}`, role].filter(Boolean).join(" · ") : "RedRouter"
     const recommended = state.router?.recommended?.systemone?.id
     const failure =
       state.discovery === "failed"

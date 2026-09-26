@@ -18,6 +18,7 @@ import { useConnected } from "./use-connected"
 import { useBindings } from "../keymap"
 import { useClipboard } from "../context/clipboard"
 import { type ConnectedProvider, DialogOpenAICompatible, type ProviderPreset } from "./dialog-openai-compatible"
+import { keyRoleLabel } from "../util/model-origin"
 import {
   COMPATIBLE_NPM,
   connectionProblem,
@@ -175,7 +176,7 @@ export function createDialogProviderOptions(props: { onConnected?: Connected } =
     toast.show({
       variant: "info",
       message:
-        `${result.name} saved as provider "${result.providerID}"${result.movedFrom ? ` (moved from "${result.movedFrom}")` : ""} in ${result.configPath}.` +
+        `${result.name} saved as provider "${result.providerID}"${result.movedFrom ? ` (moved from "${result.movedFrom}")` : ""}${result.keyRole ? ` with a ${keyRoleLabel(result.keyRole)}` : ""} in ${result.configPath}.` +
         (result.projectReferences?.length
           ? ` These files still mention "${result.movedFrom}" and were not changed: ${result.projectReferences.join(", ")}.`
           : ""),
@@ -291,10 +292,14 @@ export function createDialogProviderOptions(props: { onConnected?: Connected } =
         const consoleManaged = isConsoleManagedProvider(sync.data.console_state.consoleManagedProviders, providerID)
         const connected = sync.data.provider_next.connected.includes(providerID)
 
+        // A RedRouter connection says what its key may do: an admin key also manages keys over MCP.
+        const role = connected
+          ? keyRoleLabel(sync.data.provider.find((item) => item.id === providerID)?.router?.role)
+          : undefined
         return {
           title: provider.title,
           value: provider.value,
-          description: provider.description,
+          description: [provider.description, role].filter(Boolean).join(" · ") || undefined,
           footer: consoleManaged ? sync.data.console_state.activeOrgName : undefined,
           category: provider.category,
           gutter: connected && onboarded() ? () => <text fg={theme.success}>✓</text> : undefined,

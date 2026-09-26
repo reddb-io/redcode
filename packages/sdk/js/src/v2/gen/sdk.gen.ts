@@ -161,6 +161,9 @@ import type {
   McpStatusErrors,
   McpStatusResponses,
   ModelRef,
+  ModelSuggestionResolveErrors,
+  ModelSuggestionResolveResponses,
+  ModelSuggestionTrigger,
   MoveSessionDestination,
   OutputFormat,
   Part as Part2,
@@ -6509,6 +6512,53 @@ export class Redskilled extends HeyApiClient {
   }
 }
 
+export class ModelSuggestion extends HeyApiClient {
+  /**
+   * Answer a model suggestion
+   *
+   * Record the person's answer to a model suggestion. `switch` only tells other clients the card is answered: the client that switched sets the model itself. `keep` also stops suggestions for that trigger in the session.
+   */
+  public resolve<ThrowOnError extends boolean = false>(
+    parameters: {
+      sessionID: string
+      directory?: string
+      workspace?: string
+      trigger?: ModelSuggestionTrigger
+      choice?: "switch" | "keep"
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "path", key: "sessionID" },
+            { in: "query", key: "directory" },
+            { in: "query", key: "workspace" },
+            { in: "body", key: "trigger" },
+            { in: "body", key: "choice" },
+          ],
+        },
+      ],
+    )
+    return (options?.client ?? this.client).post<
+      ModelSuggestionResolveResponses,
+      ModelSuggestionResolveErrors,
+      ThrowOnError
+    >({
+      url: "/session/{sessionID}/model-suggestion",
+      ...options,
+      ...params,
+      headers: {
+        "Content-Type": "application/json",
+        ...options?.headers,
+        ...params.headers,
+      },
+    })
+  }
+}
+
 export class Health extends HeyApiClient {
   /**
    * Check server health
@@ -10122,6 +10172,11 @@ export class RedcodeClient extends HeyApiClient {
   private _redskilled?: Redskilled
   get redskilled(): Redskilled {
     return (this._redskilled ??= new Redskilled({ client: this.client }))
+  }
+
+  private _modelSuggestion?: ModelSuggestion
+  get modelSuggestion(): ModelSuggestion {
+    return (this._modelSuggestion ??= new ModelSuggestion({ client: this.client }))
   }
 
   private _v2?: V2
