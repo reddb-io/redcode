@@ -24,6 +24,7 @@ export type Options = {
   readonly hostname?: string
   readonly port?: number
   readonly cors?: readonly string[]
+  readonly openBrowser?: boolean
 }
 
 // The process effect lives until server shutdown; tracing it would parent every request to one process-lifetime trace.
@@ -162,6 +163,16 @@ const processEffect = Effect.fnUntraced(function* (options: Options) {
       const url = HttpServer.formatAddress(server.address)
       console.log(options.mode === "stdio" ? JSON.stringify({ url }) : `server listening on ${url}`)
       if (foreground && !environmentPassword) console.log(`server password ${password}`)
+      if (options.openBrowser) {
+        const browser = new URL(url)
+        if (["0.0.0.0", "[::]", "::"].includes(browser.hostname)) browser.hostname = "127.0.0.1"
+        yield* Effect.tryPromise(async () => {
+          const { openUrl } = await import("@opencode/util/open")
+          await openUrl(browser.href)
+        }).pipe(
+          Effect.catch((cause) => Effect.logWarning("Could not open web interface", { url: browser.href, cause })),
+        )
+      }
       return yield* options.mode === "service"
         ? server.shutdown
         : options.mode === "stdio"

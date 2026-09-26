@@ -764,6 +764,18 @@ const Root = Spec.make(typeof OPENCODE_CLI_NAME === "string" ? OPENCODE_CLI_NAME
         stdio: Flag.boolean("stdio").pipe(Flag.withDefault(false)),
       },
     }),
+    Spec.make("web", {
+      description: "Start the v2 API and web server and open the browser",
+      params: {
+        hostname: Flag.string("hostname").pipe(Flag.optional),
+        port: Flag.integer("port").pipe(Flag.optional),
+        cors: Flag.string("cors").pipe(
+          Flag.withSchema(Schema.NonEmptyString),
+          Flag.withDescription("Additional allowed CORS origin (repeat for multiple origins)"),
+          Flag.atLeast(0),
+        ),
+      },
+    }),
   ],
 })
 
