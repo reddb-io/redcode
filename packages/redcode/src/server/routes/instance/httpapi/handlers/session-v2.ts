@@ -9,9 +9,7 @@ export const sessionV2Handlers = HttpApiBuilder.group(RootHttpApi, "server.sessi
   Effect.gen(function* () {
     const sessions = yield* SessionV2.Service
 
-    const prompt = Effect.fn("SessionV2HttpApi.prompt")(function* (ctx: {
-      payload: typeof SessionV2PromptPayload.Type
-    }) {
+    const prompt = Effect.fn("SessionV2HttpApi.prompt")(function* (ctx) {
       return yield* sessions
         .prompt({
           sessionID: ctx.payload.sessionID,
@@ -31,7 +29,7 @@ export const sessionV2Handlers = HttpApiBuilder.group(RootHttpApi, "server.sessi
         )
     })
 
-    const session = Effect.fn("SessionV2HttpApi.session")(function* (ctx: { params: { id: SessionV2.ID } }) {
+    const session = Effect.fn("SessionV2HttpApi.session")(function* (ctx) {
       return yield* sessions.get(ctx.params.id).pipe(
         Effect.mapError(
           (error) => new SessionNotFoundError({ sessionID: error.sessionID, message: `Session not found: ${error.sessionID}` }),
@@ -39,7 +37,7 @@ export const sessionV2Handlers = HttpApiBuilder.group(RootHttpApi, "server.sessi
       )
     })
 
-    const messages = Effect.fn("SessionV2HttpApi.messages")(function* (ctx: { params: { id: SessionV2.ID } }) {
+    const messages = Effect.fn("SessionV2HttpApi.messages")(function* (ctx) {
       return yield* sessions.messages({ sessionID: ctx.params.id }).pipe(
         Effect.mapError(
           (error) => new SessionNotFoundError({ sessionID: error.sessionID, message: `Session not found: ${error.sessionID}` }),
@@ -47,10 +45,7 @@ export const sessionV2Handlers = HttpApiBuilder.group(RootHttpApi, "server.sessi
       )
     })
 
-    const events = Effect.fn("SessionV2HttpApi.events")(function* (ctx: {
-      params: { id: SessionV2.ID }
-      urlParams: { after?: number }
-    }) {
+    const events = Effect.fn("SessionV2HttpApi.events")(function* (ctx) {
       const stream = sessions.events({
         sessionID: ctx.params.id,
         ...(ctx.urlParams.after !== undefined ? { after: ctx.urlParams.after } : {}),
@@ -64,7 +59,7 @@ export const sessionV2Handlers = HttpApiBuilder.group(RootHttpApi, "server.sessi
       return Array.from(chunk)
     })
 
-    const interrupt = Effect.fn("SessionV2HttpApi.interrupt")(function* (ctx: { params: { id: SessionV2.ID } }) {
+    const interrupt = Effect.fn("SessionV2HttpApi.interrupt")(function* (ctx) {
       yield* sessions.interrupt(ctx.params.id)
     })
 
