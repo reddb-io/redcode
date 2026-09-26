@@ -82,6 +82,10 @@ export function available(server: Info, root: string, directory: string, downloa
     return !!resolveCommand(server, root, directory) || !!resolveCommand({ ...server, command: ["oxlint"] }, root, directory)
   if (server.id === "zls" && server.command[0] === "zls")
     return !!resolveCommand(server, root, directory) || downloads && !!which("zig")
+  if (server.id === "terraform" && server.command[0] === "terraform-ls")
+    return !!resolveCommand(server, root, directory) || downloads
+  if ((server.id === "texlab" || server.id === "tinymist") && server.command[0] === server.id)
+    return !!resolveCommand(server, root, directory) || downloads
   if (server.id === "sourcekit-lsp" && server.command[0] === "sourcekit-lsp" && !resolveCommand(server, root, directory))
     return !!which("xcrun")
   if (server.id === "jdtls" && server.command[0] === "java")
@@ -280,17 +284,7 @@ function ancestors(start: string, stop: string) {
 }
 
 export async function start(server: Info, root: string, directory: string, downloads: boolean): Promise<Handle> {
-  const specialized = server.id === "jdtls" && server.command[0] === "java"
-    ? await javaLaunch(downloads)
-    : server.id === "zls" && server.command[0] === "zls" && !resolveCommand(server, root, directory)
-      ? await zlsLaunch(downloads)
-    : server.id === "kotlin-ls" && server.command[0] === "kotlin-lsp" && !resolveCommand(server, root, directory)
-      ? await kotlinLaunch(downloads)
-      : server.id === "oxlint" && server.command[0] === "oxc_language_server"
-        ? await oxlintLaunch(server, root, directory)
-      : server.id === "sourcekit-lsp" && server.command[0] === "sourcekit-lsp" && !resolveCommand(server, root, directory)
-        ? await sourcekitLaunch()
-      : undefined
+  const specialized = await specializedLaunch(server, root, directory, downloads)
   const executable = specialized?.executable
     ?? resolveCommand(server, root, directory)
     ?? (isRoslyn(server) ? await installRoslyn(downloads) : undefined)
@@ -345,6 +339,19 @@ async function download(server: Info, enabled: boolean) {
   return Npm.which(server.download.package, server.download.bin)
 }
 
+async function specializedLaunch(server: Info, root: string, directory: string, downloads: boolean) {
+  if (server.id === "jdtls" && server.command[0] === "java") return javaLaunch(downloads)
+  if (server.id === "oxlint" && server.command[0] === "oxc_language_server")
+    return oxlintLaunch(server, root, directory)
+  if (resolveCommand(server, root, directory)) return
+  if (server.id === "zls" && server.command[0] === "zls") return zlsLaunch(downloads)
+  if (server.id === "terraform" && server.command[0] === "terraform-ls") return terraformLaunch(downloads)
+  if (server.id === "texlab" && server.command[0] === "texlab") return texlabLaunch(downloads)
+  if (server.id === "tinymist" && server.command[0] === "tinymist") return tinymistLaunch(downloads)
+  if (server.id === "kotlin-ls" && server.command[0] === "kotlin-lsp") return kotlinLaunch(downloads)
+  if (server.id === "sourcekit-lsp" && server.command[0] === "sourcekit-lsp") return sourcekitLaunch()
+}
+
 async function sourcekitLaunch() {
   const xcrun = which("xcrun")
   if (!xcrun) return
@@ -370,30 +377,89 @@ async function zlsLaunch(downloads: boolean) {
   const name = `zls-${arch}-${platform}.${extension}`
   if (!["zls-x86_64-linux.tar.xz", "zls-x86_64-macos.tar.xz", "zls-x86_64-windows.zip", "zls-aarch64-linux.tar.xz", "zls-aarch64-macos.tar.xz", "zls-aarch64-windows.zip", "zls-x86-linux.tar.xz", "zls-x86-windows.zip"].includes(name))
     throw new Error(`LSP server zls does not support ${platform}-${arch}`)
-  const response = await fetch("https://api.github.com/repos/zigtools/zls/releases/latest")
-  if (!response.ok) throw new Error(`LSP server zls release lookup failed: HTTP ${response.status}`)
+  await unpack(await githubAsset("zigtools/zls", name), name, Global.Path.bin)
+  const executable = path.join(Global.Path.bin, `zls${globalThis.process.platform === "win32" ? ".exe" : ""}`)
+  if (!existsSync(executable)) throw new Error("LSP server zls archive has no executable")
+  if (globalThis.process.platform !== "win32") await chmod(executable, 0o755)
+  return { executable, args: [] }
+}
+
+async function terraformLaunch(downloads: boolean) {
+  if (!downloads) return
+  const response = await fetch("https://api.releases.hashicorp.com/v1/releases/terraform-ls/latest")
+  if (!response.ok) throw new Error(`LSP server terraform release lookup failed: HTTP ${response.status}`)
+  const release: unknown = await response.json()
+  const builds = typeof release === "object" && release !== null && "builds" in release && Array.isArray(release.builds)
+    ? release.builds as unknown[] : []
+  const platform = globalThis.process.platform === "win32" ? "windows" : globalThis.process.platform
+  const arch = globalThis.process.arch === "arm64" ? "arm64" : "amd64"
+  const build = builds.find((item) => typeof item === "object" && item !== null && "os" in item && "arch" in item && item.os === platform && item.arch === arch)
+  const url = typeof build === "object" && build !== null && "url" in build && typeof build.url === "string"
+    ? build.url : undefined
+  if (!url) throw new Error(`LSP server terraform has no ${platform}-${arch} build`)
+  await unpack(url, "terraform-ls.zip", Global.Path.bin)
+  const executable = path.join(Global.Path.bin, `terraform-ls${globalThis.process.platform === "win32" ? ".exe" : ""}`)
+  if (!existsSync(executable)) throw new Error("LSP server terraform archive has no executable")
+  if (globalThis.process.platform !== "win32") await chmod(executable, 0o755)
+  return { executable, args: ["serve"] }
+}
+
+async function texlabLaunch(downloads: boolean) {
+  if (!downloads) return
+  if (!["x64", "arm64"].includes(globalThis.process.arch) || !["linux", "darwin", "win32"].includes(globalThis.process.platform))
+    throw new Error(`LSP server texlab does not support ${globalThis.process.platform}-${globalThis.process.arch}`)
+  const arch = globalThis.process.arch === "arm64" ? "aarch64" : "x86_64"
+  const platform = globalThis.process.platform === "darwin" ? "macos" : globalThis.process.platform === "win32" ? "windows" : "linux"
+  const name = `texlab-${arch}-${platform}.${globalThis.process.platform === "win32" ? "zip" : "tar.gz"}`
+  await unpack(await githubAsset("latex-lsp/texlab", name), name, Global.Path.bin)
+  const executable = path.join(Global.Path.bin, `texlab${globalThis.process.platform === "win32" ? ".exe" : ""}`)
+  if (!existsSync(executable)) throw new Error("LSP server texlab archive has no executable")
+  if (globalThis.process.platform !== "win32") await chmod(executable, 0o755)
+  return { executable, args: [] }
+}
+
+async function tinymistLaunch(downloads: boolean) {
+  if (!downloads) return
+  if (!["x64", "arm64"].includes(globalThis.process.arch) || !["linux", "darwin", "win32"].includes(globalThis.process.platform))
+    throw new Error(`LSP server tinymist does not support ${globalThis.process.platform}-${globalThis.process.arch}`)
+  const arch = globalThis.process.arch === "arm64" ? "aarch64" : "x86_64"
+  const platform = globalThis.process.platform === "darwin" ? "apple-darwin" : globalThis.process.platform === "win32" ? "pc-windows-msvc" : "unknown-linux-gnu"
+  const name = `tinymist-${arch}-${platform}.${globalThis.process.platform === "win32" ? "zip" : "tar.gz"}`
+  await unpack(await githubAsset("Myriad-Dreamin/tinymist", name), name, Global.Path.bin, globalThis.process.platform === "win32" ? 0 : 1)
+  const executable = path.join(Global.Path.bin, `tinymist${globalThis.process.platform === "win32" ? ".exe" : ""}`)
+  if (!existsSync(executable)) throw new Error("LSP server tinymist archive has no executable")
+  if (globalThis.process.platform !== "win32") await chmod(executable, 0o755)
+  return { executable, args: [] }
+}
+
+async function githubAsset(repository: string, name: string) {
+  const response = await fetch(`https://api.github.com/repos/${repository}/releases/latest`)
+  if (!response.ok) throw new Error(`LSP server ${repository} release lookup failed: HTTP ${response.status}`)
   const release: unknown = await response.json()
   const assets = typeof release === "object" && release !== null && "assets" in release && Array.isArray(release.assets)
     ? release.assets as unknown[] : []
   const asset = assets.find((item) => typeof item === "object" && item !== null && "name" in item && item.name === name)
   const url = typeof asset === "object" && asset !== null && "browser_download_url" in asset && typeof asset.browser_download_url === "string"
     ? asset.browser_download_url : undefined
-  if (!url) throw new Error(`LSP server zls release has no ${name} asset`)
-  const download = await fetch(url)
-  if (!download.ok) throw new Error(`LSP server zls download failed: HTTP ${download.status}`)
-  await mkdir(Global.Path.bin, { recursive: true })
-  const archive = path.join(Global.Path.bin, name)
-  await Bun.write(archive, await download.bytes())
-  const command = extension === "zip"
-    ? ["powershell.exe", "-NoProfile", "-NonInteractive", "-Command", `$global:ProgressPreference = 'SilentlyContinue'; Expand-Archive -LiteralPath '${archive.replaceAll("'", "''")}' -DestinationPath '${Global.Path.bin.replaceAll("'", "''")}' -Force`]
-    : ["tar", "-xf", name]
-  const extraction = Bun.spawn(command, { cwd: Global.Path.bin, stdout: "ignore", stderr: "pipe" })
+  if (!url) throw new Error(`LSP server ${repository} release has no ${name} asset`)
+  return url
+}
+
+async function unpack(url: string, name: string, directory: string, strip = 0) {
+  const response = await fetch(url)
+  if (!response.ok) throw new Error(`LSP server download failed: HTTP ${response.status}`)
+  await mkdir(directory, { recursive: true })
+  const archive = path.join(directory, name)
+  await Bun.write(archive, await response.bytes())
+  const command = name.endsWith(".zip")
+    ? globalThis.process.platform === "win32"
+      ? ["powershell.exe", "-NoProfile", "-NonInteractive", "-Command", `$global:ProgressPreference = 'SilentlyContinue'; Expand-Archive -LiteralPath '${archive.replaceAll("'", "''")}' -DestinationPath '${directory.replaceAll("'", "''")}' -Force`]
+      : ["unzip", "-o", archive, "-d", directory]
+    : ["tar", name.endsWith(".tar.gz") ? "-xzf" : "-xf", name, ...(strip ? [`--strip-components=${strip}`] : [])]
+  const extraction = Bun.spawn(command, { cwd: directory, stdout: "ignore", stderr: "pipe" })
   const [code, error] = await Promise.all([extraction.exited, new Response(extraction.stderr).text()])
   await rm(archive, { force: true })
-  const executable = path.join(Global.Path.bin, `zls${globalThis.process.platform === "win32" ? ".exe" : ""}`)
-  if (code !== 0 || !existsSync(executable)) throw new Error(`LSP server zls extraction failed: ${error.trim()}`)
-  if (globalThis.process.platform !== "win32") await chmod(executable, 0o755)
-  return { executable, args: [] }
+  if (code !== 0) throw new Error(`LSP server archive ${name} extraction failed: ${error.trim()}`)
 }
 
 async function javaLaunch(downloads: boolean) {
