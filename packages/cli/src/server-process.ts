@@ -7,7 +7,6 @@ import { Global } from "@opencode/util/global"
 import { OPENCODE_ARTIFACT, OPENCODE_CHANNEL, OPENCODE_VERSION } from "./version"
 import { AppProcess } from "@opencode/util/process"
 import { randomBytes, randomUUID } from "node:crypto"
-import path from "node:path"
 import { Effect, Option, Redacted, Schedule, Schema } from "effect"
 import { PersistentPty } from "@opencode/schema/persistent-pty"
 import { HttpServer } from "effect/unstable/http"
@@ -16,9 +15,7 @@ import { ServiceConfig } from "./services/service-config"
 import { RetainedImage } from "./services/retained-image"
 import { ServiceRegistration } from "./services/service-registration"
 import { WebUi } from "./services/web-ui"
-import { databasePath } from "./database-path"
-import { Database } from "@opencode/core/database/database"
-import { ConfigDatabase } from "@opencode/schema/config/database"
+import { select } from "./database-selection"
 
 export type Mode = "default" | "service" | "stdio"
 
@@ -56,7 +53,7 @@ const processEffect = Effect.fnUntraced(function* (options: Options) {
           Effect.mapError(() => new Error("Invalid PTY restart handoff")),
         )
   const global = yield* Global.Service
-  const databaseURL = process.env.REDCODE_DATABASE_URL?.trim() || (yield* Effect.promise(() => configuredDatabaseURL(global.config, global.home)))
+  const database = yield* Effect.promise(() => select(global))
   if (options.mode === "service") yield* Effect.sync(() => process.chdir(global.home))
   return yield* Effect.scoped(
     Effect.gen(function* () {
@@ -102,12 +99,7 @@ const processEffect = Effect.fnUntraced(function* (options: Options) {
           password,
           pty: { handoff },
           simulation: truthy(process.env.OPENCODE_SIMULATE),
-          database: databaseURL
-            ? {
-                url: Database.validateURL(databaseURL),
-                token: process.env.REDCODE_DATABASE_TOKEN,
-              }
-            : { path: databasePath(global.data) },
+          database,
           models: {
             url: process.env.OPENCODE_MODELS_URL,
             file: process.env.OPENCODE_MODELS_PATH,
@@ -188,28 +180,6 @@ const processEffect = Effect.fnUntraced(function* (options: Options) {
     }).pipe(Effect.annotateLogs({ role: "server" })),
   )
 })
-
-async function configuredDatabaseURL(directory: string, home: string) {
-  const { parse } = await import("jsonc-parser")
-  const { readFile } = await import("node:fs/promises")
-  const decode = Schema.decodeUnknownOption(ConfigDatabase.Info)
-  const files = await Promise.all(
-    [path.join(home, ".red", "redcode"), path.join(home, ".red", "code"), directory]
-      .flatMap((root) =>
-        ["opencode.json", "opencode.jsonc", "redcode.json", "redcode.jsonc", "config.json", "config.jsonc"].map(
-          (name) => path.join(root, name),
-        ),
-      )
-      .map(async (file) => {
-        const content = await readFile(file, "utf8").catch(() => undefined)
-        if (!content) return
-        const value: unknown = parse(content)
-        if (typeof value !== "object" || value === null || !("database" in value)) return
-        return Option.getOrUndefined(decode(value.database))?.url
-      }),
-  )
-  return files.findLast((url) => url !== undefined)
-}
 
 const recognizeIncumbent = Effect.fnUntraced(function* (options: DiscoverOptions, hostname: string, port: number) {
   const found = yield* Service.incumbent({ ...options, url: serviceURL(hostname, port) }).pipe(

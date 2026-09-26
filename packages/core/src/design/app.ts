@@ -4,7 +4,7 @@ import path from "node:path"
 import { closeSync, openSync } from "node:fs"
 import { mkdir, rename, rm, writeFile } from "node:fs/promises"
 import { spawn } from "node:child_process"
-import { createHmac, randomBytes, timingSafeEqual } from "node:crypto"
+import { createHash, createHmac, randomBytes, timingSafeEqual } from "node:crypto"
 import { setTimeout as sleep } from "node:timers/promises"
 import { Option, Schema } from "effect"
 import { Design } from "@opencode/schema/design"
@@ -21,7 +21,7 @@ import type { Database } from "../database/database.js"
  */
 
 /** Bumped whenever routes or payloads between redcode and the design app change incompatibly. */
-export const PROTOCOL = 3
+export const PROTOCOL = 4
 
 /** Minutes without review tabs, requests or running jobs before the app exits on its own. */
 export const IDLE_MINUTES = 10
@@ -32,6 +32,7 @@ export const Registration = Schema.Struct({
   pid: Schema.Int,
   version: Schema.String,
   protocol: Schema.Int,
+  database: Schema.optional(Schema.String),
 })
 export type Registration = typeof Registration.Type
 
@@ -40,8 +41,15 @@ export const Health = Schema.Struct({
   protocol: Schema.Int,
   version: Schema.String,
   pid: Schema.Int,
+  database: Schema.optional(Schema.String),
 })
 export type Health = typeof Health.Type
+
+export function databaseFingerprint(database: Database.Options) {
+  return createHash("sha256")
+    .update(JSON.stringify([database.path ?? null, database.url ?? null, database.token ?? null]))
+    .digest("hex")
+}
 const Failure = Schema.Struct({
   code: Schema.Literals(["not-found", "conflict", "invalid", "unavailable"]),
   message: Schema.String,
@@ -156,6 +164,7 @@ export interface EnsureInput {
   /** How long a new app has to register. */
   readonly timeout?: number
   readonly env?: Record<string, string | undefined>
+  readonly database?: string
 }
 
 const launches = new Map<string, Promise<{ url: string; token: string }>>()
@@ -167,7 +176,7 @@ const launches = new Map<string, Promise<{ url: string; token: string }>>()
  * one launch, so a review link opened during a first-use download waits on that download.
  */
 export function ensure(input: EnsureInput) {
-  const key = paths(input.state).registration
+  const key = `${paths(input.state).registration}:${input.database ?? ""}`
   const pending = launches.get(key)
   if (pending) return pending
   const launch = start(input)
@@ -183,13 +192,13 @@ export function ensure(input: EnsureInput) {
 async function start(input: EnsureInput) {
   const files = paths(input.state)
   const secret = await token(files.token)
-  const current = await reusable(files.registration, secret, input.version)
+  const current = await reusable(files.registration, secret, input.version, input.database)
   if (current) return { url: current.url, token: secret }
   return Flock.withLock(
     `design-app:${files.registration}`,
     async () => {
       // Another redcode may have started one while this one waited for the lock.
-      const started = await reusable(files.registration, secret, input.version)
+      const started = await reusable(files.registration, secret, input.version, input.database)
       if (started) return { url: started.url, token: secret }
       DesignAppBinary.report({ phase: "start", received: 0, started: Date.now() })
       const launch =
@@ -222,7 +231,8 @@ async function start(input: EnsureInput) {
         if (child.exitCode !== null)
           throw new Error(`The design app exited with code ${child.exitCode} before it registered; see ${files.log}`)
         const info = await registration(files.registration)
-        if (info && info.pid === child.pid && (await health(info.url, secret))?.protocol === PROTOCOL)
+        const answer = info && info.pid === child.pid ? await health(info.url, secret) : undefined
+        if (info && answer?.protocol === PROTOCOL && answer.database === info.database && info.database === input.database)
           return { url: info.url, token: secret }
         await sleep(100)
       }
@@ -233,7 +243,7 @@ async function start(input: EnsureInput) {
   ).finally(() => DesignAppBinary.report())
 }
 
-async function reusable(file: string, secret: string, version?: string) {
+async function reusable(file: string, secret: string, version?: string, database?: string) {
   const info = await registration(file)
   if (!info || !alive(info.pid)) return undefined
   const answer = await health(info.url, secret)
@@ -244,10 +254,12 @@ async function reusable(file: string, secret: string, version?: string) {
     answer.protocol === PROTOCOL &&
     info.protocol === PROTOCOL &&
     answer.version === info.version &&
+    answer.database === info.database &&
+    (database === undefined || info.database === database) &&
     (!exact || answer.version === exact) &&
     (!minimum || Bun.semver.order(answer.version, minimum) >= 0)
   ) return info
-  // Another protocol: authenticated by the token, so it is ours to stop; the new app replaces it.
+  // A different protocol or database cannot serve this redcode process.
   await stop(info.url, secret)
   return undefined
 }
@@ -300,6 +312,7 @@ export async function connect(input: {
   if (!host) throw new Error("The design app needs a redcode server for its session routes")
   const started = await ensure({
     host: host.url,
+    database: input.database ? databaseFingerprint(input.database) : undefined,
     version: input.version,
     state: input.state,
     command: () => DesignAppBinary.command({ protocol: PROTOCOL, version: input.version }),

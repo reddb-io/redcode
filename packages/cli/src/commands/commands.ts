@@ -486,6 +486,15 @@ const Root = Spec.make(typeof OPENCODE_CLI_NAME === "string" ? OPENCODE_CLI_NAME
     Spec.make("db", {
       description: "Database tools",
       commands: [
+        Spec.make("path", { description: "Print the selected database path or URL" }),
+        Spec.make("status", { description: "Show the selected database backend and verify connectivity" }),
+        Spec.make("query", {
+          description: "Run a SQL query or open the SQLite shell",
+          params: {
+            sql: Argument.string("sql").pipe(Argument.optional),
+            format: Flag.choice("format", ["json", "tsv"]).pipe(Flag.withDefault("tsv")),
+          },
+        }),
         Spec.make("migrate", {
           description: "Copy the local SQLite database to RedDB and verify every table",
           params: {

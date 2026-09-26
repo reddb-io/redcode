@@ -65,7 +65,12 @@ export async function start(options: Options) {
   })
   const registration = options.register
     ? await DesignApp.register(
-        { url: server.url.origin, pid: process.pid, version: options.version },
+        {
+          url: server.url.origin,
+          pid: process.pid,
+          version: options.version,
+          database: DesignApp.databaseFingerprint(options.database),
+        },
         DesignApp.paths(options.state).registration,
       )
     : undefined
@@ -105,7 +110,13 @@ async function dispatch(
   const bearer = request.headers.get("authorization") === `Bearer ${options.token}`
   if (url.pathname === "/app/health")
     return bearer
-      ? Response.json({ healthy: true, protocol: DesignApp.PROTOCOL, version: options.version, pid: process.pid })
+      ? Response.json({
+          healthy: true,
+          protocol: DesignApp.PROTOCOL,
+          version: options.version,
+          pid: process.pid,
+          database: DesignApp.databaseFingerprint(options.database),
+        })
       : new Response(null, { status: 401 })
   if (url.pathname === "/app/shutdown" && request.method === "POST") {
     if (!bearer) return new Response(null, { status: 401 })

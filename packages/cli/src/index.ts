@@ -93,6 +93,9 @@ const Handlers = Runtime.handlers(Commands, {
     backfill: () => import("./commands/handlers/usage/backfill"),
   },
   db: {
+    path: () => import("./commands/handlers/db/path"),
+    status: () => import("./commands/handlers/db/status"),
+    query: () => import("./commands/handlers/db/query"),
     migrate: () => import("./commands/handlers/db/migrate"),
   },
   stats: () => import("./commands/handlers/stats"),
