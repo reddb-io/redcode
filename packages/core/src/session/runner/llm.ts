@@ -1,6 +1,7 @@
 export * as SessionRunnerLLM from "./llm.js"
 
-import { Message } from "@opencode/ai"
+import { Message, SystemPart } from "@opencode/ai"
+import { Monitor } from "@opencode/schema/monitor"
 import { and, desc, eq, sql } from "drizzle-orm"
 import { Cause, Effect, Exit, FiberMap, Layer } from "effect"
 import { Database } from "../../database/database.js"
@@ -20,6 +21,12 @@ import { SessionSchema } from "../schema.js"
 import { SessionStore } from "../store.js"
 import { SessionMessageTable } from "../sql.js"
 import { SessionTitle } from "../title.js"
+import { SessionGoal } from "../goal.js"
+import { SessionPlan } from "../plan.js"
+import { SessionGoalCompletion } from "../goal-completion.js"
+import { SessionTodo } from "../todo.js"
+import { SessionTodoStore } from "../todo-store.js"
+import { MonitorRuntime } from "../../monitor.js"
 import { toSessionError } from "../to-session-error.js"
 import { DrainResult, Service, type Interface } from "./index.js"
 import { Snapshot } from "../../snapshot.js"
@@ -47,6 +54,10 @@ const layer = Layer.effect(
     const compaction = yield* SessionCompaction.Service
     const plugins = yield* Plugin.Service
     const title = yield* SessionTitle.Service
+    const todos = yield* SessionTodoStore.Service
+    const goals = yield* SessionGoal.Service
+    const plans = yield* SessionPlan.Service
+    const monitors = yield* MonitorRuntime.Service
     const steps = yield* SessionStep.make
     // Title generation starts once input is visible and must not delay model execution.
     const titles = yield* FiberMap.make<SessionSchema.ID, void, never>()
@@ -57,6 +68,7 @@ const layer = Layer.effect(
       let continuing = input.continuation !== undefined
       let step = input.continuation?.step ?? 1
       let entering = true
+      let todoContinuations = 0
       const promotable = input.promotable ?? "input"
       if (!force && !continuing) {
         const pending = yield* SessionInbox.nextPromotable(db, sessionID, "input")
@@ -175,7 +187,10 @@ const layer = Layer.effect(
                     yield* FiberMap.run(titles, sessionID, title.generate(sessionID), {
                       onlyIfMissing: true,
                     })
-                  if (promoted > 0) step = 1
+                  if (promoted > 0) {
+                    step = 1
+                    todoContinuations = 0
+                  }
                   return { _tag: "Ready" as const, context: yield* context.load(selected) }
                 }),
               )
@@ -188,7 +203,48 @@ const layer = Layer.effect(
       while (true) {
         const next = yield* advanceToStep()
         if (next._tag !== "Ready") return next
-        continuing = yield* runStep(next.context, step)
+        const goalID = yield* goals.beginStep(sessionID)
+        if (goalID === false) return DrainResult.Complete()
+        const result = yield* Effect.uninterruptibleMask((restore) =>
+          Effect.gen(function* () {
+            const result = yield* restore(runStep(next.context, step, goalID)).pipe(Effect.exit)
+            if (goalID)
+              yield* goals
+                .settle(sessionID, {
+                  goalID,
+                  tokens: 0,
+                  interrupted: Exit.isFailure(result) && Cause.hasInterrupts(result.cause),
+                  failed: Exit.isFailure(result) && !Cause.hasInterrupts(result.cause),
+                  waiting: Exit.isSuccess(result) && (yield* monitors.list(sessionID)).some(Monitor.parks),
+                })
+                .pipe(Effect.catchAllCause((cause) => Effect.logWarning("Goal step settlement failed", { sessionID, cause: Cause.pretty(cause) })))
+            return result
+          }),
+        )
+        if (Exit.isFailure(result)) return yield* Effect.failCause(result.cause)
+        continuing = result.value
+        if (
+          !continuing &&
+          next.context.agent.id !== "question" &&
+          !(yield* SessionInbox.nextPromotable(db, sessionID, "steer")) &&
+          !(yield* monitors.list(sessionID)).some(Monitor.parks) &&
+          (next.context.agent.info.steps === undefined || step < next.context.agent.info.steps)
+        ) {
+          const reminder = SessionTodo.reminder(
+            yield* todos.review(sessionID).pipe(Effect.orElse(() => todos.get(sessionID))),
+          )
+          if (reminder && todoContinuations < 7) {
+            yield* bus.publish(SessionEvent.Synthetic, { sessionID, text: reminder })
+            todoContinuations++
+            continuing = true
+          }
+          if (reminder && todoContinuations >= 7 && !continuing) {
+            const goal = yield* goals.get(sessionID).pipe(Effect.orDie)
+            if (goal?.status === "active")
+              yield* goals.save(goal, { ...goal, status: "paused", reason: SessionTodo.limitReason }).pipe(Effect.orDie)
+            yield* Effect.logWarning("Task continuation limit reached", { sessionID, attempts: todoContinuations })
+          }
+        }
         step++
         force = false
         entering = false
@@ -203,7 +259,11 @@ const layer = Layer.effect(
     })
 
     /** Owns logical Step policy; each attempt owns its streaming, tools, and durable settlement. */
-    const runStep = Effect.fn("SessionRunner.runStep")(function* (first: SessionContext.Loaded, step: number) {
+    const runStep = Effect.fn("SessionRunner.runStep")(function* (
+      first: SessionContext.Loaded,
+      step: number,
+      goalID: string | undefined,
+    ) {
       const sessionID = first.session.id
       let assistantMessageID = SessionMessage.ID.create()
       const retry = yield* SessionRunnerRetry.make(bus, sessionID)
@@ -228,12 +288,16 @@ const layer = Layer.effect(
           initial: loaded.initial,
           messages: loaded.messages,
         })
+        const guidance = [
+          SessionGoal.guidance(yield* goals.get(sessionID)),
+          SessionPlan.guidance(yield* plans.list(sessionID)),
+        ].filter(Boolean).join("\n\n")
         const prepared = yield* context.request.primary({
           session: loaded.session,
           agent: loaded.agent.id,
           model: loaded.model,
           tools: loaded.tools,
-          system: transcript.system,
+          system: guidance ? [...transcript.system, SystemPart.make(guidance)] : transcript.system,
           messages: stepLimitReached
             ? [...transcript.messages, Message.assistant(MAX_STEPS_PROMPT)]
             : transcript.messages,
@@ -244,6 +308,7 @@ const layer = Layer.effect(
         const outcome = yield* steps.attempt({
           isLocationClosed: lifecycle.isClosed,
           sessionID,
+          goalID,
           assistantMessageID,
           agent: loaded.agent.id,
           model: loaded.model,
@@ -367,6 +432,11 @@ export const node = makeLocationNode({
     SessionCompaction.node,
     Plugin.node,
     SessionTitle.node,
+    SessionTodoStore.node,
+    SessionGoal.node,
+    SessionPlan.node,
+    SessionGoalCompletion.node,
+    MonitorRuntime.node,
     Snapshot.node,
     ToolOutput.node,
     Database.node,

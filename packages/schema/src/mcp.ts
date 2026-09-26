@@ -16,6 +16,15 @@ export class TimeoutConfig extends Schema.Class<TimeoutConfig>("Mcp.TimeoutConfi
   }),
 }) {}
 
+export const Media = Schema.Record(
+  Schema.String,
+  Schema.Struct({
+    operations: Schema.Array(Schema.Literals(["generate", "edit", "reference"])),
+    formats: Schema.Array(Schema.String),
+    transparency: Schema.Boolean,
+  }),
+).annotate({ identifier: "Mcp.Media" })
+
 export type Protocol = typeof Protocol.Type
 export const Protocol = Schema.Literals(["legacy", "auto", "2026-07-28"]).annotate({
   identifier: "Mcp.Protocol",
@@ -25,6 +34,7 @@ export const Protocol = Schema.Literals(["legacy", "auto", "2026-07-28"]).annota
 
 export class LocalConfig extends Schema.Class<LocalConfig>("Mcp.LocalConfig")({
   type: Schema.Literal("local"),
+  media: Media.pipe(optional),
   command: Schema.String.pipe(Schema.Array),
   cwd: Schema.String.pipe(optional).annotate({
     description: "Working directory for the MCP server process. Relative paths resolve from the workspace directory.",
@@ -52,6 +62,7 @@ export class OAuthConfig extends Schema.Class<OAuthConfig>("Mcp.OAuthConfig")({
 
 export class RemoteConfig extends Schema.Class<RemoteConfig>("Mcp.RemoteConfig")({
   type: Schema.Literal("remote"),
+  media: Media.pipe(optional),
   url: Schema.String,
   headers: Schema.Record(Schema.String, Schema.String).pipe(optional),
   oauth: Schema.Union([OAuthConfig, Schema.Literal(false)]).pipe(optional),

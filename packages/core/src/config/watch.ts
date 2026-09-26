@@ -6,7 +6,10 @@ import type { Watcher } from "../filesystem/watcher.js"
 import type { ConfigDiscovery } from "./discovery.js"
 
 export function plan(sources: ConfigDiscovery.Sources) {
+  // Redcode's old global config shares a home with its live databases and caches.
+  const legacyState = ["data", "cache", "state", "evaluations"]
   const directories = [
+    ...(sources.legacyGlobal ? [sources.legacyGlobal] : []),
     ...(sources.global ? [sources.global] : []),
     ...sources.project.filter((root) => root.present).map((root) => root.path),
   ]
@@ -27,7 +30,12 @@ export function plan(sources: ConfigDiscovery.Sources) {
       ...directories.map((path) => ({
         path,
         type: "directory" as const,
-        ignore: ["node_modules", ".git", "**/{node_modules,.git}/**"],
+        ignore: [
+          "node_modules",
+          ".git",
+          "**/{node_modules,.git}/**",
+          ...(path === sources.legacyGlobal ? legacyState : []),
+        ],
       })),
       ...Array.from(parents, ([parent, files]) => ({
         path: parent,

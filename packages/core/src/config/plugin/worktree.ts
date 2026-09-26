@@ -22,6 +22,7 @@ export const Plugin = define({
       for (const entry of loaded.entries) {
         if (entry.type !== "document" || !entry.info.worktree) continue
         const directory = entry.info.worktree.directory
+        if (!directory) continue
         editor.configure({
           directory: AbsolutePath.make(
             directory.startsWith("~/")

@@ -1,0 +1,26 @@
+{
+  "$schema": "https://json.schemastore.org/package.json",
+  "name": "@reddb-io/redcode-design-app",
+  "version": "2.0.18",
+  "private": true,
+  "type": "module",
+  "bin": {
+    "redcode-design": "./src/index.ts"
+  },
+  "scripts": {
+    "build": "bun script/build.ts",
+    "typecheck": "tsgo --noEmit"
+  },
+  "dependencies": {
+    "@opencode/core": "workspace:*",
+    "@opencode/server": "workspace:*",
+    "@opencode/util": "workspace:*",
+    "drizzle-orm": "catalog:",
+    "effect": "catalog:"
+  },
+  "devDependencies": {
+    "@tsconfig/bun": "catalog:",
+    "@types/bun": "catalog:",
+    "@typescript/native-preview": "catalog:"
+  }
+}

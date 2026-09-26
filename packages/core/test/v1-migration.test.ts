@@ -1044,6 +1044,67 @@ describe("V1Migration database workflow", () => {
     )
   })
 
+  test("imports a Redcode epoch as pending replacement after a later V1 compaction", async () => {
+    await using tmp = await tmpdir()
+    const filename = path.join(tmp.path, "redcode.db")
+    const sqlite = await import("bun:sqlite")
+    const source = new sqlite.Database(filename)
+    source.run(`
+      CREATE TABLE project (
+        id text PRIMARY KEY, worktree text NOT NULL, vcs text, name text, icon_url text, icon_url_override text,
+        icon_color text, time_created integer NOT NULL, time_updated integer NOT NULL, time_initialized integer,
+        sandboxes text NOT NULL, commands text
+      );
+      CREATE TABLE session (
+        id text PRIMARY KEY, project_id text NOT NULL, workspace_id text, parent_id text, fork_session_id text,
+        fork_boundary text, slug text NOT NULL, directory text NOT NULL, path text, title text, version text NOT NULL,
+        share_url text, summary_additions integer, summary_deletions integer, summary_files integer, summary_diffs text,
+        metadata text, cost real DEFAULT 0 NOT NULL, tokens_input integer DEFAULT 0 NOT NULL,
+        tokens_output integer DEFAULT 0 NOT NULL, tokens_reasoning integer DEFAULT 0 NOT NULL,
+        tokens_cache_read integer DEFAULT 0 NOT NULL, tokens_cache_write integer DEFAULT 0 NOT NULL, revert text,
+        permission text, agent text, model text, time_created integer NOT NULL, time_updated integer NOT NULL,
+        time_compacting integer, time_archived integer, time_suspended integer
+      );
+      CREATE TABLE session_message (
+        id text PRIMARY KEY, session_id text NOT NULL, type text NOT NULL, seq integer NOT NULL,
+        time_created integer NOT NULL, time_updated integer NOT NULL, data text NOT NULL
+      );
+      CREATE TABLE message (id text PRIMARY KEY, session_id text NOT NULL, time_created integer, time_updated integer, data text);
+      CREATE TABLE part (id text PRIMARY KEY, message_id text, session_id text, time_created integer, time_updated integer, data text);
+      CREATE TABLE session_context_epoch (
+        session_id text PRIMARY KEY, baseline text NOT NULL, snapshot text NOT NULL,
+        baseline_seq integer NOT NULL, replacement_seq integer
+      );
+      INSERT INTO project VALUES ('red-project', '/tmp/redcode', 'git', NULL, NULL, NULL, NULL, 1, 2, NULL, '[]', NULL);
+      INSERT INTO session (id, project_id, slug, directory, version, time_created, time_updated)
+        VALUES
+          ('ses_redcode_epoch', 'red-project', 'legacy', '/tmp/redcode', '1', 1, 2),
+          ('ses_redcode_requested_epoch', 'red-project', 'legacy', '/tmp/redcode', '1', 1, 2);
+      INSERT INTO session_message VALUES
+        ('msg_redcode_compaction', 'ses_redcode_epoch', 'compaction', 4, 2, 2, '{}'),
+        ('msg_redcode_requested_compaction', 'ses_redcode_requested_epoch', 'compaction', 4, 2, 2, '{}');
+      INSERT INTO session_context_epoch VALUES
+        ('ses_redcode_epoch', 'Old baseline', '{}', 2, NULL),
+        ('ses_redcode_requested_epoch', 'Requested baseline', '{}', 2, 3);
+    `)
+    source.close()
+
+    await database(
+      Effect.gen(function* () {
+        const { db } = yield* Database.Service
+        expect(yield* V1Migration.importRedcode(filename)).toEqual({ imported: 2, skipped: 0 })
+        expect(yield* db.get(sql`
+          SELECT baseline, replacement_seq FROM redcode_session_context_epoch WHERE session_id = 'ses_redcode_epoch'
+        `)).toEqual({ baseline: "Old baseline", replacement_seq: 4 })
+        expect(yield* db.get(sql`
+          SELECT baseline, replacement_seq FROM redcode_session_context_epoch
+          WHERE session_id = 'ses_redcode_requested_epoch'
+        `)).toEqual({ baseline: "Requested baseline", replacement_seq: 4 })
+        expect(yield* V1Migration.importRedcode(filename)).toEqual({ imported: 0, skipped: 2 })
+      }),
+    )
+  })
+
   test("imports previous V2 databases missing newer nullable columns", async () => {
     await using tmp = await tmpdir()
     const filename = path.join(tmp.path, "opencode-next.db")

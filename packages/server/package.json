@@ -32,6 +32,9 @@
     "@opencode/schema": "workspace:*",
     "@opencode/simulation": "workspace:*",
     "@opencode/util": "workspace:*",
+    "@reddb-io/multi-rpc": "0.29.6",
+    "@reddb-io/toon": "0.29.6",
+    "@reddb-io/toon-rpc": "0.29.6",
     "drizzle-orm": "catalog:",
     "effect": "catalog:"
   },

@@ -8,6 +8,7 @@ import { LayerNode } from "@opencode/util/effect/layer-node"
 import { Location } from "@opencode/core/location"
 import { Permission } from "@opencode/core/permission"
 import { AgentPlugin } from "@opencode/core/plugin/agent"
+import { QuestionPlugin } from "@opencode/core/plugin/question"
 import { AbsolutePath } from "@opencode/core/schema"
 import { Global } from "@opencode/util/global"
 import { location } from "./fixture/location"
@@ -175,6 +176,7 @@ describe("Agent", () => {
           agent: agentHost(agent),
         }),
       )
+      yield* QuestionPlugin.Plugin.effect(host({ agent: agentHost(agent) }))
 
       const agents = yield* agent.list()
       expect(agents.map((item) => String(item.id)).sort()).toEqual([
@@ -182,6 +184,7 @@ describe("Agent", () => {
         "compaction",
         "explore",
         "general",
+        "question",
         "summary",
         "title",
       ])
@@ -207,6 +210,26 @@ describe("Agent", () => {
       expect(Permission.evaluate("read", ".env.local", explore?.permissions ?? []).effect).toBe("ask")
       expect(Permission.evaluate("read", ".env.example", explore?.permissions ?? []).effect).toBe("allow")
       expect(Permission.evaluate("read", "src/index.ts", explore?.permissions ?? []).effect).toBe("allow")
+      const question = yield* agent.get(Agent.ID.make("question"))
+      expect(question?.mode).toBe("primary")
+      expect(question?.hidden).toBe(false)
+      expect(question?.color).toBeUndefined()
+      expect(question?.system).toContain("Every user-facing response must consist only of questions")
+      for (const action of ["read", "glob", "grep", "question"]) {
+        expect(Permission.evaluate(action, "src/index.ts", question?.permissions ?? []).effect).toBe("allow")
+      }
+      for (const action of ["edit", "write", "patch", "shell", "bash", "subagent", "skill", "webfetch"]) {
+        expect(Permission.evaluate(action, "*", question?.permissions ?? []).effect).toBe("deny")
+      }
+      expect(Permission.evaluate("read", ".env", question?.permissions ?? []).effect).toBe("ask")
+      expect(Permission.evaluate("read", ".env.example", question?.permissions ?? []).effect).toBe("allow")
+      expect(Permission.evaluate("external_directory", "/elsewhere", question?.permissions ?? []).effect).toBe("ask")
+      if (!question) throw new Error("expected Question agent")
+      expect(
+        Permission.evaluate("edit", "src/index.ts", Permission.forAgent(question, [
+          { action: "edit", resource: "*", effect: "allow" },
+        ])).effect,
+      ).toBe("deny")
       for (const item of agents) {
         expect(item.permissions.some((rule) => rule.action === "bash" && rule.effect !== "deny")).toBe(false)
       }

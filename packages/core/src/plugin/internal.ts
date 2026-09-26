@@ -44,12 +44,15 @@ import { FileSystem } from "../filesystem.js"
 import { LocationWatcherPolicy } from "../filesystem/location-watcher-policy.js"
 import { FSUtil } from "@opencode/util/fs-util"
 import { Global } from "@opencode/util/global"
+import { Git } from "../git.js"
 import { Image } from "../image.js"
 import { InstructionDiscovery } from "../instruction-discovery.js"
 import { Integration } from "../integration.js"
+import { Intelligence } from "../intelligence.js"
 import { Job } from "../job.js"
 import { KV } from "../kv.js"
 import { Location } from "../location.js"
+import { MonitorRuntime } from "../monitor.js"
 import { ManagedPolicy } from "../managed-policy.js"
 import { ModelsDev } from "../models-dev.js"
 import { Mcp } from "../mcp/index.js"
@@ -59,6 +62,11 @@ import { Reference } from "../reference.js"
 import { WebSearch } from "../websearch.js"
 import { Ripgrep } from "../ripgrep.js"
 import { Session } from "../session.js"
+import { SessionGoal } from "../session/goal.js"
+import { SessionPlan } from "../session/plan.js"
+import { SessionGoalCompletion } from "../session/goal-completion.js"
+import { SessionTaskFacts } from "../session/task-facts.js"
+import { SessionTodoStore } from "../session/todo-store.js"
 import { SessionCompaction } from "../session/compaction.js"
 import { SessionInstructions } from "../session/instructions.js"
 import { Shell } from "../shell.js"
@@ -70,13 +78,17 @@ import { Watcher } from "../filesystem/watcher.js"
 import { PatchTool } from "../tool/plugin/patch.js"
 import { EditTool } from "../tool/plugin/edit.js"
 import { GlobTool } from "../tool/plugin/glob.js"
+import { GoalTool } from "../tool/plugin/goal.js"
 import { GrepTool } from "../tool/plugin/grep.js"
 import { McpResourceTools } from "../tool/plugin/mcp-resource.js"
+import { MonitorTool } from "../tool/plugin/monitor.js"
 import { OpenCodeTools } from "../tool/plugin/opencode.js"
 import { QuestionTool } from "../tool/plugin/question.js"
 import { ReadToolFileSystem } from "../tool/read-filesystem.js"
 import { ReadTool } from "../tool/plugin/read.js"
 import { ShellTool } from "../tool/plugin/shell.js"
+import { SessionHistoryTool } from "../tool/plugin/session-history.js"
+import { TodoTool } from "../tool/plugin/todo.js"
 import { SkillTool } from "../tool/plugin/skill.js"
 import { SubagentTool } from "../tool/plugin/subagent.js"
 import { Tool } from "../tool.js"
@@ -90,6 +102,8 @@ import BrowserPlugin from "@opencode/plugin-browser"
 import { CommandPlugin } from "./command.js"
 import { IdentityPlugin } from "./identity.js"
 import { PlanPlugin } from "./plan.js"
+import { DesignPlugin } from "./design.js"
+import { QuestionPlugin } from "./question.js"
 import { ModelsDevPlugin } from "./models-dev.js"
 import { McpCodeModeDefaultsPlugin } from "./mcp-codemode-defaults.js"
 import { ProviderPlugins } from "./provider.js"
@@ -97,6 +111,19 @@ import { OpencodePlugin } from "./provider/opencode.js"
 import { WebSearchPlugins } from "./websearch/index.js"
 import { SkillPlugin } from "./skill.js"
 import { VcsHgPlugin } from "./vcs/hg.js"
+import { DesignReadTool } from "../tool/plugin/design-read.js"
+import { DesignDetectTool } from "../tool/plugin/design-detect.js"
+import { DesignDocumentToolPlugin } from "../tool/plugin/design-document.js"
+import { DesignPreviewTool } from "../tool/plugin/design-preview.js"
+import { DesignAssetTool } from "../tool/plugin/design-asset.js"
+import { DesignRenderTool } from "../tool/plugin/design-render.js"
+import { DesignPlaybookTool } from "../tool/plugin/design-playbook.js"
+import { DesignExitTool } from "../tool/plugin/design-exit.js"
+import { DesignMediaTool } from "../tool/plugin/design-media.js"
+import { PlanExitTool } from "../tool/plugin/plan-exit.js"
+import { WorktreePrepareTool } from "../tool/plugin/worktree-prepare.js"
+import { DesignStore } from "../design/store.js"
+import { DesignRenderer } from "../design/renderer.js"
 import { ToolInputRepairPlugin } from "./tool-input-repair.js"
 import { OptimizePlugin } from "./optimize.js"
 import { VcsGitPlugin } from "./vcs/git.js"
@@ -112,6 +139,8 @@ const services = [
   Command.Service,
   Config.Service,
   Credential.Service,
+  DesignStore.Service,
+  DesignRenderer.Service,
   Bus.Service,
   Environment.Service,
   FileAccess.Service,
@@ -120,15 +149,18 @@ const services = [
   LocationWatcherPolicy.Service,
   FileSystem.Service,
   FSUtil.Service,
+  Git.Service,
   Global.Service,
   HttpClient.HttpClient,
   Image.Service,
   InstructionDiscovery.Service,
   Integration.Service,
+  Intelligence.Service,
   Job.Service,
   KV.Service,
   LLMClient.Service,
   Location.Service,
+  MonitorRuntime.Service,
   ManagedPolicy.Service,
   ModelsDev.Service,
   Mcp.Service,
@@ -140,6 +172,11 @@ const services = [
   WebSearch.Service,
   Ripgrep.Service,
   Session.Service,
+  SessionGoal.Service,
+  SessionPlan.Service,
+  SessionGoalCompletion.Service,
+  SessionTaskFacts.Service,
+  SessionTodoStore.Service,
   SessionCompaction.Service,
   SessionInstructions.Service,
   Shell.Service,
@@ -165,6 +202,8 @@ export const requirements = LayerNode.group([
   Command.node,
   Config.node,
   Credential.node,
+  DesignStore.node,
+  DesignRenderer.node,
   Bus.node,
   Environment.node,
   FileAccess.node,
@@ -173,15 +212,18 @@ export const requirements = LayerNode.group([
   LocationWatcherPolicy.node,
   FileSystem.node,
   FSUtil.node,
+  Git.node,
   Global.node,
   httpClient,
   Image.node,
   InstructionDiscovery.node,
   Integration.node,
+  Intelligence.node,
   Job.node,
   KV.node,
   llmClient,
   Location.node,
+  MonitorRuntime.node,
   ManagedPolicy.node,
   ModelsDev.node,
   Mcp.node,
@@ -193,6 +235,11 @@ export const requirements = LayerNode.group([
   WebSearch.node,
   Ripgrep.node,
   Session.node,
+  SessionGoal.node,
+  SessionPlan.node,
+  SessionGoalCompletion.node,
+  SessionTaskFacts.node,
+  SessionTodoStore.node,
   SessionCompaction.node,
   SessionInstructions.node,
   Shell.node,
@@ -218,8 +265,11 @@ const pre = [
   McpCodeModeDefaultsPlugin.Plugin,
   WellKnownPlugin.Plugin,
   VcsGitPlugin.Plugin,
+  // Agent insertion order determines the visible TUI cycle after the default Build agent.
   AgentPlugin.Plugin,
   PlanPlugin.Plugin,
+  DesignPlugin.Plugin,
+  QuestionPlugin.Plugin,
   CommandPlugin.Plugin,
   SkillPlugin.Plugin,
   VcsHgPlugin.Plugin,
@@ -233,12 +283,27 @@ const pre = [
   IdentityPlugin.Plugin,
   EditTool.Plugin,
   GlobTool.Plugin,
+  GoalTool.Plugin,
   GrepTool.Plugin,
   OpenCodeTools.Plugin,
   McpResourceTools.Plugin,
+  MonitorTool.Plugin,
   QuestionTool.Plugin,
+  DesignReadTool.Plugin,
+  DesignDetectTool.Plugin,
+  DesignDocumentToolPlugin.Plugin,
+  DesignPreviewTool.Plugin,
+  DesignAssetTool.Plugin,
+  DesignRenderTool.Plugin,
+  DesignPlaybookTool.Plugin,
+  DesignExitTool.Plugin,
+  DesignMediaTool.Plugin,
+  PlanExitTool.Plugin,
+  WorktreePrepareTool.Plugin,
   ReadTool.Plugin,
   ShellTool.Plugin,
+  SessionHistoryTool.Plugin,
+  TodoTool.Plugin,
   SkillTool.Plugin,
   SubagentTool.Plugin,
   WebFetchTool.Plugin,

@@ -6,6 +6,8 @@ import { Model } from "@opencode/schema/model"
 import { Provider } from "@opencode/schema/provider"
 import { Context, Effect, Layer, Schema } from "effect"
 import { ModelResolver } from "../../model-resolver.js"
+import { Intelligence } from "../../intelligence.js"
+import { IntelligenceEvaluation } from "../../intelligence/evaluation.js"
 import { SessionSchema } from "../schema.js"
 
 export class ModelNotSelectedError extends Schema.TaggedError<ModelNotSelectedError>()(
@@ -42,7 +44,7 @@ export type UnresolvedProviderVariablesError = ModelResolver.UnresolvedProviderV
 export const UnsupportedCompactionError = ModelResolver.UnsupportedCompactionError
 export type UnsupportedCompactionError = ModelResolver.UnsupportedCompactionError
 
-export type Error = ModelNotSelectedError | ModelUnavailableError | ModelResolver.Error
+export type Error = ModelNotSelectedError | ModelUnavailableError | ModelResolver.Error | IntelligenceEvaluation.Error
 export type Resolved = ModelResolver.Resolved
 
 export interface Interface {
@@ -84,26 +86,33 @@ const layer = Layer.effect(
   Service,
   Effect.gen(function* () {
     const resolver = yield* ModelResolver.Service
+    const intelligence = yield* Intelligence.Service
     return Service.of({
       resolve: Effect.fn("SessionRunnerModel.resolve")(function* (session, available) {
+        const settings = yield* intelligence.read()
+        yield* IntelligenceEvaluation.requireConfigured(settings)
+        const selected =
+          settings.enabled && !session.model && settings.principal
+            ? { ...session, model: settings.principal }
+            : session
         // Location plugins populate and filter the catalog asynchronously during layer startup.
-        if (!session.model) {
+        if (!selected.model) {
           const resolved = yield* resolver.resolve()
           if (resolved) return resolved
           return yield* new ModelNotSelectedError({ sessionID: session.id })
         }
-        const selected = (yield* available()).find(
-          (model) => model.providerID === session.model?.providerID && model.id === session.model.id,
+        const model = (yield* available()).find(
+          (model) => model.providerID === selected.model?.providerID && model.id === selected.model.id,
         )
-        if (!selected)
+        if (!model)
           return yield* new ModelUnavailableError({
-            providerID: session.model.providerID,
-            modelID: session.model.id,
+            providerID: selected.model.providerID,
+            modelID: selected.model.id,
           })
-        return yield* resolver.resolveModel(selected, session.model.variant)
+        return yield* resolver.resolveModel(model, selected.model.variant)
       }),
     })
   }),
 )
 
-export const node = makeLocationNode({ service: Service, layer, deps: [ModelResolver.node] })
+export const node = makeLocationNode({ service: Service, layer, deps: [ModelResolver.node, Intelligence.node] })

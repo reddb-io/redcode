@@ -12,6 +12,7 @@ import {
 import type { Agent } from "@opencode/schema/agent"
 import { Cause, Clock, Data, Effect, Exit, Fiber, Option, Stream } from "effect"
 import { SessionError } from "@opencode/schema/session-error"
+import { TokenUsage } from "@opencode/schema/token-usage"
 import { Bus } from "../../bus.js"
 import { Permission } from "../../permission.js"
 import { Snapshot } from "../../snapshot.js"
@@ -19,6 +20,8 @@ import { Tool } from "../../tool.js"
 import { ToolOutput } from "../../tool-output.js"
 import { QuestionTool } from "../../tool/plugin/question.js"
 import { StepFailedError } from "../error.js"
+import { SessionGoalCompletion } from "../goal-completion.js"
+import { SessionGoal } from "../goal.js"
 import { SessionEvent } from "../event.js"
 import { SessionMessage } from "../message.js"
 import { SessionModelRequest } from "../model-request.js"
@@ -44,6 +47,7 @@ export const Outcome = Data.taggedEnum<Outcome>()
 interface Input {
   readonly isLocationClosed: () => boolean
   readonly sessionID: SessionSchema.ID
+  readonly goalID?: string
   readonly assistantMessageID: SessionMessage.ID
   readonly agent: Agent.ID
   readonly model: SessionRunnerModel.Resolved
@@ -68,6 +72,8 @@ export const make = Effect.gen(function* () {
   const llm = yield* LLMClient.Service
   const snapshots = yield* Snapshot.Service
   const toolOutput = yield* ToolOutput.Service
+  const goalCompletion = yield* SessionGoalCompletion.Service
+  const goals = yield* SessionGoal.Service
 
   const attempt = Effect.fn("SessionStep.attempt")(function* (input: Input) {
     const startSnapshot = yield* snapshots.capture()
@@ -216,6 +222,8 @@ export const make = Effect.gen(function* () {
         }
 
         const record = publisher.record()
+        if (input.goalID && record.finish)
+          yield* goals.recordUsage(input.sessionID, input.goalID, TokenUsage.total(record.finish.tokens))
         if (record.finish || record.failure) {
           const snapshot = yield* snapshots.capture()
           const files =
@@ -242,6 +250,27 @@ export const make = Effect.gen(function* () {
               files,
             })
         }
+
+        if (
+          Exit.isSuccess(stream) &&
+          record.finish &&
+          !record.failure &&
+          !record.providerFailed &&
+          !toolFailure &&
+          !llmError
+        ) {
+          const completion = yield* goalCompletion.settle(input.sessionID).pipe(Effect.exit)
+          if (Exit.isFailure(completion)) {
+            yield* Effect.logWarning("Goal completion rejected after tool settlement", {
+              sessionID: input.sessionID,
+              cause: Cause.pretty(completion.cause),
+            })
+            yield* bus.publish(SessionEvent.Synthetic, {
+              sessionID: input.sessionID,
+              text: `Goal completion was not committed after the tools settled: ${Cause.pretty(completion.cause)}`,
+            })
+          }
+        } else yield* goalCompletion.discard(input.sessionID)
 
         if (
           llmFailure &&

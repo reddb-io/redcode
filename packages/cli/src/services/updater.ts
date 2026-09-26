@@ -124,6 +124,9 @@ export function decodePolicy(text: string): Policy | undefined {
 }
 
 const make = Effect.gen(function* () {
+  const redcode = OPENCODE_ARTIFACT === "redcode"
+  const product = redcode ? "Redcode" : "OpenCode"
+  const commandName = redcode ? "redcode" : "opencode"
   const fs = yield* FileSystem.FileSystem
   const global = yield* Global.Service
   const appProcess = yield* AppProcess.Service
@@ -136,7 +139,9 @@ const make = Effect.gen(function* () {
       .readFileString(path.join(directory, "package.json"))
       .pipe(Effect.flatMap((text) => Effect.try(() => JSON.parse(text))))
     // Source invocations run inside Bun or Node, which may themselves be npm packages.
-    if (!/^@opencode(?:-ai)?\/cli(?:-node)?$/.test(manifest.name)) return
+    if (redcode && /^@reddb-io\/redcode-(?:linux|darwin|windows)-/.test(manifest.name))
+      return "@reddb-io/redcode"
+    if (redcode ? manifest.name !== "@reddb-io/redcode" : !/^@opencode(?:-ai)?\/cli(?:-node)?$/.test(manifest.name)) return
     if (Object.values(manifest.bin ?? {}).some((bin) => path.resolve(directory, bin) === executable))
       return manifest.name
   }).pipe(Effect.orElseSucceed(() => undefined))
@@ -237,7 +242,9 @@ const make = Effect.gen(function* () {
     const response = yield* Effect.tryPromise({
       try: (signal) =>
         fetch(
-          `https://opencode.ai/update/api/${encodeURIComponent(channel)}/${encodeURIComponent(OPENCODE_ARTIFACT)}/${distribution}?current=${encodeURIComponent(OPENCODE_VERSION)}`,
+          redcode
+            ? "https://registry.npmjs.org/@reddb-io%2fredcode/dist-tags"
+            : `https://opencode.ai/update/api/${encodeURIComponent(channel)}/${encodeURIComponent(OPENCODE_ARTIFACT)}/${distribution}?current=${encodeURIComponent(OPENCODE_VERSION)}`,
           {
             signal: AbortSignal.any([signal, AbortSignal.timeout(10_000)]),
           },
@@ -245,9 +252,9 @@ const make = Effect.gen(function* () {
       catch: (cause) =>
         new UpgradeError(
           {
-            title: "Could not check for OpenCode updates",
+            title: `Could not check for ${product} updates`,
             detail: errorDetail(cause),
-            retry: "Check your network, then run opencode upgrade again.",
+            retry: `Check your network, then run ${commandName} upgrade again.`,
           },
           { cause },
         ),
@@ -255,24 +262,37 @@ const make = Effect.gen(function* () {
     if (!response.ok)
       return yield* Effect.fail(
         new UpgradeError({
-          title: "Could not check for OpenCode updates",
+          title: `Could not check for ${product} updates`,
           detail: `The update service returned HTTP ${response.status}.`,
           retry: "Try again in a few minutes.",
         }),
       )
-    const data: { version: string; metadata?: { package?: string } } = yield* Effect.tryPromise({
+    const data: unknown = yield* Effect.tryPromise({
       try: () => response.json(),
       catch: (cause) =>
         new UpgradeError(
           {
-            title: "Could not read the OpenCode update information",
+            title: `Could not read the ${product} update information`,
             detail: errorDetail(cause),
             retry: "Try again in a few minutes.",
           },
           { cause },
         ),
     })
-    if (!data.metadata?.package)
+    if (redcode) {
+      const tags = Schema.decodeUnknownOption(Schema.Record(Schema.String, Schema.String))(data)
+      const version = Option.isSome(tags) ? tags.value[channel] ?? tags.value.latest : undefined
+      if (version) return { package: "@reddb-io/redcode", version }
+      return yield* Effect.fail(new UpgradeError({
+        title: "Could not read the Redcode update information",
+        detail: `The npm registry has no ${channel} Redcode version.`,
+        retry: "Check the published npm dist-tags and try again.",
+      }))
+    }
+    const info = Schema.decodeUnknownOption(
+      Schema.Struct({ version: Schema.String, metadata: Schema.Struct({ package: Schema.String }) }),
+    )(data)
+    if (Option.isNone(info))
       return yield* Effect.fail(
         new UpgradeError({
           title: "Could not read the OpenCode update information",
@@ -280,7 +300,7 @@ const make = Effect.gen(function* () {
           retry: "Try again in a few minutes.",
         }),
       )
-    return { package: data.metadata.package, version: data.version }
+    return { package: info.value.metadata.package, version: info.value.version }
   })
 
   const latest = () =>
@@ -317,10 +337,10 @@ const make = Effect.gen(function* () {
     const failure = (detail: string, cause?: unknown) =>
       new UpgradeError(
         {
-          title: input.title ?? `${installNames[input.method]} could not install OpenCode`,
+          title: input.title ?? `${installNames[input.method]} could not install ${product}`,
           detail,
           command: (input.displayCommand ?? input.command).join(" "),
-          retry: input.retry ?? "Fix the issue above, then run opencode upgrade again.",
+          retry: input.retry ?? `Fix the issue above, then run ${commandName} upgrade again.`,
         },
         cause === undefined ? undefined : { cause },
       )
@@ -343,6 +363,12 @@ const make = Effect.gen(function* () {
 
   const upgrade = Effect.fnUntraced(function* (method: Method, input: string) {
     if (!parseReleaseVersion(input)) return yield* Effect.fail(new Error(`Invalid version: ${input}`))
+    if (redcode && (method === "curl" || method === "brew"))
+      return yield* Effect.fail(new UpgradeError({
+        title: "Redcode cannot update through this installer",
+        detail: `${method} is not a Redcode release channel in this build.`,
+        retry: `Install @reddb-io/redcode with npm, Bun, pnpm, Yarn, or Vite+ and rerun ${commandName} upgrade.`,
+      }))
     const version = input.trim().replace(/^v/, "")
     const packageName = (yield* release(method)).package
     const target = `${packageName}@${version}`
@@ -413,9 +439,9 @@ const make = Effect.gen(function* () {
           ? cause
           : new UpgradeError(
               {
-                title: "Could not prepare the OpenCode upgrade",
+                title: `Could not prepare the ${product} upgrade`,
                 detail: errorDetail(cause),
-                retry: "Fix the issue above, then run opencode upgrade again.",
+                retry: `Fix the issue above, then run ${commandName} upgrade again.`,
               },
               { cause },
             ),
@@ -450,7 +476,7 @@ const make = Effect.gen(function* () {
       yield* Effect.logInfo("update check done", { action: "up-to-date" })
       return undefined
     }
-    yield* Effect.logInfo("OpenCode update available", { current, latest: version, action: next })
+    yield* Effect.logInfo(`${product} update available`, { current, latest: version, action: next })
     return { policy, version }
   })
 
@@ -463,7 +489,7 @@ const make = Effect.gen(function* () {
     const current = yield* Ref.get(installedVersion)
     yield* upgrade(detected, version)
     yield* Ref.set(installedVersion, version)
-    yield* Effect.logInfo("updated OpenCode", { from: current, to: version, method: detected })
+    yield* Effect.logInfo(`updated ${product}`, { from: current, to: version, method: detected })
     return true
   })
 
@@ -475,7 +501,7 @@ const make = Effect.gen(function* () {
     if (OPENCODE_LOCAL)
       return {
         type: "unavailable" as const,
-        message: "This build runs from a source checkout. Use an installed OpenCode release to check for updates.",
+        message: `This build runs from a source checkout. Use an installed ${product} release to check for updates.`,
       }
     const version = yield* latest()
     if (!parseReleaseVersion(version)) return yield* Effect.fail(new Error(`Invalid version: ${version}`))

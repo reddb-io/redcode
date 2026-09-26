@@ -134,7 +134,9 @@ const Root = Spec.make(typeof OPENCODE_CLI_NAME === "string" ? OPENCODE_CLI_NAME
               "log",
               "repos",
             ]).pipe(
-              Argument.withDescription("Print only one path: db, home, data, config, cache, state, tmp, bin, log, repos"),
+              Argument.withDescription(
+                "Print only one path: db, home, data, config, cache, state, tmp, bin, log, repos",
+              ),
               Argument.optional,
             ),
           },
@@ -398,6 +400,12 @@ const Root = Spec.make(typeof OPENCODE_CLI_NAME === "string" ? OPENCODE_CLI_NAME
     Spec.make("session", {
       description: "Manage sessions",
       commands: [
+        Spec.make("import-redcode", {
+          description: "Import sessions and Redcode data from a V1 SQLite database",
+          params: {
+            file: Argument.string("file").pipe(Argument.withDescription("Path to the Redcode SQLite database")),
+          },
+        }),
         Spec.make("list", {
           description: "List top-level sessions in the current project, newest first",
           params: {
@@ -511,6 +519,17 @@ const Root = Spec.make(typeof OPENCODE_CLI_NAME === "string" ? OPENCODE_CLI_NAME
             () => "Expected an HTTP(S) server URL without credentials, query parameters, or a fragment",
           ),
           Flag.optional,
+        ),
+      },
+    }),
+    Spec.make("design", {
+      description: "Open the browser review for a Design session",
+      params: {
+        ...ServerParams,
+        sessionID: Argument.string("sessionID").pipe(Argument.withDescription("Session ID to review")),
+        noOpen: Flag.boolean("no-open").pipe(
+          Flag.withDescription("Print the review link without opening a browser"),
+          Flag.withDefault(false),
         ),
       },
     }),

@@ -56,8 +56,10 @@ const Handlers = Runtime.handlers(Commands, {
   mini: () => import("./commands/handlers/mini"),
   run: () => import("./commands/handlers/run"),
   pair: () => import("./commands/handlers/pair"),
+  design: () => import("./commands/handlers/design"),
   reload: () => import("./commands/handlers/reload"),
   session: {
+    "import-redcode": () => import("./commands/handlers/session/import-redcode"),
     list: () => import("./commands/handlers/session/list"),
     delete: () => import("./commands/handlers/session/delete"),
     export: () => import("./commands/handlers/session/export"),

@@ -5,6 +5,110 @@ const schema: Omit<DatabaseMigration.Migration, "id"> = {
   up(tx) {
     return Effect.gen(function* () {
       yield* tx.run(`
+        CREATE TABLE \`redcode_session_context_epoch\` (
+          \`session_id\` text PRIMARY KEY,
+          \`baseline\` text NOT NULL,
+          \`snapshot\` text NOT NULL,
+          \`baseline_seq\` integer NOT NULL,
+          \`replacement_seq\` integer,
+          CONSTRAINT \`fk_redcode_session_context_epoch_session_id_session_v2_id_fk\` FOREIGN KEY (\`session_id\`) REFERENCES \`session_v2\`(\`id\`) ON DELETE CASCADE
+        );
+      `)
+      yield* tx.run(`
+        CREATE TABLE \`redcode_session_input\` (
+          \`id\` text PRIMARY KEY,
+          \`session_id\` text NOT NULL,
+          \`prompt\` text NOT NULL,
+          \`delivery\` text NOT NULL,
+          \`admitted_seq\` integer NOT NULL,
+          \`promoted_seq\` integer,
+          \`time_created\` integer NOT NULL,
+          CONSTRAINT \`fk_redcode_session_input_session_id_session_v2_id_fk\` FOREIGN KEY (\`session_id\`) REFERENCES \`session_v2\`(\`id\`) ON DELETE CASCADE
+        );
+      `)
+      yield* tx.run(`
+        CREATE TABLE \`session_goal_review\` (
+          \`id\` text PRIMARY KEY,
+          \`session_id\` text NOT NULL,
+          \`goal_id\` text NOT NULL,
+          \`tokens\` integer NOT NULL,
+          \`created\` integer NOT NULL,
+          CONSTRAINT \`fk_session_goal_review_session_id_session_v2_id_fk\` FOREIGN KEY (\`session_id\`) REFERENCES \`session_v2\`(\`id\`) ON DELETE CASCADE
+        );
+      `)
+      yield* tx.run(`
+        CREATE TABLE \`session_goal\` (
+          \`session_id\` text PRIMARY KEY,
+          \`goal_id\` text NOT NULL,
+          \`revision\` integer NOT NULL,
+          \`owner\` text NOT NULL,
+          \`data\` text NOT NULL,
+          CONSTRAINT \`fk_session_goal_session_id_session_v2_id_fk\` FOREIGN KEY (\`session_id\`) REFERENCES \`session_v2\`(\`id\`) ON DELETE CASCADE
+        );
+      `)
+      yield* tx.run(`
+        CREATE TABLE \`session_guard_trip\` (
+          \`id\` text PRIMARY KEY,
+          \`session_id\` text NOT NULL,
+          \`guard\` text NOT NULL,
+          \`action\` text NOT NULL,
+          \`subject\` text,
+          \`detail\` text NOT NULL,
+          \`time_created\` integer NOT NULL,
+          \`time_updated\` integer NOT NULL
+        );
+      `)
+      yield* tx.run(`
+        CREATE TABLE \`session_plan\` (
+          \`session_id\` text NOT NULL,
+          \`revision\` text NOT NULL,
+          \`created\` integer NOT NULL,
+          \`data\` text NOT NULL,
+          CONSTRAINT \`session_plan_pk\` PRIMARY KEY(\`session_id\`, \`revision\`),
+          CONSTRAINT \`fk_session_plan_session_id_session_v2_id_fk\` FOREIGN KEY (\`session_id\`) REFERENCES \`session_v2\`(\`id\`) ON DELETE CASCADE
+        );
+      `)
+      yield* tx.run(`
+        CREATE TABLE \`session_share\` (
+          \`session_id\` text PRIMARY KEY,
+          \`id\` text NOT NULL,
+          \`secret\` text NOT NULL,
+          \`url\` text NOT NULL,
+          \`time_created\` integer NOT NULL,
+          \`time_updated\` integer NOT NULL,
+          CONSTRAINT \`fk_session_share_session_id_session_v2_id_fk\` FOREIGN KEY (\`session_id\`) REFERENCES \`session_v2\`(\`id\`) ON DELETE CASCADE
+        );
+      `)
+      yield* tx.run(`
+        CREATE TABLE \`todo_history\` (
+          \`session_id\` text NOT NULL,
+          \`task_id\` text NOT NULL,
+          \`revision\` integer NOT NULL,
+          \`data\` text NOT NULL,
+          \`created\` integer NOT NULL,
+          CONSTRAINT \`todo_history_pk\` PRIMARY KEY(\`session_id\`, \`task_id\`, \`revision\`),
+          CONSTRAINT \`fk_todo_history_session_id_session_v2_id_fk\` FOREIGN KEY (\`session_id\`) REFERENCES \`session_v2\`(\`id\`) ON DELETE CASCADE
+        );
+      `)
+      yield* tx.run(`
+        CREATE TABLE \`todo\` (
+          \`session_id\` text NOT NULL,
+          \`content\` text NOT NULL,
+          \`status\` text NOT NULL,
+          \`priority\` text NOT NULL,
+          \`position\` integer NOT NULL,
+          \`task_id\` text,
+          \`revision\` integer DEFAULT 1 NOT NULL,
+          \`reason\` text,
+          \`legacy_status\` text,
+          \`details\` text,
+          \`time_created\` integer NOT NULL,
+          \`time_updated\` integer NOT NULL,
+          CONSTRAINT \`todo_pk\` PRIMARY KEY(\`session_id\`, \`position\`),
+          CONSTRAINT \`fk_todo_session_id_session_v2_id_fk\` FOREIGN KEY (\`session_id\`) REFERENCES \`session_v2\`(\`id\`) ON DELETE CASCADE
+        );
+      `)
+      yield* tx.run(`
         CREATE TABLE \`account_state\` (
           \`id\` integer PRIMARY KEY,
           \`active_account_id\` text,
@@ -51,6 +155,50 @@ const schema: Omit<DatabaseMigration.Migration, "id"> = {
         );
       `)
       yield* tx.run(`
+        CREATE TABLE \`design_asset\` (
+          \`id\` text PRIMARY KEY,
+          \`design_id\` text NOT NULL,
+          \`data\` text NOT NULL,
+          CONSTRAINT \`fk_design_asset_design_id_design_document_id_fk\` FOREIGN KEY (\`design_id\`) REFERENCES \`design_document\`(\`id\`) ON DELETE CASCADE
+        );
+      `)
+      yield* tx.run(`
+        CREATE TABLE \`design_document\` (
+          \`id\` text PRIMARY KEY,
+          \`session_id\` text NOT NULL,
+          \`directory\` text NOT NULL,
+          \`data\` text NOT NULL,
+          \`target\` text DEFAULT 'web' NOT NULL,
+          \`platform\` text
+        );
+      `)
+      yield* tx.run(`
+        CREATE TABLE \`design_feedback\` (
+          \`id\` text PRIMARY KEY,
+          \`design_id\` text NOT NULL,
+          \`data\` text NOT NULL,
+          \`admitted\` integer DEFAULT false NOT NULL,
+          CONSTRAINT \`fk_design_feedback_design_id_design_document_id_fk\` FOREIGN KEY (\`design_id\`) REFERENCES \`design_document\`(\`id\`) ON DELETE CASCADE
+        );
+      `)
+      yield* tx.run(`
+        CREATE TABLE \`design_render_job\` (
+          \`id\` text PRIMARY KEY,
+          \`design_id\` text NOT NULL,
+          \`data\` text NOT NULL,
+          CONSTRAINT \`fk_design_render_job_design_id_design_document_id_fk\` FOREIGN KEY (\`design_id\`) REFERENCES \`design_document\`(\`id\`) ON DELETE CASCADE
+        );
+      `)
+      yield* tx.run(`
+        CREATE TABLE \`design_revision\` (
+          \`id\` text PRIMARY KEY,
+          \`design_id\` text NOT NULL,
+          \`created\` integer NOT NULL,
+          \`data\` text NOT NULL,
+          CONSTRAINT \`fk_design_revision_design_id_design_document_id_fk\` FOREIGN KEY (\`design_id\`) REFERENCES \`design_document\`(\`id\`) ON DELETE CASCADE
+        );
+      `)
+      yield* tx.run(`
         CREATE TABLE \`event_sequence\` (
           \`aggregate_id\` text PRIMARY KEY,
           \`seq\` integer NOT NULL,
@@ -69,11 +217,60 @@ const schema: Omit<DatabaseMigration.Migration, "id"> = {
         );
       `)
       yield* tx.run(`
+        CREATE TABLE \`intelligence_answer\` (
+          \`evaluation_id\` text NOT NULL,
+          \`question_id\` text NOT NULL,
+          \`type\` text NOT NULL,
+          \`noul\` real,
+          \`choice\` text,
+          \`score\` real,
+          \`confidence\` real,
+          \`probabilities\` text,
+          \`legend\` text,
+          CONSTRAINT \`intelligence_answer_pk\` PRIMARY KEY(\`evaluation_id\`, \`question_id\`),
+          CONSTRAINT \`fk_intelligence_answer_evaluation_id_intelligence_evaluation_id_fk\` FOREIGN KEY (\`evaluation_id\`) REFERENCES \`intelligence_evaluation\`(\`id\`) ON DELETE CASCADE
+        );
+      `)
+      yield* tx.run(`
+        CREATE TABLE \`intelligence_evaluation\` (
+          \`id\` text PRIMARY KEY,
+          \`session_id\` text,
+          \`operation\` text NOT NULL,
+          \`evaluation_kind\` text NOT NULL,
+          \`subject_id\` text,
+          \`candidate_id\` text,
+          \`attempt\` integer DEFAULT 0 NOT NULL,
+          \`fingerprint\` text NOT NULL,
+          \`policy\` text NOT NULL,
+          \`decision\` text NOT NULL,
+          \`model\` text NOT NULL,
+          \`evaluator\` text,
+          \`issues\` text NOT NULL,
+          \`input_tokens\` integer NOT NULL,
+          \`output_tokens\` integer NOT NULL,
+          \`duration\` integer NOT NULL,
+          \`artifact\` text,
+          \`source_hash\` text NOT NULL,
+          \`candidate_hash\` text NOT NULL,
+          \`time_created\` integer NOT NULL,
+          CONSTRAINT \`fk_intelligence_evaluation_session_id_session_v2_id_fk\` FOREIGN KEY (\`session_id\`) REFERENCES \`session_v2\`(\`id\`) ON DELETE SET NULL
+        );
+      `)
+      yield* tx.run(`
         CREATE TABLE \`kv\` (
           \`key\` text PRIMARY KEY,
           \`value\` text NOT NULL,
           \`time_created\` integer NOT NULL,
           \`time_updated\` integer NOT NULL
+        );
+      `)
+      yield* tx.run(`
+        CREATE TABLE \`session_monitor\` (
+          \`id\` text PRIMARY KEY,
+          \`session_id\` text NOT NULL,
+          \`owner\` text NOT NULL,
+          \`data\` text NOT NULL,
+          CONSTRAINT \`fk_session_monitor_session_id_session_v2_id_fk\` FOREIGN KEY (\`session_id\`) REFERENCES \`session_v2\`(\`id\`) ON DELETE CASCADE
         );
       `)
       yield* tx.run(`
@@ -239,8 +436,32 @@ const schema: Omit<DatabaseMigration.Migration, "id"> = {
           CONSTRAINT \`fk_worktree_project_id_project_id_fk\` FOREIGN KEY (\`project_id\`) REFERENCES \`project\`(\`id\`) ON DELETE CASCADE
         );
       `)
+      yield* tx.run(
+        `CREATE INDEX \`session_goal_review_session_goal_idx\` ON \`session_goal_review\` (\`session_id\`,\`goal_id\`);`,
+      )
+      yield* tx.run(`CREATE INDEX \`session_guard_trip_session_idx\` ON \`session_guard_trip\` (\`session_id\`);`)
+      yield* tx.run(`CREATE INDEX \`session_guard_trip_created_idx\` ON \`session_guard_trip\` (\`time_created\`);`)
+      yield* tx.run(`CREATE INDEX \`todo_session_idx\` ON \`todo\` (\`session_id\`);`)
+      yield* tx.run(`CREATE INDEX \`design_document_session_idx\` ON \`design_document\` (\`session_id\`);`)
+      yield* tx.run(`CREATE INDEX \`design_revision_document_idx\` ON \`design_revision\` (\`design_id\`);`)
       yield* tx.run(`CREATE UNIQUE INDEX \`event_aggregate_seq_idx\` ON \`event\` (\`aggregate_id\`,\`seq\`);`)
       yield* tx.run(`CREATE INDEX \`event_aggregate_type_seq_idx\` ON \`event\` (\`aggregate_id\`,\`type\`,\`seq\`);`)
+      yield* tx.run(
+        `CREATE INDEX \`intelligence_evaluation_fingerprint_lookup_idx\` ON \`intelligence_evaluation\` (\`fingerprint\`);`,
+      )
+      yield* tx.run(
+        `CREATE INDEX \`intelligence_evaluation_session_created_idx\` ON \`intelligence_evaluation\` (\`session_id\`,\`time_created\`);`,
+      )
+      yield* tx.run(
+        `CREATE INDEX \`intelligence_evaluation_operation_created_idx\` ON \`intelligence_evaluation\` (\`operation\`,\`time_created\`);`,
+      )
+      yield* tx.run(
+        `CREATE INDEX \`intelligence_evaluation_decision_created_idx\` ON \`intelligence_evaluation\` (\`decision\`,\`time_created\`);`,
+      )
+      yield* tx.run(
+        `CREATE INDEX \`intelligence_evaluation_subject_idx\` ON \`intelligence_evaluation\` (\`subject_id\`);`,
+      )
+      yield* tx.run(`CREATE INDEX \`session_monitor_session_idx\` ON \`session_monitor\` (\`session_id\`);`)
       yield* tx.run(
         `CREATE UNIQUE INDEX \`permission_project_action_resource_idx\` ON \`permission\` (\`project_id\`,\`action\`,\`resource\`);`,
       )

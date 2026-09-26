@@ -16,6 +16,11 @@ import { PersistentPty } from "@opencode/core/persistent-pty"
 import { Project } from "@opencode/core/project"
 import { Worktree } from "@opencode/core/worktree"
 import { Session } from "@opencode/core/session"
+import { SessionExecution } from "@opencode/core/session/execution"
+import { SessionInbox } from "@opencode/core/session/inbox"
+import { SessionGoal } from "@opencode/core/session/goal"
+import { Intelligence } from "@opencode/core/intelligence"
+import { DesignAppConnection } from "@opencode/core/design/app-connection"
 import { Instance } from "@opencode/core/instance/service"
 import { SessionTransfer } from "@opencode/core/session/transfer"
 import { ShellSelect } from "@opencode/core/shell/select"
@@ -47,6 +52,9 @@ import { layer } from "./location"
 import { formLocationLayer } from "./middleware/form-location"
 import { sessionLocationLayer } from "./middleware/session-location"
 import { ServerInfo } from "./server-info"
+import { DesignBrowser } from "./design-browser"
+import { LegacyRpcApi } from "@opencode/protocol/groups/legacy-rpc"
+import { LegacyRpcHandler } from "./handlers/legacy-rpc"
 import type { ServerOptions } from "./options"
 
 const applicationServiceNodes = [
@@ -59,6 +67,11 @@ const applicationServiceNodes = [
   Project.node,
   Worktree.node,
   Session.node,
+  SessionExecution.node,
+  SessionInbox.node,
+  SessionGoal.node,
+  Intelligence.node,
+  DesignAppConnection.node,
   Instance.node,
   SessionTransfer.node,
   SdkPlugins.node,
@@ -81,6 +94,7 @@ export function createRoutes(
   options: ServerOptions = {},
   serviceURLs: () => ReadonlyArray<string> = () => [],
   overrides: LayerNode.Replacements = [],
+  features: { readonly v1Migration?: boolean } = {},
 ) {
   return makeRoutes(
     options.password
@@ -89,6 +103,7 @@ export function createRoutes(
     options,
     serviceURLs,
     overrides,
+    features.v1Migration !== false,
   )
 }
 
@@ -101,7 +116,7 @@ export function createEmbeddedRoutes(
   overrides: LayerNode.Replacements = [],
   instances?: InstanceNode,
 ) {
-  return makeRoutes(ServerAuth.Config.configLayer({ password: Option.none() }), options, () => [], overrides, instances)
+  return makeRoutes(ServerAuth.Config.configLayer({ password: Option.none() }), options, () => [], overrides, true, instances)
 }
 
 function makeRoutes<AuthError, AuthServices>(
@@ -110,6 +125,7 @@ function makeRoutes<AuthError, AuthServices>(
   serviceURLs: () => ReadonlyArray<string>,
   // Runtime-profile replacements (e.g. workerd) applied after the standard set, so later entries win.
   overrides: LayerNode.Replacements,
+  runV1Migration = true,
   instances?: InstanceNode,
 ) {
   const standard: LayerNode.Replacements = [
@@ -126,6 +142,24 @@ function makeRoutes<AuthError, AuthServices>(
         project: options.config?.project,
         file: options.config?.file,
         content: options.config?.content,
+      }),
+    ),
+    DesignAppConnection.node.replace(
+      DesignAppConnection.configured({
+        host: () => {
+          const url = serviceURLs()[0]
+          if (!url) return
+          const host = new URL(url)
+          if (host.hostname === "0.0.0.0" || host.hostname === "[::]" || host.hostname === "::")
+            host.hostname = "127.0.0.1"
+          return {
+            url: host.origin,
+            ...(options.password
+              ? { authorization: `Basic ${Buffer.from(`opencode:${options.password}`).toString("base64")}` }
+              : {}),
+          }
+        },
+        database: options.database?.path,
       }),
     ),
     InstructionDiscovery.node.replace(InstructionDiscovery.configured({ project: options.config?.project })),
@@ -173,8 +207,12 @@ function makeRoutes<AuthError, AuthServices>(
         ),
         ServerInfo.layer(serviceURLs, Context.get(context, Global.Service).tmp, options.app),
       )
-      const api = HttpApiBuilder.layer(Api, { openapiPath: "/openapi.json" }).pipe(
-        Layer.provide(handlers.pipe(Layer.provide(services), Layer.provide(Layer.succeed(CorsConfig, options)))),
+      const api = Layer.mergeAll(
+        HttpApiBuilder.layer(Api, { openapiPath: "/openapi.json" }).pipe(
+          Layer.provide(handlers.pipe(Layer.provide(services), Layer.provide(Layer.succeed(CorsConfig, options)))),
+        ),
+        HttpApiBuilder.layer(LegacyRpcApi).pipe(Layer.provide(LegacyRpcHandler.pipe(Layer.provide(services)))),
+      ).pipe(
         Layer.provide(formLocationLayer),
         Layer.provide(sessionLocationLayer),
         Layer.provide(layer),
@@ -185,7 +223,15 @@ function makeRoutes<AuthError, AuthServices>(
         Layer.provideMerge(services),
         Layer.provideMerge(HttpRouter.layer),
       )
-      return Layer.merge(api, V1Migration.layer.pipe(Layer.provide(services)))
+      const browser = DesignBrowser.routes(() => [
+        ...(options.hostname ? [options.hostname] : []),
+        ...serviceURLs().map((url) => new URL(url).hostname),
+      ]).pipe(
+        Layer.provide(services),
+        Layer.provide(auth),
+        Layer.provideMerge(api),
+      )
+      return runV1Migration ? Layer.merge(browser, V1Migration.layer.pipe(Layer.provide(services))) : browser
     }),
   )
 }

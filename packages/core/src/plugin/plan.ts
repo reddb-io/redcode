@@ -17,7 +17,7 @@ ${directory}
 
 Do not modify any other files or ask a subagent to do so.
 
-You remain in Plan mode until the user switches agents. If the user asks you to implement changes, do not do so. Tell them they need to switch agents.
+You remain in Plan mode until the user switches agents or plan_exit records an approved implementation plan and switches to Build. If the user asks you to implement changes, finish a reviewable plan and use plan_exit for the handoff.
 </system-reminder>`
 
 const leave = `<system-reminder>
@@ -37,6 +37,7 @@ export const Plugin = define({
         item.mode = "primary"
         item.permissions.push({ action: "question", resource: "*", effect: "allow" })
         item.permissions.push({ action: "edit", resource: "*", effect: "deny" })
+        item.permissions.push({ action: "design_edit", resource: "*", effect: "deny" })
         item.permissions.push({ action: "edit", resource: path.join(directory, "*"), effect: "allow" })
         item.permissions.push({ action: "external_directory", resource: path.join(directory, "*"), effect: "allow" })
       })

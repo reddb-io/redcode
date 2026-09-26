@@ -1,9 +1,45 @@
 {
   "version": "7",
   "dialect": "sqlite",
-  "id": "e98619ef-c334-45e3-8c48-9932ed1ef290",
-  "prevIds": ["be60f352-8da1-40e1-8d70-dc41121cfbc5"],
+  "id": "b923a953-75f8-4b95-9f56-509276219849",
+  "prevIds": ["71d45482-672c-463d-823b-6de156dccc0b"],
   "ddl": [
+    {
+      "name": "redcode_session_context_epoch",
+      "entityType": "tables"
+    },
+    {
+      "name": "redcode_session_input",
+      "entityType": "tables"
+    },
+    {
+      "name": "session_goal_review",
+      "entityType": "tables"
+    },
+    {
+      "name": "session_goal",
+      "entityType": "tables"
+    },
+    {
+      "name": "session_guard_trip",
+      "entityType": "tables"
+    },
+    {
+      "name": "session_plan",
+      "entityType": "tables"
+    },
+    {
+      "name": "session_share",
+      "entityType": "tables"
+    },
+    {
+      "name": "todo_history",
+      "entityType": "tables"
+    },
+    {
+      "name": "todo",
+      "entityType": "tables"
+    },
     {
       "name": "account_state",
       "entityType": "tables"
@@ -21,6 +57,26 @@
       "entityType": "tables"
     },
     {
+      "name": "design_asset",
+      "entityType": "tables"
+    },
+    {
+      "name": "design_document",
+      "entityType": "tables"
+    },
+    {
+      "name": "design_feedback",
+      "entityType": "tables"
+    },
+    {
+      "name": "design_render_job",
+      "entityType": "tables"
+    },
+    {
+      "name": "design_revision",
+      "entityType": "tables"
+    },
+    {
       "name": "event_sequence",
       "entityType": "tables"
     },
@@ -29,7 +85,19 @@
       "entityType": "tables"
     },
     {
+      "name": "intelligence_answer",
+      "entityType": "tables"
+    },
+    {
+      "name": "intelligence_evaluation",
+      "entityType": "tables"
+    },
+    {
       "name": "kv",
+      "entityType": "tables"
+    },
+    {
+      "name": "session_monitor",
       "entityType": "tables"
     },
     {
@@ -79,6 +147,576 @@
     {
       "name": "worktree",
       "entityType": "tables"
+    },
+    {
+      "type": "text",
+      "notNull": false,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "session_id",
+      "entityType": "columns",
+      "table": "redcode_session_context_epoch"
+    },
+    {
+      "type": "text",
+      "notNull": true,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "baseline",
+      "entityType": "columns",
+      "table": "redcode_session_context_epoch"
+    },
+    {
+      "type": "text",
+      "notNull": true,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "snapshot",
+      "entityType": "columns",
+      "table": "redcode_session_context_epoch"
+    },
+    {
+      "type": "integer",
+      "notNull": true,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "baseline_seq",
+      "entityType": "columns",
+      "table": "redcode_session_context_epoch"
+    },
+    {
+      "type": "integer",
+      "notNull": false,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "replacement_seq",
+      "entityType": "columns",
+      "table": "redcode_session_context_epoch"
+    },
+    {
+      "type": "text",
+      "notNull": false,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "id",
+      "entityType": "columns",
+      "table": "redcode_session_input"
+    },
+    {
+      "type": "text",
+      "notNull": true,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "session_id",
+      "entityType": "columns",
+      "table": "redcode_session_input"
+    },
+    {
+      "type": "text",
+      "notNull": true,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "prompt",
+      "entityType": "columns",
+      "table": "redcode_session_input"
+    },
+    {
+      "type": "text",
+      "notNull": true,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "delivery",
+      "entityType": "columns",
+      "table": "redcode_session_input"
+    },
+    {
+      "type": "integer",
+      "notNull": true,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "admitted_seq",
+      "entityType": "columns",
+      "table": "redcode_session_input"
+    },
+    {
+      "type": "integer",
+      "notNull": false,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "promoted_seq",
+      "entityType": "columns",
+      "table": "redcode_session_input"
+    },
+    {
+      "type": "integer",
+      "notNull": true,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "time_created",
+      "entityType": "columns",
+      "table": "redcode_session_input"
+    },
+    {
+      "type": "text",
+      "notNull": false,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "id",
+      "entityType": "columns",
+      "table": "session_goal_review"
+    },
+    {
+      "type": "text",
+      "notNull": true,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "session_id",
+      "entityType": "columns",
+      "table": "session_goal_review"
+    },
+    {
+      "type": "text",
+      "notNull": true,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "goal_id",
+      "entityType": "columns",
+      "table": "session_goal_review"
+    },
+    {
+      "type": "integer",
+      "notNull": true,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "tokens",
+      "entityType": "columns",
+      "table": "session_goal_review"
+    },
+    {
+      "type": "integer",
+      "notNull": true,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "created",
+      "entityType": "columns",
+      "table": "session_goal_review"
+    },
+    {
+      "type": "text",
+      "notNull": false,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "session_id",
+      "entityType": "columns",
+      "table": "session_goal"
+    },
+    {
+      "type": "text",
+      "notNull": true,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "goal_id",
+      "entityType": "columns",
+      "table": "session_goal"
+    },
+    {
+      "type": "integer",
+      "notNull": true,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "revision",
+      "entityType": "columns",
+      "table": "session_goal"
+    },
+    {
+      "type": "text",
+      "notNull": true,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "owner",
+      "entityType": "columns",
+      "table": "session_goal"
+    },
+    {
+      "type": "text",
+      "notNull": true,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "data",
+      "entityType": "columns",
+      "table": "session_goal"
+    },
+    {
+      "type": "text",
+      "notNull": false,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "id",
+      "entityType": "columns",
+      "table": "session_guard_trip"
+    },
+    {
+      "type": "text",
+      "notNull": true,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "session_id",
+      "entityType": "columns",
+      "table": "session_guard_trip"
+    },
+    {
+      "type": "text",
+      "notNull": true,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "guard",
+      "entityType": "columns",
+      "table": "session_guard_trip"
+    },
+    {
+      "type": "text",
+      "notNull": true,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "action",
+      "entityType": "columns",
+      "table": "session_guard_trip"
+    },
+    {
+      "type": "text",
+      "notNull": false,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "subject",
+      "entityType": "columns",
+      "table": "session_guard_trip"
+    },
+    {
+      "type": "text",
+      "notNull": true,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "detail",
+      "entityType": "columns",
+      "table": "session_guard_trip"
+    },
+    {
+      "type": "integer",
+      "notNull": true,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "time_created",
+      "entityType": "columns",
+      "table": "session_guard_trip"
+    },
+    {
+      "type": "integer",
+      "notNull": true,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "time_updated",
+      "entityType": "columns",
+      "table": "session_guard_trip"
+    },
+    {
+      "type": "text",
+      "notNull": true,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "session_id",
+      "entityType": "columns",
+      "table": "session_plan"
+    },
+    {
+      "type": "text",
+      "notNull": true,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "revision",
+      "entityType": "columns",
+      "table": "session_plan"
+    },
+    {
+      "type": "integer",
+      "notNull": true,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "created",
+      "entityType": "columns",
+      "table": "session_plan"
+    },
+    {
+      "type": "text",
+      "notNull": true,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "data",
+      "entityType": "columns",
+      "table": "session_plan"
+    },
+    {
+      "type": "text",
+      "notNull": false,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "session_id",
+      "entityType": "columns",
+      "table": "session_share"
+    },
+    {
+      "type": "text",
+      "notNull": true,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "id",
+      "entityType": "columns",
+      "table": "session_share"
+    },
+    {
+      "type": "text",
+      "notNull": true,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "secret",
+      "entityType": "columns",
+      "table": "session_share"
+    },
+    {
+      "type": "text",
+      "notNull": true,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "url",
+      "entityType": "columns",
+      "table": "session_share"
+    },
+    {
+      "type": "integer",
+      "notNull": true,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "time_created",
+      "entityType": "columns",
+      "table": "session_share"
+    },
+    {
+      "type": "integer",
+      "notNull": true,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "time_updated",
+      "entityType": "columns",
+      "table": "session_share"
+    },
+    {
+      "type": "text",
+      "notNull": true,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "session_id",
+      "entityType": "columns",
+      "table": "todo_history"
+    },
+    {
+      "type": "text",
+      "notNull": true,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "task_id",
+      "entityType": "columns",
+      "table": "todo_history"
+    },
+    {
+      "type": "integer",
+      "notNull": true,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "revision",
+      "entityType": "columns",
+      "table": "todo_history"
+    },
+    {
+      "type": "text",
+      "notNull": true,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "data",
+      "entityType": "columns",
+      "table": "todo_history"
+    },
+    {
+      "type": "integer",
+      "notNull": true,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "created",
+      "entityType": "columns",
+      "table": "todo_history"
+    },
+    {
+      "type": "text",
+      "notNull": true,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "session_id",
+      "entityType": "columns",
+      "table": "todo"
+    },
+    {
+      "type": "text",
+      "notNull": true,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "content",
+      "entityType": "columns",
+      "table": "todo"
+    },
+    {
+      "type": "text",
+      "notNull": true,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "status",
+      "entityType": "columns",
+      "table": "todo"
+    },
+    {
+      "type": "text",
+      "notNull": true,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "priority",
+      "entityType": "columns",
+      "table": "todo"
+    },
+    {
+      "type": "integer",
+      "notNull": true,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "position",
+      "entityType": "columns",
+      "table": "todo"
+    },
+    {
+      "type": "text",
+      "notNull": false,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "task_id",
+      "entityType": "columns",
+      "table": "todo"
+    },
+    {
+      "type": "integer",
+      "notNull": true,
+      "autoincrement": false,
+      "default": "1",
+      "generated": null,
+      "name": "revision",
+      "entityType": "columns",
+      "table": "todo"
+    },
+    {
+      "type": "text",
+      "notNull": false,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "reason",
+      "entityType": "columns",
+      "table": "todo"
+    },
+    {
+      "type": "text",
+      "notNull": false,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "legacy_status",
+      "entityType": "columns",
+      "table": "todo"
+    },
+    {
+      "type": "text",
+      "notNull": false,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "details",
+      "entityType": "columns",
+      "table": "todo"
+    },
+    {
+      "type": "integer",
+      "notNull": true,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "time_created",
+      "entityType": "columns",
+      "table": "todo"
+    },
+    {
+      "type": "integer",
+      "notNull": true,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "time_updated",
+      "entityType": "columns",
+      "table": "todo"
     },
     {
       "type": "integer",
@@ -366,6 +1004,206 @@
       "autoincrement": false,
       "default": null,
       "generated": null,
+      "name": "id",
+      "entityType": "columns",
+      "table": "design_asset"
+    },
+    {
+      "type": "text",
+      "notNull": true,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "design_id",
+      "entityType": "columns",
+      "table": "design_asset"
+    },
+    {
+      "type": "text",
+      "notNull": true,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "data",
+      "entityType": "columns",
+      "table": "design_asset"
+    },
+    {
+      "type": "text",
+      "notNull": false,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "id",
+      "entityType": "columns",
+      "table": "design_document"
+    },
+    {
+      "type": "text",
+      "notNull": true,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "session_id",
+      "entityType": "columns",
+      "table": "design_document"
+    },
+    {
+      "type": "text",
+      "notNull": true,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "directory",
+      "entityType": "columns",
+      "table": "design_document"
+    },
+    {
+      "type": "text",
+      "notNull": true,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "data",
+      "entityType": "columns",
+      "table": "design_document"
+    },
+    {
+      "type": "text",
+      "notNull": true,
+      "autoincrement": false,
+      "default": "'web'",
+      "generated": null,
+      "name": "target",
+      "entityType": "columns",
+      "table": "design_document"
+    },
+    {
+      "type": "text",
+      "notNull": false,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "platform",
+      "entityType": "columns",
+      "table": "design_document"
+    },
+    {
+      "type": "text",
+      "notNull": false,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "id",
+      "entityType": "columns",
+      "table": "design_feedback"
+    },
+    {
+      "type": "text",
+      "notNull": true,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "design_id",
+      "entityType": "columns",
+      "table": "design_feedback"
+    },
+    {
+      "type": "text",
+      "notNull": true,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "data",
+      "entityType": "columns",
+      "table": "design_feedback"
+    },
+    {
+      "type": "integer",
+      "notNull": true,
+      "autoincrement": false,
+      "default": "false",
+      "generated": null,
+      "name": "admitted",
+      "entityType": "columns",
+      "table": "design_feedback"
+    },
+    {
+      "type": "text",
+      "notNull": false,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "id",
+      "entityType": "columns",
+      "table": "design_render_job"
+    },
+    {
+      "type": "text",
+      "notNull": true,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "design_id",
+      "entityType": "columns",
+      "table": "design_render_job"
+    },
+    {
+      "type": "text",
+      "notNull": true,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "data",
+      "entityType": "columns",
+      "table": "design_render_job"
+    },
+    {
+      "type": "text",
+      "notNull": false,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "id",
+      "entityType": "columns",
+      "table": "design_revision"
+    },
+    {
+      "type": "text",
+      "notNull": true,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "design_id",
+      "entityType": "columns",
+      "table": "design_revision"
+    },
+    {
+      "type": "integer",
+      "notNull": true,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "created",
+      "entityType": "columns",
+      "table": "design_revision"
+    },
+    {
+      "type": "text",
+      "notNull": true,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "data",
+      "entityType": "columns",
+      "table": "design_revision"
+    },
+    {
+      "type": "text",
+      "notNull": false,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
       "name": "aggregate_id",
       "entityType": "columns",
       "table": "event_sequence"
@@ -452,6 +1290,296 @@
     },
     {
       "type": "text",
+      "notNull": true,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "evaluation_id",
+      "entityType": "columns",
+      "table": "intelligence_answer"
+    },
+    {
+      "type": "text",
+      "notNull": true,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "question_id",
+      "entityType": "columns",
+      "table": "intelligence_answer"
+    },
+    {
+      "type": "text",
+      "notNull": true,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "type",
+      "entityType": "columns",
+      "table": "intelligence_answer"
+    },
+    {
+      "type": "real",
+      "notNull": false,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "noul",
+      "entityType": "columns",
+      "table": "intelligence_answer"
+    },
+    {
+      "type": "text",
+      "notNull": false,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "choice",
+      "entityType": "columns",
+      "table": "intelligence_answer"
+    },
+    {
+      "type": "real",
+      "notNull": false,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "score",
+      "entityType": "columns",
+      "table": "intelligence_answer"
+    },
+    {
+      "type": "real",
+      "notNull": false,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "confidence",
+      "entityType": "columns",
+      "table": "intelligence_answer"
+    },
+    {
+      "type": "text",
+      "notNull": false,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "probabilities",
+      "entityType": "columns",
+      "table": "intelligence_answer"
+    },
+    {
+      "type": "text",
+      "notNull": false,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "legend",
+      "entityType": "columns",
+      "table": "intelligence_answer"
+    },
+    {
+      "type": "text",
+      "notNull": false,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "id",
+      "entityType": "columns",
+      "table": "intelligence_evaluation"
+    },
+    {
+      "type": "text",
+      "notNull": false,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "session_id",
+      "entityType": "columns",
+      "table": "intelligence_evaluation"
+    },
+    {
+      "type": "text",
+      "notNull": true,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "operation",
+      "entityType": "columns",
+      "table": "intelligence_evaluation"
+    },
+    {
+      "type": "text",
+      "notNull": true,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "evaluation_kind",
+      "entityType": "columns",
+      "table": "intelligence_evaluation"
+    },
+    {
+      "type": "text",
+      "notNull": false,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "subject_id",
+      "entityType": "columns",
+      "table": "intelligence_evaluation"
+    },
+    {
+      "type": "text",
+      "notNull": false,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "candidate_id",
+      "entityType": "columns",
+      "table": "intelligence_evaluation"
+    },
+    {
+      "type": "integer",
+      "notNull": true,
+      "autoincrement": false,
+      "default": "0",
+      "generated": null,
+      "name": "attempt",
+      "entityType": "columns",
+      "table": "intelligence_evaluation"
+    },
+    {
+      "type": "text",
+      "notNull": true,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "fingerprint",
+      "entityType": "columns",
+      "table": "intelligence_evaluation"
+    },
+    {
+      "type": "text",
+      "notNull": true,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "policy",
+      "entityType": "columns",
+      "table": "intelligence_evaluation"
+    },
+    {
+      "type": "text",
+      "notNull": true,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "decision",
+      "entityType": "columns",
+      "table": "intelligence_evaluation"
+    },
+    {
+      "type": "text",
+      "notNull": true,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "model",
+      "entityType": "columns",
+      "table": "intelligence_evaluation"
+    },
+    {
+      "type": "text",
+      "notNull": false,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "evaluator",
+      "entityType": "columns",
+      "table": "intelligence_evaluation"
+    },
+    {
+      "type": "text",
+      "notNull": true,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "issues",
+      "entityType": "columns",
+      "table": "intelligence_evaluation"
+    },
+    {
+      "type": "integer",
+      "notNull": true,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "input_tokens",
+      "entityType": "columns",
+      "table": "intelligence_evaluation"
+    },
+    {
+      "type": "integer",
+      "notNull": true,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "output_tokens",
+      "entityType": "columns",
+      "table": "intelligence_evaluation"
+    },
+    {
+      "type": "integer",
+      "notNull": true,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "duration",
+      "entityType": "columns",
+      "table": "intelligence_evaluation"
+    },
+    {
+      "type": "text",
+      "notNull": false,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "artifact",
+      "entityType": "columns",
+      "table": "intelligence_evaluation"
+    },
+    {
+      "type": "text",
+      "notNull": true,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "source_hash",
+      "entityType": "columns",
+      "table": "intelligence_evaluation"
+    },
+    {
+      "type": "text",
+      "notNull": true,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "candidate_hash",
+      "entityType": "columns",
+      "table": "intelligence_evaluation"
+    },
+    {
+      "type": "integer",
+      "notNull": true,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "time_created",
+      "entityType": "columns",
+      "table": "intelligence_evaluation"
+    },
+    {
+      "type": "text",
       "notNull": false,
       "autoincrement": false,
       "default": null,
@@ -489,6 +1617,46 @@
       "name": "time_updated",
       "entityType": "columns",
       "table": "kv"
+    },
+    {
+      "type": "text",
+      "notNull": false,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "id",
+      "entityType": "columns",
+      "table": "session_monitor"
+    },
+    {
+      "type": "text",
+      "notNull": true,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "session_id",
+      "entityType": "columns",
+      "table": "session_monitor"
+    },
+    {
+      "type": "text",
+      "notNull": true,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "owner",
+      "entityType": "columns",
+      "table": "session_monitor"
+    },
+    {
+      "type": "text",
+      "notNull": true,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "data",
+      "entityType": "columns",
+      "table": "session_monitor"
     },
     {
       "type": "text",
@@ -1521,6 +2689,94 @@
       "table": "worktree"
     },
     {
+      "columns": ["session_id"],
+      "tableTo": "session_v2",
+      "columnsTo": ["id"],
+      "onUpdate": "NO ACTION",
+      "onDelete": "CASCADE",
+      "nameExplicit": false,
+      "name": "fk_redcode_session_context_epoch_session_id_session_v2_id_fk",
+      "entityType": "fks",
+      "table": "redcode_session_context_epoch"
+    },
+    {
+      "columns": ["session_id"],
+      "tableTo": "session_v2",
+      "columnsTo": ["id"],
+      "onUpdate": "NO ACTION",
+      "onDelete": "CASCADE",
+      "nameExplicit": false,
+      "name": "fk_redcode_session_input_session_id_session_v2_id_fk",
+      "entityType": "fks",
+      "table": "redcode_session_input"
+    },
+    {
+      "columns": ["session_id"],
+      "tableTo": "session_v2",
+      "columnsTo": ["id"],
+      "onUpdate": "NO ACTION",
+      "onDelete": "CASCADE",
+      "nameExplicit": false,
+      "name": "fk_session_goal_review_session_id_session_v2_id_fk",
+      "entityType": "fks",
+      "table": "session_goal_review"
+    },
+    {
+      "columns": ["session_id"],
+      "tableTo": "session_v2",
+      "columnsTo": ["id"],
+      "onUpdate": "NO ACTION",
+      "onDelete": "CASCADE",
+      "nameExplicit": false,
+      "name": "fk_session_goal_session_id_session_v2_id_fk",
+      "entityType": "fks",
+      "table": "session_goal"
+    },
+    {
+      "columns": ["session_id"],
+      "tableTo": "session_v2",
+      "columnsTo": ["id"],
+      "onUpdate": "NO ACTION",
+      "onDelete": "CASCADE",
+      "nameExplicit": false,
+      "name": "fk_session_plan_session_id_session_v2_id_fk",
+      "entityType": "fks",
+      "table": "session_plan"
+    },
+    {
+      "columns": ["session_id"],
+      "tableTo": "session_v2",
+      "columnsTo": ["id"],
+      "onUpdate": "NO ACTION",
+      "onDelete": "CASCADE",
+      "nameExplicit": false,
+      "name": "fk_session_share_session_id_session_v2_id_fk",
+      "entityType": "fks",
+      "table": "session_share"
+    },
+    {
+      "columns": ["session_id"],
+      "tableTo": "session_v2",
+      "columnsTo": ["id"],
+      "onUpdate": "NO ACTION",
+      "onDelete": "CASCADE",
+      "nameExplicit": false,
+      "name": "fk_todo_history_session_id_session_v2_id_fk",
+      "entityType": "fks",
+      "table": "todo_history"
+    },
+    {
+      "columns": ["session_id"],
+      "tableTo": "session_v2",
+      "columnsTo": ["id"],
+      "onUpdate": "NO ACTION",
+      "onDelete": "CASCADE",
+      "nameExplicit": false,
+      "name": "fk_todo_session_id_session_v2_id_fk",
+      "entityType": "fks",
+      "table": "todo"
+    },
+    {
       "columns": ["active_account_id"],
       "tableTo": "account",
       "columnsTo": ["id"],
@@ -1532,6 +2788,50 @@
       "table": "account_state"
     },
     {
+      "columns": ["design_id"],
+      "tableTo": "design_document",
+      "columnsTo": ["id"],
+      "onUpdate": "NO ACTION",
+      "onDelete": "CASCADE",
+      "nameExplicit": false,
+      "name": "fk_design_asset_design_id_design_document_id_fk",
+      "entityType": "fks",
+      "table": "design_asset"
+    },
+    {
+      "columns": ["design_id"],
+      "tableTo": "design_document",
+      "columnsTo": ["id"],
+      "onUpdate": "NO ACTION",
+      "onDelete": "CASCADE",
+      "nameExplicit": false,
+      "name": "fk_design_feedback_design_id_design_document_id_fk",
+      "entityType": "fks",
+      "table": "design_feedback"
+    },
+    {
+      "columns": ["design_id"],
+      "tableTo": "design_document",
+      "columnsTo": ["id"],
+      "onUpdate": "NO ACTION",
+      "onDelete": "CASCADE",
+      "nameExplicit": false,
+      "name": "fk_design_render_job_design_id_design_document_id_fk",
+      "entityType": "fks",
+      "table": "design_render_job"
+    },
+    {
+      "columns": ["design_id"],
+      "tableTo": "design_document",
+      "columnsTo": ["id"],
+      "onUpdate": "NO ACTION",
+      "onDelete": "CASCADE",
+      "nameExplicit": false,
+      "name": "fk_design_revision_design_id_design_document_id_fk",
+      "entityType": "fks",
+      "table": "design_revision"
+    },
+    {
       "columns": ["aggregate_id"],
       "tableTo": "event_sequence",
       "columnsTo": ["aggregate_id"],
@@ -1541,6 +2841,39 @@
       "name": "fk_event_aggregate_id_event_sequence_aggregate_id_fk",
       "entityType": "fks",
       "table": "event"
+    },
+    {
+      "columns": ["evaluation_id"],
+      "tableTo": "intelligence_evaluation",
+      "columnsTo": ["id"],
+      "onUpdate": "NO ACTION",
+      "onDelete": "CASCADE",
+      "nameExplicit": false,
+      "name": "fk_intelligence_answer_evaluation_id_intelligence_evaluation_id_fk",
+      "entityType": "fks",
+      "table": "intelligence_answer"
+    },
+    {
+      "columns": ["session_id"],
+      "tableTo": "session_v2",
+      "columnsTo": ["id"],
+      "onUpdate": "NO ACTION",
+      "onDelete": "SET NULL",
+      "nameExplicit": false,
+      "name": "fk_intelligence_evaluation_session_id_session_v2_id_fk",
+      "entityType": "fks",
+      "table": "intelligence_evaluation"
+    },
+    {
+      "columns": ["session_id"],
+      "tableTo": "session_v2",
+      "columnsTo": ["id"],
+      "onUpdate": "NO ACTION",
+      "onDelete": "CASCADE",
+      "nameExplicit": false,
+      "name": "fk_session_monitor_session_id_session_v2_id_fk",
+      "entityType": "fks",
+      "table": "session_monitor"
     },
     {
       "columns": ["project_id"],
@@ -1642,11 +2975,39 @@
       "table": "worktree"
     },
     {
+      "columns": ["session_id", "revision"],
+      "nameExplicit": false,
+      "name": "session_plan_pk",
+      "entityType": "pks",
+      "table": "session_plan"
+    },
+    {
+      "columns": ["session_id", "task_id", "revision"],
+      "nameExplicit": false,
+      "name": "todo_history_pk",
+      "entityType": "pks",
+      "table": "todo_history"
+    },
+    {
+      "columns": ["session_id", "position"],
+      "nameExplicit": false,
+      "name": "todo_pk",
+      "entityType": "pks",
+      "table": "todo"
+    },
+    {
       "columns": ["email", "url"],
       "nameExplicit": false,
       "name": "control_account_pk",
       "entityType": "pks",
       "table": "control_account"
+    },
+    {
+      "columns": ["evaluation_id", "question_id"],
+      "nameExplicit": false,
+      "name": "intelligence_answer_pk",
+      "entityType": "pks",
+      "table": "intelligence_answer"
     },
     {
       "columns": ["project_id", "directory"],
@@ -1670,6 +3031,48 @@
       "table": "worktree"
     },
     {
+      "columns": ["session_id"],
+      "nameExplicit": false,
+      "name": "redcode_session_context_epoch_pk",
+      "table": "redcode_session_context_epoch",
+      "entityType": "pks"
+    },
+    {
+      "columns": ["id"],
+      "nameExplicit": false,
+      "name": "redcode_session_input_pk",
+      "table": "redcode_session_input",
+      "entityType": "pks"
+    },
+    {
+      "columns": ["id"],
+      "nameExplicit": false,
+      "name": "session_goal_review_pk",
+      "table": "session_goal_review",
+      "entityType": "pks"
+    },
+    {
+      "columns": ["session_id"],
+      "nameExplicit": false,
+      "name": "session_goal_pk",
+      "table": "session_goal",
+      "entityType": "pks"
+    },
+    {
+      "columns": ["id"],
+      "nameExplicit": false,
+      "name": "session_guard_trip_pk",
+      "table": "session_guard_trip",
+      "entityType": "pks"
+    },
+    {
+      "columns": ["session_id"],
+      "nameExplicit": false,
+      "name": "session_share_pk",
+      "table": "session_share",
+      "entityType": "pks"
+    },
+    {
       "columns": ["id"],
       "nameExplicit": false,
       "name": "account_state_pk",
@@ -1691,6 +3094,41 @@
       "entityType": "pks"
     },
     {
+      "columns": ["id"],
+      "nameExplicit": false,
+      "name": "design_asset_pk",
+      "table": "design_asset",
+      "entityType": "pks"
+    },
+    {
+      "columns": ["id"],
+      "nameExplicit": false,
+      "name": "design_document_pk",
+      "table": "design_document",
+      "entityType": "pks"
+    },
+    {
+      "columns": ["id"],
+      "nameExplicit": false,
+      "name": "design_feedback_pk",
+      "table": "design_feedback",
+      "entityType": "pks"
+    },
+    {
+      "columns": ["id"],
+      "nameExplicit": false,
+      "name": "design_render_job_pk",
+      "table": "design_render_job",
+      "entityType": "pks"
+    },
+    {
+      "columns": ["id"],
+      "nameExplicit": false,
+      "name": "design_revision_pk",
+      "table": "design_revision",
+      "entityType": "pks"
+    },
+    {
       "columns": ["aggregate_id"],
       "nameExplicit": false,
       "name": "event_sequence_pk",
@@ -1705,10 +3143,24 @@
       "entityType": "pks"
     },
     {
+      "columns": ["id"],
+      "nameExplicit": false,
+      "name": "intelligence_evaluation_pk",
+      "table": "intelligence_evaluation",
+      "entityType": "pks"
+    },
+    {
       "columns": ["key"],
       "nameExplicit": false,
       "name": "kv_pk",
       "table": "kv",
+      "entityType": "pks"
+    },
+    {
+      "columns": ["id"],
+      "nameExplicit": false,
+      "name": "session_monitor_pk",
+      "table": "session_monitor",
       "entityType": "pks"
     },
     {
@@ -1777,6 +3229,94 @@
     {
       "columns": [
         {
+          "value": "session_id",
+          "isExpression": false
+        },
+        {
+          "value": "goal_id",
+          "isExpression": false
+        }
+      ],
+      "isUnique": false,
+      "where": null,
+      "origin": "manual",
+      "name": "session_goal_review_session_goal_idx",
+      "entityType": "indexes",
+      "table": "session_goal_review"
+    },
+    {
+      "columns": [
+        {
+          "value": "session_id",
+          "isExpression": false
+        }
+      ],
+      "isUnique": false,
+      "where": null,
+      "origin": "manual",
+      "name": "session_guard_trip_session_idx",
+      "entityType": "indexes",
+      "table": "session_guard_trip"
+    },
+    {
+      "columns": [
+        {
+          "value": "time_created",
+          "isExpression": false
+        }
+      ],
+      "isUnique": false,
+      "where": null,
+      "origin": "manual",
+      "name": "session_guard_trip_created_idx",
+      "entityType": "indexes",
+      "table": "session_guard_trip"
+    },
+    {
+      "columns": [
+        {
+          "value": "session_id",
+          "isExpression": false
+        }
+      ],
+      "isUnique": false,
+      "where": null,
+      "origin": "manual",
+      "name": "todo_session_idx",
+      "entityType": "indexes",
+      "table": "todo"
+    },
+    {
+      "columns": [
+        {
+          "value": "session_id",
+          "isExpression": false
+        }
+      ],
+      "isUnique": false,
+      "where": null,
+      "origin": "manual",
+      "name": "design_document_session_idx",
+      "entityType": "indexes",
+      "table": "design_document"
+    },
+    {
+      "columns": [
+        {
+          "value": "design_id",
+          "isExpression": false
+        }
+      ],
+      "isUnique": false,
+      "where": null,
+      "origin": "manual",
+      "name": "design_revision_document_idx",
+      "entityType": "indexes",
+      "table": "design_revision"
+    },
+    {
+      "columns": [
+        {
           "value": "aggregate_id",
           "isExpression": false
         },
@@ -1813,6 +3353,102 @@
       "name": "event_aggregate_type_seq_idx",
       "entityType": "indexes",
       "table": "event"
+    },
+    {
+      "columns": [
+        {
+          "value": "fingerprint",
+          "isExpression": false
+        }
+      ],
+      "isUnique": false,
+      "where": null,
+      "origin": "manual",
+      "name": "intelligence_evaluation_fingerprint_lookup_idx",
+      "entityType": "indexes",
+      "table": "intelligence_evaluation"
+    },
+    {
+      "columns": [
+        {
+          "value": "session_id",
+          "isExpression": false
+        },
+        {
+          "value": "time_created",
+          "isExpression": false
+        }
+      ],
+      "isUnique": false,
+      "where": null,
+      "origin": "manual",
+      "name": "intelligence_evaluation_session_created_idx",
+      "entityType": "indexes",
+      "table": "intelligence_evaluation"
+    },
+    {
+      "columns": [
+        {
+          "value": "operation",
+          "isExpression": false
+        },
+        {
+          "value": "time_created",
+          "isExpression": false
+        }
+      ],
+      "isUnique": false,
+      "where": null,
+      "origin": "manual",
+      "name": "intelligence_evaluation_operation_created_idx",
+      "entityType": "indexes",
+      "table": "intelligence_evaluation"
+    },
+    {
+      "columns": [
+        {
+          "value": "decision",
+          "isExpression": false
+        },
+        {
+          "value": "time_created",
+          "isExpression": false
+        }
+      ],
+      "isUnique": false,
+      "where": null,
+      "origin": "manual",
+      "name": "intelligence_evaluation_decision_created_idx",
+      "entityType": "indexes",
+      "table": "intelligence_evaluation"
+    },
+    {
+      "columns": [
+        {
+          "value": "subject_id",
+          "isExpression": false
+        }
+      ],
+      "isUnique": false,
+      "where": null,
+      "origin": "manual",
+      "name": "intelligence_evaluation_subject_idx",
+      "entityType": "indexes",
+      "table": "intelligence_evaluation"
+    },
+    {
+      "columns": [
+        {
+          "value": "session_id",
+          "isExpression": false
+        }
+      ],
+      "isUnique": false,
+      "where": null,
+      "origin": "manual",
+      "name": "session_monitor_session_idx",
+      "entityType": "indexes",
+      "table": "session_monitor"
     },
     {
       "columns": [

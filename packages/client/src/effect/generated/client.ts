@@ -35,8 +35,40 @@ import type {
   SessionActiveOutput,
   SessionGetInput,
   SessionGetOutput,
+  SessionGoalGetInput,
+  SessionGoalGetOutput,
+  SessionGoalStartInput,
+  SessionGoalStartOutput,
+  SessionGoalControlInput,
+  SessionGoalControlOutput,
+  SessionDesignFeedInput,
+  SessionDesignFeedOutput,
+  SessionDesignListInput,
+  SessionDesignListOutput,
+  SessionDesignCreateInput,
+  SessionDesignCreateOutput,
+  SessionDesignGetInput,
+  SessionDesignGetOutput,
+  SessionDesignJobsInput,
+  SessionDesignJobsOutput,
+  SessionDesignUpdateInput,
+  SessionDesignUpdateOutput,
+  SessionDesignRefreshInput,
+  SessionDesignRefreshOutput,
+  SessionDesignApproveInput,
+  SessionDesignApproveOutput,
+  SessionDesignReopenInput,
+  SessionDesignReopenOutput,
+  SessionDesignRevisionsInput,
+  SessionDesignRevisionsOutput,
+  SessionDesignFeedbackInput,
+  SessionDesignFeedbackOutput,
+  SessionDesignAssetsInput,
+  SessionDesignAssetsOutput,
   SessionRemoveInput,
   SessionRemoveOutput,
+  SessionDesignRevisionInput,
+  SessionDesignRevisionOutput,
   SessionForkInput,
   SessionForkOutput,
   SessionSwitchAgentInput,
@@ -262,6 +294,13 @@ import type {
   ConfigShellsOutput,
   ConfigUpdateInput,
   ConfigUpdateOutput,
+  ServerIntelligenceStatusOutput,
+  ServerIntelligenceSaveInput,
+  ServerIntelligenceSaveOutput,
+  ServerIntelligenceDiscoverInput,
+  ServerIntelligenceDiscoverOutput,
+  ServerIntelligenceProbeInput,
+  ServerIntelligenceProbeOutput,
 } from "../api/api.js"
 import { ClientError } from "./client-error.js"
 
@@ -437,9 +476,189 @@ const EndpointSessionGet = (raw: RawClient["server.session"]) => (input: Session
     ),
   )
 
+const EndpointSessionGoalGet = (raw: RawClient["server.session"]) => (input: SessionGoalGetInput) =>
+  preserveEffect<SessionGoalGetOutput>()(
+    raw["session.goal.get"]({ params: { sessionID: input["sessionID"] } }).pipe(
+      Effect.mapError(mapClientError),
+      Effect.map((value) => value.data),
+    ),
+  )
+
+const EndpointSessionGoalStart = (raw: RawClient["server.session"]) => (input: SessionGoalStartInput) =>
+  preserveEffect<SessionGoalStartOutput>()(
+    raw["session.goal.start"]({
+      params: { sessionID: input["sessionID"] },
+      payload: {
+        objective: input["objective"],
+        criteria: input["criteria"],
+        gates: input["gates"],
+        maxTurns: input["maxTurns"],
+        agent: input["agent"],
+        model: input["model"],
+        stopAfter: input["stopAfter"],
+        executePlan: input["executePlan"],
+      },
+    }).pipe(
+      Effect.mapError(mapClientError),
+      Effect.map((value) => value.data),
+    ),
+  )
+
+const EndpointSessionGoalControl = (raw: RawClient["server.session"]) => (input: SessionGoalControlInput) =>
+  preserveEffect<SessionGoalControlOutput>()(
+    raw["session.goal.control"]({
+      params: { sessionID: input["sessionID"] },
+      payload: { action: input["action"], maxTurns: input["maxTurns"] },
+    }).pipe(
+      Effect.mapError(mapClientError),
+      Effect.map((value) => value.data),
+    ),
+  )
+
+const EndpointSessionDesignFeed = (raw: RawClient["server.session"]) => (input: SessionDesignFeedInput) =>
+  preserveStream<SessionDesignFeedOutput>()(
+    Stream.unwrap(
+      raw["session.design.feed"]({ params: { sessionID: input["sessionID"] }, query: { after: input["after"] } }).pipe(
+        Effect.mapError(mapClientError),
+        Effect.map((stream) => stream.pipe(Stream.mapError(mapClientError))),
+      ),
+    ),
+  )
+
+const EndpointSessionDesignList = (raw: RawClient["server.session"]) => (input: SessionDesignListInput) =>
+  preserveEffect<SessionDesignListOutput>()(
+    raw["session.design.list"]({ params: { sessionID: input["sessionID"] } }).pipe(
+      Effect.mapError(mapClientError),
+      Effect.map((value) => value.data),
+    ),
+  )
+
+const EndpointSessionDesignCreate = (raw: RawClient["server.session"]) => (input: SessionDesignCreateInput) =>
+  preserveEffect<SessionDesignCreateOutput>()(
+    raw["session.design.create"]({
+      params: { sessionID: input["sessionID"] },
+      payload: {
+        name: input["name"],
+        journey: input["journey"],
+        engine: input["engine"],
+        kind: input["kind"],
+        application: input["application"],
+        target: input["target"],
+        platform: input["platform"],
+      },
+    }).pipe(
+      Effect.mapError(mapClientError),
+      Effect.map((value) => value.data),
+    ),
+  )
+
+const EndpointSessionDesignGet = (raw: RawClient["server.session"]) => (input: SessionDesignGetInput) =>
+  preserveEffect<SessionDesignGetOutput>()(
+    raw["session.design.get"]({ params: { sessionID: input["sessionID"], designID: input["designID"] } }).pipe(
+      Effect.mapError(mapClientError),
+      Effect.map((value) => value.data),
+    ),
+  )
+
+const EndpointSessionDesignJobs = (raw: RawClient["server.session"]) => (input: SessionDesignJobsInput) =>
+  preserveEffect<SessionDesignJobsOutput>()(
+    raw["session.design.jobs"]({ params: { sessionID: input["sessionID"], designID: input["designID"] } }).pipe(
+      Effect.mapError(mapClientError),
+      Effect.map((value) => value.data),
+    ),
+  )
+
+const EndpointSessionDesignUpdate = (raw: RawClient["server.session"]) => (input: SessionDesignUpdateInput) =>
+  preserveEffect<SessionDesignUpdateOutput>()(
+    raw["session.design.update"]({
+      params: { sessionID: input["sessionID"], designID: input["designID"] },
+      payload: {
+        notes: input["notes"],
+        by: input["by"],
+        controls: input["controls"],
+        presets: input["presets"],
+        name: input["name"],
+        target: input["target"],
+        platform: input["platform"],
+        brief: input["brief"],
+        decisions: input["decisions"],
+        questions: input["questions"],
+        scenarios: input["scenarios"],
+        targets: input["targets"],
+        designSystem: input["designSystem"],
+        entry: input["entry"],
+        tweaks: input["tweaks"],
+      },
+    }).pipe(
+      Effect.mapError(mapClientError),
+      Effect.map((value) => value.data),
+    ),
+  )
+
+const EndpointSessionDesignRefresh = (raw: RawClient["server.session"]) => (input: SessionDesignRefreshInput) =>
+  preserveEffect<SessionDesignRefreshOutput>()(
+    raw["session.design.refresh"]({ params: { sessionID: input["sessionID"], designID: input["designID"] } }).pipe(
+      Effect.mapError(mapClientError),
+      Effect.map((value) => value.data),
+    ),
+  )
+
+const EndpointSessionDesignApprove = (raw: RawClient["server.session"]) => (input: SessionDesignApproveInput) =>
+  preserveEffect<SessionDesignApproveOutput>()(
+    raw["session.design.approve"]({
+      params: { sessionID: input["sessionID"], designID: input["designID"] },
+      payload: { revision: input["revision"], variant: input["variant"] },
+    }).pipe(
+      Effect.mapError(mapClientError),
+      Effect.map((value) => value.data),
+    ),
+  )
+
+const EndpointSessionDesignReopen = (raw: RawClient["server.session"]) => (input: SessionDesignReopenInput) =>
+  preserveEffect<SessionDesignReopenOutput>()(
+    raw["session.design.reopen"]({ params: { sessionID: input["sessionID"], designID: input["designID"] } }).pipe(
+      Effect.mapError(mapClientError),
+      Effect.map((value) => value.data),
+    ),
+  )
+
+const EndpointSessionDesignRevisions = (raw: RawClient["server.session"]) => (input: SessionDesignRevisionsInput) =>
+  preserveEffect<SessionDesignRevisionsOutput>()(
+    raw["session.design.revisions"]({ params: { sessionID: input["sessionID"], designID: input["designID"] } }).pipe(
+      Effect.mapError(mapClientError),
+      Effect.map((value) => value.data),
+    ),
+  )
+
+const EndpointSessionDesignFeedback = (raw: RawClient["server.session"]) => (input: SessionDesignFeedbackInput) =>
+  preserveEffect<SessionDesignFeedbackOutput>()(
+    raw["session.design.feedback"]({ params: { sessionID: input["sessionID"], designID: input["designID"] } }).pipe(
+      Effect.mapError(mapClientError),
+      Effect.map((value) => value.data),
+    ),
+  )
+
+const EndpointSessionDesignAssets = (raw: RawClient["server.session"]) => (input: SessionDesignAssetsInput) =>
+  preserveEffect<SessionDesignAssetsOutput>()(
+    raw["session.design.assets"]({ params: { sessionID: input["sessionID"], designID: input["designID"] } }).pipe(
+      Effect.mapError(mapClientError),
+      Effect.map((value) => value.data),
+    ),
+  )
+
 const EndpointSessionRemove = (raw: RawClient["server.session"]) => (input: SessionRemoveInput) =>
   preserveEffect<SessionRemoveOutput>()(
     raw["session.remove"]({ params: { sessionID: input["sessionID"] } }).pipe(Effect.mapError(mapClientError)),
+  )
+
+const EndpointSessionDesignRevision = (raw: RawClient["server.session"]) => (input: SessionDesignRevisionInput) =>
+  preserveEffect<SessionDesignRevisionOutput>()(
+    raw["session.design.revision"]({
+      params: { sessionID: input["sessionID"], designID: input["designID"], revisionID: input["revisionID"] },
+    }).pipe(
+      Effect.mapError(mapClientError),
+      Effect.map((value) => value.data),
+    ),
   )
 
 const EndpointSessionFork = (raw: RawClient["server.session"]) => (input: SessionForkInput) =>
@@ -760,6 +979,26 @@ const adaptGroupSession = (raw: RawClient["server.session"]) => ({
   export: EndpointSessionExport(raw),
   active: EndpointSessionActive(raw),
   get: EndpointSessionGet(raw),
+  goal: {
+    get: EndpointSessionGoalGet(raw),
+    start: EndpointSessionGoalStart(raw),
+    control: EndpointSessionGoalControl(raw),
+  },
+  design: {
+    feed: EndpointSessionDesignFeed(raw),
+    list: EndpointSessionDesignList(raw),
+    create: EndpointSessionDesignCreate(raw),
+    get: EndpointSessionDesignGet(raw),
+    jobs: EndpointSessionDesignJobs(raw),
+    update: EndpointSessionDesignUpdate(raw),
+    refresh: EndpointSessionDesignRefresh(raw),
+    approve: EndpointSessionDesignApprove(raw),
+    reopen: EndpointSessionDesignReopen(raw),
+    revisions: EndpointSessionDesignRevisions(raw),
+    feedback: EndpointSessionDesignFeedback(raw),
+    assets: EndpointSessionDesignAssets(raw),
+    revision: EndpointSessionDesignRevision(raw),
+  },
   remove: EndpointSessionRemove(raw),
   fork: EndpointSessionFork(raw),
   switchAgent: EndpointSessionSwitchAgent(raw),
@@ -1541,6 +1780,40 @@ const adaptGroupConfig = (raw: RawClient["server.config"]) => ({
   update: EndpointConfigUpdate(raw),
 })
 
+const EndpointServerIntelligenceStatus = (raw: RawClient["server.intelligence"]) => () =>
+  preserveEffect<ServerIntelligenceStatusOutput>()(raw["intelligence.status"]({}).pipe(Effect.mapError(mapClientError)))
+
+const EndpointServerIntelligenceSave =
+  (raw: RawClient["server.intelligence"]) => (input: ServerIntelligenceSaveInput) =>
+    preserveEffect<ServerIntelligenceSaveOutput>()(
+      raw["intelligence.save"]({ payload: { settings: input["settings"], apiKey: input["apiKey"] } }).pipe(
+        Effect.mapError(mapClientError),
+      ),
+    )
+
+const EndpointServerIntelligenceDiscover =
+  (raw: RawClient["server.intelligence"]) => (input: ServerIntelligenceDiscoverInput) =>
+    preserveEffect<ServerIntelligenceDiscoverOutput>()(
+      raw["intelligence.discover"]({ payload: { evaluator: input["evaluator"], apiKey: input["apiKey"] } }).pipe(
+        Effect.mapError(mapClientError),
+      ),
+    )
+
+const EndpointServerIntelligenceProbe =
+  (raw: RawClient["server.intelligence"]) => (input: ServerIntelligenceProbeInput) =>
+    preserveEffect<ServerIntelligenceProbeOutput>()(
+      raw["intelligence.probe"]({ payload: { evaluator: input["evaluator"], apiKey: input["apiKey"] } }).pipe(
+        Effect.mapError(mapClientError),
+      ),
+    )
+
+const adaptGroupServerIntelligence = (raw: RawClient["server.intelligence"]) => ({
+  status: EndpointServerIntelligenceStatus(raw),
+  save: EndpointServerIntelligenceSave(raw),
+  discover: EndpointServerIntelligenceDiscover(raw),
+  probe: EndpointServerIntelligenceProbe(raw),
+})
+
 const adaptClient = (raw: RawClient) => ({
   server: adaptGroupServer(raw["server.server"]),
   location: adaptGroupLocation(raw["server.location"]),
@@ -1572,6 +1845,7 @@ const adaptClient = (raw: RawClient) => ({
   migration: adaptGroupMigration(raw["server.migration"]),
   websearch: adaptGroupWebsearch(raw["server.websearch"]),
   config: adaptGroupConfig(raw["server.config"]),
+  "server.intelligence": adaptGroupServerIntelligence(raw["server.intelligence"]),
 })
 
 export const make = (options?: { readonly baseUrl?: URL | string }) =>

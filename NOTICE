@@ -1,0 +1,9 @@
+Redcode
+Copyright 2026 reddb.io
+
+Redcode is a fork of OpenCode (https://github.com/anomalyco/opencode).
+The upstream OpenCode copyright and MIT license are preserved in LICENSE.
+
+Redcode includes original work by reddb.io and integrates with RedSkills.
+Neither OpenCode nor its contributors endorse this fork.
+Report Redcode issues at https://github.com/reddb-io/redcode/issues.

@@ -44,6 +44,35 @@ const decode = Schema.decodeUnknownSync(Info)
 const document = path.join(import.meta.dir, "opencode.json")
 
 describe("config plugin reloads", () => {
+  it.live("loads Redcode configuration beneath native V2 and project configuration", () =>
+    Effect.acquireDisposable(Effect.promise(() => tmpdir())).pipe(
+      Effect.flatMap((tmp) =>
+        Effect.gen(function* () {
+          const project = path.join(tmp.path, "project")
+          const files = [
+            [path.join(project, "home", ".red", "code", "config.jsonc"), "redcode-home"],
+            [path.join(project, "global", "opencode.jsonc"), "v2-global"],
+            [path.join(project, ".opencode", "opencode.jsonc"), "opencode-project"],
+            [path.join(project, ".redcode", "config.jsonc"), "redcode-project"],
+            [path.join(project, ".red", "code", "config.jsonc"), "redcode-current"],
+          ] as const
+          yield* Effect.promise(async () => {
+            await Promise.all(files.map(([file]) => fs.mkdir(path.dirname(file), { recursive: true })))
+            await Promise.all(files.map(([file, shell]) => Bun.write(file, JSON.stringify({ shell }))))
+          })
+          return yield* Effect.gen(function* () {
+            const config = yield* Config.Service
+            const entries = yield* config.entries()
+            expect(entries.filter((entry) => entry.type === "document").map((entry) => entry.path)).toEqual(
+              files.map(([file]) => file),
+            )
+            expect(Config.latest(entries, "shell")).toBe("redcode-current")
+          }).pipe(Effect.provide(liveConfig(project, undefined, { global: true })))
+        }),
+      ),
+    ),
+  )
+
   for (const input of [
     { root: ".agents", global: false },
     { root: "../.claude", global: false },

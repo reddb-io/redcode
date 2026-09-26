@@ -1,7 +1,7 @@
 #!/usr/bin/env bun
 
 import { $ } from "bun"
-import { mkdir, rm } from "fs/promises"
+import { chmod, mkdir, rm } from "fs/promises"
 import path from "path"
 import { Script } from "@opencode/script"
 import { createSolidTransformPlugin } from "@opentui/solid/bun-plugin"
@@ -12,7 +12,8 @@ import { verifyArtifact, verifySimulationGraph } from "./verify-artifact"
 import { resolveOpencodePty } from "./opencode-pty"
 
 const dir = path.resolve(import.meta.dirname, "..")
-const binary = "opencode"
+const redcode = process.env.REDCODE_BUILD === "1"
+const binary = redcode ? "redcode" : "opencode"
 const outdir = path.resolve(
   dir,
   process.argv.find((arg) => arg.startsWith("--outdir="))?.slice("--outdir=".length) ?? "dist",
@@ -29,6 +30,9 @@ const skipInstall = process.argv.includes("--skip-install")
 const skipWebUi = process.argv.includes("--skip-web-ui")
 const solidPlugin = createSolidTransformPlugin()
 const releaseAssets = new Map<string, Promise<Map<string, string>>>()
+const sidecarDir = process.env.REDCODE_RPC_SIDECAR_DIR
+if (redcode && Script.release && !sidecarDir)
+  throw new Error("REDCODE_RPC_SIDECAR_DIR is required for a Redcode release build")
 
 const allTargets: {
   os: string
@@ -65,6 +69,15 @@ if (!targets.length) throw new Error(`Unknown build target: ${requestedTarget}`)
 if (!skipInstall)
   await $`bun install --os="*" --cpu="*" @opentui/core@${pkg.dependencies["@opentui/core"]} @opencode-ai/pty@${pkg.dependencies["@opencode-ai/pty"]}`
 const appArchive = await buildAppArchive(Script.channel, { skipBuild: skipWebUi })
+const rasterWorker = await Bun.build({
+  entrypoints: ["../core/src/design/raster-worker.ts"],
+  target: "bun",
+  format: "esm",
+  minify: true,
+})
+if (!rasterWorker.success) throw new AggregateError(rasterWorker.logs, "Unable to bundle the Design raster worker")
+const rasterWorkerPath = "design-raster-worker.js"
+const rasterWorkerSource = await rasterWorker.outputs[0].text()
 const appAssetsPlugin: BunPlugin = {
   name: "opencode-app-assets",
   setup(build) {
@@ -118,11 +131,12 @@ export default { path: file, version: ${JSON.stringify(opencodePty.version)}, sh
     },
   }
   const target = targetName(item)
-  const name = target.replace(binary, "cli")
+  const name = redcode ? target : target.replace(binary, "cli")
   const executablePath = await compileExecutable(item)
   console.log(`building ${name}`)
   const result = await Bun.build({
-    entrypoints: ["./src/index.ts"],
+    entrypoints: ["./src/index.ts", rasterWorkerPath],
+    files: { [rasterWorkerPath]: rasterWorkerSource },
     tsconfig: "./tsconfig.json",
     plugins: [appAssetsPlugin, solidPlugin, parcelWatcherPlugin, opencodePtyPlugin, simulationGraphPlugin],
     external: ["node-gyp"],
@@ -141,7 +155,7 @@ export default { path: file, version: ${JSON.stringify(opencodePty.version)}, sh
       outfile: path.join(outdir, name, "bin", binary),
       execArgv: [
         "--smol",
-        `--user-agent=opencode/${Script.channel}/${Script.version}/cli`,
+        `--user-agent=${binary}/${Script.channel}/${Script.version}/cli`,
         "--use-system-ca",
         "--no-warnings",
         "--",
@@ -149,10 +163,20 @@ export default { path: file, version: ${JSON.stringify(opencodePty.version)}, sh
       windows: {},
     },
     define: {
+      REDCODE_DESIGN_RUNTIME: "true",
+      REDCODE_DESIGN_PROCESS_HOST: redcode ? "true" : "false",
+      REDCODE_DESIGN_APP_VERSION:
+        redcode && process.env.REDCODE_DESIGN_APP_VERSION
+          ? JSON.stringify(process.env.REDCODE_DESIGN_APP_VERSION)
+          : "undefined",
+      REDCODE_TARGET: redcode ? JSON.stringify(targetName(item).slice(`${binary}-`.length)) : "undefined",
+      REDCODE_DESIGN_WORKER_PATH: JSON.stringify(
+        `${item.os === "win32" ? "B:/~BUN/root/" : "/$bunfs/root/"}${rasterWorkerPath}`,
+      ),
       OPENCODE_VERSION: `'${Script.version}'`,
-      OPENCODE_CLI_NAME: "'opencode'",
+      OPENCODE_CLI_NAME: JSON.stringify(binary),
       OPENCODE_CHANNEL: `'${Script.channel}'`,
-      OPENCODE_ARTIFACT: `'cli'`,
+      OPENCODE_ARTIFACT: JSON.stringify(redcode ? "redcode" : "cli"),
       OPENCODE_LIBC: item.os === "linux" ? `'${item.abi ?? "glibc"}'` : "undefined",
       // FFF_LIBC selects the fff native lib variant: "musl" or "gnu".
       FFF_LIBC: item.os === "linux" ? `'${item.abi ?? "gnu"}'` : "undefined",
@@ -170,10 +194,15 @@ export default { path: file, version: ${JSON.stringify(opencodePty.version)}, sh
     path.join(outdir, name, "package.json"),
     JSON.stringify(
       {
-        name: `@opencode/${name}`,
+        name: redcode ? `@reddb-io/${name}` : `@opencode/${name}`,
         version: Script.version,
         license: "MIT",
-        repository: { type: "git", url: "git+https://github.com/anomalyco/opencode.git" },
+        repository: {
+          type: "git",
+          url: redcode
+            ? "git+https://github.com/reddb-io/redcode.git"
+            : "git+https://github.com/anomalyco/opencode.git",
+        },
         os: [item.os],
         cpu: [item.arch],
       },
@@ -181,6 +210,23 @@ export default { path: file, version: ${JSON.stringify(opencodePty.version)}, sh
       2,
     ),
   )
+  if (redcode) {
+    await Bun.write(path.join(outdir, name, "LICENSE"), Bun.file(path.join(dir, "../../LICENSE")))
+    await Bun.write(path.join(outdir, name, "NOTICE"), Bun.file(path.join(dir, "../../NOTICE")))
+  }
+  if (sidecarDir) {
+    const sidecarName = [
+      "redcode-rpc-sidecar",
+      item.os === "win32" ? "windows" : item.os,
+      item.arch,
+      item.abi,
+    ].filter(Boolean).join("-") + (item.os === "win32" ? ".exe" : "")
+    const source = path.join(sidecarDir, sidecarName)
+    if (!(await Bun.file(source).exists())) throw new Error(`Missing staged RPC sidecar: ${source}`)
+    const destination = path.join(outdir, name, "bin", `redcode-rpc-sidecar${item.os === "win32" ? ".exe" : ""}`)
+    await Bun.write(destination, Bun.file(source))
+    if (item.os !== "win32") await chmod(destination, 0o755)
+  }
   await verifyArtifact(path.join(outdir, name))
 }
 

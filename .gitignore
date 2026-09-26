@@ -11,7 +11,11 @@ node_modules
 playground
 tmp
 dist
+dist-whiteboard
 dist-node
+packages/redcode/release/
+packages/redcode/.scriptc-zod/
+packages/redcode/scriptc.json
 ts-dist
 .turbo
 .typecheck-profiles

@@ -3,6 +3,8 @@ import { SessionInbox } from "@opencode/schema/session-inbox"
 import { PromptInput } from "@opencode/schema/prompt-input"
 import { Session } from "@opencode/schema/session"
 import { SessionStats } from "@opencode/schema/session-stats"
+import { SessionGoal } from "@opencode/schema/session-goal"
+import { Design } from "@opencode/schema/design"
 import { InstructionEntry } from "@opencode/schema/instruction-entry"
 import { Project } from "@opencode/schema/project"
 import {
@@ -18,6 +20,7 @@ import { Context, Effect, Encoding, Result, Schema, SchemaGetter, Struct } from 
 import { HttpApiEndpoint, HttpApiGroup, HttpApiMiddleware, HttpApiSchema, OpenApi } from "effect/unstable/httpapi"
 import {
   ConflictError,
+  DesignNotFoundError,
   CommandExecutionError,
   CommandNotFoundError,
   FormAlreadySettledError,
@@ -170,23 +173,38 @@ export const SessionsQuery = Schema.Struct({
   cursor: SessionsQueryCursor.pipe(Schema.optional),
 }).annotate({ identifier: "SessionsQuery" })
 
-export const makeSessionGroup = <
-  I extends HttpApiMiddleware.AnyId,
-  S,
-  FormI extends HttpApiMiddleware.AnyId,
-  FormS,
->(sessionLocationMiddleware: Context.Key<I, S>, formLocationMiddleware: Context.Key<FormI, FormS>) =>
+export const RpcSessionListInput = Schema.Struct({
+  directory: AbsolutePath.pipe(Schema.optional),
+  project: Project.ID.pipe(Schema.optional),
+  subpath: RelativePath.pipe(Schema.optional),
+  limit: PositiveInt.pipe(Schema.optional),
+  order: Schema.Literals(["asc", "desc"]).pipe(Schema.optional),
+  search: Schema.String.pipe(Schema.optional),
+  parentID: Schema.NullOr(Session.ID).pipe(Schema.optional),
+  cursor: SessionsCursor.pipe(Schema.optional),
+})
+
+export const SessionsResponse = Schema.Struct({
+  data: Schema.Array(PublicSessionInfo),
+  cursor: Schema.Struct({
+    previous: SessionsCursor.pipe(Schema.optional),
+    next: SessionsCursor.pipe(Schema.optional),
+  }),
+}).annotate({ identifier: "SessionsResponse" })
+
+export const ActiveSessionsResponse = Schema.Struct({
+  data: Schema.Record(Session.ID, SessionActive),
+}).annotate({ identifier: "ActiveSessionsResponse" })
+
+export const makeSessionGroup = <I extends HttpApiMiddleware.AnyId, S, FormI extends HttpApiMiddleware.AnyId, FormS>(
+  sessionLocationMiddleware: Context.Key<I, S>,
+  formLocationMiddleware: Context.Key<FormI, FormS>,
+) =>
   HttpApiGroup.make("server.session")
     .add(
       HttpApiEndpoint.get("session.list", "/api/session", {
         query: SessionsQuery,
-        success: Schema.Struct({
-          data: Schema.Array(PublicSessionInfo),
-          cursor: Schema.Struct({
-            previous: SessionsCursor.pipe(Schema.optional),
-            next: SessionsCursor.pipe(Schema.optional),
-          }),
-        }).annotate({ identifier: "SessionsResponse" }),
+        success: SessionsResponse,
         error: [InvalidCursorError, InvalidRequestError],
       }).annotateMerge(
         OpenApi.annotations({
@@ -269,7 +287,7 @@ export const makeSessionGroup = <
     )
     .add(
       HttpApiEndpoint.get("session.active", "/api/session/active", {
-        success: Schema.Struct({ data: Schema.Record(Session.ID, SessionActive) }),
+        success: ActiveSessionsResponse,
       }).annotateMerge(
         OpenApi.annotations({
           identifier: "session.active",
@@ -293,6 +311,250 @@ export const makeSessionGroup = <
       ),
     )
     .add(
+      HttpApiEndpoint.get("session.goal.get", "/api/experimental/session/:sessionID/goal", {
+        params: { sessionID: Session.ID },
+        success: Schema.Struct({ data: Schema.NullOr(SessionGoal.Info) }),
+        error: [SessionNotFoundError, InvalidRequestError],
+      })
+        .middleware(sessionLocationMiddleware)
+        .annotateMerge(
+          OpenApi.annotations({
+            identifier: "experimental.session.goal.get",
+            summary: "Get session goal",
+            description: "Retrieve the goal and its current step budget, evidence, and review state.",
+          }),
+        ),
+    )
+    .add(
+      HttpApiEndpoint.post("session.goal.start", "/api/experimental/session/:sessionID/goal", {
+        params: { sessionID: Session.ID },
+        payload: SessionGoal.Input,
+        success: Schema.Struct({ data: SessionGoal.Info }),
+        error: [SessionNotFoundError, InvalidRequestError],
+      })
+        .middleware(sessionLocationMiddleware)
+        .annotateMerge(
+          OpenApi.annotations({
+            identifier: "experimental.session.goal.start",
+            summary: "Start session goal",
+            description:
+              "Create a goal and admit an instruction to start working on it. An active goal must be paused before replacement.",
+          }),
+        ),
+    )
+    .add(
+      HttpApiEndpoint.post("session.goal.control", "/api/experimental/session/:sessionID/goal/control", {
+        params: { sessionID: Session.ID },
+        payload: SessionGoal.Control,
+        success: Schema.Struct({ data: Schema.NullOr(SessionGoal.Info) }),
+        error: [SessionNotFoundError, InvalidRequestError],
+      })
+        .middleware(sessionLocationMiddleware)
+        .annotateMerge(
+          OpenApi.annotations({
+            identifier: "experimental.session.goal.control",
+            summary: "Control session goal",
+            description:
+              "Pause, resume, drop, or change the step budget of the current goal. Pause and drop interrupt local execution; resume admits work.",
+          }),
+        ),
+    )
+    .add(
+      HttpApiEndpoint.get("session.design.feed", "/api/experimental/session/:sessionID/design/feed", {
+        params: { sessionID: Session.ID },
+        query: { after: Schema.NumberFromString.pipe(Schema.decodeTo(Event.Seq), Schema.optional) },
+        success: HttpApiSchema.StreamSse({ data: Design.FeedEvent }),
+        error: SessionNotFoundError,
+      }).annotateMerge(
+        OpenApi.annotations({
+          identifier: "experimental.session.design.feed",
+          summary: "Follow Design review conversation",
+          description: "Replay the session's durable conversation as Design review events and continue live.",
+        }),
+      ),
+    )
+    .add(
+      HttpApiEndpoint.get("session.design.list", "/api/experimental/session/:sessionID/design", {
+        params: { sessionID: Session.ID },
+        success: Schema.Struct({ data: Schema.Array(Design.Info) }),
+        error: [SessionNotFoundError, InvalidRequestError],
+      })
+        .middleware(sessionLocationMiddleware)
+        .annotateMerge(
+          OpenApi.annotations({
+            identifier: "experimental.session.design.list",
+            summary: "List session designs",
+            description: "Read Design documents in this session, including documents imported from Redcode V1.",
+          }),
+        ),
+    )
+    .add(
+      HttpApiEndpoint.post("session.design.create", "/api/experimental/session/:sessionID/design", {
+        params: { sessionID: Session.ID },
+        payload: Design.Create,
+        success: Schema.Struct({ data: Design.Info }),
+        error: [SessionNotFoundError, InvalidRequestError],
+      })
+        .middleware(sessionLocationMiddleware)
+        .annotateMerge(
+          OpenApi.annotations({
+            identifier: "experimental.session.design.create",
+            summary: "Create Design document",
+            description: "Create an isolated Design prototype for this session and discover its application design system.",
+          }),
+        ),
+    )
+    .add(
+      HttpApiEndpoint.get("session.design.get", "/api/experimental/session/:sessionID/design/:designID", {
+        params: { sessionID: Session.ID, designID: Design.ID },
+        success: Schema.Struct({ data: Design.Info }),
+        error: [SessionNotFoundError, DesignNotFoundError, InvalidRequestError],
+      })
+        .middleware(sessionLocationMiddleware)
+        .annotateMerge(
+          OpenApi.annotations({
+            identifier: "experimental.session.design.get",
+            summary: "Get Design document",
+            description: "Read one Design document from this session.",
+          }),
+        ),
+    )
+    .add(
+      HttpApiEndpoint.get("session.design.jobs", "/api/experimental/session/:sessionID/design/:designID/jobs", {
+        params: { sessionID: Session.ID, designID: Design.ID },
+        success: Schema.Struct({ data: Schema.Array(Design.Job) }),
+        error: [SessionNotFoundError, DesignNotFoundError, InvalidRequestError],
+      })
+        .middleware(sessionLocationMiddleware)
+        .annotateMerge(
+          OpenApi.annotations({
+            identifier: "experimental.session.design.jobs",
+            summary: "List Design jobs",
+            description: "Read durable render and verification jobs for a Design document.",
+          }),
+        ),
+    )
+    .add(
+      HttpApiEndpoint.patch("session.design.update", "/api/experimental/session/:sessionID/design/:designID", {
+        params: { sessionID: Session.ID, designID: Design.ID },
+        payload: Design.Update,
+        success: Schema.Struct({ data: Design.Info }),
+        error: [SessionNotFoundError, DesignNotFoundError, InvalidRequestError],
+      })
+        .middleware(sessionLocationMiddleware)
+        .annotateMerge(
+          OpenApi.annotations({
+            identifier: "experimental.session.design.update",
+            summary: "Update Design document",
+            description:
+              "Update a Design document; note status changes require the V1 verification rules and configured semantic review.",
+          }),
+        ),
+    )
+    .add(
+      HttpApiEndpoint.post("session.design.refresh", "/api/experimental/session/:sessionID/design/:designID/refresh", {
+        params: { sessionID: Session.ID, designID: Design.ID },
+        success: Schema.Struct({ data: Design.Info }),
+        error: [SessionNotFoundError, DesignNotFoundError, InvalidRequestError],
+      })
+        .middleware(sessionLocationMiddleware)
+        .annotateMerge(
+          OpenApi.annotations({
+            identifier: "experimental.session.design.refresh",
+            summary: "Refresh Design system",
+            description: "Rediscover the application's design system and refresh its generated manifest.",
+          }),
+        ),
+    )
+    .add(
+      HttpApiEndpoint.post("session.design.approve", "/api/experimental/session/:sessionID/design/:designID/approve", {
+        params: { sessionID: Session.ID, designID: Design.ID },
+        payload: Design.Approve,
+        success: Schema.Struct({
+          data: Schema.Struct({
+            plan: Schema.String,
+            revision: Schema.String,
+            agent: Schema.Literals(["design", "plan"]),
+            resume: Schema.Boolean,
+          }),
+        }),
+        error: [SessionNotFoundError, DesignNotFoundError, InvalidRequestError],
+      })
+        .middleware(sessionLocationMiddleware)
+        .annotateMerge(
+          OpenApi.annotations({
+            identifier: "experimental.session.design.approve",
+            summary: "Approve Design revision",
+            description:
+              "Freeze an explicitly approved Design revision and continue its Session in Plan unless its goal stops after Design.",
+          }),
+        ),
+    )
+    .add(
+      HttpApiEndpoint.post("session.design.reopen", "/api/experimental/session/:sessionID/design/:designID/reopen", {
+        params: { sessionID: Session.ID, designID: Design.ID },
+        success: Schema.Struct({ data: Design.Info }),
+        error: [SessionNotFoundError, DesignNotFoundError, InvalidRequestError],
+      })
+        .middleware(sessionLocationMiddleware)
+        .annotateMerge(
+          OpenApi.annotations({
+            identifier: "experimental.session.design.reopen",
+            summary: "Reopen Design review",
+            description: "Reopen a review after an explicit user request while retaining its approved revision.",
+          }),
+        ),
+    )
+    .add(
+      HttpApiEndpoint.get(
+        "session.design.revisions",
+        "/api/experimental/session/:sessionID/design/:designID/revisions",
+        {
+          params: { sessionID: Session.ID, designID: Design.ID },
+          success: Schema.Struct({ data: Schema.Array(Design.Revision) }),
+          error: [SessionNotFoundError, DesignNotFoundError, InvalidRequestError],
+        },
+      )
+        .middleware(sessionLocationMiddleware)
+        .annotateMerge(
+          OpenApi.annotations({
+            identifier: "experimental.session.design.revisions",
+            summary: "List Design revisions",
+            description: "Read immutable Design revisions imported from Redcode V1.",
+          }),
+        ),
+    )
+    .add(
+      HttpApiEndpoint.get("session.design.feedback", "/api/experimental/session/:sessionID/design/:designID/feedback", {
+        params: { sessionID: Session.ID, designID: Design.ID },
+        success: Schema.Struct({ data: Schema.Array(Design.Feedback) }),
+        error: [SessionNotFoundError, DesignNotFoundError, InvalidRequestError],
+      })
+        .middleware(sessionLocationMiddleware)
+        .annotateMerge(
+          OpenApi.annotations({
+            identifier: "experimental.session.design.feedback",
+            summary: "List Design feedback",
+            description: "Read admitted browser feedback retained with a Design document.",
+          }),
+        ),
+    )
+    .add(
+      HttpApiEndpoint.get("session.design.assets", "/api/experimental/session/:sessionID/design/:designID/assets", {
+        params: { sessionID: Session.ID, designID: Design.ID },
+        success: Schema.Struct({ data: Schema.Array(Design.Asset) }),
+        error: [SessionNotFoundError, DesignNotFoundError, InvalidRequestError],
+      })
+        .middleware(sessionLocationMiddleware)
+        .annotateMerge(
+          OpenApi.annotations({
+            identifier: "experimental.session.design.assets",
+            summary: "List Design assets",
+            description: "Read the versioned asset metadata retained with a Design document.",
+          }),
+        ),
+    )
+    .add(
       HttpApiEndpoint.delete("session.remove", "/api/session/:sessionID", {
         params: { sessionID: Session.ID },
         success: HttpApiSchema.NoContent,
@@ -304,6 +566,25 @@ export const makeSessionGroup = <
           description: "Delete a session and its child sessions.",
         }),
       ),
+    )
+    .add(
+      HttpApiEndpoint.get(
+        "session.design.revision",
+        "/api/experimental/session/:sessionID/design/:designID/revisions/:revisionID",
+        {
+          params: { sessionID: Session.ID, designID: Design.ID, revisionID: Schema.String },
+          success: Schema.Struct({ data: Design.Revision }),
+          error: [SessionNotFoundError, DesignNotFoundError, InvalidRequestError],
+        },
+      )
+        .middleware(sessionLocationMiddleware)
+        .annotateMerge(
+          OpenApi.annotations({
+            identifier: "experimental.session.design.revision",
+            summary: "Get Design revision",
+            description: "Read one immutable Design revision and its file manifest.",
+          }),
+        ),
     )
     .add(
       HttpApiEndpoint.post("session.fork", "/api/session/:sessionID/fork", {
@@ -559,9 +840,7 @@ export const makeSessionGroup = <
         error: [SessionNotFoundError, SessionBusyError],
       })
         .middleware(sessionLocationMiddleware)
-        .annotateMerge(
-          OpenApi.annotations({ identifier: "session.revert.commit", summary: "Commit staged revert" }),
-        ),
+        .annotateMerge(OpenApi.annotations({ identifier: "session.revert.commit", summary: "Commit staged revert" })),
     )
     .add(
       HttpApiEndpoint.get("session.context", "/api/session/:sessionID/context", {

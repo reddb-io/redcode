@@ -6,6 +6,7 @@ import { optional } from "../schema.js"
 
 export const Timeout = Mcp.TimeoutConfig
 export type Timeout = Mcp.TimeoutConfig
+export const Media = Mcp.Media
 export const Local = Mcp.LocalConfig
 export type Local = Mcp.LocalConfig
 export const OAuth = Mcp.OAuthConfig

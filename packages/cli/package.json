@@ -18,6 +18,7 @@
   },
   "scripts": {
     "build": "bun run script/build.ts",
+    "build:whiteboard": "bun run script/whiteboard-bundle.ts",
     "build:node": "bun run script/build-node.ts",
     "dev": "bun run src/index.ts",
     "test": "bun test --timeout 30000 --only-failures",
@@ -29,6 +30,7 @@
     "@clack/prompts": "1.0.0-alpha.1",
     "@effect/platform-node": "catalog:",
     "@opencode/client": "workspace:*",
+    "@opencode/core": "workspace:*",
     "@opencode/plugin": "workspace:*",
     "@opencode-ai/pty": "0.1.13",
     "@opencode/schema": "workspace:*",

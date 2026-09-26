@@ -12,6 +12,7 @@ import { eq, sql } from "drizzle-orm"
 import { Global } from "@opencode/util/global"
 import { existsSync } from "node:fs"
 import path from "node:path"
+import { createHash } from "node:crypto"
 import type { Database as SQLiteDatabase } from "bun:sqlite"
 import { Project } from "@opencode/schema/project"
 
@@ -209,6 +210,161 @@ type NextMessage = {
   readonly time_created: number
   readonly time_updated: number
   readonly data: string
+}
+
+type SourceValue = string | number | null
+type SourceRow = Record<string, SourceValue>
+
+const REDCODE_TABLES = [
+  {
+    name: "credential",
+    columns: [
+      "id",
+      "integration_id",
+      "label",
+      "value",
+      "connector_id",
+      "method_id",
+      "active",
+      "time_created",
+      "time_updated",
+    ],
+    key: ["id"],
+  },
+  {
+    name: "project_directory",
+    columns: ["project_id", "directory", "type", "strategy", "time_created"],
+    key: ["project_id", "directory"],
+  },
+  {
+    name: "permission",
+    columns: ["id", "project_id", "action", "resource", "time_created", "time_updated"],
+    key: ["id"],
+  },
+  {
+    name: "session_input",
+    target: "redcode_session_input",
+    columns: ["id", "session_id", "prompt", "delivery", "admitted_seq", "promoted_seq", "time_created"],
+    key: ["id"],
+  },
+  {
+    name: "session_context_epoch",
+    target: "redcode_session_context_epoch",
+    columns: ["session_id", "baseline", "snapshot", "baseline_seq", "replacement_seq"],
+    key: ["session_id"],
+  },
+  { name: "session_monitor", columns: ["id", "session_id", "owner", "data"], key: ["id"] },
+  { name: "session_goal", columns: ["session_id", "goal_id", "revision", "owner", "data"], key: ["session_id"] },
+  {
+    name: "session_goal_review",
+    columns: ["id", "session_id", "goal_id", "tokens", "created"],
+    key: ["id"],
+  },
+  { name: "session_plan", columns: ["session_id", "revision", "created", "data"], key: ["session_id", "revision"] },
+  {
+    name: "todo",
+    columns: [
+      "session_id",
+      "content",
+      "status",
+      "priority",
+      "position",
+      "task_id",
+      "revision",
+      "reason",
+      "legacy_status",
+      "details",
+      "time_created",
+      "time_updated",
+    ],
+    key: ["session_id", "position"],
+  },
+  {
+    name: "todo_history",
+    columns: ["session_id", "task_id", "revision", "data", "created"],
+    key: ["session_id", "task_id", "revision"],
+  },
+  {
+    name: "session_guard_trip",
+    columns: ["id", "session_id", "guard", "action", "subject", "detail", "time_created", "time_updated"],
+    key: ["id"],
+  },
+  {
+    name: "session_share",
+    columns: ["session_id", "id", "secret", "url", "time_created", "time_updated"],
+    key: ["session_id"],
+  },
+  {
+    name: "design_document",
+    columns: ["id", "session_id", "directory", "data", "target", "platform"],
+    key: ["id"],
+  },
+  { name: "design_revision", columns: ["id", "design_id", "created", "data"], key: ["id"] },
+  { name: "design_feedback", columns: ["id", "design_id", "data", "admitted"], key: ["id"] },
+  { name: "design_asset", columns: ["id", "design_id", "data"], key: ["id"] },
+  { name: "design_render_job", columns: ["id", "design_id", "data"], key: ["id"] },
+  {
+    name: "intelligence_evaluation",
+    columns: [
+      "id",
+      "session_id",
+      "operation",
+      "evaluation_kind",
+      "subject_id",
+      "candidate_id",
+      "attempt",
+      "fingerprint",
+      "policy",
+      "decision",
+      "model",
+      "evaluator",
+      "issues",
+      "input_tokens",
+      "output_tokens",
+      "duration",
+      "artifact",
+      "source_hash",
+      "candidate_hash",
+      "time_created",
+    ],
+    key: ["id"],
+  },
+  {
+    name: "intelligence_answer",
+    columns: [
+      "evaluation_id",
+      "question_id",
+      "type",
+      "noul",
+      "choice",
+      "score",
+      "confidence",
+      "probabilities",
+      "legend",
+    ],
+    key: ["evaluation_id", "question_id"],
+  },
+] as const
+
+const REDCODE_FALLBACKS: Record<string, Record<string, string>> = {
+  credential: { connector_id: "NULL", method_id: "NULL", active: "NULL" },
+  project_directory: { strategy: "NULL" },
+  session_input: { promoted_seq: "NULL" },
+  session_context_epoch: { replacement_seq: "NULL" },
+  todo: {
+    task_id: "NULL",
+    revision: "1",
+    reason: "NULL",
+    legacy_status: "NULL",
+    details: "NULL",
+  },
+  design_document: { target: "'web'", platform: "NULL" },
+  intelligence_evaluation: { attempt: "0" },
+}
+
+export type RedcodeImportResult = {
+  readonly imported: number
+  readonly skipped: number
 }
 
 const lock = Semaphore.makeUnsafe(1)
@@ -699,6 +855,27 @@ export function run(options: Options = {}): Effect.Effect<RunResult, never, Data
   )
 }
 
+/** Import the old Redcode SQLite history without changing or migrating the source database. */
+export function importRedcode(sourcePath: string): Effect.Effect<RedcodeImportResult, never, Database.Service> {
+  return lock.withPermit(
+    Effect.gen(function* () {
+      if (!existsSync(sourcePath)) return yield* Effect.die(new Error(`Redcode database does not exist: ${sourcePath}`))
+      const db = (yield* Database.Service).db
+      const result = { imported: 0, skipped: 0 }
+      yield* importNextDatabase(
+        db,
+        sourcePath,
+        (_completed, imported) => {
+          if (imported) result.imported++
+          else result.skipped++
+        },
+        "redcode",
+      )
+      return result
+    }).pipe(Effect.orDie),
+  )
+}
+
 function nextPath(options: Options, data: string) {
   if (options.nextDatabasePath) return options.nextDatabasePath
   if (process.env.OPENCODE_DB === ":memory:") return undefined
@@ -729,16 +906,21 @@ function countNextSessions(sourcePath: string | undefined) {
 function importNextDatabase(
   db: Database.Interface["db"],
   sourcePath: string | undefined,
-  onProgress: (completed: number) => void,
+  onProgress: (completed: number, imported: boolean) => void,
+  kind: "previous-v2" | "redcode" = "previous-v2",
 ): Effect.Effect<void, unknown> {
   if (!sourcePath || !existsSync(sourcePath)) return Effect.void
   return Effect.scoped(
     Effect.gen(function* () {
       const source = yield* openNextDatabase(sourcePath)
       if (!isNextDatabase(source)) {
-        yield* Effect.logWarning("Skipped incompatible opencode-next.db", { path: sourcePath })
+        if (kind === "redcode")
+          return yield* Effect.die(new Error(`Incompatible Redcode session database: ${sourcePath}`))
+        yield* Effect.logWarning("Skipped incompatible session database", { path: sourcePath })
         return
       }
+      if (kind === "redcode" && !hasLegacyMessages(source))
+        return yield* Effect.die(new Error(`Redcode database has no V1 message and part tables: ${sourcePath}`))
       source.run("BEGIN")
       yield* Effect.addFinalizer(() =>
         Effect.sync(() => {
@@ -748,12 +930,40 @@ function importNextDatabase(
       const projects = new Map(
         selectNextRows<NextProject>(source, "project", NEXT_PROJECT_COLUMNS).map((project) => [project.id, project]),
       )
+      if (kind === "redcode")
+        yield* db.transaction((tx) =>
+          Effect.forEach(
+            projects.values(),
+            (project) =>
+              Effect.gen(function* () {
+                const existing = yield* tx.get<{ worktree: string }>(
+                  sql`SELECT worktree FROM project WHERE id = ${project.id}`,
+                )
+                if (existing) {
+                  if (existing.worktree !== project.worktree)
+                    return yield* Effect.die(new Error(`Conflicting Redcode project ${project.id}`))
+                  return
+                }
+                yield* tx.run(sql`
+                  INSERT INTO project (
+                    id, worktree, vcs, name, icon_url, icon_url_override, icon_color,
+                    time_created, time_updated, time_initialized, time_active, sandboxes, commands
+                  ) VALUES (
+                    ${project.id}, ${project.worktree}, ${project.vcs}, ${project.name}, ${project.icon_url},
+                    ${project.icon_url_override}, ${project.icon_color}, ${project.time_created}, ${project.time_updated},
+                    ${project.time_initialized}, ${project.time_updated}, ${project.sandboxes}, ${project.commands}
+                  )
+                `)
+              }),
+            { discard: true },
+          ),
+        )
       const sessions = selectNextRows<NextSession>(source, "session", NEXT_SESSION_COLUMNS)
       for (const [index, session] of sessions.entries()) {
         const project = projects.get(session.project_id)
         const projectID = project ? session.project_id : Project.ID.global
         if (!project) {
-          yield* Effect.logWarning("Reassigned previous V2 session with missing project", {
+          yield* Effect.logWarning("Reassigned imported session with missing project", {
             sessionID: session.id,
             projectID: session.project_id,
           })
@@ -764,10 +974,34 @@ function importNextDatabase(
             [string]
           >("SELECT id, session_id, type, seq, time_created, time_updated, data FROM session_message WHERE session_id = ? ORDER BY seq")
           .all(session.id)
-        yield* db
+        const legacyMessages =
+          kind === "redcode"
+            ? source
+                .query<
+                  SourceMessage,
+                  [string]
+                >("SELECT id, session_id, time_created, time_updated, data FROM message WHERE session_id = ? ORDER BY time_created, id")
+                .all(session.id)
+            : []
+        const legacyParts =
+          kind === "redcode"
+            ? source
+                .query<
+                  SourcePart,
+                  [string]
+                >("SELECT id, message_id, session_id, time_created, time_updated, data FROM part WHERE session_id = ? ORDER BY id")
+                .all(session.id)
+            : []
+        const imported = yield* db
           .transaction((tx) =>
             Effect.gen(function* () {
-              if (project)
+              if (!project)
+                yield* tx.run(sql`
+                  INSERT OR IGNORE INTO project (id, worktree, time_created, time_updated, time_active, sandboxes)
+                  VALUES (${Project.ID.global}, ${path.parse(session.directory).root}, ${session.time_created},
+                    ${session.time_updated}, ${session.time_updated}, '[]')
+                `)
+              if (project && kind !== "redcode")
                 yield* tx.run(sql`
                   INSERT OR IGNORE INTO project (
                     id, worktree, vcs, name, icon_url, icon_url_override, icon_color,
@@ -779,12 +1013,20 @@ function importNextDatabase(
                   )
                 `)
               const existing = yield* tx
-                .select({ id: SessionTable.id })
+                .select()
                 .from(SessionTable)
                 .where(eq(SessionTable.id, SessionSchema.ID.make(session.id)))
                 .get()
-              if (existing) return
-              yield* tx.run(sql`
+              if (existing && kind !== "redcode") return false
+              if (
+                existing &&
+                (existing.project_id !== projectID ||
+                  existing.directory !== session.directory ||
+                  existing.time_created !== session.time_created)
+              )
+                return yield* Effect.die(new Error(`Conflicting Redcode session ${session.id}`))
+              if (!existing)
+                yield* tx.run(sql`
                 INSERT INTO session_v2 (
                   id, project_id, workspace_id, parent_id, fork_session_id, fork_boundary, slug, directory,
                   path, title, version, share_url, summary_additions, summary_deletions, summary_files,
@@ -803,7 +1045,66 @@ function importNextDatabase(
                   ${session.time_archived}, ${session.time_suspended}
                 )
               `)
-              yield* Effect.forEach(messages, (message) =>
+              const next =
+                existing ??
+                (yield* tx
+                  .select()
+                  .from(SessionTable)
+                  .where(eq(SessionTable.id, SessionSchema.ID.make(session.id)))
+                  .get())
+              if (!next) return yield* Effect.die(new Error(`Failed to import Redcode session ${session.id}`))
+              const legacy =
+                legacyMessages.length === 0
+                  ? undefined
+                  : transformSession({ session: next, messages: legacyMessages, parts: legacyParts })
+              if (kind === "redcode" && legacy?.warnings.length)
+                return yield* Effect.die(
+                  new Error(
+                    `Redcode session ${session.id} has ${legacy.warnings.length} invalid V1 rows; ` +
+                      `first: ${JSON.stringify(legacy.warnings[0])}`,
+                  ),
+                )
+              yield* Effect.forEach(legacy?.warnings ?? [], (warning) =>
+                Effect.logWarning("Skipped Redcode migration row", warning),
+              )
+              const history: NextMessage[] = legacy
+                ? [
+                    ...legacy.messages.map((message) => ({ ...message, data: JSON.stringify(message.data) })),
+                    ...messages,
+                  ]
+                    .toSorted(
+                      (left, right) =>
+                        left.time_created - right.time_created ||
+                        left.seq - right.seq ||
+                        left.id.localeCompare(right.id),
+                    )
+                    .map((message, seq) => ({ ...message, seq }))
+                : messages
+              const ids = new Set(history.map((message) => message.id))
+              if (ids.size !== history.length)
+                return yield* Effect.die(new Error(`Duplicate message IDs in Redcode session ${session.id}`))
+              if (existing) {
+                const current = new Map(
+                  (yield* tx.all<{ id: string; type: string; time_created: number; data: string }>(sql`
+                    SELECT id, type, time_created, data FROM session_message WHERE session_id = ${session.id}
+                  `)).map((message) => [message.id, message]),
+                )
+                const conflicting = history.find((message) => {
+                  const found = current.get(message.id)
+                  return (
+                    !found ||
+                    found.type !== message.type ||
+                    found.time_created !== message.time_created ||
+                    found.data !== message.data
+                  )
+                })
+                if (conflicting)
+                  return yield* Effect.die(
+                    new Error(`Conflicting Redcode history in session ${session.id}: ${conflicting.id}`),
+                  )
+                return false
+              }
+              yield* Effect.forEach(history, (message) =>
                 tx
                   .insert(SessionMessageTable)
                   .values({
@@ -819,21 +1120,111 @@ function importNextDatabase(
               )
               yield* tx
                 .insert(EventSequenceTable)
-                .values({ aggregate_id: session.id, seq: messages.at(-1)?.seq ?? -1 })
+                .values({ aggregate_id: session.id, seq: history.at(-1)?.seq ?? -1 })
                 .onConflictDoUpdate({
                   target: EventSequenceTable.aggregate_id,
-                  set: { seq: messages.at(-1)?.seq ?? -1, owner_id: null },
+                  set: { seq: history.at(-1)?.seq ?? -1, owner_id: null },
                 })
                 .run()
+              return true
             }),
           )
           .pipe(Effect.orDie)
-        onProgress(index + 1)
+        onProgress(index + 1, imported)
         yield* Effect.yieldNow
       }
+      if (kind === "redcode") yield* importRedcodeData(db, source)
       source.run("COMMIT")
     }),
   )
+}
+
+function importRedcodeData(db: Database.Interface["db"], source: SQLiteDatabase) {
+  const tables = new Set(
+    source
+      .query<{ name: string }, []>("SELECT name FROM sqlite_master WHERE type = 'table'")
+      .all()
+      .map((row) => row.name),
+  )
+  return Effect.forEach(
+    REDCODE_TABLES,
+    (table) => {
+      if (!tables.has(table.name)) return Effect.void
+      const target = "target" in table ? table.target : table.name
+      const columns = new Set(
+        source
+          .query<{ name: string }, [string]>("SELECT name FROM pragma_table_info(?)")
+          .all(table.name)
+          .map((column) => column.name),
+      )
+      const fallback = REDCODE_FALLBACKS[table.name] ?? {}
+      const missing = table.columns.filter((column) => !columns.has(column) && fallback[column] === undefined)
+      if (missing.length)
+        return Effect.die(new Error(`Incompatible Redcode ${table.name} table: missing ${missing.join(", ")}`))
+      const projection = table.columns.map((column) => {
+        if (table.name === "session_context_epoch" && column === "replacement_seq") {
+          const requested = columns.has(column) ? `"${column}"` : "NULL"
+          const compacted = `(SELECT MAX(seq) FROM "session_message" WHERE session_id = "session_context_epoch"."session_id" AND type = 'compaction' AND seq > "session_context_epoch"."baseline_seq")`
+          // V1 uses the latest replacement or compaction boundary after its baseline. Compare
+          // source sequences before V1 and V2 histories are interleaved and renumbered during import.
+          return `COALESCE(MAX(${requested}, ${compacted}), ${requested}, ${compacted}) AS "replacement_seq"`
+        }
+        if (columns.has(column)) return `"${column}"`
+        return `${fallback[column]} AS "${column}"`
+      })
+      const rows = source.query<SourceRow, []>(`SELECT ${projection.join(", ")} FROM "${table.name}"`).all()
+      return db
+        .transaction((tx) =>
+          Effect.forEach(
+            rows,
+            (row) =>
+              Effect.gen(function* () {
+                const where = sql.join(
+                  table.key.map((column) => sql`${sql.identifier(column)} = ${row[column]}`),
+                  sql` AND `,
+                )
+                const existing = yield* tx.get<SourceRow>(sql`SELECT * FROM ${sql.identifier(target)} WHERE ${where}`)
+                if (existing) {
+                  const changed = table.columns.find((column) => existing[column] !== row[column])
+                  if (changed)
+                    return yield* Effect.die(
+                      new Error(
+                        `Conflicting Redcode ${table.name} row at ${table.key.map((key) => row[key]).join(":")}`,
+                      ),
+                    )
+                  return
+                }
+                yield* tx.run(sql`
+            INSERT INTO ${sql.identifier(target)}
+              (${sql.join(
+                table.columns.map((column) => sql.identifier(column)),
+                sql`, `,
+              )})
+            VALUES (${sql.join(
+              table.columns.map((column) => sql`${row[column]}`),
+              sql`, `,
+            )})
+          `)
+              }),
+            { discard: true },
+          ),
+        )
+        .pipe(Effect.andThen(Effect.logInfo("Imported Redcode data", { table: table.name, rows: rows.length })))
+    },
+    { discard: true },
+  )
+}
+
+function hasLegacyMessages(source: SQLiteDatabase) {
+  const tables = new Set(
+    source
+      .query<{ name: string }, []>(
+        "SELECT name FROM sqlite_master WHERE type = 'table' AND name IN ('message', 'part')",
+      )
+      .all()
+      .map((table) => table.name),
+  )
+  return tables.has("message") && tables.has("part")
 }
 
 function isNextDatabase(source: SQLiteDatabase) {
@@ -953,7 +1344,27 @@ function migrateTool(part: typeof SessionV1.ToolPart.Type, fallback: number) {
     type: "tool" as const,
     id: part.callID,
     name: part.tool,
-    ...(part.metadata ? { providerState: part.metadata } : {}),
+    ...(part.metadata || part.state.status === "completed"
+      ? {
+          providerState: {
+            ...part.metadata,
+            ...(part.state.status === "completed"
+              ? {
+                  __redcodeV1EvidenceHash: createHash("sha256")
+                    .update(
+                      JSON.stringify({
+                        status: part.state.status,
+                        input: part.state.input,
+                        output: part.state.output,
+                        metadata: part.state.metadata,
+                      }),
+                    )
+                    .digest("hex"),
+                }
+              : {}),
+          },
+        }
+      : {}),
   }
   if (part.state.status === "completed")
     return {

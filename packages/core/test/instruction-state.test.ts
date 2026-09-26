@@ -12,6 +12,8 @@ import { Project } from "@opencode/core/project"
 import { ProjectTable } from "@opencode/core/project/sql"
 import { AbsolutePath } from "@opencode/core/schema"
 import { InstructionState } from "@opencode/core/session/instruction-state"
+import { RedcodeLegacyInstructions } from "@opencode/core/session/redcode-legacy-instructions"
+import { RedcodeSessionContextEpochTable } from "@opencode/core/session/redcode-legacy.sql"
 import { SessionProjector } from "@opencode/core/session/projector"
 import { SessionSchema } from "@opencode/core/session/schema"
 import {
@@ -79,6 +81,62 @@ const preview = (db: Database.Interface["db"], sessionID: SessionSchema.ID, inst
   )
 
 describe("InstructionState", () => {
+  it.effect("carries an imported V1 baseline into the first step and then switches to V2 instructions", () =>
+    Effect.gen(function* () {
+      const sessionID = SessionSchema.ID.make("ses_instruction_redcode_legacy")
+      const { db, events } = yield* setup(sessionID)
+      yield* db
+        .insert(RedcodeSessionContextEpochTable)
+        .values({ session_id: sessionID, baseline: "V1 instructions", snapshot: {}, baseline_seq: -1 })
+        .run()
+        .pipe(Effect.orDie)
+
+      const first = yield* RedcodeLegacyInstructions.load(db, sessionID)
+      expect(first?.phase).toBe("baseline")
+      yield* InstructionState.prepare(db, events, first!.instructions, sessionID)
+      expect(yield* InstructionState.initial(db, sessionID, first!.instructions)).toBe("V1 instructions")
+
+      const next = yield* RedcodeLegacyInstructions.load(db, sessionID)
+      expect(next?.phase).toBe("transition")
+      const current = source("test/v2", Effect.succeed("V2 instructions"))
+      yield* InstructionState.prepare(db, events, Instructions.combine([next!.instructions, current]), sessionID)
+      const updates = yield* db
+        .select()
+        .from(SessionMessageTable)
+        .where(and(eq(SessionMessageTable.session_id, sessionID), eq(SessionMessageTable.type, "system")))
+        .all()
+        .pipe(Effect.orDie)
+      expect(updates).toHaveLength(1)
+      expect(updates[0]?.data).toMatchObject({ text: expect.stringContaining("V1 instruction baseline no longer applies") })
+      expect(updates[0]?.data).toMatchObject({ text: expect.stringContaining("V2 instructions") })
+      expect(yield* RedcodeLegacyInstructions.load(db, sessionID)).toBeUndefined()
+
+      expect(yield* RedcodeLegacyInstructions.retire(db, sessionID)).toBe(false)
+      yield* InstructionState.advanceEpoch(db, sessionID, updates[0]!.seq)
+      expect(yield* InstructionState.initial(db, sessionID, current)).toBe("V2 instructions")
+    }),
+  )
+
+  it.effect("starts with V2 instructions when V1 already requested an epoch replacement", () =>
+    Effect.gen(function* () {
+      const sessionID = SessionSchema.ID.make("ses_instruction_redcode_replacement")
+      const { db } = yield* setup(sessionID)
+      yield* db
+        .insert(RedcodeSessionContextEpochTable)
+        .values({
+          session_id: sessionID,
+          baseline: "Superseded V1 instructions",
+          snapshot: {},
+          baseline_seq: 4,
+          replacement_seq: 4,
+        })
+        .run()
+        .pipe(Effect.orDie)
+
+      expect(yield* RedcodeLegacyInstructions.load(db, sessionID)).toBeUndefined()
+    }),
+  )
+
   it.effect("observes each source once without publishing events or inserting blobs", () =>
     Effect.gen(function* () {
       const sessionID = SessionSchema.ID.make("ses_instruction_observe")

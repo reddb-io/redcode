@@ -12,6 +12,7 @@ import type { Model } from "@opencode/schema/model"
 import type { DateTime } from "effect"
 import type { Permission } from "@opencode/schema/permission"
 import type { SessionMessage } from "@opencode/schema/session-message"
+import type { Event } from "@opencode/schema/event"
 import type { SessionInbox } from "@opencode/schema/session-inbox"
 import type { PromptInput } from "@opencode/schema/prompt-input"
 import type { AgentAttachment } from "@opencode/schema/prompt"
@@ -19,7 +20,6 @@ import type { Skill } from "@opencode/schema/skill"
 import type { FileDiff } from "@opencode/schema/file-diff"
 import type { InstructionEntry } from "@opencode/schema/instruction-entry"
 import type { Schema } from "effect"
-import type { Event } from "@opencode/schema/event"
 import type { EventLog } from "@opencode/schema/event-log"
 import type { Shell } from "@opencode/schema/shell"
 import type { Provider } from "@opencode/schema/provider"
@@ -227,9 +227,1780 @@ export type SessionGetInput = { readonly sessionID: Session.ID }
 export type SessionGetOutput = Session.Info
 export type SessionGetOperation<E = never> = (input: SessionGetInput) => Effect.Effect<SessionGetOutput, E>
 
+export type SessionGoalGetInput = { readonly sessionID: Session.ID }
+export type SessionGoalGetOutput = {
+  readonly id: string
+  readonly sessionID: Session.ID
+  readonly revision: number
+  readonly objective: string
+  readonly criteria: ReadonlyArray<string>
+  readonly gates: ReadonlyArray<string>
+  readonly stopAfter: "design" | "plan" | "build"
+  readonly executePlan: boolean
+  readonly status: "active" | "waiting" | "paused" | "blocked" | "done"
+  readonly reason: string
+  readonly turns: { readonly used: number; readonly max: number }
+  readonly tokens: number
+  readonly reviews: number
+  readonly evidence: ReadonlyArray<{ readonly path: string; readonly hash: string; readonly bytes: number }>
+  readonly checks: ReadonlyArray<{
+    readonly command: string
+    readonly exitCode: number
+    readonly output: string
+    readonly at: number
+  }>
+  readonly created: number
+  readonly updated: number
+} | null
+export type SessionGoalGetOperation<E = never> = (input: SessionGoalGetInput) => Effect.Effect<SessionGoalGetOutput, E>
+
+export type SessionGoalStartInput = {
+  readonly sessionID: Session.ID
+  readonly objective: string
+  readonly criteria?: ReadonlyArray<string> | undefined
+  readonly gates?: ReadonlyArray<string> | undefined
+  readonly maxTurns?: number | undefined
+  readonly agent?: Agent.ID | undefined
+  readonly model?: Model.Ref | undefined
+  readonly stopAfter?: "design" | "plan" | "build" | undefined
+  readonly executePlan?: boolean | undefined
+}
+export type SessionGoalStartOutput = {
+  readonly id: string
+  readonly sessionID: Session.ID
+  readonly revision: number
+  readonly objective: string
+  readonly criteria: ReadonlyArray<string>
+  readonly gates: ReadonlyArray<string>
+  readonly stopAfter: "design" | "plan" | "build"
+  readonly executePlan: boolean
+  readonly status: "active" | "waiting" | "paused" | "blocked" | "done"
+  readonly reason: string
+  readonly turns: { readonly used: number; readonly max: number }
+  readonly tokens: number
+  readonly reviews: number
+  readonly evidence: ReadonlyArray<{ readonly path: string; readonly hash: string; readonly bytes: number }>
+  readonly checks: ReadonlyArray<{
+    readonly command: string
+    readonly exitCode: number
+    readonly output: string
+    readonly at: number
+  }>
+  readonly created: number
+  readonly updated: number
+}
+export type SessionGoalStartOperation<E = never> = (
+  input: SessionGoalStartInput,
+) => Effect.Effect<SessionGoalStartOutput, E>
+
+export type SessionGoalControlInput = {
+  readonly sessionID: Session.ID
+  readonly action: "pause" | "resume" | "drop" | "budget"
+  readonly maxTurns?: number | undefined
+}
+export type SessionGoalControlOutput = {
+  readonly id: string
+  readonly sessionID: Session.ID
+  readonly revision: number
+  readonly objective: string
+  readonly criteria: ReadonlyArray<string>
+  readonly gates: ReadonlyArray<string>
+  readonly stopAfter: "design" | "plan" | "build"
+  readonly executePlan: boolean
+  readonly status: "active" | "waiting" | "paused" | "blocked" | "done"
+  readonly reason: string
+  readonly turns: { readonly used: number; readonly max: number }
+  readonly tokens: number
+  readonly reviews: number
+  readonly evidence: ReadonlyArray<{ readonly path: string; readonly hash: string; readonly bytes: number }>
+  readonly checks: ReadonlyArray<{
+    readonly command: string
+    readonly exitCode: number
+    readonly output: string
+    readonly at: number
+  }>
+  readonly created: number
+  readonly updated: number
+} | null
+export type SessionGoalControlOperation<E = never> = (
+  input: SessionGoalControlInput,
+) => Effect.Effect<SessionGoalControlOutput, E>
+
+export type SessionDesignFeedInput = { readonly sessionID: Session.ID; readonly after?: Event.Seq | undefined }
+export type SessionDesignFeedOutput =
+  | { readonly seq: number; readonly at: number; readonly type: "state"; readonly state: "working" | "idle" }
+  | {
+      readonly seq: number
+      readonly at: number
+      readonly type: "user"
+      readonly id: string
+      readonly text: string
+      readonly notes: number
+      readonly pending?: boolean | undefined
+    }
+  | { readonly seq: number; readonly at: number; readonly type: "reply"; readonly id: string; readonly text: string }
+  | {
+      readonly seq: number
+      readonly at: number
+      readonly type: "tool"
+      readonly id: string
+      readonly tool: string
+      readonly status: "running" | "done" | "failed"
+      readonly summary: string
+    }
+  | {
+      readonly seq: number
+      readonly at: number
+      readonly type: "published"
+      readonly design: string & Brand.Brand<"Design.ID">
+      readonly revision: string
+      readonly name: string
+    }
+  | { readonly seq: number; readonly at: number; readonly type: "agent"; readonly agent: string }
+  | {
+      readonly seq: number
+      readonly at: number
+      readonly type: "verified"
+      readonly design: string & Brand.Brand<"Design.ID">
+      readonly revision: string
+      readonly round: number
+      readonly job: string
+      readonly notes: ReadonlyArray<{
+        readonly feedback: string
+        readonly index: number
+        readonly label: string
+        readonly verdict: "pass" | "warn" | "fail"
+        readonly reason: string
+      }>
+    }
+export type SessionDesignFeedOperation<E = never> = (
+  input: SessionDesignFeedInput,
+) => Stream.Stream<SessionDesignFeedOutput, E>
+
+export type SessionDesignListInput = { readonly sessionID: Session.ID }
+export type SessionDesignListOutput = ReadonlyArray<{
+  readonly controls?:
+    | ReadonlyArray<{
+        readonly id: string
+        readonly name: string
+        readonly selector: string
+        readonly variant?: string | undefined
+        readonly fields: ReadonlyArray<
+          | { readonly id: string; readonly name: string; readonly type: "text"; readonly default: string }
+          | { readonly id: string; readonly name: string; readonly type: "boolean"; readonly default: boolean }
+          | {
+              readonly id: string
+              readonly name: string
+              readonly type: "number"
+              readonly default: number
+              readonly min?: number | undefined
+              readonly max?: number | undefined
+            }
+          | {
+              readonly id: string
+              readonly name: string
+              readonly type: "select"
+              readonly default: string
+              readonly options: ReadonlyArray<string>
+            }
+        >
+      }>
+    | undefined
+  readonly presets?:
+    | ReadonlyArray<{
+        readonly id: string
+        readonly name: string
+        readonly variant?: string | undefined
+        readonly values: { readonly [x: string]: { readonly [x: string]: string | number | boolean } }
+      }>
+    | undefined
+  readonly id: string & Brand.Brand<"Design.ID">
+  readonly sessionID: Session.ID
+  readonly name: string
+  readonly journey: "new" | "existing"
+  readonly engine: "html" | "react" | "solid"
+  readonly kind: "screen" | "flow" | "comparison" | "deck"
+  readonly target?: "web" | "app" | "presentation" | undefined
+  readonly platform?: "ios" | "android" | undefined
+  readonly root: string
+  readonly application: string
+  readonly entry: string
+  readonly brief: {
+    readonly objective: string
+    readonly audience: string
+    readonly content: string
+    readonly constraints: string
+    readonly references: ReadonlyArray<string>
+  }
+  readonly decisions: ReadonlyArray<{
+    readonly id: string
+    readonly text: string
+    readonly revision?: string | undefined
+    readonly feedback?: string | undefined
+  }>
+  readonly questions: ReadonlyArray<string>
+  readonly scenarios: ReadonlyArray<{
+    readonly params?: { readonly [x: string]: { readonly [x: string]: string | number | boolean } } | undefined
+    readonly id: string
+    readonly name: string
+    readonly variant?: string | undefined
+    readonly screen?: string | undefined
+    readonly selector: string
+    readonly state: "loading" | "empty" | "error" | "populated" | "edge"
+    readonly actions: ReadonlyArray<{
+      readonly selector: string
+      readonly action: "click" | "fill" | "press"
+      readonly value?: string | undefined
+    }>
+    readonly notApplicable?: string | undefined
+  }>
+  readonly targets?: ReadonlyArray<{ readonly path: string; readonly role: string }> | undefined
+  readonly designSystem: string
+  readonly system?:
+    | {
+        readonly paths: ReadonlyArray<string>
+        readonly css: ReadonlyArray<string>
+        readonly tailwind: boolean
+        readonly framework?: "react" | "solid" | undefined
+        readonly aliases?: { readonly [x: string]: string } | undefined
+      }
+    | undefined
+  readonly sources: ReadonlyArray<{
+    readonly file: string
+    readonly hash: string
+    readonly observed: number
+    readonly authoritative: boolean
+    readonly excerpt: string
+  }>
+  readonly inventory?:
+    | ReadonlyArray<{
+        readonly root: string
+        readonly file: string
+        readonly name: string
+        readonly props?: string | undefined
+      }>
+    | undefined
+  readonly manifest?: string | undefined
+  readonly tweaks: { readonly [x: string]: string }
+  readonly revision: string | null
+  readonly approvedRevision: string | null
+  readonly ended: boolean
+  readonly updated: number
+  readonly rounds?:
+    | ReadonlyArray<{
+        readonly number: number
+        readonly opened: number
+        readonly revision: string
+        readonly feedback: ReadonlyArray<string>
+        readonly published?: string | undefined
+      }>
+    | undefined
+  readonly notes?:
+    | ReadonlyArray<{
+        readonly feedback: string
+        readonly index: number
+        readonly round: number
+        readonly item: {
+          readonly target: string
+          readonly text: string
+          readonly params?:
+            | {
+                readonly values: { readonly [x: string]: { readonly [x: string]: string | number | boolean } }
+                readonly preset?: string | undefined
+                readonly variant?: string | undefined
+                readonly component?: string | undefined
+                readonly screen?: string | undefined
+              }
+            | undefined
+          readonly tag?: string | undefined
+          readonly elementText?: string | undefined
+          readonly selectedText?: string | undefined
+          readonly label?: string | undefined
+          readonly xpath?: string | undefined
+          readonly context?: string | undefined
+          readonly parent?: string | undefined
+          readonly revision?: string | undefined
+          readonly resent?: { readonly feedback: string; readonly index: number } | undefined
+        }
+        readonly status: "open" | "resolved" | "partial" | "unresolved" | "accepted"
+        readonly reason?: string | undefined
+        readonly evidence?:
+          | {
+              readonly job: string
+              readonly revision?: string | undefined
+              readonly capture?: string | undefined
+              readonly findings?: ReadonlyArray<string> | undefined
+            }
+          | undefined
+        readonly by?: "agent" | "reviewer" | undefined
+        readonly updated: number
+      }>
+    | undefined
+}>
+export type SessionDesignListOperation<E = never> = (
+  input: SessionDesignListInput,
+) => Effect.Effect<SessionDesignListOutput, E>
+
+export type SessionDesignCreateInput = {
+  readonly sessionID: Session.ID
+  readonly name: string
+  readonly journey: "new" | "existing"
+  readonly engine: "html" | "react" | "solid"
+  readonly kind: "screen" | "flow" | "comparison" | "deck"
+  readonly application?: string | undefined
+  readonly target?: "web" | "app" | "presentation" | undefined
+  readonly platform?: "ios" | "android" | undefined
+}
+export type SessionDesignCreateOutput = {
+  readonly controls?:
+    | ReadonlyArray<{
+        readonly id: string
+        readonly name: string
+        readonly selector: string
+        readonly variant?: string | undefined
+        readonly fields: ReadonlyArray<
+          | { readonly id: string; readonly name: string; readonly type: "text"; readonly default: string }
+          | { readonly id: string; readonly name: string; readonly type: "boolean"; readonly default: boolean }
+          | {
+              readonly id: string
+              readonly name: string
+              readonly type: "number"
+              readonly default: number
+              readonly min?: number | undefined
+              readonly max?: number | undefined
+            }
+          | {
+              readonly id: string
+              readonly name: string
+              readonly type: "select"
+              readonly default: string
+              readonly options: ReadonlyArray<string>
+            }
+        >
+      }>
+    | undefined
+  readonly presets?:
+    | ReadonlyArray<{
+        readonly id: string
+        readonly name: string
+        readonly variant?: string | undefined
+        readonly values: { readonly [x: string]: { readonly [x: string]: string | number | boolean } }
+      }>
+    | undefined
+  readonly id: string & Brand.Brand<"Design.ID">
+  readonly sessionID: Session.ID
+  readonly name: string
+  readonly journey: "new" | "existing"
+  readonly engine: "html" | "react" | "solid"
+  readonly kind: "screen" | "flow" | "comparison" | "deck"
+  readonly target?: "web" | "app" | "presentation" | undefined
+  readonly platform?: "ios" | "android" | undefined
+  readonly root: string
+  readonly application: string
+  readonly entry: string
+  readonly brief: {
+    readonly objective: string
+    readonly audience: string
+    readonly content: string
+    readonly constraints: string
+    readonly references: ReadonlyArray<string>
+  }
+  readonly decisions: ReadonlyArray<{
+    readonly id: string
+    readonly text: string
+    readonly revision?: string | undefined
+    readonly feedback?: string | undefined
+  }>
+  readonly questions: ReadonlyArray<string>
+  readonly scenarios: ReadonlyArray<{
+    readonly params?: { readonly [x: string]: { readonly [x: string]: string | number | boolean } } | undefined
+    readonly id: string
+    readonly name: string
+    readonly variant?: string | undefined
+    readonly screen?: string | undefined
+    readonly selector: string
+    readonly state: "loading" | "empty" | "error" | "populated" | "edge"
+    readonly actions: ReadonlyArray<{
+      readonly selector: string
+      readonly action: "click" | "fill" | "press"
+      readonly value?: string | undefined
+    }>
+    readonly notApplicable?: string | undefined
+  }>
+  readonly targets?: ReadonlyArray<{ readonly path: string; readonly role: string }> | undefined
+  readonly designSystem: string
+  readonly system?:
+    | {
+        readonly paths: ReadonlyArray<string>
+        readonly css: ReadonlyArray<string>
+        readonly tailwind: boolean
+        readonly framework?: "react" | "solid" | undefined
+        readonly aliases?: { readonly [x: string]: string } | undefined
+      }
+    | undefined
+  readonly sources: ReadonlyArray<{
+    readonly file: string
+    readonly hash: string
+    readonly observed: number
+    readonly authoritative: boolean
+    readonly excerpt: string
+  }>
+  readonly inventory?:
+    | ReadonlyArray<{
+        readonly root: string
+        readonly file: string
+        readonly name: string
+        readonly props?: string | undefined
+      }>
+    | undefined
+  readonly manifest?: string | undefined
+  readonly tweaks: { readonly [x: string]: string }
+  readonly revision: string | null
+  readonly approvedRevision: string | null
+  readonly ended: boolean
+  readonly updated: number
+  readonly rounds?:
+    | ReadonlyArray<{
+        readonly number: number
+        readonly opened: number
+        readonly revision: string
+        readonly feedback: ReadonlyArray<string>
+        readonly published?: string | undefined
+      }>
+    | undefined
+  readonly notes?:
+    | ReadonlyArray<{
+        readonly feedback: string
+        readonly index: number
+        readonly round: number
+        readonly item: {
+          readonly target: string
+          readonly text: string
+          readonly params?:
+            | {
+                readonly values: { readonly [x: string]: { readonly [x: string]: string | number | boolean } }
+                readonly preset?: string | undefined
+                readonly variant?: string | undefined
+                readonly component?: string | undefined
+                readonly screen?: string | undefined
+              }
+            | undefined
+          readonly tag?: string | undefined
+          readonly elementText?: string | undefined
+          readonly selectedText?: string | undefined
+          readonly label?: string | undefined
+          readonly xpath?: string | undefined
+          readonly context?: string | undefined
+          readonly parent?: string | undefined
+          readonly revision?: string | undefined
+          readonly resent?: { readonly feedback: string; readonly index: number } | undefined
+        }
+        readonly status: "open" | "resolved" | "partial" | "unresolved" | "accepted"
+        readonly reason?: string | undefined
+        readonly evidence?:
+          | {
+              readonly job: string
+              readonly revision?: string | undefined
+              readonly capture?: string | undefined
+              readonly findings?: ReadonlyArray<string> | undefined
+            }
+          | undefined
+        readonly by?: "agent" | "reviewer" | undefined
+        readonly updated: number
+      }>
+    | undefined
+}
+export type SessionDesignCreateOperation<E = never> = (
+  input: SessionDesignCreateInput,
+) => Effect.Effect<SessionDesignCreateOutput, E>
+
+export type SessionDesignGetInput = {
+  readonly sessionID: Session.ID
+  readonly designID: string & Brand.Brand<"Design.ID">
+}
+export type SessionDesignGetOutput = {
+  readonly controls?:
+    | ReadonlyArray<{
+        readonly id: string
+        readonly name: string
+        readonly selector: string
+        readonly variant?: string | undefined
+        readonly fields: ReadonlyArray<
+          | { readonly id: string; readonly name: string; readonly type: "text"; readonly default: string }
+          | { readonly id: string; readonly name: string; readonly type: "boolean"; readonly default: boolean }
+          | {
+              readonly id: string
+              readonly name: string
+              readonly type: "number"
+              readonly default: number
+              readonly min?: number | undefined
+              readonly max?: number | undefined
+            }
+          | {
+              readonly id: string
+              readonly name: string
+              readonly type: "select"
+              readonly default: string
+              readonly options: ReadonlyArray<string>
+            }
+        >
+      }>
+    | undefined
+  readonly presets?:
+    | ReadonlyArray<{
+        readonly id: string
+        readonly name: string
+        readonly variant?: string | undefined
+        readonly values: { readonly [x: string]: { readonly [x: string]: string | number | boolean } }
+      }>
+    | undefined
+  readonly id: string & Brand.Brand<"Design.ID">
+  readonly sessionID: Session.ID
+  readonly name: string
+  readonly journey: "new" | "existing"
+  readonly engine: "html" | "react" | "solid"
+  readonly kind: "screen" | "flow" | "comparison" | "deck"
+  readonly target?: "web" | "app" | "presentation" | undefined
+  readonly platform?: "ios" | "android" | undefined
+  readonly root: string
+  readonly application: string
+  readonly entry: string
+  readonly brief: {
+    readonly objective: string
+    readonly audience: string
+    readonly content: string
+    readonly constraints: string
+    readonly references: ReadonlyArray<string>
+  }
+  readonly decisions: ReadonlyArray<{
+    readonly id: string
+    readonly text: string
+    readonly revision?: string | undefined
+    readonly feedback?: string | undefined
+  }>
+  readonly questions: ReadonlyArray<string>
+  readonly scenarios: ReadonlyArray<{
+    readonly params?: { readonly [x: string]: { readonly [x: string]: string | number | boolean } } | undefined
+    readonly id: string
+    readonly name: string
+    readonly variant?: string | undefined
+    readonly screen?: string | undefined
+    readonly selector: string
+    readonly state: "loading" | "empty" | "error" | "populated" | "edge"
+    readonly actions: ReadonlyArray<{
+      readonly selector: string
+      readonly action: "click" | "fill" | "press"
+      readonly value?: string | undefined
+    }>
+    readonly notApplicable?: string | undefined
+  }>
+  readonly targets?: ReadonlyArray<{ readonly path: string; readonly role: string }> | undefined
+  readonly designSystem: string
+  readonly system?:
+    | {
+        readonly paths: ReadonlyArray<string>
+        readonly css: ReadonlyArray<string>
+        readonly tailwind: boolean
+        readonly framework?: "react" | "solid" | undefined
+        readonly aliases?: { readonly [x: string]: string } | undefined
+      }
+    | undefined
+  readonly sources: ReadonlyArray<{
+    readonly file: string
+    readonly hash: string
+    readonly observed: number
+    readonly authoritative: boolean
+    readonly excerpt: string
+  }>
+  readonly inventory?:
+    | ReadonlyArray<{
+        readonly root: string
+        readonly file: string
+        readonly name: string
+        readonly props?: string | undefined
+      }>
+    | undefined
+  readonly manifest?: string | undefined
+  readonly tweaks: { readonly [x: string]: string }
+  readonly revision: string | null
+  readonly approvedRevision: string | null
+  readonly ended: boolean
+  readonly updated: number
+  readonly rounds?:
+    | ReadonlyArray<{
+        readonly number: number
+        readonly opened: number
+        readonly revision: string
+        readonly feedback: ReadonlyArray<string>
+        readonly published?: string | undefined
+      }>
+    | undefined
+  readonly notes?:
+    | ReadonlyArray<{
+        readonly feedback: string
+        readonly index: number
+        readonly round: number
+        readonly item: {
+          readonly target: string
+          readonly text: string
+          readonly params?:
+            | {
+                readonly values: { readonly [x: string]: { readonly [x: string]: string | number | boolean } }
+                readonly preset?: string | undefined
+                readonly variant?: string | undefined
+                readonly component?: string | undefined
+                readonly screen?: string | undefined
+              }
+            | undefined
+          readonly tag?: string | undefined
+          readonly elementText?: string | undefined
+          readonly selectedText?: string | undefined
+          readonly label?: string | undefined
+          readonly xpath?: string | undefined
+          readonly context?: string | undefined
+          readonly parent?: string | undefined
+          readonly revision?: string | undefined
+          readonly resent?: { readonly feedback: string; readonly index: number } | undefined
+        }
+        readonly status: "open" | "resolved" | "partial" | "unresolved" | "accepted"
+        readonly reason?: string | undefined
+        readonly evidence?:
+          | {
+              readonly job: string
+              readonly revision?: string | undefined
+              readonly capture?: string | undefined
+              readonly findings?: ReadonlyArray<string> | undefined
+            }
+          | undefined
+        readonly by?: "agent" | "reviewer" | undefined
+        readonly updated: number
+      }>
+    | undefined
+}
+export type SessionDesignGetOperation<E = never> = (
+  input: SessionDesignGetInput,
+) => Effect.Effect<SessionDesignGetOutput, E>
+
+export type SessionDesignJobsInput = {
+  readonly sessionID: Session.ID
+  readonly designID: string & Brand.Brand<"Design.ID">
+}
+export type SessionDesignJobsOutput = ReadonlyArray<{
+  readonly id: string
+  readonly designID: string & Brand.Brand<"Design.ID">
+  readonly input: {
+    readonly revision: string
+    readonly format: "html" | "gif" | "audit" | "compare" | "verify" | "pdf"
+    readonly round?: number | undefined
+    readonly implementation?: string | undefined
+    readonly candidate?: string | undefined
+    readonly asset?: string | undefined
+    readonly duration?: number | undefined
+    readonly fps?: number | undefined
+    readonly size?: number | undefined
+    readonly repeat?: number | undefined
+    readonly background?: string | undefined
+    readonly transparent?: boolean | undefined
+  }
+  readonly status: "queued" | "running" | "completed" | "failed" | "cancelled" | "interrupted"
+  readonly progress: number
+  readonly result: string | null
+  readonly error: string | null
+  readonly created: number
+  readonly started?: number | undefined
+  readonly finished?: number | undefined
+  readonly audit?:
+    | {
+        readonly revision: string
+        readonly findings: ReadonlyArray<string>
+        readonly scenarios: ReadonlyArray<string>
+        readonly widths: ReadonlyArray<number>
+        readonly checks?:
+          | ReadonlyArray<{
+              readonly rule: string
+              readonly severity: "error" | "review"
+              readonly selector: string
+              readonly evidence: string
+              readonly fix: string
+              readonly width: number
+              readonly variant?: string | undefined
+              readonly scenario?: string | undefined
+              readonly screen?: string | undefined
+            }>
+          | undefined
+        readonly captures?:
+          | ReadonlyArray<{
+              readonly file: string
+              readonly width: number
+              readonly variant?: string | undefined
+              readonly scenario?: string | undefined
+              readonly screen?: string | undefined
+              readonly fullPage: boolean
+            }>
+          | undefined
+      }
+    | undefined
+  readonly verify?:
+    | {
+        readonly revision: string
+        readonly round: number
+        readonly width: number
+        readonly notes: ReadonlyArray<{
+          readonly feedback: string
+          readonly index: number
+          readonly label: string
+          readonly found: boolean
+          readonly blocking: boolean
+          readonly before?: string | undefined
+          readonly after?: string | undefined
+          readonly findings: ReadonlyArray<string>
+          readonly scenarios: ReadonlyArray<string>
+          readonly reason: string
+        }>
+        readonly findings: ReadonlyArray<string>
+      }
+    | undefined
+}>
+export type SessionDesignJobsOperation<E = never> = (
+  input: SessionDesignJobsInput,
+) => Effect.Effect<SessionDesignJobsOutput, E>
+
+export type SessionDesignUpdateInput = {
+  readonly sessionID: Session.ID
+  readonly designID: string & Brand.Brand<"Design.ID">
+  readonly notes?:
+    | ReadonlyArray<{
+        readonly feedback: string
+        readonly index: number
+        readonly status: "resolved" | "partial" | "unresolved" | "accepted"
+        readonly reason?: string | undefined
+        readonly evidence?: { readonly job: string } | undefined
+      }>
+    | undefined
+  readonly by?: "reviewer" | undefined
+  readonly controls?:
+    | ReadonlyArray<{
+        readonly id: string
+        readonly name: string
+        readonly selector: string
+        readonly variant?: string | undefined
+        readonly fields: ReadonlyArray<
+          | { readonly id: string; readonly name: string; readonly type: "text"; readonly default: string }
+          | { readonly id: string; readonly name: string; readonly type: "boolean"; readonly default: boolean }
+          | {
+              readonly id: string
+              readonly name: string
+              readonly type: "number"
+              readonly default: number
+              readonly min?: number | undefined
+              readonly max?: number | undefined
+            }
+          | {
+              readonly id: string
+              readonly name: string
+              readonly type: "select"
+              readonly default: string
+              readonly options: ReadonlyArray<string>
+            }
+        >
+      }>
+    | undefined
+  readonly presets?:
+    | ReadonlyArray<{
+        readonly id: string
+        readonly name: string
+        readonly variant?: string | undefined
+        readonly values: { readonly [x: string]: { readonly [x: string]: string | number | boolean } }
+      }>
+    | undefined
+  readonly name?: string | undefined
+  readonly target?: "web" | "app" | "presentation" | undefined
+  readonly platform?: "ios" | "android" | undefined
+  readonly brief?:
+    | {
+        readonly objective: string
+        readonly audience: string
+        readonly content: string
+        readonly constraints: string
+        readonly references: ReadonlyArray<string>
+      }
+    | undefined
+  readonly decisions?:
+    | ReadonlyArray<{
+        readonly id: string
+        readonly text: string
+        readonly revision?: string | undefined
+        readonly feedback?: string | undefined
+      }>
+    | undefined
+  readonly questions?: ReadonlyArray<string> | undefined
+  readonly scenarios?:
+    | ReadonlyArray<{
+        readonly params?: { readonly [x: string]: { readonly [x: string]: string | number | boolean } } | undefined
+        readonly id: string
+        readonly name: string
+        readonly variant?: string | undefined
+        readonly screen?: string | undefined
+        readonly selector: string
+        readonly state: "loading" | "empty" | "error" | "populated" | "edge"
+        readonly actions: ReadonlyArray<{
+          readonly selector: string
+          readonly action: "click" | "fill" | "press"
+          readonly value?: string | undefined
+        }>
+        readonly notApplicable?: string | undefined
+      }>
+    | undefined
+  readonly targets?: ReadonlyArray<{ readonly path: string; readonly role: string }> | undefined
+  readonly designSystem?: string | undefined
+  readonly entry?: string | undefined
+  readonly tweaks?: { readonly [x: string]: string } | undefined
+}
+export type SessionDesignUpdateOutput = {
+  readonly controls?:
+    | ReadonlyArray<{
+        readonly id: string
+        readonly name: string
+        readonly selector: string
+        readonly variant?: string | undefined
+        readonly fields: ReadonlyArray<
+          | { readonly id: string; readonly name: string; readonly type: "text"; readonly default: string }
+          | { readonly id: string; readonly name: string; readonly type: "boolean"; readonly default: boolean }
+          | {
+              readonly id: string
+              readonly name: string
+              readonly type: "number"
+              readonly default: number
+              readonly min?: number | undefined
+              readonly max?: number | undefined
+            }
+          | {
+              readonly id: string
+              readonly name: string
+              readonly type: "select"
+              readonly default: string
+              readonly options: ReadonlyArray<string>
+            }
+        >
+      }>
+    | undefined
+  readonly presets?:
+    | ReadonlyArray<{
+        readonly id: string
+        readonly name: string
+        readonly variant?: string | undefined
+        readonly values: { readonly [x: string]: { readonly [x: string]: string | number | boolean } }
+      }>
+    | undefined
+  readonly id: string & Brand.Brand<"Design.ID">
+  readonly sessionID: Session.ID
+  readonly name: string
+  readonly journey: "new" | "existing"
+  readonly engine: "html" | "react" | "solid"
+  readonly kind: "screen" | "flow" | "comparison" | "deck"
+  readonly target?: "web" | "app" | "presentation" | undefined
+  readonly platform?: "ios" | "android" | undefined
+  readonly root: string
+  readonly application: string
+  readonly entry: string
+  readonly brief: {
+    readonly objective: string
+    readonly audience: string
+    readonly content: string
+    readonly constraints: string
+    readonly references: ReadonlyArray<string>
+  }
+  readonly decisions: ReadonlyArray<{
+    readonly id: string
+    readonly text: string
+    readonly revision?: string | undefined
+    readonly feedback?: string | undefined
+  }>
+  readonly questions: ReadonlyArray<string>
+  readonly scenarios: ReadonlyArray<{
+    readonly params?: { readonly [x: string]: { readonly [x: string]: string | number | boolean } } | undefined
+    readonly id: string
+    readonly name: string
+    readonly variant?: string | undefined
+    readonly screen?: string | undefined
+    readonly selector: string
+    readonly state: "loading" | "empty" | "error" | "populated" | "edge"
+    readonly actions: ReadonlyArray<{
+      readonly selector: string
+      readonly action: "click" | "fill" | "press"
+      readonly value?: string | undefined
+    }>
+    readonly notApplicable?: string | undefined
+  }>
+  readonly targets?: ReadonlyArray<{ readonly path: string; readonly role: string }> | undefined
+  readonly designSystem: string
+  readonly system?:
+    | {
+        readonly paths: ReadonlyArray<string>
+        readonly css: ReadonlyArray<string>
+        readonly tailwind: boolean
+        readonly framework?: "react" | "solid" | undefined
+        readonly aliases?: { readonly [x: string]: string } | undefined
+      }
+    | undefined
+  readonly sources: ReadonlyArray<{
+    readonly file: string
+    readonly hash: string
+    readonly observed: number
+    readonly authoritative: boolean
+    readonly excerpt: string
+  }>
+  readonly inventory?:
+    | ReadonlyArray<{
+        readonly root: string
+        readonly file: string
+        readonly name: string
+        readonly props?: string | undefined
+      }>
+    | undefined
+  readonly manifest?: string | undefined
+  readonly tweaks: { readonly [x: string]: string }
+  readonly revision: string | null
+  readonly approvedRevision: string | null
+  readonly ended: boolean
+  readonly updated: number
+  readonly rounds?:
+    | ReadonlyArray<{
+        readonly number: number
+        readonly opened: number
+        readonly revision: string
+        readonly feedback: ReadonlyArray<string>
+        readonly published?: string | undefined
+      }>
+    | undefined
+  readonly notes?:
+    | ReadonlyArray<{
+        readonly feedback: string
+        readonly index: number
+        readonly round: number
+        readonly item: {
+          readonly target: string
+          readonly text: string
+          readonly params?:
+            | {
+                readonly values: { readonly [x: string]: { readonly [x: string]: string | number | boolean } }
+                readonly preset?: string | undefined
+                readonly variant?: string | undefined
+                readonly component?: string | undefined
+                readonly screen?: string | undefined
+              }
+            | undefined
+          readonly tag?: string | undefined
+          readonly elementText?: string | undefined
+          readonly selectedText?: string | undefined
+          readonly label?: string | undefined
+          readonly xpath?: string | undefined
+          readonly context?: string | undefined
+          readonly parent?: string | undefined
+          readonly revision?: string | undefined
+          readonly resent?: { readonly feedback: string; readonly index: number } | undefined
+        }
+        readonly status: "open" | "resolved" | "partial" | "unresolved" | "accepted"
+        readonly reason?: string | undefined
+        readonly evidence?:
+          | {
+              readonly job: string
+              readonly revision?: string | undefined
+              readonly capture?: string | undefined
+              readonly findings?: ReadonlyArray<string> | undefined
+            }
+          | undefined
+        readonly by?: "agent" | "reviewer" | undefined
+        readonly updated: number
+      }>
+    | undefined
+}
+export type SessionDesignUpdateOperation<E = never> = (
+  input: SessionDesignUpdateInput,
+) => Effect.Effect<SessionDesignUpdateOutput, E>
+
+export type SessionDesignRefreshInput = {
+  readonly sessionID: Session.ID
+  readonly designID: string & Brand.Brand<"Design.ID">
+}
+export type SessionDesignRefreshOutput = {
+  readonly controls?:
+    | ReadonlyArray<{
+        readonly id: string
+        readonly name: string
+        readonly selector: string
+        readonly variant?: string | undefined
+        readonly fields: ReadonlyArray<
+          | { readonly id: string; readonly name: string; readonly type: "text"; readonly default: string }
+          | { readonly id: string; readonly name: string; readonly type: "boolean"; readonly default: boolean }
+          | {
+              readonly id: string
+              readonly name: string
+              readonly type: "number"
+              readonly default: number
+              readonly min?: number | undefined
+              readonly max?: number | undefined
+            }
+          | {
+              readonly id: string
+              readonly name: string
+              readonly type: "select"
+              readonly default: string
+              readonly options: ReadonlyArray<string>
+            }
+        >
+      }>
+    | undefined
+  readonly presets?:
+    | ReadonlyArray<{
+        readonly id: string
+        readonly name: string
+        readonly variant?: string | undefined
+        readonly values: { readonly [x: string]: { readonly [x: string]: string | number | boolean } }
+      }>
+    | undefined
+  readonly id: string & Brand.Brand<"Design.ID">
+  readonly sessionID: Session.ID
+  readonly name: string
+  readonly journey: "new" | "existing"
+  readonly engine: "html" | "react" | "solid"
+  readonly kind: "screen" | "flow" | "comparison" | "deck"
+  readonly target?: "web" | "app" | "presentation" | undefined
+  readonly platform?: "ios" | "android" | undefined
+  readonly root: string
+  readonly application: string
+  readonly entry: string
+  readonly brief: {
+    readonly objective: string
+    readonly audience: string
+    readonly content: string
+    readonly constraints: string
+    readonly references: ReadonlyArray<string>
+  }
+  readonly decisions: ReadonlyArray<{
+    readonly id: string
+    readonly text: string
+    readonly revision?: string | undefined
+    readonly feedback?: string | undefined
+  }>
+  readonly questions: ReadonlyArray<string>
+  readonly scenarios: ReadonlyArray<{
+    readonly params?: { readonly [x: string]: { readonly [x: string]: string | number | boolean } } | undefined
+    readonly id: string
+    readonly name: string
+    readonly variant?: string | undefined
+    readonly screen?: string | undefined
+    readonly selector: string
+    readonly state: "loading" | "empty" | "error" | "populated" | "edge"
+    readonly actions: ReadonlyArray<{
+      readonly selector: string
+      readonly action: "click" | "fill" | "press"
+      readonly value?: string | undefined
+    }>
+    readonly notApplicable?: string | undefined
+  }>
+  readonly targets?: ReadonlyArray<{ readonly path: string; readonly role: string }> | undefined
+  readonly designSystem: string
+  readonly system?:
+    | {
+        readonly paths: ReadonlyArray<string>
+        readonly css: ReadonlyArray<string>
+        readonly tailwind: boolean
+        readonly framework?: "react" | "solid" | undefined
+        readonly aliases?: { readonly [x: string]: string } | undefined
+      }
+    | undefined
+  readonly sources: ReadonlyArray<{
+    readonly file: string
+    readonly hash: string
+    readonly observed: number
+    readonly authoritative: boolean
+    readonly excerpt: string
+  }>
+  readonly inventory?:
+    | ReadonlyArray<{
+        readonly root: string
+        readonly file: string
+        readonly name: string
+        readonly props?: string | undefined
+      }>
+    | undefined
+  readonly manifest?: string | undefined
+  readonly tweaks: { readonly [x: string]: string }
+  readonly revision: string | null
+  readonly approvedRevision: string | null
+  readonly ended: boolean
+  readonly updated: number
+  readonly rounds?:
+    | ReadonlyArray<{
+        readonly number: number
+        readonly opened: number
+        readonly revision: string
+        readonly feedback: ReadonlyArray<string>
+        readonly published?: string | undefined
+      }>
+    | undefined
+  readonly notes?:
+    | ReadonlyArray<{
+        readonly feedback: string
+        readonly index: number
+        readonly round: number
+        readonly item: {
+          readonly target: string
+          readonly text: string
+          readonly params?:
+            | {
+                readonly values: { readonly [x: string]: { readonly [x: string]: string | number | boolean } }
+                readonly preset?: string | undefined
+                readonly variant?: string | undefined
+                readonly component?: string | undefined
+                readonly screen?: string | undefined
+              }
+            | undefined
+          readonly tag?: string | undefined
+          readonly elementText?: string | undefined
+          readonly selectedText?: string | undefined
+          readonly label?: string | undefined
+          readonly xpath?: string | undefined
+          readonly context?: string | undefined
+          readonly parent?: string | undefined
+          readonly revision?: string | undefined
+          readonly resent?: { readonly feedback: string; readonly index: number } | undefined
+        }
+        readonly status: "open" | "resolved" | "partial" | "unresolved" | "accepted"
+        readonly reason?: string | undefined
+        readonly evidence?:
+          | {
+              readonly job: string
+              readonly revision?: string | undefined
+              readonly capture?: string | undefined
+              readonly findings?: ReadonlyArray<string> | undefined
+            }
+          | undefined
+        readonly by?: "agent" | "reviewer" | undefined
+        readonly updated: number
+      }>
+    | undefined
+}
+export type SessionDesignRefreshOperation<E = never> = (
+  input: SessionDesignRefreshInput,
+) => Effect.Effect<SessionDesignRefreshOutput, E>
+
+export type SessionDesignApproveInput = {
+  readonly sessionID: Session.ID
+  readonly designID: string & Brand.Brand<"Design.ID">
+  readonly revision: string
+  readonly variant?: { readonly id: string; readonly name: string } | undefined
+}
+export type SessionDesignApproveOutput = {
+  readonly plan: string
+  readonly revision: string
+  readonly agent: "design" | "plan"
+  readonly resume: boolean
+}
+export type SessionDesignApproveOperation<E = never> = (
+  input: SessionDesignApproveInput,
+) => Effect.Effect<SessionDesignApproveOutput, E>
+
+export type SessionDesignReopenInput = {
+  readonly sessionID: Session.ID
+  readonly designID: string & Brand.Brand<"Design.ID">
+}
+export type SessionDesignReopenOutput = {
+  readonly controls?:
+    | ReadonlyArray<{
+        readonly id: string
+        readonly name: string
+        readonly selector: string
+        readonly variant?: string | undefined
+        readonly fields: ReadonlyArray<
+          | { readonly id: string; readonly name: string; readonly type: "text"; readonly default: string }
+          | { readonly id: string; readonly name: string; readonly type: "boolean"; readonly default: boolean }
+          | {
+              readonly id: string
+              readonly name: string
+              readonly type: "number"
+              readonly default: number
+              readonly min?: number | undefined
+              readonly max?: number | undefined
+            }
+          | {
+              readonly id: string
+              readonly name: string
+              readonly type: "select"
+              readonly default: string
+              readonly options: ReadonlyArray<string>
+            }
+        >
+      }>
+    | undefined
+  readonly presets?:
+    | ReadonlyArray<{
+        readonly id: string
+        readonly name: string
+        readonly variant?: string | undefined
+        readonly values: { readonly [x: string]: { readonly [x: string]: string | number | boolean } }
+      }>
+    | undefined
+  readonly id: string & Brand.Brand<"Design.ID">
+  readonly sessionID: Session.ID
+  readonly name: string
+  readonly journey: "new" | "existing"
+  readonly engine: "html" | "react" | "solid"
+  readonly kind: "screen" | "flow" | "comparison" | "deck"
+  readonly target?: "web" | "app" | "presentation" | undefined
+  readonly platform?: "ios" | "android" | undefined
+  readonly root: string
+  readonly application: string
+  readonly entry: string
+  readonly brief: {
+    readonly objective: string
+    readonly audience: string
+    readonly content: string
+    readonly constraints: string
+    readonly references: ReadonlyArray<string>
+  }
+  readonly decisions: ReadonlyArray<{
+    readonly id: string
+    readonly text: string
+    readonly revision?: string | undefined
+    readonly feedback?: string | undefined
+  }>
+  readonly questions: ReadonlyArray<string>
+  readonly scenarios: ReadonlyArray<{
+    readonly params?: { readonly [x: string]: { readonly [x: string]: string | number | boolean } } | undefined
+    readonly id: string
+    readonly name: string
+    readonly variant?: string | undefined
+    readonly screen?: string | undefined
+    readonly selector: string
+    readonly state: "loading" | "empty" | "error" | "populated" | "edge"
+    readonly actions: ReadonlyArray<{
+      readonly selector: string
+      readonly action: "click" | "fill" | "press"
+      readonly value?: string | undefined
+    }>
+    readonly notApplicable?: string | undefined
+  }>
+  readonly targets?: ReadonlyArray<{ readonly path: string; readonly role: string }> | undefined
+  readonly designSystem: string
+  readonly system?:
+    | {
+        readonly paths: ReadonlyArray<string>
+        readonly css: ReadonlyArray<string>
+        readonly tailwind: boolean
+        readonly framework?: "react" | "solid" | undefined
+        readonly aliases?: { readonly [x: string]: string } | undefined
+      }
+    | undefined
+  readonly sources: ReadonlyArray<{
+    readonly file: string
+    readonly hash: string
+    readonly observed: number
+    readonly authoritative: boolean
+    readonly excerpt: string
+  }>
+  readonly inventory?:
+    | ReadonlyArray<{
+        readonly root: string
+        readonly file: string
+        readonly name: string
+        readonly props?: string | undefined
+      }>
+    | undefined
+  readonly manifest?: string | undefined
+  readonly tweaks: { readonly [x: string]: string }
+  readonly revision: string | null
+  readonly approvedRevision: string | null
+  readonly ended: boolean
+  readonly updated: number
+  readonly rounds?:
+    | ReadonlyArray<{
+        readonly number: number
+        readonly opened: number
+        readonly revision: string
+        readonly feedback: ReadonlyArray<string>
+        readonly published?: string | undefined
+      }>
+    | undefined
+  readonly notes?:
+    | ReadonlyArray<{
+        readonly feedback: string
+        readonly index: number
+        readonly round: number
+        readonly item: {
+          readonly target: string
+          readonly text: string
+          readonly params?:
+            | {
+                readonly values: { readonly [x: string]: { readonly [x: string]: string | number | boolean } }
+                readonly preset?: string | undefined
+                readonly variant?: string | undefined
+                readonly component?: string | undefined
+                readonly screen?: string | undefined
+              }
+            | undefined
+          readonly tag?: string | undefined
+          readonly elementText?: string | undefined
+          readonly selectedText?: string | undefined
+          readonly label?: string | undefined
+          readonly xpath?: string | undefined
+          readonly context?: string | undefined
+          readonly parent?: string | undefined
+          readonly revision?: string | undefined
+          readonly resent?: { readonly feedback: string; readonly index: number } | undefined
+        }
+        readonly status: "open" | "resolved" | "partial" | "unresolved" | "accepted"
+        readonly reason?: string | undefined
+        readonly evidence?:
+          | {
+              readonly job: string
+              readonly revision?: string | undefined
+              readonly capture?: string | undefined
+              readonly findings?: ReadonlyArray<string> | undefined
+            }
+          | undefined
+        readonly by?: "agent" | "reviewer" | undefined
+        readonly updated: number
+      }>
+    | undefined
+}
+export type SessionDesignReopenOperation<E = never> = (
+  input: SessionDesignReopenInput,
+) => Effect.Effect<SessionDesignReopenOutput, E>
+
+export type SessionDesignRevisionsInput = {
+  readonly sessionID: Session.ID
+  readonly designID: string & Brand.Brand<"Design.ID">
+}
+export type SessionDesignRevisionsOutput = ReadonlyArray<{
+  readonly id: string
+  readonly designID: string & Brand.Brand<"Design.ID">
+  readonly parent: string | null
+  readonly name: string
+  readonly created: number
+  readonly files: { readonly [x: string]: string }
+  readonly document: {
+    readonly controls?:
+      | ReadonlyArray<{
+          readonly id: string
+          readonly name: string
+          readonly selector: string
+          readonly variant?: string | undefined
+          readonly fields: ReadonlyArray<
+            | { readonly id: string; readonly name: string; readonly type: "text"; readonly default: string }
+            | { readonly id: string; readonly name: string; readonly type: "boolean"; readonly default: boolean }
+            | {
+                readonly id: string
+                readonly name: string
+                readonly type: "number"
+                readonly default: number
+                readonly min?: number | undefined
+                readonly max?: number | undefined
+              }
+            | {
+                readonly id: string
+                readonly name: string
+                readonly type: "select"
+                readonly default: string
+                readonly options: ReadonlyArray<string>
+              }
+          >
+        }>
+      | undefined
+    readonly presets?:
+      | ReadonlyArray<{
+          readonly id: string
+          readonly name: string
+          readonly variant?: string | undefined
+          readonly values: { readonly [x: string]: { readonly [x: string]: string | number | boolean } }
+        }>
+      | undefined
+    readonly id: string & Brand.Brand<"Design.ID">
+    readonly sessionID: Session.ID
+    readonly name: string
+    readonly journey: "new" | "existing"
+    readonly engine: "html" | "react" | "solid"
+    readonly kind: "screen" | "flow" | "comparison" | "deck"
+    readonly target?: "web" | "app" | "presentation" | undefined
+    readonly platform?: "ios" | "android" | undefined
+    readonly root: string
+    readonly application: string
+    readonly entry: string
+    readonly brief: {
+      readonly objective: string
+      readonly audience: string
+      readonly content: string
+      readonly constraints: string
+      readonly references: ReadonlyArray<string>
+    }
+    readonly decisions: ReadonlyArray<{
+      readonly id: string
+      readonly text: string
+      readonly revision?: string | undefined
+      readonly feedback?: string | undefined
+    }>
+    readonly questions: ReadonlyArray<string>
+    readonly scenarios: ReadonlyArray<{
+      readonly params?: { readonly [x: string]: { readonly [x: string]: string | number | boolean } } | undefined
+      readonly id: string
+      readonly name: string
+      readonly variant?: string | undefined
+      readonly screen?: string | undefined
+      readonly selector: string
+      readonly state: "loading" | "empty" | "error" | "populated" | "edge"
+      readonly actions: ReadonlyArray<{
+        readonly selector: string
+        readonly action: "click" | "fill" | "press"
+        readonly value?: string | undefined
+      }>
+      readonly notApplicable?: string | undefined
+    }>
+    readonly targets?: ReadonlyArray<{ readonly path: string; readonly role: string }> | undefined
+    readonly designSystem: string
+    readonly system?:
+      | {
+          readonly paths: ReadonlyArray<string>
+          readonly css: ReadonlyArray<string>
+          readonly tailwind: boolean
+          readonly framework?: "react" | "solid" | undefined
+          readonly aliases?: { readonly [x: string]: string } | undefined
+        }
+      | undefined
+    readonly sources: ReadonlyArray<{
+      readonly file: string
+      readonly hash: string
+      readonly observed: number
+      readonly authoritative: boolean
+      readonly excerpt: string
+    }>
+    readonly inventory?:
+      | ReadonlyArray<{
+          readonly root: string
+          readonly file: string
+          readonly name: string
+          readonly props?: string | undefined
+        }>
+      | undefined
+    readonly manifest?: string | undefined
+    readonly tweaks: { readonly [x: string]: string }
+    readonly revision: string | null
+    readonly approvedRevision: string | null
+    readonly ended: boolean
+    readonly updated: number
+    readonly rounds?:
+      | ReadonlyArray<{
+          readonly number: number
+          readonly opened: number
+          readonly revision: string
+          readonly feedback: ReadonlyArray<string>
+          readonly published?: string | undefined
+        }>
+      | undefined
+    readonly notes?:
+      | ReadonlyArray<{
+          readonly feedback: string
+          readonly index: number
+          readonly round: number
+          readonly item: {
+            readonly target: string
+            readonly text: string
+            readonly params?:
+              | {
+                  readonly values: { readonly [x: string]: { readonly [x: string]: string | number | boolean } }
+                  readonly preset?: string | undefined
+                  readonly variant?: string | undefined
+                  readonly component?: string | undefined
+                  readonly screen?: string | undefined
+                }
+              | undefined
+            readonly tag?: string | undefined
+            readonly elementText?: string | undefined
+            readonly selectedText?: string | undefined
+            readonly label?: string | undefined
+            readonly xpath?: string | undefined
+            readonly context?: string | undefined
+            readonly parent?: string | undefined
+            readonly revision?: string | undefined
+            readonly resent?: { readonly feedback: string; readonly index: number } | undefined
+          }
+          readonly status: "open" | "resolved" | "partial" | "unresolved" | "accepted"
+          readonly reason?: string | undefined
+          readonly evidence?:
+            | {
+                readonly job: string
+                readonly revision?: string | undefined
+                readonly capture?: string | undefined
+                readonly findings?: ReadonlyArray<string> | undefined
+              }
+            | undefined
+          readonly by?: "agent" | "reviewer" | undefined
+          readonly updated: number
+        }>
+      | undefined
+  }
+}>
+export type SessionDesignRevisionsOperation<E = never> = (
+  input: SessionDesignRevisionsInput,
+) => Effect.Effect<SessionDesignRevisionsOutput, E>
+
+export type SessionDesignFeedbackInput = {
+  readonly sessionID: Session.ID
+  readonly designID: string & Brand.Brand<"Design.ID">
+}
+export type SessionDesignFeedbackOutput = ReadonlyArray<{
+  readonly action?:
+    | {
+        readonly kind: "delete" | "rename" | "reorder" | "merge" | "split"
+        readonly variants: ReadonlyArray<string>
+        readonly labels?: ReadonlyArray<string> | undefined
+        readonly name?: string | undefined
+        readonly order?: ReadonlyArray<string> | undefined
+        readonly text?: string | undefined
+      }
+    | undefined
+  readonly params?:
+    | {
+        readonly values: { readonly [x: string]: { readonly [x: string]: string | number | boolean } }
+        readonly preset?: string | undefined
+        readonly variant?: string | undefined
+        readonly component?: string | undefined
+        readonly screen?: string | undefined
+      }
+    | undefined
+  readonly id: SessionMessage.ID
+  readonly revision: string
+  readonly text: string
+  readonly items: ReadonlyArray<{
+    readonly target: string
+    readonly text: string
+    readonly params?:
+      | {
+          readonly values: { readonly [x: string]: { readonly [x: string]: string | number | boolean } }
+          readonly preset?: string | undefined
+          readonly variant?: string | undefined
+          readonly component?: string | undefined
+          readonly screen?: string | undefined
+        }
+      | undefined
+    readonly tag?: string | undefined
+    readonly elementText?: string | undefined
+    readonly selectedText?: string | undefined
+    readonly label?: string | undefined
+    readonly xpath?: string | undefined
+    readonly context?: string | undefined
+    readonly parent?: string | undefined
+    readonly revision?: string | undefined
+    readonly resent?: { readonly feedback: string; readonly index: number } | undefined
+  }>
+  readonly assets: ReadonlyArray<string>
+  readonly snapshot: string
+  readonly whiteboards?: ReadonlyArray<{ readonly target: string; readonly scene: unknown }> | undefined
+  readonly delivery: "steer" | "queue"
+  readonly end: boolean
+}>
+export type SessionDesignFeedbackOperation<E = never> = (
+  input: SessionDesignFeedbackInput,
+) => Effect.Effect<SessionDesignFeedbackOutput, E>
+
+export type SessionDesignAssetsInput = {
+  readonly sessionID: Session.ID
+  readonly designID: string & Brand.Brand<"Design.ID">
+}
+export type SessionDesignAssetsOutput = ReadonlyArray<{
+  readonly id: string
+  readonly designID: string & Brand.Brand<"Design.ID">
+  readonly name: string
+  readonly mime: string
+  readonly bytes: number
+  readonly hash: string
+  readonly source: string
+  readonly parent: string | null
+  readonly created: number
+}>
+export type SessionDesignAssetsOperation<E = never> = (
+  input: SessionDesignAssetsInput,
+) => Effect.Effect<SessionDesignAssetsOutput, E>
+
 export type SessionRemoveInput = { readonly sessionID: Session.ID }
 export type SessionRemoveOutput = void
 export type SessionRemoveOperation<E = never> = (input: SessionRemoveInput) => Effect.Effect<SessionRemoveOutput, E>
+
+export type SessionDesignRevisionInput = {
+  readonly sessionID: Session.ID
+  readonly designID: string & Brand.Brand<"Design.ID">
+  readonly revisionID: string
+}
+export type SessionDesignRevisionOutput = {
+  readonly id: string
+  readonly designID: string & Brand.Brand<"Design.ID">
+  readonly parent: string | null
+  readonly name: string
+  readonly created: number
+  readonly files: { readonly [x: string]: string }
+  readonly document: {
+    readonly controls?:
+      | ReadonlyArray<{
+          readonly id: string
+          readonly name: string
+          readonly selector: string
+          readonly variant?: string | undefined
+          readonly fields: ReadonlyArray<
+            | { readonly id: string; readonly name: string; readonly type: "text"; readonly default: string }
+            | { readonly id: string; readonly name: string; readonly type: "boolean"; readonly default: boolean }
+            | {
+                readonly id: string
+                readonly name: string
+                readonly type: "number"
+                readonly default: number
+                readonly min?: number | undefined
+                readonly max?: number | undefined
+              }
+            | {
+                readonly id: string
+                readonly name: string
+                readonly type: "select"
+                readonly default: string
+                readonly options: ReadonlyArray<string>
+              }
+          >
+        }>
+      | undefined
+    readonly presets?:
+      | ReadonlyArray<{
+          readonly id: string
+          readonly name: string
+          readonly variant?: string | undefined
+          readonly values: { readonly [x: string]: { readonly [x: string]: string | number | boolean } }
+        }>
+      | undefined
+    readonly id: string & Brand.Brand<"Design.ID">
+    readonly sessionID: Session.ID
+    readonly name: string
+    readonly journey: "new" | "existing"
+    readonly engine: "html" | "react" | "solid"
+    readonly kind: "screen" | "flow" | "comparison" | "deck"
+    readonly target?: "web" | "app" | "presentation" | undefined
+    readonly platform?: "ios" | "android" | undefined
+    readonly root: string
+    readonly application: string
+    readonly entry: string
+    readonly brief: {
+      readonly objective: string
+      readonly audience: string
+      readonly content: string
+      readonly constraints: string
+      readonly references: ReadonlyArray<string>
+    }
+    readonly decisions: ReadonlyArray<{
+      readonly id: string
+      readonly text: string
+      readonly revision?: string | undefined
+      readonly feedback?: string | undefined
+    }>
+    readonly questions: ReadonlyArray<string>
+    readonly scenarios: ReadonlyArray<{
+      readonly params?: { readonly [x: string]: { readonly [x: string]: string | number | boolean } } | undefined
+      readonly id: string
+      readonly name: string
+      readonly variant?: string | undefined
+      readonly screen?: string | undefined
+      readonly selector: string
+      readonly state: "loading" | "empty" | "error" | "populated" | "edge"
+      readonly actions: ReadonlyArray<{
+        readonly selector: string
+        readonly action: "click" | "fill" | "press"
+        readonly value?: string | undefined
+      }>
+      readonly notApplicable?: string | undefined
+    }>
+    readonly targets?: ReadonlyArray<{ readonly path: string; readonly role: string }> | undefined
+    readonly designSystem: string
+    readonly system?:
+      | {
+          readonly paths: ReadonlyArray<string>
+          readonly css: ReadonlyArray<string>
+          readonly tailwind: boolean
+          readonly framework?: "react" | "solid" | undefined
+          readonly aliases?: { readonly [x: string]: string } | undefined
+        }
+      | undefined
+    readonly sources: ReadonlyArray<{
+      readonly file: string
+      readonly hash: string
+      readonly observed: number
+      readonly authoritative: boolean
+      readonly excerpt: string
+    }>
+    readonly inventory?:
+      | ReadonlyArray<{
+          readonly root: string
+          readonly file: string
+          readonly name: string
+          readonly props?: string | undefined
+        }>
+      | undefined
+    readonly manifest?: string | undefined
+    readonly tweaks: { readonly [x: string]: string }
+    readonly revision: string | null
+    readonly approvedRevision: string | null
+    readonly ended: boolean
+    readonly updated: number
+    readonly rounds?:
+      | ReadonlyArray<{
+          readonly number: number
+          readonly opened: number
+          readonly revision: string
+          readonly feedback: ReadonlyArray<string>
+          readonly published?: string | undefined
+        }>
+      | undefined
+    readonly notes?:
+      | ReadonlyArray<{
+          readonly feedback: string
+          readonly index: number
+          readonly round: number
+          readonly item: {
+            readonly target: string
+            readonly text: string
+            readonly params?:
+              | {
+                  readonly values: { readonly [x: string]: { readonly [x: string]: string | number | boolean } }
+                  readonly preset?: string | undefined
+                  readonly variant?: string | undefined
+                  readonly component?: string | undefined
+                  readonly screen?: string | undefined
+                }
+              | undefined
+            readonly tag?: string | undefined
+            readonly elementText?: string | undefined
+            readonly selectedText?: string | undefined
+            readonly label?: string | undefined
+            readonly xpath?: string | undefined
+            readonly context?: string | undefined
+            readonly parent?: string | undefined
+            readonly revision?: string | undefined
+            readonly resent?: { readonly feedback: string; readonly index: number } | undefined
+          }
+          readonly status: "open" | "resolved" | "partial" | "unresolved" | "accepted"
+          readonly reason?: string | undefined
+          readonly evidence?:
+            | {
+                readonly job: string
+                readonly revision?: string | undefined
+                readonly capture?: string | undefined
+                readonly findings?: ReadonlyArray<string> | undefined
+              }
+            | undefined
+          readonly by?: "agent" | "reviewer" | undefined
+          readonly updated: number
+        }>
+      | undefined
+  }
+}
+export type SessionDesignRevisionOperation<E = never> = (
+  input: SessionDesignRevisionInput,
+) => Effect.Effect<SessionDesignRevisionOutput, E>
 
 export type SessionForkInput = { readonly sessionID: Session.ID; readonly before?: SessionMessage.ID | undefined }
 export type SessionForkOutput = Session.Info
@@ -1416,6 +3187,26 @@ export interface SessionApi<E = never> {
   readonly export: SessionExportOperation<E>
   readonly active: SessionActiveOperation<E>
   readonly get: SessionGetOperation<E>
+  readonly goal: {
+    readonly get: SessionGoalGetOperation<E>
+    readonly start: SessionGoalStartOperation<E>
+    readonly control: SessionGoalControlOperation<E>
+  }
+  readonly design: {
+    readonly feed: SessionDesignFeedOperation<E>
+    readonly list: SessionDesignListOperation<E>
+    readonly create: SessionDesignCreateOperation<E>
+    readonly get: SessionDesignGetOperation<E>
+    readonly jobs: SessionDesignJobsOperation<E>
+    readonly update: SessionDesignUpdateOperation<E>
+    readonly refresh: SessionDesignRefreshOperation<E>
+    readonly approve: SessionDesignApproveOperation<E>
+    readonly reopen: SessionDesignReopenOperation<E>
+    readonly revisions: SessionDesignRevisionsOperation<E>
+    readonly feedback: SessionDesignFeedbackOperation<E>
+    readonly assets: SessionDesignAssetsOperation<E>
+    readonly revision: SessionDesignRevisionOperation<E>
+  }
   readonly remove: SessionRemoveOperation<E>
   readonly fork: SessionForkOperation<E>
   readonly switchAgent: SessionSwitchAgentOperation<E>
@@ -2333,6 +4124,241 @@ export interface ConfigApi<E = never> {
   readonly update: ConfigUpdateOperation<E>
 }
 
+export type ServerIntelligenceStatusOutput = {
+  readonly settings: {
+    readonly enabled: boolean
+    readonly reasoning?: ("single" | "dual") | undefined
+    readonly onboarding: "pending" | "deferred" | "completed"
+    readonly principal?: Model.Ref | undefined
+    readonly evaluator?:
+      | {
+          readonly transport:
+            | "opencode-zen"
+            | "openrouter"
+            | "typesafe"
+            | "red-router"
+            | "cloudflare-ai-gateway"
+            | "vercel"
+            | "vivgrid"
+            | "nano-gpt"
+          readonly baseURL: string
+          readonly model: string
+          readonly credentialID?: Credential.ID | undefined
+        }
+      | undefined
+  }
+  readonly environment: string
+  readonly evaluators: ReadonlyArray<{
+    readonly name: string
+    readonly configured: boolean
+    readonly evaluator: {
+      readonly transport:
+        | "opencode-zen"
+        | "openrouter"
+        | "typesafe"
+        | "red-router"
+        | "cloudflare-ai-gateway"
+        | "vercel"
+        | "vivgrid"
+        | "nano-gpt"
+      readonly baseURL: string
+      readonly model: string
+      readonly credentialID?: Credential.ID | undefined
+    }
+  }>
+  readonly effective: { readonly reasoning: "single" | "dual"; readonly source: "flag" | "config" | "default" }
+  readonly router?:
+    | {
+        readonly providerID: string
+        readonly baseURL: string
+        readonly detection: {
+          readonly kind: "red-router" | "9router" | "none"
+          readonly version?: string | undefined
+          readonly instanceID?: string | undefined
+          readonly catalogVersion?: string | undefined
+          readonly features: ReadonlyArray<
+            | "capabilities"
+            | "systemone"
+            | "combos"
+            | "decision"
+            | "hint"
+            | "token-saver"
+            | "session-affinity"
+            | "served-model"
+            | "cost"
+            | "stream-usage-cost"
+            | "catalog"
+            | "reasoning"
+            | "reasoning-auto"
+            | "reasoning-applies"
+            | "hint-signals"
+            | "recommendations"
+          >
+          readonly systemOne?: { readonly available: boolean; readonly models: ReadonlyArray<string> } | undefined
+          readonly checkedAt: number
+        }
+        readonly evaluator?:
+          | {
+              readonly transport:
+                | "opencode-zen"
+                | "openrouter"
+                | "typesafe"
+                | "red-router"
+                | "cloudflare-ai-gateway"
+                | "vercel"
+                | "vivgrid"
+                | "nano-gpt"
+              readonly baseURL: string
+              readonly model: string
+              readonly credentialID?: Credential.ID | undefined
+            }
+          | undefined
+        readonly recommended?:
+          | {
+              readonly default?:
+                | {
+                    readonly id: string
+                    readonly name: string
+                    readonly provider: { readonly slug: string; readonly name: string }
+                    readonly reason: string
+                  }
+                | undefined
+              readonly review?:
+                | {
+                    readonly id: string
+                    readonly name: string
+                    readonly provider: { readonly slug: string; readonly name: string }
+                    readonly reason: string
+                  }
+                | undefined
+              readonly systemone?:
+                | {
+                    readonly id: string
+                    readonly name: string
+                    readonly provider: { readonly slug: string; readonly name: string }
+                    readonly reason: string
+                  }
+                | undefined
+              readonly vision?:
+                | {
+                    readonly id: string
+                    readonly name: string
+                    readonly provider: { readonly slug: string; readonly name: string }
+                    readonly reason: string
+                  }
+                | undefined
+            }
+          | undefined
+      }
+    | undefined
+}
+export type ServerIntelligenceStatusOperation<E = never> = () => Effect.Effect<ServerIntelligenceStatusOutput, E>
+
+export type ServerIntelligenceSaveInput = {
+  readonly settings: {
+    readonly enabled: boolean
+    readonly reasoning?: ("single" | "dual") | undefined
+    readonly onboarding: "pending" | "deferred" | "completed"
+    readonly principal?: Model.Ref | undefined
+    readonly evaluator?:
+      | {
+          readonly transport:
+            | "opencode-zen"
+            | "openrouter"
+            | "typesafe"
+            | "red-router"
+            | "cloudflare-ai-gateway"
+            | "vercel"
+            | "vivgrid"
+            | "nano-gpt"
+          readonly baseURL: string
+          readonly model: string
+          readonly credentialID?: Credential.ID | undefined
+        }
+      | undefined
+  }
+  readonly apiKey?: string | undefined
+}
+export type ServerIntelligenceSaveOutput = {
+  readonly enabled: boolean
+  readonly reasoning?: ("single" | "dual") | undefined
+  readonly onboarding: "pending" | "deferred" | "completed"
+  readonly principal?: Model.Ref | undefined
+  readonly evaluator?:
+    | {
+        readonly transport:
+          | "opencode-zen"
+          | "openrouter"
+          | "typesafe"
+          | "red-router"
+          | "cloudflare-ai-gateway"
+          | "vercel"
+          | "vivgrid"
+          | "nano-gpt"
+        readonly baseURL: string
+        readonly model: string
+        readonly credentialID?: Credential.ID | undefined
+      }
+    | undefined
+}
+export type ServerIntelligenceSaveOperation<E = never> = (
+  input: ServerIntelligenceSaveInput,
+) => Effect.Effect<ServerIntelligenceSaveOutput, E>
+
+export type ServerIntelligenceDiscoverInput = {
+  readonly evaluator: {
+    readonly transport:
+      | "opencode-zen"
+      | "openrouter"
+      | "typesafe"
+      | "red-router"
+      | "cloudflare-ai-gateway"
+      | "vercel"
+      | "vivgrid"
+      | "nano-gpt"
+    readonly baseURL: string
+    readonly model: string
+    readonly credentialID?: Credential.ID | undefined
+  }
+  readonly apiKey?: string | undefined
+}
+export type ServerIntelligenceDiscoverOutput = {
+  readonly models: ReadonlyArray<{ readonly id: string; readonly name: string }>
+  readonly manual: boolean
+}
+export type ServerIntelligenceDiscoverOperation<E = never> = (
+  input: ServerIntelligenceDiscoverInput,
+) => Effect.Effect<ServerIntelligenceDiscoverOutput, E>
+
+export type ServerIntelligenceProbeInput = {
+  readonly evaluator: {
+    readonly transport:
+      | "opencode-zen"
+      | "openrouter"
+      | "typesafe"
+      | "red-router"
+      | "cloudflare-ai-gateway"
+      | "vercel"
+      | "vivgrid"
+      | "nano-gpt"
+    readonly baseURL: string
+    readonly model: string
+    readonly credentialID?: Credential.ID | undefined
+  }
+  readonly apiKey?: string | undefined
+}
+export type ServerIntelligenceProbeOutput = { readonly ok: boolean; readonly message: string }
+export type ServerIntelligenceProbeOperation<E = never> = (
+  input: ServerIntelligenceProbeInput,
+) => Effect.Effect<ServerIntelligenceProbeOutput, E>
+
+export interface ServerIntelligenceApi<E = never> {
+  readonly status: ServerIntelligenceStatusOperation<E>
+  readonly save: ServerIntelligenceSaveOperation<E>
+  readonly discover: ServerIntelligenceDiscoverOperation<E>
+  readonly probe: ServerIntelligenceProbeOperation<E>
+}
+
 export interface AppApi<E = never> {
   readonly server: ServerApi<E>
   readonly location: LocationApi<E>
@@ -2364,4 +4390,5 @@ export interface AppApi<E = never> {
   readonly migration: MigrationApi<E>
   readonly websearch: WebsearchApi<E>
   readonly config: ConfigApi<E>
+  readonly "server.intelligence": ServerIntelligenceApi<E>
 }

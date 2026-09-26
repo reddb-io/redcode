@@ -22,6 +22,7 @@ import { SessionProviderContext } from "./provider-context.js"
 import { InstructionEntry } from "./instruction-entry.js"
 import { SessionMessage } from "./message.js"
 import { SessionModelRequest } from "./model-request.js"
+import { RedcodeLegacyInstructions } from "./redcode-legacy-instructions.js"
 import { SessionRunnerModel } from "./runner/model.js"
 import { SessionSchema } from "./schema.js"
 import { SessionStore } from "./store.js"
@@ -127,11 +128,14 @@ const layer = Layer.effect(
       yield* mcpTools.flush
       const agent = yield* agents.select(session.agent)
       if (!agent.info) return yield* new AgentNotFoundError({ sessionID: session.id, agent: session.agent ?? agent.id })
-      // Session permissions narrow discovery the same way they narrow the tool snapshot.
-      const permissions = Permission.merge(agent.info.permissions, session.permissions ?? [])
+      // Discovery and execution must agree on the permissions of the selected agent.
+      const permissions = Permission.forAgent(agent.info, session.permissions)
+      const tools = yield* registry.snapshot(permissions)
+      const legacy = yield* RedcodeLegacyInstructions.load(db, sessionID)
+      if (legacy?.phase === "baseline")
+        return { session, agent: { ...agent, info: agent.info }, instructions: legacy.instructions, tools }
       const loaded = yield* Effect.all(
         {
-          tools: registry.snapshot(permissions),
           builtins: builtins.load(sessionID),
           discovery: discovery.load(),
           skills: skillInstructions.load(permissions),
@@ -145,15 +149,16 @@ const layer = Layer.effect(
         session,
         agent: { ...agent, info: agent.info },
         instructions: Instructions.combine([
+          legacy?.instructions ?? Instructions.empty,
           loaded.builtins,
-          CodeModeInstructions.make(loaded.tools.codeModeCatalog),
+          CodeModeInstructions.make(tools.codeModeCatalog),
           loaded.discovery,
           loaded.skills,
           loaded.references,
           loaded.mcp,
           loaded.entries,
         ]),
-        tools: loaded.tools,
+        tools,
       }
     })
 

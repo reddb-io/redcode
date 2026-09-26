@@ -182,9 +182,12 @@ export const layer = (options?: Options) =>
         return yield* Effect.forEach(entries, loadWellknownEntry).pipe(Effect.map((documents) => documents.flat()))
       })
 
-      const loadDirectory = Effect.fnUntraced(function* (directory: AbsolutePath) {
+      const loadDirectory = Effect.fnUntraced(function* (
+        directory: AbsolutePath,
+        names: readonly string[] = ConfigDiscovery.names,
+      ) {
         return [
-          ...(yield* Effect.forEach(ConfigDiscovery.names, (file) => loadFile(path.join(directory, file))).pipe(
+          ...(yield* Effect.forEach(names, (file) => loadFile(path.join(directory, file))).pipe(
             Effect.map((configs) => configs.filter((config): config is Document => config !== undefined)),
           )),
           new Directory({ type: "directory", path: directory }),
@@ -219,16 +222,20 @@ export const layer = (options?: Options) =>
 
         // Global entries sit below explicit and direct files; project
         // directories rank above them.
+        const legacySupplementary = sources.legacyGlobal
+          ? yield* loadDirectory(sources.legacyGlobal, ConfigDiscovery.legacyNames).pipe(Effect.orDie)
+          : []
         const globalSupplementary = sources.global ? yield* loadDirectory(sources.global).pipe(Effect.orDie) : []
         const projectSupplementary = yield* Effect.forEach(
           sources.project.filter((root) => root.present),
-          (root) => loadDirectory(root.path),
+          (root) => loadDirectory(root.path, ConfigDiscovery.legacyNames),
         ).pipe(
           Effect.orDie,
           Effect.map((entries) => entries.flat()),
         )
         return [
           ...(yield* loadWellknown().pipe(Effect.orDie)),
+          ...legacySupplementary,
           ...globalSupplementary,
           ...explicit,
           ...direct,

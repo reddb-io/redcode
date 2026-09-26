@@ -21,6 +21,7 @@ import { ConfigToolOutput } from "./config/tool-output.js"
 import { ConfigWatcher } from "./config/watcher.js"
 import { ConfigWarming } from "./config/warming.js"
 import { ConfigWorktree } from "./config/worktree.js"
+import { ConfigDesign } from "./config/design.js"
 
 export class Info extends Schema.Class<Info>("Config.Info")({
   $schema: optional(Schema.String).annotate({
@@ -101,6 +102,9 @@ export class Info extends Schema.Class<Info>("Config.Info")({
   }),
   worktree: ConfigWorktree.Info.pipe(optional).annotate({
     description: "Directory defaults for local worktree creation",
+  }),
+  design: ConfigDesign.Info.pipe(optional).annotate({
+    description: "Design system, application, browser, and review configuration",
   }),
   warming: ConfigWarming.Warming.pipe(optional).annotate({
     description: "Keep recently active sessions warm with transient model requests (default: false)",

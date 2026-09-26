@@ -82,6 +82,7 @@
   },
   "devDependencies": {
     "@ai-sdk/openai-compatible": "2.0.41",
+    "@axe-core/playwright": "4.13.0",
     "@effect/platform-node": "catalog:",
     "@effect/sql-sqlite-bun": "catalog:",
     "@modelcontextprotocol/server": "2.0.0",
@@ -97,8 +98,13 @@
     "@tsconfig/bun": "catalog:",
     "@types/bun": "catalog:",
     "@types/node": "catalog:",
+    "@types/pngjs": "6.0.5",
     "@types/which": "3.0.4",
-    "drizzle-kit": "catalog:"
+    "@vitejs/plugin-react": "4.7.0",
+    "drizzle-kit": "catalog:",
+    "playwright-core": "1.59.1",
+    "vite": "7.1.4",
+    "vite-plugin-solid": "catalog:"
   },
   "dependencies": {
     "@ai-sdk/cohere": "3.0.27",
@@ -126,7 +132,9 @@
     "diff": "catalog:",
     "drizzle-orm": "catalog:",
     "effect": "catalog:",
+    "es-module-lexer": "1.7.0",
     "fuzzysort": "3.1.0",
+    "gifenc": "1.0.3",
     "gitlab-ai-provider": "6.18.0",
     "google-auth-library": "10.5.0",
     "gray-matter": "4.0.3",
@@ -136,7 +144,9 @@
     "ignore": "7.0.5",
     "immer": "11.1.4",
     "jsonc-parser": "3.3.1",
+    "linkedom": "0.18.13",
     "mime-types": "3.0.2",
+    "pngjs": "7.0.0",
     "tree-sitter-bash": "0.25.0",
     "tree-sitter-powershell": "0.25.10",
     "venice-ai-sdk-provider": "2.1.1",

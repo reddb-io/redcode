@@ -1,0 +1,19 @@
+{
+  "$schema": "https://json.schemastore.org/package.json",
+  "name": "@reddb-io/redcode-rpc-sidecar",
+  "version": "2.0.18",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build": "bun script/build.ts",
+    "test": "bun test",
+    "test:native": "bun script/test-native.ts",
+    "typecheck": "tsgo --noEmit"
+  },
+  "devDependencies": {
+    "@tsconfig/bun": "catalog:",
+    "@types/bun": "catalog:",
+    "@typescript/native-preview": "catalog:",
+    "scriptc": "0.0.35"
+  }
+}

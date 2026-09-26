@@ -43,6 +43,8 @@ export const AssertInput = Schema.Struct({
   id: ID.pipe(Schema.optional),
   ...RequestFields,
   agent: Agent.ID.pipe(Schema.optional),
+  /** Ask on this invocation even if a broad saved allow rule exists. */
+  force: Schema.Boolean.pipe(Schema.optional),
 }).annotate({ identifier: "Permission.AssertInput" })
 export type AssertInput = typeof AssertInput.Type
 
@@ -100,8 +102,16 @@ export function merge(...rulesets: Permission.Ruleset[]): Permission.Ruleset {
   return rulesets.flat()
 }
 
+export function forAgent(agent: Agent.Info, session: Permission.Ruleset = []): Permission.Ruleset {
+  // Restricted modes must keep their own boundary when a Session carries Build grants.
+  if (agent.id === Agent.ID.make("question") || agent.id === Agent.ID.make("design")) return agent.permissions
+  return merge(agent.permissions, session)
+}
+
 export interface Interface {
   readonly close: Effect.Effect<void>
+  /** Resolve current rules and policy hooks without creating a permission request. */
+  readonly evaluate: (input: AssertInput) => Effect.Effect<Permission.Effect, SessionErrors.NotFoundError>
   readonly ask: (input: AssertInput) => Effect.Effect<AskResult, SessionErrors.NotFoundError>
   readonly assert: (input: AssertInput) => Effect.Effect<void, Error | SessionErrors.NotFoundError>
   readonly reply: (input: ReplyInput) => Effect.Effect<void, NotFoundError>
@@ -159,7 +169,8 @@ const layer = Layer.effect(
       const session = yield* sessions.get(sessionID)
       if (!session) return yield* new SessionErrors.NotFoundError({ sessionID })
       const agent = yield* agents.resolve(agentID ?? session.agent)
-      return merge(agent?.permissions ?? missingAgentPermissions, session.permissions ?? [])
+      if (agent) return forAgent(agent, session.permissions)
+      return merge(missingAgentPermissions, session.permissions ?? [])
     })
 
     function denied(input: Pick<Request, "action" | "resources">, rules: Permission.Ruleset) {
@@ -175,7 +186,7 @@ const layer = Layer.effect(
       if (denied(input, rules)) return { effect: "deny" as const, rules }
       const all = [...rules, ...(yield* savedRules())]
       const effects = input.resources.map((resource) => evaluate(input.action, resource, all).effect)
-      const effect: Permission.Effect = effects.includes("ask") ? "ask" : "allow"
+      const effect: Permission.Effect = input.force || effects.includes("ask") ? "ask" : "allow"
       const event = yield* hooks.trigger("permission", "evaluate", {
         sessionID: input.sessionID,
         agent: input.agent,
@@ -185,7 +196,11 @@ const layer = Layer.effect(
         source: input.source,
         effect,
       })
-      return { effect: event.effect, message: event.message, rules: all }
+      return {
+        effect: input.force && event.effect === "allow" ? ("ask" as const) : event.effect,
+        message: event.message,
+        rules: all,
+      }
     })
 
     function request(input: AssertInput, message?: string): Request {
@@ -332,7 +347,16 @@ const layer = Layer.effect(
       return Array.from(pending.values(), (item) => item.request).filter((request) => request.sessionID === sessionID)
     })
 
-    return Service.of({ ask, assert, reply, get, forSession, list, close })
+    return Service.of({
+      ask,
+      assert,
+      evaluate: (input) => evaluateInput(input).pipe(Effect.map((result) => result.effect)),
+      reply,
+      get,
+      forSession,
+      list,
+      close,
+    })
   }),
 )
 

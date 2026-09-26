@@ -14,6 +14,7 @@ import { SessionMessageUpdater } from "./message-updater.js"
 import { SessionInbox } from "./inbox.js"
 import { Workspace } from "@opencode/schema/workspace"
 import { InstructionState } from "./instruction-state.js"
+import { RedcodeLegacyInstructions } from "./redcode-legacy-instructions.js"
 import { SessionInboxTable, SessionMessageTable, SessionTable } from "./sql.js"
 import { InstructionEntry } from "./instruction-entry.js"
 import { Slug } from "../util/slug.js"
@@ -223,6 +224,7 @@ const projectFork = Effect.fn("SessionProjector.projectFork")(function* (
   if (copiedSeq !== undefined) yield* Bus.reserveSequence(db, event.data.sessionID, copiedSeq)
   if (event.data.instructions)
     yield* InstructionState.initialize(db, event.data.sessionID, event.durable.seq, event.data.instructions)
+  yield* RedcodeLegacyInstructions.fork(db, event.data.parentID, event.data.sessionID)
 })
 
 function run(db: DatabaseService, event: MessageEvent) {
@@ -710,7 +712,9 @@ const layer = Layer.effectDiscard(
     yield* bus.project(SessionEvent.Compaction.Ended, (event) =>
       Effect.gen(function* () {
         yield* run(db, event)
-        yield* InstructionState.advanceEpoch(db, event.data.sessionID, event.durable.seq)
+        if (yield* RedcodeLegacyInstructions.retire(db, event.data.sessionID))
+          yield* InstructionState.reset(db, event.data.sessionID)
+        else yield* InstructionState.advanceEpoch(db, event.data.sessionID, event.durable.seq)
       }),
     )
     yield* bus.project(SessionEvent.Compaction.Failed, (event) => run(db, event))
@@ -770,6 +774,7 @@ const layer = Layer.effectDiscard(
           .where(eq(SessionTable.id, event.data.sessionID))
           .run()
           .pipe(Effect.orDie)
+        yield* RedcodeLegacyInstructions.retire(db, event.data.sessionID)
         yield* InstructionState.reset(db, event.data.sessionID)
       }),
     )

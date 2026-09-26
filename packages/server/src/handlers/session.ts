@@ -1,4 +1,9 @@
 import { Session } from "@opencode/core/session"
+import { SessionGoal } from "@opencode/core/session/goal"
+import { DesignStore } from "@opencode/core/design/store"
+import { DesignFeed } from "@opencode/core/design/feed"
+import { DesignHandoff } from "@opencode/core/design/handoff"
+import { Design } from "@opencode/schema/design"
 import { SessionStats } from "@opencode/core/session/stats"
 import { SessionTitle } from "@opencode/core/session/title"
 import { SessionTransfer } from "@opencode/core/session/transfer"
@@ -7,25 +12,25 @@ import { Form } from "@opencode/core/form"
 import { DateTime, Effect, Stream } from "effect"
 import { HttpApiBuilder, HttpApiSchema } from "effect/unstable/httpapi"
 import { Api } from "../api"
-import { SessionsCursor } from "@opencode/protocol/groups/session"
 import {
   ConflictError,
+  DesignNotFoundError,
   CommandExecutionError,
   CommandNotFoundError,
   FormAlreadySettledError,
   FormInvalidAnswerError,
   FormNotFoundError,
   InvalidRequestError,
-  InvalidCursorError,
   MessageNotFoundError,
   ServiceUnavailableError,
   SessionBusyError,
+  SessionNotFoundError,
   SkillNotFoundError,
 } from "@opencode/protocol/errors"
 import { AbsolutePath } from "@opencode/core/schema"
 import { failedMessageDecode, failedSnapshot, missingMessage, missingSession } from "./session-error"
 
-const DefaultSessionsLimit = 50
+import { activeSessions, listSessions } from "../session-read"
 
 function missingForm(id: Form.ID) {
   return new FormNotFoundError({ id, message: `Form not found: ${id}` })
@@ -34,6 +39,7 @@ function missingForm(id: Form.ID) {
 export const SessionHandler = HttpApiBuilder.group(Api, "server.session", (handlers) =>
   Effect.gen(function* () {
     const session = yield* Session.Service
+    const goals = yield* SessionGoal.Service
     const transfer = yield* SessionTransfer.Service
     const requireOwnedForm = Effect.fnUntraced(function* (sessionID: Form.Info["sessionID"], formID: Form.ID) {
       const form = yield* Form.Service
@@ -46,6 +52,10 @@ export const SessionHandler = HttpApiBuilder.group(Api, "server.session", (handl
         sessionID: error.sessionID,
         message: `Session is busy: ${error.sessionID}`,
       })
+    const designError = (designID: string) => (error: { code: string; message: string }) =>
+      error.code === "not-found"
+        ? new DesignNotFoundError({ designID, message: error.message })
+        : new InvalidRequestError({ message: error.message })
     const pendingMutation = (effect: ReturnType<typeof session.cancelInbox>, conflict: string) =>
       effect.pipe(
         Effect.catchTag("Session.NotFoundError", missingSession),
@@ -58,46 +68,24 @@ export const SessionHandler = HttpApiBuilder.group(Api, "server.session", (handl
 
     return handlers
       .handle(
+        "session.design.feed",
+        Effect.fn(function* (ctx) {
+          const info = yield* session.get(ctx.params.sessionID).pipe(Effect.catchTag("Session.NotFoundError", missingSession))
+          const active = yield* session.active
+          const at = Date.now()
+          const initial: Design.FeedEvent[] = [
+            { type: "agent", seq: 0, at, agent: info.agent ?? "" },
+            { type: "state", seq: 0, at, state: active.has(ctx.params.sessionID) ? "working" : "idle" },
+          ]
+          return Stream.make(...initial).pipe(
+            Stream.concat(DesignFeed.follow(session, ctx.params.sessionID, ctx.query.after).pipe(Stream.orDie)),
+          )
+        }),
+      )
+      .handle(
         "session.list",
         Effect.fn(function* (ctx) {
-          const query =
-            ctx.query.cursor !== undefined
-              ? yield* SessionsCursor.parse(ctx.query.cursor).pipe(
-                  Effect.mapError(() => new InvalidCursorError({ message: "Invalid cursor" })),
-                )
-              : ctx.query
-          const page = yield* session.list({
-            ...query,
-            limit: ctx.query.limit ?? DefaultSessionsLimit,
-          })
-          const sessions = page.data
-          const first = sessions[0]
-          const last = sessions.at(-1)
-          return {
-            data: sessions,
-            cursor: {
-              previous: first
-                ? SessionsCursor.make({
-                    ...query,
-                    anchor: {
-                      id: first.id,
-                      time: DateTime.toEpochMillis(first.time.updated),
-                      direction: "previous",
-                    },
-                  })
-                : undefined,
-              next: last
-                ? SessionsCursor.make({
-                    ...query,
-                    anchor: {
-                      id: last.id,
-                      time: DateTime.toEpochMillis(last.time.updated),
-                      direction: "next",
-                    },
-                  })
-                : undefined,
-            },
-          }
+          return yield* listSessions(session, ctx.query)
         }),
       )
       .handle(
@@ -178,10 +166,7 @@ export const SessionHandler = HttpApiBuilder.group(Api, "server.session", (handl
       .handle(
         "session.active",
         Effect.fn(function* () {
-          const active = yield* session.active
-          return {
-            data: Object.fromEntries(Array.from(active, (sessionID) => [sessionID, { type: "running" as const }])),
-          }
+          return yield* activeSessions(session)
         }),
       )
       .handle(
@@ -191,6 +176,226 @@ export const SessionHandler = HttpApiBuilder.group(Api, "server.session", (handl
             data: yield* session
               .get(ctx.params.sessionID)
               .pipe(Effect.catchTag("Session.NotFoundError", missingSession)),
+          }
+        }),
+      )
+      .handle(
+        "session.goal.get",
+        Effect.fn(function* (ctx) {
+          return {
+            data: yield* goals
+              .get(ctx.params.sessionID)
+              .pipe(Effect.mapError((error) => new InvalidRequestError({ message: error.message }))),
+          }
+        }),
+      )
+      .handle(
+        "session.goal.start",
+        Effect.fn(function* (ctx) {
+          const goal = yield* goals
+            .start(ctx.params.sessionID, ctx.payload)
+            .pipe(Effect.mapError((error) => new InvalidRequestError({ message: error.message })))
+          if (ctx.payload.agent)
+            yield* session
+              .switchAgent({ sessionID: ctx.params.sessionID, agent: ctx.payload.agent })
+              .pipe(Effect.catchTag("Session.NotFoundError", missingSession))
+          if (ctx.payload.model)
+            yield* session
+              .switchModel({ sessionID: ctx.params.sessionID, model: ctx.payload.model })
+              .pipe(Effect.catchTag("Session.NotFoundError", missingSession))
+          yield* session
+            .synthetic({
+              sessionID: ctx.params.sessionID,
+              text: `Start working on goal ${goal.id}: ${goal.objective}`,
+              description: "Goal started",
+              metadata: { source: "goal", goalID: goal.id },
+            })
+            .pipe(
+              Effect.catchTag("Session.NotFoundError", missingSession),
+              Effect.catchTag(
+                "Session.SyntheticConflictError",
+                (error) => new InvalidRequestError({ message: error.message }),
+              ),
+            )
+          return { data: goal }
+        }),
+      )
+      .handle(
+        "session.goal.control",
+        Effect.fn(function* (ctx) {
+          const previous = yield* goals
+            .get(ctx.params.sessionID)
+            .pipe(Effect.mapError((error) => new InvalidRequestError({ message: error.message })))
+          const goal = yield* goals
+            .control(ctx.params.sessionID, ctx.payload)
+            .pipe(Effect.mapError((error) => new InvalidRequestError({ message: error.message })))
+          if (
+            previous &&
+            (previous.status === "active" || previous.status === "waiting") &&
+            (ctx.payload.action === "pause" || ctx.payload.action === "drop")
+          )
+            yield* session.interrupt(ctx.params.sessionID)
+          if (goal?.status === "active" && previous?.status !== "active" && ctx.payload.action === "resume")
+            yield* session
+              .synthetic({
+                sessionID: ctx.params.sessionID,
+                text: `Resume working on goal ${goal.id}: ${goal.objective}`,
+                description: "Goal resumed",
+                metadata: { source: "goal", goalID: goal.id },
+              })
+              .pipe(
+                Effect.catchTag("Session.NotFoundError", missingSession),
+                Effect.catchTag(
+                  "Session.SyntheticConflictError",
+                  (error) => new InvalidRequestError({ message: error.message }),
+                ),
+              )
+          return {
+            data: goal,
+          }
+        }),
+      )
+      .handle(
+        "session.design.list",
+        Effect.fn(function* (ctx) {
+          const designs = yield* DesignStore.Service
+          return {
+            data: yield* designs
+              .list(ctx.params.sessionID)
+              .pipe(Effect.mapError((error) => new InvalidRequestError({ message: error.message }))),
+          }
+        }),
+      )
+      .handle(
+        "session.design.create",
+        Effect.fn(function* (ctx) {
+          const designs = yield* DesignStore.Service
+          return {
+            data: yield* designs
+              .create(ctx.params.sessionID, ctx.payload)
+              .pipe(
+                Effect.mapError((error) =>
+                  error.code === "not-found"
+                    ? new SessionNotFoundError({
+                        sessionID: ctx.params.sessionID,
+                        message: error.message,
+                      })
+                    : new InvalidRequestError({ message: error.message }),
+                ),
+              ),
+          }
+        }),
+      )
+      .handle(
+        "session.design.get",
+        Effect.fn(function* (ctx) {
+          const designs = yield* DesignStore.Service
+          return {
+            data: yield* designs
+              .get(ctx.params.sessionID, ctx.params.designID)
+              .pipe(Effect.mapError(designError(ctx.params.designID))),
+          }
+        }),
+      )
+      .handle(
+        "session.design.update",
+        Effect.fn(function* (ctx) {
+          const designs = yield* DesignStore.Service
+          return {
+            data: yield* designs
+              .update(ctx.params.sessionID, ctx.params.designID, ctx.payload)
+              .pipe(Effect.mapError(designError(ctx.params.designID))),
+          }
+        }),
+      )
+      .handle(
+        "session.design.refresh",
+        Effect.fn(function* (ctx) {
+          const designs = yield* DesignStore.Service
+          return {
+            data: yield* designs
+              .refresh(ctx.params.sessionID, ctx.params.designID)
+              .pipe(Effect.mapError(designError(ctx.params.designID))),
+          }
+        }),
+      )
+      .handle(
+        "session.design.approve",
+        Effect.fn(function* (ctx) {
+          return {
+            data: yield* DesignHandoff.approve(ctx.params.sessionID, ctx.params.designID, ctx.payload).pipe(
+              Effect.mapError((error) =>
+                error instanceof Design.Error
+                  ? designError(ctx.params.designID)(error)
+                  : new InvalidRequestError({ message: error.message }),
+              ),
+            ),
+          }
+        }),
+      )
+      .handle(
+        "session.design.reopen",
+        Effect.fn(function* (ctx) {
+          const designs = yield* DesignStore.Service
+          return {
+            data: yield* designs
+              .reopen(ctx.params.sessionID, ctx.params.designID)
+              .pipe(Effect.mapError(designError(ctx.params.designID))),
+          }
+        }),
+      )
+      .handle(
+        "session.design.jobs",
+        Effect.fn(function* (ctx) {
+          const designs = yield* DesignStore.Service
+          return {
+            data: yield* designs
+              .jobs(ctx.params.sessionID, ctx.params.designID)
+              .pipe(Effect.mapError(designError(ctx.params.designID))),
+          }
+        }),
+      )
+      .handle(
+        "session.design.revisions",
+        Effect.fn(function* (ctx) {
+          const designs = yield* DesignStore.Service
+          return {
+            data: yield* designs
+              .revisions(ctx.params.sessionID, ctx.params.designID)
+              .pipe(Effect.mapError(designError(ctx.params.designID))),
+          }
+        }),
+      )
+      .handle(
+        "session.design.revision",
+        Effect.fn(function* (ctx) {
+          const designs = yield* DesignStore.Service
+          return {
+            data: yield* designs
+              .revision(ctx.params.sessionID, ctx.params.designID, ctx.params.revisionID)
+              .pipe(Effect.mapError(designError(ctx.params.designID))),
+          }
+        }),
+      )
+      .handle(
+        "session.design.feedback",
+        Effect.fn(function* (ctx) {
+          const designs = yield* DesignStore.Service
+          return {
+            data: yield* designs
+              .feedback(ctx.params.sessionID, ctx.params.designID)
+              .pipe(Effect.mapError(designError(ctx.params.designID))),
+          }
+        }),
+      )
+      .handle(
+        "session.design.assets",
+        Effect.fn(function* (ctx) {
+          const designs = yield* DesignStore.Service
+          return {
+            data: yield* designs
+              .assets(ctx.params.sessionID, ctx.params.designID)
+              .pipe(Effect.mapError(designError(ctx.params.designID))),
           }
         }),
       )
