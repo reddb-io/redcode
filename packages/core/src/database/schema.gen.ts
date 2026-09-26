@@ -74,6 +74,9 @@ const schema: Omit<DatabaseMigration.Migration, "id"> = {
           \`id\` text NOT NULL,
           \`secret\` text NOT NULL,
           \`url\` text NOT NULL,
+          \`resource\` text DEFAULT 'share' NOT NULL,
+          \`account_id\` text,
+          \`org_id\` text,
           \`time_created\` integer NOT NULL,
           \`time_updated\` integer NOT NULL,
           CONSTRAINT \`fk_session_share_session_id_session_v2_id_fk\` FOREIGN KEY (\`session_id\`) REFERENCES \`session_v2\`(\`id\`) ON DELETE CASCADE

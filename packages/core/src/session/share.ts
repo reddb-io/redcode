@@ -11,12 +11,11 @@ import { Session } from "../session.js"
 import { SessionEvent } from "./event.js"
 import { SessionMessage } from "./message.js"
 import { SessionShareTable } from "./redcode.sql.js"
-import { revoke } from "./share-remote.js"
+import { active, backend, revoke, send } from "./share-remote.js"
 import { SessionSchema } from "./schema.js"
 import { SessionTable } from "./sql.js"
 
 const RemoteShare = Schema.Struct({ id: Schema.String, url: Schema.String, secret: Schema.String })
-const decodeRemoteShare = Schema.decodeUnknownSync(RemoteShare)
 const encodeSession = Schema.encodeSync(SessionSchema.Info)
 const encodeMessages = Schema.encodeSync(Schema.Array(SessionMessage.Info))
 
@@ -49,26 +48,6 @@ const layer = Layer.effect(
         Effect.provide(locations.get(info.location)),
         Effect.mapError((cause) => cause instanceof Error ? cause : new Error(String(cause))),
       )
-    })
-
-    const request = Effect.fn("SessionShare.request")(function* (
-      url: string,
-      method: "POST" | "DELETE",
-      body: object,
-    ) {
-      return yield* Effect.tryPromise({
-        try: async (signal) => {
-          const response = await fetch(url, {
-            method,
-            headers: { "content-type": "application/json" },
-            body: JSON.stringify(body),
-            signal,
-          })
-          if (!response.ok) throw new Error(`Share service returned HTTP ${response.status}`)
-          return response.json() as Promise<unknown>
-        },
-        catch: (cause) => cause instanceof Error ? cause : new Error(String(cause)),
-      })
     })
 
     const stored = Effect.fn("SessionShare.stored")(function* (sessionID: SessionSchema.ID) {
@@ -105,10 +84,10 @@ const layer = Layer.effect(
         { type: "messages", data: { sessionID, messages: encodeMessages(messages) } },
         { type: "session_diff", data: diffs },
       ]
-      yield* request(`${new URL(share.url).origin}/api/share/${encodeURIComponent(share.id)}/sync`, "POST", {
+      yield* send(yield* backend(database.db, share), "POST", {
         secret: share.secret,
         data,
-      })
+      }, share.id, true)
     })
 
     const create = Effect.fn("SessionShare.create")(function* (sessionID: SessionSchema.ID) {
@@ -123,10 +102,21 @@ const layer = Layer.effect(
         return yield* sessions.get(sessionID)
       }
       if (info.share) return yield* Effect.fail(new Error("The existing share has no local secret"))
-      const share = decodeRemoteShare(yield* request(`${config.url.replace(/\/$/, "")}/api/share`, "POST", { sessionID }))
+      const target = yield* active(database.db, config.url)
+      const share = yield* Schema.decodeUnknownEffect(RemoteShare)(yield* send(target, "POST", { sessionID })).pipe(
+        Effect.mapError(() => new Error("Share service returned an invalid link")),
+      )
       yield* database.db
         .insert(SessionShareTable)
-        .values({ session_id: sessionID, id: share.id, secret: share.secret, url: share.url })
+        .values({
+          session_id: sessionID,
+          id: share.id,
+          secret: share.secret,
+          url: share.url,
+          resource: target.resource,
+          account_id: target.accountID,
+          org_id: target.orgID,
+        })
         .run()
         .pipe(Effect.orDie)
       yield* sync(sessionID)

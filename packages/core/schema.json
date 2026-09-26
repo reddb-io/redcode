@@ -1,8 +1,8 @@
 {
   "version": "7",
   "dialect": "sqlite",
-  "id": "b923a953-75f8-4b95-9f56-509276219849",
-  "prevIds": ["71d45482-672c-463d-823b-6de156dccc0b"],
+  "id": "bc771d4f-fcc4-4595-a03c-54dcb5447fef",
+  "prevIds": ["b923a953-75f8-4b95-9f56-509276219849"],
   "ddl": [
     {
       "name": "redcode_session_context_epoch",
@@ -525,6 +525,36 @@
       "default": null,
       "generated": null,
       "name": "url",
+      "entityType": "columns",
+      "table": "session_share"
+    },
+    {
+      "type": "text",
+      "notNull": true,
+      "autoincrement": false,
+      "default": "'share'",
+      "generated": null,
+      "name": "resource",
+      "entityType": "columns",
+      "table": "session_share"
+    },
+    {
+      "type": "text",
+      "notNull": false,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "account_id",
+      "entityType": "columns",
+      "table": "session_share"
+    },
+    {
+      "type": "text",
+      "notNull": false,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "org_id",
       "entityType": "columns",
       "table": "session_share"
     },

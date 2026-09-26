@@ -105,5 +105,8 @@ export const SessionShareTable = sqliteTable("session_share", {
   id: text().notNull(),
   secret: text().notNull(),
   url: text().notNull(),
+  resource: text({ enum: ["share", "shares"] }).notNull().default("share"),
+  account_id: text(),
+  org_id: text(),
   ...Timestamps,
 })

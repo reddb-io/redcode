@@ -7,6 +7,7 @@ import { SessionV1 } from "@opencode/schema/session-v1"
 import { SessionMessage } from "../session/message.js"
 import { SessionSchema } from "../session/schema.js"
 import { KVTable } from "../kv/sql.js"
+import { AccountTable, AccountStateTable } from "../account/sql.js"
 import { EventSequenceTable } from "../event/sql.js"
 import { eq, sql } from "drizzle-orm"
 import { Global } from "@opencode/util/global"
@@ -692,6 +693,7 @@ export function run(options: Options = {}): Effect.Effect<RunResult, never, Data
     Effect.gen(function* () {
       const db = (yield* Database.Service).db
       const global = yield* Global.Service
+      yield* importNextAccounts(db, nextPath(options, global.data))
       const state = yield* readState(db)
       if (state?.phase === "completed") return { status: "completed" as const }
       if (!(yield* hasLegacySessions(db))) return { status: "completed" as const }
@@ -871,6 +873,7 @@ export function importRedcode(sourcePath: string): Effect.Effect<RedcodeImportRe
         },
         "redcode",
       )
+      yield* importNextAccounts(db, sourcePath)
       return result
     }).pipe(Effect.orDie),
   )
@@ -889,6 +892,45 @@ function openNextDatabase(sourcePath: string) {
       return new sqlite.Database(sourcePath, { readonly: true, strict: true })
     }),
     (source) => Effect.sync(() => source.close()),
+  )
+}
+
+function importNextAccounts(db: Database.Interface["db"], sourcePath: string | undefined) {
+  if (!sourcePath || !existsSync(sourcePath)) return Effect.void
+  const key = `redcode.accounts.imported:${createHash("sha256").update(sourcePath).digest("hex")}`
+  return Effect.scoped(
+    Effect.gen(function* () {
+      const recorded = yield* db.select({ key: KVTable.key }).from(KVTable).where(eq(KVTable.key, key)).get()
+      if (recorded) return
+      const source = yield* openNextDatabase(sourcePath)
+      const tables = new Set(
+        source.query<{ name: string }, []>("SELECT name FROM sqlite_master WHERE type = 'table'").all().map((row) => row.name),
+      )
+      if (!tables.has("account") || !tables.has("account_state")) return
+      const accounts = source
+        .query<typeof AccountTable.$inferSelect, []>(
+          "SELECT id, email, url, access_token, refresh_token, token_expiry, time_created, time_updated FROM account",
+        )
+        .all()
+      const stateColumns = new Set(
+        source.query<{ name: string }, []>("PRAGMA table_info('account_state')").all().map((column) => column.name),
+      )
+      const state = source
+        .query<typeof AccountStateTable.$inferSelect, []>(
+          `SELECT id, active_account_id, ${stateColumns.has("active_org_id") ? "active_org_id" : "NULL AS active_org_id"} FROM account_state WHERE id = 1`,
+        )
+        .get()
+      yield* db.transaction((tx) =>
+        Effect.gen(function* () {
+          if (accounts.length > 0)
+            yield* tx.insert(AccountTable).values(accounts).onConflictDoNothing().run()
+          if (state)
+            yield* tx.insert(AccountStateTable).values(state).onConflictDoNothing().run()
+          yield* tx.insert(KVTable).values({ key, value: true }).onConflictDoNothing().run()
+        }),
+      )
+      yield* Effect.logInfo("Imported Redcode accounts", { count: accounts.length })
+    }).pipe(Effect.orDie),
   )
 }
 

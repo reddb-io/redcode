@@ -50,6 +50,7 @@ import m47 from "./migration/20260923013825_project_time_active.js"
 import m48 from "./migration/20260926135347_redcode-data.js"
 import m49 from "./migration/20260926140058_redcode-session-state.js"
 import m50 from "./migration/20260926140214_redcode-legacy-state.js"
+import m51 from "./migration/20260926220254_share-backend.js"
 
 export const migrations = [
   m00,
@@ -103,4 +104,5 @@ export const migrations = [
   m48,
   m49,
   m50,
+  m51,
 ] satisfies DatabaseMigration.Migration[]
