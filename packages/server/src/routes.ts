@@ -22,6 +22,8 @@ import { SessionUsageMirror } from "@opencode/core/usage/mirror"
 import { SessionInbox } from "@opencode/core/session/inbox"
 import { SessionGoal } from "@opencode/core/session/goal"
 import { SessionGuardLog } from "@opencode/core/session/guard-log"
+import { SessionTaskFacts } from "@opencode/core/session/task-facts"
+import { SessionTodoStore } from "@opencode/core/session/todo-store"
 import { Intelligence } from "@opencode/core/intelligence"
 import { DesignAppConnection } from "@opencode/core/design/app-connection"
 import { Instance } from "@opencode/core/instance/service"
@@ -76,6 +78,8 @@ const applicationServiceNodes = [
   SessionInbox.node,
   SessionGoal.node,
   SessionGuardLog.node,
+  SessionTaskFacts.node,
+  SessionTodoStore.node,
   Intelligence.node,
   DesignAppConnection.node,
   Instance.node,

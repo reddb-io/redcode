@@ -183,6 +183,13 @@ const Root = Spec.make(typeof OPENCODE_CLI_NAME === "string" ? OPENCODE_CLI_NAME
             json: Flag.boolean("json").pipe(Flag.withDefault(false)),
           },
         }),
+        Spec.make("todos", {
+          description: "Show session tasks, sources, evidence, and refused updates",
+          params: {
+            sessionID: Argument.string("sessionID").pipe(Argument.optional),
+            json: Flag.boolean("json").pipe(Flag.withDefault(false)),
+          },
+        }),
         Spec.make("logs", {
           description: "Print or open the diagnostic log",
           params: {

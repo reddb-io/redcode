@@ -8353,6 +8353,26 @@ export type VcsDiffInput = {
 
 export type VcsDiffOutput = { location: LocationPublicRef; data: Array<FileDiffInfo> }
 
+export type DebugTodosInput = { readonly sessionID: { readonly sessionID: string }["sessionID"] }
+
+export type DebugTodosOutput = {
+  sessionID: string
+  tasks: Array<{
+    id: string
+    status: string
+    priority: string
+    content: string
+    revision?: number | undefined
+    source?: { type: string; messageID: string; quote: string; paraphrase?: string | undefined } | undefined
+    criterion?: string | undefined
+    evidence?: string | undefined
+    reason?: string | undefined
+    scopeChange?: { messageID: string; quote: string; paraphrase?: string | undefined } | undefined
+    refusals: number
+  }>
+  errors: Array<{ time: string; kind: string; message: string; callID: string }>
+}
+
 export type DebugGuardsInput = {
   readonly since?: { readonly since?: number | undefined; readonly limit?: number | undefined }["since"]
   readonly limit?: { readonly since?: number | undefined; readonly limit?: number | undefined }["limit"]

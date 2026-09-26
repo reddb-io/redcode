@@ -294,6 +294,8 @@ import type {
   VcsBranchListOutput,
   VcsDiffInput,
   VcsDiffOutput,
+  DebugTodosInput,
+  DebugTodosOutput,
   DebugGuardsInput,
   DebugGuardsOutput,
   DebugLocationListOutput,
@@ -1825,6 +1827,11 @@ const adaptGroupVcs = (raw: RawClient["server.vcs"]) => ({
   diff: EndpointVcsDiff(raw),
 })
 
+const EndpointDebugTodos = (raw: RawClient["server.debug"]) => (input: DebugTodosInput) =>
+  preserveEffect<DebugTodosOutput>()(
+    raw["debug.todos"]({ query: { sessionID: input["sessionID"] } }).pipe(Effect.mapError(mapClientError)),
+  )
+
 const EndpointDebugGuards = (raw: RawClient["server.debug"]) => (input?: DebugGuardsInput) =>
   preserveEffect<DebugGuardsOutput>()(
     raw["debug.guards"]({ query: { since: input?.["since"], limit: input?.["limit"] } }).pipe(
@@ -1841,6 +1848,7 @@ const EndpointDebugLocationEvict = (raw: RawClient["server.debug"]) => (input?: 
   )
 
 const adaptGroupDebug = (raw: RawClient["server.debug"]) => ({
+  todos: EndpointDebugTodos(raw),
   guards: EndpointDebugGuards(raw),
   location: { list: EndpointDebugLocationList(raw), evict: EndpointDebugLocationEvict(raw) },
 })

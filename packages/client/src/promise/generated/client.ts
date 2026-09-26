@@ -292,6 +292,8 @@ import type {
   VcsBranchListOutput,
   VcsDiffInput,
   VcsDiffOutput,
+  DebugTodosInput,
+  DebugTodosOutput,
   DebugGuardsInput,
   DebugGuardsOutput,
   DebugLocationListOutput,
@@ -2453,6 +2455,18 @@ export function make(options: ClientOptions) {
         ),
     },
     debug: {
+      todos: (input: DebugTodosInput, requestOptions?: RequestOptions) =>
+        request<DebugTodosOutput>(
+          {
+            method: "GET",
+            path: `/api/debug/todos`,
+            query: { sessionID: input["sessionID"] },
+            successStatus: 200,
+            declaredStatuses: [400, 401],
+            empty: false,
+          },
+          requestOptions,
+        ),
       guards: (input?: DebugGuardsInput, requestOptions?: RequestOptions) =>
         request<DebugGuardsOutput>(
           {

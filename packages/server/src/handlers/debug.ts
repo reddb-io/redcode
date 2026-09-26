@@ -1,5 +1,8 @@
 import { LocationServiceMap } from "@opencode/core/location-service-map"
 import { SessionGuardLog } from "@opencode/core/session/guard-log"
+import { SessionTaskFacts } from "@opencode/core/session/task-facts"
+import { SessionTodoStore } from "@opencode/core/session/todo-store"
+import { refusalKind } from "@opencode/core/session/todo-evidence"
 import { Effect, Option, RcMap } from "effect"
 import { HttpApiBuilder } from "effect/unstable/httpapi"
 import { Api } from "../api"
@@ -7,6 +10,70 @@ import { requestRef } from "../location"
 
 export const DebugHandler = HttpApiBuilder.group(Api, "server.debug", (handlers) =>
   handlers
+    .handle(
+      "debug.todos",
+      Effect.fn(function* (ctx) {
+        const todos = yield* SessionTodoStore.Service
+        const facts = yield* SessionTaskFacts.Service
+        const tasks = yield* todos.get(ctx.query.sessionID)
+        const failed = (yield* facts.load(ctx.query.sessionID)).results
+          .filter((result) => result.tool === "todowrite" && result.errored && !result.abandoned)
+          .toSorted((a, b) => b.completed - a.completed)
+        return {
+          sessionID: ctx.query.sessionID,
+          tasks: tasks.map((task) => ({
+            id: task.id ?? "",
+            status: task.status,
+            priority: task.priority,
+            content: task.content,
+            revision: task.revision,
+            ...(task.source
+              ? {
+                  source: {
+                    type: task.source.type,
+                    messageID: task.source.id,
+                    quote: task.source.quote,
+                    ...(task.source.paraphrase ? { paraphrase: task.source.paraphrase } : {}),
+                  },
+                }
+              : {}),
+            ...(task.criterion ? { criterion: task.criterion } : {}),
+            ...(task.evidence
+              ? {
+                  evidence: `${task.evidence.tool} ${task.evidence.callID} (message ${task.evidence.messageID}): ${task.evidence.explanation.split("\n")[0]?.trim() ?? ""}`,
+                }
+              : {}),
+            ...(task.reason ? { reason: task.reason } : {}),
+            ...(task.scopeChange
+              ? {
+                  scopeChange: {
+                    messageID: task.scopeChange.messageID,
+                    quote: task.scopeChange.quote,
+                    ...(task.scopeChange.paraphrase ? { paraphrase: task.scopeChange.paraphrase } : {}),
+                  },
+                }
+              : {}),
+            refusals: failed.filter((result) => {
+              const input = result.input
+              if (typeof input !== "object" || input === null || !("todos" in input) || !Array.isArray(input.todos))
+                return false
+              return input.todos.some(
+                (item) =>
+                  typeof item === "object" &&
+                  item !== null &&
+                  (("id" in item && item.id === task.id) || ("content" in item && item.content === task.content)),
+              )
+            }).length,
+          })),
+          errors: failed.slice(0, 20).map((result) => ({
+            time: new Date(result.completed).toISOString(),
+            kind: refusalKind(result.error),
+            message: result.error.split("\n")[0]?.trim() ?? "",
+            callID: result.callID,
+          })),
+        }
+      }),
+    )
     .handle(
       "debug.guards",
       Effect.fn(function* (ctx) {

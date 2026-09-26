@@ -4144,6 +4144,40 @@ export interface VcsApi<E = never> {
   readonly diff: VcsDiffOperation<E>
 }
 
+export type DebugTodosInput = { readonly sessionID: Session.ID }
+export type DebugTodosOutput = {
+  readonly sessionID: Session.ID
+  readonly tasks: ReadonlyArray<{
+    readonly id: string
+    readonly status: string
+    readonly priority: string
+    readonly content: string
+    readonly revision?: number | undefined
+    readonly source?:
+      | {
+          readonly type: string
+          readonly messageID: string
+          readonly quote: string
+          readonly paraphrase?: string | undefined
+        }
+      | undefined
+    readonly criterion?: string | undefined
+    readonly evidence?: string | undefined
+    readonly reason?: string | undefined
+    readonly scopeChange?:
+      | { readonly messageID: string; readonly quote: string; readonly paraphrase?: string | undefined }
+      | undefined
+    readonly refusals: number
+  }>
+  readonly errors: ReadonlyArray<{
+    readonly time: string
+    readonly kind: string
+    readonly message: string
+    readonly callID: string
+  }>
+}
+export type DebugTodosOperation<E = never> = (input: DebugTodosInput) => Effect.Effect<DebugTodosOutput, E>
+
 export type DebugGuardsInput = { readonly since?: number | undefined; readonly limit?: number | undefined }
 export type DebugGuardsOutput = {
   readonly summary: ReadonlyArray<{
@@ -4195,6 +4229,7 @@ export type DebugLocationEvictOperation<E = never> = (
 ) => Effect.Effect<DebugLocationEvictOutput, E>
 
 export interface DebugApi<E = never> {
+  readonly todos: DebugTodosOperation<E>
   readonly guards: DebugGuardsOperation<E>
   readonly location: { readonly list: DebugLocationListOperation<E>; readonly evict: DebugLocationEvictOperation<E> }
 }
