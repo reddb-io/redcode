@@ -211,6 +211,7 @@ const makeRunnerState = (compaction?: SessionRunnerModel.Resolved["compaction"])
       if (toolBarrier === barrier) toolBarrier = undefined
     }).pipe(Effect.andThen(Deferred.succeed(barrier.release, undefined)), Effect.asVoid)
   return {
+    runner: Deferred.makeUnsafe<SessionRunner.Interface>(),
     currentModel: model,
     compaction,
     modelResolveHook: resolvesModel,
@@ -435,28 +436,22 @@ const layer = Layer.unwrap(
       PluginSupervisor.node.replace(Layer.empty),
       Plugin.node.replace(Layer.mock(Plugin.Service, { awaitActivation: Effect.void })),
       SessionModelTransport.node.replace(modelTransport),
-    ]
-    const runnerLayer = AppNodeBuilder.build(LayerNode.group([SessionRunnerLLM.node, SessionProjector.node]), [
-      ...replacements,
-      persistedBus,
       McpInstructions.node.replace(mcpInstructions),
-    ])
+    ]
     const execution = Layer.effect(
       SessionExecution.Service,
       Effect.gen(function* () {
-        const sessionRunner = yield* SessionRunner.Service
         function drain(
           sessionID: Session.ID,
           force: boolean,
           continuation?: SessionRunner.Continuation,
         ): Effect.Effect<void, SessionRunner.RunError> {
-          return sessionRunner
-            .drain({ sessionID, force, continuation })
-            .pipe(
-              Effect.flatMap((result) =>
-                result._tag === "Complete" ? Effect.void : drain(sessionID, false, result.continuation),
-              ),
-            )
+          return Deferred.await(state.runner).pipe(
+            Effect.flatMap((sessionRunner) => sessionRunner.drain({ sessionID, force, continuation })),
+            Effect.flatMap((result) =>
+              result._tag === "Complete" ? Effect.void : drain(sessionID, false, result.continuation),
+            ),
+          )
         }
         const coordinator = yield* SessionRunCoordinator.make<Session.ID, SessionRunner.RunError>({
           drain: (sessionID, force) => drain(sessionID, force),
@@ -470,7 +465,7 @@ const layer = Layer.unwrap(
           awaitIdle: coordinator.awaitIdle,
         })
       }),
-    ).pipe(Layer.provide(runnerLayer), Layer.orDie)
+    )
     return AppNodeBuilder.build(
       LayerNode.group([
         Database.node,
@@ -566,6 +561,7 @@ const setup = Effect.gen(function* () {
     .pipe(Effect.orDie)
   yield* insertSession(sessionID)
   const state = yield* RunnerState
+  yield* Deferred.succeed(state.runner, yield* SessionRunner.Service)
   const session = yield* Session.Service
   const llm = yield* TestLLM.Service
   const admit = (text: string) => session.prompt({ sessionID, text, resume: false })
