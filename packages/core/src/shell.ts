@@ -167,10 +167,8 @@ const layer = () =>
         // while the process and output file are fully released before returning.
         commands.delete(id)
         if (command.timeoutFiber) yield* Fiber.interrupt(command.timeoutFiber)
-        if (command.info.status === "running") {
-          yield* command.stop
-          yield* command.captureDone
-        }
+        if (command.info.status === "running") yield* command.stop
+        yield* command.captureDone
         // Unblock any wait still pending when the command is removed before it terminated.
         yield* Deferred.fail(command.done, new NotFoundError({ id }))
         yield* Effect.promise(() => unlink(command.file).catch(() => {}))
