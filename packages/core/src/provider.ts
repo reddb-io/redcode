@@ -1,4 +1,5 @@
 export * as Provider from "./provider.js"
+export { AISDK_PREFIX, isAISDK, aisdk, packageName } from "./provider-package.js"
 
 import { Context, Effect, Layer, Schema, Stream, Struct } from "effect"
 import { Provider } from "@opencode/schema/provider"
@@ -17,22 +18,10 @@ import { Credential } from "@opencode/schema/credential"
 import { Location } from "./location.js"
 import { freeze } from "immer"
 import { AISDKNative } from "./aisdk-native.js"
+import { packageName } from "./provider-package.js"
 
 export const ID = Provider.ID
 export type ID = typeof ID.Type
-
-export const AISDK_PREFIX = "aisdk:"
-export const isAISDK = (value: string | undefined): value is string => value?.startsWith(AISDK_PREFIX) ?? false
-export const aisdk = (value: string) => (isAISDK(value) ? value : `${AISDK_PREFIX}${value}`)
-export function packageName(value: string): string
-export function packageName(value: undefined): undefined
-export function packageName(value: string | undefined): string | undefined
-export function packageName(value: string | undefined) {
-  // Native provider entrypoints can persist in user configuration across the npm scope migration.
-  if (value?.startsWith("@opencode-ai/ai/")) return value.replace("@opencode-ai/", "@opencode/")
-  if (value === undefined || !isAISDK(value)) return value
-  return value.slice(AISDK_PREFIX.length)
-}
 
 type Json = Schema.Schema.Type<typeof Schema.Json>
 const JsonRecord = Schema.Record(Schema.String, Schema.Json)

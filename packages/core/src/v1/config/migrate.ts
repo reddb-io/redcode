@@ -10,7 +10,7 @@ import { ConfigMCPV1 } from "./mcp.js"
 import { ConfigPermissionV1 } from "./permission.js"
 import { ConfigProviderV1 } from "./provider.js"
 import { ConfigProviderOptionsV1 } from "./provider-options.js"
-import { Provider } from "../../provider.js"
+import { aisdk } from "../../provider-package.js"
 import { compatibility } from "../../model-compatibility.js"
 
 const decodeOptions = { errors: "all", onExcessProperty: "ignore", propertyOrder: "original" } as const
@@ -251,7 +251,7 @@ function migrateStandardProvider(info: ConfigProviderV1.Info) {
   return {
     name: info.name,
     env: info.env,
-    package: info.npm ? Provider.aisdk(info.npm) : undefined,
+    package: info.npm ? aisdk(info.npm) : undefined,
     includeModels: info.whitelist,
     excludeModels: info.blacklist,
     settings: info.api ? { ...options.settings, baseURL: info.api } : info.options ? options.settings : undefined,
@@ -281,7 +281,7 @@ function migrateAzureCognitiveServicesProvider(info: ConfigProviderV1.Info) {
 
 function migrateGoogleVertexAnthropicProvider(info: ConfigProviderV1.Info) {
   const migrated = migrateStandardProvider(info)
-  const packageName = migrated.package ?? Provider.aisdk("@ai-sdk/google-vertex/anthropic")
+  const packageName = migrated.package ?? aisdk("@ai-sdk/google-vertex/anthropic")
   return {
     ...migrated,
     // The current Google Vertex provider includes Gemini and Claude. Keep the Anthropic SDK on Claude models
@@ -347,7 +347,7 @@ function migrateModel(info: typeof ConfigProviderV1.Model.Type) {
     family: info.family,
     name: info.name,
     compatibility: compatibility(info.interleaved),
-    package: info.provider?.npm ? Provider.aisdk(info.provider.npm) : undefined,
+    package: info.provider?.npm ? aisdk(info.provider.npm) : undefined,
     settings: info.provider?.api ? { ...settings, baseURL: info.provider.api } : settings,
     capabilities,
     headers: info.headers,
