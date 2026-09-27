@@ -490,6 +490,7 @@ const layer = Layer.effect(
           // Keep tool definitions on the final Step to preserve the provider's cached prefix.
           toolChoice: stepLimitReached ? "none" : undefined,
           webSocket: "session",
+          inputTokens: SessionCompaction.estimatePrompt(loaded),
         })
         const output = prepared.request.generation?.maxTokens ?? loaded.model.limit.output
         const declared = { context: loaded.model.limit.context, input: loaded.model.limit.input }

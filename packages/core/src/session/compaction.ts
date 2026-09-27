@@ -98,6 +98,8 @@ type Streamed = {
 const NOTHING_TO_COMPACT: Failure = { error: { type: "compaction.unavailable", message: "Nothing to compact yet" } }
 /** After each "too long" rejection, the next attempt aims at this share of the first rejected request's size. */
 const SHRINK_STEPS = [0.7, 0.5, 0.35]
+// The least of the window kept free for the last reply before compaction and for the summary itself.
+const RESERVE_MIN = 16_000
 /** A common window size, assumed for the compaction request when the model's window is unknown. */
 const UNKNOWN_WINDOW = 200_000
 const TOOL_OUTPUT_MAX_CHARS = 1_250
@@ -307,7 +309,7 @@ export const layer = Layer.effect(
       const prompt = buildPrompt(previous !== undefined, previous?.summary.includes(LEGACY_HEADING) ?? false)
       const headings = SUMMARY_TEMPLATE.split("\n").filter((line) => line.startsWith("##"))
       const filled = (text: string) => text.split("\n").some((line) => headings.includes(line.trim()))
-      const prepared = yield* prepare(context, split.older)
+      const prepared = yield* prepare(context, split.older, budget)
 
       // Hooks saw the request without the summary prompt, so it is appended here. A reply that ignores the
       // template gets one reminder before it counts as a failure.
@@ -356,7 +358,7 @@ export const layer = Layer.effect(
       if (!context.messages.some(messageToText)) return yield* Effect.fail(NOTHING_TO_COMPACT)
       const unsupported = (message: string) =>
         Effect.fail<Failure>({ error: { type: "provider.unsupported-operation", message } })
-      const prepared = yield* prepare(context, context.messages, "session")
+      const prepared = yield* prepare(context, context.messages, budget, "session")
 
       // History is selected before request hooks, so a hook that reroutes the request cannot be honored here.
       const provenance = SessionProviderContext.provenance(context.model)
@@ -593,10 +595,18 @@ export const layer = Layer.effect(
       )
     }
 
-    /** The conversation as the runner would send it, after request hooks. */
+    /**
+     * The conversation as the runner would send it, after request hooks.
+     *
+     * The output limit leaves room for `budget`, the most `deliver` sends. The request prepared here can be larger
+     * when the conversation overshot the threshold, and is only shrunk to fit after hooks have seen it, so sizing the
+     * output to it would leave next to no room. A prompt the estimate undersells is rejected and shrunk like any
+     * other.
+     */
     const prepare = (
       context: SessionContext.Loaded,
       messages: ReadonlyArray<SessionMessage.Info>,
+      budget: number,
       webSocket?: "session",
     ) => {
       const base = transcript(context, messages)
@@ -608,6 +618,7 @@ export const layer = Layer.effect(
         system: base.system,
         messages: base.messages,
         webSocket,
+        inputTokens: { measured: budget, estimated: 0 },
       })
     }
 
@@ -895,6 +906,12 @@ export const recentUserMessages = (
 }
 
 export const estimateContext = (context: SessionContext.Loaded, ratio = 1) => {
+  const prompt = estimatePrompt(context, ratio)
+  return prompt.measured + prompt.estimated
+}
+
+/** The prompt size: `measured` is what the provider reported at the latest response, `estimated` is the text since. */
+export const estimatePrompt = (context: SessionContext.Loaded, ratio = 1) => {
   if (
     SessionToolOutputPrune.apply(context.messages, context.prune, context.tools).some(
       (message, index) => message !== context.messages[index],
@@ -904,7 +921,10 @@ export const estimateContext = (context: SessionContext.Loaded, ratio = 1) => {
     const sent = SessionModelRequest.boundImages(
       SessionModelRequest.unsupportedParts(base.messages, context.model.capabilities),
     )
-    return Math.ceil(estimateRequest({ system: base.system, tools: context.tools.definitions, messages: sent }) * ratio)
+    return {
+      measured: 0,
+      estimated: Math.ceil(estimateRequest({ system: base.system, tools: context.tools.definitions, messages: sent }) * ratio),
+    }
   }
   const anchorIndex = context.messages.findLastIndex((message) => hasMeasuredPrompt(message, context.model.ref))
   const anchor = context.messages[anchorIndex]
@@ -919,20 +939,30 @@ export const estimateContext = (context: SessionContext.Loaded, ratio = 1) => {
   const unmeasured = sent.filter((message) => message.role !== "assistant" || message.id !== anchor?.id)
 
   if (anchor?.type !== "assistant" || !anchor.tokens)
-    return Math.ceil(estimateRequest({ system: base.system, tools: context.tools.definitions, messages: unmeasured }) * ratio)
+    return {
+      measured: 0,
+      estimated: Math.ceil(estimateRequest({ system: base.system, tools: context.tools.definitions, messages: unmeasured }) * ratio),
+    }
 
   const tokens = anchor.tokens
-  const measured = tokens.input + tokens.cache.read + tokens.cache.write + tokens.output + tokens.reasoning
-  return measured + Math.ceil(unmeasured.reduce((sum, message) => sum + estimateMessage(message), 0) * ratio)
+  return {
+    measured: tokens.input + tokens.cache.read + tokens.cache.write + tokens.output + tokens.reasoning,
+    estimated: Math.ceil(unmeasured.reduce((sum, message) => sum + estimateMessage(message), 0) * ratio),
+  }
 }
 
-/** The largest request the model takes while leaving room for its reply. */
+/**
+ * The largest request the model takes while leaving room for its reply: 10% of the window, or `RESERVE_MIN` when that
+ * is more. The summary request is capped at the same size, so its output limit is whatever the reserve leaves. A window
+ * too small to give up `RESERVE_MIN` keeps 10%.
+ */
 const calculateCeiling = (limit: SessionContext.Loaded["model"]["limit"], buffer: number | undefined) => {
   // Unknown limits are reported as 0. An unknown input limit falls back to the context window; with no window at
   // all, only a provider rejection can limit the request.
   const window = limit.input || limit.context
   if (window <= 0) return Number.POSITIVE_INFINITY
-  return buffer === undefined ? Math.floor(window * 0.9) : window - buffer
+  if (buffer !== undefined) return window - buffer
+  return window - Math.max(Math.floor(window * 0.1), window >= 2 * RESERVE_MIN ? RESERVE_MIN : 0)
 }
 
 /**
