@@ -422,6 +422,24 @@ describe("PatchTool", () => {
     }),
   )
 
+  it.live("reports a formatter failure after committing the patch", () =>
+    withTempTool((directory, registry) => {
+      formatFile = () => Effect.die(new Error("forced formatter failure"))
+      return Effect.gen(function* () {
+        const settled = yield* executeTool(
+          registry,
+          call("*** Begin Patch\n*** Add File: formatted.txt\n+created\n*** End Patch"),
+        )
+        expect(settled.status).toBe("completed")
+        if (settled.status !== "completed") return
+        expect(settled.content).toEqual([
+          { type: "text", text: expect.stringContaining("Warning: formatted.txt was patched, but post-patch formatting failed") },
+        ])
+        expect(yield* Effect.promise(() => fs.readFile(path.join(directory, "formatted.txt"), "utf8"))).toBe("created\n")
+      })
+    }),
+  )
+
   it.live("moves and updates a file", () =>
     Effect.acquireUseRelease(
       Effect.promise(() => tmpdir()),

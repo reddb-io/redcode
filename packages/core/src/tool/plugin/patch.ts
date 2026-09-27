@@ -4,13 +4,14 @@ import type { Context } from "@opencode/plugin/effect/plugin"
 import type { SessionHooks } from "@opencode/plugin/effect/session"
 import { ToolFailure } from "@opencode/ai"
 import { FileDiff } from "@opencode/schema/file-diff"
-import { Effect, Result, Schema } from "effect"
+import { Cause, Effect, Exit, Result, Schema } from "effect"
 import { Bom } from "@opencode/util/bom"
 import { Bus } from "../../bus.js"
 import { Environment } from "../../environment/index.js"
 import { FileAccess } from "../../file-access.js"
 import { Formatter } from "../../formatter.js"
 import { FileMutation } from "../../file-mutation.js"
+import type { LSPClient } from "../../lsp/client.js"
 import { Diagnostic } from "../../lsp/diagnostic.js"
 import { LSP } from "../../lsp/lsp.js"
 import { Location } from "../../location.js"
@@ -99,8 +100,6 @@ export const Plugin = {
                     : []),
                 ])
               : []
-            const fail = (operation: string, error: unknown) =>
-              new ToolFailure({ message: `${operation}: ${errorMessage(error)}` })
             return Effect.gen(function* () {
               const source = {
                 type: "tool" as const,
@@ -234,21 +233,24 @@ export const Plugin = {
                 .filter((item) => item.type !== "delete")
                 .filter((item, index, items) => items.findIndex((other) => other.target === item.target) === index)
               const formatted = new Map<string, string>()
+              const warnings: string[] = []
               yield* Effect.forEach(
                 written,
                 (item) =>
                   Effect.gen(function* () {
-                    const current = yield* FileMutation.readText(environment.files, item.target).pipe(
-                      Effect.mapError((error) => fail(`Failed to read ${item.target}`, error)),
-                    )
-                    formatted.set(
-                      item.target,
-                      (yield* formatter.file(item.target))
-                        ? yield* FileMutation.syncTextBom(environment.files, item.target, current.bom).pipe(
-                            Effect.mapError((error) => fail(`Failed to sync ${item.target}`, error)),
-                          )
-                        : current.text,
-                    )
+                    const result = yield* Effect.exit(Effect.gen(function* () {
+                      const current = yield* FileMutation.readText(environment.files, item.target)
+                      return (yield* formatter.file(item.target))
+                        ? yield* FileMutation.syncTextBom(environment.files, item.target, current.bom)
+                        : current.text
+                    }))
+                    if (Exit.isSuccess(result)) {
+                      formatted.set(item.target, result.value)
+                      return
+                    }
+                    warnings.push(`Warning: ${item.resource} was patched, but post-patch formatting failed: ${errorMessage(Cause.squash(result.cause))}`)
+                    const latest = yield* Effect.exit(FileMutation.readText(environment.files, item.target))
+                    if (Exit.isSuccess(latest)) formatted.set(item.target, latest.value.text)
                   }),
                 { discard: true },
               )
@@ -280,8 +282,11 @@ export const Plugin = {
                   ),
                 { discard: true },
               )
-              const diagnostics = yield* lsp.diagnostics()
-              return { applied, files, written, diagnostics }
+              const report = yield* Effect.exit(lsp.diagnostics())
+              if (Exit.isFailure(report))
+                warnings.push(`Warning: patch applied, but LSP diagnostics were unavailable: ${errorMessage(Cause.squash(report.cause))}`)
+              const diagnostics: Record<string, LSPClient.Diagnostic[]> = Exit.isSuccess(report) ? report.value : {}
+              return { applied, files, written, diagnostics, warnings }
             }).pipe(
               fileMutation.withLock(lockTargets),
               Effect.map((output) => ({
@@ -292,6 +297,7 @@ export const Plugin = {
                     const report = Diagnostic.report(item.target, output.diagnostics[item.target] ?? [])
                     return report ? [`LSP errors detected in ${item.resource}, please fix:\n${report}`] : []
                   }),
+                  ...output.warnings,
                 ].join("\n\n"),
                 metadata: {
                   files: output.files,
