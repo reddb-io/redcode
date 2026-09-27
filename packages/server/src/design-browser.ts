@@ -39,7 +39,7 @@ export const routes = (hosts: () => ReadonlyArray<string>) => HttpRouter.use((ro
     const auth = yield* ServerAuth.Config
     const app = yield* App.Metadata
     const appConnection = yield* DesignAppConnection.Service
-    const secret = Option.getOrElse(auth.password, () => DesignAccess.embeddedSecret)
+    const secret = Option.getOrElse(auth.password, () => DesignAccess.embeddedSecret())
     const previews = new Map<string, "building" | "ready" | "failed">()
 
     const handle = Effect.gen(function* () {

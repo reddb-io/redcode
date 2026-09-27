@@ -7,7 +7,10 @@ export const LINK_TTL = 10 * 60_000
 export const COOKIE_TTL = 12 * 60 * 60_000
 
 /** Embedded servers without a configured password keep links local to this process lifetime. */
-export const embeddedSecret = randomBytes(32).toString("base64url")
+export const embeddedSecret = (() => {
+  let value: string | undefined
+  return () => (value ??= randomBytes(32).toString("base64url"))
+})()
 
 export function ticket(secret: string, sessionID: string, ttl = LINK_TTL, now = Date.now()) {
   const expires = now + ttl
