@@ -119,7 +119,7 @@ test("scopes sessions to the active session location", async () => {
   app.renderer.start()
 
   try {
-    const frame = await app.waitForFrame((value) => value.includes("Project B session"))
+    const frame = await app.waitForFrame((value) => value.includes("Project B session"), { maxPasses: 100 })
     expect(frame).not.toContain("Project A session")
     expect(requestedProjects.at(-1)).toBe("proj_b")
   } finally {

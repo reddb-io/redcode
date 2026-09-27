@@ -114,10 +114,10 @@ jobs:
         run: |
           # The runners have four vCPUs, and each Bun test process performs its own concurrent work.
           if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
-            GITHUB_ACTIONS=false bun turbo test --concurrency=3
+            GITHUB_ACTIONS=false bun turbo test --concurrency=2
             exit 0
           fi
-          GITHUB_ACTIONS=false bun turbo test --affected --concurrency=3
+          GITHUB_ACTIONS=false bun turbo test --affected --concurrency=2
         env:
           NODE_OPTIONS: ${{ runner.os == 'Windows' && '--max-old-space-size=4096' || '' }}
           OPENCODE_EXPERIMENTAL_DISABLE_FILEWATCHER: ${{ runner.os == 'Windows' && 'true' || 'false' }}

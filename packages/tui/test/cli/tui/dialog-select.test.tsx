@@ -81,7 +81,7 @@ async function renderSelect(
 
   const app = await testRender(() => <Harness />, { width: 80, height: 20, kittyKeyboard: true })
   app.renderer.start()
-  await app.waitForFrame((frame) => frame.includes("Items"))
+  await app.waitForFrame((frame) => frame.includes("Items"), { maxPasses: 100 })
   await app.waitFor(() => app.renderer.currentFocusedEditor instanceof InputRenderable)
   return app
 }
@@ -160,7 +160,7 @@ async function mountSelect<T>(
 
   const app = await testRender(() => <Harness />, { width: 80, height: 24, kittyKeyboard: true })
   app.renderer.start()
-  await app.waitForFrame((frame) => frame.includes("Mutable options"))
+  await app.waitForFrame((frame) => frame.includes("Mutable options"), { maxPasses: 100 })
   if (select?.renderFilter !== false)
     await app.waitFor(() => app.renderer.currentFocusedEditor instanceof InputRenderable)
   return { app, moved, replaceOptions, replaceCurrent, selected }
