@@ -36,6 +36,7 @@ const session = (
   workspace_id: null,
   parent_id: null,
   fork_session_id: null,
+  cache_root_id: null,
   fork_boundary: null,
   slug: "test",
   directory: "/tmp/test",
