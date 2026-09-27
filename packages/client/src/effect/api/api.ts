@@ -4435,6 +4435,8 @@ export type RedskilledStatusOutput = {
             readonly project_label: string
             readonly pid: number
             readonly started_at: string
+            readonly warnings?: ReadonlyArray<string> | undefined
+            readonly base_commits_ahead?: number | null | undefined
             readonly uptime_ms: number | null
             readonly vitals: {
               readonly rss_bytes: number | null
@@ -4559,6 +4561,8 @@ export type RedskilledConsentOutput = {
             readonly project_label: string
             readonly pid: number
             readonly started_at: string
+            readonly warnings?: ReadonlyArray<string> | undefined
+            readonly base_commits_ahead?: number | null | undefined
             readonly uptime_ms: number | null
             readonly vitals: {
               readonly rss_bytes: number | null
@@ -4683,6 +4687,8 @@ export type RedskilledProjectResizeOutput = {
             readonly project_label: string
             readonly pid: number
             readonly started_at: string
+            readonly warnings?: ReadonlyArray<string> | undefined
+            readonly base_commits_ahead?: number | null | undefined
             readonly uptime_ms: number | null
             readonly vitals: {
               readonly rss_bytes: number | null
@@ -4804,6 +4810,8 @@ export type RedskilledProjectStopOutput = {
             readonly project_label: string
             readonly pid: number
             readonly started_at: string
+            readonly warnings?: ReadonlyArray<string> | undefined
+            readonly base_commits_ahead?: number | null | undefined
             readonly uptime_ms: number | null
             readonly vitals: {
               readonly rss_bytes: number | null
@@ -4928,6 +4936,8 @@ export type RedskilledWorkerStopOutput = {
             readonly project_label: string
             readonly pid: number
             readonly started_at: string
+            readonly warnings?: ReadonlyArray<string> | undefined
+            readonly base_commits_ahead?: number | null | undefined
             readonly uptime_ms: number | null
             readonly vitals: {
               readonly rss_bytes: number | null
@@ -5052,6 +5062,8 @@ export type RedskilledWorkerRecycleOutput = {
             readonly project_label: string
             readonly pid: number
             readonly started_at: string
+            readonly warnings?: ReadonlyArray<string> | undefined
+            readonly base_commits_ahead?: number | null | undefined
             readonly uptime_ms: number | null
             readonly vitals: {
               readonly rss_bytes: number | null
@@ -5177,6 +5189,8 @@ export type RedskilledWorkerSteerOutput = {
             readonly project_label: string
             readonly pid: number
             readonly started_at: string
+            readonly warnings?: ReadonlyArray<string> | undefined
+            readonly base_commits_ahead?: number | null | undefined
             readonly uptime_ms: number | null
             readonly vitals: {
               readonly rss_bytes: number | null

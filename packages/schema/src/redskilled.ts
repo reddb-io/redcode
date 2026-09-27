@@ -59,6 +59,8 @@ export const Worker = Schema.Struct({
   project_label: Schema.String,
   pid: Schema.Int,
   started_at: Schema.String,
+  warnings: Schema.Array(Schema.String).pipe(optional),
+  base_commits_ahead: Schema.NullOr(Schema.Int).pipe(optional),
   uptime_ms: Schema.NullOr(Schema.Number),
   vitals: Schema.Struct({
     rss_bytes: Schema.NullOr(Schema.Number),

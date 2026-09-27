@@ -8666,6 +8666,8 @@ export type RedskilledStatusOutput = {
         project_label: string
         pid: number
         started_at: string
+        warnings?: Array<string>
+        base_commits_ahead?: number | null
         uptime_ms: number | "Infinity" | "-Infinity" | "NaN" | null
         vitals: {
           rss_bytes: number | "Infinity" | "-Infinity" | "NaN" | null
@@ -8772,6 +8774,8 @@ export type RedskilledConsentOutput = {
         project_label: string
         pid: number
         started_at: string
+        warnings?: Array<string>
+        base_commits_ahead?: number | null
         uptime_ms: number | "Infinity" | "-Infinity" | "NaN" | null
         vitals: {
           rss_bytes: number | "Infinity" | "-Infinity" | "NaN" | null
@@ -8878,6 +8882,8 @@ export type RedskilledProjectResizeOutput = {
         project_label: string
         pid: number
         started_at: string
+        warnings?: Array<string>
+        base_commits_ahead?: number | null
         uptime_ms: number | "Infinity" | "-Infinity" | "NaN" | null
         vitals: {
           rss_bytes: number | "Infinity" | "-Infinity" | "NaN" | null
@@ -8983,6 +8989,8 @@ export type RedskilledProjectStopOutput = {
         project_label: string
         pid: number
         started_at: string
+        warnings?: Array<string>
+        base_commits_ahead?: number | null
         uptime_ms: number | "Infinity" | "-Infinity" | "NaN" | null
         vitals: {
           rss_bytes: number | "Infinity" | "-Infinity" | "NaN" | null
@@ -9089,6 +9097,8 @@ export type RedskilledWorkerStopOutput = {
         project_label: string
         pid: number
         started_at: string
+        warnings?: Array<string>
+        base_commits_ahead?: number | null
         uptime_ms: number | "Infinity" | "-Infinity" | "NaN" | null
         vitals: {
           rss_bytes: number | "Infinity" | "-Infinity" | "NaN" | null
@@ -9195,6 +9205,8 @@ export type RedskilledWorkerRecycleOutput = {
         project_label: string
         pid: number
         started_at: string
+        warnings?: Array<string>
+        base_commits_ahead?: number | null
         uptime_ms: number | "Infinity" | "-Infinity" | "NaN" | null
         vitals: {
           rss_bytes: number | "Infinity" | "-Infinity" | "NaN" | null
@@ -9302,6 +9314,8 @@ export type RedskilledWorkerSteerOutput = {
         project_label: string
         pid: number
         started_at: string
+        warnings?: Array<string>
+        base_commits_ahead?: number | null
         uptime_ms: number | "Infinity" | "-Infinity" | "NaN" | null
         vitals: {
           rss_bytes: number | "Infinity" | "-Infinity" | "NaN" | null

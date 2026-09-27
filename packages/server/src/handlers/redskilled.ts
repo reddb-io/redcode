@@ -102,13 +102,20 @@ function project(snapshot: Snapshot, key: string): Redskilled.Status {
       project_label: snapshot.state.project_label,
       pid: worker.pid,
       started_at: worker.started_at,
+      warnings: Array.isArray(worker.warnings)
+        ? worker.warnings.filter((item): item is string => typeof item === "string")
+        : [],
+      base_commits_ahead: typeof worker.base_commits_ahead === "number" && Number.isInteger(worker.base_commits_ahead)
+        ? worker.base_commits_ahead
+        : null,
       uptime_ms: Number.isFinite(started) ? Math.max(0, Date.now() - started) : null,
       vitals: { rss_bytes: null, sampled_at: null, age_ms: null, fresh: false },
       budget: { declared, bytes: null, used_bytes: null, used_fraction: null, enforceable: worker.isolated === true },
       log: { last_line: null, published_at: null },
     }]
   })
-  const registered = snapshot.control.drain_intent === "draining"
+  const draining = snapshot.control.drain_intent === "draining"
+  const registered = snapshot.control.context?.queue.registered === true
   const payload: Redskilled.Payload = {
     version: 1,
     generated_at: now,
@@ -134,7 +141,7 @@ function project(snapshot: Snapshot, key: string): Redskilled.Status {
   lastGood.set(key, { payload, at: now })
   return {
     lifecycle: "degraded",
-    consent: registered ? "accepted" : "unknown",
+    consent: draining ? "accepted" : "unknown",
     scope: "project",
     native: true,
     activation: {

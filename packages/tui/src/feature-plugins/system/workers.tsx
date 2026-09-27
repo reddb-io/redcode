@@ -200,6 +200,12 @@ function WorkersPage(props: { context: Plugin.Context; onClose: () => void }) {
                   <text fg={theme.text.muted}>
                     {worker.display?.step ?? "—"} · {worker.budget.declared ?? "no memory budget"} · pid {worker.pid}
                   </text>
+                  <Show when={worker.base_commits_ahead || worker.warnings?.length}>
+                    <text fg={worker.warnings?.length ? theme.text.feedback.warning.base : theme.text.muted} wrapMode="word">
+                      {worker.base_commits_ahead ? `${worker.base_commits_ahead} commits behind · ` : ""}
+                      {worker.warnings?.join(" · ")}
+                    </text>
+                  </Show>
                 </box>
               )}
             </For>
