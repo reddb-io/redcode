@@ -427,8 +427,9 @@ See [Models](/models) for the complete native model shape.
 Most fields that keep the same shape, including `shell`, `model`, `default_agent`, `watcher`, `formatter`,
 `instructions`, `enterprise`, and `tool_output`, require no migration.
 
-V2 accepts and preserves `lsp` configuration, but it does not run language servers, expose LSP tools, or produce LSP
-diagnostics. Replace workflows that depend on those capabilities with the project's lint, typecheck, or compiler commands.
+V2 accepts `lsp` configuration. On the Node runtime, it can start language servers, expose the `lsp` tool and server
+endpoints, and collect diagnostics after file edits and writes. Language servers are unavailable on the `workerd`
+runtime. Use project lint, typecheck, or compiler commands when an LSP server is unavailable.
 
 The V1 provider filters do not have one-to-one native V2 config fields, but their behavior remains supported through
 [policies](/policies):
