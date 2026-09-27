@@ -1022,7 +1022,7 @@ describe("OpencodePlugin", () => {
             value: account("moved", `${server.url.origin}/other///?ignored=true#ignored`),
           })
           yield* websearch.query({ query: "updated server" })
-          expect(requests.at(-1)).toMatchObject({
+          expect(requests.filter((request) => request.method === "POST").at(-1)).toMatchObject({
             method: "POST",
             path: "/other/api/websearch",
             authorization: "Bearer moved",
