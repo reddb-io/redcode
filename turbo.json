@@ -14,6 +14,9 @@
     "@opencode/cli#typecheck": {
       "dependsOn": ["@opencode/core#typecheck"]
     },
+    "@reddb-io/redcode-design-app#typecheck": {
+      "dependsOn": ["@opencode/core#typecheck", "@opencode/server#typecheck"]
+    },
     "test:components": {
       "outputs": [],
       "cache": false
