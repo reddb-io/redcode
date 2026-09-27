@@ -340,6 +340,34 @@ describe("PatchTool", () => {
     ),
   )
 
+  it.live("stages an added file for a later update in the same patch", () =>
+    withTempTool((directory, registry) =>
+      Effect.gen(function* () {
+        const settled = yield* executeTool(
+          registry,
+          call("*** Begin Patch\n*** Add File: staged.txt\n+first\n*** Update File: staged.txt\n@@\n-first\n+second\n*** End Patch"),
+        )
+        expect(settled.status).toBe("completed")
+        expect(yield* Effect.promise(() => fs.readFile(path.join(directory, "staged.txt"), "utf8"))).toBe("second\n")
+      }),
+    ),
+  )
+
+  it.live("stages a deletion for a later add in the same patch", () =>
+    withTempTool((directory, registry) =>
+      Effect.gen(function* () {
+        const target = path.join(directory, "staged.txt")
+        yield* Effect.promise(() => fs.writeFile(target, "first\n"))
+        const settled = yield* executeTool(
+          registry,
+          call("*** Begin Patch\n*** Delete File: staged.txt\n*** Add File: staged.txt\n+second\n*** End Patch"),
+        )
+        expect(settled.status).toBe("completed")
+        expect(yield* Effect.promise(() => fs.readFile(target, "utf8"))).toBe("second\n")
+      }),
+    ),
+  )
+
   it.live("counts deleted lines with and without a trailing newline", () =>
     withTempTool((directory, registry) =>
       Effect.gen(function* () {
@@ -476,6 +504,37 @@ describe("PatchTool", () => {
         )
       },
       (tmp) => Effect.promise(() => tmp[Symbol.asyncDispose]()),
+    ),
+  )
+
+  it.live("stages a move destination for a later update", () =>
+    withTempTool((directory, registry) =>
+      Effect.gen(function* () {
+        const source = path.join(directory, "source.txt")
+        yield* Effect.promise(() => fs.writeFile(source, "first\n"))
+        const settled = yield* executeTool(
+          registry,
+          call("*** Begin Patch\n*** Update File: source.txt\n*** Move to: moved.txt\n@@\n-first\n+second\n*** Update File: moved.txt\n@@\n-second\n+third\n*** End Patch"),
+        )
+        expect(settled.status).toBe("completed")
+        expect(yield* exists(source)).toBe(false)
+        expect(yield* Effect.promise(() => fs.readFile(path.join(directory, "moved.txt"), "utf8"))).toBe("third\n")
+      }),
+    ),
+  )
+
+  it.live("treats a move to the same resolved path as an update", () =>
+    withTempTool((directory, registry) =>
+      Effect.gen(function* () {
+        const target = path.join(directory, "same.txt")
+        yield* Effect.promise(() => fs.writeFile(target, "before\n"))
+        const settled = yield* executeTool(
+          registry,
+          call("*** Begin Patch\n*** Update File: same.txt\n*** Move to: same.txt\n@@\n-before\n+after\n*** End Patch"),
+        )
+        expect(settled.status).toBe("completed")
+        expect(yield* Effect.promise(() => fs.readFile(target, "utf8"))).toBe("after\n")
+      }),
     ),
   )
 
