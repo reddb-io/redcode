@@ -383,8 +383,12 @@ describe("Integration", () => {
       )
 
       const attempt = yield* integrations.oauth.connect({ integrationID, methodID })
-      yield* Effect.yieldNow
-      expect(yield* integrations.oauth.status({ integrationID, attemptID: attempt.attemptID })).toEqual({
+      expect(
+        yield* eventually(
+          integrations.oauth.status({ integrationID, attemptID: attempt.attemptID }),
+          (status) => status.status === "complete",
+        ),
+      ).toEqual({
         status: "complete",
         time: attempt.time,
       })
