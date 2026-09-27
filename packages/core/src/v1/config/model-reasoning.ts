@@ -93,7 +93,10 @@ export function defaults(input: {
 
   if (
     (id.includes("k2p") || id.includes("kimi-k2.")) &&
-    (name === "@ai-sdk/anthropic" || name === "@ai-sdk/google-vertex/anthropic")
+    (name === "@ai-sdk/anthropic" ||
+      name === "@ai-sdk/google-vertex/anthropic" ||
+      name === "@opencode/ai/providers/anthropic" ||
+      name === "@opencode/ai/providers/google-vertex/messages")
   )
     return {
       settings: {
