@@ -81,7 +81,7 @@ export function isReady(settings: Intelligence.Settings, override?: Intelligence
   )
 }
 
-export function requireConfigured(settings: Intelligence.Settings, override?: Intelligence.Reasoning) {
+export function requireConfigured(settings: Intelligence.Settings, override?: Intelligence.Reasoning): Effect.Effect<void, Error> {
   if (isReady(settings, override)) return Effect.void
   return Effect.fail(
     new Error({ message: "Configure and test System One and System Two before enabling dual reasoning" }),
@@ -186,7 +186,7 @@ export function issueSummary(record: Intelligence.Evaluation) {
     .join(", ")
 }
 
-export function requireAccepted(record: Intelligence.Evaluation | undefined) {
+export function requireAccepted(record: Intelligence.Evaluation | undefined): Effect.Effect<void, Error> {
   if (record?.decision === "accepted") return Effect.void
   return Effect.fail(
     new Error({
@@ -216,7 +216,7 @@ export function approved(settings: Intelligence.Settings, record: Intelligence.E
   return `Unverified: System One review unavailable${record ? ` (${record.id}): ${issueSummary(record)}` : ""}. The user-approved update was applied without review.`
 }
 
-export function requireReview(settings: Intelligence.Settings, record: Intelligence.Evaluation | undefined) {
+export function requireReview(settings: Intelligence.Settings, record: Intelligence.Evaluation | undefined): Effect.Effect<void, Error> {
   return mode(settings) === "single" ? Effect.void : requireAccepted(record)
 }
 

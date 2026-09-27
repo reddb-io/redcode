@@ -309,9 +309,10 @@ function vercelBody(body: unknown) {
 
 function vercelResponse(model: string, request: unknown, response: unknown) {
   if (!record(request) || !record(request.questions) || !record(response) || !record(response.answers)) return response
+  const questions = request.questions
   const answers = Object.fromEntries(
     Object.entries(response.answers).map(([id, answer]) => {
-      const question = request.questions[id]
+      const question = questions[id]
       if (!record(question) || !record(answer)) return [id, answer]
       if (question.type === "noul" && answer.type === "boolean") return [id, { type: "noul", noul: answer.probability }]
       if (question.type === "choice" && answer.type === "choice") {

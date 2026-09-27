@@ -9,7 +9,7 @@ export function params(components: readonly Design.ParamComponent[]) {
     ]),
   )
   const state = { values: structuredClone(defaults), selecting: false, ready: false }
-  const valid = (field: Design.ParamField, value: unknown) => {
+  const valid = (field: Design.ParamField, value: unknown): value is string | number | boolean => {
     if (field.type === "boolean") return typeof value === "boolean"
     if (field.type === "number")
       return (
