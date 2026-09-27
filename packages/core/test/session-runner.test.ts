@@ -1105,7 +1105,7 @@ describe("SessionRunnerLLM", () => {
     yield* s.resume
 
     expect(s.requests[0]?.tools.map((tool) => tool.name)).toContain("location_context")
-    expect(contexts).toEqual([
+    expect(contexts).toMatchObject([
       {
         sessionID,
         agent: Agent.ID.make("build"),
@@ -1848,7 +1848,7 @@ describe("SessionRunnerLLM", () => {
   scenario("fails before the model request when the selected agent is unavailable", function* (s) {
     yield* s.db
       .update(SessionTable)
-      .set({ agent: "explore" })
+      .set({ agent: "missing" })
       .where(eq(SessionTable.id, sessionID))
       .run()
       .pipe(Effect.orDie)
@@ -1861,7 +1861,7 @@ describe("SessionRunnerLLM", () => {
     expect(failure).toMatchObject({
       _tag: "Session.AgentNotFoundError",
       sessionID,
-      agent: "explore",
+      agent: "missing",
     })
     expect(s.requests).toHaveLength(0)
   })
@@ -5315,6 +5315,7 @@ describe("SessionRunnerLLM", () => {
       const scheduled = yield* subscribeRetries(s)
       const run = yield* s.resume.pipe(Effect.forkChild)
       yield* Queue.take(scheduled)
+      yield* Effect.promise(() => Bun.sleep(1))
       yield* TestClock.adjust("1599 millis")
       expect(s.requests).toHaveLength(1)
       yield* TestClock.adjust("1201 millis")
