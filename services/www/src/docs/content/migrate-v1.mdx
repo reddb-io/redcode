@@ -466,7 +466,7 @@ request effect and are accepted without a warning; an `interleaved` field name s
 Provider-model `reasoning` preserves the capability and variants. Gemini, Kimi over Anthropic-compatible routes,
 MiniMax M3 over Anthropic, ZAI chat, Gemini 3 through OpenRouter, and `alibaba-cn` also retain their V1 request
 defaults when configured with `reasoning: true`. Other provider-specific V1 reasoning defaults still require migration,
-so this field continues to produce a partial-support warning.
+so enabled V1 reasoning continues to produce a partial-support warning. `reasoning: false` is preserved without one.
 
 ### Agent files
 

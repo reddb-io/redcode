@@ -498,10 +498,18 @@ describe("ConfigNormalize", () => {
     expect(result.diagnostics).toEqual([])
   })
 
-  test("preserves V1 reasoning support while reporting remaining provider defaults", () => {
+  test("preserves disabled V1 reasoning without a partial-support warning", () => {
     const result = normalized({ provider: { custom: { models: { chat: { reasoning: false } } } } })
     expect(result.encoded.providers).toMatchObject({
       custom: { models: { chat: { capabilities: { reasoning: false } } } },
+    })
+    expect(result.diagnostics).toEqual([])
+  })
+
+  test("reports provider-dependent defaults for enabled V1 reasoning", () => {
+    const result = normalized({ provider: { custom: { models: { chat: { reasoning: true } } } } })
+    expect(result.encoded.providers).toMatchObject({
+      custom: { models: { chat: { capabilities: { reasoning: true } } } },
     })
     expect(result.diagnostics.map((item) => [item.kind, item.path])).toEqual([
       ["unsupported", ["provider", "custom", "models", "chat", "reasoning"]],

@@ -650,7 +650,7 @@ function diagnoseProviderUnsupported(value: unknown, path: string[], diagnostics
   if (!isRecord(value.models)) return
   Object.entries(value.models).forEach(([name, model]) => {
     if (!isRecord(model)) return
-    if (own(model, "reasoning"))
+    if (model.reasoning === true)
       diagnostics.push({
         kind: "unsupported",
         path: [...path, "models", name, "reasoning"],
