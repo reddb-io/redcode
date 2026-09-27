@@ -83,6 +83,8 @@ jobs:
     steps:
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
       - uses: ./.github/actions/setup-bun
+        with:
+          install-flags: --filter=@reddb-io/redcode-rpc-sidecar
       - name: Install pinned Zig cross compiler
         if: runner.os == 'Linux'
         shell: bash
