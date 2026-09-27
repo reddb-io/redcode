@@ -296,7 +296,7 @@ describe("PatchTool", () => {
                     },
                   },
                 ])
-                expect(readsBeforeEditApproval).toBe(2)
+                expect(readsBeforeEditApproval).toBe(4)
                 expect(yield* Effect.promise(() => fs.readFile(path.join(tmp.path, "nested/new.txt"), "utf8"))).toBe(
                   "created\n",
                 )
@@ -879,6 +879,30 @@ describe("PatchTool", () => {
     ),
   )
 
+  it.live("rejects a patch when a target changes after approval", () =>
+    withTempTool((directory, registry) =>
+      Effect.gen(function* () {
+        const first = path.join(directory, "first.txt")
+        const second = path.join(directory, "second.txt")
+        yield* Effect.promise(() => Promise.all([fs.writeFile(first, "before\n"), fs.writeFile(second, "stable\n")]))
+        afterEditApproval = () => Effect.promise(() => fs.writeFile(second, "external\n"))
+        expect(
+          yield* executeTool(
+            registry,
+            call(
+              "*** Begin Patch\n*** Update File: first.txt\n@@\n-before\n+after\n*** Update File: second.txt\n@@\n-stable\n+patched\n*** End Patch",
+            ),
+          ),
+        ).toMatchObject({
+          status: "error",
+          error: { type: "tool.execution", message: expect.stringContaining("changed after verification") },
+        })
+        expect(yield* Effect.promise(() => fs.readFile(first, "utf8"))).toBe("before\n")
+        expect(yield* Effect.promise(() => fs.readFile(second, "utf8"))).toBe("external\n")
+      }),
+    ),
+  )
+
   it.live("reports the failing destination and filesystem error", () =>
     withTempTool((directory, registry) =>
       Effect.gen(function* () {
@@ -1284,7 +1308,7 @@ describe("PatchTool", () => {
     ),
   )
 
-  it.live("overwrites an add target that appears during permission approval", () =>
+  it.live("rejects an add target that appears during permission approval", () =>
     Effect.acquireUseRelease(
       Effect.promise(() => tmpdir()),
       (tmp) => {
@@ -1298,8 +1322,11 @@ describe("PatchTool", () => {
                 registry,
                 call("*** Begin Patch\n*** Add File: appeared.txt\n+replacement\n*** End Patch"),
               ),
-            ).toMatchObject({ status: "completed" })
-            expect(yield* Effect.promise(() => fs.readFile(target, "utf8"))).toBe("replacement\n")
+            ).toMatchObject({
+              status: "error",
+              error: { type: "tool.execution", message: expect.stringContaining("changed after verification") },
+            })
+            expect(yield* Effect.promise(() => fs.readFile(target, "utf8"))).toBe("winner\n")
           }),
         )
       },

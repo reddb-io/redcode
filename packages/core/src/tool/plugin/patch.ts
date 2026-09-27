@@ -67,6 +67,13 @@ type Prepared =
       readonly moveTarget?: FileAccess.Target
     })
 
+type Snapshot = {
+  readonly type: Environment.FileType
+  readonly size: number
+  readonly mtimeMs: number
+  readonly bytes?: Uint8Array
+} | undefined
+
 export const Plugin = {
   id: "opencode.tool.patch",
   effect: Effect.fn("PatchTool.Plugin")(function* (ctx: Context) {
@@ -119,13 +126,16 @@ export const Plugin = {
               }
               const prepared: Prepared[] = []
               const updates = new Map<string, string>()
+              const originals = new Map<string, Snapshot>()
               const resolveTarget = Effect.fnUntraced(function* (value: string) {
                 const target = yield* access.resolve({ path: value, kind: "file" })
-                if (!target.externalDirectory) return target
-                yield* access.authorizeExternal([target], context, {
-                  filepath: target.absolute,
-                  parentDir: target.externalDirectory.directory,
-                })
+                if (target.externalDirectory)
+                  yield* access.authorizeExternal([target], context, {
+                    filepath: target.absolute,
+                    parentDir: target.externalDirectory.directory,
+                  })
+                if (!originals.has(target.absolute))
+                  originals.set(target.absolute, yield* fileSnapshot(environment.files, target.absolute))
                 return target
               })
               for (const hunk of hunks) {
@@ -211,6 +221,17 @@ export const Plugin = {
                 agent: context.agent,
                 source,
               })
+
+              const stale = yield* Effect.filter(
+                [...originals],
+                ([target, original]) => fileSnapshot(environment.files, target).pipe(
+                  Effect.map((current) => !sameSnapshot(original, current)),
+                ),
+              )
+              if (stale.length)
+                return yield* new ToolFailure({
+                  message: `Patch rejected: ${stale.map(([target]) => target).join(", ")} changed after verification. No files were changed; re-read and retry.`,
+                })
 
               yield* Effect.forEach(
                 prepared,
@@ -349,6 +370,29 @@ export const Plugin = {
     yield* ctx.session.hook("compaction", hook)
     yield* ctx.session.hook("generate", hook)
   }),
+}
+
+function fileSnapshot(files: Environment.Files, target: string) {
+  return Effect.gen(function* () {
+    const info = yield* files.stat(target).pipe(Effect.catchTag("Environment.NotFound", () => Effect.undefined))
+    if (info === undefined) return undefined
+    if (info.type !== "file" && info.type !== "symlink") return info
+    const bytes = yield* files.read(target).pipe(
+      Effect.map((result) => result.bytes),
+      Effect.catchTag("Environment.NotFound", () => Effect.undefined),
+      Effect.catchTag("Environment.WrongKind", () => Effect.undefined),
+    )
+    return { ...info, bytes }
+  })
+}
+
+function sameSnapshot(left: Snapshot, right: Snapshot) {
+  if (left?.type !== right?.type) return false
+  if (left === undefined || right === undefined) return left === right
+  if (left.bytes === undefined || right.bytes === undefined)
+    return left.bytes === right.bytes && left.size === right.size && left.mtimeMs === right.mtimeMs
+  const bytes = right.bytes
+  return left.bytes.length === bytes.length && left.bytes.every((byte, index) => byte === bytes[index])
 }
 
 function errorMessage(error: unknown) {
