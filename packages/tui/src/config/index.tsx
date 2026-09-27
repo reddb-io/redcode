@@ -153,6 +153,9 @@ export const Info = Schema.Struct({
       sidebar: Schema.optional(Schema.Literals(["auto", "hide"])).annotate({
         description: "Session sidebar visibility; 'auto' shows it when space permits",
       }),
+      sidebar_width: Schema.optional(Schema.Int.check(Schema.isGreaterThan(0))).annotate({
+        description: "Initial session sidebar width in columns",
+      }),
       scrollbar: Schema.optional(Schema.Boolean).annotate({ description: "Show the session transcript scrollbar" }),
       timestamps: Schema.optional(Schema.Literals(["show", "hide"])).annotate({
         description: "Show creation times on user messages",

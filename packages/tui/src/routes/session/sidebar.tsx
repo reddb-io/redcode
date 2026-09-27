@@ -8,9 +8,8 @@ import { TextAttributes } from "@opentui/core"
 import "../../component/title-shimmer"
 
 import { getScrollAcceleration } from "../../util/scroll"
-import { SESSION_SIDEBAR_WIDTH } from "../../ui/layout"
 
-export function Sidebar(props: { sessionID: string; overlay?: boolean }) {
+export function Sidebar(props: { sessionID: string; width: number; overlay?: boolean }) {
   const data = useData()
   const theme = useTheme()
   const config = useConfig().data
@@ -21,7 +20,7 @@ export function Sidebar(props: { sessionID: string; overlay?: boolean }) {
     <Show when={session()}>
       <box
         backgroundColor={theme.background.raised.base}
-        width={SESSION_SIDEBAR_WIDTH}
+        width={props.width}
         height="100%"
         paddingTop={1}
         paddingBottom={1}

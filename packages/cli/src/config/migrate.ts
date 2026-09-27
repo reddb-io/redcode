@@ -184,6 +184,9 @@ export function migrateV1(legacy: TuiConfigV1.Info | undefined, kv: Record<strin
   const themeName = legacy?.theme ?? kv.theme
   const themeMode = kv.theme_mode_lock
   const attentionSoundPack = kv.attention_sound_pack
+  const sidebarWidth = typeof kv.sidebar_width === "number" && Number.isInteger(kv.sidebar_width) && kv.sidebar_width > 0 && kv.sidebar_width !== 36
+    ? kv.sidebar_width
+    : undefined
   const diffView = kv.diff_viewer_view ?? (legacy?.diff_style === "stacked" ? "unified" : undefined)
   const thinking =
     kv.thinking_mode ?? (kv.thinking_visibility === undefined ? undefined : kv.thinking_visibility ? "show" : "hide")
@@ -265,6 +268,7 @@ export function migrateV1(legacy: TuiConfigV1.Info | undefined, kv: Record<strin
           },
         }),
     ...(kv.sidebar === undefined &&
+    sidebarWidth === undefined &&
     kv.scrollbar_visible === undefined &&
     kv.timestamps !== "show" &&
     kv.timestamps !== "hide" &&
@@ -276,6 +280,7 @@ export function migrateV1(legacy: TuiConfigV1.Info | undefined, kv: Record<strin
       : {
           session: {
             ...(kv.sidebar === undefined ? {} : { sidebar: kv.sidebar }),
+            ...(sidebarWidth === undefined ? {} : { sidebar_width: sidebarWidth }),
             ...(kv.scrollbar_visible === undefined ? {} : { scrollbar: kv.scrollbar_visible }),
             ...(kv.timestamps === "show" || kv.timestamps === "hide" ? { timestamps: kv.timestamps } : {}),
             ...(typeof kv.generic_tool_output_visibility === "boolean"
