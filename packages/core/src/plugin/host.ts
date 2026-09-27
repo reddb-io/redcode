@@ -39,6 +39,7 @@ import { Permission } from "../permission.js"
 import { PluginHooks } from "./hooks.js"
 import type { Interface } from "../plugin.js"
 import { LayerNode } from "@opencode/util/effect/layer-node"
+import { httpClient } from "@opencode/util/effect/app-node-platform"
 
 const mutable = <T>(value: T) => value as DeepMutable<T>
 type RpcEvent = Event.Payload & {
@@ -588,6 +589,7 @@ export const requirements = LayerNode.group([
   Bus.node,
   Integration.node,
   Credential.node,
+  httpClient,
   KV.node,
   Mcp.node,
   Location.node,

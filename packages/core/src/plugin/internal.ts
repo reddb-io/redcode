@@ -63,6 +63,7 @@ import { Reference } from "../reference.js"
 import { WebSearch } from "../websearch.js"
 import { Ripgrep } from "../ripgrep.js"
 import { Session } from "../session.js"
+import { SessionStore } from "../session/store.js"
 import { SessionGoal } from "../session/goal.js"
 import { SessionPlan } from "../session/plan.js"
 import { SessionGoalCompletion } from "../session/goal-completion.js"
@@ -175,6 +176,7 @@ const services = [
   WebSearch.Service,
   Ripgrep.Service,
   Session.Service,
+  SessionStore.Service,
   SessionGoal.Service,
   SessionPlan.Service,
   SessionGoalCompletion.Service,
@@ -239,6 +241,7 @@ export const requirements = LayerNode.group([
   WebSearch.node,
   Ripgrep.node,
   Session.node,
+  SessionStore.node,
   SessionGoal.node,
   SessionPlan.node,
   SessionGoalCompletion.node,
