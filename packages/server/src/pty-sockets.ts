@@ -38,7 +38,7 @@ export const make = Effect.sync(() => {
   })
 })
 
-export const layer = Layer.scoped(
+export const layer = Layer.effect(
   Service,
   Effect.acquireRelease(make, (sockets) => sockets.shutdown),
 )

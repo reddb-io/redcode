@@ -224,7 +224,7 @@ export const PtyHandler = HttpApiBuilder.group(Api, "server.pty", (handlers) =>
           ).pipe(
             Effect.catchReason("SocketError", "SocketCloseError", () => Effect.void),
             Effect.orDie,
-            Effect.ensuring(Effect.sync(unregister).pipe(Effect.andThen(Deferred.succeed(closed)))),
+            Effect.ensuring(Effect.sync(unregister).pipe(Effect.andThen(Deferred.succeed(closed, undefined)))),
           )
           return HttpServerResponse.empty()
         }),

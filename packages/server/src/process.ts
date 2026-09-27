@@ -11,7 +11,7 @@ import { Global } from "@opencode/util/global"
 import { Cause, Context, Effect, Exit, Latch, Layer, Option, Ref, Scope } from "effect"
 import { HttpMiddleware, HttpRouter, HttpServer, HttpServerRequest, HttpServerResponse } from "effect/unstable/http"
 import { createServer } from "node:http"
-import type { Socket } from "node:net"
+import type { Duplex } from "node:stream"
 import { ServerAuth } from "./auth"
 import { isAllowedCorsOrigin } from "./cors"
 import { authorizedRequest, unauthorizedResponse } from "./middleware/authorization"
@@ -153,7 +153,7 @@ function bind(hostname: string, port: number) {
     const parentScope = yield* Scope.Scope
     const serverScope = yield* Scope.fork(parentScope)
     const server = createServer()
-    const upgrades = new Set<Socket>()
+    const upgrades = new Set<Duplex>()
     server.on("upgrade", (_request, socket) => {
       upgrades.add(socket)
       socket.once("close", () => upgrades.delete(socket))

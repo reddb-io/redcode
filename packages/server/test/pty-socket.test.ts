@@ -21,12 +21,12 @@ it.live("signals active PTY sockets and waits for their close on shutdown", () =
     const sockets = yield* PtySockets.make
     const signaled = yield* Deferred.make<void>()
     const closed = yield* Deferred.make<void>()
-    yield* sockets.register(Deferred.succeed(signaled).pipe(Effect.andThen(Deferred.await(closed))))
+    yield* sockets.register(Deferred.succeed(signaled, undefined).pipe(Effect.andThen(Deferred.await(closed))))
 
     const shutdown = yield* Effect.forkChild(sockets.shutdown)
     yield* Deferred.await(signaled)
     expect(Option.isNone(yield* Fiber.await(shutdown).pipe(Effect.timeoutOption("10 millis")))).toBeTrue()
-    yield* Deferred.succeed(closed)
+    yield* Deferred.succeed(closed, undefined)
     yield* Fiber.join(shutdown)
   }),
 )
