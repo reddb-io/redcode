@@ -491,6 +491,29 @@ it.effect("keeps V1 GPT-5 defaults on AI SDK routes without an explicit reasonin
   }),
 )
 
+it.effect("keeps V1 Meta reasoning defaults on the legacy OpenAI SDK route", () =>
+  Effect.gen(function* () {
+    const aisdk = yield* AISDK.Service
+    yield* aisdk.hook.sdk((event) => {
+      event.sdk = { languageModel: () => ({ provider: event.model.providerID }) }
+    })
+
+    const meta = yield* aisdk.model({
+      ...model("@ai-sdk/openai"),
+      providerID: Provider.ID.make("meta"),
+      modelID: Model.ID.make("llama-reasoning"),
+    })
+    const request = yield* compileRequest(LLM.request({ model: meta, prompt: "Hello" }))
+    expect(request.body.providerOptions?.openai).toMatchObject({
+      store: false,
+      reasoningEffort: "high",
+      reasoningSummary: "auto",
+      include: ["reasoning.encrypted_content"],
+      forceReasoning: true,
+    })
+  }),
+)
+
 it.effect("closes the open AI SDK reasoning part when the next one starts", () =>
   Effect.gen(function* () {
     // AI SDK OpenAI Responses can start summary part 1 before part 0 ends, then end both at item completion (#50662).

@@ -435,6 +435,13 @@ function legacyProviderDefaults(packageName: string, providerID: string, modelID
     const reasoning = id.includes("gpt-5") && !id.includes("gpt-5-chat") && !id.includes("gpt-5-pro")
     return {
       store: false,
+      ...(providerID === "meta" && packageName === "@ai-sdk/openai"
+        ? {
+            reasoningEffort: "high",
+            reasoningSummary: "auto",
+            include: ["reasoning.encrypted_content"],
+          }
+        : {}),
       ...(reasoning ? { reasoningEffort: "medium", reasoningSummary: "auto" } : {}),
       ...(reasoning && (packageName === "@ai-sdk/openai" || packageName === "@ai-sdk/amazon-bedrock/mantle")
         ? { include: ["reasoning.encrypted_content"] }
