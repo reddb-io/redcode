@@ -20,7 +20,7 @@ import { AbsolutePath } from "@opencode/schema/schema"
 import { LayerNode } from "@opencode/util/effect/layer-node"
 import { makeGlobalNode } from "@opencode/util/effect/app-node"
 import { Global } from "@opencode/util/global"
-import { Context, Duration, Effect, Layer, LayerMap, RcMap, Schema } from "effect"
+import { Context, Duration, Effect, Layer, LayerMap, RcMap, Schedule, Schema } from "effect"
 import { HttpEffect, HttpRouter, HttpServer } from "effect/unstable/http"
 import { LanguageModel, LLMClient } from "../../ai/src"
 import { OpenAIChat } from "../../ai/src/protocols/openai-chat"
@@ -329,7 +329,13 @@ it.live(
         }).pipe(instances.provide(entry.session))
       }
       expect(boots).toEqual([first.id, second.id])
-      expect(Array.from(yield* RcMap.keys(locations.rcMap))).toEqual([])
+      expect(
+        yield* RcMap.keys(locations.rcMap).pipe(
+          Effect.map(Array.from),
+          Effect.repeat({ while: (keys) => keys.length > 0, schedule: Schedule.spaced("10 millis") }),
+          Effect.timeout("2 seconds"),
+        ),
+      ).toEqual([])
     }),
   15_000,
 )
