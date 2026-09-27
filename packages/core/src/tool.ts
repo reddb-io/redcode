@@ -5,7 +5,9 @@ export type { Context, Metadata, Namespace, Options, Result } from "@opencode/sc
 import { ToolDefinition, type ToolCall } from "@opencode/ai"
 import { Tool } from "@opencode/schema/tool"
 import { Context, Effect, Layer, Result, Schema, SchemaIssue, Types } from "effect"
+import { fileURLToPath } from "node:url"
 import { makeLocationNode } from "@opencode/util/effect/app-node"
+import { FSUtil } from "@opencode/util/fs-util"
 import type { Agent } from "./agent.js"
 import { CodeModeCatalog } from "./codemode/catalog.js"
 import { CodeModeTool } from "./codemode/tool.js"
@@ -17,6 +19,8 @@ import { SessionSchema } from "./session/schema.js"
 import { State } from "./state.js"
 import { definition, effectiveName, execute, normalizedName, normalizeContent } from "./tool/runtime.js"
 import { Wildcard } from "./util/wildcard.js"
+
+const MAX_TOOL_FILE_BYTES = 20 * 1024 * 1024
 
 export class RegistrationError extends Schema.TaggedError<RegistrationError>()("Tool.RegistrationError", {
   name: Schema.String,
@@ -70,34 +74,53 @@ const layer = Layer.effect(
   Effect.gen(function* () {
     const hooks = yield* PluginHooks.Service
     const image = yield* Image.Service
+    const fs = yield* FSUtil.Service
 
-    type NormalizedItem = Tool.Content | "decode" | "size"
-    const normalizeImages = Effect.fnUntraced(function* (content: ReadonlyArray<Tool.Content>) {
+    type NormalizedItem = Tool.Content | "decode" | "size" | "file-read" | "file-size"
+    const normalizeFiles = Effect.fnUntraced(function* (content: ReadonlyArray<Tool.Content>) {
       const normalized = yield* Effect.forEach(content, (item): Effect.Effect<NormalizedItem> => {
-        if (item.type !== "file" || !item.mime.startsWith("image/")) return Effect.succeed(item)
-        const base64 = /^data:[^,]*;base64,(.*)$/s.exec(item.uri)?.[1]
-        if (base64 === undefined) return Effect.succeed(item)
-        const resource = item.name ?? `${item.mime} tool output`
-        return image.normalize(resource, { uri: resource, content: base64, encoding: "base64", mime: item.mime }).pipe(
+        if (item.type !== "file") return Effect.succeed(item)
+        // Tool files must survive replay even if their original local path disappears.
+        const file = item.uri.startsWith("file:")
+          ? yield* Effect.gen(function* () {
+              const target = yield* Effect.try({
+                try: () => fileURLToPath(item.uri),
+                catch: () => new Error("Invalid tool file URI"),
+              })
+              const info = yield* fs.stat(target)
+              if (info.type !== "File") return "file-read" as const
+              if (Number(info.size) > MAX_TOOL_FILE_BYTES) return "file-size" as const
+              const bytes = yield* fs.readFile(target)
+              if (bytes.byteLength > MAX_TOOL_FILE_BYTES) return "file-size" as const
+              return { ...item, uri: `data:${item.mime};base64,${Buffer.from(bytes).toString("base64")}` }
+            }).pipe(Effect.orElseSucceed(() => "file-read" as const))
+          : item
+        if (typeof file === "string" || !file.mime.startsWith("image/")) return Effect.succeed(file)
+        const base64 = /^data:[^,]*;base64,(.*)$/s.exec(file.uri)?.[1]
+        if (base64 === undefined) return Effect.succeed(file)
+        const resource = file.name ?? `${file.mime} tool output`
+        return image.normalize(resource, { uri: resource, content: base64, encoding: "base64", mime: file.mime }).pipe(
           Effect.map((result) => ({
-            ...item,
+            ...file,
             uri: `data:${result.mime};base64,${result.content}`,
             mime: result.mime,
           })),
-          Effect.catchTag("Image.ResizerUnavailableError", () => Effect.succeed(item)),
+          Effect.catchTag("Image.ResizerUnavailableError", () => Effect.succeed(file)),
           Effect.catchTag("Image.DecodeError", () => Effect.succeed("decode" as const)),
           Effect.catchTag("Image.SizeError", () => Effect.succeed("size" as const)),
         )
       })
-      const note = (reason: "decode" | "size", text: string) => {
+      const note = (reason: Exclude<NormalizedItem, Tool.Content>, kind: "image" | "file", text: string) => {
         const count = normalized.filter((item) => item === reason).length
         if (count === 0) return []
-        return [{ type: "text" as const, text: `[${count} image${count === 1 ? "" : "s"} omitted: ${text}]` }]
+        return [{ type: "text" as const, text: `[${count} ${kind}${count === 1 ? "" : "s"} omitted: ${text}]` }]
       }
       return [
         ...normalized.filter((item) => typeof item !== "string"),
-        ...note("decode", "could not be decoded."),
-        ...note("size", "could not be resized below the image size limit."),
+        ...note("decode", "image", "could not be decoded."),
+        ...note("size", "image", "could not be resized below the image size limit."),
+        ...note("file-read", "file", "could not be read."),
+        ...note("file-size", "file", "exceeded the 20 MiB tool-result limit."),
       ]
     })
 
@@ -148,7 +171,7 @@ const layer = Layer.effect(
         },
       }
       yield* hooks.trigger("tool", "execute.after", afterEvent)
-      const afterContent = yield* normalizeImages(normalizeContent(afterEvent.result.content, afterEvent.result.output))
+      const afterContent = yield* normalizeFiles(normalizeContent(afterEvent.result.content, afterEvent.result.output))
       return {
         ...(afterEvent.result.output === undefined ? {} : { output: afterEvent.result.output }),
         content: afterContent,
@@ -330,5 +353,5 @@ function namespaceError(name: string) {
 export const node = makeLocationNode({
   service: Service,
   layer,
-  deps: [PluginHooks.node, Image.node],
+  deps: [PluginHooks.node, Image.node, FSUtil.node],
 })

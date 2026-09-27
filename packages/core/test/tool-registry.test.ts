@@ -14,6 +14,9 @@ import { codeModeListings, executeTool, toolDefinitions } from "./lib/tool"
 import { Deferred, Effect, Exit, Fiber, Layer, Logger, Schema, SchemaGetter, SchemaIssue, Scope } from "effect"
 import { z } from "zod"
 import { testEffect } from "./lib/effect"
+import { tmpdir } from "./fixture/tmpdir"
+import path from "node:path"
+import { pathToFileURL } from "node:url"
 
 const imageStore = Layer.mock(Image.Service, {
   normalize: (resource, content) => {
@@ -966,6 +969,51 @@ describe("Tool", () => {
         { type: "text", text: "[1 image omitted: could not be resized below the image size limit.]" },
       ])
     }),
+  )
+
+  it.effect("materializes local tool files before saving their results", () =>
+    Effect.acquireUseRelease(
+      Effect.promise(() => tmpdir()),
+      (directory) =>
+        Effect.gen(function* () {
+          const file = path.join(directory.path, "report.pdf")
+          yield* Effect.promise(() => Bun.write(file, "report"))
+          const service = yield* Tool.Service
+          yield* transform(
+            service,
+            {
+              attachment: {
+                name: "attachment",
+                description: "Return a local file",
+                input: Schema.Struct({ text: Schema.String }),
+                execute: () =>
+                  Effect.succeed({
+                    content: [
+                      { type: "file", uri: pathToFileURL(file).href, mime: "application/pdf", name: "report.pdf" },
+                      {
+                        type: "file",
+                        uri: pathToFileURL(path.join(directory.path, "missing.pdf")).href,
+                        mime: "application/pdf",
+                      },
+                    ],
+                  }),
+              },
+            },
+            { codemode: false },
+          )
+
+          expect((yield* executeTool(service, call("attachment"))).content).toEqual([
+            {
+              type: "file",
+              uri: `data:application/pdf;base64,${Buffer.from("report").toString("base64")}`,
+              mime: "application/pdf",
+              name: "report.pdf",
+            },
+            { type: "text", text: "[1 file omitted: could not be read.]" },
+          ])
+        }),
+      (directory) => Effect.promise(() => directory[Symbol.asyncDispose]()),
+    ),
   )
 
   it.effect("publishes progress metadata unchanged", () =>
