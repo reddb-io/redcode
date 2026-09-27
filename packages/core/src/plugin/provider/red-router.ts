@@ -160,12 +160,13 @@ export const RedRouterPlugin = define({
         models: loaded.models.flatMap((item) => model(item)),
       })
     })
-    yield* safeRefresh()
     yield* bus.subscribe([Credential.Event.Updated, Credential.Event.Switched]).pipe(
       Stream.runForEach(() => safeRefresh()),
       Effect.forkScoped({ startImmediately: true }),
     )
-    yield* Effect.forkScoped(safeRefresh().pipe(Effect.repeat(Schedule.spaced("5 minutes"))))
+    yield* Effect.forkScoped(safeRefresh().pipe(Effect.repeat(Schedule.spaced("5 minutes"))), {
+      startImmediately: true,
+    })
   }),
 })
 
