@@ -1718,7 +1718,7 @@ describe("ShellTool", () => {
             const scope = yield* Scope.Scope
             const waiting = yield* executeTool(
               registry,
-              call({ command: 'node -e "setInterval(() => {}, 60000)"', timeout: 50 }, "call-background-signal"),
+              call({ command: idleCommand, timeout: 50 }, "call-background-signal"),
             ).pipe(Effect.forkIn(scope, { startImmediately: true }))
 
             const backgroundWhenReady = (remaining = 1000): Effect.Effect<Job.Info[], Error> =>
