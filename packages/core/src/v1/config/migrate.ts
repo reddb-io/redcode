@@ -11,7 +11,7 @@ import { ConfigPermissionV1 } from "./permission.js"
 import { ConfigProviderV1 } from "./provider.js"
 import { ConfigProviderOptionsV1 } from "./provider-options.js"
 import { Provider } from "../../provider.js"
-import { Model } from "../../model.js"
+import { compatibility } from "../../model-compatibility.js"
 
 const decodeOptions = { errors: "all", onExcessProperty: "ignore", propertyOrder: "original" } as const
 const decodeInfo = Schema.decodeUnknownSync(Schema.fromJsonString(Info), decodeOptions)
@@ -346,7 +346,7 @@ function migrateModel(info: typeof ConfigProviderV1.Model.Type) {
     modelID: info.id,
     family: info.family,
     name: info.name,
-    compatibility: Model.compatibility(info.interleaved),
+    compatibility: compatibility(info.interleaved),
     package: info.provider?.npm ? Provider.aisdk(info.provider.npm) : undefined,
     settings: info.provider?.api ? { ...settings, baseURL: info.provider.api } : settings,
     capabilities,

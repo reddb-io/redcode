@@ -99,6 +99,7 @@ ${code.slice(start)}`
 const resolve = {
   alias: [
     { find: /^bun:sqlite$/, replacement: path.resolve(dir, "src/node/sqlite-compat.ts") },
+    { find: /^undici$/, replacement: createRequire(import.meta.url).resolve("undici") },
     ...Object.entries({
       "#database-reddb": "database/reddb.ts",
       "#model-limit-node": "model-limit.node.ts",

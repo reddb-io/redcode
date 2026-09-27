@@ -21,7 +21,7 @@
   "scripts": {
     "build": "bun run script/build.ts",
     "test": "bun test --only-failures",
-    "typecheck": "tsgo --noEmit",
+    "typecheck": "tsgo -p tsconfig.check.json",
     "probe:workerd": "bun run script/workerd-probe.ts"
   },
   "dependencies": {

@@ -1,4 +1,7 @@
-import { describe, expect, test } from "bun:test"
+import { afterAll, describe, expect, test } from "bun:test"
+import { mkdtemp, rm } from "node:fs/promises"
+import { tmpdir } from "node:os"
+import path from "node:path"
 import {
   AIError,
   CompactionPart,
@@ -88,6 +91,8 @@ import { agentHost, modelHost, host, noProviders } from "./plugin/host"
 import { CodeModeInstructions } from "@opencode/core/codemode/instructions"
 
 const emptyCodeMode = `\n\n${CodeModeInstructions.render({ total: 0, shown: 0, namespaces: [] })}`
+const projectDirectory = await mkdtemp(path.join(tmpdir(), "redcode-runner-"))
+afterAll(() => rm(projectDirectory, { recursive: true, force: true }))
 type ToolBarrier = {
   readonly count: number
   readonly started: Deferred.Deferred<void>
@@ -413,7 +418,7 @@ const layer = Layer.unwrap(
       SessionRunnerModel.node.replace(models),
       InstructionBuiltIns.node.replace(systemContext),
       InstructionDiscovery.node.replace(instructionContext),
-      Location.node.replace(Location.boundNode({ directory: AbsolutePath.make("/project") })),
+      Location.node.replace(Location.boundNode({ directory: AbsolutePath.make(projectDirectory) })),
       SkillInstructions.node.replace(skillInstructions),
       ReferenceInstructions.node.replace(referenceInstructions),
       Permission.node.replace(permission),
@@ -506,7 +511,7 @@ const insertSession = (id: Session.ID) =>
         id,
         project_id: Project.ID.global,
         slug: id,
-        directory: "/project",
+        directory: projectDirectory,
         title: "test",
         version: "test",
       })
@@ -545,7 +550,7 @@ const setup = Effect.gen(function* () {
   })
   yield* db
     .insert(ProjectTable)
-    .values({ id: Project.ID.global, worktree: AbsolutePath.make("/project"), sandboxes: [] })
+    .values({ id: Project.ID.global, worktree: AbsolutePath.make(projectDirectory), sandboxes: [] })
     .onConflictDoNothing()
     .run()
     .pipe(Effect.orDie)
@@ -1392,7 +1397,7 @@ describe("SessionRunnerLLM", () => {
           item: {
             type: "move",
             payload: {
-              location: Location.Ref.make({ directory: AbsolutePath.make("/project") }),
+              location: Location.Ref.make({ directory: AbsolutePath.make(projectDirectory) }),
               projectID: Project.ID.global,
             },
             delivery,
@@ -1433,7 +1438,7 @@ describe("SessionRunnerLLM", () => {
       item: {
         type: "move",
         payload: {
-          location: Location.Ref.make({ directory: AbsolutePath.make("/project") }),
+          location: Location.Ref.make({ directory: AbsolutePath.make(projectDirectory) }),
           projectID: Project.ID.global,
         },
         delivery: "steer",
@@ -1471,7 +1476,7 @@ describe("SessionRunnerLLM", () => {
       item: {
         type: "move",
         payload: {
-          location: Location.Ref.make({ directory: AbsolutePath.make("/project") }),
+          location: Location.Ref.make({ directory: AbsolutePath.make(projectDirectory) }),
           projectID: Project.ID.global,
         },
         delivery: "steer",
@@ -2277,7 +2282,7 @@ describe("SessionRunnerLLM", () => {
       item: {
         type: "move",
         payload: {
-          location: Location.Ref.make({ directory: AbsolutePath.make("/project") }),
+          location: Location.Ref.make({ directory: AbsolutePath.make(projectDirectory) }),
           projectID: Project.ID.global,
         },
         delivery: "steer",

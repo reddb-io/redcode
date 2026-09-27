@@ -9,6 +9,7 @@ import { State } from "./state.js"
 import { Location } from "./location.js"
 import { freeze } from "immer"
 import { AISDKNative } from "./aisdk-native.js"
+export { compatibility } from "./model-compatibility.js"
 
 export const ID = Model.ID
 export type ID = typeof ID.Type
@@ -290,12 +291,6 @@ const layer = Layer.effect(
 )
 
 export const node = makeLocationNode({ service: Service, layer, deps: [Provider.node, Bus.node, Location.node] })
-
-export function compatibility(input: unknown): Compatibility | undefined {
-  if (typeof input === "string") return { reasoningField: input }
-  if (typeof input !== "object" || input === null || Array.isArray(input) || !("field" in input)) return undefined
-  return typeof input.field === "string" ? { reasoningField: input.field } : undefined
-}
 
 export function parse(input: string): { providerID: Provider.ID; modelID: ID } {
   const index = input.indexOf("/")
