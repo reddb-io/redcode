@@ -384,7 +384,10 @@ function modelFromLanguage(info: RuntimeInfo, language: LanguageModelV3) {
               body: projected.body === undefined ? undefined : { ...projected.body },
               headers: info.headers,
             },
-      providerOptions: Provider.mergeOverlay(legacyProviderDefaults(packageName), projected.settings),
+      providerOptions: Provider.mergeOverlay(
+        legacyProviderDefaults(packageName, info.modelID ?? info.id),
+        projected.settings,
+      ),
     },
     body: {
       schema: Schema.Unknown,
@@ -410,7 +413,12 @@ function modelFromLanguage(info: RuntimeInfo, language: LanguageModelV3) {
   })
 }
 
-function legacyProviderDefaults(packageName: string) {
+function legacyProviderDefaults(packageName: string, modelID: string) {
+  if (
+    packageName === "@ai-sdk/google-vertex/anthropic" ||
+    (packageName === "@ai-sdk/anthropic" && !modelID.includes("claude"))
+  )
+    return { toolStreaming: false }
   if (packageName === "@ai-sdk/gateway") return { gateway: { caching: "auto" } }
   if (packageName === "@llmgateway/ai-sdk-provider" || packageName === "@openrouter/ai-sdk-provider")
     return { usage: { include: true } }
