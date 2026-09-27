@@ -19,6 +19,7 @@ export type Settings = ProviderPackage.Settings &
   OpenAIProviderOptionsInput & {
     readonly apiKey?: string
     readonly baseURL?: string
+    readonly chat_template_args?: Readonly<Record<string, unknown>>
   }
 
 export const route = Route.make({
@@ -28,6 +29,7 @@ export const route = Route.make({
   protocol: OpenAIChat.protocol,
   endpoint: Endpoint.path("/chat/completions", { baseURL }),
   framing: OpenAIChat.framing,
+  defaults: { http: { body: { chat_template_args: { enable_thinking: true } } } },
 })
 
 export const routes = [route]
@@ -50,13 +52,18 @@ export const provider = configure()
 
 export const model: ProviderPackage.Definition<Settings, OpenAIProviderOptionsInput>["model"] = (
   modelID,
-  { apiKey, baseURL, body, headers, ...providerOptions },
+  { apiKey, baseURL, body, chat_template_args, headers, ...providerOptions },
 ) =>
   configure({
     apiKey,
     baseURL,
     headers: headers === undefined ? undefined : { ...headers },
-    http: body === undefined ? undefined : { body: { ...body } },
+    http: {
+      body: {
+        ...(chat_template_args === undefined ? {} : { chat_template_args }),
+        ...body,
+      },
+    },
     providerOptions,
   }).model(modelID)
 

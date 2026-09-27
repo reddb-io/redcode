@@ -123,6 +123,20 @@ describe("native OpenAI-compatible providers", () => {
     }),
   )
 
+  test("keeps Baseten thinking enabled by default and honors configured overrides", () => {
+    expect(Baseten.configure({ apiKey: "fixture" }).model("model").route.defaults.http?.body).toEqual({
+      chat_template_args: { enable_thinking: true },
+    })
+    expect(
+      Baseten.model("model", { apiKey: "fixture", chat_template_args: { enable_thinking: false } }).route.defaults.http
+        ?.body,
+    ).toEqual({ chat_template_args: { enable_thinking: false } })
+    expect(
+      Baseten.model("model", { apiKey: "fixture", body: { chat_template_args: { enable_thinking: false } } }).route.defaults
+        .http?.body,
+    ).toEqual({ chat_template_args: { enable_thinking: false } })
+  })
+
   test("preserves native DeepInfra provider and route identity", () => {
     const deepinfra = DeepInfra.configure({ apiKey: "fixture" }).model("google/gemma-3-27b-it")
     expect(deepinfra).toMatchObject({
