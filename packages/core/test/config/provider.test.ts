@@ -150,6 +150,87 @@ describe("ConfigProviderPlugin.Plugin", () => {
     }),
   )
 
+  it.effect("applies V1 Gemini reasoning defaults while preserving explicit model options", () =>
+    Effect.gen(function* () {
+      const models = yield* Model.Service
+      const migrated = ConfigNormalize.normalize({
+        provider: {
+          google: {
+            npm: "@ai-sdk/google",
+            models: {
+              "gemini-3-pro": { reasoning: true },
+              "gemini-3-flash": {
+                reasoning: true,
+                options: { thinkingConfig: { includeThoughts: false, thinkingLevel: "low" } },
+              },
+            },
+          },
+        },
+      })
+      if (migrated.type !== "normalized") throw new Error("Expected normalized config")
+      yield* addPlugin([new Document({ type: "document", info: decode(migrated.encoded) })])
+      expect((yield* models.get(Provider.ID.make("google"), Model.ID.make("gemini-3-pro")))?.settings?.thinkingConfig).toEqual({
+        includeThoughts: true,
+        thinkingLevel: "high",
+      })
+      expect((yield* models.get(Provider.ID.make("google"), Model.ID.make("gemini-3-flash")))?.settings?.thinkingConfig).toEqual({
+        includeThoughts: false,
+        thinkingLevel: "low",
+      })
+    }),
+  )
+
+  it.effect("applies V1 Kimi reasoning defaults on the native Anthropic route", () =>
+    Effect.gen(function* () {
+      const models = yield* Model.Service
+      const migrated = ConfigNormalize.normalize({
+        provider: {
+          moonshotai: {
+            npm: "@opencode/ai/providers/moonshot/messages",
+            models: { "kimi-k2.5": { reasoning: true, options: { effort: "medium" } } },
+          },
+          custom: {
+            npm: "@opencode/ai/providers/anthropic",
+            api: "https://api.moonshot.ai/anthropic",
+            models: { chat: { reasoning: true } },
+          },
+        },
+      })
+      if (migrated.type !== "normalized") throw new Error("Expected normalized config")
+      yield* addPlugin([new Document({ type: "document", info: decode(migrated.encoded) })])
+      const settings = (yield* models.get(Provider.ID.make("moonshotai"), Model.ID.make("kimi-k2.5")))?.settings
+      expect(settings?.thinking).toEqual({ type: "adaptive", display: "summarized" })
+      expect(settings?.effort).toBe("medium")
+      expect((yield* models.get(Provider.ID.make("custom"), Model.ID.make("chat")))?.settings).toMatchObject({
+        thinking: { type: "adaptive", display: "summarized" },
+        effort: "high",
+      })
+    }),
+  )
+
+  it.effect("enables V1 Alibaba reasoning except for kimi-k2-thinking", () =>
+    Effect.gen(function* () {
+      const models = yield* Model.Service
+      const migrated = ConfigNormalize.normalize({
+        provider: {
+          "alibaba-cn": {
+            npm: "@ai-sdk/openai-compatible",
+            models: {
+              "qwen-plus": { reasoning: true },
+              "kimi-k2-thinking": { reasoning: true },
+              "qwen-no-reasoning": { reasoning: false },
+            },
+          },
+        },
+      })
+      if (migrated.type !== "normalized") throw new Error("Expected normalized config")
+      yield* addPlugin([new Document({ type: "document", info: decode(migrated.encoded) })])
+      expect((yield* models.get(Provider.ID.make("alibaba-cn"), Model.ID.make("qwen-plus")))?.settings?.enableThinking).toBe(true)
+      expect((yield* models.get(Provider.ID.make("alibaba-cn"), Model.ID.make("kimi-k2-thinking")))?.settings?.enableThinking).toBeUndefined()
+      expect((yield* models.get(Provider.ID.make("alibaba-cn"), Model.ID.make("qwen-no-reasoning")))?.settings?.enableThinking).toBeUndefined()
+    }),
+  )
+
   it.effect("applies variant overrides to generated defaults for new models", () =>
     Effect.gen(function* () {
       const models = yield* Model.Service

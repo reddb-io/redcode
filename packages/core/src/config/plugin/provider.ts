@@ -9,6 +9,7 @@ import { Config } from "../../config.js"
 import { Model } from "../../model.js"
 import { Provider } from "../../provider.js"
 import { Variant } from "../../variant.js"
+import { ConfigModelReasoningV1 } from "../../v1/config/model-reasoning.js"
 import { ConfigEntryObserver } from "./entry-observer.js"
 
 export const Plugin = define({
@@ -127,6 +128,15 @@ export const Plugin = define({
             if (config.body !== undefined) model.body = Provider.mergeOverlay(model.body, config.body)
             if (config.capabilities !== undefined)
               model.capabilities = Model.overlayCapabilities(model.capabilities, config.capabilities)
+            if (config.capabilities?.reasoning === true) {
+              const defaults = ConfigModelReasoningV1.defaults({
+                providerID,
+                modelID: model.modelID,
+                packageName: model.package ?? models.provider.get(providerID)?.provider.package,
+                baseURL: model.settings?.baseURL ?? models.provider.get(providerID)?.provider.settings?.baseURL,
+              })
+              if (defaults) model.settings = Provider.mergeOverlay(defaults.settings, model.settings)
+            }
             if (config.cost !== undefined) {
               model.cost = (Array.isArray(config.cost) ? config.cost : [config.cost]).map((cost) => ({
                 tier: cost.tier && { ...cost.tier },
