@@ -31,18 +31,20 @@ export const create = Effect.fn("EmbeddedHost.create")(function* <R = never>(
 ) {
   const { log, workspaceProviders, instances, ...server } = options
   const selector = instances ? SdkInstances.provide(instances, yield* Effect.context<R>()) : undefined
+  const routes = createEmbeddedRoutes(
+    {
+      ...server,
+      app: { ...server.app, name: server.app?.name ?? "sdk" },
+      database: server.database?.url ? server.database : { path: ":memory:", ...server.database },
+    },
+    workspaceProviders
+      ? [...(embed.overrides ?? []), WorkspaceDriver.node.replace(WorkspaceDriver.registryNode(workspaceProviders))]
+      : embed.overrides,
+    selector ? (replacements) => SdkInstances.node(selector, replacements) : undefined,
+  ).pipe(Layer.provide(HttpServer.layerServices), Layer.provideMerge(layer(log)))
+  // makeRoutes supplies the request services inside its dynamic Layer.flatMap.
   const runtime = ManagedRuntime.make(
-    createEmbeddedRoutes(
-      {
-        ...server,
-        app: { ...server.app, name: server.app?.name ?? "sdk" },
-        database: server.database?.url ? server.database : { path: ":memory:", ...server.database },
-      },
-      workspaceProviders
-        ? [...(embed.overrides ?? []), WorkspaceDriver.node.replace(WorkspaceDriver.registryNode(workspaceProviders))]
-        : embed.overrides,
-      selector ? (replacements) => SdkInstances.node(selector, replacements) : undefined,
-    ).pipe(Layer.provide(HttpServer.layerServices), Layer.provideMerge(layer(log))),
+    routes as unknown as Layer.Layer<Layer.Success<typeof routes>, Layer.Error<typeof routes>>,
   )
 
   return yield* Effect.gen(function* () {

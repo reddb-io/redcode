@@ -98,6 +98,20 @@ ${code.slice(start)}`
 
 const resolve = {
   alias: [
+    ...Object.entries({
+      "#database-reddb": "database/reddb.ts",
+      "#model-limit-node": "model-limit.node.ts",
+      "#usage-sidecar": "usage/sidecar.node.ts",
+      "#lsp": "lsp/backend.node.ts",
+      "#sqlite": "database/sqlite.node.ts",
+      "#pty": "pty/pty.node.ts",
+      "#persistent-pty-binary": "persistent-pty/binary.node.ts",
+      "#fff": "filesystem/fff.node.ts",
+      "#photon-wasm": "image/photon-wasm.node.ts",
+      "#shell-parser-wasm": "shell/parser-wasm.node.ts",
+      "#process-lock-ffi": "util/process-lock-ffi.node.ts",
+      "#v1-migration": "database/v1-migration.noop.ts",
+    }).map(([find, file]) => ({ find: new RegExp(`^${find}$`), replacement: path.resolve(dir, "../core/src", file) })),
     { find: /^solid-js\/store$/, replacement: "solid-js/store/dist/store.js" },
     { find: /^solid-js$/, replacement: "solid-js/dist/solid.js" },
     {
