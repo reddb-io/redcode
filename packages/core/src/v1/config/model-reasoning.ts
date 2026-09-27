@@ -3,9 +3,35 @@ export * as ConfigModelReasoningV1 from "./model-reasoning.js"
 import { Provider } from "../../provider.js"
 
 /** V1 request defaults gated by a configured model's reasoning capability. */
-export function defaults(input: { providerID: string; modelID: string; packageName?: string; baseURL?: unknown }) {
+export function defaults(input: {
+  providerID: string
+  modelID: string
+  packageName?: string
+  baseURL?: unknown
+  useCompletionUrls?: unknown
+}) {
   const name = Provider.packageName(input.packageName)
   const id = input.modelID.toLowerCase()
+  const version = /(?:^|\/)gpt-(\d+)(?:\.(\d+))?/.exec(id)
+  const major = Number(version?.[1])
+  const minor = Number(version?.[2] ?? 0)
+  if (major >= 5 && !/-chat(?:-|$)|-pro(?:-|$)/.test(id)) {
+    const openai = name === "@ai-sdk/openai"
+    const azure = name === "@ai-sdk/azure"
+    const copilot = name === "@ai-sdk/github-copilot"
+    const mantle = name === "@ai-sdk/amazon-bedrock/mantle"
+    if (
+      (openai || azure || copilot || mantle) &&
+      !(azure && input.useCompletionUrls === true && (major > 5 || (major === 5 && minor >= 5)))
+    )
+      return {
+        settings: {
+          reasoningEffort: "medium",
+          reasoningSummary: "auto",
+          ...(openai || mantle ? { include: ["reasoning.encrypted_content"] } : {}),
+        },
+      }
+  }
   if (
     name === "@ai-sdk/google" ||
     name === "@ai-sdk/google-vertex" ||

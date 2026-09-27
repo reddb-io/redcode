@@ -269,6 +269,55 @@ describe("ConfigProviderPlugin.Plugin", () => {
     }),
   )
 
+  it.effect("preserves V1 GPT reasoning defaults on legacy AI SDK packages", () =>
+    Effect.gen(function* () {
+      const models = yield* Model.Service
+      const migrated = ConfigNormalize.normalize({
+        provider: {
+          legacyOpenAI: {
+            npm: "@ai-sdk/openai",
+            models: {
+              "gpt-6-sol": { reasoning: true, options: { reasoningEffort: "high" } },
+              "gpt-5.2-chat-latest": { reasoning: true },
+            },
+          },
+          legacyAzure: {
+            npm: "@ai-sdk/azure",
+            options: { useCompletionUrls: true },
+            models: { "gpt-5.4": { reasoning: true }, "gpt-6-sol": { reasoning: true } },
+          },
+          legacyCopilot: { npm: "@ai-sdk/github-copilot", models: { "gpt-6-sol": { reasoning: true } } },
+          legacyMantle: { npm: "@ai-sdk/amazon-bedrock/mantle", models: { "gpt-6-sol": { reasoning: true } } },
+        },
+      })
+      if (migrated.type !== "normalized") throw new Error("Expected normalized config")
+      yield* addPlugin([new Document({ type: "document", info: decode(migrated.encoded) })])
+
+      expect((yield* models.get(Provider.ID.make("legacyOpenAI"), Model.ID.make("gpt-6-sol")))?.settings).toMatchObject({
+        reasoningEffort: "high",
+        reasoningSummary: "auto",
+        include: ["reasoning.encrypted_content"],
+      })
+      expect(
+        (yield* models.get(Provider.ID.make("legacyOpenAI"), Model.ID.make("gpt-5.2-chat-latest")))?.settings
+          ?.reasoningEffort,
+      ).toBeUndefined()
+      expect((yield* models.get(Provider.ID.make("legacyAzure"), Model.ID.make("gpt-5.4")))?.settings).toMatchObject({
+        reasoningEffort: "medium",
+        reasoningSummary: "auto",
+      })
+      expect((yield* models.get(Provider.ID.make("legacyAzure"), Model.ID.make("gpt-6-sol")))?.settings?.reasoningEffort).toBeUndefined()
+      expect((yield* models.get(Provider.ID.make("legacyCopilot"), Model.ID.make("gpt-6-sol")))?.settings).toMatchObject({
+        reasoningEffort: "medium",
+        reasoningSummary: "auto",
+      })
+      expect((yield* models.get(Provider.ID.make("legacyMantle"), Model.ID.make("gpt-6-sol")))?.settings).toMatchObject({
+        reasoningEffort: "medium",
+        include: ["reasoning.encrypted_content"],
+      })
+    }),
+  )
+
   it.effect("applies variant overrides to generated defaults for new models", () =>
     Effect.gen(function* () {
       const models = yield* Model.Service

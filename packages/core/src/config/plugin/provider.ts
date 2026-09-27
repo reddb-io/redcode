@@ -134,6 +134,8 @@ export const Plugin = define({
                 modelID: model.modelID,
                 packageName: model.package ?? models.provider.get(providerID)?.provider.package,
                 baseURL: model.settings?.baseURL ?? models.provider.get(providerID)?.provider.settings?.baseURL,
+                useCompletionUrls:
+                  model.settings?.useCompletionUrls ?? models.provider.get(providerID)?.provider.settings?.useCompletionUrls,
               })
               if (defaults) model.settings = Provider.mergeOverlay(defaults.settings, model.settings)
             }
