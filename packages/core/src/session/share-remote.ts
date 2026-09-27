@@ -109,6 +109,15 @@ export const send = Effect.fn("SessionShare.send")(function* (
 })
 
 /** Revoke before deleting a Session, while its share secret is still in the database. */
+export const hasShare = Effect.fn("SessionShare.hasShare")(function* (db: DB, sessionID: SessionSchema.ID) {
+  return !!(yield* db
+    .select({ id: SessionShareTable.id })
+    .from(SessionShareTable)
+    .where(eq(SessionShareTable.session_id, sessionID))
+    .get()
+    .pipe(Effect.orDie))
+})
+
 export const revoke = Effect.fn("SessionShare.revoke")(function* (db: DB, sessionID: SessionSchema.ID) {
   const share = yield* db
     .select()

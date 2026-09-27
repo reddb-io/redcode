@@ -427,10 +427,6 @@ const layer = Layer.unwrap(
       Plugin.node.replace(Layer.mock(Plugin.Service, { awaitActivation: Effect.void })),
       SessionModelTransport.node.replace(modelTransport),
     ]
-    const runnerLayer = AppNodeBuilder.build(SessionRunnerLLM.node, [
-      ...replacements,
-      McpInstructions.node.replace(mcpInstructions),
-    ])
     const execution = Layer.effect(
       SessionExecution.Service,
       Effect.gen(function* () {
@@ -460,7 +456,7 @@ const layer = Layer.unwrap(
           awaitIdle: coordinator.awaitIdle,
         })
       }),
-    ).pipe(Layer.provide(runnerLayer), Layer.orDie)
+    )
     return AppNodeBuilder.build(
       LayerNode.group([
         Database.node,

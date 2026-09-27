@@ -17,6 +17,7 @@ import { AppNodeBuilder } from "@opencode/core/effect/app-node-builder"
 import { llmClient } from "@opencode/core/effect/app-node-platform"
 import { LayerNode } from "@opencode/util/effect/layer-node"
 import { Bus } from "@opencode/core/bus"
+import { Config } from "@opencode/core/config"
 import { EventTable } from "@opencode/core/event/sql"
 import { InstructionDiscovery } from "@opencode/core/instruction-discovery"
 import { Instance } from "@opencode/core/instance/service"
@@ -244,6 +245,7 @@ const setup = Effect.gen(function* () {
           Layer.mergeAll(
             Layer.succeed(SessionContext.Service, context),
             Layer.mock(Plugin.Service, { awaitActivation: Effect.void }),
+            Config.testLayer(),
           ) as Layer.Layer<Instance.Services>,
         ),
     }),

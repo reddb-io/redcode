@@ -985,7 +985,12 @@ describe("Worktree", () => {
         encoded: { worktree: { directory: "./copies" } },
         diagnostics: [],
       })
-      for (const worktree of [{ directory: " " }, { directory: 12 }, {}]) {
+      expect(ConfigNormalize.normalize({ worktree: {} })).toMatchObject({
+        type: "normalized",
+        encoded: { worktree: {} },
+        diagnostics: [],
+      })
+      for (const worktree of [{ directory: " " }, { directory: 12 }]) {
         const result = ConfigNormalize.normalize({ worktree })
         expect(result.diagnostics.length).toBeGreaterThan(0)
         if (result.type === "normalized") expect(result.encoded).not.toHaveProperty("worktree")
