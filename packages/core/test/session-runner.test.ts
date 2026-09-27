@@ -61,6 +61,7 @@ import { OptimizePlugin } from "@opencode/core/plugin/optimize"
 import { IdentityPlugin } from "@opencode/core/plugin/identity"
 import { QuestionTool } from "@opencode/core/tool/plugin/question"
 import { Agent } from "@opencode/core/agent"
+import { AgentPlugin } from "@opencode/core/plugin/agent"
 import { Config } from "@opencode/core/config"
 import { Document, Info } from "@opencode/schema/config"
 import { ConfigCompaction } from "@opencode/schema/config/compaction"
@@ -427,6 +428,12 @@ const layer = Layer.unwrap(
       Plugin.node.replace(Layer.mock(Plugin.Service, { awaitActivation: Effect.void })),
       SessionModelTransport.node.replace(modelTransport),
     ]
+    const runnerLayer = AppNodeBuilder.build(
+      LayerNode.group([SessionRunnerLLM.node, Agent.node]),
+      [...replacements, McpInstructions.node.replace(mcpInstructions)],
+    ).pipe(
+      Layer.tap((context) => AgentPlugin.Plugin.effect(host({ agent: agentHost(Context.get(context, Agent.Service)) }))),
+    )
     const execution = Layer.effect(
       SessionExecution.Service,
       Effect.gen(function* () {
@@ -456,7 +463,7 @@ const layer = Layer.unwrap(
           awaitIdle: coordinator.awaitIdle,
         })
       }),
-    )
+    ).pipe(Layer.provide(runnerLayer), Layer.orDie)
     return AppNodeBuilder.build(
       LayerNode.group([
         Database.node,

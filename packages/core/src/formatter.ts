@@ -71,7 +71,8 @@ const layer = Layer.effect(
         command(formatter).pipe(Effect.map((cmd) => cmd === false ? undefined : { formatter, cmd })),
       )).filter((item): item is { formatter: Info; cmd: string[] } => item !== undefined)
 
-      yield* Effect.forEach(enabled, ({ formatter, cmd }) => Effect.gen(function* () {
+      yield* Effect.reduce(enabled, false, (done, { formatter, cmd }) => Effect.gen(function* () {
+        if (done) return true
         const replaced = cmd.map((argument) => argument.replace("$FILE", filepath))
         yield* Effect.logInfo("formatting file", { file: filepath, command: replaced })
         const result = yield* processes
@@ -94,13 +95,15 @@ const layer = Layer.effect(
               }).pipe(Effect.as(undefined)),
             ),
           )
-        if (!result || result.exitCode === 0) return
+        if (result?.exitCode === 0) return true
+        if (!result) return false
         yield* Effect.logError("formatter exited unsuccessfully", {
           file: filepath,
           command: replaced,
           exitCode: result.exitCode,
         })
-      }), { discard: true })
+        return false
+      }))
       return enabled.length > 0
     })
 

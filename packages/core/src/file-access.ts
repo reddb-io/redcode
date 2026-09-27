@@ -181,9 +181,16 @@ export const node = makeLocationNode({ service: Service, layer, deps: [FSUtil.no
 
 function realTarget(fs: FSUtil.Interface, target: string): Effect.Effect<string, FSUtil.Error> {
   return Effect.gen(function* () {
-    const real = yield* fs.realPath(target).pipe(Effect.catchReason("PlatformError", "NotFound", () => Effect.undefined))
+    // A patch can replace a file with a directory before the new child exists.
+    const real = yield* fs.realPath(target).pipe(
+      Effect.catchReason("PlatformError", "NotFound", () => Effect.undefined),
+      Effect.catchReason("PlatformError", "BadResource", () => Effect.undefined),
+    )
     if (real !== undefined) return real
-    const link = yield* fs.readLink(target).pipe(Effect.catchReason("PlatformError", "NotFound", () => Effect.undefined))
+    const link = yield* fs.readLink(target).pipe(
+      Effect.catchReason("PlatformError", "NotFound", () => Effect.undefined),
+      Effect.catchReason("PlatformError", "BadResource", () => Effect.undefined),
+    )
     if (link !== undefined) return yield* realTarget(fs, path.resolve(path.dirname(target), link))
     const parent = path.dirname(target)
     if (parent === target) return target
