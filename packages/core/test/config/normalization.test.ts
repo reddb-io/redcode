@@ -453,6 +453,30 @@ describe("ConfigNormalize", () => {
     expect(result.diagnostics).toEqual([])
   })
 
+  test("migrates V1 attachment support into model input capabilities", () => {
+    const result = normalized({
+      provider: {
+        custom: {
+          models: {
+            text: { attachment: false },
+            vision: { attachment: true, modalities: { input: ["text"] } },
+            explicit: { attachment: false, modalities: { input: ["text", "image", "pdf"] } },
+          },
+        },
+      },
+    })
+    expect(result.encoded.providers).toMatchObject({
+      custom: {
+        models: {
+          text: { capabilities: { tools: true, input: ["text"], output: ["text"] } },
+          vision: { capabilities: { tools: true, input: ["text", "image"], output: ["text"] } },
+          explicit: { capabilities: { tools: true, input: ["text", "pdf"], output: ["text"] } },
+        },
+      },
+    })
+    expect(result.diagnostics).toEqual([])
+  })
+
   test("reports unsupported legacy settings without including their values", () => {
     const secret = "do-not-log-this-value"
     const result = normalized({
