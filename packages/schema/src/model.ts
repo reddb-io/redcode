@@ -45,6 +45,9 @@ export interface Ref extends Schema.Schema.Type<typeof Ref> {}
 export const Family = Schema.String.pipe(Schema.brand("Model.Family"))
 export type Family = typeof Family.Type
 
+export const Status = Schema.Literals(["alpha", "beta", "deprecated", "active"]).annotate({ identifier: "Model.Status" })
+export type Status = typeof Status.Type
+
 export type ReasoningField = "reasoning" | "reasoning_content" | "reasoning_text" | (string & {})
 export const ReasoningField: Schema.Codec<ReasoningField> = Schema.Union([
   Schema.Literals(["reasoning", "reasoning_content", "reasoning_text"]),
@@ -132,7 +135,7 @@ export const Info = Schema.Struct({
     released: Schema.Finite,
   }),
   cost: Schema.Array(Cost),
-  status: Schema.Literals(["alpha", "beta", "deprecated", "active"]),
+  status: Status,
   enabled: Schema.Boolean,
   limit: Schema.Struct({
     context: Schema.Int,

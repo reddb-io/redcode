@@ -443,6 +443,16 @@ describe("ConfigNormalize", () => {
     expect(result.diagnostics).toEqual([])
   })
 
+  test("migrates V1 model release date and status", () => {
+    const result = normalized({
+      provider: { custom: { models: { chat: { release_date: "2025-04-10", status: "beta" } } } },
+    })
+    expect(result.encoded.providers).toMatchObject({
+      custom: { models: { chat: { time: { released: Date.parse("2025-04-10") }, status: "beta" } } },
+    })
+    expect(result.diagnostics).toEqual([])
+  })
+
   test("reports unsupported legacy settings without including their values", () => {
     const secret = "do-not-log-this-value"
     const result = normalized({
@@ -467,8 +477,6 @@ describe("ConfigNormalize", () => {
       ["logLevel"],
       ["agent", "reviewer", "name"],
       ["provider", "custom", "id"],
-      ["provider", "custom", "models", "model", "release_date"],
-      ["provider", "custom", "models", "model", "status"],
       ["provider", "custom", "models", "model", "interleaved"],
       ["experimental", "openTelemetry"],
     ])

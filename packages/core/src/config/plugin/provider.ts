@@ -144,6 +144,8 @@ export const Plugin = define({
               }))
             }
             if (config.disabled !== undefined) model.enabled = !config.disabled
+            if (config.time !== undefined) model.time = { ...config.time }
+            if (config.status !== undefined) model.status = config.status
             if (config.limit !== undefined) model.limit = { ...model.limit, ...config.limit }
             if (config.variants !== undefined) {
               // V1 variant overrides merged into generated defaults before disabled IDs were removed.

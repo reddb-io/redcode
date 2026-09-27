@@ -351,6 +351,8 @@ function migrateModel(info: typeof ConfigProviderV1.Model.Type) {
         ),
       })),
     cost: costs,
+    time: info.release_date === undefined ? undefined : { released: Date.parse(info.release_date) || 0 },
+    status: info.status,
     disabled: info.status === "deprecated" ? true : undefined,
     limit: info.limit && {
       context: int(info.limit.context),

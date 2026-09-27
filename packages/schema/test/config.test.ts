@@ -5,6 +5,7 @@ import { ConfigAgent } from "../src/config/agent.js"
 import { ConfigMCP } from "../src/config/mcp.js"
 import { ConfigProvider } from "../src/config/provider.js"
 import { Mcp } from "../src/mcp.js"
+import { Model } from "../src/model.js"
 import { Provider } from "../src/provider.js"
 import { AbsolutePath } from "../src/schema.js"
 import { WebSearch } from "../src/websearch.js"
@@ -40,6 +41,14 @@ describe("Config.Entry", () => {
     const input = { providers: { custom: { models: { chat: { variants: [{ id: "high", disabled: true }] } } } } }
     const decoded = Schema.decodeUnknownSync(Config.Info)(input)
     expect(Schema.encodeSync(Config.Info)(decoded)).toEqual(input)
+  })
+
+  test("round-trips model release time and status overrides", () => {
+    const input = {
+      providers: { custom: { models: { chat: { time: { released: 1_744_243_200_000 }, status: "beta" } } } },
+    }
+    expect(Schema.encodeSync(Config.Info)(Schema.decodeUnknownSync(Config.Info)(input))).toEqual(input)
+    expect(Model.Status.ast.annotations?.identifier).toBe("Model.Status")
   })
 
   test("accepts disabled, fixed, and random web search selection", () => {

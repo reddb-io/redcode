@@ -52,7 +52,7 @@ const unsupportedExperimental = [
   "continue_loop_on_deny",
 ] as const
 const unsupportedProvider = ["id"] as const
-const unsupportedModel = ["release_date", "attachment", "reasoning", "temperature", "experimental"] as const
+const unsupportedModel = ["attachment", "reasoning", "temperature", "experimental"] as const
 
 export function normalize(input: unknown): Result {
   if (!isRecord(input))
@@ -626,8 +626,6 @@ function diagnoseProviderUnsupported(value: unknown, path: string[], diagnostics
   Object.entries(value.models).forEach(([name, model]) => {
     if (!isRecord(model)) return
     unsupportedModel.forEach((key) => unsupportedIfPresent(model, key, [...path, "models", name, key], diagnostics))
-    if (own(model, "status") && model.status !== "deprecated")
-      unsupportedIfPresent(model, "status", [...path, "models", name, "status"], diagnostics)
     if (own(model, "interleaved") && typeof model.interleaved === "boolean")
       unsupportedIfPresent(model, "interleaved", [...path, "models", name, "interleaved"], diagnostics)
   })

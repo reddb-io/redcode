@@ -34,6 +34,20 @@ function required<T>(value: T | undefined): T {
 const decode = Schema.decodeUnknownSync(Info)
 
 describe("ConfigProviderPlugin.Plugin", () => {
+  it.effect("applies migrated release date and status to the model catalog", () =>
+    Effect.gen(function* () {
+      const models = yield* Model.Service
+      const migrated = ConfigNormalize.normalize({
+        provider: { custom: { models: { chat: { release_date: "2025-04-10", status: "beta" } } } },
+      })
+      if (migrated.type !== "normalized") throw new Error("Expected normalized config")
+      yield* addPlugin([new Document({ type: "document", info: decode(migrated.encoded) })])
+      const model = required(yield* models.get(Provider.ID.make("custom"), Model.ID.make("chat")))
+      expect(model.time.released).toBe(Date.parse("2025-04-10"))
+      expect(model.status).toBe("beta")
+    }),
+  )
+
   it.effect("removes variants disabled by migrated V1 model configuration", () =>
     Effect.gen(function* () {
       const providers = yield* Provider.Service

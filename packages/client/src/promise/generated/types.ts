@@ -375,6 +375,8 @@ export type ModelCapabilities = { tools: boolean; input: Array<string>; output: 
 
 export type MoneyUSDPerMillionTokens = number
 
+export type ModelStatus = "alpha" | "beta" | "deprecated" | "active"
+
 export type GenerateTextResponse = { data: { text: string } }
 
 export type ProviderRemovalResult = {
@@ -2334,7 +2336,7 @@ export type ModelInfo = {
   variants: Array<ModelVariant>
   time: { released: number }
   cost: Array<ModelCost>
-  status: "alpha" | "beta" | "deprecated" | "active"
+  status: ModelStatus
   enabled: boolean
   limit: { context: number; input?: number; output: number }
 }
@@ -2579,6 +2581,8 @@ export type ConfigEntry =
                       output: MoneyUSDPerMillionTokens
                       cache?: { read?: MoneyUSDPerMillionTokens; write?: MoneyUSDPerMillionTokens }
                     }>
+                time?: { released: number }
+                status?: ModelStatus
                 disabled?: boolean
                 limit?: { context?: number; input?: number; output?: number }
               }

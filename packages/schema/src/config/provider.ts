@@ -2,7 +2,7 @@ export * as ConfigProvider from "./provider.js"
 
 import { Schema } from "effect"
 import { Money } from "../money.js"
-import { Capabilities, Compatibility, Family, ID, VariantID } from "../model.js"
+import { Capabilities, Compatibility, Family, ID, Status, VariantID } from "../model.js"
 import { Provider } from "../provider.js"
 import { optional } from "../schema.js"
 
@@ -79,6 +79,8 @@ class Model extends Schema.Class<Model>("Config.Model")({
     ...ModelOverlays,
   }).pipe(Schema.Array, optional),
   cost: Schema.Union([Cost, Cost.pipe(Schema.Array)]).pipe(optional),
+  time: Schema.Struct({ released: Schema.Finite }).pipe(optional),
+  status: Status.pipe(optional),
   disabled: Schema.Boolean.pipe(optional),
   limit: Limit.pipe(optional),
 }) {}
