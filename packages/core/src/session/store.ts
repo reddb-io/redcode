@@ -99,12 +99,17 @@ const layer = Layer.effect(
       }),
       cacheRoot: Effect.fnUntraced(function* (sessionID) {
         const row = yield* db
-          .select({ id: SessionTable.id, root: SessionTable.cache_root_id })
+          .select({
+            id: SessionTable.id,
+            root: SessionTable.cache_root_id,
+            parent: SessionTable.parent_id,
+            fork: SessionTable.fork_session_id,
+          })
           .from(SessionTable)
           .where(eq(SessionTable.id, sessionID))
           .get()
           .pipe(Effect.orDie)
-        return row?.root ?? row?.id
+        return row?.root ?? row?.parent ?? row?.fork ?? row?.id
       }),
       list: Effect.fn("SessionStore.list")(function* (input = {}) {
         const direction = input.anchor?.direction ?? "next"
