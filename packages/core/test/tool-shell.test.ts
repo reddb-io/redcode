@@ -188,6 +188,7 @@ const mixedOutputCommand = isWindows
   ? "[Console]::Out.Write('stdout'); Start-Sleep -Milliseconds 50; [Console]::Error.Write('stderr'); Start-Sleep -Milliseconds 100"
   : "printf stdout; sleep 0.05; printf stderr >&2"
 const idleCommand = isWindows ? "Start-Sleep -Seconds 60" : "sleep 60"
+const foregroundIdleCommand = isWindows ? "Wait-Event -Timeout 60" : "tail -f /dev/null"
 const bodyExitCommand = isWindows
   ? "[Console]::Out.Write('body'); Start-Sleep -Milliseconds 100; exit 7"
   : "printf body && exit 7"
@@ -1718,7 +1719,7 @@ describe("ShellTool", () => {
             const scope = yield* Scope.Scope
             const waiting = yield* executeTool(
               registry,
-              call({ command: idleCommand, timeout: 0 }, "call-background-signal"),
+              call({ command: foregroundIdleCommand, timeout: 0 }, "call-background-signal"),
             ).pipe(Effect.forkIn(scope, { startImmediately: true }))
 
             const backgroundWhenReady = (remaining = 1000): Effect.Effect<Job.Info[], Error> =>
