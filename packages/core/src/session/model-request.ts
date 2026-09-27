@@ -278,7 +278,9 @@ export const layer = Layer.effect(
       )
       const entries = Object.entries(shaped.options)
       const generation = Object.fromEntries(
-        entries.filter(([key]) => GENERATION_KEYS.has(key) && (key !== "temperature" || model.capabilities.temperature !== false)),
+        entries.filter(
+          ([key]) => GENERATION_KEYS.has(key) && (key !== "temperature" || model.capabilities.temperature !== false),
+        ),
       ) as GenerationOptionsFields
       const providerOptions = Object.fromEntries(entries.filter(([k]) => !GENERATION_KEYS.has(k)))
       const affinity = (yield* store.cacheRoot(session.id)) ?? session.parentID ?? session.fork?.sessionID ?? session.id

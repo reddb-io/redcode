@@ -220,9 +220,8 @@ export const layer = Layer.effect(
       })
       const catalog = declared.input || declared.context
       const learned = observed && ModelLimit.inputOf(observed, declared.output)
-      const limit = learned && learned > 0
-        ? { ...declared, input: catalog > 0 ? Math.min(catalog, learned) : learned }
-        : declared
+      const limit =
+        learned && learned > 0 ? { ...declared, input: catalog > 0 ? Math.min(catalog, learned) : learned } : declared
       const ceiling = calculateCeiling(limit, settings.buffer)
       if (trigger.reason === "auto" && !due(context, ceiling, observed)) return { status: "skipped" }
       // An unknown window never triggers auto compaction, but the compaction request still needs a size to aim for.
@@ -239,7 +238,10 @@ export const layer = Layer.effect(
         context.model.compaction?.type === "native"
           ? compactNatively(trigger, budget, settings.keep, settings.keepTurns)
           : summarize(trigger, budget, settings.keep, settings.keepTurns)
-      const deadline = AuxDeadline.deadlineMs("compaction", Config.latestExperimental(yield* config.entries(), "aux_timeout"))
+      const deadline = AuxDeadline.deadlineMs(
+        "compaction",
+        Config.latestExperimental(yield* config.entries(), "aux_timeout"),
+      )
       return yield* compaction.pipe(
         deadline === undefined
           ? (effect) => effect
@@ -302,7 +304,11 @@ export const layer = Layer.effect(
       turns?: number,
     ): Effect.fn.Return<Result, Failure> {
       const context = trigger.context
-      const split = splitConversation(SessionToolOutputPrune.apply(context.messages, context.prune, context.tools), keep, turns)
+      const split = splitConversation(
+        SessionToolOutputPrune.apply(context.messages, context.prune, context.tools),
+        keep,
+        turns,
+      )
       if (!split) return yield* Effect.fail(NOTHING_TO_COMPACT)
 
       const previous = previousCompaction(context.messages)
@@ -708,7 +714,15 @@ export const layer = Layer.effect(
 export const node = makeLocationNode({
   service: Service,
   layer,
-  deps: [Bus.node, Database.node, llmClient, SessionModelRequest.node, modelLimitNode, Config.node, SessionGuardLog.node],
+  deps: [
+    Bus.node,
+    Database.node,
+    llmClient,
+    SessionModelRequest.node,
+    modelLimitNode,
+    Config.node,
+    SessionGuardLog.node,
+  ],
 })
 
 /** History loads from the latest completed compaction, so a previous one is always the first message. */
@@ -923,7 +937,9 @@ export const estimatePrompt = (context: SessionContext.Loaded, ratio = 1) => {
     )
     return {
       measured: 0,
-      estimated: Math.ceil(estimateRequest({ system: base.system, tools: context.tools.definitions, messages: sent }) * ratio),
+      estimated: Math.ceil(
+        estimateRequest({ system: base.system, tools: context.tools.definitions, messages: sent }) * ratio,
+      ),
     }
   }
   const anchorIndex = context.messages.findLastIndex((message) => hasMeasuredPrompt(message, context.model.ref))
@@ -941,7 +957,9 @@ export const estimatePrompt = (context: SessionContext.Loaded, ratio = 1) => {
   if (anchor?.type !== "assistant" || !anchor.tokens)
     return {
       measured: 0,
-      estimated: Math.ceil(estimateRequest({ system: base.system, tools: context.tools.definitions, messages: unmeasured }) * ratio),
+      estimated: Math.ceil(
+        estimateRequest({ system: base.system, tools: context.tools.definitions, messages: unmeasured }) * ratio,
+      ),
     }
 
   const tokens = anchor.tokens

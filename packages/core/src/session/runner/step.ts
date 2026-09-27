@@ -114,7 +114,9 @@ export const make = Effect.gen(function* () {
       if (input.prepared.request.toolChoice?.type === "none")
         return yield* new Tool.Error({ message: "Tools are disabled after the maximum agent steps" })
       if (input.loopLimits && !input.allowLoop(call.name)) {
-        const recent = yield* store.messages({ sessionID: input.sessionID, limit: 120 }).pipe(Effect.orElseSucceed(() => []))
+        const recent = yield* store
+          .messages({ sessionID: input.sessionID, limit: 120 })
+          .pipe(Effect.orElseSucceed(() => []))
         const decision = SessionLoopGuard.assess(recent, call, input.loopLimits)
         if (decision.type !== "ok") {
           yield* guards.record({
@@ -128,17 +130,18 @@ export const make = Effect.gen(function* () {
           return yield* new Tool.Error({ message: decision.message })
         }
       }
-      const run = (abort?: AbortSignal) => input.prepared.executeTool({
-        sessionID: input.sessionID,
-        agent: input.agent,
-        messageID: input.assistantMessageID,
-        call,
-        ...(abort ? { abort } : {}),
-        progress: (update) =>
-          Effect.sync(() => {
-            lastEventAt = Date.now()
-          }).pipe(Effect.andThen(publisher.progress(call.id, update))),
-      })
+      const run = (abort?: AbortSignal) =>
+        input.prepared.executeTool({
+          sessionID: input.sessionID,
+          agent: input.agent,
+          messageID: input.assistantMessageID,
+          call,
+          ...(abort ? { abort } : {}),
+          progress: (update) =>
+            Effect.sync(() => {
+              lastEventAt = Date.now()
+            }).pipe(Effect.andThen(publisher.progress(call.id, update))),
+        })
       const ms = ToolDeadline.deadlineMs({ tool: call.name, configured: input.toolTimeout })
       if (ms === undefined) {
         const abort = new AbortController()
@@ -289,7 +292,9 @@ export const make = Effect.gen(function* () {
           yield* publisher.failAssistant(streamFailure.error)
           const goal = yield* goals.get(input.sessionID)
           if (goal?.status === "active")
-            yield* goals.save(goal, { ...goal, status: "paused", reason: streamFailure.error.message }).pipe(Effect.orDie)
+            yield* goals
+              .save(goal, { ...goal, status: "paused", reason: streamFailure.error.message })
+              .pipe(Effect.orDie)
         }
         if (
           input.recoverContinuation &&
@@ -380,7 +385,8 @@ export const make = Effect.gen(function* () {
           !toolFailure &&
           !llmError
         ) {
-          const accepted = record.finish.tokens.input + record.finish.tokens.cache.read + record.finish.tokens.cache.write
+          const accepted =
+            record.finish.tokens.input + record.finish.tokens.cache.read + record.finish.tokens.cache.write
           if (accepted > 0) yield* input.accepted(accepted)
           const completion = yield* goalCompletion.settle(input.sessionID).pipe(Effect.exit)
           if (Exit.isFailure(completion)) {
@@ -414,7 +420,8 @@ export const make = Effect.gen(function* () {
         if (tools.interrupted && Exit.isFailure(joined)) return yield* Effect.failCause(joined.cause)
         if (record.failure) return yield* new StepFailedError({ error: record.failure })
         return Outcome.Completed({
-          needsContinuation: !guardStop && input.prepared.request.toolChoice?.type !== "none" && record.needsContinuation,
+          needsContinuation:
+            !guardStop && input.prepared.request.toolChoice?.type !== "none" && record.needsContinuation,
           ...(guardStop ? { guardStop } : {}),
         })
       }),
