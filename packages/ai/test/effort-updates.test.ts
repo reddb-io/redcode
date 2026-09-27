@@ -364,7 +364,7 @@ describe("OpenAI Responses effort updates", () => {
       )
 
       expect(updates(prepared.body)).toEqual([])
-      expect(prepared.body.reasoning).toEqual({ effort: "low" })
+      expect(prepared.body.reasoning).toEqual({ effort: "low", summary: "auto" })
     }),
   )
 
@@ -426,7 +426,7 @@ describe("OpenAI Responses effort updates", () => {
     dynamicResponse(({ text, respond }) =>
       Effect.sync(() => {
         const body = JSON.parse(text)
-        expect(body.reasoning).toEqual({ effort: "high" })
+        expect(body.reasoning).toEqual({ effort: "high", summary: "auto" })
         expect(body.input).toEqual([
           { type: "message", role: "user", content: [{ type: "input_text", text: "Before." }] },
           { type: "configuration_update", reasoning: { effort: "low" } },

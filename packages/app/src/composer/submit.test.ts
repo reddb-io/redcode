@@ -694,6 +694,7 @@ describe("Composer submission", () => {
         files: [],
         agents: [],
         skills: [],
+        metadata: { source: "app" },
         delivery: "steer",
       },
     ])
