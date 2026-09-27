@@ -47,8 +47,10 @@ jobs:
         shard:
           - name: core-app-tui
             filters: --filter=@opencode/core --filter=@opencode/app --filter=@opencode/tui
+          - name: cli
+            filters: --filter=@opencode/cli
           - name: remaining
-            filters: --filter=!@opencode/core --filter=!@opencode/app --filter=!@opencode/tui
+            filters: --filter=!@opencode/core --filter=!@opencode/app --filter=!@opencode/tui --filter=!@opencode/cli
     runs-on: ubuntu-latest
     timeout-minutes: 60
     steps:
