@@ -384,7 +384,7 @@ function modelFromLanguage(info: RuntimeInfo, language: LanguageModelV3) {
               body: projected.body === undefined ? undefined : { ...projected.body },
               headers: info.headers,
             },
-      providerOptions: projected.settings,
+      providerOptions: Provider.mergeOverlay(legacyProviderDefaults(packageName), projected.settings),
     },
     body: {
       schema: Schema.Unknown,
@@ -408,6 +408,23 @@ function modelFromLanguage(info: RuntimeInfo, language: LanguageModelV3) {
     route,
     compatibility: info.compatibility,
   })
+}
+
+function legacyProviderDefaults(packageName: string) {
+  if (packageName === "@ai-sdk/gateway") return { gateway: { caching: "auto" } }
+  if (packageName === "@llmgateway/ai-sdk-provider" || packageName === "@openrouter/ai-sdk-provider")
+    return { usage: { include: true } }
+  if (
+    [
+      "@ai-sdk/openai",
+      "@ai-sdk/azure",
+      "@ai-sdk/github-copilot",
+      "@ai-sdk/amazon-bedrock/mantle",
+      "@ai-sdk/xai",
+    ].includes(packageName)
+  )
+    return { store: false }
+  return undefined
 }
 
 function gatewayProviderOptions(modelID: ID, settings: Readonly<Record<string, unknown>>) {

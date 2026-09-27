@@ -362,7 +362,7 @@ it.effect("routes AI Gateway model options by upstream prefix", () =>
     })
     const anthropicPrepared = yield* compileRequest(LLM.request({ model: anthropic, prompt: "Hello" }))
     expect(anthropicPrepared.body.providerOptions).toEqual({
-      gateway: { order: ["anthropic"] },
+      gateway: { caching: "auto", order: ["anthropic"] },
       anthropic: { thinking: { type: "adaptive" } },
     })
 
@@ -372,6 +372,7 @@ it.effect("routes AI Gateway model options by upstream prefix", () =>
     })
     const bedrockPrepared = yield* compileRequest(LLM.request({ model: bedrock, prompt: "Hello" }))
     expect(bedrockPrepared.body.providerOptions).toEqual({
+      gateway: { caching: "auto" },
       bedrock: { reasoningConfig: { type: "enabled" } },
     })
 
@@ -383,7 +384,7 @@ it.effect("routes AI Gateway model options by upstream prefix", () =>
       LLM.request({ model: openai, prompt: "Hello", providerOptions: { textVerbosity: "low" } }),
     )
     expect(openaiPrepared.body.providerOptions).toEqual({
-      gateway: { order: ["openai"] },
+      gateway: { caching: "auto", order: ["openai"] },
       openai: { textVerbosity: "low" },
     })
 
@@ -393,8 +394,33 @@ it.effect("routes AI Gateway model options by upstream prefix", () =>
     })
     const fallbackPrepared = yield* compileRequest(LLM.request({ model: fallback, prompt: "Hello" }))
     expect(fallbackPrepared.body.providerOptions).toEqual({
+      gateway: { caching: "auto" },
       deepseek: { reasoningEffort: "high" },
     })
+
+    const uncached = yield* aisdk.model({
+      ...model("@ai-sdk/gateway", { gateway: { caching: false } }),
+      modelID: Model.ID.make("openai/gpt-5.5"),
+    })
+    const uncachedPrepared = yield* compileRequest(LLM.request({ model: uncached, prompt: "Hello" }))
+    expect(uncachedPrepared.body.providerOptions).toEqual({ gateway: { caching: false } })
+  }),
+)
+
+it.effect("keeps V1 request defaults for AI SDK packages that remain on the bridge", () =>
+  Effect.gen(function* () {
+    const aisdk = yield* AISDK.Service
+    yield* aisdk.hook.sdk((event) => {
+      event.sdk = { languageModel: () => ({ provider: event.model.providerID }) }
+    })
+
+    const copilot = yield* aisdk.model(model("@ai-sdk/github-copilot"))
+    const copilotPrepared = yield* compileRequest(LLM.request({ model: copilot, prompt: "Hello" }))
+    expect(copilotPrepared.body.providerOptions).toEqual({ copilot: { store: false } })
+
+    const gateway = yield* aisdk.model(model("@llmgateway/ai-sdk-provider", { usage: { include: false } }))
+    const gatewayPrepared = yield* compileRequest(LLM.request({ model: gateway, prompt: "Hello" }))
+    expect(gatewayPrepared.body.providerOptions).toEqual({ "test-provider": { usage: { include: false } } })
   }),
 )
 
