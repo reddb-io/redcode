@@ -46,7 +46,7 @@ const it = testEffect(
     permissionLayer({ forSession: () => Effect.succeed([]) }),
     Layer.mock(SessionGoalCompletion.Service, {
       settle: () => Effect.succeed(null),
-      discard: () => Effect.void,
+      discard: () => Effect.succeed(false),
     }),
   ),
 )
