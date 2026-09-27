@@ -45,6 +45,30 @@ const request = LLM.request({
 })
 
 describe("OpenAI Chat route", () => {
+  it.effect("omits unsupported Azure Chat reasoning defaults for GPT 5.5 and newer", () =>
+    Effect.gen(function* () {
+      const azure = Azure.configure({ baseURL: "https://opencode-test.openai.azure.com/openai/", apiKey: "test" })
+      const newer = yield* compileRequest(LLM.request({ model: azure.chat("gpt-6-sol"), prompt: "hi" }))
+      expect(newer.body.reasoning_effort).toBeUndefined()
+      expect(newer.body.store).toBe(false)
+
+      const older = yield* compileRequest(LLM.request({ model: azure.chat("gpt-5.4"), prompt: "hi" }))
+      expect(older.body.reasoning_effort).toBe("medium")
+
+      const explicit = yield* compileRequest(
+        LLM.request({
+          model: Azure.configure({
+            baseURL: "https://opencode-test.openai.azure.com/openai/",
+            apiKey: "test",
+            providerOptions: { reasoningEffort: "high" },
+          }).chat("gpt-6-sol"),
+          prompt: "hi",
+        }),
+      )
+      expect(explicit.body.reasoning_effort).toBe("high")
+    }),
+  )
+
   it.effect("prepares OpenAI Chat payload", () =>
     Effect.gen(function* () {
       const prepared = yield* compileRequest(request)

@@ -54,10 +54,14 @@ export const openAIDefaultOptions = (modelID: string): ProviderOptions | undefin
 export const withOpenAIOptions = <Options extends { readonly providerOptions?: OpenAIProviderOptionsInput }>(
   modelID: string,
   options: Options,
+  settings?: { readonly reasoningDefaults?: boolean },
 ): Omit<Options, "providerOptions"> & { readonly providerOptions?: ProviderOptions } => {
   return {
     ...options,
-    providerOptions: mergeProviderOptions(openAIDefaultOptions(modelID), options.providerOptions),
+    providerOptions: mergeProviderOptions(
+      settings?.reasoningDefaults === false ? openAIProviderOptions({ store: false }) : openAIDefaultOptions(modelID),
+      options.providerOptions,
+    ),
   }
 }
 

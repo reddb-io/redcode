@@ -126,10 +126,15 @@ export const configure = (input: Config) => {
       .with(withOpenAIOptions(modelID, modelDefaults))
       .model<OpenAIProviderOptionsInput>({ id: modelID })
 
-  const chat = (modelID: string | ModelID) =>
-    configuredRoute(chatRoute, input, modelID)
-      .with(withOpenAIOptions(modelID, modelDefaults))
+  const chat = (modelID: string | ModelID) => {
+    const version = /(?:^|\/)gpt-(\d+)(?:\.(\d+))?/.exec(modelID.toLowerCase())
+    const major = Number(version?.[1])
+    const minor = Number(version?.[2] ?? 0)
+    const reasoningDefaults = !(major > 5 || (major === 5 && minor >= 5))
+    return configuredRoute(chatRoute, input, modelID)
+      .with(withOpenAIOptions(modelID, modelDefaults, { reasoningDefaults }))
       .model<OpenAIProviderOptionsInput>({ id: modelID, compatibility: { supportsPromptCacheKey: true } })
+  }
 
   return {
     id,
