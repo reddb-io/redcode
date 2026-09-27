@@ -51,7 +51,7 @@ export const LegacyRpcHandler = HttpApiBuilder.group(LegacyRpcApi, "server.legac
         const body = yield* ctx.request.arrayBuffer.pipe(
           Effect.provideService(HttpIncomingMessage.MaxBodySize, FileSystem.Size(RpcMaxBodyBytes)),
           Effect.map((value) => new Uint8Array(value)),
-          Effect.catch(() => Effect.succeed(undefined)),
+          Effect.orElseSucceed(() => undefined),
         )
         if (!body || body.byteLength > RpcMaxBodyBytes)
           return HttpServerResponse.text("Payload Too Large", { status: 413 })
@@ -91,7 +91,7 @@ function isBatch(body: Uint8Array, protocol: "jsonrpc" | "toonrpc") {
         return protocol === "jsonrpc" ? JSON.parse(text) : decode(text)
       },
       catch: () => undefined,
-    }).pipe(Effect.catch(() => Effect.succeed(undefined))),
+    }).pipe(Effect.orElseSucceed(() => undefined)),
   )
   return Array.isArray(parsed)
 }

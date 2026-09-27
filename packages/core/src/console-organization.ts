@@ -23,7 +23,7 @@ export const list = Effect.fn("ConsoleOrganization.list")(function* (credentialI
         const saved = yield* credentials.get(connection.id)
         if (!saved || saved.value.type !== "oauth") return
         const resolved = integration.connection.resolve(connection)
-        const value = yield* (credentialID ? resolved : resolved.pipe(Effect.catch(() => Effect.succeed(saved.value))))
+        const value = yield* (credentialID ? resolved : resolved.pipe(Effect.orElseSucceed(() => saved.value)))
         if (!value || value.type !== "oauth") return
         const server = typeof value.metadata?.server === "string" ? value.metadata.server : defaultServer
         const fetched = http
@@ -34,7 +34,7 @@ export const list = Effect.fn("ConsoleOrganization.list")(function* (credentialI
             ),
           )
           .pipe(Effect.flatMap(HttpClientResponse.schemaBodyJson(Schema.Array(Org))))
-        const orgs = yield* (credentialID ? fetched : fetched.pipe(Effect.catch(() => Effect.succeed([]))))
+        const orgs = yield* (credentialID ? fetched : fetched.pipe(Effect.orElseSucceed(() => [])))
         return {
           credentialID: connection.id,
           server,

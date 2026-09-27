@@ -1,3 +1,4 @@
+
 export * as DesignPlaybooks from "./playbooks.js"
 
 import type { Design } from "@opencode/schema/design"
@@ -406,5 +407,3 @@ export function render(playbook: Playbook) {
     .join("\n")
     .trimEnd()
 }
-
-export * as DesignPlaybooks from "./playbooks.js"
