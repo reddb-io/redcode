@@ -229,6 +229,25 @@ it.effect("generates a title from the sole user message and renames the session"
   }),
 )
 
+it.effect("omits inline thinking before selecting the title", () =>
+  Effect.gen(function* () {
+    yield* enableTitleAgent
+    const sessionID = Session.ID.make("ses_title_thinking")
+    yield* insertSession(sessionID)
+    yield* prompt(sessionID, "Name this conversation")
+    titleStream = () =>
+      Stream.make(
+        LLMEvent.textDelta({ id: "title", text: "<think>Drafting a name</think>\nUseful Title\n" }),
+        LLMEvent.finish({ reason: { normalized: "stop" } }),
+      )
+
+    const title = yield* SessionTitle.Service
+    const store = yield* SessionStore.Service
+    yield* title.generate(sessionID)
+    expect((yield* store.get(sessionID))?.title).toBe("Useful Title")
+  }),
+)
+
 it.effect("runs title hooks instead of context hooks", () =>
   Effect.gen(function* () {
     yield* enableTitleAgent

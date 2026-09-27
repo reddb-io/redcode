@@ -97,6 +97,7 @@ export const layer = Layer.effect(
       if (failed) return
       return chunks
         .join("")
+        .replace(/<think>[\s\S]*?<\/think>\s*/g, "")
         .split("\n")
         .map((line) => line.trim())
         .find((line) => line.length > 0)
