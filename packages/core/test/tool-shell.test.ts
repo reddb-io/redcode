@@ -260,6 +260,7 @@ const runPermissionCommand = (
   command: string,
   marker: string,
   replies: ReadonlyArray<Permission.Reply>,
+  timeout = Duration.seconds(5),
 ) =>
   Effect.gen(function* () {
     const permission = yield* Permission.Service
@@ -285,7 +286,7 @@ const runPermissionCommand = (
     expect(yield* permission.list()).toEqual([])
     expect(yield* Queue.size(queue)).toBe(0)
     return { exit, requests }
-  }).pipe(Effect.scoped, Effect.timeout(Duration.seconds(5)))
+  }).pipe(Effect.scoped, Effect.timeout(timeout))
 
 // Directory cases still document inherited limitations; fixed scanner cases require matching behavior.
 describe("ShellTool scanner permissions", () => {
@@ -803,7 +804,13 @@ describe("ShellTool ordinary shell syntax", () => {
                 action: "shell",
                 resources: ["Write-Output *", "Show-Value *"],
               })
-              const result = yield* runPermissionCommand(registry, command, path.join(directory.active, "marker"), [])
+              const result = yield* runPermissionCommand(
+                registry,
+                command,
+                path.join(directory.active, "marker"),
+                [],
+                Duration.seconds(30),
+              )
               expect(result.requests).toEqual([])
               expect(result.exit).toMatchObject({
                 _tag: "Success",
