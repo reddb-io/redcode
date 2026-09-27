@@ -59,10 +59,27 @@ export const run = Effect.fn("cli.config.migrate")(function* (input: {
               ),
             text,
           )
+    const attention = Option.getOrUndefined(decodeRecord(config.attention))
+    const enabled = attention?.enabled
+    const converted =
+      typeof enabled !== "boolean"
+        ? renamed
+        : [
+            { path: ["attention", "notifications"], value: enabled && attention.notifications !== false },
+            { path: ["attention", "sound"], value: enabled && attention.sound !== false },
+            { path: ["attention", "enabled"], value: undefined },
+          ].reduce(
+            (text, edit) =>
+              applyEdits(
+                text,
+                modify(text, edit.path, edit.value, { formattingOptions: { tabSize: 2, insertSpaces: true } }),
+              ),
+            renamed,
+          )
     const keybinds = Option.getOrUndefined(decodeRecord(config.keybinds))
     const updated =
       keybinds === undefined
-        ? renamed
+        ? converted
         : Object.keys(keybinds).reduce(
             (text, name) => {
               const target =
@@ -83,12 +100,12 @@ export const run = Effect.fn("cli.config.migrate")(function* (input: {
               if (key === undefined) return text
               return cleaned.slice(0, key.offset) + JSON.stringify(target) + cleaned.slice(key.offset + key.length)
             },
-            findKeybindObjects(renamed)
+            findKeybindObjects(converted)
               .slice(0, -1)
               .reduce((text) => {
                 const property = findKeybindObjects(text)[0]
                 return property === undefined ? text : removeProperty(text, property)
-              }, renamed),
+              }, converted),
           )
     if (updated === text) return
     const updatedErrors: ParseError[] = []
@@ -207,8 +224,17 @@ export function migrateV1(legacy: TuiConfigV1.Info | undefined, kv: Record<strin
       ? {}
       : {
           attention: {
-            ...legacy?.attention,
-            ...(attentionSoundPack === undefined ? {} : { sound_pack: attentionSoundPack }),
+            ...(legacy?.attention === undefined
+              ? {}
+              : {
+                  notifications: legacy.attention.enabled === true && legacy.attention.notifications !== false,
+                  sound: legacy.attention.enabled === true && legacy.attention.sound !== false,
+                  ...(legacy.attention.volume === undefined ? {} : { volume: legacy.attention.volume }),
+                  ...(legacy.attention.sounds === undefined ? {} : { sounds: legacy.attention.sounds }),
+                }),
+            ...(attentionSoundPack === undefined && legacy?.attention?.sound_pack === undefined
+              ? {}
+              : { sound_pack: attentionSoundPack ?? legacy?.attention?.sound_pack }),
           },
         }),
     ...(legacy?.diff_style === undefined &&
