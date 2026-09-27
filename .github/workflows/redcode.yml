@@ -147,7 +147,7 @@ jobs:
           retention-days: 7
 
   build:
-    needs: [verify, tests, sidecar]
+    needs: sidecar
     runs-on: ubuntu-latest
     timeout-minutes: 60
     env:
@@ -194,7 +194,7 @@ jobs:
 
   publish:
     if: inputs.publish && github.repository == 'reddb-io/redcode' && github.ref == 'refs/heads/main'
-    needs: [build, design]
+    needs: [verify, tests, build, design]
     runs-on: ubuntu-latest
     timeout-minutes: 45
     environment: red-release
