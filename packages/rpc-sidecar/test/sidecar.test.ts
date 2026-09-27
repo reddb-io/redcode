@@ -112,7 +112,7 @@ describe(`RPC sidecar (${command[0].endsWith("cli.ts") ? "source" : "native"})`,
     })
 
     expect(result.exitCode).toBe(0)
-    expect(authorization).toBe(`Basic ${Buffer.from("opencode:secret").toString("base64")}`)
+    expect(authorization ?? "").toBe(`Basic ${Buffer.from("opencode:secret").toString("base64")}`)
   })
 
   test("processes frames sequentially and preserves order", async () => {
