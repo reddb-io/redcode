@@ -1010,7 +1010,7 @@ const make = Effect.gen(function* () {
     return { id: input.id, status: "admitted" as const }
   }, lock.withPermits(1))
 
-  return Service.of({
+  return {
     storage,
     blobs,
     configured,
@@ -1040,7 +1040,7 @@ const make = Effect.gen(function* () {
     reopen,
     prepareFeedback,
     acknowledge,
-  })
+  }
 })
 
 export class Service extends Context.Service<Service, Effect.Success<typeof make>>()("@redcode/DesignStore") {}

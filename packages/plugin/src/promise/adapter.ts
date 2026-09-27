@@ -348,12 +348,25 @@ export function fromPromise(plugin: Plugin) {
           provider: {
             list: adaptApiMethod(ProviderEndpoints["provider.list"], host.provider.list),
             get: adaptApiMethod(ProviderEndpoints["provider.get"], host.provider.get),
+            remove: adaptApiMethod(ProviderEndpoints["provider.remove"], host.provider.remove),
             transform: transform(host.provider),
             reload: () => run(host.provider.reload()),
           },
           integration: {
             list: adaptApiMethod(IntegrationEndpoints["integration.list"], host.integration.list),
             get: adaptApiMethod(IntegrationEndpoints["integration.get"], host.integration.get),
+            console: {
+              organizations: adaptApiMethod(
+                IntegrationEndpoints["integration.console.organizations"],
+                host.integration.console.organizations,
+              ),
+              organization: {
+                select: adaptApiMethod(
+                  IntegrationEndpoints["integration.console.organization.select"],
+                  host.integration.console.organization.select,
+                ),
+              },
+            },
             connect: {
               key: adaptApiMethod(IntegrationEndpoints["integration.connect.key"], host.integration.connect.key),
             },

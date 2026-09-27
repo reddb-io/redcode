@@ -12,8 +12,8 @@ export const list = Effect.fn("ConsoleOrganization.list")(function* (credentialI
   const integration = yield* Integration.Service
   const credentials = yield* Credential.Service
   const active = yield* integration.connection.active(Integration.ID.make("opencode"))
-  const connections = (yield* integration.get(Integration.ID.make("opencode")))?.connections.filter(
-    (connection) => connection.type === "credential" && (!credentialID || connection.id === credentialID),
+  const connections = (yield* integration.get(Integration.ID.make("opencode")))?.connections.flatMap((connection) =>
+    connection.type === "credential" && (!credentialID || connection.id === credentialID) ? [connection] : [],
   ) ?? []
   const http = HttpClient.filterStatusOk(yield* HttpClient.HttpClient)
   const accounts = yield* Effect.forEach(
