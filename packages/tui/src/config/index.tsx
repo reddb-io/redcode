@@ -166,6 +166,9 @@ export const Info = Schema.Struct({
       tool_details: Schema.optional(Schema.Literals(["show", "hide"])).annotate({
         description: "Show completed tool calls in the session transcript",
       }),
+      assistant_metadata: Schema.optional(Schema.Literals(["show", "hide"])).annotate({
+        description: "Include agent, model, and duration in Markdown transcript headings",
+      }),
       list_scope: Schema.optional(Schema.Literals(["directory", "project", "all"])).annotate({
         description: "Initial scope of the session list",
       }),

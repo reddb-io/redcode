@@ -238,6 +238,7 @@ export function Session(props: {
   const showTimestamps = createMemo(() => config.session?.timestamps === "show")
   const showGenericToolOutput = createMemo(() => config.session?.generic_tool_output === "show")
   const showToolDetails = createMemo(() => config.session?.tool_details !== "hide")
+  const showAssistantMetadata = createMemo(() => config.session?.assistant_metadata !== "hide")
   const markdownMode = createMemo(() => config.session?.markdown ?? "rendered")
   const diffWrapMode = createMemo(() => config.diffs?.wrap ?? "word")
   const groupExploration = createMemo(() => config.session?.grouping !== "none")
@@ -1287,7 +1288,14 @@ export function Session(props: {
           const sessionData = session()
           if (!sessionData) return
           const transcript = await client.api.session.export({ sessionID: sessionData.id })
-          const content = formatSessionTranscript(transcript.info, transcript.messages, true, showToolDetails())
+          const content = formatSessionTranscript(
+            transcript.info,
+            transcript.messages,
+            true,
+            true,
+            showToolDetails(),
+            showAssistantMetadata(),
+          )
           await clipboard.write(content)
           toast.show({ message: "Session transcript copied to clipboard!", variant: "success" })
         } catch {
@@ -1308,7 +1316,7 @@ export function Session(props: {
           const sessionData = session()
           if (!sessionData) return
 
-          const options = await DialogExportOptions.show(dialog, true, showToolDetails())
+          const options = await DialogExportOptions.show(dialog, true, showToolDetails(), showAssistantMetadata())
 
           if (options === null) return
 
@@ -1318,7 +1326,14 @@ export function Session(props: {
           })
           const content =
             options.format === "markdown"
-              ? formatSessionTranscript(transcript.info, transcript.messages, options.thinking, options.tools)
+              ? formatSessionTranscript(
+                  transcript.info,
+                  transcript.messages,
+                  options.thinking,
+                  options.tools,
+                  options.toolDetails,
+                  options.assistantMetadata,
+                )
               : JSON.stringify(transcript, null, 2) + EOL
 
           if (options.action === "copy") {
@@ -3625,7 +3640,9 @@ function formatSessionTranscript(
   session: SessionInfo,
   messages: SessionMessageInfo[],
   thinking: boolean,
-  tools = true,
+  tools: boolean,
+  toolDetails: boolean,
+  assistantMetadata: boolean,
 ) {
   const body = messages.flatMap((message) => {
     if (message.type === "user") return [`## User\n\n${message.text}`]
@@ -3636,6 +3653,7 @@ function formatSessionTranscript(
       if (item.type === "text") return [item.text]
       if (item.type === "reasoning") return thinking ? [`_Thinking:_\n\n${item.text}`] : []
       if (!tools) return []
+      if (!toolDetails) return [`**Tool: ${item.name}**`]
       const input = typeof item.state.input === "string" ? item.state.input : JSON.stringify(item.state.input, null, 2)
       const output =
         item.state.status === "error"
@@ -3648,7 +3666,13 @@ function formatSessionTranscript(
       return [`**Tool: ${item.name}**\n\n**Input:**\n\`\`\`json\n${input}\n\`\`\`\n\n${output}`]
     })
     if (content.length === 0) return []
-    return [`## Assistant\n\n${content.join("\n\n")}`]
+    const duration = message.time.completed
+      ? ` · ${((message.time.completed - message.time.created) / 1000).toFixed(1)}s`
+      : ""
+    const heading = assistantMetadata
+      ? `## Assistant (${message.agent} · ${message.model.providerID}/${message.model.id}${duration})`
+      : "## Assistant"
+    return [`${heading}\n\n${content.join("\n\n")}`]
   })
   return `# ${withTimestampedFallback(session)}\n\n**Session ID:** ${session.id}\n**Created:** ${new Date(session.time.created).toLocaleString()}\n**Updated:** ${new Date(session.time.updated).toLocaleString()}\n\n---\n\n${body.join("\n\n---\n\n")}\n`
 }

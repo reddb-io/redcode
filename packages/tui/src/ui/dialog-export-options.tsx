@@ -9,18 +9,21 @@ export type ExportFormat = "markdown" | "json"
 
 export type DialogExportOptionsProps = {
   defaultThinking: boolean
-  defaultTools: boolean
+  defaultToolDetails: boolean
+  defaultAssistantMetadata: boolean
   onConfirm?: (options: {
     action: "copy" | "export"
     format: ExportFormat
     thinking: boolean
     tools: boolean
+    toolDetails: boolean
+    assistantMetadata: boolean
     sanitize: boolean
   }) => void
   onCancel?: () => void
 }
 
-type Active = ExportFormat | "thinking" | "tools" | "sanitize" | "copy" | "export"
+type Active = ExportFormat | "thinking" | "tools" | "toolDetails" | "assistantMetadata" | "sanitize" | "copy" | "export"
 
 export function DialogExportOptions(props: DialogExportOptionsProps) {
   const dialog = useDialog()
@@ -29,7 +32,9 @@ export function DialogExportOptions(props: DialogExportOptionsProps) {
   const [store, setStore] = createStore({
     format: "markdown" as ExportFormat,
     thinking: props.defaultThinking,
-    tools: props.defaultTools,
+    tools: true,
+    toolDetails: props.defaultToolDetails,
+    assistantMetadata: props.defaultAssistantMetadata,
     sanitize: false,
     active: "markdown" as Active,
   })
@@ -40,6 +45,8 @@ export function DialogExportOptions(props: DialogExportOptionsProps) {
       format: store.format,
       thinking: store.thinking,
       tools: store.tools,
+      toolDetails: store.toolDetails,
+      assistantMetadata: store.assistantMetadata,
       sanitize: store.sanitize,
     })
 
@@ -50,6 +57,8 @@ export function DialogExportOptions(props: DialogExportOptionsProps) {
     }
     if (store.active === "thinking") setStore("thinking", !store.thinking)
     if (store.active === "tools") setStore("tools", !store.tools)
+    if (store.active === "toolDetails") setStore("toolDetails", !store.toolDetails)
+    if (store.active === "assistantMetadata") setStore("assistantMetadata", !store.assistantMetadata)
     if (store.active === "sanitize") setStore("sanitize", !store.sanitize)
     if (store.active === "copy" || store.active === "export") confirm(store.active)
   }
@@ -64,7 +73,7 @@ export function DialogExportOptions(props: DialogExportOptionsProps) {
         run: () => {
           const order: Active[] =
             store.format === "markdown"
-              ? ["markdown", "json", "thinking", "tools", "copy", "export"]
+              ? ["markdown", "json", "thinking", "tools", "toolDetails", "assistantMetadata", "copy", "export"]
               : ["markdown", "json", "sanitize", "copy", "export"]
           setStore("active", order[(order.indexOf(store.active) + 1) % order.length])
         },
@@ -203,6 +212,44 @@ export function DialogExportOptions(props: DialogExportOptionsProps) {
             Include tools
           </text>
         </box>
+        <box
+          flexDirection="row"
+          gap={1}
+          backgroundColor={
+            store.active === "toolDetails"
+              ? theme.background.formfield.focused
+              : store.toolDetails
+                ? theme.background.formfield.selected
+                : theme.background.formfield.base
+          }
+          onMouseUp={() => {
+            setStore("active", "toolDetails")
+            setStore("toolDetails", !store.toolDetails)
+          }}
+        >
+          <text fg={store.active === "toolDetails" ? theme.text.formfield.focused : theme.text.formfield.base}>
+            {store.toolDetails ? "[x]" : "[ ]"} Include tool details
+          </text>
+        </box>
+        <box
+          flexDirection="row"
+          gap={1}
+          backgroundColor={
+            store.active === "assistantMetadata"
+              ? theme.background.formfield.focused
+              : store.assistantMetadata
+                ? theme.background.formfield.selected
+                : theme.background.formfield.base
+          }
+          onMouseUp={() => {
+            setStore("active", "assistantMetadata")
+            setStore("assistantMetadata", !store.assistantMetadata)
+          }}
+        >
+          <text fg={store.active === "assistantMetadata" ? theme.text.formfield.focused : theme.text.formfield.base}>
+            {store.assistantMetadata ? "[x]" : "[ ]"} Include assistant metadata
+          </text>
+        </box>
       </Show>
       <Show when={store.format === "json"}>
         <box
@@ -272,7 +319,12 @@ export function DialogExportOptions(props: DialogExportOptionsProps) {
   )
 }
 
-DialogExportOptions.show = (dialog: DialogContext, defaultThinking: boolean, defaultTools = true) => {
+DialogExportOptions.show = (
+  dialog: DialogContext,
+  defaultThinking: boolean,
+  defaultToolDetails: boolean,
+  defaultAssistantMetadata: boolean,
+) => {
   return new Promise<{
     action: "copy" | "export"
     format: ExportFormat
@@ -284,7 +336,8 @@ DialogExportOptions.show = (dialog: DialogContext, defaultThinking: boolean, def
       () => (
         <DialogExportOptions
           defaultThinking={defaultThinking}
-          defaultTools={defaultTools}
+          defaultToolDetails={defaultToolDetails}
+          defaultAssistantMetadata={defaultAssistantMetadata}
           onConfirm={(options) => resolve(options)}
           onCancel={() => resolve(null)}
         />

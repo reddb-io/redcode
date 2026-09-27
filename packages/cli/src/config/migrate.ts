@@ -274,6 +274,7 @@ export function migrateV1(legacy: TuiConfigV1.Info | undefined, kv: Record<strin
     kv.timestamps !== "hide" &&
     typeof kv.generic_tool_output_visibility !== "boolean" &&
     typeof kv.tool_details_visibility !== "boolean" &&
+    typeof kv.assistant_metadata_visibility !== "boolean" &&
     typeof kv.session_directory_filter_enabled !== "boolean" &&
     thinking === undefined &&
     kv.exploration_grouping === undefined
@@ -289,6 +290,9 @@ export function migrateV1(legacy: TuiConfigV1.Info | undefined, kv: Record<strin
               : {}),
             ...(typeof kv.tool_details_visibility === "boolean"
               ? { tool_details: kv.tool_details_visibility ? ("show" as const) : ("hide" as const) }
+              : {}),
+            ...(typeof kv.assistant_metadata_visibility === "boolean"
+              ? { assistant_metadata: kv.assistant_metadata_visibility ? ("show" as const) : ("hide" as const) }
               : {}),
             ...(typeof kv.session_directory_filter_enabled === "boolean"
               ? { list_scope: kv.session_directory_filter_enabled ? ("directory" as const) : ("project" as const) }
