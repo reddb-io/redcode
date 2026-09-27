@@ -170,6 +170,7 @@ export const make = Effect.fn("SessionInbox.make")(function* () {
     readonly id: SessionMessage.ID
     readonly sessionID: SessionSchema.ID
     readonly item: Item & { readonly type: Type }
+    readonly commit?: (seq: number) => Effect.Effect<void>
   }) {
     const existing = yield* reconcile({ ...request, type: request.item.type, delivery: request.item.delivery })
     if (existing !== undefined) return existing
@@ -178,7 +179,7 @@ export const make = Effect.fn("SessionInbox.make")(function* () {
         inboxID: request.id,
         sessionID: request.sessionID,
         item: request.item,
-      })
+      }, { commit: request.commit })
       .pipe(
         Effect.map((event) =>
           Info.make({

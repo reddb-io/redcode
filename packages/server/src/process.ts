@@ -20,6 +20,7 @@ import { createRoutes } from "./routes"
 import { PtySockets } from "./pty-sockets"
 import { ServerInfo } from "./server-info"
 import { Status } from "./service-status"
+import { resume } from "./restart-continuity"
 import type { ServerOptions } from "./options"
 
 export interface Lifecycle<E = never, R = never> {
@@ -105,7 +106,12 @@ export const start = Effect.fn("ServerProcess.start")(function* <E, R>(
       applicationScope,
     )
     if (lifecycle) {
-      yield* installRestartContinuity(Context.get(context, SessionRestart.Service)).pipe(
+      yield* installRestartContinuity(
+        resume(Context.get(context, SessionRestart.Service), !options.database?.url).pipe(
+          Effect.provide(Layer.succeedContext(context)),
+          Effect.catchCause((cause) => Effect.logError("Session restart continuity failed", { cause })),
+        ),
+      ).pipe(
         Effect.provideService(Scope.Scope, applicationScope),
       )
     }
@@ -247,6 +253,6 @@ function unavailable(status: Status.State) {
  * never released. Claims are written when execution starts (see SessionExecution), so recovery covers
  * graceful restarts and unclean deaths alike — no shutdown hook participates.
  */
-const installRestartContinuity = Effect.fnUntraced(function* (restart: SessionRestart.Interface) {
-  yield* Effect.forkScoped(restart.resumeSuspendedSessions)
+const installRestartContinuity = Effect.fnUntraced(function* (continuity: Effect.Effect<void>) {
+  yield* Effect.forkScoped(continuity)
 })

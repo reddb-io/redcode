@@ -1,11 +1,12 @@
 export * as RedcodePending from "./redcode-pending.js"
 
-import { asc, isNull } from "drizzle-orm"
+import { asc, eq, isNull } from "drizzle-orm"
 import { Effect, Schema } from "effect"
 import path from "node:path"
 import { readdir, readFile, stat } from "node:fs/promises"
 import { fileURLToPath } from "node:url"
 import { Database } from "../database/database.js"
+import { KVTable } from "../kv/sql.js"
 import { SessionInbox } from "./inbox.js"
 import { SessionMessage } from "./message.js"
 import { RedcodeSessionInputTable } from "./redcode-legacy.sql.js"
@@ -44,22 +45,35 @@ export const admit = Effect.fn("RedcodePending.admit")(function* () {
     pending,
     (row) =>
       Effect.gen(function* () {
+        // Keep the source staging row unchanged so a repeated import can compare it.
+        const key = `redcode.pending.admitted:${row.id}`
+        if (yield* db.select({ key: KVTable.key }).from(KVTable).where(eq(KVTable.key, key)).get()) return
         const prompt = yield* Schema.decodeUnknownEffect(LegacyPrompt)(row.prompt)
         if (row.delivery !== "queue" && row.delivery !== "steer")
           return yield* Effect.fail(new Error(`Pending Redcode input ${row.id} has unknown delivery ${row.delivery}`))
         const base = { id: SessionMessage.ID.make(row.id), sessionID: SessionSchema.ID.make(row.session_id) }
+        const type = row.id.startsWith("msg_monitor_") ? "synthetic" : "user"
+        const mark = () => db.insert(KVTable).values({ key, value: true }).onConflictDoNothing().run()
+        // Earlier imports may already have admitted this ID. Reconcile before reading a file
+        // attachment that may have disappeared since the first successful admission.
+        if (yield* inbox.reconcile({ ...base, type, delivery: row.delivery })) {
+          yield* mark()
+          return
+        }
         // V1 stored only Prompt in the inbox; monitor continuation IDs retain its synthetic origin.
-        if (row.id.startsWith("msg_monitor_")) {
+        if (type === "synthetic") {
           if (prompt.files?.length || prompt.agents?.length)
             return yield* Effect.fail(new Error(`Synthetic Redcode input ${row.id} has attachments`))
           return yield* inbox.admit({
             ...base,
             item: { type: "synthetic", payload: { text: prompt.text }, delivery: row.delivery },
+            commit: mark,
           })
         }
         const files = yield* Effect.forEach(prompt.files ?? [], (file) => materialize(file, row.id))
         return yield* inbox.admit({
           ...base,
+          commit: mark,
           item: {
             type: "user",
             payload: {
@@ -80,7 +94,7 @@ export const admit = Effect.fn("RedcodePending.admit")(function* () {
       }),
     { discard: true },
   )
-  return pending.length
+  return [...new Set(pending.map((row) => SessionSchema.ID.make(row.session_id)))]
 })
 
 function materialize(file: LegacyFile, inputID: string) {

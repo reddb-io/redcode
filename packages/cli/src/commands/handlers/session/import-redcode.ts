@@ -37,7 +37,7 @@ export default Runtime.handler(
       ),
     )
     process.stdout.write(
-      `Imported ${result.imported} sessions; skipped ${result.skipped} existing sessions; processed ${pending} pending inputs${EOL}`,
+      `Imported ${result.imported} sessions; skipped ${result.skipped} existing sessions; admitted pending inputs in ${pending.length} sessions${EOL}`,
     )
   }),
 )
