@@ -21,6 +21,7 @@ import { Npm } from "@opencode/util/npm"
 import { Plugin } from "@opencode/core/plugin"
 import { PluginHooks } from "@opencode/core/plugin/hooks"
 import { Provider } from "@opencode/core/provider"
+import { ProviderRemove } from "@opencode/core/provider-removal"
 import { Session } from "@opencode/core/session"
 import { PersistentPty } from "@opencode/core/persistent-pty"
 import { LocationServiceMap } from "@opencode/core/location-service-map"
@@ -82,6 +83,7 @@ export const PluginTestLayer = AppNodeBuilder.build(
     Agent.node,
     AISDK.node,
     Provider.node,
+    ProviderRemove.node,
     Model.node,
     Command.node,
     Integration.node,

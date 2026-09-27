@@ -56,6 +56,7 @@ import { Vcs } from "./vcs.js"
 import { DesignStore } from "./design/store.js"
 import { DesignRenderer } from "./design/renderer.js"
 import { Ripgrep } from "./ripgrep.js"
+import { ProviderRemove } from "./provider-removal.js"
 
 export * as Instance from "./instance.js"
 export { Service, node, type Interface } from "./instance/service.js"
@@ -75,6 +76,7 @@ const nodes = [
   WebSearch.node,
   Integration.node,
   Provider.node,
+  ProviderRemove.node,
   Model.node,
   ModelResolver.node,
   AISDK.node,
