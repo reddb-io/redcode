@@ -325,6 +325,22 @@ import type {
   LspDocumentSymbolsOutput,
   FormatterStatusInput,
   FormatterStatusOutput,
+  RedskilledStatusInput,
+  RedskilledStatusOutput,
+  RedskilledConsentInput,
+  RedskilledConsentOutput,
+  RedskilledProjectResizeInput,
+  RedskilledProjectResizeOutput,
+  RedskilledProjectStopInput,
+  RedskilledProjectStopOutput,
+  RedskilledWorkerStopInput,
+  RedskilledWorkerStopOutput,
+  RedskilledWorkerRecycleInput,
+  RedskilledWorkerRecycleOutput,
+  RedskilledWorkerSteerInput,
+  RedskilledWorkerSteerOutput,
+  RedskilledWorkerSteerStatusInput,
+  RedskilledWorkerSteerStatusOutput,
   ServerIntelligenceStatusOutput,
   ServerIntelligenceSaveInput,
   ServerIntelligenceSaveOutput,
@@ -1954,6 +1970,80 @@ const EndpointFormatterStatus = (raw: RawClient["server.formatter"]) => (input?:
 
 const adaptGroupFormatter = (raw: RawClient["server.formatter"]) => ({ status: EndpointFormatterStatus(raw) })
 
+const EndpointRedskilledStatus = (raw: RawClient["server.redskilled"]) => (input?: RedskilledStatusInput) =>
+  preserveEffect<RedskilledStatusOutput>()(
+    raw["redskilled.status"]({ query: { location: input?.["location"], scope: input?.["scope"] } }).pipe(
+      Effect.mapError(mapClientError),
+    ),
+  )
+
+const EndpointRedskilledConsent = (raw: RawClient["server.redskilled"]) => (input: RedskilledConsentInput) =>
+  preserveEffect<RedskilledConsentOutput>()(
+    raw["redskilled.consent"]({
+      query: { location: input["location"] },
+      payload: { decision: input["decision"] },
+    }).pipe(Effect.mapError(mapClientError)),
+  )
+
+const EndpointRedskilledProjectResize =
+  (raw: RawClient["server.redskilled"]) => (input: RedskilledProjectResizeInput) =>
+    preserveEffect<RedskilledProjectResizeOutput>()(
+      raw["redskilled.project.resize"]({
+        query: { location: input["location"] },
+        payload: { target: input["target"] },
+      }).pipe(Effect.mapError(mapClientError)),
+    )
+
+const EndpointRedskilledProjectStop = (raw: RawClient["server.redskilled"]) => (input?: RedskilledProjectStopInput) =>
+  preserveEffect<RedskilledProjectStopOutput>()(
+    raw["redskilled.project.stop"]({ query: { location: input?.["location"] } }).pipe(Effect.mapError(mapClientError)),
+  )
+
+const EndpointRedskilledWorkerStop = (raw: RawClient["server.redskilled"]) => (input: RedskilledWorkerStopInput) =>
+  preserveEffect<RedskilledWorkerStopOutput>()(
+    raw["redskilled.worker.stop"]({
+      query: { location: input["location"] },
+      payload: { worker: input["worker"] },
+    }).pipe(Effect.mapError(mapClientError)),
+  )
+
+const EndpointRedskilledWorkerRecycle =
+  (raw: RawClient["server.redskilled"]) => (input: RedskilledWorkerRecycleInput) =>
+    preserveEffect<RedskilledWorkerRecycleOutput>()(
+      raw["redskilled.worker.recycle"]({
+        query: { location: input["location"] },
+        payload: { worker: input["worker"] },
+      }).pipe(Effect.mapError(mapClientError)),
+    )
+
+const EndpointRedskilledWorkerSteer = (raw: RawClient["server.redskilled"]) => (input: RedskilledWorkerSteerInput) =>
+  preserveEffect<RedskilledWorkerSteerOutput>()(
+    raw["redskilled.worker.steer"]({
+      query: { location: input["location"] },
+      payload: { worker: input["worker"], text: input["text"] },
+    }).pipe(Effect.mapError(mapClientError)),
+  )
+
+const EndpointRedskilledWorkerSteerStatus =
+  (raw: RawClient["server.redskilled"]) => (input: RedskilledWorkerSteerStatusInput) =>
+    preserveEffect<RedskilledWorkerSteerStatusOutput>()(
+      raw["redskilled.worker.steerStatus"]({ query: { location: input["location"], worker: input["worker"] } }).pipe(
+        Effect.mapError(mapClientError),
+      ),
+    )
+
+const adaptGroupRedskilled = (raw: RawClient["server.redskilled"]) => ({
+  status: EndpointRedskilledStatus(raw),
+  consent: EndpointRedskilledConsent(raw),
+  project: { resize: EndpointRedskilledProjectResize(raw), stop: EndpointRedskilledProjectStop(raw) },
+  worker: {
+    stop: EndpointRedskilledWorkerStop(raw),
+    recycle: EndpointRedskilledWorkerRecycle(raw),
+    steer: EndpointRedskilledWorkerSteer(raw),
+    steerStatus: EndpointRedskilledWorkerSteerStatus(raw),
+  },
+})
+
 const EndpointServerIntelligenceStatus = (raw: RawClient["server.intelligence"]) => () =>
   preserveEffect<ServerIntelligenceStatusOutput>()(raw["intelligence.status"]({}).pipe(Effect.mapError(mapClientError)))
 
@@ -2021,6 +2111,7 @@ const adaptClient = (raw: RawClient) => ({
   config: adaptGroupConfig(raw["server.config"]),
   lsp: adaptGroupLsp(raw["server.lsp"]),
   formatter: adaptGroupFormatter(raw["server.formatter"]),
+  redskilled: adaptGroupRedskilled(raw["server.redskilled"]),
   "server.intelligence": adaptGroupServerIntelligence(raw["server.intelligence"]),
 })
 

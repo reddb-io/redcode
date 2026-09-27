@@ -323,6 +323,22 @@ import type {
   LspDocumentSymbolsOutput,
   FormatterStatusInput,
   FormatterStatusOutput,
+  RedskilledStatusInput,
+  RedskilledStatusOutput,
+  RedskilledConsentInput,
+  RedskilledConsentOutput,
+  RedskilledProjectResizeInput,
+  RedskilledProjectResizeOutput,
+  RedskilledProjectStopInput,
+  RedskilledProjectStopOutput,
+  RedskilledWorkerStopInput,
+  RedskilledWorkerStopOutput,
+  RedskilledWorkerRecycleInput,
+  RedskilledWorkerRecycleOutput,
+  RedskilledWorkerSteerInput,
+  RedskilledWorkerSteerOutput,
+  RedskilledWorkerSteerStatusInput,
+  RedskilledWorkerSteerStatusOutput,
   ServerIntelligenceStatusOutput,
   ServerIntelligenceSaveInput,
   ServerIntelligenceSaveOutput,
@@ -2681,6 +2697,113 @@ export function make(options: ClientOptions) {
           },
           requestOptions,
         ),
+    },
+    redskilled: {
+      status: (input?: RedskilledStatusInput, requestOptions?: RequestOptions) =>
+        request<RedskilledStatusOutput>(
+          {
+            method: "GET",
+            path: `/api/redskilled`,
+            query: { location: input?.["location"], scope: input?.["scope"] },
+            successStatus: 200,
+            declaredStatuses: [400, 401],
+            empty: false,
+          },
+          requestOptions,
+        ),
+      consent: (input: RedskilledConsentInput, requestOptions?: RequestOptions) =>
+        request<RedskilledConsentOutput>(
+          {
+            method: "POST",
+            path: `/api/redskilled/consent`,
+            query: { location: input["location"] },
+            body: { decision: input["decision"] },
+            successStatus: 200,
+            declaredStatuses: [400, 401],
+            empty: false,
+          },
+          requestOptions,
+        ),
+      project: {
+        resize: (input: RedskilledProjectResizeInput, requestOptions?: RequestOptions) =>
+          request<RedskilledProjectResizeOutput>(
+            {
+              method: "POST",
+              path: `/api/redskilled/project/resize`,
+              query: { location: input["location"] },
+              body: { target: input["target"] },
+              successStatus: 200,
+              declaredStatuses: [400, 401],
+              empty: false,
+            },
+            requestOptions,
+          ),
+        stop: (input?: RedskilledProjectStopInput, requestOptions?: RequestOptions) =>
+          request<RedskilledProjectStopOutput>(
+            {
+              method: "POST",
+              path: `/api/redskilled/project/stop`,
+              query: { location: input?.["location"] },
+              successStatus: 200,
+              declaredStatuses: [400, 401],
+              empty: false,
+            },
+            requestOptions,
+          ),
+      },
+      worker: {
+        stop: (input: RedskilledWorkerStopInput, requestOptions?: RequestOptions) =>
+          request<RedskilledWorkerStopOutput>(
+            {
+              method: "POST",
+              path: `/api/redskilled/worker/stop`,
+              query: { location: input["location"] },
+              body: { worker: input["worker"] },
+              successStatus: 200,
+              declaredStatuses: [400, 401],
+              empty: false,
+            },
+            requestOptions,
+          ),
+        recycle: (input: RedskilledWorkerRecycleInput, requestOptions?: RequestOptions) =>
+          request<RedskilledWorkerRecycleOutput>(
+            {
+              method: "POST",
+              path: `/api/redskilled/worker/recycle`,
+              query: { location: input["location"] },
+              body: { worker: input["worker"] },
+              successStatus: 200,
+              declaredStatuses: [400, 401],
+              empty: false,
+            },
+            requestOptions,
+          ),
+        steer: (input: RedskilledWorkerSteerInput, requestOptions?: RequestOptions) =>
+          request<RedskilledWorkerSteerOutput>(
+            {
+              method: "POST",
+              path: `/api/redskilled/worker/steer`,
+              query: { location: input["location"] },
+              body: { worker: input["worker"], text: input["text"] },
+              successStatus: 200,
+              declaredStatuses: [400, 401],
+              empty: false,
+            },
+            requestOptions,
+          ),
+        steerStatus: (input: RedskilledWorkerSteerStatusInput, requestOptions?: RequestOptions) =>
+          request<RedskilledWorkerSteerStatusOutput>(
+            {
+              method: "GET",
+              path: `/api/redskilled/worker/steer/status`,
+              query: { location: input["location"], worker: input["worker"] },
+              successStatus: 200,
+              declaredStatuses: [400, 401],
+              empty: false,
+            },
+            requestOptions,
+          ),
+      },
     },
     "server.intelligence": {
       status: (requestOptions?: RequestOptions) =>

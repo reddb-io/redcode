@@ -65,6 +65,7 @@ export const groupNames = {
   "server.config": "config",
   "server.lsp": "lsp",
   "server.formatter": "formatter",
+  "server.redskilled": "redskilled",
 } as const
 
 export const promiseOmitEndpoints = new Set(["pty.connect", "persistentPty.connect"])

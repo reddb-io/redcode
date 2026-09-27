@@ -766,6 +766,7 @@
       "name": "@opencode/server",
       "version": "2.0.18",
       "dependencies": {
+        "@agentclientprotocol/sdk": "1.2.1",
         "@effect/platform-node": "catalog:",
         "@effect/platform-node-shared": "catalog:",
         "@opencode/core": "workspace:*",

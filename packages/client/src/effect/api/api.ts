@@ -4363,6 +4363,826 @@ export interface FormatterApi<E = never> {
   readonly status: FormatterStatusOperation<E>
 }
 
+export type RedskilledStatusInput = {
+  readonly location?: { readonly directory?: string | undefined } | undefined
+  readonly scope?: "project" | "host" | undefined
+}
+export type RedskilledStatusOutput = {
+  readonly location: Location.PublicRef
+  readonly data: {
+    readonly lifecycle: "unavailable" | "ineligible" | "needs_consent" | "connecting" | "live" | "degraded" | "refused"
+    readonly consent: "unknown" | "accepted" | "refused"
+    readonly scope: "project" | "host"
+    readonly native: true
+    readonly activation?:
+      | {
+          readonly eligible: boolean
+          readonly project: string
+          readonly runner: string
+          readonly target?: number | undefined
+          readonly standing?: boolean | undefined
+          readonly config?: string | undefined
+        }
+      | undefined
+    readonly payload?:
+      | {
+          readonly version: 1
+          readonly generated_at: string
+          readonly daemon?:
+            | {
+                readonly pid: number
+                readonly daemon_version: string
+                readonly protocol_version: number
+                readonly started_at: string
+              }
+            | undefined
+          readonly staleness: {
+            readonly sampled_at: string | null
+            readonly age_ms: number | null
+            readonly threshold_ms?: number | undefined
+            readonly stale: boolean
+            readonly measured_worker_count: number
+            readonly unmeasured_workers: ReadonlyArray<string>
+            readonly reason: string
+          }
+          readonly host: {
+            readonly worker_count: number
+            readonly project_count: number
+            readonly observed_rss_bytes?: number | undefined
+            readonly measured_worker_count: number
+            readonly ceiling_used_fraction: number | null
+            readonly ceiling: {
+              readonly memory_bytes: number | null
+              readonly worker_count: number | null
+              readonly interactive_reservation?: number | undefined
+            }
+          }
+          readonly known_projects?: ReadonlyArray<string> | undefined
+          readonly registered_projects?: ReadonlyArray<string> | undefined
+          readonly workers: ReadonlyArray<{
+            readonly worker_id: string
+            readonly project_label: string
+            readonly pid: number
+            readonly started_at: string
+            readonly uptime_ms: number | null
+            readonly vitals: {
+              readonly rss_bytes: number | null
+              readonly sampled_at: string | null
+              readonly age_ms: number | null
+              readonly fresh: boolean
+              readonly rss_source?: string | null | undefined
+            }
+            readonly budget: {
+              readonly declared: string | null
+              readonly bytes: number | null
+              readonly used_bytes: number | null
+              readonly used_fraction: number | null
+              readonly enforceable: boolean
+            }
+            readonly log: { readonly last_line: string | null; readonly published_at: string | null }
+            readonly display?:
+              | {
+                  readonly runner: string | null
+                  readonly model: string | null
+                  readonly effort: string | null
+                  readonly origin: string | null
+                  readonly issue: string | null
+                  readonly phase: string | null
+                  readonly step: string | null
+                  readonly phase_index: number | null
+                  readonly phase_total: number | null
+                  readonly failed: boolean
+                  readonly heartbeat: string | null
+                  readonly started_at: string | null
+                  readonly context: number | null
+                  readonly eta: number | null
+                  readonly added: number | null
+                  readonly removed: number | null
+                  readonly tokens: number | null
+                  readonly tools: number | null
+                  readonly reasoning: number | null
+                  readonly text: number | null
+                }
+              | null
+              | undefined
+          }>
+        }
+      | undefined
+    readonly last_success_at?: string | undefined
+    readonly error?: string | undefined
+  }
+}
+export type RedskilledStatusOperation<E = never> = (
+  input?: RedskilledStatusInput,
+) => Effect.Effect<RedskilledStatusOutput, E>
+
+export type RedskilledConsentInput = {
+  readonly location?: { readonly directory?: string | undefined } | undefined
+  readonly decision: "accepted" | "refused"
+}
+export type RedskilledConsentOutput = {
+  readonly location: Location.PublicRef
+  readonly data: {
+    readonly lifecycle: "unavailable" | "ineligible" | "needs_consent" | "connecting" | "live" | "degraded" | "refused"
+    readonly consent: "unknown" | "accepted" | "refused"
+    readonly scope: "project" | "host"
+    readonly native: true
+    readonly activation?:
+      | {
+          readonly eligible: boolean
+          readonly project: string
+          readonly runner: string
+          readonly target?: number | undefined
+          readonly standing?: boolean | undefined
+          readonly config?: string | undefined
+        }
+      | undefined
+    readonly payload?:
+      | {
+          readonly version: 1
+          readonly generated_at: string
+          readonly daemon?:
+            | {
+                readonly pid: number
+                readonly daemon_version: string
+                readonly protocol_version: number
+                readonly started_at: string
+              }
+            | undefined
+          readonly staleness: {
+            readonly sampled_at: string | null
+            readonly age_ms: number | null
+            readonly threshold_ms?: number | undefined
+            readonly stale: boolean
+            readonly measured_worker_count: number
+            readonly unmeasured_workers: ReadonlyArray<string>
+            readonly reason: string
+          }
+          readonly host: {
+            readonly worker_count: number
+            readonly project_count: number
+            readonly observed_rss_bytes?: number | undefined
+            readonly measured_worker_count: number
+            readonly ceiling_used_fraction: number | null
+            readonly ceiling: {
+              readonly memory_bytes: number | null
+              readonly worker_count: number | null
+              readonly interactive_reservation?: number | undefined
+            }
+          }
+          readonly known_projects?: ReadonlyArray<string> | undefined
+          readonly registered_projects?: ReadonlyArray<string> | undefined
+          readonly workers: ReadonlyArray<{
+            readonly worker_id: string
+            readonly project_label: string
+            readonly pid: number
+            readonly started_at: string
+            readonly uptime_ms: number | null
+            readonly vitals: {
+              readonly rss_bytes: number | null
+              readonly sampled_at: string | null
+              readonly age_ms: number | null
+              readonly fresh: boolean
+              readonly rss_source?: string | null | undefined
+            }
+            readonly budget: {
+              readonly declared: string | null
+              readonly bytes: number | null
+              readonly used_bytes: number | null
+              readonly used_fraction: number | null
+              readonly enforceable: boolean
+            }
+            readonly log: { readonly last_line: string | null; readonly published_at: string | null }
+            readonly display?:
+              | {
+                  readonly runner: string | null
+                  readonly model: string | null
+                  readonly effort: string | null
+                  readonly origin: string | null
+                  readonly issue: string | null
+                  readonly phase: string | null
+                  readonly step: string | null
+                  readonly phase_index: number | null
+                  readonly phase_total: number | null
+                  readonly failed: boolean
+                  readonly heartbeat: string | null
+                  readonly started_at: string | null
+                  readonly context: number | null
+                  readonly eta: number | null
+                  readonly added: number | null
+                  readonly removed: number | null
+                  readonly tokens: number | null
+                  readonly tools: number | null
+                  readonly reasoning: number | null
+                  readonly text: number | null
+                }
+              | null
+              | undefined
+          }>
+        }
+      | undefined
+    readonly last_success_at?: string | undefined
+    readonly error?: string | undefined
+  }
+}
+export type RedskilledConsentOperation<E = never> = (
+  input: RedskilledConsentInput,
+) => Effect.Effect<RedskilledConsentOutput, E>
+
+export type RedskilledProjectResizeInput = {
+  readonly location?: { readonly directory?: string | undefined } | undefined
+  readonly target: number
+}
+export type RedskilledProjectResizeOutput = {
+  readonly location: Location.PublicRef
+  readonly data: {
+    readonly lifecycle: "unavailable" | "ineligible" | "needs_consent" | "connecting" | "live" | "degraded" | "refused"
+    readonly consent: "unknown" | "accepted" | "refused"
+    readonly scope: "project" | "host"
+    readonly native: true
+    readonly activation?:
+      | {
+          readonly eligible: boolean
+          readonly project: string
+          readonly runner: string
+          readonly target?: number | undefined
+          readonly standing?: boolean | undefined
+          readonly config?: string | undefined
+        }
+      | undefined
+    readonly payload?:
+      | {
+          readonly version: 1
+          readonly generated_at: string
+          readonly daemon?:
+            | {
+                readonly pid: number
+                readonly daemon_version: string
+                readonly protocol_version: number
+                readonly started_at: string
+              }
+            | undefined
+          readonly staleness: {
+            readonly sampled_at: string | null
+            readonly age_ms: number | null
+            readonly threshold_ms?: number | undefined
+            readonly stale: boolean
+            readonly measured_worker_count: number
+            readonly unmeasured_workers: ReadonlyArray<string>
+            readonly reason: string
+          }
+          readonly host: {
+            readonly worker_count: number
+            readonly project_count: number
+            readonly observed_rss_bytes?: number | undefined
+            readonly measured_worker_count: number
+            readonly ceiling_used_fraction: number | null
+            readonly ceiling: {
+              readonly memory_bytes: number | null
+              readonly worker_count: number | null
+              readonly interactive_reservation?: number | undefined
+            }
+          }
+          readonly known_projects?: ReadonlyArray<string> | undefined
+          readonly registered_projects?: ReadonlyArray<string> | undefined
+          readonly workers: ReadonlyArray<{
+            readonly worker_id: string
+            readonly project_label: string
+            readonly pid: number
+            readonly started_at: string
+            readonly uptime_ms: number | null
+            readonly vitals: {
+              readonly rss_bytes: number | null
+              readonly sampled_at: string | null
+              readonly age_ms: number | null
+              readonly fresh: boolean
+              readonly rss_source?: string | null | undefined
+            }
+            readonly budget: {
+              readonly declared: string | null
+              readonly bytes: number | null
+              readonly used_bytes: number | null
+              readonly used_fraction: number | null
+              readonly enforceable: boolean
+            }
+            readonly log: { readonly last_line: string | null; readonly published_at: string | null }
+            readonly display?:
+              | {
+                  readonly runner: string | null
+                  readonly model: string | null
+                  readonly effort: string | null
+                  readonly origin: string | null
+                  readonly issue: string | null
+                  readonly phase: string | null
+                  readonly step: string | null
+                  readonly phase_index: number | null
+                  readonly phase_total: number | null
+                  readonly failed: boolean
+                  readonly heartbeat: string | null
+                  readonly started_at: string | null
+                  readonly context: number | null
+                  readonly eta: number | null
+                  readonly added: number | null
+                  readonly removed: number | null
+                  readonly tokens: number | null
+                  readonly tools: number | null
+                  readonly reasoning: number | null
+                  readonly text: number | null
+                }
+              | null
+              | undefined
+          }>
+        }
+      | undefined
+    readonly last_success_at?: string | undefined
+    readonly error?: string | undefined
+  }
+}
+export type RedskilledProjectResizeOperation<E = never> = (
+  input: RedskilledProjectResizeInput,
+) => Effect.Effect<RedskilledProjectResizeOutput, E>
+
+export type RedskilledProjectStopInput = { readonly location?: { readonly directory?: string | undefined } | undefined }
+export type RedskilledProjectStopOutput = {
+  readonly location: Location.PublicRef
+  readonly data: {
+    readonly lifecycle: "unavailable" | "ineligible" | "needs_consent" | "connecting" | "live" | "degraded" | "refused"
+    readonly consent: "unknown" | "accepted" | "refused"
+    readonly scope: "project" | "host"
+    readonly native: true
+    readonly activation?:
+      | {
+          readonly eligible: boolean
+          readonly project: string
+          readonly runner: string
+          readonly target?: number | undefined
+          readonly standing?: boolean | undefined
+          readonly config?: string | undefined
+        }
+      | undefined
+    readonly payload?:
+      | {
+          readonly version: 1
+          readonly generated_at: string
+          readonly daemon?:
+            | {
+                readonly pid: number
+                readonly daemon_version: string
+                readonly protocol_version: number
+                readonly started_at: string
+              }
+            | undefined
+          readonly staleness: {
+            readonly sampled_at: string | null
+            readonly age_ms: number | null
+            readonly threshold_ms?: number | undefined
+            readonly stale: boolean
+            readonly measured_worker_count: number
+            readonly unmeasured_workers: ReadonlyArray<string>
+            readonly reason: string
+          }
+          readonly host: {
+            readonly worker_count: number
+            readonly project_count: number
+            readonly observed_rss_bytes?: number | undefined
+            readonly measured_worker_count: number
+            readonly ceiling_used_fraction: number | null
+            readonly ceiling: {
+              readonly memory_bytes: number | null
+              readonly worker_count: number | null
+              readonly interactive_reservation?: number | undefined
+            }
+          }
+          readonly known_projects?: ReadonlyArray<string> | undefined
+          readonly registered_projects?: ReadonlyArray<string> | undefined
+          readonly workers: ReadonlyArray<{
+            readonly worker_id: string
+            readonly project_label: string
+            readonly pid: number
+            readonly started_at: string
+            readonly uptime_ms: number | null
+            readonly vitals: {
+              readonly rss_bytes: number | null
+              readonly sampled_at: string | null
+              readonly age_ms: number | null
+              readonly fresh: boolean
+              readonly rss_source?: string | null | undefined
+            }
+            readonly budget: {
+              readonly declared: string | null
+              readonly bytes: number | null
+              readonly used_bytes: number | null
+              readonly used_fraction: number | null
+              readonly enforceable: boolean
+            }
+            readonly log: { readonly last_line: string | null; readonly published_at: string | null }
+            readonly display?:
+              | {
+                  readonly runner: string | null
+                  readonly model: string | null
+                  readonly effort: string | null
+                  readonly origin: string | null
+                  readonly issue: string | null
+                  readonly phase: string | null
+                  readonly step: string | null
+                  readonly phase_index: number | null
+                  readonly phase_total: number | null
+                  readonly failed: boolean
+                  readonly heartbeat: string | null
+                  readonly started_at: string | null
+                  readonly context: number | null
+                  readonly eta: number | null
+                  readonly added: number | null
+                  readonly removed: number | null
+                  readonly tokens: number | null
+                  readonly tools: number | null
+                  readonly reasoning: number | null
+                  readonly text: number | null
+                }
+              | null
+              | undefined
+          }>
+        }
+      | undefined
+    readonly last_success_at?: string | undefined
+    readonly error?: string | undefined
+  }
+}
+export type RedskilledProjectStopOperation<E = never> = (
+  input?: RedskilledProjectStopInput,
+) => Effect.Effect<RedskilledProjectStopOutput, E>
+
+export type RedskilledWorkerStopInput = {
+  readonly location?: { readonly directory?: string | undefined } | undefined
+  readonly worker: string
+}
+export type RedskilledWorkerStopOutput = {
+  readonly location: Location.PublicRef
+  readonly data: {
+    readonly lifecycle: "unavailable" | "ineligible" | "needs_consent" | "connecting" | "live" | "degraded" | "refused"
+    readonly consent: "unknown" | "accepted" | "refused"
+    readonly scope: "project" | "host"
+    readonly native: true
+    readonly activation?:
+      | {
+          readonly eligible: boolean
+          readonly project: string
+          readonly runner: string
+          readonly target?: number | undefined
+          readonly standing?: boolean | undefined
+          readonly config?: string | undefined
+        }
+      | undefined
+    readonly payload?:
+      | {
+          readonly version: 1
+          readonly generated_at: string
+          readonly daemon?:
+            | {
+                readonly pid: number
+                readonly daemon_version: string
+                readonly protocol_version: number
+                readonly started_at: string
+              }
+            | undefined
+          readonly staleness: {
+            readonly sampled_at: string | null
+            readonly age_ms: number | null
+            readonly threshold_ms?: number | undefined
+            readonly stale: boolean
+            readonly measured_worker_count: number
+            readonly unmeasured_workers: ReadonlyArray<string>
+            readonly reason: string
+          }
+          readonly host: {
+            readonly worker_count: number
+            readonly project_count: number
+            readonly observed_rss_bytes?: number | undefined
+            readonly measured_worker_count: number
+            readonly ceiling_used_fraction: number | null
+            readonly ceiling: {
+              readonly memory_bytes: number | null
+              readonly worker_count: number | null
+              readonly interactive_reservation?: number | undefined
+            }
+          }
+          readonly known_projects?: ReadonlyArray<string> | undefined
+          readonly registered_projects?: ReadonlyArray<string> | undefined
+          readonly workers: ReadonlyArray<{
+            readonly worker_id: string
+            readonly project_label: string
+            readonly pid: number
+            readonly started_at: string
+            readonly uptime_ms: number | null
+            readonly vitals: {
+              readonly rss_bytes: number | null
+              readonly sampled_at: string | null
+              readonly age_ms: number | null
+              readonly fresh: boolean
+              readonly rss_source?: string | null | undefined
+            }
+            readonly budget: {
+              readonly declared: string | null
+              readonly bytes: number | null
+              readonly used_bytes: number | null
+              readonly used_fraction: number | null
+              readonly enforceable: boolean
+            }
+            readonly log: { readonly last_line: string | null; readonly published_at: string | null }
+            readonly display?:
+              | {
+                  readonly runner: string | null
+                  readonly model: string | null
+                  readonly effort: string | null
+                  readonly origin: string | null
+                  readonly issue: string | null
+                  readonly phase: string | null
+                  readonly step: string | null
+                  readonly phase_index: number | null
+                  readonly phase_total: number | null
+                  readonly failed: boolean
+                  readonly heartbeat: string | null
+                  readonly started_at: string | null
+                  readonly context: number | null
+                  readonly eta: number | null
+                  readonly added: number | null
+                  readonly removed: number | null
+                  readonly tokens: number | null
+                  readonly tools: number | null
+                  readonly reasoning: number | null
+                  readonly text: number | null
+                }
+              | null
+              | undefined
+          }>
+        }
+      | undefined
+    readonly last_success_at?: string | undefined
+    readonly error?: string | undefined
+  }
+}
+export type RedskilledWorkerStopOperation<E = never> = (
+  input: RedskilledWorkerStopInput,
+) => Effect.Effect<RedskilledWorkerStopOutput, E>
+
+export type RedskilledWorkerRecycleInput = {
+  readonly location?: { readonly directory?: string | undefined } | undefined
+  readonly worker: string
+}
+export type RedskilledWorkerRecycleOutput = {
+  readonly location: Location.PublicRef
+  readonly data: {
+    readonly lifecycle: "unavailable" | "ineligible" | "needs_consent" | "connecting" | "live" | "degraded" | "refused"
+    readonly consent: "unknown" | "accepted" | "refused"
+    readonly scope: "project" | "host"
+    readonly native: true
+    readonly activation?:
+      | {
+          readonly eligible: boolean
+          readonly project: string
+          readonly runner: string
+          readonly target?: number | undefined
+          readonly standing?: boolean | undefined
+          readonly config?: string | undefined
+        }
+      | undefined
+    readonly payload?:
+      | {
+          readonly version: 1
+          readonly generated_at: string
+          readonly daemon?:
+            | {
+                readonly pid: number
+                readonly daemon_version: string
+                readonly protocol_version: number
+                readonly started_at: string
+              }
+            | undefined
+          readonly staleness: {
+            readonly sampled_at: string | null
+            readonly age_ms: number | null
+            readonly threshold_ms?: number | undefined
+            readonly stale: boolean
+            readonly measured_worker_count: number
+            readonly unmeasured_workers: ReadonlyArray<string>
+            readonly reason: string
+          }
+          readonly host: {
+            readonly worker_count: number
+            readonly project_count: number
+            readonly observed_rss_bytes?: number | undefined
+            readonly measured_worker_count: number
+            readonly ceiling_used_fraction: number | null
+            readonly ceiling: {
+              readonly memory_bytes: number | null
+              readonly worker_count: number | null
+              readonly interactive_reservation?: number | undefined
+            }
+          }
+          readonly known_projects?: ReadonlyArray<string> | undefined
+          readonly registered_projects?: ReadonlyArray<string> | undefined
+          readonly workers: ReadonlyArray<{
+            readonly worker_id: string
+            readonly project_label: string
+            readonly pid: number
+            readonly started_at: string
+            readonly uptime_ms: number | null
+            readonly vitals: {
+              readonly rss_bytes: number | null
+              readonly sampled_at: string | null
+              readonly age_ms: number | null
+              readonly fresh: boolean
+              readonly rss_source?: string | null | undefined
+            }
+            readonly budget: {
+              readonly declared: string | null
+              readonly bytes: number | null
+              readonly used_bytes: number | null
+              readonly used_fraction: number | null
+              readonly enforceable: boolean
+            }
+            readonly log: { readonly last_line: string | null; readonly published_at: string | null }
+            readonly display?:
+              | {
+                  readonly runner: string | null
+                  readonly model: string | null
+                  readonly effort: string | null
+                  readonly origin: string | null
+                  readonly issue: string | null
+                  readonly phase: string | null
+                  readonly step: string | null
+                  readonly phase_index: number | null
+                  readonly phase_total: number | null
+                  readonly failed: boolean
+                  readonly heartbeat: string | null
+                  readonly started_at: string | null
+                  readonly context: number | null
+                  readonly eta: number | null
+                  readonly added: number | null
+                  readonly removed: number | null
+                  readonly tokens: number | null
+                  readonly tools: number | null
+                  readonly reasoning: number | null
+                  readonly text: number | null
+                }
+              | null
+              | undefined
+          }>
+        }
+      | undefined
+    readonly last_success_at?: string | undefined
+    readonly error?: string | undefined
+  }
+}
+export type RedskilledWorkerRecycleOperation<E = never> = (
+  input: RedskilledWorkerRecycleInput,
+) => Effect.Effect<RedskilledWorkerRecycleOutput, E>
+
+export type RedskilledWorkerSteerInput = {
+  readonly location?: { readonly directory?: string | undefined } | undefined
+  readonly worker: string
+  readonly text: string
+}
+export type RedskilledWorkerSteerOutput = {
+  readonly location: Location.PublicRef
+  readonly data: {
+    readonly lifecycle: "unavailable" | "ineligible" | "needs_consent" | "connecting" | "live" | "degraded" | "refused"
+    readonly consent: "unknown" | "accepted" | "refused"
+    readonly scope: "project" | "host"
+    readonly native: true
+    readonly activation?:
+      | {
+          readonly eligible: boolean
+          readonly project: string
+          readonly runner: string
+          readonly target?: number | undefined
+          readonly standing?: boolean | undefined
+          readonly config?: string | undefined
+        }
+      | undefined
+    readonly payload?:
+      | {
+          readonly version: 1
+          readonly generated_at: string
+          readonly daemon?:
+            | {
+                readonly pid: number
+                readonly daemon_version: string
+                readonly protocol_version: number
+                readonly started_at: string
+              }
+            | undefined
+          readonly staleness: {
+            readonly sampled_at: string | null
+            readonly age_ms: number | null
+            readonly threshold_ms?: number | undefined
+            readonly stale: boolean
+            readonly measured_worker_count: number
+            readonly unmeasured_workers: ReadonlyArray<string>
+            readonly reason: string
+          }
+          readonly host: {
+            readonly worker_count: number
+            readonly project_count: number
+            readonly observed_rss_bytes?: number | undefined
+            readonly measured_worker_count: number
+            readonly ceiling_used_fraction: number | null
+            readonly ceiling: {
+              readonly memory_bytes: number | null
+              readonly worker_count: number | null
+              readonly interactive_reservation?: number | undefined
+            }
+          }
+          readonly known_projects?: ReadonlyArray<string> | undefined
+          readonly registered_projects?: ReadonlyArray<string> | undefined
+          readonly workers: ReadonlyArray<{
+            readonly worker_id: string
+            readonly project_label: string
+            readonly pid: number
+            readonly started_at: string
+            readonly uptime_ms: number | null
+            readonly vitals: {
+              readonly rss_bytes: number | null
+              readonly sampled_at: string | null
+              readonly age_ms: number | null
+              readonly fresh: boolean
+              readonly rss_source?: string | null | undefined
+            }
+            readonly budget: {
+              readonly declared: string | null
+              readonly bytes: number | null
+              readonly used_bytes: number | null
+              readonly used_fraction: number | null
+              readonly enforceable: boolean
+            }
+            readonly log: { readonly last_line: string | null; readonly published_at: string | null }
+            readonly display?:
+              | {
+                  readonly runner: string | null
+                  readonly model: string | null
+                  readonly effort: string | null
+                  readonly origin: string | null
+                  readonly issue: string | null
+                  readonly phase: string | null
+                  readonly step: string | null
+                  readonly phase_index: number | null
+                  readonly phase_total: number | null
+                  readonly failed: boolean
+                  readonly heartbeat: string | null
+                  readonly started_at: string | null
+                  readonly context: number | null
+                  readonly eta: number | null
+                  readonly added: number | null
+                  readonly removed: number | null
+                  readonly tokens: number | null
+                  readonly tools: number | null
+                  readonly reasoning: number | null
+                  readonly text: number | null
+                }
+              | null
+              | undefined
+          }>
+        }
+      | undefined
+    readonly last_success_at?: string | undefined
+    readonly error?: string | undefined
+  }
+}
+export type RedskilledWorkerSteerOperation<E = never> = (
+  input: RedskilledWorkerSteerInput,
+) => Effect.Effect<RedskilledWorkerSteerOutput, E>
+
+export type RedskilledWorkerSteerStatusInput = {
+  readonly location?: { readonly directory?: string | undefined } | undefined
+  readonly worker: string
+}
+export type RedskilledWorkerSteerStatusOutput = {
+  readonly location: Location.PublicRef
+  readonly data: {
+    readonly worker: string
+    readonly status: "none" | "pending" | "consumed"
+    readonly iteration?: number | undefined
+  }
+}
+export type RedskilledWorkerSteerStatusOperation<E = never> = (
+  input: RedskilledWorkerSteerStatusInput,
+) => Effect.Effect<RedskilledWorkerSteerStatusOutput, E>
+
+export interface RedskilledApi<E = never> {
+  readonly status: RedskilledStatusOperation<E>
+  readonly consent: RedskilledConsentOperation<E>
+  readonly project: {
+    readonly resize: RedskilledProjectResizeOperation<E>
+    readonly stop: RedskilledProjectStopOperation<E>
+  }
+  readonly worker: {
+    readonly stop: RedskilledWorkerStopOperation<E>
+    readonly recycle: RedskilledWorkerRecycleOperation<E>
+    readonly steer: RedskilledWorkerSteerOperation<E>
+    readonly steerStatus: RedskilledWorkerSteerStatusOperation<E>
+  }
+}
+
 export type ServerIntelligenceStatusOutput = {
   readonly settings: {
     readonly enabled: boolean
@@ -4631,5 +5451,6 @@ export interface AppApi<E = never> {
   readonly config: ConfigApi<E>
   readonly lsp: LspApi<E>
   readonly formatter: FormatterApi<E>
+  readonly redskilled: RedskilledApi<E>
   readonly "server.intelligence": ServerIntelligenceApi<E>
 }
