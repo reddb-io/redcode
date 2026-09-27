@@ -117,7 +117,7 @@ import { SessionLocationMissing } from "./location-missing"
 import { isRecord } from "../../util/record"
 import { createHistoryPrepend } from "./history"
 import { context, use, type PendingAction } from "./render-context"
-import { INLINE_TOOL_ICON_WIDTH, InlineToolRow, ReasoningPart, TextPart, toolDisplay } from "./message-parts"
+import { INLINE_TOOL_ICON_WIDTH, InlineToolRow, ReasoningPart, TextPart, showToolPart, toolDisplay } from "./message-parts"
 import { defaultVerbosity, type GroupKind, type SessionEntry } from "./grouping/session"
 import { SessionGroupView } from "./group-view"
 import { useEntryAnchor } from "./anchor-view"
@@ -1637,29 +1637,40 @@ type SessionRowViewProps = {
 }
 
 function SessionRowView(props: SessionRowViewProps) {
+  const config = useConfig()
   const [target, setTarget] = createSignal<BoxRenderable>()
+  const visible = () => {
+    const row = props.row
+    if (row.type !== "part") return true
+    const message = props.message(row.ref.messageID)
+    if (message?.type !== "assistant") return true
+    const part = resolvePart(message, row.ref.partID)
+    return part?.type !== "tool" || showToolPart(part, config.data.session?.tool_details)
+  }
   useEntryAnchor({
-    entry: () => (props.row.type === "group" ? undefined : props.row),
+    entry: () => (visible() && props.row.type !== "group" ? props.row : undefined),
     node: target,
   })
   return (
-    <box ref={setTarget} id={sessionRowID(props.row, props.boundaryID)} marginTop={1} flexShrink={0}>
-      <Switch>
-        <Match when={props.row.type === "group" ? props.row : undefined}>
-          {(row) => (
-            <SessionGroupView
-              row={row()}
-              message={props.message}
-              entry={(entry, images) => <SessionEntryView row={entry} message={props.message} images={images} />}
-              images={(parts) => <ToolImages parts={parts} />}
-            />
-          )}
-        </Match>
-        <Match when={props.row.type !== "group" ? props.row : undefined}>
-          {(row) => <SessionEntryView row={row()} message={props.message} />}
-        </Match>
-      </Switch>
-    </box>
+    <Show when={visible()}>
+      <box ref={setTarget} id={sessionRowID(props.row, props.boundaryID)} marginTop={1} flexShrink={0}>
+        <Switch>
+          <Match when={props.row.type === "group" ? props.row : undefined}>
+            {(row) => (
+              <SessionGroupView
+                row={row()}
+                message={props.message}
+                entry={(entry, images) => <SessionEntryView row={entry} message={props.message} images={images} />}
+                images={(parts) => <ToolImages parts={parts} />}
+              />
+            )}
+          </Match>
+          <Match when={props.row.type !== "group" ? props.row : undefined}>
+            {(row) => <SessionEntryView row={row()} message={props.message} />}
+          </Match>
+        </Switch>
+      </box>
+    </Show>
   )
 }
 
@@ -2496,14 +2507,6 @@ function AssistantRetry(props: { retry: SessionMessageAssistant["retry"] }) {
 function ToolPart(props: { part: SessionMessageAssistantTool; images?: boolean }) {
   const config = useConfig()
   const display = createMemo(() => toolDisplay(props.part.name))
-  const hidden = createMemo(
-    () =>
-      config.data.session?.tool_details === "hide" &&
-      props.part.state.status === "completed" &&
-      display() !== "shell" &&
-      display() !== "question" &&
-      display() !== "subagent",
-  )
 
   const toolprops = {
     get metadata() {
@@ -2573,7 +2576,7 @@ function ToolPart(props: { part: SessionMessageAssistantTool; images?: boolean }
     </Switch>
   )
   return (
-    <Show when={!hidden()}>
+    <Show when={showToolPart(props.part, config.data.session?.tool_details)}>
       {content}
       <Show when={props.images !== false}>
         <ToolImages parts={[props.part]} />

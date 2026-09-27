@@ -5,6 +5,7 @@ import type {
   SessionMessageAssistant,
   SessionMessageAssistantReasoning,
   SessionMessageAssistantText,
+  SessionMessageAssistantTool,
 } from "@opencode/client"
 import { Spinner } from "../../component/spinner"
 import { createSyntaxStyleMemo, useTheme, useThemes } from "../../context/theme"
@@ -37,6 +38,11 @@ const toolDisplays = new Set([
 export function toolDisplay(tool: string) {
   const normalized = canonicalToolName(tool)
   return toolDisplays.has(normalized) ? normalized : "generic"
+}
+
+export function showToolPart(part: SessionMessageAssistantTool, details: "show" | "hide" | undefined) {
+  if (details !== "hide" || part.state.status !== "completed") return true
+  return ["shell", "question", "subagent"].includes(toolDisplay(part.name))
 }
 
 export function ReasoningPart(props: {

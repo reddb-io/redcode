@@ -10,7 +10,7 @@ import { EntryAnchor, GroupAnchor, visitEntries } from "./anchor-view"
 import { groupID } from "./anchors"
 import { instructionPaths, type PartRef, type SessionEntry, type SessionGroup, type SessionNode } from "./grouping/session"
 import { summarizeActivity } from "./activity-summary"
-import { InlineToolRow, reasoningContent, toolDisplay } from "./message-parts"
+import { InlineToolRow, reasoningContent, showToolPart, toolDisplay } from "./message-parts"
 import { use } from "./render-context"
 import { resolvePart } from "./rows"
 import { generateThinkingSyntax } from "./thinking-syntax"
@@ -208,11 +208,22 @@ function GroupContent(props: GroupProps) {
 
 /** Low verbosity: one summary for a run of tools, thoughts and instruction loads. */
 function ActivityGroup(props: GroupProps) {
+  const ctx = use()
   const theme = useTheme()
   const disclosure = useDisclosure(props)
   const [hover, setHover] = createSignal(false)
   const entries = createMemo(() => descendants(props.node))
   const summary = createMemo(() => summarizeActivity(props.node, props.message, props.pending, props.completed))
+  const hasDetails = createMemo(() =>
+    entries().some((entry) => {
+      if (isPending(entry, props.pending)) return false
+      if (entry.type !== "part") return true
+      const message = props.message(entry.ref.messageID)
+      if (message?.type !== "assistant") return true
+      const part = resolvePart(message, entry.ref.partID)
+      return part?.type !== "tool" || showToolPart(part, ctx.config.session?.tool_details)
+    }),
+  )
   return (
     <GroupAnchor groupID={disclosure.id()} active={summary().label !== ""}>
       <Show when={summary().label}>
@@ -228,7 +239,7 @@ function ActivityGroup(props: GroupProps) {
         >
           {summary().label}
         </InlineToolRow>
-        <Show when={disclosure.expanded()}>
+        <Show when={disclosure.expanded() && hasDetails()}>
           <box flexDirection="column" gap={1} marginTop={1}>
             <Children {...props} nodes={props.node.children} mode="normal" />
           </box>
@@ -319,6 +330,15 @@ function PendingEntries(props: GroupProps & { entries: readonly SessionEntry[] }
 }
 
 function Children(props: GroupProps & { nodes: readonly SessionNode[]; mode: "normal" | "thought" | "tool" }) {
+  const ctx = use()
+  const visible = (entry: SessionEntry) => {
+    if (isPending(entry, props.pending)) return false
+    if (entry.type !== "part") return true
+    const message = props.message(entry.ref.messageID)
+    if (message?.type !== "assistant") return true
+    const part = resolvePart(message, entry.ref.partID)
+    return part?.type !== "tool" || showToolPart(part, ctx.config.session?.tool_details)
+  }
   return (
     <For each={props.nodes}>
       {(node, index) => {
@@ -344,7 +364,7 @@ function Children(props: GroupProps & { nodes: readonly SessionNode[]; mode: "no
             </Match>
             <Match when={node.type === "entry" ? node : undefined}>
               {(node) => (
-                <Show when={!isPending(node().entry, props.pending)}>
+                <Show when={visible(node().entry)}>
                   <Show
                     when={props.mode === "thought"}
                     fallback={
