@@ -57,7 +57,6 @@ import { DesignStore } from "./design/store.js"
 import { DesignRenderer } from "./design/renderer.js"
 import { Ripgrep } from "./ripgrep.js"
 import { ProviderRemove } from "./provider-removal.js"
-import { httpClient } from "@opencode/util/effect/app-node-platform"
 
 export * as Instance from "./instance.js"
 export { Service, node, type Interface } from "./instance/service.js"
@@ -78,7 +77,6 @@ const nodes = [
   Integration.node,
   Provider.node,
   ProviderRemove.node,
-  httpClient,
   Model.node,
   ModelResolver.node,
   AISDK.node,

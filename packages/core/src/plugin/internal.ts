@@ -127,6 +127,7 @@ import { PlanExitTool } from "../tool/plugin/plan-exit.js"
 import { WorktreePrepareTool } from "../tool/plugin/worktree-prepare.js"
 import { DesignStore } from "../design/store.js"
 import { DesignRenderer } from "../design/renderer.js"
+import { DesignAppConnection } from "../design/app-connection.js"
 import { ToolInputRepairPlugin } from "./tool-input-repair.js"
 import { OptimizePlugin } from "./optimize.js"
 import { VcsGitPlugin } from "./vcs/git.js"
@@ -144,6 +145,7 @@ const services = [
   Credential.Service,
   DesignStore.Service,
   DesignRenderer.Service,
+  DesignAppConnection.Service,
   Bus.Service,
   Environment.Service,
   FileAccess.Service,
@@ -209,6 +211,7 @@ export const requirements = LayerNode.group([
   Credential.node,
   DesignStore.node,
   DesignRenderer.node,
+  DesignAppConnection.node,
   Bus.node,
   Environment.node,
   FileAccess.node,
