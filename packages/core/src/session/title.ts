@@ -6,6 +6,7 @@ import type { Agent } from "@opencode/schema/agent"
 import { Context, DateTime, Duration, Effect, Layer, Stream } from "effect"
 import { Database } from "../database/database.js"
 import { Config } from "../config.js"
+import { Model } from "../model.js"
 import { Bus } from "../bus.js"
 import { makeLocationNode } from "@opencode/util/effect/app-node"
 import { isExactRootFallback } from "@opencode/util/session-title-fallback"
@@ -47,6 +48,7 @@ export const layer = Layer.effect(
     const context = yield* SessionContext.Service
     const store = yield* SessionStore.Service
     const config = yield* Config.Service
+    const models = yield* Model.Service
     const guards = yield* SessionGuardLog.Service
     const db = (yield* Database.Service).db
 
@@ -72,6 +74,17 @@ export const layer = Layer.effect(
         session: input.session,
         agent: input.agent.id,
         model: input.model,
+        options: yield* Effect.gen(function* () {
+          const info = yield* models.get(input.model.ref.providerID, input.model.ref.id)
+          if (!info || info.variants.length > 0) return {}
+          if (
+            (info.providerID === "openrouter" || info.providerID === "llmgateway") &&
+            input.model.model.id.includes("google")
+          )
+            return { reasoning: { enabled: false } }
+          if (info.providerID === "venice") return { veniceParameters: { disableThinking: true } }
+          return {}
+        }),
         system: input.agent.system ? [SystemPart.make(input.agent.system)] : [],
         messages: [Message.user(input.text)],
       })
@@ -179,5 +192,5 @@ export const layer = Layer.effect(
 export const node = makeLocationNode({
   service: Service,
   layer,
-  deps: [Bus.node, llmClient, SessionContext.node, SessionStore.node, Database.node, Config.node, SessionGuardLog.node],
+  deps: [Bus.node, llmClient, SessionContext.node, SessionStore.node, Database.node, Config.node, Model.node, SessionGuardLog.node],
 })

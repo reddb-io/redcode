@@ -68,6 +68,7 @@ export interface Input {
   readonly system: Array<SystemPart>
   readonly messages: Array<Message>
   readonly toolChoice?: LLM.RequestInput["toolChoice"]
+  readonly options?: SessionRequest["options"]
   /** Only the durable runner may use a stateful WebSocket. */
   readonly webSocket?: "session"
 }
@@ -225,7 +226,7 @@ export const layer = Layer.effect(
         tools.definitions.map((t) => [{ description: t.description, input: { ...t.inputSchema } }, t] as const),
       )
       const shaped = yield* shape(
-        { sessionID: session.id, model: model.ref, system: input.system, messages: input.messages, options: {} },
+        { sessionID: session.id, model: model.ref, system: input.system, messages: input.messages, options: input.options ?? {} },
         Object.fromEntries(Array.from(given, ([d, t]) => [t.name, d])),
       )
       // Match by identity first, then by key. Entries matching neither were invented by a
