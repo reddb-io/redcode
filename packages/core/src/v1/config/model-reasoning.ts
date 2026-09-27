@@ -16,13 +16,23 @@ export function defaults(input: {
   const major = Number(version?.[1])
   const minor = Number(version?.[2] ?? 0)
   if (major >= 5 && !/-chat(?:-|$)|-pro(?:-|$)/.test(id)) {
-    const openai = name === "@ai-sdk/openai"
-    const azure = name === "@ai-sdk/azure"
+    const openai =
+      name === "@ai-sdk/openai" ||
+      name === "@opencode/ai/providers/openai" ||
+      name?.startsWith("@opencode/ai/providers/openai/")
+    const azure =
+      name === "@ai-sdk/azure" ||
+      name === "@opencode/ai/providers/azure" ||
+      name?.startsWith("@opencode/ai/providers/azure/")
     const copilot = name === "@ai-sdk/github-copilot"
-    const mantle = name === "@ai-sdk/amazon-bedrock/mantle"
+    const mantle =
+      name === "@ai-sdk/amazon-bedrock/mantle" ||
+      name === "@opencode/ai/providers/amazon-bedrock/mantle" ||
+      name?.startsWith("@opencode/ai/providers/amazon-bedrock/mantle/")
+    const azureChat = name === "@opencode/ai/providers/azure/chat" || input.useCompletionUrls === true
     if (
       (openai || azure || copilot || mantle) &&
-      !(azure && input.useCompletionUrls === true && (major > 5 || (major === 5 && minor >= 5)))
+      !(azure && azureChat && (major > 5 || (major === 5 && minor >= 5)))
     )
       return {
         settings: {
