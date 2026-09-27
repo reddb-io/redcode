@@ -492,6 +492,12 @@ describe("ConfigNormalize", () => {
     expect(result.diagnostics).toEqual([])
   })
 
+  test("accepts the inert V1 model experimental flag without a false unsupported warning", () => {
+    const result = normalized({ provider: { custom: { models: { chat: { experimental: true } } } } })
+    expect(result.encoded.providers).toEqual({ custom: { models: { chat: {} } } })
+    expect(result.diagnostics).toEqual([])
+  })
+
   test("reports unsupported legacy settings without including their values", () => {
     const secret = "do-not-log-this-value"
     const result = normalized({

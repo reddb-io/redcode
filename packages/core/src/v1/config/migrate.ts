@@ -306,6 +306,8 @@ export function providerID(input: string) {
 }
 
 function migrateModel(info: typeof ConfigProviderV1.Model.Type) {
+  // V1 accepted the boolean `experimental` on configured models but never read it when resolving or calling one.
+  // Catalog experimental modes are separate model entries and remain owned by the V2 catalog loader.
   const settings = info.options && ConfigProviderOptionsV1.model(info.options)
   const costs = info.cost && [
     {
