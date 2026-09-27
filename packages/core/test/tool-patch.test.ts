@@ -1,7 +1,7 @@
 import fs from "fs/promises"
 import path from "path"
 import { describe, expect } from "bun:test"
-import { Effect, Exit, Layer, Schema } from "effect"
+import { Effect, Layer, Schema } from "effect"
 import { AppNodeBuilder } from "@opencode/core/effect/app-node-builder"
 import { Bus } from "@opencode/core/bus"
 import { LayerNode } from "@opencode/util/effect/layer-node"
@@ -58,9 +58,10 @@ const patchToolNode = makeLocationNode({
 const sessionID = Session.ID.make("ses_patch_tool_test")
 const assertions: Permission.AssertInput[] = []
 let denyAction: string | undefined
-let failRemoveTarget: string | undefined
-let failRemoveErrorTarget: string | undefined
+let failMoveTarget: string | undefined
+let failMoveErrorTarget: string | undefined
 let failWriteTarget: string | undefined
+let failRollbackTarget: string | undefined
 let readsBeforeEditApproval = 0
 let editApproved = false
 let afterEditApproval = (): Effect.Effect<void> => Effect.void
@@ -106,9 +107,10 @@ const lsp = Layer.mock(LSP.Service, {
 const reset = () => {
   assertions.length = 0
   denyAction = undefined
-  failRemoveTarget = undefined
-  failRemoveErrorTarget = undefined
+  failMoveTarget = undefined
+  failMoveErrorTarget = undefined
   failWriteTarget = undefined
+  failRollbackTarget = undefined
   readsBeforeEditApproval = 0
   editApproved = false
   afterEditApproval = () => Effect.void
@@ -139,16 +141,18 @@ const withTool = <A, E, R>(
               Effect.sync(() => {
                 if (!editApproved) readsBeforeEditApproval++
               }).pipe(Effect.andThen(files.read(target, range))),
-            remove: (target) => {
-              if (failRemoveTarget && path.basename(target) === failRemoveTarget)
-                return Effect.die("forced remove failure")
-              if (failRemoveErrorTarget && path.basename(target) === failRemoveErrorTarget)
-                return Effect.fail(new Environment.Failed({ path: target, cause: new Error("forced remove failure") }))
-              return files.remove(target)
+            move: (from, to) => {
+              if (failMoveTarget && path.basename(from) === failMoveTarget)
+                return Effect.die("forced move failure")
+              if (failMoveErrorTarget && path.basename(from) === failMoveErrorTarget)
+                return Effect.fail(new Environment.Failed({ path: from, cause: new Error("forced move failure") }))
+              return files.move(from, to)
             },
             write: (target, content) => {
               if (failWriteTarget && path.basename(target) === failWriteTarget)
                 return Effect.fail(new Environment.Failed({ path: target, cause: new Error("forced write failure") }))
+              if (failRollbackTarget && path.basename(target) === failRollbackTarget && new TextDecoder().decode(content) === "before\n")
+                return Effect.fail(new Environment.Failed({ path: target, cause: new Error("forced rollback failure") }))
               return files.write(target, content)
             },
           })),
@@ -915,7 +919,7 @@ describe("PatchTool", () => {
           ),
         ).toEqual({
           status: "error",
-          error: { type: "tool.execution", message: "Failed to write new.txt: forced write failure" },
+          error: { type: "tool.execution", message: expect.stringContaining("Patch failed at") },
         })
         expect(yield* Effect.promise(() => fs.readFile(path.join(directory, "old.txt"), "utf8"))).toBe("before\n")
         expect(yield* exists(path.join(directory, "new.txt"))).toBe(false)
@@ -923,7 +927,7 @@ describe("PatchTool", () => {
     ),
   )
 
-  it.live("reports the successful prefix and filesystem error", () =>
+  it.live("rolls back a successful prefix when a later write fails", () =>
     withTempTool((directory, registry) =>
       Effect.gen(function* () {
         failWriteTarget = "second.txt"
@@ -936,20 +940,20 @@ describe("PatchTool", () => {
           status: "error",
           error: {
             type: "tool.execution",
-            message: "Failed to write second.txt: forced write failure. Completed before failure: first.txt",
+            message: expect.stringContaining("forced write failure"),
           },
         })
-        expect(yield* Effect.promise(() => fs.readFile(path.join(directory, "first.txt"), "utf8"))).toBe("first\n")
+        expect(yield* exists(path.join(directory, "first.txt"))).toBe(false)
         expect(yield* exists(path.join(directory, "second.txt"))).toBe(false)
       }),
     ),
   )
 
-  it.live("reports a destination written before move removal fails", () =>
+  it.live("rolls back a move when removing its source fails", () =>
     withTempTool((directory, registry) =>
       Effect.gen(function* () {
         yield* Effect.promise(() => fs.writeFile(path.join(directory, "old.txt"), "before\n"))
-        failRemoveErrorTarget = "old.txt"
+        failMoveErrorTarget = "old.txt"
         expect(
           yield* executeTool(
             registry,
@@ -959,11 +963,48 @@ describe("PatchTool", () => {
           status: "error",
           error: {
             type: "tool.execution",
-            message: "Wrote new.txt but failed to remove old.txt: forced remove failure",
+            message: expect.stringContaining("forced move failure"),
           },
         })
         expect(yield* Effect.promise(() => fs.readFile(path.join(directory, "old.txt"), "utf8"))).toBe("before\n")
-        expect(yield* Effect.promise(() => fs.readFile(path.join(directory, "new.txt"), "utf8"))).toBe("after\n")
+        expect(yield* exists(path.join(directory, "new.txt"))).toBe(false)
+      }),
+    ),
+  )
+
+  it.live("reports a rollback failure without claiming the patch was undone", () =>
+    withTempTool((directory, registry) =>
+      Effect.gen(function* () {
+        const first = path.join(directory, "first.txt")
+        yield* Effect.promise(() => fs.writeFile(first, "before\n"))
+        failWriteTarget = "second.txt"
+        failRollbackTarget = "first.txt"
+        expect(
+          yield* executeTool(
+            registry,
+            call("*** Begin Patch\n*** Update File: first.txt\n@@\n-before\n+after\n*** Add File: second.txt\n+second\n*** End Patch"),
+          ),
+        ).toMatchObject({
+          status: "error",
+          error: { type: "tool.execution", message: expect.stringContaining("Rollback incomplete") },
+        })
+        expect(yield* Effect.promise(() => fs.readFile(first, "utf8"))).toBe("after\n")
+      }),
+    ),
+  )
+
+  it.live("restores a file replaced by a directory when a later write fails", () =>
+    withTempTool((directory, registry) =>
+      Effect.gen(function* () {
+        const parent = path.join(directory, "parent")
+        yield* Effect.promise(() => fs.writeFile(parent, "before\n"))
+        failWriteTarget = "later.txt"
+        expect(yield* executeTool(
+          registry,
+          call("*** Begin Patch\n*** Delete File: parent\n*** Add File: parent/child.txt\n+child\n*** Add File: later.txt\n+later\n*** End Patch"),
+        )).toMatchObject({ status: "error", error: { type: "tool.execution" } })
+        expect(yield* Effect.promise(() => fs.readFile(parent, "utf8"))).toBe("before\n")
+        expect(yield* exists(path.join(parent, "child.txt"))).toBe(false)
       }),
     ),
   )
@@ -1334,27 +1375,23 @@ describe("PatchTool", () => {
     ),
   )
 
-  it.live("preserves a later commit defect after earlier sequential applications", () =>
+  it.live("rolls back an earlier deletion after a later move defect", () =>
     Effect.acquireUseRelease(
       Effect.promise(() => tmpdir()),
       (tmp) => {
         reset()
         const first = path.join(tmp.path, "first.txt")
         const second = path.join(tmp.path, "second.txt")
-        failRemoveTarget = path.basename(second)
+        failMoveTarget = path.basename(second)
         return Effect.promise(() => Promise.all([fs.writeFile(first, "first"), fs.writeFile(second, "second")])).pipe(
           Effect.andThen(
             withTool(tmp.path, (registry) =>
               Effect.gen(function* () {
-                expect(
-                  Exit.isFailure(
-                    yield* executeTool(
-                      registry,
-                      call("*** Begin Patch\n*** Delete File: first.txt\n*** Delete File: second.txt\n*** End Patch"),
-                    ).pipe(Effect.exit),
-                  ),
-                ).toBe(true)
-                expect(yield* exists(first)).toBe(false)
+                expect(yield* executeTool(
+                  registry,
+                  call("*** Begin Patch\n*** Delete File: first.txt\n*** Delete File: second.txt\n*** End Patch"),
+                )).toMatchObject({ status: "error", error: { type: "tool.execution" } })
+                expect(yield* exists(first)).toBe(true)
                 expect(yield* exists(second)).toBe(true)
               }),
             ),

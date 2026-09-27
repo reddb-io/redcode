@@ -18,6 +18,7 @@ import { Patch } from "@opencode/util/patch"
 import { Permission } from "../../permission.js"
 import DESCRIPTION from "../patch.txt"
 import { fileDiff } from "./file-diff.js"
+import { PatchTransaction } from "./patch-transaction.js"
 
 export const name = "patch"
 
@@ -67,13 +68,6 @@ type Prepared =
       readonly moveTarget?: FileAccess.Target
     })
 
-type Snapshot = {
-  readonly type: Environment.FileType
-  readonly size: number
-  readonly mtimeMs: number
-  readonly bytes?: Uint8Array
-} | undefined
-
 export const Plugin = {
   id: "opencode.tool.patch",
   effect: Effect.fn("PatchTool.Plugin")(function* (ctx: Context) {
@@ -105,12 +99,8 @@ export const Plugin = {
                     : []),
                 ])
               : []
-            const fail = (operation: string, error: unknown) => {
-              const completed = applied.map((item) => item.resource).join(", ")
-              return new ToolFailure({
-                message: `${operation}: ${errorMessage(error)}${completed ? `. Completed before failure: ${completed}` : ""}`,
-              })
-            }
+            const fail = (operation: string, error: unknown) =>
+              new ToolFailure({ message: `${operation}: ${errorMessage(error)}` })
             return Effect.gen(function* () {
               const source = {
                 type: "tool" as const,
@@ -126,7 +116,7 @@ export const Plugin = {
               }
               const prepared: Prepared[] = []
               const updates = new Map<string, string>()
-              const originals = new Map<string, Snapshot>()
+              const originals = new Map<string, PatchTransaction.Snapshot>()
               const resolveTarget = Effect.fnUntraced(function* (value: string) {
                 const target = yield* access.resolve({ path: value, kind: "file" })
                 if (target.externalDirectory)
@@ -135,7 +125,7 @@ export const Plugin = {
                     parentDir: target.externalDirectory.directory,
                   })
                 if (!originals.has(target.absolute))
-                  originals.set(target.absolute, yield* fileSnapshot(environment.files, target.absolute))
+                  originals.set(target.absolute, yield* PatchTransaction.snapshot(environment.files, target.absolute))
                 return target
               })
               for (const hunk of hunks) {
@@ -222,62 +212,24 @@ export const Plugin = {
                 source,
               })
 
-              const stale = yield* Effect.filter(
-                [...originals],
-                ([target, original]) => fileSnapshot(environment.files, target).pipe(
-                  Effect.map((current) => !sameSnapshot(original, current)),
-                ),
-              )
-              if (stale.length)
-                return yield* new ToolFailure({
-                  message: `Patch rejected: ${stale.map(([target]) => target).join(", ")} changed after verification. No files were changed; re-read and retry.`,
-                })
-
-              yield* Effect.forEach(
-                prepared,
-                (change) =>
-                  Effect.gen(function* () {
-                    if (change.type === "delete") {
-                      yield* environment.files
-                        .remove(change.target.absolute)
-                        .pipe(Effect.mapError((error) => fail(`Failed to delete ${change.target.resource}`, error)))
-                      applied.push({
-                        type: change.type,
-                        resource: change.target.resource,
-                        target: change.target.absolute,
-                      })
-                      return
-                    }
-                    if (change.type === "update" && change.moveTarget) {
-                      const moveTarget = change.moveTarget
-                      yield* environment.files
-                        .write(moveTarget.absolute, new TextEncoder().encode(change.content))
-                        .pipe(Effect.mapError((error) => fail(`Failed to write ${moveTarget.resource}`, error)))
-                      yield* environment.files
-                        .remove(change.target.absolute)
-                        .pipe(
-                          Effect.mapError((error) =>
-                            fail(`Wrote ${moveTarget.resource} but failed to remove ${change.target.resource}`, error),
-                          ),
-                        )
-                      applied.push({
-                        type: change.type,
-                        resource: change.moveTarget.resource,
-                        target: change.moveTarget.absolute,
-                      })
-                      return
-                    }
-                    yield* environment.files
-                      .write(change.target.absolute, new TextEncoder().encode(change.content))
-                      .pipe(Effect.mapError((error) => fail(`Failed to write ${change.target.resource}`, error)))
-                    applied.push({
-                      type: change.type,
-                      resource: change.target.resource,
-                      target: change.target.absolute,
-                    })
-                  }),
-                { discard: true },
-              )
+              yield* PatchTransaction.commit(
+                environment.files,
+                prepared.flatMap((change): PatchTransaction.Operation[] => {
+                  if (change.type === "delete") return [{ type: "remove", path: change.target.absolute }]
+                  if (change.type === "update" && change.moveTarget)
+                    return [
+                      { type: "write", path: change.moveTarget.absolute, content: new TextEncoder().encode(change.content) },
+                      { type: "remove", path: change.target.absolute },
+                    ]
+                  return [{ type: "write", path: change.target.absolute, content: new TextEncoder().encode(change.content) }]
+                }),
+                originals,
+              ).pipe(Effect.mapError((error) => new ToolFailure({ message: errorMessage(error) })))
+              applied.push(...prepared.map((change) => ({
+                type: change.type,
+                resource: change.type === "update" && change.moveTarget ? change.moveTarget.resource : change.target.resource,
+                target: change.type === "update" && change.moveTarget ? change.moveTarget.absolute : change.target.absolute,
+              })))
               const written = applied
                 .filter((item) => item.type !== "delete")
                 .filter((item, index, items) => items.findIndex((other) => other.target === item.target) === index)
@@ -370,29 +322,6 @@ export const Plugin = {
     yield* ctx.session.hook("compaction", hook)
     yield* ctx.session.hook("generate", hook)
   }),
-}
-
-function fileSnapshot(files: Environment.Files, target: string) {
-  return Effect.gen(function* () {
-    const info = yield* files.stat(target).pipe(Effect.catchTag("Environment.NotFound", () => Effect.undefined))
-    if (info === undefined) return undefined
-    if (info.type !== "file" && info.type !== "symlink") return info
-    const bytes = yield* files.read(target).pipe(
-      Effect.map((result) => result.bytes),
-      Effect.catchTag("Environment.NotFound", () => Effect.undefined),
-      Effect.catchTag("Environment.WrongKind", () => Effect.undefined),
-    )
-    return { ...info, bytes }
-  })
-}
-
-function sameSnapshot(left: Snapshot, right: Snapshot) {
-  if (left?.type !== right?.type) return false
-  if (left === undefined || right === undefined) return left === right
-  if (left.bytes === undefined || right.bytes === undefined)
-    return left.bytes === right.bytes && left.size === right.size && left.mtimeMs === right.mtimeMs
-  const bytes = right.bytes
-  return left.bytes.length === bytes.length && left.bytes.every((byte, index) => byte === bytes[index])
 }
 
 function errorMessage(error: unknown) {
