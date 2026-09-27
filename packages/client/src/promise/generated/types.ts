@@ -8625,6 +8625,15 @@ export type RedskilledStatusOutput = {
       standing?: boolean
       config?: string
     }
+    queue?: {
+      posture: string
+      depth: number | "Infinity" | "-Infinity" | "NaN" | null
+      target: number | "Infinity" | "-Infinity" | "NaN" | null
+      live: number | "Infinity" | "-Infinity" | "NaN"
+      registered: boolean
+      freshness: "fresh" | "stale" | "unknown"
+      detail: string
+    }
     payload?: {
       version: 1
       generated_at: string
@@ -8721,6 +8730,15 @@ export type RedskilledConsentOutput = {
       target?: number
       standing?: boolean
       config?: string
+    }
+    queue?: {
+      posture: string
+      depth: number | "Infinity" | "-Infinity" | "NaN" | null
+      target: number | "Infinity" | "-Infinity" | "NaN" | null
+      live: number | "Infinity" | "-Infinity" | "NaN"
+      registered: boolean
+      freshness: "fresh" | "stale" | "unknown"
+      detail: string
     }
     payload?: {
       version: 1
@@ -8819,6 +8837,15 @@ export type RedskilledProjectResizeOutput = {
       standing?: boolean
       config?: string
     }
+    queue?: {
+      posture: string
+      depth: number | "Infinity" | "-Infinity" | "NaN" | null
+      target: number | "Infinity" | "-Infinity" | "NaN" | null
+      live: number | "Infinity" | "-Infinity" | "NaN"
+      registered: boolean
+      freshness: "fresh" | "stale" | "unknown"
+      detail: string
+    }
     payload?: {
       version: 1
       generated_at: string
@@ -8914,6 +8941,15 @@ export type RedskilledProjectStopOutput = {
       target?: number
       standing?: boolean
       config?: string
+    }
+    queue?: {
+      posture: string
+      depth: number | "Infinity" | "-Infinity" | "NaN" | null
+      target: number | "Infinity" | "-Infinity" | "NaN" | null
+      live: number | "Infinity" | "-Infinity" | "NaN"
+      registered: boolean
+      freshness: "fresh" | "stale" | "unknown"
+      detail: string
     }
     payload?: {
       version: 1
@@ -9012,6 +9048,15 @@ export type RedskilledWorkerStopOutput = {
       standing?: boolean
       config?: string
     }
+    queue?: {
+      posture: string
+      depth: number | "Infinity" | "-Infinity" | "NaN" | null
+      target: number | "Infinity" | "-Infinity" | "NaN" | null
+      live: number | "Infinity" | "-Infinity" | "NaN"
+      registered: boolean
+      freshness: "fresh" | "stale" | "unknown"
+      detail: string
+    }
     payload?: {
       version: 1
       generated_at: string
@@ -9108,6 +9153,15 @@ export type RedskilledWorkerRecycleOutput = {
       target?: number
       standing?: boolean
       config?: string
+    }
+    queue?: {
+      posture: string
+      depth: number | "Infinity" | "-Infinity" | "NaN" | null
+      target: number | "Infinity" | "-Infinity" | "NaN" | null
+      live: number | "Infinity" | "-Infinity" | "NaN"
+      registered: boolean
+      freshness: "fresh" | "stale" | "unknown"
+      detail: string
     }
     payload?: {
       version: 1
@@ -9206,6 +9260,15 @@ export type RedskilledWorkerSteerOutput = {
       target?: number
       standing?: boolean
       config?: string
+    }
+    queue?: {
+      posture: string
+      depth: number | "Infinity" | "-Infinity" | "NaN" | null
+      target: number | "Infinity" | "-Infinity" | "NaN" | null
+      live: number | "Infinity" | "-Infinity" | "NaN"
+      registered: boolean
+      freshness: "fresh" | "stale" | "unknown"
+      detail: string
     }
     payload?: {
       version: 1

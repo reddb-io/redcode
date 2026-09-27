@@ -146,6 +146,19 @@ function WorkersPage(props: { context: Plugin.Context; onClose: () => void }) {
               : ""}
           </text>
         </box>
+        <Show when={status()?.queue}>
+          {(queue) => (
+            <box>
+              <text fg={theme.text.base}>
+                Queue: {queue().posture} · {queue().depth ?? "?"} pending · {queue().live} live
+                {queue().target === null ? "" : ` / ${queue().target} target`}
+              </text>
+              <text fg={theme.text.muted} wrapMode="word">
+                {queue().registered ? queue().detail : `No project registration · ${queue().detail}`}
+              </text>
+            </box>
+          )}
+        </Show>
         <Show when={status()?.error}>
           {(message) => <text fg={theme.text.feedback.error.base} wrapMode="word">{message()}</text>}
         </Show>

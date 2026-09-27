@@ -137,7 +137,13 @@ function project(snapshot: Snapshot, key: string): Redskilled.Status {
     consent: registered ? "accepted" : "unknown",
     scope: "project",
     native: true,
-    activation: { eligible: true, project: snapshot.state.project_label, runner: "ACP" },
+    activation: {
+      eligible: true,
+      project: snapshot.state.project_label,
+      runner: "ACP",
+      ...(snapshot.control.requested_target == null ? {} : { target: snapshot.control.requested_target }),
+    },
+    ...(snapshot.control.context ? { queue: snapshot.control.context.queue } : {}),
     payload,
     last_success_at: now,
   }

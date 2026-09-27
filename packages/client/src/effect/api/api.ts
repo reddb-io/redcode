@@ -4384,6 +4384,17 @@ export type RedskilledStatusOutput = {
           readonly config?: string | undefined
         }
       | undefined
+    readonly queue?:
+      | {
+          readonly posture: string
+          readonly depth: number | null
+          readonly target: number | null
+          readonly live: number
+          readonly registered: boolean
+          readonly freshness: "fresh" | "stale" | "unknown"
+          readonly detail: string
+        }
+      | undefined
     readonly payload?:
       | {
           readonly version: 1
@@ -4495,6 +4506,17 @@ export type RedskilledConsentOutput = {
           readonly target?: number | undefined
           readonly standing?: boolean | undefined
           readonly config?: string | undefined
+        }
+      | undefined
+    readonly queue?:
+      | {
+          readonly posture: string
+          readonly depth: number | null
+          readonly target: number | null
+          readonly live: number
+          readonly registered: boolean
+          readonly freshness: "fresh" | "stale" | "unknown"
+          readonly detail: string
         }
       | undefined
     readonly payload?:
@@ -4610,6 +4632,17 @@ export type RedskilledProjectResizeOutput = {
           readonly config?: string | undefined
         }
       | undefined
+    readonly queue?:
+      | {
+          readonly posture: string
+          readonly depth: number | null
+          readonly target: number | null
+          readonly live: number
+          readonly registered: boolean
+          readonly freshness: "fresh" | "stale" | "unknown"
+          readonly detail: string
+        }
+      | undefined
     readonly payload?:
       | {
           readonly version: 1
@@ -4718,6 +4751,17 @@ export type RedskilledProjectStopOutput = {
           readonly target?: number | undefined
           readonly standing?: boolean | undefined
           readonly config?: string | undefined
+        }
+      | undefined
+    readonly queue?:
+      | {
+          readonly posture: string
+          readonly depth: number | null
+          readonly target: number | null
+          readonly live: number
+          readonly registered: boolean
+          readonly freshness: "fresh" | "stale" | "unknown"
+          readonly detail: string
         }
       | undefined
     readonly payload?:
@@ -4833,6 +4877,17 @@ export type RedskilledWorkerStopOutput = {
           readonly config?: string | undefined
         }
       | undefined
+    readonly queue?:
+      | {
+          readonly posture: string
+          readonly depth: number | null
+          readonly target: number | null
+          readonly live: number
+          readonly registered: boolean
+          readonly freshness: "fresh" | "stale" | "unknown"
+          readonly detail: string
+        }
+      | undefined
     readonly payload?:
       | {
           readonly version: 1
@@ -4944,6 +4999,17 @@ export type RedskilledWorkerRecycleOutput = {
           readonly target?: number | undefined
           readonly standing?: boolean | undefined
           readonly config?: string | undefined
+        }
+      | undefined
+    readonly queue?:
+      | {
+          readonly posture: string
+          readonly depth: number | null
+          readonly target: number | null
+          readonly live: number
+          readonly registered: boolean
+          readonly freshness: "fresh" | "stale" | "unknown"
+          readonly detail: string
         }
       | undefined
     readonly payload?:
@@ -5058,6 +5124,17 @@ export type RedskilledWorkerSteerOutput = {
           readonly target?: number | undefined
           readonly standing?: boolean | undefined
           readonly config?: string | undefined
+        }
+      | undefined
+    readonly queue?:
+      | {
+          readonly posture: string
+          readonly depth: number | null
+          readonly target: number | null
+          readonly live: number
+          readonly registered: boolean
+          readonly freshness: "fresh" | "stale" | "unknown"
+          readonly detail: string
         }
       | undefined
     readonly payload?:

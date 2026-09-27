@@ -32,6 +32,18 @@ export interface ProjectControl {
   workspace_path: string
   drain_intent: "inactive" | "draining" | "stopped"
   revision: number
+  requested_target?: number | null
+  context?: {
+    queue: {
+      posture: string
+      depth: number | null
+      target: number | null
+      live: number
+      registered: boolean
+      freshness: "fresh" | "stale" | "unknown"
+      detail: string
+    }
+  }
   updates: readonly unknown[]
 }
 
@@ -367,9 +379,23 @@ function projectControl(value: unknown): ProjectControl {
     typeof value.workspace_path !== "string" ||
     !["inactive", "draining", "stopped"].includes(String(value.drain_intent)) ||
     typeof value.revision !== "number" ||
+    !(value.requested_target === undefined || value.requested_target === null || typeof value.requested_target === "number") ||
     !Array.isArray(value.updates)
   )
     throw new Error("redskilled ACP returned an invalid Project control snapshot")
+  if (value.context !== undefined) {
+    if (
+      !isRecord(value.context) ||
+      !isRecord(value.context.queue) ||
+      typeof value.context.queue.posture !== "string" ||
+      !(value.context.queue.depth === null || typeof value.context.queue.depth === "number") ||
+      !(value.context.queue.target === null || typeof value.context.queue.target === "number") ||
+      typeof value.context.queue.live !== "number" ||
+      typeof value.context.queue.registered !== "boolean" ||
+      !["fresh", "stale", "unknown"].includes(String(value.context.queue.freshness)) ||
+      typeof value.context.queue.detail !== "string"
+    ) throw new Error("redskilled ACP returned an invalid Project queue snapshot")
+  }
   return value as unknown as ProjectControl
 }
 
