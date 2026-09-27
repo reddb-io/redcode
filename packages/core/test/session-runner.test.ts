@@ -437,6 +437,7 @@ const layer = Layer.unwrap(
     ]
     const runnerLayer = AppNodeBuilder.build(SessionRunnerLLM.node, [
       ...replacements,
+      Bus.node.replace(Bus.configured({ persist: true })),
       McpInstructions.node.replace(mcpInstructions),
     ])
     const execution = Layer.effect(

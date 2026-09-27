@@ -41,7 +41,7 @@ import { afterAll, describe, expect } from "bun:test"
 import { mkdtemp, rm } from "node:fs/promises"
 import { tmpdir } from "node:os"
 import { eq } from "drizzle-orm"
-import { Effect, Layer } from "effect"
+import { Context, Effect, Layer } from "effect"
 import path from "node:path"
 import { testEffect } from "./lib/effect"
 import { LocationServiceMap } from "@opencode/core/location-service-map"
@@ -99,6 +99,21 @@ const promptModels = Layer.mock(Model.Service, {
 })
 const runnerLayer = (llmClient: Layer.Layer<LLMClientService>) =>
   AppNodeBuilder.build(SessionRunnerLLM.node, [
+    Bus.node.replace(Bus.configured({ persist: true })),
+    Agent.node.replace(
+      Agent.node.mapLayer((layer) =>
+        layer.pipe(
+          Layer.tap((context) =>
+            Context.get(context, Agent.Service).transform((editor) =>
+              editor.update(Agent.ID.make("build"), (agent) => {
+                agent.mode = "primary"
+                agent.permissions.push({ action: "execute", resource: "*", effect: "deny" })
+              }),
+            ),
+          ),
+        ),
+      ),
+    ),
     Snapshot.node.replace(Snapshot.noopLayer),
     LayerNodePlatform.llmClient.replace(llmClient),
     SessionRunnerModel.node.replace(models),
