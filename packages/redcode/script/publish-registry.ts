@@ -188,17 +188,15 @@ export async function publishRelease(
     const probes = await Promise.allSettled(missing.map((item) => publishOnce(item, deps)))
     const outcome = (index: number) => {
       const probe = probes[index]
-      return probe.status === "fulfilled" ? probe.value : undefined
+      return probe?.status === "fulfilled" ? probe.value : undefined
     }
     const staged = missing.filter((_, index) => outcome(index) === "staged")
     if (staged.length > 0) throw new StagedPublishError(staged, main)
-    const failures = probes.flatMap((probe, index) =>
-      probe.status === "rejected"
-        ? [
-            `${missing[index].name}@${missing[index].version}: ${probe.reason instanceof Error ? probe.reason.message : String(probe.reason)}`,
-          ]
-        : [],
-    )
+    const failures = probes.flatMap((probe, index) => {
+      const item = missing[index]
+      if (!item || probe.status !== "rejected") return []
+      return [`${item.name}@${item.version}: ${probe.reason instanceof Error ? probe.reason.message : String(probe.reason)}`]
+    })
     // "published" means the first publish never reached the registry and the probe did; "skipped"
     // means npm serves it now. Either way the registry deserves one more wait, but only one.
     const republished = missing.some((_, index) => outcome(index) === "published" || outcome(index) === "skipped")

@@ -106,7 +106,7 @@ await Bun.file(path.join(meta, "package.json")).write(
       os: ["darwin", "linux", "win32"],
       cpu: ["arm64", "x64"],
       optionalDependencies: Object.fromEntries(
-        manifests.map((item) => [item.package.name, item.package.version]).toSorted(([a], [b]) => a.localeCompare(b)),
+        manifests.map((item) => item.package).toSorted((a, b) => a.name.localeCompare(b.name)).map((item) => [item.name, item.version]),
       ),
     },
     null,

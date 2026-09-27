@@ -172,7 +172,7 @@ describe("waitForVisibility", () => {
 })
 
 describe("publishRelease", () => {
-  const platforms = ["@reddb-io/redcode-linux-x64", "@reddb-io/redcode-darwin-arm64"]
+  const platforms = ["@reddb-io/redcode-linux-x64", "@reddb-io/redcode-darwin-arm64"] as const
   const main = "@reddb-io/redcode"
 
   test("publishes the main package only after every platform package is visible", async () => {
