@@ -27,7 +27,7 @@ export const LSPHandler = HttpApiBuilder.group(Api, "server.lsp", (handlers) =>
         character: 0,
         query: ctx.query.query,
       })
-    }))),
+    })))
     .handle("lsp.documentSymbols", (ctx) => response(Effect.gen(function* () {
       const location = yield* Location.Service
       const lsp = yield* LSP.Service
