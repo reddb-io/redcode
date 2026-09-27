@@ -1718,7 +1718,7 @@ describe("ShellTool", () => {
             const scope = yield* Scope.Scope
             const waiting = yield* executeTool(
               registry,
-              call({ command: idleCommand, timeout: 50 }, "call-background-signal"),
+              call({ command: idleCommand, timeout: 0 }, "call-background-signal"),
             ).pipe(Effect.forkIn(scope, { startImmediately: true }))
 
             const backgroundWhenReady = (remaining = 1000): Effect.Effect<Job.Info[], Error> =>
@@ -1726,7 +1726,7 @@ describe("ShellTool", () => {
                 const backgrounded = yield* jobs.backgroundAll({ sessionID })
                 if (backgrounded.length > 0) return backgrounded
                 if (remaining <= 0) return yield* Effect.fail(new Error("Timed out waiting for foreground shell job"))
-                yield* Effect.promise(() => Bun.sleep(1))
+                yield* Effect.sleep(Duration.millis(10))
                 return yield* backgroundWhenReady(remaining - 1)
               })
             const backgrounded = yield* backgroundWhenReady()
