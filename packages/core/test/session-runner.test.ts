@@ -435,7 +435,7 @@ const layer = Layer.unwrap(
       Plugin.node.replace(Layer.mock(Plugin.Service, { awaitActivation: Effect.void })),
       SessionModelTransport.node.replace(modelTransport),
     ]
-    const runnerLayer = AppNodeBuilder.build(SessionRunnerLLM.node, [
+    const runnerLayer = AppNodeBuilder.build(LayerNode.group([SessionRunnerLLM.node, SessionProjector.node]), [
       ...replacements,
       Bus.node.replace(Bus.configured({ persist: true })),
       McpInstructions.node.replace(mcpInstructions),

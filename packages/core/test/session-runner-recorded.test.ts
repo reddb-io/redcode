@@ -98,7 +98,7 @@ const promptModels = Layer.mock(Model.Service, {
   small: () => Effect.undefined,
 })
 const runnerLayer = (llmClient: Layer.Layer<LLMClientService>) =>
-  AppNodeBuilder.build(SessionRunnerLLM.node, [
+  AppNodeBuilder.build(LayerNode.group([SessionRunnerLLM.node, SessionProjector.node]), [
     Bus.node.replace(Bus.configured({ persist: true })),
     Agent.node.replace(
       Agent.node.mapLayer((layer) =>
