@@ -78,8 +78,8 @@ const layer = Layer.effect(
 
     type NormalizedItem = Tool.Content | "decode" | "size" | "file-read" | "file-size"
     const normalizeFiles = Effect.fnUntraced(function* (content: ReadonlyArray<Tool.Content>) {
-      const normalized = yield* Effect.forEach(content, (item): Effect.Effect<NormalizedItem> => {
-        if (item.type !== "file") return Effect.succeed(item)
+      const normalized = yield* Effect.forEach(content, (item) => Effect.gen(function* () {
+        if (item.type !== "file") return item
         // Tool files must survive replay even if their original local path disappears.
         const file = item.uri.startsWith("file:")
           ? yield* Effect.gen(function* () {
@@ -95,11 +95,11 @@ const layer = Layer.effect(
               return { ...item, uri: `data:${item.mime};base64,${Buffer.from(bytes).toString("base64")}` }
             }).pipe(Effect.orElseSucceed(() => "file-read" as const))
           : item
-        if (typeof file === "string" || !file.mime.startsWith("image/")) return Effect.succeed(file)
+        if (typeof file === "string" || !file.mime.startsWith("image/")) return file
         const base64 = /^data:[^,]*;base64,(.*)$/s.exec(file.uri)?.[1]
-        if (base64 === undefined) return Effect.succeed(file)
+        if (base64 === undefined) return file
         const resource = file.name ?? `${file.mime} tool output`
-        return image.normalize(resource, { uri: resource, content: base64, encoding: "base64", mime: file.mime }).pipe(
+        return yield* image.normalize(resource, { uri: resource, content: base64, encoding: "base64", mime: file.mime }).pipe(
           Effect.map((result) => ({
             ...file,
             uri: `data:${result.mime};base64,${result.content}`,
@@ -109,7 +109,7 @@ const layer = Layer.effect(
           Effect.catchTag("Image.DecodeError", () => Effect.succeed("decode" as const)),
           Effect.catchTag("Image.SizeError", () => Effect.succeed("size" as const)),
         )
-      })
+      }))
       const note = (reason: Exclude<NormalizedItem, Tool.Content>, kind: "image" | "file", text: string) => {
         const count = normalized.filter((item) => item === reason).length
         if (count === 0) return []

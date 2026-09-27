@@ -36,7 +36,7 @@ export function installed(_directory: string, _project: string): Info[] {
     { id: "ruby-lsp", command: ["rubocop", "--lsp"], extensions: [".rb", ".rake", ".gemspec", ".ru"], root: nearest(["Gemfile"]) },
     ...(["1", "true"].includes(globalThis.process.env.REDCODE_EXPERIMENTAL_LSP_TY?.toLowerCase() ?? "")
       ? [{ id: "ty", command: ["ty", "server"], extensions: [".py", ".pyi"], root: nearest(["pyproject.toml", "ty.toml", "setup.py", "setup.cfg", "requirements.txt", "Pipfile", "pyrightconfig.json"]) }]
-      : [{ id: "pyright", command: ["pyright-langserver", "--stdio"], extensions: [".py", ".pyi"], root: nearest(["pyproject.toml", "setup.py", "setup.cfg", "requirements.txt", "Pipfile", "pyrightconfig.json"]), download: { package: "pyright", bin: "pyright-langserver" }]),
+      : [{ id: "pyright", command: ["pyright-langserver", "--stdio"], extensions: [".py", ".pyi"], root: nearest(["pyproject.toml", "setup.py", "setup.cfg", "requirements.txt", "Pipfile", "pyrightconfig.json"]), download: { package: "pyright", bin: "pyright-langserver" } }]),
     { id: "elixir-ls", command: ["elixir-ls"], extensions: [".ex", ".exs"], root: nearest(["mix.exs", "mix.lock"]) },
     { id: "zls", command: ["zls"], extensions: [".zig", ".zon"], root: nearest(["build.zig"]) },
     { id: "csharp", command: ["roslyn-language-server", "--stdio", "--autoLoadProjects"], extensions: [".cs", ".csx"], root: nearest(["*.slnx", "*.sln", "*.csproj", "global.json"]) },

@@ -17,7 +17,7 @@ export const LSPHandler = HttpApiBuilder.group(Api, "server.lsp", (handlers) =>
       const file = yield* requireFile(location.directory, ctx.query.path)
       yield* lsp.touchFile(file, "full")
       return yield* lsp.diagnostics()
-    }))),
+    })))
     .handle("lsp.symbols", (ctx) => response(Effect.gen(function* () {
       const location = yield* Location.Service
       const lsp = yield* LSP.Service

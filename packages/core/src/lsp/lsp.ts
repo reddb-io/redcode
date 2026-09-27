@@ -231,7 +231,7 @@ const layer = Layer.effect(
           if (abort?.aborted) return []
           const uri = pathToFileURL(position.file).href
           const at = { line: position.line, character: position.character }
-          const results = await Promise.all(matching.map(async (client) => {
+          const results = await Promise.all(matching.map((client) => (async () => {
             if (operation === "workspaceSymbol")
               return client.connection.sendRequest<unknown[]>(
                 "workspace/symbol", { query: position.query ?? "" }, cancellation.token,
@@ -262,7 +262,7 @@ const layer = Layer.effect(
             return client.connection.sendRequest<unknown>(method, operation === "findReferences"
               ? { ...item, context: { includeDeclaration: true } }
               : item, cancellation.token)
-          }).then((result) => result ?? []).catch(() => [])))
+          })().then((result) => result ?? []).catch(() => [])))
           return results.flatMap((result) => Array.isArray(result) ? result : [result])
         } finally {
           abort?.removeEventListener("abort", stop)
