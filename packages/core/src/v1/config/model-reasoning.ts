@@ -6,6 +6,7 @@ import { Provider } from "../../provider.js"
 export function defaults(input: {
   providerID: string
   modelID: string
+  outputLimit: number
   packageName?: string
   baseURL?: unknown
   useCompletionUrls?: unknown
@@ -89,6 +90,16 @@ export function defaults(input: {
       name === "@opencode/ai/providers/zai-coding-plan/chat")
   )
     return { settings: { thinking: { type: "enabled", clear_thinking: false } } }
+
+  if (
+    (id.includes("k2p") || id.includes("kimi-k2.")) &&
+    (name === "@ai-sdk/anthropic" || name === "@ai-sdk/google-vertex/anthropic")
+  )
+    return {
+      settings: {
+        thinking: { type: "enabled", budgetTokens: Math.min(16_000, Math.floor(input.outputLimit / 2 - 1)) },
+      },
+    }
 
   const kimi = [input.providerID, input.modelID, typeof input.baseURL === "string" ? input.baseURL : ""].some((value) =>
     /kimi|moonshot/iu.test(value),

@@ -132,6 +132,7 @@ export const Plugin = define({
               const defaults = ConfigModelReasoningV1.defaults({
                 providerID,
                 modelID: model.modelID,
+                outputLimit: model.limit.output,
                 packageName: model.package ?? models.provider.get(providerID)?.provider.package,
                 baseURL: model.settings?.baseURL ?? models.provider.get(providerID)?.provider.settings?.baseURL,
                 useCompletionUrls:
