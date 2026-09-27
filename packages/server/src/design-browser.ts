@@ -117,7 +117,6 @@ export const routes = (hosts: () => ReadonlyArray<string>) => HttpRouter.use((ro
       Effect.catchCause((cause) => Effect.succeed(errorResponse(Cause.squash(cause)))),
     )
 
-    yield* router.add("*", "/design/session/:sessionID", handle)
     yield* router.add("*", "/design/session/:sessionID/*", handle)
   }),
 )

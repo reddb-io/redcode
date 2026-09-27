@@ -98,6 +98,7 @@ ${code.slice(start)}`
 
 const resolve = {
   alias: [
+    { find: /^bun:sqlite$/, replacement: path.resolve(dir, "src/node/sqlite-compat.ts") },
     ...Object.entries({
       "#database-reddb": "database/reddb.ts",
       "#model-limit-node": "model-limit.node.ts",
@@ -112,6 +113,12 @@ const resolve = {
       "#process-lock-ffi": "util/process-lock-ffi.node.ts",
       "#v1-migration": "database/v1-migration.noop.ts",
     }).map(([find, file]) => ({ find: new RegExp(`^${find}$`), replacement: path.resolve(dir, "../core/src", file) })),
+    ...Object.entries({
+      "#attention-sounds": "attention-sounds.node.ts",
+      "#string-width": "util/string-width.node.ts",
+      "#zed-sqlite": "editor-zed-sqlite.node.ts",
+      "#runtime-plugin-support": "plugin/runtime-plugin-support.node.ts",
+    }).map(([find, file]) => ({ find: new RegExp(`^${find}$`), replacement: path.resolve(dir, "../tui/src", file) })),
     { find: /^solid-js\/store$/, replacement: "solid-js/store/dist/store.js" },
     { find: /^solid-js$/, replacement: "solid-js/dist/solid.js" },
     {

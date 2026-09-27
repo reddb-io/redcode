@@ -87,7 +87,12 @@ const baseLayer = Layer.effect(
     // configured directory as canonical; local placements keep symlink
     // canonicalization. This skip is boot-only: resolve/read/list below still
     // access the host filesystem per operation (tracked in #44568).
-    const root = location.workspaceID ? location.directory : yield* fs.realPath(location.directory).pipe(Effect.orDie)
+    const root = location.workspaceID
+      ? location.directory
+      : yield* fs.realPath(location.directory).pipe(
+          Effect.catchReason("PlatformError", "NotFound", () => Effect.succeed(location.directory)),
+          Effect.orDie,
+        )
     const resolve = Effect.fnUntraced(function* (input?: RelativePath) {
       const absolute = path.resolve(location.directory, input ?? ".")
       if (!FSUtil.contains(location.directory, absolute))
