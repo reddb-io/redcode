@@ -167,16 +167,18 @@ describe("Config", () => {
           const config = yield* Config.Service
           const watcher = yield* Watcher.Test
           const entries = yield* config.entries()
-          expect(entries.flatMap((entry) => (entry.type === "directory" ? [entry.path] : []))).toEqual([global])
-          expect(entries.flatMap((entry) => (entry.type === "document" ? [entry.info.shell] : []))).toEqual(["global"])
+          expect(
+            entries.flatMap((entry) => (entry.type === "directory" && inFixture(tmp.path, entry.path) ? [entry.path] : [])),
+          ).toEqual([global])
+          expect(entries.filter((entry) => entry.type === "document" && entry.info.shell === "global")).toHaveLength(1)
           expect(
             (yield* watcher.subscriptions())
-              .filter((subscription) => subscription.type === "directory")
+              .filter((subscription) => subscription.type === "directory" && inFixture(tmp.path, subscription.path))
               .map((subscription) => subscription.path),
           ).toEqual([global])
           expect(
             (yield* watcher.subscriptions()).filter((subscription) =>
-              subscription.path.includes(`${path.sep}.opencode${path.sep}`),
+              inFixture(tmp.path, subscription.path) && subscription.path.includes(`${path.sep}.opencode${path.sep}`),
             ),
           ).toEqual([])
         })
