@@ -72,6 +72,30 @@ describe("ConfigProviderPlugin.Plugin", () => {
     }),
   )
 
+  it.effect("preserves catalog modalities when V1 overrides only attachment and temperature", () =>
+    Effect.gen(function* () {
+      const providers = yield* Provider.Service
+      const models = yield* Model.Service
+      const providerID = Provider.ID.make("custom")
+      yield* providers.transform((editor) =>
+        editor.models.update(providerID, Model.ID.make("chat"), (model) => {
+          model.capabilities = { tools: true, temperature: true, input: ["text", "image", "pdf"], output: ["text"] }
+        }),
+      )
+      const migrated = ConfigNormalize.normalize({
+        provider: { custom: { models: { chat: { attachment: false, temperature: false } } } },
+      })
+      if (migrated.type !== "normalized") throw new Error("Expected normalized config")
+      yield* addPlugin([new Document({ type: "document", info: decode(migrated.encoded) })])
+      expect((yield* models.get(providerID, Model.ID.make("chat")))?.capabilities).toEqual({
+        tools: true,
+        temperature: false,
+        input: ["text", "pdf"],
+        output: ["text"],
+      })
+    }),
+  )
+
   it.effect("applies variant overrides to generated defaults for new models", () =>
     Effect.gen(function* () {
       const models = yield* Model.Service

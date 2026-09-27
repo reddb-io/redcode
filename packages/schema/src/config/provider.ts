@@ -2,7 +2,7 @@ export * as ConfigProvider from "./provider.js"
 
 import { Schema } from "effect"
 import { Money } from "../money.js"
-import { Capabilities, Compatibility, Family, ID, Status, VariantID } from "../model.js"
+import { Compatibility, Family, ID, Status, VariantID } from "../model.js"
 import { Provider } from "../provider.js"
 import { optional } from "../schema.js"
 
@@ -39,6 +39,15 @@ const ModelOverlays = {
   body: JsonRecord.pipe(optional),
 }
 
+export const CapabilityOverrides = Schema.Struct({
+  tools: Schema.Boolean.pipe(optional),
+  temperature: Schema.Boolean.pipe(optional),
+  image: Schema.Boolean.pipe(optional),
+  input: Schema.String.pipe(Schema.Array, optional),
+  output: Schema.String.pipe(Schema.Array, optional),
+})
+export type CapabilityOverrides = typeof CapabilityOverrides.Type
+
 export class Request extends Schema.Class<Request>("Config.Provider.Request")({
   headers: Overlays.headers,
   body: Overlays.body,
@@ -72,7 +81,7 @@ class Model extends Schema.Class<Model>("Config.Model")({
   compatibility: Compatibility.pipe(optional),
   package: Schema.String.pipe(optional),
   ...ModelOverlays,
-  capabilities: Capabilities.pipe(optional),
+  capabilities: CapabilityOverrides.pipe(optional),
   variants: Schema.Struct({
     id: VariantID,
     disabled: Schema.Boolean.pipe(optional),

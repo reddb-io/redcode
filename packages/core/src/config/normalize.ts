@@ -52,7 +52,7 @@ const unsupportedExperimental = [
   "continue_loop_on_deny",
 ] as const
 const unsupportedProvider = ["id"] as const
-const unsupportedModel = ["reasoning", "temperature", "experimental"] as const
+const unsupportedModel = ["reasoning", "experimental"] as const
 
 export function normalize(input: unknown): Result {
   if (!isRecord(input))

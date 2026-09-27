@@ -371,7 +371,7 @@ export type ModelReasoningField = "reasoning" | "reasoning_content" | "reasoning
 
 export type ModelMaxTokensField = "max_completion_tokens" | "max_tokens"
 
-export type ModelCapabilities = { tools: boolean; input: Array<string>; output: Array<string> }
+export type ModelCapabilities = { tools: boolean; temperature?: boolean; input: Array<string>; output: Array<string> }
 
 export type MoneyUSDPerMillionTokens = number
 
@@ -2560,7 +2560,13 @@ export type ConfigEntry =
                 settings?: ConfigModelSettings
                 headers?: { [x: string]: string }
                 body?: { [x: string]: JsonValue }
-                capabilities?: ModelCapabilities
+                capabilities?: {
+                  tools?: boolean
+                  temperature?: boolean
+                  image?: boolean
+                  input?: Array<string>
+                  output?: Array<string>
+                }
                 variants?: Array<{
                   id: string
                   disabled?: boolean

@@ -1,4 +1,5 @@
 import { Model } from "@opencode/schema/model"
+import type { CapabilityOverrides } from "@opencode/schema/config/provider"
 import { Provider } from "./provider.js"
 import type { DeepMutable } from "./schema.js"
 import { Context, Effect, Layer, Stream } from "effect"
@@ -27,6 +28,22 @@ export type Compatibility = Model.Compatibility
 
 export const Capabilities = Model.Capabilities
 export type Capabilities = Model.Capabilities
+
+export function overlayCapabilities(base: Capabilities, override: CapabilityOverrides): Capabilities {
+  const input = override.input ?? base.input
+  const temperature = override.temperature ?? base.temperature
+  return {
+    tools: override.tools ?? base.tools,
+    ...(temperature === undefined ? {} : { temperature }),
+    input:
+      override.image === undefined
+        ? [...input]
+        : override.image
+          ? [...new Set([...input, "image"])]
+          : input.filter((modality) => modality !== "image"),
+    output: [...(override.output ?? base.output)],
+  }
+}
 
 export const Cost = Model.Cost
 

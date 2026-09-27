@@ -468,9 +468,24 @@ describe("ConfigNormalize", () => {
     expect(result.encoded.providers).toMatchObject({
       custom: {
         models: {
-          text: { capabilities: { tools: true, input: ["text"], output: ["text"] } },
-          vision: { capabilities: { tools: true, input: ["text", "image"], output: ["text"] } },
-          explicit: { capabilities: { tools: true, input: ["text", "pdf"], output: ["text"] } },
+          text: { capabilities: { image: false } },
+          vision: { capabilities: { image: true, input: ["text"] } },
+          explicit: { capabilities: { image: false, input: ["text", "image", "pdf"] } },
+        },
+      },
+    })
+    expect(result.diagnostics).toEqual([])
+  })
+
+  test("migrates V1 model temperature support without treating it as a sampling value", () => {
+    const result = normalized({
+      provider: { custom: { models: { unsupported: { temperature: false }, supported: { temperature: true } } } },
+    })
+    expect(result.encoded.providers).toMatchObject({
+      custom: {
+        models: {
+          unsupported: { capabilities: { temperature: false } },
+          supported: { capabilities: { temperature: true } },
         },
       },
     })

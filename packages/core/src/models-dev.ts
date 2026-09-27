@@ -234,6 +234,7 @@ function modelInfo(
     settings: Object.keys(settings).length === 0 ? undefined : settings,
     capabilities: {
       tools: model.tool_call,
+      ...(model.temperature === undefined ? {} : { temperature: model.temperature }),
       input: [...(model.modalities?.input ?? [])],
       output: [...(model.modalities?.output ?? [])],
     },

@@ -324,22 +324,18 @@ function migrateModel(info: typeof ConfigProviderV1.Model.Type) {
         ]
       : []),
   ]
-  const defaults = Model.Capabilities.default()
-  const input = info.modalities?.input ?? defaults.input
   const capabilities =
     info.tool_call !== undefined ||
     info.attachment !== undefined ||
+    info.temperature !== undefined ||
     info.modalities?.input !== undefined ||
     info.modalities?.output !== undefined
       ? {
-          tools: info.tool_call ?? defaults.tools,
-          input:
-            info.attachment === undefined
-              ? input
-              : info.attachment
-                ? [...new Set([...input, "image"])]
-                : input.filter((modality) => modality !== "image"),
-          output: info.modalities?.output ?? defaults.output,
+          ...(info.tool_call === undefined ? {} : { tools: info.tool_call }),
+          ...(info.temperature === undefined ? {} : { temperature: info.temperature }),
+          ...(info.attachment === undefined ? {} : { image: info.attachment }),
+          ...(info.modalities?.input === undefined ? {} : { input: info.modalities.input }),
+          ...(info.modalities?.output === undefined ? {} : { output: info.modalities.output }),
         }
       : undefined
   return {

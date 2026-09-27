@@ -125,13 +125,8 @@ export const Plugin = define({
             if (config.settings !== undefined) model.settings = Provider.mergeOverlay(model.settings, config.settings)
             if (config.headers !== undefined) model.headers = Provider.mergeHeaders(model.headers, config.headers)
             if (config.body !== undefined) model.body = Provider.mergeOverlay(model.body, config.body)
-            if (config.capabilities !== undefined) {
-              model.capabilities = {
-                tools: config.capabilities.tools,
-                input: [...config.capabilities.input],
-                output: [...config.capabilities.output],
-              }
-            }
+            if (config.capabilities !== undefined)
+              model.capabilities = Model.overlayCapabilities(model.capabilities, config.capabilities)
             if (config.cost !== undefined) {
               model.cost = (Array.isArray(config.cost) ? config.cost : [config.cost]).map((cost) => ({
                 tier: cost.tier && { ...cost.tier },

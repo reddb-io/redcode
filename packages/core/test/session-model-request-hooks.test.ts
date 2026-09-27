@@ -40,6 +40,34 @@ const transport = SessionModelTransport.Service.of({
 })
 
 describe("SessionModelRequest HTTP hooks", () => {
+  it.effect("omits temperature when the selected model does not support it", () =>
+    Effect.gen(function* () {
+      const hooks = yield* PluginHooks.Service
+      yield* hooks.register("session", "context", (event) =>
+        Effect.sync(() => {
+          event.options.temperature = 0.7
+        }),
+      )
+      const requests = yield* SessionModelRequest.Service.pipe(Effect.provide(SessionModelRequest.layer))
+      const input = {
+        session,
+        agent: Agent.ID.make("build"),
+        system: [],
+        messages: [],
+      }
+      const blocked = yield* requests.primary({
+        ...input,
+        model: { ...model, capabilities: { ...model.capabilities, temperature: false } },
+      })
+      const supported = yield* requests.primary({
+        ...input,
+        model: { ...model, capabilities: { ...model.capabilities, temperature: true } },
+      })
+      expect(blocked.request.generation?.temperature).toBeUndefined()
+      expect(supported.request.generation?.temperature).toBe(0.7)
+    }).pipe(Effect.provideService(SessionModelTransport.Service, transport)),
+  )
+
   it.effect("tags every Session request kind on http.request and http.response", () =>
     Effect.gen(function* () {
       const hooks = yield* PluginHooks.Service
