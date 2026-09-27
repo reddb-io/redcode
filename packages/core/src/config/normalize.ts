@@ -647,16 +647,6 @@ function invalidProviderOverlays(value: unknown, path: string[], diagnostics: Di
 function diagnoseProviderUnsupported(value: unknown, path: string[], diagnostics: Diagnostic[]) {
   if (!isRecord(value)) return
   unsupportedProvider.forEach((key) => unsupportedIfPresent(value, key, [...path, key], diagnostics))
-  if (!isRecord(value.models)) return
-  Object.entries(value.models).forEach(([name, model]) => {
-    if (!isRecord(model)) return
-    if (model.reasoning === true)
-      diagnostics.push({
-        kind: "unsupported",
-        path: [...path, "models", name, "reasoning"],
-        message: "preserved reasoning variants; provider-specific V1 reasoning defaults still require migration",
-      })
-  })
 }
 
 function diagnoseAgentUnsupported(value: unknown, path: string[], diagnostics: Diagnostic[]) {

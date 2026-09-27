@@ -128,6 +128,7 @@ export const Plugin = define({
             if (config.body !== undefined) model.body = Provider.mergeOverlay(model.body, config.body)
             if (config.capabilities !== undefined)
               model.capabilities = Model.overlayCapabilities(model.capabilities, config.capabilities)
+            if (config.limit !== undefined) model.limit = { ...model.limit, ...config.limit }
             if (config.capabilities?.reasoning === true) {
               const defaults = ConfigModelReasoningV1.defaults({
                 providerID,
@@ -154,7 +155,6 @@ export const Plugin = define({
             if (config.disabled !== undefined) model.enabled = !config.disabled
             if (config.time !== undefined) model.time = { ...config.time }
             if (config.status !== undefined) model.status = config.status
-            if (config.limit !== undefined) model.limit = { ...model.limit, ...config.limit }
             if (config.variants !== undefined) {
               // V1 variant overrides merged into generated defaults before disabled IDs were removed.
               if (inherit && !source?.base) {

@@ -208,6 +208,26 @@ describe("ConfigProviderPlugin.Plugin", () => {
     }),
   )
 
+  it.effect("uses the migrated output limit for V1 Kimi reasoning budgets", () =>
+    Effect.gen(function* () {
+      const models = yield* Model.Service
+      const migrated = ConfigNormalize.normalize({
+        provider: {
+          custom: {
+            npm: "@ai-sdk/anthropic",
+            models: { "kimi-k2.5": { reasoning: true, limit: { context: 20_000, output: 1_000 } } },
+          },
+        },
+      })
+      if (migrated.type !== "normalized") throw new Error("Expected normalized config")
+      yield* addPlugin([new Document({ type: "document", info: decode(migrated.encoded) })])
+      expect((yield* models.get(Provider.ID.make("custom"), Model.ID.make("kimi-k2.5")))?.settings?.thinking).toEqual({
+        type: "enabled",
+        budgetTokens: 499,
+      })
+    }),
+  )
+
   it.effect("enables V1 Alibaba reasoning except for kimi-k2-thinking", () =>
     Effect.gen(function* () {
       const models = yield* Model.Service
