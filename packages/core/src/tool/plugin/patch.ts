@@ -7,10 +7,12 @@ import { FileDiff } from "@opencode/schema/file-diff"
 import { Effect, Result, Schema } from "effect"
 import { Bom } from "@opencode/util/bom"
 import { Environment } from "../../environment/index.js"
+import { FileAccess } from "../../file-access.js"
 import { Formatter } from "../../formatter.js"
 import { FileMutation } from "../../file-mutation.js"
+import { Diagnostic } from "../../lsp/diagnostic.js"
+import { LSP } from "../../lsp/lsp.js"
 import { Location } from "../../location.js"
-import { FileAccess } from "../../file-access.js"
 import { Patch } from "@opencode/util/patch"
 import { Permission } from "../../permission.js"
 import DESCRIPTION from "../patch.txt"
@@ -71,6 +73,7 @@ export const Plugin = {
     const access = yield* FileAccess.Service
     const fileMutation = yield* FileMutation.Service
     const formatter = yield* Formatter.Service
+    const lsp = yield* LSP.Service
     const location = yield* Location.Service
     const permission = yield* Permission.Service
 
@@ -252,19 +255,22 @@ export const Plugin = {
                   }),
                 { discard: true },
               )
+              const written = applied
+                .filter((item) => item.type !== "delete")
+                .filter((item, index, items) => items.findIndex((other) => other.target === item.target) === index)
               const formatted = new Map<string, string>()
               yield* Effect.forEach(
-                [...new Set(applied.filter((item) => item.type !== "delete").map((item) => item.target))],
-                (target) =>
+                written,
+                (item) =>
                   Effect.gen(function* () {
-                    const current = yield* FileMutation.readText(environment.files, target).pipe(
-                      Effect.mapError((error) => fail(`Failed to read ${target}`, error)),
+                    const current = yield* FileMutation.readText(environment.files, item.target).pipe(
+                      Effect.mapError((error) => fail(`Failed to read ${item.target}`, error)),
                     )
                     formatted.set(
-                      target,
-                      (yield* formatter.file(target))
-                        ? yield* FileMutation.syncTextBom(environment.files, target, current.bom).pipe(
-                            Effect.mapError((error) => fail(`Failed to sync ${target}`, error)),
+                      item.target,
+                      (yield* formatter.file(item.target))
+                        ? yield* FileMutation.syncTextBom(environment.files, item.target, current.bom).pipe(
+                            Effect.mapError((error) => fail(`Failed to sync ${item.target}`, error)),
                           )
                         : current.text,
                     )
@@ -276,13 +282,33 @@ export const Plugin = {
                 const target = change.type === "update" && change.moveTarget ? change.moveTarget : change.target
                 return patchFile(change, formatted.get(target.absolute))
               })
-              return { applied, files }
+              yield* Effect.forEach(
+                written,
+                (item) =>
+                  lsp.touchFile(item.target, "document").pipe(
+                    Effect.catchCause((cause) =>
+                      Effect.logWarning("LSP notification failed after patch", { file: item.target, cause }),
+                    ),
+                  ),
+                { discard: true },
+              )
+              const diagnostics = yield* lsp.diagnostics()
+              return { applied, files, written, diagnostics }
             }).pipe(
               fileMutation.withLock(lockTargets),
               Effect.map((output) => ({
-                output,
-                content: toModelContent(output),
-                metadata: { files: output.files },
+                output: { applied: output.applied, files: output.files },
+                content: [
+                  toModelContent(output),
+                  ...output.written.flatMap((item) => {
+                    const report = Diagnostic.report(item.target, output.diagnostics[item.target] ?? [])
+                    return report ? [`LSP errors detected in ${item.resource}, please fix:\n${report}`] : []
+                  }),
+                ].join("\n\n"),
+                metadata: {
+                  files: output.files,
+                  diagnostics: Diagnostic.pick(output.diagnostics, output.written.map((item) => item.target)),
+                },
               })),
               Effect.mapError((error) =>
                 error instanceof ToolFailure ? error : new ToolFailure({ message: "Unable to apply patch", error }),

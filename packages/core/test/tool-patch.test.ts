@@ -7,6 +7,8 @@ import { LayerNode } from "@opencode/util/effect/layer-node"
 import { Environment } from "@opencode/core/environment/index"
 import { Formatter } from "@opencode/core/formatter"
 import { FileMutation } from "@opencode/core/file-mutation"
+import type { LSPClient } from "@opencode/core/lsp/client"
+import { LSP } from "@opencode/core/lsp/lsp"
 import { Location } from "@opencode/core/location"
 import { FileAccess } from "@opencode/core/file-access"
 import { Model } from "@opencode/core/model"
@@ -45,6 +47,7 @@ const patchToolNode = makeLocationNode({
     FileMutation.node,
     Environment.node,
     Formatter.node,
+    LSP.node,
     Location.node,
     Permission.node,
   ],
@@ -60,6 +63,8 @@ let readsBeforeEditApproval = 0
 let editApproved = false
 let afterEditApproval = (): Effect.Effect<void> => Effect.void
 let formatFile = (_target: string): Effect.Effect<boolean> => Effect.succeed(false)
+const touched: string[] = []
+const lspDiagnostics = new Map<string, LSPClient.Diagnostic[]>()
 
 const permission = permissionLayer({
   assert: (input) =>
@@ -86,6 +91,16 @@ const formatter = Layer.mock(Formatter.Service, {
   file: (target) => formatFile(target),
 })
 
+const lsp = Layer.mock(LSP.Service, {
+  status: () => Effect.succeed([]),
+  hasClients: () => Effect.succeed(false),
+  touchFile: (file) => Effect.sync(() => {
+    touched.push(file)
+  }),
+  diagnostics: () => Effect.succeed(Object.fromEntries(lspDiagnostics)),
+  request: () => Effect.succeed([]),
+})
+
 const reset = () => {
   assertions.length = 0
   denyAction = undefined
@@ -96,6 +111,8 @@ const reset = () => {
   editApproved = false
   afterEditApproval = () => Effect.void
   formatFile = () => Effect.succeed(false)
+  touched.length = 0
+  lspDiagnostics.clear()
 }
 
 const withTool = <A, E, R>(
@@ -136,6 +153,7 @@ const withTool = <A, E, R>(
         ),
         Location.node.replace(activeLocation),
         Formatter.node.replace(formatter),
+        LSP.node.replace(lsp),
         Permission.node.replace(permission),
       ]),
     ),
@@ -705,6 +723,36 @@ describe("PatchTool", () => {
           ),
         )
         expect(yield* Effect.promise(() => fs.readFile(target, "utf8"))).toBe("A\nB\n")
+      }),
+    ),
+  )
+
+  it.live("reports diagnostics only for files written by a patch", () =>
+    withTempTool((directory, registry) =>
+      Effect.gen(function* () {
+        const update = path.join(directory, "update.ts")
+        const remove = path.join(directory, "remove.ts")
+        const unrelated = path.join(directory, "unrelated.ts")
+        yield* Effect.promise(() => Promise.all([fs.writeFile(update, "old\n"), fs.writeFile(remove, "remove\n")]))
+        const issue = {
+          severity: 1,
+          range: { start: { line: 0, character: 0 }, end: { line: 0, character: 3 } },
+          message: "Broken expression",
+        }
+        lspDiagnostics.set(update, [issue])
+        lspDiagnostics.set(unrelated, [issue])
+        const settled = yield* executeTool(
+          registry,
+          call("*** Begin Patch\n*** Update File: update.ts\n@@\n-old\n+new\n*** Delete File: remove.ts\n*** End Patch"),
+        )
+        expect(settled.status).toBe("completed")
+        if (settled.status !== "completed") return
+        expect(touched).toEqual([update])
+        expect(settled.content).toEqual([
+          { type: "text", text: expect.stringContaining("LSP errors detected in update.ts") },
+        ])
+        expect(settled.content?.[0]?.type === "text" && settled.content[0].text).toContain("Broken expression")
+        expect(settled.metadata?.diagnostics).toEqual({ [update]: [issue] })
       }),
     ),
   )
