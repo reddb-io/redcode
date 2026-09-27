@@ -154,13 +154,19 @@ const layer = Layer.effect(
               const credential = yield* tx.select().from(CredentialTable).where(eq(CredentialTable.id, id)).get()
               if (!credential?.integration_id) return
               if (credential.active) return
+              const selected = yield* tx
+                .select({ id: CredentialTable.id })
+                .from(CredentialTable)
+                .where(eq(CredentialTable.integration_id, credential.integration_id))
+                .orderBy(desc(CredentialTable.active), desc(CredentialTable.time_created), desc(CredentialTable.id))
+                .get()
               yield* tx
                 .update(CredentialTable)
                 .set({ active: false })
                 .where(eq(CredentialTable.integration_id, credential.integration_id))
                 .run()
               yield* tx.update(CredentialTable).set({ active: true }).where(eq(CredentialTable.id, id)).run()
-              return credential.integration_id
+              return selected?.id === id ? undefined : credential.integration_id
             }),
           )
           .pipe(

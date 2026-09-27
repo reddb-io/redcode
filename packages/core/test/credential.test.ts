@@ -101,6 +101,7 @@ describe("Credential", () => {
         { type: Credential.Event.Switched.type, data: { integrationID, credentialID: newer.id } },
         { type: Credential.Event.Switched.type, data: { integrationID, credentialID: older.id } },
         { type: Credential.Event.Updated.type, data: {} },
+        { type: Credential.Event.Switched.type, data: { integrationID, credentialID: older.id } },
         { type: Credential.Event.Updated.type, data: {} },
         { type: Credential.Event.Updated.type, data: {} },
         { type: Credential.Event.Switched.type, data: { integrationID, credentialID: replacement.id } },
