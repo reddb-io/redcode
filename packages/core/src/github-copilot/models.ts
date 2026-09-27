@@ -151,6 +151,15 @@ function build(id: Model.ID, remote: UsableModel, baseURL: string, previous?: Mo
     ? remote.version.slice(remote.id.length + 1)
     : remote.version
   const released = previous?.time.released || Date.parse(version)
+  const generated = variants(remote, messages)
+  const generation = Number(/(?:^|\/)gpt-(\d+)(?:\.\d+)?/.exec(remote.id.toLowerCase())?.[1])
+  const reasoningDefaults =
+    endpoint === "responses" &&
+    generation >= 5 &&
+    !/-chat(?:-|$)|-pro(?:-|$)/i.test(remote.id) &&
+    generated.some((variant) => variant.id === "medium")
+      ? { reasoningEffort: "medium", reasoningSummary: "auto", include: ["reasoning.encrypted_content"] }
+      : undefined
 
   return Model.Info.make({
     ...Model.Info.default(Provider.ID.githubCopilot, id),
@@ -160,7 +169,7 @@ function build(id: Model.ID, remote: UsableModel, baseURL: string, previous?: Mo
     family: previous?.family ?? Model.Family.make(remote.capabilities.family),
     name: previous?.name ?? remote.name,
     package: messages ? "@opencode/ai/providers/anthropic" : Provider.aisdk("@ai-sdk/github-copilot"),
-    settings: Provider.mergeOverlay(previous?.settings, {
+    settings: Provider.mergeOverlay(Provider.mergeOverlay(reasoningDefaults, previous?.settings), {
       baseURL: messages ? `${baseURL}/v1` : baseURL,
       ...(endpoint ? { endpoint } : {}),
     }),
@@ -168,10 +177,12 @@ function build(id: Model.ID, remote: UsableModel, baseURL: string, previous?: Mo
     body: previous?.body,
     capabilities: {
       tools: remote.capabilities.supports.tool_calls,
+      reasoning: generated.length > 0,
       input,
       output: ["text"],
     },
-    variants: variants(remote, messages),
+    variants: generated,
+    reasoningVariantIDs: generated.map((variant) => variant.id),
     time: { released: Number.isFinite(released) ? released : 0 },
     cost: [
       {

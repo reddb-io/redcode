@@ -38,6 +38,18 @@ test("defensively syncs advertised Copilot models", async () => {
           },
           {
             model_picker_enabled: true,
+            id: "gpt-6-sol",
+            name: "GPT-6 Sol",
+            version: "gpt-6-sol-2026-09-01",
+            supported_endpoints: ["/responses"],
+            capabilities: {
+              family: "gpt",
+              limits: { max_output_tokens: 16384, max_prompt_tokens: 180000 },
+              supports: { tool_calls: true, reasoning_effort: ["low", "medium", "high"] },
+            },
+          },
+          {
+            model_picker_enabled: true,
             id: "claude-sonnet",
             name: "Claude Sonnet",
             version: "claude-sonnet-2026-06-01",
@@ -104,7 +116,16 @@ test("defensively syncs advertised Copilot models", async () => {
       Model.VariantID.make("low"),
       Model.VariantID.make("high"),
     ])
+    expect(model?.capabilities.reasoning).toBe(true)
+    expect(model?.reasoningVariantIDs).toEqual(["low", "high"])
+    expect(model?.settings?.reasoningEffort).toBeUndefined()
     expect(model?.capabilities.input).toEqual(["text", "image", "pdf"])
+    expect(models.get(Model.ID.make("gpt-6-sol"))?.settings).toMatchObject({
+      reasoningEffort: "medium",
+      reasoningSummary: "auto",
+      include: ["reasoning.encrypted_content"],
+    })
+    expect(models.get(Model.ID.make("gpt-6-sol"))?.reasoningVariantIDs).toEqual(["low", "medium", "high"])
     expect(models.get(Model.ID.make("claude-sonnet"))?.package).toBe("@opencode/ai/providers/anthropic")
     expect(models.get(Model.ID.make("claude-sonnet"))?.settings).toMatchObject({
       baseURL: `${server.url.origin}/v1`,
