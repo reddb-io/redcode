@@ -47,6 +47,7 @@ type Active = {
   // Resolves with the terminal Info once the command exits, times out, or is killed. A wait
   // started after termination resolves immediately from the already-completed deferred.
   done: Deferred.Deferred<Info, NotFoundError>
+  stop: Effect.Effect<void>
   timeoutFiber?: Fiber.Fiber<void>
   timeout?: (duration: number) => Effect.Effect<void>
 }
@@ -170,7 +171,11 @@ const layer = () =>
       })
 
       const remove = Effect.fn("Shell.remove")(function* (id: Shell.ID) {
-        yield* require(id)
+        const command = yield* require(id)
+        if (command.info.status === "running") {
+          yield* command.stop
+          yield* Deferred.await(command.done).pipe(Effect.ignore)
+        }
         yield* removeCommand(id)
       })
 
@@ -317,6 +322,7 @@ const layer = () =>
                 size: 0,
                 newlines: 0,
                 done: Deferred.makeUnsafe<Info, NotFoundError>(),
+                stop: handle.kill({ forceKillAfter: Duration.seconds(3) }).pipe(Effect.catch(() => Effect.void)),
               }
               commands.set(id, command)
 
