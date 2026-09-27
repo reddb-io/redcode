@@ -50,6 +50,7 @@ export function host(overrides: Overrides = {}): Plugin.Context {
       get: () => Effect.die("unused provider.get"),
       transform: () => Effect.die("unused provider.transform"),
       reload: () => Effect.die("unused provider.reload"),
+      remove: () => Effect.die("unused provider.remove"),
     },
     model: overrides.model ?? {
       list: () => Effect.die("unused model.list"),
@@ -76,6 +77,10 @@ export function host(overrides: Overrides = {}): Plugin.Context {
     integration: overrides.integration ?? {
       list: () => Effect.die("unused integration.list"),
       get: () => Effect.die("unused integration.get"),
+      console: {
+        organizations: () => Effect.die("unused integration.console.organizations"),
+        organization: { select: () => Effect.die("unused integration.console.organization.select") },
+      },
       connect: {
         key: () => Effect.die("unused integration.connect.key"),
       },
@@ -235,6 +240,7 @@ export function providerHost(providers: Provider.Interface): Plugin.Context["pro
         ),
       ),
     reload: providers.reload,
+    remove: () => Effect.die("unused provider.remove"),
     transform: (callback) =>
       providers.transform((editor) =>
         callback({
@@ -260,6 +266,7 @@ export const noProviders: Plugin.Context["provider"] = {
   get: () => Effect.die("unused provider.get"),
   transform: () => Effect.die("unused provider.transform"),
   reload: () => Effect.die("unused provider.reload"),
+  remove: () => Effect.die("unused provider.remove"),
 }
 
 export function modelHost(models: Model.Interface): Plugin.Context["model"] {
@@ -292,6 +299,10 @@ export function integrationHost(integration: Integration.Interface): Plugin.Cont
   return {
     list: () => Effect.die("unused integration.list"),
     get: () => Effect.die("unused integration.get"),
+    console: {
+      organizations: () => Effect.die("unused integration.console.organizations"),
+      organization: { select: () => Effect.die("unused integration.console.organization.select") },
+    },
     connect: {
       key: () => Effect.die("unused integration.connect.key"),
     },

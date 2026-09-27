@@ -660,6 +660,7 @@ export const node = makeLocationNode({
     SessionStore.node,
     SessionCompaction.node,
     Plugin.node,
+    Permission.node,
     Config.node,
     Intelligence.node,
     SessionTitle.node,

@@ -26,9 +26,9 @@ export const generate = Effect.fn("SessionGenerate.generate")(function* (input: 
   const instances = yield* Instance.Service
   const database = yield* Database.Service
   const llm = yield* LLMClient.Service
-  const config = yield* Config.Service
 
   return yield* Effect.gen(function* () {
+    const config = yield* Config.Service
     yield* Plugin.awaitActivation
     const context = yield* SessionContext.Service
     const selection = yield* context.select(input.session.id)

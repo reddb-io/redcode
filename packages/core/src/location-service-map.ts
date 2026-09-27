@@ -1,4 +1,5 @@
 import { Context, Effect, Exit, Layer, LayerMap, RcMap } from "effect"
+import type { SqlError } from "effect/unstable/sql/SqlError"
 import { LayerNode } from "@opencode/util/effect/layer-node"
 import { Node } from "@opencode/util/effect/app-node"
 import { AbsolutePath } from "@opencode/schema/schema"
@@ -15,7 +16,12 @@ export class Service extends Context.Service<
   }
 }
 
-export const node = LayerNode.unbound(Service, Node.tags.values.global)
+export const node = LayerNode.unbound<
+  Service,
+  LayerMap.LayerMap<Location.Ref, Instance.Services, Instance.Error>,
+  typeof Node.tags.values.global,
+  SqlError
+>(Service, Node.tags.values.global)
 
 export const reload = Effect.fn("LocationServiceMap.reload")(function* () {
   const locations = yield* Service

@@ -40,6 +40,7 @@ const layer = Layer.effect(
     const database = yield* Database.Service
     const locations = yield* LocationServiceMap.Service
     const sessions = yield* Session.Service
+    const credentials = yield* Credential.Service
     const http = yield* HttpClient.HttpClient
     const pending = new Set<SessionSchema.ID>()
 
@@ -167,6 +168,7 @@ const layer = Layer.effect(
       yield* Plugin.awaitActivation.pipe(Effect.provide(locations.get(info.location)))
       const account = (yield* ConsoleOrganization.list(credentialID).pipe(
         Effect.provide(locations.get(info.location)),
+        Effect.provideService(Credential.Service, credentials),
         Effect.provideService(HttpClient.HttpClient, http),
       ))[0]
       if (!account) return yield* Effect.fail(new Error(`Console account not found: ${credentialID}`))
@@ -236,5 +238,5 @@ const layer = Layer.effect(
 export const node = makeGlobalNode({
   service: Service,
   layer,
-  deps: [Bus.node, Database.node, LocationServiceMap.node, Session.node, httpClient],
+  deps: [Bus.node, Credential.node, Database.node, LocationServiceMap.node, Session.node, httpClient],
 })
