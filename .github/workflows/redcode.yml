@@ -38,17 +38,32 @@ jobs:
       - name: Verify generated client
         working-directory: packages/client
         run: bun run check:generated
+
+  tests:
+    name: tests (${{ matrix.shard.name }})
+    strategy:
+      fail-fast: false
+      matrix:
+        shard:
+          - name: core-app-tui
+            filters: --filter=@opencode/core --filter=@opencode/app --filter=@opencode/tui
+          - name: remaining
+            filters: --filter=!@opencode/core --filter=!@opencode/app --filter=!@opencode/tui
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
+      - uses: ./.github/actions/setup-bun
       - name: Install ripgrep for offline Core tests
         run: |
           sudo apt-get update
           sudo apt-get install --yes ripgrep
-      - name: Test all workspace packages
+      - name: Test workspace packages
         env:
           GITHUB_ACTIONS: "false"
-        run: node node_modules/turbo/bin/turbo test --concurrency=2 --continue=always
+        run: node node_modules/turbo/bin/turbo test ${{ matrix.shard.filters }} --concurrency=2 --continue=always
 
   sidecar:
-    needs: verify
     strategy:
       fail-fast: false
       matrix:
@@ -102,7 +117,6 @@ jobs:
           retention-days: 7
 
   design:
-    needs: verify
     runs-on: ubuntu-latest
     timeout-minutes: 60
     env:
@@ -131,7 +145,7 @@ jobs:
           retention-days: 7
 
   build:
-    needs: sidecar
+    needs: [verify, tests, sidecar]
     runs-on: ubuntu-latest
     timeout-minutes: 60
     env:
