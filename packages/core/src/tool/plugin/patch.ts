@@ -244,7 +244,7 @@ export const Plugin = {
                 target: change.type === "update" && change.moveTarget ? change.moveTarget.absolute : change.target.absolute,
               })))
               const written = applied
-                .filter((item) => item.type !== "delete")
+                .filter((item) => item.type !== "delete" && staged.get(item.target) !== undefined)
                 .filter((item, index, items) => items.findIndex((other) => other.target === item.target) === index)
               const formatted = new Map<string, string>()
               const warnings: string[] = []
@@ -275,15 +275,14 @@ export const Plugin = {
               })
               yield* FileMutation.publishChanges(
                 bus,
-                prepared.flatMap((change) => {
-                  if (change.type === "delete") return [{ file: change.target.absolute, event: "unlink" as const }]
-                  if (change.type === "add") return [{ file: change.target.absolute, event: "add" as const }]
-                  if (change.moveTarget)
-                    return [
-                      { file: change.target.absolute, event: "unlink" as const },
-                      { file: change.moveTarget.absolute, event: "add" as const },
-                    ]
-                  return [{ file: change.target.absolute, event: "change" as const }]
+                [...new Set(prepared.flatMap((change) => [
+                  change.target.absolute,
+                  ...(change.type === "update" && change.moveTarget ? [change.moveTarget.absolute] : []),
+                ]))].flatMap((file) => {
+                  const existed = originals.get(file) !== undefined
+                  const remains = staged.get(file) !== undefined
+                  if (!existed && !remains) return []
+                  return [{ file, event: remains ? (existed ? "change" as const : "add" as const) : "unlink" as const }]
                 }),
               )
               yield* Effect.forEach(

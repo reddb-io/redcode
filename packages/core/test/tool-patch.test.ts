@@ -358,12 +358,54 @@ describe("PatchTool", () => {
       Effect.gen(function* () {
         const target = path.join(directory, "staged.txt")
         yield* Effect.promise(() => fs.writeFile(target, "first\n"))
+        const events: { type: string; data: unknown }[] = []
+        const bus = yield* Bus.Service
+        const unsubscribe = yield* bus.listen((event) =>
+          Effect.sync(() => {
+            if (event.type === "filesystem.changed" || event.type === "file.edited")
+              events.push({ type: event.type, data: event.data })
+          }),
+        )
         const settled = yield* executeTool(
           registry,
           call("*** Begin Patch\n*** Delete File: staged.txt\n*** Add File: staged.txt\n+second\n*** End Patch"),
         )
         expect(settled.status).toBe("completed")
         expect(yield* Effect.promise(() => fs.readFile(target, "utf8"))).toBe("second\n")
+        yield* unsubscribe
+        expect(events).toMatchObject([
+          { type: "filesystem.changed", data: { event: "change" } },
+          { type: "file.edited" },
+        ])
+      }),
+    ),
+  )
+
+  it.live("skips formatting and events for a file added and deleted in one patch", () =>
+    withTempTool((directory, registry) =>
+      Effect.gen(function* () {
+        const formatted: string[] = []
+        formatFile = (file) => Effect.sync(() => {
+          formatted.push(file)
+          return false
+        })
+        const events: string[] = []
+        const bus = yield* Bus.Service
+        const unsubscribe = yield* bus.listen((event) =>
+          Effect.sync(() => {
+            if (event.type === "filesystem.changed" || event.type === "file.edited") events.push(event.type)
+          }),
+        )
+        const settled = yield* executeTool(
+          registry,
+          call("*** Begin Patch\n*** Add File: temporary.txt\n+content\n*** Delete File: temporary.txt\n*** End Patch"),
+        )
+        yield* unsubscribe
+        expect(settled.status).toBe("completed")
+        expect(yield* exists(path.join(directory, "temporary.txt"))).toBe(false)
+        expect(formatted).toEqual([])
+        expect(touched).toEqual([])
+        expect(events).toEqual([])
       }),
     ),
   )
