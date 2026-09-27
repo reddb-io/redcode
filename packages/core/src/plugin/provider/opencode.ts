@@ -10,6 +10,7 @@ import { Integration } from "../../integration.js"
 import { IntegrationConnection } from "../../integration/connection.js"
 import { ManagedPolicy } from "../../managed-policy.js"
 import { Model } from "../../model.js"
+import { Variant } from "../../variant.js"
 import { Provider } from "../../provider.js"
 import { WebSearch } from "../../websearch.js"
 import { ConfigPolicy } from "@opencode/schema/config/policy"
@@ -239,6 +240,13 @@ export const OpencodePlugin = define<HttpClient.HttpClient | Bus.Service | Manag
               if (variant.headers !== undefined)
                 existing.headers = Provider.mergeHeaders(existing.headers, variant.headers)
               if (variant.body !== undefined) existing.body = Provider.mergeOverlay(existing.body, variant.body)
+            }
+            const reasoning = config.capabilities?.reasoning
+            if (reasoning !== undefined) {
+              const reconciled = Variant.reconcile(model, reasoning, config.variants)
+              model.variants = [...reconciled.variants]
+              if (reconciled.ids.length) model.reasoningVariantIDs = [...reconciled.ids]
+              else delete model.reasoningVariantIDs
             }
             if (config.cost !== undefined)
               model.cost = (Array.isArray(config.cost) ? config.cost : [config.cost]).map((cost) => ({

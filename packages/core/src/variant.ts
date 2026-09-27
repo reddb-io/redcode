@@ -14,6 +14,7 @@ type Overlay = Omit<Variants[number], "id">
 type Protocol = (model: Model.Info, support: Support) => Variants
 
 export function resolve(model: Model.Info, supports: readonly Support[] = [{ type: "effort" }]): Variants {
+  if (model.capabilities.reasoning === false) return []
   const protocol = model.package === undefined ? undefined : PROTOCOLS[model.package]
   if (!protocol) return []
   const toggle = supports.some((support) => support.type === "toggle") ? protocol(model, { type: "toggle" }) : []
@@ -22,6 +23,29 @@ export function resolve(model: Model.Info, supports: readonly Support[] = [{ typ
   const main = effort ? protocol(model, effort) : budget ? protocol(model, budget) : toggle
   const variants = [...toggle.filter((variant) => variant.id === "none"), ...main]
   return variants.filter((variant, index) => variants.findIndex((other) => other.id === variant.id) === index)
+}
+
+/** Reconcile V1 reasoning support while retaining variants authored for other purposes. */
+export function reconcile(
+  model: Model.Info,
+  reasoning: boolean,
+  overrides: readonly { readonly id: Model.VariantID; readonly disabled?: boolean }[] = [],
+) {
+  const tracked = new Set(model.reasoningVariantIDs ?? [])
+  const authored = new Set(overrides.filter((item) => !item.disabled).map((item) => item.id))
+  if (!reasoning) {
+    const variants = model.variants.filter((variant) => !tracked.has(variant.id) || authored.has(variant.id))
+    return { variants, ids: [...tracked].filter((id) => authored.has(id) && variants.some((variant) => variant.id === id)) }
+  }
+  const existing = new Set(model.variants.map((variant) => variant.id))
+  const disabled = new Set(overrides.filter((item) => item.disabled).map((item) => item.id))
+  const generated = tracked.size
+    ? []
+    : resolve(model).filter((variant) => !existing.has(variant.id) && !disabled.has(variant.id))
+  return {
+    variants: [...model.variants, ...generated],
+    ids: [...tracked].filter((id) => existing.has(id)).concat(generated.map((variant) => variant.id)),
+  }
 }
 
 const EFFORTS = ["low", "medium", "high"]

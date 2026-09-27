@@ -32,9 +32,11 @@ export type Capabilities = Model.Capabilities
 export function overlayCapabilities(base: Capabilities, override: CapabilityOverrides): Capabilities {
   const input = override.input ?? base.input
   const temperature = override.temperature ?? base.temperature
+  const reasoning = override.reasoning ?? base.reasoning
   return {
     tools: override.tools ?? base.tools,
     ...(temperature === undefined ? {} : { temperature }),
+    ...(reasoning === undefined ? {} : { reasoning }),
     input:
       override.image === undefined
         ? [...input]

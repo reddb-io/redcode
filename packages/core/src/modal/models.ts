@@ -96,6 +96,7 @@ function limit(value: number | undefined, fallback: number) {
 function build(id: Model.ID, remote: RemoteModel, baseURL: string, previous?: Model.Info) {
   const cost = previous?.cost[0]
   const input = previous?.limit.input
+  const selectedVariants = remote.reasoning_options === undefined ? (previous?.variants ?? []) : variants(remote)
   return Model.Info.make({
     ...Model.Info.default(providerID, id),
     id,
@@ -113,10 +114,26 @@ function build(id: Model.ID, remote: RemoteModel, baseURL: string, previous?: Mo
     body: previous?.body,
     capabilities: {
       tools: remote.supported_features?.includes("tools") ?? previous?.capabilities.tools ?? true,
+      ...(previous?.capabilities.temperature === undefined ? {} : { temperature: previous.capabilities.temperature }),
+      ...(remote.reasoning_options === undefined && previous?.capabilities.reasoning === undefined
+        ? {}
+        : {
+            reasoning:
+              remote.reasoning_options === undefined
+                ? previous?.capabilities.reasoning
+                : remote.reasoning_options.length > 0,
+          }),
       input: remote.input_modalities ?? previous?.capabilities.input ?? ["text"],
       output: remote.output_modalities ?? previous?.capabilities.output ?? ["text"],
     },
-    variants: remote.reasoning_options === undefined ? (previous?.variants ?? []) : variants(remote),
+    variants: selectedVariants,
+    ...(remote.reasoning_options === undefined
+      ? previous?.reasoningVariantIDs === undefined
+        ? {}
+        : { reasoningVariantIDs: previous.reasoningVariantIDs }
+      : selectedVariants.length
+        ? { reasoningVariantIDs: selectedVariants.map((variant) => variant.id) }
+        : {}),
     time: previous?.time ?? { released: 0 },
     cost: [
       {

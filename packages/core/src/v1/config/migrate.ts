@@ -330,11 +330,13 @@ function migrateModel(info: typeof ConfigProviderV1.Model.Type) {
     info.tool_call !== undefined ||
     info.attachment !== undefined ||
     info.temperature !== undefined ||
+    info.reasoning !== undefined ||
     info.modalities?.input !== undefined ||
     info.modalities?.output !== undefined
       ? {
           ...(info.tool_call === undefined ? {} : { tools: info.tool_call }),
           ...(info.temperature === undefined ? {} : { temperature: info.temperature }),
+          ...(info.reasoning === undefined ? {} : { reasoning: info.reasoning }),
           ...(info.attachment === undefined ? {} : { image: info.attachment }),
           ...(info.modalities?.input === undefined ? {} : { input: info.modalities.input }),
           ...(info.modalities?.output === undefined ? {} : { output: info.modalities.output }),

@@ -103,8 +103,14 @@ function normalize(input: Record<string, SourceProvider>): readonly Snapshot[] {
       const baseCost = cost(model.cost)
       const id = Model.ID.make(model.id)
       const base = modelInfo(item, id, model, { cost: baseCost })
-      const variants = Variant.resolve({ ...base, package: nativePackage(item, model) }, supports(model))
-      models.push({ ...base, variants })
+      const variants = model.reasoning
+        ? Variant.resolve({ ...base, package: nativePackage(item, model) }, supports(model))
+        : []
+      models.push({
+        ...base,
+        variants,
+        ...(variants.length ? { reasoningVariantIDs: variants.map((variant) => variant.id) } : {}),
+      })
       for (const [mode, options] of Object.entries(model.experimental?.modes ?? {})) {
         const modeID = Model.ID.make(`${model.id}-${mode}`)
         models.push(
@@ -235,10 +241,12 @@ function modelInfo(
     capabilities: {
       tools: model.tool_call,
       ...(model.temperature === undefined ? {} : { temperature: model.temperature }),
+      reasoning: model.reasoning,
       input: [...(model.modalities?.input ?? [])],
       output: [...(model.modalities?.output ?? [])],
     },
     variants: [...(input.variants ?? [])],
+    ...(input.variants?.length ? { reasoningVariantIDs: input.variants.map((variant) => variant.id) } : {}),
     time: { released: released(model.release_date) },
     cost: (input.cost ?? cost(model.cost)).map((item) => ({
       ...item,

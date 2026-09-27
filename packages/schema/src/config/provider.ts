@@ -42,6 +42,7 @@ const ModelOverlays = {
 export const CapabilityOverrides = Schema.Struct({
   tools: Schema.Boolean.pipe(optional),
   temperature: Schema.Boolean.pipe(optional),
+  reasoning: Schema.Boolean.pipe(optional),
   image: Schema.Boolean.pipe(optional),
   input: Schema.String.pipe(Schema.Array, optional),
   output: Schema.String.pipe(Schema.Array, optional),

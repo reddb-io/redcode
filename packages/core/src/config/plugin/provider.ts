@@ -144,16 +144,21 @@ export const Plugin = define({
             if (config.limit !== undefined) model.limit = { ...model.limit, ...config.limit }
             if (config.variants !== undefined) {
               // V1 variant overrides merged into generated defaults before disabled IDs were removed.
-              if (inherit && !source?.base)
-                model.variants = [
-                  ...Variant.resolve({
-                    ...model,
-                    package: model.package ?? models.provider.get(providerID)?.provider.package,
-                  }),
-                ]
+              if (inherit && !source?.base) {
+                const generated = Variant.resolve({
+                  ...model,
+                  package: model.package ?? models.provider.get(providerID)?.provider.package,
+                })
+                model.variants = [...generated]
+                if (generated.length) model.reasoningVariantIDs = generated.map((variant) => variant.id)
+              }
               for (const variant of config.variants) {
                 if (variant.disabled) {
                   model.variants = model.variants.filter((item) => item.id !== variant.id)
+                  if (model.reasoningVariantIDs) {
+                    model.reasoningVariantIDs = model.reasoningVariantIDs.filter((id) => id !== variant.id)
+                    if (model.reasoningVariantIDs.length === 0) delete model.reasoningVariantIDs
+                  }
                   continue
                 }
                 let existing = model.variants.find((item) => item.id === variant.id)
@@ -171,12 +176,24 @@ export const Plugin = define({
           })
           if (config.variants === undefined && !source?.base)
             models.update(providerID, id, (model) => {
-              model.variants = [
-                ...Variant.resolve({
-                  ...model,
-                  package: model.package ?? models.provider.get(providerID)?.provider.package,
-                }),
-              ]
+              const generated = Variant.resolve({
+                ...model,
+                package: model.package ?? models.provider.get(providerID)?.provider.package,
+              })
+              model.variants = [...generated]
+              if (generated.length) model.reasoningVariantIDs = generated.map((variant) => variant.id)
+            })
+          const reasoning = config.capabilities?.reasoning
+          if (reasoning !== undefined)
+            models.update(providerID, id, (model) => {
+              const reconciled = Variant.reconcile(
+                { ...model, package: model.package ?? models.provider.get(providerID)?.provider.package },
+                reasoning,
+                config.variants,
+              )
+              model.variants = [...reconciled.variants]
+              if (reconciled.ids.length) model.reasoningVariantIDs = [...reconciled.ids]
+              else delete model.reasoningVariantIDs
             })
         }
       }

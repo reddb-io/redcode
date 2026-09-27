@@ -96,6 +96,60 @@ describe("ConfigProviderPlugin.Plugin", () => {
     }),
   )
 
+  it.effect("keeps authored variants when V1 disables catalog reasoning", () =>
+    Effect.gen(function* () {
+      const providers = yield* Provider.Service
+      const models = yield* Model.Service
+      const providerID = Provider.ID.make("custom")
+      const modelID = Model.ID.make("chat")
+      yield* providers.transform((editor) =>
+        editor.models.update(providerID, modelID, (model) => {
+          model.capabilities = { ...model.capabilities, reasoning: true }
+          model.variants = [
+            { id: Model.VariantID.make("low") },
+            { id: Model.VariantID.make("high") },
+            { id: Model.VariantID.make("fast") },
+          ]
+          model.reasoningVariantIDs = [Model.VariantID.make("low"), Model.VariantID.make("high")]
+        }),
+      )
+      const migrated = ConfigNormalize.normalize({
+        provider: { custom: { models: { chat: { reasoning: false, variants: { high: {} } } } } },
+      })
+      if (migrated.type !== "normalized") throw new Error("Expected normalized config")
+      yield* addPlugin([new Document({ type: "document", info: decode(migrated.encoded) })])
+      const model = required(yield* models.get(providerID, modelID))
+      expect(model.capabilities.reasoning).toBe(false)
+      expect(model.variants.map((variant) => variant.id)).toEqual(["high", "fast"])
+      expect(model.reasoningVariantIDs).toEqual(["high"])
+    }),
+  )
+
+  it.effect("adds reasoning variants beside unrelated modes when V1 enables reasoning", () =>
+    Effect.gen(function* () {
+      const providers = yield* Provider.Service
+      const models = yield* Model.Service
+      const providerID = Provider.ID.make("custom")
+      const modelID = Model.ID.make("chat")
+      yield* providers.transform((editor) => {
+        editor.update(providerID, (provider) => {
+          provider.package = "@opencode/ai/providers/openai-compatible"
+        })
+        editor.models.update(providerID, modelID, (model) => {
+          model.capabilities = { ...model.capabilities, reasoning: false }
+          model.variants = [{ id: Model.VariantID.make("fast") }]
+        })
+      })
+      const migrated = ConfigNormalize.normalize({ provider: { custom: { models: { chat: { reasoning: true } } } } })
+      if (migrated.type !== "normalized") throw new Error("Expected normalized config")
+      yield* addPlugin([new Document({ type: "document", info: decode(migrated.encoded) })])
+      const model = required(yield* models.get(providerID, modelID))
+      expect(model.capabilities.reasoning).toBe(true)
+      expect(model.variants.map((variant) => variant.id)).toEqual(["fast", "low", "medium", "high"])
+      expect(model.reasoningVariantIDs).toEqual(["low", "medium", "high"])
+    }),
+  )
+
   it.effect("applies variant overrides to generated defaults for new models", () =>
     Effect.gen(function* () {
       const models = yield* Model.Service

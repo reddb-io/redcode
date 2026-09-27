@@ -498,6 +498,16 @@ describe("ConfigNormalize", () => {
     expect(result.diagnostics).toEqual([])
   })
 
+  test("preserves V1 reasoning support while reporting remaining provider defaults", () => {
+    const result = normalized({ provider: { custom: { models: { chat: { reasoning: false } } } } })
+    expect(result.encoded.providers).toMatchObject({
+      custom: { models: { chat: { capabilities: { reasoning: false } } } },
+    })
+    expect(result.diagnostics.map((item) => [item.kind, item.path])).toEqual([
+      ["unsupported", ["provider", "custom", "models", "chat", "reasoning"]],
+    ])
+  })
+
   test("reports unsupported legacy settings without including their values", () => {
     const secret = "do-not-log-this-value"
     const result = normalized({
