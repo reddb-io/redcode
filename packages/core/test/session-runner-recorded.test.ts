@@ -41,7 +41,7 @@ import { afterAll, describe, expect } from "bun:test"
 import { mkdtemp, rm } from "node:fs/promises"
 import { tmpdir } from "node:os"
 import { eq } from "drizzle-orm"
-import { Context, Effect, Layer } from "effect"
+import { Deferred, Effect, Layer } from "effect"
 import path from "node:path"
 import { testEffect } from "./lib/effect"
 import { LocationServiceMap } from "@opencode/core/location-service-map"
@@ -98,55 +98,27 @@ const promptModels = Layer.mock(Model.Service, {
   default: () => Effect.undefined,
   small: () => Effect.undefined,
 })
-const runnerLayer = (llmClient: Layer.Layer<LLMClientService>) =>
-  AppNodeBuilder.build(LayerNode.group([SessionRunnerLLM.node, SessionProjector.node]), [
-    persistedBus,
-    Agent.node.replace(
-      Agent.node.mapLayer((layer) =>
-        layer.pipe(
-          Layer.tap((context) =>
-            Context.get(context, Agent.Service).transform((editor) =>
-              editor.update(Agent.ID.make("build"), (agent) => {
-                agent.mode = "primary"
-                agent.permissions.push({ action: "execute", resource: "*", effect: "deny" })
-              }),
-            ),
-          ),
+const runner = Deferred.makeUnsafe<SessionRunner.Interface>()
+const execution = Layer.effect(
+  SessionExecution.Service,
+  Effect.gen(function* () {
+    const coordinator = yield* SessionRunCoordinator.make<Session.ID, SessionRunner.RunError>({
+      drain: (sessionID, force) =>
+        Deferred.await(runner).pipe(
+          Effect.flatMap((sessionRunner) => sessionRunner.drain({ sessionID, force })),
+          Effect.asVoid,
         ),
-      ),
-    ),
-    Snapshot.node.replace(Snapshot.noopLayer),
-    LayerNodePlatform.llmClient.replace(llmClient),
-    SessionRunnerModel.node.replace(models),
-    InstructionBuiltIns.node.replace(systemContext),
-    InstructionDiscovery.node.replace(instructionContext),
-    Location.node.replace(Location.boundNode({ directory: AbsolutePath.make(projectDirectory) })),
-    SkillInstructions.node.replace(skillInstructions),
-    ReferenceInstructions.node.replace(referenceInstructions),
-    McpInstructions.node.replace(mcpInstructions),
-    Config.node.replace(config),
-    Permission.node.replace(permission),
-    PluginSupervisor.node.replace(Layer.empty),
-    Plugin.node.replace(Layer.mock(Plugin.Service, { awaitActivation: Effect.void })),
-  ])
-const execution = (llmClient: Layer.Layer<LLMClientService>) =>
-  Layer.effect(
-    SessionExecution.Service,
-    Effect.gen(function* () {
-      const sessionRunner = yield* SessionRunner.Service
-      const coordinator = yield* SessionRunCoordinator.make<Session.ID, SessionRunner.RunError>({
-        drain: (sessionID, force) => sessionRunner.drain({ sessionID, force }).pipe(Effect.asVoid),
-      })
-      return SessionExecution.Service.of({
-        active: coordinator.active,
-        isActive: coordinator.isActive,
-        resume: coordinator.run,
-        wake: coordinator.wake,
-        interrupt: (sessionID) => coordinator.interrupt(sessionID),
-        awaitIdle: coordinator.awaitIdle,
-      })
-    }),
-  ).pipe(Layer.provide(runnerLayer(llmClient)), Layer.orDie)
+    })
+    return SessionExecution.Service.of({
+      active: coordinator.active,
+      isActive: coordinator.isActive,
+      resume: coordinator.run,
+      wake: coordinator.wake,
+      interrupt: (sessionID) => coordinator.interrupt(sessionID),
+      awaitIdle: coordinator.awaitIdle,
+    })
+  }),
+)
 const testLayer = (llmClient: Layer.Layer<LLMClientService>) =>
   AppNodeBuilder.build(
     LayerNode.group([
@@ -180,11 +152,12 @@ const testLayer = (llmClient: Layer.Layer<LLMClientService>) =>
       Location.node.replace(Location.boundNode({ directory: AbsolutePath.make(projectDirectory) })),
       SkillInstructions.node.replace(skillInstructions),
       ReferenceInstructions.node.replace(referenceInstructions),
+      McpInstructions.node.replace(mcpInstructions),
       Config.node.replace(config),
       Snapshot.node.replace(Snapshot.noopLayer),
       PluginSupervisor.node.replace(Layer.empty),
       Plugin.node.replace(Layer.mock(Plugin.Service, { awaitActivation: Effect.void })),
-      SessionExecution.node.replace(execution(llmClient)),
+      SessionExecution.node.replace(execution),
     ],
   )
 const it = testEffect(testLayer(client))
@@ -196,6 +169,7 @@ describe("SessionRunnerLLM recorded", () => {
       const agents = yield* Agent.Service
       const models = yield* Model.Service
       const hooks = yield* PluginHooks.Service
+      yield* Deferred.succeed(runner, yield* SessionRunner.Service)
       yield* agents.transform((editor) =>
         editor.update(Agent.ID.make("build"), (agent) => {
           agent.mode = "primary"
