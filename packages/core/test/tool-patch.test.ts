@@ -1161,7 +1161,7 @@ describe("PatchTool", () => {
                   },
                 })
                 expect(assertions[1]?.resources).toEqual([target.replaceAll("\\", "/")])
-                expect(readsBeforeEditApproval).toBe(1)
+                expect(readsBeforeEditApproval).toBe(2)
                 expect(yield* Effect.promise(() => fs.readFile(target, "utf8"))).toBe("after\n")
               }),
             ),
@@ -1343,7 +1343,7 @@ describe("PatchTool", () => {
                   ),
                 ).toMatchObject({ status: "completed" })
                 expect(assertions.map((input) => input.action)).toEqual(["external_directory", "edit"])
-                expect(readsBeforeEditApproval).toBe(1)
+                expect(readsBeforeEditApproval).toBe(2)
                 expect(yield* Effect.promise(() => fs.readFile(target, "utf8"))).toBe("after\n")
               }),
             ),
