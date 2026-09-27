@@ -75,6 +75,7 @@ class Model extends Schema.Class<Model>("Config.Model")({
   capabilities: Capabilities.pipe(optional),
   variants: Schema.Struct({
     id: VariantID,
+    disabled: Schema.Boolean.pipe(optional),
     ...ModelOverlays,
   }).pipe(Schema.Array, optional),
   cost: Schema.Union([Cost, Cost.pipe(Schema.Array)]).pipe(optional),

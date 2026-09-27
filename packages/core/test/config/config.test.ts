@@ -661,6 +661,13 @@ describe("Config", () => {
     ).toMatchObject({ includeModels: ["chat"], excludeModels: ["legacy"] })
   })
 
+  test("migrates disabled V1 variants without passing disabled as a provider setting", () => {
+    const variant = ConfigMigrateV1.migrate({
+      provider: { custom: { models: { chat: { variants: { high: { disabled: true, effort: "high" } } } } } },
+    }).providers?.custom?.models?.chat?.variants?.[0]
+    expect(variant).toEqual({ id: "high", disabled: true, settings: { effort: "high" } })
+  })
+
   test("migrates the v1 small model to the title agent", () => {
     expect(
       ConfigMigrateV1.migrate({

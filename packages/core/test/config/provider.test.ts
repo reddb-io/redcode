@@ -34,6 +34,52 @@ function required<T>(value: T | undefined): T {
 const decode = Schema.decodeUnknownSync(Info)
 
 describe("ConfigProviderPlugin.Plugin", () => {
+  it.effect("removes variants disabled by migrated V1 model configuration", () =>
+    Effect.gen(function* () {
+      const providers = yield* Provider.Service
+      const models = yield* Model.Service
+      const providerID = Provider.ID.make("custom")
+      const modelID = Model.ID.make("chat")
+      yield* providers.transform((editor) =>
+        editor.models.update(providerID, modelID, (model) => {
+          model.variants = [
+            { id: Model.VariantID.make("low") },
+            { id: Model.VariantID.make("high") },
+          ]
+        }),
+      )
+      const migrated = ConfigNormalize.normalize({
+        provider: { custom: { models: { chat: { variants: { high: { disabled: true } } } } } },
+      })
+      if (migrated.type !== "normalized") throw new Error("Expected normalized config")
+      expect(migrated.diagnostics).toEqual([])
+      yield* addPlugin([new Document({ type: "document", info: decode(migrated.encoded) })])
+      expect((yield* models.get(providerID, modelID))?.variants.map((variant) => variant.id)).toEqual(["low"])
+    }),
+  )
+
+  it.effect("applies variant overrides to generated defaults for new models", () =>
+    Effect.gen(function* () {
+      const models = yield* Model.Service
+      yield* addPlugin([
+        new Document({
+          type: "document",
+          info: decode({
+            providers: {
+              custom: {
+                package: "@opencode/ai/providers/openai",
+                models: { chat: { variants: [{ id: "high", disabled: true }] } },
+              },
+            },
+          }),
+        }),
+      ])
+      const variants = required(yield* models.get(Provider.ID.make("custom"), Model.ID.make("chat"))).variants
+      expect(variants.map((variant) => variant.id)).toContain("low")
+      expect(variants.map((variant) => variant.id)).not.toContain("high")
+    }),
+  )
+
   it.effect("filters catalog models by the configured include and exclude lists", () =>
     Effect.gen(function* () {
       const providers = yield* Provider.Service

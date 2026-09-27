@@ -132,21 +132,6 @@ export const Plugin = define({
                 output: [...config.capabilities.output],
               }
             }
-            if (config.variants !== undefined) {
-              model.variants ??= []
-              for (const variant of config.variants) {
-                let existing = model.variants.find((item) => item.id === variant.id)
-                if (!existing) {
-                  existing = { id: variant.id }
-                  model.variants.push(existing)
-                }
-                if (variant.settings !== undefined)
-                  existing.settings = Provider.mergeOverlay(existing.settings, variant.settings)
-                if (variant.headers !== undefined)
-                  existing.headers = Provider.mergeHeaders(existing.headers, variant.headers)
-                if (variant.body !== undefined) existing.body = Provider.mergeOverlay(existing.body, variant.body)
-              }
-            }
             if (config.cost !== undefined) {
               model.cost = (Array.isArray(config.cost) ? config.cost : [config.cost]).map((cost) => ({
                 tier: cost.tier && { ...cost.tier },
@@ -160,6 +145,32 @@ export const Plugin = define({
             }
             if (config.disabled !== undefined) model.enabled = !config.disabled
             if (config.limit !== undefined) model.limit = { ...model.limit, ...config.limit }
+            if (config.variants !== undefined) {
+              // V1 variant overrides merged into generated defaults before disabled IDs were removed.
+              if (inherit && !source?.base)
+                model.variants = [
+                  ...Variant.resolve({
+                    ...model,
+                    package: model.package ?? models.provider.get(providerID)?.provider.package,
+                  }),
+                ]
+              for (const variant of config.variants) {
+                if (variant.disabled) {
+                  model.variants = model.variants.filter((item) => item.id !== variant.id)
+                  continue
+                }
+                let existing = model.variants.find((item) => item.id === variant.id)
+                if (!existing) {
+                  existing = { id: variant.id }
+                  model.variants.push(existing)
+                }
+                if (variant.settings !== undefined)
+                  existing.settings = Provider.mergeOverlay(existing.settings, variant.settings)
+                if (variant.headers !== undefined)
+                  existing.headers = Provider.mergeHeaders(existing.headers, variant.headers)
+                if (variant.body !== undefined) existing.body = Provider.mergeOverlay(existing.body, variant.body)
+              }
+            }
           })
           if (config.variants === undefined && !source?.base)
             models.update(providerID, id, (model) => {

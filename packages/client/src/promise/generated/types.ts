@@ -2561,6 +2561,7 @@ export type ConfigEntry =
                 capabilities?: ModelCapabilities
                 variants?: Array<{
                   id: string
+                  disabled?: boolean
                   settings?: ConfigModelSettings
                   headers?: { [x: string]: string }
                   body?: { [x: string]: JsonValue }

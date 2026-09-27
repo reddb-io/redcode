@@ -36,6 +36,12 @@ describe("Config.Entry", () => {
     )
   })
 
+  test("round-trips disabled variant configuration", () => {
+    const input = { providers: { custom: { models: { chat: { variants: [{ id: "high", disabled: true }] } } } } }
+    const decoded = Schema.decodeUnknownSync(Config.Info)(input)
+    expect(Schema.encodeSync(Config.Info)(decoded)).toEqual(input)
+  })
+
   test("accepts disabled, fixed, and random web search selection", () => {
     const decode = Schema.decodeUnknownSync(Config.Info)
 

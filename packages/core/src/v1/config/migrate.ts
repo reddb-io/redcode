@@ -345,7 +345,10 @@ function migrateModel(info: typeof ConfigProviderV1.Model.Type) {
       info.variants &&
       Object.entries(info.variants).map(([id, options]) => ({
         id,
-        settings: ConfigProviderOptionsV1.model(options),
+        disabled: options.disabled,
+        settings: ConfigProviderOptionsV1.model(
+          Object.fromEntries(Object.entries(options).filter(([key]) => key !== "disabled")),
+        ),
       })),
     cost: costs,
     disabled: info.status === "deprecated" ? true : undefined,
