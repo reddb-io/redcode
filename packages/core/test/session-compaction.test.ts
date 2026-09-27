@@ -22,6 +22,7 @@ import { Project } from "@opencode/core/project"
 import { ProjectTable } from "@opencode/core/project/sql"
 import { App } from "@opencode/core/app"
 import { Agent } from "@opencode/core/agent"
+import { Location } from "@opencode/core/location"
 import { Provider } from "@opencode/core/provider"
 import { AbsolutePath } from "@opencode/core/schema"
 import { Money } from "@opencode/schema/money"
@@ -87,7 +88,11 @@ const it = testEffect(
       SessionModelRequest.node,
       PluginHooks.node,
     ]),
-    [Bus.node.replace(Bus.configured({ persist: true })), llmClient.replace(client)],
+    [
+      Bus.node.replace(Bus.configured({ persist: true })),
+      llmClient.replace(client),
+      Location.node.replace(Location.boundNode({ directory: AbsolutePath.make(process.cwd()) })),
+    ],
   ),
 )
 

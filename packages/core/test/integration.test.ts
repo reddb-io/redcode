@@ -7,10 +7,13 @@ import { makeGlobalNode } from "@opencode/util/effect/app-node"
 import { LayerNode } from "@opencode/util/effect/layer-node"
 import { Bus } from "@opencode/core/bus"
 import { Integration } from "@opencode/core/integration"
+import { Location } from "@opencode/core/location"
+import { AbsolutePath } from "@opencode/core/schema"
 import { State } from "@opencode/core/state"
 import { testEffect } from "./lib/effect"
 
-const it = testEffect(AppNodeBuilder.build(LayerNode.group([Integration.node, Credential.node, Bus.node])))
+const location = Location.node.replace(Location.boundNode({ directory: AbsolutePath.make(process.cwd()) }))
+const it = testEffect(AppNodeBuilder.build(LayerNode.group([Integration.node, Credential.node, Bus.node]), [location]))
 const failingCredentialNode = makeGlobalNode({
   service: Credential.Service,
   layer: Layer.succeed(
@@ -28,7 +31,7 @@ const failingCredentialNode = makeGlobalNode({
   deps: [],
 })
 const failingIt = testEffect(
-  AppNodeBuilder.build(LayerNode.group([Integration.node, Bus.node]), [Credential.node.replace(failingCredentialNode)]),
+  AppNodeBuilder.build(LayerNode.group([Integration.node, Bus.node]), [Credential.node.replace(failingCredentialNode), location]),
 )
 
 function eventually<A, E, R>(

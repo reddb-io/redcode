@@ -7,6 +7,7 @@ import { Database } from "@opencode/core/database/database"
 import { AppNodeBuilder } from "@opencode/core/effect/app-node-builder"
 import { llmClient } from "@opencode/core/effect/app-node-platform"
 import { Instructions } from "@opencode/core/instructions/index"
+import { Location } from "@opencode/core/location"
 import { PluginHooks } from "@opencode/core/plugin/hooks"
 import { Project } from "@opencode/core/project"
 import { ProjectTable } from "@opencode/core/project/sql"
@@ -40,7 +41,10 @@ const it = testEffect(
       PluginHooks.node,
       llmClient,
     ]),
-    [Bus.node.replace(Bus.configured({ persist: true }))],
+    [
+      Bus.node.replace(Bus.configured({ persist: true })),
+      Location.node.replace(Location.boundNode({ directory: AbsolutePath.make(process.cwd()) })),
+    ],
   ),
 )
 
