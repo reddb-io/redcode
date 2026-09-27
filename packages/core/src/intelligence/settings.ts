@@ -42,7 +42,7 @@ const make = Effect.gen(function* () {
     const content = current ?? (yield* Effect.forEach(legacy, readFile)).find((item) => item !== undefined)
     if (content === undefined) return IntelligenceEvaluation.defaults
     return yield* Schema.decodeUnknownEffect(
-      Schema.UnknownFromJsonString.pipe(Schema.decodeTo(Intelligence.Settings)),
+      Schema.fromJsonString(Intelligence.Settings),
     )(content).pipe(
       Effect.mapError(() => new IntelligenceEvaluation.Error({ message: "Invalid intelligence configuration" })),
     )
@@ -89,7 +89,7 @@ const make = Effect.gen(function* () {
     }
     yield* kv.set(
       key,
-      yield* Schema.decodeUnknownEffect(Schema.UnknownFromJsonString.pipe(Schema.decodeTo(Schema.Json)))(
+      yield* Schema.decodeUnknownEffect(Schema.fromJsonString(Schema.Json))(
         JSON.stringify(next),
       ).pipe(Effect.mapError(() => new IntelligenceEvaluation.Error({ message: "Invalid intelligence configuration" }))),
     )

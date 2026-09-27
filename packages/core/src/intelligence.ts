@@ -141,7 +141,10 @@ const make = Effect.gen(function* () {
               },
             })),
           )
-    const evaluated = yield* response.pipe(Effect.either)
+    const evaluated = yield* response.pipe(Effect.match({
+      onFailure: (left) => ({ _tag: "Left" as const, left }),
+      onSuccess: (right) => ({ _tag: "Right" as const, right }),
+    }))
     const record: Intelligence.Evaluation = {
       id,
       fingerprint,
@@ -179,7 +182,7 @@ const make = Effect.gen(function* () {
     }
     const artifact = `redcode.intelligence.evaluation.${id}`
     const evidence = yield* Schema.decodeUnknownEffect(
-      Schema.UnknownFromJsonString.pipe(Schema.decodeTo(Schema.Json)),
+      Schema.fromJsonString(Schema.Json),
     )(JSON.stringify({
       evaluation: record,
       sources: input.sources,

@@ -29,7 +29,7 @@ export type Compatibility = Model.Compatibility
 export const Capabilities = Model.Capabilities
 export type Capabilities = Model.Capabilities
 
-export function overlayCapabilities(base: Capabilities, override: CapabilityOverrides): Capabilities {
+export function overlayCapabilities(base: Capabilities, override: CapabilityOverrides) {
   const input = override.input ?? base.input
   const temperature = override.temperature ?? base.temperature
   const reasoning = override.reasoning ?? base.reasoning

@@ -1,6 +1,7 @@
 export * as PluginHost from "./host.js"
 
 import { Plugin } from "@opencode/plugin/effect"
+import { HttpClient } from "effect/unstable/http"
 import type { IntegrationMethodRegistration } from "@opencode/plugin/effect/integration"
 import { EventManifest } from "@opencode/schema/event-manifest"
 import type { Event } from "@opencode/schema/event"
@@ -11,6 +12,7 @@ import { Agent } from "../agent.js"
 import { AISDK } from "../aisdk.js"
 import { Command } from "../command.js"
 import { Credential } from "../credential.js"
+import { ConsoleOrganization } from "../console-organization.js"
 import { Bus } from "../bus.js"
 import { Integration } from "../integration.js"
 import { KV } from "../kv.js"
@@ -21,6 +23,7 @@ import { Mcp } from "../mcp/index.js"
 import { Session } from "../session.js"
 import { PersistentPty } from "../persistent-pty.js"
 import { Provider } from "../provider.js"
+import { ProviderRemove } from "../provider-removal.js"
 import { Reference } from "../reference.js"
 import { Rpc } from "../rpc.js"
 import { AbsolutePath, type DeepMutable } from "../schema.js"
@@ -52,10 +55,13 @@ export const make = Effect.fn("PluginHost.make")(function* (
   const agents = yield* Agent.Service
   const aisdk = yield* AISDK.Service
   const providers = yield* Provider.Service
+  const removal = yield* ProviderRemove.Service
   const models = yield* Model.Service
   const commands = yield* Command.Service
   const bus = yield* Bus.Service
   const integration = yield* Integration.Service
+  const credentials = yield* Credential.Service
+  const http = yield* HttpClient.HttpClient
   const kv = yield* KV.Service
   const mcp = yield* Mcp.Service
   const location = yield* Location.Service
@@ -188,6 +194,7 @@ export const make = Effect.fn("PluginHost.make")(function* (
     },
     provider: {
       list: () => response(providers.available()),
+      remove: (input) => response(removal.remove(input.providerID, { dryRun: input.dryRun })),
       get: (input) =>
         providers
           .get(Provider.ID.make(input.providerID))
@@ -273,6 +280,23 @@ export const make = Effect.fn("PluginHost.make")(function* (
     },
     integration: {
       list: () => response(integration.list()),
+      console: {
+        organizations: () =>
+          response(ConsoleOrganization.list().pipe(
+            Effect.provideService(Integration.Service, integration),
+            Effect.provideService(Credential.Service, credentials),
+            Effect.provideService(HttpClient.HttpClient, http),
+          )),
+        organization: {
+          select: (input) =>
+            ConsoleOrganization.select(input.credentialID, input.orgID).pipe(
+              Effect.provideService(Integration.Service, integration),
+              Effect.provideService(Credential.Service, credentials),
+              Effect.provideService(HttpClient.HttpClient, http),
+              Effect.asVoid,
+            ),
+        },
+      },
       get: Effect.fn(function* (input) {
         const item = yield* integration.get(Integration.ID.make(input.integrationID))
         if (!item) return yield* Effect.fail(new Error(`Integration not found: ${input.integrationID}`))
@@ -558,10 +582,12 @@ export const requirements = LayerNode.group([
   Agent.node,
   AISDK.node,
   Provider.node,
+  ProviderRemove.node,
   Model.node,
   Command.node,
   Bus.node,
   Integration.node,
+  Credential.node,
   KV.node,
   Mcp.node,
   Location.node,

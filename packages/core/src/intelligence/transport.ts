@@ -191,7 +191,10 @@ const make = Effect.gen(function* () {
 
   const probe = Effect.fn("IntelligenceTransport.probe")(function* (input: Intelligence.Probe) {
     if (input.evaluator.transport === "opencode-zen") {
-      const catalog = yield* discover(input).pipe(Effect.either)
+      const catalog = yield* discover(input).pipe(Effect.match({
+        onFailure: (left) => ({ _tag: "Left" as const, left }),
+        onSuccess: (right) => ({ _tag: "Right" as const, right }),
+      }))
       if (catalog._tag === "Left" || !catalog.right.models.some((model) => model.id === input.evaluator.model))
         return {
           ok: false,
@@ -204,7 +207,10 @@ const make = Effect.gen(function* () {
       questions: { check: { type: "noul", instructions: "Does the text explicitly say the sky is blue?" } },
     }, input.apiKey).pipe(
       Effect.flatMap(Schema.decodeUnknownEffect(Intelligence.Response)),
-      Effect.either,
+      Effect.match({
+        onFailure: (left) => ({ _tag: "Left" as const, left }),
+        onSuccess: (right) => ({ _tag: "Right" as const, right }),
+      }),
     )
     if (result._tag === "Left")
       return { ok: false, message: result.left instanceof Error ? result.left.message : "Invalid System One response" }

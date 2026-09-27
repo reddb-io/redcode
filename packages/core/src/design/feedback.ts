@@ -340,7 +340,10 @@ export const admit = Effect.fn("DesignFeedback.admit")(function* (
           metadata: { source: "design.feedback", designID: id, feedbackID: input.id },
           resume: false,
         })
-        .pipe(Effect.mapError((error) => new Design.Error({ code: "conflict", message: error.message })))
+        .pipe(Effect.mapError((error) => new Design.Error({
+          code: "conflict",
+          message: error instanceof Error ? error.message : String(error),
+        })))
       if (
         admitted.type !== "user" ||
         admitted.payload.metadata?.source !== "design.feedback" ||

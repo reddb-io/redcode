@@ -24,7 +24,7 @@ const make = Effect.gen(function* () {
       const configured = yield* store.configured(sessionID)
       if (!DesignAppMode.process(configured)) return
       return yield* Effect.tryPromise({
-        try: () => apps.connect(configured.app.version),
+        try: () => apps.connect(configured?.app?.version),
         catch: (error) =>
           new Design.Error({
             code: "unavailable",
@@ -68,7 +68,7 @@ const make = Effect.gen(function* () {
     Effect.gen(function* () {
       const app = yield* connection(sessionID)
       if (!app) return yield* local.jobs(sessionID, id)
-      return yield* call(app, sessionID, `/${encodeURIComponent(id)}/job`, Schema.Array(Design.Job))
+      return [...(yield* call(app, sessionID, `/${encodeURIComponent(id)}/job`, Schema.Array(Design.Job)))]
     })
   const directory: Interface["directory"] = (revision) =>
     Effect.gen(function* () {
