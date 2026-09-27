@@ -447,6 +447,50 @@ it.effect("keeps V1 request defaults for AI SDK packages that remain on the brid
   }),
 )
 
+it.effect("keeps V1 GPT-5 defaults on AI SDK routes without an explicit reasoning override", () =>
+  Effect.gen(function* () {
+    const aisdk = yield* AISDK.Service
+    yield* aisdk.hook.sdk((event) => {
+      event.sdk = { languageModel: () => ({ provider: event.model.providerID }) }
+    })
+
+    const gpt = yield* aisdk.model({ ...model("@ai-sdk/openai"), modelID: Model.ID.make("gpt-5.2") })
+    const standard = yield* compileRequest(LLM.request({ model: gpt, prompt: "Hello" }))
+    expect(standard.body.providerOptions?.openai).toMatchObject({
+      store: false,
+      reasoningEffort: "medium",
+      reasoningSummary: "auto",
+      include: ["reasoning.encrypted_content"],
+      textVerbosity: "low",
+      forceReasoning: true,
+    })
+
+    const chat = yield* aisdk.model({ ...model("@ai-sdk/openai"), modelID: Model.ID.make("gpt-5-chat") })
+    const chatRequest = yield* compileRequest(LLM.request({ model: chat, prompt: "Hello" }))
+    expect(chatRequest.body.providerOptions?.openai).toEqual({ store: false })
+
+    const pro = yield* aisdk.model({ ...model("@ai-sdk/openai"), modelID: Model.ID.make("gpt-5-pro") })
+    const proRequest = yield* compileRequest(LLM.request({ model: pro, prompt: "Hello" }))
+    expect(proRequest.body.providerOptions?.openai).toEqual({ store: false })
+
+    const azure = yield* aisdk.model({ ...model("@ai-sdk/azure"), modelID: Model.ID.make("gpt-5.5") })
+    const azureRequest = yield* compileRequest(LLM.request({ model: azure, prompt: "Hello" }))
+    expect(azureRequest.body.providerOptions?.azure).toMatchObject({
+      store: false,
+      reasoningSummary: "auto",
+      forceReasoning: true,
+    })
+    expect(azureRequest.body.providerOptions?.azure).not.toHaveProperty("reasoningEffort")
+
+    const override = yield* aisdk.model({
+      ...model("@ai-sdk/openai", { reasoningEffort: "high", textVerbosity: "high" }),
+      modelID: Model.ID.make("gpt-5.2"),
+    })
+    const overridden = yield* compileRequest(LLM.request({ model: override, prompt: "Hello" }))
+    expect(overridden.body.providerOptions?.openai).toMatchObject({ reasoningEffort: "high", textVerbosity: "high" })
+  }),
+)
+
 it.effect("closes the open AI SDK reasoning part when the next one starts", () =>
   Effect.gen(function* () {
     // AI SDK OpenAI Responses can start summary part 1 before part 0 ends, then end both at item completion (#50662).

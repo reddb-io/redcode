@@ -357,8 +357,12 @@ export const locationLayer = Layer.effect(
 
 function modelFromLanguage(info: RuntimeInfo, language: LanguageModelV3) {
   const packageName = Provider.packageName(info.package!)
-  const projected = mapBodyToProviderOptions(info, packageName)
   const providerID = info.canonical ?? info.providerID
+  const projected = mapBodyToProviderOptions(
+    info,
+    packageName,
+    legacyProviderDefaults(packageName, providerID, info.modelID ?? info.id),
+  )
   const optionKey = providerOptionKey(packageName, providerID)
   const route: AnyRoute = {
     compact: undefined,
@@ -384,10 +388,7 @@ function modelFromLanguage(info: RuntimeInfo, language: LanguageModelV3) {
               body: projected.body === undefined ? undefined : { ...projected.body },
               headers: info.headers,
             },
-      providerOptions: Provider.mergeOverlay(
-        legacyProviderDefaults(packageName, providerID, info.modelID ?? info.id),
-        projected.settings,
-      ),
+      providerOptions: projected.settings,
     },
     body: {
       schema: Schema.Unknown,
@@ -422,23 +423,28 @@ function legacyProviderDefaults(packageName: string, providerID: string, modelID
   if (packageName === "@ai-sdk/gateway") return { gateway: { caching: "auto" } }
   if (packageName === "@llmgateway/ai-sdk-provider" || packageName === "@openrouter/ai-sdk-provider")
     return { usage: { include: true } }
-  if (packageName === "@ai-sdk/openai" || packageName === "@ai-sdk/github-copilot") {
+  if (
+    packageName === "@ai-sdk/openai" ||
+    packageName === "@ai-sdk/azure" ||
+    packageName === "@ai-sdk/github-copilot" ||
+    packageName === "@ai-sdk/amazon-bedrock/mantle"
+  ) {
     const id = modelID.toLowerCase()
+    if (packageName === "@ai-sdk/azure" && id.includes("gpt-5.5"))
+      return { store: false, reasoningSummary: "auto" }
+    const reasoning = id.includes("gpt-5") && !id.includes("gpt-5-chat") && !id.includes("gpt-5-pro")
     return {
       store: false,
+      ...(reasoning ? { reasoningEffort: "medium", reasoningSummary: "auto" } : {}),
+      ...(reasoning && (packageName === "@ai-sdk/openai" || packageName === "@ai-sdk/amazon-bedrock/mantle")
+        ? { include: ["reasoning.encrypted_content"] }
+        : {}),
       ...(providerID !== "azure" && id.includes("gpt-5.") && !id.includes("codex") && !id.includes("-chat")
         ? { textVerbosity: "low" }
         : {}),
     }
   }
-  if (
-    [
-      "@ai-sdk/azure",
-      "@ai-sdk/amazon-bedrock/mantle",
-      "@ai-sdk/xai",
-    ].includes(packageName)
-  )
-    return { store: false }
+  if (packageName === "@ai-sdk/xai") return { store: false }
   return undefined
 }
 
@@ -487,8 +493,12 @@ function requestSettings(settings: Readonly<Record<string, unknown>> | undefined
   return Object.keys(result).length === 0 ? undefined : result
 }
 
-function mapBodyToProviderOptions(model: RuntimeInfo, packageName: string) {
-  const settings = requestSettings(model.settings)
+function mapBodyToProviderOptions(
+  model: RuntimeInfo,
+  packageName: string,
+  defaults?: Readonly<Record<string, unknown>>,
+) {
+  const settings = Provider.mergeOverlay(defaults, requestSettings(model.settings))
   const pro = Schema.is(Schema.Struct({ mode: Schema.Literal("pro") }))(model.body?.reasoning)
   const forceReasoning =
     ["@ai-sdk/openai", "@ai-sdk/azure", "@ai-sdk/amazon-bedrock/mantle"].includes(packageName) &&
