@@ -656,8 +656,6 @@ function diagnoseProviderUnsupported(value: unknown, path: string[], diagnostics
         path: [...path, "models", name, "reasoning"],
         message: "preserved reasoning variants; provider-specific V1 reasoning defaults still require migration",
       })
-    if (own(model, "interleaved") && typeof model.interleaved === "boolean")
-      unsupportedIfPresent(model, "interleaved", [...path, "models", name, "interleaved"], diagnostics)
   })
 }
 

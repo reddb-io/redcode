@@ -532,7 +532,6 @@ describe("ConfigNormalize", () => {
       ["logLevel"],
       ["agent", "reviewer", "name"],
       ["provider", "custom", "id"],
-      ["provider", "custom", "models", "model", "interleaved"],
       ["experimental", "openTelemetry"],
     ])
     expect(JSON.stringify(result.diagnostics)).not.toContain(secret)

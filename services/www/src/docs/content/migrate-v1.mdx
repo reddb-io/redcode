@@ -451,7 +451,7 @@ they are not mistaken for active configuration:
 - Agent `name` inside V1 JSON configuration.
 - An enabled-only V1 MCP entry without a `type`.
 - V1 experimental fields `batch_tool`, `openTelemetry`, `primary_tools`, and `continue_loop_on_deny`.
-- V1 provider field `id` and boolean provider-model `interleaved`.
+- V1 provider field `id`.
 
 Ignoring these fields is intentional and is not a compatibility regression. If V2 does not preserve behavior identified
 as supported elsewhere in this guide, follow the issue-reporting guidance in [Troubleshooting](/troubleshooting).
@@ -459,8 +459,8 @@ as supported elsewhere in this guide, follow the issue-reporting guidance in [Tr
 Other V1 fields are migrated: top-level `subagent_depth` becomes `experimental.subagent_depth`;
 `compaction.tail_turns` becomes `compaction.keep.turns`, while `compaction.prune` remains available;
 provider `whitelist` and `blacklist` become model filters. Provider-model `release_date`, `attachment`,
-`temperature`, and `status` are preserved. The V1 provider-model `experimental` boolean had no effect and is accepted
-without a warning.
+`temperature`, and `status` are preserved. The V1 provider-model `experimental` and `interleaved` booleans had no
+request effect and are accepted without a warning; an `interleaved` field name still maps to V2 reasoning compatibility.
 
 Provider-model `reasoning` preserves the capability and variants. Gemini, Kimi over Anthropic-compatible routes,
 MiniMax M3 over Anthropic, ZAI chat, Gemini 3 through OpenRouter, and `alibaba-cn` also retain their V1 request
