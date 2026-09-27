@@ -43,6 +43,19 @@ export function defaults(input: {
       }
   }
   if (
+    input.providerID === "meta" &&
+    (name === "@ai-sdk/openai" ||
+      name === "@opencode/ai/providers/openai" ||
+      name?.startsWith("@opencode/ai/providers/openai/"))
+  )
+    return {
+      settings: {
+        reasoningEffort: "high",
+        reasoningSummary: "auto",
+        include: ["reasoning.encrypted_content"],
+      },
+    }
+  if (
     name === "@ai-sdk/google" ||
     name === "@ai-sdk/google-vertex" ||
     name === "@opencode/ai/providers/google" ||
