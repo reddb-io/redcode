@@ -480,12 +480,15 @@ export function transformSession(input: TransformInput): TransformResult {
         if (subtasks.length > 0 && visible.length === 0 && files.length === 0 && agents.length === 0) return []
         const ordinary = visible.filter((part) => !part.synthetic)
         const synthetic = visible.filter((part) => part.synthetic)
-        const attachments = files.flatMap((part) => migrateFile(part))
-        const unavailable = files.flatMap((part) => (!part.url.startsWith("data:") ? [unavailableFile(part)] : []))
+        const migratedFiles = new Map(files.map((part) => [part.id, migrateFile(part)]))
+        const attachments = files.flatMap((part) => migratedFiles.get(part.id) ?? [])
+        const unavailable = files.flatMap((part) =>
+          migratedFiles.get(part.id)?.length ? [] : [unavailableFile(part)],
+        )
         const text = owned
           .flatMap((part) => {
             if (part.type === "text" && !part.ignored && !part.synthetic) return [part.text]
-            if (part.type === "file" && !part.url.startsWith("data:")) return [unavailableFile(part)]
+            if (part.type === "file" && !migratedFiles.get(part.id)?.length) return [unavailableFile(part)]
             return []
           })
           .join("\n\n")
@@ -1571,25 +1574,31 @@ function migrateFile(part: SessionV1.FilePart) {
   if (comma < 0) return []
   const header = part.url.slice(0, comma)
   const payload = part.url.slice(comma + 1)
-  const data = header.endsWith(";base64")
-    ? Buffer.from(payload, "base64").toString("base64")
-    : Buffer.from(decodeURIComponent(payload)).toString("base64")
-  return [
-    {
-      data,
-      mime: part.mime,
-      source:
-        part.source?.type === "resource" ? { type: "uri" as const, uri: part.source.uri } : { type: "inline" as const },
-      ...(part.filename ? { name: part.filename } : {}),
-      ...(part.source
-        ? { mention: { text: part.source.text.value, start: part.source.text.start, end: part.source.text.end } }
-        : {}),
-    },
-  ]
+  try {
+    const data = header.endsWith(";base64")
+      ? Buffer.from(payload, "base64").toString("base64")
+      : Buffer.from(decodeURIComponent(payload)).toString("base64")
+    return [
+      {
+        data,
+        mime: part.mime,
+        source:
+          part.source?.type === "resource" ? { type: "uri" as const, uri: part.source.uri } : { type: "inline" as const },
+        ...(part.filename ? { name: part.filename } : {}),
+        ...(part.source
+          ? { mention: { text: part.source.text.value, start: part.source.text.start, end: part.source.text.end } }
+          : {}),
+      },
+    ]
+  } catch {
+    return []
+  }
 }
 
 function unavailableFile(part: SessionV1.FilePart) {
-  const label = part.filename ?? (part.source?.type === "resource" ? part.source.uri : part.url)
+  const label =
+    part.filename ??
+    (part.source?.type === "resource" ? part.source.uri : part.url.startsWith("data:") ? "inline attachment" : part.url)
   return `[Attachment unavailable after migration: ${label} (${part.mime})]`
 }
 

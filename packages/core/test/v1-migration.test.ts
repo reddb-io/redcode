@@ -209,6 +209,41 @@ describe("V1Migration.transformSession", () => {
     })
   })
 
+  test("keeps unavailable placeholders when an embedded data URL is malformed", () => {
+    const message = user("msg_000000000003aaaaaaaaaaaaaa")
+    const result = transform(
+      [message],
+      [
+        part("prt_1", message.id, { type: "text", text: "Before the files" }),
+        part("prt_2", message.id, {
+          type: "file",
+          mime: "text/plain",
+          url: "data:text/plain;bad",
+        }),
+        part("prt_3", message.id, {
+          type: "file",
+          mime: "text/plain",
+          filename: "bad-escape.txt",
+          url: "data:text/plain,%ZZ",
+        }),
+        part("prt_4", message.id, {
+          type: "file",
+          mime: "text/plain",
+          filename: "valid.txt",
+          url: "data:text/plain,still%20here",
+        }),
+      ],
+    )
+
+    expect(result.messages[0].data).toEqual({
+      text: "Before the files\n\n[Attachment unavailable after migration: inline attachment (text/plain)]\n\n[Attachment unavailable after migration: bad-escape.txt (text/plain)]",
+      files: [
+        { data: "c3RpbGwgaGVyZQ==", mime: "text/plain", source: { type: "inline" }, name: "valid.txt" },
+      ],
+      time: { created: 10 },
+    })
+  })
+
   test("maps attachment-only source variants and uses resource URIs as unavailable labels", () => {
     const message = user("msg_000000000049aaaaaaaaaaaaaa")
     const result = transform(
