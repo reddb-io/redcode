@@ -414,6 +414,31 @@ test("migrates copy_on_select in an existing cli.json", async () => {
   }
 })
 
+test("keeps explicit attention choices when removing the legacy master toggle", async () => {
+  await using directory = await tmpdir()
+  const file = path.join(directory.path, "cli.json")
+  await Bun.write(
+    file,
+    `{
+  // Keep V2 preferences
+  "attention": { "enabled": false, "notifications": true }
+}\n`,
+  )
+
+  const config = await run(
+    directory.path,
+    Effect.gen(function* () {
+      const service = yield* Config.Service
+      return yield* service.get()
+    }),
+  )
+
+  expect(config.attention).toEqual({ notifications: true, sound: false })
+  const text = await Bun.file(file).text()
+  expect(text).toContain("// Keep V2 preferences")
+  expect(parse(text).attention).toEqual({ notifications: true, sound: false })
+})
+
 test("uses migrated keybinds when persistence fails", async () => {
   await using directory = await tmpdir()
   const file = path.join(directory.path, "cli.json")
