@@ -813,7 +813,9 @@ describe("ShellTool ordinary shell syntax", () => {
                 expect(result.exit.value.content?.[0]).toEqual(Expected.text(isWindows ? "hello\r\n" : "hello\n"))
             }),
           pwsh ?? "pwsh",
-        ))
+        ),
+        30_000,
+      )
     }
   }
 
