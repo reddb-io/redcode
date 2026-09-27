@@ -117,7 +117,6 @@ const resolve = {
       "#fff": "filesystem/fff.node.ts",
       "#photon-wasm": "image/photon-wasm.node.ts",
       "#shell-parser-wasm": "shell/parser-wasm.node.ts",
-      "#process-lock-ffi": "util/process-lock-ffi.node.ts",
       "#v1-migration": "database/v1-migration.noop.ts",
     }).map(([find, file]) => ({ find: new RegExp(`^${find}$`), replacement: path.resolve(dir, "../core/src", file) })),
     ...Object.entries({
