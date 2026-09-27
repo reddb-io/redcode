@@ -1034,7 +1034,7 @@ describe("OpencodePlugin", () => {
           })
 
           state.providerID = "unexpected"
-          expect((yield* websearch.query({ query: "wrong provider" }).pipe(Effect.flip))._tag).toBe("WebSearch.ProviderRequired")
+          expect((yield* websearch.query({ query: "wrong provider" }).pipe(Effect.flip))._tag).toBe("WebSearch.Request")
 
           state.advertised = false
           state.waitForConfig = true

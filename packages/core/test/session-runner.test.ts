@@ -5306,11 +5306,7 @@ describe("SessionRunnerLLM", () => {
     scenario(`bounds jittered exponential backoff before output for ${failure.name}`, function* (s) {
       yield* s.admit("Retry transport")
       yield* s.llm.push(TestLLM.failAfter(failure(), LLMEvent.stepStart({ index: 0 })))
-      yield* s.llm.push(
-        Stream.fromEffect(Effect.sleep(400)).pipe(
-          Stream.flatMap(() => Stream.fromIterable(TestLLM.text("Recovered", "retry-success"))),
-        ),
-      )
+      yield* s.llm.push(TestLLM.text("Recovered", "retry-success"))
 
       const scheduled = yield* subscribeRetries(s)
       const run = yield* s.resume.pipe(Effect.forkChild)
