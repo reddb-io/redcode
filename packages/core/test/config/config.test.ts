@@ -645,8 +645,13 @@ describe("Config", () => {
     )
   }, 30_000)
 
-  test("migrates the v1 experimental subagent depth", () => {
+  test("migrates the v1 subagent depth", () => {
     expect(ConfigMigrateV1.migrate({ experimental: { subagent_depth: 2 } }).experimental?.subagent_depth).toBe(2)
+    expect(ConfigMigrateV1.migrate({ subagent_depth: 3 }).experimental?.subagent_depth).toBe(3)
+    expect(
+      ConfigMigrateV1.migrate({ subagent_depth: 3, experimental: { subagent_depth: 2 } }).experimental
+        ?.subagent_depth,
+    ).toBe(3)
   })
 
   test("migrates the v1 small model to the title agent", () => {

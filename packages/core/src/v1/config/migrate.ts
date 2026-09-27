@@ -69,6 +69,7 @@ export function migrate(info: typeof ConfigV1.Info.Type) {
 }
 
 function experimental(info: typeof ConfigV1.Info.Type) {
+  const depth = info.subagent_depth ?? info.experimental?.subagent_depth
   const policies = [
     ...(info.enabled_providers === undefined
       ? []
@@ -86,9 +87,9 @@ function experimental(info: typeof ConfigV1.Info.Type) {
       effect: "deny" as const,
     })),
   ]
-  if (info.experimental?.subagent_depth === undefined && !policies.length) return
+  if (depth === undefined && !policies.length) return
   return {
-    subagent_depth: info.experimental?.subagent_depth,
+    subagent_depth: depth,
     policies: policies.length ? policies : undefined,
   }
 }
