@@ -25,6 +25,8 @@ import { withTimestampedFallback } from "@opencode/util/session-title-fallback"
 import { projectName } from "../util/project"
 import { useLocation } from "../context/location"
 
+type Scope = "directory" | "project" | "all"
+
 export function DialogSessionList() {
   const dialog = useDialog()
   const route = useRoute()
@@ -40,10 +42,14 @@ export function DialogSessionList() {
   const shortcuts = Keymap.useShortcuts()
   const [search, setSearch] = createDebouncedSignal("", 150)
   const [toDelete, setToDelete] = createSignal<string>()
-  const [prefs, updatePrefs] = useStorage().store("session-list", {
-    initial: { allProjects: config.tabs?.scope !== "cwd" },
+  const [prefs, updatePrefs] = useStorage().store<{ allProjects: boolean; scope: Scope }>("session-list", {
+    initial: {
+      allProjects: config.tabs?.scope !== "cwd",
+      scope: config.session?.list_scope ?? (config.tabs?.scope !== "cwd" ? "all" : "directory"),
+    },
   })
-  const allProjects = () => prefs.allProjects
+  const scope = (): Scope => prefs.scope ?? (prefs.allProjects ? "all" : "directory")
+  const nextScope = (): Scope => scope() === "directory" ? "project" : scope() === "project" ? "all" : "directory"
   const pickerLocation = () =>
     (route.data.type === "session" ? data.session.get(route.data.sessionID)?.location : undefined) ??
     activeLocation.ref ??
@@ -52,33 +58,35 @@ export function DialogSessionList() {
   const [searchResults, { mutate: setSearchResults }] = createResource(
     () => ({
       query: search().trim(),
-      allProjects: allProjects(),
+      scope: scope(),
       location: pickerLocation(),
     }),
-    async ({ query, allProjects, location }) => {
+    async ({ query, scope, location }) => {
       try {
         if (!data.location.info(location)) await data.location.sync(location)
         const current = data.location.info(location)
         if (!current) throw new Error("Location unavailable")
         const response = await client.api.session.list({
-          ...(allProjects
+          ...(scope === "all"
             ? {}
             : current.project.id === Project.ID.global
               ? { directory: current.directory }
               : {
                   project: current.project.id,
-                  subpath: path.relative(current.project.directory, current.directory).replaceAll("\\", "/"),
+                  ...(scope === "project"
+                    ? {}
+                    : { subpath: path.relative(current.project.directory, current.directory).replaceAll("\\", "/") }),
                 }),
           ...(query ? { search: query } : {}),
           limit: 50,
           order: "desc",
           parentID: null,
         })
-        return { query, allProjects, sessions: response.data, error: undefined }
+        return { query, scope, sessions: response.data, error: undefined }
       } catch (error) {
         // A transient transport failure must degrade search, not crash the TUI
         // through the root ErrorBoundary when the errored resource is read.
-        return { query, allProjects, sessions: [] as SessionInfo[], error }
+        return { query, scope, sessions: [] as SessionInfo[], error }
       }
     },
   )
@@ -91,8 +99,10 @@ export function DialogSessionList() {
       .list()
       .filter(
         (session) =>
-          allProjects() ||
-          (session.projectID === current?.project.id && session.location.directory === current.directory),
+          scope() === "all" ||
+          (session.projectID === current?.project.id &&
+            ((scope() === "project" && current?.project.id !== Project.ID.global) ||
+              session.location.directory === current?.directory)),
       )
     if (!query) return sessions
     return sessions.filter(
@@ -105,7 +115,7 @@ export function DialogSessionList() {
     if (query !== search().trim()) return searchResults.latest?.sessions ?? local
     if (searchResults.loading) return searchResults.latest?.sessions ?? []
     const result = searchResults()
-    if (result?.query !== query || result.allProjects !== allProjects() || result.error) return local
+    if (result?.query !== query || result.scope !== scope() || result.error) return local
     return result.sessions
   })
   const searchState = createMemo(() => {
@@ -200,7 +210,7 @@ export function DialogSessionList() {
           <text fg={theme.text.base} attributes={TextAttributes.BOLD}>
             Sessions
           </text>
-          <Show when={!allProjects() && currentProjectName()}>
+          <Show when={scope() !== "all" && currentProjectName()}>
             <text fg={theme.text.muted}> for {currentProjectName()}</text>
           </Show>
         </box>
@@ -215,11 +225,11 @@ export function DialogSessionList() {
       bindings={[
         {
           bind: "ctrl+a",
-          title: allProjects() ? "Show current directory sessions" : "Show all project sessions",
+          title: `Show ${nextScope() === "all" ? "all" : `current ${nextScope()}`} sessions`,
           group: "Dialog",
           run: () => {
             void updatePrefs((draft) => {
-              draft.allProjects = !draft.allProjects
+              draft.scope = nextScope()
             }).catch(() => {})
           },
         },
@@ -286,7 +296,7 @@ export function DialogSessionList() {
       ]}
       footerHints={[
         ...quickSwitchFooterHints(),
-        { title: allProjects() ? "current directory" : "all projects", label: "ctrl+a", side: "right" },
+        { title: nextScope() === "all" ? "all projects" : `current ${nextScope()}`, label: "ctrl+a", side: "right" },
       ]}
     />
   )

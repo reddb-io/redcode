@@ -157,6 +157,9 @@ export const Info = Schema.Struct({
       timestamps: Schema.optional(Schema.Literals(["show", "hide"])).annotate({
         description: "Show creation times on user messages",
       }),
+      list_scope: Schema.optional(Schema.Literals(["directory", "project", "all"])).annotate({
+        description: "Initial scope of the session list",
+      }),
       thinking: Schema.optional(Schema.Literals(["show", "hide"])).annotate({
         description: "Show or hide model reasoning by default",
       }),
