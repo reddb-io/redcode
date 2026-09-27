@@ -47,6 +47,7 @@ type Active = {
   // Resolves with the terminal Info once the command exits, times out, or is killed. A wait
   // started after termination resolves immediately from the already-completed deferred.
   done: Deferred.Deferred<Info, NotFoundError>
+  captureDone: Effect.Effect<void>
   stop: Effect.Effect<void>
   timeoutFiber?: Fiber.Fiber<void>
   timeout?: (duration: number) => Effect.Effect<void>
@@ -162,8 +163,14 @@ const layer = () =>
         const index = exitOrder.indexOf(id)
         if (index !== -1) exitOrder.splice(index, 1)
         if (!command) return
+        // Stop reporting this command before killing it so removal stays a killed shell,
+        // while the process and output file are fully released before returning.
         commands.delete(id)
         if (command.timeoutFiber) yield* Fiber.interrupt(command.timeoutFiber)
+        if (command.info.status === "running") {
+          yield* command.stop
+          yield* command.captureDone
+        }
         // Unblock any wait still pending when the command is removed before it terminated.
         yield* Deferred.fail(command.done, new NotFoundError({ id }))
         yield* Effect.promise(() => unlink(command.file).catch(() => {}))
@@ -171,11 +178,7 @@ const layer = () =>
       })
 
       const remove = Effect.fn("Shell.remove")(function* (id: Shell.ID) {
-        const command = yield* require(id)
-        if (command.info.status === "running") {
-          yield* command.stop
-          yield* Deferred.await(command.done).pipe(Effect.ignore)
-        }
+        yield* require(id)
         yield* removeCommand(id)
       })
 
@@ -314,6 +317,7 @@ const layer = () =>
                 .pipe(
                   Effect.mapError((cause) => new AppProcess.AppProcessError({ command: invocation.command, cause })),
                 )
+              const outputDone = Latch.makeUnsafe()
               const command: Active = {
                 info: produce(info, (draft) => {
                   draft.pid = handle.pid
@@ -322,12 +326,12 @@ const layer = () =>
                 size: 0,
                 newlines: 0,
                 done: Deferred.makeUnsafe<Info, NotFoundError>(),
+                captureDone: outputDone.await,
                 stop: handle.kill({ forceKillAfter: Duration.seconds(3) }).pipe(Effect.catch(() => Effect.void)),
               }
               commands.set(id, command)
 
               const stream = createWriteStream(file)
-              const outputDone = Latch.makeUnsafe()
               const pump = handle.all.pipe(
                 Stream.runForEach((chunk: Uint8Array) =>
                   Effect.sync(() => {
@@ -361,7 +365,7 @@ const layer = () =>
 
               const finish = (status: Info["status"], exit?: number, beforeWait = Effect.void, signal?: string) =>
                 Effect.gen(function* () {
-                  if (command.info.status !== "running") return
+                  if (commands.get(id) !== command || command.info.status !== "running") return
                   command.info = produce(command.info, (draft) => {
                     draft.status = status
                     if (exit !== undefined) draft.exit = exit
