@@ -1573,11 +1573,12 @@ function migrateFile(part: SessionV1.FilePart) {
   const comma = part.url.indexOf(",")
   if (comma < 0) return []
   const header = part.url.slice(0, comma)
-  const payload = part.url.slice(comma + 1)
   try {
-    const data = header.endsWith(";base64")
-      ? Buffer.from(payload, "base64").toString("base64")
-      : Buffer.from(decodeURIComponent(payload)).toString("base64")
+    const payload = decodeURIComponent(part.url.slice(comma + 1))
+    const base64 = header.toLowerCase().endsWith(";base64")
+    if (base64 && !/^[A-Za-z0-9+/]*={0,2}$/.test(payload)) return []
+    const data = Buffer.from(payload, base64 ? "base64" : "utf8").toString("base64")
+    if (base64 && data.replace(/=+$/, "") !== payload.replace(/=+$/, "")) return []
     return [
       {
         data,

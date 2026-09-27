@@ -229,6 +229,12 @@ describe("V1Migration.transformSession", () => {
         part("prt_4", message.id, {
           type: "file",
           mime: "text/plain",
+          filename: "bad-base64.txt",
+          url: "data:text/plain;base64,aGVsbG8=!",
+        }),
+        part("prt_5", message.id, {
+          type: "file",
+          mime: "text/plain",
           filename: "valid.txt",
           url: "data:text/plain,still%20here",
         }),
@@ -236,7 +242,7 @@ describe("V1Migration.transformSession", () => {
     )
 
     expect(result.messages[0].data).toEqual({
-      text: "Before the files\n\n[Attachment unavailable after migration: inline attachment (text/plain)]\n\n[Attachment unavailable after migration: bad-escape.txt (text/plain)]",
+      text: "Before the files\n\n[Attachment unavailable after migration: inline attachment (text/plain)]\n\n[Attachment unavailable after migration: bad-escape.txt (text/plain)]\n\n[Attachment unavailable after migration: bad-base64.txt (text/plain)]",
       files: [
         { data: "c3RpbGwgaGVyZQ==", mime: "text/plain", source: { type: "inline" }, name: "valid.txt" },
       ],
