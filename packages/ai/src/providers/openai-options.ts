@@ -54,12 +54,16 @@ export const openAIDefaultOptions = (modelID: string): ProviderOptions | undefin
 export const withOpenAIOptions = <Options extends { readonly providerOptions?: OpenAIProviderOptionsInput }>(
   modelID: string,
   options: Options,
-  settings?: { readonly reasoningDefaults?: boolean },
+  settings?: { readonly reasoningDefaults?: boolean; readonly textVerbosityDefaults?: boolean },
 ): Omit<Options, "providerOptions"> & { readonly providerOptions?: ProviderOptions } => {
+  const id = modelID.toLowerCase()
   return {
     ...options,
     providerOptions: mergeProviderOptions(
       settings?.reasoningDefaults === false ? openAIProviderOptions({ store: false }) : openAIDefaultOptions(modelID),
+      settings?.textVerbosityDefaults && id.includes("gpt-5.") && !id.includes("codex") && !id.includes("-chat")
+        ? openAIProviderOptions({ textVerbosity: "low" })
+        : undefined,
       options.providerOptions,
     ),
   }

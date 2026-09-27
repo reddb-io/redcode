@@ -19,6 +19,15 @@ const credentials = {
 }
 
 describe("Amazon Bedrock Mantle provider", () => {
+  it.effect("keeps the GPT 5.x low-verbosity default", () =>
+    Effect.gen(function* () {
+      const prepared = yield* compileRequest(
+        LLM.request({ model: AmazonBedrockMantle.configure({ credentials }).responses("openai.gpt-5.2"), prompt: "Hi" }),
+      )
+      expect(prepared.body.text).toEqual({ verbosity: "low" })
+    }),
+  )
+
   it.effect("uses Responses by default and exposes Chat explicitly", () =>
     Effect.gen(function* () {
       const provider = AmazonBedrockMantle.configure({ credentials })

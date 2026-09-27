@@ -100,13 +100,15 @@ export const configure = (input: Config = {}) => {
   const modelDefaults = defaults(input)
   const responses = (id: string | ModelID) =>
     responsesRoute
-      .with(withOpenAIOptions(id, modelDefaults))
+      .with(withOpenAIOptions(id, modelDefaults, { textVerbosityDefaults: true }))
       .model<OpenAIProviderOptionsInput>({ id })
   const chat = (id: string | ModelID) =>
-    chatRoute.with(withOpenAIOptions(id, modelDefaults)).model<OpenAIProviderOptionsInput>({
-      id,
-      compatibility: { supportsPromptCacheKey: true },
-    })
+    chatRoute
+      .with(withOpenAIOptions(id, modelDefaults, { textVerbosityDefaults: true }))
+      .model<OpenAIProviderOptionsInput>({
+        id,
+        compatibility: { supportsPromptCacheKey: true },
+      })
   const deployment = MediaRoute.deployment(input, auth(input))
   const media = {
     ...deployment,

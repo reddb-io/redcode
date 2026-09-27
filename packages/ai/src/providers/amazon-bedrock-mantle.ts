@@ -90,11 +90,11 @@ export const configure = (input: Config = {}) => {
   const modelDefaults = defaults(input)
   const responses = (modelID: string | ModelID) =>
     configuredResponsesRoute
-      .with(withOpenAIOptions(modelID, modelDefaults))
+      .with(withOpenAIOptions(modelID, modelDefaults, { textVerbosityDefaults: true }))
       .model<OpenAIProviderOptionsInput>({ id: modelID })
   const chat = (modelID: string | ModelID) =>
     configuredChatRoute
-      .with(withOpenAIOptions(modelID, modelDefaults))
+      .with(withOpenAIOptions(modelID, modelDefaults, { textVerbosityDefaults: true }))
       .model<OpenAIProviderOptionsInput>({ id: modelID })
 
   return {

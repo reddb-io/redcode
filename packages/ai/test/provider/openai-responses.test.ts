@@ -2066,6 +2066,7 @@ describe("OpenAI Responses route", () => {
       expect(prepared.body.store).toBe(false)
       expect(prepared.body.include).toEqual(["reasoning.encrypted_content"])
       expect(prepared.body.reasoning).toEqual({ effort: "medium", summary: "auto" })
+      expect(prepared.body.text).toEqual({ verbosity: "low" })
     }),
   )
 
@@ -2076,11 +2077,27 @@ describe("OpenAI Responses route", () => {
       expect(prepared.body.store).toBe(false)
       expect(prepared.body.include).toEqual(["reasoning.encrypted_content"])
       expect(prepared.body.reasoning).toEqual({ effort: "medium", summary: "auto" })
+      expect(prepared.body.text).toBeUndefined()
 
       const chat = yield* compileRequest(LLM.request({ model: openai.responses("gpt-5.2-chat-latest"), prompt: "hi" }))
       expect(chat.body.reasoning).toBeUndefined()
+      expect(chat.body.text).toBeUndefined()
       const pro = yield* compileRequest(LLM.request({ model: openai.responses("gpt-6-pro"), prompt: "hi" }))
       expect(pro.body.reasoning).toBeUndefined()
+    }),
+  )
+
+  it.effect("keeps GPT 5.x verbosity limited to OpenAI and lets callers override it", () =>
+    Effect.gen(function* () {
+      const openai = OpenAI.configure({ baseURL: "https://api.openai.test/v1/", apiKey: "test" })
+      const explicit = yield* compileRequest(
+        LLM.request({ model: openai.responses("gpt-5.2"), prompt: "hi", providerOptions: { textVerbosity: "medium" } }),
+      )
+      expect(explicit.body.text).toEqual({ verbosity: "medium" })
+
+      const azure = Azure.configure({ baseURL: "https://opencode-test.openai.azure.com/openai/", apiKey: "test" })
+      const other = yield* compileRequest(LLM.request({ model: azure.responses("gpt-5.2"), prompt: "hi" }))
+      expect(other.body.text).toBeUndefined()
     }),
   )
 
