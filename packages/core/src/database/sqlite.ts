@@ -50,7 +50,9 @@ export const makeConnection = <Extensions extends object>(
     },
     executeStream(query, params, transformRows) {
       if (!runStream) return Stream.fromIterableEffect(this.execute(query, params, transformRows))
-      return Stream.mapConcat(runStream(query, params), (row) => (transformRows ? transformRows([row]) : [row]))
+      return Stream.flatMap(runStream(query, params), (row) =>
+        Stream.fromIterable(transformRows ? transformRows([row]) : [row]),
+      )
     },
     ...extensions,
   })

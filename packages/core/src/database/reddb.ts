@@ -89,9 +89,9 @@ function makeConnection(
       return Stream.unwrap(
         Effect.try({
           try: () =>
-            Stream.mapConcat(
+            Stream.flatMap(
               Stream.fromAsyncIterable(database.stream(normalizeSQL(query)), (cause) => sqlError(cause, "stream")),
-              (row) => (transformRows ? transformRows([row]) : [row]),
+              (row) => Stream.fromIterable(transformRows ? transformRows([row]) : [row]),
             ),
           catch: (cause) => sqlError(cause, "stream"),
         }),
