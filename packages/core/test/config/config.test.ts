@@ -654,6 +654,13 @@ describe("Config", () => {
     ).toBe(3)
   })
 
+  test("migrates V1 provider model selection", () => {
+    expect(
+      ConfigMigrateV1.migrate({ provider: { custom: { whitelist: ["chat"], blacklist: ["legacy"] } } }).providers
+        ?.custom,
+    ).toMatchObject({ includeModels: ["chat"], excludeModels: ["legacy"] })
+  })
+
   test("migrates the v1 small model to the title agent", () => {
     expect(
       ConfigMigrateV1.migrate({

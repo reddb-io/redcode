@@ -34,6 +34,35 @@ function required<T>(value: T | undefined): T {
 const decode = Schema.decodeUnknownSync(Info)
 
 describe("ConfigProviderPlugin.Plugin", () => {
+  it.effect("filters catalog models by the configured include and exclude lists", () =>
+    Effect.gen(function* () {
+      const providers = yield* Provider.Service
+      const models = yield* Model.Service
+      const providerID = Provider.ID.make("custom")
+      yield* providers.transform((editor) => {
+        editor.models.update(providerID, Model.ID.make("chat"), () => {})
+        editor.models.update(providerID, Model.ID.make("legacy"), () => {})
+        editor.models.update(providerID, Model.ID.make("other"), () => {})
+        editor.models.update(Provider.ID.make("empty"), Model.ID.make("chat"), () => {})
+      })
+      yield* addPlugin([
+        new Document({
+          type: "document",
+          info: decode({
+            providers: {
+              custom: { includeModels: ["chat", "legacy"], excludeModels: ["legacy"] },
+              empty: { includeModels: [] },
+            },
+          }),
+        }),
+      ])
+      expect(yield* models.get(providerID, Model.ID.make("chat"))).toBeDefined()
+      expect(yield* models.get(providerID, Model.ID.make("legacy"))).toBeUndefined()
+      expect(yield* models.get(providerID, Model.ID.make("other"))).toBeUndefined()
+      expect(yield* models.get(Provider.ID.make("empty"), Model.ID.make("chat"))).toBeUndefined()
+    }),
+  )
+
   it.effect("inherits the provider compaction setting with model overrides and rejects unsupported routes", () =>
     Effect.gen(function* () {
       const models = yield* Model.Service

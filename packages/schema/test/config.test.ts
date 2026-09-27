@@ -27,6 +27,15 @@ describe("Config.Entry", () => {
     expect(() => Schema.decodeUnknownSync(Config.Info)({ providers: { custom: { canonical: 1 } } })).toThrow()
   })
 
+  test("round-trips provider model filters and omits absent filters", () => {
+    const input = { providers: { custom: { includeModels: ["chat"], excludeModels: ["legacy"] } } }
+    const decoded = Schema.decodeUnknownSync(Config.Info)(input)
+    expect(Schema.encodeSync(Config.Info)(decoded)).toEqual(input)
+    expect(Schema.encodeSync(ConfigProvider.Info)(new ConfigProvider.Info({ includeModels: undefined }))).not.toHaveProperty(
+      "includeModels",
+    )
+  })
+
   test("accepts disabled, fixed, and random web search selection", () => {
     const decode = Schema.decodeUnknownSync(Config.Info)
 

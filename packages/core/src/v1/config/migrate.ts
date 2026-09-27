@@ -251,6 +251,8 @@ function migrateStandardProvider(info: ConfigProviderV1.Info) {
     name: info.name,
     env: info.env,
     package: info.npm ? Provider.aisdk(info.npm) : undefined,
+    includeModels: info.whitelist,
+    excludeModels: info.blacklist,
     settings: info.api ? { ...options.settings, baseURL: info.api } : info.options ? options.settings : undefined,
     headers: info.options && options.headers,
     body: info.options && options.body,

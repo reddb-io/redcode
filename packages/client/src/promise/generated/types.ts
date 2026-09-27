@@ -2543,6 +2543,8 @@ export type ConfigEntry =
             name?: string
             env?: Array<string>
             package?: string
+            includeModels?: Array<string>
+            excludeModels?: Array<string>
             settings?: ConfigProviderSettings
             headers?: { [x: string]: string }
             body?: { [x: string]: JsonValue }

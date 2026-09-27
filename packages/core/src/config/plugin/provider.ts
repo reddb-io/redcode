@@ -97,8 +97,16 @@ export const Plugin = define({
     yield* ctx.model.transform((models) => {
       const configuredDefault = sources.defaultModel
       if (configuredDefault !== undefined) models.default.set(configuredDefault.providerID, configuredDefault.model)
+      const filters = new Map<string, { include?: readonly string[]; exclude?: readonly string[] }>()
       for (const [item, definition] of sources.models) {
         const providerID = definition.providerID
+        if (item.includeModels !== undefined || item.excludeModels !== undefined) {
+          const previous = filters.get(providerID)
+          filters.set(providerID, {
+            include: item.includeModels ?? previous?.include,
+            exclude: item.excludeModels ?? previous?.exclude,
+          })
+        }
         for (const [id, config] of Object.entries(item.models ?? {})) {
           const source = definition.models.get(id)
           const inherit = source?.inherit || !models.get(providerID, id)
@@ -163,6 +171,14 @@ export const Plugin = define({
               ]
             })
         }
+      }
+      // Filter after explicit model overlays so a denied catalog ID cannot be recreated as an alias.
+      for (const [providerID, filter] of filters) {
+        const include = filter.include && new Set(filter.include)
+        const exclude = filter.exclude && new Set(filter.exclude)
+        models.list(providerID).forEach((model) => {
+          if ((include && !include.has(model.id)) || exclude?.has(model.id)) models.remove(providerID, model.id)
+        })
       }
     })
   }),

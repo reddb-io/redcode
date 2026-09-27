@@ -51,7 +51,7 @@ const unsupportedExperimental = [
   "primary_tools",
   "continue_loop_on_deny",
 ] as const
-const unsupportedProvider = ["id", "whitelist", "blacklist"] as const
+const unsupportedProvider = ["id"] as const
 const unsupportedModel = ["release_date", "attachment", "reasoning", "temperature", "experimental"] as const
 
 export function normalize(input: unknown): Result {

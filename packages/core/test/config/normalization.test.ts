@@ -433,6 +433,16 @@ describe("ConfigNormalize", () => {
     ])
   })
 
+  test("migrates V1 provider model lists into V2 filters", () => {
+    const result = normalized({
+      provider: { custom: { whitelist: ["chat"], blacklist: ["legacy"] } },
+    })
+    expect(result.encoded.providers).toEqual({
+      custom: { includeModels: ["chat"], excludeModels: ["legacy"] },
+    })
+    expect(result.diagnostics).toEqual([])
+  })
+
   test("reports unsupported legacy settings without including their values", () => {
     const secret = "do-not-log-this-value"
     const result = normalized({
@@ -457,7 +467,6 @@ describe("ConfigNormalize", () => {
       ["logLevel"],
       ["agent", "reviewer", "name"],
       ["provider", "custom", "id"],
-      ["provider", "custom", "whitelist"],
       ["provider", "custom", "models", "model", "release_date"],
       ["provider", "custom", "models", "model", "status"],
       ["provider", "custom", "models", "model", "interleaved"],

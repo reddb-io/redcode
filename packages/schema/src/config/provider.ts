@@ -87,6 +87,12 @@ export class Info extends Schema.Class<Info>("Config.Provider")({
   name: Schema.String.pipe(optional),
   env: Schema.String.pipe(Schema.Array, optional),
   package: Schema.String.pipe(optional),
+  includeModels: Schema.String.pipe(Schema.Array, optional).annotate({
+    description: "Only these model IDs are available from this provider. An empty list excludes every model.",
+  }),
+  excludeModels: Schema.String.pipe(Schema.Array, optional).annotate({
+    description: "Model IDs to remove from this provider's catalog.",
+  }),
   ...Overlays,
   models: Schema.Record(Schema.String, Model).pipe(optional),
 }) {}
