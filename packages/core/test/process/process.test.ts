@@ -58,10 +58,11 @@ describe("AppProcess", () => {
       "captures stdout and stderr in emission order",
       Effect.gen(function* () {
         const svc = yield* AppProcess.Service
+        // Windows can deliver separate pipe reads late under CI load; leave time for each read.
         const script = [
           'process.stdout.write("out 1\\n")',
-          'setTimeout(() => process.stderr.write("err 1\\n"), 10)',
-          'setTimeout(() => process.stdout.write("out 2\\n"), 20)',
+          'setTimeout(() => process.stderr.write("err 1\\n"), 150)',
+          'setTimeout(() => process.stdout.write("out 2\\n"), 450)',
         ].join(";")
         const result = yield* svc.run(cmd("-e", script), { combineOutput: true })
         expect(result.output?.toString("utf8")).toBe("out 1\nerr 1\nout 2\n")
