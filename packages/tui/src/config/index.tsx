@@ -157,6 +157,9 @@ export const Info = Schema.Struct({
       timestamps: Schema.optional(Schema.Literals(["show", "hide"])).annotate({
         description: "Show creation times on user messages",
       }),
+      generic_tool_output: Schema.optional(Schema.Literals(["show", "hide"])).annotate({
+        description: "Show generic tool input and output by default",
+      }),
       list_scope: Schema.optional(Schema.Literals(["directory", "project", "all"])).annotate({
         description: "Initial scope of the session list",
       }),

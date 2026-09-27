@@ -100,6 +100,7 @@ export const Definitions = {
   "terminal.close": keybind("<leader>up", "Close terminal pane"),
   "session.toggle.scrollbar": keybind("none", "Toggle session scrollbar"),
   "session.toggle.timestamps": keybind("none", "Toggle user message timestamps"),
+  "session.toggle.generic_tool_output": keybind("none", "Toggle generic tool details"),
   "opencode.status": keybind("<leader>s", "View status"),
   "opencode.debug": keybind("none", "View debug info"),
 

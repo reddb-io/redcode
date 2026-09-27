@@ -236,6 +236,7 @@ export function Session(props: {
   const thinkingMode = createMemo<ThinkingMode>(() => config.session?.thinking ?? "hide")
   const showScrollbar = createMemo(() => config.session?.scrollbar ?? false)
   const showTimestamps = createMemo(() => config.session?.timestamps === "show")
+  const showGenericToolOutput = createMemo(() => config.session?.generic_tool_output === "show")
   const markdownMode = createMemo(() => config.session?.markdown ?? "rendered")
   const diffWrapMode = createMemo(() => config.diffs?.wrap ?? "word")
   const groupExploration = createMemo(() => config.session?.grouping !== "none")
@@ -1110,6 +1111,20 @@ export function Session(props: {
         void configState
           .update((draft) => {
             draft.session = { ...draft.session, timestamps: showTimestamps() ? "hide" : "show" }
+          })
+          .catch(toast.error)
+        dialog.clear()
+      },
+    },
+    {
+      title: showGenericToolOutput() ? "Hide generic tool details" : "Show generic tool details",
+      id: "session.toggle.generic_tool_output",
+      group: "Session",
+      palette: undefined,
+      run: () => {
+        void configState
+          .update((draft) => {
+            draft.session = { ...draft.session, generic_tool_output: showGenericToolOutput() ? "hide" : "show" }
           })
           .catch(toast.error)
         dialog.clear()
@@ -2609,9 +2624,11 @@ type ToolProps = {
 }
 function GenericTool(props: ToolProps) {
   const theme = useTheme()
+  const ctx = use()
   const output = createMemo(() => props.output?.trim() ?? "")
   const input = createMemo(() => Object.entries(props.input))
   const [expanded, setExpanded] = createSignal(false)
+  createEffect(() => setExpanded(ctx.config.session?.generic_tool_output === "show"))
   const expandable = createMemo(() => input().length > 0 || output().length > 0)
   const loading = createMemo(() => props.part.state.status === "streaming" || props.part.state.status === "running")
 
