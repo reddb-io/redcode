@@ -124,8 +124,16 @@ const toolCall = (tool: SessionMessage.AssistantTool, providerMetadata: Provider
 
 const toolResult = (tool: SessionMessage.AssistantTool, providerMetadata: ProviderMetadata | undefined) => {
   if (tool.state.status === "completed") {
-    // TODO: Materialize remote and managed URIs before provider-history lowering.
-    const content = tool.state.content
+    // Older results can retain local or provider-managed URIs whose bytes were never persisted.
+    const content = tool.state.content.map((item) => {
+      if (item.type !== "file") return item
+      const protocol = /^[a-z][a-z0-9+.-]*:/i.exec(item.uri)?.[0].toLowerCase()
+      if (protocol === undefined || protocol === "data:" || protocol === "http:" || protocol === "https:") return item
+      return {
+        type: "text" as const,
+        text: `[Tool attachment unavailable in model history: ${item.name ?? "unnamed file"} (${item.mime})]`,
+      }
+    })
     const single = content.length === 1 ? content[0] : undefined
     return ToolResultPart.make({
       id: tool.id,

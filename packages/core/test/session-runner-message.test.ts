@@ -877,6 +877,48 @@ Earlier work
     ])
   })
 
+  test("marks unmaterialized tool URIs unavailable when replaying model history", () => {
+    const messages = toLLMMessages(
+      [
+        SessionMessage.Assistant.make({
+          id: id("legacy-tool-file"),
+          type: "assistant",
+          agent: build,
+          model,
+          content: [
+            SessionMessage.AssistantTool.make({
+              type: "tool",
+              id: "legacy-file",
+              name: "read",
+              state: SessionMessage.ToolStateCompleted.make({
+                status: "completed",
+                input: {},
+                content: [
+                  { type: "file", uri: "file:///old/report.pdf", mime: "application/pdf", name: "report.pdf" },
+                  { type: "file", uri: "data:image/png;base64,aGVsbG8=", mime: "image/png", name: "image.png" },
+                ],
+              }),
+              time: { created, completed: created },
+            }),
+          ],
+          time: { created, completed: created },
+        }),
+      ],
+      model,
+    )
+
+    expect(messages[1]?.content[0]).toMatchObject({
+      type: "tool-result",
+      result: {
+        type: "content",
+        value: [
+          { type: "text", text: "[Tool attachment unavailable in model history: report.pdf (application/pdf)]" },
+          { type: "file", uri: "data:image/png;base64,aGVsbG8=", mime: "image/png", name: "image.png" },
+        ],
+      },
+    })
+  })
+
   test("restores OpenAI encrypted reasoning metadata", () => {
     const messages = toLLMMessages(
       [
