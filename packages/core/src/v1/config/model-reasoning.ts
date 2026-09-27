@@ -2,7 +2,7 @@ export * as ConfigModelReasoningV1 from "./model-reasoning.js"
 
 import { Provider } from "../../provider.js"
 
-/** V1 request defaults gated by a configured model's reasoning capability. */
+/** V1 request defaults for a model with reasoning capability. */
 export function defaults(input: {
   providerID: string
   modelID: string
@@ -33,7 +33,7 @@ export function defaults(input: {
     const azureChat = name === "@opencode/ai/providers/azure/chat" || input.useCompletionUrls === true
     if (
       (openai || azure || copilot || mantle) &&
-      !(azure && azureChat && (major > 5 || (major === 5 && minor >= 5)))
+      !(azure && (id.includes("gpt-5.5") || (azureChat && (major > 5 || (major === 5 && minor >= 5)))))
     )
       return {
         settings: {

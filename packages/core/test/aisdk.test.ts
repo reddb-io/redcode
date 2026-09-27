@@ -473,7 +473,12 @@ it.effect("keeps V1 GPT-5 defaults on AI SDK routes without an explicit reasonin
     const proRequest = yield* compileRequest(LLM.request({ model: pro, prompt: "Hello" }))
     expect(proRequest.body.providerOptions?.openai).toEqual({ store: false })
 
-    const azure = yield* aisdk.model({ ...model("@ai-sdk/azure"), modelID: Model.ID.make("gpt-5.5") })
+    const azureBase = model("@ai-sdk/azure")
+    const azure = yield* aisdk.model({
+      ...azureBase,
+      modelID: Model.ID.make("gpt-5.5"),
+      capabilities: { ...azureBase.capabilities, reasoning: true },
+    })
     const azureRequest = yield* compileRequest(LLM.request({ model: azure, prompt: "Hello" }))
     expect(azureRequest.body.providerOptions?.azure).toMatchObject({
       store: false,
@@ -510,6 +515,37 @@ it.effect("keeps V1 Meta reasoning defaults on the legacy OpenAI SDK route", () 
       reasoningSummary: "auto",
       include: ["reasoning.encrypted_content"],
       forceReasoning: true,
+    })
+  }),
+)
+
+it.effect("applies V1 reasoning defaults from catalog capabilities on AI SDK routes", () =>
+  Effect.gen(function* () {
+    const aisdk = yield* AISDK.Service
+    yield* aisdk.hook.sdk((event) => {
+      event.sdk = { languageModel: () => ({ provider: event.model.providerID }) }
+    })
+
+    const base = model("@ai-sdk/google")
+    const gemini = yield* aisdk.model({
+      ...base,
+      modelID: Model.ID.make("gemini-3-pro"),
+      capabilities: { ...base.capabilities, reasoning: true },
+    })
+    const request = yield* compileRequest(LLM.request({ model: gemini, prompt: "Hello" }))
+    expect(request.body.providerOptions?.google).toMatchObject({
+      thinkingConfig: { includeThoughts: true, thinkingLevel: "high" },
+    })
+
+    const configured = yield* aisdk.model({
+      ...base,
+      modelID: Model.ID.make("gemini-3-flash"),
+      capabilities: { ...base.capabilities, reasoning: true },
+      settings: { thinkingConfig: { includeThoughts: false } },
+    })
+    const configuredRequest = yield* compileRequest(LLM.request({ model: configured, prompt: "Hello" }))
+    expect(configuredRequest.body.providerOptions?.google).toMatchObject({
+      thinkingConfig: { includeThoughts: false, thinkingLevel: "high" },
     })
   }),
 )
