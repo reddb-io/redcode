@@ -19,6 +19,28 @@ export function defaults(input: { providerID: string; modelID: string; packageNa
       },
     }
 
+  if (
+    id.includes("gemini-3") &&
+    (name === "@openrouter/ai-sdk-provider" ||
+      name === "@llmgateway/ai-sdk-provider" ||
+      name === "@opencode/ai/providers/openrouter")
+  )
+    return { settings: { reasoning: { effort: "high" } } }
+
+  if (
+    id.includes("minimax-m3") &&
+    (name === "@ai-sdk/anthropic" || name === "@opencode/ai/providers/minimax/messages")
+  )
+    return { settings: { thinking: { type: "adaptive" } } }
+
+  if (
+    /zai|zhipuai/iu.test(input.providerID) &&
+    (name === "@ai-sdk/openai-compatible" ||
+      name === "@opencode/ai/providers/zai/chat" ||
+      name === "@opencode/ai/providers/zai-coding-plan/chat")
+  )
+    return { settings: { thinking: { type: "enabled", clear_thinking: false } } }
+
   const kimi = [input.providerID, input.modelID, typeof input.baseURL === "string" ? input.baseURL : ""].some((value) =>
     /kimi|moonshot/iu.test(value),
   )

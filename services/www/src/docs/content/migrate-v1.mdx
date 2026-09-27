@@ -462,9 +462,10 @@ provider `whitelist` and `blacklist` become model filters. Provider-model `relea
 `temperature`, and `status` are preserved. The V1 provider-model `experimental` boolean had no effect and is accepted
 without a warning.
 
-Provider-model `reasoning` preserves the capability and variants. Gemini, Kimi over Anthropic-compatible routes, and
-`alibaba-cn` also retain their V1 request defaults. Other provider-specific V1 reasoning defaults still require
-migration, so this field continues to produce a partial-support warning.
+Provider-model `reasoning` preserves the capability and variants. Gemini, Kimi over Anthropic-compatible routes,
+MiniMax M3 over Anthropic, ZAI chat, Gemini 3 through OpenRouter, and `alibaba-cn` also retain their V1 request
+defaults when configured with `reasoning: true`. Other provider-specific V1 reasoning defaults still require migration,
+so this field continues to produce a partial-support warning.
 
 ### Agent files
 

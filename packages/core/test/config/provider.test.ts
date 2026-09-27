@@ -231,6 +231,44 @@ describe("ConfigProviderPlugin.Plugin", () => {
     }),
   )
 
+  it.effect("preserves V1 MiniMax, ZAI, and OpenRouter reasoning defaults", () =>
+    Effect.gen(function* () {
+      const models = yield* Model.Service
+      const migrated = ConfigNormalize.normalize({
+        provider: {
+          minimax: {
+            npm: "@ai-sdk/anthropic",
+            models: { "minimax-m3": { reasoning: true } },
+          },
+          zai: {
+            npm: "@ai-sdk/openai-compatible",
+            models: {
+              "glm-5": { reasoning: true, options: { thinking: { clear_thinking: true } } },
+              "glm-4": { reasoning: false },
+            },
+          },
+          openrouter: {
+            npm: "@openrouter/ai-sdk-provider",
+            models: { "google/gemini-3-pro": { reasoning: true } },
+          },
+        },
+      })
+      if (migrated.type !== "normalized") throw new Error("Expected normalized config")
+      yield* addPlugin([new Document({ type: "document", info: decode(migrated.encoded) })])
+      expect((yield* models.get(Provider.ID.make("minimax"), Model.ID.make("minimax-m3")))?.settings?.thinking).toEqual({
+        type: "adaptive",
+      })
+      expect((yield* models.get(Provider.ID.make("zai"), Model.ID.make("glm-5")))?.settings?.thinking).toEqual({
+        type: "enabled",
+        clear_thinking: true,
+      })
+      expect((yield* models.get(Provider.ID.make("zai"), Model.ID.make("glm-4")))?.settings?.thinking).toBeUndefined()
+      expect((yield* models.get(Provider.ID.make("openrouter"), Model.ID.make("google/gemini-3-pro")))?.settings?.reasoning).toEqual({
+        effort: "high",
+      })
+    }),
+  )
+
   it.effect("applies variant overrides to generated defaults for new models", () =>
     Effect.gen(function* () {
       const models = yield* Model.Service
