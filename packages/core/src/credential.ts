@@ -153,13 +153,7 @@ const layer = Layer.effect(
             Effect.gen(function* () {
               const credential = yield* tx.select().from(CredentialTable).where(eq(CredentialTable.id, id)).get()
               if (!credential?.integration_id) return
-              const active = yield* tx
-                .select({ id: CredentialTable.id })
-                .from(CredentialTable)
-                .where(eq(CredentialTable.integration_id, credential.integration_id))
-                .orderBy(desc(CredentialTable.active), desc(CredentialTable.time_created), desc(CredentialTable.id))
-                .get()
-              if (active?.id === id) return
+              if (credential.active) return
               yield* tx
                 .update(CredentialTable)
                 .set({ active: false })

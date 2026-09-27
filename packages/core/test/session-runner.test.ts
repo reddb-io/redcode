@@ -414,6 +414,13 @@ const layer = Layer.unwrap(
       small: () => Effect.undefined,
     })
     const replacements: LayerNode.Replacements = [
+      Agent.node.replace(
+        Agent.node.mapLayer((layer) =>
+          layer.pipe(
+            Layer.tap((context) => AgentPlugin.Plugin.effect(host({ agent: agentHost(Context.get(context, Agent.Service)) }))),
+          ),
+        ),
+      ),
       Snapshot.node.replace(Snapshot.noopLayer),
       LayerNodePlatform.llmClient.replace(TestLLM.clientLayer.pipe(Layer.provide(testLLM))),
       SessionRunnerModel.node.replace(models),
@@ -428,12 +435,10 @@ const layer = Layer.unwrap(
       Plugin.node.replace(Layer.mock(Plugin.Service, { awaitActivation: Effect.void })),
       SessionModelTransport.node.replace(modelTransport),
     ]
-    const runnerLayer = AppNodeBuilder.build(
-      LayerNode.group([SessionRunnerLLM.node, Agent.node]),
-      [...replacements, McpInstructions.node.replace(mcpInstructions)],
-    ).pipe(
-      Layer.tap((context) => AgentPlugin.Plugin.effect(host({ agent: agentHost(Context.get(context, Agent.Service)) }))),
-    )
+    const runnerLayer = AppNodeBuilder.build(SessionRunnerLLM.node, [
+      ...replacements,
+      McpInstructions.node.replace(mcpInstructions),
+    ])
     const execution = Layer.effect(
       SessionExecution.Service,
       Effect.gen(function* () {
