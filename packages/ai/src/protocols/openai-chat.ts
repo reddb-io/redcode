@@ -183,6 +183,7 @@ export const bodyFields = {
   store: Schema.optional(Schema.Boolean),
   prompt_cache_key: Schema.optional(Schema.String),
   reasoning_effort: Schema.optional(OpenAIOptions.OpenAIReasoningEffort),
+  verbosity: Schema.optional(OpenAIOptions.OpenAITextVerbosity),
   tool_stream: Schema.optional(Schema.Boolean),
   max_completion_tokens: Schema.optional(Schema.Number),
   max_tokens: Schema.optional(Schema.Number),
@@ -781,6 +782,7 @@ const lowerOptions = (request: LLMRequest, supportsStore: boolean) => {
     ...(supportsStore && options.store === undefined ? { store: false } : {}),
     ...(cacheKey ? { prompt_cache_key: cacheKey } : {}),
     ...(options.reasoningEffort ? { reasoning_effort: options.reasoningEffort } : {}),
+    ...(options.textVerbosity ? { verbosity: options.textVerbosity } : {}),
   }
 }
 

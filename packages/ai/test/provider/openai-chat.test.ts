@@ -45,6 +45,23 @@ const request = LLM.request({
 })
 
 describe("OpenAI Chat route", () => {
+  it.effect("sends GPT 5.x text verbosity with the Chat API field", () =>
+    Effect.gen(function* () {
+      const openai = OpenAI.configure({ apiKey: "test" })
+      const prepared = yield* compileRequest(LLM.request({ model: openai.chat("gpt-5.2"), prompt: "hi" }))
+      expect(prepared.body.verbosity).toBe("low")
+
+      const explicit = yield* compileRequest(
+        LLM.request({ model: openai.chat("gpt-5.2"), prompt: "hi", providerOptions: { textVerbosity: "high" } }),
+      )
+      expect(explicit.body.verbosity).toBe("high")
+
+      const azure = Azure.configure({ baseURL: "https://opencode-test.openai.azure.com/openai/", apiKey: "test" })
+      const other = yield* compileRequest(LLM.request({ model: azure.chat("gpt-5.2"), prompt: "hi" }))
+      expect(other.body.verbosity).toBeUndefined()
+    }),
+  )
+
   it.effect("omits unsupported Azure Chat reasoning defaults for GPT 5.5 and newer", () =>
     Effect.gen(function* () {
       const azure = Azure.configure({ baseURL: "https://opencode-test.openai.azure.com/openai/", apiKey: "test" })
