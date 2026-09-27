@@ -10,9 +10,8 @@ export const resume = Effect.fn("ServerRestartContinuity.resume")(function* (
   migrate: boolean,
 ) {
   const execution = yield* SessionExecution.Service
-  const pending = migrate
-    ? yield* V1Migration.run().pipe(Effect.andThen(RedcodePending.admit()))
-    : []
+  if (migrate) yield* V1Migration.run()
+  const pending = yield* RedcodePending.admit({ onError: "continue" })
   yield* restart.resumeSuspendedSessions
   yield* Effect.forEach(pending, (sessionID) => execution.wake(sessionID), { discard: true })
 })

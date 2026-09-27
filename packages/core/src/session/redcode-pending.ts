@@ -32,7 +32,7 @@ type LegacyFile = NonNullable<(typeof LegacyPrompt.Type)["files"]>[number]
 const MaxAttachmentBytes = 20 * 1024 * 1024
 
 /** Admit still-pending V1 inputs through the normal V2 event and projection path. */
-export const admit = Effect.fn("RedcodePending.admit")(function* () {
+export const admit = Effect.fn("RedcodePending.admit")(function* (options: { onError?: "continue" } = {}) {
   const db = (yield* Database.Service).db
   const inbox = yield* SessionInbox.make()
   const pending = yield* db
@@ -92,7 +92,17 @@ export const admit = Effect.fn("RedcodePending.admit")(function* () {
             delivery: row.delivery,
           },
         })
-      }),
+      }).pipe(
+        Effect.catchAll((error) =>
+          options.onError === "continue"
+            ? Effect.logError("Pending Redcode input admission failed", {
+                sessionID: row.session_id,
+                inputID: row.id,
+                error,
+              })
+            : Effect.fail(error),
+        ),
+      ),
     { discard: true },
   )
   const waiting = yield* Effect.forEach(pending, (row) =>
