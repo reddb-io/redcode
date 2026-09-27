@@ -235,6 +235,7 @@ export function Session(props: {
   const dimensions = useTerminalDimensions()
   const thinkingMode = createMemo<ThinkingMode>(() => config.session?.thinking ?? "hide")
   const showScrollbar = createMemo(() => config.session?.scrollbar ?? false)
+  const showTimestamps = createMemo(() => config.session?.timestamps === "show")
   const markdownMode = createMemo(() => config.session?.markdown ?? "rendered")
   const diffWrapMode = createMemo(() => config.diffs?.wrap ?? "word")
   const groupExploration = createMemo(() => config.session?.grouping !== "none")
@@ -1095,6 +1096,20 @@ export function Session(props: {
         void configState
           .update((draft) => {
             draft.session = { ...draft.session, scrollbar: !showScrollbar() }
+          })
+          .catch(toast.error)
+        dialog.clear()
+      },
+    },
+    {
+      title: showTimestamps() ? "Hide timestamps" : "Show timestamps",
+      id: "session.toggle.timestamps",
+      group: "Session",
+      palette: undefined,
+      run: () => {
+        void configState
+          .update((draft) => {
+            draft.session = { ...draft.session, timestamps: showTimestamps() ? "hide" : "show" }
           })
           .catch(toast.error)
         dialog.clear()
@@ -2359,6 +2374,11 @@ function UserMessage(props: { message: SessionMessageUser }) {
                   )
                 }}
               </For>
+            </box>
+          </Show>
+          <Show when={ctx.config.session?.timestamps === "show" && !delivery()}>
+            <box paddingTop={1}>
+              <text fg={theme.text.muted}>{Locale.datetime(props.message.time.created)}</text>
             </box>
           </Show>
         </box>

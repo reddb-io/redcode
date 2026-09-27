@@ -266,6 +266,8 @@ export function migrateV1(legacy: TuiConfigV1.Info | undefined, kv: Record<strin
         }),
     ...(kv.sidebar === undefined &&
     kv.scrollbar_visible === undefined &&
+    kv.timestamps !== "show" &&
+    kv.timestamps !== "hide" &&
     thinking === undefined &&
     kv.exploration_grouping === undefined
       ? {}
@@ -273,6 +275,7 @@ export function migrateV1(legacy: TuiConfigV1.Info | undefined, kv: Record<strin
           session: {
             ...(kv.sidebar === undefined ? {} : { sidebar: kv.sidebar }),
             ...(kv.scrollbar_visible === undefined ? {} : { scrollbar: kv.scrollbar_visible }),
+            ...(kv.timestamps === "show" || kv.timestamps === "hide" ? { timestamps: kv.timestamps } : {}),
             ...(thinking === undefined ? {} : { thinking }),
             ...(kv.exploration_grouping === undefined
               ? {}
