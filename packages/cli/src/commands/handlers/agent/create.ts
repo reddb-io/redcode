@@ -14,7 +14,7 @@ const GeneratedAgent = Schema.Struct({
   whenToUse: Schema.Trim.pipe(Schema.check(Schema.isNonEmpty())),
   systemPrompt: Schema.Trim.pipe(Schema.check(Schema.isNonEmpty())),
 })
-const GeneratedJson = Schema.UnknownFromJsonString.pipe(Schema.decodeTo(GeneratedAgent))
+const GeneratedJson = Schema.fromJsonString(GeneratedAgent)
 const permissions = [
   "shell", "read", "edit", "glob", "grep", "webfetch", "websearch", "subagent", "lsp", "skill", "todowrite",
 ] as const
@@ -102,16 +102,16 @@ export default Runtime.handler(Commands.commands.agent.commands.create, (input) 
     const generated = yield* request((signal) =>
       client.generate.text({ prompt: generationPrompt, ...(model ? { model } : {}), location }, { signal }),
     )
-    const first = yield* Effect.either(parseGenerated(generated.data.text))
-    const agent = first._tag === "Right"
-      ? first.right
+    const first = yield* Effect.option(parseGenerated(generated.text))
+    const agent = Option.isSome(first)
+      ? first.value
       : yield* request((signal) =>
           client.generate.text({
-            prompt: `${generationPrompt}\n\nThe previous response was invalid JSON for those three fields:\n${generated.data.text}\n\nReturn only the corrected JSON object.`,
+            prompt: `${generationPrompt}\n\nThe previous response was invalid JSON for those three fields:\n${generated.text}\n\nReturn only the corrected JSON object.`,
             ...(model ? { model } : {}),
             location,
           }, { signal }),
-        ).pipe(Effect.flatMap((response) => parseGenerated(response.data.text)))
+        ).pipe(Effect.flatMap((response) => parseGenerated(response.text)))
     if (existing.includes(agent.identifier))
       return yield* Effect.fail(new Error(`Agent already exists: ${agent.identifier}`))
 

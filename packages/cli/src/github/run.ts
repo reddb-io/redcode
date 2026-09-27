@@ -347,7 +347,8 @@ try {
         const summary = await summarize(response)
         await pushToLocalBranch(summary, uncommittedChanges)
       }
-      const hasShared = !!shareUrl && prData.comments.nodes.some((c) => c.body.includes(shareUrl))
+      const shared = shareUrl
+      const hasShared = !!shared && prData.comments.nodes.some((c) => c.body.includes(shared))
       await createComment(`${response}${footer({ image: !hasShared })}`)
       await removeReaction(commentType)
     }
@@ -365,7 +366,8 @@ try {
         const summary = await summarize(response)
         await pushToForkBranch(summary, prData, uncommittedChanges)
       }
-      const hasShared = !!shareUrl && prData.comments.nodes.some((c) => c.body.includes(shareUrl))
+      const shared = shareUrl
+      const hasShared = !!shared && prData.comments.nodes.some((c) => c.body.includes(shared))
       await createComment(`${response}${footer({ image: !hasShared })}`)
       await removeReaction(commentType)
     }

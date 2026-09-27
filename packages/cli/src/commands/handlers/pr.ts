@@ -30,10 +30,11 @@ export default Runtime.handler(
     const info = view.exit === 0 ? yield* Schema.decodeUnknownEffect(PullRequest)(view.output) : undefined
     if (info?.isCrossRepository && info.headRepository && info.headRepositoryOwner) {
       const remote = info.headRepositoryOwner.login
+      const repository = info.headRepository.name
       const remotes = yield* Effect.promise(() => command(["git", "remote"]))
       if (remotes.exit === 0 && !remotes.output.split("\n").includes(remote)) {
         const added = yield* Effect.promise(() => command([
-          "git", "remote", "add", remote, `https://github.com/${remote}/${info.headRepository.name}.git`,
+          "git", "remote", "add", remote, `https://github.com/${remote}/${repository}.git`,
         ]))
         if (added.exit !== 0)
           return yield* Effect.fail(new Error(`Could not add fork remote ${remote}: ${added.error.trim()}`))

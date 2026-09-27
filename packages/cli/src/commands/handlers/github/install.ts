@@ -18,7 +18,7 @@ const priority = new Map([
 
 export default Runtime.handler(
   Commands.commands.github.commands.install,
-  Effect.fn("cli.github.install")(function* () {
+  () => Effect.gen(function* () {
     yield* requireInteractive("Run redcode github install in an interactive terminal")
     intro("Install Redcode GitHub agent")
     const repository = yield* Effect.promise(readRepository)

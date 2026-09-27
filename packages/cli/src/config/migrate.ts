@@ -71,10 +71,10 @@ export const run = Effect.fn("cli.config.migrate")(function* (input: {
       typeof enabled !== "boolean"
         ? renamed
         : [
-            ...(attention.notifications === undefined
+            ...(attention?.notifications === undefined
               ? [{ path: ["attention", "notifications"], value: enabled }]
               : []),
-            ...(attention.sound === undefined ? [{ path: ["attention", "sound"], value: enabled }] : []),
+            ...(attention?.sound === undefined ? [{ path: ["attention", "sound"], value: enabled }] : []),
             { path: ["attention", "enabled"], value: undefined },
           ].reduce(
             (text, edit) =>

@@ -15,7 +15,7 @@ export default Runtime.handler(
     const client = OpenCode.make({ baseUrl: endpoint.url, headers: Service.headers(endpoint) })
     const report = (yield* Effect.promise(() =>
       client.debug.guards({ since: Math.max(0, Date.now() - input.days * DAY_MS), limit: input.limit }),
-    )).data
+    ))
     if (input.json) {
       process.stdout.write(JSON.stringify(report, null, 2) + EOL)
       return

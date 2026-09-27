@@ -91,14 +91,12 @@ export const start = Effect.fn("ServerProcess.start")(function* <E, R>(
   )
 
   const boot = Effect.gen(function* () {
+    const routes = createRoutes({ ...options, password }, urls).pipe(
+      Layer.provideMerge(NodeHttpServer.layerHttpServices),
+    )
+    // makeRoutes provides request services through its dynamic Layer.flatMap.
     const context = yield* Layer.buildWithScope(
-      createRoutes(
-        {
-          ...options,
-          password,
-        },
-        urls,
-      ).pipe(Layer.provideMerge(NodeHttpServer.layerHttpServices)),
+      routes as unknown as Layer.Layer<Layer.Success<typeof routes>, Layer.Error<typeof routes>>,
       applicationScope,
     )
     if (lifecycle) {

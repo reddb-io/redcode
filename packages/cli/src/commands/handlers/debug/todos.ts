@@ -19,7 +19,7 @@ export default Runtime.handler(
     const sessionID = Option.getOrUndefined(input.sessionID) ??
       (yield* Effect.promise(() => client.session.list({ directory: process.cwd(), order: "desc", limit: 1 }))).data[0]?.id
     if (!sessionID) return yield* Effect.fail(new Error(`No session found in ${process.cwd()}`))
-    const report = (yield* Effect.promise(() => client.debug.todos({ sessionID }))).data
+    const report = yield* Effect.promise(() => client.debug.todos({ sessionID }))
     if (input.json) {
       process.stdout.write(JSON.stringify(report, null, 2) + EOL)
       return

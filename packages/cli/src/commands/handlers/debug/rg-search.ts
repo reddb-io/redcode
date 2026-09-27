@@ -16,7 +16,7 @@ export default Runtime.handler(
       pattern: input.pattern,
       glob: input.glob[0],
       limit: input.limit,
-    }))).data
+    })))
     process.stdout.write(JSON.stringify(matches, null, 2) + EOL)
   }),
 )

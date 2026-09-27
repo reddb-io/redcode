@@ -16,7 +16,7 @@ export default Runtime.handler(
       glob: Option.getOrUndefined(input.glob),
       query: Option.getOrUndefined(input.query),
       limit: input.limit,
-    }))).data
+    })))
     process.stdout.write(files.map((file) => file.path).join(EOL) + EOL)
   }),
 )

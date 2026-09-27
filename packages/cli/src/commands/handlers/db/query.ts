@@ -22,7 +22,7 @@ export default Runtime.handler(
     }
     const result = yield* Effect.gen(function* () {
       const database = yield* Database.Service
-      return yield* database.db.all<Record<string, unknown>>(sql.raw(input.sql.value))
+      return yield* database.db.all<Record<string, unknown>>(sql.raw(Option.getOrThrow(input.sql)))
     }).pipe(Effect.provide(Database.layer(selected)))
     if (input.format === "json") {
       process.stdout.write(JSON.stringify(result, null, 2) + EOL)
