@@ -385,7 +385,7 @@ function modelFromLanguage(info: RuntimeInfo, language: LanguageModelV3) {
               headers: info.headers,
             },
       providerOptions: Provider.mergeOverlay(
-        legacyProviderDefaults(packageName, info.modelID ?? info.id),
+        legacyProviderDefaults(packageName, providerID, info.modelID ?? info.id),
         projected.settings,
       ),
     },
@@ -413,7 +413,7 @@ function modelFromLanguage(info: RuntimeInfo, language: LanguageModelV3) {
   })
 }
 
-function legacyProviderDefaults(packageName: string, modelID: string) {
+function legacyProviderDefaults(packageName: string, providerID: string, modelID: string) {
   if (
     packageName === "@ai-sdk/google-vertex/anthropic" ||
     (packageName === "@ai-sdk/anthropic" && !modelID.includes("claude"))
@@ -422,11 +422,18 @@ function legacyProviderDefaults(packageName: string, modelID: string) {
   if (packageName === "@ai-sdk/gateway") return { gateway: { caching: "auto" } }
   if (packageName === "@llmgateway/ai-sdk-provider" || packageName === "@openrouter/ai-sdk-provider")
     return { usage: { include: true } }
+  if (packageName === "@ai-sdk/openai" || packageName === "@ai-sdk/github-copilot") {
+    const id = modelID.toLowerCase()
+    return {
+      store: false,
+      ...(providerID !== "azure" && id.includes("gpt-5.") && !id.includes("codex") && !id.includes("-chat")
+        ? { textVerbosity: "low" }
+        : {}),
+    }
+  }
   if (
     [
-      "@ai-sdk/openai",
       "@ai-sdk/azure",
-      "@ai-sdk/github-copilot",
       "@ai-sdk/amazon-bedrock/mantle",
       "@ai-sdk/xai",
     ].includes(packageName)
