@@ -137,7 +137,7 @@ export const make = Effect.gen(function* () {
         progress: (update) =>
           Effect.sync(() => {
             lastEventAt = Date.now()
-          }).pipe(Effect.zipRight(publisher.progress(call.id, update))),
+          }).pipe(Effect.andThen(publisher.progress(call.id, update))),
       })
       const ms = ToolDeadline.deadlineMs({ tool: call.name, configured: input.toolTimeout })
       if (ms === undefined) {

@@ -226,7 +226,9 @@ const layer = Layer.effect(
         if (goalID === false) return DrainResult.Complete()
         const result = yield* Effect.uninterruptibleMask((restore) =>
           Effect.gen(function* () {
-            const result = yield* restore(runStep(next.context, step, goalID)).pipe(Effect.exit)
+            const result = yield* restore(runStep(next.context, step, goalID, () => {
+              guardStopped = true
+            })).pipe(Effect.exit)
             if (goalID)
               yield* goals
                 .settle(sessionID, {
@@ -236,7 +238,7 @@ const layer = Layer.effect(
                   failed: Exit.isFailure(result) && !Cause.hasInterrupts(result.cause),
                   waiting: Exit.isSuccess(result) && (yield* monitors.list(sessionID)).some(Monitor.parks),
                 })
-                .pipe(Effect.catchAllCause((cause) => Effect.logWarning("Goal step settlement failed", { sessionID, cause: Cause.pretty(cause) })))
+                .pipe(Effect.catchCause((cause) => Effect.logWarning("Goal step settlement failed", { sessionID, cause: Cause.pretty(cause) })))
             return result
           }),
         )
@@ -265,7 +267,7 @@ const layer = Layer.effect(
           (next.context.agent.info.steps === undefined || step < next.context.agent.info.steps)
         ) {
           const reminder = SessionTodo.reminder(
-            yield* todos.review(sessionID).pipe(Effect.orElse(() => todos.get(sessionID))),
+            yield* Effect.firstSuccessOf([todos.review(sessionID), todos.get(sessionID)]),
           )
           if (reminder && todoContinuations < 7) {
             yield* bus.publish(SessionEvent.Synthetic, { sessionID, text: reminder })
@@ -427,6 +429,7 @@ const layer = Layer.effect(
       first: SessionContext.Loaded,
       step: number,
       goalID: string | undefined,
+      stopGuard: () => void,
     ) {
       const sessionID = first.session.id
       let assistantMessageID = SessionMessage.ID.create()
@@ -552,7 +555,7 @@ const layer = Layer.effect(
         const completed = yield* SessionStep.Outcome.$match(outcome, {
           Completed: Effect.fnUntraced(function* (outcome) {
             if (outcome.guardStop) {
-              guardStopped = true
+              stopGuard()
               const goal = yield* goals.get(sessionID)
               if (goal?.status === "active")
                 yield* goals.save(goal, { ...goal, status: "paused", reason: outcome.guardStop }).pipe(Effect.orDie)

@@ -1,6 +1,6 @@
 import { confirm } from "@clack/prompts"
 import { EOL } from "node:os"
-import { Effect, Either, Option } from "effect"
+import { Effect, Option, Result } from "effect"
 import { Commands } from "../../commands"
 import { Runtime } from "../../../framework/runtime"
 import { prompt, requireInteractive } from "../../../ui/prompt"
@@ -53,17 +53,17 @@ export default Runtime.handler(
       Effect.tryPromise({
         try: () => context.client.worktree.remove({ projectID: context.projectID, directory: entry.path, force: false }),
         catch: (cause) => cause,
-      }).pipe(Effect.either),
+      }).pipe(Effect.result),
     )
-    process.stdout.write(`Removed ${outcomes.filter(Either.isRight).length} worktree(s).${EOL}`)
+    process.stdout.write(`Removed ${outcomes.filter(Result.isSuccess).length} worktree(s).${EOL}`)
     outcomes.forEach((outcome, index) => {
-      if (Either.isLeft(outcome)) process.stderr.write(`  kept ${candidates[index]!.path}: ${String(outcome.left)}${EOL}`)
+      if (Result.isFailure(outcome)) process.stderr.write(`  kept ${candidates[index]!.path}: ${String(outcome.failure)}${EOL}`)
     })
-    if (outcomes.some(Either.isLeft)) process.exitCode = 1
+    if (outcomes.some(Result.isFailure)) process.exitCode = 1
     if (!root) return
     const branches = candidates.flatMap((entry, index) => {
       const outcome = outcomes[index]
-      return outcome && Either.isRight(outcome) && entry.merged && entry.branch ? [entry.branch] : []
+      return outcome && Result.isSuccess(outcome) && entry.merged && entry.branch ? [entry.branch] : []
     })
     const deleted = yield* Effect.forEach(branches, (branch) =>
       Effect.promise(() => git(root, ["branch", "-D", branch], true)),

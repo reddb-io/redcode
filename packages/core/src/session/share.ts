@@ -53,7 +53,6 @@ const layer = Layer.effect(
         }
       }).pipe(
         Effect.provide(locations.get(info.location)),
-        Effect.mapError((cause) => cause instanceof Error ? cause : new Error(String(cause))),
       )
     })
 
@@ -82,8 +81,8 @@ const layer = Layer.effect(
       const diffs = summary?.diffs
         ? summary.diffs.filter((diff) => diff.file !== undefined && diff.patch !== undefined)
         : yield* sessions.diff({ sessionID }).pipe(
-            Effect.catchAll((error) =>
-              Effect.logWarning("share diff unavailable", { sessionID, error }).pipe(Effect.as([])),
+            Effect.catchCause((cause) =>
+              Effect.logWarning("share diff unavailable", { sessionID, cause }).pipe(Effect.as([])),
             ),
           )
       const data = [
@@ -221,7 +220,7 @@ const layer = Layer.effect(
               }
               yield* sync(sessionID)
             }).pipe(
-              Effect.catchAllCause((cause) => Effect.logWarning("share synchronization failed", { sessionID, cause })),
+              Effect.catchCause((cause) => Effect.logWarning("share synchronization failed", { sessionID, cause })),
               Effect.ensuring(Effect.sync(() => pending.delete(sessionID))),
               Effect.forkScoped,
             )

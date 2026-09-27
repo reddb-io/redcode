@@ -761,7 +761,7 @@ const layer = Layer.effect(
               ? attempt.authorization.callback
               : attempt.authorization.callback(input.code as string)
           const exit = yield* authorize(callback).pipe(Effect.exit)
-          yield* settle(input.attemptID, exit)
+          yield* authorize(settle(input.attemptID, exit))
           if (Exit.isFailure(exit)) return yield* Effect.failCause(exit.cause)
         }),
         cancel: Effect.fn("Integration.oauth.cancel")(function* (input) {
