@@ -1,8 +1,8 @@
 {
   "version": "7",
   "dialect": "sqlite",
-  "id": "e0038461-f3cc-4091-89c4-1b62b488f1ef",
-  "prevIds": ["bc771d4f-fcc4-4595-a03c-54dcb5447fef"],
+  "id": "9df71790-3079-43fa-b5c1-dd8d0bb29c09",
+  "prevIds": ["e0038461-f3cc-4091-89c4-1b62b488f1ef"],
   "ddl": [
     {
       "name": "redcode_session_context_epoch",
@@ -2325,6 +2325,16 @@
       "default": null,
       "generated": null,
       "name": "fork_session_id",
+      "entityType": "columns",
+      "table": "session_v2"
+    },
+    {
+      "type": "text",
+      "notNull": false,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "cache_root_id",
       "entityType": "columns",
       "table": "session_v2"
     },

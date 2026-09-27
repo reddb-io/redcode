@@ -387,6 +387,7 @@ const schema: Omit<DatabaseMigration.Migration, "id"> = {
           \`workspace_id\` text,
           \`parent_id\` text,
           \`fork_session_id\` text,
+          \`cache_root_id\` text,
           \`fork_boundary\` text,
           \`slug\` text NOT NULL,
           \`directory\` text NOT NULL,

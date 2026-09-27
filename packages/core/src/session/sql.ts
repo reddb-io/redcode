@@ -30,6 +30,7 @@ export const SessionTable = sqliteTable(
     workspace_id: text().$type<Workspace.ID>(),
     parent_id: text().$type<SessionSchema.ID>(),
     fork_session_id: text().$type<SessionSchema.ID>(),
+    cache_root_id: text().$type<SessionSchema.ID>(),
     fork_boundary: text({ mode: "json" }).$type<Session.ForkBoundary>(),
     slug: text().notNull(),
     directory: directoryColumn().notNull(),

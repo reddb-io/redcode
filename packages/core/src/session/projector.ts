@@ -151,6 +151,7 @@ const projectFork = Effect.fn("SessionProjector.projectFork")(function* (
       id: event.data.sessionID,
       parent_id: null,
       fork_session_id: event.data.parentID,
+      cache_root_id: parent.cache_root_id ?? parent.id,
       fork_boundary: event.data.boundary,
       project_id: parent.project_id,
       workspace_id: parent.workspace_id,
@@ -439,6 +440,14 @@ const layer = Layer.effectDiscard(
     const db = (yield* Database.Service).db
     yield* bus.project(SessionEvent.Created, (event) =>
       Effect.gen(function* () {
+        const parent = event.data.parentID
+          ? yield* db
+              .select({ id: SessionTable.id, cache_root_id: SessionTable.cache_root_id })
+              .from(SessionTable)
+              .where(eq(SessionTable.id, event.data.parentID))
+              .get()
+              .pipe(Effect.orDie)
+          : undefined
         const stored = yield* db
           .insert(SessionTable)
           .values({
@@ -446,6 +455,7 @@ const layer = Layer.effectDiscard(
             project_id: event.data.projectID,
             workspace_id: event.data.location.workspaceID ? Workspace.ID.make(event.data.location.workspaceID) : null,
             parent_id: event.data.parentID,
+            cache_root_id: parent?.cache_root_id ?? parent?.id ?? event.data.parentID,
             slug: event.data.slug,
             directory: event.data.location.directory,
             path: event.data.subpath,

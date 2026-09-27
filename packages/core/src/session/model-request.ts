@@ -39,6 +39,7 @@ import { SessionSystemPrompt } from "./system-prompt.js"
 import { toLLMMessages } from "./runner/to-llm-message.js"
 import type { SessionMessage } from "./message.js"
 import { SessionToolOutputPrune } from "./tool-output-prune.js"
+import { SessionStore } from "./store.js"
 
 const IMAGE_BYTES_TRIGGER = 25 * 1024 * 1024 // 25 MiB
 const IMAGE_BYTES_TARGET = 15 * 1024 * 1024 // 15 MiB
@@ -209,6 +210,7 @@ export const layer = Layer.effect(
   Effect.gen(function* () {
     const hooks = yield* PluginHooks.Service
     const transport = yield* SessionModelTransport.Service
+    const store = yield* SessionStore.Service
     const app = yield* App.Metadata
     const prepare = Effect.fn("SessionModelRequest.prepare")(function* <
       S extends SessionRequest & { tools?: Definitions },
@@ -243,7 +245,7 @@ export const layer = Layer.effect(
         entries.filter(([key]) => GENERATION_KEYS.has(key) && (key !== "temperature" || model.capabilities.temperature !== false)),
       ) as GenerationOptionsFields
       const providerOptions = Object.fromEntries(entries.filter(([k]) => !GENERATION_KEYS.has(k)))
-      const affinity = session.parentID ?? session.fork?.sessionID ?? session.id
+      const affinity = (yield* store.cacheRoot(session.id)) ?? session.parentID ?? session.fork?.sessionID ?? session.id
       const base = LLM.request({
         model: model.model,
         http: {
@@ -257,7 +259,6 @@ export const layer = Layer.effect(
             "x-opencode-client": app.name,
           },
         },
-        // TODO: Persist cache lineage so nested forks reuse the root session's cache key.
         promptCacheKey: /^ses_[0-9a-f]{64}$/.test(affinity) ? affinity.slice(4) : affinity,
         system: shaped.system,
         messages: boundImages(unsupportedParts(shaped.messages, model.capabilities)),
@@ -400,5 +401,5 @@ export const layer = Layer.effect(
 export const node = makeLocationNode({
   service: Service,
   layer,
-  deps: [PluginHooks.node, SessionModelTransport.node, App.node],
+  deps: [PluginHooks.node, SessionModelTransport.node, SessionStore.node, App.node],
 })
