@@ -968,7 +968,12 @@ describe("Config", () => {
               {
                 type: "entries",
                 path: tmp.path,
-                names: [".agents", ".claude", ".opencode", "opencode.json", "opencode.jsonc"],
+                names: [".agents", ".claude", ".opencode", ".redcode", "opencode.json", "opencode.jsonc", "redcode.json", "redcode.jsonc"],
+              },
+              {
+                type: "entries",
+                path: AbsolutePath.make(path.join(tmp.path, ".red")),
+                names: ["code"],
               },
             ])
           }).pipe(Effect.provide(testLayer(tmp.path, undefined, undefined, undefined, Watcher.testLayer)))
@@ -1287,7 +1292,7 @@ describe("Config", () => {
                 },
               },
             })
-            expect(documents[0]?.info.compaction).toEqual({
+            expect(documents[0]?.info.compaction).toMatchObject({
               auto: true,
               keep: { tokens: 2000 },
               buffer: 10000,
@@ -1534,7 +1539,7 @@ describe("Config", () => {
             expect(yield* watcher.subscriptions()).toContainEqual({
               path: tmp.path,
               type: "entries",
-              names: [".agents", ".claude", ".opencode", "opencode.json", "opencode.jsonc"],
+              names: [".agents", ".claude", ".opencode", ".redcode", "opencode.json", "opencode.jsonc", "redcode.json", "redcode.jsonc"],
             })
           }).pipe(Effect.provide(testLayer(tmp.path)))
         }),

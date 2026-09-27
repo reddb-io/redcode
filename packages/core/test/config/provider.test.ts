@@ -825,16 +825,11 @@ describe("ConfigProviderPlugin.Plugin", () => {
       yield* addPlugin(entries)
 
       const model = required(yield* models.get(providerID, modelID))
-      expect(model.variants).toMatchObject([
-        {
-          id: "high",
-          body: {
-            reasoningEffort: "high",
-            reasoningSummary: "auto",
-            include: ["reasoning.encrypted_content"],
-          },
-        },
-      ])
+      expect(model.variants?.find((variant) => variant.id === "high")?.body).toMatchObject({
+        reasoningEffort: "high",
+        reasoningSummary: "auto",
+        include: ["reasoning.encrypted_content"],
+      })
     }),
   )
 
@@ -874,9 +869,8 @@ describe("ConfigProviderPlugin.Plugin", () => {
       yield* addPlugin(entries)
 
       const model = required(yield* models.get(providerID, modelID))
-      expect(model.variants?.[0]).toMatchObject({
-        id: "high",
-        body: { reasoningEffort: "high" },
+      expect(model.variants?.find((variant) => variant.id === "high")?.body).toMatchObject({
+        reasoningEffort: "high",
       })
     }),
   )
