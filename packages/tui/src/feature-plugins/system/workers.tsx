@@ -1,6 +1,7 @@
 import type { RedskilledStatusOutput } from "@opencode/client"
 import { Plugin } from "@opencode/plugin/tui"
-import type { Status } from "@opencode/schema/redskilled"
+import { Status } from "@opencode/schema/redskilled"
+import { Schema } from "effect"
 import { TextAttributes } from "@opentui/core"
 import { useTerminalDimensions } from "@opentui/solid"
 import { createMemo, createSignal, For, onCleanup, onMount, Show } from "solid-js"
@@ -31,7 +32,7 @@ function WorkersPage(props: { context: Plugin.Context; onClose: () => void }) {
     const observed = revision
     try {
       const result = await props.context.client.redskilled.status({ location, scope: "project" })
-      if (revision === observed) setStatus(result.data)
+      if (revision === observed) setStatus(Schema.decodeUnknownSync(Status)(result.data))
     } catch (cause) {
       if (revision === observed)
         setStatus({ lifecycle: "unavailable", consent: "unknown", scope: "project", native: true, error: errorMessage(cause) })
@@ -46,7 +47,7 @@ function WorkersPage(props: { context: Plugin.Context; onClose: () => void }) {
     setBusy(true)
     try {
       const result = await action()
-      setStatus(result.data)
+      setStatus(Schema.decodeUnknownSync(Status)(result.data))
       props.context.ui.toast.show({ variant: "success", message })
     } catch (cause) {
       props.context.ui.toast.show({ variant: "error", message: errorMessage(cause) })

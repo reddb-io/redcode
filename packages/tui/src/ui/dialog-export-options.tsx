@@ -330,6 +330,8 @@ DialogExportOptions.show = (
     format: ExportFormat
     thinking: boolean
     tools: boolean
+    toolDetails: boolean
+    assistantMetadata: boolean
     sanitize: boolean
   } | null>((resolve) => {
     dialog.replace(
