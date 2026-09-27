@@ -51,7 +51,7 @@ describe("acp config option subprocess", () => {
 
     expect(effort.category).toBe("thought_level")
     expect(effort.currentValue).toBe("default")
-    expect(flattenSelectOptions(effort).map((option) => option.value)).toEqual(["low", "high", "default"])
+    expect(flattenSelectOptions(effort).map((option) => option.value)).toEqual(["low", "medium", "high", "default"])
   }, 60_000)
 
   test("effort survives model synchronization and can be reset to default", async () => {
