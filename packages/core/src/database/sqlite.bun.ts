@@ -1,5 +1,5 @@
 import { Database, type SQLQueryBindings } from "bun:sqlite"
-import { Context, Effect, Layer } from "effect"
+import { Context, Effect, Layer, Stream } from "effect"
 import { Reactivity } from "effect/unstable/reactivity"
 import { SqlClient } from "effect/unstable/sql"
 import { classifySqliteError, SqlError } from "effect/unstable/sql/SqlError"
@@ -56,23 +56,57 @@ const make = (options: Config) =>
         }
       })
 
-    const connection = Sqlite.makeConnection(run, runValues, {
-      export: Effect.try({
-        try: () => native.serialize(),
-        catch: (cause) =>
-          new SqlError({
-            reason: classifySqliteError(cause, { message: "Failed to export database", operation: "export" }),
+    const runStream = (query: string, params: ReadonlyArray<unknown>) =>
+      Stream.unwrap(
+        Effect.withFiber((fiber) =>
+          Effect.try({
+            try: () => {
+              const statement = native.query<Record<string, unknown>, SQLQueryBindings[]>(query)
+              // @ts-ignore bun-types missing safeIntegers method, fixed in https://github.com/oven-sh/bun/pull/26627
+              statement.safeIntegers(Context.get(fiber.context, SqlClient.SafeIntegers))
+              const rows = statement.iterate(...(params as SQLQueryBindings[]))
+              return Stream.fromAsyncIterable(
+                {
+                  async *[Symbol.asyncIterator]() {
+                    yield* rows
+                  },
+                },
+                (cause) =>
+                  new SqlError({
+                    reason: classifySqliteError(cause, { message: "Failed to stream statement", operation: "execute" }),
+                  }),
+              )
+            },
+            catch: (cause) =>
+              new SqlError({
+                reason: classifySqliteError(cause, { message: "Failed to stream statement", operation: "execute" }),
+              }),
           }),
-      }),
-      loadExtension: (path: string) =>
-        Effect.try({
-          try: () => native.loadExtension(path),
+        ),
+      )
+
+    const connection = Sqlite.makeConnection(
+      run,
+      runValues,
+      {
+        export: Effect.try({
+          try: () => native.serialize(),
           catch: (cause) =>
             new SqlError({
-              reason: classifySqliteError(cause, { message: "Failed to load extension", operation: "loadExtension" }),
+              reason: classifySqliteError(cause, { message: "Failed to export database", operation: "export" }),
             }),
         }),
-    })
+        loadExtension: (path: string) =>
+          Effect.try({
+            try: () => native.loadExtension(path),
+            catch: (cause) =>
+              new SqlError({
+                reason: classifySqliteError(cause, { message: "Failed to load extension", operation: "loadExtension" }),
+              }),
+          }),
+      },
+      runStream,
+    )
 
     return yield* Sqlite.makeClient(options, connection, TypeId, (acquirer) => ({
       export: Effect.flatMap(acquirer, (_) => _.export),

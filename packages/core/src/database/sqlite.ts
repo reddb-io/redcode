@@ -24,7 +24,14 @@ type RunValues = (
   params?: ReadonlyArray<unknown>,
 ) => Effect.Effect<ReadonlyArray<ReadonlyArray<unknown>>, SqlError>
 
-export const makeConnection = <Extensions extends object>(run: Run, runValues: RunValues, extensions: Extensions) =>
+type RunStream = (query: string, params: ReadonlyArray<unknown>) => Stream.Stream<Record<string, unknown>, SqlError>
+
+export const makeConnection = <Extensions extends object>(
+  run: Run,
+  runValues: RunValues,
+  extensions: Extensions,
+  runStream?: RunStream,
+) =>
   identity<Connection & Extensions>({
     execute(query, params, transformRows) {
       return transformRows ? Effect.map(run(query, params), transformRows) : run(query, params)
@@ -42,8 +49,8 @@ export const makeConnection = <Extensions extends object>(run: Run, runValues: R
       return this.execute(query, params, transformRows)
     },
     executeStream(query, params, transformRows) {
-      // Native adapters return complete result sets; expose them through the SqlClient stream contract.
-      return Stream.fromIterableEffect(this.execute(query, params, transformRows))
+      if (!runStream) return Stream.fromIterableEffect(this.execute(query, params, transformRows))
+      return Stream.mapConcat(runStream(query, params), (row) => (transformRows ? transformRows([row]) : [row]))
     },
     ...extensions,
   })

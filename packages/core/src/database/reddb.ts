@@ -33,12 +33,15 @@ function makeClient(database: RedDB) {
   return Effect.gen(function* () {
     const run = (query: string, params: ReadonlyArray<unknown> = []) =>
       Effect.tryPromise({
-        try: () => database.query(bindParameters(normalizeSQL(query), params.length), params.map(queryParam)).then(normalizeResult),
+        try: () =>
+          database
+            .query(bindParameters(normalizeSQL(query), params.length), params.map(queryParam))
+            .then(normalizeResult),
         catch: (cause) => sqlError(cause, "execute"),
       })
     const semaphore = yield* Semaphore.make(1)
-    const connection = makeConnection((query, params) => semaphore.withPermits(1)(run(query, params)))
-    const transactionConnection = makeConnection(run)
+    const connection = makeConnection(database, (query, params) => semaphore.withPermits(1)(run(query, params)))
+    const transactionConnection = makeConnection(database, run)
     const transactionAcquirer = Effect.uninterruptibleMask((restore) => {
       const fiber = Fiber.getCurrent()!
       const scope = Context.getUnsafe(fiber.context, Scope.Scope)
@@ -57,16 +60,21 @@ function makeClient(database: RedDB) {
   })
 }
 
-function makeConnection(run: (query: string, params?: ReadonlyArray<unknown>) => Effect.Effect<QueryResult, SqlError>) {
+function makeConnection(
+  database: RedDB,
+  run: (query: string, params?: ReadonlyArray<unknown>) => Effect.Effect<QueryResult, SqlError>,
+) {
   return identity<Connection>({
     execute(query, params, transformRows) {
-      return run(query, params).pipe(Effect.map((result) => transformRows ? transformRows(result.rows) : result.rows))
+      return run(query, params).pipe(Effect.map((result) => (transformRows ? transformRows(result.rows) : result.rows)))
     },
     executeRaw(query, params) {
       return run(query, params).pipe(Effect.map((result) => result.rows))
     },
     executeValues(query, params) {
-      return run(query, params).pipe(Effect.map((result) => result.rows.map((row) => result.columns.map((column) => row[column]))))
+      return run(query, params).pipe(
+        Effect.map((result) => result.rows.map((row) => result.columns.map((column) => row[column]))),
+      )
     },
     executeValuesUnprepared(query, params) {
       return this.executeValues(query, params)
@@ -75,8 +83,19 @@ function makeConnection(run: (query: string, params?: ReadonlyArray<unknown>) =>
       return this.execute(query, params, transformRows)
     },
     executeStream(query, params, transformRows) {
-      // RedDB query currently returns complete result sets before rows can be emitted.
-      return Stream.fromIterableEffect(this.execute(query, params, transformRows))
+      // The RedDB streaming API does not accept bound parameters yet.
+      if (params.length > 0 || !/^\s*SELECT\b/i.test(query))
+        return Stream.fromIterableEffect(this.execute(query, params, transformRows))
+      return Stream.unwrap(
+        Effect.try({
+          try: () =>
+            Stream.mapConcat(
+              Stream.fromAsyncIterable(database.stream(normalizeSQL(query)), (cause) => sqlError(cause, "stream")),
+              (row) => (transformRows ? transformRows([row]) : [row]),
+            ),
+          catch: (cause) => sqlError(cause, "stream"),
+        }),
+      )
     },
   })
 }
@@ -105,8 +124,14 @@ function sqlError(cause: unknown, operation: string) {
 }
 
 function queryParam(value: unknown): QueryParam {
-  if (value === null || typeof value === "boolean" || typeof value === "number" || typeof value === "string") return value
-  if (value instanceof Uint8Array || value instanceof Date || value instanceof Float32Array || value instanceof Float64Array)
+  if (value === null || typeof value === "boolean" || typeof value === "number" || typeof value === "string")
+    return value
+  if (
+    value instanceof Uint8Array ||
+    value instanceof Date ||
+    value instanceof Float32Array ||
+    value instanceof Float64Array
+  )
     return value
   if (Array.isArray(value) && value.every((item): item is number => typeof item === "number")) return value
   if (typeof value === "object") return Object.fromEntries(Object.entries(value))
@@ -118,33 +143,39 @@ function bindParameters(query: string, count: number) {
   let index = 0
   let quote: "'" | '"' | "`" | undefined
   let doubled = false
-  return query.split("").map((character, offset) => {
-    if (quote) {
-      if (doubled) {
-        doubled = false
+  return query
+    .split("")
+    .map((character, offset) => {
+      if (quote) {
+        if (doubled) {
+          doubled = false
+          return character
+        }
+        if (character !== quote) return character
+        if (query[offset + 1] === quote) {
+          doubled = true
+          return character
+        }
+        quote = undefined
         return character
       }
-      if (character !== quote) return character
-      if (query[offset + 1] === quote) {
-        doubled = true
+      if (character === "'" || character === '"' || character === "`") {
+        quote = character
         return character
       }
-      quote = undefined
-      return character
-    }
-    if (character === "'" || character === '"' || character === "`") {
-      quote = character
-      return character
-    }
-    if (character !== "?" || index >= count) return character
-    index++
-    return `$${index}`
-  }).join("")
+      if (character !== "?" || index >= count) return character
+      index++
+      return `$${index}`
+    })
+    .join("")
 }
 
 export function normalizeSQL(query: string) {
   const text = query
-    .replace(/`((?:``|[^`])*)`/g, (_, identifier: string) => `"${identifier.replaceAll("``", "`").replaceAll('"', '""')}"`)
+    .replace(
+      /`((?:``|[^`])*)`/g,
+      (_, identifier: string) => `"${identifier.replaceAll("``", "`").replaceAll('"', '""')}"`,
+    )
     .replace(/;\s*$/, "")
   if (/^\s*begin\s+deferred\s*$/i.test(text)) return "BEGIN"
   if (/^\s*INSERT\s+OR\s+IGNORE\s+INTO\b/i.test(text))
@@ -155,9 +186,16 @@ export function normalizeSQL(query: string) {
   const ddl = text
     .replace(/\bDEFAULT\s+(?!\s*=)('(?:''|[^'])*')/gi, "DEFAULT = $1")
     .replace(/\bDEFAULT\s+(?!\s*=)(-?\d+(?:\.\d+)?|true|false)\b/gi, "DEFAULT = $1")
-    .replace(/\s+REFERENCES\s+(?:"(?:[^"]|"")*"|[A-Za-z_][\w$]*)(?:\s*\([^)]*\))?(?:\s+ON\s+(?:DELETE|UPDATE)\s+(?:NO\s+ACTION|RESTRICT|CASCADE|SET\s+(?:NULL|DEFAULT)))*/gi, "")
+    .replace(
+      /\s+REFERENCES\s+(?:"(?:[^"]|"")*"|[A-Za-z_][\w$]*)(?:\s*\([^)]*\))?(?:\s+ON\s+(?:DELETE|UPDATE)\s+(?:NO\s+ACTION|RESTRICT|CASCADE|SET\s+(?:NULL|DEFAULT)))*/gi,
+      "",
+    )
     .replace(/(\bCONSTRAINT\s+"[^"]+"\s+)PRIMARY\s+KEY(?=\s*\()/gi, "$1UNIQUE")
     .replace(/^(\s*CREATE\s+TABLE)\s+(?!IF\s+NOT\s+EXISTS\b)/i, "$1 IF NOT EXISTS ")
   if (!/\bFOREIGN\s+KEY\b/i.test(ddl)) return ddl
-  return ddl.split("\n").filter((line) => !/\bFOREIGN\s+KEY\b/i.test(line)).join("\n").replace(/,\s*\)/g, "\n)")
+  return ddl
+    .split("\n")
+    .filter((line) => !/\bFOREIGN\s+KEY\b/i.test(line))
+    .join("\n")
+    .replace(/,\s*\)/g, "\n)")
 }

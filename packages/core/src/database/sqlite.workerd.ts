@@ -1,4 +1,4 @@
-import { Context, Effect, Exit, Fiber, Layer, Scope, Semaphore } from "effect"
+import { Context, Effect, Exit, Fiber, Layer, Scope, Semaphore, Stream } from "effect"
 import { Reactivity } from "effect/unstable/reactivity"
 import { SqlClient, Statement } from "effect/unstable/sql"
 import type { Connection } from "effect/unstable/sql/SqlConnection"
@@ -166,7 +166,20 @@ const make = (options: Config) =>
           }),
       })
 
-    const connection = Sqlite.makeConnection(run, runValues, {})
+    const runStream = (query: string, params: ReadonlyArray<unknown>) =>
+      Stream.fromAsyncIterable(
+        {
+          async *[Symbol.asyncIterator]() {
+            yield* runIterator(query, params)
+          },
+        },
+        (cause) =>
+          new SqlError({
+            reason: classifySqliteError(cause, { message: "Failed to stream statement", operation: "execute" }),
+          }),
+      )
+
+    const connection = Sqlite.makeConnection(run, runValues, {}, runStream)
 
     const semaphore = yield* Semaphore.make(1)
     const acquirer = semaphore.withPermits(1)(Effect.succeed(connection))

@@ -1,5 +1,5 @@
 import { DatabaseSync, type SQLInputValue } from "node:sqlite"
-import { Context, Effect, Layer } from "effect"
+import { Context, Effect, Layer, Stream } from "effect"
 import { Reactivity } from "effect/unstable/reactivity"
 import { SqlClient } from "effect/unstable/sql"
 import { classifySqliteError, SqlError } from "effect/unstable/sql/SqlError"
@@ -59,16 +59,49 @@ const make = (options: Config) =>
         }
       })
 
-    const connection = Sqlite.makeConnection(run, runValues, {
-      loadExtension: (path: string) =>
-        Effect.try({
-          try: () => native.loadExtension(path),
-          catch: (cause) =>
-            new SqlError({
-              reason: classifySqliteError(cause, { message: "Failed to load extension", operation: "loadExtension" }),
-            }),
-        }),
-    })
+    const runStream = (query: string, params: ReadonlyArray<unknown>) =>
+      Stream.unwrap(
+        Effect.withFiber((fiber) =>
+          Effect.try({
+            try: () => {
+              const statement = native.prepare(query)
+              statement.setReadBigInts(Context.get(fiber.context, SqlClient.SafeIntegers))
+              const rows = statement.iterate(...(params as SQLInputValue[]))
+              return Stream.fromAsyncIterable(
+                {
+                  async *[Symbol.asyncIterator]() {
+                    yield* rows
+                  },
+                },
+                (cause) =>
+                  new SqlError({
+                    reason: classifySqliteError(cause, { message: "Failed to stream statement", operation: "execute" }),
+                  }),
+              )
+            },
+            catch: (cause) =>
+              new SqlError({
+                reason: classifySqliteError(cause, { message: "Failed to stream statement", operation: "execute" }),
+              }),
+          }),
+        ),
+      )
+
+    const connection = Sqlite.makeConnection(
+      run,
+      runValues,
+      {
+        loadExtension: (path: string) =>
+          Effect.try({
+            try: () => native.loadExtension(path),
+            catch: (cause) =>
+              new SqlError({
+                reason: classifySqliteError(cause, { message: "Failed to load extension", operation: "loadExtension" }),
+              }),
+          }),
+      },
+      runStream,
+    )
 
     return yield* Sqlite.makeClient(options, connection, TypeId, (acquirer) => ({
       loadExtension: (path: string) => Effect.flatMap(acquirer, (_) => _.loadExtension(path)),
