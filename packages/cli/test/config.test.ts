@@ -3,7 +3,7 @@ import { Flock } from "@opencode/util/flock"
 import { Global } from "@opencode/util/global"
 import { Effect, FileSystem, Option, Schema } from "effect"
 import { expect, test } from "bun:test"
-import { parse } from "jsonc-parser"
+import { applyEdits, modify, parse } from "jsonc-parser"
 import path from "path"
 import { Config } from "../src/config"
 import { tmpdir } from "./fixture/tmpdir"
@@ -254,6 +254,62 @@ test("migrates before the first update and does not remigrate afterward", async 
     animations: false,
     mouse: false,
   })
+})
+
+test("imports newly supported V1 display preferences once into an existing cli.json", async () => {
+  await using directory = await tmpdir()
+  const file = path.join(directory.path, "cli.json")
+  await Bun.write(
+    file,
+    `{
+  // Keep this preference and this comment
+  "session": { "tool_details": "show", "timestamps": "hide" },
+  "prompt": { "max_width": 90 }
+}\n`,
+  )
+  await Bun.write(path.join(directory.path, "tui.json"), JSON.stringify({ prompt: { max_height: 20, max_width: 100 } }))
+  await Bun.write(
+    path.join(directory.path, "kv.json"),
+    JSON.stringify({
+      tool_details_visibility: false,
+      assistant_metadata_visibility: true,
+      timestamps: "show",
+      generic_tool_output_visibility: false,
+      session_directory_filter_enabled: true,
+      sidebar_width: 44,
+    }),
+  )
+
+  const first = await run(
+    directory.path,
+    Effect.gen(function* () {
+      const service = yield* Config.Service
+      return yield* service.get()
+    }),
+  )
+  expect(first.session).toMatchObject({
+    tool_details: "show",
+    assistant_metadata: "show",
+    timestamps: "hide",
+    generic_tool_output: "hide",
+    list_scope: "directory",
+    sidebar_width: 44,
+  })
+  expect(first.prompt).toMatchObject({ max_height: 20, max_width: 90 })
+  expect(await Bun.file(file).text()).toContain("// Keep this preference and this comment")
+
+  const text = await Bun.file(file).text()
+  await Bun.write(file, applyEdits(text, modify(text, ["session", "assistant_metadata"], undefined, {})))
+  await Bun.write(path.join(directory.path, "kv.json"), JSON.stringify({ assistant_metadata_visibility: false }))
+  const second = await run(
+    directory.path,
+    Effect.gen(function* () {
+      const service = yield* Config.Service
+      return yield* service.get()
+    }),
+  )
+  expect(second.session?.assistant_metadata).toBeUndefined()
+  expect(parse(await Bun.file(file).text()).session.tool_details).toBe("show")
 })
 
 test("preserves legacy cursor settings", async () => {

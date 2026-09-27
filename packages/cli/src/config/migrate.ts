@@ -33,6 +33,11 @@ export const run = Effect.fn("cli.config.migrate")(function* (input: {
     )
     return cause === undefined ? { info } : { info, cause }
   })
+  const marker = path.join(input.state, "cli-v1-display-migrated")
+  const mark = fs.makeDirectory(input.state, { recursive: true }).pipe(
+    Effect.andThen(fs.writeFileString(marker, "")),
+    Effect.catchCause((cause) => Effect.logWarning("failed to mark cli display migration", { cause })),
+  )
 
   if (yield* fs.exists(input.file).pipe(Effect.orElseSucceed(() => false))) {
     const text = yield* fs.readFileString(input.file)
@@ -41,6 +46,7 @@ export const run = Effect.fn("cli.config.migrate")(function* (input: {
     if (errors.length) return
     const config = Option.getOrUndefined(decodeRecord(value))
     if (config === undefined) return
+    const marked = yield* fs.exists(marker).pipe(Effect.orElseSucceed(() => false))
     const terminal = Option.getOrUndefined(decodeRecord(config.terminal))
     const legacyCopy = terminal?.copy_on_select
     const copy =
@@ -107,11 +113,51 @@ export const run = Effect.fn("cli.config.migrate")(function* (input: {
                 return property === undefined ? text : removeProperty(text, property)
               }, converted),
           )
-    if (updated === text) return
+    const imported = marked
+      ? updated
+      : yield* Effect.gen(function* () {
+          const legacy = Option.getOrUndefined(decodeV1(yield* readJson(path.join(input.config, "tui.json"))))
+          const kv = (yield* readJson(path.join(input.state, "kv.json"))) ?? {}
+          const values = migrateV1(legacy, kv)
+          const session = Option.getOrUndefined(decodeRecord(config.session))
+          const prompt = Option.getOrUndefined(decodeRecord(config.prompt))
+          return [
+            ...Object.entries(values.session ?? {})
+              .filter(([name]) =>
+                [
+                  "tool_details",
+                  "assistant_metadata",
+                  "timestamps",
+                  "generic_tool_output",
+                  "list_scope",
+                  "sidebar_width",
+                ].includes(name),
+              )
+              .filter(([name]) => session?.[name] === undefined)
+              .map(([name, value]) => ({ path: ["session", name], value })),
+            ...Object.entries(values.prompt ?? {})
+              .filter(([name]) => ["max_height", "max_width"].includes(name))
+              .filter(([name]) => prompt?.[name] === undefined)
+              .map(([name, value]) => ({ path: ["prompt", name], value })),
+          ].reduce(
+            (text, edit) =>
+              applyEdits(
+                text,
+                modify(text, edit.path, edit.value, { formattingOptions: { tabSize: 2, insertSpaces: true } }),
+              ),
+            updated,
+          )
+        })
+    if (imported === text) {
+      if (!marked && Option.isSome(decodeInfo(parse(imported, [], { allowTrailingComma: true })))) yield* mark
+      return
+    }
     const updatedErrors: ParseError[] = []
-    const info = Option.getOrUndefined(decodeInfo(parse(updated, updatedErrors, { allowTrailingComma: true })))
+    const info = Option.getOrUndefined(decodeInfo(parse(imported, updatedErrors, { allowTrailingComma: true })))
     if (updatedErrors.length || info === undefined) return
-    return yield* persist(updated, info)
+    const result = yield* persist(imported, info)
+    if (!marked && result.cause === undefined) yield* mark
+    return result
   }
 
   const legacyValue = yield* readJson(path.join(input.config, "tui.json"))
@@ -122,7 +168,8 @@ export const run = Effect.fn("cli.config.migrate")(function* (input: {
   const migrated = { $schema: SchemaURL, ...values }
 
   const result = yield* persist(JSON.stringify(migrated, null, 2) + "\n", migrated)
-  if (result.cause === undefined)
+  if (result.cause === undefined) {
+    yield* mark
     yield* Effect.logInfo("migrated cli config", {
       from: [
         legacyValue === undefined ? undefined : path.join(input.config, "tui.json"),
@@ -130,6 +177,7 @@ export const run = Effect.fn("cli.config.migrate")(function* (input: {
       ].filter(Boolean),
       to: input.file,
     })
+  }
   return result
 })
 
