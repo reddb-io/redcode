@@ -424,6 +424,15 @@ describe("ConfigNormalize", () => {
     })
   })
 
+  test("preserves the V1 subagent depth and prefers the V2 setting", () => {
+    expect(normalized({ subagent_depth: 3 }).encoded.experimental).toEqual({ subagent_depth: 3 })
+    const combined = normalized({ subagent_depth: 3, experimental: { subagent_depth: 2 } })
+    expect(combined.encoded.experimental).toEqual({ subagent_depth: 2 })
+    expect(combined.diagnostics.map((item) => [item.kind, item.path])).toEqual([
+      ["conflict", ["experimental", "subagent_depth"]],
+    ])
+  })
+
   test("reports unsupported legacy settings without including their values", () => {
     const secret = "do-not-log-this-value"
     const result = normalized({

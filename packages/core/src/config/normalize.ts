@@ -43,7 +43,7 @@ export type Result =
   | { readonly type: "rejected"; readonly diagnostics: readonly Diagnostic[] }
 
 const options = { errors: "all", onExcessProperty: "ignore", propertyOrder: "original" } as const
-const unsupportedTopLevel = ["logLevel", "server", "subagent_depth", "layout"] as const
+const unsupportedTopLevel = ["logLevel", "server", "layout"] as const
 const unsupportedExperimental = [
   "disable_paste_summary",
   "batch_tool",
@@ -382,6 +382,14 @@ function normalizeExperimental(
   diagnostics: Diagnostic[],
 ) {
   const result: Record<string, unknown> = {}
+  const legacyDepth = own(input, "subagent_depth")
+    ? decodeEncoded(
+        ConfigExperimental.Info.fields.subagent_depth,
+        input.subagent_depth,
+        ["subagent_depth"],
+        diagnostics,
+      )
+    : undefined
   const generated: unknown[] = []
   const enabled = decodeProviderList(input, "enabled_providers", diagnostics)
   if (enabled.present && (!enabled.nonEmpty || enabled.values.length)) {
@@ -426,7 +434,7 @@ function normalizeExperimental(
           ["experimental", "subagent_depth"],
           diagnostics,
         )
-        if (value !== undefined) result.subagent_depth = value
+        if (value !== undefined) result.subagent_depth = prefer(legacyDepth, value, ["experimental", "subagent_depth"], diagnostics)
       }
       if (own(experimental, "loop_guard")) {
         const value = decodeEncoded(
@@ -484,6 +492,7 @@ function normalizeExperimental(
       )
     }
   }
+  if (result.subagent_depth === undefined && legacyDepth !== undefined) result.subagent_depth = legacyDepth
   if (generated.length || native.length || (isRecord(input.experimental) && Array.isArray(input.experimental.policies)))
     result.policies = [...generated, ...native]
   if (Object.keys(result).length || (isRecord(input.experimental) && !Object.keys(input.experimental).length))
