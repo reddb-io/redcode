@@ -42,6 +42,8 @@ import { Node } from "@opencode/util/effect/app-node"
 import { LayerNode } from "@opencode/util/effect/layer-node"
 import { SessionEvent } from "./session/event.js"
 import { SessionInbox } from "./session/inbox.js"
+import { SessionPrompt } from "./session/prompt.js"
+import type { Skill } from "./skill.js"
 import { InstructionState } from "./session/instruction-state.js"
 import { SessionGenerate } from "./session/generate.js"
 import { SessionCommand } from "./session/command.js"
@@ -90,7 +92,7 @@ type CreateBaseInput = {
 type CreateInput = CreateBaseInput &
   ({ location: Location.Ref; parentID?: never } | { parentID: SessionSchema.ID; location?: never })
 
-type CompactInput = Parameters<Session.Handle["compact"]>[0] & { sessionID: SessionSchema.ID }
+type CompactInput = { sessionID: SessionSchema.ID; id?: SessionMessage.ID; delivery?: SessionInbox.Delivery }
 
 type ForkInput = {
   sessionID: SessionSchema.ID
@@ -180,8 +182,8 @@ export interface Interface {
   }) => Effect.Effect<void, NotFoundError>
   readonly move: SessionMove.Interface["move"]
   readonly prompt: (
-    input: Parameters<Session.Handle["prompt"]>[0] & { sessionID: SessionSchema.ID },
-  ) => ReturnType<Session.Handle["prompt"]>
+    input: SessionPrompt.Input & { sessionID: SessionSchema.ID; id?: SessionMessage.ID; resume?: boolean },
+  ) => Effect.Effect<SessionInbox.User, NotFoundError | PromptConflictError | AttachmentError | SkillNotFoundError>
   /** Generates text from current Session context without admitting input or mutating history. */
   readonly generate: (input: {
     sessionID: SessionSchema.ID
@@ -198,11 +200,11 @@ export interface Interface {
     delivery?: SessionInbox.Delivery
   }) => Effect.Effect<void, NotFoundError | Command.NotFoundError | Command.ExecutionError>
   readonly shell: (
-    input: Parameters<Session.Handle["shell"]>[0] & { sessionID: SessionSchema.ID },
-  ) => ReturnType<Session.Handle["shell"]>
+    input: { sessionID: SessionSchema.ID; id?: SessionMessage.ID; command: string },
+  ) => Effect.Effect<void, NotFoundError>
   readonly skill: (
-    input: Parameters<Session.Handle["skill"]>[0] & { sessionID: SessionSchema.ID },
-  ) => ReturnType<Session.Handle["skill"]>
+    input: { sessionID: SessionSchema.ID; messageID?: SessionMessage.ID; skill: Skill.ID; resume?: boolean },
+  ) => Effect.Effect<void, NotFoundError | SkillNotFoundError>
   readonly compact: (
     input: CompactInput,
   ) => Effect.Effect<SessionInbox.Compaction, NotFoundError | CompactionConflictError>
@@ -212,8 +214,16 @@ export interface Interface {
   readonly resume: (sessionID: SessionSchema.ID) => Effect.Effect<void, NotFoundError | SessionRunner.RunError>
   readonly interrupt: (sessionID: SessionSchema.ID, options?: { readonly resume?: boolean }) => Effect.Effect<boolean>
   readonly synthetic: (
-    input: Parameters<Session.Handle["synthetic"]>[0] & { sessionID: SessionSchema.ID },
-  ) => ReturnType<Session.Handle["synthetic"]>
+    input: {
+      sessionID: SessionSchema.ID
+      id?: SessionMessage.ID
+      text: string
+      description?: string
+      metadata?: Record<string, unknown>
+      delivery?: SessionInbox.Delivery
+      resume?: boolean
+    },
+  ) => Effect.Effect<SessionInbox.Synthetic, NotFoundError | SyntheticConflictError>
   readonly revert: {
     readonly stage: (input: {
       sessionID: SessionSchema.ID
