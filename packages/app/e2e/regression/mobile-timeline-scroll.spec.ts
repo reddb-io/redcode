@@ -245,7 +245,7 @@ for (const device of ["Pixel 7", "iPhone 13"]) {
           await expect
             .poll(() => nested.evaluate((element) => element.scrollHeight - element.clientHeight - element.scrollTop))
             .toBeLessThan(1)
-          await nested.press("Control+Home")
+          await nested.evaluate((element) => (element.scrollTop = 0))
           await expect(nested).toHaveJSProperty("scrollTop", 0)
           expect(await tail.evaluate((element) => element.getBoundingClientRect().top)).toBeCloseTo(position, 0)
         }

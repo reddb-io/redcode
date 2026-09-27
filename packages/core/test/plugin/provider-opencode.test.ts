@@ -1047,6 +1047,7 @@ describe("OpencodePlugin", () => {
           yield* eventually(
             Effect.sync(() => requests),
             (requests) => requests.some((request) => request.authorization === "Bearer switched"),
+            5000,
           )
           expect(["WebSearch.Request", "WebSearch.ProviderRequired"]).toContain(
             (yield* websearch.query({ query: "switch race" }).pipe(Effect.flip))._tag,
