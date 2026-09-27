@@ -268,8 +268,8 @@ V2 groups the retained-context token budget under `keep` and gives the reserve a
 }
 ```
 
-`auto` keeps its name. V2 has no native `tail_turns` or `prune` field; both legacy fields are ignored with a warning. Recent
-context is retained by token budget instead. See [Compaction](/compaction).
+`auto` keeps its name. V1 `tail_turns` becomes `keep.turns`, and `prune` remains available. See
+[Compaction](/compaction).
 
 ### Skills
 
@@ -533,9 +533,8 @@ require a V2 rewrite. See [Skills](/skills).
 Existing `AGENTS.md` files stay in place. V2 discovers the global `~/.config/opencode/AGENTS.md` and ambient `AGENTS.md`
 files from the current directory up to home. For projects outside home, discovery stops at the project root.
 
-If a V1 setup relied on a `CLAUDE.md` fallback, move that guidance into the applicable `AGENTS.md`. V2 currently only
-discovers `AGENTS.md`; because non-API V1 behavior is intended to remain compatible, also file a compatibility issue with
-the affected project details. See [Instructions](/instructions).
+When no project `AGENTS.md` is found, V2 falls back to upward `CLAUDE.md` files, then `CONTEXT.md` files. When the global
+`~/.config/opencode/AGENTS.md` is absent, it falls back to `~/.claude/CLAUDE.md`. See [Instructions](/instructions).
 
 ## Terminal client configuration
 

@@ -35,16 +35,17 @@ export const Plugin = define({
       const project = discovery.project && FSUtil.contains(root, start)
       const stop = FSUtil.contains(home, start) ? home : root
       const globalFile = yield* fs.resolve(join(global.config, "AGENTS.md"))
+      const globalFallback = yield* fs.resolve(join(global.home, ".claude", "CLAUDE.md"))
       const loaded: { current: Loaded } = { current: { type: "available", files: [] } }
 
       const publish = (update: Watcher.Update) => PubSub.publish(changes, update.path).pipe(Effect.asVoid)
       // The ancestor walk can reach the global file when the location sits
       // beneath the global config dir; global: false excludes it there too.
       const candidates = [
-        ...(discovery.global ? [globalFile] : []),
+        ...(discovery.global ? [globalFile, globalFallback] : []),
         ...(project
           ? ancestorDirectories(start, stop)
-              .map((directory) => join(directory, "AGENTS.md"))
+              .flatMap((directory) => ["AGENTS.md", "CLAUDE.md", "CONTEXT.md"].map((name) => join(directory, name)))
               .filter((file) => discovery.global || file !== globalFile)
           : []),
       ]
@@ -62,12 +63,22 @@ export const Plugin = define({
       const globalSource = Effect.fn("ConfigInstructionPlugin.globalSource")(function* () {
         if (!discovery.global) return []
         const file = yield* read(globalFile)
-        return file ? [file] : []
+        if (file) return [file]
+        const fallback = yield* read(globalFallback)
+        return fallback ? [fallback] : []
       })
 
       const projectSource = Effect.fn("ConfigInstructionPlugin.projectSource")(function* () {
         if (!project) return []
-        const walked = yield* Effect.forEach(yield* fs.up({ targets: ["AGENTS.md"], start, stop }), fs.resolve)
+        const agents = (yield* fs.up({ targets: ["AGENTS.md"], start, stop }))
+          .filter((file) => discovery.global || file !== globalFile)
+        const claude = agents.length
+          ? []
+          : yield* fs.up({ targets: ["CLAUDE.md"], start, stop })
+        const context = agents.length || claude.length
+          ? []
+          : yield* fs.up({ targets: ["CONTEXT.md"], start, stop })
+        const walked = yield* Effect.forEach([...agents, ...claude, ...context], fs.resolve)
         const discovered = new Set(walked.filter((file) => discovery.global || file !== globalFile))
         const files = yield* Effect.forEach(discovered, read, { concurrency: "unbounded" })
         if (files.some((file) => file === undefined)) return Instructions.unavailable

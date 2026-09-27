@@ -82,25 +82,25 @@ export const Plugin = {
                     }),
                 ),
               )
-              // After a successful read, discover nearby AGENTS.md walking up to the Location
+              // After a successful read, discover nearby instruction files walking up to the Location
               // root exclusive and inject them as durable synthetic instructions. For a
-              // directory listing the walk starts at the directory itself (so its own AGENTS.md
+              // directory listing the walk starts at the directory itself (so its own instructions
               // is discovered); for a file it starts at the file's dirname. External reads are
               // skipped, and discovery failures never fail the read.
               yield* Effect.gen(function* () {
                 if (result.target.externalDirectory !== undefined) return
                 const resolved = yield* fs.resolve(result.target.absolute)
                 const root = yield* fs.resolve(location.directory)
-                // up() searches its stop directory, so the Location-root AGENTS.md (already
-                // supplied by core initial instructions) is dropped by the dirname filter.
-                const discovered = yield* fs.up({
-                  targets: [FILENAME],
-                  start: result.content.type === "list-page" ? resolved : dirname(resolved),
-                  stop: root,
-                })
-                const candidates = (yield* Effect.forEach(discovered, fs.resolve)).filter(
-                  (file) => dirname(file) !== root,
+                // up() searches its stop directory, so Location-root files (already supplied
+                // by core initial instructions) are dropped before selecting a fallback.
+                const start = result.content.type === "list-page" ? resolved : dirname(resolved)
+                const find = (name: string) => fs.up({ targets: [name], start, stop: root }).pipe(
+                  Effect.flatMap((paths) => Effect.forEach(paths, fs.resolve)),
+                  Effect.map((paths) => paths.filter((file) => dirname(file) !== root)),
                 )
+                const agents = yield* find(FILENAME)
+                const claude = agents.length ? [] : yield* find("CLAUDE.md")
+                const candidates = agents.length || claude.length ? [...agents, ...claude] : yield* find("CONTEXT.md")
                 if (candidates.length === 0) return
                 yield* sessionInstructions.load({ sessionID: context.sessionID, paths: candidates })
               }).pipe(

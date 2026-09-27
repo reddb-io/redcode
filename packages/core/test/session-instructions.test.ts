@@ -118,6 +118,30 @@ const seedSynthetic = (sessionID: Session.ID, paths: string[]) =>
   })
 
 describe("SessionInstructions", () => {
+  it.live("loads nested CLAUDE.md and CONTEXT.md when nested AGENTS.md is absent", () =>
+    Effect.gen(function* () {
+      const dir = (yield* Location.Service).directory
+      const nested = path.join(dir, "sub")
+      const agents = path.join(dir, "AGENTS.md")
+      const claude = path.join(nested, "CLAUDE.md")
+      const context = path.join(nested, "CONTEXT.md")
+      yield* mkdir(nested)
+      yield* writeAgents(agents, "root")
+      yield* writeAgents(claude, "claude")
+      yield* writeAgents(context, "context")
+      yield* Effect.promise(() => fs.writeFile(path.join(nested, "file.txt"), "content"))
+      const session = yield* Session.Service
+      const registry = yield* Tool.Service
+      const first = (yield* session.create({ location: Location.Ref.make({ directory: dir }) })).id
+      yield* executeTool(registry, readCall(first, "call-claude", "sub/file.txt"))
+      expect((yield* synthetics(first))[0]?.text).toBe(`Instructions from: ${claude}\nclaude`)
+      yield* Effect.promise(() => fs.rm(claude))
+      const second = (yield* session.create({ location: Location.Ref.make({ directory: dir }) })).id
+      yield* executeTool(registry, readCall(second, "call-context", "sub/file.txt"))
+      expect((yield* synthetics(second))[0]?.text).toBe(`Instructions from: ${context}\ncontext`)
+    }),
+  )
+
   it.live("injects AGENTS.md files above a read, excludes the Location root, and dedups across reads", () =>
     Effect.gen(function* () {
       const location = yield* Location.Service
