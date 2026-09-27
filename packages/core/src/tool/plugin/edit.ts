@@ -11,6 +11,7 @@ import { ToolFailure } from "@opencode/ai"
 import { FileDiff } from "@opencode/schema/file-diff"
 import { Bom } from "@opencode/util/bom"
 import { Effect, Schema } from "effect"
+import { Bus } from "../../bus.js"
 import { Environment } from "../../environment/index.js"
 import { FileMutation } from "../../file-mutation.js"
 import { Formatter } from "../../formatter.js"
@@ -110,6 +111,7 @@ const findLineOccurrences = (content: string, search: string) => {
 export const Plugin = {
   id: "opencode.tool.edit",
   effect: Effect.fn("EditTool.Plugin")(function* (ctx: Context) {
+    const bus = yield* Bus.Service
     const access = yield* FileAccess.Service
     const fileMutation = yield* FileMutation.Service
     const environment = yield* Environment.Service
@@ -207,6 +209,7 @@ export const Plugin = {
               const formatted = (yield* formatter.file(target.absolute))
                 ? yield* FileMutation.syncTextBom(environment.files, target.absolute, bom)
                 : (yield* FileMutation.readText(environment.files, target.absolute)).text
+              yield* FileMutation.publishChanges(bus, [{ file: target.absolute, event: "change" }])
               yield* lsp.touchFile(target.absolute, "document").pipe(
                 Effect.catchCause((cause) => Effect.logWarning("LSP notification failed after edit", { file: target.absolute, cause })),
               )

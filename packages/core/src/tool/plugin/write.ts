@@ -10,6 +10,7 @@ import type { Context } from "@opencode/plugin/effect/plugin"
 import { ToolFailure } from "@opencode/ai"
 import { Effect, Schema } from "effect"
 import { Bom } from "@opencode/util/bom"
+import { Bus } from "../../bus.js"
 import { Environment } from "../../environment/index.js"
 import { FileMutation } from "../../file-mutation.js"
 import { Formatter } from "../../formatter.js"
@@ -47,6 +48,7 @@ export const toModelContent = (output: Output) =>
 export const Plugin = {
   id: "opencode.tool.write",
   effect: Effect.fn("WriteTool.Plugin")(function* (ctx: Context) {
+    const bus = yield* Bus.Service
     const access = yield* FileAccess.Service
     const fileMutation = yield* FileMutation.Service
     const environment = yield* Environment.Service
@@ -91,6 +93,7 @@ export const Plugin = {
               if (yield* formatter.file(target.absolute)) {
                 yield* FileMutation.syncTextBom(environment.files, target.absolute, bom)
               }
+              yield* FileMutation.publishChanges(bus, [{ file: target.absolute, event: result.existed ? "change" : "add" }])
               yield* lsp.touchFile(target.absolute, "document").pipe(
                 Effect.catchCause((cause) => Effect.logWarning("LSP notification failed after write", { file: target.absolute, cause })),
               )

@@ -6,6 +6,7 @@ import { ToolFailure } from "@opencode/ai"
 import { FileDiff } from "@opencode/schema/file-diff"
 import { Effect, Result, Schema } from "effect"
 import { Bom } from "@opencode/util/bom"
+import { Bus } from "../../bus.js"
 import { Environment } from "../../environment/index.js"
 import { FileAccess } from "../../file-access.js"
 import { Formatter } from "../../formatter.js"
@@ -69,6 +70,7 @@ type Prepared =
 export const Plugin = {
   id: "opencode.tool.patch",
   effect: Effect.fn("PatchTool.Plugin")(function* (ctx: Context) {
+    const bus = yield* Bus.Service
     const environment = yield* Environment.Service
     const access = yield* FileAccess.Service
     const fileMutation = yield* FileMutation.Service
@@ -282,6 +284,19 @@ export const Plugin = {
                 const target = change.type === "update" && change.moveTarget ? change.moveTarget : change.target
                 return patchFile(change, formatted.get(target.absolute))
               })
+              yield* FileMutation.publishChanges(
+                bus,
+                prepared.flatMap((change) => {
+                  if (change.type === "delete") return [{ file: change.target.absolute, event: "unlink" as const }]
+                  if (change.type === "add") return [{ file: change.target.absolute, event: "add" as const }]
+                  if (change.moveTarget)
+                    return [
+                      { file: change.target.absolute, event: "unlink" as const },
+                      { file: change.moveTarget.absolute, event: "add" as const },
+                    ]
+                  return [{ file: change.target.absolute, event: "change" as const }]
+                }),
+              )
               yield* Effect.forEach(
                 written,
                 (item) =>

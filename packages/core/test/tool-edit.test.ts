@@ -3,6 +3,7 @@ import path from "path"
 import { describe, expect } from "bun:test"
 import { Effect, Layer } from "effect"
 import { AppNodeBuilder } from "@opencode/core/effect/app-node-builder"
+import { Bus } from "@opencode/core/bus"
 import { LayerNode } from "@opencode/util/effect/layer-node"
 import { Environment } from "@opencode/core/environment/index"
 import { FileMutation } from "@opencode/core/file-mutation"
@@ -27,6 +28,7 @@ const editToolNode = makeLocationNode({
   layer: Layer.effectDiscard(registerToolPlugin(EditTool.Plugin)),
   deps: [
     Tool.node,
+    Bus.node,
     FileAccess.node,
     FileMutation.node,
     Environment.node,
@@ -91,7 +93,7 @@ const withTool = <A, E, R>(
     return yield* body(registry)
   }).pipe(
     Effect.provide(
-      AppNodeBuilder.build(LayerNode.group([Tool.node, FileAccess.node, FileMutation.node, editToolNode]), [
+      AppNodeBuilder.build(LayerNode.group([Tool.node, Bus.node, FileAccess.node, FileMutation.node, editToolNode]), [
         Environment.node.replace(
           transformEnvironmentFiles((files) => ({
             read: (target, range) =>
@@ -135,6 +137,14 @@ describe("EditTool", () => {
                   (tool) => tool.name,
                 ),
               ).toEqual(["execute"])
+              const events: { type: string; data: unknown }[] = []
+              const bus = yield* Bus.Service
+              const unsubscribe = yield* bus.listen((event) =>
+                Effect.sync(() => {
+                  if (event.type === "filesystem.changed" || event.type === "file.edited")
+                    events.push({ type: event.type, data: event.data })
+                }),
+              )
               const settled = yield* executeTool(
                 registry,
                 call({ path: "hello.txt", oldString: "before", newString: "after" }),
@@ -179,6 +189,12 @@ describe("EditTool", () => {
                 ],
               })
               expect(edit.writes).toEqual([yield* Effect.promise(() => fs.realpath(target))])
+              yield* unsubscribe
+              const file = yield* Effect.promise(() => fs.realpath(target))
+              expect(events).toEqual([
+                { type: "filesystem.changed", data: { file, event: "change" } },
+                { type: "file.edited", data: { file } },
+              ])
             }),
           ),
         ),

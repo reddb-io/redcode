@@ -5,6 +5,7 @@ import { Effect, Layer } from "effect"
 import { FileMutation } from "@opencode/core/file-mutation"
 import { Formatter } from "@opencode/core/formatter"
 import { AppNodeBuilder } from "@opencode/core/effect/app-node-builder"
+import { Bus } from "@opencode/core/bus"
 import { LayerNode } from "@opencode/util/effect/layer-node"
 import { Environment } from "@opencode/core/environment/index"
 import { Location } from "@opencode/core/location"
@@ -25,7 +26,7 @@ import { toolIdentity, executeTool, registerToolPlugin, toolDefinitions } from "
 const writeToolNode = makeLocationNode({
   name: "test/write-tool-plugin",
   layer: Layer.effectDiscard(registerToolPlugin(WriteTool.Plugin)),
-  deps: [Tool.node, FileAccess.node, FileMutation.node, Environment.node, Formatter.node, Permission.node],
+  deps: [Tool.node, Bus.node, FileAccess.node, FileMutation.node, Environment.node, Formatter.node, Permission.node],
 })
 
 const sessionID = Session.ID.make("ses_write_tool_test")
@@ -79,7 +80,7 @@ const withTool = <A, E, R>(
     return yield* body(registry)
   }).pipe(
     Effect.provide(
-      AppNodeBuilder.build(LayerNode.group([Tool.node, FileAccess.node, FileMutation.node, writeToolNode]), [
+      AppNodeBuilder.build(LayerNode.group([Tool.node, Bus.node, FileAccess.node, FileMutation.node, writeToolNode]), [
         Environment.node.replace(
           transformEnvironmentFiles((files) => ({
             write: (target, content) =>
@@ -156,10 +157,28 @@ describe("WriteTool", () => {
         })
       return withTool(tmp.path, fixture, (registry) =>
         Effect.gen(function* () {
+          const seen: { type: string; data: unknown; content: string }[] = []
+          const bus = yield* Bus.Service
+          const unsubscribe = yield* bus.listen((event) =>
+            Effect.gen(function* () {
+              if (event.type !== "filesystem.changed" && event.type !== "file.edited") return
+              seen.push({
+                type: event.type,
+                data: event.data,
+                content: yield* Effect.promise(() => fs.readFile(target, "utf8")),
+              })
+            }),
+          )
           expect(yield* executeTool(registry, call({ path: "formatted.txt", content: "format me" }))).toMatchObject({
             status: "completed",
           })
+          yield* unsubscribe
           expect(yield* Effect.promise(() => fs.readFile(target, "utf8"))).toBe("FORMAT ME")
+          const resolved = path.join(yield* Effect.promise(() => fs.realpath(tmp.path)), "formatted.txt")
+          expect(seen).toEqual([
+            { type: "filesystem.changed", data: { file: resolved, event: "add" }, content: "FORMAT ME" },
+            { type: "file.edited", data: { file: resolved }, content: "FORMAT ME" },
+          ])
         }),
       )
     }),

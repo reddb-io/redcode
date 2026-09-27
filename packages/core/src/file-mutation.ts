@@ -1,7 +1,10 @@
 export * as FileMutation from "./file-mutation.js"
 
 import { makeLocationNode } from "@opencode/util/effect/app-node"
+import { FileSystem } from "@opencode/schema/filesystem"
+import { FileSystemV1 } from "@opencode/schema/filesystem-v1"
 import { Context, Effect, Layer } from "effect"
+import type { Bus } from "./bus.js"
 import { KeyedMutex } from "./effect/keyed-mutex.js"
 import { FSUtil } from "@opencode/util/fs-util"
 import { Bom } from "@opencode/util/bom"
@@ -54,6 +57,24 @@ export const syncTextBom = Effect.fn("FileMutation.syncTextBom")(function* (
   const synced = Bom.syncBytes((yield* files.read(target)).bytes, bom)
   if (synced.bytes) yield* files.write(target, synced.bytes)
   return synced.text
+})
+
+export const publishChanges = Effect.fn("FileMutation.publishChanges")(function* (
+  bus: Bus.Interface,
+  changes: readonly { readonly file: string; readonly event: "add" | "change" | "unlink" }[],
+) {
+  yield* Effect.forEach(changes, (change) =>
+    Effect.gen(function* () {
+      yield* bus.publish(FileSystem.Event.Changed, change).pipe(
+        Effect.catchCause((cause) => Effect.logWarning("Failed to publish filesystem change", { change, cause })),
+      )
+      if (change.event !== "unlink")
+        yield* bus.publish(FileSystemV1.Event.Edited, { file: change.file }).pipe(
+          Effect.catchCause((cause) => Effect.logWarning("Failed to publish file edit", { file: change.file, cause })),
+        )
+    }),
+    { discard: true },
+  )
 })
 
 /** Share transaction locks across Location graphs that address the same file. */
@@ -126,9 +147,7 @@ export const node = makeLocationNode({ service: Service, layer, deps: [Environme
 /**
  * Deferred until the corresponding integrations exist.
  */
-// TODO: Publish watcher/file-edit events after watcher integration exists.
 // TODO: Add snapshots / undo after snapshot design exists.
-// TODO: Notify LSP and collect diagnostics after LSP runtime exists.
 // TODO: Design multi-file transactions / rollback if patch needs atomic edits.
 // Until then, edits are sequential and report partial application.
 // TODO: Define crash recovery and idempotency for side effects between Tool.Called and durable settlement.
