@@ -11,6 +11,8 @@ import type { AgentNotFoundError } from "./error.js"
 import { SessionHistory } from "./history.js"
 import { SessionProviderContext } from "./provider-context.js"
 import { SessionModelRequest } from "./model-request.js"
+import { Config } from "../config.js"
+import { SessionToolOutputPrune } from "./tool-output-prune.js"
 import type { SessionRunnerModel } from "./runner/model.js"
 import type { SessionSchema } from "./schema.js"
 
@@ -24,6 +26,7 @@ export const generate = Effect.fn("SessionGenerate.generate")(function* (input: 
   const instances = yield* Instance.Service
   const database = yield* Database.Service
   const llm = yield* LLMClient.Service
+  const config = yield* Config.Service
 
   return yield* Effect.gen(function* () {
     yield* Plugin.awaitActivation
@@ -42,6 +45,7 @@ export const generate = Effect.fn("SessionGenerate.generate")(function* (input: 
       tools: selection.tools,
       initial: history.initial,
       messages: history.messages,
+      prune: SessionToolOutputPrune.settings(yield* config.entries()),
     })
     const prepared = yield* context.request.generate({
       session: selection.session,

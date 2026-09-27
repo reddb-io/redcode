@@ -1,6 +1,7 @@
 export * as SessionContext from "./context.js"
 
 import { Model } from "../model.js"
+import { Config } from "../config.js"
 import { Permission } from "../permission.js"
 import { Context, Effect, Layer } from "effect"
 import { Agent } from "../agent.js"
@@ -26,6 +27,7 @@ import { RedcodeLegacyInstructions } from "./redcode-legacy-instructions.js"
 import { SessionRunnerModel } from "./runner/model.js"
 import { SessionSchema } from "./schema.js"
 import { SessionStore } from "./store.js"
+import { SessionToolOutputPrune } from "./tool-output-prune.js"
 
 export interface Selection {
   readonly session: SessionSchema.Info
@@ -40,6 +42,7 @@ export interface Loaded {
   readonly model: SessionRunnerModel.Resolved
   readonly initial: string
   readonly messages: ReadonlyArray<SessionMessage.Info>
+  readonly prune?: SessionToolOutputPrune.Settings
   readonly tools: Tool.Snapshot
 }
 
@@ -76,6 +79,7 @@ const layer = Layer.effect(
   Service,
   Effect.gen(function* () {
     const agents = yield* Agent.Service
+    const config = yield* Config.Service
     const builtins = yield* InstructionBuiltIns.Service
     const model = yield* Model.Service
     const db = (yield* Database.Service).db
@@ -176,6 +180,7 @@ const layer = Layer.effect(
         model,
         initial: history.initial,
         messages: history.entries.map((entry) => entry.message),
+        prune: SessionToolOutputPrune.settings(yield* config.entries()),
         tools: selection.tools,
       }
     })
@@ -192,6 +197,7 @@ export const node = makeLocationNode({
   layer,
   deps: [
     Agent.node,
+    Config.node,
     Model.node,
     Database.node,
     InstructionBuiltIns.node,

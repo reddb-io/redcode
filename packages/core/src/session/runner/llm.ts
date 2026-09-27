@@ -469,6 +469,7 @@ const layer = Layer.effect(
           tools: loaded.tools,
           initial: loaded.initial,
           messages: loaded.messages,
+          prune: loaded.prune,
         })
         const guidance = [
           SessionGoal.guidance(yield* goals.get(sessionID)),

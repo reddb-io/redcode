@@ -327,8 +327,16 @@ function normalizeCompaction(
     invalid(["compaction"], diagnostics)
     return
   }
-  unsupportedIfPresent(input.compaction, "prune", ["compaction", "prune"], diagnostics)
   const result: Record<string, unknown> = {}
+  if (own(input.compaction, "prune")) {
+    const value = decodeEncoded(
+      ConfigCompaction.Info.fields.prune,
+      input.compaction.prune,
+      ["compaction", "prune"],
+      diagnostics,
+    )
+    if (value !== undefined) result.prune = value
+  }
   if (own(input.compaction, "auto")) {
     const value = decodeEncoded(
       ConfigCompaction.Info.fields.auto,

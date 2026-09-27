@@ -37,6 +37,7 @@ import { SessionModelRequest } from "./model-request.js"
 import { SessionProviderContext } from "./provider-context.js"
 import { SessionRunnerRetry } from "./runner/retry.js"
 import { toLLMMessages } from "./runner/to-llm-message.js"
+import { SessionToolOutputPrune } from "./tool-output-prune.js"
 import { toSessionError } from "./to-session-error.js"
 import { SessionUsage } from "./usage.js"
 
@@ -299,7 +300,7 @@ export const layer = Layer.effect(
       turns?: number,
     ): Effect.fn.Return<Result, Failure> {
       const context = trigger.context
-      const split = splitConversation(context.messages, keep, turns)
+      const split = splitConversation(SessionToolOutputPrune.apply(context.messages, context.prune, context.tools), keep, turns)
       if (!split) return yield* Effect.fail(NOTHING_TO_COMPACT)
 
       const previous = previousCompaction(context.messages)
@@ -712,6 +713,7 @@ const transcript = (context: SessionContext.Loaded, messages: ReadonlyArray<Sess
     tools: context.tools,
     initial: context.initial,
     messages,
+    prune: context.prune,
   })
 
 /**
@@ -893,6 +895,17 @@ export const recentUserMessages = (
 }
 
 export const estimateContext = (context: SessionContext.Loaded, ratio = 1) => {
+  if (
+    SessionToolOutputPrune.apply(context.messages, context.prune, context.tools).some(
+      (message, index) => message !== context.messages[index],
+    )
+  ) {
+    const base = transcript(context, context.messages)
+    const sent = SessionModelRequest.boundImages(
+      SessionModelRequest.unsupportedParts(base.messages, context.model.capabilities),
+    )
+    return Math.ceil(estimateRequest({ system: base.system, tools: context.tools.definitions, messages: sent }) * ratio)
+  }
   const anchorIndex = context.messages.findLastIndex((message) => hasMeasuredPrompt(message, context.model.ref))
   const anchor = context.messages[anchorIndex]
   const base = transcript(context, context.messages.slice(Math.max(0, anchorIndex)))

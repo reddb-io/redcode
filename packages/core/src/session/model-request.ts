@@ -38,6 +38,7 @@ import { SessionSchema } from "./schema.js"
 import { SessionSystemPrompt } from "./system-prompt.js"
 import { toLLMMessages } from "./runner/to-llm-message.js"
 import type { SessionMessage } from "./message.js"
+import { SessionToolOutputPrune } from "./tool-output-prune.js"
 
 const IMAGE_BYTES_TRIGGER = 25 * 1024 * 1024 // 25 MiB
 const IMAGE_BYTES_TARGET = 15 * 1024 * 1024 // 15 MiB
@@ -77,6 +78,7 @@ export const baseTranscript = (input: {
   readonly tools: Tool.Snapshot
   readonly initial: string
   readonly messages: ReadonlyArray<SessionMessage.Info>
+  readonly prune?: SessionToolOutputPrune.Settings
 }) => {
   const providerMetadataKey = input.model.model.route.providerMetadataKey ?? input.model.model.provider
   return {
@@ -89,7 +91,11 @@ export const baseTranscript = (input: {
     ]
       .filter((part) => part.length > 0)
       .map(SystemPart.make),
-    messages: toLLMMessages(input.messages, input.model.ref, providerMetadataKey),
+    messages: toLLMMessages(
+      SessionToolOutputPrune.apply(input.messages, input.prune, input.tools),
+      input.model.ref,
+      providerMetadataKey,
+    ),
   }
 }
 

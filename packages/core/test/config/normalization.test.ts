@@ -366,7 +366,7 @@ describe("ConfigNormalize", () => {
     expect(unknown.diagnostics.map((item) => [item.kind, item.path])).toEqual([["invalid", ["mcp", "timeout"]]])
   })
 
-  test("merges bounded compaction leaves and omits unsupported leaves", () => {
+  test("merges bounded compaction leaves and preserves prune", () => {
     const result = normalized({
       compaction: {
         auto: false,
@@ -378,13 +378,13 @@ describe("ConfigNormalize", () => {
         prune: true,
       },
     })
-    expect(result.encoded.compaction).toEqual({ auto: false, keep: { tokens: 2000, turns: 3 }, buffer: 4000 })
+    expect(result.encoded.compaction).toEqual({ auto: false, prune: true, keep: { tokens: 2000, turns: 3 }, buffer: 4000 })
     expect(result.diagnostics.map((item) => [item.kind, item.path])).toEqual([
-      ["unsupported", ["compaction", "prune"]],
       ["conflict", ["compaction", "keep", "tokens"]],
       ["conflict", ["compaction", "keep", "turns"]],
       ["conflict", ["compaction", "buffer"]],
     ])
+    expect(decoded({ compaction: { prune: false } }).compaction?.prune).toBe(false)
   })
 
   test("distinguishes empty, mixed, and wholly malformed enabled provider lists", () => {
