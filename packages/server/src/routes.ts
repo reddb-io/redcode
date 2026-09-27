@@ -52,6 +52,7 @@ import { handlers } from "./handlers"
 import { authorizationLayer } from "./middleware/authorization"
 import { schemaErrorLayer } from "./middleware/schema-error"
 import { PtyEnvironment } from "./pty-environment"
+import { PtySockets } from "./pty-sockets"
 import { ServerPairing } from "./pairing"
 import { layer } from "./location"
 import { formLocationLayer } from "./middleware/form-location"
@@ -104,7 +105,7 @@ export function createRoutes(
   options: ServerOptions = {},
   serviceURLs: () => ReadonlyArray<string> = () => [],
   overrides: LayerNode.Replacements = [],
-  features: { readonly v1Migration?: boolean } = {},
+  features: { readonly v1Migration?: boolean; readonly ptySockets?: PtySockets.Interface } = {},
 ) {
   return makeRoutes(
     options.password
@@ -114,6 +115,8 @@ export function createRoutes(
     serviceURLs,
     overrides,
     features.v1Migration !== false && !options.database?.url,
+    undefined,
+    features.ptySockets,
   )
 }
 
@@ -126,7 +129,14 @@ export function createEmbeddedRoutes(
   overrides: LayerNode.Replacements = [],
   instances?: InstanceNode,
 ) {
-  return makeRoutes(ServerAuth.Config.configLayer({ password: Option.none() }), options, () => [], overrides, !options.database?.url, instances)
+  return makeRoutes(
+    ServerAuth.Config.configLayer({ password: Option.none() }),
+    options,
+    () => [],
+    overrides,
+    !options.database?.url,
+    instances,
+  )
 }
 
 function makeRoutes<AuthError, AuthServices>(
@@ -137,6 +147,7 @@ function makeRoutes<AuthError, AuthServices>(
   overrides: LayerNode.Replacements,
   runV1Migration = true,
   instances?: InstanceNode,
+  ptySockets?: PtySockets.Interface,
 ) {
   const standard: LayerNode.Replacements = [
     Database.node.replace(Database.configured(options.database)),
@@ -221,7 +232,13 @@ function makeRoutes<AuthError, AuthServices>(
       )
       const api = Layer.mergeAll(
         HttpApiBuilder.layer(Api, { openapiPath: "/openapi.json" }).pipe(
-          Layer.provide(handlers.pipe(Layer.provide(services), Layer.provide(Layer.succeed(CorsConfig, options)))),
+          Layer.provide(
+            handlers.pipe(
+              Layer.provide(services),
+              Layer.provide(Layer.succeed(CorsConfig, options)),
+              Layer.provide(ptySockets ? Layer.succeed(PtySockets.Service, ptySockets) : PtySockets.layer),
+            ),
+          ),
         ),
         HttpApiBuilder.layer(LegacyRpcApi).pipe(Layer.provide(LegacyRpcHandler.pipe(Layer.provide(services)))),
       ).pipe(
@@ -238,11 +255,7 @@ function makeRoutes<AuthError, AuthServices>(
       const browser = DesignBrowser.routes(() => [
         ...(options.hostname ? [options.hostname] : []),
         ...serviceURLs().map((url) => new URL(url).hostname),
-      ]).pipe(
-        Layer.provide(services),
-        Layer.provide(auth),
-        Layer.provideMerge(api),
-      )
+      ]).pipe(Layer.provide(services), Layer.provide(auth), Layer.provideMerge(api))
       return runV1Migration ? Layer.merge(browser, V1Migration.layer.pipe(Layer.provide(services))) : browser
     }),
   )

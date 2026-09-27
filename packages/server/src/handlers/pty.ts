@@ -2,7 +2,7 @@ import { Pty } from "@opencode/core/pty"
 import { PtyProtocol } from "@opencode/core/pty/protocol"
 import { PtyTicket } from "@opencode/core/pty/ticket"
 import { Location } from "@opencode/core/location"
-import { Effect, Queue } from "effect"
+import { Deferred, Effect, Queue } from "effect"
 import { HttpServerRequest, HttpServerResponse } from "effect/unstable/http"
 import { HttpApiBuilder, HttpApiSchema } from "effect/unstable/httpapi"
 import { Socket } from "effect/unstable/socket"
@@ -16,6 +16,7 @@ import {
 } from "@opencode/protocol/groups/pty"
 import { response } from "../location"
 import { PtyEnvironment } from "../pty-environment"
+import { PtySockets } from "../pty-sockets"
 import { runPtySocket } from "./pty-socket"
 
 const ticketScope = Effect.gen(function* () {
@@ -28,6 +29,7 @@ export const PtyHandler = HttpApiBuilder.group(Api, "server.pty", (handlers) =>
     const tickets = yield* PtyTicket.Service
     const cors = yield* CorsConfig
     const environment = yield* PtyEnvironment.Service
+    const sockets = yield* PtySockets.Service
 
     return handlers
       .handle(
@@ -177,7 +179,6 @@ export const PtyHandler = HttpApiBuilder.group(Api, "server.pty", (handlers) =>
 
           // Outbound frames flow through one queue drained by a single writer so replay, live
           // output, and the close frame keep their order.
-          // TODO: Integrate graceful-shutdown socket tracking before clients migrate to this route.
           const outbox = yield* Queue.unbounded<string | Uint8Array | Socket.CloseEvent>()
           const attachment = yield* pty
             .attach(ctx.params.ptyID, {
@@ -195,6 +196,12 @@ export const PtyHandler = HttpApiBuilder.group(Api, "server.pty", (handlers) =>
             )
           if (!attachment) return HttpServerResponse.empty()
 
+          const closed = yield* Deferred.make<void>()
+          const unregister = yield* sockets.register(
+            Queue.offer(outbox, new Socket.CloseEvent(1001, "server stopping")).pipe(
+              Effect.andThen(Deferred.await(closed)),
+            ),
+          )
           for (const chunk of PtyProtocol.chunks(attachment.replay)) Queue.offerUnsafe(outbox, chunk)
           Queue.offerUnsafe(outbox, PtyProtocol.metaFrame(attachment.cursor))
           attachment.activate()
@@ -217,6 +224,7 @@ export const PtyHandler = HttpApiBuilder.group(Api, "server.pty", (handlers) =>
           ).pipe(
             Effect.catchReason("SocketError", "SocketCloseError", () => Effect.void),
             Effect.orDie,
+            Effect.ensuring(Effect.sync(unregister).pipe(Effect.andThen(Deferred.succeed(closed)))),
           )
           return HttpServerResponse.empty()
         }),

@@ -11,11 +11,13 @@ import { Global } from "@opencode/util/global"
 import { Cause, Context, Effect, Exit, Latch, Layer, Option, Ref, Scope } from "effect"
 import { HttpMiddleware, HttpRouter, HttpServer, HttpServerRequest, HttpServerResponse } from "effect/unstable/http"
 import { createServer } from "node:http"
+import type { Socket } from "node:net"
 import { ServerAuth } from "./auth"
 import { isAllowedCorsOrigin } from "./cors"
 import { authorizedRequest, unauthorizedResponse } from "./middleware/authorization"
 import { withoutParentSpan } from "./request-tracing"
 import { createRoutes } from "./routes"
+import { PtySockets } from "./pty-sockets"
 import { ServerInfo } from "./server-info"
 import { Status } from "./service-status"
 import type { ServerOptions } from "./options"
@@ -62,6 +64,7 @@ export const start = Effect.fn("ServerProcess.start")(function* <E, R>(
     return ServerInfo.connectionURLs(`http://${host}:${address.port}`, hostname)
   }
   const application = yield* Ref.make(Option.none<App>())
+  const ptySockets = yield* PtySockets.make
   const app = dispatch(password, status, application, options.app?.version ?? "unknown", urls, Global.Path.tmp)
   // Request fibers may continue inbound trace context, but must not inherit the server startup parent.
   yield* bound.http
@@ -86,12 +89,14 @@ export const start = Effect.fn("ServerProcess.start")(function* <E, R>(
   yield* Effect.addFinalizer(() =>
     status.beginStopping.pipe(
       Effect.andThen(Ref.set(application, Option.none())),
+      Effect.andThen(ptySockets.shutdown),
+      Effect.andThen(bound.closeUpgrades),
       Effect.andThen(Effect.sync(() => bound.server.closeAllConnections())),
     ),
   )
 
   const boot = Effect.gen(function* () {
-    const routes = createRoutes({ ...options, password }, urls).pipe(
+    const routes = createRoutes({ ...options, password }, urls, [], { ptySockets }).pipe(
       Layer.provideMerge(NodeHttpServer.layerHttpServices),
     )
     // makeRoutes provides request services through its dynamic Layer.flatMap.
@@ -148,10 +153,20 @@ function bind(hostname: string, port: number) {
     const parentScope = yield* Scope.Scope
     const serverScope = yield* Scope.fork(parentScope)
     const server = createServer()
+    const upgrades = new Set<Socket>()
+    server.on("upgrade", (_request, socket) => {
+      upgrades.add(socket)
+      socket.once("close", () => upgrades.delete(socket))
+    })
     return yield* Effect.gen(function* () {
       const http = yield* NodeHttpServer.make(() => server, { port, host: hostname })
       yield* Effect.addFinalizer(() => Effect.sync(() => server.closeAllConnections()))
-      return { http, server, scope: serverScope }
+      return {
+        http,
+        server,
+        scope: serverScope,
+        closeUpgrades: Effect.sync(() => upgrades.forEach((socket) => socket.destroy())),
+      }
     }).pipe(
       Effect.provideService(Scope.Scope, serverScope),
       Effect.onError((cause) => Scope.close(serverScope, Exit.failCause(cause))),

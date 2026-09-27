@@ -6,16 +6,18 @@ import {
   PTY_CONNECT_TOKEN_HEADER,
   PTY_CONNECT_TOKEN_HEADER_VALUE,
 } from "@opencode/protocol/groups/persistent-pty"
-import { Effect, Queue, Semaphore } from "effect"
+import { Deferred, Effect, Queue, Semaphore } from "effect"
 import { HttpServerRequest, HttpServerResponse } from "effect/unstable/http"
 import { HttpApiBuilder, HttpApiSchema } from "effect/unstable/httpapi"
 import { Socket } from "effect/unstable/socket"
 import { Api } from "../api"
 import { CorsConfig, isAllowedRequestOrigin } from "../cors"
 import { runPtySocket } from "./pty-socket"
+import { PtySockets } from "../pty-sockets"
 
 export const PersistentPtyHandler = HttpApiBuilder.group(Api, "server.experimental", (handlers) =>
   Effect.gen(function* () {
+    const sockets = yield* PtySockets.Service
     const tickets = yield* PtyTicket.Service
     const cors = yield* CorsConfig
     const pty = yield* PersistentPty.Service
@@ -126,6 +128,12 @@ export const PersistentPtyHandler = HttpApiBuilder.group(Api, "server.experiment
           const socket = yield* Effect.orDie(ctx.request.upgrade)
           const write = yield* socket.writer
           const outbox = yield* Queue.unbounded<string | Uint8Array | Socket.CloseEvent>()
+          const closed = yield* Deferred.make<void>()
+          const unregister = yield* sockets.register(
+            Queue.offer(outbox, new Socket.CloseEvent(1001, "server stopping")).pipe(
+              Effect.andThen(Deferred.await(closed)),
+            ),
+          )
           const input = yield* Semaphore.make(1)
           let attachment: PersistentPty.Attachment | undefined
           // Bun's native ws upgrade must start before asynchronous daemon I/O.
@@ -226,6 +234,7 @@ export const PersistentPtyHandler = HttpApiBuilder.group(Api, "server.experiment
           ).pipe(
             Effect.catchReason("SocketError", "SocketCloseError", () => Effect.void),
             Effect.orDie,
+            Effect.ensuring(Effect.sync(unregister).pipe(Effect.andThen(Deferred.succeed(closed)))),
           )
           return HttpServerResponse.empty()
         }),
