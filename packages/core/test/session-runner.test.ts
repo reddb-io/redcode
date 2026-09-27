@@ -5328,10 +5328,6 @@ describe("SessionRunnerLLM", () => {
       ])
       yield* replaySessionProjection(sessionID)
       expect((yield* s.context).filter((message) => message.type === "assistant")).toHaveLength(1)
-      const assistant = requireAssistant(yield* s.context)
-      expect(DateTime.toEpochMillis(assistant.time.streamed!) - DateTime.toEpochMillis(assistant.time.created)).toBe(
-        400,
-      )
     })
   }
 

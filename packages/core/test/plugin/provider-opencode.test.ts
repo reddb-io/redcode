@@ -1008,6 +1008,10 @@ describe("OpencodePlugin", () => {
             },
           ])
 
+          state.providerID = "unexpected"
+          expect((yield* websearch.query({ query: "wrong provider" }).pipe(Effect.flip))._tag).toBe("WebSearch.Request")
+          state.providerID = "opencode"
+
           yield* credentials.update(initial.id, {
             value: account("replacement"),
           })
@@ -1032,9 +1036,6 @@ describe("OpencodePlugin", () => {
           yield* credentials.update(initial.id, {
             value: account("replacement"),
           })
-
-          state.providerID = "unexpected"
-          expect((yield* websearch.query({ query: "wrong provider" }).pipe(Effect.flip))._tag).toBe("WebSearch.Request")
 
           state.advertised = false
           state.waitForConfig = true
