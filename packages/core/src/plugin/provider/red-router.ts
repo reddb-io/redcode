@@ -45,9 +45,10 @@ export const RedRouterPlugin = define({
     const loaded: { models: readonly CatalogModel[]; connection?: Connection; digest?: string } = { models: [] }
 
     const resolve = Effect.fn("RedRouter.resolve")(function* () {
-      const stored = (yield* credentials.all())
+      const all = (yield* credentials.all()).toReversed()
+      const stored = all
+        .filter((item) => all.find((candidate) => candidate.integrationID === item.integrationID)?.id === item.id)
         .filter((item) => item.integrationID === Integration.ID.make("red-router") || item.value.metadata?.router === "red-router")
-        .toReversed()
         .find((item) =>
           item.value.type === "key" || (item.value.type === "oauth" && item.value.expires > Date.now()),
         )
@@ -134,7 +135,10 @@ export const RedRouterPlugin = define({
         discard: true,
       })
       yield* kv.set(`${cacheKey}:count`, chunks.length)
-    }).pipe(Effect.catchCause((cause) => Effect.logWarning("RedRouter model catalog refresh failed", { cause })))
+    })
+    const safeRefresh = () => refresh().pipe(
+      Effect.catchCause((cause) => Effect.logWarning("RedRouter model catalog refresh failed", { cause })),
+    )
 
     yield* ctx.integration.transform((integrations) => {
       integrations.update(providerID, (integration) => (integration.name = "RedRouter"))
@@ -156,12 +160,12 @@ export const RedRouterPlugin = define({
         models: loaded.models.flatMap((item) => model(item)),
       })
     })
-    yield* refresh()
+    yield* safeRefresh()
     yield* bus.subscribe([Credential.Event.Updated, Credential.Event.Switched]).pipe(
-      Stream.runForEach(() => refresh()),
+      Stream.runForEach(() => safeRefresh()),
       Effect.forkScoped({ startImmediately: true }),
     )
-    yield* Effect.forkScoped(refresh().pipe(Effect.repeat(Schedule.spaced("5 minutes"))))
+    yield* Effect.forkScoped(safeRefresh().pipe(Effect.repeat(Schedule.spaced("5 minutes"))))
   }),
 })
 
