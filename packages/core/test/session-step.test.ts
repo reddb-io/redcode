@@ -12,10 +12,14 @@ import { ProjectTable } from "@opencode/core/project/sql"
 import { AbsolutePath, RelativePath } from "@opencode/core/schema"
 import { Session } from "@opencode/core/session"
 import { SessionMessage } from "@opencode/core/session/message"
+import { SessionGoal } from "@opencode/core/session/goal"
+import { SessionGoalCompletion } from "@opencode/core/session/goal-completion"
+import { SessionGuardLog } from "@opencode/core/session/guard-log"
 import { SessionProjector } from "@opencode/core/session/projector"
 import { SessionRunnerModel } from "@opencode/core/session/runner/model"
 import { SessionStep } from "@opencode/core/session/runner/step"
 import { SessionMessageTable, SessionTable } from "@opencode/core/session/sql"
+import { SessionStore } from "@opencode/core/session/store"
 import { Snapshot } from "@opencode/core/snapshot"
 import { ToolOutput } from "@opencode/core/tool-output"
 import { Money } from "@opencode/schema/money"
@@ -23,13 +27,27 @@ import { LayerNode } from "@opencode/util/effect/layer-node"
 import { asc, eq } from "drizzle-orm"
 import { Effect, Exit, Layer } from "effect"
 import { testEffect } from "./lib/effect"
+import { permissionLayer } from "./lib/permission"
 
 const it = testEffect(
-  Layer.merge(
-    AppNodeBuilder.build(LayerNode.group([Database.node, Bus.node, SessionProjector.node, ToolOutput.node]), [
+  Layer.mergeAll(
+    AppNodeBuilder.build(LayerNode.group([
+      Database.node,
+      Bus.node,
+      SessionProjector.node,
+      SessionStore.node,
+      SessionGuardLog.node,
+      SessionGoal.node,
+      ToolOutput.node,
+    ]), [
       Bus.node.replace(Bus.configured({ persist: true })),
     ]),
     TestLLM.testLayer(),
+    permissionLayer({ forSession: () => Effect.succeed([]) }),
+    Layer.mock(SessionGoalCompletion.Service, {
+      settle: () => Effect.succeed(null),
+      discard: () => Effect.void,
+    }),
   ),
 )
 
@@ -119,6 +137,9 @@ for (const fixture of [
             Effect.succeed(retry ? { retry: true, attempt: 2, delay: 0 } : { retry: false }),
           recoverContinuation: true,
           recoverOverflow: () => Effect.succeed(false),
+          accepted: () => Effect.void,
+          allowLoop: () => true,
+          stallLimits: { warnMs: Infinity, abortMs: Infinity },
         })
         .pipe(Effect.exit)
       expect(Exit.isSuccess(result)).toBe(fixture.finish === "stop")

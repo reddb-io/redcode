@@ -145,8 +145,8 @@ describe("ConfigProviderPlugin.Plugin", () => {
       yield* addPlugin([new Document({ type: "document", info: decode(migrated.encoded) })])
       const model = required(yield* models.get(providerID, modelID))
       expect(model.capabilities.reasoning).toBe(true)
-      expect(model.variants.map((variant) => variant.id)).toEqual(["fast", "low", "medium", "high"].map(Model.VariantID.make))
-      expect(model.reasoningVariantIDs).toEqual(["low", "medium", "high"].map(Model.VariantID.make))
+      expect(model.variants.map((variant) => variant.id)).toEqual(["fast", "low", "medium", "high"].map((id) => Model.VariantID.make(id)))
+      expect(model.reasoningVariantIDs).toEqual(["low", "medium", "high"].map((id) => Model.VariantID.make(id)))
     }),
   )
 
