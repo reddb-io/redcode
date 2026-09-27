@@ -715,7 +715,7 @@ const layer = Layer.effect(
           if (!method.form && Object.keys(answer).length > 0) {
             return yield* new AuthorizationError({ cause: new Error("Key method does not accept a form answer") })
           }
-          yield* createCredential({
+          yield* authorize(createCredential({
             integrationID: input.integrationID,
             label: input.label,
             value: Credential.Key.make({
@@ -723,7 +723,7 @@ const layer = Layer.effect(
               key: input.key,
               ...(Object.keys(answer).length > 0 ? { configuration: answer } : {}),
             }),
-          })
+          }))
         }),
         activate: Effect.fn("Integration.connection.activate")((credentialID) => credentials.activate(credentialID)),
         update: Effect.fn("Integration.connection.update")((credentialID, updates) =>
@@ -762,7 +762,7 @@ const layer = Layer.effect(
               : attempt.authorization.callback(input.code as string)
           const exit = yield* authorize(callback).pipe(Effect.exit)
           yield* settle(input.attemptID, exit)
-          if (Exit.isFailure(exit)) return yield* exit
+          if (Exit.isFailure(exit)) return yield* Effect.failCause(exit.cause)
         }),
         cancel: Effect.fn("Integration.oauth.cancel")(function* (input) {
           const attempt = yield* SynchronizedRef.modify(attempts, (current) => {
