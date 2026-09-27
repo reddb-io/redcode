@@ -508,7 +508,7 @@ function callOptions(
     tools: flattened.tools.map(tool),
     toolChoice: toolChoice(request.toolChoice),
     headers: request.http?.headers,
-    providerOptions: requestProviderOptions(request.providerOptions, packageName, modelID, optionKey),
+    providerOptions: requestProviderOptions(request, packageName, modelID, optionKey),
   }
 }
 
@@ -705,16 +705,44 @@ function toolChoice(input: LLMRequest["toolChoice"]): LanguageModelV3ToolChoice 
 }
 
 function requestProviderOptions(
-  input: LLMRequest["providerOptions"],
+  request: LLMRequest,
   packageName: string | undefined,
   modelID: ID,
   optionKey: string,
 ): SharedV3ProviderOptions | undefined {
-  if (!input) return undefined
-  const options = jsonObject(input)
-  if (packageName === "@ai-sdk/gateway") return gatewayProviderOptions(modelID, options)
-  if (packageName === "@ai-sdk/azure") return { openai: options, azure: options }
-  return { [optionKey]: options }
+  const input = request.providerOptions ? jsonObject(request.providerOptions) : {}
+  const options = Object.fromEntries(
+    Object.entries(input).filter(
+      ([key]) =>
+        key !== "setCacheKey" && (request.cache !== "none" || !["promptCacheKey", "prompt_cache_key"].includes(key)),
+    ),
+  )
+  const automatic = [
+    "@ai-sdk/deepinfra",
+    "@ai-sdk/cerebras",
+    "@ai-sdk/openai",
+    "@ai-sdk/azure",
+    "@ai-sdk/xai",
+    "@ai-sdk/mistral",
+    "venice-ai-sdk-provider",
+  ].includes(packageName ?? "")
+  const key =
+    input.setCacheKey !== false && (automatic || input.setCacheKey === true)
+      ? ProviderShared.promptCacheKey(request)
+      : undefined
+  const cache =
+    key === undefined
+      ? {}
+      : {
+          [packageName === "@ai-sdk/deepinfra" || packageName === "@ai-sdk/cerebras"
+            ? "prompt_cache_key"
+            : "promptCacheKey"]: key,
+        }
+  const mapped = { ...cache, ...options }
+  if (Object.keys(mapped).length === 0) return undefined
+  if (packageName === "@ai-sdk/gateway") return gatewayProviderOptions(modelID, mapped)
+  if (packageName === "@ai-sdk/azure") return { openai: mapped, azure: mapped }
+  return { [optionKey]: mapped }
 }
 
 function metadataProviderOptions(input: ProviderMetadata | undefined): SharedV3ProviderOptions | undefined {

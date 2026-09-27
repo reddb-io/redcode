@@ -421,6 +421,29 @@ it.effect("keeps V1 request defaults for AI SDK packages that remain on the brid
     const gateway = yield* aisdk.model(model("@llmgateway/ai-sdk-provider", { usage: { include: false } }))
     const gatewayPrepared = yield* compileRequest(LLM.request({ model: gateway, prompt: "Hello" }))
     expect(gatewayPrepared.body.providerOptions).toEqual({ "test-provider": { usage: { include: false } } })
+
+    const deepinfra = yield* aisdk.model(model("@ai-sdk/deepinfra"))
+    const cached = yield* compileRequest(
+      LLM.request({ model: deepinfra, prompt: "Hello", promptCacheKey: "session-key" }),
+    )
+    expect(cached.body.providerOptions).toEqual({ deepinfra: { prompt_cache_key: "session-key" } })
+    const uncached = yield* compileRequest(
+      LLM.request({ model: deepinfra, prompt: "Hello", promptCacheKey: "session-key", cache: "none" }),
+    )
+    expect(uncached.body.providerOptions).toBeUndefined()
+    const disabled = yield* aisdk.model(model("@ai-sdk/deepinfra", { setCacheKey: false }))
+    const disabledPrepared = yield* compileRequest(
+      LLM.request({ model: disabled, prompt: "Hello", promptCacheKey: "session-key" }),
+    )
+    expect(disabledPrepared.body.providerOptions).toBeUndefined()
+
+    const forced = yield* aisdk.model(model("@ai-sdk/github-copilot", { setCacheKey: true }))
+    const forcedPrepared = yield* compileRequest(
+      LLM.request({ model: forced, prompt: "Hello", promptCacheKey: "session-key" }),
+    )
+    expect(forcedPrepared.body.providerOptions).toEqual({
+      copilot: { store: false, promptCacheKey: "session-key" },
+    })
   }),
 )
 
