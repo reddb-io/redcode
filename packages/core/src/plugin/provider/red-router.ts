@@ -173,10 +173,17 @@ export const RedRouterPlugin = define({
 function model(item: CatalogModel): Model.Info[] {
   if (!item.id || IntelligenceEvaluation.isJev(item.id)) return []
   if (item.type !== undefined && !["chat", "llm", "text"].includes(item.type)) return []
+  if (
+    item.api_format !== undefined &&
+    !["chat-completions", "responses", "openai-responses"].includes(item.api_format)
+  ) return []
   const output = item.output_modalities ?? (item.type === undefined || item.type === "chat" ? ["text"] : [])
   if (!output.includes("text")) return []
   const endpoints = item.supported_endpoints ?? []
-  const responses = item.api_format === "responses" || endpoints.some((value) => /\/?responses$/.test(value))
+  const responses =
+    item.api_format === "responses" ||
+    item.api_format === "openai-responses" ||
+    endpoints.some((value) => /\/?responses$/.test(value))
   const chat = endpoints.length === 0 || endpoints.some((value) => /chat|completions/.test(value))
   if (!responses && !chat) return []
   const context = Math.floor(item.context_length ?? 8_192)
