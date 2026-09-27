@@ -226,10 +226,12 @@ export function migrateV1(legacy: TuiConfigV1.Info | undefined, kv: Record<strin
           },
         }),
     ...(kv.terminal_title_enabled === undefined ? {} : { terminal: { title: kv.terminal_title_enabled } }),
-    ...(kv.file_context_enabled === undefined && kv.paste_summary_enabled === undefined
+    ...(kv.file_context_enabled === undefined && kv.paste_summary_enabled === undefined && legacy?.prompt === undefined
       ? {}
       : {
           prompt: {
+            ...(legacy?.prompt?.max_height === undefined ? {} : { max_height: legacy.prompt.max_height }),
+            ...(legacy?.prompt?.max_width === undefined ? {} : { max_width: legacy.prompt.max_width }),
             ...(kv.file_context_enabled === undefined ? {} : { editor: kv.file_context_enabled }),
             ...(kv.paste_summary_enabled === undefined
               ? {}

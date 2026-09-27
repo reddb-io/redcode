@@ -15,6 +15,7 @@ import { useTheme } from "../context/theme"
 import { useUpdateNotification } from "../context/update-notification"
 import { useExit } from "../context/exit"
 import { FadeInText } from "../component/fade-in-text"
+import { useConfig } from "../config"
 
 let once = false
 const placeholder = {
@@ -32,6 +33,12 @@ export function Home() {
   const data = useData()
   const location = useLocation()
   const dimensions = useTerminalDimensions()
+  const config = useConfig().data
+  const promptMaxWidth = createMemo(() => {
+    const configured = config.prompt?.max_width
+    if (configured === "auto") return Math.max(75, Math.floor(dimensions().width * 0.7))
+    return configured ?? 75
+  })
   const [logoWidth, setLogoWidth] = createSignal(0)
   // Global MCP elicitations can arrive without a session route, so keep them reachable from Home.
   const currentLocation = () => route.location ?? data.location.default()
@@ -97,7 +104,7 @@ export function Home() {
         </box>
         <box height={1} flexShrink={0} />
         <UpdateNotification width={logoWidth()} />
-        <box width="100%" maxWidth={75} zIndex={1000} paddingTop={1} flexShrink={0} position="relative">
+        <box width="100%" maxWidth={promptMaxWidth()} zIndex={1000} paddingTop={1} flexShrink={0} position="relative">
           <Prompt ref={bind} placeholders={placeholder} disabled={forms().length > 0} />
         </box>
         <box flexGrow={1} minHeight={0} />

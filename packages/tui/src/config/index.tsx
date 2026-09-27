@@ -131,6 +131,12 @@ export const Info = Schema.Struct({
   ).annotate({ description: "Terminal integration settings" }),
   prompt: Schema.optional(
     Schema.Struct({
+      max_height: Schema.optional(Schema.Int.check(Schema.isGreaterThan(0))).annotate({
+        description: "Maximum prompt textarea height in rows",
+      }),
+      max_width: Schema.optional(Schema.Union([Schema.Int.check(Schema.isGreaterThan(0)), Schema.Literal("auto")])).annotate({
+        description: "Home prompt width cap; 'auto' scales with the terminal",
+      }),
       editor: Schema.optional(Schema.Boolean).annotate({
         description: "Include the active editor file or selection as prompt context",
       }),
