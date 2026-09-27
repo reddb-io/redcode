@@ -105,13 +105,13 @@ it.live("remove loads canonical strategies and enforces project ownership", () =
     const server = yield* startServer(path.join(tmp.path, "config"))
     const api = OpenCode.make({ baseUrl: server.base, headers: server.headers })
     yield* Effect.promise(async () => {
-      const session = await api.session.create({ location: { directory: linked } })
+      const session = await api.session.create({ location: { directory } })
       const foreign = await api.session.create({ location: { directory: other } })
       await expect(
         api.worktree.remove({ projectID: foreign.projectID, directory: linked, force: true }),
       ).rejects.toMatchObject({ name: "WorktreeError" })
       expect(await fs.stat(linked).then((stat) => stat.isDirectory())).toBe(true)
-      await api.worktree.remove({ projectID: session.projectID, directory: linked, force: true })
+      await api.worktree.remove({ projectID: session.projectID, directory: linked, force: false })
       expect(await api.debug.location.list()).toContainEqual({ directory })
       expect(await api.worktree.list({ projectID: session.projectID })).toEqual([{ directory }])
     })

@@ -45,7 +45,7 @@ jobs:
       - name: Test all workspace packages
         env:
           GITHUB_ACTIONS: "false"
-        run: bun turbo test --concurrency=3
+        run: node node_modules/turbo/bin/turbo test --concurrency=2 --continue=always
 
   sidecar:
     needs: verify
