@@ -230,7 +230,6 @@ for (const module of modules) {
 
   // Boot in workerd to catch eager Node initializers; lazy createRequire calls
   // in native-only code are valid and must not fail a bundle-wide text check.
-  console.log(bundled.split("\n").slice(420845, 420855).join("\n"))
   await $`node boot.mjs`.cwd(consumer)
   console.log("packed SDK consumer OK")
 } finally {

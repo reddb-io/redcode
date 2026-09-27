@@ -11,10 +11,11 @@ import { SessionGuardLog } from "./guard-log.js"
 import { SessionGoalTable, SessionGoalReviewTable } from "./redcode.sql.js"
 import { SessionInboxTable } from "./sql.js"
 
-const owner = crypto.randomUUID()
+const owner = { id: "" }
 const live = (goal: SessionGoal.Info) => goal.status === "active" || goal.status === "waiting"
 
 const make = Effect.gen(function* () {
+  const processOwner = owner.id ||= crypto.randomUUID()
   const database = yield* Database.Service
   const guards = yield* SessionGuardLog.Service
   const db = database.db
@@ -33,7 +34,7 @@ const make = Effect.gen(function* () {
                 '$.reviews', json_extract(${SessionGoalTable.data}, '$.reviews') + ${next.reviews - previous.reviews})`,
         goal_id: data.id,
         revision: data.revision,
-        owner,
+        owner: processOwner,
       })
       .where(
         and(
@@ -125,7 +126,7 @@ const make = Effect.gen(function* () {
       .get()
       .pipe(Effect.orDie)
     if (!row) return null
-    if (row.owner === owner || !live(row.data)) return row.data
+    if (row.owner === processOwner || !live(row.data)) return row.data
     return yield* save(row.data, {
       ...row.data,
       status: "paused",
@@ -176,7 +177,7 @@ const make = Effect.gen(function* () {
     if (previous) return yield* save(previous, data)
     const rows = yield* db
       .insert(SessionGoalTable)
-      .values({ session_id: sessionID, goal_id: data.id, revision: data.revision, owner, data })
+      .values({ session_id: sessionID, goal_id: data.id, revision: data.revision, owner: processOwner, data })
       .onConflictDoNothing()
       .returning()
       .all()
