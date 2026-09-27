@@ -2069,6 +2069,21 @@ describe("OpenAI Responses route", () => {
     }),
   )
 
+  it.effect("keeps stateless reasoning defaults on newer GPT generations", () =>
+    Effect.gen(function* () {
+      const openai = OpenAI.configure({ baseURL: "https://api.openai.test/v1/", apiKey: "test" })
+      const prepared = yield* compileRequest(LLM.request({ model: openai.responses("gpt-6-sol"), prompt: "hi" }))
+      expect(prepared.body.store).toBe(false)
+      expect(prepared.body.include).toEqual(["reasoning.encrypted_content"])
+      expect(prepared.body.reasoning).toEqual({ effort: "medium", summary: "auto" })
+
+      const chat = yield* compileRequest(LLM.request({ model: openai.responses("gpt-5.2-chat-latest"), prompt: "hi" }))
+      expect(chat.body.reasoning).toBeUndefined()
+      const pro = yield* compileRequest(LLM.request({ model: openai.responses("gpt-6-pro"), prompt: "hi" }))
+      expect(pro.body.reasoning).toBeUndefined()
+    }),
+  )
+
   it.effect("lets callers opt out of the GPT-5 default include", () =>
     Effect.gen(function* () {
       const prepared = yield* compileRequest(
