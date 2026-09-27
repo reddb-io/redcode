@@ -122,7 +122,9 @@ const platforms = manifests.map((item) => ({
 const main = { name: packageName, version: Script.version, publish: () => packAndPublish(meta, packageName) }
 
 if (packOnly) {
-  for (const item of [...manifests.map((entry) => entry.dir), meta]) await pack(item)
+  for (let index = 0; index < manifests.length; index += 3)
+    await Promise.all(manifests.slice(index, index + 3).map((item) => pack(item.dir)))
+  await pack(meta)
 } else {
   await publishRelease(
     { platforms, main },
