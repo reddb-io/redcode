@@ -1260,7 +1260,7 @@ describe("PatchTool", () => {
     ),
   )
 
-  it.live("follows an internal symlink to an external file without external permission", () =>
+  it.live("approves an external file reached through an internal symlink", () =>
     Effect.acquireUseRelease(
       Effect.promise(() => Promise.all([tmpdir(), tmpdir()])),
       ([active, outside]) => {
@@ -1279,8 +1279,40 @@ describe("PatchTool", () => {
                     call("*** Begin Patch\n*** Update File: link.txt\n@@\n-before\n+after\n*** End Patch"),
                   ),
                 ).toMatchObject({ status: "completed" })
-                expect(assertions.map((input) => input.action)).toEqual(["edit"])
+                expect(assertions.map((input) => input.action)).toEqual(["external_directory", "edit"])
+                expect(assertions[0]?.resources).toEqual([path.join(outside.path, "*").replaceAll("\\", "/")])
+                expect(assertions[1]?.resources).toEqual(["link.txt"])
                 expect(yield* Effect.promise(() => fs.readFile(target, "utf8"))).toBe("after\n")
+              }),
+            ),
+          ),
+        )
+      },
+      ([active, outside]) =>
+        Effect.promise(() =>
+          Promise.all([active[Symbol.asyncDispose](), outside[Symbol.asyncDispose]()]).then(() => undefined),
+        ),
+    ),
+  )
+
+  it.live("rejects a new file through an external directory symlink before writing", () =>
+    Effect.acquireUseRelease(
+      Effect.promise(() => Promise.all([tmpdir(), tmpdir()])),
+      ([active, outside]) => {
+        reset()
+        if (process.platform === "win32") return Effect.void
+        denyAction = "external_directory"
+        return Effect.promise(() => fs.symlink(outside.path, path.join(active.path, "linked"), "dir")).pipe(
+          Effect.andThen(
+            withTool(active.path, (registry) =>
+              Effect.gen(function* () {
+                expect(yield* executeTool(
+                  registry,
+                  call("*** Begin Patch\n*** Add File: linked/new.txt\n+content\n*** End Patch"),
+                )).toMatchObject({ status: "error", error: { type: "permission.rejected" } })
+                expect(assertions.map((input) => input.action)).toEqual(["external_directory"])
+                expect(assertions[0]?.resources).toEqual([path.join(outside.path, "*").replaceAll("\\", "/")])
+                expect(yield* exists(path.join(outside.path, "new.txt"))).toBe(false)
               }),
             ),
           ),

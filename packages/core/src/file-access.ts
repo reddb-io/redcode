@@ -51,7 +51,7 @@ export interface ReadOptions {
 }
 
 export interface Interface {
-  /** Resolve a lexical path and its permission resources, without requesting approval. */
+  /** Preserve the lexical target and resolve its physical approval boundary without requesting approval. */
   readonly resolve: (input: ResolveInput) => Effect.Effect<Target, FSUtil.Error>
   /** Approve external directories in one batch, preserving first-seen resource order. */
   readonly authorizeExternal: (
@@ -98,27 +98,34 @@ const layer = Layer.effect(
 
     const resolve = Effect.fn("FileAccess.resolve")(function* (input: ResolveInput) {
       const absolute = AbsolutePath.make(resolvePath(location.directory, input.path))
+      const physical = yield* realTarget(fs, absolute)
       const worktree = path.resolve(location.project.directory)
-      const internal =
+      const physicalDirectory = yield* realTarget(fs, location.directory)
+      const physicalWorktree = worktree === path.parse(worktree).root ? worktree : yield* realTarget(fs, worktree)
+      const lexicalInternal =
         FSUtil.contains(location.directory, absolute) ||
         (worktree !== path.parse(worktree).root && FSUtil.contains(worktree, absolute))
-      if (internal) {
+      const physicalInternal =
+        FSUtil.contains(physicalDirectory, physical) ||
+        (worktree !== path.parse(worktree).root && FSUtil.contains(physicalWorktree, physical))
+      if (lexicalInternal && physicalInternal) {
         return {
           absolute,
           resource: slash(path.relative(location.directory, absolute) || "."),
         } satisfies Target
       }
+      const external = physicalInternal ? absolute : physical
       const type =
         input.kind === "directory"
           ? "Directory"
           : input.kind === "file"
             ? "File"
-            : (yield* fs.stat(absolute).pipe(Effect.catchReason("PlatformError", "NotFound", () => Effect.undefined)))
+            : (yield* fs.stat(external).pipe(Effect.catchReason("PlatformError", "NotFound", () => Effect.undefined)))
                 ?.type
-      const directory = AbsolutePath.make(type === "Directory" ? absolute : path.dirname(absolute))
+      const directory = AbsolutePath.make(type === "Directory" ? external : path.dirname(external))
       return {
         absolute,
-        resource: slash(absolute),
+        resource: lexicalInternal ? slash(path.relative(location.directory, absolute) || ".") : slash(absolute),
         externalDirectory: {
           action: "external_directory",
           directory,
@@ -171,3 +178,15 @@ const layer = Layer.effect(
 )
 
 export const node = makeLocationNode({ service: Service, layer, deps: [FSUtil.node, Location.node, Permission.node] })
+
+function realTarget(fs: FSUtil.Interface, target: string): Effect.Effect<string, FSUtil.Error> {
+  return Effect.gen(function* () {
+    const real = yield* fs.realPath(target).pipe(Effect.catchReason("PlatformError", "NotFound", () => Effect.undefined))
+    if (real !== undefined) return real
+    const link = yield* fs.readLink(target).pipe(Effect.catchReason("PlatformError", "NotFound", () => Effect.undefined))
+    if (link !== undefined) return yield* realTarget(fs, path.resolve(path.dirname(target), link))
+    const parent = path.dirname(target)
+    if (parent === target) return target
+    return path.join(yield* realTarget(fs, parent), path.basename(target))
+  })
+}

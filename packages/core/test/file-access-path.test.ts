@@ -110,7 +110,7 @@ describe("FileAccess.resolve", () => {
     ),
   )
 
-  it.live("resolves a prospective target below an external symlink lexically", () =>
+  it.live("authorizes a prospective target below an external symlink", () =>
     withTempDir(({ path: directory }) =>
       Effect.gen(function* () {
         if (process.platform === "win32") return
@@ -122,7 +122,39 @@ describe("FileAccess.resolve", () => {
           absolute: path.join(directory, "escape", "new.txt"),
           resource: "escape/new.txt",
         })
-        expect(target.externalDirectory).toBeUndefined()
+        expect(target.externalDirectory).toMatchObject({
+          directory: outside.path,
+          resource: path.join(outside.path, "*").replaceAll("\\", "/"),
+        })
+      }).pipe(provide(directory)),
+    ),
+  )
+
+  it.live("authorizes an existing file reached through a symlink", () =>
+    withTempDir(({ path: directory }) =>
+      Effect.gen(function* () {
+        if (process.platform === "win32") return
+        const outside = yield* tmpdirScoped()
+        const external = path.join(outside.path, "target.txt")
+        yield* Effect.promise(() => fs.writeFile(external, "content"))
+        yield* Effect.promise(() => fs.symlink(external, path.join(directory, "linked.txt")))
+        const access = yield* FileAccess.Service
+        const target = yield* access.resolve({ path: "linked.txt", kind: "file" })
+        expect(target).toMatchObject({ absolute: path.join(directory, "linked.txt"), resource: "linked.txt" })
+        expect(target.externalDirectory?.directory).toBe(AbsolutePath.make(outside.path))
+      }).pipe(provide(directory)),
+    ),
+  )
+
+  it.live("authorizes a dangling symlink's external destination", () =>
+    withTempDir(({ path: directory }) =>
+      Effect.gen(function* () {
+        if (process.platform === "win32") return
+        const outside = yield* tmpdirScoped()
+        yield* Effect.promise(() => fs.symlink(path.join(outside.path, "new.txt"), path.join(directory, "linked.txt")))
+        const access = yield* FileAccess.Service
+        const target = yield* access.resolve({ path: "linked.txt", kind: "file" })
+        expect(target.externalDirectory?.directory).toBe(AbsolutePath.make(outside.path))
       }).pipe(provide(directory)),
     ),
   )
