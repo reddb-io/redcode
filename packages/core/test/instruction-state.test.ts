@@ -107,8 +107,9 @@ describe("InstructionState", () => {
         .all()
         .pipe(Effect.orDie)
       expect(updates).toHaveLength(1)
-      expect(updates[0]?.data).toMatchObject({ text: expect.stringContaining("V1 instruction baseline no longer applies") })
-      expect(updates[0]?.data).toMatchObject({ text: expect.stringContaining("V2 instructions") })
+      expect(updates[0]?.data).toMatchObject({
+        text: expect.stringMatching(/V1 instruction baseline no longer applies[\s\S]*V2 instructions/),
+      })
       expect(yield* RedcodeLegacyInstructions.load(db, sessionID)).toBeUndefined()
 
       expect(yield* RedcodeLegacyInstructions.retire(db, sessionID)).toBe(false)

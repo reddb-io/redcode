@@ -115,7 +115,7 @@ function oauth(http: HttpClient.HttpClient) {
           refresh: token.refresh_token,
           expires: Date.now() + token.expires_in * 1000,
           metadata:
-            token.org_id == null || typeof credential.metadata?.orgID === "string"
+            token.org_id == null || token.org_id === credential.metadata?.orgID
               ? credential.metadata
               : {
                   ...credential.metadata,
