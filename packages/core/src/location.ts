@@ -1,4 +1,5 @@
 import { Context, Effect, Layer } from "effect"
+import type { SqlError } from "effect/unstable/sql/SqlError"
 import { Info, Ref, response } from "@opencode/schema/location"
 import { Project } from "./project.js"
 import { LayerNode } from "@opencode/util/effect/layer-node"
@@ -14,7 +15,7 @@ export interface Interface extends Info {
 
 export class Service extends Context.Service<Service, Interface>()("@opencode/Location") {}
 
-export const node = LayerNode.unbound(Service, tags.values.location)
+export const node = LayerNode.unbound<Service, Interface, typeof tags.values.location, SqlError>(Service, tags.values.location)
 
 const layer = (ref: Ref, options?: { readonly discovery?: boolean }) =>
   Layer.effect(

@@ -53,7 +53,7 @@ export const Plugin = {
               if (input.messageID !== undefined) {
                 const message = yield* sessions.message({ sessionID: context.sessionID, messageID: input.messageID })
                 if (message?.type !== "assistant") return yield* Effect.fail(new Error("Assistant message not found"))
-                const tools = message.content.filter((part) => part.type === "tool" && part.state.status === "completed")
+                const tools = message.content.filter((part) => part.type === "tool").filter((part) => part.state.status === "completed")
                 const selected = input.toolCallID === undefined ? tools : tools.filter((part) => part.id === input.toolCallID)
                 if (selected.length === 0) return yield* Effect.fail(new Error("Completed tool output not found"))
                 const result = selected
@@ -83,12 +83,12 @@ export const Plugin = {
                       ? message.content
                           .flatMap((part) => {
                             if (part.type === "text" || part.type === "reasoning") return [part.text]
-                            if (part.state.status === "completed")
+                            if (part.type === "tool" && part.state.status === "completed")
                               return [
                                 `${part.name}(${JSON.stringify(part.state.input)})`,
                                 ...part.state.content.filter((item) => item.type === "text").map((item) => item.text),
                               ]
-                            return [`${part.name}(${JSON.stringify(part.state.input)})`]
+                            return part.type === "tool" ? [`${part.name}(${JSON.stringify(part.state.input)})`] : []
                           })
                           .join("\n")
                       : message.type === "user" || message.type === "synthetic" || message.type === "system"

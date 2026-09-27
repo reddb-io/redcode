@@ -2,6 +2,7 @@ export * as Session from "./session.js"
 export * from "./session/schema.js"
 
 import { Effect, Layer, Schema, Context, Stream } from "effect"
+import type { SqlError } from "effect/unstable/sql/SqlError"
 import { LLMClient } from "@opencode/ai"
 import { ListAnchor } from "@opencode/schema/session"
 import { and, desc, eq } from "drizzle-orm"
@@ -364,14 +365,14 @@ const layer = Layer.effect(
       }),
       view: (input) => sessions.forSession(input.sessionID).view(input),
       remove: Effect.fn("Session.remove")(function* (sessionID) {
-        yield* result.get(sessionID)
+        const session = yield* result.get(sessionID)
         yield* execution.interrupt(sessionID)
         yield* execution.awaitIdle(sessionID)
         yield* transport.close(sessionID)
         const children = yield* result.list({ parentID: sessionID })
         yield* Effect.forEach(children.data, (child) => result.remove(child.id), { concurrency: 1, discard: true })
         const { revoke } = yield* Effect.promise(() => import("./session/share-remote.js"))
-        yield* revoke(db, sessionID).pipe(Effect.orDie)
+        yield* revoke(db, sessionID).pipe(instances.provide(session), Effect.orDie)
         yield* environments.clear(sessionID)
         yield* bus.publish(SessionEvent.Deleted, { sessionID })
         yield* bus.remove(sessionID)
@@ -472,7 +473,7 @@ const layer = Layer.effect(
   }),
 )
 
-export const node: LayerNode.Provider<Service, never, typeof Node.tags.values.global> = Node.makeGlobalNode({
+export const node: LayerNode.Provider<Service, SqlError, typeof Node.tags.values.global> = Node.makeGlobalNode({
   service: Service,
   layer,
   deps: [

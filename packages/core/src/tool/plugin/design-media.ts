@@ -113,7 +113,7 @@ export const Plugin = {
                   message: "Image generation failed; inspect the connected tool and retry explicitly",
                 })
               const assets = yield* Effect.forEach(
-                result.content.filter((part) => part.type === "media" && part.mimeType.startsWith("image/")),
+                result.content.filter((part) => part.type === "media").filter((part) => part.mimeType.startsWith("image/")),
                 (part) =>
                   Schema.decodeUnknownEffect(Design.ImportAsset)({
                     name: `generated.${part.mimeType.split("/")[1]?.replace("svg+xml", "svg") ?? "png"}`,

@@ -197,10 +197,10 @@ describe("ConfigInstructionPlugin.Plugin", () => {
       Effect.promise(() => tmpdir()),
       (tmp) => Effect.promise(() => tmp[Symbol.asyncDispose]()),
     ).pipe(
-      Effect.flatMap((tmp) =>
-        Effect.gen(function* () {
-          const global = path.join(tmp.path, "global")
-          const home = path.join(tmp.path, "home")
+      Effect.flatMap((tmp) => {
+        const global = path.join(tmp.path, "global")
+        const home = path.join(tmp.path, "home")
+        return Effect.gen(function* () {
           const fallback = path.join(home, ".claude", "CLAUDE.md")
           yield* Effect.promise(() => fs.mkdir(path.dirname(fallback), { recursive: true }))
           yield* Effect.promise(() => fs.writeFile(fallback, "global fallback"))
@@ -216,8 +216,8 @@ describe("ConfigInstructionPlugin.Plugin", () => {
             Location.Service,
             Location.Service.of(location({ directory: AbsolutePath.make(tmp.path) })),
           ),
-        }))),
-      ),
+        })))
+      }),
     ),
   )
 

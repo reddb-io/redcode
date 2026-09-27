@@ -58,10 +58,11 @@ export function snapshot(files: Environment.Files, target: string) {
 export function same(left: Snapshot, right: Snapshot) {
   if (left?.type !== right?.type) return false
   if (left === undefined || right === undefined) return left === right
-  if (left.bytes === undefined || right.bytes === undefined)
-    return left.bytes === right.bytes && left.size === right.size && left.mtimeMs === right.mtimeMs
-  const bytes = right.bytes
-  return left.bytes.length === bytes.length && left.bytes.every((byte, index) => byte === bytes[index])
+  const leftBytes = "bytes" in left ? left.bytes : undefined
+  const rightBytes = "bytes" in right ? right.bytes : undefined
+  if (leftBytes === undefined || rightBytes === undefined)
+    return leftBytes === rightBytes && left.size === right.size && left.mtimeMs === right.mtimeMs
+  return leftBytes.length === rightBytes.length && leftBytes.every((byte, index) => byte === rightBytes[index])
 }
 
 /** Back up removed entries with same-directory moves so rollback keeps symlinks and file modes. */
@@ -81,7 +82,7 @@ export const commit = Effect.fn("PatchTransaction.commit")(function* (
       const result = yield* Effect.exit(Effect.gen(function* () {
         if (operation.type === "write") {
           const before = yield* snapshot(files, operation.path)
-          if (before?.type === "symlink" && before.bytes === undefined)
+          if (before?.type === "symlink" && (!("bytes" in before) || before.bytes === undefined))
             return yield* Effect.fail(new Error(`Cannot write through an unreadable symlink: ${operation.path}`))
           const missing: string[] = []
           for (let parent = path.dirname(operation.path); parent !== path.dirname(parent); parent = path.dirname(parent)) {
@@ -129,22 +130,25 @@ export const commit = Effect.fn("PatchTransaction.commit")(function* (
 })
 
 function restore(files: Environment.Files, step: Undo) {
-  if (step.type === "directory")
-    return files.list(step.path).pipe(
-      Effect.flatMap((entries) => entries.length === 0 ? files.remove(step.path) : Effect.void),
-      Effect.catchTag("Environment.NotFound", () => Effect.void),
+  return Effect.gen(function* () {
+    if (step.type === "directory")
+      return yield* files.list(step.path).pipe(
+        Effect.flatMap((entries) => entries.length === 0 ? files.remove(step.path) : Effect.void),
+        Effect.catchTag("Environment.NotFound", () => Effect.void),
+      )
+    if (step.type === "write") {
+      if (step.before && "bytes" in step.before && step.before.bytes)
+        return yield* files.write(step.path, step.before.bytes)
+      if (step.before === undefined) return yield* files.remove(step.path)
+      return
+    }
+    return yield* files.stat(step.backup).pipe(
+      Effect.flatMap(() => files.move(step.backup, step.path)),
+      Effect.catchTag("Environment.NotFound", () =>
+        files.stat(step.path).pipe(Effect.asVoid),
+      ),
     )
-  if (step.type === "write") {
-    if (step.before?.bytes) return files.write(step.path, step.before.bytes)
-    if (step.before === undefined) return files.remove(step.path)
-    return Effect.void
-  }
-  return files.stat(step.backup).pipe(
-    Effect.flatMap(() => files.move(step.backup, step.path)),
-    Effect.catchTag("Environment.NotFound", () =>
-      files.stat(step.path).pipe(Effect.asVoid),
-    ),
-  )
+  })
 }
 
 const reason = (cause: Cause.Cause<unknown>) => {

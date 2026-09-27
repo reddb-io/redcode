@@ -89,7 +89,7 @@ export const Plugin = {
                   const output = `Session already uses linked worktree ${repository.worktree}.\n${status}`
                   return { output, content: output, metadata: { directory: repository.worktree } }
                 }
-                const settings = (yield* config.get()).worktree
+                const settings = Config.latest(yield* config.entries(), "worktree")
                 if (settings?.auto === false || process.env.REDCODE_AUTO_WORKTREE === "0") {
                   const status = yield* run(repository.worktree, ["status", "--short", "--branch"])
                   const output = `Automatic worktrees are disabled. Session remains in ${session.location.directory}.\n${status}`
@@ -164,7 +164,7 @@ export const Plugin = {
                 ].join("\n")
                 return { output, content: output, metadata: { directory, branch } }
               }))
-            }).pipe(Effect.mapError((error) => new ToolFailure({ message: error.message, error }))),
+            }).pipe(Effect.mapError((error) => new ToolFailure({ message: error instanceof Error ? error.message : String(error), error }))),
         }),
       )
       .pipe(Effect.orDie)
@@ -199,7 +199,7 @@ export const Plugin = {
             return yield* new ToolFailure({ message: "Command targets the source checkout; use the linked worktree path" })
           return
         }
-        const settings = (yield* config.get()).worktree
+        const settings = Config.latest(yield* config.entries(), "worktree")
         if (settings?.auto === false || process.env.REDCODE_AUTO_WORKTREE === "0") return
         const relative = path.relative(repository.worktree, absolute)
         if (relative === ".." || relative.startsWith(`..${path.sep}`) || path.isAbsolute(relative)) return
@@ -220,7 +220,7 @@ export const Plugin = {
         return yield* new ToolFailure({
           message: `Session is moving to ${directory}. Repeat ${event.tool} after the next safe boundary so it uses the worktree's Location, permissions, and filesystem; the source checkout is unchanged.`,
         })
-      }).pipe(Effect.mapError((error) => new ToolFailure({ message: error.message, error }))),
+      }).pipe(Effect.mapError((error) => new ToolFailure({ message: error instanceof Error ? error.message : String(error), error }))),
     )
   }),
 }

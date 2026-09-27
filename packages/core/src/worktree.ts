@@ -1,6 +1,7 @@
 export * as Worktree from "./worktree.js"
 
 import { Context, Effect, Layer, Schema } from "effect"
+import type { SqlError } from "effect/unstable/sql/SqlError"
 import { and, asc, desc, eq, gte, isNotNull, isNull, or, sql } from "drizzle-orm"
 import path from "path"
 import { AbsolutePath } from "./schema.js"
@@ -355,7 +356,7 @@ const layer = Layer.effect(
   }),
 )
 
-export const node: LayerNode.Provider<Service, never, typeof Node.tags.values.global> = Node.makeGlobalNode({
+export const node: LayerNode.Provider<Service, SqlError, typeof Node.tags.values.global> = Node.makeGlobalNode({
   service: Service,
   layer,
   deps: [FSUtil.node, Git.node, Bus.node, Database.node, AppProcess.node, LocationServiceMap.node],

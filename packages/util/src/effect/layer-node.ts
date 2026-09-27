@@ -211,7 +211,7 @@ function makeProvider<Implementation extends Layer.Any, Items extends readonly A
   )
 }
 
-export function unbound<R, Shape, const T extends Tag>(service: Context.Key<R, Shape>, tag: T): Node<R, never, T> {
+export function unbound<R, Shape, const T extends Tag, E = never>(service: Context.Key<R, Shape>, tag: T): Node<R, E, T> {
   return new NodeValue({ kind: "unbound", name: service.key }, tag)
 }
 
