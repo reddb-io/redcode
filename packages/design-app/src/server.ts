@@ -26,20 +26,22 @@ export interface Options {
 /** Design pages and render jobs run here; Session mutations stay with their owning server. */
 export async function start(options: Options) {
   const scope = await Effect.runPromise(Scope.make())
+  const routes = createRoutes(
+    {
+      app: { name: "redcode-design", version: options.version },
+      password: options.token,
+      database: options.database,
+      fs: { filewatcher: false },
+      models: { fetch: false },
+    },
+    () => [],
+    [DesignRenderer.node.replace(DesignRendererLocal.node)],
+    { v1Migration: false },
+  ).pipe(Layer.provide(HttpServer.layerServices))
+  // The route layer supplies request services through its dynamic Layer.flatMap.
   const context = await Effect.runPromise(
     Layer.buildWithScope(
-      createRoutes(
-        {
-          app: { name: "redcode-design", version: options.version },
-          password: options.token,
-          database: options.database,
-          fs: { filewatcher: false },
-          models: { fetch: false },
-        },
-        () => [],
-        [DesignRenderer.node.replace(DesignRendererLocal.node)],
-        { v1Migration: false },
-      ).pipe(Layer.provide(HttpServer.layerServices)),
+      routes as unknown as Layer.Layer<Layer.Success<typeof routes>, Layer.Error<typeof routes>>,
       scope,
     ),
   )
