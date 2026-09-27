@@ -107,6 +107,7 @@ it.live("remove loads canonical strategies and enforces project ownership", () =
     yield* Effect.promise(async () => {
       const session = await api.session.create({ location: { directory } })
       const foreign = await api.session.create({ location: { directory: other } })
+      await api.worktree.refresh({ projectID: session.projectID })
       await expect(
         api.worktree.remove({ projectID: foreign.projectID, directory: linked, force: true }),
       ).rejects.toMatchObject({ name: "WorktreeError" })
