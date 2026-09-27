@@ -93,7 +93,7 @@ export const admit = Effect.fn("RedcodePending.admit")(function* (options: { onE
           },
         })
       }).pipe(
-        Effect.catchAll((error) =>
+        Effect.catch((error) =>
           options.onError === "continue"
             ? Effect.logError("Pending Redcode input admission failed", {
                 sessionID: row.session_id,
