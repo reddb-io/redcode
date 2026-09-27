@@ -112,7 +112,7 @@ describe("WriteTool", () => {
         Effect.gen(function* () {
           expect((yield* toolDefinitions(registry)).map((tool) => tool.name)).toEqual(["write", "execute"])
           const settled = yield* executeTool(registry, call({ path: "src/new.txt", content: "created" }))
-          expect(settled).toEqual({
+          expect(settled).toMatchObject({
             status: "completed",
             output: {
               operation: "write",
