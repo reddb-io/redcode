@@ -46,7 +46,7 @@ describe("Config.Entry", () => {
 
   test("round-trips model release time and status overrides", () => {
     const input = {
-      providers: { custom: { models: { chat: { time: { released: 1_744_243_200_000 }, status: "beta" } } } },
+      providers: { custom: { models: { chat: { time: { released: 1_744_243_200_000 }, status: "beta" as const } } } },
     }
     expect(Schema.encodeSync(Config.Info)(Schema.decodeUnknownSync(Config.Info)(input))).toEqual(input)
     expect(Model.Status.ast.annotations?.identifier).toBe("Model.Status")
