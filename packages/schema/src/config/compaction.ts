@@ -5,6 +5,9 @@ import { NonNegativeInt, optional } from "../schema.js"
 
 export class Keep extends Schema.Class<Keep>("Config.Compaction.Keep")({
   tokens: NonNegativeInt.pipe(optional),
+  turns: NonNegativeInt.pipe(optional).annotate({
+    description: "Maximum recent user exchanges kept with a summary or native trigger checkpoint; zero keeps none.",
+  }),
 }) {}
 
 export class Info extends Schema.Class<Info>("Config.Compaction")({

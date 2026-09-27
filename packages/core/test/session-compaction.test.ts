@@ -380,6 +380,31 @@ const recentWithToolOutput = (id: Session.ID, content: SessionMessage.ToolStateC
     return stored?.type === "compaction" && stored.status === "completed" ? stored.recent : ""
   })
 
+it.effect("keeps no more than the configured recent user exchanges", () =>
+  Effect.gen(function* () {
+    const compaction = yield* SessionCompaction.Service
+    yield* compaction.transform((editor) => editor.configure({ keep: 1_000, keepTurns: 2 }))
+    const id = Session.ID.make("ses_keep_turns")
+    const session = yield* insertSession(id)
+    const messages = ["Old " + "context ".repeat(20_000), "Second question", "Third question", "Latest question"].map(
+      (text, index) =>
+        SessionMessage.User.make({
+          id: SessionMessage.ID.create(),
+          type: "user",
+          text,
+          time: { created: DateTime.makeUnsafe(index) },
+        }),
+    )
+    expect(yield* compactManually(session, messages)).toEqual({ status: "completed" })
+    const store = yield* SessionStore.Service
+    const stored = (yield* store.context(id))[0]
+    if (stored?.type !== "compaction" || stored.status !== "completed") throw new Error("Expected compaction")
+    expect(stored.recent).toContain("Third question")
+    expect(stored.recent).toContain("Latest question")
+    expect(stored.recent).not.toContain("Second question")
+  }),
+)
+
 it.effect("manual compaction summarizes short context instead of no-op", () =>
   Effect.gen(function* () {
     requests = []

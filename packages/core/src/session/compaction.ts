@@ -46,6 +46,8 @@ export type Settings = {
   buffer?: number
   /** Tokens of recent conversation kept verbatim beside the summary. */
   keep: number
+  /** Maximum number of recent user exchanges kept verbatim. */
+  keepTurns?: number
 }
 
 export type Editor = {
@@ -232,8 +234,8 @@ export const layer = Layer.effect(
 
       const compaction =
         context.model.compaction?.type === "native"
-          ? compactNatively(trigger, budget, settings.keep)
-          : summarize(trigger, budget, settings.keep)
+          ? compactNatively(trigger, budget, settings.keep, settings.keepTurns)
+          : summarize(trigger, budget, settings.keep, settings.keepTurns)
       const deadline = AuxDeadline.deadlineMs("compaction", Config.latestExperimental(yield* config.entries(), "aux_timeout"))
       return yield* compaction.pipe(
         deadline === undefined
@@ -294,9 +296,10 @@ export const layer = Layer.effect(
       trigger: Trigger,
       budget: number,
       keep: number,
+      turns?: number,
     ): Effect.fn.Return<Result, Failure> {
       const context = trigger.context
-      const split = splitConversation(context.messages, keep)
+      const split = splitConversation(context.messages, keep, turns)
       if (!split) return yield* Effect.fail(NOTHING_TO_COMPACT)
 
       const previous = previousCompaction(context.messages)
@@ -346,6 +349,7 @@ export const layer = Layer.effect(
       trigger: Trigger,
       budget: number,
       keep: number,
+      turns?: number,
     ): Effect.fn.Return<Result, Failure> {
       const context = trigger.context
       if (!context.messages.some(messageToText)) return yield* Effect.fail(NOTHING_TO_COMPACT)
@@ -376,7 +380,7 @@ export const layer = Layer.effect(
         if (LLMClient.canCompact(request, { mechanism: "trigger" })) {
           return Effect.gen(function* () {
             const history = yield* SessionHistory.load(db, context.session.id, "local").pipe(Effect.orDie)
-            const retained = recentUserMessages(history, context.model, keep)
+            const retained = recentUserMessages(history, context.model, keep, turns)
             const response = yield* llm.compact(request, { ...prepared.options, mechanism: "trigger" })
             return yield* toResult([...retained, Message.assistant(response.checkpoint)], response.usage)
           })
@@ -711,17 +715,21 @@ const transcript = (context: SessionContext.Loaded, messages: ReadonlyArray<Sess
   })
 
 /**
- * `older` gets summarized; `recent`, the newest messages within `keep` tokens, is kept verbatim as text beside
- * the summary. Undefined when there is nothing to compact.
+ * `older` gets summarized; `recent` keeps the newest complete user exchanges within both configured limits.
+ * Undefined when there is nothing to compact.
  */
-const splitConversation = (messages: ReadonlyArray<SessionMessage.Info>, keep: number) => {
+const splitConversation = (messages: ReadonlyArray<SessionMessage.Info>, keep: number, turns?: number) => {
   const entries = messages.flatMap((message, index) => {
     const text = messageToText(message)
     return text ? [{ message, text, index }] : []
   })
   if (entries.length === 0) return undefined
 
-  const recent = entries.slice(recentStart(entries, keep, previousCompaction(messages)))
+  const byBudget = recentStart(entries, keep, previousCompaction(messages))
+  const users = entries.flatMap((entry, index) => (entry.message.type === "user" ? [index] : []))
+  const byTurns =
+    turns === undefined ? 0 : turns === 0 || !users.length ? entries.length : (users.at(-turns) ?? users[0] ?? 0)
+  const recent = entries.slice(Math.max(byBudget, byTurns))
   return {
     older: messages.slice(0, recent[0]?.index ?? messages.length),
     recent: recent.map((entry) => entry.text).join("\n\n"),
@@ -865,11 +873,12 @@ const serializeToolContent = (content: ReadonlyArray<SessionMessage.ToolStateCom
     })
     .join("\n")
 
-/** The newest whole, real user messages within `keep` tokens: no synthetic guidance, no half of an attachment. */
+/** The newest whole, real user messages within token and turn limits: no synthetic guidance or partial attachments. */
 export const recentUserMessages = (
   messages: ReadonlyArray<SessionMessage.Info>,
   model: Pick<SessionContext.Loaded["model"], "ref" | "capabilities">,
   keep: number,
+  turns?: number,
 ) => {
   const users = messages
     .filter((message) => message.type === "user")
@@ -877,7 +886,10 @@ export const recentUserMessages = (
   const sendable = SessionModelRequest.boundImages(
     SessionModelRequest.unsupportedParts(toLLMMessages(users, model.ref), model.capabilities),
   )
-  return sendable.slice(oldestToDrop(sendable, estimateMessage, keep))
+  const recent = sendable.slice(oldestToDrop(sendable, estimateMessage, keep))
+  if (turns === undefined) return recent
+  if (turns === 0) return []
+  return recent.slice(-turns)
 }
 
 export const estimateContext = (context: SessionContext.Loaded, ratio = 1) => {

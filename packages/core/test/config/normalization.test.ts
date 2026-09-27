@@ -371,18 +371,18 @@ describe("ConfigNormalize", () => {
       compaction: {
         auto: false,
         preserve_recent_tokens: 1000,
-        keep: { tokens: 2000 },
+        keep: { tokens: 2000, turns: 3 },
         reserved: 3000,
         buffer: 4000,
         tail_turns: 2,
         prune: true,
       },
     })
-    expect(result.encoded.compaction).toEqual({ auto: false, keep: { tokens: 2000 }, buffer: 4000 })
+    expect(result.encoded.compaction).toEqual({ auto: false, keep: { tokens: 2000, turns: 3 }, buffer: 4000 })
     expect(result.diagnostics.map((item) => [item.kind, item.path])).toEqual([
-      ["unsupported", ["compaction", "tail_turns"]],
       ["unsupported", ["compaction", "prune"]],
       ["conflict", ["compaction", "keep", "tokens"]],
+      ["conflict", ["compaction", "keep", "turns"]],
       ["conflict", ["compaction", "buffer"]],
     ])
   })

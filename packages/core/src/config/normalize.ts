@@ -327,7 +327,6 @@ function normalizeCompaction(
     invalid(["compaction"], diagnostics)
     return
   }
-  unsupportedIfPresent(input.compaction, "tail_turns", ["compaction", "tail_turns"], diagnostics)
   unsupportedIfPresent(input.compaction, "prune", ["compaction", "prune"], diagnostics)
   const result: Record<string, unknown> = {}
   if (own(input.compaction, "auto")) {
@@ -359,7 +358,26 @@ function normalizeCompaction(
         )
       : undefined
   const tokens = prefer(legacyTokens, nativeTokens, ["compaction", "keep", "tokens"], diagnostics)
-  if (tokens !== undefined) result.keep = { tokens }
+  const legacyTurns = own(input.compaction, "tail_turns")
+    ? decodeEncoded(
+        ConfigCompaction.Keep.fields.turns,
+        input.compaction.tail_turns,
+        ["compaction", "tail_turns"],
+        diagnostics,
+      )
+    : undefined
+  const nativeTurns =
+    nativeKeep && own(nativeKeep, "turns")
+      ? decodeEncoded(
+          ConfigCompaction.Keep.fields.turns,
+          nativeKeep.turns,
+          ["compaction", "keep", "turns"],
+          diagnostics,
+        )
+      : undefined
+  const turns = prefer(legacyTurns, nativeTurns, ["compaction", "keep", "turns"], diagnostics)
+  if (tokens !== undefined || turns !== undefined)
+    result.keep = { ...(tokens === undefined ? {} : { tokens }), ...(turns === undefined ? {} : { turns }) }
   const legacyBuffer = own(input.compaction, "reserved")
     ? decodeEncoded(
         ConfigCompaction.Info.fields.buffer,

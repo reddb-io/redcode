@@ -2,6 +2,7 @@ import { describe, expect, test } from "bun:test"
 import { Schema } from "effect"
 import { Config } from "../src/config.js"
 import { ConfigAgent } from "../src/config/agent.js"
+import { ConfigCompaction } from "../src/config/compaction.js"
 import { ConfigMCP } from "../src/config/mcp.js"
 import { ConfigProvider } from "../src/config/provider.js"
 import { Mcp } from "../src/mcp.js"
@@ -49,6 +50,14 @@ describe("Config.Entry", () => {
     }
     expect(Schema.encodeSync(Config.Info)(Schema.decodeUnknownSync(Config.Info)(input))).toEqual(input)
     expect(Model.Status.ast.annotations?.identifier).toBe("Model.Status")
+  })
+
+  test("round-trips a compaction turn limit and omits absent limits", () => {
+    const input = { compaction: { keep: { tokens: 2_000, turns: 2 } } }
+    expect(Schema.encodeSync(Config.Info)(Schema.decodeUnknownSync(Config.Info)(input))).toEqual(input)
+    expect(Schema.encodeSync(ConfigCompaction.Keep)(new ConfigCompaction.Keep({ turns: undefined }))).not.toHaveProperty(
+      "turns",
+    )
   })
 
   test("accepts disabled, fixed, and random web search selection", () => {

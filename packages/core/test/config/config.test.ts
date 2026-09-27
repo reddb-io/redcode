@@ -654,6 +654,10 @@ describe("Config", () => {
     ).toBe(3)
   })
 
+  test("migrates the V1 compaction turn limit", () => {
+    expect(ConfigMigrateV1.migrate({ compaction: { tail_turns: 2 } }).compaction?.keep?.turns).toBe(2)
+  })
+
   test("migrates V1 provider model selection", () => {
     expect(
       ConfigMigrateV1.migrate({ provider: { custom: { whitelist: ["chat"], blacklist: ["legacy"] } } }).providers
@@ -1485,7 +1489,7 @@ describe("Config", () => {
             })
             expect(documents[0]?.info.compaction).toEqual({
               auto: true,
-              keep: { tokens: 2000 },
+              keep: { tokens: 2000, turns: 3 },
               buffer: 10000,
             })
             expect(documents[0]?.info.mcp).toMatchObject({
