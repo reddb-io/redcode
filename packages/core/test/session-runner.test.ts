@@ -270,6 +270,7 @@ const permissionFail = {
     }),
 }
 const permission = permissionLayer()
+const persistedBus = Bus.node.replace(Bus.configured({ persist: true }))
 const transformTools = (registry: Tool.Interface, tools: Readonly<Record<string, ToolInfo>>, options?: Tool.Options) =>
   registry.transform((editor) =>
     Object.entries(tools).forEach(([name, tool]) => editor.add({ ...tool, name, options: options ?? tool.options })),
@@ -437,7 +438,7 @@ const layer = Layer.unwrap(
     ]
     const runnerLayer = AppNodeBuilder.build(LayerNode.group([SessionRunnerLLM.node, SessionProjector.node]), [
       ...replacements,
-      Bus.node.replace(Bus.configured({ persist: true })),
+      persistedBus,
       McpInstructions.node.replace(mcpInstructions),
     ])
     const execution = Layer.effect(
@@ -499,7 +500,7 @@ const layer = Layer.unwrap(
       ]),
       [
         ...replacements,
-        Bus.node.replace(Bus.configured({ persist: true })),
+        persistedBus,
         LocationServiceMap.node.replace(promptLocationNode),
         Model.node.replace(promptModels),
         SessionExecution.node.replace(execution),

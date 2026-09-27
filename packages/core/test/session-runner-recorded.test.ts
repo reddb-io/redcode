@@ -61,6 +61,7 @@ const cassette = HttpRecorder.layerFetch(cassetteName, { directory: cassetteDire
 const executor = RequestExecutor.layer.pipe(Layer.provide(cassette))
 const client = LLMClient.layer.pipe(Layer.provide(executor))
 const permission = permissionLayer()
+const persistedBus = Bus.node.replace(Bus.configured({ persist: true }))
 const model = OpenAIChat.route
   .with({
     endpoint: { baseURL: "https://api.openai.com/v1" },
@@ -99,7 +100,7 @@ const promptModels = Layer.mock(Model.Service, {
 })
 const runnerLayer = (llmClient: Layer.Layer<LLMClientService>) =>
   AppNodeBuilder.build(LayerNode.group([SessionRunnerLLM.node, SessionProjector.node]), [
-    Bus.node.replace(Bus.configured({ persist: true })),
+    persistedBus,
     Agent.node.replace(
       Agent.node.mapLayer((layer) =>
         layer.pipe(
@@ -168,7 +169,7 @@ const testLayer = (llmClient: Layer.Layer<LLMClientService>) =>
       Session.node,
     ]),
     [
-      Bus.node.replace(Bus.configured({ persist: true })),
+      persistedBus,
       LocationServiceMap.node.replace(promptLocationNode),
       LayerNodePlatform.llmClient.replace(llmClient),
       Permission.node.replace(permission),
