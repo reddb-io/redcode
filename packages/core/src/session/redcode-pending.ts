@@ -95,7 +95,10 @@ export const admit = Effect.fn("RedcodePending.admit")(function* () {
       }),
     { discard: true },
   )
-  return [...new Set(pending.map((row) => SessionSchema.ID.make(row.session_id)))]
+  const waiting = yield* Effect.forEach(pending, (row) =>
+    SessionInbox.find(db, SessionMessage.ID.make(row.id)).pipe(Effect.map((item) => item?.sessionID)),
+  )
+  return [...new Set(waiting.filter((sessionID): sessionID is SessionSchema.ID => sessionID !== undefined))]
 })
 
 function materialize(file: LegacyFile, inputID: string) {
