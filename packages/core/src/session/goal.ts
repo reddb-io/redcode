@@ -292,6 +292,9 @@ export function guidance(goal: SessionGoal.Info | null) {
     `Scope ends after ${goal.stopAfter}. Plan execution pre-authorized: ${goal.executePlan}. This does not authorize work outside the objective.`,
     `Steps: ${goal.turns.used}/${goal.turns.max}. Budget exhaustion is not completion.`,
     ...goal.criteria.map((criterion, index) => `Criterion ${index + 1}: ${criterion}`),
+    ...(goal.stopAfter === "design"
+      ? ["Before goal_complete, audit the published Design revision and obtain the user's approval of that revision and its audit evidence."]
+      : []),
     "When complete, call goal_complete with actual evidence file paths and a concise explanation of how every criterion is met. The harness reads and hashes the files, runs configured checks and reviews the evidence. Do not claim success without passing verification.",
     "Continue within the authorized scope. Keep progress concise: current checkpoint, verified facts, remaining work and blockers. Use goal_status to report a real blocker or pause; never redefine the objective to make it easier.",
   ].join("\n")

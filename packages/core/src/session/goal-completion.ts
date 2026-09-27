@@ -56,7 +56,8 @@ const make = Effect.gen(function* () {
               job.input.revision === record.revision.id &&
               job.input.format === "audit" &&
               job.status === "completed" &&
-              job.audit !== undefined,
+              job.audit !== undefined &&
+              record.audits.some((audit) => audit.id === job.id),
           )
         }),
       )
