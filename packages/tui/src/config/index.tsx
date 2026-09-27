@@ -163,6 +163,9 @@ export const Info = Schema.Struct({
       generic_tool_output: Schema.optional(Schema.Literals(["show", "hide"])).annotate({
         description: "Show generic tool input and output by default",
       }),
+      tool_details: Schema.optional(Schema.Literals(["show", "hide"])).annotate({
+        description: "Show completed tool calls in the session transcript",
+      }),
       list_scope: Schema.optional(Schema.Literals(["directory", "project", "all"])).annotate({
         description: "Initial scope of the session list",
       }),

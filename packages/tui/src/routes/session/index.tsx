@@ -237,6 +237,7 @@ export function Session(props: {
   const showScrollbar = createMemo(() => config.session?.scrollbar ?? false)
   const showTimestamps = createMemo(() => config.session?.timestamps === "show")
   const showGenericToolOutput = createMemo(() => config.session?.generic_tool_output === "show")
+  const showToolDetails = createMemo(() => config.session?.tool_details !== "hide")
   const markdownMode = createMemo(() => config.session?.markdown ?? "rendered")
   const diffWrapMode = createMemo(() => config.diffs?.wrap ?? "word")
   const groupExploration = createMemo(() => config.session?.grouping !== "none")
@@ -1131,6 +1132,20 @@ export function Session(props: {
       },
     },
     {
+      title: showToolDetails() ? "Hide completed tool calls" : "Show completed tool calls",
+      id: "session.toggle.tool_details",
+      group: "Session",
+      palette: undefined,
+      run: () => {
+        void configState
+          .update((draft) => {
+            draft.session = { ...draft.session, tool_details: showToolDetails() ? "hide" : "show" }
+          })
+          .catch(toast.error)
+        dialog.clear()
+      },
+    },
+    {
       title: groupExploration() ? "Show tool calls individually" : "Group related tool calls",
       id: "session.toggle.exploration_grouping",
       group: "Session",
@@ -1272,7 +1287,7 @@ export function Session(props: {
           const sessionData = session()
           if (!sessionData) return
           const transcript = await client.api.session.export({ sessionID: sessionData.id })
-          const content = formatSessionTranscript(transcript.info, transcript.messages, true)
+          const content = formatSessionTranscript(transcript.info, transcript.messages, true, showToolDetails())
           await clipboard.write(content)
           toast.show({ message: "Session transcript copied to clipboard!", variant: "success" })
         } catch {
@@ -1293,7 +1308,7 @@ export function Session(props: {
           const sessionData = session()
           if (!sessionData) return
 
-          const options = await DialogExportOptions.show(dialog, true)
+          const options = await DialogExportOptions.show(dialog, true, showToolDetails())
 
           if (options === null) return
 
@@ -2464,7 +2479,16 @@ function AssistantRetry(props: { retry: SessionMessageAssistant["retry"] }) {
 // Pending messages moved to individual tool pending functions
 
 function ToolPart(props: { part: SessionMessageAssistantTool; images?: boolean }) {
+  const config = useConfig()
   const display = createMemo(() => toolDisplay(props.part.name))
+  const hidden = createMemo(
+    () =>
+      config.data.session?.tool_details === "hide" &&
+      props.part.state.status === "completed" &&
+      display() !== "shell" &&
+      display() !== "question" &&
+      display() !== "subagent",
+  )
 
   const toolprops = {
     get metadata() {
@@ -2533,12 +2557,14 @@ function ToolPart(props: { part: SessionMessageAssistantTool; images?: boolean }
       </Match>
     </Switch>
   )
-  return [
-    content,
-    <Show when={props.images !== false}>
-      <ToolImages parts={[props.part]} />
-    </Show>,
-  ]
+  return (
+    <Show when={!hidden()}>
+      {content}
+      <Show when={props.images !== false}>
+        <ToolImages parts={[props.part]} />
+      </Show>
+    </Show>
+  )
 }
 
 function ToolImages(props: { parts: readonly SessionMessageAssistantTool[] }) {

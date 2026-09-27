@@ -157,7 +157,13 @@ function GroupContent(props: GroupProps) {
               </InlineToolRow>
             </Show>
             <Show when={expanded() && tools().length > 0}>{children("tool")}</Show>
-            <Show when={!props.imagesOutside}>{props.images(tools())}</Show>
+            <Show when={!props.imagesOutside}>
+              {props.images(
+                tools().filter(
+                  (part) => ctx.config.session?.tool_details !== "hide" || part.state.status !== "completed",
+                ),
+              )}
+            </Show>
           </Show>
         }
       >

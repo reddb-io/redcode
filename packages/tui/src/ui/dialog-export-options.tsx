@@ -9,6 +9,7 @@ export type ExportFormat = "markdown" | "json"
 
 export type DialogExportOptionsProps = {
   defaultThinking: boolean
+  defaultTools: boolean
   onConfirm?: (options: {
     action: "copy" | "export"
     format: ExportFormat
@@ -28,7 +29,7 @@ export function DialogExportOptions(props: DialogExportOptionsProps) {
   const [store, setStore] = createStore({
     format: "markdown" as ExportFormat,
     thinking: props.defaultThinking,
-    tools: true,
+    tools: props.defaultTools,
     sanitize: false,
     active: "markdown" as Active,
   })
@@ -271,7 +272,7 @@ export function DialogExportOptions(props: DialogExportOptionsProps) {
   )
 }
 
-DialogExportOptions.show = (dialog: DialogContext, defaultThinking: boolean) => {
+DialogExportOptions.show = (dialog: DialogContext, defaultThinking: boolean, defaultTools = true) => {
   return new Promise<{
     action: "copy" | "export"
     format: ExportFormat
@@ -283,6 +284,7 @@ DialogExportOptions.show = (dialog: DialogContext, defaultThinking: boolean) => 
       () => (
         <DialogExportOptions
           defaultThinking={defaultThinking}
+          defaultTools={defaultTools}
           onConfirm={(options) => resolve(options)}
           onCancel={() => resolve(null)}
         />
