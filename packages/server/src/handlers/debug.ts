@@ -64,7 +64,7 @@ export const DebugHandler = HttpApiBuilder.group(Api, "server.debug", (handlers)
         const todos = yield* SessionTodoStore.Service
         const facts = yield* SessionTaskFacts.Service
         const tasks = yield* todos.get(ctx.query.sessionID)
-        const failed = (yield* facts.load(ctx.query.sessionID)).results
+        const failed = (yield* facts.load(ctx.query.sessionID).pipe(Effect.orDie)).results
           .filter((result) => result.tool === "todowrite" && result.errored && !result.abandoned)
           .toSorted((a, b) => b.completed - a.completed)
         return {

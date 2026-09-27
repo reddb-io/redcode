@@ -54,7 +54,8 @@ export const simulationReplacements: (app: {
       layer: networkLayer,
       deps: [SdkPlugins.node],
     })
-    return [httpClient.replace(networkNode)] satisfies LayerNode.Replacements
+    // The shared plugin graph can fail while opening its database; the host graph already carries that error.
+    return [httpClient.replace(networkNode as typeof httpClient)] satisfies LayerNode.Replacements
   },
 )
 

@@ -20,7 +20,7 @@ export const RedskilledHandler = HttpApiBuilder.group(Api, "server.redskilled", 
           Effect.tryPromise({ try: () => session.snapshot(), catch: error }).pipe(
             Effect.map((snapshot) => project(snapshot, location.project.id)),
           ),
-        ).pipe(Effect.catchAll((failure) => Effect.succeed(unavailable(location.project.id, scope, failure.message))))
+        ).pipe(Effect.catch((failure) => Effect.succeed(unavailable(location.project.id, scope, failure.message))))
       })),
     )
     .handle("redskilled.consent", (ctx) =>

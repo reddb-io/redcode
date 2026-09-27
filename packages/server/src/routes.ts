@@ -43,7 +43,7 @@ import { SdkPlugins } from "@opencode/core/plugin/sdk"
 import { WellKnown } from "@opencode/core/wellknown"
 import { Workspace } from "@opencode/core/workspace"
 import { Watcher } from "@opencode/core/filesystem/watcher"
-import { HttpRouter } from "effect/unstable/http"
+import { HttpRouter, HttpServer } from "effect/unstable/http"
 import { HttpApiBuilder } from "effect/unstable/httpapi"
 import { Context, Effect, Layer, Option } from "effect"
 import { Api } from "./api"
@@ -198,7 +198,9 @@ function makeRoutes<AuthError, AuthServices>(
     ? Layer.unwrap(
         Effect.gen(function* () {
           const { simulationReplacements } = yield* Effect.promise(() => import("@opencode/simulation/backend"))
-          const simulation = yield* simulationReplacements({ version: App.make(options.app).version })
+          const simulation = yield* simulationReplacements({ version: App.make(options.app).version }).pipe(
+            Effect.provide(HttpServer.layerServices),
+          )
           return build([...overrides, ...simulation])
         }),
       )

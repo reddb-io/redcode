@@ -41,7 +41,7 @@ export function provide<R>(options: Options<R>, context: Context.Context<R>): Op
 export function node(options: Options, replacements: () => LayerNode.Replacements) {
   return makeGlobalNode({
     service: Instance.Service,
-    layer: layer(options, replacements),
+    layer: layer(options, replacements).pipe(Layer.orDie),
     deps: [LocationServiceMap.node],
   })
 }

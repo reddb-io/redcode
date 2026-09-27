@@ -67,7 +67,7 @@ export const routes = (hosts: () => ReadonlyArray<string>) => HttpRouter.use((ro
           const link = yield* Effect.tryPromise({
             try: async () =>
               DesignApp.link(
-                await appConnection.connect(configured.app?.version),
+                await appConnection.connect(configured?.app?.version),
                 sessionID,
               ),
             catch: (error) =>
