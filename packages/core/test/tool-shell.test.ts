@@ -199,9 +199,7 @@ const lineOverflowCommand = isWindows
   ? "[Console]::Out.Write('one' + [Environment]::NewLine + 'two' + [Environment]::NewLine + 'three')"
   : "printf 'one\\ntwo\\nthree'"
 const progressOverflowCommand = (bytes: number, release: string) =>
-  isWindows
-    ? `[Console]::Out.Write(('x' * ${bytes})); while (!(Test-Path -LiteralPath '${release}')) { Start-Sleep -Milliseconds 50 }`
-    : `head -c ${bytes} /dev/zero | tr '\\0' 'x'; while [ ! -e '${release}' ]; do sleep 0.05; done`
+  `node -e "const fs = require('fs'); process.stdout.write('x'.repeat(${bytes})); const done = () => { if (fs.existsSync('${release}')) process.exit(0) }; fs.watch('.', done); done()"`
 
 const withSession = <A, E, R>(directory: string, body: (registry: Tool.Interface) => Effect.Effect<A, E, R>) =>
   Effect.gen(function* () {
@@ -444,7 +442,7 @@ describe("ShellTool scanner permissions", () => {
         }),
       ))
 
-    test(`${scanner}: a numeric symlink operand still reaches outside without an external-directory prompt`, () =>
+    test(`${scanner}: handles a numeric symlink operand according to scanner policy`, () =>
       withScanner(portable, (registry, fixture) =>
         Effect.gen(function* () {
           yield* Effect.promise(() => fs.symlink(fixture.outside, path.join(fixture.active, "123")))
@@ -465,6 +463,17 @@ describe("ShellTool scanner permissions", () => {
             [],
           )
           expect(result.requests).toEqual([])
+          if (portable) {
+            expect(result.exit).toMatchObject({
+              _tag: "Success",
+              value: {
+                status: "error",
+                error: { type: "permission.rejected", message: "Permission denied: external_directory" },
+              },
+            })
+            expect(yield* Effect.promise(() => Bun.file(marker).exists())).toBe(false)
+            return
+          }
           expect(result.exit).toMatchObject({
             _tag: "Success",
             value: {
@@ -1700,7 +1709,7 @@ describe("ShellTool", () => {
             const scope = yield* Scope.Scope
             const waiting = yield* executeTool(
               registry,
-              call({ command: idleCommand, timeout: 50 }, "call-background-signal"),
+              call({ command: 'node -e "setInterval(() => {}, 60000)"', timeout: 50 }, "call-background-signal"),
             ).pipe(Effect.forkIn(scope, { startImmediately: true }))
 
             const backgroundWhenReady = (remaining = 1000): Effect.Effect<Job.Info[], Error> =>
