@@ -37,7 +37,9 @@ import { Plugin } from "@opencode/core/plugin"
 import { PluginHooks } from "@opencode/core/plugin/hooks"
 import { OptimizePlugin } from "@opencode/core/plugin/optimize"
 import { IdentityPlugin } from "@opencode/core/plugin/identity"
-import { describe, expect } from "bun:test"
+import { afterAll, describe, expect } from "bun:test"
+import { mkdtemp, rm } from "node:fs/promises"
+import { tmpdir } from "node:os"
 import { eq } from "drizzle-orm"
 import { Effect, Layer } from "effect"
 import path from "node:path"
@@ -49,6 +51,8 @@ import { agentHost, modelHost, host, noProviders } from "./plugin/host"
 
 const cassetteName = "session-runner/openai-chat-streams-text"
 const cassetteDirectory = path.resolve(import.meta.dir, "fixtures/recordings")
+const projectDirectory = await mkdtemp(path.join(tmpdir(), "redcode-runner-recorded-"))
+afterAll(() => rm(projectDirectory, { recursive: true, force: true }))
 if (process.env.RECORD === "true") {
   if (process.env.CI !== undefined) throw new Error("Unset CI before recording HTTP cassettes")
   HttpRecorder.removeCassetteSync(cassetteName, { directory: cassetteDirectory })
@@ -100,7 +104,7 @@ const runnerLayer = (llmClient: Layer.Layer<LLMClientService>) =>
     SessionRunnerModel.node.replace(models),
     InstructionBuiltIns.node.replace(systemContext),
     InstructionDiscovery.node.replace(instructionContext),
-    Location.node.replace(Location.boundNode({ directory: AbsolutePath.make("/project") })),
+    Location.node.replace(Location.boundNode({ directory: AbsolutePath.make(projectDirectory) })),
     SkillInstructions.node.replace(skillInstructions),
     ReferenceInstructions.node.replace(referenceInstructions),
     McpInstructions.node.replace(mcpInstructions),
@@ -157,7 +161,7 @@ const testLayer = (llmClient: Layer.Layer<LLMClientService>) =>
       SessionRunnerModel.node.replace(models),
       InstructionBuiltIns.node.replace(systemContext),
       InstructionDiscovery.node.replace(instructionContext),
-      Location.node.replace(Location.boundNode({ directory: AbsolutePath.make("/project") })),
+      Location.node.replace(Location.boundNode({ directory: AbsolutePath.make(projectDirectory) })),
       SkillInstructions.node.replace(skillInstructions),
       ReferenceInstructions.node.replace(referenceInstructions),
       Config.node.replace(config),
@@ -193,7 +197,7 @@ describe("SessionRunnerLLM recorded", () => {
       const { db } = yield* Database.Service
       yield* db
         .insert(ProjectTable)
-        .values({ id: Project.ID.global, worktree: AbsolutePath.make("/project"), sandboxes: [] })
+        .values({ id: Project.ID.global, worktree: AbsolutePath.make(projectDirectory), sandboxes: [] })
         .onConflictDoNothing()
         .run()
         .pipe(Effect.orDie)
@@ -203,7 +207,7 @@ describe("SessionRunnerLLM recorded", () => {
           id: sessionID,
           project_id: Project.ID.global,
           slug: "test",
-          directory: "/project",
+          directory: projectDirectory,
           title: "test",
           version: "test",
         })

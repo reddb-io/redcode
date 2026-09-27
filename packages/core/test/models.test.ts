@@ -61,11 +61,12 @@ const fixtureSnapshot = [
         family: undefined,
         package: undefined,
         settings: { provider: "acme" },
-        capabilities: { tools: true, input: [], output: [] },
+        capabilities: { tools: true, reasoning: false, temperature: true, input: [], output: [] },
         variants: [],
         time: { released: Date.parse("2026-01-01") },
         cost: [
           {
+            tier: undefined,
             input: Money.USDPerMillionTokens.zero,
             output: Money.USDPerMillionTokens.zero,
             cache: {
@@ -120,14 +121,16 @@ const fixture2Snapshot = [
         modelID: Model.ID.make("beta-1"),
         providerID: Provider.ID.make("beta"),
         name: "Beta One",
+        compatibility: undefined,
         family: undefined,
         package: undefined,
         settings: { provider: "beta" },
-        capabilities: { tools: false, input: [], output: [] },
+        capabilities: { tools: false, reasoning: true, temperature: false, input: [], output: [] },
         variants: [],
         time: { released: Date.parse("2026-02-01") },
         cost: [
           {
+            tier: undefined,
             input: Money.USDPerMillionTokens.zero,
             output: Money.USDPerMillionTokens.zero,
             cache: {

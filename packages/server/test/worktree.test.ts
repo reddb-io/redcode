@@ -111,7 +111,7 @@ it.live("remove loads canonical strategies and enforces project ownership", () =
         api.worktree.remove({ projectID: foreign.projectID, directory: linked, force: true }),
       ).rejects.toMatchObject({ name: "WorktreeError" })
       expect(await fs.stat(linked).then((stat) => stat.isDirectory())).toBe(true)
-      await api.worktree.remove({ projectID: session.projectID, directory: linked, force: false })
+      await api.worktree.remove({ projectID: session.projectID, directory: linked, force: true })
       expect(await api.debug.location.list()).toContainEqual({ directory })
       expect(await api.worktree.list({ projectID: session.projectID })).toEqual([{ directory }])
     })

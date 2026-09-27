@@ -102,6 +102,7 @@ const models = Layer.mock(SessionRunnerModel.Service)({
 })
 const smallModels = Layer.mock(Model.Service, {
   small: () => Effect.succeed(selectedSmall),
+  get: (_providerID, modelID) => Effect.succeed(selectedSmall?.id === modelID ? selectedSmall : undefined),
 })
 const it = testEffect(
   AppNodeBuilder.build(

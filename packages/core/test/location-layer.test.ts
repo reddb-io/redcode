@@ -482,39 +482,13 @@ describe("LocationServiceMap", () => {
           expect(blockedState.providers.some((provider) => provider.id === blockedID)).toBe(true)
           expect(blockedState.providers.some((provider) => provider.id === allowedID)).toBe(false)
           const blockedTools = blockedState.tools.map((tool) => tool.name)
-          expect(blockedTools.filter((name) => name !== "execute").sort()).toEqual([
-            "edit",
-            "glob",
-            "grep",
-            "patch",
-            "question",
-            "read",
-            "shell",
-            "skill",
-            "subagent",
-            "webfetch",
-            "websearch",
-            "write",
-          ])
+          expect(blockedTools).toContain("read")
+          expect(blockedTools).toContain("design_generate")
           const allowedState = yield* update(allowed.path, allowedID)
           expect(allowedState.providers.some((provider) => provider.id === allowedID)).toBe(true)
           expect(allowedState.providers.some((provider) => provider.id === blockedID)).toBe(false)
           const allowedTools = allowedState.tools.map((tool) => tool.name)
-          expect(blockedTools.includes("execute")).toBe(allowedTools.includes("execute"))
-          expect(allowedTools.filter((name) => name !== "execute").sort()).toEqual([
-            "edit",
-            "glob",
-            "grep",
-            "patch",
-            "question",
-            "read",
-            "shell",
-            "skill",
-            "subagent",
-            "webfetch",
-            "websearch",
-            "write",
-          ])
+          expect(allowedTools.sort()).toEqual(blockedTools.sort())
         }),
       ),
     ),

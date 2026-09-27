@@ -223,7 +223,7 @@ describe("WebSearchTool registration", () => {
         {
           sessionID,
           title: "Web Search",
-          metadata: { kind: "websearch.provider" },
+          metadata: { kind: "websearch.provider", tool: { id: "call-enable", messageID: toolIdentity.messageID } },
           fields: [
             {
               key: "choice",
@@ -301,7 +301,7 @@ describe("WebSearchTool registration", () => {
       expect(fixture.formRequests[1]).toEqual({
         sessionID,
         title: "Choose a web search provider",
-        metadata: { kind: "websearch.provider" },
+        metadata: { kind: "websearch.provider", tool: { id: "call-choose", messageID: toolIdentity.messageID } },
         fields: [
           {
             key: "provider",

@@ -297,7 +297,7 @@ it.effect("maps pro reasoning bodies to AI SDK provider options", () =>
 
     expect(body).toBeUndefined()
     expect(prepared.body.providerOptions).toEqual({
-      openai: { forceReasoning: true, reasoningMode: "pro" },
+      openai: { store: false, forceReasoning: true, reasoningMode: "pro" },
     })
   }),
 )
@@ -310,8 +310,8 @@ it.effect("maps package-specific AI SDK provider option keys", () =>
     })
 
     const cases = [
-      ["@ai-sdk/github-copilot", "copilot", { reasoningEffort: "high" }],
-      ["@ai-sdk/amazon-bedrock/mantle", "openai", { reasoningEffort: "high", forceReasoning: true }],
+      ["@ai-sdk/github-copilot", "copilot", { store: false, reasoningEffort: "high" }],
+      ["@ai-sdk/amazon-bedrock/mantle", "openai", { store: false, reasoningEffort: "high", forceReasoning: true }],
       ["@ai-sdk/openai-compatible", "test-provider", { reasoningEffort: "high" }],
       ["@jerome-benoit/sap-ai-provider-v2", "sap-ai", { reasoningEffort: "high" }],
       ["ai-gateway-provider", "openaiCompatible", { reasoningEffort: "high" }],
@@ -334,14 +334,14 @@ it.effect("forces reasoning and projects both Azure AI SDK namespaces", () =>
     const openai = yield* aisdk.model(model("@ai-sdk/openai", { reasoningEffort: "high" }))
     const openaiPrepared = yield* compileRequest(LLM.request({ model: openai, prompt: "Hello" }))
     expect(openaiPrepared.body.providerOptions).toEqual({
-      openai: { reasoningEffort: "high", forceReasoning: true },
+      openai: { store: false, reasoningEffort: "high", forceReasoning: true },
     })
 
     const azure = yield* aisdk.model(model("@ai-sdk/azure", { reasoningEffort: "high" }))
     const azurePrepared = yield* compileRequest(LLM.request({ model: azure, prompt: "Hello" }))
     expect(azurePrepared.body.providerOptions).toEqual({
-      openai: { reasoningEffort: "high", forceReasoning: true },
-      azure: { reasoningEffort: "high", forceReasoning: true },
+      openai: { store: false, reasoningEffort: "high", forceReasoning: true },
+      azure: { store: false, reasoningEffort: "high", forceReasoning: true },
     })
   }),
 )

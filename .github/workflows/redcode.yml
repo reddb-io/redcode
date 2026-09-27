@@ -38,6 +38,10 @@ jobs:
       - name: Verify generated client
         working-directory: packages/client
         run: bun run check:generated
+      - name: Install ripgrep for offline Core tests
+        run: |
+          sudo apt-get update
+          sudo apt-get install --yes ripgrep
       - name: Test all workspace packages
         env:
           GITHUB_ACTIONS: "false"

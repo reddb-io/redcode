@@ -29,7 +29,11 @@ export const LegacyRpcHandler = HttpApiBuilder.group(LegacyRpcApi, "server.legac
           Effect.catchTag("InvalidCursorError", () => Effect.fail(new RpcError(-32602, "Invalid params"))),
         ),
       )
-      return Effect.runPromise(Schema.encodeEffect(SessionsResponse)(result))
+      const page = await Effect.runPromise(Schema.encodeEffect(SessionsResponse)(result))
+      return {
+        ...page,
+        cursor: { previous: page.cursor.previous ?? null, next: page.cursor.next ?? null },
+      }
     })
     server.register("session.active", async (params) => {
       requireNoParams(params)
