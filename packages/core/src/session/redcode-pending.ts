@@ -53,7 +53,8 @@ export const admit = Effect.fn("RedcodePending.admit")(function* () {
           return yield* Effect.fail(new Error(`Pending Redcode input ${row.id} has unknown delivery ${row.delivery}`))
         const base = { id: SessionMessage.ID.make(row.id), sessionID: SessionSchema.ID.make(row.session_id) }
         const type = row.id.startsWith("msg_monitor_") ? "synthetic" : "user"
-        const mark = () => db.insert(KVTable).values({ key, value: true }).onConflictDoNothing().run()
+        const mark = () =>
+          db.insert(KVTable).values({ key, value: true }).onConflictDoNothing().run().pipe(Effect.asVoid)
         // Earlier imports may already have admitted this ID. Reconcile before reading a file
         // attachment that may have disappeared since the first successful admission.
         if (yield* inbox.reconcile({ ...base, type, delivery: row.delivery })) {
