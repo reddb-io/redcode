@@ -74,8 +74,9 @@ function makeConnection(run: (query: string, params?: ReadonlyArray<unknown>) =>
     executeUnprepared(query, params, transformRows) {
       return this.execute(query, params, transformRows)
     },
-    executeStream() {
-      return Stream.die("RedDB streaming is not used by the session store")
+    executeStream(query, params, transformRows) {
+      // RedDB query currently returns complete result sets before rows can be emitted.
+      return Stream.fromIterableEffect(this.execute(query, params, transformRows))
     },
   })
 }

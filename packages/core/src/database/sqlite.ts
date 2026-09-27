@@ -41,8 +41,9 @@ export const makeConnection = <Extensions extends object>(run: Run, runValues: R
     executeUnprepared(query, params, transformRows) {
       return this.execute(query, params, transformRows)
     },
-    executeStream() {
-      return Stream.die("executeStream not implemented")
+    executeStream(query, params, transformRows) {
+      // Native adapters return complete result sets; expose them through the SqlClient stream contract.
+      return Stream.fromIterableEffect(this.execute(query, params, transformRows))
     },
     ...extensions,
   })
