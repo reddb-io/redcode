@@ -30,7 +30,7 @@ it.effect("Meta composes baseline protocols with provider-owned endpoints and de
     const compiled = yield* compileRequest(LLM.request({ model: responses, prompt: "Hello" }))
     expect(compiled.protocol).toBe("meta-responses")
     expect(compiled.body).toMatchObject({ store: false, include: ["reasoning.encrypted_content"] })
-    expect(compiled.body.reasoning).toBeUndefined()
+    expect(compiled.body.reasoning).toEqual({ summary: "auto" })
   }),
 )
 

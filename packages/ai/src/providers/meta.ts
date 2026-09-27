@@ -94,7 +94,9 @@ const responsesRoute = Route.make({
   endpoint: Endpoint.path("/responses", { baseURL }),
   // Meta Responses does not support WebSocket upgrades; always use HTTP/SSE.
   transport: MetaResponses.httpTransport,
-  defaults: { providerOptions: { store: false, include: ["reasoning.encrypted_content"] } },
+  defaults: {
+    providerOptions: { store: false, include: ["reasoning.encrypted_content"], reasoningSummary: "auto" },
+  },
 })
 
 const chatRoute = Route.make({
