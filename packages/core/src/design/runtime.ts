@@ -2,6 +2,7 @@ export * as DesignRuntime from "./runtime.js"
 
 import { createRequire } from "node:module"
 import { pathToFileURL } from "node:url"
+import { importModule } from "#design-import"
 import { Npm } from "@opencode/util/npm"
 
 declare const REDCODE_DESIGN_RUNTIME: boolean
@@ -56,7 +57,7 @@ export async function load<K extends keyof Modules>(name: K, signal?: AbortSigna
   // and the original descriptor is restored afterwards.
   const hook = Object.getOwnPropertyDescriptor(Error, "prepareStackTrace")
   Error.prepareStackTrace = (error, trace) => [String(error), ...trace.map((frame) => `    at ${frame}`)].join("\n")
-  return import(file).finally(() => {
+  return importModule<Modules[K]>(file).finally(() => {
     if (hook) Object.defineProperty(Error, "prepareStackTrace", hook)
   })
 }

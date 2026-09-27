@@ -3,6 +3,7 @@ export * as DesignBuild from "./build.js"
 import path from "node:path"
 import { createRequire } from "node:module"
 import { fileURLToPath, pathToFileURL } from "node:url"
+import { importModule } from "#design-import"
 import { mkdir, realpath, stat } from "node:fs/promises"
 import { parse } from "jsonc-parser"
 import { Option, Schema } from "effect"
@@ -637,7 +638,7 @@ async function pipeline(
     delete require.cache[file]
     const module: unknown = await (async () => require(file))().catch((error: unknown) =>
       error instanceof Error && error.message.includes("async module")
-        ? import(pathToFileURL(file).href)
+        ? importModule(pathToFileURL(file).href)
         : Promise.reject(error),
     )
     return typeof module === "object" && module && "default" in module ? module.default : module

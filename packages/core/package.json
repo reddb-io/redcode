@@ -51,6 +51,11 @@
       "workerd": "./src/lsp/backend.workerd.ts",
       "default": "./src/lsp/backend.node.ts"
     },
+    "#design-import": {
+      "types": "./src/design/import.node.ts",
+      "workerd": "./src/design/import.workerd.ts",
+      "default": "./src/design/import.node.ts"
+    },
     "#sqlite": {
       "workerd": "./src/database/sqlite.workerd.ts",
       "bun": "./src/database/sqlite.bun.ts",
