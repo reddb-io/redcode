@@ -53,6 +53,7 @@ import m50 from "./migration/20260926140214_redcode-legacy-state.js"
 import m51 from "./migration/20260926220254_share-backend.js"
 import m52 from "./migration/20260926222523_share-credential.js"
 import m53 from "./migration/20260927095828_cache-root-lineage.js"
+import m54 from "./migration/20260927170000_redcode-worktrees.js"
 
 export const migrations = [
   m00,
@@ -109,4 +110,5 @@ export const migrations = [
   m51,
   m52,
   m53,
+  m54,
 ] satisfies DatabaseMigration.Migration[]

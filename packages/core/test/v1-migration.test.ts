@@ -1113,11 +1113,19 @@ describe("V1Migration database workflow", () => {
       );
       CREATE TABLE message (id text PRIMARY KEY, session_id text NOT NULL, time_created integer, time_updated integer, data text);
       CREATE TABLE part (id text PRIMARY KEY, message_id text, session_id text, time_created integer, time_updated integer, data text);
+      CREATE TABLE project_directory (
+        project_id text NOT NULL, directory text NOT NULL, type text, strategy text, time_created integer NOT NULL,
+        PRIMARY KEY (project_id, directory)
+      );
       CREATE TABLE session_context_epoch (
         session_id text PRIMARY KEY, baseline text NOT NULL, snapshot text NOT NULL,
         baseline_seq integer NOT NULL, replacement_seq integer
       );
       INSERT INTO project VALUES ('red-project', '/tmp/redcode', 'git', NULL, NULL, NULL, NULL, 1, 2, NULL, '[]', NULL);
+      INSERT INTO project_directory VALUES
+        ('red-project', '/tmp/redcode', 'main', NULL, 1),
+        ('red-project', '/tmp/git-child', 'git_worktree', NULL, 2),
+        ('red-project', '/tmp/custom-child', NULL, 'acme/snapshot', 3);
       INSERT INTO session (id, project_id, slug, directory, version, time_created, time_updated)
         VALUES
           ('ses_redcode_epoch', 'red-project', 'legacy', '/tmp/redcode', '1', 1, 2),
@@ -1134,7 +1142,22 @@ describe("V1Migration database workflow", () => {
     await database(
       Effect.gen(function* () {
         const { db } = yield* Database.Service
+        yield* db.run(sql`
+          INSERT INTO project (id, worktree, time_created, time_updated, sandboxes)
+          VALUES ('red-project', '/tmp/redcode', 1, 2, '[]')
+        `)
+        yield* db.run(sql`
+          INSERT INTO worktree (project_id, directory, strategy, time_created)
+          VALUES ('red-project', '/tmp/custom-child', 'existing/strategy', 4)
+        `)
         expect(yield* V1Migration.importRedcode(filename)).toEqual({ imported: 2, skipped: 0 })
+        expect(yield* db.all(sql`
+          SELECT directory, strategy, time_created FROM worktree WHERE project_id = 'red-project' ORDER BY directory
+        `)).toEqual([
+          { directory: '/tmp/custom-child', strategy: 'existing/strategy', time_created: 4 },
+          { directory: '/tmp/git-child', strategy: 'git', time_created: 2 },
+          { directory: '/tmp/redcode', strategy: null, time_created: 1 },
+        ])
         expect(yield* db.get(sql`
           SELECT baseline, replacement_seq FROM redcode_session_context_epoch WHERE session_id = 'ses_redcode_epoch'
         `)).toEqual({ baseline: "Old baseline", replacement_seq: 4 })
@@ -1143,6 +1166,7 @@ describe("V1Migration database workflow", () => {
           WHERE session_id = 'ses_redcode_requested_epoch'
         `)).toEqual({ baseline: "Requested baseline", replacement_seq: 4 })
         expect(yield* V1Migration.importRedcode(filename)).toEqual({ imported: 0, skipped: 2 })
+        expect(yield* db.get(sql`SELECT COUNT(*) AS count FROM worktree WHERE project_id = 'red-project'`)).toEqual({ count: 3 })
       }),
     )
   })

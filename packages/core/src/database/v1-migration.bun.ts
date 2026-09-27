@@ -1303,9 +1303,8 @@ function importRedcodeData(db: Database.Interface["db"], source: SQLiteDatabase)
                         `Conflicting Redcode ${table.name} row at ${table.key.map((key) => row[key]).join(":")}`,
                       ),
                     )
-                  return
                 }
-                yield* tx.run(sql`
+                if (!existing) yield* tx.run(sql`
             INSERT INTO ${sql.identifier(target)}
               (${sql.join(
                 table.columns.map((column) => sql.identifier(column)),
@@ -1316,6 +1315,15 @@ function importRedcodeData(db: Database.Interface["db"], source: SQLiteDatabase)
               sql`, `,
             )})
           `)
+                if (table.name !== "project_directory") return
+                yield* tx.run(sql`
+                  INSERT OR IGNORE INTO worktree (project_id, directory, strategy, time_created)
+                  VALUES (
+                    ${row.project_id}, ${row.directory},
+                    ${row.strategy === "git_worktree" || (row.strategy === null && row.type === "git_worktree") ? "git" : row.strategy},
+                    ${row.time_created}
+                  )
+                `)
               }),
             { discard: true },
           ),
