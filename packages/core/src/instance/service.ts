@@ -2,6 +2,7 @@ export * as Instance from "./service.js"
 export type { Services } from "../instance.js"
 
 import { Context, type Effect } from "effect"
+import type { SqlError } from "effect/unstable/sql/SqlError"
 import type { Session } from "@opencode/schema/session"
 import { Node } from "@opencode/util/effect/app-node"
 import { LayerNode } from "@opencode/util/effect/layer-node"
@@ -16,4 +17,4 @@ export interface Interface {
 
 export class Service extends Context.Service<Service, Interface>()("@opencode/Instance") {}
 
-export const node = LayerNode.unbound(Service, Node.tags.values.global)
+export const node = LayerNode.unbound<Service, Interface, typeof Node.tags.values.global, SqlError>(Service, Node.tags.values.global)

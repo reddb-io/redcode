@@ -12,6 +12,7 @@ import { FSUtil } from "@opencode/util/fs-util"
 import { Global } from "@opencode/util/global"
 import { Image } from "@opencode/core/image"
 import { Location } from "@opencode/core/location"
+import { LSP } from "@opencode/core/lsp"
 import { FileAccess } from "@opencode/core/file-access"
 import { Model } from "@opencode/core/model"
 import { Permission } from "@opencode/core/permission"
@@ -46,6 +47,7 @@ const readToolNode = makeLocationNode({
     Image.node,
     Permission.node,
     SessionInstructions.node,
+    LSP.node,
     FSUtil.node,
     Location.node,
   ],

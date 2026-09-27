@@ -16,6 +16,7 @@ export type RunError =
   | StepFailedError
   | UserInterruptedError
   | Instructions.InitializationBlocked
+  | Error
 
 export type Continuation = { readonly step: number }
 

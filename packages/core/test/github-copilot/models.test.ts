@@ -117,7 +117,7 @@ test("defensively syncs advertised Copilot models", async () => {
       Model.VariantID.make("high"),
     ])
     expect(model?.capabilities.reasoning).toBe(true)
-    expect(model?.reasoningVariantIDs).toEqual(["low", "high"])
+    expect(model?.reasoningVariantIDs).toEqual([Model.VariantID.make("low"), Model.VariantID.make("high")])
     expect(model?.settings?.reasoningEffort).toBeUndefined()
     expect(model?.capabilities.input).toEqual(["text", "image", "pdf"])
     expect(models.get(Model.ID.make("gpt-6-sol"))?.settings).toMatchObject({
@@ -125,7 +125,7 @@ test("defensively syncs advertised Copilot models", async () => {
       reasoningSummary: "auto",
       include: ["reasoning.encrypted_content"],
     })
-    expect(models.get(Model.ID.make("gpt-6-sol"))?.reasoningVariantIDs).toEqual(["low", "medium", "high"])
+    expect(models.get(Model.ID.make("gpt-6-sol"))?.reasoningVariantIDs).toEqual(["low", "medium", "high"].map(Model.VariantID.make))
     expect(models.get(Model.ID.make("claude-sonnet"))?.package).toBe("@opencode/ai/providers/anthropic")
     expect(models.get(Model.ID.make("claude-sonnet"))?.settings).toMatchObject({
       baseURL: `${server.url.origin}/v1`,

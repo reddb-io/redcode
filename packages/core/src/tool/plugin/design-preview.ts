@@ -169,7 +169,7 @@ export const Plugin = {
                       const { DesignVendor } = await import("../../design/vendor.js")
                       return DesignVendor.FILES[asset].body
                     },
-                  })
+                  }).pipe(Effect.provideService(DesignStore.Service, designs))
                 : yield* designs.get(context.sessionID, input.id)
               if (document.ended) {
                 const content = `The user ended this review. Reopen only on an explicit request. Design: ${document.id}`

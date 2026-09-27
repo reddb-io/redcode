@@ -1026,7 +1026,7 @@ describe("ModelsDevPlugin", () => {
       })
 
       const anthropicEffortModel = yield* modelState.get(Provider.ID.anthropic, Model.ID.make("claude-opus-4.7"))
-      expect(anthropicEffortModel?.reasoningVariantIDs).toEqual(["none", "low"])
+      expect(anthropicEffortModel?.reasoningVariantIDs).toEqual([Model.VariantID.make("none"), Model.VariantID.make("low")])
       expect(anthropicEffortModel?.variants).toEqual([
         { id: Model.VariantID.make("none"), settings: { thinking: { type: "disabled" } } },
         {

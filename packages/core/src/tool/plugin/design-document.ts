@@ -116,7 +116,10 @@ export const Plugin = {
               const output = yield* Effect.gen(function* () {
                 if (input.action === "list") return yield* designs.list(context.sessionID)
                 if (input.action === "detect")
-                  return yield* DesignDetection.report({ application: input.input?.application, pack: true })
+                  return yield* DesignDetection.report({ application: input.input?.application, pack: true }).pipe(
+                    Effect.provideService(Location.Service, location),
+                    Effect.provideService(Global.Service, global),
+                  )
                 yield* permission.assert({
                   action: "design_edit",
                   resources: ["*"],

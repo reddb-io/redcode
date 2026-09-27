@@ -7,6 +7,7 @@ import { LayerNode } from "@opencode/util/effect/layer-node"
 import { FileSystem } from "@opencode/core/filesystem"
 import { FSUtil } from "@opencode/util/fs-util"
 import { Location } from "@opencode/core/location"
+import { LSP } from "@opencode/core/lsp"
 import { Image } from "@opencode/core/image"
 import { Permission } from "@opencode/core/permission"
 import { Session } from "@opencode/core/session"
@@ -34,6 +35,7 @@ const readToolNode = makeLocationNode({
     Image.node,
     Permission.node,
     SessionInstructions.node,
+    LSP.node,
     FSUtil.node,
     Location.node,
   ],

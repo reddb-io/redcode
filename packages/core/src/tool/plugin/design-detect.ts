@@ -4,6 +4,8 @@ import { ToolFailure } from "@opencode/ai"
 import type { Context } from "@opencode/plugin/effect/plugin"
 import { Effect, Schema } from "effect"
 import { DesignDetection } from "../../design/detection.js"
+import { Location } from "../../location.js"
+import { Global } from "@opencode/util/global"
 import { Permission } from "../../permission.js"
 
 export const name = "design_detect"
@@ -16,6 +18,8 @@ export const Plugin = {
   id: "redcode.tool.design-detect",
   effect: Effect.fn("DesignDetectTool.Plugin")(function* (ctx: Context) {
     const permission = yield* Permission.Service
+    const location = yield* Location.Service
+    const global = yield* Global.Service
     yield* ctx.tool
       .transform((editor) =>
         editor.add({
@@ -35,7 +39,10 @@ export const Plugin = {
                 agent: context.agent,
                 source: { type: "tool", messageID: context.messageID, id: context.id },
               })
-              const output = yield* DesignDetection.report({ ...input, pack: input.pack ?? true })
+              const output = yield* DesignDetection.report({ ...input, pack: input.pack ?? true }).pipe(
+                Effect.provideService(Location.Service, location),
+                Effect.provideService(Global.Service, global),
+              )
               return { output, content: output, metadata: { application: input.application } }
             }).pipe(Effect.mapError((error) => new ToolFailure({ message: error.message, error }))),
         }),

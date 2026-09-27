@@ -11,6 +11,8 @@ import { DesignStore } from "../../design/store.js"
 import { Form } from "../../form.js"
 import { Permission } from "../../permission.js"
 import { SessionGoal } from "../../session/goal.js"
+import { Session } from "../../session.js"
+import { SessionExecution } from "../../session/execution.js"
 
 export const Plugin = {
   id: "redcode.tool.design-exit",
@@ -18,6 +20,8 @@ export const Plugin = {
     const designs = yield* DesignStore.Service
     const forms = yield* Form.Service
     const goals = yield* SessionGoal.Service
+    const sessions = yield* Session.Service
+    const execution = yield* SessionExecution.Service
     const permission = yield* Permission.Service
     yield* ctx.tool
       .transform((editor) =>
@@ -97,7 +101,12 @@ export const Plugin = {
               const approved = yield* DesignHandoff.approve(context.sessionID, input.id, {
                 revision: document.revision,
                 variant: input.variant,
-              })
+              }).pipe(
+                Effect.provideService(Session.Service, sessions),
+                Effect.provideService(SessionExecution.Service, execution),
+                Effect.provideService(DesignStore.Service, designs),
+                Effect.provideService(SessionGoal.Service, goals),
+              )
               const output = `Approved ${approved.revision}. Handoff: ${approved.plan}. Continue in ${approved.agent}.`
               return { output, content: output, metadata: { designID: input.id, revision: approved.revision } }
             }).pipe(Effect.mapError((error) => new ToolFailure({ message: error.message, error }))),

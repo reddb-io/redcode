@@ -129,6 +129,7 @@ import { DesignStore } from "../design/store.js"
 import { DesignRenderer } from "../design/renderer.js"
 import { DesignAppConnection } from "../design/app-connection.js"
 import { Database } from "../database/database.js"
+import { SessionExecution } from "../session/execution.js"
 import { ToolInputRepairPlugin } from "./tool-input-repair.js"
 import { OptimizePlugin } from "./optimize.js"
 import { VcsGitPlugin } from "./vcs/git.js"
@@ -180,6 +181,7 @@ const services = [
   WebSearch.Service,
   Ripgrep.Service,
   Session.Service,
+  SessionExecution.Service,
   SessionStore.Service,
   SessionGoal.Service,
   SessionPlan.Service,
@@ -247,6 +249,7 @@ export const requirements = LayerNode.group([
   WebSearch.node,
   Ripgrep.node,
   Session.node,
+  SessionExecution.node,
   SessionStore.node,
   SessionGoal.node,
   SessionPlan.node,

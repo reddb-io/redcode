@@ -68,7 +68,7 @@ describe("ConfigProviderPlugin.Plugin", () => {
       if (migrated.type !== "normalized") throw new Error("Expected normalized config")
       expect(migrated.diagnostics).toEqual([])
       yield* addPlugin([new Document({ type: "document", info: decode(migrated.encoded) })])
-      expect((yield* models.get(providerID, modelID))?.variants.map((variant) => variant.id)).toEqual(["low"])
+      expect((yield* models.get(providerID, modelID))?.variants.map((variant) => variant.id)).toEqual([Model.VariantID.make("low")])
     }),
   )
 
@@ -120,8 +120,8 @@ describe("ConfigProviderPlugin.Plugin", () => {
       yield* addPlugin([new Document({ type: "document", info: decode(migrated.encoded) })])
       const model = required(yield* models.get(providerID, modelID))
       expect(model.capabilities.reasoning).toBe(false)
-      expect(model.variants.map((variant) => variant.id)).toEqual(["high", "fast"])
-      expect(model.reasoningVariantIDs).toEqual(["high"])
+      expect(model.variants.map((variant) => variant.id)).toEqual([Model.VariantID.make("high"), Model.VariantID.make("fast")])
+      expect(model.reasoningVariantIDs).toEqual([Model.VariantID.make("high")])
     }),
   )
 
@@ -145,8 +145,8 @@ describe("ConfigProviderPlugin.Plugin", () => {
       yield* addPlugin([new Document({ type: "document", info: decode(migrated.encoded) })])
       const model = required(yield* models.get(providerID, modelID))
       expect(model.capabilities.reasoning).toBe(true)
-      expect(model.variants.map((variant) => variant.id)).toEqual(["fast", "low", "medium", "high"])
-      expect(model.reasoningVariantIDs).toEqual(["low", "medium", "high"])
+      expect(model.variants.map((variant) => variant.id)).toEqual(["fast", "low", "medium", "high"].map(Model.VariantID.make))
+      expect(model.reasoningVariantIDs).toEqual(["low", "medium", "high"].map(Model.VariantID.make))
     }),
   )
 
@@ -335,8 +335,8 @@ describe("ConfigProviderPlugin.Plugin", () => {
         }),
       ])
       const variants = required(yield* models.get(Provider.ID.make("custom"), Model.ID.make("chat"))).variants
-      expect(variants.map((variant) => variant.id)).toContain("low")
-      expect(variants.map((variant) => variant.id)).not.toContain("high")
+      expect(variants.map((variant) => variant.id)).toContain(Model.VariantID.make("low"))
+      expect(variants.map((variant) => variant.id)).not.toContain(Model.VariantID.make("high"))
     }),
   )
 

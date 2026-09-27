@@ -876,7 +876,7 @@ describe("PatchTool", () => {
         const remove = path.join(directory, "remove.ts")
         const unrelated = path.join(directory, "unrelated.ts")
         yield* Effect.promise(() => Promise.all([fs.writeFile(update, "old\n"), fs.writeFile(remove, "remove\n")]))
-        const issue = {
+        const issue: LSPClient.Diagnostic = {
           severity: 1,
           range: { start: { line: 0, character: 0 }, end: { line: 0, character: 3 } },
           message: "Broken expression",

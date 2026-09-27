@@ -64,7 +64,7 @@ describe("config plugin reloads", () => {
             const config = yield* Config.Service
             const entries = yield* config.entries()
             expect(entries.filter((entry) => entry.type === "document").map((entry) => entry.path)).toEqual(
-              files.map(([file]) => file),
+              files.map(([file]) => AbsolutePath.make(file)),
             )
             expect(Config.latest(entries, "shell")).toBe("redcode-current")
           }).pipe(Effect.provide(liveConfig(project, undefined, { global: true })))

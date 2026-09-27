@@ -9,6 +9,7 @@ import { Bus } from "@opencode/core/bus"
 import { LayerNode } from "@opencode/util/effect/layer-node"
 import { Environment } from "@opencode/core/environment/index"
 import { Location } from "@opencode/core/location"
+import { LSP } from "@opencode/core/lsp"
 import { FileAccess } from "@opencode/core/file-access"
 import { Permission } from "@opencode/core/permission"
 import { AbsolutePath } from "@opencode/core/schema"
@@ -26,7 +27,7 @@ import { toolIdentity, executeTool, registerToolPlugin, toolDefinitions } from "
 const writeToolNode = makeLocationNode({
   name: "test/write-tool-plugin",
   layer: Layer.effectDiscard(registerToolPlugin(WriteTool.Plugin)),
-  deps: [Tool.node, Bus.node, FileAccess.node, FileMutation.node, Environment.node, Formatter.node, Permission.node],
+  deps: [Tool.node, Bus.node, FileAccess.node, FileMutation.node, Environment.node, Formatter.node, LSP.node, Permission.node],
 })
 
 const sessionID = Session.ID.make("ses_write_tool_test")

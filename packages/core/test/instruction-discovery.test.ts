@@ -254,7 +254,7 @@ describe("ConfigInstructionPlugin.Plugin", () => {
             { path: globalFile, type: "file" },
             { path: path.join(home, ".claude", "CLAUDE.md"), type: "file" },
             ...[directory, path.join(project, "packages"), project, shared, home].flatMap((folder) =>
-              ["AGENTS.md", "CLAUDE.md", "CONTEXT.md"].map((name) => ({ path: path.join(folder, name), type: "file" })),
+              ["AGENTS.md", "CLAUDE.md", "CONTEXT.md"].map((name) => ({ path: path.join(folder, name), type: "file" as const })),
             ),
           ])
           expect(yield* watcher.subscriptions()).not.toContainEqual({
@@ -405,7 +405,7 @@ describe("ConfigInstructionPlugin.Plugin", () => {
             { path: path.join(global, "AGENTS.md"), type: "file" },
             { path: path.join(home, ".claude", "CLAUDE.md"), type: "file" },
             ...[directory, path.join(project, "packages"), project].flatMap((folder) =>
-              ["AGENTS.md", "CLAUDE.md", "CONTEXT.md"].map((name) => ({ path: path.join(folder, name), type: "file" })),
+              ["AGENTS.md", "CLAUDE.md", "CONTEXT.md"].map((name) => ({ path: path.join(folder, name), type: "file" as const })),
             ),
           ])
         }).pipe(

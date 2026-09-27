@@ -9,6 +9,7 @@ import { Environment } from "@opencode/core/environment/index"
 import { FileMutation } from "@opencode/core/file-mutation"
 import { Formatter } from "@opencode/core/formatter"
 import { Location } from "@opencode/core/location"
+import { LSP } from "@opencode/core/lsp"
 import { FileAccess } from "@opencode/core/file-access"
 import { Permission } from "@opencode/core/permission"
 import { AbsolutePath } from "@opencode/core/schema"
@@ -33,6 +34,7 @@ const editToolNode = makeLocationNode({
     FileMutation.node,
     Environment.node,
     Formatter.node,
+    LSP.node,
     Location.node,
     Permission.node,
   ],

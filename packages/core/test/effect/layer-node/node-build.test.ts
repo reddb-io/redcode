@@ -1,5 +1,6 @@
 import { describe, expect, test } from "bun:test"
 import { Context, Effect, Layer, Option } from "effect"
+import type { SqlError } from "effect/unstable/sql/SqlError"
 import { Node } from "@opencode/util/effect/app-node"
 import { AppNodeBuilder } from "@opencode/core/effect/app-node-builder"
 import { LayerNode } from "@opencode/util/effect/layer-node"
@@ -57,11 +58,10 @@ describe("node build", () => {
 
   it.effect("supplies the lazy map when only a replacement introduces the dependency", () =>
     Effect.gen(function* () {
-      const original = Node.makeGlobalNode({
-        service: Result,
-        layer: Layer.succeed(Result, { value: "original" }),
-        deps: [],
-      })
+      const original = LayerNode.unbound<Result, { readonly value: string }, typeof Node.tags.values.global, SqlError>(
+        Result,
+        Node.tags.values.global,
+      )
       const replacement = Node.makeGlobalNode({
         service: Result,
         layer: Layer.effect(Result, Effect.as(LocationServiceMap.Service, Result.of({ value: "has map" }))),
