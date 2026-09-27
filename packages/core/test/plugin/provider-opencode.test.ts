@@ -1033,9 +1033,14 @@ describe("OpencodePlugin", () => {
             orgID: "org_test",
             body: { query: "updated server", providerID: "opencode" },
           })
+          const configCount = requests.filter((request) => request.path === "/api/v2/config").length
           yield* credentials.update(initial.id, {
             value: account("replacement"),
           })
+          yield* eventually(
+            Effect.sync(() => requests),
+            (requests) => requests.filter((request) => request.path === "/api/v2/config").length > configCount,
+          )
 
           state.advertised = false
           state.waitForConfig = true
