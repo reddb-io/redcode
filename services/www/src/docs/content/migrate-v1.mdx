@@ -465,9 +465,10 @@ request effect and are accepted without a warning; an `interleaved` field name s
 
 Provider-model `reasoning` preserves the capability and variants. Gemini, Kimi over Anthropic-compatible routes,
 MiniMax M3 over Anthropic, ZAI chat, Gemini 3 through OpenRouter, Meta models through OpenAI, and `alibaba-cn` also retain
-their V1 request defaults when configured with `reasoning: true`. Other provider-specific V1 reasoning defaults still
-require migration, so enabled V1 reasoning continues to produce a partial-support warning. `reasoning: false` is
-preserved without one.
+their V1 request defaults when configured with `reasoning: true`. Baseten and the OpenCode Zen `kimi-k2-thinking` and
+`glm-4.6` models retain their V1 thinking defaults on OpenAI-compatible SDK routes even without that flag. Other
+provider-specific V1 reasoning defaults still require migration, so enabled V1 reasoning continues to produce a
+partial-support warning. `reasoning: false` is preserved without one.
 
 ### Agent files
 

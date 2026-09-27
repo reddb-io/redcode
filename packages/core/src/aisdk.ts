@@ -429,6 +429,12 @@ function modelFromLanguage(info: RuntimeInfo, language: LanguageModelV3) {
 
 function legacyProviderDefaults(packageName: string, providerID: string, modelID: string) {
   if (
+    packageName === "@ai-sdk/openai-compatible" &&
+    (providerID === "baseten" ||
+      (providerID === "opencode" && ["kimi-k2-thinking", "glm-4.6"].includes(modelID.toLowerCase())))
+  )
+    return { chat_template_args: { enable_thinking: true } }
+  if (
     packageName === "@ai-sdk/google-vertex/anthropic" ||
     (packageName === "@ai-sdk/anthropic" && !modelID.includes("claude"))
   )

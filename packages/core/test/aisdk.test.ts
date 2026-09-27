@@ -519,6 +519,50 @@ it.effect("keeps V1 Meta reasoning defaults on the legacy OpenAI SDK route", () 
   }),
 )
 
+it.effect("keeps V1 Baseten and OpenCode thinking defaults on compatible SDK routes", () =>
+  Effect.gen(function* () {
+    const aisdk = yield* AISDK.Service
+    yield* aisdk.hook.sdk((event) => {
+      event.sdk = { languageModel: () => ({ provider: event.model.providerID }) }
+    })
+
+    const route = model("@ai-sdk/openai-compatible")
+    const baseten = yield* aisdk.model({ ...route, providerID: Provider.ID.make("baseten") })
+    const basetenRequest = yield* compileRequest(LLM.request({ model: baseten, prompt: "Hello" }))
+    expect(basetenRequest.body.providerOptions?.baseten).toMatchObject({
+      chat_template_args: { enable_thinking: true },
+    })
+
+    const explicit = yield* aisdk.model({
+      ...route,
+      providerID: Provider.ID.make("baseten"),
+      settings: { chat_template_args: { enable_thinking: false } },
+    })
+    const explicitRequest = yield* compileRequest(LLM.request({ model: explicit, prompt: "Hello" }))
+    expect(explicitRequest.body.providerOptions?.baseten).toMatchObject({
+      chat_template_args: { enable_thinking: false },
+    })
+
+    yield* Effect.forEach(
+      ["kimi-k2-thinking", "glm-4.6", "other-model"],
+      (id) =>
+        Effect.gen(function* () {
+          const resolved = yield* aisdk.model({
+            ...route,
+            providerID: Provider.ID.make("opencode"),
+            modelID: Model.ID.make(id),
+          })
+          const request = yield* compileRequest(LLM.request({ model: resolved, prompt: "Hello" }))
+          if (id === "other-model") expect(request.body.providerOptions?.opencode).toBeUndefined()
+          else expect(request.body.providerOptions?.opencode).toMatchObject({
+            chat_template_args: { enable_thinking: true },
+          })
+        }),
+      { discard: true },
+    )
+  }),
+)
+
 it.effect("applies V1 reasoning defaults from catalog capabilities on AI SDK routes", () =>
   Effect.gen(function* () {
     const aisdk = yield* AISDK.Service
