@@ -1757,5 +1757,6 @@ describe("ShellTool", () => {
       },
       (tmp) => Effect.promise(() => tmp[Symbol.asyncDispose]().then(() => undefined)),
     ),
+    20_000,
   )
 })

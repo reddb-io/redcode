@@ -31,14 +31,14 @@ export const withTempDir = <A, E, R>(body: (tmp: TempDir) => Effect.Effect<A, E,
 const make = async (prefix: string) => fs.realpath(await fs.mkdtemp(path.join(os.tmpdir(), prefix)))
 
 // Bun's callback APIs expose short paths and can hang during recursive removal on Windows.
-async function remove(dir: string, retries = 30): Promise<void> {
+async function remove(dir: string, retries = 60): Promise<void> {
   try {
     await fs.rm(dir, { recursive: true, force: true })
   } catch (error) {
     if (retries === 0 || !error || typeof error !== "object" || !("code" in error) || error.code !== "EBUSY")
       throw error
     Bun.gc(true)
-    await Bun.sleep(100)
+    await Bun.sleep(250)
     return remove(dir, retries - 1)
   }
 }
