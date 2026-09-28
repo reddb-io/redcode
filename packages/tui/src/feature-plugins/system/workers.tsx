@@ -368,7 +368,7 @@ function WorkersTab(props: { state: ReturnType<typeof createWorkerStatus>; onOpe
             fallback={
               <text fg={theme.text.muted}>
                 {props.state.status()?.lifecycle === "unavailable"
-                  ? " No workers while Redskilled is offline."
+                  ? " No workers connected."
                   : " No live workers. Press enter to manage the project drain."}
               </text>
             }

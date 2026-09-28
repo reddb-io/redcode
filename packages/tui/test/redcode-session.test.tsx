@@ -132,7 +132,7 @@ test.each([80, 160])("Redcode opens blank sessions with Context and the activity
   setup.mockInput.pressEnter()
   await setup.waitForFrame(
     (frame) =>
-      frame.includes("Subagents") && frame.includes("Workers") && frame.includes("No workers while Redskilled is offline."),
+      frame.includes("Subagents") && frame.includes("Workers") && frame.includes("No workers connected."),
   )
   setup.mockInput.pressEscape()
   await setup.mockInput.typeText("/subagents")
@@ -384,7 +384,7 @@ test.each([
       await setup.waitForFrame(() => setup.renderer.root.findDescendantById("session-sidebar")?.width === expected + 4)
       await setup.mockInput.typeText("/workers")
       setup.mockInput.pressEnter()
-      await setup.waitForFrame((frame) => frame.includes("No workers while Redskilled is offline."))
+      await setup.waitForFrame((frame) => frame.includes("No workers connected."))
     }
     {
       await using setup = await createAppFixture({ state: state.path, width: columns, height: 40, config })
