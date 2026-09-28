@@ -197,6 +197,7 @@ export function normalize(input: unknown): Result {
   normalizeLsp(input, encoded, diagnostics)
 
   const nativeAtomic = {
+    hooks: Info.fields.hooks,
     $schema: Info.fields.$schema,
     shell: Info.fields.shell,
     model: Info.fields.model,
@@ -459,7 +460,8 @@ function normalizeExperimental(
           ["experimental", "subagent_depth"],
           diagnostics,
         )
-        if (value !== undefined) result.subagent_depth = prefer(legacyDepth, value, ["experimental", "subagent_depth"], diagnostics)
+        if (value !== undefined)
+          result.subagent_depth = prefer(legacyDepth, value, ["experimental", "subagent_depth"], diagnostics)
       }
       if (own(experimental, "loop_guard")) {
         const value = decodeEncoded(

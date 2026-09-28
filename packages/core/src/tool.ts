@@ -13,6 +13,7 @@ import { CodeModeCatalog } from "./codemode/catalog.js"
 import { CodeModeTool } from "./codemode/tool.js"
 import { Image } from "./image.js"
 import { Permission } from "./permission.js"
+import { HookRuntime } from "./hook.js"
 import { PluginHooks } from "./plugin/hooks.js"
 import { SessionMessage } from "./session/message.js"
 import { SessionSchema } from "./session/schema.js"
@@ -73,43 +74,48 @@ const layer = Layer.effect(
   Service,
   Effect.gen(function* () {
     const hooks = yield* PluginHooks.Service
+    const lifecycle = yield* HookRuntime.Service
     const image = yield* Image.Service
     const fs = yield* FSUtil.Service
 
     type NormalizedItem = Tool.Content | "decode" | "size" | "file-read" | "file-size"
     const normalizeFiles = Effect.fnUntraced(function* (content: ReadonlyArray<Tool.Content>) {
-      const normalized = yield* Effect.forEach(content, (item) => Effect.gen(function* () {
-        if (item.type !== "file") return item
-        // Tool files must survive replay even if their original local path disappears.
-        const file = item.uri.startsWith("file:")
-          ? yield* Effect.gen(function* () {
-              const target = yield* Effect.try({
-                try: () => fileURLToPath(item.uri),
-                catch: () => new Error("Invalid tool file URI"),
-              })
-              const info = yield* fs.stat(target)
-              if (info.type !== "File") return "file-read" as const
-              if (Number(info.size) > MAX_TOOL_FILE_BYTES) return "file-size" as const
-              const bytes = yield* fs.readFile(target)
-              if (bytes.byteLength > MAX_TOOL_FILE_BYTES) return "file-size" as const
-              return { ...item, uri: `data:${item.mime};base64,${Buffer.from(bytes).toString("base64")}` }
-            }).pipe(Effect.orElseSucceed(() => "file-read" as const))
-          : item
-        if (typeof file === "string" || !file.mime.startsWith("image/")) return file
-        const base64 = /^data:[^,]*;base64,(.*)$/s.exec(file.uri)?.[1]
-        if (base64 === undefined) return file
-        const resource = file.name ?? `${file.mime} tool output`
-        return yield* image.normalize(resource, { uri: resource, content: base64, encoding: "base64", mime: file.mime }).pipe(
-          Effect.map((result) => ({
-            ...file,
-            uri: `data:${result.mime};base64,${result.content}`,
-            mime: result.mime,
-          })),
-          Effect.catchTag("Image.ResizerUnavailableError", () => Effect.succeed(file)),
-          Effect.catchTag("Image.DecodeError", () => Effect.succeed("decode" as const)),
-          Effect.catchTag("Image.SizeError", () => Effect.succeed("size" as const)),
-        )
-      }))
+      const normalized = yield* Effect.forEach(content, (item) =>
+        Effect.gen(function* () {
+          if (item.type !== "file") return item
+          // Tool files must survive replay even if their original local path disappears.
+          const file = item.uri.startsWith("file:")
+            ? yield* Effect.gen(function* () {
+                const target = yield* Effect.try({
+                  try: () => fileURLToPath(item.uri),
+                  catch: () => new Error("Invalid tool file URI"),
+                })
+                const info = yield* fs.stat(target)
+                if (info.type !== "File") return "file-read" as const
+                if (Number(info.size) > MAX_TOOL_FILE_BYTES) return "file-size" as const
+                const bytes = yield* fs.readFile(target)
+                if (bytes.byteLength > MAX_TOOL_FILE_BYTES) return "file-size" as const
+                return { ...item, uri: `data:${item.mime};base64,${Buffer.from(bytes).toString("base64")}` }
+              }).pipe(Effect.orElseSucceed(() => "file-read" as const))
+            : item
+          if (typeof file === "string" || !file.mime.startsWith("image/")) return file
+          const base64 = /^data:[^,]*;base64,(.*)$/s.exec(file.uri)?.[1]
+          if (base64 === undefined) return file
+          const resource = file.name ?? `${file.mime} tool output`
+          return yield* image
+            .normalize(resource, { uri: resource, content: base64, encoding: "base64", mime: file.mime })
+            .pipe(
+              Effect.map((result) => ({
+                ...file,
+                uri: `data:${result.mime};base64,${result.content}`,
+                mime: result.mime,
+              })),
+              Effect.catchTag("Image.ResizerUnavailableError", () => Effect.succeed(file)),
+              Effect.catchTag("Image.DecodeError", () => Effect.succeed("decode" as const)),
+              Effect.catchTag("Image.SizeError", () => Effect.succeed("size" as const)),
+            )
+        }),
+      )
       const note = (reason: Exclude<NormalizedItem, Tool.Content>, kind: "image" | "file", text: string) => {
         const count = normalized.filter((item) => item === reason).length
         if (count === 0) return []
@@ -124,8 +130,8 @@ const layer = Layer.effect(
       ]
     })
 
-    const beforeExecute = (name: string, input: unknown, context: Tool.Context) =>
-      hooks.trigger("tool", "execute.before", {
+    const beforeExecute = Effect.fn(function* (name: string, input: unknown, context: Tool.Context) {
+      const event = yield* hooks.trigger("tool", "execute.before", {
         tool: name,
         sessionID: context.sessionID,
         agent: context.agent,
@@ -133,6 +139,17 @@ const layer = Layer.effect(
         id: context.id,
         input,
       })
+      const output = yield* lifecycle.run({
+        event: "PreToolUse",
+        matcher: HookRuntime.toolName(name),
+        session_id: context.sessionID,
+        tool_name: HookRuntime.toolName(name),
+        tool_input: event.input,
+      })
+      if (!output.continue || output.decision === "deny")
+        return yield* new Tool.Error({ message: output.reason ?? "Tool use denied by hook" })
+      return { ...event, input: output.updatedInput ?? event.input }
+    })
 
     const executeTool = Effect.fn("Tool.execute")(function* (
       tool: Tool.Info,
@@ -158,6 +175,14 @@ const layer = Layer.effect(
           status: "error",
           error: execution.failure,
         }
+        yield* lifecycle.run({
+          event: "PostToolUseFailure",
+          matcher: HookRuntime.toolName(name),
+          session_id: context.sessionID,
+          tool_name: HookRuntime.toolName(name),
+          tool_input: input,
+          error: execution.failure.message,
+        })
         yield* hooks.trigger("tool", "execute.after", afterEvent)
         return yield* afterEvent.error
       }
@@ -170,6 +195,14 @@ const layer = Layer.effect(
           ...(execution.value.metadata === undefined ? {} : { metadata: execution.value.metadata }),
         },
       }
+      yield* lifecycle.run({
+        event: "PostToolUse",
+        matcher: HookRuntime.toolName(name),
+        session_id: context.sessionID,
+        tool_name: HookRuntime.toolName(name),
+        tool_input: input,
+        tool_response: afterEvent.result,
+      })
       yield* hooks.trigger("tool", "execute.after", afterEvent)
       const afterContent = yield* normalizeFiles(normalizeContent(afterEvent.result.content, afterEvent.result.output))
       return {
@@ -333,7 +366,8 @@ function registrationError(tool: Tool.Info) {
     if (error) return error
   }
   const name = normalizedName(tool)
-  if (!/^[A-Za-z0-9_-]{1,128}$/.test(name)) return new RegistrationError({ name, message: `Invalid tool name: ${name}` })
+  if (!/^[A-Za-z0-9_-]{1,128}$/.test(name))
+    return new RegistrationError({ name, message: `Invalid tool name: ${name}` })
   const id = effectiveName(tool)
   if (tool.options?.codemode === false && id === "execute")
     return new RegistrationError({ name: id, message: 'Tool name "execute" is reserved for CodeMode' })
@@ -353,5 +387,5 @@ function namespaceError(name: string) {
 export const node = makeLocationNode({
   service: Service,
   layer,
-  deps: [PluginHooks.node, Image.node, FSUtil.node],
+  deps: [HookRuntime.node, PluginHooks.node, Image.node, FSUtil.node],
 })

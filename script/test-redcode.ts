@@ -11,6 +11,7 @@ const suites = {
     "test/database-migration.test.ts",
     "test/database-stream.test.ts",
     "test/design-conversations.test.ts",
+    "test/hook.test.ts",
     "test/instruction-discovery.test.ts",
     "test/instruction-state.test.ts",
     "test/models.test.ts",
@@ -29,6 +30,7 @@ const suites = {
     "test/legacy-rpc.test.ts",
     "test/session-tasks.test.ts",
     "test/session-monitors.test.ts",
+    "test/hooks.test.ts",
     "test/session-diff.test.ts",
   ],
   tui: [

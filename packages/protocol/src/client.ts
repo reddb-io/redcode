@@ -63,6 +63,7 @@ export const groupNames = {
   "server.worktree": "worktree",
   "server.vcs": "vcs",
   "server.config": "config",
+  "server.hook": "hook",
   "server.lsp": "lsp",
   "server.formatter": "formatter",
   "server.redskilled": "redskilled",

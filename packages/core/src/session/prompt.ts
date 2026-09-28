@@ -13,6 +13,7 @@ import { Image } from "../image.js"
 import { Instance } from "../instance/service.js"
 import { Mime } from "../mime.js"
 import { Plugin } from "../plugin/service.js"
+import { HookRuntime } from "../hook.js"
 import { PluginHooks } from "../plugin/hooks.js"
 import { Skill } from "../skill.js"
 import { AttachmentError, SkillNotFoundError } from "./error.js"
@@ -49,7 +50,14 @@ export const prepare = Effect.fn("SessionPrompt.prepare")(function* (request: {
       metadata: structuredClone(request.input.metadata),
       delivery: request.input.delivery ?? "steer",
     })
-    const input = event.prompt
+    const lifecycle = yield* HookRuntime.Service
+    const admission = yield* lifecycle
+      .run({ event: "UserPromptSubmit", session_id: request.session.id, prompt: event.prompt.text })
+      .pipe(Effect.flatMap((output) => HookRuntime.requireAllowed("UserPromptSubmit", output)))
+    const input = {
+      ...event.prompt,
+      text: admission.additionalContext ? `${event.prompt.text}\n\n${admission.additionalContext}` : event.prompt.text,
+    }
     const files = input.files
       ? yield* Effect.forEach(input.files, materializeAttachment, { concurrency: 8 })
       : undefined

@@ -11,6 +11,7 @@ import { Agent } from "../agent.js"
 import { Model } from "../model.js"
 import { Provider } from "../provider.js"
 import { Command } from "../command.js"
+import { HookRuntime } from "../hook.js"
 import { Config } from "../config.js"
 import { Credential } from "../credential.js"
 import { llmClient } from "../effect/app-node-platform.js"
@@ -144,6 +145,7 @@ const services = [
   Model.Service,
   Command.Service,
   Config.Service,
+  HookRuntime.Service,
   Credential.Service,
   DesignStore.Service,
   DesignRenderer.Service,
@@ -212,6 +214,7 @@ export const requirements = LayerNode.group([
   Model.node,
   Command.node,
   Config.node,
+  HookRuntime.node,
   Credential.node,
   DesignStore.node,
   DesignRenderer.node,

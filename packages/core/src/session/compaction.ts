@@ -20,6 +20,7 @@ import type { SessionError } from "@opencode/schema/session-error"
 import { makeLocationNode } from "@opencode/util/effect/app-node"
 import { Context, Duration, Effect, Layer, Result, Stream } from "effect"
 import { Bus } from "../bus.js"
+import { HookRuntime } from "../hook.js"
 import { Config } from "../config.js"
 import { Database } from "../database/database.js"
 import { llmClient } from "../effect/app-node-platform.js"
@@ -195,6 +196,7 @@ export const layer = Layer.effect(
     const limits = yield* ModelLimit.Service
     const requests = yield* SessionModelRequest.Service
     const config = yield* Config.Service
+    const hooks = yield* HookRuntime.Service
     const guards = yield* SessionGuardLog.Service
 
     const state = State.create<Settings, Editor>({
@@ -234,6 +236,15 @@ export const layer = Layer.effect(
           ? Math.min(cap, Math.floor(estimateContext(context, observed?.ratio) * SHRINK_STEPS[0]))
           : cap
 
+      const decision = yield* hooks.run({
+        event: "PreCompact",
+        session_id: context.session.id,
+        matcher: trigger.reason === "manual" ? "manual" : "auto",
+      })
+      if (!decision.continue || decision.decision === "deny")
+        return yield* publish(trigger, {
+          error: { type: "unknown", message: decision.reason ?? "Compaction denied by hook" },
+        })
       const compaction =
         context.model.compaction?.type === "native"
           ? compactNatively(trigger, budget, settings.keep, settings.keepTurns)
@@ -715,6 +726,7 @@ export const node = makeLocationNode({
   service: Service,
   layer,
   deps: [
+    HookRuntime.node,
     Bus.node,
     Database.node,
     llmClient,

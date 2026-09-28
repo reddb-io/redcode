@@ -12,6 +12,7 @@ import { SessionStore } from "./session/store.js"
 import { HumanWait } from "./session/human-wait.js"
 import { Wildcard } from "./util/wildcard.js"
 import { PermissionSaved } from "./permission/saved.js"
+import { HookRuntime } from "./hook.js"
 import { PluginHooks } from "./plugin/hooks.js"
 
 const PermissionEffect = Permission.Effect
@@ -138,6 +139,7 @@ const layer = Layer.effect(
     const sessions = yield* SessionStore.Service
     const saved = yield* PermissionSaved.Service
     const hooks = yield* PluginHooks.Service
+    const lifecycle = yield* HookRuntime.Service
     const pending = new Map<ID, Pending>()
     let closed = false
 
@@ -197,6 +199,18 @@ const layer = Layer.effect(
         source: input.source,
         effect,
       })
+      if (!input.force && event.effect === "ask") {
+        const output = yield* lifecycle.run({
+          event: "PermissionRequest",
+          matcher: HookRuntime.toolName(input.action),
+          session_id: input.sessionID,
+          tool_name: HookRuntime.toolName(input.action),
+          tool_input: { resources: input.resources, metadata: input.metadata },
+        })
+        if (!output.continue || output.decision === "deny")
+          return { effect: "deny" as const, message: output.reason, rules: all }
+        if (output.decision === "allow") return { effect: "allow" as const, rules: all }
+      }
       return {
         effect: input.force && event.effect === "allow" ? ("ask" as const) : event.effect,
         message: event.message,
@@ -366,5 +380,13 @@ const layer = Layer.effect(
 export const node = makeLocationNode({
   service: Service,
   layer,
-  deps: [Bus.node, Location.node, Agent.node, SessionStore.node, PermissionSaved.node, PluginHooks.node],
+  deps: [
+    Bus.node,
+    Location.node,
+    Agent.node,
+    SessionStore.node,
+    PermissionSaved.node,
+    HookRuntime.node,
+    PluginHooks.node,
+  ],
 })

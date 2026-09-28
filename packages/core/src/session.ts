@@ -43,6 +43,7 @@ import { Node } from "@opencode/util/effect/app-node"
 import { LayerNode } from "@opencode/util/effect/layer-node"
 import { SessionEvent } from "./session/event.js"
 import { SessionInbox } from "./session/inbox.js"
+import { HookRuntime } from "./hook.js"
 import { SessionPrompt } from "./session/prompt.js"
 import type { Skill } from "./skill.js"
 import { InstructionState } from "./session/instruction-state.js"
@@ -185,7 +186,10 @@ export interface Interface {
   readonly move: SessionMove.Interface["move"]
   readonly prompt: (
     input: SessionPrompt.Input & { sessionID: SessionSchema.ID; id?: SessionMessage.ID; resume?: boolean },
-  ) => Effect.Effect<SessionInbox.User, NotFoundError | PromptConflictError | AttachmentError | SkillNotFoundError>
+  ) => Effect.Effect<
+    SessionInbox.User,
+    NotFoundError | PromptConflictError | AttachmentError | SkillNotFoundError | HookRuntime.BlockedError
+  >
   /** Generates text from current Session context without admitting input or mutating history. */
   readonly generate: (input: {
     sessionID: SessionSchema.ID
@@ -201,12 +205,17 @@ export interface Interface {
     metadata?: SessionInbox.UserPayload["metadata"]
     delivery?: SessionInbox.Delivery
   }) => Effect.Effect<void, NotFoundError | Command.NotFoundError | Command.ExecutionError>
-  readonly shell: (
-    input: { sessionID: SessionSchema.ID; id?: SessionMessage.ID; command: string },
-  ) => Effect.Effect<void, NotFoundError>
-  readonly skill: (
-    input: { sessionID: SessionSchema.ID; messageID?: SessionMessage.ID; skill: Skill.ID; resume?: boolean },
-  ) => Effect.Effect<void, NotFoundError | SkillNotFoundError>
+  readonly shell: (input: {
+    sessionID: SessionSchema.ID
+    id?: SessionMessage.ID
+    command: string
+  }) => Effect.Effect<void, NotFoundError>
+  readonly skill: (input: {
+    sessionID: SessionSchema.ID
+    messageID?: SessionMessage.ID
+    skill: Skill.ID
+    resume?: boolean
+  }) => Effect.Effect<void, NotFoundError | SkillNotFoundError>
   readonly compact: (
     input: CompactInput,
   ) => Effect.Effect<SessionInbox.Compaction, NotFoundError | CompactionConflictError>
@@ -215,17 +224,15 @@ export interface Interface {
   readonly background: (sessionID: SessionSchema.ID) => Effect.Effect<void, NotFoundError>
   readonly resume: (sessionID: SessionSchema.ID) => Effect.Effect<void, NotFoundError | SessionRunner.RunError>
   readonly interrupt: (sessionID: SessionSchema.ID, options?: { readonly resume?: boolean }) => Effect.Effect<boolean>
-  readonly synthetic: (
-    input: {
-      sessionID: SessionSchema.ID
-      id?: SessionMessage.ID
-      text: string
-      description?: string
-      metadata?: Record<string, unknown>
-      delivery?: SessionInbox.Delivery
-      resume?: boolean
-    },
-  ) => Effect.Effect<SessionInbox.Synthetic, NotFoundError | SyntheticConflictError>
+  readonly synthetic: (input: {
+    sessionID: SessionSchema.ID
+    id?: SessionMessage.ID
+    text: string
+    description?: string
+    metadata?: Record<string, unknown>
+    delivery?: SessionInbox.Delivery
+    resume?: boolean
+  }) => Effect.Effect<SessionInbox.Synthetic, NotFoundError | SyntheticConflictError>
   readonly revert: {
     readonly stage: (input: {
       sessionID: SessionSchema.ID
@@ -246,6 +253,7 @@ const layer = Layer.effect(
     const database = yield* Database.Service
     const db = database.db
     const bus = yield* Bus.Service
+    const fs = yield* FSUtil.Service
     const projects = yield* Project.Service
     const execution = yield* SessionExecution.Service
     const llm = yield* LLMClient.Service
@@ -315,7 +323,12 @@ const layer = Layer.effect(
           )
         if (projected.type === "existing") return projected.session
         // TODO: Restore recorded sessions onto replacement synchronized workspaces in a future API slice.
-        return yield* result.get(sessionID).pipe(Effect.orDie)
+        const created = yield* result.get(sessionID).pipe(Effect.orDie)
+        if (!created.parentID && (yield* fs.isDir(created.location.directory)))
+          yield* HookRuntime.Service.use((hooks) =>
+            hooks.run({ event: "SessionStart", session_id: sessionID, matcher: "startup" }),
+          ).pipe(instances.provide(created))
+        return created
       }),
       fork: Effect.fn("Session.fork")(function* (input) {
         const parent = yield* result.get(input.sessionID)

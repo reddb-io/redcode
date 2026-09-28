@@ -85,3 +85,46 @@ test("Redcode setup, intelligence and Design commands reach their production UI 
   await setup.waitForFrame(() => controls.includes("budget"))
   expect(controls).toEqual(["pause", "resume", "drop", "budget"])
 })
+
+test("/hooks requires confirmation before trusting or importing project commands", async () => {
+  await using state = await tmpdir()
+  const writes: string[] = []
+  const trust = { trusted: false, fingerprint: "0123456789abcdef" }
+  await using setup = await createAppFixture({
+    state: state.path,
+    fetch: (url, request) => {
+      if (!url.pathname.startsWith("/api/hook")) return
+      expect(url.searchParams.get("location[directory]")).toBe(directory)
+      if (request.method !== "GET") writes.push(`${request.method} ${url.pathname}`)
+      if (url.pathname === "/api/hook/trust") {
+        trust.trusted = request.method === "POST"
+        return json({ location: { directory }, data: trust })
+      }
+      if (url.pathname === "/api/hook/import/claude")
+        return json({ location: { directory }, data: { imported: 1, target: "redcode.json", restart_required: true } })
+      return json({ location: { directory }, data: { trust, definitions: [] } })
+    },
+  })
+  await setup.ready
+  await setup.waitForFrame((frame) => frame.includes("ctrl+p commands"))
+  await setup.mockInput.typeText("/hooks")
+  setup.mockInput.pressEnter()
+  await setup.waitForFrame((frame) => frame.includes("Approval required"))
+  await setup.mockInput.typeText("t")
+  await setup.waitForFrame((frame) => frame.includes("Enter to confirm"))
+  expect(writes).toEqual([])
+  setup.mockInput.pressKey("ESCAPE")
+  await setup.waitForFrame((frame) => frame.includes("t trust"))
+  expect(writes).toEqual([])
+  await setup.mockInput.typeText("t")
+  await setup.waitForFrame((frame) => frame.includes("Enter to confirm"))
+  setup.mockInput.pressEnter()
+  await setup.waitForFrame((frame) => frame.includes("Trusted") && !frame.includes("Applying"))
+  expect(writes).toEqual(["POST /api/hook/trust"])
+  await setup.mockInput.typeText("i")
+  await setup.waitForFrame((frame) => frame.includes("Import Claude hooks"))
+  expect(writes).toHaveLength(1)
+  setup.mockInput.pressEnter()
+  await setup.waitForFrame((frame) => frame.includes("Imported 1 hooks"))
+  expect(writes).toEqual(["POST /api/hook/trust", "POST /api/hook/import/claude"])
+})

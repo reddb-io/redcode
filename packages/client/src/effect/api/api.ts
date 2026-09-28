@@ -38,6 +38,7 @@ import type { Worktree } from "@opencode/schema/worktree"
 import type { Vcs } from "@opencode/schema/vcs"
 import type { WebSearch } from "@opencode/schema/websearch"
 import type { Config } from "@opencode/schema/config"
+import type { Hook } from "@opencode/schema/hook"
 import type { LSP } from "@opencode/schema/lsp"
 import type { Formatter } from "@opencode/schema/formatter"
 
@@ -4634,6 +4635,29 @@ export interface ConfigApi<E = never> {
   readonly update: ConfigUpdateOperation<E>
 }
 
+export type HookStatusInput = { readonly location?: { readonly directory?: string | undefined } | undefined }
+export type HookStatusOutput = { readonly location: Location.PublicRef; readonly data: Hook.Status }
+export type HookStatusOperation<E = never> = (input?: HookStatusInput) => Effect.Effect<HookStatusOutput, E>
+
+export type HookTrustInput = { readonly location?: { readonly directory?: string | undefined } | undefined }
+export type HookTrustOutput = { readonly location: Location.PublicRef; readonly data: Hook.Trust }
+export type HookTrustOperation<E = never> = (input?: HookTrustInput) => Effect.Effect<HookTrustOutput, E>
+
+export type HookRevokeInput = { readonly location?: { readonly directory?: string | undefined } | undefined }
+export type HookRevokeOutput = { readonly location: Location.PublicRef; readonly data: Hook.Trust }
+export type HookRevokeOperation<E = never> = (input?: HookRevokeInput) => Effect.Effect<HookRevokeOutput, E>
+
+export type HookImportInput = { readonly location?: { readonly directory?: string | undefined } | undefined }
+export type HookImportOutput = { readonly location: Location.PublicRef; readonly data: Hook.ImportResult }
+export type HookImportOperation<E = never> = (input?: HookImportInput) => Effect.Effect<HookImportOutput, E>
+
+export interface HookApi<E = never> {
+  readonly status: HookStatusOperation<E>
+  readonly trust: HookTrustOperation<E>
+  readonly revoke: HookRevokeOperation<E>
+  readonly import: HookImportOperation<E>
+}
+
 export type LspStatusInput = { readonly location?: { readonly directory?: string | undefined } | undefined }
 export type LspStatusOutput = { readonly location: Location.PublicRef; readonly data: ReadonlyArray<LSP.Status> }
 export type LspStatusOperation<E = never> = (input?: LspStatusInput) => Effect.Effect<LspStatusOutput, E>
@@ -5934,6 +5958,7 @@ export interface AppApi<E = never> {
   readonly migration: MigrationApi<E>
   readonly websearch: WebsearchApi<E>
   readonly config: ConfigApi<E>
+  readonly hook: HookApi<E>
   readonly lsp: LspApi<E>
   readonly formatter: FormatterApi<E>
   readonly redskilled: RedskilledApi<E>

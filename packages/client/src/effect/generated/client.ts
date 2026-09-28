@@ -325,6 +325,14 @@ import type {
   ConfigShellsOutput,
   ConfigUpdateInput,
   ConfigUpdateOutput,
+  HookStatusInput,
+  HookStatusOutput,
+  HookTrustInput,
+  HookTrustOutput,
+  HookRevokeInput,
+  HookRevokeOutput,
+  HookImportInput,
+  HookImportOutput,
   LspStatusInput,
   LspStatusOutput,
   LspDiagnosticsInput,
@@ -1989,6 +1997,33 @@ const adaptGroupConfig = (raw: RawClient["server.config"]) => ({
   update: EndpointConfigUpdate(raw),
 })
 
+const EndpointHookStatus = (raw: RawClient["server.hook"]) => (input?: HookStatusInput) =>
+  preserveEffect<HookStatusOutput>()(
+    raw["hook.status"]({ query: { location: input?.["location"] } }).pipe(Effect.mapError(mapClientError)),
+  )
+
+const EndpointHookTrust = (raw: RawClient["server.hook"]) => (input?: HookTrustInput) =>
+  preserveEffect<HookTrustOutput>()(
+    raw["hook.trust"]({ query: { location: input?.["location"] } }).pipe(Effect.mapError(mapClientError)),
+  )
+
+const EndpointHookRevoke = (raw: RawClient["server.hook"]) => (input?: HookRevokeInput) =>
+  preserveEffect<HookRevokeOutput>()(
+    raw["hook.revoke"]({ query: { location: input?.["location"] } }).pipe(Effect.mapError(mapClientError)),
+  )
+
+const EndpointHookImport = (raw: RawClient["server.hook"]) => (input?: HookImportInput) =>
+  preserveEffect<HookImportOutput>()(
+    raw["hook.import"]({ query: { location: input?.["location"] } }).pipe(Effect.mapError(mapClientError)),
+  )
+
+const adaptGroupHook = (raw: RawClient["server.hook"]) => ({
+  status: EndpointHookStatus(raw),
+  trust: EndpointHookTrust(raw),
+  revoke: EndpointHookRevoke(raw),
+  import: EndpointHookImport(raw),
+})
+
 const EndpointLspStatus = (raw: RawClient["server.lsp"]) => (input?: LspStatusInput) =>
   preserveEffect<LspStatusOutput>()(
     raw["lsp.status"]({ query: { location: input?.["location"] } }).pipe(Effect.mapError(mapClientError)),
@@ -2177,6 +2212,7 @@ const adaptClient = (raw: RawClient) => ({
   migration: adaptGroupMigration(raw["server.migration"]),
   websearch: adaptGroupWebsearch(raw["server.websearch"]),
   config: adaptGroupConfig(raw["server.config"]),
+  hook: adaptGroupHook(raw["server.hook"]),
   lsp: adaptGroupLsp(raw["server.lsp"]),
   formatter: adaptGroupFormatter(raw["server.formatter"]),
   redskilled: adaptGroupRedskilled(raw["server.redskilled"]),

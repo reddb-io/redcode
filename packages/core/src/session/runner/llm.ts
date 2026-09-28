@@ -30,6 +30,7 @@ import { SessionPlan } from "../plan.js"
 import { SessionGoalCompletion } from "../goal-completion.js"
 import { SessionTodo } from "../todo.js"
 import { SessionTodoStore } from "../todo-store.js"
+import { HookRuntime } from "../../hook.js"
 import { MonitorRuntime } from "../../monitor.js"
 import { toSessionError } from "../to-session-error.js"
 import { DrainResult, Service, type Interface } from "./index.js"
@@ -226,9 +227,11 @@ const layer = Layer.effect(
         if (goalID === false) return DrainResult.Complete()
         const result = yield* Effect.uninterruptibleMask((restore) =>
           Effect.gen(function* () {
-            const result = yield* restore(runStep(next.context, step, goalID, () => {
-              guardStopped = true
-            })).pipe(Effect.exit)
+            const result = yield* restore(
+              runStep(next.context, step, goalID, () => {
+                guardStopped = true
+              }),
+            ).pipe(Effect.exit)
             if (goalID)
               yield* goals
                 .settle(sessionID, {
@@ -238,7 +241,11 @@ const layer = Layer.effect(
                   failed: Exit.isFailure(result) && !Cause.hasInterrupts(result.cause),
                   waiting: Exit.isSuccess(result) && (yield* monitors.list(sessionID)).some(Monitor.parks),
                 })
-                .pipe(Effect.catchCause((cause) => Effect.logWarning("Goal step settlement failed", { sessionID, cause: Cause.pretty(cause) })))
+                .pipe(
+                  Effect.catchCause((cause) =>
+                    Effect.logWarning("Goal step settlement failed", { sessionID, cause: Cause.pretty(cause) }),
+                  ),
+                )
             return result
           }),
         )
@@ -375,7 +382,10 @@ const layer = Layer.effect(
         text,
         ...(verdict.action === "steer" ? {} : { description: text }),
         metadata: {
-          [SessionStopLoss.METADATA_KEY]: { ...SessionStopLoss.notice(trajectory, verdict, { subagent }), memory: next },
+          [SessionStopLoss.METADATA_KEY]: {
+            ...SessionStopLoss.notice(trajectory, verdict, { subagent }),
+            memory: next,
+          },
         },
       })
       if (verdict.action === "steer") return { memory: next, ended: false }
@@ -396,11 +406,14 @@ const layer = Layer.effect(
       request: SessionModelRequest.Prepared["request"],
       failure: unknown,
     ) {
-      const message = failure instanceof AIError
-        ? [failure.reason.message, "body" in failure.reason ? failure.reason.body : undefined].filter(Boolean).join("\n")
-        : Schema.is(ProviderErrorEvent)(failure)
-          ? failure.message
-          : ""
+      const message =
+        failure instanceof AIError
+          ? [failure.reason.message, "body" in failure.reason ? failure.reason.body : undefined]
+              .filter(Boolean)
+              .join("\n")
+          : Schema.is(ProviderErrorEvent)(failure)
+            ? failure.message
+            : ""
       const numbers = contextOverflowNumbers(message)
       if (!numbers) return
       const observed = ModelLimit.fromNumbers({
@@ -454,7 +467,7 @@ const layer = Layer.effect(
           attended: SessionStall.attended(
             latestUser?.type === "user" && typeof latestUser.metadata?.source === "string"
               ? latestUser.metadata.source
-              : process.env.OPENCODE_CLIENT ?? "",
+              : (process.env.OPENCODE_CLIENT ?? ""),
           ),
         })
         const toolTimeout = Config.latestExperimental(yield* config.entries(), "tool_timeout")
@@ -477,7 +490,9 @@ const layer = Layer.effect(
         const guidance = [
           SessionGoal.guidance(yield* goals.get(sessionID)),
           SessionPlan.guidance(yield* plans.list(sessionID)),
-        ].filter(Boolean).join("\n\n")
+        ]
+          .filter(Boolean)
+          .join("\n\n")
         const prepared = yield* context.request.primary({
           session: loaded.session,
           agent: loaded.agent.id,
@@ -495,10 +510,7 @@ const layer = Layer.effect(
         const output = prepared.request.generation?.maxTokens ?? loaded.model.limit.output
         const declared = { context: loaded.model.limit.context, input: loaded.model.limit.input }
         const observed = yield* limits.get(loaded.model.ref.providerID, loaded.model.ref.id, declared)
-        if (
-          observed &&
-          !prepared.request.messages.some((item) => item.content.some((part) => part.type === "media"))
-        ) {
+        if (observed && !prepared.request.messages.some((item) => item.content.some((part) => part.type === "media"))) {
           const inputLimit = ModelLimit.effectiveInput(
             { input: loaded.model.limit.input || loaded.model.limit.context },
             observed,
@@ -547,8 +559,8 @@ const layer = Layer.effect(
             if (raised) yield* limits.learn(loaded.model.ref.providerID, loaded.model.ref.id, raised)
           }),
           allowLoop: (tool) =>
-            Permission.evaluate("doom_loop", tool, loaded.agent.info.permissions, loaded.session.permissions ?? []).effect ===
-            "allow",
+            Permission.evaluate("doom_loop", tool, loaded.agent.info.permissions, loaded.session.permissions ?? [])
+              .effect === "allow",
           loopLimits,
           stallLimits,
           toolTimeout,
@@ -653,6 +665,7 @@ export const node = makeLocationNode({
   service: Service,
   layer,
   deps: [
+    HookRuntime.node,
     Bus.node,
     LocationLifecycle.node,
     llmClient,

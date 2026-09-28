@@ -15,6 +15,7 @@ import { SessionUsage } from "../usage.js"
 import type { Tool } from "../../tool.js"
 
 type Input = {
+  readonly onText?: (text: string) => Effect.Effect<void>
   readonly sessionID: SessionSchema.ID
   readonly agent: Agent.ID
   readonly model: Model.Ref
@@ -214,6 +215,7 @@ export const createLLMEventPublisher = (bus: Pick<Bus.Interface, "publish">, inp
           text: value,
           state,
         })
+        if (input.onText) yield* input.onText(value)
       }),
     (_textID, value, ordinal) =>
       Effect.gen(function* () {

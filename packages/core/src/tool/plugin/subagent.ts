@@ -5,6 +5,7 @@ import type { Context } from "@opencode/plugin/effect/plugin"
 import type { SessionHooks } from "@opencode/plugin/effect/session"
 import { Effect, Predicate, Schema } from "effect"
 import { Agent } from "../../agent.js"
+import { HookRuntime } from "../../hook.js"
 import { Config } from "../../config.js"
 import { Job } from "../../job.js"
 import { Model } from "../../model.js"
@@ -68,6 +69,7 @@ export const Plugin = {
     const jobs = yield* Job.Service
     const agents = yield* Agent.Service
     const config = yield* Config.Service
+    const hooks = yield* HookRuntime.Service
     const permission = yield* Permission.Service
     const models = yield* Model.Service
     const subagents = yield* SubagentJob.make
@@ -197,6 +199,14 @@ export const Plugin = {
                     ),
                   ))
 
+              const start = yield* hooks.run({
+                event: "SubagentStart",
+                matcher: input.agent,
+                session_id: context.sessionID,
+                agent_id: child.id,
+                agent_type: input.agent,
+              })
+              const prompt = [input.prompt, start.additionalContext].filter(Boolean).join("\n\n")
               const background = input.background === true
               yield* context.progress({ sessionID: child.id, status: "running" })
 
@@ -207,8 +217,8 @@ export const Plugin = {
                   sessionID: child.id,
                   text:
                     existing === undefined
-                      ? ["You are a subagent spawned by another session.", input.prompt].join("\n")
-                      : input.prompt,
+                      ? ["You are a subagent spawned by another session.", prompt].join("\n")
+                      : prompt,
                   ...(background && existing === undefined ? { resume: false } : {}),
                 })
                 .pipe(

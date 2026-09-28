@@ -14,6 +14,7 @@ import { Formatter } from "@opencode/schema/formatter"
 import { InstructionEntry } from "@opencode/schema/instruction-entry"
 import { Integration } from "@opencode/schema/integration"
 import { Location } from "@opencode/schema/location"
+import { Hook } from "@opencode/schema/hook"
 import { LSP } from "@opencode/schema/lsp"
 import { Mcp } from "@opencode/schema/mcp"
 import { Model } from "@opencode/schema/model"
@@ -58,6 +59,7 @@ const effectTypeReferences = [
   ...namespaceTypes("Integration", "@opencode/schema/integration", Integration),
   typeReference("Location.PublicRef", "@opencode/schema/location", Location.PublicRef),
   typeReference("Location.PublicInfo", "@opencode/schema/location", Location.PublicInfo),
+  ...namespaceTypes("Hook", "@opencode/schema/hook", Hook),
   ...namespaceTypes("LSP", "@opencode/schema/lsp", LSP),
   ...namespaceTypes("Mcp", "@opencode/schema/mcp", Mcp),
   ...namespaceTypes("Model", "@opencode/schema/model", Model),

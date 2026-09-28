@@ -34,6 +34,7 @@ import { VcsGroup } from "./groups/vcs.js"
 import { MigrationGroup } from "./groups/migration.js"
 import { ConfigGroup } from "./groups/config.js"
 import { IntelligenceGroup } from "./groups/intelligence.js"
+import { HookGroup } from "./groups/hook.js"
 import { LSPGroup } from "./groups/lsp.js"
 import { FormatterGroup } from "./groups/formatter.js"
 import { RedskilledGroup } from "./groups/redskilled.js"
@@ -56,6 +57,7 @@ type LocationGroups<LocationId extends HttpApiMiddleware.AnyId> =
   | HttpApiGroup.AddMiddleware<typeof ReferenceGroup, LocationId>
   | HttpApiGroup.AddMiddleware<typeof VcsGroup, LocationId>
   | HttpApiGroup.AddMiddleware<typeof ConfigGroup, LocationId>
+  | HttpApiGroup.AddMiddleware<typeof HookGroup, LocationId>
   | HttpApiGroup.AddMiddleware<typeof LSPGroup, LocationId>
   | HttpApiGroup.AddMiddleware<typeof FormatterGroup, LocationId>
   | HttpApiGroup.AddMiddleware<typeof RedskilledGroup, LocationId>
@@ -191,6 +193,7 @@ const makeApiFromGroup = <
     .add(MigrationGroup)
     .add(WebSearchGroup.middleware(locationMiddleware))
     .add(ConfigGroup.middleware(locationMiddleware))
+    .add(HookGroup.middleware(locationMiddleware))
     .add(LSPGroup.middleware(locationMiddleware))
     .add(FormatterGroup.middleware(locationMiddleware))
     .add(RedskilledGroup.middleware(locationMiddleware))

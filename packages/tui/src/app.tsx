@@ -61,6 +61,7 @@ import { PermissionProvider } from "./context/permission"
 import { DialogModel } from "./component/dialog-model"
 import { useConnected } from "./component/use-connected"
 import { DialogMcp } from "./component/dialog-mcp"
+import { DialogHooks } from "./component/dialog-hooks"
 import { DialogStatus } from "./component/dialog-status"
 import { DialogConfig } from "./component/dialog-config"
 import { DialogDebug } from "./component/dialog-debug"
@@ -993,6 +994,22 @@ function App() {
           dialog.replace(() => <DialogConfig />)
         },
         category: "System",
+      },
+      {
+        name: "redcode.hooks",
+        title: "Manage project hooks",
+        slash: { name: "hooks" },
+        category: "System",
+        run: () =>
+          dialog.replace(() => (
+            <DialogHooks
+              location={
+                (route.data.type === "session" ? data.session.get(route.data.sessionID)?.location : undefined) ??
+                location.ref ??
+                data.location.default()
+              }
+            />
+          )),
       },
       {
         name: "opencode.status",

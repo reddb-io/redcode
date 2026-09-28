@@ -639,6 +639,49 @@ export type WebSearchProvider = { id: string; name: string }
 
 export type WebSearchResult = { url: string; title?: string; content?: string; time: { published?: number } }
 
+export type HookMatcher = {
+  matcher?: string
+  hooks: Array<
+    | {
+        timeout?: number | "Infinity" | "-Infinity" | "NaN"
+        statusMessage?: string
+        type: "command"
+        command: string
+        async?: boolean
+      }
+    | {
+        timeout?: number | "Infinity" | "-Infinity" | "NaN"
+        statusMessage?: string
+        type: "http"
+        url: string
+        headers?: { [x: string]: string }
+      }
+    | {
+        timeout?: number | "Infinity" | "-Infinity" | "NaN"
+        statusMessage?: string
+        type: "mcp_tool"
+        server: string
+        tool: string
+        arguments?: { [x: string]: JsonValue }
+      }
+    | {
+        timeout?: number | "Infinity" | "-Infinity" | "NaN"
+        statusMessage?: string
+        type: "prompt"
+        prompt: string
+        model?: string
+      }
+    | {
+        timeout?: number | "Infinity" | "-Infinity" | "NaN"
+        statusMessage?: string
+        type: "agent"
+        prompt: string
+        agent?: string
+        model?: string
+      }
+  >
+}
+
 export type McpMedia = {
   [x: string]: { operations: Array<"generate" | "edit" | "reference">; formats: Array<string>; transparency: boolean }
 }
@@ -655,6 +698,82 @@ export type ConfigWorktree = {
 export type ConfigDatabase = { url: string }
 
 export type ConfigShellOption = { path: string; name: string; acceptable: boolean }
+
+export type HookTrust = { trusted: boolean; fingerprint: string }
+
+export type HookDefinition = {
+  id: string
+  event:
+    | "SessionStart"
+    | "UserPromptSubmit"
+    | "PreToolUse"
+    | "PermissionRequest"
+    | "PostToolUse"
+    | "PostToolUseFailure"
+    | "Notification"
+    | "SubagentStart"
+    | "SubagentStop"
+    | "Stop"
+    | "PreCompact"
+    | "InstructionsLoaded"
+    | "ConfigChange"
+    | "WorktreeCreate"
+    | "WorktreeRemove"
+    | "MessageDisplay"
+    | "Setup"
+    | "PermissionDenied"
+    | "TaskCreated"
+    | "TaskCompleted"
+    | "TeammateIdle"
+    | "DirectoryAdded"
+    | "SessionEnd"
+    | "Elicitation"
+    | "ElicitationResult"
+  matcher?: string
+  handler:
+    | {
+        timeout?: number | "Infinity" | "-Infinity" | "NaN"
+        statusMessage?: string
+        type: "command"
+        command: string
+        async?: boolean
+      }
+    | {
+        timeout?: number | "Infinity" | "-Infinity" | "NaN"
+        statusMessage?: string
+        type: "http"
+        url: string
+        headers?: { [x: string]: string }
+      }
+    | {
+        timeout?: number | "Infinity" | "-Infinity" | "NaN"
+        statusMessage?: string
+        type: "mcp_tool"
+        server: string
+        tool: string
+        arguments?: { [x: string]: JsonValue }
+      }
+    | {
+        timeout?: number | "Infinity" | "-Infinity" | "NaN"
+        statusMessage?: string
+        type: "prompt"
+        prompt: string
+        model?: string
+      }
+    | {
+        timeout?: number | "Infinity" | "-Infinity" | "NaN"
+        statusMessage?: string
+        type: "agent"
+        prompt: string
+        agent?: string
+        model?: string
+      }
+  source: string
+  support: "active" | "unsupported" | "untrusted"
+  reason?: string
+}
+
+export type HookImportResult = { imported: number; target: string; restart_required: boolean }
 
 export type LSPStatus = { id: string; root: string; status: "connected" | "error"; error?: string | undefined }
 
@@ -2104,6 +2223,8 @@ export type FileSystemMatch = {
   submatches: Array<FileSystemSubmatch>
 }
 
+export type HookStatus = { trust: HookTrust; definitions: Array<HookDefinition> }
+
 export type IntelligenceEvaluation = {
   id: string
   fingerprint: string
@@ -2601,6 +2722,7 @@ export type ConfigEntry =
       path?: string
       info: {
         $schema?: string
+        hooks?: { [x: string]: Array<HookMatcher> }
         shell?: string
         model?: string | { providerID: string; model: string; variant?: string }
         default_agent?: string
@@ -8775,6 +8897,30 @@ export type ConfigShellsOutput = Array<ConfigShellOption>
 export type ConfigUpdateInput = { readonly shell: { readonly shell: string | null }["shell"] }
 
 export type ConfigUpdateOutput = void
+
+export type HookStatusInput = {
+  readonly location?: { readonly location?: { readonly directory?: string | undefined } | undefined }["location"]
+}
+
+export type HookStatusOutput = { location: LocationPublicRef; data: HookStatus }
+
+export type HookTrustInput = {
+  readonly location?: { readonly location?: { readonly directory?: string | undefined } | undefined }["location"]
+}
+
+export type HookTrustOutput = { location: LocationPublicRef; data: HookTrust }
+
+export type HookRevokeInput = {
+  readonly location?: { readonly location?: { readonly directory?: string | undefined } | undefined }["location"]
+}
+
+export type HookRevokeOutput = { location: LocationPublicRef; data: HookTrust }
+
+export type HookImportInput = {
+  readonly location?: { readonly location?: { readonly directory?: string | undefined } | undefined }["location"]
+}
+
+export type HookImportOutput = { location: LocationPublicRef; data: HookImportResult }
 
 export type LspStatusInput = {
   readonly location?: { readonly location?: { readonly directory?: string | undefined } | undefined }["location"]

@@ -323,6 +323,14 @@ import type {
   ConfigShellsOutput,
   ConfigUpdateInput,
   ConfigUpdateOutput,
+  HookStatusInput,
+  HookStatusOutput,
+  HookTrustInput,
+  HookTrustOutput,
+  HookRevokeInput,
+  HookRevokeOutput,
+  HookImportInput,
+  HookImportOutput,
   LspStatusInput,
   LspStatusOutput,
   LspDiagnosticsInput,
@@ -2702,6 +2710,56 @@ export function make(options: ClientOptions) {
             successStatus: 204,
             declaredStatuses: [400, 401],
             empty: true,
+          },
+          requestOptions,
+        ),
+    },
+    hook: {
+      status: (input?: HookStatusInput, requestOptions?: RequestOptions) =>
+        request<HookStatusOutput>(
+          {
+            method: "GET",
+            path: `/api/hook`,
+            query: { location: input?.["location"] },
+            successStatus: 200,
+            declaredStatuses: [400, 401],
+            empty: false,
+          },
+          requestOptions,
+        ),
+      trust: (input?: HookTrustInput, requestOptions?: RequestOptions) =>
+        request<HookTrustOutput>(
+          {
+            method: "POST",
+            path: `/api/hook/trust`,
+            query: { location: input?.["location"] },
+            successStatus: 200,
+            declaredStatuses: [400, 401],
+            empty: false,
+          },
+          requestOptions,
+        ),
+      revoke: (input?: HookRevokeInput, requestOptions?: RequestOptions) =>
+        request<HookRevokeOutput>(
+          {
+            method: "DELETE",
+            path: `/api/hook/trust`,
+            query: { location: input?.["location"] },
+            successStatus: 200,
+            declaredStatuses: [400, 401],
+            empty: false,
+          },
+          requestOptions,
+        ),
+      import: (input?: HookImportInput, requestOptions?: RequestOptions) =>
+        request<HookImportOutput>(
+          {
+            method: "POST",
+            path: `/api/hook/import/claude`,
+            query: { location: input?.["location"] },
+            successStatus: 200,
+            declaredStatuses: [400, 401],
+            empty: false,
           },
           requestOptions,
         ),

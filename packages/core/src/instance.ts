@@ -4,6 +4,7 @@ import { AISDK } from "./aisdk.js"
 import { Model } from "./model.js"
 import { Provider } from "./provider.js"
 import { Command } from "./command.js"
+import { HookRuntime } from "./hook.js"
 import { Config } from "./config.js"
 import { LayerNode } from "@opencode/util/effect/layer-node"
 import { Node } from "@opencode/util/effect/app-node"
@@ -69,6 +70,7 @@ const nodes = [
   LocationLifecycle.node,
   Environment.node,
   Config.node,
+  HookRuntime.node,
   Agent.node,
   Command.node,
   Reference.node,

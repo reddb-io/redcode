@@ -8,6 +8,7 @@ import { Instance } from "../instance/service.js"
 import { makeGlobalNode } from "@opencode/util/effect/app-node"
 import { SessionEvent } from "./event.js"
 import { SessionRunCoordinator } from "./run-coordinator.js"
+import { HookRuntime } from "../hook.js"
 import { SessionRunner } from "./runner/index.js"
 import { SessionSchema } from "./schema.js"
 import { SessionStore } from "./store.js"
@@ -123,6 +124,11 @@ export const layer = Layer.effect(
             const outcome = terminal(exit, reason)
             if (outcome.type === "succeeded") {
               yield* bus.publish(SessionEvent.Execution.Succeeded, { sessionID }, releaseOnCommit(sessionID))
+              const session = yield* store.get(sessionID)
+              if (session)
+                yield* HookRuntime.Service.use((hooks) =>
+                  hooks.run({ event: "Stop", session_id: sessionID, matcher: "stop" }),
+                ).pipe(instances.provide(session))
               return
             }
             if (outcome.type === "interrupted") {

@@ -637,6 +637,10 @@ export const SessionHandler = HttpApiBuilder.group(Api, "server.session", (handl
                     }),
                   ),
                 ),
+                Effect.catchTag(
+                  "Hook.BlockedError",
+                  (error) => new InvalidRequestError({ message: error.reason, field: "text" }),
+                ),
                 Effect.catchTag("Session.AttachmentError", (error) =>
                   Effect.fail(new InvalidRequestError({ message: error.message, field: "files" })),
                 ),

@@ -16,6 +16,7 @@ import { TokenUsage } from "@opencode/schema/token-usage"
 import { Bus } from "../../bus.js"
 import { Permission } from "../../permission.js"
 import { Snapshot } from "../../snapshot.js"
+import { HookRuntime } from "../../hook.js"
 import { Tool } from "../../tool.js"
 import { ToolOutput } from "../../tool-output.js"
 import { QuestionTool } from "../../tool/plugin/question.js"
@@ -89,10 +90,13 @@ export const make = Effect.gen(function* () {
   const guards = yield* SessionGuardLog.Service
   const permissions = yield* Permission.Service
   const store = yield* SessionStore.Service
+  const hooks = yield* HookRuntime.Service
 
   const attempt = Effect.fn("SessionStep.attempt")(function* (input: Input) {
     const startSnapshot = yield* snapshots.capture()
     const publisher = createLLMEventPublisher(bus, {
+      onText: (text) =>
+        hooks.run({ event: "MessageDisplay", session_id: input.sessionID, message: text }).pipe(Effect.asVoid),
       sessionID: input.sessionID,
       assistantMessageID: input.assistantMessageID,
       agent: input.agent,
