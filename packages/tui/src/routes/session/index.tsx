@@ -118,7 +118,14 @@ import { SessionLocationMissing } from "./location-missing"
 import { isRecord } from "../../util/record"
 import { createHistoryPrepend } from "./history"
 import { context, use, type PendingAction } from "./render-context"
-import { INLINE_TOOL_ICON_WIDTH, InlineToolRow, ReasoningPart, TextPart, showToolPart, toolDisplay } from "./message-parts"
+import {
+  INLINE_TOOL_ICON_WIDTH,
+  InlineToolRow,
+  ReasoningPart,
+  TextPart,
+  showToolPart,
+  toolDisplay,
+} from "./message-parts"
 import { defaultVerbosity, type GroupKind, type SessionEntry } from "./grouping/session"
 import { SessionGroupView } from "./group-view"
 import { useEntryAnchor } from "./anchor-view"
@@ -159,6 +166,7 @@ export function Session(props: {
   const { navigate } = useRoute()
   const data = useData()
   const local = useLocal()
+  const keymap = Keymap.use()
   const args = useArgs()
   const paths = useTuiPaths()
   const configState = useConfig()
@@ -899,6 +907,26 @@ export function Session(props: {
   ]
 
   const baseCommands = createMemo(() => [
+    ...(["pause", "resume", "drop", "budget"] as const).map((action) => ({
+      title: `Goal ${action}`,
+      id: `session.goal.${action}`,
+      group: "Session",
+      slash: { name: `goal-${action}`, arguments: true as const },
+      run: (input?: string) => {
+        if (action !== "budget" || input?.trim()) {
+          keymap.dispatch("session.goal", `${action} ${input ?? ""}`.trim())
+          return
+        }
+        dialog.replace(() => (
+          <DialogPrompt
+            title="Goal step budget"
+            placeholder="1–1000 steps"
+            onConfirm={(value) => keymap.dispatch("session.goal", `budget ${value}`)}
+            onCancel={() => dialog.clear()}
+          />
+        ))
+      },
+    })),
     {
       title: "Manage goal",
       id: "session.goal",
@@ -997,9 +1025,12 @@ export function Session(props: {
         const endpoint = client.endpoint
         if (!endpoint) return toast.show({ message: "The server endpoint is unavailable", variant: "error" })
         try {
-          const response = await fetch(new URL(`/design/session/${encodeURIComponent(route.sessionID)}/link`, endpoint.url), {
-            headers: endpoint.headers,
-          })
+          const response = await fetch(
+            new URL(`/design/session/${encodeURIComponent(route.sessionID)}/link`, endpoint.url),
+            {
+              headers: endpoint.headers,
+            },
+          )
           if (!response.ok) throw new Error(`Unable to open Design review: HTTP ${response.status}`)
           const link: unknown = await response.json()
           if (!isRecord(link) || typeof link.url !== "string") throw new Error("The Design review link is invalid")
@@ -1635,9 +1666,7 @@ export function Session(props: {
                   onMouseOut={() => setLatestHovered(false)}
                   onMouseUp={toBottom}
                 >
-                  <text
-                    fg={latestHovered() ? theme.text.action.secondary.hovered : theme.text.action.secondary.base}
-                  >
+                  <text fg={latestHovered() ? theme.text.action.secondary.hovered : theme.text.action.secondary.base}>
                     Jump to latest ↓
                   </text>
                 </box>
@@ -1682,12 +1711,7 @@ export function Session(props: {
                     }}
                   </Show>
                 </Match>
-                <Match
-                  when={
-                    session() &&
-                    currentLocation.error?.location.directory === session()!.location.directory
-                  }
-                >
+                <Match when={session() && currentLocation.error?.location.directory === session()!.location.directory}>
                   <SessionLocationMissing
                     directory={session()!.location.directory}
                     projectID={session()!.projectID}
@@ -2959,9 +2983,7 @@ function BlockTool(props: BlockToolProps) {
               <Show
                 when={props.spinner}
                 fallback={
-                  <text
-                    fg={permission() ? theme.text.feedback.warning.base : (props.headerColor ?? theme.text.muted)}
-                  >
+                  <text fg={permission() ? theme.text.feedback.warning.base : (props.headerColor ?? theme.text.muted)}>
                     {title()}
                   </text>
                 }
@@ -3149,11 +3171,7 @@ function ShellDisplay(props: {
           <Show
             when={isRunning()}
             fallback={
-              <text
-                fg={theme.text.base}
-                wrapMode={expanded() ? "word" : "char"}
-                maxHeight={expanded() ? undefined : 2}
-              >
+              <text fg={theme.text.base} wrapMode={expanded() ? "word" : "char"} maxHeight={expanded() ? undefined : 2}>
                 {limitedInput()}
               </text>
             }

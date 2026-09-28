@@ -5,6 +5,7 @@ import { Session } from "@opencode/schema/session"
 import { Credential } from "@opencode/schema/credential"
 import { SessionStats } from "@opencode/schema/session-stats"
 import { UsageMirror } from "@opencode/schema/usage-mirror"
+import { SessionTodo } from "@opencode/schema/session-todo"
 import { SessionGoal } from "@opencode/schema/session-goal"
 import { Design } from "@opencode/schema/design"
 import { InstructionEntry } from "@opencode/schema/instruction-entry"
@@ -375,6 +376,19 @@ export const makeSessionGroup = <I extends HttpApiMiddleware.AnyId, S, FormI ext
           summary: "Restore imported Console share provenance",
           description:
             "Associate an imported share with its Console credential and organization, then verify it by synchronizing.",
+        }),
+      ),
+    )
+    .add(
+      HttpApiEndpoint.get("session.todo.list", "/api/session/:sessionID/todo", {
+        params: { sessionID: Session.ID },
+        success: Schema.Struct({ data: Schema.Array(SessionTodo.Info) }),
+        error: SessionNotFoundError,
+      }).annotateMerge(
+        OpenApi.annotations({
+          identifier: "session.todo.list",
+          summary: "List session tasks",
+          description: "Read persisted Redcode tasks, including blockers and completion evidence.",
         }),
       ),
     )

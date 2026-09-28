@@ -20,6 +20,7 @@ test.each(["dark", "light"] as const)("Redcode preserves brand and agent identit
 test("a custom theme still controls categorical colors", () => {
   const source = structuredClone(allThemes().redcode)
   const document = parseTheme(source)
+  if (!document.dark) throw new Error("Redcode must provide dark mode")
   const theme = resolveThemeDocument({ ...document, dark: { ...document.dark, categorical: ["green"] } }, "dark")
   expect(theme.categorical).toHaveLength(1)
   expect(theme.categorical[0][200].equals(RGBA.fromHex("#7fd88f"))).toBe(true)

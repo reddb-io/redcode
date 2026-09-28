@@ -1,4 +1,5 @@
 import { Session } from "@opencode/core/session"
+import { SessionTodoStore } from "@opencode/core/session/todo-store"
 import { SessionGoal } from "@opencode/core/session/goal"
 import { DesignStore } from "@opencode/core/design/store"
 import { DesignConversations } from "@opencode/core/design/conversations"
@@ -236,6 +237,14 @@ export const SessionHandler = HttpApiBuilder.group(Api, "server.session", (handl
               .rebind(ctx.params.sessionID, ctx.payload.credentialID, ctx.payload.orgID)
               .pipe(Effect.mapError((error) => new InvalidRequestError({ message: error.message }))),
           }
+        }),
+      )
+      .handle(
+        "session.todo.list",
+        Effect.fn(function* (ctx) {
+          yield* session.get(ctx.params.sessionID).pipe(Effect.catchTag("Session.NotFoundError", missingSession))
+          const todos = yield* SessionTodoStore.Service
+          return { data: yield* todos.get(ctx.params.sessionID) }
         }),
       )
       .handle(

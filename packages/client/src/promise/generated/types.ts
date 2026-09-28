@@ -167,6 +167,24 @@ export type SessionMessageIdle = {
 
 export type SessionActive = { type: "running" }
 
+export type TodoSource = {
+  type: "request" | "plan"
+  id: string
+  quote: string
+  created: number
+  key?: string
+  paraphrase?: string
+}
+
+export type TodoEvidence = {
+  callID: string
+  messageID: string
+  explanation: string
+  tool: string
+  hash: string
+  observed: number
+}
+
 export type SessionGoalEvidence = { path: string; hash: string; bytes: number }
 
 export type DesignFeedEvent =
@@ -802,6 +820,21 @@ export type SessionMessageCompactionFailed = {
 export type SessionProviderContext = { version: 1; provenance: SessionProviderContextProvenance; messages: JsonValue }
 
 export type ActiveSessionsResponse = { data: { [x: string]: SessionActive } }
+
+export type Todo = {
+  id?: string
+  revision?: number
+  reason?: string
+  legacyStatus?: string
+  source?: TodoSource
+  criterion?: string
+  evidence?: TodoEvidence
+  scopeChange?: { messageID: string; quote: string; created?: number; paraphrase?: string }
+  content: string
+  status: string
+  priority: string
+  closedAt?: number
+}
 
 export type SessionGoalInfo = {
   id: string
@@ -4578,6 +4611,10 @@ export type SessionRebindShareInput = {
 }
 
 export type SessionRebindShareOutput = { data: SessionInfo }["data"]
+
+export type SessionTodoListInput = { readonly sessionID: { readonly sessionID: string }["sessionID"] }
+
+export type SessionTodoListOutput = { data: Array<Todo> }["data"]
 
 export type SessionGoalGetInput = { readonly sessionID: { readonly sessionID: string }["sessionID"] }
 

@@ -6,11 +6,17 @@ import { directory, json } from "./fixture/tui-client"
 test("Redcode setup, intelligence and Design commands reach their production UI without submitting a prompt", async () => {
   await using state = await tmpdir()
   const writes: string[] = []
+  const controls: string[] = []
   const location = { directory, project: { id: "project", directory, canonical: directory } }
   await using setup = await createAppFixture({
     state: state.path,
-    fetch: (url, request) => {
+    fetch: async (url, request) => {
       if (request.method !== "GET") writes.push(url.pathname)
+      if (url.pathname.endsWith("/goal/control")) {
+        const input = (await request.json()) as { action: string }
+        controls.push(input.action)
+        return json({ data: null })
+      }
       if (url.pathname === "/api/agent")
         return json({
           location,
@@ -66,4 +72,16 @@ test("Redcode setup, intelligence and Design commands reach their production UI 
   setup.mockInput.pressEnter()
   await setup.waitForFrame((frame) => frame.includes("Design") && frame.includes("Model"))
   expect(writes).toEqual(["/api/session"])
+  for (const action of ["pause", "resume", "drop"]) {
+    await setup.mockInput.typeText(`/goal-${action}`)
+    setup.mockInput.pressEnter()
+    await setup.waitForFrame(() => controls.includes(action))
+  }
+  await setup.mockInput.typeText("/goal-budget")
+  setup.mockInput.pressEnter()
+  await setup.waitForFrame((frame) => frame.includes("Goal step budget"))
+  await setup.mockInput.typeText("25")
+  setup.mockInput.pressEnter()
+  await setup.waitForFrame(() => controls.includes("budget"))
+  expect(controls).toEqual(["pause", "resume", "drop", "budget"])
 })

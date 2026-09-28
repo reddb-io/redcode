@@ -44,6 +44,8 @@ import type {
   SessionUnshareOutput,
   SessionRebindShareInput,
   SessionRebindShareOutput,
+  SessionTodoListInput,
+  SessionTodoListOutput,
   SessionGoalGetInput,
   SessionGoalGetOutput,
   SessionGoalStartInput,
@@ -565,6 +567,14 @@ const EndpointSessionRebindShare = (raw: RawClient["server.session"]) => (input:
       params: { sessionID: input["sessionID"] },
       payload: { credentialID: input["credentialID"], orgID: input["orgID"] },
     }).pipe(
+      Effect.mapError(mapClientError),
+      Effect.map((value) => value.data),
+    ),
+  )
+
+const EndpointSessionTodoList = (raw: RawClient["server.session"]) => (input: SessionTodoListInput) =>
+  preserveEffect<SessionTodoListOutput>()(
+    raw["session.todo.list"]({ params: { sessionID: input["sessionID"] } }).pipe(
       Effect.mapError(mapClientError),
       Effect.map((value) => value.data),
     ),
@@ -1094,6 +1104,7 @@ const adaptGroupSession = (raw: RawClient["server.session"]) => ({
   share: EndpointSessionShare(raw),
   unshare: EndpointSessionUnshare(raw),
   rebindShare: EndpointSessionRebindShare(raw),
+  todo: { list: EndpointSessionTodoList(raw) },
   goal: {
     get: EndpointSessionGoalGet(raw),
     start: EndpointSessionGoalStart(raw),

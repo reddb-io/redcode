@@ -23,7 +23,7 @@ const suites = {
     "test/worktree.test.ts",
   ],
   cli: ["test/config.test.ts", "test/import-boundaries.test.ts", "test/server-connection.test.ts"],
-  server: ["test/intelligence-history.test.ts", "test/legacy-rpc.test.ts"],
+  server: ["test/intelligence-history.test.ts", "test/legacy-rpc.test.ts", "test/session-tasks.test.ts"],
   tui: [
     "test/redcode-workflows.test.tsx",
     "test/redcode-session.test.tsx",

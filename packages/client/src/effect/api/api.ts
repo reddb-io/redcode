@@ -271,6 +271,50 @@ export type SessionRebindShareOperation<E = never> = (
   input: SessionRebindShareInput,
 ) => Effect.Effect<SessionRebindShareOutput, E>
 
+export type SessionTodoListInput = { readonly sessionID: Session.ID }
+export type SessionTodoListOutput = ReadonlyArray<{
+  readonly id?: string | undefined
+  readonly revision?: number | undefined
+  readonly reason?: string | undefined
+  readonly legacyStatus?: string | undefined
+  readonly source?:
+    | {
+        readonly type: "request" | "plan"
+        readonly id: string
+        readonly quote: string
+        readonly created: number
+        readonly key?: string | undefined
+        readonly paraphrase?: string | undefined
+      }
+    | undefined
+  readonly criterion?: string | undefined
+  readonly evidence?:
+    | {
+        readonly callID: string
+        readonly messageID: string
+        readonly explanation: string
+        readonly tool: string
+        readonly hash: string
+        readonly observed: number
+      }
+    | undefined
+  readonly scopeChange?:
+    | {
+        readonly messageID: string
+        readonly quote: string
+        readonly created?: number | undefined
+        readonly paraphrase?: string | undefined
+      }
+    | undefined
+  readonly content: string
+  readonly status: string
+  readonly priority: string
+  readonly closedAt?: number | undefined
+}>
+export type SessionTodoListOperation<E = never> = (
+  input: SessionTodoListInput,
+) => Effect.Effect<SessionTodoListOutput, E>
+
 export type SessionGoalGetInput = { readonly sessionID: Session.ID }
 export type SessionGoalGetOutput = {
   readonly id: string
@@ -3252,6 +3296,7 @@ export interface SessionApi<E = never> {
   readonly share: SessionShareOperation<E>
   readonly unshare: SessionUnshareOperation<E>
   readonly rebindShare: SessionRebindShareOperation<E>
+  readonly todo: { readonly list: SessionTodoListOperation<E> }
   readonly goal: {
     readonly get: SessionGoalGetOperation<E>
     readonly start: SessionGoalStartOperation<E>

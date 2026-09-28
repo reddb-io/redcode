@@ -24,6 +24,20 @@ test.each([80, 160])("Redcode opens real blank sessions and preserves its sideba
         const input = (await request.clone().json()) as { id: string }
         created.push(input.id)
       }
+      if (/^\/api\/session\/[^/]+\/todo$/.test(url.pathname))
+        return json({
+          data: [
+            { id: "task_pending", content: "Preserve Redcode work", status: "in_progress", priority: "high" },
+            {
+              id: "task_blocked",
+              content: "External verification",
+              status: "blocked",
+              priority: "medium",
+              reason: "Waiting for reviewer",
+            },
+            { id: "task_old", content: "Old completed task", status: "completed", priority: "low", closedAt: 1 },
+          ],
+        })
       if (url.pathname === "/api/agent")
         return json({
           location,
@@ -84,6 +98,8 @@ test.each([80, 160])("Redcode opens real blank sessions and preserves its sideba
   await setup.waitForFrame(
     (frame) => frame.includes("Context") && frame.includes("Workers") && frame.includes("Subagents"),
   )
+  await setup.waitForFrame((frame) => frame.includes("Preserve Redcode work") && frame.includes("Waiting for reviewer"))
+  expect(setup.captureCharFrame()).not.toContain("Old completed task")
   setup.mockInput.pressKey("F7")
   await setup.waitForFrame((frame) => frame.includes("Worker status is unavailable."))
   setup.mockInput.pressKey("F7")
@@ -98,6 +114,7 @@ test("--continue with no prior session opens a blank session", async () => {
     args: { continue: true },
     fetch: (url, request) => {
       if (url.pathname === "/api/session" && request.method === "POST") created++
+      return undefined
     },
   })
   await setup.ready

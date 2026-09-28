@@ -161,7 +161,7 @@ export function createFetch(override?: FetchHandler, events?: ReturnType<typeof 
         }),
         cursor: {},
       })
-    const stored = /^\/api\/session\/([^/]+)(?:\/(message|inbox|permission))?$/.exec(url.pathname)
+    const stored = /^\/api\/session\/([^/]+)(?:\/(message|inbox|permission|todo))?$/.exec(url.pathname)
     if (stored && sessions.has(stored[1])) {
       if (stored[2]) return json({ data: [], cursor: {} })
       return json({ data: sessions.get(stored[1]) })
