@@ -101,7 +101,7 @@ export function SidebarSubagents(props: { sessionID: string }) {
                   <text
                     id={`subagent-kill-${entry.session.id}`}
                     fg={theme.text.action.destructive.base}
-                    backgroundColor={theme.background.action.destructive.base}
+                    bg={theme.background.action.destructive.base}
                     attributes={TextAttributes.UNDERLINE}
                     onMouseUp={() => kill(entry.session.id, withTimestampedFallback(entry.session))}
                   >

@@ -311,9 +311,14 @@ test("the Subagents sidebar steers and interrupts the selected child through V2"
   })
   await setup.ready
   await setup.waitForFrame(() => Boolean(setup.renderer.root.findDescendantById("session-sidebar")))
-  setup.mockInput.pressKey("F7")
-  await setup.waitForFrame((frame) => frame.includes("Worker status is unavailable."))
-  setup.mockInput.pressKey("F7")
+  await setup.mockInput.typeText("/subagents")
+  setup.mockInput.pressEnter()
+  await setup.waitForFrame((frame) => frame.includes("child-model (high)") && frame.includes("steer"))
+  await setup.mockInput.typeText("/context")
+  setup.mockInput.pressEnter()
+  await setup.waitForFrame((frame) => frame.includes("0 tokens") && !frame.includes("child-model (high)"))
+  await setup.mockInput.typeText("/subagents")
+  setup.mockInput.pressEnter()
   await setup.waitForFrame((frame) => frame.includes("child-model (high)") && frame.includes("steer"))
 
   const click = async (id: string) => {

@@ -55,6 +55,7 @@ export async function createAppFixture(
     ...setup,
     events,
     ready: ready.promise,
+    config: () => structuredClone(config.value),
     async [Symbol.asyncDispose]() {
       try {
         if (!setup.renderer.isDestroyed) setup.renderer.destroy()

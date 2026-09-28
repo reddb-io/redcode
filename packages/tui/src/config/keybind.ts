@@ -56,6 +56,8 @@ export const Definitions = {
   "app.toggle.paste_summary": keybind("none", "Toggle paste summary"),
   "command.palette.show": keybind("ctrl+p", "List available commands"),
   "help.show": keybind("none", "Open help dialog"),
+  "context.show": keybind("none", "Open Context sidebar"),
+  "subagents.show": keybind("none", "Open Subagents sidebar"),
   "docs.open": keybind("none", "Open documentation"),
   "opencode.settings": keybind("none", "Open settings"),
   "server.pair": keybind("none", "Pair device"),

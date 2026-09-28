@@ -1206,6 +1206,7 @@ export function Session(props: {
       })(),
       id: "session.toggle.thinking",
       group: "Session",
+      slash: { name: "thinking", aliases: ["toggle-thinking"] },
       palette: undefined,
       run: () => {
         void configState
@@ -1234,6 +1235,7 @@ export function Session(props: {
       title: showTimestamps() ? "Hide timestamps" : "Show timestamps",
       id: "session.toggle.timestamps",
       group: "Session",
+      slash: { name: "timestamps", aliases: ["toggle-timestamps"] },
       palette: undefined,
       run: () => {
         void configState

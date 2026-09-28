@@ -220,6 +220,18 @@ export function SessionFrame(props: { sessionID: string; verticalTabsWidth: numb
   Keymap.createLayer(() => ({
     mode: "global",
     commands: [
+      ...(["context", "subagents"] as const).map((tab) => ({
+        id: `${tab}.show`,
+        title: tab === "context" ? "Open Context" : "Open Subagents",
+        group: "Session",
+        palette: true as const,
+        slash: { name: tab },
+        run: () => {
+          selectSidebarTab(tab)
+          if (rightPane() !== "sidebar") toggleSidebar()
+          dialog.clear()
+        },
+      })),
       {
         id: "session.sidebar.toggle",
         title: rightPane() === "sidebar" ? "Hide sidebar" : "Show sidebar",

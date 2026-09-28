@@ -31,6 +31,13 @@ exposes open/steer/kill actions; the V2 adapter must call prompt admission with
 `delivery: "steer"` and `session.interrupt` for the selected child, keeping
 the child's existing model and agent selection.
 
+The command comparison also found `/thinking` redirected to model effort. It is
+restored as the historical reasoning display toggle; `/variants` and `/effort`
+retain model effort selection. `/context`, `/subagents` and `/timestamps` are
+restored to their existing V2 controllers. The `goal-*` aliases are registered
+dynamically. `/budget` and the complete historical `/pending` management dialog
+still require adaptation; a queued-prompt dock alone does not replace `/pending`.
+
 ## Experience to preserve
 
 - Redcode product identity throughout launch, the terminal, setup, and updates.

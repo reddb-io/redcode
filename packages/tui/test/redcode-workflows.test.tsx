@@ -3,6 +3,24 @@ import { createAppFixture } from "./fixture/app"
 import { tmpdir } from "./fixture/fixture"
 import { directory, json } from "./fixture/tui-client"
 
+test("historical thinking and timestamp commands change display preferences", async () => {
+  await using state = await tmpdir()
+  await using setup = await createAppFixture({ state: state.path })
+  await setup.ready
+  await setup.waitForFrame(() => Boolean(setup.renderer.root.findDescendantById("session-pane")))
+  for (const [command, field, expected] of [
+    ["/thinking", "thinking", "show"],
+    ["/toggle-thinking", "thinking", "hide"],
+    ["/timestamps", "timestamps", "show"],
+    ["/toggle-timestamps", "timestamps", "hide"],
+  ] as const) {
+    await setup.mockInput.typeText(command)
+    setup.mockInput.pressEnter()
+    await setup.waitForFrame(() => setup.config().session?.[field] === expected)
+    expect(setup.captureCharFrame()).not.toContain("No variants available")
+  }
+})
+
 test("Redcode setup, intelligence and Design commands reach their production UI without submitting a prompt", async () => {
   await using state = await tmpdir()
   const writes: string[] = []

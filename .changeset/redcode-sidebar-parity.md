@@ -9,3 +9,5 @@ Preserve the empty Context summary and separate project/worktree/branch lines, w
 Restore the Todo title, bracketed task markers and status colors, the original section order, and collapse controls only for lists with more than two entries.
 
 Restore subagent model details and open/steer/kill controls using V2 prompt admission and interruption, including confirmation before stopping a child.
+
+Restore /context, /subagents, /thinking and /timestamps. Keep /thinking as the display toggle; model effort remains available through /variants and /effort.
