@@ -20,7 +20,6 @@ it.live(
           models: { fetch: false },
           config: {
             project: false,
-            global: false,
             content: JSON.stringify({
               hooks: {
                 UserPromptSubmit: [
@@ -35,7 +34,11 @@ it.live(
           },
           password: "secret",
         },
-        { overrides: [Global.node.replace(Global.layerWith({ state: `${tmp.path}/state` }))] },
+        {
+          overrides: [
+            Global.node.replace(Global.layerWith({ state: `${tmp.path}/state`, config: `${tmp.path}/config` })),
+          ],
+        },
       )
       const location = `?location[directory]=${encodeURIComponent(tmp.path)}`
       const headers = { authorization: `Basic ${btoa("opencode:secret")}`, "content-type": "application/json" }

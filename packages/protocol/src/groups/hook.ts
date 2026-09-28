@@ -1,8 +1,8 @@
 import { Hook } from "@opencode/schema/hook"
 import { Location } from "@opencode/schema/location"
 import { HttpApiEndpoint, HttpApiGroup, OpenApi } from "effect/unstable/httpapi"
-import { InvalidRequestError } from "../errors"
-import { LocationQuery, locationQueryOpenApi } from "./location"
+import { InvalidRequestError } from "../errors.js"
+import { LocationQuery, locationQueryOpenApi } from "./location.js"
 
 export const HookGroup = HttpApiGroup.make("server.hook")
   .add(

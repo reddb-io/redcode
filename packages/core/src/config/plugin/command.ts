@@ -10,6 +10,7 @@ import path from "path"
 import { Effect, Option, PubSub, Schema, Stream } from "effect"
 import { ChildProcess } from "effect/unstable/process"
 import { Agent } from "../../agent.js"
+import { HookRuntime } from "../../hook.js"
 import { Config } from "../../config.js"
 import { Location } from "../../location.js"
 import { Session } from "../../session.js"
@@ -24,6 +25,7 @@ export const Plugin = define({
   id: "opencode.config.command",
   effect: Effect.fn(function* (ctx) {
     const config = yield* Config.Service
+    const hooks = yield* HookRuntime.Service
     const fs = yield* FSUtil.Service
     const loadEntry = Effect.fnUntraced(function* (entry: Entry) {
       if (entry.type === "document") return [{ commands: entry.info.commands }]
@@ -104,10 +106,19 @@ export const Plugin = define({
                     agent: selected.id,
                     model: model ?? selected.info?.model ?? parent.model,
                   })
+                  const start = yield* hooks.run({
+                    event: "SubagentStart",
+                    matcher: selected.id,
+                    session_id: parent.id,
+                    agent_id: child.id,
+                    agent_type: selected.id,
+                  })
                   yield* sessions.prompt({
                     ...input.prompt,
                     sessionID: child.id,
-                    text: ["You are a subagent spawned by another session.", text].join("\n"),
+                    text: ["You are a subagent spawned by another session.", text, start.additionalContext]
+                      .filter(Boolean)
+                      .join("\n"),
                     resume: false,
                   })
                   const recovery = {

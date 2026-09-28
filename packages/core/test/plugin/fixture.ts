@@ -9,6 +9,7 @@ import { LayerNode } from "@opencode/util/effect/layer-node"
 import { Bus } from "@opencode/core/bus"
 import { FileSystem } from "@opencode/core/filesystem"
 import { FSUtil } from "@opencode/util/fs-util"
+import { HookRuntime } from "@opencode/core/hook"
 import { Form } from "@opencode/core/form"
 import { Generate } from "@opencode/core/generate"
 import { Integration } from "@opencode/core/integration"
@@ -98,6 +99,7 @@ export const PluginTestLayer = AppNodeBuilder.build(
     LocationServiceMap.node,
     Permission.node,
     PluginHooks.node,
+    HookRuntime.node,
     Reference.node,
     Rpc.node,
     Skill.node,

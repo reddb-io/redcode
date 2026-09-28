@@ -30,6 +30,7 @@ import { Session } from "@opencode/core/session"
 import { toLLMMessages } from "@opencode/core/session/runner/to-llm-message"
 import { PluginHooks } from "@opencode/core/plugin/hooks"
 import { Tool } from "@opencode/core/tool"
+import { offlineModels } from "./fixture/models"
 import { tempLocationLayer } from "./fixture/location"
 import { makeLocationNode } from "@opencode/util/effect/app-node"
 import { testEffect } from "./lib/effect"
@@ -76,6 +77,7 @@ const testLayer = AppNodeBuilder.build(
     Image.node,
   ]),
   [
+    offlineModels,
     Project.node.replace(globalProjectNode),
     SessionExecution.node.replace(SessionExecution.noopLayer),
     Location.node.replace(tempLocationLayer),

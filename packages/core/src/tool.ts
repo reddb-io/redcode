@@ -146,8 +146,18 @@ const layer = Layer.effect(
         tool_name: HookRuntime.toolName(name),
         tool_input: event.input,
       })
-      if (!output.continue || output.decision === "deny")
-        return yield* new Tool.Error({ message: output.reason ?? "Tool use denied by hook" })
+      if (!output.continue || output.decision === "deny") {
+        const reason = output.reason ?? "Tool use denied by hook"
+        yield* lifecycle.run({
+          event: "PostToolUseFailure",
+          matcher: HookRuntime.toolName(name),
+          session_id: context.sessionID,
+          tool_name: HookRuntime.toolName(name),
+          tool_input: output.updatedInput ?? event.input,
+          error: reason,
+        })
+        return yield* new Tool.Error({ message: reason })
+      }
       return { ...event, input: output.updatedInput ?? event.input }
     })
 
