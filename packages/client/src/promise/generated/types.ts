@@ -632,6 +632,17 @@ export type LSPDiagnostic = {
 
 export type FormatterStatus = { name: string; extensions: Array<string>; enabled: boolean }
 
+export type IntelligenceAnswer =
+  | { type: "noul"; noul: number }
+  | { type: "choice"; choice: string; probabilities: { [x: string]: number }; confidence: number }
+  | {
+      type: "score"
+      score: number
+      legend: { [x: string]: JsonValue }
+      probabilities: { [x: string]: number }
+      confidence: number
+    }
+
 export type IntelligenceReasoning = "single" | "dual"
 
 export type IntelligenceEvaluator = {
@@ -2019,6 +2030,56 @@ export type FileSystemMatch = {
   submatches: Array<FileSystemSubmatch>
 }
 
+export type IntelligenceEvaluation = {
+  id: string
+  fingerprint: string
+  sessionID: string
+  operation:
+    | "prompt_classification"
+    | "response_quality"
+    | "tool_usage"
+    | "task_quality"
+    | "todos"
+    | "plan"
+    | "feedback"
+    | "design_completion"
+    | "compaction"
+    | "compact_now"
+    | "task_completion"
+    | "goal_completion"
+    | "subagent_brief"
+    | "session_progress"
+    | "subagent_result"
+    | "design_target"
+    | "design_system_detect"
+    | "goal_command"
+  kind?: "classification" | "gate"
+  subjectID?: string
+  candidateID?: string
+  attempt?: number
+  policy: string
+  decision: "accepted" | "needs_revision" | "inconclusive" | "unavailable"
+  model: string
+  answers: { [x: string]: IntelligenceAnswer }
+  issues: Array<string>
+  created: number
+  duration: number
+  evaluator?: {
+    transport:
+      | "opencode-zen"
+      | "openrouter"
+      | "typesafe"
+      | "red-router"
+      | "cloudflare-ai-gateway"
+      | "vercel"
+      | "vivgrid"
+      | "nano-gpt"
+    baseURL: string
+    model: string
+  }
+  usage: { input_tokens: number; output_tokens: number }
+}
+
 export type IntelligenceSettings = {
   enabled: boolean
   reasoning?: IntelligenceReasoning
@@ -3297,6 +3358,15 @@ export type PluginUpdateInput = {
 }
 
 export type PluginUpdateOutput = void
+
+export type SessionDesignConversationsInput = { readonly directory: { readonly directory: string }["directory"] }
+
+export type SessionDesignConversationsOutput = Array<{
+  sessionID: string
+  title: string
+  updated: number
+  designs: Array<{ id: string; name: string; revision: string | null; approvedRevision: string | null; ended: boolean }>
+}>
 
 export type SessionListInput = {
   readonly limit?: {
@@ -9376,6 +9446,13 @@ export type RedskilledWorkerSteerStatusOutput = {
   location: LocationPublicRef
   data: { worker: string; status: "none" | "pending" | "consumed"; iteration?: number }
 }
+
+export type ServerIntelligenceHistoryInput = {
+  readonly sessionID: { readonly sessionID: string; readonly limit?: number | undefined }["sessionID"]
+  readonly limit?: { readonly sessionID: string; readonly limit?: number | undefined }["limit"]
+}
+
+export type ServerIntelligenceHistoryOutput = Array<IntelligenceEvaluation>
 
 export type ServerIntelligenceStatusOutput = IntelligenceStatus
 

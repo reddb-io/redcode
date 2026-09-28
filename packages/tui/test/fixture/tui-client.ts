@@ -132,6 +132,14 @@ export function createFetch(override?: FetchHandler, events?: ReturnType<typeof 
         location: { directory, project: { id: "proj_test", directory: worktree, canonical: worktree } },
         data: { resources: [], templates: [] },
       })
+    if (url.pathname === "/api/experimental/intelligence")
+      return json({
+        settings: { enabled: true, reasoning: "single", onboarding: "completed" },
+        environment: "",
+        evaluators: [],
+        effective: { reasoning: "single", source: "config" },
+      })
+    if (url.pathname === "/api/experimental/intelligence/history") return json([])
     if (url.pathname === "/api/session") return json({ data: [], cursor: {} })
     if (url.pathname === "/api/config") return json([])
     if (url.pathname === "/api/session/active") return json({ data: {} })

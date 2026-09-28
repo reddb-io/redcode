@@ -1,8 +1,28 @@
 import { Intelligence } from "@opencode/schema/intelligence"
+import { Session } from "@opencode/schema/session"
+import { Schema } from "effect"
 import { HttpApiEndpoint, HttpApiGroup, OpenApi } from "effect/unstable/httpapi"
 import { InvalidRequestError } from "../errors.js"
 
 export const IntelligenceGroup = HttpApiGroup.make("server.intelligence")
+  .add(
+    HttpApiEndpoint.get("intelligence.history", "/api/experimental/intelligence/history", {
+      query: {
+        sessionID: Session.ID,
+        limit: Schema.NumberFromString.check(Schema.isInt(), Schema.isBetween({ minimum: 1, maximum: 100 })).pipe(
+          Schema.optional,
+        ),
+      },
+      success: Schema.Array(Intelligence.Evaluation),
+      error: InvalidRequestError,
+    }).annotateMerge(
+      OpenApi.annotations({
+        identifier: "experimental.intelligence.history",
+        summary: "Read session evaluations",
+        description: "Read the most recent persisted System One evaluations for a session.",
+      }),
+    ),
+  )
   .add(
     HttpApiEndpoint.get("intelligence.status", "/api/experimental/intelligence", {
       success: Intelligence.Status,

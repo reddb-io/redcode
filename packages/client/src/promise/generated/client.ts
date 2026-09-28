@@ -16,6 +16,8 @@ import type {
   PluginCheckOutput,
   PluginUpdateInput,
   PluginUpdateOutput,
+  SessionDesignConversationsInput,
+  SessionDesignConversationsOutput,
   SessionListInput,
   SessionListOutput,
   SessionStatsInput,
@@ -339,6 +341,8 @@ import type {
   RedskilledWorkerSteerOutput,
   RedskilledWorkerSteerStatusInput,
   RedskilledWorkerSteerStatusOutput,
+  ServerIntelligenceHistoryInput,
+  ServerIntelligenceHistoryOutput,
   ServerIntelligenceStatusOutput,
   ServerIntelligenceSaveInput,
   ServerIntelligenceSaveOutput,
@@ -614,6 +618,194 @@ export function make(options: ClientOptions) {
         ),
     },
     session: {
+      design: {
+        conversations: (input: SessionDesignConversationsInput, requestOptions?: RequestOptions) =>
+          request<SessionDesignConversationsOutput>(
+            {
+              method: "GET",
+              path: `/api/experimental/design/conversations`,
+              query: { directory: input["directory"] },
+              successStatus: 200,
+              declaredStatuses: [400, 401],
+              empty: false,
+            },
+            requestOptions,
+          ),
+        feed: (
+          input: SessionDesignFeedInput,
+          requestOptions?: RequestOptions,
+        ): AsyncIterable<SessionDesignFeedOutput> =>
+          sse<SessionDesignFeedOutput>(
+            {
+              method: "GET",
+              path: `/api/experimental/session/${encodeURIComponent(input.sessionID)}/design/feed`,
+              query: { after: input["after"] },
+              successStatus: 200,
+              declaredStatuses: [400, 401, 404],
+              empty: false,
+            },
+            requestOptions,
+          ),
+        list: (input: SessionDesignListInput, requestOptions?: RequestOptions) =>
+          request<{ readonly data: SessionDesignListOutput }>(
+            {
+              method: "GET",
+              path: `/api/experimental/session/${encodeURIComponent(input.sessionID)}/design`,
+              successStatus: 200,
+              declaredStatuses: [400, 401, 404],
+              empty: false,
+            },
+            requestOptions,
+          ).then((value) => value.data),
+        create: (input: SessionDesignCreateInput, requestOptions?: RequestOptions) =>
+          request<{ readonly data: SessionDesignCreateOutput }>(
+            {
+              method: "POST",
+              path: `/api/experimental/session/${encodeURIComponent(input.sessionID)}/design`,
+              body: {
+                name: input["name"],
+                journey: input["journey"],
+                engine: input["engine"],
+                kind: input["kind"],
+                application: input["application"],
+                target: input["target"],
+                platform: input["platform"],
+              },
+              successStatus: 200,
+              declaredStatuses: [400, 401, 404],
+              empty: false,
+            },
+            requestOptions,
+          ).then((value) => value.data),
+        get: (input: SessionDesignGetInput, requestOptions?: RequestOptions) =>
+          request<{ readonly data: SessionDesignGetOutput }>(
+            {
+              method: "GET",
+              path: `/api/experimental/session/${encodeURIComponent(input.sessionID)}/design/${encodeURIComponent(input.designID)}`,
+              successStatus: 200,
+              declaredStatuses: [400, 401, 404],
+              empty: false,
+            },
+            requestOptions,
+          ).then((value) => value.data),
+        jobs: (input: SessionDesignJobsInput, requestOptions?: RequestOptions) =>
+          request<{ readonly data: SessionDesignJobsOutput }>(
+            {
+              method: "GET",
+              path: `/api/experimental/session/${encodeURIComponent(input.sessionID)}/design/${encodeURIComponent(input.designID)}/jobs`,
+              successStatus: 200,
+              declaredStatuses: [400, 401, 404],
+              empty: false,
+            },
+            requestOptions,
+          ).then((value) => value.data),
+        update: (input: SessionDesignUpdateInput, requestOptions?: RequestOptions) =>
+          request<{ readonly data: SessionDesignUpdateOutput }>(
+            {
+              method: "PATCH",
+              path: `/api/experimental/session/${encodeURIComponent(input.sessionID)}/design/${encodeURIComponent(input.designID)}`,
+              body: {
+                notes: input["notes"],
+                by: input["by"],
+                controls: input["controls"],
+                presets: input["presets"],
+                name: input["name"],
+                target: input["target"],
+                platform: input["platform"],
+                brief: input["brief"],
+                decisions: input["decisions"],
+                questions: input["questions"],
+                scenarios: input["scenarios"],
+                targets: input["targets"],
+                designSystem: input["designSystem"],
+                entry: input["entry"],
+                tweaks: input["tweaks"],
+              },
+              successStatus: 200,
+              declaredStatuses: [400, 401, 404],
+              empty: false,
+            },
+            requestOptions,
+          ).then((value) => value.data),
+        refresh: (input: SessionDesignRefreshInput, requestOptions?: RequestOptions) =>
+          request<{ readonly data: SessionDesignRefreshOutput }>(
+            {
+              method: "POST",
+              path: `/api/experimental/session/${encodeURIComponent(input.sessionID)}/design/${encodeURIComponent(input.designID)}/refresh`,
+              successStatus: 200,
+              declaredStatuses: [400, 401, 404],
+              empty: false,
+            },
+            requestOptions,
+          ).then((value) => value.data),
+        approve: (input: SessionDesignApproveInput, requestOptions?: RequestOptions) =>
+          request<{ readonly data: SessionDesignApproveOutput }>(
+            {
+              method: "POST",
+              path: `/api/experimental/session/${encodeURIComponent(input.sessionID)}/design/${encodeURIComponent(input.designID)}/approve`,
+              body: { revision: input["revision"], variant: input["variant"] },
+              successStatus: 200,
+              declaredStatuses: [400, 401, 404],
+              empty: false,
+            },
+            requestOptions,
+          ).then((value) => value.data),
+        reopen: (input: SessionDesignReopenInput, requestOptions?: RequestOptions) =>
+          request<{ readonly data: SessionDesignReopenOutput }>(
+            {
+              method: "POST",
+              path: `/api/experimental/session/${encodeURIComponent(input.sessionID)}/design/${encodeURIComponent(input.designID)}/reopen`,
+              successStatus: 200,
+              declaredStatuses: [400, 401, 404],
+              empty: false,
+            },
+            requestOptions,
+          ).then((value) => value.data),
+        revisions: (input: SessionDesignRevisionsInput, requestOptions?: RequestOptions) =>
+          request<{ readonly data: SessionDesignRevisionsOutput }>(
+            {
+              method: "GET",
+              path: `/api/experimental/session/${encodeURIComponent(input.sessionID)}/design/${encodeURIComponent(input.designID)}/revisions`,
+              successStatus: 200,
+              declaredStatuses: [400, 401, 404],
+              empty: false,
+            },
+            requestOptions,
+          ).then((value) => value.data),
+        feedback: (input: SessionDesignFeedbackInput, requestOptions?: RequestOptions) =>
+          request<{ readonly data: SessionDesignFeedbackOutput }>(
+            {
+              method: "GET",
+              path: `/api/experimental/session/${encodeURIComponent(input.sessionID)}/design/${encodeURIComponent(input.designID)}/feedback`,
+              successStatus: 200,
+              declaredStatuses: [400, 401, 404],
+              empty: false,
+            },
+            requestOptions,
+          ).then((value) => value.data),
+        assets: (input: SessionDesignAssetsInput, requestOptions?: RequestOptions) =>
+          request<{ readonly data: SessionDesignAssetsOutput }>(
+            {
+              method: "GET",
+              path: `/api/experimental/session/${encodeURIComponent(input.sessionID)}/design/${encodeURIComponent(input.designID)}/assets`,
+              successStatus: 200,
+              declaredStatuses: [400, 401, 404],
+              empty: false,
+            },
+            requestOptions,
+          ).then((value) => value.data),
+        revision: (input: SessionDesignRevisionInput, requestOptions?: RequestOptions) =>
+          request<{ readonly data: SessionDesignRevisionOutput }>(
+            {
+              method: "GET",
+              path: `/api/experimental/session/${encodeURIComponent(input.sessionID)}/design/${encodeURIComponent(input.designID)}/revisions/${encodeURIComponent(input.revisionID)}`,
+              successStatus: 200,
+              declaredStatuses: [400, 401, 404],
+              empty: false,
+            },
+            requestOptions,
+          ).then((value) => value.data),
+      },
       list: (input?: SessionListInput, requestOptions?: RequestOptions) =>
         request<SessionListOutput>(
           {
@@ -805,182 +997,6 @@ export function make(options: ClientOptions) {
               method: "POST",
               path: `/api/experimental/session/${encodeURIComponent(input.sessionID)}/goal/control`,
               body: { action: input["action"], maxTurns: input["maxTurns"] },
-              successStatus: 200,
-              declaredStatuses: [400, 401, 404],
-              empty: false,
-            },
-            requestOptions,
-          ).then((value) => value.data),
-      },
-      design: {
-        feed: (
-          input: SessionDesignFeedInput,
-          requestOptions?: RequestOptions,
-        ): AsyncIterable<SessionDesignFeedOutput> =>
-          sse<SessionDesignFeedOutput>(
-            {
-              method: "GET",
-              path: `/api/experimental/session/${encodeURIComponent(input.sessionID)}/design/feed`,
-              query: { after: input["after"] },
-              successStatus: 200,
-              declaredStatuses: [400, 401, 404],
-              empty: false,
-            },
-            requestOptions,
-          ),
-        list: (input: SessionDesignListInput, requestOptions?: RequestOptions) =>
-          request<{ readonly data: SessionDesignListOutput }>(
-            {
-              method: "GET",
-              path: `/api/experimental/session/${encodeURIComponent(input.sessionID)}/design`,
-              successStatus: 200,
-              declaredStatuses: [400, 401, 404],
-              empty: false,
-            },
-            requestOptions,
-          ).then((value) => value.data),
-        create: (input: SessionDesignCreateInput, requestOptions?: RequestOptions) =>
-          request<{ readonly data: SessionDesignCreateOutput }>(
-            {
-              method: "POST",
-              path: `/api/experimental/session/${encodeURIComponent(input.sessionID)}/design`,
-              body: {
-                name: input["name"],
-                journey: input["journey"],
-                engine: input["engine"],
-                kind: input["kind"],
-                application: input["application"],
-                target: input["target"],
-                platform: input["platform"],
-              },
-              successStatus: 200,
-              declaredStatuses: [400, 401, 404],
-              empty: false,
-            },
-            requestOptions,
-          ).then((value) => value.data),
-        get: (input: SessionDesignGetInput, requestOptions?: RequestOptions) =>
-          request<{ readonly data: SessionDesignGetOutput }>(
-            {
-              method: "GET",
-              path: `/api/experimental/session/${encodeURIComponent(input.sessionID)}/design/${encodeURIComponent(input.designID)}`,
-              successStatus: 200,
-              declaredStatuses: [400, 401, 404],
-              empty: false,
-            },
-            requestOptions,
-          ).then((value) => value.data),
-        jobs: (input: SessionDesignJobsInput, requestOptions?: RequestOptions) =>
-          request<{ readonly data: SessionDesignJobsOutput }>(
-            {
-              method: "GET",
-              path: `/api/experimental/session/${encodeURIComponent(input.sessionID)}/design/${encodeURIComponent(input.designID)}/jobs`,
-              successStatus: 200,
-              declaredStatuses: [400, 401, 404],
-              empty: false,
-            },
-            requestOptions,
-          ).then((value) => value.data),
-        update: (input: SessionDesignUpdateInput, requestOptions?: RequestOptions) =>
-          request<{ readonly data: SessionDesignUpdateOutput }>(
-            {
-              method: "PATCH",
-              path: `/api/experimental/session/${encodeURIComponent(input.sessionID)}/design/${encodeURIComponent(input.designID)}`,
-              body: {
-                notes: input["notes"],
-                by: input["by"],
-                controls: input["controls"],
-                presets: input["presets"],
-                name: input["name"],
-                target: input["target"],
-                platform: input["platform"],
-                brief: input["brief"],
-                decisions: input["decisions"],
-                questions: input["questions"],
-                scenarios: input["scenarios"],
-                targets: input["targets"],
-                designSystem: input["designSystem"],
-                entry: input["entry"],
-                tweaks: input["tweaks"],
-              },
-              successStatus: 200,
-              declaredStatuses: [400, 401, 404],
-              empty: false,
-            },
-            requestOptions,
-          ).then((value) => value.data),
-        refresh: (input: SessionDesignRefreshInput, requestOptions?: RequestOptions) =>
-          request<{ readonly data: SessionDesignRefreshOutput }>(
-            {
-              method: "POST",
-              path: `/api/experimental/session/${encodeURIComponent(input.sessionID)}/design/${encodeURIComponent(input.designID)}/refresh`,
-              successStatus: 200,
-              declaredStatuses: [400, 401, 404],
-              empty: false,
-            },
-            requestOptions,
-          ).then((value) => value.data),
-        approve: (input: SessionDesignApproveInput, requestOptions?: RequestOptions) =>
-          request<{ readonly data: SessionDesignApproveOutput }>(
-            {
-              method: "POST",
-              path: `/api/experimental/session/${encodeURIComponent(input.sessionID)}/design/${encodeURIComponent(input.designID)}/approve`,
-              body: { revision: input["revision"], variant: input["variant"] },
-              successStatus: 200,
-              declaredStatuses: [400, 401, 404],
-              empty: false,
-            },
-            requestOptions,
-          ).then((value) => value.data),
-        reopen: (input: SessionDesignReopenInput, requestOptions?: RequestOptions) =>
-          request<{ readonly data: SessionDesignReopenOutput }>(
-            {
-              method: "POST",
-              path: `/api/experimental/session/${encodeURIComponent(input.sessionID)}/design/${encodeURIComponent(input.designID)}/reopen`,
-              successStatus: 200,
-              declaredStatuses: [400, 401, 404],
-              empty: false,
-            },
-            requestOptions,
-          ).then((value) => value.data),
-        revisions: (input: SessionDesignRevisionsInput, requestOptions?: RequestOptions) =>
-          request<{ readonly data: SessionDesignRevisionsOutput }>(
-            {
-              method: "GET",
-              path: `/api/experimental/session/${encodeURIComponent(input.sessionID)}/design/${encodeURIComponent(input.designID)}/revisions`,
-              successStatus: 200,
-              declaredStatuses: [400, 401, 404],
-              empty: false,
-            },
-            requestOptions,
-          ).then((value) => value.data),
-        feedback: (input: SessionDesignFeedbackInput, requestOptions?: RequestOptions) =>
-          request<{ readonly data: SessionDesignFeedbackOutput }>(
-            {
-              method: "GET",
-              path: `/api/experimental/session/${encodeURIComponent(input.sessionID)}/design/${encodeURIComponent(input.designID)}/feedback`,
-              successStatus: 200,
-              declaredStatuses: [400, 401, 404],
-              empty: false,
-            },
-            requestOptions,
-          ).then((value) => value.data),
-        assets: (input: SessionDesignAssetsInput, requestOptions?: RequestOptions) =>
-          request<{ readonly data: SessionDesignAssetsOutput }>(
-            {
-              method: "GET",
-              path: `/api/experimental/session/${encodeURIComponent(input.sessionID)}/design/${encodeURIComponent(input.designID)}/assets`,
-              successStatus: 200,
-              declaredStatuses: [400, 401, 404],
-              empty: false,
-            },
-            requestOptions,
-          ).then((value) => value.data),
-        revision: (input: SessionDesignRevisionInput, requestOptions?: RequestOptions) =>
-          request<{ readonly data: SessionDesignRevisionOutput }>(
-            {
-              method: "GET",
-              path: `/api/experimental/session/${encodeURIComponent(input.sessionID)}/design/${encodeURIComponent(input.designID)}/revisions/${encodeURIComponent(input.revisionID)}`,
               successStatus: 200,
               declaredStatuses: [400, 401, 404],
               empty: false,
@@ -2806,6 +2822,18 @@ export function make(options: ClientOptions) {
       },
     },
     "server.intelligence": {
+      history: (input: ServerIntelligenceHistoryInput, requestOptions?: RequestOptions) =>
+        request<ServerIntelligenceHistoryOutput>(
+          {
+            method: "GET",
+            path: `/api/experimental/intelligence/history`,
+            query: { sessionID: input["sessionID"], limit: input["limit"] },
+            successStatus: 200,
+            declaredStatuses: [400, 401],
+            empty: false,
+          },
+          requestOptions,
+        ),
       status: (requestOptions?: RequestOptions) =>
         request<ServerIntelligenceStatusOutput>(
           {

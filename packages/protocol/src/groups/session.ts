@@ -204,6 +204,19 @@ export const makeSessionGroup = <I extends HttpApiMiddleware.AnyId, S, FormI ext
 ) =>
   HttpApiGroup.make("server.session")
     .add(
+      HttpApiEndpoint.get("session.design.conversations", "/api/experimental/design/conversations", {
+        query: { directory: AbsolutePath },
+        success: Schema.Array(Design.Conversation),
+        error: InvalidRequestError,
+      }).annotateMerge(
+        OpenApi.annotations({
+          identifier: "experimental.session.design.conversations",
+          summary: "List Design conversations",
+          description: "List Design sessions and their review state in a directory, newest first.",
+        }),
+      ),
+    )
+    .add(
       HttpApiEndpoint.get("session.list", "/api/session", {
         query: SessionsQuery,
         success: SessionsResponse,
@@ -360,7 +373,8 @@ export const makeSessionGroup = <I extends HttpApiMiddleware.AnyId, S, FormI ext
         OpenApi.annotations({
           identifier: "session.rebindShare",
           summary: "Restore imported Console share provenance",
-          description: "Associate an imported share with its Console credential and organization, then verify it by synchronizing.",
+          description:
+            "Associate an imported share with its Console credential and organization, then verify it by synchronizing.",
         }),
       ),
     )
@@ -454,7 +468,8 @@ export const makeSessionGroup = <I extends HttpApiMiddleware.AnyId, S, FormI ext
           OpenApi.annotations({
             identifier: "experimental.session.design.create",
             summary: "Create Design document",
-            description: "Create an isolated Design prototype for this session and discover its application design system.",
+            description:
+              "Create an isolated Design prototype for this session and discover its application design system.",
           }),
         ),
     )

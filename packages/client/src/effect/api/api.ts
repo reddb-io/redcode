@@ -3,11 +3,11 @@ import type { Effect, Stream } from "effect"
 import type { Location } from "@opencode/schema/location"
 import type { Agent } from "@opencode/schema/agent"
 import type { Plugin } from "@opencode/schema/plugin"
-import type { Session } from "@opencode/schema/session"
 import type { AbsolutePath } from "@opencode/schema/schema"
+import type { Session } from "@opencode/schema/session"
+import type { Brand } from "effect"
 import type { Project } from "@opencode/schema/project"
 import type { RelativePath } from "@opencode/schema/schema"
-import type { Brand } from "effect"
 import type { Model } from "@opencode/schema/model"
 import type { DateTime } from "effect"
 import type { Permission } from "@opencode/schema/permission"
@@ -113,6 +113,23 @@ export interface PluginApi<E = never> {
   readonly check: PluginCheckOperation<E>
   readonly update: PluginUpdateOperation<E>
 }
+
+export type SessionDesignConversationsInput = { readonly directory: AbsolutePath }
+export type SessionDesignConversationsOutput = ReadonlyArray<{
+  readonly sessionID: Session.ID
+  readonly title: string
+  readonly updated: number
+  readonly designs: ReadonlyArray<{
+    readonly id: string & Brand.Brand<"Design.ID">
+    readonly name: string
+    readonly revision: string | null
+    readonly approvedRevision: string | null
+    readonly ended: boolean
+  }>
+}>
+export type SessionDesignConversationsOperation<E = never> = (
+  input: SessionDesignConversationsInput,
+) => Effect.Effect<SessionDesignConversationsOutput, E>
 
 export type SessionListInput = {
   readonly limit?: number | undefined
@@ -3208,6 +3225,22 @@ export type SessionViewOutput = void
 export type SessionViewOperation<E = never> = (input: SessionViewInput) => Effect.Effect<SessionViewOutput, E>
 
 export interface SessionApi<E = never> {
+  readonly design: {
+    readonly conversations: SessionDesignConversationsOperation<E>
+    readonly feed: SessionDesignFeedOperation<E>
+    readonly list: SessionDesignListOperation<E>
+    readonly create: SessionDesignCreateOperation<E>
+    readonly get: SessionDesignGetOperation<E>
+    readonly jobs: SessionDesignJobsOperation<E>
+    readonly update: SessionDesignUpdateOperation<E>
+    readonly refresh: SessionDesignRefreshOperation<E>
+    readonly approve: SessionDesignApproveOperation<E>
+    readonly reopen: SessionDesignReopenOperation<E>
+    readonly revisions: SessionDesignRevisionsOperation<E>
+    readonly feedback: SessionDesignFeedbackOperation<E>
+    readonly assets: SessionDesignAssetsOperation<E>
+    readonly revision: SessionDesignRevisionOperation<E>
+  }
   readonly list: SessionListOperation<E>
   readonly stats: SessionStatsOperation<E>
   readonly usage: { readonly backfill: SessionUsageBackfillOperation<E> }
@@ -3223,21 +3256,6 @@ export interface SessionApi<E = never> {
     readonly get: SessionGoalGetOperation<E>
     readonly start: SessionGoalStartOperation<E>
     readonly control: SessionGoalControlOperation<E>
-  }
-  readonly design: {
-    readonly feed: SessionDesignFeedOperation<E>
-    readonly list: SessionDesignListOperation<E>
-    readonly create: SessionDesignCreateOperation<E>
-    readonly get: SessionDesignGetOperation<E>
-    readonly jobs: SessionDesignJobsOperation<E>
-    readonly update: SessionDesignUpdateOperation<E>
-    readonly refresh: SessionDesignRefreshOperation<E>
-    readonly approve: SessionDesignApproveOperation<E>
-    readonly reopen: SessionDesignReopenOperation<E>
-    readonly revisions: SessionDesignRevisionsOperation<E>
-    readonly feedback: SessionDesignFeedbackOperation<E>
-    readonly assets: SessionDesignAssetsOperation<E>
-    readonly revision: SessionDesignRevisionOperation<E>
   }
   readonly remove: SessionRemoveOperation<E>
   readonly fork: SessionForkOperation<E>
@@ -5274,6 +5292,78 @@ export interface RedskilledApi<E = never> {
   }
 }
 
+export type ServerIntelligenceHistoryInput = { readonly sessionID: Session.ID; readonly limit?: number | undefined }
+export type ServerIntelligenceHistoryOutput = ReadonlyArray<{
+  readonly id: string
+  readonly fingerprint: string
+  readonly sessionID: string
+  readonly operation:
+    | "prompt_classification"
+    | "response_quality"
+    | "tool_usage"
+    | "task_quality"
+    | "todos"
+    | "plan"
+    | "feedback"
+    | "design_completion"
+    | "compaction"
+    | "compact_now"
+    | "task_completion"
+    | "goal_completion"
+    | "subagent_brief"
+    | "session_progress"
+    | "subagent_result"
+    | "design_target"
+    | "design_system_detect"
+    | "goal_command"
+  readonly kind?: "classification" | "gate" | undefined
+  readonly subjectID?: string | undefined
+  readonly candidateID?: string | undefined
+  readonly attempt?: number | undefined
+  readonly policy: string
+  readonly decision: "accepted" | "needs_revision" | "inconclusive" | "unavailable"
+  readonly model: string
+  readonly answers: {
+    readonly [x: string]:
+      | { readonly type: "noul"; readonly noul: number }
+      | {
+          readonly type: "choice"
+          readonly choice: string
+          readonly probabilities: { readonly [x: string]: number }
+          readonly confidence: number
+        }
+      | {
+          readonly type: "score"
+          readonly score: number
+          readonly legend: { readonly [x: string]: Schema.Json }
+          readonly probabilities: { readonly [x: string]: number }
+          readonly confidence: number
+        }
+  }
+  readonly issues: ReadonlyArray<string>
+  readonly created: number
+  readonly duration: number
+  readonly evaluator?:
+    | {
+        readonly transport:
+          | "opencode-zen"
+          | "openrouter"
+          | "typesafe"
+          | "red-router"
+          | "cloudflare-ai-gateway"
+          | "vercel"
+          | "vivgrid"
+          | "nano-gpt"
+        readonly baseURL: string
+        readonly model: string
+      }
+    | undefined
+  readonly usage: { readonly input_tokens: number; readonly output_tokens: number }
+}>
+export type ServerIntelligenceHistoryOperation<E = never> = (
+  input: ServerIntelligenceHistoryInput,
+) => Effect.Effect<ServerIntelligenceHistoryOutput, E>
+
 export type ServerIntelligenceStatusOutput = {
   readonly settings: {
     readonly enabled: boolean
@@ -5503,6 +5593,7 @@ export type ServerIntelligenceProbeOperation<E = never> = (
 ) => Effect.Effect<ServerIntelligenceProbeOutput, E>
 
 export interface ServerIntelligenceApi<E = never> {
+  readonly history: ServerIntelligenceHistoryOperation<E>
   readonly status: ServerIntelligenceStatusOperation<E>
   readonly save: ServerIntelligenceSaveOperation<E>
   readonly discover: ServerIntelligenceDiscoverOperation<E>

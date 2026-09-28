@@ -10,6 +10,7 @@ import Plugins from "../feature-plugins/system/plugins"
 import Storybook from "../feature-plugins/system/storybook"
 import Stats from "../feature-plugins/system/stats"
 import Workers from "../feature-plugins/system/workers"
+import Reasoning from "../feature-plugins/system/reasoning"
 import Latex from "@opencode/latex/plugin"
 import Merman from "@opencode/merman/plugin"
 
@@ -24,6 +25,7 @@ export const builtins = [
   Plugins,
   Stats,
   Workers,
+  Reasoning,
   Merman,
   Latex,
   // The storybook is a development tool; keep its route and palette commands out of

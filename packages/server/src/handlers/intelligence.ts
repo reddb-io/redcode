@@ -9,6 +9,9 @@ export const IntelligenceHandler = HttpApiBuilder.group(Api, "server.intelligenc
     const intelligence = yield* Intelligence.Service
     const invalid = (error: { message: string }) => new InvalidRequestError({ message: error.message })
     return handlers
+      .handle("intelligence.history", (ctx) =>
+        intelligence.history(ctx.query.sessionID, { limit: ctx.query.limit }).pipe(Effect.mapError(invalid)),
+      )
       .handle("intelligence.status", () => intelligence.status().pipe(Effect.mapError(invalid)))
       .handle("intelligence.save", (ctx) => intelligence.save(ctx.payload).pipe(Effect.mapError(invalid)))
       .handle("intelligence.discover", (ctx) => intelligence.discover(ctx.payload).pipe(Effect.mapError(invalid)))

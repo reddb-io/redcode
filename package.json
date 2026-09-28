@@ -32,7 +32,10 @@
     "prepare": "husky",
     "random": "echo 'Random script'",
     "sso": "aws sso login --sso-session=opencode --no-browser",
-    "test": "echo 'do not run tests from root' && exit 1"
+    "test": "echo 'do not run tests from root' && exit 1",
+    "changeset": "bunx @changesets/cli@3.0.3",
+    "release:status": "bun run changeset status",
+    "release:version": "bun run changeset version"
   },
   "workspaces": {
     "packages": [
@@ -140,7 +143,7 @@
   },
   "repository": {
     "type": "git",
-    "url": "https://github.com/anomalyco/opencode"
+    "url": "https://github.com/reddb-io/redcode"
   },
   "license": "MIT",
   "prettier": {

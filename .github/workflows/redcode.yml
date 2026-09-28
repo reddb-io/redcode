@@ -4,8 +4,8 @@ on:
   workflow_dispatch:
     inputs:
       version:
-        description: "Redcode version without the v prefix"
-        required: true
+        description: "Optional expected version; must match the Changesets release plan"
+        required: false
         type: string
       publish:
         description: "Publish verified archives and npm packages"
@@ -14,22 +14,92 @@ on:
         type: boolean
 
 concurrency:
-  group: redcode-${{ inputs.version }}
+  group: redcode-release
   cancel-in-progress: false
 
 permissions:
   contents: read
 
+env:
+  GH_REPO: reddb-io/redcode
+  NPM_CONFIG_REGISTRY: https://registry.npmjs.org
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+
 jobs:
+  plan:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: write
+    outputs:
+      version: ${{ steps.prepare.outputs.version }}
+      sha: ${{ steps.prepare.outputs.sha }}
+    steps:
+      - name: Validate release owner and branch
+        env:
+          EXPECTED_VERSION: ${{ inputs.version }}
+        run: |
+          set -euo pipefail
+          test "$GITHUB_REPOSITORY" = 'reddb-io/redcode'
+          test "$GITHUB_REF" = 'refs/heads/main'
+          if [ -n "$EXPECTED_VERSION" ]; then
+            [[ "$EXPECTED_VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]
+          fi
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
+        with:
+          fetch-depth: 0
+          token: ${{ secrets.RELEASE_PAT || github.token }}
+      - uses: ./.github/actions/setup-bun
+      - name: Prepare Changesets release on main
+        id: prepare
+        env:
+          EXPECTED_VERSION: ${{ inputs.version }}
+          PUBLISH: ${{ inputs.publish }}
+        run: |
+          set -euo pipefail
+          bun run release:status
+          bun run release:version
+          version=$(bun -p 'require("./packages/redcode/package.json").version')
+          [[ "$version" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]
+          if [ -n "$EXPECTED_VERSION" ] && [ "$EXPECTED_VERSION" != "$version" ]; then
+            echo "::error::Changesets selected $version, but the requested version was $EXPECTED_VERSION."
+            exit 1
+          fi
+          bun install --lockfile-only --ignore-scripts
+          if [ "$PUBLISH" = 'true' ]; then
+            git config user.name 'github-actions[bot]'
+            git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+            git add -- .changeset packages/redcode/package.json bun.lock
+            if [ -f packages/redcode/CHANGELOG.md ]; then
+              git add -- packages/redcode/CHANGELOG.md
+            fi
+            if ! git diff --cached --quiet; then
+              HUSKY=0 git commit -m "chore(release): version Redcode $version"
+              HUSKY=0 git push origin HEAD:main
+            fi
+          fi
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+          echo "sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
+          {
+            echo "### Redcode release plan"
+            echo "Version: $version"
+            echo "Commit: $(git rev-parse HEAD)"
+            echo "Publish: $PUBLISH"
+          } >> "$GITHUB_STEP_SUMMARY"
+
   verify:
+    needs: plan
     runs-on: ubuntu-latest
     timeout-minutes: 60
     steps:
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
+        with:
+          ref: ${{ needs.plan.outputs.sha }}
       - uses: ./.github/actions/setup-bun
+      - uses: ./.github/actions/check-workflows
       - name: Validate version
         env:
-          REDCODE_VERSION: ${{ inputs.version }}
+          REDCODE_VERSION: ${{ needs.plan.outputs.version }}
         shell: bash
         run: |
           [[ "$REDCODE_VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]
@@ -40,6 +110,7 @@ jobs:
         run: bun run check:generated
 
   tests:
+    needs: plan
     name: tests (${{ matrix.shard.name }})
     strategy:
       fail-fast: false
@@ -55,6 +126,8 @@ jobs:
     timeout-minutes: 60
     steps:
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
+        with:
+          ref: ${{ needs.plan.outputs.sha }}
       - uses: ./.github/actions/setup-bun
       - name: Install ripgrep for offline Core tests
         run: |
@@ -66,22 +139,50 @@ jobs:
         run: node node_modules/turbo/bin/turbo test ${{ matrix.shard.filters }} --concurrency=2 --continue=always
 
   sidecar:
+    needs: plan
     strategy:
       fail-fast: false
       matrix:
         include:
           - { name: linux-x64, host: ubuntu-latest, target: x86_64-linux-gnu.2.29, file: redcode-rpc-sidecar-linux-x64 }
-          - { name: linux-arm64, host: ubuntu-latest, target: aarch64-linux-gnu.2.29, file: redcode-rpc-sidecar-linux-arm64 }
-          - { name: linux-x64-musl, host: ubuntu-latest, target: x86_64-linux-musl, file: redcode-rpc-sidecar-linux-x64-musl }
-          - { name: linux-arm64-musl, host: ubuntu-latest, target: aarch64-linux-musl, file: redcode-rpc-sidecar-linux-arm64-musl }
-          - { name: windows-x64, host: ubuntu-latest, target: x86_64-windows-gnu, file: redcode-rpc-sidecar-windows-x64.exe }
-          - { name: windows-arm64, host: ubuntu-latest, target: aarch64-windows-gnu, file: redcode-rpc-sidecar-windows-arm64.exe }
+          - {
+              name: linux-arm64,
+              host: ubuntu-latest,
+              target: aarch64-linux-gnu.2.29,
+              file: redcode-rpc-sidecar-linux-arm64,
+            }
+          - {
+              name: linux-x64-musl,
+              host: ubuntu-latest,
+              target: x86_64-linux-musl,
+              file: redcode-rpc-sidecar-linux-x64-musl,
+            }
+          - {
+              name: linux-arm64-musl,
+              host: ubuntu-latest,
+              target: aarch64-linux-musl,
+              file: redcode-rpc-sidecar-linux-arm64-musl,
+            }
+          - {
+              name: windows-x64,
+              host: ubuntu-latest,
+              target: x86_64-windows-gnu,
+              file: redcode-rpc-sidecar-windows-x64.exe,
+            }
+          - {
+              name: windows-arm64,
+              host: ubuntu-latest,
+              target: aarch64-windows-gnu,
+              file: redcode-rpc-sidecar-windows-arm64.exe,
+            }
           - { name: darwin-x64, host: macos-15-intel, target: "", file: redcode-rpc-sidecar-darwin-x64 }
           - { name: darwin-arm64, host: macos-15, target: "", file: redcode-rpc-sidecar-darwin-arm64 }
     runs-on: ${{ matrix.host }}
     timeout-minutes: 35
     steps:
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
+        with:
+          ref: ${{ needs.plan.outputs.sha }}
       - uses: ./.github/actions/setup-bun
         with:
           install-flags: --filter=@reddb-io/redcode-rpc-sidecar
@@ -121,12 +222,15 @@ jobs:
           retention-days: 7
 
   design:
+    needs: plan
     runs-on: ubuntu-latest
     timeout-minutes: 60
     env:
-      REDCODE_DESIGN_APP_VERSION: ${{ inputs.version }}
+      REDCODE_DESIGN_APP_VERSION: ${{ needs.plan.outputs.version }}
     steps:
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
+        with:
+          ref: ${{ needs.plan.outputs.sha }}
       - uses: ./.github/actions/setup-bun
       - name: Build Design app and release archives
         working-directory: packages/design-app
@@ -149,16 +253,18 @@ jobs:
           retention-days: 7
 
   build:
-    needs: sidecar
+    needs: [plan, sidecar]
     runs-on: ubuntu-latest
     timeout-minutes: 60
     env:
-      OPENCODE_VERSION: ${{ inputs.version }}
-      REDCODE_DESIGN_APP_VERSION: ${{ inputs.version }}
+      OPENCODE_VERSION: ${{ needs.plan.outputs.version }}
+      REDCODE_DESIGN_APP_VERSION: ${{ needs.plan.outputs.version }}
       OPENCODE_CHANNEL: latest
       OPENCODE_RELEASE: "1"
     steps:
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
+        with:
+          ref: ${{ needs.plan.outputs.sha }}
       - uses: ./.github/actions/setup-bun
       - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
         with:
@@ -172,6 +278,27 @@ jobs:
           BUN_COMPILE_RELEASE: bun-v1.4.2
           REDCODE_RPC_SIDECAR_DIR: ${{ github.workspace }}/packages/rpc-sidecar/dist/release
         run: bun run build
+      - name: Exercise compiled Redcode CLI and agents
+        shell: bash
+        run: |
+          set -euo pipefail
+          binary=packages/redcode/dist/redcode-linux-x64/bin/redcode
+          test -x "$binary"
+          test "$("$binary" --version)" = "redcode v$OPENCODE_VERSION"
+          "$binary" --help > /tmp/redcode-help.txt
+          grep -F 'Redcode command line interface' /tmp/redcode-help.txt
+          grep -F 'design' /tmp/redcode-help.txt
+          grep -F 'setup' /tmp/redcode-help.txt
+          if grep -F 'OpenCode command line interface' /tmp/redcode-help.txt; then
+            echo 'Redcode binary exposes the upstream product name' >&2
+            exit 1
+          fi
+          REDCODE_TEST_HOME="$(mktemp -d)" timeout 60s "$binary" --standalone debug agents > /tmp/redcode-agents.json
+          bun -e '
+            const agents = await Bun.file("/tmp/redcode-agents.json").json()
+            for (const id of ["build", "plan", "design", "question"])
+              if (!agents.some((agent) => agent.id === id)) throw new Error(`Missing Redcode agent: ${id}`)
+          '
       - name: Archive binaries and sidecars
         working-directory: packages/redcode
         run: bun run archive
@@ -196,13 +323,14 @@ jobs:
 
   publish:
     if: inputs.publish && github.repository == 'reddb-io/redcode' && github.ref == 'refs/heads/main'
-    needs: [verify, tests, build, design]
+    needs: [plan, verify, tests, build, design]
     runs-on: ubuntu-latest
     timeout-minutes: 45
     environment: red-release
     env:
-      OPENCODE_VERSION: ${{ inputs.version }}
-      REDCODE_DESIGN_APP_VERSION: ${{ inputs.version }}
+      OPENCODE_VERSION: ${{ needs.plan.outputs.version }}
+      REDCODE_DESIGN_APP_VERSION: ${{ needs.plan.outputs.version }}
+      REDCODE_RELEASE_SHA: ${{ needs.plan.outputs.sha }}
       OPENCODE_CHANNEL: latest
       OPENCODE_RELEASE: "1"
     permissions:
@@ -211,6 +339,7 @@ jobs:
     steps:
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
         with:
+          ref: ${{ needs.plan.outputs.sha }}
           fetch-depth: 0
           fetch-tags: true
       - uses: ./.github/actions/setup-bun
@@ -230,6 +359,15 @@ jobs:
         with:
           name: redcode-design-release
           path: packages/design-app/dist
+      - name: Extract reviewed release notes
+        run: |
+          bun -e '
+            const version = process.env.OPENCODE_VERSION
+            const changelog = await Bun.file("packages/redcode/CHANGELOG.md").text()
+            const section = changelog.split(/^## /m).find((part) => part.split(/\r?\n/, 1)[0].trim() === version)
+            if (!section) throw new Error(`Missing Changesets release notes for ${version}`)
+            await Bun.write("release-notes.md", `## ${section.trim()}\n`)
+          '
       - name: Prepare Design release
         env:
           GH_TOKEN: ${{ secrets.RELEASE_PAT || github.token }}
@@ -240,10 +378,10 @@ jobs:
           (cd packages/design-app/dist && sha256sum --check SHA256SUMS)
           test "$(bun -e 'console.log((await Bun.file("packages/design-app/dist/manifest.json").json()).version)')" = "$OPENCODE_VERSION"
           if git rev-parse "$tag^{commit}" >/dev/null 2>&1; then
-            test "$(git rev-parse "$tag^{commit}")" = "$GITHUB_SHA"
+            test "$(git rev-parse "$tag^{commit}")" = "$REDCODE_RELEASE_SHA"
           fi
           if ! gh release view "$tag" >/dev/null 2>&1; then
-            gh release create "$tag" --draft --target "$GITHUB_SHA" --title "Redcode Design $tag"
+            gh release create "$tag" --draft --target "$REDCODE_RELEASE_SHA" --title "Redcode Design $tag" --notes-file release-notes.md
           fi
           if [ "$(gh release view "$tag" --json isDraft --jq .isDraft)" = "true" ]; then
             gh release upload "$tag" packages/design-app/dist/*.tar.gz packages/design-app/dist/*.zip packages/design-app/dist/manifest.json packages/design-app/dist/SHA256SUMS --clobber
@@ -256,10 +394,10 @@ jobs:
           set -euo pipefail
           tag="v$OPENCODE_VERSION"
           if git rev-parse "$tag^{commit}" >/dev/null 2>&1; then
-            test "$(git rev-parse "$tag^{commit}")" = "$GITHUB_SHA"
+            test "$(git rev-parse "$tag^{commit}")" = "$REDCODE_RELEASE_SHA"
           fi
           if ! gh release view "$tag" >/dev/null 2>&1; then
-            gh release create "$tag" --draft --target "$GITHUB_SHA" --title "Redcode $tag"
+            gh release create "$tag" --draft --target "$REDCODE_RELEASE_SHA" --title "Redcode $tag" --notes-file release-notes.md
           fi
           if [ "$(gh release view "$tag" --json isDraft --jq .isDraft)" = "true" ]; then
             gh release upload "$tag" packages/redcode/release/* --clobber

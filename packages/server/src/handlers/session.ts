@@ -1,6 +1,7 @@
 import { Session } from "@opencode/core/session"
 import { SessionGoal } from "@opencode/core/session/goal"
 import { DesignStore } from "@opencode/core/design/store"
+import { DesignConversations } from "@opencode/core/design/conversations"
 import { DesignFeed } from "@opencode/core/design/feed"
 import { DesignHandoff } from "@opencode/core/design/handoff"
 import { Design } from "@opencode/schema/design"
@@ -70,10 +71,17 @@ export const SessionHandler = HttpApiBuilder.group(Api, "server.session", (handl
       )
 
     return handlers
+      .handle("session.design.conversations", (ctx) =>
+        DesignConversations.list(ctx.query.directory).pipe(
+          Effect.mapError((error) => new InvalidRequestError({ message: error.message })),
+        ),
+      )
       .handle(
         "session.design.feed",
         Effect.fn(function* (ctx) {
-          const info = yield* session.get(ctx.params.sessionID).pipe(Effect.catchTag("Session.NotFoundError", missingSession))
+          const info = yield* session
+            .get(ctx.params.sessionID)
+            .pipe(Effect.catchTag("Session.NotFoundError", missingSession))
           const active = yield* session.active
           const at = Date.now()
           const initial: Design.FeedEvent[] = [
@@ -117,9 +125,13 @@ export const SessionHandler = HttpApiBuilder.group(Api, "server.session", (handl
         Effect.fn(function* () {
           const usage = yield* SessionUsageMirror.Service
           return {
-            data: yield* usage.backfill().pipe(
-              Effect.mapError((error) => new ServiceUnavailableError({ message: error.message, service: "usage sidecar" })),
-            ),
+            data: yield* usage
+              .backfill()
+              .pipe(
+                Effect.mapError(
+                  (error) => new ServiceUnavailableError({ message: error.message, service: "usage sidecar" }),
+                ),
+              ),
           }
         }),
       )
@@ -198,9 +210,9 @@ export const SessionHandler = HttpApiBuilder.group(Api, "server.session", (handl
         Effect.fn(function* (ctx) {
           yield* session.get(ctx.params.sessionID).pipe(Effect.catchTag("Session.NotFoundError", missingSession))
           return {
-            data: yield* sharing.create(ctx.params.sessionID).pipe(
-              Effect.mapError((error) => new ServiceUnavailableError({ message: error.message })),
-            ),
+            data: yield* sharing
+              .create(ctx.params.sessionID)
+              .pipe(Effect.mapError((error) => new ServiceUnavailableError({ message: error.message }))),
           }
         }),
       )
@@ -209,9 +221,9 @@ export const SessionHandler = HttpApiBuilder.group(Api, "server.session", (handl
         Effect.fn(function* (ctx) {
           yield* session.get(ctx.params.sessionID).pipe(Effect.catchTag("Session.NotFoundError", missingSession))
           return {
-            data: yield* sharing.remove(ctx.params.sessionID).pipe(
-              Effect.mapError((error) => new ServiceUnavailableError({ message: error.message })),
-            ),
+            data: yield* sharing
+              .remove(ctx.params.sessionID)
+              .pipe(Effect.mapError((error) => new ServiceUnavailableError({ message: error.message }))),
           }
         }),
       )
@@ -220,9 +232,9 @@ export const SessionHandler = HttpApiBuilder.group(Api, "server.session", (handl
         Effect.fn(function* (ctx) {
           yield* session.get(ctx.params.sessionID).pipe(Effect.catchTag("Session.NotFoundError", missingSession))
           return {
-            data: yield* sharing.rebind(ctx.params.sessionID, ctx.payload.credentialID, ctx.payload.orgID).pipe(
-              Effect.mapError((error) => new InvalidRequestError({ message: error.message })),
-            ),
+            data: yield* sharing
+              .rebind(ctx.params.sessionID, ctx.payload.credentialID, ctx.payload.orgID)
+              .pipe(Effect.mapError((error) => new InvalidRequestError({ message: error.message }))),
           }
         }),
       )
@@ -318,18 +330,16 @@ export const SessionHandler = HttpApiBuilder.group(Api, "server.session", (handl
         Effect.fn(function* (ctx) {
           const designs = yield* DesignStore.Service
           return {
-            data: yield* designs
-              .create(ctx.params.sessionID, ctx.payload)
-              .pipe(
-                Effect.mapError((error) =>
-                  error.code === "not-found"
-                    ? new SessionNotFoundError({
-                        sessionID: ctx.params.sessionID,
-                        message: error.message,
-                      })
-                    : new InvalidRequestError({ message: error.message }),
-                ),
+            data: yield* designs.create(ctx.params.sessionID, ctx.payload).pipe(
+              Effect.mapError((error) =>
+                error.code === "not-found"
+                  ? new SessionNotFoundError({
+                      sessionID: ctx.params.sessionID,
+                      message: error.message,
+                    })
+                  : new InvalidRequestError({ message: error.message }),
               ),
+            ),
           }
         }),
       )

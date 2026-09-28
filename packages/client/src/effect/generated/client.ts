@@ -22,6 +22,8 @@ import type {
   PluginCheckOutput,
   PluginUpdateInput,
   PluginUpdateOutput,
+  SessionDesignConversationsInput,
+  SessionDesignConversationsOutput,
   SessionListInput,
   SessionListOutput,
   SessionStatsInput,
@@ -341,6 +343,8 @@ import type {
   RedskilledWorkerSteerOutput,
   RedskilledWorkerSteerStatusInput,
   RedskilledWorkerSteerStatusOutput,
+  ServerIntelligenceHistoryInput,
+  ServerIntelligenceHistoryOutput,
   ServerIntelligenceStatusOutput,
   ServerIntelligenceSaveInput,
   ServerIntelligenceSaveOutput,
@@ -438,6 +442,14 @@ const adaptGroupPlugin = (raw: RawClient["server.plugin"]) => ({
   check: EndpointPluginCheck(raw),
   update: EndpointPluginUpdate(raw),
 })
+
+const EndpointSessionDesignConversations =
+  (raw: RawClient["server.session"]) => (input: SessionDesignConversationsInput) =>
+    preserveEffect<SessionDesignConversationsOutput>()(
+      raw["session.design.conversations"]({ query: { directory: input["directory"] } }).pipe(
+        Effect.mapError(mapClientError),
+      ),
+    )
 
 const EndpointSessionList = (raw: RawClient["server.session"]) => (input?: SessionListInput) =>
   preserveEffect<SessionListOutput>()(
@@ -1055,6 +1067,22 @@ const EndpointSessionView = (raw: RawClient["server.session"]) => (input: Sessio
   )
 
 const adaptGroupSession = (raw: RawClient["server.session"]) => ({
+  design: {
+    conversations: EndpointSessionDesignConversations(raw),
+    feed: EndpointSessionDesignFeed(raw),
+    list: EndpointSessionDesignList(raw),
+    create: EndpointSessionDesignCreate(raw),
+    get: EndpointSessionDesignGet(raw),
+    jobs: EndpointSessionDesignJobs(raw),
+    update: EndpointSessionDesignUpdate(raw),
+    refresh: EndpointSessionDesignRefresh(raw),
+    approve: EndpointSessionDesignApprove(raw),
+    reopen: EndpointSessionDesignReopen(raw),
+    revisions: EndpointSessionDesignRevisions(raw),
+    feedback: EndpointSessionDesignFeedback(raw),
+    assets: EndpointSessionDesignAssets(raw),
+    revision: EndpointSessionDesignRevision(raw),
+  },
   list: EndpointSessionList(raw),
   stats: EndpointSessionStats(raw),
   usage: { backfill: EndpointSessionUsageBackfill(raw) },
@@ -1070,21 +1098,6 @@ const adaptGroupSession = (raw: RawClient["server.session"]) => ({
     get: EndpointSessionGoalGet(raw),
     start: EndpointSessionGoalStart(raw),
     control: EndpointSessionGoalControl(raw),
-  },
-  design: {
-    feed: EndpointSessionDesignFeed(raw),
-    list: EndpointSessionDesignList(raw),
-    create: EndpointSessionDesignCreate(raw),
-    get: EndpointSessionDesignGet(raw),
-    jobs: EndpointSessionDesignJobs(raw),
-    update: EndpointSessionDesignUpdate(raw),
-    refresh: EndpointSessionDesignRefresh(raw),
-    approve: EndpointSessionDesignApprove(raw),
-    reopen: EndpointSessionDesignReopen(raw),
-    revisions: EndpointSessionDesignRevisions(raw),
-    feedback: EndpointSessionDesignFeedback(raw),
-    assets: EndpointSessionDesignAssets(raw),
-    revision: EndpointSessionDesignRevision(raw),
   },
   remove: EndpointSessionRemove(raw),
   fork: EndpointSessionFork(raw),
@@ -2044,6 +2057,14 @@ const adaptGroupRedskilled = (raw: RawClient["server.redskilled"]) => ({
   },
 })
 
+const EndpointServerIntelligenceHistory =
+  (raw: RawClient["server.intelligence"]) => (input: ServerIntelligenceHistoryInput) =>
+    preserveEffect<ServerIntelligenceHistoryOutput>()(
+      raw["intelligence.history"]({ query: { sessionID: input["sessionID"], limit: input["limit"] } }).pipe(
+        Effect.mapError(mapClientError),
+      ),
+    )
+
 const EndpointServerIntelligenceStatus = (raw: RawClient["server.intelligence"]) => () =>
   preserveEffect<ServerIntelligenceStatusOutput>()(raw["intelligence.status"]({}).pipe(Effect.mapError(mapClientError)))
 
@@ -2072,6 +2093,7 @@ const EndpointServerIntelligenceProbe =
     )
 
 const adaptGroupServerIntelligence = (raw: RawClient["server.intelligence"]) => ({
+  history: EndpointServerIntelligenceHistory(raw),
   status: EndpointServerIntelligenceStatus(raw),
   save: EndpointServerIntelligenceSave(raw),
   discover: EndpointServerIntelligenceDiscover(raw),

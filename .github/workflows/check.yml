@@ -7,10 +7,18 @@ on:
     branches: [main]
   workflow_dispatch:
 
+permissions:
+  contents: read
+
+concurrency:
+  group: check-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
 jobs:
   check:
     name: typecheck
     runs-on: blacksmith-4vcpu-ubuntu-2404
+    timeout-minutes: 30
     steps:
       - name: Checkout repository
         uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
@@ -18,5 +26,15 @@ jobs:
       - name: Setup Bun
         uses: ./.github/actions/setup-bun
 
+      - uses: ./.github/actions/check-workflows
+
+      - name: Validate Changesets
+        run: bun run release:status
+
       - name: Run checks
         run: bun run check
+
+      - name: Rehearse Changesets version and changelog generation
+        run: |
+          bun run release:version
+          bun install --lockfile-only --ignore-scripts
