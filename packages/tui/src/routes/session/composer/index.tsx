@@ -9,6 +9,7 @@ import { ShellTab } from "./shell-tab"
 import { TerminalsTab } from "./terminals-tab"
 import { useConfig } from "../../../config"
 import { ComposerContext, type ComposerTab } from "./context"
+import { Slot } from "../../../plugin/render"
 
 export { useComposerTab, type ComposerHint } from "./context"
 
@@ -130,6 +131,7 @@ export function Composer(props: ComposerProps) {
               </text>
             </box>
             <SubagentsTab sessionID={props.sessionID} />
+            <Slot path="session.composer.tabs" input={{ sessionID: props.sessionID }} />
             <ShellTab sessionID={props.sessionID} />
             <Show when={config.session.terminal}>
               <TerminalsTab sessionID={props.sessionID} visibleTerminalID={props.visibleTerminalID} />

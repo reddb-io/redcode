@@ -5,7 +5,7 @@ import { directory, json } from "./fixture/tui-client"
 
 const location = { directory, project: { id: "project", directory, canonical: directory } }
 
-test.each([80, 160])("Redcode opens real blank sessions and preserves its sidebar at %i columns", async (width) => {
+test.each([80, 160])("Redcode opens blank sessions with Context and the activity drawer at %i columns", async (width) => {
   await using state = await tmpdir()
   const created: string[] = []
   const writes: string[] = []
@@ -115,9 +115,7 @@ test.each([80, 160])("Redcode opens real blank sessions and preserves its sideba
   expect(writes).toEqual(Array(4).fill("/api/session"))
   expect(setup.captureCharFrame()).not.toContain("█")
   if (width === 80) setup.mockInput.pressKey("F6")
-  await setup.waitForFrame(
-    (frame) => frame.includes("Context") && frame.includes("Workers") && frame.includes("Subagents"),
-  )
+  await setup.waitForFrame((frame) => frame.includes("Context"))
   await setup.waitForFrame((frame) => frame.includes("Preserve Redcode work") && /Waiting\s+for reviewer/.test(frame))
   expect(setup.captureCharFrame()).not.toContain("Old completed task")
   expect(setup.captureCharFrame()).toContain("Todo")
@@ -130,12 +128,16 @@ test.each([80, 160])("Redcode opens real blank sessions and preserves its sideba
   expect(setup.captureCharFrame()).not.toContain("▼ LSP")
   expect(setup.captureCharFrame()).not.toContain("▼ Modified Files")
   expect(setup.captureCharFrame().indexOf("Modified Files")).toBeLessThan(setup.captureCharFrame().indexOf("LSP"))
-  setup.mockInput.pressKey("F7")
-  await setup.waitForFrame((frame) => frame.includes("Worker status is unavailable."))
-  expect(setup.renderer.root.findDescendantById("sidebar.footer.location")).toBeUndefined()
-  setup.mockInput.pressKey("F7")
-  await setup.waitForFrame((frame) => frame.includes("No subagents in this session."))
-  expect(setup.renderer.root.findDescendantById("sidebar.footer.location")).toBeUndefined()
+  await setup.mockInput.typeText("/workers")
+  setup.mockInput.pressEnter()
+  await setup.waitForFrame(
+    (frame) =>
+      frame.includes("Subagents") && frame.includes("Workers") && frame.includes("No worker status available"),
+  )
+  setup.mockInput.pressEscape()
+  await setup.mockInput.typeText("/subagents")
+  setup.mockInput.pressEnter()
+  await setup.waitForFrame((frame) => frame.includes("No active subagents"))
 })
 
 test("--continue with no prior session opens a blank session", async () => {
@@ -314,6 +316,7 @@ test("the Subagents sidebar steers and interrupts the selected child through V2"
   await setup.mockInput.typeText("/subagents")
   setup.mockInput.pressEnter()
   await setup.waitForFrame((frame) => frame.includes("child-model (high)") && frame.includes("steer"))
+  setup.mockInput.pressEscape()
   await setup.mockInput.typeText("/context")
   setup.mockInput.pressEnter()
   await setup.waitForFrame((frame) => frame.includes("0 tokens") && !frame.includes("child-model (high)"))
@@ -354,7 +357,7 @@ test.each([
   { columns: 160, expected: 40 },
   { columns: 240, expected: 44 },
 ])(
-  "sidebar retains its Redcode width and selected tab after reopening at $columns columns",
+  "Context sidebar retains its Redcode width after reopening at $columns columns",
   async ({ columns, expected }) => {
     await using state = await tmpdir()
     const config = {
@@ -379,17 +382,15 @@ test.each([
       await setup.waitForFrame(() => setup.renderer.root.findDescendantById("session-sidebar")?.width === expected)
       setup.mockInput.pressKey("F8")
       await setup.waitForFrame(() => setup.renderer.root.findDescendantById("session-sidebar")?.width === expected + 4)
-      setup.mockInput.pressKey("F7")
-      await setup.waitForFrame((frame) => frame.includes("Worker status is unavailable."))
-      setup.mockInput.pressKey("F7")
-      await setup.waitForFrame((frame) => frame.includes("No subagents in this session."))
+      await setup.mockInput.typeText("/workers")
+      setup.mockInput.pressEnter()
+      await setup.waitForFrame((frame) => frame.includes("No worker status available"))
     }
     {
       await using setup = await createAppFixture({ state: state.path, width: columns, height: 40, config })
       await setup.ready
       await setup.waitForFrame(() => Boolean(setup.renderer.root.findDescendantById("session-pane")))
       if (columns === 80) setup.mockInput.pressKey("F6")
-      await setup.waitForFrame((frame) => frame.includes("No subagents in this session."))
       expect(setup.renderer.root.findDescendantById("session-sidebar")?.width).toBe(expected + 4)
     }
   },

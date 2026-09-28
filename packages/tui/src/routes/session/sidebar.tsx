@@ -1,7 +1,6 @@
 import { useData } from "../../context/data"
-import { createMemo, For, Show } from "solid-js"
+import { createMemo, Show } from "solid-js"
 import { useTheme } from "../../context/theme"
-import { sessionFamily } from "../../util/session"
 import { useConfig } from "../../config"
 import { Slot } from "../../plugin/render"
 import { withTimestampedFallback } from "@opencode/util/session-title-fallback"
@@ -9,23 +8,12 @@ import { TextAttributes } from "@opentui/core"
 import "../../component/title-shimmer"
 
 import { getScrollAcceleration } from "../../util/scroll"
-import { SidebarSubagents } from "./subagent"
 
-export const SIDEBAR_TABS = ["context", "workers", "subagents"] as const
-export type SidebarTab = (typeof SIDEBAR_TABS)[number]
-
-export function Sidebar(props: {
-  sessionID: string
-  width: number
-  overlay?: boolean
-  tab: SidebarTab
-  onTabChange: (tab: SidebarTab) => void
-}) {
+export function Sidebar(props: { sessionID: string; width: number; overlay?: boolean }) {
   const data = useData()
   const theme = useTheme()
   const config = useConfig().data
-  const children = createMemo(() => sessionFamily(data.session.list(), props.sessionID))
-  const session = createMemo(() => data.session.get(props.sessionID))
+  const session = () => data.session.get(props.sessionID)
   const scrollAcceleration = createMemo(() => getScrollAcceleration(config))
 
   return (
@@ -59,67 +47,37 @@ export function Sidebar(props: {
             {withTimestampedFallback(session())}
           </title_shimmer>
         </box>
-        <box flexDirection="row" flexWrap="wrap" gap={1} flexShrink={0} paddingBottom={1}>
-          <For each={SIDEBAR_TABS}>
-            {(item) => (
-              <box flexDirection="row" onMouseUp={() => props.onTabChange(item)}>
-                <text
-                  fg={props.tab === item ? theme.text.action.primary.selected : theme.text.action.secondary.base}
-                  attributes={props.tab === item ? TextAttributes.BOLD : undefined}
-                >
-                  {item[0].toUpperCase() + item.slice(1)}
-                </text>
-                <Show when={item === "subagents" && children().length > 0}>
-                  <text fg={theme.text.muted}>{` (${children().length})`}</text>
-                </Show>
-                <Show when={item === "workers"}>
-                  <Slot path="sidebar.workers.count" input={{ sessionID: props.sessionID }} />
-                </Show>
-              </box>
-            )}
-          </For>
+        <box flexShrink={0} paddingBottom={1}>
+          <text fg={theme.text.action.primary.selected} attributes={TextAttributes.BOLD}>
+            Context
+          </text>
         </box>
-        <Show when={props.tab === "workers"}>
-          <box flexGrow={1} minHeight={0}>
-            <Slot path="sidebar.workers" input={{ sessionID: props.sessionID, width: Math.max(1, props.width - 4) }} />
+        <scrollbox
+          flexGrow={1}
+          minHeight={0}
+          scrollAcceleration={scrollAcceleration()}
+          // The sidebar only scrolls vertically; a horizontal bar steals a row during initial layout.
+          horizontalScrollbarOptions={{ visible: false }}
+          verticalScrollbarOptions={{
+            // Use the content's reserved right padding instead of changing its width when the bar toggles.
+            position: "absolute",
+            right: 0,
+            top: 0,
+            width: 1,
+            height: "100%",
+            trackOptions: {
+              backgroundColor: theme.background.base,
+              foregroundColor: theme.scrollbar.base,
+            },
+          }}
+        >
+          <box flexShrink={0} gap={1} paddingRight={1}>
+            <Slot path="sidebar.content" input={{ sessionID: props.sessionID }} />
           </box>
-        </Show>
-        <Show when={props.tab !== "workers"}>
-          <scrollbox
-            flexGrow={1}
-            minHeight={0}
-            scrollAcceleration={scrollAcceleration()}
-            // The sidebar only scrolls vertically; a horizontal bar steals a row during initial layout.
-            horizontalScrollbarOptions={{ visible: false }}
-            verticalScrollbarOptions={{
-              // Use the content's reserved right padding instead of changing its width when the bar toggles.
-              position: "absolute",
-              right: 0,
-              top: 0,
-              width: 1,
-              height: "100%",
-              trackOptions: {
-                backgroundColor: theme.background.base,
-                foregroundColor: theme.scrollbar.base,
-              },
-            }}
-          >
-            <box flexShrink={0} gap={1} paddingRight={1}>
-              <Show when={props.tab === "context"}>
-                <Slot path="sidebar.content" input={{ sessionID: props.sessionID }} />
-              </Show>
-              <Show when={props.tab === "subagents"}>
-                <SidebarSubagents sessionID={props.sessionID} />
-              </Show>
-            </box>
-          </scrollbox>
-        </Show>
-
-        <Show when={props.tab === "context"}>
-          <box flexShrink={0} gap={1} paddingTop={1}>
-            <Slot path="sidebar.footer" input={{ sessionID: props.sessionID }} />
-          </box>
-        </Show>
+        </scrollbox>
+        <box flexShrink={0} gap={1} paddingTop={1}>
+          <Slot path="sidebar.footer" input={{ sessionID: props.sessionID }} />
+        </box>
       </box>
     </Show>
   )

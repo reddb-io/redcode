@@ -1584,6 +1584,26 @@ export function Session(props: {
       },
     },
     {
+      title: "Open Subagents drawer",
+      id: "session.composer.subagents",
+      group: "Session",
+      palette: undefined,
+      run: () => {
+        setComposer({ open: true, tab: "subagents" })
+        dialog.clear()
+      },
+    },
+    {
+      title: "Open Workers drawer",
+      id: "session.composer.workers",
+      group: "Session",
+      palette: undefined,
+      run: () => {
+        setComposer({ open: true, tab: "workers" })
+        dialog.clear()
+      },
+    },
+    {
       title: "Toggle subagent picker",
       id: "session.child.first",
       group: "Session",

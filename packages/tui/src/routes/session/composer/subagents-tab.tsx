@@ -11,6 +11,10 @@ import { Keymap } from "../../../context/keymap"
 import { useComposerTab } from "./context"
 import { withTimestampedFallback } from "@opencode/util/session-title-fallback"
 import { sessionFamily } from "../../../util/session"
+import { useDialog } from "../../../ui/dialog"
+import { DialogConfirm } from "../../../ui/dialog-confirm"
+import { DialogPrompt } from "../../../ui/dialog-prompt"
+import { useToast } from "../../../ui/toast"
 
 interface SubagentEntry {
   sessionID: string
@@ -19,6 +23,7 @@ interface SubagentEntry {
   status: string
   current: boolean
   prefix: string
+  model?: string
 }
 
 export function SubagentsTab(props: { sessionID: string }) {
@@ -29,6 +34,8 @@ export function SubagentsTab(props: { sessionID: string }) {
   const navigate = useRoute().navigate
   const composer = useComposerTab()
   const shortcuts = Keymap.useShortcuts()
+  const dialog = useDialog()
+  const toast = useToast()
 
   const session = createMemo(() => data.session.get(props.sessionID))
   const [store, setStore] = createStore({ selected: 0, active: true })
@@ -52,6 +59,9 @@ export function SubagentsTab(props: { sessionID: string }) {
           status: data.session.status(session.id),
           current: session.id === route.sessionID,
           prefix,
+          model: session.model
+            ? `${session.model.id}${session.model.variant ? ` (${session.model.variant})` : ""}`
+            : undefined,
         }
       },
     )
@@ -64,6 +74,35 @@ export function SubagentsTab(props: { sessionID: string }) {
   let scroll: ScrollBoxRenderable | undefined
 
   const selectedEntry = createMemo(() => entries()[store.selected])
+
+  const steer = (entry: SubagentEntry) => {
+    dialog.replace(() => (
+      <DialogPrompt
+        title="Steer subagent"
+        placeholder="What should it do differently?"
+        onCancel={() => dialog.clear()}
+        onConfirm={(value) => {
+          const text = value.trim()
+          if (!text) return
+          dialog.clear()
+          void client.api.session
+            .prompt({ sessionID: entry.sessionID, text, delivery: "steer" })
+            .then(() => toast.show({ variant: "success", message: "Hint sent to the subagent" }))
+            .catch(toast.error)
+        }}
+      />
+    ))
+  }
+
+  const kill = (entry: SubagentEntry) => {
+    dialog.replace(() => (
+      <DialogConfirm
+        title="Kill subagent"
+        message={`Abort ${entry.title}?`}
+        onConfirm={() => void client.api.session.interrupt({ sessionID: entry.sessionID }).catch(toast.error)}
+      />
+    ))
+  }
 
   createEffect(() => {
     const active = composer.active("subagents")
@@ -118,7 +157,10 @@ export function SubagentsTab(props: { sessionID: string }) {
         const entry = selectedEntry()
         return [
           ...(entry?.status === "running"
-            ? [{ label: "interrupt", shortcut: shortcuts.get("composer.subagent.interrupt") ?? "" }]
+            ? [
+                { label: "steer", shortcut: shortcuts.get("composer.subagent.steer") ?? "" },
+                { label: "kill", shortcut: shortcuts.get("composer.subagent.interrupt") ?? "" },
+              ]
             : []),
           {
             label: `show ${store.active ? "inactive" : "active"}`,
@@ -177,13 +219,21 @@ export function SubagentsTab(props: { sessionID: string }) {
         },
       },
       {
+        id: "composer.subagent.steer",
+        title: "Steer subagent",
+        group: "Composer",
+        run() {
+          const entry = selectedEntry()
+          if (entry?.status === "running") steer(entry)
+        },
+      },
+      {
         id: "composer.subagent.interrupt",
         title: "Interrupt subagent",
         group: "Composer",
         run() {
           const entry = selectedEntry()
-          if (!entry || entry.status !== "running") return
-          void client.api.session.interrupt({ sessionID: entry.sessionID })
+          if (entry?.status === "running") kill(entry)
         },
       },
     ],
@@ -216,10 +266,7 @@ export function SubagentsTab(props: { sessionID: string }) {
                         : theme.background.action.primary.base
                   }
                   onMouseMove={() => setStore("selected", index())}
-                  onMouseUp={() => {
-                    setStore("selected", index())
-                    navigate({ type: "session", sessionID: entry.sessionID })
-                  }}
+                  onMouseUp={() => setStore("selected", index())}
                 >
                   <box flexGrow={1} minWidth={0} flexDirection="row">
                     <text
@@ -248,6 +295,40 @@ export function SubagentsTab(props: { sessionID: string }) {
           </For>
         </Show>
       </scrollbox>
+      <Show when={selectedEntry()}>
+        {(entry) => (
+          <box flexDirection="row" gap={2} paddingLeft={1} paddingRight={1}>
+            <Show when={entry().model}>{(model) => <text fg={theme.text.muted}>{model()}</text>}</Show>
+            <text
+              id={`subagent-open-${entry().sessionID}`}
+              fg={theme.text.action.primary.selected}
+              attributes={TextAttributes.UNDERLINE}
+              onMouseUp={() => navigate({ type: "session", sessionID: entry().sessionID })}
+            >
+              open
+            </text>
+            <Show when={entry().status === "running"}>
+              <text
+                id={`subagent-steer-${entry().sessionID}`}
+                fg={theme.text.action.primary.base}
+                attributes={TextAttributes.UNDERLINE}
+                onMouseUp={() => steer(entry())}
+              >
+                steer
+              </text>
+              <text
+                id={`subagent-kill-${entry().sessionID}`}
+                fg={theme.text.action.destructive.base}
+                bg={theme.background.action.destructive.base}
+                attributes={TextAttributes.UNDERLINE}
+                onMouseUp={() => kill(entry())}
+              >
+                kill
+              </text>
+            </Show>
+          </box>
+        )}
+      </Show>
     </Show>
   )
 }

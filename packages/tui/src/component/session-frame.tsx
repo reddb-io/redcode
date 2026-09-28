@@ -18,7 +18,7 @@ import { usePanel } from "../context/panel"
 import { useStorage } from "../context/storage"
 import { useDialog } from "../ui/dialog"
 import { Session } from "../routes/session"
-import { Sidebar, SIDEBAR_TABS, type SidebarTab } from "../routes/session/sidebar"
+import { Sidebar } from "../routes/session/sidebar"
 import { clampSessionPaneWidth, clampSessionSidebarWidth, sessionSidebarWidthDefault } from "../ui/layout"
 import { createPaneResize } from "../ui/pane-resize"
 import { PaneResizeHandle } from "../ui/pane-resize-handle"
@@ -37,13 +37,13 @@ export function SessionFrame(props: { sessionID: string; verticalTabsWidth: numb
   const dimensions = useTerminalDimensions()
   const panels = usePanel()
   const dialog = useDialog()
+  const keymap = Keymap.use()
   const availableWidth = () => Math.max(0, dimensions().width - props.verticalTabsWidth)
   const defaultPaneWidth = () => Math.max(1, Math.floor(panels.width() / 2))
   const [layout, updateLayout] = useStorage().store<{
     paneWidth?: number
     terminalWidth?: number
     sidebarWidth?: number
-    sidebarTab?: SidebarTab
   }>("layout", {
     initial: {},
   })
@@ -147,17 +147,6 @@ export function SessionFrame(props: { sessionID: string; verticalTabsWidth: numb
       if (!visible && selectedTerminal()) void sessions.selectTerminal(props.sessionID, null).catch(toast.error)
     })
   }
-  const sidebarTab = () => layout.sidebarTab ?? "context"
-  const selectSidebarTab = (tab: SidebarTab) => {
-    void updateLayout((draft) => {
-      draft.sidebarTab = tab
-    }).catch(toast.error)
-  }
-  const nextSidebarTab = () => {
-    selectSidebarTab(SIDEBAR_TABS[(SIDEBAR_TABS.indexOf(sidebarTab()) + 1) % SIDEBAR_TABS.length])
-    if (rightPane() !== "sidebar") toggleSidebar()
-    dialog.clear()
-  }
   const resizeSidebar = (delta: number) => {
     void updateLayout((draft) => {
       draft.sidebarWidth = clampSessionSidebarWidth(sidebarResize.size() + delta, availableWidth())
@@ -220,18 +209,25 @@ export function SessionFrame(props: { sessionID: string; verticalTabsWidth: numb
   Keymap.createLayer(() => ({
     mode: "global",
     commands: [
-      ...(["context", "subagents"] as const).map((tab) => ({
-        id: `${tab}.show`,
-        title: tab === "context" ? "Open Context" : "Open Subagents",
+      {
+        id: "context.show",
+        title: "Open Context",
         group: "Session",
-        palette: true as const,
-        slash: { name: tab },
+        palette: true,
+        slash: { name: "context" },
         run: () => {
-          selectSidebarTab(tab)
           if (rightPane() !== "sidebar") toggleSidebar()
           dialog.clear()
         },
-      })),
+      },
+      {
+        id: "subagents.show",
+        title: "Open Subagents",
+        group: "Session",
+        palette: true,
+        slash: { name: "subagents" },
+        run: () => keymap.dispatch("session.composer.subagents"),
+      },
       {
         id: "session.sidebar.toggle",
         title: rightPane() === "sidebar" ? "Hide sidebar" : "Show sidebar",
@@ -244,16 +240,16 @@ export function SessionFrame(props: { sessionID: string; verticalTabsWidth: numb
       },
       {
         id: "sidebar.tab.next",
-        title: "Next sidebar tab",
+        title: "Open activity drawer",
         group: "Session",
-        run: nextSidebarTab,
+        run: () => keymap.dispatch("session.composer.subagents"),
       },
       {
         id: "session.sidebar.tab.cycle",
-        title: "Next sidebar tab",
+        title: "Open activity drawer",
         group: "Session",
         palette: true,
-        run: nextSidebarTab,
+        run: () => keymap.dispatch("session.composer.subagents"),
       },
       {
         id: "session.sidebar.width.decrease",
@@ -451,12 +447,7 @@ export function SessionFrame(props: { sessionID: string; verticalTabsWidth: numb
               </Show>
             }
           >
-            <Sidebar
-              sessionID={props.sessionID}
-              width={sidebarResize.size()}
-              tab={sidebarTab()}
-              onTabChange={selectSidebarTab}
-            />
+            <Sidebar sessionID={props.sessionID} width={sidebarResize.size()} />
           </Show>
         </box>
       </Show>
@@ -473,12 +464,7 @@ export function SessionFrame(props: { sessionID: string; verticalTabsWidth: numb
           alignItems="flex-end"
           backgroundColor={RGBA.fromInts(0, 0, 0, 70)}
         >
-          <Sidebar
-            sessionID={props.sessionID}
-            width={sidebarResize.size()}
-            tab={sidebarTab()}
-            onTabChange={selectSidebarTab}
-          />
+          <Sidebar sessionID={props.sessionID} width={sidebarResize.size()} />
         </box>
       </Show>
       <Show when={rightPane() === "sidebar" && availableWidth() >= 3}>

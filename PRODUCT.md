@@ -19,7 +19,7 @@ OpenCode V2. The shipped product and its independent version remain Redcode.
 
 - Opening Redcode, `/new` and `/clear` opens a usable blank session.
 - Keep Build → Plan → Design → Question, with stable agent colors.
-- Preserve Context / Workers / Subagents, visible work and persistent preferences.
+- Keep Context visible in the right sidebar and Workers / Subagents in the bottom activity drawer.
 - Keep S1/S2 setup, Design feedback, voice, hooks and automation reachable.
 - Use real session and service data; unavailable states must remain visible.
 

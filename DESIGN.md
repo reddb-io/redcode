@@ -24,8 +24,8 @@ tokens; agent colors use categorical identities and remain independent of list o
 
 - Terminal typography follows the user's terminal font; no decorative display type.
 - Start in a blank session. Do not insert a welcome/logo screen into normal startup.
-- Keep the right sidebar with Context, Workers and Subagents tabs and their counts.
-- Remember the selected tab and user-resized width across sessions and restarts.
+- Keep Context in the right sidebar. Put Workers and Subagents beside the other activity tabs in the bottom drawer.
+- Remember the user-resized sidebar width across sessions and restarts.
 - The historical width defaults are 36 columns, 40 from 160 terminal columns,
   and 44 from 220 columns; resizing stays within 30–72 columns where space allows.
 - Preserve mouse resizing and keyboard width commands. Narrow terminals use an overlay.

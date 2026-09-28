@@ -2,12 +2,14 @@ import type { LocationRef, RedskilledStatusOutput } from "@opencode/client"
 import { Plugin } from "@opencode/plugin/tui"
 import { Status } from "@opencode/schema/redskilled"
 import { Schema } from "effect"
-import { TextAttributes } from "@opentui/core"
+import { ScrollBoxRenderable, TextAttributes } from "@opentui/core"
 import { useTerminalDimensions } from "@opentui/solid"
-import { createEffect, createMemo, createSignal, For, on, onCleanup, Show } from "solid-js"
+import { createEffect, createMemo, createSignal, For, on, onCleanup, onMount, Show } from "solid-js"
 import { useTheme } from "../../context/theme"
 import { errorMessage } from "../../util/error"
 import { openUrl } from "@opencode/util/open"
+import { useComposerTab } from "../../routes/session/composer/context"
+import { Keymap } from "../../context/keymap"
 
 const ROUTE = "workers"
 
@@ -274,7 +276,130 @@ function WorkersPage(props: {
   )
 }
 
-// The tab badge, sidebar and full page observe one project poll and mutation state.
+function WorkersTab(props: { state: ReturnType<typeof createWorkerStatus>; onOpen: () => void }) {
+  const theme = useTheme()
+  const composer = useComposerTab()
+  const shortcuts = Keymap.useShortcuts()
+  const workers = createMemo(() => props.state.status()?.payload?.workers ?? [])
+  const [selected, setSelected] = createSignal(0)
+  let scroll: ScrollBoxRenderable | undefined
+
+  const move = (offset: number) => {
+    if (!workers().length) return
+    setSelected((index) => (index + offset + workers().length) % workers().length)
+  }
+
+  createEffect(() => {
+    if (selected() >= workers().length) setSelected(Math.max(0, workers().length - 1))
+    if (!scroll) return
+    const target = scroll.getChildren()[selected()]
+    if (!target) return
+    const y = target.y - scroll.y
+    if (y >= scroll.height || y < 0) scroll.scrollBy(y - Math.floor(scroll.height / 2))
+  })
+
+  onMount(() => {
+    const cleanup = composer.register({
+      id: "workers",
+      label: "Workers",
+      hints: () => [
+        { label: "manage", shortcut: shortcuts.get("composer.worker.open") ?? "" },
+        { label: "refresh", shortcut: shortcuts.get("composer.worker.refresh") ?? "" },
+      ],
+    })
+    onCleanup(cleanup)
+  })
+
+  Keymap.createLayer(() => ({
+    mode: "composer",
+    enabled: () => composer.active("workers"),
+    priority: 1,
+    commands: [
+      { id: "composer.worker.up", title: "Previous worker", group: "Composer", run: () => move(-1) },
+      { id: "composer.worker.down", title: "Next worker", group: "Composer", run: () => move(1) },
+      { id: "composer.worker.open", title: "Manage workers", group: "Composer", run: props.onOpen },
+      {
+        id: "composer.worker.refresh",
+        title: "Refresh workers",
+        group: "Composer",
+        run: () => void props.state.load(),
+      },
+    ],
+  }))
+
+  return (
+    <Show when={composer.active("workers")}>
+      <box gap={1}>
+        <box flexDirection="row" justifyContent="space-between" paddingLeft={1} paddingRight={1}>
+          <text
+            fg={props.state.status()?.lifecycle === "unavailable" ? theme.text.feedback.error.base : theme.text.base}
+          >
+            {props.state.loading() ? "Connecting…" : (props.state.status()?.lifecycle ?? "unknown")}
+            {props.state.status()?.activation?.project ? ` · ${props.state.status()!.activation!.project}` : ""}
+          </text>
+          <text fg={theme.text.muted}>
+            {workers().length} worker{workers().length === 1 ? "" : "s"}
+          </text>
+        </box>
+        <Show when={props.state.status()?.error}>
+          {(message) => <text fg={theme.text.feedback.error.base}> {message()}</text>}
+        </Show>
+        <scrollbox scrollbarOptions={{ visible: false }} maxHeight={5} ref={(value) => (scroll = value)}>
+          <Show
+            when={workers().length > 0}
+            fallback={
+              <text fg={theme.text.muted}>
+                {props.state.status()?.lifecycle === "unavailable"
+                  ? " No worker status available"
+                  : " No live workers. Press enter to manage the project drain."}
+              </text>
+            }
+          >
+            <For each={workers()}>
+              {(worker, index) => {
+                const active = () => index() === selected()
+                return (
+                  <box
+                    flexDirection="row"
+                    paddingLeft={1}
+                    paddingRight={1}
+                    backgroundColor={active() ? theme.background.action.primary.focused : undefined}
+                    onMouseMove={() => setSelected(index())}
+                    onMouseUp={() => setSelected(index())}
+                  >
+                    <text
+                      flexGrow={1}
+                      fg={active() ? theme.text.action.primary.focused : theme.text.action.primary.base}
+                      attributes={active() ? TextAttributes.BOLD : undefined}
+                      wrapMode="none"
+                    >
+                      {worker.worker_id} {worker.display?.issue ?? ""}
+                    </text>
+                    <text
+                      fg={worker.display?.failed ? theme.text.feedback.error.base : theme.text.muted}
+                      wrapMode="none"
+                    >
+                      {worker.display?.phase ?? (worker.display?.failed ? "failed" : "running")}
+                    </text>
+                  </box>
+                )
+              }}
+            </For>
+          </Show>
+        </scrollbox>
+        <Show when={workers()[selected()]}>
+          {(worker) => (
+            <text fg={theme.text.muted} paddingLeft={1} wrapMode="none">
+              {worker().display?.step ?? "—"} · {worker().budget.declared ?? "no memory budget"} · pid {worker().pid}
+            </text>
+          )}
+        </Show>
+      </box>
+    </Show>
+  )
+}
+
+// The drawer and full page observe one project poll and mutation state.
 function createWorkerStatus(context: Plugin.Context, location: () => LocationRef) {
   const [status, setStatus] = createSignal<Status>()
   const [loading, setLoading] = createSignal(true)
@@ -345,28 +470,11 @@ export default Plugin.define({
     })
     const state = createWorkerStatus(context, location)
     context.ui.slot({
-      append: "sidebar.workers.count",
-      render: () => {
-        const workers = () => state.status()?.payload?.workers ?? []
-        const failed = () => workers().filter((worker) => worker.display?.failed).length
-        return (
-          <Show when={workers().length > 0}>
-            <text fg={failed() ? context.theme.text.feedback.error.base : context.theme.text.muted}>
-              {` (${workers().length}${failed() ? ` ✗${failed()}` : ""})`}
-            </text>
-          </Show>
-        )
-      },
-    })
-    context.ui.slot({
-      append: "sidebar.workers",
-      render: (props) => (
-        <WorkersPage
-          context={context}
+      append: "session.composer.tabs",
+      render: () => (
+        <WorkersTab
           state={state}
-          sidebar
-          width={props.width}
-          onClose={() => {
+          onOpen={() => {
             setPrevious({ ...context.ui.router.current() })
             context.ui.router.navigate({ type: "plugin", name: ROUTE })
           }}
@@ -393,6 +501,11 @@ export default Plugin.define({
               palette: true,
               run() {
                 const current = context.ui.router.current()
+                if (current.type === "session") {
+                  context.keymap.dispatch("session.composer.workers")
+                  context.ui.dialog.clear()
+                  return
+                }
                 if (current.type === "plugin" && current.name === ROUTE) return
                 setPrevious({ ...current })
                 context.ui.dialog.clear()

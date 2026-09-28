@@ -10,6 +10,7 @@ import { Provider } from "../../provider.js"
 import { Hash } from "@opencode/util/hash"
 
 const providerID = Provider.ID.make("red-router")
+const defaultBaseURL = "http://127.0.0.1:25050/v1"
 const catalogModel = Schema.Struct({
   id: Schema.String,
   name: Schema.optional(Schema.String),
@@ -60,12 +61,15 @@ export const RedRouterPlugin = define({
             : process.env.RED_ROUTER_API_KEY
       if (!key) return
       const baseURL =
-        typeof stored?.value.metadata?.baseURL === "string"
-          ? stored.value.metadata.baseURL
-          : (process.env.RED_ROUTER_BASE_URL ?? IntelligenceEvaluation.evaluatorPreset("red-router").baseURL)
+        stored?.value.type === "key" && typeof stored.value.configuration?.baseURL === "string"
+          ? stored.value.configuration.baseURL
+          : typeof stored?.value.metadata?.baseURL === "string"
+            ? stored.value.metadata.baseURL
+            : (process.env.RED_ROUTER_BASE_URL ?? IntelligenceEvaluation.evaluatorPreset("red-router").baseURL)
       if (!URL.canParse(baseURL)) return
       const url = new URL(baseURL)
       if (!["http:", "https:"].includes(url.protocol) || url.username || url.password || url.search || url.hash) return
+      url.pathname = url.pathname.replace(/\/+$/, "").replace(/\/models$/, "") || "/v1"
       return {
         baseURL: url.href.replace(/\/+$/, ""),
         key,
@@ -142,7 +146,25 @@ export const RedRouterPlugin = define({
 
     yield* ctx.integration.transform((integrations) => {
       integrations.update(providerID, (integration) => (integration.name = "RedRouter"))
-      integrations.method.update({ integrationID: providerID, method: { type: "key", label: "RedRouter API key" } })
+      integrations.method.update({
+        integrationID: providerID,
+        method: {
+          type: "key",
+          label: "RedRouter API key",
+          form: [
+            {
+              type: "string",
+              key: "baseURL",
+              title: "RedRouter API URL",
+              description: "The OpenAI-compatible API endpoint, usually ending in /v1.",
+              placeholder: defaultBaseURL,
+              default: process.env.RED_ROUTER_BASE_URL ?? defaultBaseURL,
+              format: "uri",
+              required: true,
+            },
+          ],
+        },
+      })
       integrations.method.update({ integrationID: providerID, method: { type: "env", names: ["RED_ROUTER_API_KEY"] } })
     })
     yield* ctx.provider.transform((providers) => {
