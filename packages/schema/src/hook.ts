@@ -36,7 +36,7 @@ export const HandlerType = Schema.Literals(["command", "http", "mcp_tool", "prom
 export type HandlerType = typeof HandlerType.Type
 
 const BaseHandler = {
-  timeout: Schema.Number.pipe(optional),
+  timeout: Schema.Finite.pipe(optional),
   statusMessage: Schema.String.pipe(optional),
 }
 

@@ -642,43 +642,18 @@ export type WebSearchResult = { url: string; title?: string; content?: string; t
 export type HookMatcher = {
   matcher?: string
   hooks: Array<
+    | { timeout?: number; statusMessage?: string; type: "command"; command: string; async?: boolean }
+    | { timeout?: number; statusMessage?: string; type: "http"; url: string; headers?: { [x: string]: string } }
     | {
-        timeout?: number | "Infinity" | "-Infinity" | "NaN"
-        statusMessage?: string
-        type: "command"
-        command: string
-        async?: boolean
-      }
-    | {
-        timeout?: number | "Infinity" | "-Infinity" | "NaN"
-        statusMessage?: string
-        type: "http"
-        url: string
-        headers?: { [x: string]: string }
-      }
-    | {
-        timeout?: number | "Infinity" | "-Infinity" | "NaN"
+        timeout?: number
         statusMessage?: string
         type: "mcp_tool"
         server: string
         tool: string
         arguments?: { [x: string]: JsonValue }
       }
-    | {
-        timeout?: number | "Infinity" | "-Infinity" | "NaN"
-        statusMessage?: string
-        type: "prompt"
-        prompt: string
-        model?: string
-      }
-    | {
-        timeout?: number | "Infinity" | "-Infinity" | "NaN"
-        statusMessage?: string
-        type: "agent"
-        prompt: string
-        agent?: string
-        model?: string
-      }
+    | { timeout?: number; statusMessage?: string; type: "prompt"; prompt: string; model?: string }
+    | { timeout?: number; statusMessage?: string; type: "agent"; prompt: string; agent?: string; model?: string }
   >
 }
 
@@ -731,43 +706,18 @@ export type HookDefinition = {
     | "ElicitationResult"
   matcher?: string
   handler:
+    | { timeout?: number; statusMessage?: string; type: "command"; command: string; async?: boolean }
+    | { timeout?: number; statusMessage?: string; type: "http"; url: string; headers?: { [x: string]: string } }
     | {
-        timeout?: number | "Infinity" | "-Infinity" | "NaN"
-        statusMessage?: string
-        type: "command"
-        command: string
-        async?: boolean
-      }
-    | {
-        timeout?: number | "Infinity" | "-Infinity" | "NaN"
-        statusMessage?: string
-        type: "http"
-        url: string
-        headers?: { [x: string]: string }
-      }
-    | {
-        timeout?: number | "Infinity" | "-Infinity" | "NaN"
+        timeout?: number
         statusMessage?: string
         type: "mcp_tool"
         server: string
         tool: string
         arguments?: { [x: string]: JsonValue }
       }
-    | {
-        timeout?: number | "Infinity" | "-Infinity" | "NaN"
-        statusMessage?: string
-        type: "prompt"
-        prompt: string
-        model?: string
-      }
-    | {
-        timeout?: number | "Infinity" | "-Infinity" | "NaN"
-        statusMessage?: string
-        type: "agent"
-        prompt: string
-        agent?: string
-        model?: string
-      }
+    | { timeout?: number; statusMessage?: string; type: "prompt"; prompt: string; model?: string }
+    | { timeout?: number; statusMessage?: string; type: "agent"; prompt: string; agent?: string; model?: string }
   source: string
   support: "active" | "unsupported" | "untrusted"
   reason?: string

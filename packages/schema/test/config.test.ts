@@ -12,6 +12,20 @@ import { AbsolutePath } from "../src/schema.js"
 import { WebSearch } from "../src/websearch.js"
 
 describe("Config.Entry", () => {
+  test("round-trips hook timeouts and rejects values JSON cannot preserve", () => {
+    const decode = Schema.decodeUnknownSync(Config.Info)
+    const config = (timeout: number | undefined) => ({
+      hooks: { SessionStart: [{ hooks: [{ type: "command", command: "echo ready", timeout }] }] },
+    })
+    for (const timeout of [undefined, 0, 0.5, 600]) {
+      const encoded = Schema.encodeSync(Config.Info)(decode(config(timeout)))
+      expect(decode(JSON.parse(JSON.stringify(encoded)))).toEqual(decode(config(timeout)))
+    }
+    for (const timeout of [Infinity, -Infinity, NaN]) {
+      expect(() => decode(config(timeout))).toThrow()
+    }
+  })
+
   test("accepts directory-only worktree config and omits it when absent", () => {
     const decode = Schema.decodeUnknownSync(Config.Info)
     const input = { worktree: { directory: "../worktrees" } }
@@ -33,9 +47,9 @@ describe("Config.Entry", () => {
     const input = { providers: { custom: { includeModels: ["chat"], excludeModels: ["legacy"] } } }
     const decoded = Schema.decodeUnknownSync(Config.Info)(input)
     expect(Schema.encodeSync(Config.Info)(decoded)).toEqual(input)
-    expect(Schema.encodeSync(ConfigProvider.Info)(new ConfigProvider.Info({ includeModels: undefined }))).not.toHaveProperty(
-      "includeModels",
-    )
+    expect(
+      Schema.encodeSync(ConfigProvider.Info)(new ConfigProvider.Info({ includeModels: undefined })),
+    ).not.toHaveProperty("includeModels")
   })
 
   test("round-trips disabled variant configuration", () => {
@@ -55,9 +69,9 @@ describe("Config.Entry", () => {
   test("round-trips a compaction turn limit and omits absent limits", () => {
     const input = { compaction: { keep: { tokens: 2_000, turns: 2 } } }
     expect(Schema.encodeSync(Config.Info)(Schema.decodeUnknownSync(Config.Info)(input))).toEqual(input)
-    expect(Schema.encodeSync(ConfigCompaction.Keep)(new ConfigCompaction.Keep({ turns: undefined }))).not.toHaveProperty(
-      "turns",
-    )
+    expect(
+      Schema.encodeSync(ConfigCompaction.Keep)(new ConfigCompaction.Keep({ turns: undefined })),
+    ).not.toHaveProperty("turns")
   })
 
   test("accepts disabled, fixed, and random web search selection", () => {
