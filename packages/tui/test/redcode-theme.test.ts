@@ -15,6 +15,8 @@ test.each(["dark", "light"] as const)("Redcode preserves brand and agent identit
   expect(theme.text.action.primary.selected.equals(RGBA.fromHex("#ff2056"))).toBe(true)
   expect(theme.text.base.equals(RGBA.fromHex(mode === "dark" ? "#f4f5f7" : "#07080a"))).toBe(true)
   expect(theme.markdown.link.equals(RGBA.fromHex(mode === "dark" ? "#ff6389" : "#ad163a"))).toBe(true)
+  expect(theme.scrollbar.base.equals(RGBA.fromHex("#d11a46"))).toBe(true)
+  expect(theme.text.feedback.info.base.equals(RGBA.fromHex(mode === "dark" ? "#2ab3c8" : "#0e8ea3"))).toBe(true)
 })
 
 test("a custom theme still controls categorical colors", () => {

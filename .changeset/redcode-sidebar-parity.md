@@ -11,3 +11,5 @@ Restore the Todo title, bracketed task markers and status colors, the original s
 Restore subagent model details and open/steer/kill controls using V2 prompt admission and interruption, including confirmation before stopping a child.
 
 Restore /context, /subagents, /thinking and /timestamps. Keep /thinking as the display toggle; model effort remains available through /variants and /effort.
+
+Preserve the historical red scrollbar and informational colors in both light and dark Redcode themes.

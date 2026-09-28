@@ -40,7 +40,7 @@
           "base": "$hue.green.200"
         },
         "info": {
-          "base": "$hue.cyan.200"
+          "base": "$hue.design.200"
         }
       }
     },
@@ -87,7 +87,7 @@
       "base": "#484848"
     },
     "scrollbar": {
-      "base": "#606060"
+      "base": "#d11a46"
     },
     "diff": {
       "text": {

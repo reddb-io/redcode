@@ -99,7 +99,7 @@ export function Sidebar(props: {
               width: 1,
               height: "100%",
               trackOptions: {
-                backgroundColor: theme.background.raised.base,
+                backgroundColor: theme.background.base,
                 foregroundColor: theme.scrollbar.base,
               },
             }}
