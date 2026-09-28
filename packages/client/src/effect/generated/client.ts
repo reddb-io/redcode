@@ -44,6 +44,12 @@ import type {
   SessionUnshareOutput,
   SessionRebindShareInput,
   SessionRebindShareOutput,
+  SessionMonitorListInput,
+  SessionMonitorListOutput,
+  SessionMonitorGetInput,
+  SessionMonitorGetOutput,
+  SessionMonitorCancelInput,
+  SessionMonitorCancelOutput,
   SessionTodoListInput,
   SessionTodoListOutput,
   SessionGoalGetInput,
@@ -567,6 +573,30 @@ const EndpointSessionRebindShare = (raw: RawClient["server.session"]) => (input:
       params: { sessionID: input["sessionID"] },
       payload: { credentialID: input["credentialID"], orgID: input["orgID"] },
     }).pipe(
+      Effect.mapError(mapClientError),
+      Effect.map((value) => value.data),
+    ),
+  )
+
+const EndpointSessionMonitorList = (raw: RawClient["server.session"]) => (input: SessionMonitorListInput) =>
+  preserveEffect<SessionMonitorListOutput>()(
+    raw["session.monitor.list"]({ params: { sessionID: input["sessionID"] } }).pipe(
+      Effect.mapError(mapClientError),
+      Effect.map((value) => value.data),
+    ),
+  )
+
+const EndpointSessionMonitorGet = (raw: RawClient["server.session"]) => (input: SessionMonitorGetInput) =>
+  preserveEffect<SessionMonitorGetOutput>()(
+    raw["session.monitor.get"]({ params: { sessionID: input["sessionID"], monitorID: input["monitorID"] } }).pipe(
+      Effect.mapError(mapClientError),
+      Effect.map((value) => value.data),
+    ),
+  )
+
+const EndpointSessionMonitorCancel = (raw: RawClient["server.session"]) => (input: SessionMonitorCancelInput) =>
+  preserveEffect<SessionMonitorCancelOutput>()(
+    raw["session.monitor.cancel"]({ params: { sessionID: input["sessionID"], monitorID: input["monitorID"] } }).pipe(
       Effect.mapError(mapClientError),
       Effect.map((value) => value.data),
     ),
@@ -1104,6 +1134,11 @@ const adaptGroupSession = (raw: RawClient["server.session"]) => ({
   share: EndpointSessionShare(raw),
   unshare: EndpointSessionUnshare(raw),
   rebindShare: EndpointSessionRebindShare(raw),
+  monitor: {
+    list: EndpointSessionMonitorList(raw),
+    get: EndpointSessionMonitorGet(raw),
+    cancel: EndpointSessionMonitorCancel(raw),
+  },
   todo: { list: EndpointSessionTodoList(raw) },
   goal: {
     get: EndpointSessionGoalGet(raw),

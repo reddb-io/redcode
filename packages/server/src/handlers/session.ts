@@ -1,4 +1,6 @@
 import { Session } from "@opencode/core/session"
+import { MonitorRuntime } from "@opencode/core/monitor"
+import { Monitor } from "@opencode/schema/monitor"
 import { SessionTodoStore } from "@opencode/core/session/todo-store"
 import { SessionGoal } from "@opencode/core/session/goal"
 import { DesignStore } from "@opencode/core/design/store"
@@ -26,6 +28,7 @@ import {
   FormNotFoundError,
   InvalidRequestError,
   MessageNotFoundError,
+  MonitorNotFoundError,
   ServiceUnavailableError,
   SessionBusyError,
   SessionNotFoundError,
@@ -237,6 +240,42 @@ export const SessionHandler = HttpApiBuilder.group(Api, "server.session", (handl
               .rebind(ctx.params.sessionID, ctx.payload.credentialID, ctx.payload.orgID)
               .pipe(Effect.mapError((error) => new InvalidRequestError({ message: error.message }))),
           }
+        }),
+      )
+      .handle(
+        "session.monitor.list",
+        Effect.fn(function* (ctx) {
+          yield* session.get(ctx.params.sessionID).pipe(Effect.catchTag("Session.NotFoundError", missingSession))
+          const monitors = yield* MonitorRuntime.Service
+          return { data: (yield* monitors.list(ctx.params.sessionID)).map((info) => Monitor.bounded(info)) }
+        }),
+      )
+      .handle(
+        "session.monitor.get",
+        Effect.fn(function* (ctx) {
+          yield* session.get(ctx.params.sessionID).pipe(Effect.catchTag("Session.NotFoundError", missingSession))
+          const monitors = yield* MonitorRuntime.Service
+          const info = yield* monitors.get(ctx.params.sessionID, ctx.params.monitorID)
+          if (!info)
+            return yield* new MonitorNotFoundError({
+              monitorID: ctx.params.monitorID,
+              message: "Monitor not found in this session",
+            })
+          return { data: Monitor.bounded(info) }
+        }),
+      )
+      .handle(
+        "session.monitor.cancel",
+        Effect.fn(function* (ctx) {
+          yield* session.get(ctx.params.sessionID).pipe(Effect.catchTag("Session.NotFoundError", missingSession))
+          const monitors = yield* MonitorRuntime.Service
+          const info = yield* monitors.cancel(ctx.params.sessionID, ctx.params.monitorID)
+          if (!info)
+            return yield* new MonitorNotFoundError({
+              monitorID: ctx.params.monitorID,
+              message: "Monitor not found in this session",
+            })
+          return { data: Monitor.bounded(info) }
         }),
       )
       .handle(

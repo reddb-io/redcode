@@ -106,6 +106,8 @@ export function createFetch(override?: FetchHandler, events?: ReturnType<typeof 
         location: { directory, project: { id: "proj_test", directory: worktree, canonical: worktree } },
         data: { branch: { current: "main", default: "main" } },
       })
+    if (url.pathname === "/api/lsp") return json({ location: { directory }, data: [] })
+    if (/^\/api\/session\/[^/]+\/diff$/.test(url.pathname)) return json({ data: [] })
     if (url.pathname === "/api/fs/list")
       return json({
         location: { directory, project: { id: "proj_test", directory: worktree, canonical: worktree } },

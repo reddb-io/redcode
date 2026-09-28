@@ -38,6 +38,12 @@ test.each([80, 160])("Redcode opens real blank sessions and preserves its sideba
             { id: "task_old", content: "Old completed task", status: "completed", priority: "low", closedAt: 1 },
           ],
         })
+      if (/^\/api\/session\/[^/]+\/diff$/.test(url.pathname))
+        return json({ data: [{ file: "redcode.ts", patch: "", additions: 12, deletions: 3, status: "modified" }] })
+      if (url.pathname === "/api/lsp") {
+        expect(url.searchParams.get("location[directory]")).toBe(directory)
+        return json({ location, data: [{ id: "typescript", root: ".", status: "connected" }] })
+      }
       if (url.pathname === "/api/agent")
         return json({
           location,
@@ -100,6 +106,10 @@ test.each([80, 160])("Redcode opens real blank sessions and preserves its sideba
   )
   await setup.waitForFrame((frame) => frame.includes("Preserve Redcode work") && frame.includes("Waiting for reviewer"))
   expect(setup.captureCharFrame()).not.toContain("Old completed task")
+  await setup.waitForFrame(
+    (frame) =>
+      frame.includes("typescript") && frame.includes("redcode.ts") && frame.includes("+12") && frame.includes("-3"),
+  )
   setup.mockInput.pressKey("F7")
   await setup.waitForFrame((frame) => frame.includes("Worker status is unavailable."))
   setup.mockInput.pressKey("F7")
@@ -176,4 +186,48 @@ test("failed blank-session creation can be retried from the keyboard", async () 
     (frame) => attempts === 2 && !frame.includes("Opening session") && !frame.includes("Press enter or click to retry"),
   )
   expect(attempts).toBe(2)
+})
+
+test("/monitors inspects evidence and stops observation through the V2 session API", async () => {
+  await using state = await tmpdir()
+  const cancelled: string[] = []
+  const monitor = {
+    id: "monitor_fixture",
+    sessionID: "ses_fixture",
+    command: "watch-build",
+    workdir: directory,
+    options: { mode: "once" },
+    status: "running",
+    created: 1,
+    updated: 1,
+    attempts: 2,
+    delivery: "observed",
+    evidence: { exit: 0, output: "Build evidence visible", truncated: false },
+  }
+  await using setup = await createAppFixture({
+    state: state.path,
+    fetch: (url, request) => {
+      if (/^\/api\/session\/[^/]+\/monitor$/.test(url.pathname)) return json({ data: [monitor] })
+      if (/\/monitor\/monitor_fixture\/cancel$/.test(url.pathname) && request.method === "POST") {
+        cancelled.push(url.pathname)
+        monitor.status = "cancelled"
+        return json({ data: monitor })
+      }
+    },
+  })
+  await setup.ready
+  await setup.waitForFrame((frame) => !frame.includes("Opening session") && frame.includes("Build"))
+  await setup.mockInput.typeText("/monitors")
+  setup.mockInput.pressEnter()
+  await setup.waitForFrame((frame) => frame.includes("Session monitors") && frame.includes("watch-build"))
+  setup.mockInput.pressEnter()
+  await setup.waitForFrame((frame) => frame.includes("View last result") && frame.includes("Stop monitoring"))
+  setup.mockInput.pressEnter()
+  await setup.waitForFrame((frame) => frame.includes("Build evidence visible"))
+  setup.mockInput.pressArrow("down")
+  setup.mockInput.pressEnter()
+  await setup.waitForFrame(
+    (frame) => cancelled.length === 1 && frame.includes("cancelled: watch-build") && !frame.includes("Stop monitoring"),
+  )
+  expect(cancelled[0]).toMatch(/^\/api\/session\/ses[^/]+\/monitor\/monitor_fixture\/cancel$/)
 })

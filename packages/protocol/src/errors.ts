@@ -267,3 +267,9 @@ export class ShellNotFoundError extends Schema.TaggedError<ShellNotFoundError>()
   },
   { httpApiStatus: 404 },
 ) {}
+
+export class MonitorNotFoundError extends Schema.TaggedError<MonitorNotFoundError>()(
+  "MonitorNotFoundError",
+  { monitorID: Schema.String, message: Schema.String },
+  { httpApiStatus: 404 },
+) {}

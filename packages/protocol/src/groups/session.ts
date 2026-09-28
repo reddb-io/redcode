@@ -5,6 +5,7 @@ import { Session } from "@opencode/schema/session"
 import { Credential } from "@opencode/schema/credential"
 import { SessionStats } from "@opencode/schema/session-stats"
 import { UsageMirror } from "@opencode/schema/usage-mirror"
+import { Monitor } from "@opencode/schema/monitor"
 import { SessionTodo } from "@opencode/schema/session-todo"
 import { SessionGoal } from "@opencode/schema/session-goal"
 import { Design } from "@opencode/schema/design"
@@ -32,6 +33,7 @@ import {
   InvalidCursorError,
   InvalidRequestError,
   MessageNotFoundError,
+  MonitorNotFoundError,
   ServiceUnavailableError,
   SessionBusyError,
   SessionNotFoundError,
@@ -48,6 +50,28 @@ import { EventLog } from "@opencode/schema/event-log"
 import { FileDiff } from "@opencode/schema/file-diff"
 import { Form } from "@opencode/schema/form"
 import { PublicSessionMessage } from "./message.js"
+
+// Monitor creation validates executable regex and JSON-path predicates in Core. Read APIs
+// expose the already-validated values without shipping those nonportable predicates to clients.
+const PublicMonitorInfo = Schema.Struct({
+  ...Monitor.Info.fields,
+  options: Schema.Struct({
+    ...Monitor.Options.fields,
+    success_regex: Schema.optional(Schema.String),
+    failure_regex: Schema.optional(Schema.String),
+  }),
+  probe: Schema.optional(
+    Schema.Union([
+      Schema.Struct({
+        ...Monitor.HttpProbe.fields,
+        json_path: Schema.optional(Schema.String),
+        regex: Schema.optional(Schema.String),
+      }),
+      Monitor.FileProbe,
+      Monitor.ProcessProbe,
+    ]),
+  ),
+}).annotate({ identifier: "Monitor.PublicInfo" })
 
 const ParentIDFilter = Schema.Union([
   Session.ID,
@@ -376,6 +400,48 @@ export const makeSessionGroup = <I extends HttpApiMiddleware.AnyId, S, FormI ext
           summary: "Restore imported Console share provenance",
           description:
             "Associate an imported share with its Console credential and organization, then verify it by synchronizing.",
+        }),
+      ),
+    )
+    .add(
+      HttpApiEndpoint.get("session.monitor.list", "/api/session/:sessionID/monitor", {
+        params: { sessionID: Session.ID },
+        success: Schema.Struct({ data: Schema.Array(PublicMonitorInfo) }),
+        error: SessionNotFoundError,
+      }).annotateMerge(
+        OpenApi.annotations({
+          identifier: "session.monitor.list",
+          summary: "List session monitors",
+          description:
+            "Manage monitors belonging to this session. Cancellation stops local observation; external jobs keep running.",
+        }),
+      ),
+    )
+    .add(
+      HttpApiEndpoint.get("session.monitor.get", "/api/session/:sessionID/monitor/:monitorID", {
+        params: { sessionID: Session.ID, monitorID: Schema.String },
+        success: Schema.Struct({ data: PublicMonitorInfo }),
+        error: [SessionNotFoundError, MonitorNotFoundError],
+      }).annotateMerge(
+        OpenApi.annotations({
+          identifier: "session.monitor.get",
+          summary: "Get session monitor",
+          description:
+            "Manage monitors belonging to this session. Cancellation stops local observation; external jobs keep running.",
+        }),
+      ),
+    )
+    .add(
+      HttpApiEndpoint.post("session.monitor.cancel", "/api/session/:sessionID/monitor/:monitorID/cancel", {
+        params: { sessionID: Session.ID, monitorID: Schema.String },
+        success: Schema.Struct({ data: PublicMonitorInfo }),
+        error: [SessionNotFoundError, MonitorNotFoundError],
+      }).annotateMerge(
+        OpenApi.annotations({
+          identifier: "session.monitor.cancel",
+          summary: "Stop local monitoring",
+          description:
+            "Manage monitors belonging to this session. Cancellation stops local observation; external jobs keep running.",
         }),
       ),
     )

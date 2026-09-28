@@ -167,6 +167,36 @@ export type SessionMessageIdle = {
 
 export type SessionActive = { type: "running" }
 
+export type MonitorFileProbe = {
+  type: "file"
+  path: string
+  state: "exists" | "missing" | "changed"
+  min_size?: number | undefined
+}
+
+export type MonitorProcessProbe = {
+  type: "process"
+  name?: string | undefined
+  match?: "name" | "cmdline" | undefined
+  pid?: number | undefined
+  state: "running" | "exited"
+}
+
+export type MonitorProbeResult = {
+  matched: boolean
+  status?: number | undefined
+  value?: string | undefined
+  redirect?: string | undefined
+  truncated?: boolean | undefined
+  exists?: boolean | undefined
+  size?: number | undefined
+  mtime?: number | undefined
+  pids?: Array<number> | undefined
+  error?: string | undefined
+}
+
+export type MonitorProcess = { pid: number; started: string }
+
 export type TodoSource = {
   type: "request" | "plan"
   id: string
@@ -820,6 +850,17 @@ export type SessionMessageCompactionFailed = {
 export type SessionProviderContext = { version: 1; provenance: SessionProviderContextProvenance; messages: JsonValue }
 
 export type ActiveSessionsResponse = { data: { [x: string]: SessionActive } }
+
+export type MonitorEvidence = {
+  exit: number | null
+  output: string
+  truncated: boolean
+  timedOut?: boolean | undefined
+  outputPath?: string | undefined
+  probe?: MonitorProbeResult | undefined
+  matched?: string | undefined
+  error?: string | undefined
+}
 
 export type Todo = {
   id?: string
@@ -2279,6 +2320,51 @@ export type SessionCompactionEnded = {
   }
 }
 
+export type MonitorPublicInfo = {
+  id: string
+  sessionID: string
+  originMessageID?: string | undefined
+  command: string
+  workdir: string
+  options: {
+    mode: "once" | "poll"
+    wait_ms?: number | undefined
+    deadline_ms?: number | undefined
+    interval_ms?: number | undefined
+    success_contains?: string | undefined
+    failure_contains?: string | undefined
+    success_regex?: string | undefined
+    failure_regex?: string | undefined
+    until?: "changed" | undefined
+    jitter?: boolean | undefined
+  }
+  probe?:
+    | {
+        type: "http"
+        url: string
+        method?: "GET" | "HEAD" | undefined
+        expect_status?: number | Array<number> | undefined
+        json_path?: string | undefined
+        equals?: string | number | boolean | undefined
+        contains?: string | undefined
+        regex?: string | undefined
+        headers?: { [x: string]: string } | undefined
+      }
+    | MonitorFileProbe
+    | MonitorProcessProbe
+    | undefined
+  status: "running" | "succeeded" | "failed" | "timed_out" | "cancelled" | "interrupted" | "expired"
+  created: number
+  updated: number
+  attempts: number
+  evidence?: MonitorEvidence | undefined
+  error?: string | undefined
+  delivery: "pending" | "observed" | "delivered" | "failed" | "suppressed"
+  cleanup?: "reaped" | "exited" | "left-running" | "unknown" | undefined
+  process?: MonitorProcess | undefined
+  interruptedBy?: string | undefined
+}
+
 export type DesignFeedbackItem = {
   target: string
   text: string
@@ -3162,6 +3248,14 @@ export type UnknownError = {
 }
 export const isUnknownError = (value: unknown): value is UnknownError =>
   typeof value === "object" && value !== null && "_tag" in value && value["_tag"] === "UnknownError"
+
+export type MonitorNotFoundError = {
+  readonly _tag: "MonitorNotFoundError"
+  readonly monitorID: string
+  readonly message: string
+}
+export const isMonitorNotFoundError = (value: unknown): value is MonitorNotFoundError =>
+  typeof value === "object" && value !== null && "_tag" in value && value["_tag"] === "MonitorNotFoundError"
 
 export type DesignNotFoundError = {
   readonly _tag: "DesignNotFoundError"
@@ -4611,6 +4705,24 @@ export type SessionRebindShareInput = {
 }
 
 export type SessionRebindShareOutput = { data: SessionInfo }["data"]
+
+export type SessionMonitorListInput = { readonly sessionID: { readonly sessionID: string }["sessionID"] }
+
+export type SessionMonitorListOutput = { data: Array<MonitorPublicInfo> }["data"]
+
+export type SessionMonitorGetInput = {
+  readonly sessionID: { readonly sessionID: string; readonly monitorID: string }["sessionID"]
+  readonly monitorID: { readonly sessionID: string; readonly monitorID: string }["monitorID"]
+}
+
+export type SessionMonitorGetOutput = { data: MonitorPublicInfo }["data"]
+
+export type SessionMonitorCancelInput = {
+  readonly sessionID: { readonly sessionID: string; readonly monitorID: string }["sessionID"]
+  readonly monitorID: { readonly sessionID: string; readonly monitorID: string }["monitorID"]
+}
+
+export type SessionMonitorCancelOutput = { data: MonitorPublicInfo }["data"]
 
 export type SessionTodoListInput = { readonly sessionID: { readonly sessionID: string }["sessionID"] }
 

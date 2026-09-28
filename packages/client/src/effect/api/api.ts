@@ -271,6 +271,258 @@ export type SessionRebindShareOperation<E = never> = (
   input: SessionRebindShareInput,
 ) => Effect.Effect<SessionRebindShareOutput, E>
 
+export type SessionMonitorListInput = { readonly sessionID: Session.ID }
+export type SessionMonitorListOutput = ReadonlyArray<{
+  readonly id: string
+  readonly sessionID: Session.ID
+  readonly originMessageID?: string | undefined
+  readonly command: string
+  readonly workdir: string
+  readonly options: {
+    readonly mode: "once" | "poll"
+    readonly wait_ms?: number | undefined
+    readonly deadline_ms?: number | undefined
+    readonly interval_ms?: number | undefined
+    readonly success_contains?: string | undefined
+    readonly failure_contains?: string | undefined
+    readonly success_regex?: string | undefined
+    readonly failure_regex?: string | undefined
+    readonly until?: "changed" | undefined
+    readonly jitter?: boolean | undefined
+  }
+  readonly probe?:
+    | {
+        readonly type: "http"
+        readonly url: string
+        readonly method?: "GET" | "HEAD" | undefined
+        readonly expect_status?: number | ReadonlyArray<number> | undefined
+        readonly json_path?: string | undefined
+        readonly equals?: string | number | boolean | undefined
+        readonly contains?: string | undefined
+        readonly regex?: string | undefined
+        readonly headers?: { readonly [x: string]: string } | undefined
+      }
+    | {
+        readonly type: "file"
+        readonly path: string
+        readonly state: "exists" | "missing" | "changed"
+        readonly min_size?: number | undefined
+      }
+    | {
+        readonly type: "process"
+        readonly name?: string | undefined
+        readonly match?: "name" | "cmdline" | undefined
+        readonly pid?: number | undefined
+        readonly state: "running" | "exited"
+      }
+    | undefined
+  readonly status: "running" | "succeeded" | "failed" | "timed_out" | "cancelled" | "interrupted" | "expired"
+  readonly created: number
+  readonly updated: number
+  readonly attempts: number
+  readonly evidence?:
+    | {
+        readonly exit: number | null
+        readonly output: string
+        readonly truncated: boolean
+        readonly timedOut?: boolean | undefined
+        readonly outputPath?: string | undefined
+        readonly probe?:
+          | {
+              readonly matched: boolean
+              readonly status?: number | undefined
+              readonly value?: string | undefined
+              readonly redirect?: string | undefined
+              readonly truncated?: boolean | undefined
+              readonly exists?: boolean | undefined
+              readonly size?: number | undefined
+              readonly mtime?: number | undefined
+              readonly pids?: ReadonlyArray<number> | undefined
+              readonly error?: string | undefined
+            }
+          | undefined
+        readonly matched?: string | undefined
+        readonly error?: string | undefined
+      }
+    | undefined
+  readonly error?: string | undefined
+  readonly delivery: "pending" | "observed" | "delivered" | "failed" | "suppressed"
+  readonly cleanup?: "reaped" | "exited" | "left-running" | "unknown" | undefined
+  readonly process?: { readonly pid: number; readonly started: string } | undefined
+  readonly interruptedBy?: string | undefined
+}>
+export type SessionMonitorListOperation<E = never> = (
+  input: SessionMonitorListInput,
+) => Effect.Effect<SessionMonitorListOutput, E>
+
+export type SessionMonitorGetInput = { readonly sessionID: Session.ID; readonly monitorID: string }
+export type SessionMonitorGetOutput = {
+  readonly id: string
+  readonly sessionID: Session.ID
+  readonly originMessageID?: string | undefined
+  readonly command: string
+  readonly workdir: string
+  readonly options: {
+    readonly mode: "once" | "poll"
+    readonly wait_ms?: number | undefined
+    readonly deadline_ms?: number | undefined
+    readonly interval_ms?: number | undefined
+    readonly success_contains?: string | undefined
+    readonly failure_contains?: string | undefined
+    readonly success_regex?: string | undefined
+    readonly failure_regex?: string | undefined
+    readonly until?: "changed" | undefined
+    readonly jitter?: boolean | undefined
+  }
+  readonly probe?:
+    | {
+        readonly type: "http"
+        readonly url: string
+        readonly method?: "GET" | "HEAD" | undefined
+        readonly expect_status?: number | ReadonlyArray<number> | undefined
+        readonly json_path?: string | undefined
+        readonly equals?: string | number | boolean | undefined
+        readonly contains?: string | undefined
+        readonly regex?: string | undefined
+        readonly headers?: { readonly [x: string]: string } | undefined
+      }
+    | {
+        readonly type: "file"
+        readonly path: string
+        readonly state: "exists" | "missing" | "changed"
+        readonly min_size?: number | undefined
+      }
+    | {
+        readonly type: "process"
+        readonly name?: string | undefined
+        readonly match?: "name" | "cmdline" | undefined
+        readonly pid?: number | undefined
+        readonly state: "running" | "exited"
+      }
+    | undefined
+  readonly status: "running" | "succeeded" | "failed" | "timed_out" | "cancelled" | "interrupted" | "expired"
+  readonly created: number
+  readonly updated: number
+  readonly attempts: number
+  readonly evidence?:
+    | {
+        readonly exit: number | null
+        readonly output: string
+        readonly truncated: boolean
+        readonly timedOut?: boolean | undefined
+        readonly outputPath?: string | undefined
+        readonly probe?:
+          | {
+              readonly matched: boolean
+              readonly status?: number | undefined
+              readonly value?: string | undefined
+              readonly redirect?: string | undefined
+              readonly truncated?: boolean | undefined
+              readonly exists?: boolean | undefined
+              readonly size?: number | undefined
+              readonly mtime?: number | undefined
+              readonly pids?: ReadonlyArray<number> | undefined
+              readonly error?: string | undefined
+            }
+          | undefined
+        readonly matched?: string | undefined
+        readonly error?: string | undefined
+      }
+    | undefined
+  readonly error?: string | undefined
+  readonly delivery: "pending" | "observed" | "delivered" | "failed" | "suppressed"
+  readonly cleanup?: "reaped" | "exited" | "left-running" | "unknown" | undefined
+  readonly process?: { readonly pid: number; readonly started: string } | undefined
+  readonly interruptedBy?: string | undefined
+}
+export type SessionMonitorGetOperation<E = never> = (
+  input: SessionMonitorGetInput,
+) => Effect.Effect<SessionMonitorGetOutput, E>
+
+export type SessionMonitorCancelInput = { readonly sessionID: Session.ID; readonly monitorID: string }
+export type SessionMonitorCancelOutput = {
+  readonly id: string
+  readonly sessionID: Session.ID
+  readonly originMessageID?: string | undefined
+  readonly command: string
+  readonly workdir: string
+  readonly options: {
+    readonly mode: "once" | "poll"
+    readonly wait_ms?: number | undefined
+    readonly deadline_ms?: number | undefined
+    readonly interval_ms?: number | undefined
+    readonly success_contains?: string | undefined
+    readonly failure_contains?: string | undefined
+    readonly success_regex?: string | undefined
+    readonly failure_regex?: string | undefined
+    readonly until?: "changed" | undefined
+    readonly jitter?: boolean | undefined
+  }
+  readonly probe?:
+    | {
+        readonly type: "http"
+        readonly url: string
+        readonly method?: "GET" | "HEAD" | undefined
+        readonly expect_status?: number | ReadonlyArray<number> | undefined
+        readonly json_path?: string | undefined
+        readonly equals?: string | number | boolean | undefined
+        readonly contains?: string | undefined
+        readonly regex?: string | undefined
+        readonly headers?: { readonly [x: string]: string } | undefined
+      }
+    | {
+        readonly type: "file"
+        readonly path: string
+        readonly state: "exists" | "missing" | "changed"
+        readonly min_size?: number | undefined
+      }
+    | {
+        readonly type: "process"
+        readonly name?: string | undefined
+        readonly match?: "name" | "cmdline" | undefined
+        readonly pid?: number | undefined
+        readonly state: "running" | "exited"
+      }
+    | undefined
+  readonly status: "running" | "succeeded" | "failed" | "timed_out" | "cancelled" | "interrupted" | "expired"
+  readonly created: number
+  readonly updated: number
+  readonly attempts: number
+  readonly evidence?:
+    | {
+        readonly exit: number | null
+        readonly output: string
+        readonly truncated: boolean
+        readonly timedOut?: boolean | undefined
+        readonly outputPath?: string | undefined
+        readonly probe?:
+          | {
+              readonly matched: boolean
+              readonly status?: number | undefined
+              readonly value?: string | undefined
+              readonly redirect?: string | undefined
+              readonly truncated?: boolean | undefined
+              readonly exists?: boolean | undefined
+              readonly size?: number | undefined
+              readonly mtime?: number | undefined
+              readonly pids?: ReadonlyArray<number> | undefined
+              readonly error?: string | undefined
+            }
+          | undefined
+        readonly matched?: string | undefined
+        readonly error?: string | undefined
+      }
+    | undefined
+  readonly error?: string | undefined
+  readonly delivery: "pending" | "observed" | "delivered" | "failed" | "suppressed"
+  readonly cleanup?: "reaped" | "exited" | "left-running" | "unknown" | undefined
+  readonly process?: { readonly pid: number; readonly started: string } | undefined
+  readonly interruptedBy?: string | undefined
+}
+export type SessionMonitorCancelOperation<E = never> = (
+  input: SessionMonitorCancelInput,
+) => Effect.Effect<SessionMonitorCancelOutput, E>
+
 export type SessionTodoListInput = { readonly sessionID: Session.ID }
 export type SessionTodoListOutput = ReadonlyArray<{
   readonly id?: string | undefined
@@ -3296,6 +3548,11 @@ export interface SessionApi<E = never> {
   readonly share: SessionShareOperation<E>
   readonly unshare: SessionUnshareOperation<E>
   readonly rebindShare: SessionRebindShareOperation<E>
+  readonly monitor: {
+    readonly list: SessionMonitorListOperation<E>
+    readonly get: SessionMonitorGetOperation<E>
+    readonly cancel: SessionMonitorCancelOperation<E>
+  }
   readonly todo: { readonly list: SessionTodoListOperation<E> }
   readonly goal: {
     readonly get: SessionGoalGetOperation<E>

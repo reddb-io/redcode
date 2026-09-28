@@ -38,6 +38,12 @@ import type {
   SessionUnshareOutput,
   SessionRebindShareInput,
   SessionRebindShareOutput,
+  SessionMonitorListInput,
+  SessionMonitorListOutput,
+  SessionMonitorGetInput,
+  SessionMonitorGetOutput,
+  SessionMonitorCancelInput,
+  SessionMonitorCancelOutput,
   SessionTodoListInput,
   SessionTodoListOutput,
   SessionGoalGetInput,
@@ -960,6 +966,41 @@ export function make(options: ClientOptions) {
           },
           requestOptions,
         ).then((value) => value.data),
+      monitor: {
+        list: (input: SessionMonitorListInput, requestOptions?: RequestOptions) =>
+          request<{ readonly data: SessionMonitorListOutput }>(
+            {
+              method: "GET",
+              path: `/api/session/${encodeURIComponent(input.sessionID)}/monitor`,
+              successStatus: 200,
+              declaredStatuses: [400, 401, 404],
+              empty: false,
+            },
+            requestOptions,
+          ).then((value) => value.data),
+        get: (input: SessionMonitorGetInput, requestOptions?: RequestOptions) =>
+          request<{ readonly data: SessionMonitorGetOutput }>(
+            {
+              method: "GET",
+              path: `/api/session/${encodeURIComponent(input.sessionID)}/monitor/${encodeURIComponent(input.monitorID)}`,
+              successStatus: 200,
+              declaredStatuses: [400, 401, 404],
+              empty: false,
+            },
+            requestOptions,
+          ).then((value) => value.data),
+        cancel: (input: SessionMonitorCancelInput, requestOptions?: RequestOptions) =>
+          request<{ readonly data: SessionMonitorCancelOutput }>(
+            {
+              method: "POST",
+              path: `/api/session/${encodeURIComponent(input.sessionID)}/monitor/${encodeURIComponent(input.monitorID)}/cancel`,
+              successStatus: 200,
+              declaredStatuses: [400, 401, 404],
+              empty: false,
+            },
+            requestOptions,
+          ).then((value) => value.data),
+      },
       todo: {
         list: (input: SessionTodoListInput, requestOptions?: RequestOptions) =>
           request<{ readonly data: SessionTodoListOutput }>(

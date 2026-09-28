@@ -29,6 +29,7 @@ import { Instance } from "@opencode/core/instance/service"
 import { SessionTransfer } from "@opencode/core/session/transfer"
 import { SessionShare } from "@opencode/core/session/share"
 import { ShellSelect } from "@opencode/core/shell/select"
+import { MonitorRuntime } from "@opencode/core/monitor"
 import { Job } from "@opencode/core/job"
 import { Mcp } from "@opencode/core/mcp/index"
 import { Global } from "@opencode/util/global"
@@ -70,6 +71,7 @@ const applicationServiceNodes = [
   EventLogger.node,
   httpClient,
   Job.node,
+  MonitorRuntime.node,
   Project.node,
   Worktree.node,
   Session.node,

@@ -58,6 +58,7 @@ import { openEditor } from "../../editor"
 import { openUrl } from "@opencode/util/open"
 import { useDialog } from "../../ui/dialog"
 import { DialogSelect } from "../../ui/dialog-select"
+import { DialogMonitors } from "../../component/dialog-monitors"
 import { DialogPrompt } from "../../ui/dialog-prompt"
 import { DialogSessionRename } from "../../component/dialog-session-rename"
 import { DialogImagePreview } from "../../component/dialog-image-preview"
@@ -907,6 +908,13 @@ export function Session(props: {
   ]
 
   const baseCommands = createMemo(() => [
+    {
+      title: "Manage monitors",
+      id: "session.monitors",
+      group: "Session",
+      slash: { name: "monitors" },
+      run: () => dialog.replace(() => <DialogMonitors sessionID={route.sessionID} />),
+    },
     ...(["pause", "resume", "drop", "budget"] as const).map((action) => ({
       title: `Goal ${action}`,
       id: `session.goal.${action}`,
