@@ -36,40 +36,55 @@ export function SidebarTodo(props: { context: Plugin.Context; sessionID: string 
   return (
     <Show when={visible().length > 0 || tasks()?.error}>
       <box>
-        <text fg={theme.text.action.secondary.base} onMouseUp={() => setOpen(!open())}>
-          <b>
-            {open() ? "▼" : "▶"} Tasks ({visible().length})
-          </b>
-        </text>
+        <box flexDirection="row" gap={1} onMouseDown={() => visible().length > 2 && setOpen(!open())}>
+          <Show when={visible().length > 2}>
+            <text fg={theme.text.action.primary.base}>{open() ? "▼" : "▶"}</text>
+          </Show>
+          <text fg={theme.text.action.primary.base}>
+            <b>Todo</b>
+          </text>
+        </box>
         <Show when={tasks()?.error}>
           <text fg={theme.text.feedback.error.base} wrapMode="word">
             Tasks unavailable: {tasks()?.error}
           </text>
         </Show>
-        <Show when={open()}>
+        <Show when={visible().length <= 2 || open()}>
           <For each={shown()}>
             {(item) => (
-              <box>
+              <box flexDirection="row" gap={0}>
                 <text
-                  fg={item.status === "blocked" ? theme.text.feedback.warning.base : theme.text.base}
-                  wrapMode="word"
+                  flexShrink={0}
+                  fg={
+                    ["in_progress", "blocked"].includes(item.status)
+                      ? theme.text.feedback.warning.base
+                      : theme.text.muted
+                  }
                 >
+                  [
                   {item.status === "completed"
                     ? "✓"
                     : item.status === "cancelled"
                       ? "−"
                       : item.status === "in_progress"
-                        ? "◉"
+                        ? "•"
                         : item.status === "blocked"
                           ? "!"
-                          : "○"}{" "}
-                  {item.content}
+                          : " "}
+                  ]{" "}
                 </text>
-                <Show when={item.reason}>
-                  <text fg={theme.text.muted} wrapMode="word">
-                    {item.reason}
-                  </text>
-                </Show>
+                <text
+                  flexGrow={1}
+                  wrapMode="word"
+                  fg={
+                    ["in_progress", "blocked"].includes(item.status)
+                      ? theme.text.feedback.warning.base
+                      : theme.text.muted
+                  }
+                >
+                  {item.content}
+                  {item.reason ? ` — ${item.reason}` : ""}
+                </text>
               </box>
             )}
           </For>

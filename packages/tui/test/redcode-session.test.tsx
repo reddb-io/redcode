@@ -108,10 +108,16 @@ test.each([80, 160])("Redcode opens real blank sessions and preserves its sideba
   )
   await setup.waitForFrame((frame) => frame.includes("Preserve Redcode work") && frame.includes("Waiting for reviewer"))
   expect(setup.captureCharFrame()).not.toContain("Old completed task")
+  expect(setup.captureCharFrame()).toContain("Todo")
+  expect(setup.captureCharFrame()).toContain("[•] Preserve Redcode work")
+  expect(setup.captureCharFrame()).toContain("[!] External verification")
   await setup.waitForFrame(
     (frame) =>
       frame.includes("typescript") && frame.includes("redcode.ts") && frame.includes("+12") && frame.includes("-3"),
   )
+  expect(setup.captureCharFrame()).not.toContain("▼ LSP")
+  expect(setup.captureCharFrame()).not.toContain("▼ Modified Files")
+  expect(setup.captureCharFrame().indexOf("Modified Files")).toBeLessThan(setup.captureCharFrame().indexOf("LSP"))
   setup.mockInput.pressKey("F7")
   await setup.waitForFrame((frame) => frame.includes("Worker status is unavailable."))
   setup.mockInput.pressKey("F7")

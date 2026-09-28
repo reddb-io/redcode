@@ -21,15 +21,20 @@ export function SidebarFiles(props: { context: Plugin.Context; sessionID: string
   return (
     <Show when={files()?.data.length || files()?.error}>
       <box>
-        <text fg={theme.text.action.secondary.base} onMouseUp={() => setOpen(!open())}>
-          <b>{open() ? "▼" : "▶"} Modified Files</b>
-        </text>
+        <box flexDirection="row" gap={1} onMouseDown={() => (files()?.data.length ?? 0) > 2 && setOpen(!open())}>
+          <Show when={(files()?.data.length ?? 0) > 2}>
+            <text fg={theme.text.action.primary.base}>{open() ? "▼" : "▶"}</text>
+          </Show>
+          <text fg={theme.text.action.primary.base}>
+            <b>Modified Files</b>
+          </text>
+        </box>
         <Show when={files()?.error}>
           <text fg={theme.text.feedback.error.base} wrapMode="word">
             Files unavailable: {files()?.error}
           </text>
         </Show>
-        <Show when={open()}>
+        <Show when={(files()?.data.length ?? 0) <= 2 || open()}>
           <For each={files()?.data}>
             {(item) => (
               <box flexDirection="row" gap={1} minWidth={0}>

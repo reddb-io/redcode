@@ -28,10 +28,15 @@ export function SidebarLsp(props: { context: Plugin.Context; sessionID: string }
 
   return (
     <box>
-      <text fg={theme.text.action.secondary.base} onMouseUp={() => setOpen(!open())}>
-        <b>{open() ? "▼" : "▶"} LSP</b>
-      </text>
-      <Show when={open()}>
+      <box flexDirection="row" gap={1} onMouseDown={() => (servers()?.data.length ?? 0) > 2 && setOpen(!open())}>
+        <Show when={(servers()?.data.length ?? 0) > 2}>
+          <text fg={theme.text.action.primary.base}>{open() ? "▼" : "▶"}</text>
+        </Show>
+        <text fg={theme.text.action.primary.base}>
+          <b>LSP</b>
+        </text>
+      </box>
+      <Show when={(servers()?.data.length ?? 0) <= 2 || open()}>
         <Show when={servers()?.error}>
           <text fg={theme.text.feedback.error.base} wrapMode="word">
             LSP unavailable: {servers()?.error}
