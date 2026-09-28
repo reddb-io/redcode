@@ -5,6 +5,7 @@ import { Agent } from "./agent.js"
 import { Model } from "./model.js"
 import { NonNegativeInt, PositiveInt, optional } from "./schema.js"
 import { SessionID } from "./session-id.js"
+import { SessionBudget } from "./session-budget.js"
 
 export const Status = Schema.Literals(["active", "waiting", "paused", "blocked", "done"])
 export const Scope = Schema.Literals(["design", "plan", "build"])
@@ -46,6 +47,8 @@ export const Info = Schema.Struct({
   checks: Schema.Array(
     Schema.Struct({ command: Schema.String, exitCode: Schema.Number, output: Schema.String, at: Schema.Finite }),
   ),
+  budget: SessionBudget.Limits.pipe(optional),
+  spendStart: SessionBudget.Totals.pipe(optional),
   created: Schema.Finite,
   updated: Schema.Finite,
 }).annotate({ identifier: "SessionGoal.Info" })
@@ -54,6 +57,8 @@ export type Info = typeof Info.Type
 export const Control = Schema.Struct({
   action: Schema.Literals(["pause", "resume", "drop", "budget"]),
   maxTurns: PositiveInt.check(Schema.isLessThanOrEqualTo(1_000)).pipe(optional),
+  maxCostUsd: Schema.NullOr(Schema.Finite.check(Schema.isGreaterThan(0))).pipe(optional),
+  maxTokens: Schema.NullOr(PositiveInt).pipe(optional),
 }).annotate({ identifier: "SessionGoal.Control" })
 export type Control = typeof Control.Type
 

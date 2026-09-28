@@ -1,6 +1,7 @@
 import { Plugin } from "@opencode/plugin/tui"
-import { createMemo } from "solid-js"
+import { createEffect, createMemo, createResource, For, on, onCleanup } from "solid-js"
 import { contextUsage } from "../../util/session"
+import { Budget } from "../../util/budget"
 
 const money = new Intl.NumberFormat("en-US", {
   style: "currency",
@@ -12,6 +13,36 @@ export function SidebarContext(props: { context: Plugin.Context; sessionID: stri
   const msg = createMemo(() => props.context.data.session.message.list(props.sessionID))
   const session = createMemo(() => props.context.data.session.get(props.sessionID))
   const cost = createMemo(() => props.context.data.session.cost(props.sessionID))
+  const usage = createMemo(() => {
+    const current = session()
+    if (!current) return ""
+    return `${current.cost}:${current.tokens.input}:${current.tokens.output}:${current.tokens.reasoning}:${current.tokens.cache.read}:${current.tokens.cache.write}`
+  })
+  const [budget, { refetch }] = createResource(
+    () => props.sessionID,
+    (sessionID) =>
+      Promise.all([
+        props.context.client.session.budget.get({ sessionID }),
+        props.context.client.session.goal.get({ sessionID }),
+      ]).then(
+        ([view, goal]) => ({ view, goal }),
+        () => undefined,
+      ),
+  )
+  createEffect(on(usage, () => void refetch(), { defer: true }))
+  const timer = setInterval(() => {
+    if (!budget.loading) void refetch()
+  }, 5_000)
+  onCleanup(() => clearInterval(timer))
+  const sessionBudget = createMemo(() => {
+    const current = budget()?.view
+    return current && Budget.hasLimits(current.limits) ? Budget.lines(current.limits, current.spent) : []
+  })
+  const goalBudget = createMemo(() => {
+    const current = budget()
+    if (!current?.goal?.budget || !["active", "waiting", "paused"].includes(current.goal.status)) return []
+    return Budget.lines(current.goal.budget, Budget.since(current.view.spent, current.goal.spendStart))
+  })
 
   const state = createMemo(() =>
     contextUsage(msg(), props.context.data.location.model.list(session()?.location), session()?.revert?.messageID),
@@ -25,6 +56,8 @@ export function SidebarContext(props: { context: Plugin.Context; sessionID: stri
       <text fg={theme.text.muted}>{(state()?.tokens ?? 0).toLocaleString()} tokens</text>
       <text fg={theme.text.muted}>{state()?.percent ?? 0}% used</text>
       <text fg={theme.text.muted}>{money.format(cost())} spent</text>
+      <For each={sessionBudget()}>{(line) => <text fg={theme.text.muted}>budget (with subagents) {line}</text>}</For>
+      <For each={goalBudget()}>{(line) => <text fg={theme.text.muted}>goal budget (with subagents) {line}</text>}</For>
     </box>
   )
 }

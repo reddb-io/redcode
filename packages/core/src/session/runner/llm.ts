@@ -25,6 +25,7 @@ import { SessionStore } from "../store.js"
 import { SessionMessageTable } from "../sql.js"
 import { SessionTitle } from "../title.js"
 import { SessionGoal } from "../goal.js"
+import { SessionBudget } from "../budget.js"
 import { SessionGuardLog } from "../guard-log.js"
 import { SessionPlan } from "../plan.js"
 import { SessionGoalCompletion } from "../goal-completion.js"
@@ -70,6 +71,7 @@ const layer = Layer.effect(
     const title = yield* SessionTitle.Service
     const todos = yield* SessionTodoStore.Service
     const goals = yield* SessionGoal.Service
+    const budgets = yield* SessionBudget.Service
     const guards = yield* SessionGuardLog.Service
     const intelligence = yield* Intelligence.Service
     const plans = yield* SessionPlan.Service
@@ -223,6 +225,7 @@ const layer = Layer.effect(
       while (true) {
         const next = yield* advanceToStep()
         if (next._tag !== "Ready") return next
+        if (!(yield* budgets.admit(sessionID))) return DrainResult.Complete()
         const goalID = yield* goals.beginStep(sessionID)
         if (goalID === false) return DrainResult.Complete()
         const result = yield* Effect.uninterruptibleMask((restore) =>
@@ -680,6 +683,7 @@ export const node = makeLocationNode({
     SessionTitle.node,
     SessionTodoStore.node,
     SessionGoal.node,
+    SessionBudget.node,
     SessionGuardLog.node,
     SessionPlan.node,
     SessionGoalCompletion.node,

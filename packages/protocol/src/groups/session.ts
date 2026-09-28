@@ -8,6 +8,7 @@ import { UsageMirror } from "@opencode/schema/usage-mirror"
 import { Monitor } from "@opencode/schema/monitor"
 import { SessionTodo } from "@opencode/schema/session-todo"
 import { SessionGoal } from "@opencode/schema/session-goal"
+import { SessionBudget } from "@opencode/schema/session-budget"
 import { Design } from "@opencode/schema/design"
 import { InstructionEntry } from "@opencode/schema/instruction-entry"
 import { Project } from "@opencode/schema/project"
@@ -503,9 +504,38 @@ export const makeSessionGroup = <I extends HttpApiMiddleware.AnyId, S, FormI ext
             identifier: "experimental.session.goal.control",
             summary: "Control session goal",
             description:
-              "Pause, resume, drop, or change the step budget of the current goal. Pause and drop interrupt local execution; resume admits work.",
+              "Pause, resume, drop, or change the step, cost, and token budget of the current goal. Pause and drop interrupt local execution; resume admits work.",
           }),
         ),
+    )
+    .add(
+      HttpApiEndpoint.get("session.budget.get", "/api/session/:sessionID/budget", {
+        params: { sessionID: Session.ID },
+        success: Schema.Struct({ data: SessionBudget.View }),
+        error: SessionNotFoundError,
+      }).annotateMerge(
+        OpenApi.annotations({
+          identifier: "session.budget.get",
+          summary: "Get session budget",
+          description:
+            "Read the cost and token limits in force and total provider usage by this session and its children.",
+        }),
+      ),
+    )
+    .add(
+      HttpApiEndpoint.patch("session.budget.update", "/api/session/:sessionID/budget", {
+        params: { sessionID: Session.ID },
+        payload: SessionBudget.Update,
+        success: Schema.Struct({ data: SessionBudget.View }),
+        error: SessionNotFoundError,
+      }).annotateMerge(
+        OpenApi.annotations({
+          identifier: "session.budget.update",
+          summary: "Set session budget",
+          description:
+            "Set or clear cost and token limits for this session. Omitted fields stay unchanged; null removes a limit.",
+        }),
+      ),
     )
     .add(
       HttpApiEndpoint.get("session.design.feed", "/api/experimental/session/:sessionID/design/feed", {

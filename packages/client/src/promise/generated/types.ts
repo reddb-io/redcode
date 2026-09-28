@@ -217,6 +217,10 @@ export type TodoEvidence = {
 
 export type SessionGoalEvidence = { path: string; hash: string; bytes: number }
 
+export type SessionBudgetLimits = { maxCostUsd?: number; maxTokens?: number }
+
+export type SessionBudgetTotals = { cost: number; tokens: number; unpriced: number }
+
 export type DesignFeedEvent =
   | { seq: number; at: number; type: "state"; state: "working" | "idle" }
   | { seq: number; at: number; type: "user"; id: string; text: string; notes: number; pending?: boolean }
@@ -961,9 +965,20 @@ export type SessionGoalInfo = {
   tokens: number
   reviews: number
   evidence: Array<SessionGoalEvidence>
-  checks: Array<{ command: string; exitCode: number; output: string; at: number }>
+  checks: Array<{ command: string; exitCode: number | "Infinity" | "-Infinity" | "NaN"; output: string; at: number }>
+  budget?: SessionBudgetLimits
+  spendStart?: SessionBudgetTotals
   created: number
   updated: number
+}
+
+export type SessionBudgetView = {
+  limits: SessionBudgetLimits
+  override: SessionBudgetLimits
+  spent: SessionBudgetTotals
+  exceeded: boolean
+  unknown: boolean
+  reason: string
 }
 
 export type DesignParamComponent = {
@@ -4892,14 +4907,45 @@ export type SessionGoalStartOutput = { data: SessionGoalInfo }["data"]
 
 export type SessionGoalControlInput = {
   readonly sessionID: { readonly sessionID: string }["sessionID"]
-  readonly action: { readonly action: "pause" | "resume" | "drop" | "budget"; readonly maxTurns?: number }["action"]
+  readonly action: {
+    readonly action: "pause" | "resume" | "drop" | "budget"
+    readonly maxTurns?: number
+    readonly maxCostUsd?: number | null
+    readonly maxTokens?: number | null
+  }["action"]
   readonly maxTurns?: {
     readonly action: "pause" | "resume" | "drop" | "budget"
     readonly maxTurns?: number
+    readonly maxCostUsd?: number | null
+    readonly maxTokens?: number | null
   }["maxTurns"]
+  readonly maxCostUsd?: {
+    readonly action: "pause" | "resume" | "drop" | "budget"
+    readonly maxTurns?: number
+    readonly maxCostUsd?: number | null
+    readonly maxTokens?: number | null
+  }["maxCostUsd"]
+  readonly maxTokens?: {
+    readonly action: "pause" | "resume" | "drop" | "budget"
+    readonly maxTurns?: number
+    readonly maxCostUsd?: number | null
+    readonly maxTokens?: number | null
+  }["maxTokens"]
 }
 
 export type SessionGoalControlOutput = { data: SessionGoalInfo | null }["data"]
+
+export type SessionBudgetGetInput = { readonly sessionID: { readonly sessionID: string }["sessionID"] }
+
+export type SessionBudgetGetOutput = { data: SessionBudgetView }["data"]
+
+export type SessionBudgetUpdateInput = {
+  readonly sessionID: { readonly sessionID: string }["sessionID"]
+  readonly maxCostUsd?: { readonly maxCostUsd?: number | null; readonly maxTokens?: number | null }["maxCostUsd"]
+  readonly maxTokens?: { readonly maxCostUsd?: number | null; readonly maxTokens?: number | null }["maxTokens"]
+}
+
+export type SessionBudgetUpdateOutput = { data: SessionBudgetView }["data"]
 
 export type SessionDesignFeedInput = {
   readonly sessionID: { readonly sessionID: string }["sessionID"]

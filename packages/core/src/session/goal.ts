@@ -10,14 +10,16 @@ import { SessionSchema } from "./schema.js"
 import { SessionGuardLog } from "./guard-log.js"
 import { SessionGoalTable, SessionGoalReviewTable } from "./redcode.sql.js"
 import { SessionInboxTable } from "./sql.js"
+import { SessionBudget } from "./budget.js"
 
 const owner = { id: "" }
 const live = (goal: SessionGoal.Info) => goal.status === "active" || goal.status === "waiting"
 
 const make = Effect.gen(function* () {
-  const processOwner = owner.id ||= crypto.randomUUID()
+  const processOwner = (owner.id ||= crypto.randomUUID())
   const database = yield* Database.Service
   const guards = yield* SessionGuardLog.Service
+  const budgets = yield* SessionBudget.Service
   const db = database.db
 
   // Compare-and-swap makes a delayed review unable to undo pause, replacement or budget changes.
@@ -48,10 +50,7 @@ const make = Effect.gen(function* () {
                   .select({ id: SessionInboxTable.id })
                   .from(SessionInboxTable)
                   .where(
-                    and(
-                      eq(SessionInboxTable.session_id, previous.sessionID),
-                      eq(SessionInboxTable.delivery, "steer"),
-                    ),
+                    and(eq(SessionInboxTable.session_id, previous.sessionID), eq(SessionInboxTable.delivery, "steer")),
                   ),
               )
             : undefined,
@@ -152,6 +151,7 @@ const make = Effect.gen(function* () {
         .map((line) => line.replace(/^gates?\s*:/i, "").trim())
         .filter(Boolean)
     const now = Date.now()
+    const spendStart = yield* budgets.totals(sessionID)
     const data: SessionGoal.Info = {
       id: `goal_${crypto.randomUUID()}`,
       sessionID,
@@ -170,6 +170,7 @@ const make = Effect.gen(function* () {
       reviews: 0,
       evidence: [],
       checks: [],
+      spendStart,
       created: now,
       updated: now,
     }
@@ -205,14 +206,30 @@ const make = Effect.gen(function* () {
       return null
     }
     if (input.action === "budget") {
-      if (!input.maxTurns)
-        return yield* new SessionGoal.Error({ message: "A positive step budget is required" })
-      return yield* save(goal, { ...goal, turns: { ...goal.turns, max: input.maxTurns } })
+      if (input.maxTurns === undefined && input.maxCostUsd === undefined && input.maxTokens === undefined)
+        return yield* new SessionGoal.Error({ message: "A step, cost, or token budget is required" })
+      const budget = SessionBudget.update(goal.budget, input)
+      const next: SessionGoal.Info = {
+        ...goal,
+        turns: input.maxTurns === undefined ? goal.turns : { ...goal.turns, max: input.maxTurns },
+        budget: SessionBudget.hasLimits(budget) ? budget : undefined,
+      }
+      return yield* save(goal, next)
     }
     if (input.action === "resume" && goal.turns.used >= goal.turns.max)
       return yield* new SessionGoal.Error({
         message: "Step budget exhausted. Increase the budget before resuming.",
       })
+    if (input.action === "resume" && goal.budget) {
+      const status = SessionBudget.check(
+        goal.budget,
+        SessionBudget.since(yield* budgets.totals(sessionID), goal.spendStart),
+      )
+      if (status.exceeded)
+        return yield* new SessionGoal.Error({
+          message: `Spend budget exhausted (${status.reason}). Increase it before resuming.`,
+        })
+    }
     if (goal.status === "done") return goal
     return yield* save(goal, {
       ...goal,
@@ -224,6 +241,18 @@ const make = Effect.gen(function* () {
   const beginStep = Effect.fn("SessionGoal.beginStep")(function* (sessionID: SessionSchema.ID) {
     const goal = yield* get(sessionID)
     if (!goal || !live(goal)) return undefined
+    if (goal.budget) {
+      const status = SessionBudget.check(
+        goal.budget,
+        SessionBudget.since(yield* budgets.totals(sessionID), goal.spendStart),
+      )
+      if (status.exceeded) {
+        const reason = `budget: ${status.reason}`
+        yield* save(goal, { ...goal, status: "paused", reason })
+        yield* guards.record({ sessionID, guard: "budget", action: "stop", subject: "goal", detail: reason })
+        return false
+      }
+    }
     if (goal.turns.used >= goal.turns.max) {
       const reason = `Used ${goal.turns.max} steps. Budget exhaustion is not completion.`
       yield* save(goal, {
@@ -281,7 +310,7 @@ export class Service extends Context.Service<Service, Effect.Success<typeof make
 export const node = makeGlobalNode({
   service: Service,
   layer: Layer.effect(Service, make),
-  deps: [Database.node, SessionGuardLog.node],
+  deps: [Database.node, SessionGuardLog.node, SessionBudget.node],
 })
 
 export function guidance(goal: SessionGoal.Info | null) {
@@ -291,9 +320,12 @@ export function guidance(goal: SessionGoal.Info | null) {
     `Status: ${goal.status}. ${goal.reason}`,
     `Scope ends after ${goal.stopAfter}. Plan execution pre-authorized: ${goal.executePlan}. This does not authorize work outside the objective.`,
     `Steps: ${goal.turns.used}/${goal.turns.max}. Budget exhaustion is not completion.`,
+    ...(goal.budget ? [`Spend budget: ${SessionBudget.describeLimits(goal.budget)}.`] : []),
     ...goal.criteria.map((criterion, index) => `Criterion ${index + 1}: ${criterion}`),
     ...(goal.stopAfter === "design"
-      ? ["Before goal_complete, audit the published Design revision and obtain the user's approval of that revision and its audit evidence."]
+      ? [
+          "Before goal_complete, audit the published Design revision and obtain the user's approval of that revision and its audit evidence.",
+        ]
       : []),
     "When complete, call goal_complete with actual evidence file paths and a concise explanation of how every criterion is met. The harness reads and hashes the files, runs configured checks and reviews the evidence. Do not claim success without passing verification.",
     "Continue within the authorized scope. Keep progress concise: current checkpoint, verified facts, remaining work and blockers. Use goal_status to report a real blocker or pause; never redefine the objective to make it easier.",

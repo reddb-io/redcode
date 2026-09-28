@@ -590,6 +590,8 @@ export type SessionGoalGetOutput = {
     readonly output: string
     readonly at: number
   }>
+  readonly budget?: { readonly maxCostUsd?: number | undefined; readonly maxTokens?: number | undefined } | undefined
+  readonly spendStart?: { readonly cost: number; readonly tokens: number; readonly unpriced: number } | undefined
   readonly created: number
   readonly updated: number
 } | null
@@ -627,6 +629,8 @@ export type SessionGoalStartOutput = {
     readonly output: string
     readonly at: number
   }>
+  readonly budget?: { readonly maxCostUsd?: number | undefined; readonly maxTokens?: number | undefined } | undefined
+  readonly spendStart?: { readonly cost: number; readonly tokens: number; readonly unpriced: number } | undefined
   readonly created: number
   readonly updated: number
 }
@@ -638,6 +642,8 @@ export type SessionGoalControlInput = {
   readonly sessionID: Session.ID
   readonly action: "pause" | "resume" | "drop" | "budget"
   readonly maxTurns?: number | undefined
+  readonly maxCostUsd?: number | null | undefined
+  readonly maxTokens?: number | null | undefined
 }
 export type SessionGoalControlOutput = {
   readonly id: string
@@ -660,12 +666,44 @@ export type SessionGoalControlOutput = {
     readonly output: string
     readonly at: number
   }>
+  readonly budget?: { readonly maxCostUsd?: number | undefined; readonly maxTokens?: number | undefined } | undefined
+  readonly spendStart?: { readonly cost: number; readonly tokens: number; readonly unpriced: number } | undefined
   readonly created: number
   readonly updated: number
 } | null
 export type SessionGoalControlOperation<E = never> = (
   input: SessionGoalControlInput,
 ) => Effect.Effect<SessionGoalControlOutput, E>
+
+export type SessionBudgetGetInput = { readonly sessionID: Session.ID }
+export type SessionBudgetGetOutput = {
+  readonly limits: { readonly maxCostUsd?: number | undefined; readonly maxTokens?: number | undefined }
+  readonly override: { readonly maxCostUsd?: number | undefined; readonly maxTokens?: number | undefined }
+  readonly spent: { readonly cost: number; readonly tokens: number; readonly unpriced: number }
+  readonly exceeded: boolean
+  readonly unknown: boolean
+  readonly reason: string
+}
+export type SessionBudgetGetOperation<E = never> = (
+  input: SessionBudgetGetInput,
+) => Effect.Effect<SessionBudgetGetOutput, E>
+
+export type SessionBudgetUpdateInput = {
+  readonly sessionID: Session.ID
+  readonly maxCostUsd?: number | null | undefined
+  readonly maxTokens?: number | null | undefined
+}
+export type SessionBudgetUpdateOutput = {
+  readonly limits: { readonly maxCostUsd?: number | undefined; readonly maxTokens?: number | undefined }
+  readonly override: { readonly maxCostUsd?: number | undefined; readonly maxTokens?: number | undefined }
+  readonly spent: { readonly cost: number; readonly tokens: number; readonly unpriced: number }
+  readonly exceeded: boolean
+  readonly unknown: boolean
+  readonly reason: string
+}
+export type SessionBudgetUpdateOperation<E = never> = (
+  input: SessionBudgetUpdateInput,
+) => Effect.Effect<SessionBudgetUpdateOutput, E>
 
 export type SessionDesignFeedInput = { readonly sessionID: Session.ID; readonly after?: Event.Seq | undefined }
 export type SessionDesignFeedOutput =
@@ -3561,6 +3599,7 @@ export interface SessionApi<E = never> {
     readonly start: SessionGoalStartOperation<E>
     readonly control: SessionGoalControlOperation<E>
   }
+  readonly budget: { readonly get: SessionBudgetGetOperation<E>; readonly update: SessionBudgetUpdateOperation<E> }
   readonly remove: SessionRemoveOperation<E>
   readonly fork: SessionForkOperation<E>
   readonly switchAgent: SessionSwitchAgentOperation<E>

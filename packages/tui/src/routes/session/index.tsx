@@ -77,6 +77,7 @@ import { deduplicateVisibleImages } from "../../prompt/attachment"
 import { pendingLabel, pendingPreview } from "../../prompt/pending"
 import { useEpilogue } from "../../context/epilogue"
 import { normalizePath } from "../../util/path"
+import { Budget } from "../../util/budget"
 import { PermissionPrompt } from "./permission"
 import { FormPrompt } from "./form"
 import { DialogExportOptions } from "../../ui/dialog-export-options"
@@ -942,7 +943,7 @@ export function Session(props: {
       run: () => dialog.replace(() => <DialogMonitors sessionID={route.sessionID} />),
     },
     ...(["pause", "resume", "drop", "budget"] as const).map((action) => ({
-      title: `Goal ${action}`,
+      title: action === "budget" ? "Goal budget" : `Goal ${action}`,
       id: `session.goal.${action}`,
       group: "Session",
       slash: { name: `goal-${action}` },
@@ -953,8 +954,8 @@ export function Session(props: {
         }
         dialog.replace(() => (
           <DialogPrompt
-            title="Goal step budget"
-            placeholder="1–1000 steps"
+            title="Goal budget"
+            placeholder="30 steps, $3, 500k tokens, $3 500k, or off"
             onConfirm={(value) => keymap.dispatch("session.goal", `budget ${value}`)}
             onCancel={() => dialog.clear()}
           />
@@ -994,15 +995,23 @@ export function Session(props: {
               return
             }
             if (command.startsWith("budget ")) {
-              const maxTurns = Number(text.slice(7).trim())
-              if (!Number.isInteger(maxTurns) || maxTurns < 1 || maxTurns > 1000)
-                throw new Error("Use /goal budget N with 1–1000 steps")
+              const change = Budget.parse(text.slice(7).trim())
+              if (!change.ok) throw new Error(change.error)
+              if (change.value.maxTurns !== undefined && change.value.maxTurns > 1000)
+                throw new Error("Use a step budget from 1 to 1000")
               const result = await client.api.session.goal.control({
                 sessionID: route.sessionID,
                 action: "budget",
-                maxTurns,
+                ...change.value,
               })
-              toast.show({ message: `Goal budget: ${result?.turns.used ?? 0}/${maxTurns} steps`, variant: "info" })
+              const spend =
+                result?.budget && Budget.hasLimits(result.budget) ? ` · ${Budget.describe(result.budget)}` : ""
+              toast.show({
+                message: result
+                  ? `Goal budget: ${result.turns.used}/${result.turns.max} steps${spend}`
+                  : "No goal to update",
+                variant: result ? "info" : "warning",
+              })
               return
             }
             const objective = command.startsWith("set ") ? text.slice(4).trim() : text
@@ -1026,15 +1035,19 @@ export function Session(props: {
               { title: "Status", value: "status" },
               { title: "Pause", value: "pause" },
               { title: "Resume", value: "resume" },
-              { title: "Change step budget", value: "budget" },
+              { title: "Change budget", value: "budget" },
               { title: "Drop", value: "drop" },
             ]}
             onSelect={(option) => {
               if (option.value === "set" || option.value === "budget") {
                 dialog.replace(() => (
                   <DialogPrompt
-                    title={option.value === "set" ? "Goal objective" : "Goal step budget"}
-                    placeholder={option.value === "set" ? "What should Redcode complete?" : "1–1000 steps"}
+                    title={option.value === "set" ? "Goal objective" : "Goal budget"}
+                    placeholder={
+                      option.value === "set"
+                        ? "What should Redcode complete?"
+                        : "30 steps, $3, 500k tokens, $3 500k, or off"
+                    }
                     onConfirm={(value) => void runGoal(option.value === "set" ? `set ${value}` : `budget ${value}`)}
                     onCancel={() => dialog.clear()}
                   />
@@ -1043,6 +1056,57 @@ export function Session(props: {
               }
               void runGoal(option.value)
             }}
+          />
+        ))
+      },
+    },
+    {
+      title: "Session budget",
+      id: "session.budget",
+      group: "Session",
+      slash: { name: "budget", arguments: true as const },
+      run: (input?: string) => {
+        const update = async (text: string) => {
+          const change = Budget.parse(text)
+          if (!change.ok) {
+            toast.show({ variant: "warning", message: change.error, duration: 5000 })
+            return
+          }
+          if (change.value.maxTurns !== undefined) {
+            toast.show({
+              variant: "warning",
+              message: "Steps belong to /goal-budget. Enter $5, 200k tokens, both, or off.",
+              duration: 5000,
+            })
+            return
+          }
+          try {
+            const result = await client.api.session.budget.update({
+              sessionID: route.sessionID,
+              maxCostUsd: change.value.maxCostUsd,
+              maxTokens: change.value.maxTokens,
+            })
+            toast.show({
+              variant: "success",
+              message: Budget.hasLimits(result.limits)
+                ? `Session budget: ${Budget.lines(result.limits, result.spent).join(" · ")}`
+                : "No session budget.",
+              duration: 5000,
+            })
+          } catch (error) {
+            toast.show({ variant: "error", message: errorMessage(error), duration: 5000 })
+          }
+        }
+        if (input?.trim()) return void update(input)
+        dialog.replace(() => (
+          <DialogPrompt
+            title="Session budget"
+            placeholder="$5, 200k tokens, $5 200k, or off"
+            onConfirm={(value) => {
+              dialog.clear()
+              void update(value)
+            }}
+            onCancel={() => dialog.clear()}
           />
         ))
       },

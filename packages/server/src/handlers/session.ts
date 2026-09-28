@@ -3,6 +3,7 @@ import { MonitorRuntime } from "@opencode/core/monitor"
 import { Monitor } from "@opencode/schema/monitor"
 import { SessionTodoStore } from "@opencode/core/session/todo-store"
 import { SessionGoal } from "@opencode/core/session/goal"
+import { SessionBudget } from "@opencode/core/session/budget"
 import { DesignStore } from "@opencode/core/design/store"
 import { DesignConversations } from "@opencode/core/design/conversations"
 import { DesignFeed } from "@opencode/core/design/feed"
@@ -47,6 +48,7 @@ export const SessionHandler = HttpApiBuilder.group(Api, "server.session", (handl
   Effect.gen(function* () {
     const session = yield* Session.Service
     const goals = yield* SessionGoal.Service
+    const budgets = yield* SessionBudget.Service
     const transfer = yield* SessionTransfer.Service
     const sharing = yield* SessionShare.Service
     const requireOwnedForm = Effect.fnUntraced(function* (sessionID: Form.Info["sessionID"], formID: Form.ID) {
@@ -360,6 +362,20 @@ export const SessionHandler = HttpApiBuilder.group(Api, "server.session", (handl
           return {
             data: goal,
           }
+        }),
+      )
+      .handle(
+        "session.budget.get",
+        Effect.fn(function* (ctx) {
+          yield* session.get(ctx.params.sessionID).pipe(Effect.catchTag("Session.NotFoundError", missingSession))
+          return { data: yield* budgets.view(ctx.params.sessionID) }
+        }),
+      )
+      .handle(
+        "session.budget.update",
+        Effect.fn(function* (ctx) {
+          yield* session.get(ctx.params.sessionID).pipe(Effect.catchTag("Session.NotFoundError", missingSession))
+          return { data: yield* budgets.set(ctx.params.sessionID, ctx.payload) }
         }),
       )
       .handle(

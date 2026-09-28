@@ -52,6 +52,10 @@ import type {
   SessionGoalStartOutput,
   SessionGoalControlInput,
   SessionGoalControlOutput,
+  SessionBudgetGetInput,
+  SessionBudgetGetOutput,
+  SessionBudgetUpdateInput,
+  SessionBudgetUpdateOutput,
   SessionDesignFeedInput,
   SessionDesignFeedOutput,
   SessionDesignListInput,
@@ -1060,7 +1064,37 @@ export function make(options: ClientOptions) {
             {
               method: "POST",
               path: `/api/experimental/session/${encodeURIComponent(input.sessionID)}/goal/control`,
-              body: { action: input["action"], maxTurns: input["maxTurns"] },
+              body: {
+                action: input["action"],
+                maxTurns: input["maxTurns"],
+                maxCostUsd: input["maxCostUsd"],
+                maxTokens: input["maxTokens"],
+              },
+              successStatus: 200,
+              declaredStatuses: [400, 401, 404],
+              empty: false,
+            },
+            requestOptions,
+          ).then((value) => value.data),
+      },
+      budget: {
+        get: (input: SessionBudgetGetInput, requestOptions?: RequestOptions) =>
+          request<{ readonly data: SessionBudgetGetOutput }>(
+            {
+              method: "GET",
+              path: `/api/session/${encodeURIComponent(input.sessionID)}/budget`,
+              successStatus: 200,
+              declaredStatuses: [400, 401, 404],
+              empty: false,
+            },
+            requestOptions,
+          ).then((value) => value.data),
+        update: (input: SessionBudgetUpdateInput, requestOptions?: RequestOptions) =>
+          request<{ readonly data: SessionBudgetUpdateOutput }>(
+            {
+              method: "PATCH",
+              path: `/api/session/${encodeURIComponent(input.sessionID)}/budget`,
+              body: { maxCostUsd: input["maxCostUsd"], maxTokens: input["maxTokens"] },
               successStatus: 200,
               declaredStatuses: [400, 401, 404],
               empty: false,

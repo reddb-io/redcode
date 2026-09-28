@@ -15,3 +15,5 @@ Restore /context, /subagents, /thinking and /timestamps. Keep /thinking as the d
 Preserve the historical red scrollbar and informational colors in both light and dark Redcode themes.
 
 Restore `/pending` over the V2 durable inbox, including queued and steering prompts, timestamps, attachment counts, send-now, discard, discard-all and an explicit empty state. Keep the pending management panel available in direct mode even when the queue is empty.
+
+Restore `/budget` and Goal cost/token budgets on the V2 runtime. Enforce session, parent-session and Goal limits before each model step, count descendant usage, and show configured limits in the Context sidebar.

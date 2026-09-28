@@ -58,6 +58,10 @@ import type {
   SessionGoalStartOutput,
   SessionGoalControlInput,
   SessionGoalControlOutput,
+  SessionBudgetGetInput,
+  SessionBudgetGetOutput,
+  SessionBudgetUpdateInput,
+  SessionBudgetUpdateOutput,
   SessionDesignFeedInput,
   SessionDesignFeedOutput,
   SessionDesignListInput,
@@ -650,7 +654,31 @@ const EndpointSessionGoalControl = (raw: RawClient["server.session"]) => (input:
   preserveEffect<SessionGoalControlOutput>()(
     raw["session.goal.control"]({
       params: { sessionID: input["sessionID"] },
-      payload: { action: input["action"], maxTurns: input["maxTurns"] },
+      payload: {
+        action: input["action"],
+        maxTurns: input["maxTurns"],
+        maxCostUsd: input["maxCostUsd"],
+        maxTokens: input["maxTokens"],
+      },
+    }).pipe(
+      Effect.mapError(mapClientError),
+      Effect.map((value) => value.data),
+    ),
+  )
+
+const EndpointSessionBudgetGet = (raw: RawClient["server.session"]) => (input: SessionBudgetGetInput) =>
+  preserveEffect<SessionBudgetGetOutput>()(
+    raw["session.budget.get"]({ params: { sessionID: input["sessionID"] } }).pipe(
+      Effect.mapError(mapClientError),
+      Effect.map((value) => value.data),
+    ),
+  )
+
+const EndpointSessionBudgetUpdate = (raw: RawClient["server.session"]) => (input: SessionBudgetUpdateInput) =>
+  preserveEffect<SessionBudgetUpdateOutput>()(
+    raw["session.budget.update"]({
+      params: { sessionID: input["sessionID"] },
+      payload: { maxCostUsd: input["maxCostUsd"], maxTokens: input["maxTokens"] },
     }).pipe(
       Effect.mapError(mapClientError),
       Effect.map((value) => value.data),
@@ -1153,6 +1181,7 @@ const adaptGroupSession = (raw: RawClient["server.session"]) => ({
     start: EndpointSessionGoalStart(raw),
     control: EndpointSessionGoalControl(raw),
   },
+  budget: { get: EndpointSessionBudgetGet(raw), update: EndpointSessionBudgetUpdate(raw) },
   remove: EndpointSessionRemove(raw),
   fork: EndpointSessionFork(raw),
   switchAgent: EndpointSessionSwitchAgent(raw),
