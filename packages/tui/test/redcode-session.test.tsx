@@ -256,7 +256,7 @@ test.each([
     {
       await using setup = await createAppFixture({ state: state.path, width: columns, height: 40, config })
       await setup.ready
-      await setup.waitForFrame((frame) => !frame.includes("Opening session") && frame.includes("Build"))
+      await setup.waitForFrame(() => Boolean(setup.renderer.root.findDescendantById("session-pane")))
       if (columns === 80) setup.mockInput.pressKey("F6")
       await setup.waitForFrame(() => setup.renderer.root.findDescendantById("session-sidebar")?.width === expected)
       setup.mockInput.pressKey("F8")
@@ -273,7 +273,7 @@ test.each([
     {
       await using setup = await createAppFixture({ state: state.path, width: columns, height: 40, config })
       await setup.ready
-      await setup.waitForFrame((frame) => !frame.includes("Opening session") && frame.includes("Build"))
+      await setup.waitForFrame(() => Boolean(setup.renderer.root.findDescendantById("session-pane")))
       if (columns === 80) setup.mockInput.pressKey("F6")
       await setup.waitForFrame((frame) => frame.includes("No subagents in this session."))
       expect(setup.renderer.root.findDescendantById("session-sidebar")?.width).toBe(expected + 4)
