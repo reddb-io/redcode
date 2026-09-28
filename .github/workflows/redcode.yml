@@ -300,7 +300,7 @@ jobs:
           test "$(npm view "@reddb-io/redcode@$OPENCODE_VERSION" version --prefer-online)" = "$OPENCODE_VERSION"
       - name: Publish GitHub Release
         env:
-          GH_TOKEN: ${{ github.token }}
+          GH_TOKEN: ${{ secrets.RELEASE_PAT || github.token }}
         shell: bash
         run: |
           gh release edit "design-v$OPENCODE_VERSION" --draft=false
