@@ -7,19 +7,18 @@ export function SidebarLsp(props: { context: Plugin.Context; sessionID: string }
   const theme = props.context.theme
   const [open, setOpen] = createSignal(true)
   const location = createMemo(() => props.context.data.session.get(props.sessionID)?.location)
-  const disabled = createMemo(
-    () =>
-      props.context.data.location.config
-        .list(location())
-        ?.findLast(
-          (entry): entry is Extract<ConfigEntry, { type: "document" }> =>
-            entry.type === "document" && entry.info.lsp !== undefined,
-        )?.info.lsp === false,
-  )
   const [servers, { refetch }] = createResource(location, (location) =>
-    props.context.client.lsp.status({ location }).then(
-      (result) => ({ data: result.data, error: undefined }),
-      (error: unknown) => ({ data: [], error: errorMessage(error) }),
+    Promise.all([props.context.client.lsp.status({ location }), props.context.client.config.get({ location })]).then(
+      ([result, config]) => ({
+        data: result.data,
+        disabled:
+          config.findLast(
+            (entry): entry is Extract<ConfigEntry, { type: "document" }> =>
+              entry.type === "document" && entry.info.lsp !== undefined,
+          )?.info.lsp === false,
+        error: undefined,
+      }),
+      (error: unknown) => ({ data: [], disabled: false, error: errorMessage(error) }),
     ),
   )
   const timer = setInterval(() => {
@@ -40,7 +39,7 @@ export function SidebarLsp(props: { context: Plugin.Context; sessionID: string }
         </Show>
         <Show when={!servers()?.error && !servers()?.data.length}>
           <text fg={theme.text.muted} wrapMode="word">
-            {disabled()
+            {servers()?.disabled
               ? "LSPs are disabled"
               : servers.loading
                 ? "Loading language servers…"

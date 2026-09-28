@@ -216,7 +216,7 @@ test("/monitors inspects evidence and stops observation through the V2 session A
     },
   })
   await setup.ready
-  await setup.waitForFrame((frame) => !frame.includes("Opening session") && frame.includes("Build"))
+  await setup.waitForFrame((frame) => !frame.includes("Opening session") && frame.includes("ctrl+p commands"))
   await setup.mockInput.typeText("/monitors")
   setup.mockInput.pressEnter()
   await setup.waitForFrame((frame) => frame.includes("Session monitors") && frame.includes("watch-build"))
