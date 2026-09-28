@@ -27,7 +27,9 @@ export function Sidebar(props: { sessionID: string; width: number; overlay?: boo
         id: "sidebar.tab.next",
         title: "Next sidebar tab",
         group: "Session",
-        run: () => setTab(tabs[(tabs.indexOf(tab()) + 1) % tabs.length]),
+        run: () => {
+          setTab(tabs[(tabs.indexOf(tab()) + 1) % tabs.length])
+        },
       },
     ],
   }))
