@@ -5,6 +5,16 @@ const migration: DatabaseMigration.Migration = {
   id: "20260926140058_redcode-session-state",
   up(tx) {
     return Effect.gen(function* () {
+      // V1 Redcode stores these names against `session`. Keep those rows for the
+      // session importer; V2 owns the same names against `session_v2`.
+      if (yield* tx.get(`SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'session'`)) {
+        if (yield* tx.get(`SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'session_share'`))
+          yield* tx.run(`ALTER TABLE \`session_share\` RENAME TO \`redcode_v1_session_share\`;`)
+        if (yield* tx.get(`SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'todo'`)) {
+          yield* tx.run(`DROP INDEX IF EXISTS \`todo_session_idx\`;`)
+          yield* tx.run(`ALTER TABLE \`todo\` RENAME TO \`redcode_v1_todo\`;`)
+        }
+      }
       yield* tx.run(`
         CREATE TABLE \`session_goal_review\` (
           \`id\` text PRIMARY KEY,

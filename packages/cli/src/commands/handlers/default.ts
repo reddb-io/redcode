@@ -86,6 +86,8 @@ export default Runtime.handler(Commands, (input) =>
         sessionID: Option.getOrUndefined(input.session),
         fork: input.fork,
         prompt: Option.getOrUndefined(input.prompt),
+        agent: Option.getOrUndefined(input.agent),
+        model: Option.getOrUndefined(input.model),
         auto: input.auto || input.yolo || input.dangerouslySkipPermissions,
       },
       config: {

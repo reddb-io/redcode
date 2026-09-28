@@ -58,6 +58,7 @@ import { openEditor } from "../../editor"
 import { openUrl } from "@opencode/util/open"
 import { useDialog } from "../../ui/dialog"
 import { DialogSelect } from "../../ui/dialog-select"
+import { DialogPrompt } from "../../ui/dialog-prompt"
 import { DialogSessionRename } from "../../component/dialog-session-rename"
 import { DialogImagePreview } from "../../component/dialog-image-preview"
 import { DialogMessage } from "./dialog-message"
@@ -898,6 +899,94 @@ export function Session(props: {
   ]
 
   const baseCommands = createMemo(() => [
+    {
+      title: "Manage goal",
+      id: "session.goal",
+      group: "Session",
+      slash: { name: "goal", arguments: true as const },
+      run: (input?: string) => {
+        const runGoal = async (value: string) => {
+          const text = value.trim()
+          const command = text.toLowerCase()
+          try {
+            if (command === "status") {
+              const result = await client.api.session.goal.get({ sessionID: route.sessionID })
+              const goal = result.data
+              toast.show({
+                message: goal
+                  ? `${goal.status}: ${goal.objective} · steps ${goal.turns.used}/${goal.turns.max} · ${goal.reason}`
+                  : "No goal yet. Use /goal <objective> to start one.",
+                variant: "info",
+                duration: 7000,
+              })
+              dialog.clear()
+              return
+            }
+            if (["pause", "resume", "drop"].includes(command)) {
+              const result = await client.api.session.goal.control({
+                sessionID: route.sessionID,
+                action: command as "pause" | "resume" | "drop",
+              })
+              toast.show({ message: result.data ? `Goal ${result.data.status}` : "Goal removed", variant: "info" })
+              dialog.clear()
+              return
+            }
+            if (command.startsWith("budget ")) {
+              const maxTurns = Number(text.slice(7).trim())
+              if (!Number.isInteger(maxTurns) || maxTurns < 1 || maxTurns > 1000)
+                throw new Error("Use /goal budget N with 1–1000 steps")
+              const result = await client.api.session.goal.control({
+                sessionID: route.sessionID,
+                action: "budget",
+                maxTurns,
+              })
+              toast.show({ message: `Goal budget: ${result.data?.turns.used ?? 0}/${maxTurns} steps`, variant: "info" })
+              dialog.clear()
+              return
+            }
+            const objective = command.startsWith("set ") ? text.slice(4).trim() : text
+            if (!objective) throw new Error("Goal objective must not be empty")
+            const result = await client.api.session.goal.start({
+              sessionID: route.sessionID,
+              objective,
+              agent: local.agent.current()?.id,
+            })
+            toast.show({ message: `Goal started · ${result.data.turns.max} steps`, variant: "success" })
+            dialog.clear()
+          } catch (error) {
+            toast.show({ message: errorMessage(error), variant: "error", duration: 5000 })
+          }
+        }
+        if (input?.trim()) return void runGoal(input)
+        dialog.replace(() => (
+          <DialogSelect
+            title="Goal"
+            options={[
+              { title: "Start a goal", value: "set" },
+              { title: "Status", value: "status" },
+              { title: "Pause", value: "pause" },
+              { title: "Resume", value: "resume" },
+              { title: "Change step budget", value: "budget" },
+              { title: "Drop", value: "drop" },
+            ]}
+            onSelect={(option) => {
+              if (option.value === "set" || option.value === "budget") {
+                dialog.replace(() => (
+                  <DialogPrompt
+                    title={option.value === "set" ? "Goal objective" : "Goal step budget"}
+                    placeholder={option.value === "set" ? "What should Redcode complete?" : "1–1000 steps"}
+                    onConfirm={(value) => void runGoal(option.value === "set" ? `set ${value}` : `budget ${value}`)}
+                    onCancel={() => dialog.clear()}
+                  />
+                ))
+                return
+              }
+              void runGoal(option.value)
+            }}
+          />
+        ))
+      },
+    },
     {
       title: "Open Design review",
       id: "session.design.review",

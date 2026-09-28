@@ -792,6 +792,20 @@ export function run(options: Options = {}): Effect.Effect<RunResult, never, Data
                   FROM session
                   WHERE id = ${nextID.id}
                 `)
+              // The schema migration parks V1 tables with colliding V2 names.
+              // Copy their session-owned rows only after the V2 parent exists.
+              if (yield* tx.get(sql`SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'redcode_v1_session_share'`))
+                yield* tx.run(sql`
+                  INSERT OR IGNORE INTO session_share (session_id, id, secret, url, time_created, time_updated)
+                  SELECT session_id, id, secret, url, time_created, time_updated
+                  FROM redcode_v1_session_share WHERE session_id = ${nextID.id}
+                `)
+              if (yield* tx.get(sql`SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'redcode_v1_todo'`))
+                yield* tx.run(sql`
+                  INSERT OR IGNORE INTO todo (session_id, content, status, priority, position, time_created, time_updated)
+                  SELECT session_id, content, status, priority, position, time_created, time_updated
+                  FROM redcode_v1_todo WHERE session_id = ${nextID.id}
+                `)
               const next = yield* tx
                 .select()
                 .from(SessionTable)
@@ -890,6 +904,22 @@ export function importRedcode(sourcePath: string): Effect.Effect<RedcodeImportRe
       return result
     }).pipe(Effect.orDie),
   )
+}
+
+/** Automatically adopt the prior Redcode database once; explicit imports remain repeatable. */
+export function importRedcodeOnce(sourcePath: string) {
+  return Effect.gen(function* () {
+    if (!existsSync(sourcePath)) return
+    const db = (yield* Database.Service).db
+    const key = `migration.redcode-source:${createHash("sha256").update(sourcePath).digest("hex")}`
+    if (yield* db.get<{ key: string }>(sql`SELECT key FROM kv WHERE key = ${key}`)) return
+    const result = yield* importRedcode(sourcePath)
+    yield* db.run(sql`
+      INSERT OR IGNORE INTO kv (key, value, time_created, time_updated)
+      VALUES (${key}, ${JSON.stringify(result)}, ${Date.now()}, ${Date.now()})
+    `)
+    yield* Effect.logInfo("Imported prior Redcode database", result)
+  })
 }
 
 function nextPath(options: Options, data: string) {

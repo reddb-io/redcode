@@ -59,6 +59,8 @@ const Root = Spec.make(typeof OPENCODE_CLI_NAME === "string" ? OPENCODE_CLI_NAME
       Flag.withDefault(false),
     ),
     prompt: Flag.string("prompt").pipe(Flag.withDescription("Prompt to use"), Flag.optional),
+    agent: Flag.string("agent").pipe(Flag.withDescription("Agent to use for a new session"), Flag.optional),
+    model: Flag.string("model").pipe(Flag.withDescription("Model for a new session"), Flag.optional),
   },
   commands: [
     Spec.make("upgrade", {
@@ -800,10 +802,14 @@ const Root = Spec.make(typeof OPENCODE_CLI_NAME === "string" ? OPENCODE_CLI_NAME
       },
     }),
     Spec.make("design", {
-      description: "Open the browser review for a Design session",
+      description: "Start a Design session or open its browser review",
       params: {
         ...ServerParams,
-        sessionID: Argument.string("sessionID").pipe(Argument.withDescription("Session ID to review")),
+        prompt: Argument.string("prompt | sessionID").pipe(Argument.variadic({ min: 0 })),
+        session: Flag.string("session").pipe(Flag.withAlias("s"), Flag.optional),
+        model: Flag.string("model").pipe(Flag.optional),
+        directory: Flag.string("directory").pipe(Flag.optional),
+        review: Flag.boolean("review").pipe(Flag.withDefault(false)),
         noOpen: Flag.boolean("no-open").pipe(
           Flag.withDescription("Print the review link without opening a browser"),
           Flag.withDefault(false),
