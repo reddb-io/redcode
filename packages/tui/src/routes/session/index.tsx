@@ -954,7 +954,7 @@ export function Session(props: {
         }
         dialog.replace(() => (
           <DialogPrompt
-            title="Goal budget"
+            title="Goal step budget"
             placeholder="30 steps, $3, 500k tokens, $3 500k, or off"
             onConfirm={(value) => keymap.dispatch("session.goal", `budget ${value}`)}
             onCancel={() => dialog.clear()}
@@ -1075,7 +1075,7 @@ export function Session(props: {
           if (change.value.maxTurns !== undefined) {
             toast.show({
               variant: "warning",
-              message: "Steps belong to /goal-budget. Enter $5, 200k tokens, both, or off.",
+              message: "Steps belong to /goal-budget. Enter $5, 200k tokens, $5 200k, or off.",
               duration: 5000,
             })
             return

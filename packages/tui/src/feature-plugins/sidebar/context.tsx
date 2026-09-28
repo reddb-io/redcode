@@ -13,11 +13,7 @@ export function SidebarContext(props: { context: Plugin.Context; sessionID: stri
   const msg = createMemo(() => props.context.data.session.message.list(props.sessionID))
   const session = createMemo(() => props.context.data.session.get(props.sessionID))
   const cost = createMemo(() => props.context.data.session.cost(props.sessionID))
-  const usage = createMemo(() => {
-    const current = session()
-    if (!current) return ""
-    return `${current.cost}:${current.tokens.input}:${current.tokens.output}:${current.tokens.reasoning}:${current.tokens.cache.read}:${current.tokens.cache.write}`
-  })
+  const usage = createMemo(() => `${cost()}:${JSON.stringify(session()?.tokens)}`)
   const [budget, { refetch }] = createResource(
     () => props.sessionID,
     (sessionID) =>
