@@ -57,8 +57,10 @@ jobs:
           PUBLISH: ${{ inputs.publish }}
         run: |
           set -euo pipefail
-          bun run release:status
-          bun run release:version
+          bun run release:status --output /tmp/redcode-release-plan.json
+          if [ "$(bun -p 'require("/tmp/redcode-release-plan.json").releases.length > 0')" = 'true' ]; then
+            bun run release:version
+          fi
           version=$(bun -p 'require("./packages/redcode/package.json").version')
           [[ "$version" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]
           if [ -n "$EXPECTED_VERSION" ] && [ "$EXPECTED_VERSION" != "$version" ]; then
@@ -293,12 +295,10 @@ jobs:
             echo 'Redcode binary exposes the upstream product name' >&2
             exit 1
           fi
-          REDCODE_TEST_HOME="$(mktemp -d)" timeout 60s "$binary" --standalone debug agents > /tmp/redcode-agents.json
-          bun -e '
-            const agents = await Bun.file("/tmp/redcode-agents.json").json()
-            for (const id of ["build", "plan", "design", "question"])
-              if (!agents.some((agent) => agent.id === id)) throw new Error(`Missing Redcode agent: ${id}`)
-          '
+          REDCODE_TEST_HOME="$(mktemp -d)" timeout 60s "$binary" agent list --standalone > /tmp/redcode-agents.txt
+          for agent in build plan design question; do
+            grep -E "^$agent \\(" /tmp/redcode-agents.txt
+          done
       - name: Archive binaries and sidecars
         working-directory: packages/redcode
         run: bun run archive
