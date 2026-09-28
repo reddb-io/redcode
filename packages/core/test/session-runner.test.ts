@@ -92,6 +92,17 @@ import { agentHost, modelHost, host, noProviders } from "./plugin/host"
 import { CodeModeInstructions } from "@opencode/core/codemode/instructions"
 
 const emptyCodeMode = `\n\n${CodeModeInstructions.render({ total: 0, shown: 0, namespaces: [] })}`
+const checkpoint = (objective: string) => [
+  "## Objective", `- ${objective}`,
+  "## Requirements", "- Preserve the user's current request.",
+  "## Decisions", "- (none)",
+  "## Work State", "### Completed", "- (none)",
+  "### Active", "- Continue the request.",
+  "### Blocked", "- (none)",
+  "## Next Move", "1. Continue the request.",
+  "## Relevant Files", "- (none)",
+  "## Important Context", "- (none)",
+].join("\n")
 const projectDirectory = await mkdtemp(path.join(tmpdir(), "redcode-runner-"))
 afterAll(() => rm(projectDirectory, { recursive: true, force: true }))
 type ToolBarrier = {
@@ -1467,7 +1478,7 @@ describe("SessionRunnerLLM", () => {
     yield* s.admit("Echo before moving")
     yield* s.llm.push(
       TestLLM.tool("call-entry", "echo", { text: "moving" }),
-      TestLLM.text("## Objective\n- Entry summary", "entry-summary"),
+      TestLLM.text(checkpoint("Entry summary"), "entry-summary"),
       TestLLM.text("Continued", "entry-continuation"),
     )
     const stream = yield* s.llm.gate
@@ -1502,7 +1513,7 @@ describe("SessionRunnerLLM", () => {
     yield* runner.drain({ sessionID, force: false, continuation: moved.continuation })
 
     expect(s.requests).toHaveLength(3)
-    expect(userTexts(s.requests[2])[0]).toContain("<summary>\n## Objective\n- Entry summary\n</summary>")
+    expect(userTexts(s.requests[2])[0]).toContain("<summary>\n## Objective\n- Entry summary")
     expect(yield* s.inbox).toEqual([])
   })
 
@@ -2112,7 +2123,7 @@ describe("SessionRunnerLLM", () => {
   scenario("moves the epoch at compaction and narrates later changes", function* (s) {
     yield* s.runPrompt("First")
     s.systemBaseline = "Changed before compaction"
-    yield* s.llm.push(TestLLM.text("## Objective\n- summary", "epoch-summary"))
+    yield* s.llm.push(TestLLM.text(checkpoint("summary"), "epoch-summary"))
     yield* s.session.compact({ sessionID })
     yield* s.resume
     expect(systemTexts(s.requests[1])).toEqual([])
@@ -2141,7 +2152,7 @@ describe("SessionRunnerLLM", () => {
       s.currentModel = recoveryModel
       yield* s.llm.push(
         TestLLM.text("Active complete", "active"),
-        TestLLM.text("## Objective\n- Active work checkpoint", "summary"),
+        TestLLM.text(checkpoint("Active work checkpoint"), "summary"),
         TestLLM.text("Steers complete", "steers"),
       )
       yield* s.admit("Active work")
@@ -2182,7 +2193,7 @@ describe("SessionRunnerLLM", () => {
   scenario("waits for active tools before prioritizing compaction over pending steers", function* (s) {
     yield* s.llm.push(
       TestLLM.tool("call-active", "echo", { text: "active" }),
-      TestLLM.text("## Objective\n- Tool work checkpoint", "summary"),
+      TestLLM.text(checkpoint("Tool work checkpoint"), "summary"),
       TestLLM.text("Steers complete", "steers"),
     )
     yield* s.admit("Active work")
@@ -2212,7 +2223,7 @@ describe("SessionRunnerLLM", () => {
     const release = yield* Deferred.make<void>()
     s.systemLoadHook = Deferred.succeed(preparing, undefined).pipe(Effect.andThen(Deferred.await(release)))
     yield* s.llm.push(
-      TestLLM.text("## Objective\n- Earlier work checkpoint", "summary"),
+      TestLLM.text(checkpoint("Earlier work checkpoint"), "summary"),
       TestLLM.text("Steers complete", "steers"),
     )
     const run = yield* s.resume.pipe(Effect.forkChild)
@@ -2262,7 +2273,7 @@ describe("SessionRunnerLLM", () => {
     yield* s.runPrompt("Earlier work")
     const first = yield* s.admit("STEER_A")
     const second = yield* s.admit("STEER_B")
-    yield* s.llm.push(TestLLM.text("## Objective\n- Interrupted checkpoint", "summary"))
+    yield* s.llm.push(TestLLM.text(checkpoint("Interrupted checkpoint"), "summary"))
     const summary = yield* s.llm.gate
     const compact = yield* s.session.compact({ sessionID })
     yield* summary.started
@@ -2300,7 +2311,7 @@ describe("SessionRunnerLLM", () => {
     yield* s.sessionInbox.admitCompaction({ id: SessionMessage.ID.create(), sessionID, delivery: "steer" })
     yield* s.llm.push(
       TestLLM.text("First steer complete", "first"),
-      TestLLM.text("## Objective\n- Source work checkpoint", "summary"),
+      TestLLM.text(checkpoint("Source work checkpoint"), "summary"),
       TestLLM.text("Second steer complete", "second"),
     )
     yield* s.resume
@@ -2320,7 +2331,7 @@ describe("SessionRunnerLLM", () => {
     yield* s.llm.push(
       TestLLM.tool("call-active", "echo", { text: "active" }),
       TestLLM.text("Steer complete", "text-steer"),
-      [LLMEvent.textDelta({ id: "summary", text: "## Objective\n- durable summary" })],
+      [LLMEvent.textDelta({ id: "summary", text: checkpoint("durable summary") })],
       TestLLM.text("Queue complete", "text-queue"),
     )
     yield* s.admit("Active work")
@@ -2352,7 +2363,7 @@ describe("SessionRunnerLLM", () => {
     expect((yield* s.messages).find((message) => message.id === first.id)).toMatchObject({
       type: "compaction",
       status: "completed",
-      summary: "## Objective\n- durable summary",
+      summary: expect.stringContaining("## Objective\n- durable summary"),
     })
   })
 
@@ -2415,7 +2426,7 @@ describe("SessionRunnerLLM", () => {
     yield* s.runPrompt("Earlier question")
 
     s.requests.length = 0
-    yield* s.llm.push(TestLLM.text("## Objective\n- Manual summary", "text-manual-unknown-summary"))
+    yield* s.llm.push(TestLLM.text(checkpoint("Manual summary"), "text-manual-unknown-summary"))
     const compaction = yield* s.session.compact({ sessionID, delivery: "steer" })
     yield* s.resume
 
@@ -2424,7 +2435,7 @@ describe("SessionRunnerLLM", () => {
     expect((yield* s.messages).find((message) => message.id === compaction.id)).toMatchObject({
       type: "compaction",
       status: "completed",
-      summary: "## Objective\n- Manual summary",
+      summary: expect.stringContaining("## Objective\n- Manual summary"),
     })
   })
 
@@ -2432,7 +2443,7 @@ describe("SessionRunnerLLM", () => {
     s.currentModel = recoveryModel
     yield* s.llm.push(
       TestLLM.text("Active complete", "text-active-steer-compact"),
-      [LLMEvent.textDelta({ id: "summary", text: "## Objective\n- durable summary" })],
+      [LLMEvent.textDelta({ id: "summary", text: checkpoint("durable summary") })],
       TestLLM.text("Queue complete", "text-queue-after-compact"),
     )
     yield* s.admit("Active work")
@@ -2450,7 +2461,7 @@ describe("SessionRunnerLLM", () => {
     expect((yield* s.messages).find((message) => message.id === compaction.id)).toMatchObject({
       type: "compaction",
       status: "completed",
-      summary: "## Objective\n- durable summary",
+      summary: expect.stringContaining("## Objective\n- durable summary"),
     })
   })
 
@@ -2458,7 +2469,7 @@ describe("SessionRunnerLLM", () => {
     s.currentModel = recoveryModel
     yield* s.llm.push(
       TestLLM.tool("call-active", "echo", { text: "active" }),
-      [LLMEvent.textDelta({ id: "summary", text: "## Objective\n- durable summary" })],
+      [LLMEvent.textDelta({ id: "summary", text: checkpoint("durable summary") })],
       TestLLM.text("Continued", "text-continued-after-compact"),
     )
     yield* s.admit("Active work")
@@ -2472,7 +2483,7 @@ describe("SessionRunnerLLM", () => {
     expect((yield* s.messages).find((message) => message.id === compaction.id)).toMatchObject({
       type: "compaction",
       status: "completed",
-      summary: "## Objective\n- durable summary",
+      summary: expect.stringContaining("## Objective\n- durable summary"),
     })
   })
 
@@ -2537,7 +2548,7 @@ describe("SessionRunnerLLM", () => {
               reason: { normalized: "stop" },
               providerMetadata: { [s.currentModel.provider]: { responseId: "summary" } },
             },
-            LLMEvent.textDelta({ id: "prefix-summary", text: "## Objective\n- Checkpoint summary" }),
+            LLMEvent.textDelta({ id: "prefix-summary", text: checkpoint("Checkpoint summary") }),
           ),
         )
         yield* s.runPrompt("Review these changes")
@@ -2616,7 +2627,7 @@ describe("SessionRunnerLLM", () => {
                 : event,
             ),
             summary
-              ? [LLMEvent.textDelta({ id: "summary-recovered", text: "### Active\n- Recovered summary" })]
+              ? [LLMEvent.textDelta({ id: "summary-recovered", text: checkpoint("Recovered summary") })]
               : invalid,
           )
           const compact = yield* s.session.compact({ sessionID })
@@ -2630,14 +2641,14 @@ describe("SessionRunnerLLM", () => {
           expect(JSON.stringify(yield* s.messages)).not.toContain("rejected-summary-state")
           expect((yield* s.messages).find((message) => message.id === compact.id)).toMatchObject(
             summary
-              ? { status: "completed", summary: "### Active\n- Recovered summary" }
+              ? { status: "completed", summary: expect.stringContaining("## Objective\n- Recovered summary") }
               : {
                   status: "failed",
                   error: {
                     type: "compaction.failed",
                     message:
                       response === "invalid text"
-                        ? "Compaction summary did not match the required template"
+                        ? "Compaction summary is incomplete or does not match the required template"
                         : "Compaction produced no summary",
                   },
                 },
@@ -2679,7 +2690,7 @@ describe("SessionRunnerLLM", () => {
         LLMEvent.textDelta({ id: "failed", text: "## Objective\n- Failed draft" }),
       ),
       Stream.fail(rateLimited(60_000)),
-      TestLLM.textWithUsage("## Objective\n- Accepted summary", "accepted", 30),
+      TestLLM.textWithUsage(checkpoint("Accepted summary"), "accepted", 30),
     )
     const compaction = yield* s.session.compact({ sessionID })
     yield* s.resume
@@ -2691,7 +2702,7 @@ describe("SessionRunnerLLM", () => {
     expect(retries[3].decision).toEqual({ retry: true, delay: 60_000 })
     expect((yield* s.messages).find((message) => message.id === compaction.id)).toMatchObject({
       status: "completed",
-      summary: "## Objective\n- Accepted summary",
+      summary: expect.stringContaining("## Objective\n- Accepted summary"),
     })
     expect(JSON.stringify(yield* s.messages)).not.toContain("discarded-draft")
     expect((yield* s.session.get(sessionID))?.tokens.input).toBe(50)
@@ -2768,7 +2779,7 @@ describe("SessionRunnerLLM", () => {
   }
 
   for (const response of ["length", "content-filter"] as const) {
-    scenario(`rejects compaction ${response} without retrying or committing its draft`, function* (s) {
+    scenario(`rejects incomplete compaction ${response} without committing its draft`, function* (s) {
       yield* s.llm.push(TestLLM.text("Earlier answer", "history"))
       yield* s.runPrompt("Earlier question")
       s.requests.length = 0
@@ -2777,16 +2788,18 @@ describe("SessionRunnerLLM", () => {
           { reason: { normalized: response } },
           LLMEvent.textDelta({ id: "truncated", text: "## Objective\n- Incomplete summary" }),
         ),
+        ...(response === "length" ? [TestLLM.text("Still incomplete", "nudge")] : []),
       )
       const compaction = yield* s.session.compact({ sessionID })
       yield* s.resume
 
-      expect(s.requests).toHaveLength(1)
+      expect(s.requests).toHaveLength(response === "length" ? 2 : 1)
       expect((yield* s.messages).find((message) => message.id === compaction.id)).toMatchObject({ status: "failed" })
       yield* s.llm.push(TestLLM.text("Continued", "continued"))
       yield* s.runPrompt("Continue")
-      expect(userTexts(s.requests[1])).toContain("Earlier question")
-      expect(JSON.stringify(s.requests[1])).not.toContain("Incomplete summary")
+      const continuation = response === "length" ? 2 : 1
+      expect(userTexts(s.requests[continuation])).toContain("Earlier question")
+      expect(JSON.stringify(s.requests[continuation])).not.toContain("Incomplete summary")
     })
   }
 
@@ -2862,7 +2875,7 @@ describe("SessionRunnerLLM", () => {
     yield* s.resume
     s.currentModel = testModel("smaller-history", { context: 7_000, output: 1_000 })
     s.requests.length = 0
-    yield* s.llm.push(Stream.fail(payloadTooLarge()), TestLLM.text("## Objective\n- Recovered", "summary"))
+    yield* s.llm.push(Stream.fail(payloadTooLarge()), TestLLM.text(checkpoint("Recovered"), "summary"))
     const compaction = yield* s.session.compact({ sessionID })
     yield* s.resume
 
@@ -2886,7 +2899,7 @@ describe("SessionRunnerLLM", () => {
     )
     s.currentModel = testModel("smaller-history", { context: 12_000, output: 1_000 })
     s.requests.length = 0
-    yield* s.llm.push(Stream.fail(payloadTooLarge()), TestLLM.text("## Objective\n- Recovered", "summary"))
+    yield* s.llm.push(Stream.fail(payloadTooLarge()), TestLLM.text(checkpoint("Recovered"), "summary"))
     const compaction = yield* s.session.compact({ sessionID })
     yield* s.resume
 
@@ -2908,7 +2921,7 @@ describe("SessionRunnerLLM", () => {
     s.requests.length = 0
     yield* s.llm.push(
       [LLMEvent.providerError({ message: "prompt too long", classification: "context-overflow" })],
-      TestLLM.text("## Objective\n- Recovered", "summary"),
+      TestLLM.text(checkpoint("Recovered"), "summary"),
       TestLLM.text("Recovered", "recovered"),
     )
     yield* s.runPrompt("Continue")
@@ -2946,7 +2959,7 @@ describe("SessionRunnerLLM", () => {
     s.requests.length = 0
     yield* s.llm.push(
       [LLMEvent.providerError({ message: "Too long", classification: "context-overflow" })],
-      TestLLM.text("## Objective\n- Recovered", "summary"),
+      TestLLM.text(checkpoint("Recovered"), "summary"),
     )
     const compaction = yield* s.session.compact({ sessionID })
     yield* s.resume
@@ -2974,7 +2987,7 @@ describe("SessionRunnerLLM", () => {
     )
     s.currentModel = testModel("smaller-history", { context: 7_000, output: 1_000 })
     s.requests.length = 0
-    yield* s.llm.push(TestLLM.text("## Objective\n- Recovered", "summary"))
+    yield* s.llm.push(TestLLM.text(checkpoint("Recovered"), "summary"))
     const compaction = yield* s.session.compact({ sessionID })
     yield* s.resume
 
@@ -2985,7 +2998,7 @@ describe("SessionRunnerLLM", () => {
     expect(userTexts(s.requests[0])[0]).toContain("Request 2:")
     expect((yield* s.messages).find((message) => message.id === compaction.id)).toMatchObject({
       status: "completed",
-      summary: "## Objective\n- Recovered",
+      summary: expect.stringContaining("## Objective\n- Recovered"),
     })
   })
 
@@ -3070,7 +3083,7 @@ describe("SessionRunnerLLM", () => {
     s.currentModel = compactModel
     s.requests.length = 0
     yield* s.llm.push(
-      TestLLM.text("## Objective\n- Preserve the task", "text-summary"),
+      TestLLM.text(checkpoint("Preserve the task"), "text-summary"),
       TestLLM.textWithUsage("Continued", "text-final", 3_950),
     )
     yield* s.runPrompt("Recent exact request ".repeat(180))
@@ -3078,32 +3091,32 @@ describe("SessionRunnerLLM", () => {
     expect(s.requests).toHaveLength(2)
     expect(userTexts(s.requests[0]).at(-1)).toContain("## Objective")
     expect(userTexts(s.requests[1])).toHaveLength(1)
-    expect(userTexts(s.requests[1])[0]).toContain("<summary>\n## Objective\n- Preserve the task\n</summary>")
+    expect(userTexts(s.requests[1])[0]).toContain("<summary>\n## Objective\n- Preserve the task")
     expect(userTexts(s.requests[1])[0]).toContain(`[User]: ${"Recent exact request ".repeat(180)}`)
 
     const context = yield* store.context(sessionID)
     expect(context.map((message) => message.type)).toEqual(["compaction", "assistant"])
     expect(context[0]).toMatchObject({
       type: "compaction",
-      summary: "## Objective\n- Preserve the task",
+      summary: expect.stringContaining("## Objective\n- Preserve the task"),
       recent: `[User]: ${"Recent exact request ".repeat(180)}`,
     })
 
     s.requests.length = 0
     s.executions.length = 0
     yield* s.llm.push(
-      TestLLM.text("## Objective\n- Preserve the updated task", "text-summary-2"),
+      TestLLM.text(checkpoint("Preserve the updated task"), "text-summary-2"),
       TestLLM.text("Continued again", "text-final-2"),
     )
     yield* s.runPrompt("Newest exact request ".repeat(180))
 
     expect(s.requests).toHaveLength(2)
-    expect(userTexts(s.requests[0])[0]).toContain("<summary>\n## Objective\n- Preserve the task\n</summary>")
+    expect(userTexts(s.requests[0])[0]).toContain("<summary>\n## Objective\n- Preserve the task")
     expect(userTexts(s.requests[0])[0]).toContain("Recent exact request")
     expect(userTexts(s.requests[0]).at(-1)).toBe(SessionCompaction.buildPrompt(true))
     expect((yield* store.context(sessionID))[0]).toMatchObject({
       type: "compaction",
-      summary: "## Objective\n- Preserve the updated task",
+      summary: expect.stringContaining("## Objective\n- Preserve the updated task"),
       recent: `[User]: ${"Newest exact request ".repeat(180)}`,
     })
   })
@@ -3236,16 +3249,16 @@ describe("SessionRunnerLLM", () => {
         LLMEvent.stepStart({ index: 0 }),
         LLMEvent.providerError({ message: "prompt too long", classification: "context-overflow" }),
       ],
-      TestLLM.text("## Objective\n- Recover overflow", "text-summary"),
+      TestLLM.text(checkpoint("Recover overflow"), "text-summary"),
       TestLLM.text("Recovered", "text-final"),
     )
     yield* s.runPrompt("Continue")
 
     expect(s.requests).toHaveLength(3)
     expect(userTexts(s.requests[1]).at(-1)).toContain("## Objective")
-    expect(userTexts(s.requests[2])[0]).toContain("<summary>\n## Objective\n- Recover overflow\n</summary>")
+    expect(userTexts(s.requests[2])[0]).toContain("<summary>\n## Objective\n- Recover overflow")
     expect(yield* s.context).toMatchObject([
-      { type: "compaction", summary: "## Objective\n- Recover overflow" },
+      { type: "compaction", summary: expect.stringContaining("## Objective\n- Recover overflow") },
       { type: "assistant", finish: "stop" },
     ])
     yield* replaySessionProjection(sessionID)
@@ -3266,7 +3279,7 @@ describe("SessionRunnerLLM", () => {
     yield* s.admit("Continue")
     yield* s.llm.push(
       [LLMEvent.providerError({ message: "prompt too long", classification: "context-overflow" })],
-      TestLLM.text("## Objective\n- Overflow summary", "overflow-summary"),
+      TestLLM.text(checkpoint("Overflow summary"), "overflow-summary"),
       TestLLM.text("Recovered", "overflow-recovered"),
       TestLLM.stop(),
       TestLLM.stop(),
@@ -3307,7 +3320,7 @@ describe("SessionRunnerLLM", () => {
       "Initial context",
     ])
     expect(systemTexts(s.requests[2])).toContain("Changed during compaction")
-    expect(userTexts(s.requests[2])[0]).toContain("<summary>\n## Objective\n- Overflow summary\n</summary>")
+    expect(userTexts(s.requests[2])[0]).toContain("<summary>\n## Objective\n- Overflow summary")
     expect(userTexts(s.requests[2]).join("\n")).not.toContain("Queued during compaction")
     expect(userTexts(s.requests[2]).join("\n")).not.toContain("Steered during compaction")
     expect((yield* s.inbox).map((item) => item.id)).toEqual([queued.id, steered.id])
@@ -3353,14 +3366,14 @@ describe("SessionRunnerLLM", () => {
     s.currentModel = unknownContextModel
     yield* s.llm.push(
       [LLMEvent.providerError({ message: "prompt too long", classification: "context-overflow" })],
-      TestLLM.text("## Objective\n- Recover unknown limit", "text-summary-unknown-limit"),
+      TestLLM.text(checkpoint("Recover unknown limit"), "text-summary-unknown-limit"),
       TestLLM.text("Recovered", "text-final-unknown-limit"),
     )
     yield* s.runPrompt("Continue")
 
     expect(s.requests).toHaveLength(3)
     expect(yield* s.context).toMatchObject([
-      { type: "compaction", summary: "## Objective\n- Recover unknown limit" },
+      { type: "compaction", summary: expect.stringContaining("## Objective\n- Recover unknown limit") },
       { type: "assistant", finish: "stop" },
     ])
   })
@@ -3369,14 +3382,14 @@ describe("SessionRunnerLLM", () => {
     yield* setupOverflowRecovery(s)
     s.currentModel = undersizedContextModel
     yield* s.llm.push(
-      TestLLM.text("## Objective\n- Recover undersized limit", "text-summary-undersized-limit"),
+      TestLLM.text(checkpoint("Recover undersized limit"), "text-summary-undersized-limit"),
       TestLLM.text("Recovered", "text-final-undersized-limit"),
     )
     yield* s.runPrompt("Continue")
 
     expect(s.requests).toHaveLength(2)
     expect(yield* s.context).toMatchObject([
-      { type: "compaction", summary: "## Objective\n- Recover undersized limit" },
+      { type: "compaction", summary: expect.stringContaining("## Objective\n- Recover undersized limit") },
       { type: "assistant", finish: "stop" },
     ])
   })
@@ -3387,7 +3400,7 @@ describe("SessionRunnerLLM", () => {
       LLMEvent.stepStart({ index: 0 }),
       LLMEvent.providerError({ message: "prompt too long", classification: "context-overflow" }),
     ]
-    yield* s.llm.push(overflow(), TestLLM.text("## Objective\n- Recover once", "text-summary"), overflow())
+    yield* s.llm.push(overflow(), TestLLM.text(checkpoint("Recover once"), "text-summary"), overflow())
     yield* s.admit("Continue")
     expect((yield* s.resume.pipe(Effect.flip)).message).toBe("prompt too long")
 
@@ -3411,14 +3424,14 @@ describe("SessionRunnerLLM", () => {
       ),
     )
     yield* s.llm.push(
-      TestLLM.text("## Objective\n- Recover raw overflow", "text-summary"),
+      TestLLM.text(checkpoint("Recover raw overflow"), "text-summary"),
       TestLLM.text("Recovered", "text-final"),
     )
     yield* s.runPrompt("Continue")
 
     expect(s.requests).toHaveLength(3)
     expect(yield* s.context).toMatchObject([
-      { type: "compaction", summary: "## Objective\n- Recover raw overflow" },
+      { type: "compaction", summary: expect.stringContaining("## Objective\n- Recover raw overflow") },
       { type: "assistant", finish: "stop" },
     ])
   })
@@ -3442,7 +3455,7 @@ describe("SessionRunnerLLM", () => {
     yield* s.runPrompt("Earlier question")
     s.requests.length = 0
     yield* s.llm.push(
-      TestLLM.text("## Objective\n- Preserve the task", "text-budget-summary"),
+      TestLLM.text(checkpoint("Preserve the task"), "text-budget-summary"),
       TestLLM.text("Continued", "text-budget-final"),
     )
     yield* s.runPrompt("Recent request ".repeat(400))
@@ -3461,7 +3474,7 @@ describe("SessionRunnerLLM", () => {
     yield* s.runPrompt("Earlier question")
     s.requests.length = 0
     yield* s.llm.push(
-      TestLLM.text("## Objective\n- Preserve the task", "text-small-summary"),
+      TestLLM.text(checkpoint("Preserve the task"), "text-small-summary"),
       TestLLM.text("Continued", "text-small-final"),
     )
     yield* s.runPrompt("Recent request ".repeat(400))
@@ -3502,7 +3515,7 @@ describe("SessionRunnerLLM", () => {
     yield* setupOverflowRecovery(s)
     yield* s.llm.push(
       [LLMEvent.providerError({ message: "prompt too long", classification: "context-overflow" })],
-      TestLLM.text("## Objective\n- Interrupted", "text-summary"),
+      TestLLM.text(checkpoint("Interrupted"), "text-summary"),
     )
     const first = yield* s.llm.gate
     yield* s.admit("Continue")
@@ -4409,12 +4422,12 @@ describe("SessionRunnerLLM", () => {
     ])
     yield* run.finish
 
-    yield* s.llm.push(TestLLM.text("## Objective\n- New checkpoint", "new-summary"))
+    yield* s.llm.push(TestLLM.text(checkpoint("New checkpoint"), "new-summary"))
     const next = yield* s.session.compact({ sessionID })
     yield* s.session.wait(sessionID)
     expect((yield* s.messages).find((message) => message.id === next.id)).toMatchObject({
       status: "completed",
-      summary: "## Objective\n- New checkpoint",
+      summary: expect.stringContaining("## Objective\n- New checkpoint"),
     })
     expect(
       (yield* s.messages).filter((message) => message.type === "compaction" && message.status === "running"),
@@ -4430,7 +4443,7 @@ describe("SessionRunnerLLM", () => {
       inputID: previous,
       recent: "",
     })
-    yield* s.llm.push(TestLLM.text("## Objective\n- New checkpoint", "new-summary"))
+    yield* s.llm.push(TestLLM.text(checkpoint("New checkpoint"), "new-summary"))
     const gate = yield* s.llm.gate
     const next = yield* s.session.compact({ sessionID })
     yield* gate.started

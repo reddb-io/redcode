@@ -216,7 +216,8 @@ it.effect("automatic compaction preserves history when a checkpoint would not re
     const session = yield* insertSession(Session.ID.make("ses_non_reducing_compaction"))
     const messages = [
       SessionMessage.User.make({
-        id: SessionMessage.ID.create(), type: "user", text: "Continue.",
+        id: SessionMessage.ID.create(), type: "user",
+        text: Array.from({ length: 65 }, (_, index) => `Keep ./file-${index}.ts`).join(" "),
         time: { created: DateTime.makeUnsafe(0) },
       }),
       Schema.decodeUnknownSync(SessionMessage.Assistant)({
@@ -224,7 +225,7 @@ it.effect("automatic compaction preserves history when a checkpoint would not re
         model: { id: "summary-model", providerID: "test" },
         content: [{ type: "text", text: "Okay." }],
         tokens: { input: 180_000, output: 0, reasoning: 0, cache: { read: 0, write: 0 } },
-        time: { created: DateTime.makeUnsafe(1), completed: DateTime.makeUnsafe(1) },
+        time: { created: 1, completed: 1 },
       }),
     ]
     expect(yield* compaction.compact({ reason: "auto", context: loaded(session, messages) })).toMatchObject({

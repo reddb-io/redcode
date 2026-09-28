@@ -328,7 +328,7 @@ export const layer = Layer.effect(
       const ceiling = calculateCeiling(limit, settings.buffer)
       if (trigger.reason === "auto" && !due(context, ceiling, observed)) return { status: "skipped" }
       const session = yield* store.get(context.session.id)
-      const request = (yield* store.messages({ sessionID: context.session.id, type: "user", limit: 1 })).at(0)?.id
+      const request = (yield* store.messages({ sessionID: context.session.id, type: "user", limit: 1 }).pipe(Effect.orDie)).at(0)?.id
       if (trigger.reason !== "manual" && guardPaused(guardFromMetadata(session?.metadata), request))
         return {
           status: "failed",
@@ -465,20 +465,19 @@ export const layer = Layer.effect(
         return yield* Effect.fail<Failure>({
           error: { type: "compaction.failed", message: "Compaction summary is incomplete or does not match the required template" },
         })
+      const text = prepared.event.result
+        ? result.text
+        : [stripAnchors(result.text), buildAnchors(split.older, previous?.summary)].filter(Boolean).join("\n\n")
       const source = split.older.reduce(
         (total, message) =>
-          total +
-          Token.estimate(
+          total + Token.estimate(
             message.type === "compaction" && message.status === "completed"
               ? `${message.summary}\n${message.recent}`
               : messageToText(message),
           ),
         0,
       )
-      const text = prepared.event.result
-        ? result.text
-        : [stripAnchors(result.text), buildAnchors(split.older, previous?.summary)].filter(Boolean).join("\n\n")
-      if (trigger.reason !== "manual" && !prepared.event.result && source > 0 && Token.estimate(text) >= source)
+      if (trigger.reason !== "manual" && !prepared.event.result && source >= 256 && Token.estimate(text) >= source)
         return yield* Effect.fail<Failure>({
           error: { type: "compaction.failed", message: "Compaction summary did not reduce the conversation" },
         })
