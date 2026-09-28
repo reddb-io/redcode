@@ -417,9 +417,12 @@ jobs:
           test "$("$root/design-native/redcode-design" --version)" = "$OPENCODE_VERSION"
           test "$("$root/design-native/redcode-design" --protocol)" = "$(bun -e 'console.log((await Bun.file(process.argv[1]).json()).protocol)' "$root/design/manifest.json")"
           for attempt in {1..20}; do
-            if npm view "@reddb-io/redcode@$OPENCODE_VERSION" version --prefer-online >/dev/null 2>&1; then break; fi
+            if tarball=$(npm view "@reddb-io/redcode@$OPENCODE_VERSION" dist.tarball --prefer-online 2>/dev/null) &&
+              [ -n "$tarball" ] && curl --fail --silent --show-error --head --location --max-time 30 "$tarball" >/dev/null; then
+              break
+            fi
             if [ "$attempt" -eq 20 ]; then
-              echo "@reddb-io/redcode@$OPENCODE_VERSION did not reach npm after 10 minutes" >&2
+              echo "@reddb-io/redcode@$OPENCODE_VERSION metadata or tarball did not reach npm after 10 minutes" >&2
               exit 1
             fi
             sleep 30
