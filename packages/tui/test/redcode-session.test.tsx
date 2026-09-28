@@ -255,6 +255,95 @@ test("/monitors inspects evidence and stops observation through the V2 session A
   expect(cancelled[0]).toMatch(/^\/api\/session\/ses[^/]+\/monitor\/monitor_fixture\/cancel$/)
 })
 
+test("the Subagents sidebar steers and interrupts the selected child through V2", async () => {
+  await using state = await tmpdir()
+  const sessions = [
+    { id: "ses_parent", title: "Parent task" },
+    {
+      id: "ses_child",
+      parentID: "ses_parent",
+      title: "Inspect sidebar (@explore subagent)",
+      model: { providerID: "provider", id: "child-model", variant: "high" },
+    },
+  ].map((session) => ({
+    ...session,
+    projectID: "project",
+    location: { directory },
+    time: { created: 1, updated: 1 },
+  }))
+  const writes: Array<{ path: string; body: unknown }> = []
+  await using setup = await createAppFixture({
+    state: state.path,
+    width: 160,
+    height: 40,
+    args: { sessionID: "ses_parent" },
+    config: { animations: false, tabs: { mode: "off" }, keybinds: { "sidebar.tab.next": "f7" } },
+    fetch: async (url, request) => {
+      if (request.method === "POST") {
+        const body = await request.clone().text()
+        writes.push({ path: url.pathname, body: body ? JSON.parse(body) : undefined })
+      }
+      if (url.pathname === "/api/session") return json({ data: sessions, cursor: {} })
+      if (url.pathname === "/api/session/active") return json({ data: { ses_child: { type: "running" } } })
+      const session = sessions.find((session) => url.pathname === `/api/session/${session.id}`)
+      if (session) return json({ data: session })
+      if (url.pathname === "/api/session/ses_child/prompt")
+        return json({
+          data: {
+            id: "msg_hint",
+            sessionID: "ses_child",
+            type: "user",
+            time: { created: 2 },
+            payload: { text: "Keep the original palette" },
+            delivery: "steer",
+          },
+        })
+      if (url.pathname === "/api/session/ses_child/interrupt") return new Response(null, { status: 204 })
+      if (/^\/api\/session\/ses_(parent|child)\/message$/.test(url.pathname))
+        return json({
+          data: url.pathname.includes("ses_child")
+            ? [{ id: "msg_child", type: "user", text: "Child investigation", time: { created: 1 } }]
+            : [],
+          cursor: {},
+        })
+      if (/^\/api\/session\/ses_(parent|child)\/(inbox|permission|todo)$/.test(url.pathname)) return json({ data: [] })
+    },
+  })
+  await setup.ready
+  await setup.waitForFrame(() => Boolean(setup.renderer.root.findDescendantById("session-sidebar")))
+  setup.mockInput.pressKey("F7")
+  await setup.waitForFrame((frame) => frame.includes("Worker status is unavailable."))
+  setup.mockInput.pressKey("F7")
+  await setup.waitForFrame((frame) => frame.includes("child-model (high)") && frame.includes("steer"))
+
+  const click = async (id: string) => {
+    const node = setup.renderer.root.findDescendantById(id)
+    if (!node) throw new Error(`Missing action ${id}`)
+    await setup.mockMouse.click(node.x, node.y)
+  }
+  await click("subagent-steer-ses_child")
+  await setup.waitForFrame((frame) => frame.includes("Steer subagent"))
+  await setup.mockInput.typeText("Keep the original palette")
+  setup.mockInput.pressEnter()
+  await setup.waitForFrame((frame) => frame.includes("Hint sent to the subagent"))
+  expect(writes).toEqual([
+    { path: "/api/session/ses_child/prompt", body: { text: "Keep the original palette", delivery: "steer" } },
+  ])
+  await click("subagent-kill-ses_child")
+  await setup.waitForFrame((frame) => frame.includes("Kill subagent"))
+  setup.mockInput.pressEscape()
+  await setup.waitForFrame((frame) => !frame.includes("Kill subagent"))
+  expect(writes).toHaveLength(1)
+  await click("subagent-kill-ses_child")
+  await setup.waitForFrame((frame) => frame.includes("Kill subagent"))
+  setup.mockInput.pressEnter()
+  await setup.waitForFrame(() => writes.length === 2)
+  expect(writes[1]?.path).toBe("/api/session/ses_child/interrupt")
+  await click("subagent-open-ses_child")
+  await setup.waitForFrame((frame) => frame.includes("Child investigation"))
+  expect(writes).toHaveLength(2)
+})
+
 test.each([
   { columns: 80, expected: 36 },
   { columns: 160, expected: 40 },

@@ -16,6 +16,21 @@ The later integration history at `8542747fc2b4e6589742358e10f8f2a38baa4820`
 released Redcode experience. Compare current work against `main`; keep
 all development on `main`.
 
+For side-by-side source inspection, the local reference checkout is
+`../redcode-reference-0.57`, detached at tag `v0.57.0`
+(`0dcec730fd8a8a2669bba4e86c1b176dd426d755`). It has no dependency installation
+and is not used by builds, tests or runtime. Keep it unchanged. Recreate it with:
+
+```sh
+git clone --depth 1 --single-branch --branch v0.57.0 git@github.com:reddb-io/redcode.git ../redcode-reference-0.57
+```
+
+Compare the historical and current implementations by user journey, not by
+copying the old runtime. For example, the old `routes/session/subagent.tsx`
+exposes open/steer/kill actions; the V2 adapter must call prompt admission with
+`delivery: "steer"` and `session.interrupt` for the selected child, keeping
+the child's existing model and agent selection.
+
 ## Experience to preserve
 
 - Redcode product identity throughout launch, the terminal, setup, and updates.
@@ -56,6 +71,7 @@ implemented paths from identified gaps; it is not a full-parity declaration.
 | Hook configuration/trust/import and `/hooks`                      | Restored native declarative hook service, config normalization, authenticated API, generated client and `/hooks` | Trust/import and lifecycle wiring implemented; command execution, prompt rejection/idempotence and TUI confirmation covered by the CI contract suite |
 | `/monitors` management                                            | Existing core monitor service → session monitor API → generated client → `/monitors`                             | Restored list, live status, bounded result and local cancellation; CI covers API isolation and TUI actions                                           |
 | Sidebar files and LSP                                             | Native V2 session diff and location LSP APIs → restored sidebar plugins                                          | Restored; files remain session-specific, LSP follows the session location                                                                            |
+| Subagent sidebar actions and model details                        | `routes/session/subagent.tsx` → V2 child prompt admission and interruption                                       | Open/steer/kill restored with confirmation and API-target regression; historical review badges/brief/checkpoint summaries still need adaptation      |
 | Context latency/throughput and session budget display             | Current sidebar exposes context usage and cost only                                                              | Missing historical metrics/budget UI; preserve real timing semantics, do not estimate fake token rates                                               |
 | Provider connection and discovered-model persistence              | Native provider adapters and RedRouter integration exist                                                         | Compare the previous OpenAI-compatible/9Router wizard, refresh and model-catalog persistence behavior                                                |
 | Existing configuration, workspace behavior, CLI/RPC and migration | V2 configuration/migration paths and legacy RPC adapter exist                                                    | Full command/configuration compatibility inventory still required                                                                                    |

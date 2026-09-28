@@ -1,7 +1,6 @@
 import { useData } from "../../context/data"
 import { createMemo, For, Show } from "solid-js"
 import { useTheme } from "../../context/theme"
-import { useRoute } from "../../context/route"
 import { sessionFamily } from "../../util/session"
 import { useConfig } from "../../config"
 import { Slot } from "../../plugin/render"
@@ -10,6 +9,7 @@ import { TextAttributes } from "@opentui/core"
 import "../../component/title-shimmer"
 
 import { getScrollAcceleration } from "../../util/scroll"
+import { SidebarSubagents } from "./subagent"
 
 export const SIDEBAR_TABS = ["context", "workers", "subagents"] as const
 export type SidebarTab = (typeof SIDEBAR_TABS)[number]
@@ -24,7 +24,6 @@ export function Sidebar(props: {
   const data = useData()
   const theme = useTheme()
   const config = useConfig().data
-  const route = useRoute()
   const children = createMemo(() => sessionFamily(data.session.list(), props.sessionID))
   const session = createMemo(() => data.session.get(props.sessionID))
   const scrollAcceleration = createMemo(() => getScrollAcceleration(config))
@@ -110,22 +109,7 @@ export function Sidebar(props: {
                 <Slot path="sidebar.content" input={{ sessionID: props.sessionID }} />
               </Show>
               <Show when={props.tab === "subagents"}>
-                <Show
-                  when={children().length}
-                  fallback={<text fg={theme.text.muted}>No subagents in this session.</text>}
-                >
-                  <For each={children()}>
-                    {(entry) => (
-                      <box onMouseUp={() => route.navigate({ type: "session", sessionID: entry.session.id })}>
-                        <text fg={theme.text.action.primary.base} wrapMode="word">
-                          {entry.prefix}
-                          {entry.session.agent ?? "Subagent"}: {withTimestampedFallback(entry.session)}
-                        </text>
-                        <text fg={theme.text.muted}>{data.session.status(entry.session.id)}</text>
-                      </box>
-                    )}
-                  </For>
-                </Show>
+                <SidebarSubagents sessionID={props.sessionID} />
               </Show>
             </box>
           </scrollbox>
