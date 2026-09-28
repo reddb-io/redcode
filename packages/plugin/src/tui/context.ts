@@ -198,6 +198,7 @@ export interface SlotMap {
   readonly "session.composer.top": { readonly sessionID: string }
   readonly "session.panel": PanelInput
   readonly "sidebar.content": { readonly sessionID: string }
+  readonly "sidebar.workers": { readonly sessionID: string; readonly width: number }
   readonly "sidebar.footer": { readonly sessionID: string }
 }
 export type SlotPath = keyof SlotMap

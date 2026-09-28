@@ -1,4 +1,4 @@
-import type { RedskilledStatusOutput } from "@opencode/client"
+import type { LocationRef, RedskilledStatusOutput } from "@opencode/client"
 import { Plugin } from "@opencode/plugin/tui"
 import { Status } from "@opencode/schema/redskilled"
 import { Schema } from "effect"
@@ -11,18 +11,29 @@ import { openUrl } from "@opencode/util/open"
 
 const ROUTE = "workers"
 
-function WorkersPage(props: { context: Plugin.Context; onClose: () => void }) {
+function WorkersPage(props: {
+  context: Plugin.Context
+  onClose: () => void
+  sidebar?: boolean
+  width?: number
+  location?: LocationRef
+}) {
   const theme = useTheme()
   const dimensions = useTerminalDimensions()
-  const location = props.context.location ?? props.context.data.location.default()
+  const location = props.location ?? props.context.location ?? props.context.data.location.default()
   const [status, setStatus] = createSignal<Status>()
   const [loading, setLoading] = createSignal(true)
   const [busy, setBusy] = createSignal(false)
   const [selectedID, setSelectedID] = createSignal<string>()
   const workers = createMemo(() => status()?.payload?.workers ?? [])
-  const selectedIndex = createMemo(() => Math.max(0, workers().findIndex((item) => item.worker_id === selectedID())))
+  const selectedIndex = createMemo(() =>
+    Math.max(
+      0,
+      workers().findIndex((item) => item.worker_id === selectedID()),
+    ),
+  )
   const selected = createMemo(() => workers()[selectedIndex()])
-  const width = () => Math.max(20, Math.min(110, dimensions().width - 4))
+  const width = () => props.width ?? Math.max(20, Math.min(110, dimensions().width - 4))
 
   let polling = false
   let revision = 0
@@ -35,7 +46,13 @@ function WorkersPage(props: { context: Plugin.Context; onClose: () => void }) {
       if (revision === observed) setStatus(Schema.decodeUnknownSync(Status)(result.data))
     } catch (cause) {
       if (revision === observed)
-        setStatus({ lifecycle: "unavailable", consent: "unknown", scope: "project", native: true, error: errorMessage(cause) })
+        setStatus({
+          lifecycle: "unavailable",
+          consent: "unknown",
+          scope: "project",
+          native: true,
+          error: errorMessage(cause),
+        })
     } finally {
       polling = false
       setLoading(false)
@@ -59,10 +76,8 @@ function WorkersPage(props: { context: Plugin.Context; onClose: () => void }) {
     if (!workers().length) return
     setSelectedID(workers()[Math.max(0, Math.min(workers().length - 1, selectedIndex() + offset))].worker_id)
   }
-  const startDrain = () => run(
-    () => props.context.client.redskilled.consent({ location, decision: "accepted" }),
-    "Project drain started",
-  )
+  const startDrain = () =>
+    run(() => props.context.client.redskilled.consent({ location, decision: "accepted" }), "Project drain started")
   const resize = async () => {
     const answer = await props.context.ui.dialog.prompt({
       title: "Resize project",
@@ -73,29 +88,53 @@ function WorkersPage(props: { context: Plugin.Context; onClose: () => void }) {
     const target = Number(answer.trim())
     if (!Number.isInteger(target) || target < 0)
       return props.context.ui.toast.show({ variant: "error", message: "Target must be zero or greater" })
-    await run(() => props.context.client.redskilled.project.resize({ location, target }), `Project target set to ${target}`)
+    await run(
+      () => props.context.client.redskilled.project.resize({ location, target }),
+      `Project target set to ${target}`,
+    )
   }
   const stopProject = async () => {
-    if (!(await props.context.ui.dialog.confirm({ title: "Stop project", message: "Stop this project's drain?" }))) return
+    if (!(await props.context.ui.dialog.confirm({ title: "Stop project", message: "Stop this project's drain?" })))
+      return
     await run(() => props.context.client.redskilled.project.stop({ location }), "Project drain stopped")
   }
   const stopWorker = async () => {
     const worker = selected()
-    if (!worker || !(await props.context.ui.dialog.confirm({ title: "Stop worker", message: `Stop ${worker.worker_id}?` }))) return
-    await run(() => props.context.client.redskilled.worker.stop({ location, worker: worker.worker_id }), `Stopped ${worker.worker_id}`)
+    if (
+      !worker ||
+      !(await props.context.ui.dialog.confirm({ title: "Stop worker", message: `Stop ${worker.worker_id}?` }))
+    )
+      return
+    await run(
+      () => props.context.client.redskilled.worker.stop({ location, worker: worker.worker_id }),
+      `Stopped ${worker.worker_id}`,
+    )
   }
   const recycleWorker = async () => {
     const worker = selected()
-    if (!worker || !(await props.context.ui.dialog.confirm({ title: "Recycle worker", message: `Recycle ${worker.worker_id}?` }))) return
-    await run(() => props.context.client.redskilled.worker.recycle({ location, worker: worker.worker_id }), `Recycling ${worker.worker_id}`)
+    if (
+      !worker ||
+      !(await props.context.ui.dialog.confirm({ title: "Recycle worker", message: `Recycle ${worker.worker_id}?` }))
+    )
+      return
+    await run(
+      () => props.context.client.redskilled.worker.recycle({ location, worker: worker.worker_id }),
+      `Recycling ${worker.worker_id}`,
+    )
   }
   const steerWorker = async () => {
     const worker = selected()
     if (!worker) return
-    const answer = await props.context.ui.dialog.prompt({ title: `Steer ${worker.worker_id}`, placeholder: "What should this worker do next?" })
+    const answer = await props.context.ui.dialog.prompt({
+      title: `Steer ${worker.worker_id}`,
+      placeholder: "What should this worker do next?",
+    })
     const text = answer?.trim()
     if (!text) return
-    await run(() => props.context.client.redskilled.worker.steer({ location, worker: worker.worker_id, text }), `Steer queued for ${worker.worker_id}`)
+    await run(
+      () => props.context.client.redskilled.worker.steer({ location, worker: worker.worker_id, text }),
+      `Steer queued for ${worker.worker_id}`,
+    )
   }
   const openIssue = () => {
     const worker = selected()
@@ -111,6 +150,7 @@ function WorkersPage(props: { context: Plugin.Context; onClose: () => void }) {
   const timer = setInterval(() => void load(), 5_000)
   onCleanup(() => clearInterval(timer))
   props.context.keymap.layer(() => ({
+    enabled: () => !props.sidebar,
     commands: [
       { bind: "escape", title: "Back", group: "Workers", run: props.onClose },
       { bind: "j", title: "Next worker", group: "Workers", run: () => move(1) },
@@ -129,19 +169,29 @@ function WorkersPage(props: { context: Plugin.Context; onClose: () => void }) {
   }))
 
   return (
-    <box width="100%" height="100%" alignItems="center" backgroundColor={theme.background.base}>
+    <box
+      width="100%"
+      height="100%"
+      alignItems="center"
+      backgroundColor={props.sidebar ? theme.background.raised.base : theme.background.base}
+    >
       <box width={width()} flexGrow={1} minHeight={0} paddingTop={1} paddingBottom={1} gap={1}>
         <box flexDirection="row" justifyContent="space-between">
-          <text fg={theme.text.base} attributes={TextAttributes.BOLD}>RedSkills / Workers</text>
-          <text fg={theme.text.muted} onMouseUp={props.onClose}>esc back</text>
+          <text fg={theme.text.base} attributes={TextAttributes.BOLD}>
+            {props.sidebar ? "Workers" : "RedSkills / Workers"}
+          </text>
+          <text fg={theme.text.action.secondary.base} onMouseUp={props.onClose}>
+            {props.sidebar ? "expand" : "esc back"}
+          </text>
         </box>
         <box flexDirection="row" justifyContent="space-between">
           <text fg={status()?.lifecycle === "unavailable" ? theme.text.feedback.error.base : theme.text.base}>
-            {loading() ? "Connecting…" : status()?.lifecycle ?? "unknown"}
+            {loading() ? "Connecting…" : (status()?.lifecycle ?? "unknown")}
             {status()?.activation?.project ? ` · ${status()!.activation!.project}` : ""}
           </text>
           <text fg={theme.text.muted}>
-            {busy() ? "Working… · " : ""}{workers().length} workers
+            {busy() ? "Working… · " : ""}
+            {workers().length} workers
             {workers().some((item) => item.display?.failed)
               ? ` · ${workers().filter((item) => item.display?.failed).length} failed`
               : ""}
@@ -161,37 +211,66 @@ function WorkersPage(props: { context: Plugin.Context; onClose: () => void }) {
           )}
         </Show>
         <Show when={status()?.error}>
-          {(message) => <text fg={theme.text.feedback.error.base} wrapMode="word">{message()}</text>}
+          {(message) => (
+            <text fg={theme.text.feedback.error.base} wrapMode="word">
+              {message()}
+            </text>
+          )}
         </Show>
-        <box flexDirection={width() < 70 ? "column" : "row"} gap={width() < 70 ? 0 : 2}>
-          <text fg={theme.text.action.secondary.base} onMouseUp={() => void startDrain()}>d start drain</text>
-          <text fg={theme.text.action.secondary.base} onMouseUp={() => void resize()}>z resize</text>
-          <text fg={theme.text.action.secondary.base} onMouseUp={() => void stopProject()}>p stop project</text>
-          <text fg={theme.text.action.secondary.base} onMouseUp={() => void load()}>R refresh</text>
+        <box flexDirection="row" flexWrap="wrap" gap={1}>
+          <text fg={theme.text.action.secondary.base} onMouseUp={() => void startDrain()}>
+            {props.sidebar ? "start" : "d start drain"}
+          </text>
+          <text fg={theme.text.action.secondary.base} onMouseUp={() => void resize()}>
+            {props.sidebar ? "resize" : "z resize"}
+          </text>
+          <text fg={theme.text.action.secondary.base} onMouseUp={() => void stopProject()}>
+            {props.sidebar ? "stop project" : "p stop project"}
+          </text>
+          <text fg={theme.text.action.secondary.base} onMouseUp={() => void load()}>
+            {props.sidebar ? "refresh" : "R refresh"}
+          </text>
         </box>
-        <box flexDirection={width() < 70 ? "column" : "row"} gap={width() < 70 ? 0 : 2}>
-          <text fg={theme.text.action.secondary.base} onMouseUp={() => void stopWorker()}>s stop</text>
-          <text fg={theme.text.action.secondary.base} onMouseUp={() => void recycleWorker()}>r recycle</text>
-          <text fg={theme.text.action.secondary.base} onMouseUp={() => void steerWorker()}>e steer</text>
-          <text fg={theme.text.action.secondary.base} onMouseUp={openIssue}>o issue</text>
+        <box flexDirection="row" flexWrap="wrap" gap={1}>
+          <text fg={theme.text.action.secondary.base} onMouseUp={() => void stopWorker()}>
+            {props.sidebar ? "stop worker" : "s stop"}
+          </text>
+          <text fg={theme.text.action.secondary.base} onMouseUp={() => void recycleWorker()}>
+            {props.sidebar ? "recycle" : "r recycle"}
+          </text>
+          <text fg={theme.text.action.secondary.base} onMouseUp={() => void steerWorker()}>
+            {props.sidebar ? "steer" : "e steer"}
+          </text>
+          <text fg={theme.text.action.secondary.base} onMouseUp={openIssue}>
+            {props.sidebar ? "issue" : "o issue"}
+          </text>
         </box>
         <scrollbox flexGrow={1} minHeight={0} width="100%">
-          <Show when={workers().length > 0} fallback={
-            <text fg={theme.text.muted}>
-              {status()?.lifecycle === "unavailable" ? "Worker status is unavailable." : "No live workers. Start the project drain when ready."}
-            </text>
-          }>
+          <Show
+            when={workers().length > 0}
+            fallback={
+              <text fg={theme.text.muted}>
+                {status()?.lifecycle === "unavailable"
+                  ? "Worker status is unavailable."
+                  : "No live workers. Start the project drain when ready."}
+              </text>
+            }
+          >
             <For each={workers()}>
               {(worker) => (
                 <box
                   width="100%"
                   paddingLeft={1}
                   paddingRight={1}
-                  backgroundColor={worker.worker_id === selected()?.worker_id ? theme.background.formfield.selected : undefined}
+                  backgroundColor={
+                    worker.worker_id === selected()?.worker_id ? theme.background.formfield.selected : undefined
+                  }
                   onMouseUp={() => setSelectedID(worker.worker_id)}
                 >
                   <box flexDirection="row" justifyContent="space-between">
-                    <text fg={worker.worker_id === selected()?.worker_id ? theme.text.formfield.selected : theme.text.base}>
+                    <text
+                      fg={worker.worker_id === selected()?.worker_id ? theme.text.formfield.selected : theme.text.base}
+                    >
                       {worker.worker_id} {worker.display?.issue ?? ""}
                     </text>
                     <text fg={worker.display?.failed ? theme.text.feedback.error.base : theme.text.muted}>
@@ -202,7 +281,10 @@ function WorkersPage(props: { context: Plugin.Context; onClose: () => void }) {
                     {worker.display?.step ?? "—"} · {worker.budget.declared ?? "no memory budget"} · pid {worker.pid}
                   </text>
                   <Show when={worker.base_commits_ahead || worker.warnings?.length}>
-                    <text fg={worker.warnings?.length ? theme.text.feedback.warning.base : theme.text.muted} wrapMode="word">
+                    <text
+                      fg={worker.warnings?.length ? theme.text.feedback.warning.base : theme.text.muted}
+                      wrapMode="word"
+                    >
                       {worker.base_commits_ahead ? `${worker.base_commits_ahead} commits behind · ` : ""}
                       {worker.warnings?.join(" · ")}
                     </text>
@@ -212,7 +294,11 @@ function WorkersPage(props: { context: Plugin.Context; onClose: () => void }) {
             </For>
           </Show>
         </scrollbox>
-        <text fg={theme.text.muted}>j/k select · d start · z resize · p stop project · s/r/e worker · o issue · R refresh</text>
+        <Show when={!props.sidebar}>
+          <text fg={theme.text.muted}>
+            j/k select · d start · z resize · p stop project · s/r/e worker · o issue · R refresh
+          </text>
+        </Show>
       </box>
     </box>
   )
@@ -222,6 +308,25 @@ export default Plugin.define({
   id: "redcode.workers",
   setup(context) {
     const [previous, setPrevious] = createSignal({ ...context.ui.router.current() })
+    context.ui.slot({
+      append: "sidebar.workers",
+      render: (props) => (
+        <Show when={context.data.session.get(props.sessionID)?.location} keyed>
+          {(location) => (
+            <WorkersPage
+              context={context}
+              sidebar
+              width={props.width}
+              location={location}
+              onClose={() => {
+                setPrevious({ ...context.ui.router.current() })
+                context.ui.router.navigate({ type: "plugin", name: ROUTE })
+              }}
+            />
+          )}
+        </Show>
+      ),
+    })
     context.ui.router.register({
       name: ROUTE,
       render: () => <WorkersPage context={context} onClose={() => context.ui.router.navigate(previous())} />,
@@ -231,20 +336,22 @@ export default Plugin.define({
       render() {
         context.keymap.layer(() => ({
           mode: "global",
-          commands: [{
-            id: "workers.open",
-            title: "RedSkills workers",
-            group: "System",
-            slash: { name: "workers" },
-            palette: true,
-            run() {
-              const current = context.ui.router.current()
-              if (current.type === "plugin" && current.name === ROUTE) return
-              setPrevious({ ...current })
-              context.ui.dialog.clear()
-              context.ui.router.navigate({ type: "plugin", name: ROUTE })
+          commands: [
+            {
+              id: "workers.open",
+              title: "RedSkills workers",
+              group: "System",
+              slash: { name: "workers" },
+              palette: true,
+              run() {
+                const current = context.ui.router.current()
+                if (current.type === "plugin" && current.name === ROUTE) return
+                setPrevious({ ...current })
+                context.ui.dialog.clear()
+                context.ui.router.navigate({ type: "plugin", name: ROUTE })
+              },
             },
-          }],
+          ],
         }))
         return null
       },

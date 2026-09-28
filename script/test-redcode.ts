@@ -24,7 +24,12 @@ const suites = {
   ],
   cli: ["test/config.test.ts", "test/import-boundaries.test.ts", "test/server-connection.test.ts"],
   server: ["test/intelligence-history.test.ts", "test/legacy-rpc.test.ts"],
-  tui: ["test/redcode-workflows.test.tsx", "test/voice-input.test.ts"],
+  tui: [
+    "test/redcode-workflows.test.tsx",
+    "test/redcode-session.test.tsx",
+    "test/redcode-theme.test.ts",
+    "test/voice-input.test.ts",
+  ],
   schema: ["test/config.test.ts"],
   redcode: ["test/script/publish-registry.test.ts"],
   "rpc-sidecar": ["test/sidecar.test.ts"],

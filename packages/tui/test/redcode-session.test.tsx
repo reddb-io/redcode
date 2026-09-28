@@ -1,0 +1,162 @@
+import { expect, test } from "bun:test"
+import { createAppFixture } from "./fixture/app"
+import { tmpdir } from "./fixture/fixture"
+import { directory, json } from "./fixture/tui-client"
+
+const location = { directory, project: { id: "project", directory, canonical: directory } }
+
+test.each([80, 160])("Redcode opens real blank sessions and preserves its sidebar at %i columns", async (width) => {
+  await using state = await tmpdir()
+  const created: string[] = []
+  const writes: string[] = []
+  await using setup = await createAppFixture({
+    state: state.path,
+    width,
+    height: 40,
+    config: {
+      animations: false,
+      tabs: { mode: "off" },
+      keybinds: { "session.sidebar.toggle": "f6", "sidebar.tab.next": "f7" },
+    },
+    fetch: async (url, request) => {
+      if (request.method !== "GET") writes.push(url.pathname)
+      if (url.pathname === "/api/session" && request.method === "POST") {
+        const input = (await request.clone().json()) as { id: string }
+        created.push(input.id)
+      }
+      if (url.pathname === "/api/agent")
+        return json({
+          location,
+          data: ["build", "plan", "design", "question"].map((id) => ({
+            id,
+            mode: "primary",
+            hidden: false,
+            permissions: [],
+          })),
+        })
+      if (url.pathname === "/api/model")
+        return json({
+          location,
+          data: [
+            {
+              id: "model",
+              providerID: "provider",
+              name: "Model",
+              enabled: true,
+              capabilities: { output: ["text"] },
+              variants: [],
+              time: { released: 0 },
+              cost: [],
+            },
+          ],
+        })
+      if (url.pathname === "/api/provider") return json({ location, data: [{ id: "provider", name: "Provider" }] })
+      if (url.pathname === "/api/redskilled")
+        return json({
+          location,
+          data: {
+            lifecycle: "unavailable",
+            consent: "unknown",
+            scope: "project",
+            native: true,
+            error: "Fixture worker unavailable",
+          },
+        })
+    },
+  })
+  await setup.ready
+  await setup.waitForFrame((frame) => frame.includes("Build") && frame.includes("Model"))
+  expect(created).toHaveLength(1)
+  for (const command of ["/new", "/clear", "/new"]) {
+    const before = created.length
+    await setup.mockInput.typeText(command)
+    setup.mockInput.pressEnter()
+    await setup.waitForFrame(
+      (frame) =>
+        created.length === before + 1 && frame.includes("Build") && frame.includes("Model") && !frame.includes(command),
+    )
+  }
+  expect(new Set(created).size).toBe(4)
+  // No deletion or prompt submission is allowed while creating/clearing sessions.
+  expect(writes).toEqual(Array(4).fill("/api/session"))
+  expect(setup.captureCharFrame()).not.toContain("█")
+  if (width === 80) setup.mockInput.pressKey("F6")
+  await setup.waitForFrame(
+    (frame) => frame.includes("Context") && frame.includes("Workers") && frame.includes("Subagents"),
+  )
+  setup.mockInput.pressKey("F7")
+  await setup.waitForFrame((frame) => frame.includes("Worker status is unavailable."))
+  setup.mockInput.pressKey("F7")
+  await setup.waitForFrame((frame) => frame.includes("No subagents in this session."))
+})
+
+test("--continue with no prior session opens a blank session", async () => {
+  await using state = await tmpdir()
+  let created = 0
+  await using setup = await createAppFixture({
+    state: state.path,
+    args: { continue: true },
+    fetch: (url, request) => {
+      if (url.pathname === "/api/session" && request.method === "POST") created++
+    },
+  })
+  await setup.ready
+  await setup.waitForFrame((frame) => created === 1 && !frame.includes("Opening session"))
+  expect(created).toBe(1)
+})
+
+test.each(["session", "continue"] as const)(
+  "%s resumes existing history without creating a blank session",
+  async (mode) => {
+    await using state = await tmpdir()
+    const session = {
+      id: "ses_existing",
+      projectID: "project",
+      title: "Existing Redcode session",
+      location: { directory },
+      cost: 0,
+      tokens: { input: 0, output: 0, reasoning: 0, cache: { read: 0, write: 0 } },
+      time: { created: 1, updated: 1 },
+    }
+    const writes: string[] = []
+    await using setup = await createAppFixture({
+      state: state.path,
+      args: mode === "session" ? { sessionID: session.id } : { continue: true },
+      fetch: (url, request) => {
+        if (request.method !== "GET") writes.push(url.pathname)
+        if (url.pathname === "/api/session") return json({ data: [session], cursor: {} })
+        if (url.pathname === `/api/session/${session.id}`) return json({ data: session })
+        if (url.pathname === `/api/session/${session.id}/message`)
+          return json({
+            data: [{ id: "msg_existing", type: "user", text: "Previous Redcode conversation", time: { created: 1 } }],
+            cursor: {},
+          })
+        if ([`/api/session/${session.id}/inbox`, `/api/session/${session.id}/permission`].includes(url.pathname))
+          return json({ data: [] })
+      },
+    })
+    await setup.ready
+    await setup.waitForFrame((frame) => frame.includes("Previous Redcode conversation"))
+    expect(writes).toEqual([])
+  },
+)
+
+test("failed blank-session creation can be retried from the keyboard", async () => {
+  await using state = await tmpdir()
+  let attempts = 0
+  await using setup = await createAppFixture({
+    state: state.path,
+    fetch: (url, request) => {
+      if (url.pathname !== "/api/session" || request.method !== "POST") return
+      attempts++
+      if (attempts === 1) return json({ message: "Fixture creation failed" }, { status: 500 })
+    },
+  })
+  await setup.ready
+  await setup.waitForFrame((frame) => frame.includes("Press enter or click to retry"))
+  setup.mockInput.pressEnter()
+  await setup.waitForFrame(
+    (frame) => attempts === 2 && !frame.includes("Opening session") && !frame.includes("Press enter or click to retry"),
+  )
+  expect(attempts).toBe(2)
+})

@@ -638,6 +638,8 @@ function App() {
   })
 
   const args = useArgs()
+  const [startupFresh, setStartupFresh] = createSignal(true)
+  const [startupPending, setStartupPending] = createSignal(Boolean(args.continue || args.sessionID))
   const startupPrompt = args.prompt ? { text: args.prompt, files: [], agents: [], pasted: [] } : undefined
   onMount(() => {
     batch(() => {
@@ -676,7 +678,10 @@ function App() {
       })
       .then((response) => {
         const match = response.data[0]?.id
-        if (!match) return
+        if (!match) {
+          setStartupPending(false)
+          return
+        }
         if (!args.fork) {
           route.navigate({ type: "session", sessionID: match, prompt: startupPrompt })
           return
@@ -684,9 +689,15 @@ function App() {
         void client.api.session
           .fork({ sessionID: match })
           .then((result) => route.navigate({ type: "session", sessionID: result.id, prompt: startupPrompt }))
-          .catch(toast.error)
+          .catch((error) => {
+            toast.error(error)
+            setStartupPending(false)
+          })
       })
-      .catch(toast.error)
+      .catch((error) => {
+        toast.error(error)
+        setStartupPending(false)
+      })
   })
 
   // Handle --session with --fork once.
@@ -697,7 +708,17 @@ function App() {
     void client.api.session
       .fork({ sessionID: args.sessionID })
       .then((result) => route.navigate({ type: "session", sessionID: result.id, prompt: startupPrompt }))
-      .catch(toast.error)
+      .catch((error) => {
+        toast.error(error)
+        setStartupPending(false)
+      })
+  })
+
+  createEffect(() => {
+    if (route.data.type !== "home") {
+      setStartupPending(false)
+      setStartupFresh(false)
+    }
   })
 
   const connected = useConnected()
@@ -1371,7 +1392,7 @@ function App() {
               </Show>
               <Switch>
                 <Match when={route.data.type === "home"}>
-                  <Home />
+                  <Home pending={startupPending()} prompt={startupFresh() ? startupPrompt : undefined} />
                 </Match>
                 <Match when={route.data.type === "session"}>
                   <Show when={route.data.type === "session" ? route.data.sessionID : undefined} keyed>

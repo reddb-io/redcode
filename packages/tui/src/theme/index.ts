@@ -7,10 +7,13 @@ import {
 } from "@opencode/theme/tui"
 import { resolveThemeColors } from "./resolve"
 import { DEFAULT_THEMES, type Theme, type ThemeV1Json } from "./v1"
+import redcode from "./assets/v2/redcode.json" with { type: "json" }
 import opencode from "./assets/v2/opencode.json" with { type: "json" }
 
 export { DEFAULT_THEMES, generateSyntax, selectedForeground, type Theme, type ThemeV1Json } from "./v1"
 export { resolveThemeDocument, type ThemeDocument }
+
+export const DEFAULT_THEME = "redcode"
 
 export type ThemeDocumentSource = Record<string, unknown>
 
@@ -19,10 +22,12 @@ let customThemes: Record<string, ThemeDocumentSource> = {}
 let systemTheme: ThemeDocumentSource | undefined
 const listeners = new Set<(themes: Record<string, ThemeDocumentSource>) => void>()
 const parsed = new WeakMap<object, ThemeDocument>()
-let opencodeTheme: (ThemeDocument & {
-  readonly light: ModeDefinition
-  readonly dark: ModeDefinition
-}) | undefined
+let opencodeTheme:
+  | (ThemeDocument & {
+      readonly light: ModeDefinition
+      readonly dark: ModeDefinition
+    })
+  | undefined
 
 export function getOpenCodeTheme() {
   if (opencodeTheme) return opencodeTheme
@@ -36,6 +41,7 @@ function listThemes(): Record<string, ThemeDocumentSource> {
   const themes: Record<string, ThemeDocumentSource> = {
     ...DEFAULT_THEMES,
     opencode: getOpenCodeTheme(),
+    redcode,
     ...pluginThemes,
     ...customThemes,
   }

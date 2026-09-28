@@ -50,7 +50,7 @@ test("Redcode setup, intelligence and Design commands reach their production UI 
   await setup.waitForFrame((frame) => frame.includes("System Two model"))
   setup.mockInput.pressEscape()
   await setup.waitForFrame((frame) => !frame.includes("System Two model"))
-  expect(writes).toEqual([])
+  expect(writes).toEqual(["/api/session"])
 
   await setup.mockInput.typeText("/intelligence")
   setup.mockInput.pressEnter()
@@ -65,5 +65,5 @@ test("Redcode setup, intelligence and Design commands reach their production UI 
   await setup.mockInput.typeText("/design")
   setup.mockInput.pressEnter()
   await setup.waitForFrame((frame) => frame.includes("Design") && frame.includes("Model"))
-  expect(writes).toEqual([])
+  expect(writes).toEqual(["/api/session"])
 })

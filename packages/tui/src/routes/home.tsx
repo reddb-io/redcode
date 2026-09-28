@@ -1,182 +1,77 @@
-import { Prompt, type PromptRef } from "../component/prompt"
-import { createEffect, createMemo, createSignal, onMount, Show, untrack } from "solid-js"
-import { Logo } from "../component/logo"
-import { useArgs } from "../context/args"
-import { useRouteData } from "../context/route"
-import { usePromptRef } from "../context/prompt"
+import { createEffect, createSignal, onCleanup, Show, untrack } from "solid-js"
+import type { PromptInfo } from "../prompt/history"
+import { useRoute } from "../context/route"
 import { useLocal } from "../context/local"
 import { useEditorContext } from "../context/editor"
 import { useData } from "../context/data"
 import { useLocation } from "../context/location"
-import { FormPrompt } from "./session/form"
-import { Slot } from "../plugin/render"
-import { useTerminalDimensions } from "@opentui/solid"
+import { useClient } from "../context/client"
 import { useTheme } from "../context/theme"
-import { useUpdateNotification } from "../context/update-notification"
-import { useExit } from "../context/exit"
-import { FadeInText } from "../component/fade-in-text"
-import { useConfig } from "../config"
+import { Keymap } from "../context/keymap"
+import { useToast } from "../ui/toast"
 
-let once = false
-const placeholder = {
-  normal: ["Fix a TODO in the codebase", "What is the tech stack of this project?", "Fix broken tests"],
-  shell: ["ls -la", "git status", "pwd"],
-}
-
-export function Home() {
-  const route = useRouteData("home")
-  const promptRef = usePromptRef()
-  const [ref, setRef] = createSignal<PromptRef | undefined>()
-  const args = useArgs()
-  const local = useLocal()
-  const editor = useEditorContext()
+// Home is a transition to a durable blank session, never a welcome/composer screen.
+export function Home(props: { pending?: boolean; prompt?: PromptInfo }) {
+  const route = useRoute()
   const data = useData()
+  const local = useLocal()
   const location = useLocation()
-  const dimensions = useTerminalDimensions()
-  const config = useConfig().data
-  const promptMaxWidth = createMemo(() => {
-    const configured = config.prompt?.max_width
-    if (configured === "auto") return Math.max(75, Math.floor(dimensions().width * 0.7))
-    return configured ?? 75
-  })
-  const [logoWidth, setLogoWidth] = createSignal(0)
-  // Global MCP elicitations can arrive without a session route, so keep them reachable from Home.
-  const currentLocation = () => route.location ?? data.location.default()
-  const forms = createMemo(() => data.session.form.list("global", currentLocation()) ?? [])
-  let sent = false
-
-  // Track only the route location and (when absent) the default location; location.set
-  // reads other signals internally and tracking them would re-assert the route location
-  // after the user overrides it with /cd.
-  createEffect(() => {
-    const target = currentLocation()
-    untrack(() => location.set(target))
+  const client = useClient()
+  const editor = useEditorContext()
+  const theme = useTheme()
+  const toast = useToast()
+  const [failed, setFailed] = createSignal(false)
+  let started = false
+  let disposed = false
+  onCleanup(() => {
+    disposed = true
   })
 
-  onMount(() => {
-    editor.clearSelection()
-  })
-
-  const bind = (r: PromptRef | undefined) => {
-    setRef(r)
-    promptRef.set(r)
-    if (once || !r || route.prompt || !args.prompt) return
-    r.set({ text: args.prompt, files: [], agents: [], pasted: [] })
-    once = true
+  function open() {
+    if (started || route.data.type !== "home") return
+    started = true
+    setFailed(false)
+    const target = route.data.location ?? data.location.default()
+    const prompt = route.data.prompt ?? props.prompt
+    const agent = local.agent.current()
+    const model = local.model.selection()
+    location.set(target)
+    const created = data.session.create({
+      location: target,
+      agent: agent?.id,
+      model: model ? { providerID: model.providerID, id: model.modelID, variant: model.variant } : undefined,
+    })
+    void created.request
+      .then(() => {
+        if (disposed) return
+        editor.clearSelection()
+        route.navigate({ type: "session", sessionID: created.id, prompt })
+      })
+      .catch((error) => {
+        if (disposed) return
+        started = false
+        setFailed(true)
+        toast.error(error)
+      })
   }
 
-  createEffect(() => {
-    const composer = ref()
-    const prompt = route.prompt
-    if (!composer || prompt?.text === undefined) return
-    untrack(() => composer.set(prompt))
-  })
+  Keymap.createLayer(() => ({
+    enabled: failed,
+    commands: [{ bind: "enter", title: "Retry creating session", group: "Session", run: open }],
+  }))
 
-  // Wait for the model store to be ready before auto-submitting --prompt.
   createEffect(() => {
-    const r = ref()
-    if (sent) return
-    if (!r) return
-    if (!local.model.ready) return
-    if (!args.prompt) return
-    if (r.current.text !== args.prompt) return
-    sent = true
-    r.submit()
+    if (props.pending || client.connection.status() !== "connected") return
+    untrack(open)
   })
 
   return (
-    <>
-      <box
-        flexGrow={1}
-        alignItems="center"
-        paddingLeft={dimensions().width < 44 ? 1 : 2}
-        paddingRight={dimensions().width < 44 ? 1 : 2}
-      >
-        <box flexGrow={1} minHeight={0} />
-        <box height={3} minHeight={0} flexShrink={1} />
-        <box
-          flexShrink={0}
-          onSizeChange={function () {
-            setLogoWidth(this.width)
-          }}
-        >
-          <Logo />
-        </box>
-        <box height={1} flexShrink={0} />
-        <UpdateNotification width={logoWidth()} />
-        <box width="100%" maxWidth={promptMaxWidth()} zIndex={1000} paddingTop={1} flexShrink={0} position="relative">
-          <Prompt ref={bind} placeholders={placeholder} disabled={forms().length > 0} />
-        </box>
-        <box flexGrow={1} minHeight={0} />
-      </box>
-      <box width="100%" flexShrink={0}>
-        <Slot path="home.footer" />
-      </box>
-      <Show when={forms()[0]?.id} keyed>
-        {(_) => {
-          const form = forms()[0]
-          return form ? (
-            <box position="absolute" zIndex={2000} left={0} right={0} bottom={1} paddingLeft={2} paddingRight={2}>
-              <box width="100%">
-                <FormPrompt form={form} />
-              </box>
-            </box>
-          ) : null
-        }}
+    <box flexGrow={1} justifyContent="flex-end" padding={1}>
+      <Show when={failed()} fallback={<text fg={theme.text.muted}>Opening session…</text>}>
+        <text fg={theme.text.action.primary.base} onMouseUp={open}>
+          Could not create session. Press enter or click to retry.
+        </text>
       </Show>
-    </>
-  )
-}
-
-function UpdateNotification(props: { width: number }) {
-  const update = useUpdateNotification()
-  const exit = useExit()
-  const theme = useTheme()
-  const [hovered, setHovered] = createSignal(false)
-  const backdrop = () => (hovered() ? theme.background.action.primary.hovered : theme.background.base)
-  createEffect(() => {
-    update.notification()
-    setHovered(false)
-  })
-
-  return (
-    <Show when={update.notification()} keyed>
-      {(state) => {
-        const remote = state.source === "server" && state.remote
-        return (
-          <Show when={!remote || state.type === "available"}>
-            <box
-              flexShrink={0}
-              flexDirection="row"
-              justifyContent="center"
-              width={props.width}
-              maxWidth="100%"
-              gap={1}
-              backgroundColor={hovered() ? theme.background.action.primary.hovered : undefined}
-              onMouseOver={() => setHovered(true)}
-              onMouseOut={() => setHovered(false)}
-              onMouseUp={() => {
-                if (remote) return update.dismiss()
-                if (state.type === "installed") return exit()
-                update.open?.("notification")
-              }}
-            >
-              <FadeInText fg={theme.text.muted} backdrop={backdrop()}>
-                <Show when={!remote}>
-                  <span style={{ fg: theme.text.action.primary.selected }}>
-                    {state.type === "installed" ? "/exit" : "/update"}
-                  </span>
-                </Show>
-                {remote
-                  ? "remote server update available"
-                  : state.type === "installed"
-                    ? ` restart to use v${state.version}`
-                    : ` to install v${state.version}`}
-              </FadeInText>
-            </box>
-          </Show>
-        )
-      }}
-    </Show>
+    </box>
   )
 }

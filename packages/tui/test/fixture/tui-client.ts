@@ -1,4 +1,4 @@
-import { OpenCode, type OpenCodeEvent } from "@opencode/client"
+import { OpenCode, type OpenCodeEvent, type SessionInfo } from "@opencode/client"
 
 export const worktree = "/tmp/opencode"
 export const directory = `${worktree}/packages/tui`
@@ -68,6 +68,7 @@ export type FetchHandler = (url: URL, request: Request) => Response | undefined 
 
 export function createFetch(override?: FetchHandler, events?: ReturnType<typeof createEventStream>) {
   const session = [] as URL[]
+  const sessions = new Map<string, SessionInfo>()
   async function fetch(input: RequestInfo | URL, init?: RequestInit) {
     const request = input instanceof Request ? input : new Request(input, init)
     const url = new URL(request.url)
@@ -140,7 +141,31 @@ export function createFetch(override?: FetchHandler, events?: ReturnType<typeof 
         effective: { reasoning: "single", source: "config" },
       })
     if (url.pathname === "/api/experimental/intelligence/history") return json([])
-    if (url.pathname === "/api/session") return json({ data: [], cursor: {} })
+    if (url.pathname === "/api/session" && request.method === "POST") {
+      const input = (await request.json()) as Pick<SessionInfo, "id" | "title" | "agent" | "model" | "location">
+      const created: SessionInfo = {
+        ...input,
+        projectID: "proj_test",
+        cost: 0,
+        tokens: { input: 0, output: 0, reasoning: 0, cache: { read: 0, write: 0 } },
+        time: { created: Date.now(), updated: Date.now() },
+      }
+      sessions.set(created.id, created)
+      return json({ data: created })
+    }
+    if (url.pathname === "/api/session")
+      return json({
+        data: [...sessions.values()].filter((item) => {
+          const parent = url.searchParams.get("parentID")
+          return !parent || parent === "null" ? !item.parentID : item.parentID === parent
+        }),
+        cursor: {},
+      })
+    const stored = /^\/api\/session\/([^/]+)(?:\/(message|inbox|permission))?$/.exec(url.pathname)
+    if (stored && sessions.has(stored[1])) {
+      if (stored[2]) return json({ data: [], cursor: {} })
+      return json({ data: sessions.get(stored[1]) })
+    }
     if (url.pathname === "/api/config") return json([])
     if (url.pathname === "/api/session/active") return json({ data: {} })
     if (request.method === "POST" && /^\/api\/session\/[^/]+\/model$/.test(url.pathname))

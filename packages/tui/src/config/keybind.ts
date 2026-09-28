@@ -92,6 +92,7 @@ export const Definitions = {
   "theme.switch": keybind("none", "List available themes"),
   "theme.switch_mode": keybind("none", "Switch between light and dark theme mode"),
   "theme.mode.lock": keybind("none", "Lock or unlock theme mode"),
+  "sidebar.tab.next": keybind("ctrl+shift+right", "Next sidebar tab"),
   "session.sidebar.toggle": keybind("<leader>b", "Toggle sidebar"),
   "pane.focus.left": keybind("<leader>left", "Focus session pane"),
   "pane.focus.right": keybind("<leader>right", "Focus right pane"),
