@@ -84,7 +84,10 @@ it.effect("lists empty Design sessions and designs after switching agents, scope
       .run()
       .pipe(Effect.orDie)
     const result = yield* DesignConversations.list(AbsolutePath.make("/designs"))
-    expect(result.map((item) => item.sessionID)).toEqual(["ses_design_empty", "ses_design_built"])
+    expect(result.map((item) => item.sessionID)).toEqual([
+      Session.ID.make("ses_design_empty"),
+      Session.ID.make("ses_design_built"),
+    ])
     expect(result[0].designs).toEqual([])
     expect(result[1].designs.map((item) => item.name).sort()).toEqual(["First", "Second"])
     expect(result[1].designs.find((item) => item.id === "design_first")?.approvedRevision).toBe("r1")
