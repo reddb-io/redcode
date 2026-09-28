@@ -46,6 +46,7 @@ const suites = {
   "rpc-sidecar": ["test/sidecar.test.ts"],
 }
 
+const failures: string[] = []
 for (const [name, files] of Object.entries(suites)) {
   const cwd = path.resolve(import.meta.dir, "../packages", name)
   for (const file of files) {
@@ -60,5 +61,10 @@ for (const [name, files] of Object.entries(suites)) {
     stdout: "inherit",
     stderr: "inherit",
   }).exited
-  if (result !== 0) process.exit(result)
+  if (result !== 0) failures.push(`${name} (exit ${result})`)
+}
+
+if (failures.length > 0) {
+  console.error(`Failed Redcode contracts: ${failures.join(", ")}`)
+  process.exit(1)
 }
