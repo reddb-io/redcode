@@ -119,6 +119,19 @@ export function createFetch(override?: FetchHandler, events?: ReturnType<typeof 
       })
     if (url.pathname === "/api/lsp") return json({ location: { directory }, data: [] })
     if (/^\/api\/session\/[^/]+\/diff$/.test(url.pathname)) return json({ data: [] })
+    if (request.method === "GET" && /^\/api\/session\/[^/]+\/budget$/.test(url.pathname))
+      return json({
+        data: {
+          limits: {},
+          override: {},
+          spent: { cost: 0, tokens: 0, unpriced: 0 },
+          exceeded: false,
+          unknown: false,
+          reason: "",
+        },
+      })
+    if (request.method === "GET" && /^\/api\/experimental\/session\/[^/]+\/goal$/.test(url.pathname))
+      return json({ data: null })
     if (url.pathname === "/api/fs/list")
       return json({
         location: { directory, project: { id: "proj_test", directory: worktree, canonical: worktree } },

@@ -11,7 +11,11 @@ function context(options?: { cost?: number; tokens?: number }) {
     theme: { text: { base: color, muted: color } },
     data: {
       session: {
-        get: () => ({ location: { directory: "/workspace" } }),
+        get: () => ({
+          location: { directory: "/workspace" },
+          cost: options?.cost ?? 0,
+          tokens: { input: options?.tokens ?? 0, output: 0, reasoning: 0, cache: { read: 0, write: 0 } },
+        }),
         cost: () => options?.cost ?? 0,
         message: {
           list: () =>
@@ -34,6 +38,21 @@ function context(options?: { cost?: number; tokens?: number }) {
       },
       location: {
         model: { list: () => [] },
+      },
+    },
+    client: {
+      session: {
+        budget: {
+          get: async () => ({
+            limits: {},
+            override: {},
+            spent: { cost: 0, tokens: 0, unpriced: 0 },
+            exceeded: false,
+            unknown: false,
+            reason: "",
+          }),
+        },
+        goal: { get: async () => null },
       },
     },
   } as unknown as Context

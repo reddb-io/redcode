@@ -160,9 +160,11 @@ const make = Effect.gen(function* () {
     const chain: SessionSchema.Info[] = []
     let current = yield* store.get(sessionID)
     while (current && chain.length < 32) {
-      if (chain.some((session) => session.id === current.id)) break
+      const currentID = current.id
+      const parentID = current.parentID
+      if (chain.some((session) => session.id === currentID)) break
       chain.push(current)
-      current = current.parentID ? yield* store.get(current.parentID) : undefined
+      current = parentID ? yield* store.get(parentID) : undefined
     }
     for (const [index, session] of chain.entries()) {
       const limits = limitsOf(session.metadata?.budget)
