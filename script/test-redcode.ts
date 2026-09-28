@@ -15,6 +15,7 @@ const suites = {
     "test/instruction-state.test.ts",
     "test/models.test.ts",
     "test/session-compaction.test.ts",
+    "test/session-diff.test.ts",
     "test/session-instructions.test.ts",
     "test/session-model-request-hooks.test.ts",
     "test/session-runner.test.ts",
@@ -28,6 +29,7 @@ const suites = {
     "test/legacy-rpc.test.ts",
     "test/session-tasks.test.ts",
     "test/session-monitors.test.ts",
+    "test/session-diff.test.ts",
   ],
   tui: [
     "test/redcode-workflows.test.tsx",

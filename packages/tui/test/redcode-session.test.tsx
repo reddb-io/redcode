@@ -38,8 +38,10 @@ test.each([80, 160])("Redcode opens real blank sessions and preserves its sideba
             { id: "task_old", content: "Old completed task", status: "completed", priority: "low", closedAt: 1 },
           ],
         })
-      if (/^\/api\/session\/[^/]+\/diff$/.test(url.pathname))
+      if (/^\/api\/session\/[^/]+\/diff$/.test(url.pathname)) {
+        expect(url.searchParams.get("scope")).toBe("session")
         return json({ data: [{ file: "redcode.ts", patch: "", additions: 12, deletions: 3, status: "modified" }] })
+      }
       if (url.pathname === "/api/lsp") {
         expect(url.searchParams.get("location[directory]")).toBe(directory)
         return json({ location, data: [{ id: "typescript", root: ".", status: "connected" }] })
@@ -208,6 +210,7 @@ test("/monitors inspects evidence and stops observation through the V2 session A
     state: state.path,
     fetch: (url, request) => {
       if (/^\/api\/session\/[^/]+\/monitor$/.test(url.pathname)) return json({ data: [monitor] })
+      if (/\/monitor\/monitor_fixture$/.test(url.pathname)) return json({ data: monitor })
       if (/\/monitor\/monitor_fixture\/cancel$/.test(url.pathname) && request.method === "POST") {
         cancelled.push(url.pathname)
         monitor.status = "cancelled"

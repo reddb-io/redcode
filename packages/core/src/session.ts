@@ -145,6 +145,7 @@ export interface Interface {
   /** Structured diffs of the files changed by a turn or range of turns; see `SessionDiff.turn`. */
   readonly diff: (input: {
     readonly sessionID: SessionSchema.ID
+    readonly scope?: "session"
     readonly from?: SessionMessage.ID
     readonly to?: SessionMessage.ID
     readonly context?: number
@@ -395,6 +396,7 @@ const layer = Layer.effect(
         return yield* SessionDiff.turn(db, locations, {
           session,
           active,
+          scope: input.scope,
           from: input.from,
           to: input.to,
           context: input.context,

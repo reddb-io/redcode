@@ -8,7 +8,7 @@ export function SidebarFiles(props: { context: Plugin.Context; sessionID: string
   const [files, { refetch }] = createResource(
     () => props.sessionID,
     (sessionID) =>
-      props.context.client.session.diff({ sessionID, context: 0 }).then(
+      props.context.client.session.diff({ sessionID, scope: "session", context: 0 }).then(
         (data) => ({ data, error: undefined }),
         (error: unknown) => ({ data: [], error: errorMessage(error) }),
       ),

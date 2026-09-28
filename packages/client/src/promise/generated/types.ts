@@ -6642,17 +6642,26 @@ export type SessionContextOutput = { data: Array<SessionMessageInfo> }["data"]
 
 export type SessionDiffInput = {
   readonly sessionID: { readonly sessionID: string }["sessionID"]
+  readonly scope?: {
+    readonly scope?: "session" | undefined
+    readonly from?: string | undefined
+    readonly to?: string | undefined
+    readonly context?: number | undefined
+  }["scope"]
   readonly from?: {
+    readonly scope?: "session" | undefined
     readonly from?: string | undefined
     readonly to?: string | undefined
     readonly context?: number | undefined
   }["from"]
   readonly to?: {
+    readonly scope?: "session" | undefined
     readonly from?: string | undefined
     readonly to?: string | undefined
     readonly context?: number | undefined
   }["to"]
   readonly context?: {
+    readonly scope?: "session" | undefined
     readonly from?: string | undefined
     readonly to?: string | undefined
     readonly context?: number | undefined

@@ -42,12 +42,19 @@ export const turn = Effect.fn("SessionDiff.turn")(function* (
     readonly session: SessionSchema.Info
     /** The process is currently executing this Session. */
     readonly active: boolean
+    readonly scope?: "session"
     readonly from?: SessionMessage.ID
     readonly to?: SessionMessage.ID
     readonly context?: number
   },
 ) {
   const sessionID = input.session.id
+  if (input.scope === "session" && (input.from || input.to))
+    return yield* new TurnRangeError({
+      sessionID,
+      field: input.from ? "from" : "to",
+      message: "Session scope cannot be combined with a message range",
+    })
   const rows = yield* db
     .select({ id: SessionMessageTable.id, type: SessionMessageTable.type, seq: SessionMessageTable.seq })
     .from(SessionMessageTable)
@@ -73,9 +80,13 @@ export const turn = Effect.fn("SessionDiff.turn")(function* (
       return yield* new TurnRangeError({ sessionID, field, message: `Message ${id} is not a user message` })
     return row
   })
-  const anchor = input.from ? yield* resolve("from", input.from) : users[users.length - 1]
+  const anchor = input.from
+    ? yield* resolve("from", input.from)
+    : input.scope === "session"
+      ? users[0]
+      : users[users.length - 1]
   if (!anchor) return []
-  const last = input.to ? yield* resolve("to", input.to) : anchor
+  const last = input.to ? yield* resolve("to", input.to) : input.scope === "session" ? users[users.length - 1]! : anchor
   if (last.seq < anchor.seq)
     return yield* new TurnRangeError({ sessionID, field: "to", message: `Message ${last.id} precedes ${anchor.id}` })
   // Without any marker, history predates idle markers and a prompt's turn ends at the next prompt.

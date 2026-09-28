@@ -83,9 +83,11 @@ it.live("serves turn diffs by user message with range validation", () =>
     const diff = (query = "") => request(`/api/session/${sessionID}/diff${query}`)
 
     expect(yield* diff()).toEqual({ status: 200, body: { data: [] } })
+    expect(yield* diff("?scope=session")).toEqual({ status: 200, body: { data: [] } })
     expect((yield* request(`/api/session/${sessionID}/prompt`, { id: ids.user, text: "prompt" })).status).toBe(200)
     // Not a git repository, so steps record no snapshots and the turn has no diff.
     expect(yield* diff(`?from=${ids.user}&context=3`)).toEqual({ status: 200, body: { data: [] } })
+    expect(yield* diff(`?scope=session&from=${ids.user}`)).toMatchObject({ status: 400, body: { field: "from" } })
     expect(yield* diff(`?from=${ids.assistant}`)).toMatchObject({
       status: 400,
       body: { _tag: "InvalidRequestError", field: "from" },

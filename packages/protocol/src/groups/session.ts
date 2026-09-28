@@ -1009,6 +1009,10 @@ export const makeSessionGroup = <I extends HttpApiMiddleware.AnyId, S, FormI ext
       HttpApiEndpoint.get("session.diff", "/api/session/:sessionID/diff", {
         params: { sessionID: Session.ID },
         query: Schema.Struct({
+          scope: Schema.optional(Schema.Literal("session")).annotate({
+            description:
+              "Compare the whole session from its first user message through its latest. Cannot be combined with from or to.",
+          }),
           from: Schema.optional(SessionMessage.ID).annotate({
             description: "User message whose turn to diff. Defaults to the turn of the newest user message.",
           }),

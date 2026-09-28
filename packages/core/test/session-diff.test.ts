@@ -63,7 +63,7 @@ describe("Session.diff", () => {
         const bus = yield* Bus.Service
         const locations = yield* LocationServiceMap.Service
         const created = yield* sessions.create({ location: { directory: AbsolutePath.make(directory) } })
-        const diff = (input?: { from?: SessionMessage.ID; to?: SessionMessage.ID }) =>
+        const diff = (input?: { scope?: "session"; from?: SessionMessage.ID; to?: SessionMessage.ID }) =>
           sessions
             .diff({ sessionID: created.id, context: 0, ...input })
             .pipe(Effect.map((files) => files.map(summarize)))
@@ -151,6 +151,17 @@ describe("Session.diff", () => {
             ["second.txt", "modified", 1, 1],
             ["third.txt", "added", 1, 0],
           ])
+          expect(yield* diff({ scope: "session" })).toEqual([
+            ["first.txt", "modified", 1, 1],
+            ["fourth.txt", "added", 1, 0],
+            ["manual.txt", "modified", 1, 1],
+            ["second.txt", "modified", 1, 1],
+            ["third.txt", "added", 1, 0],
+          ])
+          expect(yield* diff({ scope: "session", from: first }).pipe(Effect.flip)).toMatchObject({
+            _tag: "Session.TurnRangeError",
+            field: "from",
+          })
           const full = yield* sessions.diff({ sessionID: created.id, from: first })
           expect(full[0]?.patch).toContain("-first\n+first edited\n")
           expect(yield* diff({ from: steer, to: second }).pipe(Effect.flip)).toMatchObject({
