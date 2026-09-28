@@ -113,17 +113,7 @@ jobs:
 
   tests:
     needs: plan
-    name: tests (${{ matrix.shard.name }})
-    strategy:
-      fail-fast: false
-      matrix:
-        shard:
-          - name: core-app-tui
-            filters: --filter=@opencode/core --filter=@opencode/app --filter=@opencode/tui
-          - name: cli
-            filters: --filter=@opencode/cli
-          - name: remaining
-            filters: --filter=!@opencode/core --filter=!@opencode/app --filter=!@opencode/tui --filter=!@opencode/cli
+    name: Redcode contracts
     runs-on: ubuntu-latest
     timeout-minutes: 60
     steps:
@@ -135,10 +125,8 @@ jobs:
         run: |
           sudo apt-get update
           sudo apt-get install --yes ripgrep
-      - name: Test workspace packages
-        env:
-          GITHUB_ACTIONS: "false"
-        run: node node_modules/turbo/bin/turbo test ${{ matrix.shard.filters }} --concurrency=2 --continue=always
+      - name: Test Redcode product contracts
+        run: bun run script/test-redcode.ts
 
   sidecar:
     needs: plan
@@ -222,6 +210,7 @@ jobs:
           path: packages/rpc-sidecar/dist/release/${{ matrix.file }}
           if-no-files-found: error
           retention-days: 7
+          compression-level: 0
 
   design:
     needs: plan
@@ -253,6 +242,7 @@ jobs:
             packages/design-app/dist/SHA256SUMS
           if-no-files-found: error
           retention-days: 7
+          compression-level: 0
 
   build:
     needs: [plan, sidecar]
@@ -314,12 +304,14 @@ jobs:
           path: packages/redcode/dist/
           if-no-files-found: error
           retention-days: 7
+          compression-level: 0
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
           name: redcode-release-archives
           path: packages/redcode/release/
           if-no-files-found: error
           retention-days: 7
+          compression-level: 0
 
   publish:
     if: inputs.publish && github.repository == 'reddb-io/redcode' && github.ref == 'refs/heads/main'

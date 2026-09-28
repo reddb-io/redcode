@@ -17,7 +17,7 @@ pipeline, and Version PR branches are not required by this repository.
 | File            | Responsibility                                                                                                |
 | --------------- | ------------------------------------------------------------------------------------------------------------- |
 | `check.yml`     | Existing `typecheck` check; lint/types, workflow syntax and destination checks, Changesets plan validation    |
-| `test.yml`      | Existing Linux/Windows package tests, compiled service lifecycle, Node packaging, generated surfaces, app E2E |
+| `test.yml`      | Linux/Windows Redcode contracts, compiled service lifecycle and generated client; full upstream suite by manual request |
 | `redcode.yml`   | Manual Changesets versioning, release checks, native builds, Design app, sidecars, npm and GitHub publication |
 | `nix-eval.yml`  | Read-only flake evaluation on `main`; existing Nix output names remain compatibility identifiers              |
 | `storybook.yml` | Storybook build for relevant changes on `main`                                                                |
@@ -45,7 +45,7 @@ group so separate releases cannot publish simultaneously.
 4. With `publish=true`, the version job consumes the changesets, updates
    `packages/redcode/package.json`, `packages/redcode/CHANGELOG.md`, and `bun.lock`,
    and commits them directly to `main`. No release branch or Version PR is created.
-5. Existing checks, package tests, native builds, sidecar checks, and Design smoke
+5. Checks, Redcode contract tests, native builds, sidecar checks, and Design smoke
    checks validate that versioned SHA. Failed validation stops publication; the
    version commit stays on `main` for diagnosis and repair.
 6. The publisher creates draft GitHub releases, uploads archives and checksums,
@@ -114,6 +114,34 @@ remains inactive.
 
 ## Validation and limits
 
+The default test scope is the explicit list in `script/test-redcode.ts`: Redcode's
+agent/configuration behavior, migration and database contracts, modified Session
+behavior, Design, S1/S2 UI and history, voice input, legacy RPC, sidecar transport,
+and npm publication. Tests run from their package directories with their existing
+preloads and isolation. Missing contract files fail the runner; `--list` verifies
+the manifest without executing tests. Update this list when adding product contracts.
+
+Both Linux and Windows run these contracts on `main`. The release runs the same
+selection instead of repeating every upstream workspace test. Generic OpenCode
+provider, Core/V2, browser, Node distribution, workerd SDK and codemode publication
+suites are excluded from the default path. Their source remains available for
+an upstream upgrade investigation:
+
+```sh
+gh workflow run test.yml --repo reddb-io/redcode --ref main -f upstream_full=true
+```
+
+The regular compiled service smoke omits the embedded web UI build. The actual
+release still builds the web UI, every supported native target and Design, checks
+the Redcode identity and four agents in the compiled CLI, verifies archive digests,
+and installs the published npm package. Artifact uploads use compression level zero
+to avoid spending CPU recompressing native binaries and release archives. Full lint,
+type checks and generated-client validation remain required.
+
+This narrower scope intentionally relies on upstream coverage for inherited
+behavior. It cannot prove that every upstream behavior remains unchanged in our
+fork; retain focused contracts wherever Redcode changes that behavior.
+
 The active CI lints workflow syntax with checksum-pinned actionlint `1.7.12` and
 rejects upstream automation destinations. Package scopes such as `@opencode/core`,
 build variables such as `OPENCODE_VERSION`, attribution, and public compatibility
@@ -122,5 +150,5 @@ identifiers are valid technical dependencies and are not renamed by this review.
 No local test execution is part of this migration workflow. Checks in GitHub
 Actions must pass on the actual commit before claiming a validated release. The
 workflow audit does not establish full Redcode feature parity or a measured 50%
-build-time reduction. Archived schedules remove unnecessary work; performance
-claims require comparing CI durations after these changes land.
+build-time reduction. Compare successful run durations before claiming a specific
+speedup; test selection and artifact compression reduce work without that guarantee.
