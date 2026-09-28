@@ -3,7 +3,7 @@ import { For, type JSX } from "solid-js"
 import { useTerminalDimensions } from "@opentui/solid"
 import { useTheme } from "../context/theme"
 import { tint } from "../theme/color"
-import { go, logo } from "../logo"
+import { go, productLogo } from "../logo"
 
 export function Logo() {
   const theme = useTheme()
@@ -57,19 +57,19 @@ export function Logo() {
         </For>
       ) : dimensions().width < 44 ? (
         <>
-          <For each={logo.left.slice(1)}>
+          <For each={productLogo.left.slice(1)}>
             {(line) => <box flexDirection="row">{renderLine(line, theme.text.muted, false)}</box>}
           </For>
-          <For each={logo.right}>
+          <For each={productLogo.right}>
             {(line) => <box flexDirection="row">{renderLine(line, theme.text.base, true)}</box>}
           </For>
         </>
       ) : (
-        <For each={logo.left}>
+        <For each={productLogo.left}>
           {(line, index) => (
             <box flexDirection="row" gap={1}>
               <box flexDirection="row">{renderLine(line, theme.text.muted, false)}</box>
-              <box flexDirection="row">{renderLine(logo.right[index()], theme.text.base, true)}</box>
+              <box flexDirection="row">{renderLine(productLogo.right[index()], theme.text.base, true)}</box>
             </box>
           )}
         </For>

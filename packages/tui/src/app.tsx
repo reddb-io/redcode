@@ -3,6 +3,7 @@ import { registerOpencodeSpinner } from "./component/register-spinner"
 import { Effect, Latch } from "effect"
 import { Service, type Endpoint } from "@opencode/client/effect/service"
 import { OpenCode, type SessionInfo } from "@opencode/client"
+import { name, short } from "@opencode/util/product"
 import { Global } from "@opencode/util/global"
 import { ClipboardProvider, useClipboard } from "./context/clipboard"
 import { LogProvider, useLog, type LogSink } from "./context/log"
@@ -613,23 +614,23 @@ function App() {
     if (!terminalTitleEnabled()) return
 
     if (route.data.type === "home") {
-      renderer.setTerminalTitle("OpenCode")
+      renderer.setTerminalTitle(name)
       return
     }
 
     if (route.data.type === "session") {
       const title = session?.title
       if (!title || isFallbackTitle(title)) {
-        renderer.setTerminalTitle("OpenCode")
+        renderer.setTerminalTitle(name)
         return
       }
 
-      renderer.setTerminalTitle(`OC | ${title.length > 40 ? title.slice(0, 37) + "…" : title}`)
+      renderer.setTerminalTitle(`${short} | ${title.length > 40 ? title.slice(0, 37) + "…" : title}`)
       return
     }
 
     if (route.data.type === "plugin") {
-      renderer.setTerminalTitle(`OC | ${route.data.name}`)
+      renderer.setTerminalTitle(`${short} | ${route.data.name}`)
     }
   })
 
@@ -991,7 +992,7 @@ function App() {
         ? [
             {
               name: "opencode.update",
-              title: "Update OpenCode",
+              title: `Update ${name}`,
               slash: { name: "update" },
               run: () => updater.open?.("manual"),
               category: "System",

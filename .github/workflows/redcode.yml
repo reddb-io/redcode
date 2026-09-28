@@ -172,6 +172,27 @@ jobs:
           BUN_COMPILE_RELEASE: bun-v1.4.2
           REDCODE_RPC_SIDECAR_DIR: ${{ github.workspace }}/packages/rpc-sidecar/dist/release
         run: bun run build
+      - name: Exercise compiled Redcode CLI and agents
+        shell: bash
+        run: |
+          set -euo pipefail
+          binary=packages/redcode/dist/redcode-linux-x64/bin/redcode
+          test -x "$binary"
+          test "$("$binary" --version)" = "redcode v$OPENCODE_VERSION"
+          "$binary" --help > /tmp/redcode-help.txt
+          grep -F 'Redcode command line interface' /tmp/redcode-help.txt
+          grep -F 'design' /tmp/redcode-help.txt
+          grep -F 'setup' /tmp/redcode-help.txt
+          if grep -F 'OpenCode command line interface' /tmp/redcode-help.txt; then
+            echo 'Redcode binary exposes the upstream product name' >&2
+            exit 1
+          fi
+          REDCODE_TEST_HOME="$(mktemp -d)" timeout 60s "$binary" --standalone debug agents > /tmp/redcode-agents.json
+          bun -e '
+            const agents = await Bun.file("/tmp/redcode-agents.json").json()
+            for (const id of ["build", "plan", "design", "question"])
+              if (!agents.some((agent) => agent.id === id)) throw new Error(`Missing Redcode agent: ${id}`)
+          '
       - name: Archive binaries and sidecars
         working-directory: packages/redcode
         run: bun run archive
