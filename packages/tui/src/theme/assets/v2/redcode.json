@@ -286,9 +286,6 @@
     "border": {
       "base": "#b8b8b8"
     },
-    "scrollbar": {
-      "base": "#a0a0a0"
-    },
     "diff": {
       "text": {
         "added": "#1e725c",
