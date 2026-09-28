@@ -313,7 +313,6 @@ export function RunFooterView(props: RunFooterViewProps) {
   }
 
   const openQueuedMenu = () => {
-    if (queuedPrompts().length === 0) return
     openRoute({ type: "queued-menu" })
   }
 
@@ -391,6 +390,7 @@ export function RunFooterView(props: RunFooterViewProps) {
     onExitRequest: props.onExitRequest,
     onExit: props.onExit,
     onSettings: openSettings,
+    onPending: openQueuedMenu,
     onRows: setPromptRows,
     onStatus: props.onStatus,
   })
@@ -602,7 +602,7 @@ export function RunFooterView(props: RunFooterViewProps) {
   }))
 
   Keymap.createLayer(() => ({
-    enabled: active().type === "prompt" && route().type === "composer" && queuedPrompts().length > 0,
+    enabled: active().type === "prompt" && route().type === "composer",
     commands: [
       {
         id: "session.queued_prompts",
@@ -659,11 +659,6 @@ export function RunFooterView(props: RunFooterViewProps) {
       return
     }
 
-    closePanel()
-  })
-
-  createEffect(() => {
-    if (route().type !== "queued-menu" || queuedPrompts().length > 0) return
     closePanel()
   })
 

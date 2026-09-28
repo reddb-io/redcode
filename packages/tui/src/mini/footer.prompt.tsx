@@ -105,7 +105,7 @@ type Auto = RunFooterMenuItem & {
 type SlashOption = RunFooterMenuItem & {
   kind: "slash"
   name: string
-  action?: "editor" | "settings"
+  action?: "editor" | "settings" | "pending"
 }
 
 type PromptOption = Auto | SlashOption
@@ -138,6 +138,7 @@ type PromptInput = {
   onExitRequest?: () => boolean
   onExit: () => void
   onSettings: () => void
+  onPending: () => void
   onRows: (rows: number) => void
   onStatus: (text: string) => void
 }
@@ -525,6 +526,13 @@ export function createPromptState(input: PromptInput): PromptState {
         name: "settings",
         display: "/settings",
         description: "configure Mini transcript output",
+      } satisfies SlashOption,
+      {
+        kind: "slash",
+        action: "pending" as const,
+        name: "pending",
+        display: "/pending",
+        description: "manage prompts waiting for this session",
       } satisfies SlashOption,
       { kind: "slash", name: "new", display: "/new", description: "start a new session" } satisfies SlashOption,
       {
@@ -1052,6 +1060,12 @@ export function createPromptState(input: PromptInput): PromptState {
         return
       }
 
+      if (next.action === "pending" && !shell()) {
+        cancelAutocomplete()
+        input.onPending()
+        return
+      }
+
       const cursor = area.cursorOffset
       const head = parseSlashHead(area.plainText)
       const local = !shell() && (next.name === "new" || isExitCommand(`/${next.name}`))
@@ -1392,6 +1406,7 @@ export function createPromptState(input: PromptInput): PromptState {
         isNewCommand(next.text) ||
         isCompactCommand(next.text) ||
         isExitCommand(next.text) ||
+        next.text.trim().toLowerCase() === "/pending" ||
         next.text.trim().toLowerCase() === "/settings")
     ) {
       input.onStatus("this prompt cannot be queued")
@@ -1405,6 +1420,12 @@ export function createPromptState(input: PromptInput): PromptState {
     if (!command && next.mode !== "shell" && next.text.trim().toLowerCase() === "/settings") {
       resetDraft()
       input.onSettings()
+      return
+    }
+
+    if (!command && next.mode !== "shell" && next.text.trim().toLowerCase() === "/pending") {
+      resetDraft()
+      input.onPending()
       return
     }
 

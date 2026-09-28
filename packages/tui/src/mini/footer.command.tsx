@@ -471,20 +471,16 @@ export function RunCommandMenuBody(props: {
         category: "Agent",
         display: "Switch model",
       },
-      ...(props.queued().length > 0
-        ? [
-            {
-              action: "queued" as const,
-              category: "Agent",
-              display: "View pending prompts",
-              footer: `${props.queued().length} pending`,
-              keywords: props
-                .queued()
-                .map((item) => item.prompt.text)
-                .join(" "),
-            },
-          ]
-        : []),
+      {
+        action: "queued",
+        category: "Agent",
+        display: "View pending prompts",
+        footer: props.queued().length > 0 ? `${props.queued().length} pending` : "/pending",
+        keywords: `pending prompts ${props
+          .queued()
+          .map((item) => item.prompt.text)
+          .join(" ")}`,
+      },
       {
         action: "variant.cycle",
         category: "Agent",

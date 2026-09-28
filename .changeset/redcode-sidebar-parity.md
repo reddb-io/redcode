@@ -13,3 +13,5 @@ Restore subagent model details and open/steer/kill controls using V2 prompt admi
 Restore /context, /subagents, /thinking and /timestamps. Keep /thinking as the display toggle; model effort remains available through /variants and /effort.
 
 Preserve the historical red scrollbar and informational colors in both light and dark Redcode themes.
+
+Restore `/pending` over the V2 durable inbox, including queued and steering prompts, timestamps, attachment counts, send-now, discard, discard-all and an explicit empty state. Keep the pending management panel available in direct mode even when the queue is empty.

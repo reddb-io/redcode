@@ -73,8 +73,8 @@ import { useToast } from "../../ui/toast"
 import stripAnsi from "strip-ansi"
 import { usePromptRef } from "../../context/prompt"
 import { projectedPromptInput } from "../../prompt/codec"
-import { appendPrompt } from "../../prompt/history"
 import { deduplicateVisibleImages } from "../../prompt/attachment"
+import { pendingLabel, pendingPreview } from "../../prompt/pending"
 import { useEpilogue } from "../../context/epilogue"
 import { normalizePath } from "../../util/path"
 import { PermissionPrompt } from "./permission"
@@ -645,53 +645,79 @@ export function Session(props: {
     })
     return result ?? false
   }
-  const openQueuedPrompts = () =>
+  const reopenPendingPrompts = () => openPendingPrompts()
+  const openPendingDetails = (inboxID: string) => {
+    const item = pendingUsers().find((candidate) => candidate.id === inboxID)
+    if (!item) return reopenPendingPrompts()
     dialog.replace(() => (
       <DialogSelect
-        title="Queued prompts"
-        options={queuedPrompts().map((prompt, index) => ({
-          title: prompt.text,
-          value: prompt.id,
-          footer: `${index + 1} of ${queuedPrompts().length}`,
-        }))}
+        title={pendingPreview(item.payload.text)}
+        options={[
+          ...(item.delivery === "queue"
+            ? [
+                {
+                  title: "Send now",
+                  value: "steer" as const,
+                  description: "Deliver at the next safe step of a running session, or immediately when idle.",
+                },
+              ]
+            : []),
+          { title: "Discard", value: "cancel" as const, description: "Never deliver this prompt to the model." },
+          { title: "Back to pending prompts", value: "back" as const },
+        ]}
         onSelect={(option) => {
-          void mutatePending("steer", option.value).then((steered) => {
-            if (steered) dialog.clear()
+          if (option.value === "back") return reopenPendingPrompts()
+          void mutatePending(option.value, item.id).then((changed) => {
+            toast.show({
+              variant: changed ? "success" : "error",
+              message: changed
+                ? option.value === "steer"
+                  ? "Prompt sent."
+                  : "Prompt discarded."
+                : "The prompt is no longer pending.",
+            })
+            reopenPendingPrompts()
           })
         }}
-        actions={[
-          {
-            command: "queued_prompt.delete",
-            title: "delete",
-            onTrigger: (option) => {
-              const last = queuedPrompts().length === 1
-              void mutatePending("cancel", option.value).then((cancelled) => {
-                if (cancelled && last) dialog.clear()
-              })
-            },
-          },
-          {
-            command: "queued_prompt.undo",
-            title: "undo",
-            onTrigger: (option) => {
-              const target = prompt()
-              const queued = queuedPrompts().find((item) => item.id === option.value)
-              if (!target || !queued) return
-              if (target.mode === "shell" && target.current.text) {
-                toast.show({ message: "Leave shell mode before undoing a queued prompt", variant: "error" })
-                return
-              }
-              void mutatePending("cancel", queued.id, "undo").then((undone) => {
-                if (!undone) return
-                target.setMode("normal")
-                target.set(appendPrompt(target.current, { ...projectedPromptInput(queued.payload), pasted: [] }))
-                dialog.clear()
-                target.focus()
-              })
-            },
-          },
+      />
+    ))
+  }
+  const openPendingPrompts = () =>
+    dialog.replace(() => (
+      <DialogSelect
+        title="Pending prompts"
+        placeholder="Search prompts"
+        emptyView={<text>Nothing is waiting in this session.</text>}
+        options={[
+          ...pendingUsers().map((item) => ({
+            title: pendingPreview(item.payload.text),
+            value: item.id,
+            description: pendingLabel({ delivery: item.delivery, files: item.payload.files?.length ?? 0 }),
+            footer: new Date(item.time.created).toLocaleString(),
+            onSelect: () => openPendingDetails(item.id),
+          })),
+          ...(pendingUsers().length > 1
+            ? [
+                {
+                  title: `Discard all ${pendingUsers().length}`,
+                  value: "discard-all",
+                  description: "None of them reaches the model.",
+                  onSelect: () => {
+                    const items = pendingUsers()
+                    void Promise.all(items.map((item) => mutatePending("cancel", item.id))).then((results) => {
+                      toast.show({
+                        variant: results.every(Boolean) ? "success" : "error",
+                        message: results.every(Boolean)
+                          ? `Discarded ${items.length} prompts.`
+                          : "Some prompts were no longer pending.",
+                      })
+                      reopenPendingPrompts()
+                    })
+                  },
+                },
+              ]
+            : []),
         ]}
-        footerHints={[{ title: "steer", label: "enter" }]}
       />
     ))
   const unavailable = (feature: string) => {
@@ -1504,11 +1530,11 @@ export function Session(props: {
       },
     },
     {
-      title: "View queued prompts",
+      title: "Pending prompts",
       id: "session.queued_prompts",
       group: "Prompt",
-      enabled: queuedPrompts().length > 0,
-      run: openQueuedPrompts,
+      slash: { name: "pending" },
+      run: openPendingPrompts,
     },
     {
       title: "Go to parent session",
@@ -1682,7 +1708,7 @@ export function Session(props: {
             </box>
             <box flexShrink={0}>
               <Show when={!composer.open && !disabled() && queuedPrompts().length > 0}>
-                <QueuedPromptDock prompts={queuedPrompts()} onOpen={openQueuedPrompts} />
+                <QueuedPromptDock prompts={queuedPrompts()} onOpen={openPendingPrompts} />
               </Show>
               <Slot path="session.composer.top" input={{ sessionID: route.sessionID }} />
               <Composer

@@ -35,8 +35,9 @@ The command comparison also found `/thinking` redirected to model effort. It is
 restored as the historical reasoning display toggle; `/variants` and `/effort`
 retain model effort selection. `/context`, `/subagents` and `/timestamps` are
 restored to their existing V2 controllers. The `goal-*` aliases are registered
-dynamically. `/budget` and the complete historical `/pending` management dialog
-still require adaptation; a queued-prompt dock alone does not replace `/pending`.
+dynamically. `/pending` again lists queued and steering prompts and supports
+send-now, discard and discard-all through V2 inbox APIs. `/budget` still requires
+adaptation.
 
 ## Experience to preserve
 
@@ -71,6 +72,7 @@ implemented paths from identified gaps; it is not a full-parity declaration.
 | Right sidebar Context / Workers / Subagents                       | `routes/session/sidebar.tsx`; Workers reuses the production worker component and APIs                            | Restored tabs/counts; historical width defaults and persistent tab/width preferences covered by narrow and wide fixtures                             |
 | Persisted tasks, blockers and recent completed work               | `SessionTodoStore` → `session.todo.list` → generated clients → `SidebarTodo`                                     | Restored; no second task store                                                                                                                       |
 | Goal dialog and old `/goal-*` controls                            | Existing V2 Goal service, plus compatibility commands dispatching to the same controller                         | Restored; token/cost budget parity still requires separate comparison                                                                                |
+| `/pending` prompt management                                      | V2 durable inbox list, delivery update and cancellation APIs                                                     | Restored for queued and steering prompts, including empty state, send-now, discard and discard-all                                                   |
 | S1/S2 and JEV                                                     | `core/intelligence`, `/setup`, `/intelligence`, evaluation history and footer                                    | Implemented; real provider evaluation journey not verified in this audit                                                                             |
 | Design workflow                                                   | `core/design`, server Design handlers, `/design`, `/design-open`, `/design-review`                               | Implemented; browser feedback/approval/handoff journey still needs end-to-end parity verification                                                    |
 | Question mode                                                     | `core/plugin/question.ts` and read-only permissions                                                              | Implemented; preserve no-code-change contract and Build → Plan → Design → Question cycle                                                             |
