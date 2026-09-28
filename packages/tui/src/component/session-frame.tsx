@@ -237,7 +237,7 @@ export function SessionFrame(props: { sessionID: string; verticalTabsWidth: numb
         run: nextSidebarTab,
       },
       {
-        id: "session.sidebar.tab.next",
+        id: "session.sidebar.tab.cycle",
         title: "Next sidebar tab",
         group: "Session",
         palette: true,

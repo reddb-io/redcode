@@ -39,7 +39,7 @@ function context(options?: { cost?: number; tokens?: number }) {
   } as unknown as Context
 }
 
-test("sidebar omits context before usage is available", async () => {
+test("sidebar preserves the empty Redcode context summary", async () => {
   const app = await testRender(() => <SidebarContext context={context()} sessionID="session" />, {
     width: 42,
     height: 8,
@@ -47,7 +47,10 @@ test("sidebar omits context before usage is available", async () => {
 
   try {
     await app.renderOnce()
-    expect(app.captureCharFrame()).not.toContain("Context")
+    expect(app.captureCharFrame()).toContain("Context")
+    expect(app.captureCharFrame()).toContain("0 tokens")
+    expect(app.captureCharFrame()).toContain("0% used")
+    expect(app.captureCharFrame()).toContain("$0.00 spent")
     expect(app.captureCharFrame()).not.toContain("Not measured")
   } finally {
     app.renderer.destroy()

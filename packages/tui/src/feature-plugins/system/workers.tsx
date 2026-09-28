@@ -300,6 +300,7 @@ function createWorkerStatus(context: Plugin.Context, location: () => LocationRef
     } finally {
       polling = false
       if (revision === observed) setLoading(false)
+      if (revision !== observed) void load()
     }
   }
   const run = async (action: () => Promise<RedskilledStatusOutput>, message: string) => {
