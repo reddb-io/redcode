@@ -10,5 +10,6 @@ export async function hookCommand(directory: string, name: string, source: strin
     if (ShellSelect.name(shell) === "cmd") return `"${value}"`
     return `'${value.replaceAll("'", "'\"'\"'")}'`
   })
-  return `${ShellSelect.ps(shell) ? "& " : ""}${args.join(" ")}`
+  // PowerShell -Command maps a native nonzero exit to 1 unless it is propagated explicitly.
+  return ShellSelect.ps(shell) ? `& ${args.join(" ")}; exit $LASTEXITCODE` : args.join(" ")
 }
