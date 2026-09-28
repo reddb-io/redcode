@@ -131,9 +131,11 @@ export function Sidebar(props: {
           </scrollbox>
         </Show>
 
-        <box flexShrink={0} gap={1} paddingTop={1}>
-          <Slot path="sidebar.footer" input={{ sessionID: props.sessionID }} />
-        </box>
+        <Show when={props.tab === "context"}>
+          <box flexShrink={0} gap={1} paddingTop={1}>
+            <Slot path="sidebar.footer" input={{ sessionID: props.sessionID }} />
+          </box>
+        </Show>
       </box>
     </Show>
   )

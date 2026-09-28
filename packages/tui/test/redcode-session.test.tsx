@@ -120,8 +120,10 @@ test.each([80, 160])("Redcode opens real blank sessions and preserves its sideba
   expect(setup.captureCharFrame().indexOf("Modified Files")).toBeLessThan(setup.captureCharFrame().indexOf("LSP"))
   setup.mockInput.pressKey("F7")
   await setup.waitForFrame((frame) => frame.includes("Worker status is unavailable."))
+  expect(setup.renderer.root.findDescendantById("sidebar.footer.location")).toBeUndefined()
   setup.mockInput.pressKey("F7")
   await setup.waitForFrame((frame) => frame.includes("No subagents in this session."))
+  expect(setup.renderer.root.findDescendantById("sidebar.footer.location")).toBeUndefined()
 })
 
 test("--continue with no prior session opens a blank session", async () => {
