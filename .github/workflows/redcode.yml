@@ -295,7 +295,7 @@ jobs:
             echo 'Redcode binary exposes the upstream product name' >&2
             exit 1
           fi
-          REDCODE_TEST_HOME="$(mktemp -d)" timeout 60s "$binary" agent list --standalone > /tmp/redcode-agents.txt
+          REDCODE_TEST_HOME="$(mktemp -d)" timeout 60s "$binary" agent list --standalone --print-logs | tee /tmp/redcode-agents.txt
           for agent in build plan design question; do
             grep -E "^$agent \\(" /tmp/redcode-agents.txt
           done
