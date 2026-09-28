@@ -12,6 +12,7 @@ import { SessionInbox } from "@opencode/schema/session-inbox"
 import { SessionMessage } from "@opencode/schema/session-message"
 import { Command } from "@opencode/core/command"
 import { Config } from "@opencode/core/config"
+import { HookRuntime } from "@opencode/core/hook"
 import { ConfigCommandPlugin } from "@opencode/core/config/plugin/command"
 import { AppNodeBuilder } from "@opencode/core/effect/app-node-builder"
 import { LayerNode } from "@opencode/util/effect/layer-node"
@@ -48,6 +49,7 @@ const it = testEffect(
   AppNodeBuilder.build(
     LayerNode.group([
       Command.node,
+      HookRuntime.node,
       Bus.node,
       FSUtil.node,
       AppProcess.node,

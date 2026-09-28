@@ -57,7 +57,7 @@ jobs:
           fi
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
         with:
-          fetch-depth: 0
+          fetch-depth: ${{ github.event_name == 'workflow_dispatch' && '0' || '1' }}
           token: ${{ inputs.publish && secrets.RELEASE_PAT || github.token }}
       - name: Select commit for push and pull request checks
         if: github.event_name != 'workflow_dispatch'
@@ -116,6 +116,7 @@ jobs:
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
         with:
           ref: ${{ needs.plan.outputs.sha }}
+          fetch-depth: 0
       - uses: ./.github/actions/setup-bun
       - uses: ./.github/actions/check-workflows
       - name: Validate version
@@ -137,7 +138,9 @@ jobs:
               throw new Error("Redcode release metadata does not match its own manifest")
           '
       - name: Validate Changesets
-        run: bun run release:status
+        run: |
+          git branch main origin/main
+          bun run release:status
       - name: Lint and typecheck
         run: bun run check
       - name: Verify generated client
