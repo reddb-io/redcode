@@ -911,7 +911,7 @@ export function Session(props: {
           try {
             if (command === "status") {
               const result = await client.api.session.goal.get({ sessionID: route.sessionID })
-              const goal = result.data
+              const goal = result
               toast.show({
                 message: goal
                   ? `${goal.status}: ${goal.objective} · steps ${goal.turns.used}/${goal.turns.max} · ${goal.reason}`
@@ -927,7 +927,7 @@ export function Session(props: {
                 sessionID: route.sessionID,
                 action: command as "pause" | "resume" | "drop",
               })
-              toast.show({ message: result.data ? `Goal ${result.data.status}` : "Goal removed", variant: "info" })
+              toast.show({ message: result ? `Goal ${result.status}` : "Goal removed", variant: "info" })
               dialog.clear()
               return
             }
@@ -940,7 +940,7 @@ export function Session(props: {
                 action: "budget",
                 maxTurns,
               })
-              toast.show({ message: `Goal budget: ${result.data?.turns.used ?? 0}/${maxTurns} steps`, variant: "info" })
+              toast.show({ message: `Goal budget: ${result?.turns.used ?? 0}/${maxTurns} steps`, variant: "info" })
               dialog.clear()
               return
             }
@@ -951,7 +951,7 @@ export function Session(props: {
               objective,
               agent: local.agent.current()?.id,
             })
-            toast.show({ message: `Goal started · ${result.data.turns.max} steps`, variant: "success" })
+            toast.show({ message: `Goal started · ${result.turns.max} steps`, variant: "success" })
             dialog.clear()
           } catch (error) {
             toast.show({ message: errorMessage(error), variant: "error", duration: 5000 })
