@@ -17,6 +17,7 @@ import { Location } from "@opencode/core/location"
 import { Model } from "@opencode/core/model"
 import { Provider } from "@opencode/core/provider"
 import { AbsolutePath } from "@opencode/core/schema"
+import { HookRuntime } from "@opencode/core/hook"
 import { Agent } from "@opencode/core/agent"
 import { Job } from "@opencode/core/job"
 import { KV } from "@opencode/core/kv"
@@ -119,7 +120,17 @@ const subagentPluginSupervisor = makeLocationNode({
       yield* registerToolPlugin(SubagentTool.Plugin, {}, (name, callback) => hooks.register("tool", name, callback))
     }),
   ),
-  deps: [Agent.node, Config.node, Model.node, Permission.node, Session.node, Job.node, Tool.node, PluginHooks.node],
+  deps: [
+    HookRuntime.node,
+    Agent.node,
+    Config.node,
+    Model.node,
+    Permission.node,
+    Session.node,
+    Job.node,
+    Tool.node,
+    PluginHooks.node,
+  ],
 })
 
 const nodes = LayerNode.group([

@@ -2,6 +2,10 @@ import { expect } from "bun:test"
 import { LanguageModel, LLM, LLMEvent } from "@opencode/ai"
 import { OpenAIChat } from "@opencode/ai/protocols/openai-chat"
 import { TestLLM } from "@opencode/ai/testing"
+import { Config } from "@opencode/core/config"
+import { Location } from "@opencode/core/location"
+import { HookRuntime } from "@opencode/core/hook"
+import { tempLocationLayer } from "./fixture/location"
 import { Agent } from "@opencode/core/agent"
 import { Bus } from "@opencode/core/bus"
 import { Database } from "@opencode/core/database/database"
@@ -31,17 +35,23 @@ import { permissionLayer } from "./lib/permission"
 
 const it = testEffect(
   Layer.mergeAll(
-    AppNodeBuilder.build(LayerNode.group([
-      Database.node,
-      Bus.node,
-      SessionProjector.node,
-      SessionStore.node,
-      SessionGuardLog.node,
-      SessionGoal.node,
-      ToolOutput.node,
-    ]), [
-      Bus.node.replace(Bus.configured({ persist: true })),
-    ]),
+    AppNodeBuilder.build(
+      LayerNode.group([
+        Database.node,
+        Bus.node,
+        SessionProjector.node,
+        SessionStore.node,
+        SessionGuardLog.node,
+        SessionGoal.node,
+        ToolOutput.node,
+        HookRuntime.node,
+      ]),
+      [
+        Bus.node.replace(Bus.configured({ persist: true })),
+        Config.node.replace(Config.testLayer()),
+        Location.node.replace(tempLocationLayer),
+      ],
+    ),
     TestLLM.testLayer(),
     permissionLayer({ forSession: () => Effect.succeed([]) }),
     Layer.mock(SessionGoalCompletion.Service, {

@@ -1,5 +1,6 @@
 export * as HookRuntime from "./hook.js"
 
+import type { Document } from "@opencode/schema/config"
 import { Hook } from "@opencode/schema/hook"
 import { Context, Effect, Layer, Option, Schema } from "effect"
 import { HttpClient, HttpClientRequest } from "effect/unstable/http"
@@ -172,7 +173,7 @@ const layer = Layer.effect(
       )
       if (count === 0) return yield* new ImportError({ message: "No valid hooks found under .claude" })
       const documents = (yield* config.entries()).filter(
-        (entry): entry is Config.Document =>
+        (entry): entry is Document =>
           entry.type === "document" &&
           entry.path !== undefined &&
           !FSUtil.contains(global.config, entry.path) &&
@@ -364,14 +365,11 @@ function executeHttp(handler: typeof Hook.HttpHandler.Type, input: Hook.Input, h
   )
 }
 
-const decodeOutput = Schema.decodeUnknownOption(Hook.Output, { onExcessProperty: "ignore" })
+const decodeOutput = Schema.decodeUnknownOption(Schema.fromJsonString(Hook.Output), { onExcessProperty: "ignore" })
 
 function parseOutput(value: string) {
   if (!value.trim()) return allowed()
-  const parsed = Schema.decodeUnknownOption(Schema.UnknownFromJsonString)(value).pipe(
-    Option.flatMap(decodeOutput),
-    Option.getOrUndefined,
-  )
+  const parsed = decodeOutput(value).pipe(Option.getOrUndefined)
   return parsed ?? blocked("Hook returned invalid JSON output")
 }
 

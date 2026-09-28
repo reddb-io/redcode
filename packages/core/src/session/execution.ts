@@ -55,7 +55,11 @@ export function terminal(exit: Exit.Exit<void, SessionRunner.RunError>, reason?:
 }
 
 /** Process-local execution: drains run in this process using the selected instance. */
-export const layer = Layer.effect(
+export const layer: Layer.Layer<
+  Service,
+  never,
+  SessionStore.Service | Instance.Service | Bus.Service | Database.Service | Job.Service
+> = Layer.effect(
   Service,
   Effect.gen(function* () {
     const store = yield* SessionStore.Service

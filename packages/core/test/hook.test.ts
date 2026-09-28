@@ -73,6 +73,47 @@ describe("HookRuntime", () => {
     expect(output.reason).toContain("blocked")
   })
 
+  test("decodes successful JSON hook context and rewritten tool input", async () => {
+    await using project = await tmpdir()
+    const script = path.join(project.path, "hook.cjs")
+    await Bun.write(
+      script,
+      "process.stdout.write(JSON.stringify({continue:true,additionalContext:'Project guidance',updatedInput:{command:'echo safe'}}))",
+    )
+    await Bun.write(
+      path.join(project.path, "opencode.json"),
+      JSON.stringify({
+        hooks: {
+          PreToolUse: [
+            {
+              matcher: "Bash",
+              hooks: [
+                {
+                  type: "command",
+                  command: `${JSON.stringify(process.execPath)} ${JSON.stringify(script)}`,
+                },
+              ],
+            },
+          ],
+        },
+      }),
+    )
+    const output = await run(
+      Effect.gen(function* () {
+        const hooks = yield* HookRuntime.Service
+        yield* hooks.trust()
+        return yield* hooks.run({ event: "PreToolUse", tool_name: "Bash" })
+      }),
+      project.path,
+      path.join(project.path, "state"),
+    )
+    expect(output).toMatchObject({
+      continue: true,
+      additionalContext: "Project guidance",
+      updatedInput: { command: "echo safe" },
+    })
+  })
+
   test("changing executable definitions invalidates project trust", async () => {
     await using project = await tmpdir()
     const state = path.join(project.path, "state")

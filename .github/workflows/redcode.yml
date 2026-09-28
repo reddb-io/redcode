@@ -110,7 +110,7 @@ jobs:
   verify:
     name: typecheck
     needs: plan
-    runs-on: ubuntu-latest
+    runs-on: blacksmith-4vcpu-ubuntu-2404
     timeout-minutes: 60
     steps:
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
@@ -154,8 +154,8 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - { name: linux, host: ubuntu-latest }
-          - { name: windows, host: windows-latest }
+          - { name: linux, host: blacksmith-4vcpu-ubuntu-2404 }
+          - { name: windows, host: blacksmith-4vcpu-windows-2025 }
     runs-on: ${{ matrix.host }}
     timeout-minutes: 30
     defaults:
