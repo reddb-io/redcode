@@ -936,6 +936,8 @@ export function Session(props: {
         const runGoal = async (value: string) => {
           const text = value.trim()
           const command = text.toLowerCase()
+          // Close the initiating dialog before the request, so its response cannot dismiss a newer one.
+          dialog.clear()
           try {
             if (command === "status") {
               const result = await client.api.session.goal.get({ sessionID: route.sessionID })
@@ -947,7 +949,6 @@ export function Session(props: {
                 variant: "info",
                 duration: 7000,
               })
-              dialog.clear()
               return
             }
             if (["pause", "resume", "drop"].includes(command)) {
@@ -956,7 +957,6 @@ export function Session(props: {
                 action: command as "pause" | "resume" | "drop",
               })
               toast.show({ message: result ? `Goal ${result.status}` : "Goal removed", variant: "info" })
-              dialog.clear()
               return
             }
             if (command.startsWith("budget ")) {
@@ -969,7 +969,6 @@ export function Session(props: {
                 maxTurns,
               })
               toast.show({ message: `Goal budget: ${result?.turns.used ?? 0}/${maxTurns} steps`, variant: "info" })
-              dialog.clear()
               return
             }
             const objective = command.startsWith("set ") ? text.slice(4).trim() : text
@@ -980,7 +979,6 @@ export function Session(props: {
               agent: local.agent.current()?.id,
             })
             toast.show({ message: `Goal started · ${result.turns.max} steps`, variant: "success" })
-            dialog.clear()
           } catch (error) {
             toast.show({ message: errorMessage(error), variant: "error", duration: 5000 })
           }
