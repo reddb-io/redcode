@@ -7,10 +7,14 @@ replace Redcode product decisions.
 
 ## Reference
 
-Use the pre-migration Redcode history at
-`8542747fc2b4e6589742358e10f8f2a38baa4820` (`b270378237^2`) when comparing
-features, interactions, configuration, and documentation. Compare current work
-against `main`; keep development on `main`.
+The product and visual reference is **Redcode v0.57.0**, released Friday,
+September 25, 2026, at 15:08 -03 (`0dcec730fd`). Preserve that version's colors,
+layout, interactions and features while adapting their implementation to V2.
+
+The later integration history at `8542747fc2b4e6589742358e10f8f2a38baa4820`
+(`b270378237^2`) is supporting migration evidence, not a replacement for the
+released Redcode experience. Compare current work against `main`; keep
+all development on `main`.
 
 ## Experience to preserve
 

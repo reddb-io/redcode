@@ -41,8 +41,8 @@ jobs:
     permissions:
       contents: write
     outputs:
-      version: ${{ steps.prepare.outputs.version }}
-      sha: ${{ steps.prepare.outputs.sha }}
+      version: ${{ steps.prepare.outputs.version || steps.current.outputs.version }}
+      sha: ${{ steps.prepare.outputs.sha || steps.current.outputs.sha }}
     steps:
       - name: Validate release owner and branch
         if: github.event_name == 'workflow_dispatch'
@@ -59,17 +59,24 @@ jobs:
         with:
           fetch-depth: 0
           token: ${{ inputs.publish && secrets.RELEASE_PAT || github.token }}
+      - name: Select commit for push and pull request checks
+        if: github.event_name != 'workflow_dispatch'
+        id: current
+        run: |
+          echo "version=$(node -p 'require("./packages/redcode/package.json").version')" >> "$GITHUB_OUTPUT"
+          echo "sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
       - uses: ./.github/actions/setup-bun
+        if: github.event_name == 'workflow_dispatch'
       - name: Prepare Changesets release on main
+        if: github.event_name == 'workflow_dispatch'
         id: prepare
         env:
           EXPECTED_VERSION: ${{ inputs.version }}
           PUBLISH: ${{ inputs.publish }}
-          PREPARE: ${{ github.event_name == 'workflow_dispatch' }}
         run: |
           set -euo pipefail
           bun run release:status --output /tmp/redcode-release-plan.json
-          if [ "$PREPARE" = 'true' ] && [ "$(bun -p 'require("/tmp/redcode-release-plan.json").releases.length > 0')" = 'true' ]; then
+          if [ "$(bun -p 'require("/tmp/redcode-release-plan.json").releases.length > 0')" = 'true' ]; then
             bun run release:version
           fi
           version=$(bun -p 'require("./packages/redcode/package.json").version')
@@ -78,9 +85,7 @@ jobs:
             echo "::error::Changesets selected $version, but the requested version was $EXPECTED_VERSION."
             exit 1
           fi
-          if [ "$PREPARE" = 'true' ]; then
-            bun install --lockfile-only --ignore-scripts
-          fi
+          bun install --lockfile-only --ignore-scripts
           if [ "$PUBLISH" = 'true' ]; then
             git config user.name 'github-actions[bot]'
             git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
@@ -131,6 +136,8 @@ jobs:
             if (Script.version !== process.env.REDCODE_VERSION || Script.channel !== "latest" || !Script.release)
               throw new Error("Redcode release metadata does not match its own manifest")
           '
+      - name: Validate Changesets
+        run: bun run release:status
       - name: Lint and typecheck
         run: bun run check
       - name: Verify generated client
