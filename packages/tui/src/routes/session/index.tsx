@@ -911,7 +911,7 @@ export function Session(props: {
       title: `Goal ${action}`,
       id: `session.goal.${action}`,
       group: "Session",
-      slash: { name: `goal-${action}`, arguments: true as const },
+      slash: { name: `goal-${action}` },
       run: (input?: string) => {
         if (action !== "budget" || input?.trim()) {
           keymap.dispatch("session.goal", `${action} ${input ?? ""}`.trim())
