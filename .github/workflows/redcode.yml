@@ -232,7 +232,7 @@ jobs:
           path: packages/design-app/dist
       - name: Prepare Design release
         env:
-          GH_TOKEN: ${{ github.token }}
+          GH_TOKEN: ${{ secrets.RELEASE_PAT || github.token }}
         shell: bash
         run: |
           set -euo pipefail
@@ -250,7 +250,7 @@ jobs:
           fi
       - name: Prepare draft release
         env:
-          GH_TOKEN: ${{ github.token }}
+          GH_TOKEN: ${{ secrets.RELEASE_PAT || github.token }}
         shell: bash
         run: |
           set -euo pipefail
