@@ -181,7 +181,7 @@ export async function resolveMiniTarget<A>(input: {
 }
 
 export function validateMiniTerminal() {
-  if (!process.stdout.isTTY) fail("opencode mini requires a TTY stdout")
+  if (!process.stdout.isTTY) fail("redcode mini requires a TTY stdout")
 }
 
 /** @internal Exported for testing. */

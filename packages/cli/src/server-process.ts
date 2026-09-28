@@ -150,7 +150,7 @@ const processEffect = Effect.fnUntraced(function* (options: Options) {
                 : Effect.fail(
                     new Error(
                       `Managed service port ${port} on ${hostname} is already in use by another process. ` +
-                        "Configure another port with `opencode service set port <port>` and start the service again.",
+                        "Configure another port with `redcode service set port <port>` and start the service again.",
                       { cause: error },
                     ),
                   ),

@@ -391,7 +391,7 @@ test.each([
       await setup.ready
       await setup.waitForFrame(() => Boolean(setup.renderer.root.findDescendantById("session-pane")))
       if (columns === 80) setup.mockInput.pressKey("F6")
-      expect(setup.renderer.root.findDescendantById("session-sidebar")?.width).toBe(expected + 4)
+      await setup.waitForFrame(() => setup.renderer.root.findDescendantById("session-sidebar")?.width === expected + 4)
     }
   },
 )

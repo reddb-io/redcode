@@ -18,12 +18,13 @@ import {
 } from "./shared"
 
 const integrationPriority = new Map([
-  ["opencode-go", 0],
-  ["opencode", 1],
-  ["openai", 2],
-  ["github-copilot", 3],
-  ["anthropic", 4],
-  ["google", 5],
+  ["red-router", 0],
+  ["opencode-go", 1],
+  ["opencode", 2],
+  ["openai", 3],
+  ["github-copilot", 4],
+  ["anthropic", 5],
+  ["google", 6],
 ])
 
 export default Runtime.handler(
@@ -84,6 +85,7 @@ export function loginChoices(integrations: IntegrationInfo[]): IntegrationChoice
     .filter((integration) => connectMethods(integration).length > 0)
     .toSorted(
       (a, b) =>
+        Number(b.id === "red-router") - Number(a.id === "red-router") ||
         Number(b.metadata?.source === "mcp") - Number(a.metadata?.source === "mcp") ||
         (integrationPriority.get(a.id) ?? integrationPriority.size) -
           (integrationPriority.get(b.id) ?? integrationPriority.size) ||

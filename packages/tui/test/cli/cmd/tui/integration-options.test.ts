@@ -21,10 +21,11 @@ describe("integrationOptions", () => {
         integration({ id: "openai", name: "OpenAI" }),
         integration({ id: "custom-z", name: "Zebra" }),
         integration({ id: "anthropic", name: "Anthropic" }),
+        integration({ id: "red-router", name: "RedRouter" }),
         integration({ id: "opencode", name: "OpenCode Zen" }),
         integration({ id: "opencode-go", name: "OpenCode Go" }),
       ]).map((item) => item.id),
-    ).toEqual(["opencode-go", "opencode", "openai", "anthropic", "mistral", "custom-z"])
+    ).toEqual(["red-router", "opencode-go", "opencode", "openai", "anthropic", "mistral", "custom-z"])
   })
 
   test("keeps MCP integrations above popular integrations without relying on their IDs", () => {
@@ -33,10 +34,11 @@ describe("integrationOptions", () => {
         integration({ id: "openai", name: "OpenAI" }),
         integration({ id: "linear", name: "Linear", metadata: { source: "mcp" } }),
         integration({ id: "github", name: "GitHub", metadata: { source: "mcp" } }),
+        integration({ id: "red-router", name: "RedRouter" }),
         integration({ id: "opencode", name: "OpenCode Zen" }),
         integration({ id: "opencode-go", name: "OpenCode Go" }),
       ]).map((item) => item.id),
-    ).toEqual(["github", "linear", "opencode-go", "opencode", "openai"])
+    ).toEqual(["red-router", "github", "linear", "opencode-go", "opencode", "openai"])
   })
 })
 

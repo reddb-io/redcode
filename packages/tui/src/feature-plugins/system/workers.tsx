@@ -155,10 +155,8 @@ function WorkersPage(props: {
           </text>
         </box>
         <box flexDirection="row" justifyContent="space-between">
-          <text
-            fg={props.state.status()?.lifecycle === "unavailable" ? theme.text.feedback.error.base : theme.text.base}
-          >
-            {props.state.loading() ? "Connecting…" : (props.state.status()?.lifecycle ?? "unknown")}
+          <text fg={redskilledColor(theme, props.state.status())}>
+            {redskilledLabel(props.state.status(), props.state.loading())}
             {props.state.status()?.activation?.project ? ` · ${props.state.status()!.activation!.project}` : ""}
           </text>
           <text fg={theme.text.muted}>
@@ -331,10 +329,8 @@ function WorkersTab(props: { state: ReturnType<typeof createWorkerStatus>; onOpe
     <Show when={composer.active("workers")}>
       <box gap={1}>
         <box flexDirection="row" justifyContent="space-between" paddingLeft={1} paddingRight={1}>
-          <text
-            fg={props.state.status()?.lifecycle === "unavailable" ? theme.text.feedback.error.base : theme.text.base}
-          >
-            {props.state.loading() ? "Connecting…" : (props.state.status()?.lifecycle ?? "unknown")}
+          <text fg={redskilledColor(theme, props.state.status())}>
+            {redskilledLabel(props.state.status(), props.state.loading())}
             {props.state.status()?.activation?.project ? ` · ${props.state.status()!.activation!.project}` : ""}
           </text>
           <text fg={theme.text.muted}>
@@ -397,6 +393,19 @@ function WorkersTab(props: { state: ReturnType<typeof createWorkerStatus>; onOpe
       </box>
     </Show>
   )
+}
+
+function redskilledLabel(status: Status | undefined, loading: boolean) {
+  if (loading) return "Redskilled off · connecting"
+  if (!status) return "Redskilled off"
+  return `Redskilled ${status.lifecycle === "live" || status.lifecycle === "degraded" ? "on" : "off"} · ${status.lifecycle}`
+}
+
+function redskilledColor(theme: ReturnType<typeof useTheme>, status: Status | undefined) {
+  if (status?.lifecycle === "live") return theme.text.feedback.success.base
+  if (status?.lifecycle === "degraded" || status?.lifecycle === "connecting") return theme.text.feedback.warning.base
+  if (status?.lifecycle === "unavailable" || status?.lifecycle === "refused") return theme.text.feedback.error.base
+  return theme.text.muted
 }
 
 // The drawer and full page observe one project poll and mutation state.

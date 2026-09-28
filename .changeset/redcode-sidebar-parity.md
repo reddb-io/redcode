@@ -19,3 +19,9 @@ Restore `/pending` over the V2 durable inbox, including queued and steering prom
 Restore `/budget` and Goal cost/token budgets on the V2 runtime. Enforce session, parent-session and Goal limits before each model step, count descendant usage, and show configured limits in the Context sidebar.
 
 Restore the RedRouter connection endpoint prompt and persist the selected API URL with its credential while continuing to read pre-migration connection metadata.
+
+Show RedRouter as the first connection option in the Popular group.
+
+Restore the Redcode session epilogue and clearly show whether Redskilled is on or off in the Workers drawer.
+
+Remove remaining upstream product branding from Redcode's visible TUI and CLI messages, links, window titles and crash reporting.
