@@ -6,6 +6,7 @@ import { ScrollBoxRenderable, TextAttributes } from "@opentui/core"
 import { useTerminalDimensions } from "@opentui/solid"
 import { createEffect, createMemo, createSignal, For, on, onCleanup, onMount, Show } from "solid-js"
 import { useTheme } from "../../context/theme"
+import { DialogErrorDetails } from "../../component/dialog-error-details"
 import { errorMessage } from "../../util/error"
 import { openUrl } from "@opencode/util/open"
 import { useComposerTab } from "../../routes/session/composer/context"
@@ -23,7 +24,8 @@ function WorkersPage(props: {
   const theme = useTheme()
   const dimensions = useTerminalDimensions()
   const [selectedID, setSelectedID] = createSignal<string>()
-  const workers = createMemo(() => props.state.status()?.payload?.workers ?? [])
+  const offline = () => props.state.status()?.lifecycle === "unavailable"
+  const workers = createMemo(() => (offline() ? [] : props.state.status()?.payload?.workers ?? []))
   const selectedIndex = createMemo(() =>
     Math.max(
       0,
@@ -118,6 +120,17 @@ function WorkersPage(props: {
       props.context.ui.toast.show({ variant: "error", message: errorMessage(cause) }),
     )
   }
+  const showDetails = () => {
+    const error = props.state.status()?.error
+    if (!error) return
+    props.context.ui.dialog.show(() => (
+      <DialogErrorDetails
+        title="Redskilled connection details"
+        error={error}
+        onBack={() => props.context.ui.dialog.clear()}
+      />
+    ))
+  }
 
   props.context.keymap.layer(() => ({
     enabled: () => !props.sidebar,
@@ -128,13 +141,20 @@ function WorkersPage(props: {
       { bind: "k", title: "Previous worker", group: "Workers", run: () => move(-1) },
       { bind: "up", title: "Previous worker", group: "Workers", run: () => move(-1) },
       { bind: "R", title: "Refresh workers", group: "Workers", run: () => void props.state.load() },
-      { bind: "d", title: "Start project drain", group: "Workers", run: () => void startDrain() },
-      { bind: "z", title: "Resize project", group: "Workers", run: () => void resize() },
-      { bind: "p", title: "Stop project", group: "Workers", run: () => void stopProject() },
-      { bind: "s", title: "Stop worker", group: "Workers", run: () => void stopWorker() },
-      { bind: "r", title: "Recycle worker", group: "Workers", run: () => void recycleWorker() },
-      { bind: "e", title: "Steer worker", group: "Workers", run: () => void steerWorker() },
-      { bind: "o", title: "Open worker issue", group: "Workers", run: openIssue },
+      {
+        bind: "i",
+        title: "Redskilled connection details",
+        group: "Workers",
+        enabled: () => Boolean(props.state.status()?.error),
+        run: showDetails,
+      },
+      { bind: "d", title: "Start project drain", group: "Workers", enabled: () => !offline(), run: () => void startDrain() },
+      { bind: "z", title: "Resize project", group: "Workers", enabled: () => !offline(), run: () => void resize() },
+      { bind: "p", title: "Stop project", group: "Workers", enabled: () => !offline(), run: () => void stopProject() },
+      { bind: "s", title: "Stop worker", group: "Workers", enabled: () => !offline(), run: () => void stopWorker() },
+      { bind: "r", title: "Recycle worker", group: "Workers", enabled: () => !offline(), run: () => void recycleWorker() },
+      { bind: "e", title: "Steer worker", group: "Workers", enabled: () => !offline(), run: () => void steerWorker() },
+      { bind: "o", title: "Open worker issue", group: "Workers", enabled: () => !offline(), run: openIssue },
     ],
   }))
 
@@ -181,47 +201,57 @@ function WorkersPage(props: {
           )}
         </Show>
         <Show when={props.state.status()?.error}>
-          {(message) => (
-            <text fg={theme.text.feedback.error.base} wrapMode="word">
-              {message()}
+          <box flexDirection="row" flexWrap="wrap" gap={1}>
+            <text fg={theme.text.muted}>
+              {props.state.status()?.lifecycle === "unavailable"
+                ? "Worker service offline."
+                : "Worker service needs attention."}
             </text>
-          )}
+            <text fg={theme.text.action.secondary.base} onMouseUp={showDetails}>
+              i details
+            </text>
+            <text fg={theme.text.action.secondary.base} onMouseUp={() => void props.state.load()}>
+              R refresh
+            </text>
+          </box>
         </Show>
-        <box flexDirection="row" flexWrap="wrap" gap={1}>
-          <text fg={theme.text.action.secondary.base} onMouseUp={() => void startDrain()}>
-            {props.sidebar ? "start" : "d start drain"}
-          </text>
-          <text fg={theme.text.action.secondary.base} onMouseUp={() => void resize()}>
-            {props.sidebar ? "resize" : "z resize"}
-          </text>
-          <text fg={theme.text.action.secondary.base} onMouseUp={() => void stopProject()}>
-            {props.sidebar ? "stop project" : "p stop project"}
-          </text>
-          <text fg={theme.text.action.secondary.base} onMouseUp={() => void props.state.load()}>
-            {props.sidebar ? "refresh" : "R refresh"}
-          </text>
-        </box>
-        <box flexDirection="row" flexWrap="wrap" gap={1}>
-          <text fg={theme.text.action.secondary.base} onMouseUp={() => void stopWorker()}>
-            {props.sidebar ? "stop worker" : "s stop"}
-          </text>
-          <text fg={theme.text.action.secondary.base} onMouseUp={() => void recycleWorker()}>
-            {props.sidebar ? "recycle" : "r recycle"}
-          </text>
-          <text fg={theme.text.action.secondary.base} onMouseUp={() => void steerWorker()}>
-            {props.sidebar ? "steer" : "e steer"}
-          </text>
-          <text fg={theme.text.action.secondary.base} onMouseUp={openIssue}>
-            {props.sidebar ? "issue" : "o issue"}
-          </text>
-        </box>
+        <Show when={!offline()}>
+          <box flexDirection="row" flexWrap="wrap" gap={1}>
+            <text fg={theme.text.action.secondary.base} onMouseUp={() => void startDrain()}>
+              {props.sidebar ? "start" : "d start drain"}
+            </text>
+            <text fg={theme.text.action.secondary.base} onMouseUp={() => void resize()}>
+              {props.sidebar ? "resize" : "z resize"}
+            </text>
+            <text fg={theme.text.action.secondary.base} onMouseUp={() => void stopProject()}>
+              {props.sidebar ? "stop project" : "p stop project"}
+            </text>
+            <text fg={theme.text.action.secondary.base} onMouseUp={() => void props.state.load()}>
+              {props.sidebar ? "refresh" : "R refresh"}
+            </text>
+          </box>
+          <box flexDirection="row" flexWrap="wrap" gap={1}>
+            <text fg={theme.text.action.secondary.base} onMouseUp={() => void stopWorker()}>
+              {props.sidebar ? "stop worker" : "s stop"}
+            </text>
+            <text fg={theme.text.action.secondary.base} onMouseUp={() => void recycleWorker()}>
+              {props.sidebar ? "recycle" : "r recycle"}
+            </text>
+            <text fg={theme.text.action.secondary.base} onMouseUp={() => void steerWorker()}>
+              {props.sidebar ? "steer" : "e steer"}
+            </text>
+            <text fg={theme.text.action.secondary.base} onMouseUp={openIssue}>
+              {props.sidebar ? "issue" : "o issue"}
+            </text>
+          </box>
+        </Show>
         <scrollbox flexGrow={1} minHeight={0} width="100%">
           <Show
             when={workers().length > 0}
             fallback={
               <text fg={theme.text.muted}>
                 {props.state.status()?.lifecycle === "unavailable"
-                  ? "Worker status is unavailable."
+                  ? "Workers will appear when Redskilled reconnects."
                   : "No live workers. Start the project drain when ready."}
               </text>
             }
@@ -266,7 +296,9 @@ function WorkersPage(props: {
         </scrollbox>
         <Show when={!props.sidebar}>
           <text fg={theme.text.muted}>
-            j/k select · d start · z resize · p stop project · s/r/e worker · o issue · R refresh
+            {offline()
+              ? "i details · R refresh"
+              : "j/k select · d start · z resize · p stop project · s/r/e worker · o issue · R refresh"}
           </text>
         </Show>
       </box>
@@ -278,7 +310,9 @@ function WorkersTab(props: { state: ReturnType<typeof createWorkerStatus>; onOpe
   const theme = useTheme()
   const composer = useComposerTab()
   const shortcuts = Keymap.useShortcuts()
-  const workers = createMemo(() => props.state.status()?.payload?.workers ?? [])
+  const workers = createMemo(() =>
+    props.state.status()?.lifecycle === "unavailable" ? [] : props.state.status()?.payload?.workers ?? [],
+  )
   const [selected, setSelected] = createSignal(0)
   let scroll: ScrollBoxRenderable | undefined
 
@@ -328,25 +362,13 @@ function WorkersTab(props: { state: ReturnType<typeof createWorkerStatus>; onOpe
   return (
     <Show when={composer.active("workers")}>
       <box gap={1}>
-        <box flexDirection="row" justifyContent="space-between" paddingLeft={1} paddingRight={1}>
-          <text fg={redskilledColor(theme, props.state.status())}>
-            {redskilledLabel(props.state.status(), props.state.loading())}
-            {props.state.status()?.activation?.project ? ` · ${props.state.status()!.activation!.project}` : ""}
-          </text>
-          <text fg={theme.text.muted}>
-            {workers().length} worker{workers().length === 1 ? "" : "s"}
-          </text>
-        </box>
-        <Show when={props.state.status()?.error}>
-          {(message) => <text fg={theme.text.feedback.error.base}> {message()}</text>}
-        </Show>
         <scrollbox scrollbarOptions={{ visible: false }} maxHeight={5} ref={(value) => (scroll = value)}>
           <Show
             when={workers().length > 0}
             fallback={
               <text fg={theme.text.muted}>
                 {props.state.status()?.lifecycle === "unavailable"
-                  ? " No worker status available"
+                  ? " No workers while Redskilled is offline."
                   : " No live workers. Press enter to manage the project drain."}
               </text>
             }
@@ -398,13 +420,14 @@ function WorkersTab(props: { state: ReturnType<typeof createWorkerStatus>; onOpe
 function redskilledLabel(status: Status | undefined, loading: boolean) {
   if (loading) return "Redskilled off · connecting"
   if (!status) return "Redskilled off"
+  if (status.lifecycle === "unavailable") return "Redskilled off · offline"
   return `Redskilled ${status.lifecycle === "live" || status.lifecycle === "degraded" ? "on" : "off"} · ${status.lifecycle}`
 }
 
 function redskilledColor(theme: ReturnType<typeof useTheme>, status: Status | undefined) {
   if (status?.lifecycle === "live") return theme.text.feedback.success.base
   if (status?.lifecycle === "degraded" || status?.lifecycle === "connecting") return theme.text.feedback.warning.base
-  if (status?.lifecycle === "unavailable" || status?.lifecycle === "refused") return theme.text.feedback.error.base
+  if (status?.lifecycle === "refused") return theme.text.feedback.warning.base
   return theme.text.muted
 }
 

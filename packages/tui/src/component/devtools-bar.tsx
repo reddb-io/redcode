@@ -15,6 +15,7 @@ import { useTheme, useThemes } from "../context/theme"
 import { DevTools } from "../devtools"
 import { useDialog } from "../ui/dialog"
 import { DialogExperiments } from "./dialog-experiments"
+import { DialogErrorDetails } from "./dialog-error-details"
 import { usePlugin } from "../plugin/context"
 import { errorMessage } from "../util/error"
 
@@ -22,7 +23,7 @@ const graphWidth = 23
 const sampleIntervalMilliseconds = 2_000
 const sampleRetentionMilliseconds = 30_000
 const statusWindowMilliseconds = 6_000
-type Panel = "server" | "theme" | "tools" | "ui"
+type Panel = "server" | "redskilled" | "theme" | "tools" | "ui"
 type ProcessSample = Readonly<{ cpu: number; memory: number; delay: number; time: number }>
 export type RuntimeStatus = "normal" | "medium" | "high"
 
@@ -60,6 +61,31 @@ export function DevToolsBar() {
       address: info.urls[0] ? new URL(info.urls[0]).host : "Unknown",
     }
   })
+  const [redskilled, { refetch: refreshRedskilled }] = createResource(
+    () => (connected() ? { directory: location.ref?.directory } : undefined),
+    async (target) =>
+      (await client.api.redskilled.status({
+        location: target.directory ? { directory: target.directory } : undefined,
+        scope: "project",
+      })).data,
+  )
+  const redskilledState = () => {
+    if (!connected()) return "Offline"
+    if (redskilled.error || redskilled()?.lifecycle === "unavailable") return "Offline"
+    if (!redskilled() || redskilled()?.lifecycle === "connecting") return "Connecting"
+    if (redskilled()?.lifecycle === "live") return "Online"
+    if (redskilled()?.lifecycle === "degraded") return "Degraded"
+    return "Off"
+  }
+  const redskilledError = () => redskilled()?.error ?? (redskilled.error ? errorMessage(redskilled.error) : undefined)
+  const showRedskilledDetails = () => {
+    const error = redskilledError()
+    if (!error) return
+    close()
+    dialog.replace(() => (
+      <DialogErrorDetails title="Redskilled connection details" error={error} onBack={() => dialog.clear()} />
+    ))
+  }
   const close = () => {
     setPanel()
     setTimeout(() => {
@@ -108,6 +134,10 @@ export function DevToolsBar() {
   onCleanup(() => renderer.off(CliRenderEvents.DEBUG_OVERLAY_TOGGLE, onDebugOverlayToggle))
 
   onMount(() => {
+    const redskilledTimer = setInterval(() => {
+      if (connected()) void refreshRedskilled()
+    }, 10_000)
+    onCleanup(() => clearInterval(redskilledTimer))
     const eventLoop = monitorEventLoopDelay({ resolution: 20 })
     let frontendCPU = process.cpuUsage()
     let frontendTime = performance.now()
@@ -287,6 +317,49 @@ export function DevToolsBar() {
             </Show>
             <Show when={server.error}>
               <text fg={elevatedTheme.text.feedback.error.base}>Server details unavailable</text>
+            </Show>
+          </PanelBox>
+        </Show>
+      </BarItem>
+      <BarItem active={panel() === "redskilled"} onClick={() => toggle("redskilled")}>
+        <text
+          fg={
+            panel() === "redskilled"
+              ? theme.text.action.primary.focused
+              : redskilledState() === "Online"
+                ? theme.text.feedback.success.base
+                : redskilledState() === "Degraded"
+                  ? theme.text.feedback.warning.base
+                  : theme.text.muted
+          }
+        >
+          {redskilledState() === "Online" || redskilledState() === "Degraded"
+            ? "✓"
+            : redskilledState() === "Connecting"
+              ? "↻"
+              : "○"}
+        </text>
+        <text fg={panel() === "redskilled" ? theme.text.action.primary.focused : theme.text.muted}>
+          {" "}
+          Redskilled
+        </text>
+        <Show when={panel() === "redskilled"}>
+          <PanelBox>
+            <PanelTitle>Redskilled</PanelTitle>
+            <Row label="Status" value={redskilledState()} />
+            <Show when={redskilled()?.activation?.project}>
+              {(project) => <Row label="Project" value={project()} />}
+            </Show>
+            <Show when={redskilledState() === "Online" || redskilledState() === "Degraded"}>
+              <Row label="Workers" value={String(redskilled()?.payload?.workers.length ?? 0)} />
+            </Show>
+            <Action onClick={() => void refreshRedskilled()} hoverBackground>
+              Refresh
+            </Action>
+            <Show when={redskilledError()}>
+              <Action onClick={showRedskilledDetails} hoverBackground>
+                Connection details
+              </Action>
             </Show>
           </PanelBox>
         </Show>
