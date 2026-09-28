@@ -2,6 +2,7 @@ import { expect } from "bun:test"
 import { Global } from "@opencode/util/global"
 import { Effect } from "effect"
 import { tmpdir } from "../../core/test/fixture/tmpdir"
+import { hookCommand } from "../../core/test/fixture/hook-command"
 import { it } from "../../core/test/lib/effect"
 import { ServerFetch } from "../src/fetch"
 
@@ -10,8 +11,9 @@ it.live(
   () =>
     Effect.gen(function* () {
       const tmp = yield* Effect.acquireDisposable(Effect.promise(() => tmpdir()))
-      const script = `${tmp.path}/deny.cjs`
-      yield* Effect.promise(() => Bun.write(script, "process.stderr.write('Denied by project policy');process.exit(2)"))
+      const command = yield* Effect.promise(() =>
+        hookCommand(tmp.path, "deny", "process.stderr.write('Denied by project policy');process.exit(2)"),
+      )
       const handler = yield* ServerFetch.make(
         {
           app: { version: "test" },
@@ -24,9 +26,7 @@ it.live(
               hooks: {
                 UserPromptSubmit: [
                   {
-                    hooks: [
-                      { type: "command", command: `${JSON.stringify(process.execPath)} ${JSON.stringify(script)}` },
-                    ],
+                    hooks: [{ type: "command", command }],
                   },
                 ],
               },

@@ -7,7 +7,7 @@ import { Global } from "@opencode/util/global"
 import { HookRuntime } from "@opencode/core/hook"
 import { Location } from "@opencode/core/location"
 import { AbsolutePath } from "@opencode/core/schema"
-import { ShellSelect } from "@opencode/core/shell/select"
+import { hookCommand } from "./fixture/hook-command"
 import { location } from "./fixture/location"
 import { tmpdir } from "./fixture/tmpdir"
 
@@ -26,18 +26,6 @@ function hookLayer(directory: string, state: string) {
 const run = <A, E>(effect: Effect.Effect<A, E, HookRuntime.Service>, directory: string, state: string) =>
   Effect.runPromise(effect.pipe(Effect.provide(hookLayer(directory, state)), Effect.scoped))
 
-async function command(directory: string, name: string, source: string) {
-  const script = path.join(directory, `${name} hook.cjs`)
-  await Bun.write(script, source)
-  const shell = ShellSelect.resolve({ priority: "compat" })
-  const args = [process.execPath, script].map((value) => {
-    if (ShellSelect.ps(shell)) return `'${value.replaceAll("'", "''")}'`
-    if (ShellSelect.name(shell) === "cmd") return `"${value}"`
-    return `'${value.replaceAll("'", "'\"'\"'")}'`
-  })
-  return `${ShellSelect.ps(shell) ? "& " : ""}${args.join(" ")}`
-}
-
 describe("HookRuntime", () => {
   test("requires trust, runs all matching handlers in parallel, and deny wins", async () => {
     await using project = await tmpdir()
@@ -49,7 +37,7 @@ describe("HookRuntime", () => {
             hooks: [
               {
                 type: "command",
-                command: await command(
+                command: await hookCommand(
                   project.path,
                   "allow",
                   "process.stdout.write(JSON.stringify({continue:true,additionalContext:'ok'}))",
@@ -57,7 +45,7 @@ describe("HookRuntime", () => {
               },
               {
                 type: "command",
-                command: await command(project.path, "deny", "process.stderr.write('blocked');process.exit(2)"),
+                command: await hookCommand(project.path, "deny", "process.stderr.write('blocked');process.exit(2)"),
               },
             ],
           },
@@ -102,7 +90,7 @@ describe("HookRuntime", () => {
               hooks: [
                 {
                   type: "command",
-                  command: await command(
+                  command: await hookCommand(
                     project.path,
                     "context",
                     "process.stdout.write(JSON.stringify({continue:true,additionalContext:'Project guidance',updatedInput:{command:'echo safe'}}))",
