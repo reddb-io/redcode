@@ -234,3 +234,47 @@ test("/monitors inspects evidence and stops observation through the V2 session A
   )
   expect(cancelled[0]).toMatch(/^\/api\/session\/ses[^/]+\/monitor\/monitor_fixture\/cancel$/)
 })
+
+test.each([
+  { columns: 80, expected: 36 },
+  { columns: 160, expected: 40 },
+  { columns: 240, expected: 44 },
+])(
+  "sidebar retains its Redcode width and selected tab after reopening at $columns columns",
+  async ({ columns, expected }) => {
+    await using state = await tmpdir()
+    const config = {
+      animations: false,
+      tabs: { mode: "off" as const },
+      keybinds: {
+        "session.sidebar.toggle": "f6",
+        "session.sidebar.tab.next": "f7",
+        "session.sidebar.width.increase": "f8",
+        "session.sidebar.width.decrease": "f9",
+      },
+    }
+    {
+      await using setup = await createAppFixture({ state: state.path, width: columns, height: 40, config })
+      await setup.ready
+      if (columns === 80) setup.mockInput.pressKey("F6")
+      await setup.waitForFrame(() => setup.renderer.root.findDescendantById("session-sidebar")?.width === expected)
+      setup.mockInput.pressKey("F8")
+      await setup.waitForFrame(() => setup.renderer.root.findDescendantById("session-sidebar")?.width === expected + 4)
+      setup.mockInput.pressKey("F9")
+      await setup.waitForFrame(() => setup.renderer.root.findDescendantById("session-sidebar")?.width === expected)
+      setup.mockInput.pressKey("F8")
+      await setup.waitForFrame(() => setup.renderer.root.findDescendantById("session-sidebar")?.width === expected + 4)
+      setup.mockInput.pressKey("F7")
+      await setup.waitForFrame((frame) => frame.includes("Worker status is unavailable."))
+      setup.mockInput.pressKey("F7")
+      await setup.waitForFrame((frame) => frame.includes("No subagents in this session."))
+    }
+    {
+      await using setup = await createAppFixture({ state: state.path, width: columns, height: 40, config })
+      await setup.ready
+      if (columns === 80) setup.mockInput.pressKey("F6")
+      await setup.waitForFrame((frame) => frame.includes("No subagents in this session."))
+      expect(setup.renderer.root.findDescendantById("session-sidebar")?.width).toBe(expected + 4)
+    }
+  },
+)

@@ -18,8 +18,8 @@ import { usePanel } from "../context/panel"
 import { useStorage } from "../context/storage"
 import { useDialog } from "../ui/dialog"
 import { Session } from "../routes/session"
-import { Sidebar } from "../routes/session/sidebar"
-import { clampSessionPaneWidth, clampSessionSidebarWidth, SESSION_SIDEBAR_WIDTH } from "../ui/layout"
+import { Sidebar, SIDEBAR_TABS, type SidebarTab } from "../routes/session/sidebar"
+import { clampSessionPaneWidth, clampSessionSidebarWidth, sessionSidebarWidthDefault } from "../ui/layout"
 import { createPaneResize } from "../ui/pane-resize"
 import { PaneResizeHandle } from "../ui/pane-resize-handle"
 import { useToast } from "../ui/toast"
@@ -39,7 +39,12 @@ export function SessionFrame(props: { sessionID: string; verticalTabsWidth: numb
   const dialog = useDialog()
   const availableWidth = () => Math.max(0, dimensions().width - props.verticalTabsWidth)
   const defaultPaneWidth = () => Math.max(1, Math.floor(panels.width() / 2))
-  const [layout, updateLayout] = useStorage().store<{ paneWidth?: number; terminalWidth?: number; sidebarWidth?: number }>("layout", {
+  const [layout, updateLayout] = useStorage().store<{
+    paneWidth?: number
+    terminalWidth?: number
+    sidebarWidth?: number
+    sidebarTab?: SidebarTab
+  }>("layout", {
     initial: {},
   })
   const paneResize = createPaneResize({
@@ -55,8 +60,9 @@ export function SessionFrame(props: { sessionID: string; verticalTabsWidth: numb
     },
   })
   const sidebarResize = createPaneResize({
-    value: () => layout.sidebarWidth ?? config.data.session?.sidebar_width ?? SESSION_SIDEBAR_WIDTH,
-    defaultValue: () => SESSION_SIDEBAR_WIDTH,
+    value: () =>
+      layout.sidebarWidth ?? config.data.session?.sidebar_width ?? sessionSidebarWidthDefault(availableWidth()),
+    defaultValue: () => sessionSidebarWidthDefault(availableWidth()),
     clamp: (width) => clampSessionSidebarWidth(width, availableWidth()),
     fromMouse: (event) => dimensions().width - event.x - 1,
     contains: (event, width) => event.x >= dimensions().width - width - 1 && event.x <= dimensions().width - width,
@@ -141,6 +147,24 @@ export function SessionFrame(props: { sessionID: string; verticalTabsWidth: numb
       if (!visible && selectedTerminal()) void sessions.selectTerminal(props.sessionID, null).catch(toast.error)
     })
   }
+  const sidebarTab = () => layout.sidebarTab ?? "context"
+  const selectSidebarTab = (tab: SidebarTab) => {
+    void updateLayout((draft) => {
+      draft.sidebarTab = tab
+    }).catch(toast.error)
+  }
+  const nextSidebarTab = () => {
+    selectSidebarTab(SIDEBAR_TABS[(SIDEBAR_TABS.indexOf(sidebarTab()) + 1) % SIDEBAR_TABS.length])
+    if (rightPane() !== "sidebar") toggleSidebar()
+    dialog.clear()
+  }
+  const resizeSidebar = (delta: number) => {
+    void updateLayout((draft) => {
+      draft.sidebarWidth = clampSessionSidebarWidth(sidebarResize.size() + delta, availableWidth())
+    }).catch(toast.error)
+    if (rightPane() !== "sidebar") toggleSidebar()
+    dialog.clear()
+  }
   const focusSession = () => {
     if (fullscreen()) return
     // Permission prompts replace the input, so returning focus must not depend on it.
@@ -205,6 +229,33 @@ export function SessionFrame(props: { sessionID: string; verticalTabsWidth: numb
           toggleSidebar()
           dialog.clear()
         },
+      },
+      {
+        id: "sidebar.tab.next",
+        title: "Next sidebar tab",
+        group: "Session",
+        run: nextSidebarTab,
+      },
+      {
+        id: "session.sidebar.tab.next",
+        title: "Next sidebar tab",
+        group: "Session",
+        palette: true,
+        run: nextSidebarTab,
+      },
+      {
+        id: "session.sidebar.width.decrease",
+        title: "Decrease sidebar width",
+        group: "Session",
+        palette: true,
+        run: () => resizeSidebar(-4),
+      },
+      {
+        id: "session.sidebar.width.increase",
+        title: "Increase sidebar width",
+        group: "Session",
+        palette: true,
+        run: () => resizeSidebar(4),
       },
       ...(config.data.session.terminal
         ? [
@@ -341,9 +392,7 @@ export function SessionFrame(props: { sessionID: string; verticalTabsWidth: numb
         <box
           ref={(value: BoxRenderable) => (rightNode = value)}
           flexShrink={0}
-          width={
-            fullscreen() ? availableWidth() : rightPane() === "sidebar" ? sidebarResize.size() : paneResize.size()
-          }
+          width={fullscreen() ? availableWidth() : rightPane() === "sidebar" ? sidebarResize.size() : paneResize.size()}
           minWidth={0}
           minHeight={0}
         >
@@ -390,7 +439,12 @@ export function SessionFrame(props: { sessionID: string; verticalTabsWidth: numb
               </Show>
             }
           >
-            <Sidebar sessionID={props.sessionID} width={sidebarResize.size()} />
+            <Sidebar
+              sessionID={props.sessionID}
+              width={sidebarResize.size()}
+              tab={sidebarTab()}
+              onTabChange={selectSidebarTab}
+            />
           </Show>
         </box>
       </Show>
@@ -407,7 +461,12 @@ export function SessionFrame(props: { sessionID: string; verticalTabsWidth: numb
           alignItems="flex-end"
           backgroundColor={RGBA.fromInts(0, 0, 0, 70)}
         >
-          <Sidebar sessionID={props.sessionID} width={sidebarResize.size()} />
+          <Sidebar
+            sessionID={props.sessionID}
+            width={sidebarResize.size()}
+            tab={sidebarTab()}
+            onTabChange={selectSidebarTab}
+          />
         </box>
       </Show>
       <Show when={rightPane() === "sidebar" && availableWidth() >= 3}>

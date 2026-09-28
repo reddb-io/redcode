@@ -1,9 +1,8 @@
 import { useData } from "../../context/data"
-import { createMemo, createSignal, For, Show } from "solid-js"
+import { createMemo, For, Show } from "solid-js"
 import { useTheme } from "../../context/theme"
 import { useRoute } from "../../context/route"
 import { sessionFamily } from "../../util/session"
-import { Keymap } from "../../context/keymap"
 import { useConfig } from "../../config"
 import { Slot } from "../../plugin/render"
 import { withTimestampedFallback } from "@opencode/util/session-title-fallback"
@@ -12,33 +11,28 @@ import "../../component/title-shimmer"
 
 import { getScrollAcceleration } from "../../util/scroll"
 
-export function Sidebar(props: { sessionID: string; width: number; overlay?: boolean }) {
+export const SIDEBAR_TABS = ["context", "workers", "subagents"] as const
+export type SidebarTab = (typeof SIDEBAR_TABS)[number]
+
+export function Sidebar(props: {
+  sessionID: string
+  width: number
+  overlay?: boolean
+  tab: SidebarTab
+  onTabChange: (tab: SidebarTab) => void
+}) {
   const data = useData()
   const theme = useTheme()
   const config = useConfig().data
   const route = useRoute()
-  const tabs = ["Context", "Workers", "Subagents"] as const
-  const [tab, setTab] = createSignal<(typeof tabs)[number]>("Context")
   const children = createMemo(() => sessionFamily(data.session.list(), props.sessionID))
-  Keymap.createLayer(() => ({
-    mode: "global",
-    commands: [
-      {
-        id: "sidebar.tab.next",
-        title: "Next sidebar tab",
-        group: "Session",
-        run: () => {
-          setTab(tabs[(tabs.indexOf(tab()) + 1) % tabs.length])
-        },
-      },
-    ],
-  }))
   const session = createMemo(() => data.session.get(props.sessionID))
   const scrollAcceleration = createMemo(() => getScrollAcceleration(config))
 
   return (
     <Show when={session()}>
       <box
+        id="session-sidebar"
         backgroundColor={theme.background.raised.base}
         width={props.width}
         height="100%"
@@ -67,24 +61,31 @@ export function Sidebar(props: { sessionID: string; width: number; overlay?: boo
           </title_shimmer>
         </box>
         <box flexDirection="row" flexWrap="wrap" gap={1} flexShrink={0} paddingBottom={1}>
-          <For each={tabs}>
+          <For each={SIDEBAR_TABS}>
             {(item) => (
-              <text
-                fg={tab() === item ? theme.text.action.primary.selected : theme.text.action.secondary.base}
-                attributes={tab() === item ? TextAttributes.BOLD : undefined}
-                onMouseUp={() => setTab(item)}
-              >
-                {item}
-              </text>
+              <box flexDirection="row" onMouseUp={() => props.onTabChange(item)}>
+                <text
+                  fg={props.tab === item ? theme.text.action.primary.selected : theme.text.action.secondary.base}
+                  attributes={props.tab === item ? TextAttributes.BOLD : undefined}
+                >
+                  {item[0].toUpperCase() + item.slice(1)}
+                </text>
+                <Show when={item === "subagents" && children().length > 0}>
+                  <text fg={theme.text.muted}>{` (${children().length})`}</text>
+                </Show>
+                <Show when={item === "workers"}>
+                  <Slot path="sidebar.workers.count" input={{ sessionID: props.sessionID }} />
+                </Show>
+              </box>
             )}
           </For>
         </box>
-        <Show when={tab() === "Workers"}>
+        <Show when={props.tab === "workers"}>
           <box flexGrow={1} minHeight={0}>
             <Slot path="sidebar.workers" input={{ sessionID: props.sessionID, width: Math.max(1, props.width - 4) }} />
           </box>
         </Show>
-        <Show when={tab() !== "Workers"}>
+        <Show when={props.tab !== "workers"}>
           <scrollbox
             flexGrow={1}
             minHeight={0}
@@ -105,10 +106,10 @@ export function Sidebar(props: { sessionID: string; width: number; overlay?: boo
             }}
           >
             <box flexShrink={0} gap={1} paddingRight={1}>
-              <Show when={tab() === "Context"}>
+              <Show when={props.tab === "context"}>
                 <Slot path="sidebar.content" input={{ sessionID: props.sessionID }} />
               </Show>
-              <Show when={tab() === "Subagents"}>
+              <Show when={props.tab === "subagents"}>
                 <Show
                   when={children().length}
                   fallback={<text fg={theme.text.muted}>No subagents in this session.</text>}

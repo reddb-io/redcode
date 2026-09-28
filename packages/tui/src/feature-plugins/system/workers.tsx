@@ -4,7 +4,7 @@ import { Status } from "@opencode/schema/redskilled"
 import { Schema } from "effect"
 import { TextAttributes } from "@opentui/core"
 import { useTerminalDimensions } from "@opentui/solid"
-import { createMemo, createSignal, For, onCleanup, onMount, Show } from "solid-js"
+import { createEffect, createMemo, createSignal, For, on, onCleanup, Show } from "solid-js"
 import { useTheme } from "../../context/theme"
 import { errorMessage } from "../../util/error"
 import { openUrl } from "@opencode/util/open"
@@ -16,16 +16,12 @@ function WorkersPage(props: {
   onClose: () => void
   sidebar?: boolean
   width?: number
-  location?: LocationRef
+  state: ReturnType<typeof createWorkerStatus>
 }) {
   const theme = useTheme()
   const dimensions = useTerminalDimensions()
-  const location = props.location ?? props.context.location ?? props.context.data.location.default()
-  const [status, setStatus] = createSignal<Status>()
-  const [loading, setLoading] = createSignal(true)
-  const [busy, setBusy] = createSignal(false)
   const [selectedID, setSelectedID] = createSignal<string>()
-  const workers = createMemo(() => status()?.payload?.workers ?? [])
+  const workers = createMemo(() => props.state.status()?.payload?.workers ?? [])
   const selectedIndex = createMemo(() =>
     Math.max(
       0,
@@ -35,68 +31,37 @@ function WorkersPage(props: {
   const selected = createMemo(() => workers()[selectedIndex()])
   const width = () => props.width ?? Math.max(20, Math.min(110, dimensions().width - 4))
 
-  let polling = false
-  let revision = 0
-  const load = async () => {
-    if (busy() || polling) return
-    polling = true
-    const observed = revision
-    try {
-      const result = await props.context.client.redskilled.status({ location, scope: "project" })
-      if (revision === observed) setStatus(Schema.decodeUnknownSync(Status)(result.data))
-    } catch (cause) {
-      if (revision === observed)
-        setStatus({
-          lifecycle: "unavailable",
-          consent: "unknown",
-          scope: "project",
-          native: true,
-          error: errorMessage(cause),
-        })
-    } finally {
-      polling = false
-      setLoading(false)
-    }
-  }
-  const run = async (action: () => Promise<RedskilledStatusOutput>, message: string) => {
-    if (busy()) return
-    revision++
-    setBusy(true)
-    try {
-      const result = await action()
-      setStatus(Schema.decodeUnknownSync(Status)(result.data))
-      props.context.ui.toast.show({ variant: "success", message })
-    } catch (cause) {
-      props.context.ui.toast.show({ variant: "error", message: errorMessage(cause) })
-    } finally {
-      setBusy(false)
-    }
-  }
   const move = (offset: number) => {
     if (!workers().length) return
     setSelectedID(workers()[Math.max(0, Math.min(workers().length - 1, selectedIndex() + offset))].worker_id)
   }
   const startDrain = () =>
-    run(() => props.context.client.redskilled.consent({ location, decision: "accepted" }), "Project drain started")
+    props.state.run(
+      () => props.context.client.redskilled.consent({ location: props.state.location(), decision: "accepted" }),
+      "Project drain started",
+    )
   const resize = async () => {
     const answer = await props.context.ui.dialog.prompt({
       title: "Resize project",
-      value: String(status()?.activation?.target ?? 1),
+      value: String(props.state.status()?.activation?.target ?? 1),
       placeholder: "Worker target",
     })
     if (answer === undefined) return
     const target = Number(answer.trim())
     if (!Number.isInteger(target) || target < 0)
       return props.context.ui.toast.show({ variant: "error", message: "Target must be zero or greater" })
-    await run(
-      () => props.context.client.redskilled.project.resize({ location, target }),
+    await props.state.run(
+      () => props.context.client.redskilled.project.resize({ location: props.state.location(), target }),
       `Project target set to ${target}`,
     )
   }
   const stopProject = async () => {
     if (!(await props.context.ui.dialog.confirm({ title: "Stop project", message: "Stop this project's drain?" })))
       return
-    await run(() => props.context.client.redskilled.project.stop({ location }), "Project drain stopped")
+    await props.state.run(
+      () => props.context.client.redskilled.project.stop({ location: props.state.location() }),
+      "Project drain stopped",
+    )
   }
   const stopWorker = async () => {
     const worker = selected()
@@ -105,8 +70,8 @@ function WorkersPage(props: {
       !(await props.context.ui.dialog.confirm({ title: "Stop worker", message: `Stop ${worker.worker_id}?` }))
     )
       return
-    await run(
-      () => props.context.client.redskilled.worker.stop({ location, worker: worker.worker_id }),
+    await props.state.run(
+      () => props.context.client.redskilled.worker.stop({ location: props.state.location(), worker: worker.worker_id }),
       `Stopped ${worker.worker_id}`,
     )
   }
@@ -117,8 +82,9 @@ function WorkersPage(props: {
       !(await props.context.ui.dialog.confirm({ title: "Recycle worker", message: `Recycle ${worker.worker_id}?` }))
     )
       return
-    await run(
-      () => props.context.client.redskilled.worker.recycle({ location, worker: worker.worker_id }),
+    await props.state.run(
+      () =>
+        props.context.client.redskilled.worker.recycle({ location: props.state.location(), worker: worker.worker_id }),
       `Recycling ${worker.worker_id}`,
     )
   }
@@ -131,8 +97,13 @@ function WorkersPage(props: {
     })
     const text = answer?.trim()
     if (!text) return
-    await run(
-      () => props.context.client.redskilled.worker.steer({ location, worker: worker.worker_id, text }),
+    await props.state.run(
+      () =>
+        props.context.client.redskilled.worker.steer({
+          location: props.state.location(),
+          worker: worker.worker_id,
+          text,
+        }),
       `Steer queued for ${worker.worker_id}`,
     )
   }
@@ -146,9 +117,6 @@ function WorkersPage(props: {
     )
   }
 
-  onMount(() => void load())
-  const timer = setInterval(() => void load(), 5_000)
-  onCleanup(() => clearInterval(timer))
   props.context.keymap.layer(() => ({
     enabled: () => !props.sidebar,
     commands: [
@@ -157,7 +125,7 @@ function WorkersPage(props: {
       { bind: "down", title: "Next worker", group: "Workers", run: () => move(1) },
       { bind: "k", title: "Previous worker", group: "Workers", run: () => move(-1) },
       { bind: "up", title: "Previous worker", group: "Workers", run: () => move(-1) },
-      { bind: "R", title: "Refresh workers", group: "Workers", run: () => void load() },
+      { bind: "R", title: "Refresh workers", group: "Workers", run: () => void props.state.load() },
       { bind: "d", title: "Start project drain", group: "Workers", run: () => void startDrain() },
       { bind: "z", title: "Resize project", group: "Workers", run: () => void resize() },
       { bind: "p", title: "Stop project", group: "Workers", run: () => void stopProject() },
@@ -185,19 +153,21 @@ function WorkersPage(props: {
           </text>
         </box>
         <box flexDirection="row" justifyContent="space-between">
-          <text fg={status()?.lifecycle === "unavailable" ? theme.text.feedback.error.base : theme.text.base}>
-            {loading() ? "Connecting…" : (status()?.lifecycle ?? "unknown")}
-            {status()?.activation?.project ? ` · ${status()!.activation!.project}` : ""}
+          <text
+            fg={props.state.status()?.lifecycle === "unavailable" ? theme.text.feedback.error.base : theme.text.base}
+          >
+            {props.state.loading() ? "Connecting…" : (props.state.status()?.lifecycle ?? "unknown")}
+            {props.state.status()?.activation?.project ? ` · ${props.state.status()!.activation!.project}` : ""}
           </text>
           <text fg={theme.text.muted}>
-            {busy() ? "Working… · " : ""}
+            {props.state.busy() ? "Working… · " : ""}
             {workers().length} workers
             {workers().some((item) => item.display?.failed)
               ? ` · ${workers().filter((item) => item.display?.failed).length} failed`
               : ""}
           </text>
         </box>
-        <Show when={status()?.queue}>
+        <Show when={props.state.status()?.queue}>
           {(queue) => (
             <box>
               <text fg={theme.text.base}>
@@ -210,7 +180,7 @@ function WorkersPage(props: {
             </box>
           )}
         </Show>
-        <Show when={status()?.error}>
+        <Show when={props.state.status()?.error}>
           {(message) => (
             <text fg={theme.text.feedback.error.base} wrapMode="word">
               {message()}
@@ -227,7 +197,7 @@ function WorkersPage(props: {
           <text fg={theme.text.action.secondary.base} onMouseUp={() => void stopProject()}>
             {props.sidebar ? "stop project" : "p stop project"}
           </text>
-          <text fg={theme.text.action.secondary.base} onMouseUp={() => void load()}>
+          <text fg={theme.text.action.secondary.base} onMouseUp={() => void props.state.load()}>
             {props.sidebar ? "refresh" : "R refresh"}
           </text>
         </box>
@@ -250,7 +220,7 @@ function WorkersPage(props: {
             when={workers().length > 0}
             fallback={
               <text fg={theme.text.muted}>
-                {status()?.lifecycle === "unavailable"
+                {props.state.status()?.lifecycle === "unavailable"
                   ? "Worker status is unavailable."
                   : "No live workers. Start the project drain when ready."}
               </text>
@@ -304,32 +274,109 @@ function WorkersPage(props: {
   )
 }
 
+// The tab badge, sidebar and full page observe one project poll and mutation state.
+function createWorkerStatus(context: Plugin.Context, location: () => LocationRef) {
+  const [status, setStatus] = createSignal<Status>()
+  const [loading, setLoading] = createSignal(true)
+  const [busy, setBusy] = createSignal(false)
+  let polling = false
+  let revision = 0
+  const load = async () => {
+    if (busy() || polling) return
+    polling = true
+    const observed = revision
+    try {
+      const result = await context.client.redskilled.status({ location: location(), scope: "project" })
+      if (revision === observed) setStatus(Schema.decodeUnknownSync(Status)(result.data))
+    } catch (cause) {
+      if (revision === observed)
+        setStatus({
+          lifecycle: "unavailable",
+          consent: "unknown",
+          scope: "project",
+          native: true,
+          error: errorMessage(cause),
+        })
+    } finally {
+      polling = false
+      if (revision === observed) setLoading(false)
+    }
+  }
+  const run = async (action: () => Promise<RedskilledStatusOutput>, message: string) => {
+    if (busy()) return
+    const observed = ++revision
+    setBusy(true)
+    try {
+      const result = await action()
+      if (revision === observed) setStatus(Schema.decodeUnknownSync(Status)(result.data))
+      context.ui.toast.show({ variant: "success", message })
+    } catch (cause) {
+      context.ui.toast.show({ variant: "error", message: errorMessage(cause) })
+    } finally {
+      setBusy(false)
+    }
+  }
+  createEffect(
+    on(location, () => {
+      revision++
+      setStatus(undefined)
+      setLoading(true)
+      void load()
+    }),
+  )
+  const timer = setInterval(() => void load(), 5_000)
+  onCleanup(() => clearInterval(timer))
+  return { location, status, loading, busy, load, run }
+}
+
 export default Plugin.define({
   id: "redcode.workers",
   setup(context) {
     const [previous, setPrevious] = createSignal({ ...context.ui.router.current() })
+    const location = createMemo(() => {
+      const current = context.ui.router.current()
+      const source = current.type === "session" ? current : previous()
+      return (
+        (source.type === "session" ? context.data.session.get(source.sessionID)?.location : undefined) ??
+        context.location ??
+        context.data.location.default()
+      )
+    })
+    const state = createWorkerStatus(context, location)
+    context.ui.slot({
+      append: "sidebar.workers.count",
+      render: () => {
+        const workers = () => state.status()?.payload?.workers ?? []
+        const failed = () => workers().filter((worker) => worker.display?.failed).length
+        return (
+          <Show when={workers().length > 0}>
+            <text fg={failed() ? context.theme.text.feedback.error.base : context.theme.text.muted}>
+              {` (${workers().length}${failed() ? ` ✗${failed()}` : ""})`}
+            </text>
+          </Show>
+        )
+      },
+    })
     context.ui.slot({
       append: "sidebar.workers",
       render: (props) => (
-        <Show when={context.data.session.get(props.sessionID)?.location} keyed>
-          {(location) => (
-            <WorkersPage
-              context={context}
-              sidebar
-              width={props.width}
-              location={location}
-              onClose={() => {
-                setPrevious({ ...context.ui.router.current() })
-                context.ui.router.navigate({ type: "plugin", name: ROUTE })
-              }}
-            />
-          )}
-        </Show>
+        <WorkersPage
+          context={context}
+          state={state}
+          sidebar
+          width={props.width}
+          onClose={() => {
+            setPrevious({ ...context.ui.router.current() })
+            context.ui.router.navigate({ type: "plugin", name: ROUTE })
+          }}
+        />
       ),
     })
     context.ui.router.register({
       name: ROUTE,
-      render: () => <WorkersPage context={context} onClose={() => context.ui.router.navigate(previous())} />,
+      render: () => (
+        <WorkersPage context={context} state={state} onClose={() => context.ui.router.navigate(previous())} />
+      ),
     })
     context.ui.slot({
       append: "app",

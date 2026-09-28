@@ -26,3 +26,10 @@ export function clampSessionSidebarWidth(width: number, total: number) {
   const max = Math.max(1, Math.min(SESSION_SIDEBAR_MAX_WIDTH, total - (total > 120 ? 60 : 8)))
   return Math.max(Math.min(30, max), Math.min(width, max))
 }
+
+// Redcode v0.57 used modest fixed increments on wide terminals.
+export function sessionSidebarWidthDefault(columns: number) {
+  if (columns >= 220) return 44
+  if (columns >= 160) return 40
+  return 36
+}
