@@ -4,9 +4,11 @@ import { createResource, onCleanup } from "solid-js"
 import { DialogSelect } from "../ui/dialog-select"
 import { useTheme } from "../context/theme"
 import { errorMessage } from "../util/error"
+import { useLocal } from "../context/local"
 
 export function DialogIntelligence(props: { context: Plugin.Context; setup: () => void }) {
   const theme = useTheme().surface("dialog")
+  const local = useLocal()
   const abort = new AbortController()
   onCleanup(() => abort.abort())
   const [status] = createResource(() => props.context.client["server.intelligence"].status({ signal: abort.signal }))
@@ -24,7 +26,14 @@ export function DialogIntelligence(props: { context: Plugin.Context; setup: () =
     if (status.error) return errorMessage(status.error)
     const current = status()
     if (!current) return "Loading reasoning roles…"
-    return `${current.effective.reasoning} · mode from ${current.effective.source}\nS2: ${model() ? `${model()!.providerID}/${model()!.modelID} (TUI selection)` : principal(current)}\nGlobal S2: ${principal(current)}\nS1: ${current.settings.evaluator ? `${current.settings.evaluator.transport}/${current.settings.evaluator.model}` : "not configured"}`
+    const selected = model()
+    const s2 = selected ? `${selected.providerID}/${selected.modelID}` : principal(current)
+    const s1 = current.effective.reasoning === "dual"
+      ? current.settings.evaluator
+        ? `${current.settings.evaluator.transport}/${current.settings.evaluator.model}`
+        : "not configured"
+      : "off"
+    return `${current.effective.reasoning} · mode from ${current.effective.source}${current.effective.source === "flag" ? ` (${current.environment})` : ""}\nS2 next prompt: ${s2} (${local.model.source()})\nS2 global default: ${principal(current)}\nS1: ${s1}`
   }
   return (
     <DialogSelect

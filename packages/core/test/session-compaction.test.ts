@@ -33,6 +33,17 @@ import { asc, eq } from "drizzle-orm"
 import { testEffect } from "./lib/effect"
 
 let requests: LLMRequest[] = []
+const summary = [
+  "## Objective", "- Continue the user's work.",
+  "## Requirements", "- Preserve the user's constraints.",
+  "## Decisions", "- (none)",
+  "## Work State", "### Completed", "- (none)",
+  "### Active", "- Continue the task.",
+  "### Blocked", "- (none)",
+  "## Next Move", "1. Continue from the checkpoint.",
+  "## Relevant Files", "- (none)",
+  "## Important Context", "- (none)",
+].join("\n")
 const model = LanguageModel.make({
   id: "summary-model",
   provider: "test",
@@ -52,7 +63,7 @@ const client = Layer.mock(LLMClient.Service)({
   stream: (request: LLMRequest) => {
     requests.push(request)
     return Stream.make(
-      LLMEvent.textDelta({ id: "summary", text: "## Objective\n- manual summary" }),
+      LLMEvent.textDelta({ id: "summary", text: summary }),
       LLMEvent.stepFinish({
         index: 0,
         reason: { normalized: "stop" },
@@ -104,6 +115,38 @@ test("compaction prompt preserves detailed work state and relevant files", () =>
   expect(prompt).toContain("### Active")
   expect(prompt).toContain("### Blocked")
   expect(prompt).toContain("## Relevant Files")
+})
+
+test("a generated checkpoint needs complete, ordered, nonempty sections", () => {
+  expect(SessionCompaction.validSummary(summary)).toBe(true)
+  expect(SessionCompaction.validSummary("## Objective\n- only one section")).toBe(false)
+  expect(SessionCompaction.validSummary(summary.replace("## Important Context\n- (none)", "## Important Context"))).toBe(false)
+  expect(SessionCompaction.validSummary(summary.replace("## Requirements", "## Wrong Heading"))).toBe(false)
+})
+
+test("ineffective automatic checkpoints pause durably for the same user request", () => {
+  const first = SessionCompaction.nextGuard({ ineffective: 0 }, "user-1", 86_000, 100_000)
+  const second = SessionCompaction.nextGuard(first, "user-1", 88_000, 100_000)
+  expect(SessionCompaction.guardPaused(second, "user-1")).toBe(true)
+  expect(SessionCompaction.guardPaused(second, "user-2")).toBe(false)
+  expect(SessionCompaction.guardFromMetadata({ compaction: {
+    request: second.request ?? "",
+    ineffective: second.ineffective,
+    paused: { after: second.paused ?? "", at: 1 },
+  } })).toEqual(second)
+  expect(SessionCompaction.nextGuard(second, "user-2", 87_000, 100_000).ineffective).toBe(1)
+  expect(SessionCompaction.nextGuard(second, "user-1", 80_000, 100_000).ineffective).toBe(0)
+})
+
+test("deterministic anchors preserve user wording and file paths within a fixed budget", () => {
+  const messages = [
+    SessionMessage.User.make({ id: SessionMessage.ID.create(), type: "user", text: "Fix ./src/main.ts for #42", time: { created: DateTime.makeUnsafe(0) } }),
+  ]
+  const anchors = SessionCompaction.buildAnchors(messages)
+  expect(anchors).toContain("Fix ./src/main.ts for #42")
+  expect(anchors).toContain("./src/main.ts")
+  expect(anchors).toContain("#42")
+  expect(SessionCompaction.stripAnchors(`${summary}\n\n${anchors}`)).toBe(summary)
 })
 
 it.effect("compaction describes tool media without embedding base64", () =>
@@ -166,6 +209,32 @@ test("compaction prompts prohibit task execution", () => {
   for (const update of [false, true])
     expect(SessionCompaction.buildPrompt(update)).toContain("Do not continue the task or call tools")
 })
+
+it.effect("automatic compaction preserves history when a checkpoint would not reduce it", () =>
+  Effect.gen(function* () {
+    const compaction = yield* SessionCompaction.Service
+    const session = yield* insertSession(Session.ID.make("ses_non_reducing_compaction"))
+    const messages = [
+      SessionMessage.User.make({
+        id: SessionMessage.ID.create(), type: "user", text: "Continue.",
+        time: { created: DateTime.makeUnsafe(0) },
+      }),
+      Schema.decodeUnknownSync(SessionMessage.Assistant)({
+        id: SessionMessage.ID.create(), type: "assistant", agent: Agent.defaultID,
+        model: { id: "summary-model", providerID: "test" },
+        content: [{ type: "text", text: "Okay." }],
+        tokens: { input: 180_000, output: 0, reasoning: 0, cache: { read: 0, write: 0 } },
+        time: { created: DateTime.makeUnsafe(1), completed: DateTime.makeUnsafe(1) },
+      }),
+    ]
+    expect(yield* compaction.compact({ reason: "auto", context: loaded(session, messages) })).toMatchObject({
+      status: "failed",
+      error: { message: "Compaction summary did not reduce the conversation" },
+    })
+    const stored = yield* (yield* SessionStore.Service).context(session.id)
+    expect(stored.some((message) => message.type === "compaction" && message.status === "failed")).toBe(true)
+  }),
+)
 
 it.effect("auto compaction estimates current content against the buffered prompt ceiling", () =>
   Effect.gen(function* () {
@@ -468,9 +537,7 @@ it.effect("manual compaction summarizes short context instead of no-op", () =>
     expect(yield* compactManually(session, messages, SessionMessage.ID.make("msg_manual_compaction"))).toEqual({
       status: "completed",
     })
-    expect(Array.from(yield* Fiber.join(delta)).map((event) => event.data.text)).toEqual([
-      "## Objective\n- manual summary",
-    ])
+    expect(Array.from(yield* Fiber.join(delta)).map((event) => event.data.text)).toEqual([summary])
 
     expect(requests).toHaveLength(1)
     expect(requests[0]?.promptCacheKey).toBe(parentID)
@@ -495,7 +562,7 @@ it.effect("manual compaction summarizes short context instead of no-op", () =>
       {
         type: "compaction",
         reason: "manual",
-        summary: "## Objective\n- manual summary",
+        summary: expect.stringContaining(summary),
         recent: "",
         cost: 0.0000233,
         tokens: { input: 10, output: 4, reasoning: 2, cache: { read: 3, write: 2 } },

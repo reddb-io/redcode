@@ -5,7 +5,7 @@ import { Effect, Option, Schema } from "effect"
 import { Intelligence } from "@opencode/schema/intelligence"
 import { Router } from "@opencode/schema/router"
 import { Credential } from "../credential.js"
-import { IntelligenceEvaluation } from "./evaluation.js"
+import { redRouterEndpoint } from "./red-router-endpoint.js"
 
 const decodeRecommendation = Schema.decodeUnknownOption(Router.Recommendation)
 const cache = new Map<string, { expires: number; value: Intelligence.DetectedRouter | undefined }>()
@@ -22,14 +22,8 @@ export const detect = Effect.fn("IntelligenceRouter.detect")(function* (connecti
         ? connection.value.access
         : process.env.RED_ROUTER_API_KEY
   if (!key) return
-  const baseURL =
-    typeof connection?.value.metadata?.baseURL === "string"
-      ? connection.value.metadata.baseURL
-      : IntelligenceEvaluation.evaluatorPreset("red-router").baseURL
-  if (!URL.canParse(baseURL)) return
-  const url = new URL(baseURL)
-  if (!["http:", "https:"].includes(url.protocol) || url.username || url.password || url.search || url.hash) return
-  const base = url.href.replace(/\/+$/, "")
+  const base = redRouterEndpoint(connection)
+  if (!base) return
   const cacheKey = `${base}\n${createHash("sha256").update(key).digest("hex")}`
   const cached = cache.get(cacheKey)
   if (cached && cached.expires > Date.now()) return cached.value

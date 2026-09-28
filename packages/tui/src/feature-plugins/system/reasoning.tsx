@@ -1,6 +1,6 @@
 import type { IntelligenceStatus } from "@opencode/client"
 import { Plugin } from "@opencode/plugin/tui"
-import { createResource, createSignal, onCleanup, Show } from "solid-js"
+import { createResource, createSignal, onCleanup } from "solid-js"
 import { useLocal } from "../../context/local"
 import { DialogDesignList } from "../../component/dialog-design-list"
 import { DialogIntelligence } from "../../component/dialog-intelligence"
@@ -23,6 +23,7 @@ export default Plugin.define({
           if (busy()) return
           setBusy(true)
           void configureReasoning(context, (settings) => {
+            void local.model.refreshDefault()
             if (settings.principal)
               local.model.set(
                 { providerID: settings.principal.providerID, modelID: settings.principal.id },
@@ -123,19 +124,18 @@ function IntelligenceIndicator(props: {
     props.error ||
     Boolean(history.error) ||
     (!history.error && ["unavailable", "inconclusive", "needs_revision"].includes(history()?.[0]?.decision ?? ""))
+  const model = () => props.context.ui.model.current()
   return (
-    <Show when={props.error || pending() || props.status?.effective.reasoning === "dual"}>
-      <text
-        fg={warning() ? props.context.theme.text.feedback.warning.base : props.context.theme.text.muted}
-        wrapMode="none"
-        onMouseUp={() => props.context.keymap.dispatch(pending() ? "intelligence.setup" : "intelligence.status")}
-      >
-        {props.error
-          ? "S1/S2 unavailable"
-          : pending()
-            ? "S1/S2 setup"
-            : `S1 ${Locale.truncate(props.status?.settings.evaluator?.model ?? "unconfigured", 18)}${warning() ? " !" : ""}`}
-      </text>
-    </Show>
+    <text
+      fg={warning() ? props.context.theme.text.feedback.warning.base : props.context.theme.text.muted}
+      wrapMode="none"
+      onMouseUp={() => props.context.keymap.dispatch(pending() ? "intelligence.setup" : "intelligence.status")}
+    >
+      {props.error
+        ? "S1/S2 offline"
+        : pending()
+          ? "S1/S2 setup"
+          : `S2 ${Locale.truncate(model()?.modelID ?? props.status?.settings.principal?.id ?? "unset", 14)} · S1 ${props.status?.effective.reasoning === "dual" ? Locale.truncate(props.status?.settings.evaluator?.model ?? "unset", 14) : "off"}${warning() ? " !" : ""}`}
+    </text>
   )
 }

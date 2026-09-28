@@ -3,6 +3,7 @@ import { Effect, Option, Schedule, Schema, Stream } from "effect"
 import { Bus } from "../../bus.js"
 import { Credential } from "../../credential.js"
 import { IntelligenceEvaluation } from "../../intelligence/evaluation.js"
+import { redRouterEndpoint } from "../../intelligence/red-router-endpoint.js"
 import { Integration } from "../../integration.js"
 import { KV } from "../../kv.js"
 import { Model } from "../../model.js"
@@ -60,18 +61,10 @@ export const RedRouterPlugin = define({
             ? stored.value.access
             : process.env.RED_ROUTER_API_KEY
       if (!key) return
-      const baseURL =
-        stored?.value.type === "key" && typeof stored.value.configuration?.baseURL === "string"
-          ? stored.value.configuration.baseURL
-          : typeof stored?.value.metadata?.baseURL === "string"
-            ? stored.value.metadata.baseURL
-            : (process.env.RED_ROUTER_BASE_URL ?? IntelligenceEvaluation.evaluatorPreset("red-router").baseURL)
-      if (!URL.canParse(baseURL)) return
-      const url = new URL(baseURL)
-      if (!["http:", "https:"].includes(url.protocol) || url.username || url.password || url.search || url.hash) return
-      url.pathname = url.pathname.replace(/\/+$/, "").replace(/\/models$/, "") || "/v1"
+      const baseURL = redRouterEndpoint(stored)
+      if (!baseURL) return
       return {
-        baseURL: url.href.replace(/\/+$/, ""),
+        baseURL,
         key,
         integrationID: stored?.integrationID ?? Integration.ID.make(providerID),
       } satisfies Connection

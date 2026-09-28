@@ -8,6 +8,7 @@ import { Context, Effect, Layer, Schedule, Schema } from "effect"
 import { Credential } from "../credential.js"
 import { IntelligenceEvaluation } from "./evaluation.js"
 import { IntelligenceSettings } from "./settings.js"
+import { redRouterEndpoint } from "./red-router-endpoint.js"
 
 const make = Effect.gen(function* () {
   const credentials = yield* Credential.Service
@@ -242,11 +243,14 @@ function belongs(evaluator: Intelligence.Evaluator, credential: Credential.Info)
       metadata?.intelligenceTransport === evaluator.transport &&
       metadata.intelligenceBaseURL === new URL(evaluator.baseURL).href.replace(/\/$/, "")
     )
-  const baseURL = stringMetadata(metadata, "baseURL") ?? IntelligenceEvaluation.evaluatorPreset(evaluator.transport).baseURL
+  const baseURL =
+    evaluator.transport === "red-router"
+      ? redRouterEndpoint(credential)
+      : (stringMetadata(metadata, "baseURL") ?? IntelligenceEvaluation.evaluatorPreset(evaluator.transport).baseURL)
   return (
     (providerIntegrations(evaluator.transport).some((id) => credential.integrationID === Integration.ID.make(id)) ||
       (evaluator.transport === "red-router" && metadata?.router === "red-router")) &&
-    sameEndpoint(baseURL, evaluator.baseURL)
+    baseURL !== undefined && sameEndpoint(baseURL, evaluator.baseURL)
   )
 }
 

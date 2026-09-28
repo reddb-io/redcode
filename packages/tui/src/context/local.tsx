@@ -1,7 +1,7 @@
 import { createStore } from "solid-js/store"
 import { dedupeWith } from "effect/Array"
 import { createSimpleContext } from "./helper"
-import { batch, createMemo, onCleanup } from "solid-js"
+import { batch, createMemo, createResource, onCleanup } from "solid-js"
 import { useEvent } from "./event"
 import path from "path"
 import { useTuiPaths } from "./runtime"
@@ -24,6 +24,7 @@ import { useRoute } from "./route"
 import { useData } from "./data"
 import { usePermission } from "./permission"
 import { useLocation } from "./location"
+import { useClient } from "./client"
 import { parse } from "../util/model"
 
 export const { use: useLocal, provider: LocalProvider } = createSimpleContext({
@@ -38,6 +39,7 @@ export const { use: useLocal, provider: LocalProvider } = createSimpleContext({
     const event = useEvent()
     const permission = usePermission()
     const location = useLocation()
+    const client = useClient()
 
     const models = () => data.location.model.list(location.ref)
     const providers = () => data.location.provider.list(location.ref)
@@ -139,6 +141,7 @@ export const { use: useLocal, provider: LocalProvider } = createSimpleContext({
 
     function createModel() {
       type ModelSelection = ModelPreferenceModel & { variant?: string }
+      const [reasoningStatus, reasoning] = createResource(() => client.api["server.intelligence"].status())
       const [preferences, setPreferences] = createStore<ModelPreference & { ready: boolean }>({
         ready: false,
         recent: [],
@@ -194,6 +197,10 @@ export const { use: useLocal, provider: LocalProvider } = createSimpleContext({
         const configured = configuredModel()
         if (configured && isModelValid(configured)) return configured
 
+        const principal = reasoningStatus()?.settings.principal
+        if (principal && isModelValid({ providerID: principal.providerID, modelID: principal.id }))
+          return { providerID: principal.providerID, modelID: principal.id }
+
         for (const item of preferences.recent) {
           if (isModelValid(item)) {
             return item
@@ -229,6 +236,35 @@ export const { use: useLocal, provider: LocalProvider } = createSimpleContext({
         if (!selection) return
         return { providerID: selection.providerID, modelID: selection.modelID }
       })
+
+      function selectionSource() {
+        const current = agent.current()
+        if (route.data.type === "session") {
+          const session = data.session.get(route.data.sessionID)
+          const draft = current && selectionState.selectionBySessionAgent[route.data.sessionID]?.[current.id]
+          if (draft && isModelValid(draft))
+            return "TUI selection"
+          if (
+            session?.model &&
+            (!session.agent || session.agent === current?.id) &&
+            isModelValid({ providerID: session.model.providerID, modelID: session.model.id })
+          )
+            return "session model"
+        }
+        const selected = current && selectionState.newSessionModelByLocationAgent[locationAgentKey(current.id)]
+        if (selected && isModelValid(selected))
+          return "TUI selection"
+        if (current?.model && isModelValid({ providerID: current.model.providerID, modelID: current.model.id }))
+          return "agent model"
+        if (args.model && isModelValid(parse(args.model))) return "CLI argument"
+        const configured = configuredModel()
+        if (configured && isModelValid(configured)) return "location config"
+        const principal = reasoningStatus()?.settings.principal
+        if (principal && isModelValid({ providerID: principal.providerID, modelID: principal.id }))
+          return "global S2"
+        if (preferences.recent.some(isModelValid)) return "recent model"
+        return "catalog default"
+      }
 
       function locationAgentKey(agentID: string) {
         const ref = location.ref ?? data.location.default()
@@ -353,6 +389,8 @@ export const { use: useLocal, provider: LocalProvider } = createSimpleContext({
       return {
         current: currentModel,
         selection: currentSelection,
+        source: selectionSource,
+        refreshDefault: reasoning.refetch,
         remember() {
           const current = agent.current()
           const selection = currentSelection()

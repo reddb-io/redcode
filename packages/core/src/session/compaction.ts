@@ -37,6 +37,7 @@ import type { SessionMessage } from "./message.js"
 import { SessionModelRequest } from "./model-request.js"
 import { SessionProviderContext } from "./provider-context.js"
 import { SessionRunnerRetry } from "./runner/retry.js"
+import { SessionStore } from "./store.js"
 import { toLLMMessages } from "./runner/to-llm-message.js"
 import { SessionToolOutputPrune } from "./tool-output-prune.js"
 import { toSessionError } from "./to-session-error.js"
@@ -106,8 +107,83 @@ const UNKNOWN_WINDOW = 200_000
 const TOOL_OUTPUT_MAX_CHARS = 1_250
 const IMAGE_TOKEN_ESTIMATE = 1_500
 const PDF_TOKEN_ESTIMATE = 2_000
+const INEFFECTIVE_LIMIT = 2
+const EFFECTIVE_SHARE = 0.85
+const ANCHOR_OPEN = "<session-anchors>"
+const ANCHOR_CLOSE = "</session-anchors>"
 
-const SUMMARY_TEMPLATE = `You MUST use this format for your response (you may omit sections that aren't applicable). Do not include the <template> tags in your response.
+export type Guard = { readonly request?: string; readonly ineffective: number; readonly paused?: string }
+
+/** The metadata is durable across a process restart and compatible with the legacy pause shape. */
+export function guardFromMetadata(metadata: SessionContext.Loaded["session"]["metadata"]): Guard {
+  const value = metadata?.compaction
+  if (!value || typeof value !== "object" || Array.isArray(value)) return { ineffective: 0 }
+  const data = value as Record<string, unknown>
+  const paused = data.paused
+  const hold = paused && typeof paused === "object" && !Array.isArray(paused)
+    ? paused as Record<string, unknown>
+    : undefined
+  return {
+    request: typeof data.request === "string" ? data.request : typeof data.turn === "string" ? data.turn : undefined,
+    ineffective: typeof data.ineffective === "number" && data.ineffective > 0 ? data.ineffective : 0,
+    paused: typeof hold?.after === "string" ? hold.after : undefined,
+  }
+}
+
+export function nextGuard(current: Guard, request: string | undefined, after: number, ceiling: number): Guard {
+  const ineffective = after < ceiling * EFFECTIVE_SHARE
+    ? 0
+    : (current.request === request ? current.ineffective : 0) + 1
+  return ineffective >= INEFFECTIVE_LIMIT
+    ? { request, ineffective, paused: request ?? "" }
+    : { request, ineffective }
+}
+
+export const guardPaused = (guard: Guard, request: string | undefined) =>
+  guard.paused !== undefined && guard.paused === (request ?? "")
+
+export function stripAnchors(text: string) {
+  const end = text.trimEnd()
+  if (!end.endsWith(ANCHOR_CLOSE)) return text.trim()
+  const start = end.lastIndexOf(ANCHOR_OPEN)
+  return start < 0 ? text.trim() : end.slice(0, start).trim()
+}
+
+/** Verbatim user requests and file references survive a model-written checkpoint under a fixed budget. */
+export function buildAnchors(messages: ReadonlyArray<SessionMessage.Info>, previous?: string) {
+  const users = messages.filter((message) => message.type === "user").map((message) => message.text)
+  const references = users.flatMap((text) =>
+    text.match(/https?:\/\/[^\s<>"'`]+|(?:\.{1,2}\/|~\/)[^\s<>"'`]+|\b[\w.-]+\.[a-zA-Z][\w]{0,5}\b|#\d+/gu) ?? [],
+  )
+  const files = messages.flatMap((message) =>
+    message.type !== "assistant"
+      ? []
+      : message.content.flatMap((part) => {
+          if (part.type !== "tool" || !part.state.input || typeof part.state.input !== "object" || Array.isArray(part.state.input)) return []
+          const input = part.state.input as Record<string, unknown>
+          const path = input.filePath ?? input.file_path ?? input.path
+          return typeof path === "string" && path ? [path] : []
+        }),
+  )
+  const start = previous?.lastIndexOf(ANCHOR_OPEN) ?? -1
+  const prior = start >= 0 && previous?.trimEnd().endsWith(ANCHOR_CLOSE)
+    ? previous.slice(start + ANCHOR_OPEN.length, previous.trimEnd().length - ANCHOR_CLOSE.length).trim()
+    : ""
+  const sections = [
+    users.length ? `User requests, newest first:\n${users.slice(-4).toReversed().map((text) => `- ${JSON.stringify(Array.from(text).slice(0, 600).join(""))}`).join("\n")}` : "",
+    files.length ? `Files seen in tool calls:\n${[...new Set(files)].slice(-40).map((file) => `- ${file}`).join("\n")}` : "",
+    references.length ? `Identifiers from user requests:\n${[...new Set(references)].slice(-40).map((item) => `- ${item}`).join("\n")}` : "",
+    prior ? `Earlier anchors:\n${prior}` : "",
+  ].filter(Boolean)
+  if (!sections.length) return ""
+  const content = sections.join("\n\n")
+  const points = Array.from(content)
+  const head = points.slice(0, 16_000).join("")
+  const bounded = Token.estimate(head) <= 4_000 ? head : points.slice(0, 8_000).join("")
+  return `${ANCHOR_OPEN}\n${bounded.replace(/<(\/?)(session-anchors)/giu, "‹$1$2")}\n${ANCHOR_CLOSE}`
+}
+
+const SUMMARY_TEMPLATE = `You MUST use every section in this format. Write "(none)" when a section does not apply. Do not include the <template> tags in your response.
 <template>
 ## Objective
 - [one or two brief sentences describing what the user is trying to accomplish]
@@ -186,6 +262,30 @@ const NUDGE =
 
 /** Summaries written with the previous template carry this catch-all heading. */
 const LEGACY_HEADING = "## Additional Context"
+const SUMMARY_HEADINGS = [
+  "## Objective",
+  "## Requirements",
+  "## Decisions",
+  "## Work State",
+  "### Completed",
+  "### Active",
+  "### Blocked",
+  "## Next Move",
+  "## Relevant Files",
+  "## Important Context",
+]
+
+/** A partial checkpoint must never replace the history it was meant to preserve. */
+export function validSummary(text: string) {
+  const lines = text.replaceAll("\r\n", "\n").split("\n")
+  const positions = SUMMARY_HEADINGS.map((heading) => lines.findIndex((line) => line.trim() === heading))
+  return positions.every(
+    (position, index) =>
+      position >= 0 &&
+      (index === 0 || position > positions[index - 1]!) &&
+      (index === 3 || lines.slice(position + 1, positions[index + 1] ?? lines.length).some((line) => line.trim())),
+  )
+}
 
 export const layer = Layer.effect(
   Service,
@@ -198,6 +298,7 @@ export const layer = Layer.effect(
     const config = yield* Config.Service
     const hooks = yield* HookRuntime.Service
     const guards = yield* SessionGuardLog.Service
+    const store = yield* SessionStore.Service
 
     const state = State.create<Settings, Editor>({
       name: "session-compaction",
@@ -226,6 +327,16 @@ export const layer = Layer.effect(
         learned && learned > 0 ? { ...declared, input: catalog > 0 ? Math.min(catalog, learned) : learned } : declared
       const ceiling = calculateCeiling(limit, settings.buffer)
       if (trigger.reason === "auto" && !due(context, ceiling, observed)) return { status: "skipped" }
+      const session = yield* store.get(context.session.id)
+      const request = (yield* store.messages({ sessionID: context.session.id, type: "user", limit: 1 })).at(0)?.id
+      if (trigger.reason !== "manual" && guardPaused(guardFromMetadata(session?.metadata), request))
+        return {
+          status: "failed",
+          error: {
+            type: "compaction.unavailable",
+            message: "Automatic compaction paused after two ineffective checkpoints. Send a new message or run /compact.",
+          },
+        }
       // An unknown window never triggers auto compaction, but the compaction request still needs a size to aim for.
       const cap = Number.isFinite(ceiling)
         ? ceiling
@@ -272,7 +383,7 @@ export const layer = Layer.effect(
                 }),
             }),
         Effect.matchEffect({
-          onSuccess: (result) => publish(trigger, result),
+          onSuccess: (result) => publish(trigger, result, ceiling, request),
           onFailure: (failure) => publish(trigger, failure),
         }),
       )
@@ -324,8 +435,6 @@ export const layer = Layer.effect(
 
       const previous = previousCompaction(context.messages)
       const prompt = buildPrompt(previous !== undefined, previous?.summary.includes(LEGACY_HEADING) ?? false)
-      const headings = SUMMARY_TEMPLATE.split("\n").filter((line) => line.startsWith("##"))
-      const filled = (text: string) => text.split("\n").some((line) => headings.includes(line.trim()))
       const prepared = yield* prepare(context, split.older, budget)
 
       // Hooks saw the request without the summary prompt, so it is appended here. A reply that ignores the
@@ -334,23 +443,46 @@ export const layer = Layer.effect(
         Effect.gen(function* () {
           const prompted = LLMRequest.update(request, { messages: [...request.messages, Message.user(prompt)] })
           const reply = yield* stream(context, prompted, prepared.options)
-          if (filled(reply.text)) return { ...reply, recent: split.recent }
+          if (validSummary(reply.text)) return { ...reply, recent: split.recent }
 
           const nudged = LLMRequest.update(prompted, { messages: [...prompted.messages, Message.user(NUDGE)] })
           const retry = yield* stream(context, nudged, prepared.options)
-          if (filled(retry.text)) return { ...retry, recent: split.recent }
+          if (validSummary(retry.text)) return { ...retry, recent: split.recent }
           return yield* Effect.fail<Failure>({
             error: {
               type: "compaction.failed",
               message: retry.text.trim()
-                ? "Compaction summary did not match the required template"
+                ? "Compaction summary is incomplete or does not match the required template"
                 : "Compaction produced no summary",
             },
           })
         })
 
       const overhead = Token.estimate(prompt) + Token.estimate(NUDGE)
-      return yield* deliver(trigger, prepared, split.recent, budget - overhead, send)
+      const result = yield* deliver(trigger, prepared, split.recent, budget - overhead, send)
+      // Explicit hook results own their format. Generated checkpoints must retain the full template.
+      if (!prepared.event.result && !validSummary(result.text))
+        return yield* Effect.fail<Failure>({
+          error: { type: "compaction.failed", message: "Compaction summary is incomplete or does not match the required template" },
+        })
+      const source = split.older.reduce(
+        (total, message) =>
+          total +
+          Token.estimate(
+            message.type === "compaction" && message.status === "completed"
+              ? `${message.summary}\n${message.recent}`
+              : messageToText(message),
+          ),
+        0,
+      )
+      const text = prepared.event.result
+        ? result.text
+        : [stripAnchors(result.text), buildAnchors(split.older, previous?.summary)].filter(Boolean).join("\n\n")
+      if (trigger.reason !== "manual" && !prepared.event.result && source > 0 && Token.estimate(text) >= source)
+        return yield* Effect.fail<Failure>({
+          error: { type: "compaction.failed", message: "Compaction summary did not reduce the conversation" },
+        })
+      return { ...result, text }
     })
 
     /**
@@ -595,10 +727,11 @@ export const layer = Layer.effect(
                   new AIError({ reason: new UnknownProviderError({ message: "Compaction generation failed" }) }),
                 )
               case "length":
-                return unusable({
-                  type: "compaction.failed",
-                  message: "Compaction summary reached the output token limit",
-                })
+                // A provider may stop at its output limit after completing a usable checkpoint.
+                // The structural check in summarize still rejects a cut-off response.
+                return streamed.text.trim()
+                  ? Effect.succeed(streamed)
+                  : unusable({ type: "compaction.failed", message: "Compaction produced no summary" })
               case "content-filter":
                 return unusable({
                   type: "provider.content-filter",
@@ -671,6 +804,8 @@ export const layer = Layer.effect(
     const publish = Effect.fnUntraced(function* (
       trigger: Trigger,
       outcome: Result | Failure,
+      ceiling?: number,
+      request?: string,
     ): Effect.fn.Return<Outcome> {
       const context = trigger.context
       const sessionID = context.session.id
@@ -702,6 +837,29 @@ export const layer = Layer.effect(
         },
         { metadata: outcome.metadata },
       )
+      const session = yield* store.get(sessionID)
+      const metadata = { ...session?.metadata }
+      if (trigger.reason === "manual") {
+        if (metadata.compaction !== undefined) {
+          delete metadata.compaction
+          yield* bus.publish(SessionEvent.MetadataUpdated, { sessionID, metadata })
+        }
+      } else if (!outcome.providerContext && ceiling !== undefined && Number.isFinite(ceiling)) {
+        const base = transcript(context, [])
+        const after =
+          estimateRequest({ system: base.system, tools: context.tools.definitions, messages: [] }) +
+          Token.estimate(outcome.text) + Token.estimate(outcome.recent)
+        const next = nextGuard(guardFromMetadata(metadata), request, after, ceiling)
+        if (next.ineffective > 0 || metadata.compaction !== undefined) {
+          if (next.ineffective === 0) delete metadata.compaction
+          else metadata.compaction = {
+            ...(next.request ? { request: next.request } : {}),
+            ineffective: next.ineffective,
+            ...(next.paused === undefined ? {} : { paused: { after: next.paused, at: Date.now() } }),
+          }
+          yield* bus.publish(SessionEvent.MetadataUpdated, { sessionID, metadata })
+        }
+      }
       return { status: "completed" }
     })
 
@@ -734,6 +892,7 @@ export const node = makeLocationNode({
     modelLimitNode,
     Config.node,
     SessionGuardLog.node,
+    SessionStore.node,
   ],
 })
 

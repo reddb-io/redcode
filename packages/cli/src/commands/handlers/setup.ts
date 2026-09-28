@@ -141,12 +141,10 @@ const configureEvaluator = Effect.fn("cli.setup.evaluator")(function* (
   ))
   const chosen = options[index]
   if (!chosen) return yield* Effect.fail(new Error("System One connection is unavailable"))
-  if (index === 0 && status.router?.evaluator) return { evaluator: status.router.evaluator, key: undefined }
-
   const baseURL = yield* prompt<string>(() =>
     text({
       message: "System One API base URL",
-      initialValue: current?.transport === chosen.evaluator.transport ? current.baseURL : chosen.evaluator.baseURL,
+      initialValue: chosen.evaluator.baseURL,
     }),
   )
   const key = yield* prompt<string>(() =>
@@ -155,9 +153,7 @@ const configureEvaluator = Effect.fn("cli.setup.evaluator")(function* (
   const evaluator: IntelligenceEvaluator = {
     ...chosen.evaluator,
     baseURL,
-    ...(current?.transport === chosen.evaluator.transport && current.baseURL === baseURL && current.credentialID
-      ? { credentialID: current.credentialID }
-      : {}),
+    credentialID: chosen.evaluator.baseURL === baseURL ? chosen.evaluator.credentialID : undefined,
   }
   const discovered = yield* request((signal) =>
     client["server.intelligence"].discover({ evaluator, ...(key ? { apiKey: key } : {}) }, { signal }),
