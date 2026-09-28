@@ -15,6 +15,7 @@ test.each([80, 160])("Redcode opens blank sessions with Context and the activity
     height: 40,
     config: {
       animations: false,
+      debug: { devtools: true },
       tabs: { mode: "off" },
       keybinds: { "session.sidebar.toggle": "f6", "sidebar.tab.next": "f7" },
     },
@@ -99,7 +100,10 @@ test.each([80, 160])("Redcode opens blank sessions with Context and the activity
     },
   })
   await setup.ready
-  await setup.waitForFrame((frame) => frame.includes("Build") && frame.includes("Model"))
+  await setup.waitForFrame(
+    (frame) => frame.includes("Build") && frame.includes("Model") && frame.includes("Server") && frame.includes("Redskilled"),
+  )
+  expect(setup.captureCharFrame()).not.toContain("Fixture worker unavailable")
   expect(created).toHaveLength(1)
   for (const command of ["/new", "/clear", "/new"]) {
     const before = created.length
@@ -132,7 +136,7 @@ test.each([80, 160])("Redcode opens blank sessions with Context and the activity
   setup.mockInput.pressEnter()
   await setup.waitForFrame(
     (frame) =>
-      frame.includes("Subagents") && frame.includes("Workers") && frame.includes("No worker status available"),
+      frame.includes("Subagents") && frame.includes("Workers") && frame.includes("No workers while Redskilled is offline."),
   )
   setup.mockInput.pressEscape()
   await setup.mockInput.typeText("/subagents")
@@ -384,7 +388,7 @@ test.each([
       await setup.waitForFrame(() => setup.renderer.root.findDescendantById("session-sidebar")?.width === expected + 4)
       await setup.mockInput.typeText("/workers")
       setup.mockInput.pressEnter()
-      await setup.waitForFrame((frame) => frame.includes("No worker status available"))
+      await setup.waitForFrame((frame) => frame.includes("No workers while Redskilled is offline."))
     }
     {
       await using setup = await createAppFixture({ state: state.path, width: columns, height: 40, config })
