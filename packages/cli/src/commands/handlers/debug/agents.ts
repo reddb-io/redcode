@@ -11,6 +11,8 @@ export default Runtime.handler(
   Effect.fn("cli.debug.agents")(function* () {
     const endpoint = yield* Service.ensure(yield* ServiceConfig.options())
     const client = OpenCode.make({ baseUrl: endpoint.url, headers: Service.headers(endpoint) })
+    // Agent reads are snapshots; wait for the cold Location to register its agents.
+    yield* Effect.promise(() => client.integration.list({ location: { directory: process.cwd() } }))
     const response = yield* Effect.promise(() => client.agent.list({ location: { directory: process.cwd() } }))
     process.stdout.write(
       JSON.stringify(
