@@ -73,6 +73,18 @@ test.each([80, 160])("Redcode opens real blank sessions and preserves its sideba
           ],
         })
       if (url.pathname === "/api/provider") return json({ location, data: [{ id: "provider", name: "Provider" }] })
+      if (url.pathname === "/api/integration")
+        return json({
+          location,
+          data: [
+            {
+              id: "provider",
+              name: "Provider",
+              methods: [],
+              connections: [{ type: "env", name: "FIXTURE_PROVIDER_KEY" }],
+            },
+          ],
+        })
       if (url.pathname === "/api/redskilled")
         return json({
           location,
@@ -106,7 +118,7 @@ test.each([80, 160])("Redcode opens real blank sessions and preserves its sideba
   await setup.waitForFrame(
     (frame) => frame.includes("Context") && frame.includes("Workers") && frame.includes("Subagents"),
   )
-  await setup.waitForFrame((frame) => frame.includes("Preserve Redcode work") && frame.includes("Waiting for reviewer"))
+  await setup.waitForFrame((frame) => frame.includes("Preserve Redcode work") && /Waiting\s+for reviewer/.test(frame))
   expect(setup.captureCharFrame()).not.toContain("Old completed task")
   expect(setup.captureCharFrame()).toContain("Todo")
   expect(setup.captureCharFrame()).toContain("[•] Preserve Redcode work")
