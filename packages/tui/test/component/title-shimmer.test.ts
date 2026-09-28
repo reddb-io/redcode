@@ -4,8 +4,7 @@ import { createTestRenderer, ManualClock } from "@opentui/core/testing"
 import { TitleShimmerRenderable } from "../../src/component/title-shimmer"
 
 test("shimmer fades in from idle and fades out on unchanged completion", async () => {
-  const clock = new ManualClock()
-  const app = await createTestRenderer({ width: 24, height: 1, useThread: false, clock })
+  const app = await fixture(24, 1)
   const title = new TitleShimmerRenderable(app.renderer, {
     width: 24,
     height: 1,
@@ -19,15 +18,15 @@ test("shimmer fades in from idle and fades out on unchanged completion", async (
     await app.renderOnce()
     const frame = app.captureCharFrame()
     const colors = app.captureSpans()
-    clock.advance(2000)
+    app.clock.advance(2000)
     title.rename = { title: "Compiler cleanup", pending: true }
     await app.renderOnce()
     expect(app.captureSpans()).toEqual(colors)
-    clock.advance(120)
+    app.clock.advance(120)
     await app.renderOnce()
     const middle = app.captureSpans().lines[0].spans.findLast((span) => span.text.trim())?.fg.r ?? 0
     expect(middle).toBeLessThan(colors.lines[0].spans[0].fg.r)
-    clock.advance(120)
+    app.clock.advance(120)
     await app.renderOnce()
     expect(app.captureSpans().lines[0].spans.findLast((span) => span.text.trim())?.fg.r ?? 0).toBeLessThan(middle)
     expect(app.captureSpans()).not.toEqual(colors)
@@ -35,7 +34,7 @@ test("shimmer fades in from idle and fades out on unchanged completion", async (
     title.rename = { title: "Compiler cleanup", pending: false }
     await app.renderOnce()
     expect(app.renderer.root.liveCount).toBe(1)
-    clock.advance(240)
+    app.clock.advance(240)
     await app.renderOnce()
     expect(app.renderer.root.liveCount).toBe(0)
     expect(app.captureSpans()).toEqual(colors)
@@ -49,8 +48,7 @@ test("shimmer fades in from idle and fades out on unchanged completion", async (
 })
 
 test("a feathered wipe keeps the old shimmer moving without dimming the revealed new title", async () => {
-  const clock = new ManualClock()
-  const app = await createTestRenderer({ width: 16, height: 1, useThread: false, clock })
+  const app = await fixture(16, 1)
   const title = new TitleShimmerRenderable(app.renderer, {
     width: 16,
     height: 1,
@@ -63,7 +61,7 @@ test("a feathered wipe keeps the old shimmer moving without dimming the revealed
   app.renderer.root.add(title)
   try {
     await app.renderOnce()
-    clock.advance(600)
+    app.clock.advance(600)
     await app.renderOnce()
     const colors = app.captureSpans()
     title.content = "abcdefghijklmnop"
@@ -71,7 +69,7 @@ test("a feathered wipe keeps the old shimmer moving without dimming the revealed
     await app.renderOnce()
     expect(app.captureCharFrame().trim()).toBe("ABCDEFGHIJKLMNOP")
     expect(app.captureSpans()).toEqual(colors)
-    clock.advance(225)
+    app.clock.advance(225)
     await app.renderOnce()
     expect(app.captureCharFrame().trim()).toBe("abcdefghIJKLMNOP")
     const spans = app.captureSpans().lines[0].spans
@@ -79,7 +77,7 @@ test("a feathered wipe keeps the old shimmer moving without dimming the revealed
     expect(spans.some((span) => span.fg.equals(RGBA.fromHex("#111111")))).toBe(true)
     expect(spans.at(-1)?.fg.toInts()).not.toEqual(colors.lines[0].spans.at(-1)?.fg.toInts())
     expect(spans.every((span) => Boolean(span.attributes & TextAttributes.ITALIC))).toBe(true)
-    clock.advance(225)
+    app.clock.advance(225)
     await app.renderOnce()
     expect(app.captureCharFrame().trim()).toBe("abcdefghijklmnop")
     expect(app.renderer.root.liveCount).toBe(0)
@@ -106,8 +104,7 @@ test("a feathered wipe keeps the old shimmer moving without dimming the revealed
 })
 
 test("native Unicode clipping and shorter replacement leave no split glyphs or old tail", async () => {
-  const clock = new ManualClock()
-  const app = await createTestRenderer({ width: 24, height: 3, useThread: false, clock })
+  const app = await fixture(24, 3)
   const content = "A\u65e5B \u{1f680} cafe\u0301"
   const title = new TitleShimmerRenderable(app.renderer, {
     width: 20,
@@ -131,11 +128,11 @@ test("native Unicode clipping and shorter replacement leave no split glyphs or o
     expect(app.captureCharFrame().split("\n")[0]).toBe(app.captureCharFrame().split("\n")[1])
     title.content = "Short"
     title.rename = { title: "Short", pending: false }
-    clock.advance(200)
+    app.clock.advance(200)
     await app.renderOnce()
     expect(app.captureCharFrame().split("\n")[0].trim()).toBe("Sh B")
     expect(app.captureCharFrame().split("\n")[2]).toContain("untouched")
-    clock.advance(250)
+    app.clock.advance(250)
     await app.renderOnce()
     expect(app.captureCharFrame().split("\n")[0].trim()).toBe("Short")
     expect(app.renderer.root.liveCount).toBe(0)
@@ -143,3 +140,18 @@ test("native Unicode clipping and shorter replacement leave no split glyphs or o
     app.renderer.destroy()
   }
 })
+
+async function fixture(width: number, height: number) {
+  const clock = new ManualClock()
+  const app = await createTestRenderer({ width, height, useThread: false, clock })
+  // Manual frames must not race the renderer's automatic live animation loop.
+  app.renderer.pause()
+  return {
+    ...app,
+    clock,
+    async renderOnce() {
+      await app.waitFor(() => !app.renderer.getSchedulerState().isRendering)
+      await app.renderOnce()
+    },
+  }
+}
