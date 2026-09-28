@@ -28,6 +28,19 @@ jobs:
 
       - uses: ./.github/actions/check-workflows
 
+      - name: Verify independent Redcode release metadata
+        env:
+          REDCODE_BUILD: "1"
+          REDCODE_CHANNEL: latest
+          REDCODE_RELEASE: "1"
+        run: |
+          export REDCODE_VERSION=$(bun -p 'require("./packages/redcode/package.json").version')
+          bun -e '
+            const { Script } = await import("./packages/script/src/index.ts")
+            if (Script.version !== process.env.REDCODE_VERSION || Script.channel !== "latest" || !Script.release)
+              throw new Error("Redcode release metadata does not match its own manifest")
+          '
+
       - name: Validate Changesets
         id: changesets
         run: |

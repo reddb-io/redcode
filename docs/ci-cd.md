@@ -31,6 +31,12 @@ Every release build and validation job checks out the SHA selected by the versio
 job. GitHub tags target that same SHA. All release versions share one concurrency
 group so separate releases cannot publish simultaneously.
 
+Release inputs are `REDCODE_VERSION`, `REDCODE_CHANNEL` and `REDCODE_RELEASE`.
+The shared compiler resolves these from the Redcode build context; Redcode never
+queries the OpenCode registry to choose a version or reads an upstream team roster.
+Local Redcode builds use `packages/redcode/package.json`. No upstream repository
+checkout, remote branch, release, credentials or CI result is required.
+
 ## Changesets release flow
 
 1. Add a Markdown Changeset for `@reddb-io/redcode` with a patch, minor, or major
@@ -144,7 +150,7 @@ fork; retain focused contracts wherever Redcode changes that behavior.
 
 The active CI lints workflow syntax with checksum-pinned actionlint `1.7.12` and
 rejects upstream automation destinations. Package scopes such as `@opencode/core`,
-build variables such as `OPENCODE_VERSION`, attribution, and public compatibility
+compiler constants inside inherited packages, attribution, and public compatibility
 identifiers are valid technical dependencies and are not renamed by this review.
 
 No local test execution is part of this migration workflow. Checks in GitHub

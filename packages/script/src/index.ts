@@ -17,22 +17,37 @@ if (!semver.satisfies(process.versions.bun, expectedBunVersionRange)) {
   throw new Error(`This script requires bun@${expectedBunVersionRange}, but you are using bun@${process.versions.bun}`)
 }
 
-const env = {
-  OPENCODE_CHANNEL: process.env["OPENCODE_CHANNEL"],
-  OPENCODE_BUMP: process.env["OPENCODE_BUMP"],
-  OPENCODE_VERSION: process.env["OPENCODE_VERSION"],
-  OPENCODE_RELEASE: process.env["OPENCODE_RELEASE"],
-}
+const redcode =
+  process.env.REDCODE_BUILD === "1" ||
+  process.env.REDCODE_VERSION !== undefined ||
+  process.env.REDCODE_RELEASE !== undefined ||
+  process.env.REDCODE_CHANNEL !== undefined
+const env = redcode
+  ? {
+      channel: process.env.REDCODE_CHANNEL,
+      bump: undefined,
+      version: process.env.REDCODE_VERSION,
+      release: process.env.REDCODE_RELEASE,
+    }
+  : {
+      channel: process.env.OPENCODE_CHANNEL,
+      bump: process.env.OPENCODE_BUMP,
+      version: process.env.OPENCODE_VERSION,
+      release: process.env.OPENCODE_RELEASE,
+    }
+if (redcode && env.release && !env.version) throw new Error("REDCODE_VERSION is required for a Redcode release")
 const CHANNEL = await (async () => {
-  if (env.OPENCODE_CHANNEL) return env.OPENCODE_CHANNEL
-  if (env.OPENCODE_BUMP) return "latest"
-  if (env.OPENCODE_VERSION && !env.OPENCODE_VERSION.startsWith("0.0.0-")) return "latest"
+  if (env.channel) return env.channel
+  if (env.bump) return "latest"
+  if (env.version && !env.version.startsWith("0.0.0-")) return "latest"
+  if (redcode) return "local"
   return await $`git branch --show-current`.text().then((x) => x.trim())
 })()
 const IS_PREVIEW = CHANNEL !== "latest"
 
 const VERSION = await (async () => {
-  if (env.OPENCODE_VERSION) return env.OPENCODE_VERSION
+  if (env.version) return env.version
+  if (redcode) return (await Bun.file(path.resolve(import.meta.dir, "../../redcode/package.json")).json()).version
   if (IS_PREVIEW) return `0.0.0-${CHANNEL}-${previewBuildNumber()}`
   const version = await fetch("https://registry.npmjs.org/@opencode%2fcli/latest")
     .then((res) => {
@@ -42,7 +57,7 @@ const VERSION = await (async () => {
     .then((data: any) => data.version)
   if (semver.lt(version, "2.0.0")) return "2.0.0"
   const [major, minor, patch] = version.split(".").map((x: string) => Number(x) || 0)
-  const t = env.OPENCODE_BUMP?.toLowerCase()
+  const t = env.bump?.toLowerCase()
   if (t === "major") return `${major + 1}.0.0`
   if (t === "minor") return `${major}.${minor + 1}.0`
   return `${major}.${minor}.${patch + 1}`
@@ -58,13 +73,15 @@ function previewBuildNumber() {
 
 const bot = ["actions-user", "opencode", "opencode-agent[bot]"]
 const teamPath = path.resolve(import.meta.dir, "../../../.github/TEAM_MEMBERS")
-const team = [
-  ...(await Bun.file(teamPath)
-    .text()
-    .then((x) => x.split(/\r?\n/).map((x) => x.trim()))
-    .then((x) => x.filter((x) => x && !x.startsWith("#")))),
-  ...bot,
-]
+const team = redcode
+  ? ["github-actions[bot]"]
+  : [
+      ...(await Bun.file(teamPath)
+        .text()
+        .then((x) => x.split(/\r?\n/).map((x) => x.trim()))
+        .then((x) => x.filter((x) => x && !x.startsWith("#")))),
+      ...bot,
+    ]
 
 export const Script = {
   get channel() {
@@ -77,10 +94,10 @@ export const Script = {
     return IS_PREVIEW
   },
   get release(): boolean {
-    return !!env.OPENCODE_RELEASE
+    return !!env.release
   },
   get team() {
     return team
   },
 }
-console.log(`opencode script`, JSON.stringify(Script, null, 2))
+console.log(`${redcode ? "redcode" : "opencode"} script`, JSON.stringify(Script, null, 2))

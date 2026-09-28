@@ -10,8 +10,8 @@ const product = "redcode"
 const packageName = "@reddb-io/redcode"
 const packOnly = process.argv.includes("--pack-only")
 const dir = path.resolve(import.meta.dir, "..")
-if (Script.release && !process.env.OPENCODE_VERSION)
-  throw new Error("OPENCODE_VERSION must be set explicitly for a Redcode release")
+if (Script.release && !process.env.REDCODE_VERSION)
+  throw new Error("REDCODE_VERSION must be set explicitly for a Redcode release")
 
 process.chdir(dir)
 
