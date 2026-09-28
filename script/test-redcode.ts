@@ -1,6 +1,6 @@
 import path from "node:path"
 
-// Product contracts owned by this fork. The complete inherited suite remains opt-in in test.yml.
+// Product contracts owned by this fork. The complete inherited suite remains opt-in in redcode.yml.
 const suites = {
   core: [
     "test/agent.test.ts",

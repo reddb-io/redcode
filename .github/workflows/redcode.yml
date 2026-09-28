@@ -1,6 +1,10 @@
 name: redcode
 
 on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
   workflow_dispatch:
     inputs:
       version:
@@ -12,10 +16,14 @@ on:
         required: true
         default: false
         type: boolean
+      upstream_full:
+        description: "Run inherited workspace tests for an upstream upgrade investigation"
+        default: false
+        type: boolean
 
 concurrency:
-  group: redcode-release
-  cancel-in-progress: false
+  group: redcode-${{ github.event_name == 'workflow_dispatch' && 'release' || github.event.pull_request.number || github.ref }}
+  cancel-in-progress: ${{ github.event_name != 'workflow_dispatch' }}
 
 permissions:
   contents: read
@@ -27,6 +35,7 @@ env:
 
 jobs:
   plan:
+    if: github.repository == 'reddb-io/redcode'
     runs-on: ubuntu-latest
     timeout-minutes: 15
     permissions:
@@ -36,6 +45,7 @@ jobs:
       sha: ${{ steps.prepare.outputs.sha }}
     steps:
       - name: Validate release owner and branch
+        if: github.event_name == 'workflow_dispatch'
         env:
           EXPECTED_VERSION: ${{ inputs.version }}
         run: |
@@ -48,17 +58,18 @@ jobs:
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
         with:
           fetch-depth: 0
-          token: ${{ secrets.RELEASE_PAT || github.token }}
+          token: ${{ inputs.publish && secrets.RELEASE_PAT || github.token }}
       - uses: ./.github/actions/setup-bun
       - name: Prepare Changesets release on main
         id: prepare
         env:
           EXPECTED_VERSION: ${{ inputs.version }}
           PUBLISH: ${{ inputs.publish }}
+          PREPARE: ${{ github.event_name == 'workflow_dispatch' }}
         run: |
           set -euo pipefail
           bun run release:status --output /tmp/redcode-release-plan.json
-          if [ "$(bun -p 'require("/tmp/redcode-release-plan.json").releases.length > 0')" = 'true' ]; then
+          if [ "$PREPARE" = 'true' ] && [ "$(bun -p 'require("/tmp/redcode-release-plan.json").releases.length > 0')" = 'true' ]; then
             bun run release:version
           fi
           version=$(bun -p 'require("./packages/redcode/package.json").version')
@@ -67,7 +78,9 @@ jobs:
             echo "::error::Changesets selected $version, but the requested version was $EXPECTED_VERSION."
             exit 1
           fi
-          bun install --lockfile-only --ignore-scripts
+          if [ "$PREPARE" = 'true' ]; then
+            bun install --lockfile-only --ignore-scripts
+          fi
           if [ "$PUBLISH" = 'true' ]; then
             git config user.name 'github-actions[bot]'
             git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
@@ -90,6 +103,7 @@ jobs:
           } >> "$GITHUB_STEP_SUMMARY"
 
   verify:
+    name: typecheck
     needs: plan
     runs-on: ubuntu-latest
     timeout-minutes: 60
@@ -105,6 +119,18 @@ jobs:
         shell: bash
         run: |
           [[ "$REDCODE_VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]
+      - name: Verify independent Redcode release metadata
+        env:
+          REDCODE_BUILD: "1"
+          REDCODE_CHANNEL: latest
+          REDCODE_RELEASE: "1"
+        run: |
+          export REDCODE_VERSION=$(bun -p 'require("./packages/redcode/package.json").version')
+          bun -e '
+            const { Script } = await import("./packages/script/src/index.ts")
+            if (Script.version !== process.env.REDCODE_VERSION || Script.channel !== "latest" || !Script.release)
+              throw new Error("Redcode release metadata does not match its own manifest")
+          '
       - name: Lint and typecheck
         run: bun run check
       - name: Verify generated client
@@ -113,22 +139,54 @@ jobs:
 
   tests:
     needs: plan
-    name: Redcode contracts
-    runs-on: ubuntu-latest
-    timeout-minutes: 60
+    name: unit (${{ matrix.name }})
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { name: linux, host: ubuntu-latest }
+          - { name: windows, host: windows-latest }
+    runs-on: ${{ matrix.host }}
+    timeout-minutes: 30
+    defaults:
+      run:
+        shell: bash
+    env:
+      NODE_OPTIONS: ${{ matrix.name == 'windows' && '--max-old-space-size=4096' || '' }}
+      OPENCODE_EXPERIMENTAL_DISABLE_FILEWATCHER: ${{ matrix.name == 'windows' && 'true' || 'false' }}
     steps:
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
         with:
           ref: ${{ needs.plan.outputs.sha }}
       - uses: ./.github/actions/setup-bun
-      - name: Install ripgrep for offline Core tests
+      - name: Configure test git identity
+        run: |
+          git config --global user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git config --global user.name "github-actions[bot]"
+      - name: Install test dependencies
+        if: runner.os == 'Linux'
         run: |
           sudo apt-get update
           sudo apt-get install --yes ripgrep
+          if [ "${{ inputs.upstream_full }}" = 'true' ]; then
+            sudo apt-get install --yes ffmpeg
+          fi
       - name: Test Redcode product contracts
-        run: bun run script/test-redcode.ts
+        run: |
+          if [ "${{ inputs.upstream_full }}" = 'true' ]; then
+            GITHUB_ACTIONS=false bun turbo test --concurrency=2
+          else
+            bun run script/test-redcode.ts
+          fi
+      - name: Verify compiled service lifecycle
+        working-directory: packages/cli
+        timeout-minutes: 10
+        run: |
+          bun run script/build.ts --single --skip-install --skip-web-ui
+          bun run script/service-smoke.ts
 
   sidecar:
+    if: github.event_name == 'workflow_dispatch'
     needs: plan
     strategy:
       fail-fast: false
@@ -213,6 +271,7 @@ jobs:
           compression-level: 0
 
   design:
+    if: github.event_name == 'workflow_dispatch'
     needs: plan
     runs-on: ubuntu-latest
     timeout-minutes: 60
@@ -245,6 +304,7 @@ jobs:
           compression-level: 0
 
   build:
+    if: github.event_name == 'workflow_dispatch'
     needs: [plan, sidecar]
     runs-on: ubuntu-latest
     timeout-minutes: 60
