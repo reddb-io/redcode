@@ -229,6 +229,11 @@ export const Assistant = Schema.Struct({
   retry: AssistantRetry.pipe(optional),
   time: Schema.Struct({
     created: DateTimeUtcFromMillis,
+    /**
+     * When the first text, reasoning or tool input of this attempt arrived, projected from the
+     * first such block's start event. With `created` (request dispatch) it gives the latency.
+     */
+    first: DateTimeUtcFromMillis.pipe(optional),
     /** When the provider response body ended, before tool settlement. */
     streamed: DateTimeUtcFromMillis.pipe(optional),
     completed: DateTimeUtcFromMillis.pipe(optional),

@@ -36,6 +36,7 @@ import { SessionEvent } from "../event.js"
 import { SessionMessage } from "../message.js"
 import { SessionModelRequest } from "../model-request.js"
 import { SessionSchema } from "../schema.js"
+import { ProviderFailure } from "../provider-failure.js"
 import { toSessionError } from "../to-session-error.js"
 import { SessionUsage } from "../usage.js"
 import { SessionRunnerModel } from "./model.js"
@@ -288,7 +289,15 @@ export const make = Effect.gen(function* () {
               })
             : undefined
         const llmFailure = streamFailure instanceof AIError ? streamFailure : unknownFinish
-        const llmError = llmFailure && !recorded.providerFailed ? toSessionError(llmFailure) : undefined
+        const llmError =
+          llmFailure && !recorded.providerFailed
+            ? toSessionError(llmFailure, { provider: input.model.ref.providerID, model: input.model.ref.id })
+            : undefined
+        if (llmError)
+          yield* Effect.logWarning("provider request failed", {
+            sessionID: input.sessionID,
+            error: ProviderFailure.describe(llmError),
+          })
         if (streamFailure instanceof StepFailedError) {
           yield* guards.record({
             sessionID: input.sessionID,

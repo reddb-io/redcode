@@ -1,5 +1,7 @@
 import { Plugin } from "@opencode/plugin/tui"
-import { createEffect, createMemo, createResource, For, on, onCleanup } from "solid-js"
+import type { SessionMessageAssistant } from "@opencode/client"
+import { GenerationTiming } from "@opencode/util/generation-timing"
+import { createEffect, createMemo, createResource, For, on, onCleanup, Show } from "solid-js"
 import { contextUsage } from "../../util/session"
 import { Budget } from "../../util/budget"
 
@@ -40,6 +42,14 @@ export function SidebarContext(props: { context: Plugin.Context; sessionID: stri
     return Budget.lines(current.goal.budget, Budget.since(current.view.spent, current.goal.spendStart))
   })
 
+  // The latest step that streamed anything: bright while it streams, muted once it is over.
+  const timing = createMemo(() => {
+    const message = msg().findLast(
+      (item): item is SessionMessageAssistant => item.type === "assistant" && item.time.first !== undefined,
+    )
+    return message ? GenerationTiming.step(message) : undefined
+  })
+
   const state = createMemo(() =>
     contextUsage(msg(), props.context.data.location.model.list(session()?.location), session()?.revert?.messageID),
   )
@@ -54,6 +64,23 @@ export function SidebarContext(props: { context: Plugin.Context; sessionID: stri
       <text fg={theme.text.muted}>{money.format(cost())} spent</text>
       <For each={sessionBudget()}>{(line) => <text fg={theme.text.muted}>budget (with subagents) {line}</text>}</For>
       <For each={goalBudget()}>{(line) => <text fg={theme.text.muted}>goal budget (with subagents) {line}</text>}</For>
+      <Show when={timing()}>
+        {(step) => (
+          <>
+            <text fg={step().done ? theme.text.muted : theme.text.base}>
+              {GenerationTiming.formatLatency(step().latency)} latency
+            </text>
+            {/* Only a real rate is shown: too few tokens or too short a window shows nothing. */}
+            <Show when={step().speed}>
+              {(speed) => (
+                <text fg={step().done ? theme.text.muted : theme.text.base}>
+                  {GenerationTiming.formatRate(speed())}
+                </text>
+              )}
+            </Show>
+          </>
+        )}
+      </Show>
     </box>
   )
 }

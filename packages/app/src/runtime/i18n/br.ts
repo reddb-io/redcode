@@ -892,6 +892,8 @@ export const dict = {
   "context.usage.tokens": "Tokens",
   "context.usage.usage": "Uso",
   "context.usage.cost": "Custo",
+  "context.usage.latency": "Latência",
+  "context.usage.speed": "Velocidade",
   "context.usage.clickToView": "Clique para ver o contexto",
   "context.usage.view": "Ver uso do contexto",
   "language.en": "English",

@@ -11,6 +11,8 @@ import { UpdatePreflight } from "../../services/update-preflight"
 import { Npm } from "@opencode/util/npm"
 import { OPENCODE_ARTIFACT, OPENCODE_CHANNEL, OPENCODE_VERSION } from "../../version"
 import { Env } from "../../env"
+import { BootTrace } from "../../boot-trace"
+import { Logging } from "@opencode/util/observability/logging"
 
 export default Runtime.handler(Commands, (input) =>
   Effect.gen(function* () {
@@ -48,6 +50,9 @@ export default Runtime.handler(Commands, (input) =>
         Effect.promise(() => preflight.fail("Redcode update could not start the new background service")),
       ),
     )
+    BootTrace.mark("server.resolved", {
+      mode: requestedServer !== undefined ? "explicit" : input.standalone ? "standalone" : "service",
+    })
     // Set once the server is resolved so a background service spawned here does not inherit it; each Session's
     // environment carries it to the server instead (an explicit --server receives no Session environment).
     if (input.tmp) process.env.REDCODE_WORKTREE_LOCATION = "tmp"
@@ -69,6 +74,7 @@ export default Runtime.handler(Commands, (input) =>
     const runFork = Effect.runForkWith(context)
     const runPromise = Effect.runPromiseWith(context)
     const service = server.service
+    BootTrace.mark("tui.starting")
     yield* run({
       app: {
         name: process.env.OPENCODE_CLIENT ?? OPENCODE_ARTIFACT,
@@ -120,7 +126,11 @@ export default Runtime.handler(Commands, (input) =>
         prepare: (spec, install = true) => runPromise(install ? npm.add(spec) : npm.resolve(spec)),
       },
       environment: requestedServer === undefined ? Env.session() : undefined,
-      terminalHandoff: () => preflight.finish(),
+      terminalHandoff: () => {
+        const phases = BootTrace.complete(Logging.file(OPENCODE_CHANNEL === "local", OPENCODE_CHANNEL))
+        runFork(Effect.logInfo("boot complete", { phases: phases.map((mark) => BootTrace.format(mark)) }))
+        return preflight.finish()
+      },
       log: (level, message, tags) => {
         const effect =
           level === "debug"

@@ -3,6 +3,8 @@ import { ProgressCircle } from "@opencode/ui/progress-circle"
 import { IconButton } from "@opencode/ui/icon-button"
 import { Tooltip } from "@opencode/ui/tooltip"
 import { createMediaQuery } from "@solid-primitives/media"
+import type { SessionMessageAssistant } from "@opencode/client/promise"
+import { GenerationTiming } from "@opencode/util/generation-timing"
 
 import { useFile } from "@/workspaces/files/model"
 import { useLayout } from "@/shell/state/layout"
@@ -80,6 +82,13 @@ export function SessionContextUsage(props: SessionContextUsageProps) {
       usage: model?.limit.context ? Math.round((total / model.limit.context) * 100) : null,
     }
   })
+  // The latest step that streamed anything, read with the same rules as the TUI sidebar.
+  const timing = createMemo(() => {
+    const message = messages().findLast(
+      (item): item is SessionMessageAssistant => item.type === "assistant" && item.time.first !== undefined,
+    )
+    return message ? GenerationTiming.step(message) : undefined
+  })
   const cost = createMemo(() => {
     return usd().format(info()?.cost ?? 0)
   })
@@ -136,6 +145,24 @@ export function SessionContextUsage(props: SessionContextUsageProps) {
         name={language.t("context.usage.tokens")}
         value={context()?.total.toLocaleString(language.intl()) ?? "0"}
       />
+      <Show when={timing()}>
+        {(step) => (
+          <>
+            <ContextTooltipRow
+              name={language.t("context.usage.latency")}
+              value={GenerationTiming.formatLatency(step().latency, language.intl())}
+            />
+            <Show when={step().speed}>
+              {(speed) => (
+                <ContextTooltipRow
+                  name={language.t("context.usage.speed")}
+                  value={GenerationTiming.formatRate(speed(), language.intl())}
+                />
+              )}
+            </Show>
+          </>
+        )}
+      </Show>
     </div>
   )
 

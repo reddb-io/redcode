@@ -53,6 +53,7 @@ import { CorsConfig } from "./cors"
 import { handlers } from "./handlers"
 import { authorizationLayer } from "./middleware/authorization"
 import { schemaErrorLayer } from "./middleware/schema-error"
+import { defectLayer } from "./middleware/defect"
 import { PtyEnvironment } from "./pty-environment"
 import { PtySockets } from "./pty-sockets"
 import { ServerPairing } from "./pairing"
@@ -245,6 +246,7 @@ function makeRoutes<AuthError, AuthServices>(
           ),
         ),
         HttpApiBuilder.layer(LegacyRpcApi).pipe(Layer.provide(LegacyRpcHandler.pipe(Layer.provide(services)))),
+        defectLayer(options.app?.channel),
       ).pipe(
         Layer.provide(formLocationLayer),
         Layer.provide(sessionLocationLayer),

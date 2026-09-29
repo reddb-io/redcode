@@ -17,6 +17,7 @@ import { EmptyBorder, SplitBorder } from "../../ui/border"
 import { useTuiPaths, useTuiTerminalEnvironment } from "../../context/runtime"
 import { useClipboard } from "../../context/clipboard"
 import { Spinner } from "../spinner"
+import { PromptActivity } from "./activity"
 import { useClient } from "../../context/client"
 import { useRoute } from "../../context/route"
 import { usePromptRef } from "../../context/prompt"
@@ -2020,6 +2021,7 @@ export function Prompt(props: PromptProps) {
                         warning={theme.text.feedback.warning.base}
                         flash={theme.decrease(theme.text.feedback.warning.base, 2)}
                       />
+                      <Show when={props.sessionID}>{(sessionID) => <PromptActivity sessionID={sessionID()} />}</Show>
                       <text fg={theme.text.muted} wrapMode="none" truncate flexShrink={1}>
                         {busyHint({
                           submitKey: submitShortcut(),

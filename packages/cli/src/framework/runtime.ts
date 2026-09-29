@@ -1,6 +1,7 @@
-import { Effect, FileSystem, Scope } from "effect"
+import { Effect, FileSystem, References, Scope } from "effect"
 import { Command } from "effect/unstable/cli"
-import { PrintLogs } from "../commands/commands"
+import { PrintLogs, Verbose } from "../commands/commands"
+import { BootTrace } from "../boot-trace"
 import { Spec } from "./spec"
 import { Global } from "@opencode/util/global"
 import { Updater } from "../services/updater"
@@ -82,7 +83,7 @@ export function handlers<const Root extends Spec.Any>(root: Root, handlers: Hand
 }
 
 export function run(commands: Spec.Any, handlers: ReadonlyArray<LazyHandler>, options: { readonly version: string }) {
-  return Command.run(provide(commands, handlers).pipe(Command.withGlobalFlags([PrintLogs])), options) as Effect.Effect<
+  return Command.run(provide(commands, handlers).pipe(Command.withGlobalFlags([PrintLogs, Verbose])), options) as Effect.Effect<
     void,
     unknown,
     Command.Environment
@@ -96,8 +97,12 @@ function provide(node: Spec.Any, handlers: ReadonlyArray<LazyHandler>): Provided
         Command.withHandler((input) =>
           Effect.gen(function* () {
             if (yield* PrintLogs) process.env.OPENCODE_PRINT_LOGS = "1"
+            if (yield* Verbose) BootTrace.enable()
+            BootTrace.mark("command.parsed", { command: node.spec.name })
             const module = yield* Effect.promise(handler.load)
-            return yield* module.default(input)
+            BootTrace.mark("handler.loaded")
+            if (!BootTrace.enabled()) return yield* module.default(input)
+            return yield* module.default(input).pipe(Effect.provideService(References.MinimumLogLevel, "Debug"))
           }),
         ),
       )

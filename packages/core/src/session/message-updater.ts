@@ -43,6 +43,11 @@ export function update(adapter: Adapter, event: SessionEvent.DurableEvent) {
   const latestReasoning = (assistant: DraftAssistant) =>
     assistant.content.findLast((item): item is DraftReasoning => item.type === "reasoning" && !item.time?.completed)
 
+  // The first block of the attempt marks when output began; a settled step keeps what it had.
+  const stampFirst = (draft: DraftAssistant) => {
+    if (draft.time.completed === undefined) draft.time.first ??= created
+  }
+
   const updateOwnedAssistant = (messageID: SessionMessage.ID, recipe: (draft: DraftAssistant) => void) =>
     Effect.gen(function* () {
       const assistant = yield* adapter.getAssistant(messageID)
@@ -225,6 +230,7 @@ export function update(adapter: Adapter, event: SessionEvent.DurableEvent) {
                 draft.rawFinish = undefined
                 draft.providerState = undefined
                 draft.time.created = DateTime.makeUnsafe(event.data.started)
+                draft.time.first = undefined
                 draft.time.streamed = undefined
                 draft.time.completed = undefined
                 if (event.data.snapshot) draft.snapshot = { ...draft.snapshot, start: event.data.snapshot }
@@ -289,6 +295,7 @@ export function update(adapter: Adapter, event: SessionEvent.DurableEvent) {
       },
       "session.text.started": (event) => {
         return updateOwnedAssistant(event.data.assistantMessageID, (draft) => {
+          stampFirst(draft)
           draft.content.push(castDraft(SessionMessage.AssistantText.make({ type: "text", text: "" })))
         })
       },
@@ -303,6 +310,7 @@ export function update(adapter: Adapter, event: SessionEvent.DurableEvent) {
       },
       "session.tool.input.started": (event) => {
         return updateOwnedAssistant(event.data.assistantMessageID, (draft) => {
+          stampFirst(draft)
           draft.content.push(
             castDraft(
               SessionMessage.AssistantTool.make({
@@ -380,6 +388,7 @@ export function update(adapter: Adapter, event: SessionEvent.DurableEvent) {
       },
       "session.reasoning.started": (event) => {
         return updateOwnedAssistant(event.data.assistantMessageID, (draft) => {
+          stampFirst(draft)
           draft.content.push(
             castDraft(
               SessionMessage.AssistantReasoning.make({

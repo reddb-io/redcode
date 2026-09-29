@@ -4,35 +4,42 @@ import { SessionError } from "@opencode/schema/session-error"
 import { Permission } from "../permission.js"
 import { Integration } from "../integration.js"
 import { AgentNotFoundError, StepFailedError } from "./error.js"
+import { ProviderFailure } from "./provider-failure.js"
 import { SessionRunnerModel } from "./runner/model.js"
 
-export function toSessionError(cause: unknown): SessionError.Error {
+/** The provider and model a request went to, known where the runner resolved them. */
+export interface Route {
+  readonly provider: string
+  readonly model: string
+}
+
+export function toSessionError(cause: unknown, route?: Route): SessionError.Error {
   if (cause instanceof AIError) {
     switch (cause.reason._tag) {
       case "RateLimit":
-        return providerError("provider.rate-limit", cause.reason)
+        return providerError("provider.rate-limit", cause.reason, route)
       case "Authentication":
-        return providerError("provider.auth", cause.reason)
+        return providerError("provider.auth", cause.reason, route)
       case "QuotaExceeded":
-        return providerError("provider.quota", cause.reason)
+        return providerError("provider.quota", cause.reason, route)
       case "ContentPolicy":
-        return providerError("provider.content-filter", cause.reason)
+        return providerError("provider.content-filter", cause.reason, route)
       case "Transport":
-        return providerError("provider.transport", cause.reason)
+        return providerError("provider.transport", cause.reason, route)
       case "ProviderInternal":
-        return providerError("provider.internal", cause.reason)
+        return providerError("provider.internal", cause.reason, route)
       case "InvalidProviderOutput":
-        return providerError("provider.invalid-output", cause.reason)
+        return providerError("provider.invalid-output", cause.reason, route)
       case "InvalidRequest":
-        return providerError("provider.invalid-request", cause.reason)
+        return providerError("provider.invalid-request", cause.reason, route)
       case "UnsupportedOperation":
-        return providerError("provider.unsupported-operation", cause.reason)
+        return providerError("provider.unsupported-operation", cause.reason, route)
       case "NoRoute":
-        return providerError("provider.no-route", cause.reason)
+        return providerError("provider.no-route", cause.reason, route)
       case "UnknownProvider":
-        return providerError("provider.unknown", cause.reason)
+        return providerError("provider.unknown", cause.reason, route)
       case "Timeout":
-        return providerError("provider.timeout", cause.reason)
+        return providerError("provider.timeout", cause.reason, route)
       default: {
         const exhaustive: never = cause.reason
         return exhaustive
@@ -65,7 +72,15 @@ export function toSessionError(cause: unknown): SessionError.Error {
   return { type: "unknown", message: cause instanceof Error ? cause.message : String(cause) }
 }
 
-function providerError(type: string, reason: AIError["reason"]): SessionError.Error {
+function providerError(type: string, reason: AIError["reason"], route: Route | undefined): SessionError.Error {
   const status = reason.http?.status
-  return { type, message: reason.message, ...(status === undefined ? {} : { status }) }
+  // Only a transport failure names its URL: elsewhere the host answered, so the URL is not the diagnosis.
+  const url = reason._tag === "Transport" ? (reason.url ?? reason.http?.url) : undefined
+  return {
+    type,
+    message: reason.message,
+    ...(status === undefined ? {} : { status }),
+    ...(route === undefined ? {} : { provider: route.provider, model: route.model }),
+    ...(url === undefined ? {} : { url: ProviderFailure.redactURL(url) }),
+  }
 }

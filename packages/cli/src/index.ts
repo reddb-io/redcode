@@ -17,6 +17,7 @@ import { Config } from "./config"
 import { Npm } from "@opencode/util/npm"
 import { Heap } from "./heap"
 import { CpuProfile } from "./cpu-profile"
+import { BootTrace } from "./boot-trace"
 
 if (process.env.OPENCODE_SSH_ASKPASS_PORT) {
   const { askpass } = await import("./ssh-askpass")
@@ -61,6 +62,8 @@ const Handlers = Runtime.handlers(Commands, {
     limits: () => import("./commands/handlers/debug/limits"),
     guards: () => import("./commands/handlers/debug/guards"),
     todos: () => import("./commands/handlers/debug/todos"),
+    startup: () => import("./commands/handlers/debug/startup"),
+    memory: () => import("./commands/handlers/debug/memory"),
     rg: {
       files: () => import("./commands/handlers/debug/rg-files"),
       search: () => import("./commands/handlers/debug/rg-search"),
@@ -136,6 +139,8 @@ const Handlers = Runtime.handlers(Commands, {
   serve: () => import("./commands/handlers/serve"),
   web: () => import("./commands/handlers/web"),
 })
+
+BootTrace.mark("modules.loaded", { version: OPENCODE_VERSION, channel: OPENCODE_CHANNEL })
 
 Effect.gen(function* () {
   yield* Heap.listen

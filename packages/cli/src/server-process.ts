@@ -16,6 +16,7 @@ import { RetainedImage } from "./services/retained-image"
 import { ServiceRegistration } from "./services/service-registration"
 import { WebUi } from "./services/web-ui"
 import { select } from "./database-selection"
+import { ModelsSources } from "./models-sources"
 
 export type Mode = "default" | "service" | "stdio"
 
@@ -103,7 +104,15 @@ const processEffect = Effect.fnUntraced(function* (options: Options) {
           simulation: truthy(process.env.OPENCODE_SIMULATE),
           database,
           models: {
+            // REDCODE_MODELS_URL is aliased onto this name at startup.
             url: process.env.OPENCODE_MODELS_URL,
+            sources: yield* Effect.promise(() =>
+              ModelsSources.read({
+                directory: global.config,
+                file: process.env.OPENCODE_CONFIG,
+                content: process.env.OPENCODE_CONFIG_CONTENT,
+              }),
+            ),
             file: process.env.OPENCODE_MODELS_PATH,
             fetch: !truthy(process.env.OPENCODE_DISABLE_MODELS_FETCH),
           },
