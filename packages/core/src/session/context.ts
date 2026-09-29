@@ -8,6 +8,7 @@ import { Agent } from "../agent.js"
 import { CodeModeInstructions } from "../codemode/instructions.js"
 import { CodeModeTool } from "../codemode/tool.js"
 import { Database } from "../database/database.js"
+import { DesignContext } from "../design/context.js"
 import { makeLocationNode } from "@opencode/util/effect/app-node"
 import { InstructionDiscovery } from "../instruction-discovery.js"
 import { Instructions } from "../instructions/index.js"
@@ -84,6 +85,7 @@ const layer = Layer.effect(
     const builtins = yield* InstructionBuiltIns.Service
     const model = yield* Model.Service
     const db = (yield* Database.Service).db
+    const designs = yield* DesignContext.Service
     const discovery = yield* InstructionDiscovery.Service
     const entries = yield* InstructionEntry.Service
     const location = yield* Location.Service
@@ -162,6 +164,7 @@ const layer = Layer.effect(
           loaded.skills,
           loaded.references,
           loaded.mcp,
+          designs.load(sessionID),
           loaded.entries,
         ]),
         tools,
@@ -202,6 +205,7 @@ export const node = makeLocationNode({
     Config.node,
     Model.node,
     Database.node,
+    DesignContext.node,
     InstructionBuiltIns.node,
     InstructionDiscovery.node,
     InstructionEntry.node,

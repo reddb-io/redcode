@@ -105,7 +105,10 @@ export function reduce(state: State, event: SessionEvent.DurableEvent): readonly
     const design = metadata?.designID
     const revision = metadata?.revision
     const published =
-      call?.name === "design_preview" && typeof design === "string" && Schema.is(Design.ID)(design) &&
+      // design_history reports a revision only when it restored one.
+      (call?.name === "design_preview" || call?.name === "design_history") &&
+      typeof design === "string" &&
+      Schema.is(Design.ID)(design) &&
       typeof revision === "string"
         ? [{ ...base, type: "published" as const, design, revision, name: String(call.input.name ?? "") }]
         : []

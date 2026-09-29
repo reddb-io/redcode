@@ -122,7 +122,7 @@ export const Plugin = {
     })
 
     yield* ctx.tool
-      .transform((editor) =>
+      .transform((editor) => {
         editor.add({
           name,
           options: { codemode: false },
@@ -201,8 +201,59 @@ export const Plugin = {
                 metadata: { designID: document.id, revision: revision.id },
               }
             }).pipe(Effect.mapError((error) => new ToolFailure({ message: error.message, error }))),
-        }),
-      )
+        })
+        editor.add({
+          name: "design_history",
+          options: { codemode: false },
+          description:
+            "List a Design's immutable revisions, newest first, or restore an older one as a new revision on the same design. Approved revisions and their approval packages never change.",
+          input: Schema.Struct({
+            id: Design.ID,
+            restore: Schema.optional(
+              Schema.String.annotate({ description: "A revision id to restore as a new revision; omit to list." }),
+            ),
+          }),
+          output: Schema.String,
+          execute: (input, context) =>
+            Effect.gen(function* () {
+              yield* permission.assert({
+                action: "design_history",
+                resources: [input.id],
+                save: [input.id],
+                sessionID: context.sessionID,
+                agent: context.agent,
+                source: source(context),
+              })
+              if (!input.restore) {
+                const content =
+                  (yield* designs.revisions(context.sessionID, input.id))
+                    .map((revision) => `${revision.id}: ${revision.name} (parent ${revision.parent ?? "none"})`)
+                    .join("\n") || `Design ${input.id} has no published revisions.`
+                return { output: content, content, metadata: { designID: input.id } }
+              }
+              // Restoring rewrites the prototype files, so it needs the same edit grant as design_document update.
+              yield* permission.assert({
+                action: "design_edit",
+                resources: ["*"],
+                save: ["*"],
+                sessionID: context.sessionID,
+                agent: context.agent,
+                source: source(context),
+              })
+              const document = yield* designs.get(context.sessionID, input.id)
+              yield* standing(document, context)
+              const revision = yield* designs.restore(
+                context.sessionID,
+                input.id,
+                input.restore,
+                read(context),
+                yield* tooling(document, context),
+              )
+              const content = `Restored ${input.restore} as ${revision.id} for ${revision.designID}. The user can annotate this revision. Root: ${revision.document.root}`
+              return { output: content, content, metadata: { designID: input.id, revision: revision.id } }
+            }).pipe(Effect.mapError((error) => new ToolFailure({ message: error.message, error }))),
+        })
+      })
       .pipe(Effect.orDie)
   }),
 }

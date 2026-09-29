@@ -5,7 +5,7 @@ import { ToolFailure } from "@opencode/ai"
 import type { Context } from "@opencode/plugin/effect/plugin"
 import { Design } from "@opencode/schema/design"
 import { Global } from "@opencode/util/global"
-import { Effect, Schema } from "effect"
+import { Effect, Ref, Schema } from "effect"
 import { DesignDetection } from "../../design/detection.js"
 import { DesignDocumentTool } from "../../design/document-tool.js"
 import { DesignIdentify } from "../../design/identify.js"
@@ -113,6 +113,8 @@ export const Plugin = {
                 agent: context.agent,
                 source,
               })
+              // The TUI and web show the chip and the identification's headline in place of the call.
+              const display = yield* Ref.make<Record<string, string>>({})
               const output = yield* Effect.gen(function* () {
                 if (input.action === "list") return yield* designs.list(context.sessionID)
                 if (input.action === "detect")
@@ -169,12 +171,19 @@ export const Plugin = {
                       return { document: yield* designs.create(context.sessionID, { ...input.input, ...target }), target }
                     }),
                   )
+                  const chip = DesignTarget.chip(created.value.target, DesignProposal.chip(created.decision))
+                  yield* Ref.set(display, {
+                    designChip: chip,
+                    ...(created.decision.identification
+                      ? { designSystem: DesignIdentify.headline(created.decision.identification) }
+                      : {}),
+                  })
                   return [
                     {
                       ...created.value.document,
                       manifest: [
                         created.value.document.manifest,
-                        DesignTarget.chip(created.value.target, DesignProposal.chip(created.decision)),
+                        chip,
                         created.value.target.note,
                         created.report,
                       ]
@@ -206,7 +215,7 @@ export const Plugin = {
                           `Design ${document.id}: ${document.name}\n${DesignTarget.describe(document)}\nRoot: ${document.root}\nEngine: ${document.engine}\nEntry: ${document.entry}\nCurrent revision: ${document.revision ?? "unpublished"}\n${document.designSystem}\n${input.action === "list" ? `Design system: ${DesignSystem.summary(document) || "none detected"}` : DesignSystem.describe(document)}\nParams: ${JSON.stringify({ controls: document.controls ?? [], presets: document.presets ?? [] })}\nQuestions: ${document.questions.join("; ")}\nFeedback rounds: ${DesignRounds.summary(document)}${document.manifest ? `\n${document.manifest}` : ""}`,
                       )
                       .join("\n\n")
-              return { output, content, metadata: { action: input.action } }
+              return { output, content, metadata: { action: input.action, ...(yield* Ref.get(display)) } }
             }).pipe(Effect.mapError((error) => new ToolFailure({ message: error.message, error }))),
         }),
       )

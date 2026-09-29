@@ -1,10 +1,16 @@
 export * as SessionRunnerLLM from "./llm.js"
 
+import path from "node:path"
 import { AIError, Message, ProviderErrorEvent, SystemPart } from "@opencode/ai"
 import { Monitor } from "@opencode/schema/monitor"
+import { Global } from "@opencode/util/global"
 import { and, desc, eq, sql } from "drizzle-orm"
 import { Cause, Clock, Duration, Effect, Exit, Fiber, FiberMap, Layer, Option, Schema } from "effect"
 import { Database } from "../../database/database.js"
+import { DesignIdentify } from "../../design/identify.js"
+import { DesignProposal } from "../../design/proposal.js"
+import { DesignStore } from "../../design/store.js"
+import { Location } from "../../location.js"
 import { Bus } from "../../bus.js"
 import { ModelLimit } from "../../model-limit.js"
 import { contextOverflowNumbers } from "../../model-limit-numbers.js"
@@ -104,11 +110,17 @@ const layer = Layer.effect(
     const inbox = yield* SessionInbox.Service
     const jobs = yield* Job.Service
     const skills = yield* Skill.Service
+    const designs = yield* DesignStore.Service
+    const location = yield* Location.Service
+    const global = yield* Global.Service
     const steps = yield* SessionStep.make
     // Title generation starts once input is visible and must not delay model execution.
     const titles = yield* FiberMap.make<SessionSchema.ID, void, never>()
     // Prompt classifications outlive the Step that started them, so a slow one still lands in history.
     const classifications = yield* FiberMap.make<SessionMessage.ID>()
+    // Design-system warm-ups run beside the Step; `warmed` holds the user message each Session last warmed for.
+    const warmups = yield* FiberMap.make<SessionSchema.ID, void, never>()
+    const warmed = new Map<SessionSchema.ID, SessionMessage.ID>()
     // Whether System One takes part; an unreadable configuration reads as single reasoning, never a failed prompt.
     const dual = intelligence.read().pipe(
       Effect.map((settings) => settings.enabled && IntelligenceEvaluation.mode(settings) === "dual"),
@@ -265,6 +277,7 @@ const layer = Layer.effect(
         if (!(yield* budgets.admit(sessionID))) return DrainResult.Complete()
         // Classified before the goal accounts the Step, so an interruption while waiting spends nothing.
         const classification = yield* classify(next.context)
+        yield* warmDesignSystem(next.context, IntelligenceClassification.workRoute(classification))
         const goalID = yield* goals.beginStep(sessionID)
         if (goalID === false) return DrainResult.Complete()
         const advice = [
@@ -515,6 +528,48 @@ const layer = Layer.effect(
     })
 
     /**
+     * Starts design-system identification in the background once per user message when the design
+     * agent runs or System One routed the request as design, so design_document create finds it cached
+     * instead of waiting for System One. Only dual reasoning has anything to warm, and a configured
+     * system that is still current needs none. Never blocks the Step; a failure is only logged.
+     */
+    const warmDesignSystem = Effect.fn("SessionRunner.warmDesignSystem")(function* (
+      loaded: SessionContext.Loaded,
+      route: string | undefined,
+    ) {
+      const sessionID = loaded.session.id
+      const user = loaded.messages.findLast((message) => message.type === "user")
+      if (!user || warmed.get(sessionID) === user.id) return
+      if (!DesignIdentify.wanted({ agent: loaded.agent.id, route }) || !(yield* dual)) return
+      warmed.set(sessionID, user.id)
+      yield* FiberMap.run(
+        warmups,
+        sessionID,
+        Effect.gen(function* () {
+          const configured = yield* designs.configured(sessionID)
+          if (
+            configured?.system &&
+            !(yield* Effect.promise(() => DesignProposal.stale(location.directory, configured).catch(() => true)))
+          )
+            return
+          yield* DesignIdentify.warm({
+            directory: location.directory,
+            application: configured?.application,
+            state: path.join(global.state, DesignIdentify.STATE),
+            mode: "dual",
+            sessionID,
+            evaluate: (evaluation) => intelligence.evaluate(evaluation),
+          })
+        }).pipe(
+          Effect.catchCause((cause) =>
+            Effect.logWarning("Design system warm-up failed", { sessionID, cause: Cause.pretty(cause) }),
+          ),
+        ),
+        { onlyIfMissing: true },
+      )
+    })
+
+    /**
      * Decides what an active goal does when the agent stopped short of completing it: wait for
      * background subagents, block on a confirmed blocker, pause on a spent budget or repeated lack
      * of progress, or continue through a durable synthetic steer. Nothing here completes a goal;
@@ -620,18 +675,13 @@ const layer = Layer.effect(
       // New input admitted while System One judged takes the next boundary instead of a stale continuation.
       if (yield* SessionInbox.has(db, sessionID, "input")) return { memory: next, continued: false }
       yield* inbox
-        .admit({
+        .admitSynthetic({
           id: SessionMessage.ID.create(),
           sessionID,
-          item: {
-            type: "synthetic",
-            payload: SessionInbox.SyntheticPayload.make({
-              text: SessionGoal.continuation(goal, judged),
-              description: `Continuing goal (step ${goal.turns.used + 1} of ${goal.turns.max})`,
-              metadata: { [SessionGoal.CONTINUATION_KEY]: { goalID: goal.id, verdict: judged ?? "unjudged" } },
-            }),
-            delivery: SessionInbox.Delivery.make("steer"),
-          } satisfies SessionInbox.Item,
+          text: SessionGoal.continuation(goal, judged),
+          description: `Continuing goal (step ${goal.turns.used + 1} of ${goal.turns.max})`,
+          metadata: { [SessionGoal.CONTINUATION_KEY]: { goalID: goal.id, verdict: judged ?? "unjudged" } },
+          delivery: "steer",
         })
         .pipe(Effect.orDie)
       return { memory: next, continued: true }
@@ -1078,6 +1128,9 @@ export const node = makeLocationNode({
     Snapshot.node,
     ToolOutput.node,
     Database.node,
+    DesignStore.node,
+    Location.node,
+    Global.node,
     modelLimitNode,
   ],
 })
