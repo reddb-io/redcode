@@ -4,6 +4,7 @@ import { useTerminalDimensions } from "@opentui/solid"
 import path from "path"
 import { abbreviateHome } from "../../runtime"
 import { useTuiPaths } from "../../context/runtime"
+import { useData } from "../../context/data"
 import { Locale } from "../../util/locale"
 import { useWorkingDirectoryActions } from "../../ui/working-directory-actions"
 import { usePromptMove } from "../../component/prompt/move"
@@ -79,12 +80,13 @@ export function SidebarOnboarding(props: { context: Plugin.Context; sessionID: s
 
 export function SidebarFooter(props: { context: Plugin.Context; sessionID: string }) {
   const session = createMemo(() => props.context.data.session.get(props.sessionID))
+  const data = useData()
   const paths = useTuiPaths()
   const [width, setWidth] = createSignal(32)
   const location = () => session()?.location ?? props.context.location ?? props.context.data.location.default()
   createEffect(on(location, (current) => {
     void Promise.allSettled([
-      props.context.data.location.syncInfo(current),
+      data.location.syncInfo(current),
       props.context.data.location.vcs.sync(current),
     ])
   }))
@@ -99,8 +101,8 @@ export function SidebarFooter(props: { context: Plugin.Context; sessionID: strin
   const lines = createMemo(() =>
     locationLines({
       directory: location().directory,
-      checkout: props.context.data.location.info(location())?.project.canonical,
-      worktree: props.context.data.location.info(location())?.project.directory,
+      checkout: data.location.info(location())?.project.canonical,
+      worktree: data.location.info(location())?.project.directory,
       branch: props.context.data.location.vcs.info(location())?.branch.current,
       home: paths.home,
       width: width(),

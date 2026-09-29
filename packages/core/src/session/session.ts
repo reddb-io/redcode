@@ -2,12 +2,11 @@ export * as Session from "./session.js"
 
 import { DateTime, Effect, Fiber, Scope } from "effect"
 import { Agent } from "../agent.js"
+import { Git } from "../git.js"
 import type { Model } from "@opencode/schema/model"
 import type { Permission } from "@opencode/schema/permission"
 import { Event } from "@opencode/schema/event"
 import { FSUtil } from "@opencode/util/fs-util"
-import { Plugin } from "../plugin.js"
-import { Tool } from "../tool.js"
 import { Bus } from "../bus.js"
 import { Database } from "../database/database.js"
 import { Instance } from "../instance/service.js"
@@ -64,13 +63,18 @@ export const make = Effect.fn("Session.make")(function* () {
   ) {
     if (session.parentID) return
     yield* Effect.gen(function* () {
+      const git = yield* Git.Service
+      const repository = yield* git.repo.discover(session.location.directory)
+      if (!repository || repository.gitDirectory !== repository.commonDirectory) return
+      const { Plugin } = yield* Effect.promise(() => import("../plugin.js"))
       const plugins = yield* Plugin.Service
       yield* plugins.awaitActivation
       const agents = yield* Agent.Service
       if ((yield* agents.select(agentID ?? session.agent)).id !== Agent.ID.make("build")) return
+      const { Tool } = yield* Effect.promise(() => import("../tool.js"))
       const tools = yield* Tool.Service
       const prepare = (yield* tools.list()).find((item) => item.id === "worktree_prepare")
-      if (!prepare) return yield* new Tool.Error({ message: "Build worktree preparation is unavailable" })
+      if (!prepare) return yield* Effect.logWarning("Build worktree preparation is unavailable", { sessionID: session.id })
       yield* prepare.execute({}, {
         sessionID: session.id,
         agent: Agent.ID.make("build"),
