@@ -6,6 +6,7 @@ import { Permission } from "../permission.js"
 import { Context, Effect, Layer } from "effect"
 import { Agent } from "../agent.js"
 import { CodeModeInstructions } from "../codemode/instructions.js"
+import { CodeModeTool } from "../codemode/tool.js"
 import { Database } from "../database/database.js"
 import { makeLocationNode } from "@opencode/util/effect/app-node"
 import { InstructionDiscovery } from "../instruction-discovery.js"
@@ -134,7 +135,8 @@ const layer = Layer.effect(
       if (!agent.info) return yield* new AgentNotFoundError({ sessionID: session.id, agent: session.agent ?? agent.id })
       // Discovery and execution must agree on the permissions of the selected agent.
       const permissions = Permission.forAgent(agent.info, session.permissions)
-      const tools = yield* registry.snapshot(permissions)
+      const codeMode = CodeModeTool.gate(Config.latestExperimental(yield* config.entries(), "code_mode"))
+      const tools = yield* registry.snapshot(permissions, { codeMode })
       const legacy = yield* RedcodeLegacyInstructions.load(db, sessionID)
       if (legacy?.phase === "baseline")
         return { session, agent: { ...agent, info: agent.info }, instructions: legacy.instructions, tools }
@@ -144,7 +146,7 @@ const layer = Layer.effect(
           discovery: discovery.load(),
           skills: skillInstructions.load(permissions),
           references: referenceInstructions.load(),
-          mcp: mcpInstructions.load(permissions),
+          mcp: mcpInstructions.load(permissions, codeMode !== false),
           entries: entries.load(sessionID),
         },
         { concurrency: "unbounded" },

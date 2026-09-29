@@ -43,9 +43,18 @@ type Data = {
   errors: { kind: "tool" | "namespace"; name: string; namespace?: string; error: RegistrationError }[]
 }
 
+export interface SnapshotOptions {
+  /**
+   * Limits for the `execute` Code Mode tool, or false to advertise every active tool directly.
+   * Sessions pass the `experimental.code_mode` gate, which is off by default; omitted, Code Mode
+   * runs under its default limits.
+   */
+  readonly codeMode?: CodeModeTool.Limits | false
+}
+
 export interface Interface extends State.Transformable<Editor> {
   readonly list: () => Effect.Effect<ReadonlyArray<Tool.Info & { readonly id: string }>>
-  readonly snapshot: (permissions?: Permission.Ruleset) => Effect.Effect<Snapshot>
+  readonly snapshot: (permissions?: Permission.Ruleset, options?: SnapshotOptions) => Effect.Effect<Snapshot>
 }
 
 /** A local execution result after hooks and content normalization. */
@@ -289,7 +298,7 @@ const layer = Layer.effect(
       transform: state.transform,
       reload: state.reload,
       list: () => Effect.sync(() => Array.from(state.get().tools.values())),
-      snapshot: Effect.fn("Tool.snapshot")((permissions) =>
+      snapshot: Effect.fn("Tool.snapshot")((permissions, options) =>
         Effect.sync(() => {
           const data = state.get()
           const active = new Map<string, Tool.Info>()
@@ -298,18 +307,29 @@ const layer = Layer.effect(
             if (whollyDisabled(tool.options?.permission ?? name, rules)) continue
             active.set(name, tool)
           }
-          const direct = new Map(Array.from(active).filter(([, tool]) => tool.options?.codemode === false))
-          const codeModeTools = new Map(Array.from(active).filter(([, tool]) => tool.options?.codemode !== false))
+          const codeMode = options?.codeMode ?? CodeModeTool.DEFAULT_LIMITS
+          // With Code Mode off, tools that would sit behind `execute` are advertised directly.
+          const direct = new Map(
+            Array.from(active).filter(([, tool]) => codeMode === false || tool.options?.codemode === false),
+          )
+          const codeModeTools = new Map(
+            Array.from(active).filter(([, tool]) => codeMode !== false && tool.options?.codemode !== false),
+          )
           const namespaces = data.namespaces
           const codeModeInventory = { tools: codeModeTools, namespaces }
-          const codeModeEnabled = !whollyDisabled("execute", rules)
-          const codeModeTool = codeModeEnabled
-            ? CodeModeTool.create(codeModeInventory, (name, tool, input, context) =>
-                beforeExecute(name, input, context).pipe(
-                  Effect.flatMap((event) => executeTool(tool, name, event.input, context)),
-                ),
-              )
-            : undefined
+          const limits = codeMode === false || whollyDisabled("execute", rules) ? undefined : codeMode
+          const codeModeEnabled = limits !== undefined
+          const codeModeTool =
+            limits === undefined
+              ? undefined
+              : CodeModeTool.create(
+                  codeModeInventory,
+                  (name, tool, input, context) =>
+                    beforeExecute(name, input, context).pipe(
+                      Effect.flatMap((event) => executeTool(tool, name, event.input, context)),
+                    ),
+                  limits,
+                )
           const names = Array.from(codeModeTools.keys()).join("\0")
           // Discovery is immutable for a registry revision and visible tool set. Keep request
           // definitions/executors fresh, but share the much larger rendered catalog across steps.

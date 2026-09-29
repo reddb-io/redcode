@@ -1,16 +1,11 @@
 export * as CodeModeTool from "./tool.js"
 
 import { CodeMode, Namespace, Tool, toolError } from "@opencode/codemode"
-import type {
-  Content,
-  Context,
-  Error,
-  Info,
-  Metadata,
-  Namespace as ToolNamespace,
-  Result,
-} from "@opencode/schema/tool"
+import type { ConfigExperimental } from "@opencode/schema/config/experimental"
+import type { Content, Context, Error, Info, Metadata, Namespace as ToolNamespace, Result } from "@opencode/schema/tool"
 import { Effect, Ref, Schema, Semaphore } from "effect"
+import { HumanWait } from "../session/human-wait.js"
+import { ToolDeadline } from "../session/tool-deadline.js"
 import { definition, normalizedName } from "../tool/runtime.js"
 import { CodeModeCatalog } from "./catalog.js"
 import { CodeModeWeb } from "./web.js"
@@ -58,6 +53,30 @@ export type Inventory = {
   readonly namespaces?: ReadonlyMap<string, ToolNamespace>
 }
 
+/** Budgets for one `execute` program. */
+export interface Limits {
+  /** Milliseconds the program may run, not counting time a person spends answering its prompts. */
+  readonly timeoutMs: number
+  readonly maxToolCalls: number
+  /** UTF-8 bytes of result and logs kept before the result is cut. */
+  readonly maxOutputBytes: number
+}
+
+export const DEFAULT_LIMITS: Limits = { timeoutMs: 120_000, maxToolCalls: 50, maxOutputBytes: 1_000_000 }
+
+/**
+ * Resolves `experimental.code_mode`. Code Mode stays off unless it is explicitly turned on: until
+ * then every tool is advertised directly. When on, each program runs under bounded limits.
+ */
+export const gate = (config: ConfigExperimental.Info["code_mode"]): Limits | false => {
+  if (config?.enabled !== "on") return false
+  return {
+    timeoutMs: config.timeout_ms ?? DEFAULT_LIMITS.timeoutMs,
+    maxToolCalls: config.max_tool_calls ?? DEFAULT_LIMITS.maxToolCalls,
+    maxOutputBytes: config.max_output_bytes ?? DEFAULT_LIMITS.maxOutputBytes,
+  }
+}
+
 // Invariant model-facing guidance; the changing tool catalog is delivered through Instructions.
 const description = [
   "Run JavaScript in a confined Code Mode runtime to script tool calls and HTTP requests and compose their results.",
@@ -71,6 +90,7 @@ const description = [
 export const create = (
   inventory: Inventory,
   executeTool: (name: string, tool: Info, input: unknown, context: Context) => Effect.Effect<Result, Error>,
+  limits: Limits = DEFAULT_LIMITS,
 ) => {
   return {
     name: "execute",
@@ -87,7 +107,7 @@ export const create = (
           lock.withPermit(
             Ref.updateAndGet(calls, update).pipe(Effect.tap((toolCalls) => context.progress({ toolCalls }))),
           )
-        const result = yield* runtime(
+        const program = runtime(
           inventory,
           (name, tool, input) =>
             Effect.gen(function* () {
@@ -105,7 +125,19 @@ export const create = (
               return text === "" ? null : text
             }),
           progressHooks(record),
+          { maxToolCalls: limits.maxToolCalls, maxOutputBytes: limits.maxOutputBytes },
         ).execute(code)
+        // The deadline lives here rather than in the interpreter so that permission prompts and
+        // questions raised by nested calls, which report under this call's ID, do not count
+        // against it: a person reading a prompt must not time the program out.
+        const result = yield* Effect.suspend(() => {
+          HumanWait.claim(context.sessionID, context.id)
+          return ToolDeadline.guard(() => program, {
+            tool: "execute",
+            ms: limits.timeoutMs,
+            waitedMs: (now) => HumanWait.waited(context.sessionID, context.id, now),
+          })
+        }).pipe(Effect.ensuring(Effect.sync(() => HumanWait.forget(context.sessionID, context.id))))
         const toolCalls = yield* Ref.get(calls)
         const collected = (yield* Ref.get(files))
           .toSorted((left, right) => left.index - right.index)
@@ -222,6 +254,7 @@ function runtime(
   inventory: Inventory,
   executeTool: (name: string, tool: Info, input: unknown) => Effect.Effect<unknown, unknown>,
   hooks?: CodeMode.Hooks,
+  limits?: CodeMode.ExecutionLimits,
 ) {
   // A path may carry namespace metadata, a callable tool, child tools, or all three.
   const root: ToolNode = { children: new Map() }
@@ -236,7 +269,7 @@ function runtime(
     })
   }
   const tools = renderTools(root)
-  return CodeMode.make<typeof tools>({ tools, extensions: [CodeModeWeb.extension], hooks })
+  return CodeMode.make<typeof tools>({ tools, extensions: [CodeModeWeb.extension], hooks, limits })
 }
 
 function getNode<T>(root: Node<T>, path: string) {

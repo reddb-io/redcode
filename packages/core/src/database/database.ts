@@ -9,8 +9,35 @@ import { isAbsolute, join } from "path"
 import { DatabaseMigration } from "./migration.js"
 import { makeGlobalNode } from "@opencode/util/effect/app-node"
 
-const makeDatabase = EffectDrizzleSqlite.makeWithDefaults()
+// One connection per process, and any number of processes on the same file: several TUIs,
+// `serve`, `run` workers and the design app all open the same database. WAL keeps that safe:
+// readers never block the one writer, and a process that dies mid-write leaves a WAL the next
+// opener replays. Contention between writers is therefore the normal case, not an edge case.
+const retry = { attempts: 6, baseDelayMs: 25, maxDelayMs: 800 }
+const makeDatabase = EffectDrizzleSqlite.makeWithDefaults({
+  // Every process may write, so a transaction takes the write lock as it begins: one that reads
+  // before it writes would otherwise fail with SQLITE_BUSY_SNAPSHOT the moment another process
+  // commits in between, and the busy timeout does not wait that out. When the lock is held past
+  // the timeout, the whole transaction is begun again a few times with jittered delays, about 8 s
+  // in all with the busy timeout below. Bodies are re-run whole, so a transaction body must only
+  // touch the database. Migrations name their own, far larger, budget.
+  transaction: { behavior: "immediate", retry },
+  // A write outside a transaction commits on its own and waits on the same lock. A refused
+  // autocommit statement changed nothing, so it is run again on the same budget.
+  statement: { retry },
+})
+// RedDB coordinates writers itself and keeps drizzle's defaults. Durable Object SQLite runs its
+// transactions natively, where begin mode and transaction retry do not apply.
+const makeRemoteDatabase = EffectDrizzleSqlite.makeWithDefaults()
 type DatabaseShape = Effect.Success<typeof makeDatabase>
+
+/**
+ * How long a statement waits for another process's lock before SQLITE_BUSY. Short, because the
+ * wait blocks the thread (the SQLite drivers are synchronous) and every client of this process
+ * stalls on it; the transaction and statement retries above, which sleep between attempts, do the
+ * longer waiting.
+ */
+const BUSY_TIMEOUT_MS = 1000
 
 export interface Interface {
   db: DatabaseShape
@@ -35,14 +62,19 @@ const databaseLayer = (lock: Effect.Effect<Semaphore.Semaphore>, remote = false)
   Layer.effect(
     Service,
     Effect.gen(function* () {
-      const db = yield* makeDatabase
+      const db = yield* remote ? makeRemoteDatabase : makeDatabase
 
       if (!remote && supportsTuningPragmas) {
+        yield* db.run(`PRAGMA busy_timeout = ${BUSY_TIMEOUT_MS}`)
         yield* db.run("PRAGMA journal_mode = WAL")
         yield* db.run("PRAGMA synchronous = NORMAL")
-        yield* db.run("PRAGMA busy_timeout = 5000")
-        yield* db.run("PRAGMA cache_size = -64000")
+        // The page cache is private to each process, while the file's pages already sit in the OS
+        // page cache every process shares; a larger cache costs memory once per open client.
+        yield* db.run("PRAGMA cache_size = -8000")
         yield* db.run("PRAGMA wal_checkpoint(PASSIVE)")
+        // On the way out, before the connection closes: refresh the planner's statistics. The last
+        // process to close the file checkpoints and removes the WAL by itself.
+        yield* Effect.addFinalizer(() => db.run("PRAGMA optimize").pipe(Effect.ignore))
       }
       // Durable Object SQLite always enforces foreign keys and rejects the pragma.
       if (!remote && supportsForeignKeyToggle) yield* db.run("PRAGMA foreign_keys = ON")
@@ -77,7 +109,7 @@ export function layer(options: Options = { path: ":memory:" }) {
       }
       const provide = (filename: string) =>
         databaseLayer(filename === ":memory:" ? Semaphore.make(1) : Effect.succeed(lockFor(filename)), false).pipe(
-          Layer.provide(sqliteLayer({ filename })),
+          Layer.provide(sqliteLayer({ filename, timeout: BUSY_TIMEOUT_MS })),
         )
       const filename = options.path ?? ":memory:"
       if (filename === ":memory:" || isAbsolute(filename)) return provide(filename)

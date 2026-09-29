@@ -170,6 +170,109 @@ test("preserves failed transaction begin errors", async () => {
   }
 })
 
+test("begins a transaction again once another connection releases the write lock", async () => {
+  const dir = await mkdtemp(join(tmpdir(), "effect-drizzle-sqlite-"))
+  const filename = join(dir, "contended.db")
+  const holder = new Database(filename)
+
+  try {
+    holder.run("create table users (id integer primary key autoincrement, name text not null)")
+    holder.run("begin immediate")
+    holder.run("insert into users (name) values ('Holder')")
+    const release = setTimeout(() => holder.run("commit"), 150)
+
+    const rows = await Effect.runPromise(
+      Effect.gen(function* () {
+        const db = yield* EffectDrizzleSqlite.makeWithDefaults({
+          transaction: { behavior: "immediate", retry: { attempts: 40, baseDelayMs: 10, maxDelayMs: 50 } },
+        })
+        yield* db.run(sql`pragma busy_timeout = 0`)
+        yield* db.transaction((tx) => tx.insert(users).values({ name: "Waiter" }))
+        return yield* db.select({ name: users.name }).from(users).orderBy(users.id)
+      }).pipe(Effect.provide(SqliteClient.layer({ filename, disableWAL: true })), Effect.scoped),
+    )
+    clearTimeout(release)
+
+    expect(rows).toEqual([{ name: "Holder" }, { name: "Waiter" }])
+  } finally {
+    if (holder.inTransaction) holder.run("rollback")
+    holder.close()
+    await rm(dir, { recursive: true, force: true })
+  }
+})
+
+test("runs a refused autocommit statement again once the write lock is released", async () => {
+  const dir = await mkdtemp(join(tmpdir(), "effect-drizzle-sqlite-"))
+  const filename = join(dir, "contended.db")
+  const holder = new Database(filename)
+
+  try {
+    holder.run("create table users (id integer primary key autoincrement, name text not null)")
+    holder.run("begin immediate")
+    const release = setTimeout(() => holder.run("commit"), 150)
+
+    const rows = await Effect.runPromise(
+      Effect.gen(function* () {
+        const db = yield* EffectDrizzleSqlite.makeWithDefaults({
+          statement: { retry: { attempts: 40, baseDelayMs: 10, maxDelayMs: 50 } },
+        })
+        yield* db.run(sql`pragma busy_timeout = 0`)
+        yield* db.insert(users).values({ name: "Waiter" })
+        return yield* db.select({ name: users.name }).from(users)
+      }).pipe(Effect.provide(SqliteClient.layer({ filename, disableWAL: true })), Effect.scoped),
+    )
+    clearTimeout(release)
+
+    expect(rows).toEqual([{ name: "Waiter" }])
+  } finally {
+    if (holder.inTransaction) holder.run("rollback")
+    holder.close()
+    await rm(dir, { recursive: true, force: true })
+  }
+})
+
+test("stops retrying a locked transaction once its budget is spent", async () => {
+  const dir = await mkdtemp(join(tmpdir(), "effect-drizzle-sqlite-"))
+  const filename = join(dir, "locked.db")
+  const holder = new Database(filename)
+
+  try {
+    holder.run("create table users (id integer primary key autoincrement, name text not null)")
+    holder.run("begin immediate")
+    const attempts: number[] = []
+
+    await Effect.runPromise(
+      Effect.gen(function* () {
+        const db = yield* EffectDrizzleSqlite.makeWithDefaults()
+        yield* db.run(sql`pragma busy_timeout = 0`)
+
+        const error = yield* db
+          .transaction((tx) => tx.insert(users).values({ name: "Blocked" }), {
+            behavior: "immediate",
+            retry: {
+              attempts: 2,
+              baseDelayMs: 1,
+              maxDelayMs: 2,
+              onRetry: (attempt) =>
+                Effect.sync(() => {
+                  attempts.push(attempt)
+                }),
+            },
+          })
+          .pipe(Effect.flip)
+
+        expect(EffectDrizzleSqlite.isLockError(error)).toBe(true)
+      }).pipe(Effect.provide(SqliteClient.layer({ filename, disableWAL: true })), Effect.scoped),
+    )
+
+    expect(attempts).toEqual([1, 2])
+  } finally {
+    if (holder.inTransaction) holder.run("rollback")
+    holder.close()
+    await rm(dir, { recursive: true, force: true })
+  }
+})
+
 test("supports returning and rejects empty update sets", async () => {
   await run(
     Effect.gen(function* () {

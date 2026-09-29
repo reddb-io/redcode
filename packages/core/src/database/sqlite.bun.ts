@@ -18,6 +18,8 @@ interface Config extends Sqlite.ClientConfig {
   readonly create?: boolean
   readonly readwrite?: boolean
   readonly disableWAL?: boolean
+  /** Milliseconds a statement waits for another connection's lock before SQLITE_BUSY. */
+  readonly timeout?: number
 }
 
 const make = (options: Config) =>
@@ -34,7 +36,7 @@ const make = (options: Config) =>
         } catch (cause) {
           return Effect.fail(
             new SqlError({
-              reason: classifySqliteError(cause, { message: "Failed to execute statement", operation: "execute" }),
+              reason: classifySqliteError(cause, { message: Sqlite.failure(cause, query), operation: "execute" }),
             }),
           )
         }
@@ -50,7 +52,7 @@ const make = (options: Config) =>
         } catch (cause) {
           return Effect.fail(
             new SqlError({
-              reason: classifySqliteError(cause, { message: "Failed to execute statement", operation: "execute" }),
+              reason: classifySqliteError(cause, { message: Sqlite.failure(cause, query), operation: "execute" }),
             }),
           )
         }
@@ -124,7 +126,10 @@ const nativeLayer = (config: Config) =>
         create: config.create ?? true,
       })
       yield* Effect.addFinalizer(() => Effect.sync(() => native.close()))
-      if (config.disableWAL !== true) native.run("PRAGMA journal_mode = WAL;")
+      // Before anything that may need a lock, the WAL switch first of all: another process
+      // creating the same file at this moment holds one, and without a timeout that is an error.
+      native.run(`PRAGMA busy_timeout = ${config.timeout ?? 5000}`)
+      if (config.disableWAL !== true) yield* Sqlite.enableWal(() => native.run("PRAGMA journal_mode = WAL;"))
       return native
     }),
   )

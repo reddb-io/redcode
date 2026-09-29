@@ -1,5 +1,6 @@
 import { describe, expect } from "bun:test"
 import { Agent } from "@opencode/core/agent"
+import { CodeModeTool } from "@opencode/core/codemode/tool"
 import type { Permission } from "@opencode/core/permission"
 import { AppNodeBuilder } from "@opencode/core/effect/app-node-builder"
 import { Image } from "@opencode/core/image"
@@ -699,6 +700,36 @@ describe("Tool", () => {
       const denied = yield* service.snapshot([{ action: "execute", resource: "*", effect: "deny" }])
       expect(denied.definitions).toEqual([])
       expect(denied.codeModeCatalog).toBeUndefined()
+    }),
+  )
+
+  it.effect("advertises Code Mode tools directly and executes them when Code Mode is off", () =>
+    Effect.gen(function* () {
+      const service = yield* Tool.Service
+      yield* transform(service, { echo: make() }, { namespace: "demo" })
+      yield* transform(service, { native: constant("native") }, { codemode: false })
+
+      const snapshot = yield* service.snapshot(undefined, { codeMode: false })
+      expect(snapshot.definitions.map((tool) => tool.name)).toEqual(["demo_echo", "native"])
+      expect(snapshot.codeModeCatalog).toBeUndefined()
+      expect((yield* snapshot.execute(call("demo_echo"))).output).toEqual({ text: "demo_echo" })
+      expect(yield* snapshot.execute(call("execute")).pipe(Effect.flip)).toMatchObject({
+        message: expect.stringContaining('No tool named "execute"'),
+      })
+    }),
+  )
+
+  it.effect("resolves the experimental Code Mode gate off unless it is turned on", () =>
+    Effect.sync(() => {
+      expect(CodeModeTool.gate(undefined)).toBe(false)
+      expect(CodeModeTool.gate({ enabled: "off" })).toBe(false)
+      expect(CodeModeTool.gate({ max_tool_calls: 5 })).toBe(false)
+      expect(CodeModeTool.gate({ enabled: "on" })).toEqual(CodeModeTool.DEFAULT_LIMITS)
+      expect(CodeModeTool.gate({ enabled: "on", max_tool_calls: 5, timeout_ms: 1_000 })).toEqual({
+        ...CodeModeTool.DEFAULT_LIMITS,
+        maxToolCalls: 5,
+        timeoutMs: 1_000,
+      })
     }),
   )
 
