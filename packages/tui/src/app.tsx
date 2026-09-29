@@ -287,7 +287,7 @@ export const run = Effect.fn("Tui.run")(function* (input: TuiInput) {
           Effect.map(
             Option.match({
               onNone: () =>
-                log("error", "TUI resources did not finish disposing within 2 seconds; exiting without them"),
+                log("error", "TUI resources did not finish disposing within 2 seconds; exiting without them", {}),
               onSome: (results) =>
                 results
                   .filter((result): result is PromiseRejectedResult => result.status === "rejected")
