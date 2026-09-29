@@ -150,7 +150,7 @@ export function PromptInterruptStatus(props: {
   })
 
   return (
-    <text fg={props.armed ? armedColor() : props.text} wrapMode="none" truncate flexShrink={1}>
+    <text fg={props.armed ? armedColor() : props.text} wrapMode="none" truncate flexShrink={0}>
       esc{" "}
       <span style={{ fg: props.armed ? armedColor() : props.subdued }}>
         {props.armed ? "again to interrupt" : "interrupt"}

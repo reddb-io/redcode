@@ -1013,7 +1013,7 @@ export function Session(props: {
       id: `session.goal.${action}`,
       group: "Session",
       palette: undefined,
-      slash: { name: `goal-${action}`, arguments: true as const, hidden: true as const },
+      slash: { name: `goal-${action}`, hidden: true as const },
       run: (input?: string) => {
         dialog.clear()
         void goalCommand.run(route.sessionID, action === "budget" ? `budget ${input ?? ""}` : action)

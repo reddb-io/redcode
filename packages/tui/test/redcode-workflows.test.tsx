@@ -97,7 +97,7 @@ test("Redcode setup, intelligence and Design commands reach their production UI 
   }
   await setup.mockInput.typeText("/goal-budget")
   setup.mockInput.pressEnter()
-  await setup.waitForFrame((frame) => frame.includes("Goal step budget"))
+  await setup.waitForFrame((frame) => frame.includes("Goal budget"))
   await setup.mockInput.typeText("25")
   setup.mockInput.pressEnter()
   await setup.waitForFrame(() => controls.includes("budget"))
