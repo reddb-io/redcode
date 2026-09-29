@@ -250,14 +250,14 @@ export function McpsTab(props: { sessionID: string }) {
       <Show
         when={servers().length > 0}
         fallback={
-          <box paddingLeft={1}>
+          <box height={5} paddingLeft={1}>
             <text fg={theme.text.muted}>No MCP servers</text>
           </box>
         }
       >
         <scrollbox
           scrollbarOptions={{ visible: false }}
-          maxHeight={8}
+          height={5}
           ref={(value: ScrollBoxRenderable) => (scroll = value)}
         >
           <For each={servers()}>
