@@ -1,5 +1,0 @@
----
-"@reddb-io/redcode": minor
----
-
-RedRouter model suggestions appear on their own again. With a RedRouter model whose router serves its MCP server, Redcode now asks the router's `recommend_models` by itself when the session attaches images the model cannot see, needs tools it cannot call, reaches 85% of its usable context, keeps failing at the provider (two failures in a row), runs out of quota or is rate limited for longer than a retry waits, or when the catalog lists a model of the same connection at least 40% cheaper that keeps every capability. Each trigger is asked once per model (the cheaper equivalent once per session), in the background, so a step never waits on it or fails because of it. The card still never suggests a model that loses a capability the session needs, `keep` silences that trigger for the session, and nothing switches until you accept. Switching from the card (or `/switch-model`) now switches the session itself, so a retry that is waiting on the old model is retried at once on the suggested one. Turn suggestions off with `experimental.model_suggestions: false`.

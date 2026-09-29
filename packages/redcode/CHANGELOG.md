@@ -1,5 +1,46 @@
 # @reddb-io/redcode
 
+## 0.63.0
+
+### Minor Changes
+
+- Give agents twice the room before Redcode stops, corrects or refuses them. Only the defaults change: a value set in `redcode.json` still wins, and the safety caps on output sizes, deadlines, permissions and quota waits stay as they were.
+  - Loop guard (`experimental.loop_guard`): identical calls are corrected at 6 instead of 3 (`correct_at`) and end the turn at 10 instead of 5 (`stop_at`), a call whose answer keeps changing is pointed out at 24 instead of 12 (`nudge_at`), and failed todowrite calls end the turn at 16 in a row instead of 8.
+  - Stop-loss (`experimental.stop_loss`): the same result or error is a signal at 6 instead of 3 and strong at 10 instead of 5, following the loop guard; no progress is a signal after 10 steps instead of 5 (`idle_at`), so the hard ceiling moves from 15 to 30 steps; spend is a signal at 300k new tokens instead of 150k (`tokens`) or 30 minutes instead of 15 (`minutes`), and spend alone ends a turn after 12 steps without progress instead of 6. Failed task updates are a signal at 10 instead of 5. Dual reasoning checkpoints come every 16 steps instead of 8 (`every`) with a cooldown of 6 instead of 3 (`cooldown`), a turn gets 4 hints instead of 2 before a persisting signal ends it, and a status check of an outside job may keep answering the same for 60 minutes instead of 30 before you are asked.
+  - Goals: a goal started without a step budget gets 100 steps instead of 50, and it pauses after 4 continuations without verifiable progress instead of 2.
+  - Subagents: nesting depth 2 instead of 1 (`experimental.subagent_depth`), so a subagent may start subagents of its own; 8 foreground subagents in flight instead of 4 (`subagent_limits.concurrent`), 24 new subagents per request instead of 12 (`subagent_limits.per_request`), 8 background subagents instead of 4 (`background_subagents_max`) and 8 foreground subagents running at once instead of 4 (`subtask_concurrency`).
+  - Provider retries: a failing model call is retried 20 times instead of 10, about three minutes of backoff instead of one and a half. A quota or rate limit that resets more than 2 minutes away still ends the turn at once.
+  - Code Mode (`experimental.code_mode`): a program may make 100 tool calls instead of 50 (`max_tool_calls`), run for 240 seconds instead of 120 (`timeout_ms`) and keep 2 MB of result and logs instead of 1 MB (`max_output_bytes`).
+
+- RedRouter model suggestions appear on their own again. With a RedRouter model whose router serves its MCP server, Redcode now asks the router's `recommend_models` by itself when the session attaches images the model cannot see, needs tools it cannot call, reaches 85% of its usable context, keeps failing at the provider (two failures in a row), runs out of quota or is rate limited for longer than a retry waits, or when the catalog lists a model of the same connection at least 40% cheaper that keeps every capability. Each trigger is asked once per model (the cheaper equivalent once per session), in the background, so a step never waits on it or fails because of it. The card still never suggests a model that loses a capability the session needs, `keep` silences that trigger for the session, and nothing switches until you accept. Switching from the card (or `/switch-model`) now switches the session itself, so a retry that is waiting on the old model is retried at once on the suggested one. Turn suggestions off with `experimental.model_suggestions: false`.
+- Close a batch of V1 port leftovers.
+  - `redcode run` and the mini TUI work in the real working directory instead of a possibly stale `PWD`. With a prompt in the arguments, `redcode run` waits at most two seconds for piped input to start, so a wrapper that never closes stdin no longer hangs it; piped data that starts in time is still read in full, and a run whose only prompt is stdin still reads it to the end.
+  - The ACP agent introduces itself as Redcode and offers `redcode auth login` (method `redcode-login`, as in V1). Updater messages and the GitHub agent's footer and logs name Redcode.
+  - `--reasoning single|dual` on `redcode`, `redcode run` and `redcode serve` overrides the saved reasoning mode for that invocation, like `REDCODE_REASONING`. Outside `serve` it requires `--standalone`, since the shared background service keeps its own mode.
+  - Form field descriptions, such as the plan under approval, render as Markdown like the transcript.
+  - `design.gate: true` makes Design approval wait for a completed layout audit of the published revision at every configured viewport class, and `design.viewports` (`mobile`, `compact`, `desktop`) narrows the classes the audit covers. Both are off by default.
+  - When the server listens beyond loopback, the Design review notices in the TUI and `redcode design` also give the review's address for another device on the network.
+  - `REDCODE_DISABLE_WHITEBOARD_DOWNLOAD=1` stops the whiteboard bundle download again; the whiteboard then reports itself unavailable with the reason.
+  - TUI plugin cleanups and TUI exit disposal stop waiting after two seconds, and an npm plugin install that does not finish within five minutes fails with a clear error instead of holding the install lock.
+
+- RedRouter now hears what System One made of each request: the prompt classification sends `x-red-router-hint` (complexity, deliberation, tier, the user's feedback and frustration, and `needs_tool` when a skill was recommended) and turns the router's own decision layer off when System One already chose a skill. A router that reports no active account for the model is no longer retried: the turn ends with a message saying to connect one in the router's dashboard.
+
+  Monitors announce themselves: `monitor.started`, `monitor.finished` and `monitor.expired` are published on the event stream, and the TUI Monitors tab and prompt footer indicator follow them instead of re-reading on heuristics and a background timer (the tab still re-reads while it is open and a monitor runs). A finished monitor no longer wakes a Session whose originating turn was interrupted, whose goal is paused or blocked, or whose person wrote since it started; its result waits for the next turn and says which of those happened. A monitor that ended without a result says the watched state is unknown.
+
+  A router catalog refresh that changes the model list publishes `provider.catalog.updated`, and the TUI shows a toast such as `RedRouter catalog updated: +2/−1 models`.
+
+- Tasks now have a short title next to their full text. `todowrite` and `plan_exit` tasks take an optional `title` (one imperative line of up to 80 characters) while `content` keeps the whole task and its acceptance detail, which is what the model reads back in results, reminders and blockers and what the completion gate checks. A task without a title, including every task written before this version, is labelled with the first line of its content, cut at its first sentence or at 80 characters on whole characters, so accents, CJK and emoji are never split.
+
+  The sidebar Todo list shows one title line per task and at most one line of its reason, however long the model wrote them, instead of wrapping a long task over dozens of rows. Click a task to expand it in place with its full content, what it is done when, the reason, the request it came from and its evidence; click again to fold it. `redcode run` and the mini TUI print a task update as a single line of task titles, and any other tool whose input is not summarized is cut to one line instead of printing its whole input.
+
+### Patch Changes
+
+- Compaction no longer copies secrets pasted in chat into the checkpoint. `/compact` and automatic compaction redact API keys and tokens (OpenAI, Anthropic, OpenRouter, GitHub, GitLab, AWS, Google, Slack, Stripe, npm), JWTs, PEM private keys, `Authorization` headers, passwords in URLs and credential query parameters, and secret-named assignments such as `API_KEY=…`, `"password": "…"` or `token: …` before the summarizer reads the conversation, and again in the summary it writes, the quoted user requests, the file and identifier anchors, the verbatim recent part and the `/compact` focus. A redacted value reads as its kind, such as `[redacted:github-token]`, and the summary prompt tells the model to name a credential by what it is instead of repeating it. Session titles are generated from, and saved as, redacted text too.
+
+  Checkpoints written by earlier versions keep what they copied in their stored history, which is left as it is; they are redacted as they are read into a model request and when the TUI and the app show them, and a later compaction no longer carries their anchors forward unredacted. The original messages stay in the session and were already sent to the provider, so rotate anything you pasted.
+
+  A failed service boot's reason masks credentials with the same kinds instead of `***`.
+
 ## 0.62.0
 
 ### Minor Changes
