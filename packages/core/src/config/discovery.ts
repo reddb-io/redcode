@@ -8,8 +8,9 @@ import { Location } from "../location.js"
 import { AbsolutePath } from "../schema.js"
 import type { Options } from "../config.js"
 
-export const names = ["opencode.json", "opencode.jsonc"]
-export const legacyNames = ["opencode.json", "opencode.jsonc", "redcode.json", "redcode.jsonc", "config.json", "config.jsonc"]
+// Config file names inside a config directory, lowest precedence first: Redcode
+// names override OpenCode names, and `config.jsonc` is Redcode's primary name.
+export const names = ["opencode.json", "opencode.jsonc", "redcode.json", "redcode.jsonc", "config.json", "config.jsonc"]
 const directNames = ["opencode.json", "opencode.jsonc", "redcode.json", "redcode.jsonc"]
 const projectNames = [".opencode", ".redcode", path.join(".red", "code")]
 
@@ -47,10 +48,12 @@ export const discover = Effect.fn("ConfigDiscovery.discover")(function* (options
     Effect.gen(function* () {
       // Resolve the parent too: missing children must honor symlinked global roots.
       const parent = yield* fs.resolve(directory)
-      return yield* Effect.forEach([".claude", ".agents", ...projectNames.toReversed(), ...directNames.toReversed()], (name) =>
-        fs
-          .resolve(path.join(parent, name))
-          .pipe(Effect.map((resolved) => ({ item: AbsolutePath.make(path.join(directory, name)), resolved }))),
+      return yield* Effect.forEach(
+        [".claude", ".agents", ...projectNames.toReversed(), ...directNames.toReversed()],
+        (name) =>
+          fs
+            .resolve(path.join(parent, name))
+            .pipe(Effect.map((resolved) => ({ item: AbsolutePath.make(path.join(directory, name)), resolved }))),
       )
     }),
   ).pipe(
@@ -60,7 +63,9 @@ export const discover = Effect.fn("ConfigDiscovery.discover")(function* (options
 
   const globalEnabled = options?.global !== false
   const legacyGlobal = globalEnabled
-    ? (yield* Effect.forEach(legacyCandidates, (item) => fs.isDir(item).pipe(Effect.map((present) => ({ item, present })))))
+    ? (yield* Effect.forEach(legacyCandidates, (item) =>
+        fs.isDir(item).pipe(Effect.map((present) => ({ item, present }))),
+      ))
         .filter((candidate) => candidate.present)
         .at(-1)?.item
     : undefined
@@ -78,10 +83,11 @@ export const discover = Effect.fn("ConfigDiscovery.discover")(function* (options
     legacyGlobal: legacyGlobal && (yield* fs.resolve(legacyGlobal)) !== globalRoots[0] ? legacyGlobal : undefined,
     global: globalEnabled ? globalDirectory : undefined,
     explicit: options?.file ? AbsolutePath.make(path.resolve(options.file)) : undefined,
-    direct: visible.filter((item) => ![".agents", ".claude"].includes(path.basename(item)) && !isProjectDirectory(item)).toReversed(),
-    project: yield* Effect.forEach(
-      visible.filter(isProjectDirectory).toReversed(),
-      (directory) => fs.isDir(directory).pipe(Effect.map((present) => ({ path: directory, present }))),
+    direct: visible
+      .filter((item) => ![".agents", ".claude"].includes(path.basename(item)) && !isProjectDirectory(item))
+      .toReversed(),
+    project: yield* Effect.forEach(visible.filter(isProjectDirectory).toReversed(), (directory) =>
+      fs.isDir(directory).pipe(Effect.map((present) => ({ path: directory, present }))),
     ),
     claude: [
       ...new Set([

@@ -274,6 +274,78 @@ it.live("vp detection ignores no-match output that repeats the package name", ()
   }),
 )
 
+it.live("method detection identifies Redcode's own mise install directory", () =>
+  Effect.gen(function* () {
+    const test = yield* fixture()
+    const installs = path.join(test.global.home, ".local", "share", "mise", "installs")
+    const executable = path.join(installs, "github-reddb-io-redcode", "2.3.3", "redcode")
+    yield* test.fs.makeDirectory(path.dirname(executable), { recursive: true })
+    yield* test.fs.writeFileString(executable, "binary")
+    const original = process.execPath
+    process.execPath = executable
+    yield* Effect.addFinalizer(() => Effect.sync(() => (process.execPath = original)))
+    expect(yield* test.updater.method()).toBe("mise")
+    expect(test.commands).toEqual([])
+  }),
+)
+
+it.live("mise bumps the pin and confirms the offered version is active", () =>
+  Effect.gen(function* () {
+    const test = yield* fixture((command) => ({
+      stdout: Buffer.from(
+        command.args[0] === "ls" ? JSON.stringify([{ version: "2.3.4", active: true, install_path: "/mise" }]) : "",
+      ),
+    }))
+    yield* test.updater.upgrade("mise", "v2.3.4")
+    expect(test.commands).toEqual([
+      ["mise", "cache", "clear", "github:reddb-io/redcode"],
+      ["mise", "upgrade", "--bump", "github:reddb-io/redcode"],
+      ["mise", "ls", "--json", "github:reddb-io/redcode"],
+      ["mise", "ls", "--json", "github:reddb-io/redcode"],
+    ])
+  }),
+)
+
+it.live("mise selects the offered version when the bump lands elsewhere", () =>
+  Effect.gen(function* () {
+    const selected = { value: false }
+    const test = yield* fixture((command) => {
+      if (command.args[0] === "use") selected.value = true
+      return {
+        stdout: Buffer.from(
+          command.args[0] === "ls"
+            ? JSON.stringify([
+                { version: "2.3.3", active: !selected.value },
+                ...(selected.value ? [{ version: "2.3.4", active: true }] : []),
+              ])
+            : "",
+        ),
+      }
+    })
+    yield* test.updater.upgrade("mise", "2.3.4")
+    expect(test.commands).toContainEqual(["mise", "use", "-g", "github:reddb-io/redcode@2.3.4"])
+  }),
+)
+
+it.live("mise explains minimum_release_age when it does not offer the version", () =>
+  Effect.gen(function* () {
+    const test = yield* fixture((command) => ({
+      stdout: Buffer.from(
+        command.args[0] === "ls"
+          ? JSON.stringify([{ version: "2.3.3", active: true }])
+          : command.args[0] === "ls-remote"
+            ? "2.3.2\n2.3.3\n"
+            : "",
+      ),
+    }))
+    const error = yield* test.updater.upgrade("mise", "2.3.4").pipe(Effect.flip)
+    if (!(error instanceof Updater.UpgradeError)) return yield* Effect.die("Expected an upgrade error")
+    expect(error.detail).toContain("minimum_release_age")
+    expect(error.detail).toContain("https://github.com/reddb-io/redcode/releases")
+    expect(error.command).toBe('mise settings add minimum_release_age_excludes "github:reddb-io/redcode"')
+  }),
+)
+
 // Links are named opencode-upgrade-<pid>-<random>.exe; read them from inside the installer run.
 const links = (directory: string) =>
   existsSync(directory) ? readdirSync(directory).filter((name) => name.startsWith("opencode-")) : []

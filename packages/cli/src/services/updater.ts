@@ -10,11 +10,17 @@ import { RetainedImage } from "./retained-image"
 import { action, parseReleaseVersion, type Policy } from "./updater-action"
 import { errorMessage } from "../util/error"
 
-export const methods = ["curl", "npm", "pnpm", "bun", "yarn", "vp", "brew"] as const
+export const methods = ["curl", "npm", "pnpm", "bun", "yarn", "vp", "brew", "mise"] as const
 
 export type Method = (typeof methods)[number]
 export type RunResult = { readonly type: "available" | "installed"; readonly version: string }
 export type CheckResult = RunResult | { readonly type: "unavailable"; readonly message: string }
+
+// red-dev installs Redcode through mise's GitHub backend, which unpacks each release
+// under <MISE_DATA_DIR>/installs/github-reddb-io-redcode/<version>/.
+const MISE_TOOL = "github:reddb-io/redcode"
+const MISE_INSTALL_DIR = "github-reddb-io-redcode"
+const RELEASES_URL = "https://github.com/reddb-io/redcode/releases"
 
 export class UpgradeError extends Error {
   readonly title: string
@@ -44,6 +50,14 @@ const decodeVpPackages = Schema.decodeUnknownOption(
   Schema.fromJsonString(Schema.Array(Schema.Struct({ name: Schema.String }))),
 )
 
+const decodeMiseVersions = Schema.decodeUnknownOption(
+  Schema.fromJsonString(
+    Schema.Array(Schema.Struct({ version: Schema.String, active: Schema.optional(Schema.Boolean) })),
+  ),
+)
+
+const decodeGitHubRelease = Schema.decodeUnknownOption(Schema.Struct({ tag_name: Schema.String }))
+
 const installNames: Record<Method, string> = {
   curl: "The OpenCode installer",
   npm: "npm",
@@ -52,6 +66,7 @@ const installNames: Record<Method, string> = {
   yarn: "Yarn",
   vp: "Vite+",
   brew: "Homebrew",
+  mise: "mise",
 }
 
 function conciseDetail(input: string) {
@@ -139,15 +154,17 @@ const make = Effect.gen(function* () {
       .readFileString(path.join(directory, "package.json"))
       .pipe(Effect.flatMap((text) => Effect.try(() => JSON.parse(text))))
     // Source invocations run inside Bun or Node, which may themselves be npm packages.
-    if (redcode && /^@reddb-io\/redcode-(?:linux|darwin|windows)-/.test(manifest.name))
-      return "@reddb-io/redcode"
-    if (redcode ? manifest.name !== "@reddb-io/redcode" : !/^@opencode(?:-ai)?\/cli(?:-node)?$/.test(manifest.name)) return
+    if (redcode && /^@reddb-io\/redcode-(?:linux|darwin|windows)-/.test(manifest.name)) return "@reddb-io/redcode"
+    if (redcode ? manifest.name !== "@reddb-io/redcode" : !/^@opencode(?:-ai)?\/cli(?:-node)?$/.test(manifest.name))
+      return
     if (Object.values(manifest.bin ?? {}).some((bin) => path.resolve(directory, bin) === executable))
       return manifest.name
   }).pipe(Effect.orElseSucceed(() => undefined))
 
   const readPolicy = Effect.fnUntraced(function* () {
-    const values = yield* Effect.forEach(["config.json", "opencode.json", "opencode.jsonc"], (name) =>
+    // Same names and precedence as the global config loader: Redcode names override OpenCode names.
+    const names = ["opencode.json", "opencode.jsonc", "redcode.json", "redcode.jsonc", "config.json", "config.jsonc"]
+    const values = yield* Effect.forEach(names, (name) =>
       fs.readFileString(path.join(global.config, name)).pipe(
         Effect.map(decodePolicy),
         Effect.orElseSucceed(() => undefined),
@@ -182,6 +199,8 @@ const make = Effect.gen(function* () {
   const method = Effect.fnUntraced(function* () {
     if (path.resolve(process.execPath) === curlBinary) return "curl"
     const executable = yield* fs.realPath(process.execPath).pipe(Effect.orElseSucceed(() => process.execPath))
+    // Match Redcode's own mise install directory, not any mise install: Bun or Node may come from mise too.
+    if (executable.toLowerCase().includes(`${path.sep}installs${path.sep}${MISE_INSTALL_DIR}${path.sep}`)) return "mise"
     if (
       ["opencode-beta", "opencode-v2"].some((name) =>
         executable.includes(`${path.sep}Cellar${path.sep}${name}${path.sep}`),
@@ -216,7 +235,7 @@ const make = Effect.gen(function* () {
   })
 
   const removal = (method: Method) => {
-    if (method === "curl" || method === "brew" || !installedPackage) return undefined
+    if (method === "curl" || method === "brew" || method === "mise" || !installedPackage) return undefined
     const commands = {
       npm: ["npm", "uninstall", "--global", installedPackage],
       pnpm: ["pnpm", "remove", "--global", installedPackage],
@@ -242,9 +261,12 @@ const make = Effect.gen(function* () {
     const response = yield* Effect.tryPromise({
       try: (signal) =>
         fetch(
-          redcode
-            ? "https://registry.npmjs.org/@reddb-io%2fredcode/dist-tags"
-            : `https://opencode.ai/update/api/${encodeURIComponent(channel)}/${encodeURIComponent(OPENCODE_ARTIFACT)}/${distribution}?current=${encodeURIComponent(OPENCODE_VERSION)}`,
+          // mise installs GitHub release assets, so it follows the GitHub latest release, not npm.
+          method === "mise"
+            ? "https://api.github.com/repos/reddb-io/redcode/releases/latest"
+            : redcode
+              ? "https://registry.npmjs.org/@reddb-io%2fredcode/dist-tags"
+              : `https://opencode.ai/update/api/${encodeURIComponent(channel)}/${encodeURIComponent(OPENCODE_ARTIFACT)}/${distribution}?current=${encodeURIComponent(OPENCODE_VERSION)}`,
           {
             signal: AbortSignal.any([signal, AbortSignal.timeout(10_000)]),
           },
@@ -279,15 +301,29 @@ const make = Effect.gen(function* () {
           { cause },
         ),
     })
+    if (method === "mise") {
+      const tag = decodeGitHubRelease(data)
+      if (Option.isSome(tag) && parseReleaseVersion(tag.value.tag_name))
+        return { package: MISE_TOOL, version: tag.value.tag_name.replace(/^v/, "") }
+      return yield* Effect.fail(
+        new UpgradeError({
+          title: "Could not read the Redcode update information",
+          detail: "The latest reddb-io/redcode GitHub release has no version tag.",
+          retry: `Check ${RELEASES_URL} and try again.`,
+        }),
+      )
+    }
     if (redcode) {
       const tags = Schema.decodeUnknownOption(Schema.Record(Schema.String, Schema.String))(data)
-      const version = Option.isSome(tags) ? tags.value[channel] ?? tags.value.latest : undefined
+      const version = Option.isSome(tags) ? (tags.value[channel] ?? tags.value.latest) : undefined
       if (version) return { package: "@reddb-io/redcode", version }
-      return yield* Effect.fail(new UpgradeError({
-        title: "Could not read the Redcode update information",
-        detail: `The npm registry has no ${channel} Redcode version.`,
-        retry: "Check the published npm dist-tags and try again.",
-      }))
+      return yield* Effect.fail(
+        new UpgradeError({
+          title: "Could not read the Redcode update information",
+          detail: `The npm registry has no ${channel} Redcode version.`,
+          retry: "Check the published npm dist-tags and try again.",
+        }),
+      )
     }
     const info = Schema.decodeUnknownOption(
       Schema.Struct({ version: Schema.String, metadata: Schema.Struct({ package: Schema.String }) }),
@@ -361,21 +397,87 @@ const make = Effect.gen(function* () {
     )
   }
 
+  // mise keeps every version it fetched; the shim runs only the active one.
+  const miseInstall = (version: string) =>
+    exec(["mise", "ls", "--json", MISE_TOOL]).pipe(
+      Effect.map((result) =>
+        Option.getOrUndefined(decodeMiseVersions(result.stdout))?.find((item) => item.version === version),
+      ),
+      Effect.orElseSucceed(() => undefined),
+    )
+
+  const upgradeMise = Effect.fnUntraced(function* (version: string) {
+    // A stale cached version list makes `mise upgrade` see nothing new; clearing it is best-effort.
+    yield* exec(["mise", "cache", "clear", MISE_TOOL]).pipe(Effect.ignore)
+    // `--bump` moves an exact pin such as red-dev's; a plain upgrade stays inside the pinned range and exits 0.
+    yield* runUpgrade({ method: "mise", command: ["mise", "upgrade", "--bump", MISE_TOOL] })
+    // `--bump` lands on the newest version mise is willing to see, which its own gates can hold
+    // below the offered one. Select the offered version by name so the accepted update is what runs.
+    const selection = (yield* miseInstall(version))?.active
+      ? undefined
+      : yield* exec(["mise", "use", "-g", `${MISE_TOOL}@${version}`], "5 minutes").pipe(
+          Effect.orElseSucceed(() => undefined),
+        )
+    // mise exits 0 when it keeps the old version, so only an active target proves the update.
+    const installed = yield* miseInstall(version)
+    if (installed?.active) return
+    const title = `mise could not switch ${product} to v${version}`
+    if (installed)
+      return yield* Effect.fail(
+        new UpgradeError({
+          title,
+          detail: `mise installed v${version} but still selects another version, so ${commandName} keeps running the old one.`,
+          command: `mise use -g ${MISE_TOOL}@${version}`,
+          retry: "Run the command above, then open a new shell.",
+        }),
+      )
+    const offered = (yield* exec(["mise", "ls-remote", MISE_TOOL], "30 seconds").pipe(
+      Effect.map((result) => result.stdout),
+      Effect.orElseSucceed(() => ""),
+    ))
+      .split("\n")
+      .map((line) => line.trim())
+      .includes(version)
+    if (offered)
+      return yield* Effect.fail(
+        new UpgradeError({
+          title,
+          detail: selection && selection.code !== 0 ? resultDetail(selection) : `mise did not install v${version}.`,
+          command: `mise use -g ${MISE_TOOL}@${version}`,
+          retry: `Fix the issue above, then run ${commandName} upgrade again.`,
+        }),
+      )
+    return yield* Effect.fail(
+      new UpgradeError({
+        title,
+        detail: [
+          `mise does not offer v${version} yet: it holds back releases younger than its minimum_release_age setting.`,
+          `Releases are listed at ${RELEASES_URL}.`,
+        ].join("\n"),
+        command: `mise settings add minimum_release_age_excludes "${MISE_TOOL}"`,
+        retry: `Run the command above to let ${product} releases through while keeping the delay for other tools, then run ${commandName} upgrade again.`,
+      }),
+    )
+  })
+
   const upgrade = Effect.fnUntraced(function* (method: Method, input: string) {
     if (!parseReleaseVersion(input)) return yield* Effect.fail(new Error(`Invalid version: ${input}`))
     if (redcode && (method === "curl" || method === "brew"))
-      return yield* Effect.fail(new UpgradeError({
-        title: "Redcode cannot update through this installer",
-        detail: `${method} is not a Redcode release channel in this build.`,
-        retry: `Install @reddb-io/redcode with npm, Bun, pnpm, Yarn, or Vite+ and rerun ${commandName} upgrade.`,
-      }))
+      return yield* Effect.fail(
+        new UpgradeError({
+          title: "Redcode cannot update through this installer",
+          detail: `${method} is not a Redcode release channel in this build.`,
+          retry: `Install @reddb-io/redcode with npm, Bun, pnpm, Yarn, or Vite+, or ${MISE_TOOL} with mise, and rerun ${commandName} upgrade.`,
+        }),
+      )
     const version = input.trim().replace(/^v/, "")
+    if (method === "mise") return yield* upgradeMise(version)
     const packageName = (yield* release(method)).package
     const target = `${packageName}@${version}`
     if (installedPackage && packageName !== installedPackage && (method === "pnpm" || method === "yarn")) {
       return yield* Effect.fail(new Error(`Reinstall ${target} with ${method} to migrate from ${installedPackage}.`))
     }
-    const commands: Record<Exclude<Method, "bun" | "curl" | "brew">, string[]> = {
+    const commands: Record<Exclude<Method, "bun" | "curl" | "brew" | "mise">, string[]> = {
       // Keep the old package: uninstalling it can unlink the replacement command.
       npm: [
         "npm",

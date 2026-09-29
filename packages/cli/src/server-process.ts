@@ -76,6 +76,8 @@ const processEffect = Effect.fnUntraced(function* (options: Options) {
       if (options.mode === "stdio") {
         delete process.env.OPENCODE_PASSWORD
         delete process.env.OPENCODE_SERVER_PASSWORD
+        delete process.env.REDCODE_PASSWORD
+        delete process.env.REDCODE_SERVER_PASSWORD
       }
       const password =
         options.mode === "service"

@@ -73,6 +73,38 @@ describe("config plugin reloads", () => {
     ),
   )
 
+  it.live("loads every config name when the global config dir is the Redcode home", () =>
+    Effect.acquireDisposable(Effect.promise(() => tmpdir())).pipe(
+      Effect.flatMap((tmp) =>
+        Effect.gen(function* () {
+          const project = path.join(tmp.path, "project")
+          // The shipped layout: the global config dir and ~/.red/code are the same directory.
+          const home = path.join(project, "home", ".red", "code")
+          const files = [
+            [path.join(home, "opencode.json"), "opencode-json"],
+            [path.join(home, "opencode.jsonc"), "opencode-jsonc"],
+            [path.join(home, "redcode.json"), "redcode-json"],
+            [path.join(home, "redcode.jsonc"), "redcode-jsonc"],
+            [path.join(home, "config.json"), "config-json"],
+            [path.join(home, "config.jsonc"), "config-jsonc"],
+          ] as const
+          yield* Effect.promise(async () => {
+            await fs.mkdir(home, { recursive: true })
+            await Promise.all(files.map(([file, shell]) => Bun.write(file, JSON.stringify({ shell }))))
+          })
+          return yield* Effect.gen(function* () {
+            const config = yield* Config.Service
+            const entries = yield* config.entries()
+            expect(entries.filter((entry) => entry.type === "document").map((entry) => entry.path)).toEqual(
+              files.map(([file]) => AbsolutePath.make(file)),
+            )
+            expect(Config.latest(entries, "shell")).toBe("config-jsonc")
+          }).pipe(Effect.provide(liveConfig(project, undefined, { global: true }, home)))
+        }),
+      ),
+    ),
+  )
+
   for (const input of [
     { root: ".agents", global: false },
     { root: "../.claude", global: false },
@@ -348,15 +380,18 @@ describe("config plugin reloads", () => {
   )
 })
 
-function liveConfig(directory: string, native?: Watcher.NativeInterface, options: Config.Options = { global: false }) {
+function liveConfig(
+  directory: string,
+  native?: Watcher.NativeInterface,
+  options: Config.Options = { global: false },
+  globalDirectory = path.join(directory, "global"),
+) {
   return AppNodeBuilder.build(LayerNode.group([Config.node, Bus.node, Reference.node, Global.node, Location.node]), [
     Config.node.replace(Config.configured(options)),
     Location.node.replace(
       Layer.succeed(Location.Service, Location.Service.of(location({ directory: AbsolutePath.make(directory) }))),
     ),
-    Global.node.replace(
-      Global.layerWith({ config: path.join(directory, "global"), home: path.join(directory, "home") }),
-    ),
+    Global.node.replace(Global.layerWith({ config: globalDirectory, home: path.join(directory, "home") })),
     Credential.node.replace(emptyCredentialNode),
     WellKnown.node.replace(emptyWellknownNode),
     ...(native

@@ -1,5 +1,7 @@
 #!/usr/bin/env bun
 
+// Must stay first: later modules read OPENCODE_* variables while loading.
+import "@opencode/util/env-alias"
 import { NodeRuntime, NodeServices } from "@effect/platform-node"
 import { Cause, Effect } from "effect"
 import { getErrorReported } from "effect/Runtime"

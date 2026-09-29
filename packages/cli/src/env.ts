@@ -12,11 +12,13 @@ export const password = Config.redacted("OPENCODE_PASSWORD").pipe(
   Config.withDefault(undefined),
 )
 
+// REDCODE_* spellings are aliased onto these names at startup, so omit both.
+const credentials = ["OPENCODE_PASSWORD", "OPENCODE_SERVER_PASSWORD", "REDCODE_PASSWORD", "REDCODE_SERVER_PASSWORD"]
+
 export function session() {
   return Object.fromEntries(
     Object.entries(process.env).filter(
-      (entry): entry is [string, string] =>
-        entry[1] !== undefined && entry[0] !== "OPENCODE_PASSWORD" && entry[0] !== "OPENCODE_SERVER_PASSWORD",
+      (entry): entry is [string, string] => entry[1] !== undefined && !credentials.includes(entry[0]),
     ),
   )
 }
