@@ -267,6 +267,8 @@ export function update(adapter: Adapter, event: SessionEvent.DurableEvent) {
           draft.providerState = castDraft(event.data.providerState)
           draft.cost = event.data.cost
           draft.tokens = event.data.tokens
+          // What served the step, e.g. RedRouter's report of the model it routed to.
+          if (event.metadata) draft.metadata = castDraft({ ...draft.metadata, ...event.metadata })
           projectTerminalSnapshot(draft, event)
         })
       },

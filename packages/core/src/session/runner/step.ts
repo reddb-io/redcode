@@ -11,10 +11,12 @@ import {
 } from "@opencode/ai"
 import type { Agent } from "@opencode/schema/agent"
 import { Cause, Clock, Data, Duration, Effect, Exit, Fiber, Option, Stream } from "effect"
+import { Money } from "@opencode/schema/money"
 import { SessionError } from "@opencode/schema/session-error"
 import { TokenUsage } from "@opencode/schema/token-usage"
 import { Bus } from "../../bus.js"
 import { Permission } from "../../permission.js"
+import { ProviderRouter } from "../../provider-router.js"
 import { Snapshot } from "../../snapshot.js"
 import { HookRuntime } from "../../hook.js"
 import { Tool } from "../../tool.js"
@@ -64,7 +66,7 @@ interface Input {
     cause: AIError,
     error: SessionError.Error,
     retry: boolean,
-  ) => Effect.Effect<{ readonly retry: false } | SessionRunnerRetry.Decision>
+  ) => Effect.Effect<SessionRunnerRetry.Stop | SessionRunnerRetry.Decision>
   readonly recoverContinuation: boolean
   /** The runner owns compaction policy; the attempt invokes it only before durable output. */
   readonly recoverOverflow: (failure: unknown) => Effect.Effect<boolean>
@@ -93,6 +95,8 @@ export const make = Effect.gen(function* () {
   const hooks = yield* HookRuntime.Service
 
   const attempt = Effect.fn("SessionStep.attempt")(function* (input: Input) {
+    // A router report left by an attempt that ended before its step did must not price this one.
+    ProviderRouter.take(input.sessionID)
     const startSnapshot = yield* snapshots.capture()
     const publisher = createLLMEventPublisher(bus, {
       onText: (text) =>
@@ -323,7 +327,8 @@ export const make = Effect.gen(function* () {
           yield* publisher.startAssistant()
           return Outcome.Retry({ error: llmError, decision: retry })
         }
-        if (llmError) yield* publisher.failAssistant(llmError)
+        // A stop may name a better failure, such as a quota that resets too far off to wait for.
+        if (llmError) yield* publisher.failAssistant(retry?.retry === false ? (retry.error ?? llmError) : llmError)
 
         for (const decline of tools.declines)
           yield* publisher.failTool(decline.call.id, {
@@ -364,21 +369,33 @@ export const make = Effect.gen(function* () {
                     .files({ from: startSnapshot, to: snapshot })
                     .pipe(Effect.orElseSucceed(() => undefined))
               : undefined
+          // RedRouter prices its own responses and names the model that served them.
+          const routed = ProviderRouter.take(input.sessionID)
           const usage = record.finish
-            ? { cost: SessionUsage.calculateCost(input.model.cost, record.finish.tokens), tokens: record.finish.tokens }
+            ? {
+                cost:
+                  routed?.costUSD === undefined
+                    ? SessionUsage.calculateCost(input.model.cost, record.finish.tokens)
+                    : Money.USD.make(routed.costUSD),
+                tokens: record.finish.tokens,
+              }
             : undefined
           if (record.failure) yield* publisher.publishStepFailure({ ...usage, snapshot, files })
           if (record.finish && usage && !record.failure)
-            yield* bus.publish(SessionEvent.Step.Ended, {
-              sessionID: input.sessionID,
-              assistantMessageID: yield* publisher.startAssistant(),
-              finish: record.finish.finish,
-              rawFinish: record.finish.rawFinish,
-              providerState: record.finish.providerState,
-              ...usage,
-              snapshot,
-              files,
-            })
+            yield* bus.publish(
+              SessionEvent.Step.Ended,
+              {
+                sessionID: input.sessionID,
+                assistantMessageID: yield* publisher.startAssistant(),
+                finish: record.finish.finish,
+                rawFinish: record.finish.rawFinish,
+                providerState: record.finish.providerState,
+                ...usage,
+                snapshot,
+                files,
+              },
+              routed ? { metadata: { [ProviderRouter.METADATA]: routed } } : undefined,
+            )
         }
 
         if (

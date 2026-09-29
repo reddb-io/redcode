@@ -32,8 +32,12 @@ export interface ServerInstructions {
   readonly instructions: string
 }
 
-/** SDK tool definition tagged with the server that owns it. */
-export type Tool = McpClient.Tool & { readonly server: ServerName; readonly codemode?: boolean }
+/** SDK tool definition tagged with the server that owns it and the name that server gave itself. */
+export type Tool = McpClient.Tool & {
+  readonly server: ServerName
+  readonly identity?: string
+  readonly codemode?: boolean
+}
 export type ToolResultContent = McpClient.CallToolContent
 export type ToolResult = McpClient.CallToolResult & { readonly server: ServerName; readonly tool: string }
 export type Prompt = McpClient.Prompt & { readonly server: ServerName }
@@ -293,6 +297,7 @@ export const layer = (options?: Options) =>
       const toTool = (server: ServerName, entry: ServerEntry, tool: McpClient.Tool): Tool => ({
         ...tool,
         server,
+        ...(entry.client?.identity ? { identity: entry.client.identity } : {}),
         ...(entry.config.codemode === undefined ? {} : { codemode: entry.config.codemode }),
       })
 

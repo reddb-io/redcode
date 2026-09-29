@@ -8,6 +8,7 @@ import { Bus } from "../bus.js"
 
 import { Mcp } from "../mcp/index.js"
 import { Permission } from "../permission.js"
+import { ProviderRouter } from "../provider-router.js"
 import { Tool } from "../tool.js"
 
 /**
@@ -48,11 +49,19 @@ export const layer = Layer.effect(
                 output: (tool.outputSchema ?? {}) as JsonSchema.JsonSchema,
                 execute: (input, context) =>
                   Effect.gen(function* () {
+                    // RedRouter key management always asks, can never be approved for later, and no
+                    // rule, saved approval or permission hook answers it for the person.
+                    const guarded = ProviderRouter.protectedCall({
+                      server: tool.identity ?? tool.server,
+                      tool: tool.name,
+                      args: input,
+                    })
                     yield* permission.assert({
                       action: name(tool.server, tool.name),
                       resources: ["*"],
-                      save: ["*"],
-                      metadata: {},
+                      ...(guarded
+                        ? { save: [], metadata: { protected: guarded }, force: true }
+                        : { save: ["*"], metadata: {} }),
                       sessionID: context.sessionID,
                       agent: context.agent,
                       source: {

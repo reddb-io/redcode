@@ -213,7 +213,12 @@ export function Session(props: {
       (sessionID) => data.session.permission.list(sessionID) ?? [],
     )
   })
-  const promptedPermissions = createMemo(() => (local.permission.mode === "autoaccept" ? [] : permissions()))
+  // A protected request (RedRouter key management) is always put to the person, even in auto-accept.
+  const promptedPermissions = createMemo(() =>
+    local.permission.mode === "autoaccept"
+      ? permissions().filter((request) => request.metadata?.protected !== undefined)
+      : permissions(),
+  )
   const forms = createMemo(() => {
     const global = data.session.form.list("global", location()) ?? []
     if (session()?.parentID) return global
@@ -278,7 +283,7 @@ export function Session(props: {
   createEffect(() => {
     if (local.permission.mode !== "autoaccept") return
     permissions().forEach((request) => {
-      if (autoApproved.has(request.id)) return
+      if (autoApproved.has(request.id) || request.metadata?.protected !== undefined) return
       autoApproved.add(request.id)
       void data.session.permission
         .reply({
@@ -2977,8 +2982,8 @@ function useToolPermission(part: () => SessionMessageAssistantTool | undefined) 
   const data = useData()
   const local = useLocal()
   return createMemo(() => {
-    if (local.permission.mode === "autoaccept") return false
     const request = data.session.permission.list(ctx.sessionID)?.[0]
+    if (local.permission.mode === "autoaccept" && request?.metadata?.protected === undefined) return false
     return request?.source?.type === "tool" && request.source.id === part()?.id
   })
 }

@@ -1,16 +1,19 @@
 import { define } from "@opencode/plugin/effect/plugin"
-import { Effect, Option, Schedule, Schema, Stream } from "effect"
+import { Effect, Option, Schedule, Schema, Scope, Stream } from "effect"
 import { Bus } from "../../bus.js"
 import { Credential } from "../../credential.js"
 import { IntelligenceEvaluation } from "../../intelligence/evaluation.js"
 import { redRouterEndpoint } from "../../intelligence/red-router-endpoint.js"
+import { IntelligenceRouter } from "../../intelligence/router.js"
 import { Integration } from "../../integration.js"
 import { KV } from "../../kv.js"
 import { Model } from "../../model.js"
 import { ModelLimit } from "../../model-limit.js"
 import { ModelsDev } from "../../models-dev.js"
 import { Provider } from "../../provider.js"
+import { ProviderRouter } from "../../provider-router.js"
 import { Hash } from "@opencode/util/hash"
+import { Money } from "@opencode/schema/money"
 import { Router } from "@opencode/schema/router"
 
 /**
@@ -39,6 +42,33 @@ const routerParameters = Schema.Struct({
   ),
 })
 
+/** The provider behind a model or one of its offers, as RedRouter's `provider` block reports it. */
+const catalogUpstream = Schema.Struct({
+  id: Schema.String,
+  name: Schema.optional(Schema.String),
+  slug: Schema.optional(Schema.String),
+  category: Schema.optional(Schema.String),
+  subscription: Schema.optional(Schema.Boolean),
+})
+
+const catalogHop = Schema.Struct({ slug: Schema.String, name: Schema.optional(Schema.String) })
+
+const price = Schema.optional(Schema.NullOr(Schema.Finite))
+
+/** One way RedRouter serves a flat model id. `pin_id` requests this offer only; null or absent cannot be pinned. */
+const catalogOffer = Schema.Struct({
+  id: Schema.String,
+  pin_id: Schema.optional(Schema.NullOr(Schema.String)),
+  provider: catalogUpstream,
+  via: Schema.optional(Schema.Array(Schema.Unknown)),
+  available: Schema.optional(Schema.Boolean),
+  price: Schema.optional(Schema.NullOr(Schema.Struct({ input: price, output: price }))),
+  free: Schema.optional(Schema.Boolean),
+})
+
+/** A combo member's own parameters; an entry without parameters says the router knows none. */
+const catalogMember = Schema.Struct({ id: Schema.String, parameters: Schema.optional(Schema.Unknown) })
+
 const catalogModel = Schema.Struct({
   id: Schema.String,
   name: Schema.optional(Schema.String),
@@ -48,7 +78,13 @@ const catalogModel = Schema.Struct({
   aliases: Schema.optional(Schema.Array(Schema.String)),
   via: Schema.optional(Schema.String),
   flat: Schema.optional(Schema.Boolean),
+  // Other OpenAI-compatible servers may send null for fields only RedRouter fills.
+  strategy: Schema.optional(Schema.NullOr(Schema.String)),
+  offers: Schema.optional(Schema.NullOr(Schema.Array(Schema.Unknown))),
   parameters: Schema.optional(Schema.Json),
+  // `lead`: the parameters are the lead member's; `strictest`: the strictest of all members'.
+  parameters_basis: Schema.optional(Schema.NullOr(Schema.String)),
+  member_parameters: Schema.optional(Schema.NullOr(Schema.Array(Schema.Unknown))),
   thinking_levels: Schema.optional(Schema.NullOr(Schema.Array(Schema.String))),
   type: Schema.optional(Schema.String),
   api_format: Schema.optional(Schema.String),
@@ -78,11 +114,28 @@ const catalogModel = Schema.Struct({
   ),
 })
 const catalog = Schema.Struct({
+  // `flat` lists one entry per model; routers from before flat ids do not say.
+  id_format: Schema.optional(Schema.Unknown),
   data: Schema.Array(Schema.Unknown),
 })
 
+const decodeKey = Schema.decodeUnknownOption(
+  Schema.Struct({
+    role: Schema.optional(Schema.Unknown),
+    mcp: Schema.optional(Schema.NullOr(Schema.Struct({ url: Schema.optional(Schema.Unknown) }))),
+  }),
+)
+
 type CatalogModel = typeof catalogModel.Type
-type Connection = { readonly baseURL: string; readonly key: string; readonly integrationID: Integration.ID }
+type RouterParameters = typeof routerParameters.Type
+type Connection = {
+  readonly baseURL: string
+  readonly key: string
+  readonly integrationID: Integration.ID
+  readonly credential?: Credential.Info
+}
+/** What a RedRouter connection was found to be: its advertised features and the connection saved on the provider. */
+type Inspection = { readonly features: readonly Router.Feature[]; readonly router?: Router.Connection }
 
 export const RedRouterPlugin = routerPlugin({
   id: "red-router",
@@ -114,12 +167,20 @@ function routerPlugin(options: {
       const kv = yield* KV.Service
       const bus = yield* Bus.Service
       const modelsDev = yield* ModelsDev.Service
+      const scope = yield* Scope.Scope
       const loaded: {
         models: readonly CatalogModel[]
         names: ReturnType<typeof catalogNames>
         connection?: Connection
         digest?: string
-      } = { models: [], names: catalogNames(yield* modelsDev.get()) }
+        inspection: Inspection
+        catalogVersion?: string
+      } = { models: [], names: catalogNames(yield* modelsDev.get()), inspection: { features: [] } }
+      // The registered MCP server, keyed by what it is reached with, so a change reloads MCP once.
+      const mcpServer = () =>
+        loaded.connection && loaded.inspection.router?.mcp
+          ? `${loaded.inspection.router.mcp}\n${loaded.connection.key}`
+          : undefined
 
       const resolve = Effect.fn("RouterProvider.resolve")(function* () {
         const all = (yield* credentials.all()).toReversed()
@@ -146,16 +207,44 @@ function routerPlugin(options: {
           baseURL,
           key,
           integrationID: stored?.integrationID ?? Integration.ID.make(providerID),
+          ...(stored ? { credential: stored } : {}),
         } satisfies Connection
+      })
+
+      /**
+       * What a RedRouter says about itself (its capabilities, cached by the detector) and about the key:
+       * its role and MCP server, from the model list's response headers or else `GET /key`. Never fails.
+       */
+      const inspect = Effect.fn("RouterProvider.inspect")(function* (connection: Connection, headers: Headers) {
+        if (options.id !== "red-router") return { features: [] } satisfies Inspection
+        const detection = (yield* IntelligenceRouter.detect(connection.credential))?.detection
+        const role = ProviderRouter.keyRole(headers.get(ProviderRouter.Header.keyRole)?.trim())
+        const mcp = role ? ProviderRouter.mcpURL(connection.baseURL, headers.get(ProviderRouter.Header.mcp)) : undefined
+        const key = role ? { role, ...(mcp ? { mcp } : {}) } : yield* Effect.promise(() => keyInfo(connection))
+        const red = detection?.kind === "red-router" ? detection : undefined
+        if (!red && !key) return { features: [] } satisfies Inspection
+        return {
+          features: red?.features ?? [],
+          router: {
+            kind: "red-router",
+            ...(red?.instanceID ? { instanceID: red.instanceID } : {}),
+            ...(red?.version ? { version: red.version } : {}),
+            ...key,
+          },
+        } satisfies Inspection
       })
 
       const refresh = Effect.fn("RouterProvider.refresh")(function* () {
         const connection = yield* resolve()
+        const mcpBefore = mcpServer()
         if (loaded.connection?.baseURL !== connection?.baseURL || loaded.connection?.key !== connection?.key) {
           loaded.models = []
           loaded.digest = undefined
+          loaded.inspection = { features: [] }
+          loaded.catalogVersion = undefined
         }
         loaded.connection = connection
+        if (mcpServer() !== mcpBefore) yield* ctx.mcp.reload()
         if (!connection) {
           loaded.models = []
           loaded.digest = undefined
@@ -178,7 +267,7 @@ function routerPlugin(options: {
           }
         }
         yield* ctx.provider.reload()
-        const response = yield* Effect.tryPromise({
+        const fetched = yield* Effect.tryPromise({
           try: async (signal) => {
             const result = await fetch(`${connection.baseURL}/models`, {
               redirect: "error",
@@ -186,22 +275,38 @@ function routerPlugin(options: {
               headers: { accept: "application/json", authorization: `Bearer ${connection.key}` },
             })
             if (!result.ok) throw new Error(`${options.name} model catalog HTTP ${result.status}`)
-            return (await result.json()) as unknown
+            return { body: (await result.json()) as unknown, headers: result.headers }
           },
           catch: (cause) => cause,
-        }).pipe(Effect.flatMap(Schema.decodeUnknownEffect(catalog)))
+        })
+        const response = yield* Schema.decodeUnknownEffect(catalog)(fetched.body)
         const current = yield* resolve()
         if (!current || current.baseURL !== connection.baseURL || current.key !== connection.key) return
+        const flat = response.id_format === "flat"
         const models = response.data.flatMap((item) => {
           const decoded = Schema.decodeUnknownOption(catalogModel)(item)
-          return Option.isSome(decoded) ? [decoded.value] : []
+          if (Option.isNone(decoded)) return []
+          // In a flat list a combo carrying offers is a flat model id, even when the entry does not say so.
+          return [
+            flat && decoded.value.owned_by === "combo" && decoded.value.offers?.length
+              ? { ...decoded.value, flat: true }
+              : decoded.value,
+          ]
         })
         if (response.data.length && !models.length) throw new Error(`${options.name} returned no valid model entries`)
+        const inspection = yield* inspect(current, fetched.headers)
+        loaded.catalogVersion =
+          fetched.headers.get(ProviderRouter.Header.catalogVersion)?.trim() || loaded.catalogVersion
         const digest = Hash.sha256(JSON.stringify(models))
-        if (digest === loaded.digest) return
+        if (digest === loaded.digest && JSON.stringify(inspection) === JSON.stringify(loaded.inspection)) return
+        const mcpInspected = mcpServer()
+        loaded.inspection = inspection
+        const changed = digest !== loaded.digest
         loaded.models = models
         loaded.digest = digest
         yield* ctx.provider.reload()
+        if (mcpServer() !== mcpInspected) yield* ctx.mcp.reload()
+        if (!changed) return
         const chunks = Array.from({ length: Math.ceil(loaded.models.length / 100) }, (_, index) =>
           loaded.models.slice(index * 100, (index + 1) * 100),
         )
@@ -214,6 +319,7 @@ function routerPlugin(options: {
         refresh().pipe(
           Effect.catchCause((cause) => Effect.logWarning(`${options.name} model catalog refresh failed`, { cause })),
         )
+      const features = () => new Set(loaded.inspection.features)
 
       yield* ctx.integration.transform((integrations) => {
         integrations.update(providerID, (integration) => (integration.name = options.name))
@@ -241,6 +347,7 @@ function routerPlugin(options: {
       yield* ctx.provider.transform((providers) => {
         const connection = loaded.connection
         if (!connection) return
+        const enabled = features()
         providers.add({
           info: {
             id: providerID,
@@ -249,10 +356,74 @@ function routerPlugin(options: {
             activation: "auto",
             package: "@opencode/ai/providers/openai-compatible",
             settings: { baseURL: connection.baseURL, provider: providerID },
+            ...(loaded.inspection.router ? { router: loaded.inspection.router } : {}),
           },
-          models: loaded.models.flatMap((item) => routerModel(item, providerID, loaded.names)),
+          models: loaded.models.flatMap((item) => routerModel(item, providerID, loaded.names, enabled)),
         })
       })
+      if (options.id === "red-router")
+        yield* ctx.mcp.transform((servers) => {
+          const connection = loaded.connection
+          const url = loaded.inspection.router?.mcp
+          // A server the user configured under the same name wins.
+          if (!connection || !url || servers.get(ProviderRouter.MCP_SERVER)) return
+          servers.set(ProviderRouter.MCP_SERVER, {
+            type: "remote",
+            url,
+            headers: { Authorization: `Bearer ${connection.key}` },
+            // The key is the credential; RedRouter's MCP server never asks for OAuth.
+            oauth: false,
+          })
+        })
+      yield* ctx.session.hook(
+        "model.request",
+        (event) =>
+          Effect.sync(() => {
+            Object.assign(
+              event.headers,
+              ProviderRouter.requestHeaders({
+                features: features(),
+                variant: event.model.variant,
+                strategy: loaded.models.find((item) => item.id === event.model.id)?.strategy ?? undefined,
+                // Compaction and validation must see the whole prompt.
+                tokenSaver: event.kind === "compaction" || event.kind === "generate" ? false : undefined,
+                guidance: ProviderRouter.guidance(event.sessionID),
+              }),
+            )
+          }),
+        { providerID },
+      )
+      if (options.id === "red-router")
+        yield* ctx.session.hook(
+          "http.response",
+          Effect.fn(function* (event) {
+            const report = ProviderRouter.reported(event.response.headers)
+            if (!report) return
+            // Combos, members or limits changed at the router: read the catalog again, once per version.
+            if (report.catalogVersion && report.catalogVersion !== loaded.catalogVersion) {
+              loaded.catalogVersion = report.catalogVersion
+              yield* safeRefresh().pipe(Effect.forkIn(scope))
+            }
+            if (event.kind !== "primary") return
+            ProviderRouter.observe(event.sessionID, report)
+            const body = event.response.body
+            if (
+              !report.servedModel ||
+              report.costUSD !== undefined ||
+              !body ||
+              !event.response.headers.get("content-type")?.includes("text/event-stream")
+            )
+              return
+            // A stream reports its cost in its final usage chunk instead of a header.
+            event.response = new Response(
+              body.pipeThrough(
+                ProviderRouter.usageCost((costUSD) => ProviderRouter.observe(event.sessionID, { costUSD })),
+              ),
+              { status: event.response.status, statusText: event.response.statusText, headers: event.response.headers },
+            )
+          }),
+          { providerID },
+        )
       yield* bus.subscribe([Credential.Event.Updated, Credential.Event.Switched]).pipe(
         Stream.runForEach(() => safeRefresh()),
         Effect.forkScoped({ startImmediately: true }),
@@ -294,12 +465,22 @@ export function routerModel(
   item: CatalogModel,
   providerID: Provider.ID,
   names: ReturnType<typeof catalogNames>,
+  features: ReadonlySet<Router.Feature> = new Set(),
 ): Model.Info[] {
   if (!item.id || IntelligenceEvaluation.isJev(item.id)) return []
   if (item.type !== undefined && !["chat", "llm", "text"].includes(item.type)) return []
   if (item.api_format !== undefined && !["chat-completions", "responses", "openai-responses"].includes(item.api_format))
     return []
-  const parameters = Option.getOrUndefined(Schema.decodeUnknownOption(routerParameters)(item.parameters))
+  const members = (item.member_parameters ?? []).flatMap((entry) => {
+    const member = Option.getOrUndefined(Schema.decodeUnknownOption(catalogMember)(entry))
+    if (!member) return []
+    const parameters = Option.getOrUndefined(Schema.decodeUnknownOption(routerParameters)(member.parameters))
+    return [{ id: member.id, ...(parameters ? { parameters } : {}) }]
+  })
+  // A combo that states no parameters of its own is planned for its strictest member.
+  const parameters =
+    Option.getOrUndefined(Schema.decodeUnknownOption(routerParameters)(item.parameters)) ??
+    strictest(members.flatMap((member) => (member.parameters ? [member.parameters] : [])))
   const output =
     parameters?.modalities?.output ??
     item.output_modalities ??
@@ -323,73 +504,258 @@ export function routerModel(
       : (item.thinking_levels ?? item.capabilities?.effort_tiers ?? [])
   const reasoning =
     parameters?.reasoning ?? item.capabilities?.reasoning ?? item.capabilities?.supportsThinking ?? levels.length > 0
-  const variants = reasoning
-    ? [
-        ...new Set(levels.filter((level) => level && (level !== "none" || parameters?.thinking_can_disable !== false))),
-      ].map((level) => ({
-        id: Model.VariantID.make(level),
-        settings: { reasoningEffort: level },
-      }))
-    : []
+  const variants = reasoningVariants(reasoning, levels, parameters?.thinking_can_disable, features)
   const route = Router.route(item.id)
-  const reported = Schema.decodeUnknownOption(
-    Schema.Struct({
-      id: Schema.String,
-      name: Schema.optional(Schema.String),
-      slug: Schema.optional(Schema.String),
-      category: Schema.optional(Schema.String),
-      subscription: Schema.optional(Schema.Boolean),
-    }),
-  )(item.provider)
-  const source = Option.getOrUndefined(reported)
+  const source = Option.getOrUndefined(Schema.decodeUnknownOption(catalogUpstream)(item.provider))
+  const offers = item.flat ? routerOffers(item.offers, item.id, names) : []
+  // A flat id names no provider: it is served by its lead offer, whose routers come before it.
+  const lead = Router.leadOffer({ offers })
   // A flat ID does not identify its serving provider. For routed IDs the catalog's
   // owner is authoritative even when the public prefix is an alias (for example oc/).
   const owner =
     source?.id ?? (item.flat ? undefined : item.owned_by && item.owned_by !== "combo" ? item.owned_by : route.provider)
-  const upstream = owner
-    ? {
-        id: owner,
-        name: source?.name || names.providers.get(owner) || owner,
-        ...(source?.slug ? { slug: source.slug } : {}),
-        ...(source?.category ? { category: source.category } : {}),
-        ...(source?.subscription === undefined ? {} : { subscription: source.subscription }),
-      }
-    : item.owned_by === "combo"
-      ? { id: "combo", name: "Combo", category: "combo" }
-      : undefined
+  const upstream =
+    lead?.provider ??
+    (owner
+      ? {
+          id: owner,
+          name: source?.name || names.providers.get(owner) || owner,
+          ...(source?.slug ? { slug: source.slug } : {}),
+          ...(source?.category ? { category: source.category } : {}),
+          ...(source?.subscription === undefined ? {} : { subscription: source.subscription }),
+        }
+      : item.owned_by === "combo"
+        ? { id: "combo", name: "Combo", category: "combo" }
+        : undefined)
+  const via = lead ? hops(lead) : item.via
   const display = item.display_name?.trim() || item.name?.trim()
+  const name =
+    display && display !== item.id
+      ? display
+      : owner
+        ? (names.models.get(`${owner}/${route.model}`) ?? names.models.get(`${owner}/${item.id}`) ?? route.model)
+        : item.id
+  // Falling back per request may land on any member, so one that refuses a forced tool choice rules it out.
+  const forcedToolChoice = members.some((member) => member.parameters?.forced_tool_choice === false)
+    ? false
+    : parameters?.forced_tool_choice
+  const shared = {
+    package: responses
+      ? "@opencode/ai/providers/openai-compatible-responses"
+      : "@opencode/ai/providers/openai-compatible",
+    settings: { provider: providerID },
+    capabilities: {
+      tools: parameters?.tools ?? item.capabilities?.tool_calling === true,
+      reasoning,
+      ...(item.capabilities?.temperature === undefined ? {} : { temperature: item.capabilities.temperature }),
+      input: [...input],
+      output: [...output],
+    },
+    ...(forcedToolChoice === undefined ? {} : { compatibility: { forcedToolChoice } }),
+  }
+  // Each offer that can be pinned is a model of its own under its pin id, so a pinned choice resolves,
+  // labels and plans like any routed model: the offer's provider, routers and price, and its own limits
+  // and thinking levels when the router listed them. An offer switched off for the flat id still pins.
+  const pinned = offers.flatMap((offer): Model.Info[] => {
+    if (!offer.pinID) return []
+    const pinID = Model.ID.make(offer.pinID)
+    const member = members.find((candidate) => candidate.id === offer.id)?.parameters
+    const context = firstPositive([member?.context_length]) ?? limit.context
+    const pinnedVariants =
+      !member || member.thinking_levels === undefined
+        ? variants
+        : reasoningVariants(
+            member.reasoning ?? reasoning,
+            member.thinking_levels ?? [],
+            member.thinking_can_disable,
+            features,
+          )
+    const pinnedVia = hops(offer)
+    return [
+      {
+        ...Model.Info.default(providerID, pinID),
+        name,
+        upstream: offer.provider,
+        ...(pinnedVia ? { via: pinnedVia } : {}),
+        pinOf: id,
+        ...shared,
+        variants: pinnedVariants,
+        ...(pinnedVariants.length ? { reasoningVariantIDs: pinnedVariants.map((variant) => variant.id) } : {}),
+        cost: offer.price
+          ? [
+              {
+                input: Money.USDPerMillionTokens.make(offer.price.input ?? 0),
+                output: Money.USDPerMillionTokens.make(offer.price.output ?? 0),
+                cache: { read: Money.USDPerMillionTokens.zero, write: Money.USDPerMillionTokens.zero },
+              },
+            ]
+          : [],
+        limit: {
+          context,
+          ...(limit.input !== undefined && limit.input < context ? { input: limit.input } : {}),
+          output: Math.min(firstPositive([member?.max_completion_tokens]) ?? limit.output, context),
+        },
+      },
+    ]
+  })
   return [
     {
       ...Model.Info.default(providerID, id),
-      name:
-        display && display !== item.id
-          ? display
-          : owner
-            ? (names.models.get(`${owner}/${route.model}`) ?? names.models.get(`${owner}/${item.id}`) ?? route.model)
-            : item.id,
+      name,
       ...(upstream ? { upstream } : {}),
-      ...(item.via ? { via: item.via } : {}),
+      ...(via ? { via } : {}),
       ...(item.aliases?.length ? { aliases: item.aliases } : {}),
       ...(item.flat ? { flat: true } : {}),
-      package: responses
-        ? "@opencode/ai/providers/openai-compatible-responses"
-        : "@opencode/ai/providers/openai-compatible",
-      settings: { provider: providerID },
+      ...(offers.length ? { offers } : {}),
+      ...shared,
       variants,
       ...(variants.length ? { reasoningVariantIDs: variants.map((variant) => variant.id) } : {}),
-      capabilities: {
-        tools: parameters?.tools ?? item.capabilities?.tool_calling === true,
-        reasoning,
-        ...(item.capabilities?.temperature === undefined ? {} : { temperature: item.capabilities.temperature }),
-        input: [...input],
-        output: [...output],
-      },
-      ...(parameters?.forced_tool_choice === undefined
-        ? {}
-        : { compatibility: { forcedToolChoice: parameters.forced_tool_choice } }),
       limit,
     },
+    ...pinned,
   ]
+}
+
+/**
+ * A model's reasoning variants: one per thinking level (without `none` when it cannot stop thinking),
+ * and first `auto`, which leaves the effort to RedRouter's reasoning autopilot, when the router
+ * accepts it and there are two effort levels at least to choose between.
+ */
+function reasoningVariants(
+  reasoning: boolean,
+  levels: ReadonlyArray<string>,
+  canDisable: boolean | undefined,
+  features: ReadonlySet<Router.Feature>,
+): Model.Info["variants"] {
+  if (!reasoning) return []
+  const allowed = [
+    ...new Set(
+      levels.filter((level) => level && level !== ProviderRouter.AUTO && (level !== "none" || canDisable !== false)),
+    ),
+  ]
+  return [
+    ...(ProviderRouter.supportsAuto(allowed, features) ? [{ id: Model.VariantID.make(ProviderRouter.AUTO) }] : []),
+    ...allowed.map((level) => ({ id: Model.VariantID.make(level), settings: { reasoningEffort: level } })),
+  ]
+}
+
+/**
+ * RedRouter's `offers` of a flat model id, in policy order. An offer without an id or a provider is
+ * dropped. A missing `pin_id` means the offer cannot be pinned, like null, and so does one equal to the
+ * flat id: the vendor's own offer id can be the flat id, which asks for the flat model.
+ */
+function routerOffers(
+  value: ReadonlyArray<unknown> | null | undefined,
+  flatID: string,
+  names: ReturnType<typeof catalogNames>,
+): Router.Offer[] {
+  return (value ?? []).flatMap((entry) => {
+    const offer = Option.getOrUndefined(Schema.decodeUnknownOption(catalogOffer)(entry))
+    if (!offer?.id.trim() || !offer.provider.id.trim()) return []
+    const pin = offer.pin_id?.trim()
+    const input = dollars(offer.price?.input)
+    const output = dollars(offer.price?.output)
+    return [
+      {
+        id: offer.id,
+        ...(pin && pin !== flatID ? { pinID: pin } : {}),
+        provider: {
+          id: offer.provider.id,
+          name:
+            offer.provider.name?.trim() ||
+            names.providers.get(offer.provider.id) ||
+            offer.provider.slug ||
+            offer.provider.id,
+          ...(offer.provider.slug ? { slug: offer.provider.slug } : {}),
+          ...(offer.provider.category ? { category: offer.provider.category } : {}),
+          ...(offer.provider.subscription === undefined ? {} : { subscription: offer.provider.subscription }),
+        },
+        via: (offer.via ?? []).flatMap((entry) => {
+          const hop = Option.getOrUndefined(Schema.decodeUnknownOption(catalogHop)(entry))
+          const slug = hop?.slug.trim()
+          return slug ? [{ slug, name: hop?.name?.trim() || Router.hopName(slug) }] : []
+        }),
+        available: offer.available !== false,
+        ...(input === undefined && output === undefined
+          ? {}
+          : {
+              price: {
+                ...(input === undefined ? {} : { input }),
+                ...(output === undefined ? {} : { output }),
+              },
+            }),
+        free: offer.free === true,
+      },
+    ]
+  })
+}
+
+/** The routers an offer passes through before its provider, outermost first, as one label. */
+function hops(offer: Router.Offer) {
+  return offer.via.map((hop) => hop.name).join(Router.HOP_SEPARATOR) || undefined
+}
+
+/**
+ * The strictest of a combo's member parameters: the smallest limits, the thinking levels every member
+ * takes, and a capability only when every member that says has it. Undefined when no member says.
+ */
+function strictest(members: ReadonlyArray<RouterParameters>): RouterParameters | undefined {
+  const first = members[0]
+  if (!first) return
+  const least = (values: ReadonlyArray<number | undefined>) => {
+    const known = values.filter((value): value is number => value !== undefined)
+    return known.length ? Math.min(...known) : undefined
+  }
+  const all = (values: ReadonlyArray<boolean | undefined>) =>
+    values.includes(false) ? false : values.every((value) => value === true) ? true : undefined
+  const context = least(members.map((member) => member.context_length))
+  const output = least(members.map((member) => member.max_completion_tokens))
+  const levels = members.every((member) => member.thinking_levels !== undefined)
+    ? members
+        .slice(1)
+        .reduce<ReadonlyArray<string>>(
+          (kept, member) => kept.filter((level) => (member.thinking_levels ?? []).includes(level)),
+          first.thinking_levels ?? [],
+        )
+    : undefined
+  const reasoning = all(members.map((member) => member.reasoning))
+  const canDisable = all(members.map((member) => member.thinking_can_disable))
+  const tools = all(members.map((member) => member.tools))
+  const forced = all(members.map((member) => member.forced_tool_choice))
+  return {
+    ...(context === undefined ? {} : { context_length: context }),
+    ...(output === undefined ? {} : { max_completion_tokens: output }),
+    ...(reasoning === undefined ? {} : { reasoning }),
+    ...(levels === undefined ? {} : { thinking_levels: levels }),
+    ...(canDisable === undefined ? {} : { thinking_can_disable: canDisable }),
+    ...(tools === undefined ? {} : { tools }),
+    ...(forced === undefined ? {} : { forced_tool_choice: forced }),
+  }
+}
+
+function dollars(value: number | null | undefined) {
+  return typeof value === "number" && Number.isFinite(value) && value >= 0 ? value : undefined
+}
+
+/**
+ * What a RedRouter key is, from `GET /key`: its role and where its MCP server is, or undefined when
+ * the router does not say (an older router, a refused key). The MCP URL is kept only on the router's
+ * own origin, so the key is never sent anywhere else. Never rejects.
+ */
+async function keyInfo(connection: Connection) {
+  // Redirects are refused so the key never follows a hop to another address.
+  const body = await fetch(`${connection.baseURL}/key`, {
+    redirect: "error",
+    signal: AbortSignal.timeout(3_000),
+    headers: { accept: "application/json", authorization: `Bearer ${connection.key}` },
+  })
+    .then((response) => (response.ok ? (response.json() as Promise<unknown>) : undefined))
+    .catch(() => undefined)
+  const key = Option.getOrUndefined(decodeKey(body))
+  const role = ProviderRouter.keyRole(key?.role)
+  if (!role) return
+  const mcp = ProviderRouter.mcpURL(connection.baseURL, key?.mcp?.url)
+  return { role, ...(mcp ? { mcp } : {}) }
 }
 
 /**

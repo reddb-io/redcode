@@ -62,8 +62,10 @@ export function createSessionRequestModel() {
   })
 
   const permissionRequest = createMemo((): PermissionRequest | undefined => {
-    if (settings.permissions.autoApprove()) return undefined
-    return sessionPermissionRequest(data.session.list(), data.session.permission.list, params.id)
+    const request = sessionPermissionRequest(data.session.list(), data.session.permission.list, params.id)
+    // A protected request (RedRouter key management) is always put to the person, even with auto-approve on.
+    if (settings.permissions.autoApprove() && request?.metadata?.protected === undefined) return undefined
+    return request
   })
 
   const blocked = createMemo(() => {

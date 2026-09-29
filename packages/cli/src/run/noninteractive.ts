@@ -132,8 +132,15 @@ export async function runNonInteractivePrompt(input: Input) {
     }
   }
 
-  const replyPermission = async (request: { id: string; action: string; resources: ReadonlyArray<string> }) => {
-    if (!input.auto) {
+  const replyPermission = async (request: {
+    id: string
+    action: string
+    resources: ReadonlyArray<string>
+    metadata?: { readonly [key: string]: unknown }
+  }) => {
+    // A protected request (RedRouter key management) needs a person; --auto and --yolo never answer it.
+    const auto = input.auto && request.metadata?.protected === undefined
+    if (!auto) {
       permissionRejected = true
       UI.println(
         UI.Style.TEXT_WARNING_BOLD + "!",
@@ -145,10 +152,10 @@ export async function runNonInteractivePrompt(input: Input) {
       .reply({
         sessionID: input.sessionID,
         requestID: request.id,
-        decision: input.auto ? "once" : "reject",
+        decision: auto ? "once" : "reject",
       })
       .catch(() => {})
-    if (!input.auto) {
+    if (!auto) {
       await input.client.session.interrupt({ sessionID: input.sessionID }).catch(() => {})
     }
   }

@@ -2,6 +2,7 @@ export * as Provider from "./provider.js"
 
 import { Effect, Schema } from "effect"
 import { Integration } from "./integration.js"
+import { Router } from "./router.js"
 import { optional, statics } from "./schema.js"
 import { ephemeral, inventory } from "./event.js"
 
@@ -76,6 +77,7 @@ export const Info = Schema.Struct({
   name: Schema.String,
   activation: Activation,
   package: Package,
+  router: Router.Connection.pipe(optional),
   ...Overlays,
 })
   .annotate({ identifier: "Provider.Info" })

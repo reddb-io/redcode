@@ -92,6 +92,8 @@ export interface Connection {
   /** True when the connection negotiated revision 2026-07-28 or later; false is the initialize handshake. */
   readonly modern: boolean
   readonly instructions: string | undefined
+  /** The name the server gave itself in `initialize`, which tells a server apart however it was registered. */
+  readonly identity?: string
   readonly tools: () => Effect.Effect<Tool[], Error>
   readonly prompts: () => Effect.Effect<Prompt[], Error>
   readonly resources: () => Effect.Effect<Resource[], Error>
@@ -247,6 +249,7 @@ export const connect = Effect.fnUntraced(function* (
     return {
       modern: client.getProtocolEra() === "modern",
       instructions: client.getInstructions()?.trim() || undefined,
+      identity: client.getServerVersion()?.name,
       tools: () =>
         request("list MCP tools", () => client.listTools(undefined, catalog)).pipe(Effect.map((r) => r.tools)),
       prompts: () =>

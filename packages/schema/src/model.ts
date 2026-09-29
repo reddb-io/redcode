@@ -137,6 +137,13 @@ export const Info = Schema.Struct({
   via: Schema.String.pipe(optional),
   aliases: Schema.Array(Schema.String).pipe(optional),
   flat: Schema.Boolean.pipe(optional),
+  offers: Schema.Array(Router.Offer).pipe(optional).annotate({
+    description: "The ways a router serves a flat model id, in its policy order; the first available one serves it.",
+  }),
+  pinOf: ID.pipe(optional).annotate({
+    description:
+      "The flat model id this model pins one offer of. Pickers list the flat model and show its offers instead.",
+  }),
   compatibility: Compatibility.pipe(optional),
   package: Provider.Package.pipe(optional),
   ...Overlays,

@@ -1,12 +1,20 @@
 import { describe, expect, test } from "bun:test"
 import { Credential } from "@opencode/core/credential"
 import { Integration } from "@opencode/core/integration"
+import { Mcp } from "@opencode/core/mcp/index"
+import { Model } from "@opencode/core/model"
 import { Plugin } from "@opencode/core/plugin"
+import { PluginHooks } from "@opencode/core/plugin/hooks"
 import { PluginHost } from "@opencode/core/plugin/host"
 import { RedRouterPlugin, routerModel } from "@opencode/core/plugin/provider/red-router"
-import { Provider } from "@opencode/schema/provider"
+import { Provider } from "@opencode/core/provider"
+import { ProviderRouter } from "@opencode/core/provider-router"
+import { Agent } from "@opencode/schema/agent"
+import { SessionID } from "@opencode/schema/session-id"
 import { Effect } from "effect"
 import { withEnv } from "../fixture/env"
+import { emptyMcp } from "../fixture/mcp"
+import { advance, drain } from "../lib/clock"
 import { testEffect } from "../lib/effect"
 import { PluginTestLayer } from "./fixture"
 
@@ -138,6 +146,339 @@ describe("RedRouterPlugin", () => {
     )
     expect(model?.compatibility).toEqual({ forcedToolChoice: false })
   })
+
+  describe("reasoning variants", () => {
+    const names = { providers: new Map(), models: new Map(), limits: new Map() }
+    const item = { id: "combo/coder", parameters: { reasoning: true, thinking_levels: ["low", "auto", "high"] } }
+
+    test("puts auto first when the router's autopilot accepts it and there are levels to choose between", () => {
+      const [model] = routerModel(item, Provider.ID.make("red-router"), names, new Set(["reasoning", "reasoning-auto"]))
+      expect(model?.variants).toEqual([
+        { id: Model.VariantID.make("auto") },
+        { id: Model.VariantID.make("low"), settings: { reasoningEffort: "low" } },
+        { id: Model.VariantID.make("high"), settings: { reasoningEffort: "high" } },
+      ])
+      expect(model?.reasoningVariantIDs).toEqual(["auto", "low", "high"].map((id) => Model.VariantID.make(id)))
+    })
+
+    test("offers no auto without the router's autopilot or with a single level", () => {
+      const [plain] = routerModel(item, Provider.ID.make("red-router"), names)
+      expect(plain?.variants.map((variant) => variant.id)).toEqual(["low", "high"].map((id) => Model.VariantID.make(id)))
+      const [single] = routerModel(
+        { id: "combo/coder", parameters: { reasoning: true, thinking_levels: ["high"] } },
+        Provider.ID.make("red-router"),
+        names,
+        new Set(["reasoning", "reasoning-auto"]),
+      )
+      expect(single?.variants.map((variant) => variant.id)).toEqual([Model.VariantID.make("high")])
+    })
+  })
+
+  test("models a flat id's offers and pins each pinnable one as its own model", () => {
+    const [flat, ...pinned] = routerModel(
+      {
+        id: "anthropic/claude-sonnet-4-6",
+        flat: true,
+        owned_by: "combo",
+        parameters: {
+          context_length: 200_000,
+          max_completion_tokens: 32_000,
+          reasoning: true,
+          thinking_levels: ["low", "high"],
+        },
+        offers: [
+          {
+            id: "red-router/anthropic/claude-sonnet-4-6",
+            pin_id: "anthropic/claude-sonnet-4-6@anthropic",
+            provider: { id: "anthropic", name: "Anthropic" },
+            via: [{ slug: "red-router", name: "RedRouter" }],
+            available: true,
+            price: { input: 3, output: 15 },
+          },
+          // The vendor's own offer id is the flat id: it cannot pin.
+          {
+            id: "openrouter/anthropic/claude-sonnet-4-6",
+            pin_id: "anthropic/claude-sonnet-4-6",
+            provider: { id: "openrouter" },
+          },
+          {
+            id: "bedrock/anthropic/claude-sonnet-4-6",
+            pin_id: "bedrock:anthropic/claude-sonnet-4-6",
+            provider: { id: "amazon-bedrock", slug: "bedrock" },
+            available: false,
+            free: true,
+          },
+          { id: "broken" },
+        ],
+        member_parameters: [
+          {
+            id: "bedrock/anthropic/claude-sonnet-4-6",
+            parameters: { context_length: 100_000, max_completion_tokens: 8_000, thinking_levels: ["high"] },
+          },
+        ],
+      },
+      Provider.ID.make("red-router"),
+      { providers: new Map([["amazon-bedrock", "Amazon Bedrock"]]), models: new Map(), limits: new Map() },
+    )
+
+    expect(flat?.offers).toEqual([
+      {
+        id: "red-router/anthropic/claude-sonnet-4-6",
+        pinID: "anthropic/claude-sonnet-4-6@anthropic",
+        provider: { id: "anthropic", name: "Anthropic" },
+        via: [{ slug: "red-router", name: "RedRouter" }],
+        available: true,
+        price: { input: 3, output: 15 },
+        free: false,
+      },
+      {
+        id: "openrouter/anthropic/claude-sonnet-4-6",
+        provider: { id: "openrouter", name: "openrouter" },
+        via: [],
+        available: true,
+        free: false,
+      },
+      {
+        id: "bedrock/anthropic/claude-sonnet-4-6",
+        pinID: "bedrock:anthropic/claude-sonnet-4-6",
+        provider: { id: "amazon-bedrock", name: "Amazon Bedrock", slug: "bedrock" },
+        via: [],
+        available: false,
+        free: true,
+      },
+    ])
+    expect(flat).toMatchObject({ flat: true, upstream: { id: "anthropic" }, via: "RedRouter" })
+    expect(pinned.map((model) => model.id)).toEqual(
+      ["anthropic/claude-sonnet-4-6@anthropic", "bedrock:anthropic/claude-sonnet-4-6"].map((id) => Model.ID.make(id)),
+    )
+    expect(pinned[0]).toMatchObject({
+      pinOf: "anthropic/claude-sonnet-4-6",
+      upstream: { id: "anthropic", name: "Anthropic" },
+      via: "RedRouter",
+      cost: [{ input: 3, output: 15, cache: { read: 0, write: 0 } }],
+      limit: { context: 200_000, output: 32_000 },
+    })
+    expect(pinned[0]?.variants.map((variant) => variant.id)).toEqual(
+      ["low", "high"].map((id) => Model.VariantID.make(id)),
+    )
+    // A switched-off offer still pins, with its own member's limits and thinking levels.
+    expect(pinned[1]).toMatchObject({
+      pinOf: "anthropic/claude-sonnet-4-6",
+      upstream: { id: "amazon-bedrock", slug: "bedrock" },
+      cost: [],
+      limit: { context: 100_000, output: 8_000 },
+    })
+    expect(pinned[1]?.flat).toBeUndefined()
+    expect(pinned[1]?.variants.map((variant) => variant.id)).toEqual([Model.VariantID.make("high")])
+  })
+
+  test("plans a combo without parameters of its own for its strictest member", () => {
+    const [combo] = routerModel(
+      {
+        id: "combo/fallback",
+        owned_by: "combo",
+        parameters_basis: "strictest",
+        member_parameters: [
+          {
+            id: "a/one",
+            parameters: {
+              context_length: 400_000,
+              max_completion_tokens: 64_000,
+              thinking_levels: ["low", "medium", "high"],
+              tools: true,
+            },
+          },
+          {
+            id: "b/two",
+            parameters: {
+              context_length: 128_000,
+              max_completion_tokens: 16_000,
+              thinking_levels: ["medium", "high"],
+              tools: true,
+              forced_tool_choice: false,
+            },
+          },
+          { id: "c/three" },
+        ],
+      },
+      Provider.ID.make("red-router"),
+      { providers: new Map(), models: new Map(), limits: new Map() },
+    )
+    expect(combo).toMatchObject({
+      limit: { context: 128_000, output: 16_000 },
+      capabilities: { tools: true, reasoning: true },
+      compatibility: { forcedToolChoice: false },
+    })
+    expect(combo?.variants.map((variant) => variant.id)).toEqual(
+      ["medium", "high"].map((id) => Model.VariantID.make(id)),
+    )
+  })
+
+  test("keeps a lead-based combo's limits but refuses a forced tool choice any member refuses", () => {
+    const [combo] = routerModel(
+      {
+        id: "combo/lead",
+        parameters: { context_length: 200_000, forced_tool_choice: true },
+        parameters_basis: "lead",
+        member_parameters: [{ id: "x/fallback", parameters: { context_length: 32_000, forced_tool_choice: false } }],
+      },
+      Provider.ID.make("red-router"),
+      { providers: new Map(), models: new Map(), limits: new Map() },
+    )
+    expect(combo?.limit.context).toBe(200_000)
+    expect(combo?.compatibility).toEqual({ forcedToolChoice: false })
+  })
+
+  it.effect("cooperates with a detected RedRouter: key role, MCP server, request and response headers", () =>
+    Effect.acquireUseRelease(
+      Effect.sync(() =>
+        Bun.serve({
+          port: 0,
+          fetch: (request) => {
+            const path = new URL(request.url).pathname
+            if (request.headers.get("authorization") !== "Bearer secret") return new Response(null, { status: 401 })
+            if (path === "/v1/capabilities")
+              return Response.json({
+                product: "red-router",
+                version: "1.2.3",
+                instance_id: "instance-1",
+                decision: { header: "x-red-router-decision", accepts_hint: true },
+                token_saver_header: "x-red-router-token-saver",
+                reasoning: { header: "x-red-router-reasoning", accepts: ["auto"] },
+              })
+            if (path === "/v1/models")
+              return Response.json(
+                {
+                  data: [
+                    {
+                      id: "combo/smart",
+                      owned_by: "combo",
+                      strategy: "smart",
+                      parameters: { thinking_levels: ["low", "high"] },
+                    },
+                  ],
+                },
+                {
+                  headers: {
+                    "x-redrouter-key-role": "admin",
+                    "x-redrouter-mcp": "/v1/mcp",
+                    "x-redrouter-catalog-version": "v1",
+                  },
+                },
+              )
+            return new Response(null, { status: 404 })
+          },
+        }),
+      ),
+      (server) =>
+        withEnv({ RED_ROUTER_API_KEY: undefined, RED_ROUTER_BASE_URL: undefined }, () =>
+          Effect.gen(function* () {
+            const origin = server.url.origin
+            const transforms: Array<(editor: Mcp.Editor) => void> = []
+            const servers = () => {
+              const configured = new Map<string, unknown>()
+              transforms.forEach((transform) =>
+                transform({
+                  list: () => [],
+                  get: (name) => (configured.has(name) ? { type: "remote", url: "user" } : undefined),
+                  set: (name, config) => configured.set(name, config),
+                  update: () => {},
+                  remove: (name) => configured.delete(name),
+                }),
+              )
+              return Object.fromEntries(configured)
+            }
+            yield* (yield* Credential.Service).create({
+              integrationID,
+              value: Credential.Key.make({ type: "key", key: "secret", configuration: { baseURL: `${origin}/v1` } }),
+            })
+            yield* addPlugin().pipe(
+              Effect.provideService(
+                Mcp.Service,
+                Mcp.Service.of({
+                  ...emptyMcp,
+                  transform: (transform) =>
+                    Effect.sync(() => {
+                      transforms.push(transform)
+                      return { dispose: Effect.void }
+                    }),
+                }),
+              ),
+            )
+            yield* advance(() => Object.keys(servers()).length > 0)
+            yield* drain
+
+            // The key's MCP server is registered with the key, and a server the user declared wins.
+            expect(servers()).toEqual({
+              "red-router": {
+                type: "remote",
+                url: `${origin}/v1/mcp`,
+                headers: { Authorization: "Bearer secret" },
+                oauth: false,
+              },
+            })
+            const providers = yield* Provider.Service
+            expect((yield* providers.get(Provider.ID.make("red-router")))?.router).toEqual({
+              kind: "red-router",
+              instanceID: "instance-1",
+              version: "1.2.3",
+              role: "admin",
+              mcp: `${origin}/v1/mcp`,
+            })
+            const models = yield* Model.Service
+            expect(
+              (yield* models.get(Provider.ID.make("red-router"), Model.ID.make("combo/smart")))?.variants.map(
+                (variant) => variant.id,
+              ),
+            ).toEqual(["auto", "low", "high"].map((id) => Model.VariantID.make(id)))
+
+            const hooks = yield* PluginHooks.Service
+            const sessionID = SessionID.create()
+            ProviderRouter.guide(sessionID, { hint: "complexity=0.8", decision: false })
+            const request = yield* hooks.trigger("session", "model.request", {
+              sessionID,
+              agent: Agent.ID.make("build"),
+              model: Model.Ref.make({
+                providerID: Provider.ID.make("red-router"),
+                id: Model.ID.make("combo/smart"),
+                variant: Model.VariantID.make("auto"),
+              }),
+              kind: "compaction",
+              headers: {},
+            })
+            expect(request.headers).toEqual({
+              "x-red-router-reasoning": "auto",
+              "x-red-router-hint": "complexity=0.8",
+              "x-red-router-decision": "off",
+              "x-red-router-token-saver": "off",
+            })
+            ProviderRouter.guide(sessionID, undefined)
+
+            yield* hooks.trigger("session", "http.response", {
+              sessionID,
+              agent: Agent.ID.make("build"),
+              model: Model.Ref.make({ providerID: Provider.ID.make("red-router"), id: Model.ID.make("combo/smart") }),
+              kind: "primary",
+              request: new Request(`${origin}/v1/chat/completions`),
+              response: new Response("{}", {
+                headers: {
+                  "content-type": "application/json",
+                  "x-redrouter-served-model": "anthropic/claude-sonnet-4-6",
+                  "x-redrouter-cost-usd": "0.01",
+                  "x-redrouter-catalog-version": "v1",
+                },
+              }),
+            })
+            expect(ProviderRouter.take(sessionID)).toEqual({
+              servedModel: "anthropic/claude-sonnet-4-6",
+              costUSD: 0.01,
+              catalogVersion: "v1",
+            })
+          }),
+        ),
+      (server) => Effect.promise(() => server.stop(true)),
+    ),
+  )
 
   it.effect("asks for the API endpoint and stores it with the key", () =>
     withEnv({ RED_ROUTER_API_KEY: undefined, RED_ROUTER_BASE_URL: "https://router.example/v1" }, () =>

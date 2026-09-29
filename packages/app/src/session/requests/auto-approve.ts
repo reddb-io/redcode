@@ -112,7 +112,14 @@ export function createPermissionAutoApprover(input: { sdk: ServerSDK; data: Data
   function approve(permission: PermissionRequest, attempt = 0) {
     // enabled() guards the retry timer path: the user may disable the setting
     // between a failed reply and its scheduled retry.
-    if (state.disposed || !enabled() || state.responded.has(permission.id)) return
+    // A protected request (RedRouter key management) needs a person, whatever the setting says.
+    if (
+      state.disposed ||
+      !enabled() ||
+      state.responded.has(permission.id) ||
+      permission.metadata?.protected !== undefined
+    )
+      return
     remember(permission.id)
     input.sdk.api.permission
       .reply({ sessionID: permission.sessionID, requestID: permission.id, decision: "once" })
