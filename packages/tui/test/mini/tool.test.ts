@@ -105,7 +105,7 @@ describe("Mini tool presentation", () => {
   })
 
   test("names task updates by their short labels on one bounded line", () => {
-    const todo = (todos: ReadonlyArray<Record<string, unknown>>) =>
+    const todo = (todos: ReadonlyArray<Record<string, string>>) =>
       toolInlineInfo(
         canonicalToolPart("todowrite", {
           status: "completed",
