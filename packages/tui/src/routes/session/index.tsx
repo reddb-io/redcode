@@ -63,6 +63,7 @@ import { DialogSelect } from "../../ui/dialog-select"
 import { DialogMonitors } from "../../component/dialog-monitors"
 import { useGoalCommand } from "../../component/goal-command"
 import { IntelligenceGoalCommand } from "@opencode/core/intelligence/goal-command"
+import { ProviderFailure } from "@opencode/core/session/provider-failure"
 import { DialogPrompt } from "../../ui/dialog-prompt"
 import { DialogSessionRename } from "../../component/dialog-session-rename"
 import { DialogImagePreview } from "../../component/dialog-image-preview"
@@ -126,6 +127,8 @@ import { withTimestampedFallback } from "@opencode/util/session-title-fallback"
 import { useSessionTabs, type ScrollAnchor } from "../../context/session-tabs"
 import { createSingleFlight } from "../../util/single-flight"
 import type { SessionInbox } from "@opencode/schema/session-inbox"
+import { SubagentReview } from "@opencode/schema/subagent-review"
+import { SubagentBrief, SubagentVerdict } from "./subagent"
 import { createDelayedPresence } from "../../util/delayed-presence"
 import { SessionLocationMissing } from "./location-missing"
 import { isRecord } from "../../util/record"
@@ -140,6 +143,7 @@ import {
   toolDisplay,
 } from "./message-parts"
 import { defaultVerbosity, type GroupKind, type SessionEntry } from "./grouping/session"
+import { TodoFold } from "./todo-fold"
 import { SessionGroupView } from "./group-view"
 import { useEntryAnchor } from "./anchor-view"
 import { containsAnchor, createTimelineAnchors } from "./anchors"
@@ -195,6 +199,8 @@ export function Session(props: {
     const index = messages().findIndex((message) => message.id === messageID)
     return index === -1 ? messages() : messages().slice(0, index)
   }
+  const todoFold = TodoFold.createFold()
+  const todoFailures = createMemo(() => todoFold(messagesBeforeRevert()))
   const messagesFromRevert = () => {
     const messageID = session()?.revert?.messageID
     if (!messageID) return []
@@ -215,11 +221,14 @@ export function Session(props: {
     if (session()?.parentID) return []
     return data.session.family(route.sessionID).filter((id) => id !== route.sessionID)
   })
+  // Dialogs the person closed locally after the server stopped answering; see DialogEscape.
+  const [escapedDialogs, setEscapedDialogs] = createSignal<ReadonlySet<string>>(new Set())
+  const escapeDialog = (id: string) => setEscapedDialogs((current) => new Set([...current, id]))
   const permissions = createMemo(() => {
     if (session()?.parentID) return []
-    return [route.sessionID, ...descendantSessionIDs()].flatMap(
-      (sessionID) => data.session.permission.list(sessionID) ?? [],
-    )
+    return [route.sessionID, ...descendantSessionIDs()]
+      .flatMap((sessionID) => data.session.permission.list(sessionID) ?? [])
+      .filter((request) => !escapedDialogs().has(request.id))
   })
   // A protected request (RedRouter key management) is always put to the person, even in auto-accept.
   const promptedPermissions = createMemo(() =>
@@ -228,10 +237,11 @@ export function Session(props: {
       : permissions(),
   )
   const forms = createMemo(() => {
-    const global = data.session.form.list("global", location()) ?? []
+    const global = (data.session.form.list("global", location()) ?? []).filter((form) => !escapedDialogs().has(form.id))
     if (session()?.parentID) return global
     return [route.sessionID, ...descendantSessionIDs()]
       .flatMap((sessionID) => data.session.form.list(sessionID) ?? [])
+      .filter((form) => !escapedDialogs().has(form.id))
       .concat(global)
   })
   const pendingUsers = createMemo(() =>
@@ -1147,16 +1157,19 @@ export function Session(props: {
     },
     {
       title: "Compact session",
+      description: "[focus] summarize the conversation, giving the focus the most detail",
       id: "session.compact",
       group: "Session",
       slash: {
         name: "compact",
+        arguments: true as const,
       },
-      run: () => {
+      run: (input?: string) => {
         const selection = local.model.current()
         void data.session
           .compact({
             sessionID: route.sessionID,
+            focus: input?.trim() || undefined,
             model: selection
               ? {
                   providerID: selection.providerID,
@@ -1664,6 +1677,7 @@ export function Session(props: {
         config,
         mutatePending,
         pendingDelivery: (inboxID) => pendingDeliveries().get(inboxID),
+        todoFailures,
       }}
     >
       <box flexDirection="row" flexGrow={1} minHeight={0}>
@@ -1743,14 +1757,20 @@ export function Session(props: {
                 </box>
               </Show>
             </box>
-            <box flexShrink={0} paddingBottom={1}>
-              <SessionLocation sessionID={route.sessionID} />
-            </box>
+            {/* The sidebar footer already shows the location; this copy is for when the sidebar is not visible. */}
+            <Show when={!props.sidebarVisible}>
+              <box flexShrink={0} paddingBottom={1}>
+                <SessionLocation sessionID={route.sessionID} />
+              </box>
+            </Show>
             <box flexShrink={0}>
               <Show when={!composer.open && !disabled() && queuedPrompts().length > 0}>
                 <QueuedPromptDock prompts={queuedPrompts()} onOpen={openPendingPrompts} />
               </Show>
               <Slot path="session.composer.top" input={{ sessionID: route.sessionID }} />
+              <Show when={session()?.parentID}>
+                <SubagentBrief sessionID={route.sessionID} />
+              </Show>
               <Composer
                 sessionID={route.sessionID}
                 open={composer.open || (!!session()?.parentID && forms().length === 0)}
@@ -1772,7 +1792,11 @@ export function Session(props: {
                     {(_) => {
                       const request = promptedPermissions()[0]
                       return request ? (
-                        <PermissionPrompt request={request} directory={session()?.location.directory} />
+                        <PermissionPrompt
+                          request={request}
+                          directory={session()?.location.directory}
+                          onEscape={() => escapeDialog(request.id)}
+                        />
                       ) : null
                     }}
                   </Show>
@@ -1781,7 +1805,7 @@ export function Session(props: {
                   <Show when={forms()[0]?.id} keyed>
                     {(_) => {
                       const form = forms()[0]
-                      return form ? <FormPrompt form={form} /> : null
+                      return form ? <FormPrompt form={form} onEscape={() => escapeDialog(form.id)} /> : null
                     }}
                   </Show>
                 </Match>
@@ -2203,7 +2227,9 @@ function AssistantFooter(props: { message: SessionMessageAssistant }) {
     <>
       <Show when={props.message.error && !interrupted() && !props.message.retry}>
         <box paddingLeft={3}>
-          <text fg={theme.text.feedback.error.base}>Error: {errorMessage(props.message.error)}</text>
+          <text fg={theme.text.feedback.error.base}>
+            Error: {props.message.error ? ProviderFailure.describe(props.message.error) : ""}
+          </text>
         </box>
       </Show>
       <AssistantRetry retry={props.message.retry} model={model()} />
@@ -2737,6 +2763,9 @@ function ToolPart(props: { part: SessionMessageAssistantTool; images?: boolean }
 
   const content = (
     <Switch>
+      <Match when={props.part.name === TodoFold.TOOL && props.part.state.status === "error"}>
+        <TodoFailure part={props.part} />
+      </Match>
       <Match when={display() === "shell"}>
         <Shell {...toolprops} />
       </Match>
@@ -2803,6 +2832,40 @@ function ToolPart(props: { part: SessionMessageAssistantTool; images?: boolean }
       <Show when={props.images !== false}>
         <ToolImages parts={[props.part]} />
       </Show>
+    </Show>
+  )
+}
+
+/**
+ * One failed todowrite call. The lead of a run renders one counted row whose expansion lists every
+ * refusal; the rest of the run renders nothing. The same component renders a lone failure and a run's
+ * lead, so a run growing while it streams never remounts the row or loses its expanded state.
+ */
+function TodoFailure(props: { part: SessionMessageAssistantTool }) {
+  const ctx = use()
+  const theme = useTheme()
+  const renderer = useRenderer()
+  const [expanded, setExpanded] = createSignal(false)
+  const run = createMemo(() => ctx.todoFailures?.().get(props.part.id))
+  return (
+    <Show when={(run()?.lead ?? props.part.id) === props.part.id && TodoFold.shown(run())}>
+      <InlineToolRow
+        icon="✗"
+        color={theme.text.muted}
+        errorColor={theme.text.feedback.error.base}
+        failed={true}
+        error={TodoFold.errors(run()?.parts ?? [props.part])}
+        errorExpanded={expanded()}
+        complete={false}
+        pending="Updating todos…"
+        failure={TodoFold.label(run(), props.part)}
+        onMouseUp={() => {
+          if (renderer.getSelection()?.getSelectedText()) return
+          setExpanded((value) => !value)
+        }}
+      >
+        Updating todos…
+      </InlineToolRow>
     </Show>
   )
 }
@@ -3450,6 +3513,13 @@ function Subagent(props: ToolProps) {
     const id = sessionID()
     return props.part.state.status === "running" || Boolean(id && data.session.status(id) === "running")
   })
+  const child = createMemo(() => {
+    const id = sessionID()
+    return id ? data.session.get(id)?.metadata : undefined
+  })
+  const decision = createMemo(() => SubagentReview.decision(props.metadata, child()))
+  const checkpoint = createMemo(() => SubagentReview.checkpointState(SubagentReview.read(child())?.checkpoints ?? []))
+  const background = createMemo(() => isBackgroundSubagent(props.metadata, props.part.state.status))
 
   return (
     <InlineTool
@@ -3464,8 +3534,13 @@ function Subagent(props: ToolProps) {
         if (id) navigate({ type: "session", sessionID: id })
       }}
       status={
-        isBackgroundSubagent(props.metadata, props.part.state.status) ? (
-          <StatusBadge>Background</StatusBadge>
+        background() || decision() || checkpoint().type !== "in_scope" ? (
+          <>
+            <Show when={background()}>
+              <StatusBadge>Background</StatusBadge>
+            </Show>
+            <SubagentVerdict decision={decision()} checkpoint={checkpoint()} />
+          </>
         ) : undefined
       }
     >

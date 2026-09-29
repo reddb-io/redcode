@@ -44,6 +44,8 @@ export function DialogModel(props: { providerID?: string }) {
             key: item,
             value: { providerID: model.providerID, modelID: model.id },
             title: model.name,
+            // Names differ between routed providers, so the id is searchable too.
+            searchText: model.id,
             releaseDate: model.time.released,
             description: modelDescription(model, provider),
             category,

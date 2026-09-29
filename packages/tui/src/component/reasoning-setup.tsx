@@ -252,6 +252,8 @@ async function chooseModel(
       .map((model) => ({
         value: model.id,
         title: model.name,
+        // Names differ between routed providers ("GLM-5.3 Max" against "GLM 5.3 Flash"), so the id is searchable too.
+        searchText: model.id,
         description: modelDescription(
           model,
           input.providers.find((item) => item.id === model.providerID),
