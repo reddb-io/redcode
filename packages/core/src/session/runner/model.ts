@@ -15,7 +15,7 @@ export class ModelNotSelectedError extends Schema.TaggedError<ModelNotSelectedEr
   { sessionID: SessionSchema.ID },
 ) {
   override get message() {
-    return `No model is available for session ${this.sessionID}`
+    return `No model is available for session ${this.sessionID}. Connect a provider with /connect or set a provider key.`
   }
 }
 

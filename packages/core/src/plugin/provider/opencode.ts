@@ -274,11 +274,12 @@ export const OpencodePlugin = define<HttpClient.HttpClient | Bus.Service | Manag
       const item = providers.get(Provider.ID.opencode)
       if (!item) return
       const hasKey = Boolean(process.env.OPENCODE_API_KEY || snapshot.connection || item.provider.settings?.apiKey)
+      if (hasKey) return
+      // OpenCode Zen is opt-in. Without a key it stays inactive, so it never becomes the implicit default
+      // on a fresh install. A `providers.opencode` configuration entry activates it later in the fold,
+      // and then its free models answer through the public key set here.
       providers.update(item.provider.id, (provider) => {
-        if (!hasKey) {
-          provider.activation = "enabled"
-          provider.settings = { ...provider.settings, apiKey: "public" }
-        }
+        provider.settings = { ...provider.settings, apiKey: "public" }
       })
     })
     yield* ctx.model.transform((models) => {

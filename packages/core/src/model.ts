@@ -227,7 +227,7 @@ const layer = Layer.effect(
         )
         const all = Array.from(byProvider.values())
           .flatMap((models) => Array.from(models.values()))
-          .sort((left, right) => right.time.released - left.time.released)
+          .sort(preference)
         cached = freeze({ data, all, available: all.filter((model) => model.enabled), byProvider }, true)
         return cached
       }
@@ -291,6 +291,19 @@ const layer = Layer.effect(
 )
 
 export const node = makeLocationNode({ service: Service, layer, deps: [Provider.node, Bus.node, Location.node] })
+
+/**
+ * Catalog order, which also picks the implicit default: newest release first, except that models
+ * reached only through an anonymous free tier (the `public` key) follow every other model, so a
+ * connected provider supplies the default whenever there is one.
+ */
+export function preference(left: Info, right: Info) {
+  return Number(anonymous(left)) - Number(anonymous(right)) || right.time.released - left.time.released
+}
+
+function anonymous(model: Info) {
+  return model.settings?.apiKey === "public"
+}
 
 export function parse(input: string): { providerID: Provider.ID; modelID: ID } {
   const index = input.indexOf("/")

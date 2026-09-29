@@ -122,12 +122,13 @@ describe("AmazonBedrockPlugin", () => {
   )
 
   for (const name of Object.keys(noAmbientAWS).filter((name) => !name.includes("REGION"))) {
-    it.effect(`enables the provider when ${name} is set`, () =>
-      withEnv({ ...noAmbientAWS, [name]: "value" }, () =>
+    it.effect(`stays opt-in when only ${name} is set`, () =>
+      withEnv({ ...noAmbientAWS, AWS_BEARER_TOKEN_BEDROCK: undefined, [name]: "value" }, () =>
         Effect.gen(function* () {
           const catalog = yield* seedBedrock()
           yield* addPlugin()
-          expect(required(yield* catalog.get(Provider.ID.amazonBedrock)).activation).toBe("enabled")
+          expect(required(yield* catalog.get(Provider.ID.amazonBedrock)).activation).toBe("auto")
+          expect((yield* catalog.available()).map((provider) => provider.id)).not.toContain(Provider.ID.amazonBedrock)
         }),
       ),
     )
@@ -146,12 +147,13 @@ describe("AmazonBedrockPlugin", () => {
   )
 
   it.effect("does not override a disabled provider", () =>
-    withEnv({ ...noAmbientAWS, AWS_PROFILE: "work" }, () =>
+    withEnv(noAmbientAWS, () =>
       Effect.gen(function* () {
         const catalog = yield* Provider.Service
         yield* catalog.transform((catalog) => {
           catalog.update(Provider.ID.amazonBedrock, (item) => {
             item.package = "@opencode/ai/providers/amazon-bedrock"
+            item.settings = { profile: "work" }
             item.activation = "disabled"
           })
         })
@@ -200,18 +202,21 @@ describe("AmazonBedrockPlugin", () => {
   )
 
   it.effect("applies to Mantle and native Bedrock packages", () =>
-    withEnv({ ...noAmbientAWS, AWS_PROFILE: "work" }, () =>
+    withEnv(noAmbientAWS, () =>
       Effect.gen(function* () {
         const catalog = yield* Provider.Service
         yield* catalog.transform((catalog) => {
           catalog.update(Provider.ID.make("mantle"), (item) => {
             item.package = "@opencode/ai/providers/amazon-bedrock/mantle/responses"
+            item.settings = { profile: "work" }
           })
           catalog.update(Provider.ID.make("native"), (item) => {
             item.package = "@opencode/ai/providers/amazon-bedrock"
+            item.settings = { profile: "work" }
           })
           catalog.update(Provider.ID.make("other"), (item) => {
             item.package = "@opencode/ai/providers/anthropic"
+            item.settings = { profile: "work" }
           })
         })
         yield* addPlugin()

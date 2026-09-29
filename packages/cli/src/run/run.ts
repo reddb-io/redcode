@@ -1,5 +1,10 @@
 import { Service, type Endpoint } from "@opencode/client/effect/service"
-import { OpenCode, type OpenCodeClient, type SessionMessageAssistantTool } from "@opencode/client/promise"
+import {
+  OpenCode,
+  type ModelRef,
+  type OpenCodeClient,
+  type SessionMessageAssistantTool,
+} from "@opencode/client/promise"
 import { FSUtil } from "@opencode/util/fs-util"
 import { SessionBudget } from "@opencode/schema/session-budget"
 import { open } from "node:fs/promises"
@@ -64,6 +69,9 @@ class RunTargetError extends Error {
 
 const ATTACH_FILE_MAX_BYTES = 10 * 1024 * 1024
 
+export const NO_PROVIDER_MESSAGE =
+  "No provider connected. Run `redcode` and use /connect, or set a provider key such as ANTHROPIC_API_KEY or OPENAI_API_KEY."
+
 export function runNonInteractive(input: RunCommandInput) {
   return runNonInteractiveWithOptions(input, {})
 }
@@ -107,25 +115,7 @@ async function execute(input: RunCommandInput, prepared: Prepared, endpoint: End
       : undefined,
     agent: input.agent,
     environment: input.server.service ? Env.session() : undefined,
-    prepare: async (next) => {
-      const selected =
-        next.model ??
-        (options.variant
-          ? await client.model
-              .default({ location: { directory: next.location.directory } })
-              .then((result) => result.data)
-          : undefined)
-      const model = selected
-        ? {
-            providerID: selected.providerID,
-            id: selected.id,
-            variant: options.variant ?? ("variant" in selected ? selected.variant : undefined),
-          }
-        : undefined
-      if ((options.variant ?? explicit?.variant) && !model)
-        throw new RunTargetError("Cannot select a variant before selecting a model", next.session?.id)
-      return { model, agent: next.agent }
-    },
+    prepare: async (next) => ({ model: await selectRunModel(client, next, options.variant), agent: next.agent }),
   }).catch((error) => {
     if (!(error instanceof RunTargetError)) throw error
     reportRunError(input, error.message, error.sessionID)
@@ -161,6 +151,34 @@ async function execute(input: RunCommandInput, prepared: Prepared, endpoint: End
     renderTool: (part) => renderTool(part, target.location.directory),
     renderToolError: (part) => renderToolError(part, target.location.directory),
   }).catch((error) => reportRunError(input, errorMessage(error), target.session.id))
+}
+
+/**
+ * The model a run pins before its Session exists: the requested or resumed one, or the location's
+ * default when a variant needs a model to apply to. Otherwise the Session's agent chooses at run time.
+ * A location without a default has no provider serving any model, so the run stops before creating a
+ * Session and says how to connect one instead of failing on the first request.
+ */
+export async function selectRunModel(
+  client: {
+    readonly model: {
+      readonly default: (input: { location: { directory: string } }) => Promise<{ readonly data: ModelRef | null }>
+    }
+  },
+  next: {
+    readonly location: { readonly directory: string }
+    readonly model: ModelRef | undefined
+    readonly session?: { readonly id: string } | undefined
+  },
+  variant: string | undefined,
+): Promise<ModelRef | undefined> {
+  const fallback = next.model
+    ? undefined
+    : await client.model.default({ location: { directory: next.location.directory } }).then((result) => result.data)
+  if (!next.model && !fallback) throw new RunTargetError(NO_PROVIDER_MESSAGE, next.session?.id)
+  const selected = next.model ?? (variant ? fallback : undefined)
+  if (!selected) return undefined
+  return { providerID: selected.providerID, id: selected.id, variant: variant ?? selected.variant }
 }
 
 export function mergeInput(message: string | undefined, piped: string | undefined) {

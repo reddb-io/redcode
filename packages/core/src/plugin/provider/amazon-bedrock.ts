@@ -2,17 +2,6 @@ import { Effect } from "effect"
 import { define } from "@opencode/plugin/effect/plugin"
 import { Provider } from "../../provider.js"
 
-// Ambient inputs the AWS default credential chain can turn into credentials
-// without any key stored in opencode. Mirrors the presence checks the AWS CLI
-// and SDK use before consulting shared config.
-const CHAIN_ENV = [
-  "AWS_PROFILE",
-  "AWS_ACCESS_KEY_ID",
-  "AWS_WEB_IDENTITY_TOKEN_FILE",
-  "AWS_CONTAINER_CREDENTIALS_RELATIVE_URI",
-  "AWS_CONTAINER_CREDENTIALS_FULL_URI",
-]
-
 const isBedrock = (item: { readonly package: string }) =>
   item.package.startsWith("@opencode/ai/providers/amazon-bedrock")
 
@@ -33,10 +22,10 @@ export const AmazonBedrockPlugin = define({
         if (!isBedrock(item.provider)) continue
         evt.update(item.provider.id, (provider) => {
           const settings = provider.settings ?? {}
-          const chain = typeof settings.profile === "string" || CHAIN_ENV.some((name) => process.env[name])
-          // SigV4 authenticates through the AWS default chain rather than a key
-          // credential, so ambient AWS configuration is what makes Bedrock usable.
-          if (chain && provider.activation === "auto") provider.activation = "enabled"
+          // Bedrock is opt-in: AWS credentials in the environment or ~/.aws are often there for other
+          // tools, so they never activate it alone. A Bedrock key (saved or AWS_BEARER_TOKEN_BEDROCK),
+          // a `providers.amazon-bedrock` configuration entry, or a configured profile does.
+          if (typeof settings.profile === "string" && provider.activation === "auto") provider.activation = "enabled"
           // Same default the native package uses, made explicit here so catalog
           // `${AWS_REGION}` URLs resolve without any region configured.
           const region = process.env.AWS_REGION ?? process.env.AWS_DEFAULT_REGION ?? "us-east-1"

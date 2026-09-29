@@ -34,6 +34,16 @@ const addPlugin = Effect.fn(function* () {
   yield* OpencodePlugin.effect(host)
 })
 
+// Stands in for a `providers.opencode` configuration entry, which the config plugin applies after provider plugins.
+const configureOpencode = Effect.fn(function* () {
+  const catalog = yield* Provider.Service
+  yield* catalog.transform((catalog) => {
+    catalog.update(Provider.ID.opencode, (provider) => {
+      provider.activation = "enabled"
+    })
+  })
+})
+
 const noRemoteConfig = HttpClient.make((request) =>
   Effect.succeed(HttpClientResponse.fromWeb(request, new Response(null, { status: 404 }))),
 )
@@ -1365,25 +1375,7 @@ describe("OpencodePlugin", () => {
     ),
   )
 
-  it.effect("uses a public key and disables paid models without credentials", () =>
-    withEnv({ OPENCODE_API_KEY: undefined }, () =>
-      Effect.gen(function* () {
-        const catalog = yield* Provider.Service
-        const models = yield* Model.Service
-        yield* catalog.transform((catalog) => {
-          catalog.update(Provider.ID.opencode, () => {})
-          catalog.models.update(Provider.ID.opencode, Model.ID.make("paid"), (draft) => {
-            draft.cost = cost(1)
-          })
-        })
-        yield* addPlugin()
-        expect(required(yield* catalog.get(Provider.ID.opencode)).settings?.apiKey).toBe("public")
-        expect(required(yield* models.get(Provider.ID.opencode, Model.ID.make("paid"))).enabled).toBe(false)
-      }),
-    ),
-  )
-
-  it.effect("keeps free models without credentials", () =>
+  it.effect("stays inactive without credentials or configuration", () =>
     withEnv({ OPENCODE_API_KEY: undefined }, () =>
       Effect.gen(function* () {
         const catalog = yield* Provider.Service
@@ -1395,15 +1387,54 @@ describe("OpencodePlugin", () => {
           })
         })
         yield* addPlugin()
+        expect(required(yield* catalog.get(Provider.ID.opencode)).activation).toBe("auto")
+        expect((yield* catalog.available()).map((provider) => provider.id)).not.toContain(Provider.ID.opencode)
+        expect(yield* models.get(Provider.ID.opencode, Model.ID.make("free"))).toBeUndefined()
+        expect((yield* models.available()).map((model) => model.providerID)).not.toContain(Provider.ID.opencode)
+      }),
+    ),
+  )
+
+  it.effect("uses a public key and disables paid models when configured without credentials", () =>
+    withEnv({ OPENCODE_API_KEY: undefined }, () =>
+      Effect.gen(function* () {
+        const catalog = yield* Provider.Service
+        const models = yield* Model.Service
+        yield* catalog.transform((catalog) => {
+          catalog.update(Provider.ID.opencode, () => {})
+          catalog.models.update(Provider.ID.opencode, Model.ID.make("paid"), (draft) => {
+            draft.cost = cost(1)
+          })
+        })
+        yield* addPlugin()
+        yield* configureOpencode()
         expect(required(yield* catalog.get(Provider.ID.opencode)).settings?.apiKey).toBe("public")
-        expect(required(yield* catalog.get(Provider.ID.opencode)).activation).toBe("enabled")
+        expect(required(yield* models.get(Provider.ID.opencode, Model.ID.make("paid"))).enabled).toBe(false)
+      }),
+    ),
+  )
+
+  it.effect("keeps free models when configured without credentials", () =>
+    withEnv({ OPENCODE_API_KEY: undefined }, () =>
+      Effect.gen(function* () {
+        const catalog = yield* Provider.Service
+        const models = yield* Model.Service
+        yield* catalog.transform((catalog) => {
+          catalog.update(Provider.ID.opencode, () => {})
+          catalog.models.update(Provider.ID.opencode, Model.ID.make("free"), (draft) => {
+            draft.cost = cost(0)
+          })
+        })
+        yield* addPlugin()
+        yield* configureOpencode()
+        expect(required(yield* catalog.get(Provider.ID.opencode)).settings?.apiKey).toBe("public")
         expect((yield* catalog.available()).map((provider) => provider.id)).toContain(Provider.ID.opencode)
         expect(required(yield* models.get(Provider.ID.opencode, Model.ID.make("free"))).enabled).toBe(true)
       }),
     ),
   )
 
-  it.effect("treats output-only cost as free without credentials", () =>
+  it.effect("treats output-only cost as free when configured without credentials", () =>
     withEnv({ OPENCODE_API_KEY: undefined }, () =>
       Effect.gen(function* () {
         const catalog = yield* Provider.Service
@@ -1415,8 +1446,34 @@ describe("OpencodePlugin", () => {
           })
         })
         yield* addPlugin()
+        yield* configureOpencode()
         expect(required(yield* catalog.get(Provider.ID.opencode)).settings?.apiKey).toBe("public")
         expect(required(yield* models.get(Provider.ID.opencode, Model.ID.make("output-only"))).enabled).toBe(true)
+      }),
+    ),
+  )
+
+  it.effect("never defaults to the anonymous free tier beside a connected provider", () =>
+    withEnv({ OPENCODE_API_KEY: undefined }, () =>
+      Effect.gen(function* () {
+        const catalog = yield* Provider.Service
+        const models = yield* Model.Service
+        const other = Provider.ID.make("other")
+        yield* catalog.transform((catalog) => {
+          catalog.update(Provider.ID.opencode, () => {})
+          catalog.models.update(Provider.ID.opencode, Model.ID.make("free"), (draft) => {
+            draft.cost = cost(0)
+            draft.time.released = 2000
+          })
+          catalog.update(other, () => {})
+          catalog.models.update(other, Model.ID.make("older"), (draft) => {
+            draft.time.released = 1000
+          })
+        })
+        yield* addPlugin()
+        yield* configureOpencode()
+        expect(required(yield* models.get(Provider.ID.opencode, Model.ID.make("free"))).enabled).toBe(true)
+        expect(yield* models.default()).toMatchObject({ providerID: other, id: Model.ID.make("older") })
       }),
     ),
   )
