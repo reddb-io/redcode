@@ -74,7 +74,9 @@ export default Runtime.handler(
         ? `Background service (pid ${service.pid})${EOL}  rss         ${service.rss === undefined ? "unavailable on this platform" : bytes(service.rss)}${service.swap ? `${EOL}  swap        ${bytes(service.swap)}` : ""}`
         : "Background service not running",
       `Database ${database.location ?? "unknown"}`,
-      ...("bytes" in database ? [`  size        ${bytes(database.bytes)} (+ ${bytes(database.walBytes)} WAL)`] : []),
+      ...(database.bytes !== undefined
+        ? [`  size        ${bytes(database.bytes)} (+ ${bytes(database.walBytes ?? 0)} WAL)`]
+        : []),
       `Sessions`,
       `  total       ${sessions.total ?? 0} (${sessions.subagents ?? 0} subagents, ${sessions.archived ?? 0} archived, ${sessions.claimed ?? 0} claimed by an execution)`,
       `  messages    ${sessions.messages}`,
