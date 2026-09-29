@@ -30,7 +30,7 @@ test("session location stays visible without the sidebar while Build runs and mo
   })
   await setup.ready
   await setup.waitForFrame(
-    (frame) => frame.includes("/tmp/opencode") && frame.includes("primary checkout") && frame.includes("⑂ main"),
+    (frame) => frame.includes(directory) && frame.includes("primary checkout") && frame.includes("⑂ main"),
   )
   expect(created).toHaveLength(1)
   const sessionID = created[0]!
@@ -56,7 +56,10 @@ test("session location stays visible without the sidebar while Build runs and mo
     data: { sessionID, location: { directory: destination }, projectID: "proj_test", subpath: "packages/tui" },
   })
   await setup.waitForFrame(
-    (frame) => frame.includes(".red/worktrees/redcode-fixture") && frame.includes("⑂ redcode-fixture"),
+    (frame) =>
+      frame.includes(destination) &&
+      frame.includes(".red/worktrees/redcode-fixture") &&
+      frame.includes("⑂ redcode-fixture"),
   )
   expect(setup.captureCharFrame()).toContain("/tmp/opencode")
 })
