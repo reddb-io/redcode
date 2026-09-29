@@ -29,6 +29,7 @@ import { formLabel, formToggleMultiselect, formValidateValue, type FormAnswerFie
 
 const INTEGRATION_PRIORITY: Record<string, number> = {
   "red-router": 0,
+  "9router": 1,
   "opencode-go": 1,
   opencode: 2,
   openai: 3,

@@ -23,7 +23,7 @@ import { OpenRouterPlugin } from "./provider/openrouter.js"
 import { PerplexityPlugin } from "./provider/perplexity.js"
 import { PoePlugin } from "./provider/poe.js"
 import { PromptCacheKeyPlugin } from "./provider/prompt-cache-key.js"
-import { RedRouterPlugin } from "./provider/red-router.js"
+import { NineRouterPlugin, RedRouterPlugin } from "./provider/red-router.js"
 import { SapAICorePlugin } from "./provider/sap-ai-core.js"
 import { VercelPlugin } from "./provider/vercel.js"
 import { VenicePlugin } from "./provider/venice.js"
@@ -58,6 +58,7 @@ export const ProviderPlugins: PluginInternal.InternalPlugin[] = [
   PoePlugin,
   PromptCacheKeyPlugin,
   RedRouterPlugin,
+  NineRouterPlugin,
   SapAICorePlugin,
   VercelPlugin,
   VenicePlugin,

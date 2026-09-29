@@ -399,6 +399,15 @@ function normalizeCompaction(
     : undefined
   const buffer = prefer(legacyBuffer, nativeBuffer, ["compaction", "buffer"], diagnostics)
   if (buffer !== undefined) result.buffer = buffer
+  if (own(input.compaction, "summary_max_tokens")) {
+    const value = decodeEncoded(
+      ConfigCompaction.Info.fields.summary_max_tokens,
+      input.compaction.summary_max_tokens,
+      ["compaction", "summary_max_tokens"],
+      diagnostics,
+    )
+    if (value !== undefined) result.summary_max_tokens = value
+  }
   if (Object.keys(result).length || !Object.keys(input.compaction).length) encoded.compaction = result
 }
 

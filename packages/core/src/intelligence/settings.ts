@@ -41,9 +41,7 @@ const make = Effect.gen(function* () {
     const current = yield* readFile(file)
     const content = current ?? (yield* Effect.forEach(legacy, readFile)).find((item) => item !== undefined)
     if (content === undefined) return IntelligenceEvaluation.defaults
-    return yield* Schema.decodeUnknownEffect(
-      Schema.fromJsonString(Intelligence.Settings),
-    )(content).pipe(
+    return yield* Schema.decodeUnknownEffect(Schema.fromJsonString(Intelligence.Settings))(content).pipe(
       Effect.mapError(() => new IntelligenceEvaluation.Error({ message: "Invalid intelligence configuration" })),
     )
   })
@@ -66,6 +64,11 @@ const make = Effect.gen(function* () {
       return yield* new IntelligenceEvaluation.Error({
         message: "Jev is an evaluator; select a generative System Two model",
       })
+    if (
+      settings.fast &&
+      (!settings.fast.id.trim() || !settings.fast.providerID.trim() || IntelligenceEvaluation.isJev(settings.fast.id))
+    )
+      return yield* new IntelligenceEvaluation.Error({ message: "Select a valid System Two transformations model" })
     const credential =
       input.apiKey && settings.evaluator
         ? yield* credentials.create({
@@ -89,9 +92,9 @@ const make = Effect.gen(function* () {
     }
     yield* kv.set(
       key,
-      yield* Schema.decodeUnknownEffect(Schema.fromJsonString(Schema.Json))(
-        JSON.stringify(next),
-      ).pipe(Effect.mapError(() => new IntelligenceEvaluation.Error({ message: "Invalid intelligence configuration" }))),
+      yield* Schema.decodeUnknownEffect(Schema.fromJsonString(Schema.Json))(JSON.stringify(next)).pipe(
+        Effect.mapError(() => new IntelligenceEvaluation.Error({ message: "Invalid intelligence configuration" })),
+      ),
     )
     return next
   }, lock.withPermits(1))
@@ -109,5 +112,11 @@ export const node = makeGlobalNode({
 export function validURL(value: string) {
   if (!URL.canParse(value)) return false
   const url = new URL(value)
-  return (url.protocol === "http:" || url.protocol === "https:") && !url.username && !url.password && !url.search && !url.hash
+  return (
+    (url.protocol === "http:" || url.protocol === "https:") &&
+    !url.username &&
+    !url.password &&
+    !url.search &&
+    !url.hash
+  )
 }

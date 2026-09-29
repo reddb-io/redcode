@@ -18,6 +18,9 @@ export const Plugin = define({
         editor.configure({
           ...(entry.info.compaction.auto === undefined ? {} : { auto: entry.info.compaction.auto }),
           ...(entry.info.compaction.buffer === undefined ? {} : { buffer: entry.info.compaction.buffer }),
+          ...(entry.info.compaction.summary_max_tokens === undefined
+            ? {}
+            : { summaryMaxTokens: entry.info.compaction.summary_max_tokens }),
           ...(entry.info.compaction.keep?.tokens === undefined ? {} : { keep: entry.info.compaction.keep.tokens }),
           ...(entry.info.compaction.keep?.turns === undefined ? {} : { keepTurns: entry.info.compaction.keep.turns }),
         })

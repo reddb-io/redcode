@@ -25,6 +25,8 @@ import { Config } from "../config.js"
 import { Database } from "../database/database.js"
 import { llmClient } from "../effect/app-node-platform.js"
 import { ModelLimit } from "../model-limit.js"
+import { Model } from "../model.js"
+import { IntelligenceSettings } from "../intelligence/settings.js"
 import { modelLimitNode } from "#model-limit-node"
 import { State } from "../state.js"
 import { Token } from "../util/token.js"
@@ -35,6 +37,7 @@ import { AuxDeadline } from "./aux-deadline.js"
 import { SessionHistory } from "./history.js"
 import type { SessionMessage } from "./message.js"
 import { SessionModelRequest } from "./model-request.js"
+import { SessionRunnerModel } from "./runner/model.js"
 import { SessionProviderContext } from "./provider-context.js"
 import { SessionRunnerRetry } from "./runner/retry.js"
 import { SessionStore } from "./store.js"
@@ -51,6 +54,7 @@ export type Settings = {
   keep: number
   /** Maximum number of recent user exchanges kept verbatim. */
   keepTurns?: number
+  summaryMaxTokens?: number
 }
 
 export type Editor = {
@@ -120,9 +124,8 @@ export function guardFromMetadata(metadata: SessionContext.Loaded["session"]["me
   if (!value || typeof value !== "object" || Array.isArray(value)) return { ineffective: 0 }
   const data = value as Record<string, unknown>
   const paused = data.paused
-  const hold = paused && typeof paused === "object" && !Array.isArray(paused)
-    ? paused as Record<string, unknown>
-    : undefined
+  const hold =
+    paused && typeof paused === "object" && !Array.isArray(paused) ? (paused as Record<string, unknown>) : undefined
   return {
     request: typeof data.request === "string" ? data.request : typeof data.turn === "string" ? data.turn : undefined,
     ineffective: typeof data.ineffective === "number" && data.ineffective > 0 ? data.ineffective : 0,
@@ -131,12 +134,9 @@ export function guardFromMetadata(metadata: SessionContext.Loaded["session"]["me
 }
 
 export function nextGuard(current: Guard, request: string | undefined, after: number, ceiling: number): Guard {
-  const ineffective = after < ceiling * EFFECTIVE_SHARE
-    ? 0
-    : (current.request === request ? current.ineffective : 0) + 1
-  return ineffective >= INEFFECTIVE_LIMIT
-    ? { request, ineffective, paused: request ?? "" }
-    : { request, ineffective }
+  const ineffective =
+    after < ceiling * EFFECTIVE_SHARE ? 0 : (current.request === request ? current.ineffective : 0) + 1
+  return ineffective >= INEFFECTIVE_LIMIT ? { request, ineffective, paused: request ?? "" } : { request, ineffective }
 }
 
 export const guardPaused = (guard: Guard, request: string | undefined) =>
@@ -152,27 +152,51 @@ export function stripAnchors(text: string) {
 /** Verbatim user requests and file references survive a model-written checkpoint under a fixed budget. */
 export function buildAnchors(messages: ReadonlyArray<SessionMessage.Info>, previous?: string) {
   const users = messages.filter((message) => message.type === "user").map((message) => message.text)
-  const references = users.flatMap((text) =>
-    text.match(/https?:\/\/[^\s<>"'`]+|(?:\.{1,2}\/|~\/)[^\s<>"'`]+|\b[\w.-]+\.[a-zA-Z][\w]{0,5}\b|#\d+/gu) ?? [],
+  const references = users.flatMap(
+    (text) =>
+      text.match(/https?:\/\/[^\s<>"'`]+|(?:\.{1,2}\/|~\/)[^\s<>"'`]+|\b[\w.-]+\.[a-zA-Z][\w]{0,5}\b|#\d+/gu) ?? [],
   )
   const files = messages.flatMap((message) =>
     message.type !== "assistant"
       ? []
       : message.content.flatMap((part) => {
-          if (part.type !== "tool" || !part.state.input || typeof part.state.input !== "object" || Array.isArray(part.state.input)) return []
+          if (
+            part.type !== "tool" ||
+            !part.state.input ||
+            typeof part.state.input !== "object" ||
+            Array.isArray(part.state.input)
+          )
+            return []
           const input = part.state.input as Record<string, unknown>
           const path = input.filePath ?? input.file_path ?? input.path
           return typeof path === "string" && path ? [path] : []
         }),
   )
   const start = previous?.lastIndexOf(ANCHOR_OPEN) ?? -1
-  const prior = start >= 0 && previous?.trimEnd().endsWith(ANCHOR_CLOSE)
-    ? previous.slice(start + ANCHOR_OPEN.length, previous.trimEnd().length - ANCHOR_CLOSE.length).trim()
-    : ""
+  const prior =
+    start >= 0 && previous?.trimEnd().endsWith(ANCHOR_CLOSE)
+      ? previous.slice(start + ANCHOR_OPEN.length, previous.trimEnd().length - ANCHOR_CLOSE.length).trim()
+      : ""
   const sections = [
-    users.length ? `User requests, newest first:\n${users.slice(-4).toReversed().map((text) => `- ${JSON.stringify(Array.from(text).slice(0, 600).join(""))}`).join("\n")}` : "",
-    files.length ? `Files seen in tool calls:\n${[...new Set(files)].slice(-40).map((file) => `- ${file}`).join("\n")}` : "",
-    references.length ? `Identifiers from user requests:\n${[...new Set(references)].slice(-40).map((item) => `- ${item}`).join("\n")}` : "",
+    users.length
+      ? `User requests, newest first:\n${users
+          .slice(-4)
+          .toReversed()
+          .map((text) => `- ${JSON.stringify(Array.from(text).slice(0, 600).join(""))}`)
+          .join("\n")}`
+      : "",
+    files.length
+      ? `Files seen in tool calls:\n${[...new Set(files)]
+          .slice(-40)
+          .map((file) => `- ${file}`)
+          .join("\n")}`
+      : "",
+    references.length
+      ? `Identifiers from user requests:\n${[...new Set(references)]
+          .slice(-40)
+          .map((item) => `- ${item}`)
+          .join("\n")}`
+      : "",
     prior ? `Earlier anchors:\n${prior}` : "",
   ].filter(Boolean)
   if (!sections.length) return ""
@@ -294,6 +318,9 @@ export const layer = Layer.effect(
     const llm = yield* LLMClient.Service
     const db = (yield* Database.Service).db
     const limits = yield* ModelLimit.Service
+    const intelligence = yield* IntelligenceSettings.Service
+    const models = yield* SessionRunnerModel.Service
+    const modelsCatalog = yield* Model.Service
     const requests = yield* SessionModelRequest.Service
     const config = yield* Config.Service
     const hooks = yield* HookRuntime.Service
@@ -328,13 +355,16 @@ export const layer = Layer.effect(
       const ceiling = calculateCeiling(limit, settings.buffer)
       if (trigger.reason === "auto" && !due(context, ceiling, observed)) return { status: "skipped" }
       const session = yield* store.get(context.session.id)
-      const request = (yield* store.messages({ sessionID: context.session.id, type: "user", limit: 1 }).pipe(Effect.orDie)).at(0)?.id
+      const request = (yield* store
+        .messages({ sessionID: context.session.id, type: "user", limit: 1 })
+        .pipe(Effect.orDie)).at(0)?.id
       if (trigger.reason !== "manual" && guardPaused(guardFromMetadata(session?.metadata), request))
         return {
           status: "failed",
           error: {
             type: "compaction.unavailable",
-            message: "Automatic compaction paused after two ineffective checkpoints. Send a new message or run /compact.",
+            message:
+              "Automatic compaction paused after two ineffective checkpoints. Send a new message or run /compact.",
           },
         }
       // An unknown window never triggers auto compaction, but the compaction request still needs a size to aim for.
@@ -356,10 +386,31 @@ export const layer = Layer.effect(
         return yield* publish(trigger, {
           error: { type: "unknown", message: decision.reason ?? "Compaction denied by hook" },
         })
+      const fast = (yield* intelligence.read()).fast
+      const resolved =
+        fast && context.model.compaction?.type !== "native"
+          ? yield* Effect.result(models.resolve({ ...context.session, model: fast }, modelsCatalog.available))
+          : undefined
+      if (resolved && Result.isFailure(resolved))
+        return yield* publish(trigger, {
+          error: {
+            type: "compaction.failed",
+            message: `S2 transformations model is unavailable: ${resolved.failure.message}`,
+          },
+        })
+      const summary =
+        resolved && Result.isSuccess(resolved)
+          ? { ...trigger, context: { ...context, model: resolved.success } }
+          : trigger
       const compaction =
         context.model.compaction?.type === "native"
           ? compactNatively(trigger, budget, settings.keep, settings.keepTurns)
-          : summarize(trigger, budget, settings.keep, settings.keepTurns)
+          : summarize(
+              summary,
+              Math.min(budget, calculateCeiling(summary.context.model.limit, settings.buffer)),
+              settings.keep,
+              settings.keepTurns,
+            )
       const deadline = AuxDeadline.deadlineMs(
         "compaction",
         Config.latestExperimental(yield* config.entries(), "aux_timeout"),
@@ -463,14 +514,18 @@ export const layer = Layer.effect(
       // Explicit hook results own their format. Generated checkpoints must retain the full template.
       if (!prepared.event.result && !validSummary(result.text))
         return yield* Effect.fail<Failure>({
-          error: { type: "compaction.failed", message: "Compaction summary is incomplete or does not match the required template" },
+          error: {
+            type: "compaction.failed",
+            message: "Compaction summary is incomplete or does not match the required template",
+          },
         })
       const text = prepared.event.result
         ? result.text
         : [stripAnchors(result.text), buildAnchors(split.older, previous?.summary)].filter(Boolean).join("\n\n")
       const source = split.older.reduce(
         (total, message) =>
-          total + Token.estimate(
+          total +
+          Token.estimate(
             message.type === "compaction" && message.status === "completed"
               ? `${message.summary}\n${message.recent}`
               : messageToText(message),
@@ -768,6 +823,7 @@ export const layer = Layer.effect(
         messages: base.messages,
         webSocket,
         inputTokens: { measured: budget, estimated: 0 },
+        compactionMaxTokens: state.get().summaryMaxTokens,
       })
     }
 
@@ -847,15 +903,17 @@ export const layer = Layer.effect(
         const base = transcript(context, [])
         const after =
           estimateRequest({ system: base.system, tools: context.tools.definitions, messages: [] }) +
-          Token.estimate(outcome.text) + Token.estimate(outcome.recent)
+          Token.estimate(outcome.text) +
+          Token.estimate(outcome.recent)
         const next = nextGuard(guardFromMetadata(metadata), request, after, ceiling)
         if (next.ineffective > 0 || metadata.compaction !== undefined) {
           if (next.ineffective === 0) delete metadata.compaction
-          else metadata.compaction = {
-            ...(next.request ? { request: next.request } : {}),
-            ineffective: next.ineffective,
-            ...(next.paused === undefined ? {} : { paused: { after: next.paused, at: Date.now() } }),
-          }
+          else
+            metadata.compaction = {
+              ...(next.request ? { request: next.request } : {}),
+              ineffective: next.ineffective,
+              ...(next.paused === undefined ? {} : { paused: { after: next.paused, at: Date.now() } }),
+            }
           yield* bus.publish(SessionEvent.MetadataUpdated, { sessionID, metadata })
         }
       }
@@ -892,6 +950,9 @@ export const node = makeLocationNode({
     Config.node,
     SessionGuardLog.node,
     SessionStore.node,
+    IntelligenceSettings.node,
+    SessionRunnerModel.node,
+    Model.node,
   ],
 })
 

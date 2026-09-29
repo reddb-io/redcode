@@ -82,6 +82,7 @@ export interface Input {
   readonly webSocket?: "session"
   /** Prompt size, measured by the provider or estimated. The default output limit leaves room for it. */
   readonly inputTokens?: { readonly measured: number; readonly estimated: number }
+  readonly compactionMaxTokens?: number
 }
 
 /** The default output limit: the catalog limit, fitted to the room the prompt leaves in the context window. */
@@ -260,7 +261,12 @@ export const layer = Layer.effect(
           messages: input.messages,
           options: {
             ...(kind === "primary" || kind === "compaction"
-              ? { maxTokens: outputLimit(model.limit, kind, input.inputTokens) }
+              ? {
+                  maxTokens: Math.min(
+                    outputLimit(model.limit, kind, input.inputTokens),
+                    input.compactionMaxTokens ?? Infinity,
+                  ),
+                }
               : {}),
             ...input.options,
           },

@@ -2247,6 +2247,7 @@ export type IntelligenceSettings = {
   reasoning?: IntelligenceReasoning
   onboarding: "pending" | "deferred" | "completed"
   principal?: ModelRef
+  fast?: ModelRef
   evaluator?: IntelligenceEvaluator
 }
 
@@ -2778,7 +2779,13 @@ export type ConfigEntry =
                 }
           }
         }
-        compaction?: { auto?: boolean; prune?: boolean; keep?: { tokens?: number; turns?: number }; buffer?: number }
+        compaction?: {
+          auto?: boolean
+          prune?: boolean
+          keep?: { tokens?: number; turns?: number }
+          buffer?: number
+          summary_max_tokens?: number
+        }
         skills?: Array<string>
         commands?: {
           [x: string]: {
@@ -9771,6 +9778,7 @@ export type ServerIntelligenceSaveInput = {
       readonly reasoning?: "single" | "dual"
       readonly onboarding: "pending" | "deferred" | "completed"
       readonly principal?: { readonly id: string; readonly providerID: string; readonly variant?: string }
+      readonly fast?: { readonly id: string; readonly providerID: string; readonly variant?: string }
       readonly evaluator?: {
         readonly transport:
           | "opencode-zen"
@@ -9794,6 +9802,7 @@ export type ServerIntelligenceSaveInput = {
       readonly reasoning?: "single" | "dual"
       readonly onboarding: "pending" | "deferred" | "completed"
       readonly principal?: { readonly id: string; readonly providerID: string; readonly variant?: string }
+      readonly fast?: { readonly id: string; readonly providerID: string; readonly variant?: string }
       readonly evaluator?: {
         readonly transport:
           | "opencode-zen"

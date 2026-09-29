@@ -5741,6 +5741,7 @@ export type ServerIntelligenceStatusOutput = {
     readonly reasoning?: ("single" | "dual") | undefined
     readonly onboarding: "pending" | "deferred" | "completed"
     readonly principal?: Model.Ref | undefined
+    readonly fast?: Model.Ref | undefined
     readonly evaluator?:
       | {
           readonly transport:
@@ -5871,6 +5872,7 @@ export type ServerIntelligenceSaveInput = {
     readonly reasoning?: ("single" | "dual") | undefined
     readonly onboarding: "pending" | "deferred" | "completed"
     readonly principal?: Model.Ref | undefined
+    readonly fast?: Model.Ref | undefined
     readonly evaluator?:
       | {
           readonly transport:
@@ -5895,6 +5897,7 @@ export type ServerIntelligenceSaveOutput = {
   readonly reasoning?: ("single" | "dual") | undefined
   readonly onboarding: "pending" | "deferred" | "completed"
   readonly principal?: Model.Ref | undefined
+  readonly fast?: Model.Ref | undefined
   readonly evaluator?:
     | {
         readonly transport:
