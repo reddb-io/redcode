@@ -1,3 +1,4 @@
+import { OwnedPaths } from "@opencode/server/owned-paths"
 import { FSUtil } from "@opencode/util/fs-util"
 import { Effect, FileSystem } from "effect"
 import { HttpServerError, HttpServerRequest, HttpServerResponse } from "effect/unstable/http"
@@ -14,12 +15,7 @@ export const handler = Effect.fn("cli.web-ui.handler")(function* (options?: { re
       const request = yield* HttpServerRequest.HttpServerRequest
       const url = new URL(request.url, "http://localhost")
       // Serve the web shell before API authentication so a signed-out browser gets the app's sign-in screen.
-      if (
-        url.pathname === "/api" ||
-        url.pathname.startsWith("/api/") ||
-        url.pathname.startsWith("/auth/") ||
-        url.pathname === "/openapi.json"
-      )
+      if (OwnedPaths.owned(url.pathname))
         return yield* api.pipe(
           Effect.catchIf(isRouteNotFound, () => Effect.succeed(HttpServerResponse.empty({ status: 404 }))),
         )

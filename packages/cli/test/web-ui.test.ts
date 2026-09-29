@@ -55,19 +55,45 @@ describe("web UI", () => {
             )
           }),
       )
-      yield* Effect.forEach(["/api", "/api/info", "/api/event", "/api/missing", "/openapi.json"], (pathname) =>
-        Effect.gen(function* () {
-          const response = yield* Effect.promise(() => fetch(new URL(pathname, origin)))
-          expect(response.status).toBe(401)
-          expect(response.headers.get("www-authenticate")).toBe('Basic realm="Secure Area"')
-          yield* Effect.promise(() => response.arrayBuffer())
-        }),
+      yield* Effect.forEach(
+        ["/api", "/api/info", "/api/event", "/api/missing", "/openapi.json", "/rpc", "/design/session/ses_1/review"],
+        (pathname) =>
+          Effect.gen(function* () {
+            const response = yield* Effect.promise(() => fetch(new URL(pathname, origin)))
+            expect(response.status).toBe(401)
+            expect(response.headers.get("www-authenticate")).toBe('Basic realm="Secure Area"')
+            yield* Effect.promise(() => response.arrayBuffer())
+          }),
       )
       const response = yield* Effect.promise(() =>
         fetch(new URL("/api/info", origin), { headers: { authorization: `Basic ${btoa("opencode:secret")}` } }),
       )
       expect(response.status).toBe(200)
       expect(yield* Effect.promise(() => response.json())).toHaveProperty("pid")
+
+      // Raw routes outside /api reach the server's router instead of the web app's index page.
+      const rpc = yield* Effect.promise(() =>
+        fetch(new URL("/rpc", origin), {
+          method: "POST",
+          headers: { authorization: `Basic ${btoa("opencode:secret")}`, "content-type": "application/json" },
+          body: JSON.stringify({ jsonrpc: "2.0", method: "health.get", params: {}, id: 1 }),
+        }),
+      )
+      expect(rpc.status).toBe(200)
+      expect(yield* Effect.promise(() => rpc.json())).toEqual({ jsonrpc: "2.0", result: { healthy: true }, id: 1 })
+      yield* Effect.forEach(["GET", "POST"], (method) =>
+        Effect.gen(function* () {
+          const design = yield* Effect.promise(() =>
+            fetch(new URL("/design/session/not-a-session/review", origin), {
+              method,
+              headers: { authorization: `Basic ${btoa("opencode:secret")}`, "content-type": "application/json" },
+              body: method === "POST" ? "{}" : undefined,
+            }),
+          )
+          expect(design.status).toBe(400)
+          expect(yield* Effect.promise(() => design.json())).toEqual({ code: "invalid", message: "Invalid session" })
+        }),
+      )
 
       const pairing = yield* Effect.promise(() =>
         fetch(new URL("/api/pair", origin), {
