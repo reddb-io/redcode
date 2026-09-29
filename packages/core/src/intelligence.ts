@@ -106,7 +106,7 @@ const make = Effect.gen(function* () {
                         sourceIndex: item.sourceIndex,
                         ...(input.kind === "classification"
                           ? IntelligenceEvaluation.validateClassification(item.questions, answer)
-                          : IntelligenceEvaluation.decide(item.questions, answer)),
+                          : IntelligenceEvaluation.decide(item.questions, answer, input.operation)),
                       }),
                       catch: () => new IntelligenceEvaluation.Error({ message: "Invalid System One answers" }),
                     }),

@@ -132,16 +132,39 @@ function validateAnswers(questions: Record<string, Intelligence.Question>, respo
   })
 }
 
-export function decide(questions: Record<string, Intelligence.Question>, response: Intelligence.Response) {
+/** The noul at or above which a gate question establishes the error it describes. */
+const REVISION = 0.9
+
+/** The noul above which a gate question is not clear: the bar for gates whose acceptance approves something. */
+const CLEAR = 0.1
+
+/**
+ * Gates whose inconclusive verdict changes nothing but a note, read by the more probable answer
+ * instead of {@link CLEAR}. Jev rarely answers a gate question below 0.1 even when the error is
+ * absent (most answers sit between 0.15 and 0.4), so the strict bar made almost every such review
+ * inconclusive and narrated every question as an issue.
+ */
+const CLEAR_BY_OPERATION: Partial<Record<Intelligence.Operation, number>> = { task_quality: 0.5 }
+
+export function decide(
+  questions: Record<string, Intelligence.Question>,
+  response: Intelligence.Response,
+  operation?: Intelligence.Operation,
+) {
   validateAnswers(questions, response)
+  const clear = (operation === undefined ? undefined : CLEAR_BY_OPERATION[operation]) ?? CLEAR
   const issues: string[] = []
   const states = Object.entries(questions).map(([id, question]) => {
     const answer = response.answers[id]
     if (!answer || answer.type !== question.type)
       throw new Error({ message: "Incomplete or mismatched evaluation response" })
     if (answer.type !== "noul") return "accepted" as const
-    if (answer.noul > 0.1) issues.push(id)
-    return answer.noul >= 0.9 ? "needs_revision" as const : answer.noul > 0.1 ? "inconclusive" as const : "accepted" as const
+    if (answer.noul > clear) issues.push(id)
+    return answer.noul >= REVISION
+      ? "needs_revision" as const
+      : answer.noul > clear
+        ? "inconclusive" as const
+        : "accepted" as const
   })
   return {
     decision: states.includes("needs_revision")
