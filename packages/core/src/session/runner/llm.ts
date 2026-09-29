@@ -3,7 +3,7 @@ export * as SessionRunnerLLM from "./llm.js"
 import { AIError, Message, ProviderErrorEvent, SystemPart } from "@opencode/ai"
 import { Monitor } from "@opencode/schema/monitor"
 import { and, desc, eq, sql } from "drizzle-orm"
-import { Cause, Clock, Effect, Exit, FiberMap, Layer, Schema } from "effect"
+import { Cause, Clock, Duration, Effect, Exit, Fiber, FiberMap, Layer, Option, Schema } from "effect"
 import { Database } from "../../database/database.js"
 import { Bus } from "../../bus.js"
 import { ModelLimit } from "../../model-limit.js"
@@ -49,11 +49,36 @@ import { LoopGuard } from "../loop-guard.js"
 import { SessionStall } from "../stall.js"
 import { SessionStopLoss } from "../stop-loss.js"
 import { Intelligence } from "../../intelligence.js"
+import { IntelligenceClassification } from "../../intelligence/classification.js"
 import { IntelligenceEvaluation } from "../../intelligence/evaluation.js"
+import { IntelligenceResponse } from "../../intelligence/response.js"
+import { Job } from "../../job.js"
+import { Skill } from "../../skill.js"
 import { MAX_STEPS_PROMPT } from "./max-steps.js"
 
 const CONTINUE_AFTER_INCOMPLETE_STREAM =
   "The previous response was interrupted. Continue from where you left off without repeating completed content."
+/** How long the first Step of a prompt waits for its classification; a slower one lands in history for later Steps. */
+const CLASSIFICATION_WAIT = Duration.seconds(5)
+/** Messages read back when judging a goal or reviewing a final response. */
+const RECENT = 60
+
+/** Goal continuation memory for one drain, reset by a new goal or a new user message. */
+interface GoalLoop {
+  readonly goalID?: string
+  readonly userID?: string
+  readonly stalled: number
+  readonly unavailable: number
+}
+
+/** Final response review memory for one drain, reset by a new user message. */
+interface ResponseReview {
+  readonly userID?: string
+  readonly attempts: number
+  readonly issues: ReadonlyArray<string>
+  /** The response the last repair revised. */
+  readonly text?: string
+}
 
 const layer = Layer.effect(
   Service,
@@ -76,9 +101,19 @@ const layer = Layer.effect(
     const intelligence = yield* Intelligence.Service
     const plans = yield* SessionPlan.Service
     const monitors = yield* MonitorRuntime.Service
+    const inbox = yield* SessionInbox.Service
+    const jobs = yield* Job.Service
+    const skills = yield* Skill.Service
     const steps = yield* SessionStep.make
     // Title generation starts once input is visible and must not delay model execution.
     const titles = yield* FiberMap.make<SessionSchema.ID, void, never>()
+    // Prompt classifications outlive the Step that started them, so a slow one still lands in history.
+    const classifications = yield* FiberMap.make<SessionMessage.ID>()
+    // Whether System One takes part; an unreadable configuration reads as single reasoning, never a failed prompt.
+    const dual = intelligence.read().pipe(
+      Effect.map((settings) => settings.enabled && IntelligenceEvaluation.mode(settings) === "dual"),
+      Effect.orElseSucceed(() => false),
+    )
 
     const drain = Effect.fn("SessionRunner.drain")(function* (input: Parameters<Interface["drain"]>[0]) {
       const sessionID = input.sessionID
@@ -89,6 +124,8 @@ const layer = Layer.effect(
       let todoContinuations = 0
       let guardStopped = false
       let stopLoss = SessionStopLoss.FRESH
+      let goalLoop: GoalLoop = { stalled: 0, unavailable: 0 }
+      let review: ResponseReview = { attempts: 0, issues: [] }
       const promotable = input.promotable ?? "input"
       if (!force && !continuing) {
         const pending = yield* SessionInbox.nextPromotable(db, sessionID, "input")
@@ -226,12 +263,20 @@ const layer = Layer.effect(
         const next = yield* advanceToStep()
         if (next._tag !== "Ready") return next
         if (!(yield* budgets.admit(sessionID))) return DrainResult.Complete()
+        // Classified before the goal accounts the Step, so an interruption while waiting spends nothing.
+        const classification = yield* classify(next.context)
         const goalID = yield* goals.beginStep(sessionID)
         if (goalID === false) return DrainResult.Complete()
+        const advice = [
+          IntelligenceClassification.context(classification),
+          IntelligenceClassification.skillContext(classification),
+        ]
+          .filter(Boolean)
+          .join("\n\n")
         const result = yield* Effect.uninterruptibleMask((restore) =>
           Effect.gen(function* () {
             const result = yield* restore(
-              runStep(next.context, step, goalID, () => {
+              runStep(next.context, step, goalID, advice, () => {
                 guardStopped = true
               }),
             ).pipe(Effect.exit)
@@ -289,6 +334,25 @@ const layer = Layer.effect(
             if (goal?.status === "active")
               yield* goals.save(goal, { ...goal, status: "paused", reason: SessionTodo.limitReason }).pipe(Effect.orDie)
             yield* Effect.logWarning("Task continuation limit reached", { sessionID, attempts: todoContinuations })
+          }
+        }
+        // At the idle boundary an active goal continues through the inbox; otherwise the final response is reviewed.
+        if (
+          !continuing &&
+          !guardStopped &&
+          next.context.agent.id !== "question" &&
+          !(yield* SessionInbox.has(db, sessionID, "input")) &&
+          !(yield* monitors.list(sessionID)).some(Monitor.parks)
+        ) {
+          const pursued = yield* pursueGoal(next.context, goalLoop).pipe(
+            // A goal changed by the user while it was judged is theirs to resume.
+            Effect.catchTag("SessionGoal.Error", () => Effect.succeed({ memory: goalLoop, continued: false })),
+          )
+          goalLoop = pursued.memory
+          if (!pursued.continued) {
+            const reviewed = yield* reviewResponse(next.context, review)
+            review = reviewed.memory
+            continuing = reviewed.repair
           }
         }
         step++
@@ -404,6 +468,299 @@ const layer = Layer.effect(
       return { memory: next, ended: true }
     })
 
+    /**
+     * Classifies the latest user request with System One once, from a bounded view of the session.
+     * Advisory only: it never blocks the prompt, and a slow answer is persisted for later Steps.
+     */
+    const classify = Effect.fn("SessionRunner.classify")(function* (loaded: SessionContext.Loaded) {
+      const sessionID = loaded.session.id
+      const index = loaded.messages.findLastIndex((message) => message.type === "user")
+      const user = loaded.messages[index]
+      if (user?.type !== "user" || !(yield* dual)) return undefined
+      const stored = (yield* intelligence
+        .history(sessionID, { operation: "prompt_classification", subjectID: user.id, limit: 1 })
+        .pipe(Effect.orElseSucceed(() => [])))[0]
+      if (stored) return stored
+      // A classification still running from an earlier Step is not awaited again.
+      if (yield* FiberMap.has(classifications, user.id)) return undefined
+      const preceding = loaded.messages.slice(0, index)
+      const request = IntelligenceClassification.evaluation({
+        sessionID,
+        request: { id: user.id, text: user.text, files: user.files },
+        history: preceding.slice(-IntelligenceClassification.HISTORY).flatMap(historyEntry),
+        omitted: Math.max(0, preceding.length - IntelligenceClassification.HISTORY),
+        session: {
+          mode: loaded.agent.id,
+          goal: SessionGoal.guidance(yield* goals.get(sessionID)),
+          plan: SessionPlan.guidance(yield* plans.list(sessionID)),
+        },
+        skills: Skill.available(
+          yield* skills.list(),
+          Permission.forAgent(loaded.agent.info, loaded.session.permissions),
+        )
+          .flatMap((skill) =>
+            skill.description === undefined || skill.autoinvoke === false
+              ? []
+              : [{ name: skill.name, description: skill.description }],
+          )
+          .toSorted((left, right) => left.name.localeCompare(right.name)),
+      })
+      const fiber = yield* FiberMap.run(
+        classifications,
+        user.id,
+        intelligence.evaluate(request).pipe(Effect.orElseSucceed(() => undefined)),
+      )
+      const settled = yield* Fiber.await(fiber).pipe(Effect.timeoutOption(CLASSIFICATION_WAIT))
+      return Option.isSome(settled) && Exit.isSuccess(settled.value) ? settled.value.value : undefined
+    })
+
+    /**
+     * Decides what an active goal does when the agent stopped short of completing it: wait for
+     * background subagents, block on a confirmed blocker, pause on a spent budget or repeated lack
+     * of progress, or continue through a durable synthetic steer. Nothing here completes a goal;
+     * only `goal_complete` does, after verifying its evidence.
+     */
+    const pursueGoal = Effect.fn("SessionRunner.pursueGoal")(function* (
+      loaded: SessionContext.Loaded,
+      memory: GoalLoop,
+    ) {
+      const sessionID = loaded.session.id
+      const goal = yield* goals.get(sessionID)
+      if (loaded.session.parentID || goal?.status !== "active") return { memory, continued: false }
+      const recent = (yield* store.messages({ sessionID, order: "desc", limit: RECENT })).toReversed()
+      const user = recent.findLast((message) => message.type === "user")
+      const current: GoalLoop =
+        memory.goalID === goal.id && memory.userID === user?.id
+          ? memory
+          : { goalID: goal.id, userID: user?.id, stalled: 0, unavailable: 0 }
+      const waiting = (yield* jobs.pendingBackground).some(
+        (job) =>
+          job.status === "running" && job.recovery.kind === "subagent" && job.recovery.parentSessionID === sessionID,
+      )
+      if (waiting) {
+        yield* goals.save(goal, { ...goal, status: "waiting", reason: SessionGoal.WAITING })
+        return { memory: current, continued: false }
+      }
+      const blocker = SessionTodo.blocker(yield* todos.get(sessionID))
+      if (blocker) {
+        yield* goals.save(goal, { ...goal, status: "blocked", reason: blocker })
+        return { memory: current, continued: false }
+      }
+      if (yield* goals.exhausted(goal)) return { memory: current, continued: false }
+      // The work since the latest user message or goal continuation is what this judgement covers.
+      const exchange = recent.slice(
+        recent.findLastIndex(
+          (message) =>
+            message.type === "user" ||
+            (message.type === "synthetic" && message.metadata?.[SessionGoal.CONTINUATION_KEY] !== undefined),
+        ) + 1,
+      )
+      const parts = exchange.flatMap((message) => (message.type === "assistant" ? SessionStopLoss.parts(message) : []))
+      const response = exchange.findLast((message) => message.type === "assistant")
+      const text = response?.type === "assistant" ? responseText(response) : ""
+      const judged =
+        response && text && (yield* dual)
+          ? SessionGoal.verdict(
+              yield* intelligence
+                .evaluate(
+                  SessionGoal.judgement({
+                    goal,
+                    response: { id: response.id, text },
+                    tools: SessionStopLoss.digest(parts, { directory: loaded.session.location.directory }),
+                  }),
+                )
+                .pipe(
+                  Effect.tap((record) =>
+                    record
+                      ? goals.recordReview(goal, {
+                          id: record.id,
+                          tokens: record.usage.input_tokens + record.usage.output_tokens,
+                        })
+                      : Effect.void,
+                  ),
+                  Effect.orElseSucceed(() => undefined),
+                ),
+            )
+          : undefined
+      const next = {
+        ...current,
+        stalled: !parts.some((part) => part.type === "tool") || judged === "stalled" ? current.stalled + 1 : 0,
+        unavailable: judged === "unavailable" ? current.unavailable + 1 : 0,
+      }
+      if (judged === "blocked") {
+        const reason =
+          "System One confirmed the blocker reported in the last response. Resolve it, then resume the goal."
+        yield* goals.save(goal, { ...goal, status: "blocked", reason })
+        yield* guards.record({ sessionID, guard: "goal", action: "stop", subject: goal.id, detail: reason })
+        return { memory: next, continued: false }
+      }
+      if (next.stalled >= SessionGoal.NO_PROGRESS_LIMIT || next.unavailable >= SessionGoal.JUDGE_FAILURE_LIMIT) {
+        const stalled = next.stalled >= SessionGoal.NO_PROGRESS_LIMIT
+        const reason = stalled
+          ? `No verifiable progress after ${next.stalled} goal continuations. Refine the goal or resume it to try again.`
+          : `System One could not judge goal progress ${next.unavailable} times in a row. Check its configuration, then resume the goal.`
+        yield* goals.save(goal, { ...goal, status: "paused", reason })
+        yield* guards.record({
+          sessionID,
+          guard: stalled ? "goal" : "intelligence",
+          action: "stop",
+          subject: goal.id,
+          detail: reason,
+        })
+        return { memory: next, continued: false }
+      }
+      if (judged === "unavailable")
+        yield* guards.record({
+          sessionID,
+          guard: "intelligence",
+          action: "warn",
+          subject: goal.id,
+          detail: "System One could not judge goal progress; the goal continues unverified",
+        })
+      // New input admitted while System One judged takes the next boundary instead of a stale continuation.
+      if (yield* SessionInbox.has(db, sessionID, "input")) return { memory: next, continued: false }
+      yield* inbox
+        .admit({
+          id: SessionMessage.ID.create(),
+          sessionID,
+          item: {
+            type: "synthetic",
+            payload: SessionInbox.SyntheticPayload.make({
+              text: SessionGoal.continuation(goal, judged),
+              description: `Continuing goal (step ${goal.turns.used + 1} of ${goal.turns.max})`,
+              metadata: { [SessionGoal.CONTINUATION_KEY]: { goalID: goal.id, verdict: judged ?? "unjudged" } },
+            }),
+            delivery: SessionInbox.Delivery.make("steer"),
+          } satisfies SessionInbox.Item,
+        })
+        .pipe(Effect.orDie)
+      return { memory: next, continued: true }
+    })
+
+    /**
+     * Reviews the final response of a top-level Session with System One in dual reasoning. An
+     * established issue earns one repair pass; what remains is kept with a durable note, and an
+     * unavailable review is signalled instead of approving the response.
+     */
+    const reviewResponse = Effect.fn("SessionRunner.reviewResponse")(function* (
+      loaded: SessionContext.Loaded,
+      memory: ResponseReview,
+    ) {
+      const sessionID = loaded.session.id
+      if (loaded.session.parentID || !(yield* dual)) return { memory, repair: false }
+      const recent = (yield* store.messages({ sessionID, order: "desc", limit: RECENT })).toReversed()
+      const index = recent.findLastIndex((message) => message.type === "user")
+      const user = recent[index]
+      if (user?.type !== "user") return { memory, repair: false }
+      const current: ResponseReview = memory.userID === user.id ? memory : { userID: user.id, attempts: 0, issues: [] }
+      const work = recent.slice(index + 1)
+      const candidate = work.findLast((message) => message.type === "assistant")
+      const text = candidate?.type === "assistant" ? responseText(candidate) : ""
+      if (!candidate || !text) return { memory: current, repair: false }
+      const settled = { ...current, text: undefined }
+      const revised = current.attempts > 0
+      // A revision that changes nothing material settles nothing: the repaired issues stand.
+      if (current.text !== undefined && IntelligenceResponse.same(current.text, text)) {
+        yield* noteReview(sessionID, {
+          status: "unresolved",
+          issues: current.issues,
+          confidence: {},
+          revised,
+        })
+        return { memory: settled, repair: false }
+      }
+      const goal = yield* goals.get(sessionID)
+      const classification = (yield* intelligence
+        .history(sessionID, { operation: "prompt_classification", subjectID: user.id, limit: 1 })
+        .pipe(Effect.orElseSucceed(() => [])))[0]
+      const evaluation = yield* intelligence
+        .evaluate(
+          IntelligenceResponse.evaluation({
+            sessionID,
+            request: { id: user.id, text: user.text },
+            candidate: { id: candidate.id, text },
+            attempt: current.attempts,
+            tools: SessionStopLoss.digest(
+              work.flatMap((message) => (message.type === "assistant" ? SessionStopLoss.parts(message) : [])),
+              { directory: loaded.session.location.directory },
+            ),
+            tasks: (yield* todos.get(sessionID)).map((task) => ({
+              content: task.content,
+              status: task.status,
+              ...(task.reason ? { reason: task.reason } : {}),
+            })),
+            goal: goal ? { objective: goal.objective, status: goal.status, reason: goal.reason } : undefined,
+            route: IntelligenceClassification.workRoute(classification),
+          }),
+        )
+        .pipe(Effect.orElseSucceed(() => undefined))
+      const verdict = IntelligenceResponse.verdict(evaluation, current.issues)
+      if (verdict.repair.length && current.attempts < IntelligenceResponse.REPAIRS) {
+        // New input admitted while System One reviewed supersedes the repair.
+        if (yield* SessionInbox.has(db, sessionID, "input")) return { memory: settled, repair: false }
+        yield* bus.publish(SessionEvent.Synthetic, {
+          sessionID,
+          text: IntelligenceResponse.repairPrompt(verdict.repair),
+          description: `Revising the response after S1 review: ${verdict.repair.map(IntelligenceResponse.reason).join("; ")}`,
+          metadata: {
+            [IntelligenceResponse.REPAIR_KEY]: {
+              issues: verdict.repair,
+              confidence: IntelligenceResponse.confidence(evaluation, verdict.repair),
+              ...(evaluation ? { evaluationID: evaluation.id } : {}),
+            },
+          },
+        })
+        return {
+          memory: {
+            userID: user.id,
+            attempts: current.attempts + 1,
+            issues: [...current.issues, ...verdict.repair],
+            text,
+          },
+          repair: true,
+        }
+      }
+      if (!evaluation || evaluation.decision === "unavailable")
+        yield* noteReview(sessionID, {
+          status: "unavailable",
+          ...(evaluation ? { evaluationID: evaluation.id } : {}),
+          detail: evaluation ? IntelligenceEvaluation.issueSummary(evaluation) : "the evaluation could not run",
+          revised,
+        })
+      if (evaluation && evaluation.decision !== "unavailable" && verdict.unresolved.length)
+        yield* noteReview(sessionID, {
+          status: "unresolved",
+          evaluationID: evaluation.id,
+          issues: verdict.unresolved,
+          confidence: IntelligenceResponse.confidence(evaluation, verdict.unresolved),
+          revised,
+        })
+      if (evaluation && evaluation.decision !== "unavailable" && !verdict.unresolved.length && revised)
+        yield* noteReview(sessionID, { status: "revised", issues: current.issues })
+      return { memory: settled, repair: false }
+    })
+
+    const noteReview = Effect.fnUntraced(function* (
+      sessionID: SessionSchema.ID,
+      outcome: IntelligenceResponse.Outcome,
+    ) {
+      const note = IntelligenceResponse.note(outcome)
+      yield* bus.publish(SessionEvent.Synthetic, {
+        sessionID,
+        text: note.text,
+        description: note.description,
+        metadata: { [IntelligenceResponse.REVIEW_KEY]: outcome },
+      })
+      if (outcome.status !== "revised")
+        yield* guards.record({
+          sessionID,
+          guard: "intelligence",
+          action: "warn",
+          subject: "response_quality",
+          detail: note.text,
+        })
+    })
+
     const learnOverflow = Effect.fnUntraced(function* (
       loaded: SessionContext.Loaded,
       request: SessionModelRequest.Prepared["request"],
@@ -445,6 +802,7 @@ const layer = Layer.effect(
       first: SessionContext.Loaded,
       step: number,
       goalID: string | undefined,
+      advice: string,
       stopGuard: () => void,
     ) {
       const sessionID = first.session.id
@@ -490,9 +848,13 @@ const layer = Layer.effect(
           messages: loaded.messages,
           prune: loaded.prune,
         })
+        // A subagent works toward its parent's live goal without owning, spending or completing it.
+        const inherited = loaded.session.parentID ? yield* goals.inherited(loaded.session.parentID) : undefined
         const guidance = [
           SessionGoal.guidance(yield* goals.get(sessionID)),
+          inherited ? SessionGoal.inherit(inherited) : "",
           SessionPlan.guidance(yield* plans.list(sessionID)),
+          advice,
         ]
           .filter(Boolean)
           .join("\n\n")
@@ -664,6 +1026,28 @@ const layer = Layer.effect(
   }),
 )
 
+/** The visible text of an assistant message. */
+function responseText(message: SessionMessage.Assistant) {
+  return message.content
+    .flatMap((part) => (part.type === "text" ? [part.text] : []))
+    .join("\n")
+    .trim()
+}
+
+/** One bounded message of the history a prompt classification reads. */
+function historyEntry(message: SessionMessage.Info): IntelligenceClassification.HistoryEntry[] {
+  const clip = (text: string) => IntelligenceEvaluation.evidence(text, { limit: 2_000 }).content
+  if (message.type === "user" || message.type === "synthetic") return [{ role: message.type, text: clip(message.text) }]
+  if (message.type !== "assistant") return []
+  return [
+    {
+      role: "assistant",
+      text: clip(responseText(message)),
+      tools: message.content.flatMap((part) => (part.type === "tool" ? [part.name] : [])),
+    },
+  ]
+}
+
 export const node = makeLocationNode({
   service: Service,
   layer,
@@ -688,6 +1072,9 @@ export const node = makeLocationNode({
     SessionPlan.node,
     SessionGoalCompletion.node,
     MonitorRuntime.node,
+    SessionInbox.node,
+    Job.node,
+    Skill.node,
     Snapshot.node,
     ToolOutput.node,
     Database.node,

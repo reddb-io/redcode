@@ -43,6 +43,7 @@ import { Snapshot } from "@opencode/core/snapshot"
 import { SessionEvent } from "@opencode/core/session/event"
 import { SessionCompaction } from "@opencode/core/session/compaction"
 import { SessionInbox } from "@opencode/core/session/inbox"
+import { SessionGoal } from "@opencode/core/session/goal"
 import { SessionMessage } from "@opencode/core/session/message"
 import { SessionModelTransport } from "@opencode/core/session/model-transport"
 import { SessionProviderContext } from "@opencode/core/session/provider-context"
@@ -503,6 +504,7 @@ const layer = Layer.unwrap(
         SessionCompaction.node,
         LayerNodePlatform.llmClient,
         SessionRunnerLLM.node,
+        SessionGoal.node,
         SessionExecution.node,
         Session.node,
       ]),
@@ -1002,6 +1004,25 @@ describe("SessionRunnerLLM", () => {
 
     expect((yield* s.session.get(sessionID)).title).toBe("Generated title")
     yield* Fiber.interrupt(fiber)
+  })
+
+  scenario("continues an active goal through the inbox and pauses it after replies without progress", function* (s) {
+    const goals = yield* SessionGoal.Service
+    yield* goals.start(sessionID, { objective: "Ship the feature" })
+    yield* s.llm.push(TestLLM.text("I will start now", "text-first"), TestLLM.text("Still thinking", "text-second"))
+
+    yield* s.runPrompt("Pursue the goal")
+
+    expect(s.requests).toHaveLength(2)
+    const continuation = (yield* s.messages).find(
+      (message) => message.type === "synthetic" && message.metadata?.[SessionGoal.CONTINUATION_KEY] !== undefined,
+    )
+    expect(continuation?.type === "synthetic" ? continuation.text : "").toContain("Goal: Ship the feature")
+    expect(yield* s.inbox).toEqual([])
+    const goal = yield* goals.get(sessionID)
+    expect(goal?.status).toBe("paused")
+    expect(goal?.reason).toContain("No verifiable progress")
+    expect(goal?.turns.used).toBe(2)
   })
 
   scenario("does not automatically replace an existing session title", function* (s) {
