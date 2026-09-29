@@ -56,6 +56,25 @@ export function toolDisplayMetadata(state: unknown): Record<string, unknown> {
   return state.metadata as Record<string, unknown>
 }
 
+/**
+ * What a created design shows in the transcript, read from the design_document result's metadata: the
+ * chip naming the settled target and design system ("iOS app · DS: shadcn/ui (packages/ui)") and the
+ * design-system identification's one-line result. Undefined for any other call.
+ */
+export function designDocumentChip(part: SessionMessageAssistantTool) {
+  if (part.name !== "design_document" || part.state.status !== "completed") return undefined
+  const metadata = toolDisplayMetadata(part.state)
+  const chip = metadata.designChip
+  if (typeof chip !== "string" || !chip.trim()) return undefined
+  // The chip ends with how to change it, which is addressed to the agent.
+  const at = chip.indexOf(" — ")
+  const system = metadata.designSystem
+  return {
+    title: at < 0 ? chip : chip.slice(0, at),
+    system: typeof system === "string" && system.trim() ? system : undefined,
+  }
+}
+
 export function toolDisplayContent(state: SessionMessageAssistantTool["state"]) {
   if (state.status === "streaming" || state.status === "running") return []
   return state.content ?? []

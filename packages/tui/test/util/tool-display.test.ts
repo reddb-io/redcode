@@ -1,6 +1,8 @@
 import { describe, expect, test } from "bun:test"
+import type { SessionMessageAssistantTool } from "@opencode/client/promise"
 import {
   canonicalToolName,
+  designDocumentChip,
   finiteNumber,
   primitiveInputSummary,
   toolDisplayMetadata,
@@ -61,5 +63,38 @@ describe("toolDisplayMetadata", () => {
     expect(toolDisplayMetadata({ status: "completed", metadata: null })).toEqual({})
     expect(toolDisplayMetadata({ status: "completed", metadata: [] })).toEqual({})
     expect(toolDisplayMetadata(undefined)).toEqual({})
+  })
+})
+
+describe("designDocumentChip", () => {
+  const part = (name: string, metadata: Record<string, string>): SessionMessageAssistantTool => ({
+    type: "tool",
+    id: "call_create",
+    name,
+    state: { status: "completed", input: {}, content: [{ type: "text", text: "Design design_checkout: Checkout" }], metadata },
+    time: { created: 1, completed: 2 },
+  })
+
+  test("shows the settled target and design system without the agent's change hint", () => {
+    expect(
+      designDocumentChip(
+        part("design_document", {
+          designChip: "iOS app · DS: shadcn/ui (packages/ui) — change: design_document update target",
+          designSystem: "Design system: Tailwind theme (shadcn/ui) at packages/ui (90%, System One)",
+        }),
+      ),
+    ).toEqual({
+      title: "iOS app · DS: shadcn/ui (packages/ui)",
+      system: "Design system: Tailwind theme (shadcn/ui) at packages/ui (90%, System One)",
+    })
+    expect(designDocumentChip(part("design_document", { designChip: "Web · DS: none" }))).toEqual({
+      title: "Web · DS: none",
+      system: undefined,
+    })
+  })
+
+  test("ignores other calls and design_document results without a chip", () => {
+    expect(designDocumentChip(part("design_document", { action: "update" }))).toBeUndefined()
+    expect(designDocumentChip(part("design_preview", { designChip: "Web · DS: none" }))).toBeUndefined()
   })
 })

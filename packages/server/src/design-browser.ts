@@ -2,8 +2,12 @@ export * as DesignBrowser from "./design-browser"
 
 import { Design } from "@opencode/schema/design"
 import type { Agent } from "@opencode/schema/agent"
+import type { Location } from "@opencode/schema/location"
+import { TuiEvent } from "@opencode/schema/tui-event"
 import { App } from "@opencode/core/app"
+import { Bus } from "@opencode/core/bus"
 import { DesignFeed } from "@opencode/core/design/feed"
+import { DesignAppBinary } from "@opencode/core/design/app-binary"
 import { DesignAppConnection } from "@opencode/core/design/app-connection"
 import { DesignAppMode } from "@opencode/core/design/app-mode"
 import { DesignFeedback } from "@opencode/core/design/feedback"
@@ -21,12 +25,16 @@ import { HttpRouter, HttpServerRequest, HttpServerResponse } from "effect/unstab
 import { ServerAuth } from "./auth"
 import { DesignAccess } from "./design-access"
 import { DesignBrowserPermissions } from "./design-browser-permissions"
+import { DesignPresence } from "./design-presence"
+import { DesignWaiting } from "./design-waiting"
 import { authorizedRequest } from "./middleware/authorization"
 
 const previewCSP =
   "sandbox allow-scripts; default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; img-src data: blob:; font-src data:; connect-src 'none'; base-uri 'none'; form-action 'none'"
 const pageCSP =
   "default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' blob: data:; font-src 'self' data:; frame-src 'self'; connect-src 'self' data:; worker-src blob:"
+/** The design app serves these routes too, under this app name. */
+const DESIGN_APP = "redcode-design"
 const DesignPermission = Schema.Union([
   Schema.Struct({ kind: Schema.Literal("read"), path: Schema.String }),
   Schema.Struct({ kind: Schema.Literal("tooling"), designID: Design.ID }),
@@ -41,6 +49,55 @@ export const routes = (hosts: () => ReadonlyArray<string>) => HttpRouter.use((ro
     const appConnection = yield* DesignAppConnection.Service
     const secret = Option.getOrElse(auth.password, () => DesignAccess.embeddedSecret())
     const previews = new Map<string, "building" | "ready" | "failed">()
+    const bus = yield* Bus.Service
+    const fork = Effect.runForkWith(yield* Effect.context<never>())
+    const downloads = new Set<string>()
+
+    /** A review link to this server, signed so a browser can follow it without credentials. */
+    const reviewLink = (base: URL, sessionID: SessionSchema.ID) => {
+      const link = new URL(`/design/session/${sessionID}/review`, base)
+      link.searchParams.set("ticket", DesignAccess.ticket(secret, sessionID))
+      return link.toString()
+    }
+
+    /** Starts or joins the design app; a first-use download shows its progress in the Session's TUIs. */
+    const connectApp = (version: string | undefined, location: Location.Ref) => {
+      const connecting = appConnection.connect(version)
+      const key = `${location.workspaceID ?? ""}:${location.directory}`
+      // A waiting page reloads every second; one watcher per location keeps the toasts from multiplying.
+      if (downloads.has(key)) return connecting
+      downloads.add(key)
+      const stop = DesignAppBinary.watch((progress) => {
+        if (progress?.phase !== "download") return
+        fork(
+          bus.publish(
+            TuiEvent.ToastShow,
+            { message: DesignAppBinary.describe(progress), variant: "info", duration: 8_000 },
+            { location },
+          ),
+        )
+      })
+      const done = () => {
+        stop()
+        downloads.delete(key)
+      }
+      connecting.then(done, done)
+      return connecting
+    }
+
+    /** The design app's URL for a review route; none yet while the app still downloads or starts. */
+    const appLink = (sessionID: SessionSchema.ID, route: string, location: Location.Ref, version?: string) =>
+      Effect.tryPromise({
+        try: async () => {
+          const { DesignApp } = await import("@opencode/core/design/app")
+          return DesignApp.link(await connectApp(version, location), sessionID, route)
+        },
+        catch: (error) =>
+          new Design.Error({
+            code: "unavailable",
+            message: `The design app did not start: ${error instanceof Error ? error.message : String(error)}`,
+          }),
+      }).pipe(Effect.timeoutOption("2 seconds"))
 
     const handle = Effect.gen(function* () {
       const request = yield* HttpServerRequest.HttpServerRequest
@@ -56,31 +113,50 @@ export const routes = (hosts: () => ReadonlyArray<string>) => HttpRouter.use((ro
         .get(sessionID)
         .pipe(Effect.catchTag("Session.NotFoundError", () => Effect.succeed(undefined)))
       if (!session) return failure(404, `Session not found: ${sessionID}`)
+      const configured = Effect.gen(function* () {
+        const store = yield* DesignStore.Service
+        return yield* store.configured(sessionID)
+      }).pipe(instances.provide(session))
       if (parts[0] === "link" && parts.length === 1 && request.method === "GET") {
         if (!trusted) return failure(401, "Server authorization is required to create a review link")
-        const configured = yield* Effect.gen(function* () {
-          const store = yield* DesignStore.Service
-          return yield* store.configured(sessionID)
-        }).pipe(instances.provide(session))
-        if (DesignAppMode.process(configured)) {
-          const { DesignApp } = yield* Effect.promise(() => import("@opencode/core/design/app"))
-          const link = yield* Effect.tryPromise({
-            try: async () =>
-              DesignApp.link(
-                await appConnection.connect(configured?.app?.version),
-                sessionID,
-              ),
-            catch: (error) =>
-              new Design.Error({
-                code: "unavailable",
-                message: `The design app did not start: ${error instanceof Error ? error.message : String(error)}`,
-              }),
-          })
-          return HttpServerResponse.jsonUnsafe({ url: link })
+        const design = yield* configured
+        // A first download must not block the caller: the link to this server waits for the app on its own page.
+        const link = DesignAppMode.process(design)
+          ? Option.getOrUndefined(yield* appLink(sessionID, "/review", session.location, design?.app?.version))
+          : undefined
+        return HttpServerResponse.jsonUnsafe({
+          url: link ?? reviewLink(url, sessionID),
+          connected: DesignPresence.shared.connected(sessionID),
+        })
+      }
+      // Clients claim a browser launch here and give the claim back when it fails, so one review opens one
+      // tab: the review feed counts connected pages, and a publish right after a request opens no second one.
+      if (
+        parts[0] === "launch" &&
+        request.method === "POST" &&
+        (parts.length === 1 || (parts.length === 2 && parts[1] === "release"))
+      ) {
+        if (!trusted) return failure(401, "Server authorization is required to open a review")
+        const origin = request.headers.origin
+        if (origin && URL.parse(origin)?.host !== request.headers.host)
+          return failure(403, "Design refuses cross-origin writes")
+        if (!request.headers["content-type"]?.startsWith("application/json"))
+          return failure(403, "Design writes must be JSON")
+        if (parts[1] === "release") {
+          const input = yield* request.json.pipe(
+            Effect.flatMap(Schema.decodeUnknownEffect(Schema.Struct({ token: Schema.Number }))),
+          )
+          DesignPresence.shared.release(sessionID, input.token)
+          return HttpServerResponse.jsonUnsafe({ released: true })
         }
-        const link = new URL(`/design/session/${sessionID}/review`, url)
-        link.searchParams.set("ticket", DesignAccess.ticket(secret, sessionID))
-        return HttpServerResponse.jsonUnsafe({ url: link.toString() })
+        const input = yield* request.json.pipe(
+          Effect.flatMap(Schema.decodeUnknownEffect(Schema.Struct({ explicit: Schema.optional(Schema.Boolean) }))),
+        )
+        return HttpServerResponse.jsonUnsafe({
+          ...DesignPresence.shared.claim(sessionID, { explicit: input.explicit === true }),
+          url: reviewLink(url, sessionID),
+          connected: DesignPresence.shared.connected(sessionID),
+        })
       }
       const linked = !trusted && DesignAccess.verify(secret, sessionID, url.searchParams.get("ticket") ?? undefined)
       if (parts[0] === "permission" && parts.length === 1 && !trusted)
@@ -96,7 +172,19 @@ export const routes = (hosts: () => ReadonlyArray<string>) => HttpRouter.use((ro
         if (!request.headers["content-type"]?.startsWith("application/json"))
           return failure(403, "Design writes must be JSON")
       }
-      const response = parts[0] === "permission" && parts.length === 1
+      // In app mode the design app serves the review and presenter pages, so a link this server signed goes
+      // on to the app, through a waiting page while the app downloads or starts. The app proxies the review
+      // back here with its own ticket, which is not this server's, and runs these routes itself as well.
+      const page =
+        request.method === "GET" &&
+        ((parts[0] === "review" && parts.length === 1) || (parts[1] === "present" && parts.length === 2))
+      const signed =
+        DesignAccess.verify(secret, sessionID, url.searchParams.get("ticket") ?? undefined) ||
+        DesignAccess.verify(secret, sessionID, request.cookies[DesignAccess.COOKIE])
+      const design = page && signed && app.name !== DESIGN_APP ? yield* configured : undefined
+      const response = design && DesignAppMode.process(design)
+        ? yield* forward(url, appLink(sessionID, `/${parts.join("/")}`, session.location, design.app?.version))
+        : parts[0] === "permission" && parts.length === 1
         ? request.method === "POST"
           ? yield* authorize(request, sessionID, session.agent).pipe(instances.provide(session))
           : failure(405, "Design permission requests must use POST")
@@ -120,6 +208,33 @@ export const routes = (hosts: () => ReadonlyArray<string>) => HttpRouter.use((ro
     yield* router.add("*", "/design/session/:sessionID/*", handle)
   }),
 )
+
+/** Redirects to the design app's page, or shows how far its download or start got. */
+function forward<E>(url: URL, link: Effect.Effect<Option.Option<string>, E>) {
+  return Effect.gen(function* () {
+    const attempt = yield* Effect.exit(link)
+    if (Exit.isSuccess(attempt) && Option.isSome(attempt.value)) {
+      const target = new URL(attempt.value.value)
+      url.searchParams.forEach((value, key) => {
+        if (key !== "ticket") target.searchParams.set(key, value)
+      })
+      return HttpServerResponse.redirect(target)
+    }
+    const error = Exit.isFailure(attempt) ? Cause.squash(attempt.cause) : undefined
+    return HttpServerResponse.text(
+      DesignWaiting.page({
+        progress: DesignAppBinary.progress(),
+        error: error === undefined ? undefined : error instanceof Error ? error.message : String(error),
+        now: Date.now(),
+      }),
+      {
+        status: error === undefined ? 200 : 503,
+        contentType: "text/html",
+        headers: { "cache-control": "no-store", "content-security-policy": DesignWaiting.CSP },
+      },
+    )
+  })
+}
 
 function authorize(request: HttpServerRequest.HttpServerRequest, sessionID: SessionSchema.ID, agent: Agent.ID | undefined) {
   return Effect.gen(function* () {
@@ -178,7 +293,9 @@ function read(
         Stream.map((event) => `data: ${JSON.stringify(event)}\n\n`),
       )
       const heartbeat = Stream.tick("15 seconds").pipe(Stream.map(() => ": heartbeat\n\n"))
-      return HttpServerResponse.stream(events.pipe(Stream.merge(heartbeat, { haltStrategy: "left" }), Stream.encodeText), {
+      const body = events.pipe(Stream.merge(heartbeat, { haltStrategy: "left" }), Stream.encodeText)
+      // Each feed subscriber is one open review page, so launches know a tab already follows this Session.
+      return HttpServerResponse.stream(Stream.unwrap(Effect.as(DesignPresence.hold(sessionID), body)), {
         contentType: "text/event-stream",
         headers: {
           "cache-control": "no-cache, no-transform",

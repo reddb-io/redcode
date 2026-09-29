@@ -811,6 +811,14 @@ const Root = Spec.make(typeof OPENCODE_CLI_NAME === "string" ? OPENCODE_CLI_NAME
         model: Flag.string("model").pipe(Flag.optional),
         directory: Flag.string("directory").pipe(Flag.optional),
         review: Flag.boolean("review").pipe(Flag.withDefault(false)),
+        target: Flag.choice("target", ["web", "app", "presentation"]).pipe(
+          Flag.withDescription("Design target for new designs; skips target detection (runs a private server)"),
+          Flag.optional,
+        ),
+        platform: Flag.choice("platform", ["ios", "android"]).pipe(
+          Flag.withDescription("App platform, with --target app"),
+          Flag.optional,
+        ),
         noOpen: Flag.boolean("no-open").pipe(
           Flag.withDescription("Print the review link without opening a browser"),
           Flag.withDefault(false),

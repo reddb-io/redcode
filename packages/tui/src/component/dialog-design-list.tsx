@@ -1,11 +1,11 @@
 import { createResource, createSignal, onCleanup } from "solid-js"
 import type { Plugin } from "@opencode/plugin/tui"
-import { Schema } from "effect"
-import { designBrowser, openUrl } from "@opencode/util/open"
+import { browserDisabled, designBrowser, openUrl } from "@opencode/util/open"
 import { useClient } from "../context/client"
 import { useTheme } from "../context/theme"
 import { DialogSelect } from "../ui/dialog-select"
 import { configuredDesignBrowser } from "../util/design-browser"
+import { openDesignReview } from "../routes/session/design-review"
 import { errorMessage } from "../util/error"
 
 export function DialogDesignList(props: { context: Plugin.Context; review?: boolean }) {
@@ -76,23 +76,24 @@ export function DialogDesignList(props: { context: Plugin.Context; review?: bool
         }
         const endpoint = client.endpoint
         if (!endpoint) return setError("Design review requires a server connection")
-        void fetch(new URL(`/design/session/${encodeURIComponent(option.value)}/link`, endpoint.url), {
-          headers: endpoint.headers,
-          signal: abort.signal,
-        })
-          .then(async (response) => {
-            if (!response.ok) throw new Error(`Unable to open Design review: HTTP ${response.status}`)
-            const link = Schema.decodeUnknownSync(Schema.Struct({ url: Schema.String }))(await response.json())
+        void openDesignReview({
+          sessionID: option.value,
+          endpoint,
+          explicit: true,
+          disabled: browserDisabled(),
+          fetch: (url, init) => fetch(url, { ...init, signal: abort.signal }),
+          launch: async (url) => {
             const config = await props.context.client.config
               .get({ location: props.context.location ?? props.context.data.location.default() })
               .catch(() => [])
-            await openUrl(link.url, { browser: designBrowser(configuredDesignBrowser(config)) })
-            props.context.ui.dialog.clear()
-          })
-          .catch((error) => {
-            // The footer keeps the link visible when REDCODE_NO_BROWSER refuses the launch.
-            if (!abort.signal.aborted) setError(errorMessage(error))
-          })
+            return openUrl(url, { browser: designBrowser(configuredDesignBrowser(config)) })
+          },
+        }).then((notice) => {
+          if (abort.signal.aborted) return
+          // The footer keeps the link visible when the browser was not opened.
+          if (notice) return setError(notice.message)
+          props.context.ui.dialog.clear()
+        })
       }}
     />
   )

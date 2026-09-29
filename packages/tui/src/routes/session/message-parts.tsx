@@ -15,7 +15,7 @@ import { SplitBorder } from "../../ui/border"
 import { Locale } from "../../util/locale"
 import { use } from "./render-context"
 import { generateThinkingSyntax } from "./thinking-syntax"
-import { canonicalToolName } from "../../util/tool-display"
+import { canonicalToolName, designDocumentChip } from "../../util/tool-display"
 
 export const INLINE_TOOL_ICON_WIDTH = 2
 
@@ -42,6 +42,8 @@ export function toolDisplay(tool: string) {
 
 export function showToolPart(part: SessionMessageAssistantTool, details: "show" | "hide" | undefined) {
   if (details !== "hide" || part.state.status !== "completed") return true
+  // A created design's chip stays visible: it is how the user sees the settled target and design system.
+  if (designDocumentChip(part)) return true
   return ["shell", "question", "subagent"].includes(toolDisplay(part.name))
 }
 

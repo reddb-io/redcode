@@ -42,6 +42,7 @@ import { Locale } from "../../util/locale"
 import { FilePath } from "../../ui/file-path"
 import {
   canonicalToolName,
+  designDocumentChip,
   executeCalls,
   executeCallSummary,
   finiteNumber,
@@ -56,7 +57,7 @@ import { useRenderer, useTerminalDimensions, type JSX } from "@opentui/solid"
 import { useClient } from "../../context/client"
 import { useEditorContext } from "../../context/editor"
 import { openEditor } from "../../editor"
-import { BrowserDisabledError, designBrowser, openUrl } from "@opencode/util/open"
+import { browserDisabled, designBrowser, openUrl } from "@opencode/util/open"
 import { useDialog } from "../../ui/dialog"
 import { DialogSelect } from "../../ui/dialog-select"
 import { DialogMonitors } from "../../component/dialog-monitors"
@@ -71,6 +72,10 @@ import { filetype } from "../../util/filetype"
 import parsers from "../../parsers-config"
 import { errorMessage } from "../../util/error"
 import { configuredDesignBrowser } from "../../util/design-browser"
+import { DesignNotice } from "@opencode/schema/design-notice"
+import { DesignApprovalNotice } from "../../component/design-approval"
+import { DesignFeedbackNotice } from "../../component/design-feedback"
+import { openDesignReview } from "./design-review"
 import { useToast } from "../../ui/toast"
 import stripAnsi from "strip-ansi"
 import { usePromptRef } from "../../context/prompt"
@@ -279,6 +284,44 @@ export function Session(props: {
   const scrollAcceleration = createMemo(() => getScrollAcceleration(config))
   const toast = useToast()
   const client = useClient()
+  // A publish seen with launches disabled prints the review link once, not on every revision.
+  const reviewLink = { shown: false }
+  const reviewDesign = async (explicit: boolean) => {
+    const endpoint = client.endpoint
+    if (!endpoint) {
+      if (explicit) toast.show({ message: "The server endpoint is unavailable", variant: "error" })
+      return
+    }
+    const blocked = browserDisabled()
+    if (!explicit && blocked && reviewLink.shown) return
+    if (!explicit && blocked) reviewLink.shown = true
+    const notice = await openDesignReview({
+      sessionID: route.sessionID,
+      endpoint,
+      explicit,
+      disabled: blocked,
+      launch: async (url) => {
+        const config = await client.api.config.get({ location: location() }).catch(() => [])
+        return openUrl(url, { browser: designBrowser(configuredDesignBrowser(config)) })
+      },
+    })
+    if (notice) toast.show({ ...notice, duration: 8_000 })
+  }
+  onCleanup(
+    client.event.on("session.tool.success", (event) => {
+      if (event.data.sessionID !== route.sessionID || typeof event.data.metadata?.revision !== "string") return
+      // A success replayed after a reconnect is history, not a new revision to show.
+      if (Date.now() - event.created > 60_000) return
+      const message = messages().find((item) => item.id === event.data.assistantMessageID)
+      const tool =
+        message?.type === "assistant"
+          ? message.content.find((part) => part.type === "tool" && part.id === event.data.id)
+          : undefined
+      // A publish, or a restore by design_history, which also reports the new revision.
+      if (tool?.type !== "tool" || (tool.name !== "design_preview" && tool.name !== "design_history")) return
+      void reviewDesign(false)
+    }),
+  )
   const autoApproved = new Set<string>()
   createEffect(() => {
     if (local.permission.mode !== "autoaccept") return
@@ -1125,24 +1168,7 @@ export function Session(props: {
       slash: { name: "review" },
       run: async () => {
         dialog.clear()
-        const endpoint = client.endpoint
-        if (!endpoint) return toast.show({ message: "The server endpoint is unavailable", variant: "error" })
-        try {
-          const response = await fetch(
-            new URL(`/design/session/${encodeURIComponent(route.sessionID)}/link`, endpoint.url),
-            {
-              headers: endpoint.headers,
-            },
-          )
-          if (!response.ok) throw new Error(`Unable to open Design review: HTTP ${response.status}`)
-          const link: unknown = await response.json()
-          if (!isRecord(link) || typeof link.url !== "string") throw new Error("The Design review link is invalid")
-          const config = await client.api.config.get({ location: location() }).catch(() => [])
-          await openUrl(link.url, { browser: designBrowser(configuredDesignBrowser(config)) })
-        } catch (error) {
-          if (error instanceof BrowserDisabledError) return toast.show({ message: error.message, variant: "info" })
-          toast.error(error)
-        }
+        await reviewDesign(true)
       },
     },
     {
@@ -2157,6 +2183,13 @@ function BackgroundToolHint(props: { messages: SessionMessageInfo[] }) {
 function SessionMessageView(props: { message: SessionMessageInfo }) {
   return (
     <Switch>
+      <Match when={designFeedback(props.message)}>{(notice) => <DesignFeedbackNotice notice={notice()} />}</Match>
+      <Match when={designApproval(props.message)}>
+        {(notice) => {
+          const keymap = Keymap.use()
+          return <DesignApprovalNotice notice={notice()} onOpen={() => keymap.dispatch("session.design.review")} />
+        }}
+      </Match>
       <Match when={props.message.type === "user"}>
         <UserMessage message={props.message as SessionMessageUser} />
       </Match>
@@ -2184,6 +2217,17 @@ function SessionMessageView(props: { message: SessionMessageInfo }) {
       </Match>
     </Switch>
   )
+}
+
+/** Admitted browser feedback shows as its compact card; the model reads the rendered message instead. */
+function designFeedback(message: SessionMessageInfo) {
+  if (message.type !== "user" || message.metadata?.source !== "design.feedback") return undefined
+  return DesignNotice.feedback(message.text)
+}
+
+function designApproval(message: SessionMessageInfo) {
+  if (message.type !== "synthetic") return undefined
+  return DesignNotice.approval(message)
 }
 
 function SessionPartView(props: {
@@ -2758,6 +2802,7 @@ function AssistantRetry(props: { retry: SessionMessageAssistant["retry"] }) {
 
 function ToolPart(props: { part: SessionMessageAssistantTool; images?: boolean }) {
   const config = useConfig()
+  const theme = useTheme()
   const display = createMemo(() => toolDisplay(props.part.name))
 
   const toolprops = {
@@ -2821,6 +2866,22 @@ function ToolPart(props: { part: SessionMessageAssistantTool; images?: boolean }
       </Match>
       <Match when={display() === "skill"}>
         <Skill {...toolprops} />
+      </Match>
+      <Match when={designDocumentChip(props.part)}>
+        {(chip) => (
+          <>
+            <InlineTool icon="◆" pending="Creating design…" complete={true} part={props.part}>
+              {chip().title}
+            </InlineTool>
+            <Show when={chip().system}>
+              {(system) => (
+                <box paddingLeft={3 + INLINE_TOOL_ICON_WIDTH}>
+                  <text fg={theme.text.muted}>{system()}</text>
+                </box>
+              )}
+            </Show>
+          </>
+        )}
       </Match>
       <Match when={true}>
         <GenericTool {...toolprops} />
