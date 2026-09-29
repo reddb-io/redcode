@@ -1,5 +1,19 @@
 # @reddb-io/redcode
 
+## 0.60.0
+
+### Minor Changes
+
+- Add an MCPs tab to the session drawer with server status, tool discovery, and runtime controls to add, connect, disconnect, and unload servers.
+
+### Patch Changes
+
+- Honor RedRouter and 9Router model parameters for context and output limits, modalities, tool support, and advertised reasoning levels. Keep native provider parameters on their existing provider adapters and avoid sending tools to models whose catalog forbids them.
+- Add Alt+1 through Alt+0 to select open session tabs directly, and keep Ctrl+Tab and Ctrl+Shift+Tab for cycling tabs without Zellij shortcut conflicts.
+- Restore the separate System Two transformations model in setup and summary compaction, allow a configurable compaction summary output limit, and simplify S1/S2 setup with a shortcut for saved roles and provider-first model selection. Reconnect 9Router with endpoint and model discovery, and show Redcode branding on OAuth callback pages.
+
+  Restore readable S1/S2 model names and route labels in the prompt, model picker, setup, and intelligence status. Preserve router catalog owners, aliases, and exact model IDs while enriching missing names from the bundled models.dev catalog.
+
 ## 0.59.5
 
 ### Patch Changes
