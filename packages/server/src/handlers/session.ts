@@ -307,7 +307,12 @@ export const SessionHandler = HttpApiBuilder.group(Api, "server.session", (handl
           if (ctx.payload.agent)
             yield* session
               .switchAgent({ sessionID: ctx.params.sessionID, agent: ctx.payload.agent })
-              .pipe(Effect.catchTag("Session.NotFoundError", missingSession))
+              .pipe(
+                Effect.catchTag("Session.NotFoundError", missingSession),
+                Effect.catchTag("Tool.Error", (error) =>
+                  Effect.fail(new InvalidRequestError({ message: `Could not prepare Build worktree: ${error.message}` })),
+                ),
+              )
           if (ctx.payload.model)
             yield* session
               .switchModel({ sessionID: ctx.params.sessionID, model: ctx.payload.model })
@@ -565,7 +570,12 @@ export const SessionHandler = HttpApiBuilder.group(Api, "server.session", (handl
         Effect.fn(function* (ctx) {
           yield* session
             .switchAgent({ sessionID: ctx.params.sessionID, agent: ctx.payload.agent })
-            .pipe(Effect.catchTag("Session.NotFoundError", missingSession))
+            .pipe(
+              Effect.catchTag("Session.NotFoundError", missingSession),
+              Effect.catchTag("Tool.Error", (error) =>
+                Effect.fail(new InvalidRequestError({ message: `Could not prepare Build worktree: ${error.message}` })),
+              ),
+            )
           return HttpApiSchema.NoContent.make()
         }),
       )
@@ -662,6 +672,9 @@ export const SessionHandler = HttpApiBuilder.group(Api, "server.session", (handl
                 ),
                 Effect.catchTag("Session.SkillNotFoundError", (error) =>
                   Effect.fail(new InvalidRequestError({ message: `Skill not found: ${error.skill}`, field: "skills" })),
+                ),
+                Effect.catchTag("Tool.Error", (error) =>
+                  Effect.fail(new InvalidRequestError({ message: `Could not prepare Build worktree: ${error.message}` })),
                 ),
               ),
           }

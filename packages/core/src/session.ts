@@ -46,6 +46,7 @@ import { SessionInbox } from "./session/inbox.js"
 import { HookRuntime } from "./hook.js"
 import { SessionPrompt } from "./session/prompt.js"
 import type { Skill } from "./skill.js"
+import { Tool } from "./tool.js"
 import { InstructionState } from "./session/instruction-state.js"
 import { SessionGenerate } from "./session/generate.js"
 import { SessionCommand } from "./session/command.js"
@@ -172,7 +173,7 @@ export interface Interface {
     after?: number
     follow?: boolean
   }) => Stream.Stream<SessionEvent.DurableEvent | EventLog.Synced, NotFoundError>
-  readonly switchAgent: (input: { sessionID: SessionSchema.ID; agent: Agent.ID }) => Effect.Effect<void, NotFoundError>
+  readonly switchAgent: (input: { sessionID: SessionSchema.ID; agent: Agent.ID }) => Effect.Effect<void, NotFoundError | Tool.Error>
   readonly switchModel: (input: { sessionID: SessionSchema.ID; model: Model.Ref }) => Effect.Effect<void, NotFoundError>
   readonly rename: (input: { sessionID: SessionSchema.ID; title: string }) => Effect.Effect<void, NotFoundError>
   readonly setMetadata: (input: {
@@ -188,7 +189,7 @@ export interface Interface {
     input: SessionPrompt.Input & { sessionID: SessionSchema.ID; id?: SessionMessage.ID; resume?: boolean },
   ) => Effect.Effect<
     SessionInbox.User,
-    NotFoundError | PromptConflictError | AttachmentError | SkillNotFoundError | HookRuntime.BlockedError
+    NotFoundError | PromptConflictError | AttachmentError | SkillNotFoundError | HookRuntime.BlockedError | Tool.Error
   >
   /** Generates text from current Session context without admitting input or mutating history. */
   readonly generate: (input: {

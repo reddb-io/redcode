@@ -1,11 +1,13 @@
 export * as Session from "./session.js"
 
 import { DateTime, Effect, Fiber, Scope } from "effect"
-import type { Agent } from "@opencode/schema/agent"
+import { Agent } from "../agent.js"
 import type { Model } from "@opencode/schema/model"
 import type { Permission } from "@opencode/schema/permission"
 import { Event } from "@opencode/schema/event"
 import { FSUtil } from "@opencode/util/fs-util"
+import { Plugin } from "../plugin.js"
+import { Tool } from "../tool.js"
 import { Bus } from "../bus.js"
 import { Database } from "../database/database.js"
 import { Instance } from "../instance/service.js"
@@ -55,6 +57,29 @@ export const make = Effect.fn("Session.make")(function* () {
     if (!session) return yield* new NotFoundError({ sessionID })
     return session
   })
+  const prepareBuildWorktree = Effect.fn("Session.prepareBuildWorktree")(function* (
+    session: SessionSchema.Info,
+    messageID: SessionMessage.ID,
+    agentID?: Agent.ID,
+  ) {
+    if (session.parentID) return
+    yield* Effect.gen(function* () {
+      const plugins = yield* Plugin.Service
+      yield* plugins.awaitActivation
+      const agents = yield* Agent.Service
+      if ((yield* agents.select(agentID ?? session.agent)).id !== Agent.ID.make("build")) return
+      const tools = yield* Tool.Service
+      const prepare = (yield* tools.list()).find((item) => item.id === "worktree_prepare")
+      if (!prepare) return yield* new Tool.Error({ message: "Build worktree preparation is unavailable" })
+      yield* prepare.execute({}, {
+        sessionID: session.id,
+        agent: Agent.ID.make("build"),
+        messageID,
+        id: Tool.CallID.make(`auto_${messageID}`),
+        progress: () => Effect.void,
+      })
+    }).pipe(instances.provide(session))
+  })
   const message = Effect.fn("Session.message")(function* (sessionID: SessionSchema.ID, messageID: SessionMessage.ID) {
     const stored = yield* store.message(messageID)
     return stored?.sessionID === sessionID ? stored.message : undefined
@@ -92,6 +117,8 @@ export const make = Effect.fn("Session.make")(function* () {
     input: { agent: Agent.ID },
   ) {
     const session = yield* get(sessionID)
+    if (input.agent === Agent.ID.make("build"))
+      yield* prepareBuildWorktree(session, SessionMessage.ID.create(), input.agent)
     yield* bus.publish(SessionEvent.AgentSelected, { sessionID, agent: input.agent, previous: session.agent })
   })
   const switchModel = Effect.fn("Session.switchModel")(function* (
@@ -162,6 +189,7 @@ export const make = Effect.fn("Session.make")(function* () {
               Effect.provideService(FSUtil.Service, fs),
             ),
           )
+          if (input.resume !== false) yield* restore(prepareBuildWorktree(session, messageID))
           // Commit a staged revert only after preparation succeeds, before admitting new work.
           if (session.revert) yield* SessionRevert.commit(bus, session)
           return yield* admission.admit({

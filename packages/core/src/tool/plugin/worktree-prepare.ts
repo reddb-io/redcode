@@ -70,14 +70,6 @@ export const Plugin = {
               return yield* preparing.withLock(root.id)(Effect.gen(function* () {
                 if (["plan", "design", "question", "explore", "title", "summary", "compaction"].includes(context.agent))
                   return yield* new ToolFailure({ message: "Worktree preparation is available to writing agents in Build" })
-                yield* permission.assert({
-                  action: "worktree_prepare",
-                  resources: [location.directory],
-                  save: [location.directory],
-                  sessionID: context.sessionID,
-                  agent: context.agent,
-                  source: { type: "tool", messageID: context.messageID, id: context.id },
-                })
                 const session = yield* sessions.get(context.sessionID)
                 const repository = yield* git.repo.discover(AbsolutePath.make(session.location.directory))
                 if (!repository) {
@@ -95,6 +87,14 @@ export const Plugin = {
                   const output = `Automatic worktrees are disabled. Session remains in ${session.location.directory}.\n${status}`
                   return { output, content: output }
                 }
+                yield* permission.assert({
+                  action: "worktree_prepare",
+                  resources: [location.directory],
+                  save: [location.directory],
+                  sessionID: context.sessionID,
+                  agent: context.agent,
+                  source: { type: "tool", messageID: context.messageID, id: context.id },
+                })
                 const branch = `redcode-${SessionEvidence.hash(root.id).slice(0, 12)}`
                 const parent = AbsolutePath.make(
                   settings?.directory

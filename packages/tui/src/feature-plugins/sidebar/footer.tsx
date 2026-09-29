@@ -93,7 +93,8 @@ export function SidebarFooter(props: { context: Plugin.Context; sessionID: strin
   const lines = createMemo(() =>
     locationLines({
       directory: location().directory,
-      checkout: paths.worktree,
+      checkout: props.context.data.location.info(location())?.project.canonical,
+      worktree: props.context.data.location.info(location())?.project.directory,
       branch: props.context.data.location.vcs.info(location())?.branch.current,
       home: paths.home,
       width: width(),
@@ -136,8 +137,10 @@ export function SidebarFooter(props: { context: Plugin.Context; sessionID: strin
  */
 export function locationLines(input: {
   directory: string
-  /** The TUI's own checkout, taken as the primary one for directories inside it. */
+  /** The project's primary checkout, as resolved by the server. */
   checkout?: string
+  /** The Git worktree containing this Session's directory. */
+  worktree?: string
   branch?: string
   home: string
   width: number
@@ -147,20 +150,19 @@ export function locationLines(input: {
   // A temporary worktree (`--tmp`): `<tmp>/redcode-worktrees/<repository>-<hash>/<name>`.
   const temporary =
     nested || prepared ? undefined : input.directory.match(/^(.*?[\\/]redcode-worktrees[\\/][^\\/]+[\\/][^\\/]+)/)
-  const project = nested
-    ? nested[1]
-    : prepared
-      ? path.join(prepared[1], prepared[2])
-      : input.checkout && input.checkout !== "/" && (temporary || contains(input.checkout, input.directory))
-        ? input.checkout
-        : input.directory
-  const worktree = nested
-    ? [".red", "worktrees", nested[2]].join("/")
-    : prepared
-      ? abbreviateHome(path.join(prepared[1], ".redcode-worktrees", prepared[2], prepared[3]), input.home)
-      : temporary
-        ? abbreviateHome(temporary[1], input.home)
-        : undefined
+  const project = input.checkout ?? (nested ? nested[1] : prepared ? path.join(prepared[1], prepared[2]) : input.directory)
+  const worktree =
+    input.worktree && input.checkout && input.worktree !== input.checkout
+      ? contains(input.checkout, input.worktree)
+        ? path.relative(input.checkout, input.worktree).replaceAll("\\", "/")
+        : abbreviateHome(input.worktree, input.home)
+      : nested
+        ? [".red", "worktrees", nested[2]].join("/")
+        : prepared
+          ? abbreviateHome(path.join(prepared[1], ".redcode-worktrees", prepared[2], prepared[3]), input.home)
+          : temporary
+            ? abbreviateHome(temporary[1], input.home)
+            : undefined
   // truncateMiddle needs room for a character on each side of its ellipsis.
   const fit = (prefix: string, text: string) =>
     prefix + Locale.truncateMiddle(text, Math.max(3, input.width - prefix.length))
