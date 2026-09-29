@@ -57,6 +57,10 @@ export class Info extends Schema.Class<Info>("ConfigExperimental.Info")({
       description:
         "Deadline in milliseconds for a local tool call, excluding time spent waiting for a person; false disables it.",
     }),
+  model_suggestions: Schema.Boolean.pipe(optional).annotate({
+    description:
+      "Offer a card to switch to another model of a connected RedRouter when its recommend_models tool suggests one; nothing switches until you accept. Defaults to true.",
+  }),
   code_mode: Schema.Struct({
     enabled: Schema.Literals(["off", "on"]).pipe(optional).annotate({
       description:

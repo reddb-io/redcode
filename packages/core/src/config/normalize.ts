@@ -517,6 +517,15 @@ function normalizeExperimental(
         )
         if (value !== undefined) result.tool_timeout = value
       }
+      if (own(experimental, "model_suggestions")) {
+        const value = decodeEncoded(
+          ConfigExperimental.Info.fields.model_suggestions,
+          experimental.model_suggestions,
+          ["experimental", "model_suggestions"],
+          diagnostics,
+        )
+        if (value !== undefined) result.model_suggestions = value
+      }
       if (own(experimental, "code_mode")) {
         const value = decodeEncoded(
           ConfigExperimental.Info.fields.code_mode,

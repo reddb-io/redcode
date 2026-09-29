@@ -701,6 +701,11 @@ export function createData(config: CreateDataInput) {
         if (store.session.info[event.data.sessionID])
           setStore("session", "info", event.data.sessionID, "permissions", event.data.permissions)
         return
+      case "session.metadata.updated":
+        // Metadata is replaced whole, so keys the update dropped must not survive a merge.
+        if (store.session.info[event.data.sessionID])
+          setStore("session", "info", event.data.sessionID, "metadata", reconcile(event.data.metadata))
+        return
       case "session.moved": {
         const current = store.session.info[event.data.sessionID]
         if (current) {

@@ -421,6 +421,8 @@ export type FormValue = string | number | "Infinity" | "-Infinity" | "NaN" | boo
 
 export type RouterUpstream = { id: string; slug?: string; name: string; category?: string; subscription?: boolean }
 
+export type RouterHop = { slug: string; name: string }
+
 export type ModelReasoningField = "reasoning" | "reasoning_content" | "reasoning_text" | (string & {})
 
 export type ModelMaxTokensField = "max_completion_tokens" | "max_tokens"
@@ -438,6 +440,8 @@ export type MoneyUSDPerMillionTokens = number
 export type ModelStatus = "alpha" | "beta" | "deprecated" | "active"
 
 export type GenerateTextResponse = { data: { text: string } }
+
+export type RouterKeyRole = "standard" | "admin"
 
 export type ProviderRemovalResult = {
   providerID: string
@@ -1970,6 +1974,16 @@ export type FormMultiselectField = {
 
 export type FormAnswer = { [x: string]: FormValue }
 
+export type RouterOffer = {
+  id: string
+  pinID?: string
+  provider: RouterUpstream
+  via: Array<RouterHop>
+  available: boolean
+  price?: { input?: number; output?: number }
+  free: boolean
+}
+
 export type ModelCompatibility = {
   reasoningField?: ModelReasoningField
   requireReasoning?: boolean
@@ -1985,6 +1999,14 @@ export type ModelCost = {
   input: MoneyUSDPerMillionTokens
   output: MoneyUSDPerMillionTokens
   cache: { read: MoneyUSDPerMillionTokens; write: MoneyUSDPerMillionTokens }
+}
+
+export type RouterConnection = {
+  kind: "red-router" | "9router"
+  instanceID?: string
+  version?: string
+  role?: RouterKeyRole
+  mcp?: string
 }
 
 export type ConnectionInfo = ConnectionCredentialInfo | ConnectionEnvInfo
@@ -2295,18 +2317,6 @@ export type ProviderRequest = {
   body: { [x: string]: any }
 }
 
-export type ProviderInfo = {
-  id: string
-  canonical?: string
-  integrationID?: string
-  name: string
-  activation: "auto" | "enabled" | "disabled"
-  package: string
-  settings?: ProviderSettings
-  headers?: { [x: string]: string }
-  body?: { [x: string]: any }
-}
-
 export type PermissionRuleset = Array<PermissionRule>
 
 export type SessionRevertStaged = {
@@ -2565,6 +2575,19 @@ export type FormField =
 
 export type FormState = { status: "pending" } | { status: "answered"; answer: FormAnswer } | { status: "cancelled" }
 
+export type ProviderInfo = {
+  id: string
+  canonical?: string
+  integrationID?: string
+  name: string
+  activation: "auto" | "enabled" | "disabled"
+  package: string
+  router?: RouterConnection
+  settings?: ProviderSettings
+  headers?: { [x: string]: string }
+  body?: { [x: string]: any }
+}
+
 export type FormField1 =
   | FormStringField1
   | FormNumberField1
@@ -2609,6 +2632,8 @@ export type ModelInfo = {
   via?: string
   aliases?: Array<string>
   flat?: boolean
+  offers?: Array<RouterOffer>
+  pinOf?: string
   compatibility?: ModelCompatibility
   package?: string
   settings?: ModelSettings
@@ -2894,6 +2919,7 @@ export type ConfigEntry =
           aux_timeout?: false | number
           turn_stall?: false | { warn_ms?: number; abort_ms?: number }
           tool_timeout?: false | number
+          model_suggestions?: boolean
           code_mode?: {
             enabled?: "off" | "on"
             max_tool_calls?: number
