@@ -8,6 +8,7 @@ import { hasPtyConnectTicketURL } from "@opencode/protocol/groups/pty"
 import { hasPersistentPtyConnectTicketURL } from "@opencode/protocol/groups/persistent-pty"
 import { isPairingConnectURL } from "@opencode/protocol/groups/server"
 import { Global } from "@opencode/util/global"
+import { Logging } from "@opencode/util/observability/logging"
 import { Cause, Context, Effect, Exit, Latch, Layer, Option, Ref, Scope } from "effect"
 import { HttpMiddleware, HttpRouter, HttpServer, HttpServerRequest, HttpServerResponse } from "effect/unstable/http"
 import { createServer } from "node:http"
@@ -57,6 +58,9 @@ export const start = Effect.fn("ServerProcess.start")(function* <E, R>(
   const port = Option.fromNullishOr(options.port)
   const shutdown = yield* Latch.make()
   const status = yield* Status.make()
+  // The same file the server process logs to (see Observability.layer), so a failed boot can point at it.
+  const channel = options.app?.channel ?? "local"
+  const log = Logging.file(channel === "local", channel)
   const bound = yield* listen({ hostname, port })
   const urls = () => {
     const address = bound.server.address()
@@ -128,7 +132,7 @@ export const start = Effect.fn("ServerProcess.start")(function* <E, R>(
   }).pipe(
     Effect.catchCause((cause) => {
       if (!lifecycle || Cause.hasInterruptsOnly(cause)) return Effect.failCause(cause)
-      return status.fail.pipe(
+      return status.fail({ message: Status.reason(cause), log }).pipe(
         Effect.andThen(
           Scope.close(applicationScope, Exit.failCause(cause)).pipe(
             Effect.catchCause((cleanupCause) =>
@@ -224,7 +228,13 @@ const infoResponse = Effect.fnUntraced(function* (
 ) {
   const state = yield* status.current
   return HttpServerResponse.jsonUnsafe(
-    { version, pid: process.pid, urls: urls(), paths: { tmp } },
+    {
+      version,
+      pid: process.pid,
+      urls: urls(),
+      paths: { tmp },
+      failure: state.type === "failed" ? { message: state.message, log: state.log } : undefined,
+    },
     {
       status: state.type === "ready" ? 200 : state.type === "failed" ? 500 : 503,
       headers: state.type === "starting" || state.type === "stopping" ? { "retry-after": "1" } : undefined,
@@ -237,8 +247,12 @@ function unavailable(status: Status.State) {
     return HttpServerResponse.jsonUnsafe(
       {
         code: "service_failed",
-        message: "The background service could not start.",
-        action: "Run `opencode service restart` after checking the service logs.",
+        message:
+          status.message === undefined
+            ? "The background service could not start."
+            : `The background service could not start: ${status.message}`,
+        log: status.log,
+        action: "Run `redcode service restart` after checking the service logs.",
       },
       { status: 503 },
     )

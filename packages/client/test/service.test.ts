@@ -125,6 +125,26 @@ test("reports a failed registered service without spawning", async () => {
   expect(process.exitCode).toBe(null)
 })
 
+test("reports why a failed registered service could not start", async () => {
+  await using fixture = await serviceFixture()
+  const registration = fixture.registration
+  fixture.spawn("failed-owner-reason")
+  await fixture.waitForFile()
+
+  const error = await run(ensure({ file: registration, version: "test", command: [] })).catch((error: unknown) => error)
+
+  expect(error).toBeInstanceOf(Error)
+  if (!(error instanceof Error)) throw error
+  expect(error.message).toBe(
+    [
+      "Background service failed to start: database is locked",
+      "Details are in /tmp/opencode/log/opencode-local.log",
+      "Run `redcode service restart` after fixing the cause.",
+    ].join("\n"),
+  )
+  expect(await run(Service.failure({ file: registration }))).toBe(error.message)
+})
+
 test("evicts an unresponsive registered service before starting its replacement", async () => {
   await using fixture = await serviceFixture()
   const registration = fixture.registration
@@ -271,6 +291,21 @@ test("reports a slow contender that eventually fails", async () => {
       }),
     ),
   ).rejects.toThrow("Server process exited with code 1")
+})
+
+test("stops spawning contenders once one fails to start", async () => {
+  await using fixture = await serviceFixture()
+  const registration = fixture.registration
+  await expect(
+    run(
+      ensure({
+        file: registration,
+        version: "test",
+        command: fixture.command("overlapping-failed", "500"),
+      }),
+    ),
+  ).rejects.toThrow("Server process exited with code 1")
+  expect((await Bun.file(registration + ".starts").text()).trim().split("\n")).toHaveLength(2)
 })
 
 test("replaces an incompatible owner that appears during startup", async () => {

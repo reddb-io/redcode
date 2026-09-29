@@ -8,6 +8,7 @@ import {
   type ServiceContender,
   spawnServiceContender,
 } from "../service-contender.js"
+import { decodeFailure, failedToStart, type ServiceFailure } from "../service-failure.js"
 import { defaultEnsureTiming, ensureTiming, type EnsureTiming } from "../service-timing.js"
 import { matchesVersion } from "../service-version.js"
 import { PtyHandoff } from "../pty-handoff.js"
@@ -38,6 +39,7 @@ export async function ensure(options: EnsureOptions = {}): Promise<Endpoint> {
   let announced = false
   let lastSpawn = 0
   let spawnDelay = timing.spawnDelay
+  let contenderError: Error | undefined
 
   const announce = (reason: "missing" | "version-mismatch", previousVersion?: string) => {
     if (announced) return
@@ -81,7 +83,7 @@ export async function ensure(options: EnsureOptions = {}): Promise<Endpoint> {
           await PtyHandoff.complete(options.file ?? fallback(), service.info)
           return service.endpoint
         }
-        if (compatible && service.state === "failed") throw new Error("Background service failed to start")
+        if (compatible && service.state === "failed") throw new Error(failedToStart(service.failure))
         if (!compatible) {
           announce("version-mismatch", service.version)
           if (service.state !== "ready")
@@ -95,14 +97,17 @@ export async function ensure(options: EnsureOptions = {}): Promise<Endpoint> {
       } else {
         if (lastSpawn === 0 && registration.info !== undefined) lastSpawn = Date.now()
         const finished = [...contenders].filter(contenderFinished)
-        const failure = finished.map(contenderFailure).find((error) => error !== undefined)
+        contenderError ??= finished.map(contenderFailure).find((error) => error !== undefined)
         if (finished.some((item) => item.child.exitCode === 0)) {
           spawnDelay = Math.min(spawnDelay * 2, timing.maxSpawnDelay)
         }
         finished.forEach((item) => contenders.delete(item))
-        if (failure !== undefined && contenders.size === 0) throw failure
+        if (contenderError !== undefined && contenders.size === 0) throw contenderError
+        // A failed contender is not replaced: its successor would hit the same startup error (a taken
+        // port, an invalid config) and overlapping contenders would keep the wait alive until the deadline.
+        // Contenders still running may yet win; the failure is reported once they have all finished.
         // Keep one candidate plus one lock probe so a pre-lock stall cannot block recovery.
-        if (contenders.size < 2 && Date.now() - lastSpawn >= spawnDelay) {
+        if (contenderError === undefined && contenders.size < 2 && Date.now() - lastSpawn >= spawnDelay) {
           announce("missing")
           contenders.add(await spawnContender())
           lastSpawn = Date.now()
@@ -151,6 +156,7 @@ type LocalService = {
   readonly endpoint: Endpoint
   readonly version?: string
   readonly state: "ready" | "waiting" | "failed"
+  readonly failure?: ServiceFailure
   readonly compatible: boolean
 }
 
@@ -198,6 +204,7 @@ async function probeResult(info: Info, timeout = defaultEnsureTiming.requestTime
         endpoint,
         version: serverInfo.version,
         state: response.ok ? "ready" : response.status === 500 ? "failed" : "waiting",
+        failure: response.status === 500 ? decodeFailure(result.value.body) : undefined,
         compatible: true,
       } satisfies LocalService,
       timedOut: false,

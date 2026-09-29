@@ -11,6 +11,11 @@ if (mode === "record-start") {
   await writeFile(registration + ".started", "")
   process.exit(1)
 }
+if (mode === "overlapping-failed") {
+  await appendFile(registration + ".starts", process.pid + "\n")
+  await Bun.sleep(Number(delay))
+  process.exit(1)
+}
 if (mode === "environment") {
   await writeFile(registration + ".environment", process.env.OPENCODE_SERVICE_ENV_TEST ?? "")
   await writeFile(registration + ".handoff", process.env.OPENCODE_PTY_HANDOFF ?? "null")
@@ -69,9 +74,18 @@ const server = Bun.serve({
         { version, pid: process.pid, urls: [server.url.toString()], paths: { tmp: "/tmp/opencode" } },
         { status: 503 },
       )
-    if (mode === "failed-owner")
+    if (mode === "failed-owner" || mode === "failed-owner-reason")
       return Response.json(
-        { version, pid: process.pid, urls: [server.url.toString()], paths: { tmp: "/tmp/opencode" } },
+        {
+          version,
+          pid: process.pid,
+          urls: [server.url.toString()],
+          paths: { tmp: "/tmp/opencode" },
+          failure:
+            mode === "failed-owner-reason"
+              ? { message: "database is locked", log: "/tmp/opencode/log/opencode-local.log" }
+              : undefined,
+        },
         { status: 500 },
       )
     return Response.json({

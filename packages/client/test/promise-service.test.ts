@@ -111,6 +111,30 @@ test("reports a failed registered service", async () => {
   )
 })
 
+test("reports why a failed registered service could not start", async () => {
+  await using fixture = await serviceFixture()
+  const registration = fixture.registration
+  fixture.spawn("failed-owner-reason")
+  await fixture.waitForFile()
+
+  await expect(ensure({ file: registration, version: "test", command: [] })).rejects.toThrow(
+    "Background service failed to start: database is locked\nDetails are in /tmp/opencode/log/opencode-local.log",
+  )
+})
+
+test("stops spawning native contenders once one fails to start", async () => {
+  await using fixture = await serviceFixture()
+  const registration = fixture.registration
+  await expect(
+    ensure({
+      file: registration,
+      version: "test",
+      command: fixture.command("overlapping-failed", "500"),
+    }),
+  ).rejects.toThrow("Server process exited with code 1")
+  expect((await Bun.file(registration + ".starts").text()).trim().split("\n")).toHaveLength(2)
+})
+
 test("reports a bounded contender stderr tail with native promises", async () => {
   await using fixture = await serviceFixture()
   const registration = fixture.registration

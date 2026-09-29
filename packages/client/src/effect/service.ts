@@ -8,6 +8,7 @@ import {
   type ServiceContender,
   spawnServiceContender,
 } from "../service-contender.js"
+import { decodeFailure, failedToStart, type ServiceFailure } from "../service-failure.js"
 import { defaultEnsureTiming, ensureTiming, type EnsureTiming } from "../service-timing.js"
 import { matchesVersion } from "../service-version.js"
 import { PtyHandoff } from "../pty-handoff.js"
@@ -47,6 +48,13 @@ export const incumbent = Effect.fn("service.incumbent")(function* (
   return { endpoint: found.endpoint, state: found.state }
 })
 
+/** Describe why the registered local service failed to start, or return undefined when it has not failed. */
+export const failure = Effect.fn("service.failure")(function* (options: { readonly file?: string } = {}) {
+  const found = (yield* registered(options.file)).service
+  if (found?.state !== "failed") return undefined
+  return failedToStart(found.failure)
+})
+
 // Idempotent ensure-running: reuses a healthy compatible server, replaces a
 // version-mismatched one, and otherwise spawns small contenders until a server
 // becomes discoverable. A contender is never killed merely for slow startup.
@@ -58,6 +66,7 @@ export const ensure = Effect.fn("service.ensure")(function* (options: EnsureOpti
   let announced = false
   let lastSpawn = 0
   let spawnDelay = timing.spawnDelay
+  let contenderError: Error | undefined
   const announce = (reason: "missing" | "version-mismatch", previousVersion?: string) =>
     Effect.sync(() => {
       if (announced) return
@@ -101,7 +110,7 @@ export const ensure = Effect.fn("service.ensure")(function* (options: EnsureOpti
         return Option.some(service)
       }
       if (compatible && service.state === "failed")
-        return yield* Effect.fail(new Error("Background service failed to start"))
+        return yield* Effect.fail(new Error(failedToStart(service.failure)))
       if (compatible) return Option.none<LocalService>()
       yield* announce("version-mismatch", service.version)
       if (service.state !== "ready")
@@ -115,14 +124,17 @@ export const ensure = Effect.fn("service.ensure")(function* (options: EnsureOpti
     } else if (lastSpawn === 0 && info !== undefined) lastSpawn = Date.now()
 
     const finished = [...contenders].filter(contenderFinished)
-    const failure = finished.map(contenderFailure).find((error): error is Error => error !== undefined)
+    contenderError ??= finished.map(contenderFailure).find((error): error is Error => error !== undefined)
     if (finished.some((item) => item.child.exitCode === 0)) {
       spawnDelay = Math.min(spawnDelay * 2, timing.maxSpawnDelay)
     }
     finished.forEach((item) => contenders.delete(item))
-    if (failure !== undefined && contenders.size === 0) return yield* Effect.fail(failure)
+    if (contenderError !== undefined && contenders.size === 0) return yield* Effect.fail(contenderError)
+    // A failed contender is not replaced: its successor would hit the same startup error (a taken
+    // port, an invalid config) and overlapping contenders would keep the wait alive until the deadline.
+    // Contenders still running may yet win; the failure is reported once they have all finished.
     // Keep one candidate plus one lock probe so a pre-lock stall cannot block recovery.
-    if (contenders.size < 2 && Date.now() - lastSpawn >= spawnDelay) {
+    if (contenderError === undefined && contenders.size < 2 && Date.now() - lastSpawn >= spawnDelay) {
       yield* announce("missing")
       contenders.add(yield* spawnContender)
       lastSpawn = Date.now()
@@ -195,6 +207,7 @@ type LocalService = {
   readonly endpoint: Endpoint
   readonly version?: string
   readonly state: "ready" | "waiting" | "failed"
+  readonly failure?: ServiceFailure
   readonly compatible: boolean
 }
 
@@ -252,6 +265,7 @@ const probeResult = Effect.fnUntraced(function* (
         endpoint,
         version: serverInfo.value.version,
         state: response.ok ? "ready" : response.status === 500 ? "failed" : "waiting",
+        failure: response.status === 500 ? decodeFailure(body) : undefined,
         compatible: true,
       } satisfies LocalService,
       timedOut: false,
@@ -304,4 +318,4 @@ const terminate = Effect.fnUntraced(function* (info: Info, options: { readonly f
 })
 
 /** Effect-based local service lifecycle operations. */
-export const Service = { discover, incumbent, ensure, stop, headers, Info }
+export const Service = { discover, incumbent, failure, ensure, stop, headers, Info }
