@@ -18,6 +18,7 @@ import { Location } from "@opencode/core/location"
 import { ManagedPolicy } from "@opencode/core/managed-policy"
 import { Mcp } from "@opencode/core/mcp/index"
 import { Model } from "@opencode/core/model"
+import { ModelsDev } from "@opencode/core/models-dev"
 import { Npm } from "@opencode/util/npm"
 import { Plugin } from "@opencode/core/plugin"
 import { PluginHooks } from "@opencode/core/plugin/hooks"
@@ -42,6 +43,7 @@ import { WorktreeStrategies } from "@opencode/core/worktree/strategies"
 import { Effect, Layer } from "effect"
 import { tempLocationLayer } from "../fixture/location"
 import { emptyMcpLayer } from "../fixture/mcp"
+import { offlineModels } from "../fixture/models"
 
 const npmLayer = Layer.succeed(
   Npm.Service,
@@ -88,6 +90,7 @@ export const PluginTestLayer = AppNodeBuilder.build(
     Provider.node,
     ProviderRemove.node,
     Model.node,
+    ModelsDev.node,
     Command.node,
     Integration.node,
     KV.node,
@@ -116,6 +119,7 @@ export const PluginTestLayer = AppNodeBuilder.build(
     Npm.node.replace(npmLayer),
     Config.node.replace(Config.testLayer()),
     Mcp.node.replace(emptyMcpLayer),
+    offlineModels,
     Generate.node.replace(generateLayer),
     Permission.node.replace(permissionLayer),
   ],

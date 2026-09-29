@@ -78,9 +78,9 @@ test("Redcode setup, intelligence and Design commands reach their production UI 
 
   await setup.mockInput.typeText("/intelligence")
   setup.mockInput.pressEnter()
-  await setup.waitForFrame((frame) => frame.includes("S2 global default:"))
+  await setup.waitForFrame((frame) => frame.includes("S2 default:") && frame.includes("S2 current:"))
   setup.mockInput.pressEscape()
-  await setup.waitForFrame((frame) => !frame.includes("S2 global default:"))
+  await setup.waitForFrame((frame) => !frame.includes("S2 default:"))
   await setup.mockInput.typeText("/design-open")
   setup.mockInput.pressEnter()
   await setup.waitForFrame((frame) => frame.includes("Resume Design conversation"))

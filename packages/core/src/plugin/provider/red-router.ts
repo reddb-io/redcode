@@ -17,7 +17,7 @@ const catalogModel = Schema.Struct({
   name: Schema.optional(Schema.String),
   display_name: Schema.optional(Schema.String),
   owned_by: Schema.optional(Schema.String),
-  provider: Schema.optional(Schema.Unknown),
+  provider: Schema.optional(Schema.Json),
   aliases: Schema.optional(Schema.Array(Schema.String)),
   via: Schema.optional(Schema.String),
   flat: Schema.optional(Schema.Boolean),
@@ -327,7 +327,7 @@ function model(item: CatalogModel, providerID: Provider.ID, names: ReturnType<ty
 
 function catalogNames(catalog: readonly ModelsDev.Snapshot[]) {
   return {
-    providers: new Map(catalog.map((item) => [item.info.id, item.info.name])),
+    providers: new Map(catalog.map((item) => [String(item.info.id), item.info.name])),
     models: new Map(catalog.flatMap((item) => item.models.map((model) => [`${item.info.id}/${model.id}`, model.name]))),
   }
 }
