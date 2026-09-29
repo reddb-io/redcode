@@ -382,6 +382,71 @@ jobs:
           if-no-files-found: error
           retention-days: 7
           compression-level: 0
+      # The smoke job tests the exact archive users install without downloading every platform.
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: redcode-smoke-linux-x64
+          path: packages/redcode/release/redcode-linux-x64.tar.gz
+          if-no-files-found: error
+          retention-days: 7
+          compression-level: 0
+
+  smoke:
+    # Non-blocking until proven stable: publish does not need this job and continue-on-error keeps its failures
+    # out of the run result. It drives the shipped binary through real flows in a fresh home with a scripted
+    # OpenAI-compatible provider, so it needs no model credentials. Add it to publish.needs once it is reliable.
+    name: smoke (built binary, non-blocking)
+    if: github.event_name == 'workflow_dispatch'
+    needs: [plan, build, design]
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    continue-on-error: true
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
+        with:
+          ref: ${{ needs.plan.outputs.sha }}
+      - uses: ./.github/actions/setup-bun
+        with:
+          install-flags: --filter=@opencode/core
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+        with:
+          name: redcode-smoke-linux-x64
+          path: ${{ runner.temp }}/redcode-archive
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+        with:
+          name: redcode-design-release
+          path: ${{ runner.temp }}/design-archive
+      - name: Extract the shipped Linux archives
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p "$RUNNER_TEMP/redcode" "$RUNNER_TEMP/design"
+          tar -xzf "$RUNNER_TEMP/redcode-archive/redcode-linux-x64.tar.gz" -C "$RUNNER_TEMP/redcode"
+          tar -xzf "$RUNNER_TEMP/design-archive/redcode-design-linux-x64.tar.gz" -C "$RUNNER_TEMP/design"
+          test -x "$RUNNER_TEMP/redcode/redcode"
+          test -x "$RUNNER_TEMP/redcode/redcode-rpc-sidecar"
+          test -x "$RUNNER_TEMP/design/redcode-design"
+      - name: Install headless Chromium for the Design review
+        run: node packages/core/node_modules/playwright-core/cli.js install --with-deps --only-shell chromium
+      - name: Smoke-test the built binary
+        timeout-minutes: 8
+        env:
+          REDCODE_VERSION: ${{ needs.plan.outputs.version }}
+        shell: bash
+        run: |
+          bun script/smoke/run.ts \
+            --binary "$RUNNER_TEMP/redcode/redcode" \
+            --version "$REDCODE_VERSION" \
+            --design \
+            --design-bin "$RUNNER_TEMP/design/redcode-design" \
+            --artifacts "$RUNNER_TEMP/smoke-artifacts"
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        if: always()
+        with:
+          name: redcode-smoke-results
+          path: ${{ runner.temp }}/smoke-artifacts
+          if-no-files-found: warn
+          retention-days: 7
 
   publish:
     if: inputs.publish && github.repository == 'reddb-io/redcode' && github.ref == 'refs/heads/main'
