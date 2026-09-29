@@ -20,6 +20,8 @@ import { ShellParse } from "../../shell/parse.js"
 import { ShellSelect } from "../../shell/select.js"
 import { ShellResult } from "../../shell/result.js"
 import { ShellPolling } from "../shell-polling.js"
+import { Vault } from "../../vault/vault.js"
+import { VaultShell } from "../../vault/shell.js"
 
 export const name = "shell"
 export const DEFAULT_TIMEOUT_MS = 2 * 60 * 1_000
@@ -46,6 +48,7 @@ const description = (shell?: string) =>
     "Rely on automatic truncation unless filtering the output is more useful.",
     "Commands accept an optional timeout, background commands have no timeout by default.",
     "Background commands return immediately, and you will be notified when they complete.",
+    "A `{vault:<name>}` reference reaches the command as an environment variable holding that secret; write it as it is and never print the value.",
     `Commands that discard or rewrite repository work are refused unless the user allowed them: git ${ShellGuard.FORBIDDEN_GIT.join(", git ")}, forced or deleting pushes, branch deletion, discarding switches, worktree removal, and recursive deletion of the repository; use a preserving alternative instead.`,
   ].join(" ")
 
@@ -184,15 +187,18 @@ export const Plugin = {
         shellID: string,
         command: string,
         settled: Deferred.Deferred<Output>,
+        vault: Vault.Binding | undefined,
       ) {
         const info = (yield* jobs.wait({ id })).info
         if (!info || info.status === "running") return
         const output = info.status === "completed" ? yield* Deferred.await(settled) : undefined
-        const text = output
+        const result = output
           ? resultMessages(output).join("\n\n")
           : info.status === "error"
             ? (info.error ?? "Command failed")
             : "Cancelled"
+        // The notification skips the tool result path, so it scrubs vaulted values itself.
+        const text = vault ? yield* vault.scrub(result) : result
         yield* sessions.synthetic({
           ...(info.notificationID ? { id: info.notificationID } : {}),
           sessionID,
@@ -230,6 +236,13 @@ export const Plugin = {
             return Effect.gen(function* () {
               const timeout = input.background === true ? (input.timeout ?? 0) : (input.timeout ?? DEFAULT_TIMEOUT_MS)
               let finalTimeout = timeout
+              // Values stay out of the command: approval and the stored input see the reference, the process an
+              // environment variable set only for it.
+              const vaulted = yield* Vault.resolveAll(Vault.references(input.command))
+              if ("missing" in vaulted)
+                return yield* new ToolFailure({ message: Vault.unknownReference(vaulted.missing) })
+              const values = vaulted.values
+              const binding = yield* Vault.Current
               const info = yield* shell.create(
                 {
                   command: input.command,
@@ -241,6 +254,10 @@ export const Plugin = {
                 (invocation) =>
                   Effect.gen(function* () {
                     finalTimeout = yield* prepare(invocation, context)
+                    if (values.size === 0) return
+                    const bound = VaultShell.bind(invocation.command, invocation.shell, values)
+                    invocation.command = bound.command
+                    invocation.env = { ...invocation.env, ...bound.env }
                   }),
               )
               yield* context.progress({ shellID: info.id })
@@ -279,7 +296,7 @@ export const Plugin = {
 
               if (input.background === true) {
                 yield* jobs.background(job.id)
-                yield* notifyWhenDone(context.sessionID, job.id, info.id, info.command, settled)
+                yield* notifyWhenDone(context.sessionID, job.id, info.id, info.command, settled, binding)
                 return backgroundResult(info.id, info.file)
               }
 
@@ -301,7 +318,7 @@ export const Plugin = {
               )
               if (result?.type === "backgrounded") {
                 yield* shell.timeout(info.id, 0)
-                yield* notifyWhenDone(context.sessionID, job.id, info.id, info.command, settled)
+                yield* notifyWhenDone(context.sessionID, job.id, info.id, info.command, settled, binding)
                 return backgroundResult(info.id, info.file)
               }
               if (result?.info.status === "error")

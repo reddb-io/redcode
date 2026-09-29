@@ -69,6 +69,7 @@ import { Job } from "./job.js"
 import type { Command } from "./command.js"
 import { SessionEnvironment } from "./session/environment.js"
 import { InstructionEntry } from "./session/instruction-entry.js"
+import { Vault } from "./vault/vault.js"
 
 // get project -> project.locations
 //
@@ -514,5 +515,6 @@ export const node: LayerNode.Provider<Service, SqlError, typeof Node.tags.values
     LocationServiceMap.node,
     FSUtil.node,
     App.node,
+    Vault.node,
   ],
 })

@@ -37,6 +37,7 @@ import { SessionStore } from "../src/session/store.js"
 import { Shell } from "../src/shell.js"
 import { Skill } from "../src/skill.js"
 import { Snapshot } from "../src/snapshot.js"
+import { Vault } from "../src/vault/vault.js"
 import { tempGlobalLayer } from "./fixture/global"
 import { location } from "./fixture/location"
 import { testEffect } from "./lib/effect"
@@ -50,6 +51,7 @@ const it = testEffect(
       SessionStore.node,
       SessionInbox.node,
       FSUtil.node,
+      Vault.node,
     ]),
     {
       replacements: [Bus.node.replace(Bus.configured({ persist: true })), Global.node.replace(tempGlobalLayer)],
@@ -157,6 +159,7 @@ const setup = Effect.fnUntraced(function* (options?: {
       | Instance.Service
       | SessionExecution.Service
       | SessionInbox.Service
+      | Vault.Service
       | Scope.Scope
     >(),
     Effect.provideService(Instance.Service, instances),

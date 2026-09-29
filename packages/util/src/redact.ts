@@ -56,6 +56,39 @@ export function redactURL(input: string) {
 /** Every URL in `text` through `redactURL`, for diagnostics where a query string carries nothing worth keeping. */
 export const redactURLs = (text: string) => text.replace(URL_PATTERN, (url) => redactURL(url))
 
+export type Confidence = "high" | "low"
+
+/** One secret in the scanned text: `text.slice(start, end) === value`. */
+export interface Finding {
+  readonly start: number
+  readonly end: number
+  readonly kind: string
+  readonly value: string
+  readonly confidence: Confidence
+}
+
+/**
+ * Where `redact` would act, in the original text's offsets, sorted and never overlapping; as in `redact`, the
+ * earlier rule wins. High confidence covers known token families, PEM private keys, URL passwords and credential
+ * query parameters, JWTs and literal values under secret names. Low confidence covers `Authorization` credentials
+ * and the entropy heuristic, which also matches some hashes and identifiers, so a caller that changes what the user
+ * asked for should act only on high findings.
+ */
+export function findSecrets(text: string): Finding[] {
+  let findings: Finding[] = privateKeyBlocks(text).map((block) => ({
+    ...block,
+    kind: "private-key",
+    value: text.slice(block.start, block.end),
+    confidence: "high" as const,
+  }))
+  let offset = 0
+  for (const chunk of split(text)) {
+    for (const find of FINDERS) findings = merge(findings, find(chunk, offset, findings))
+    offset += chunk.length
+  }
+  return findings
+}
+
 // Specific prefixes come before the generic `sk-` so the kind names the issuer.
 const TOKENS = [
   { pattern: /\bsk-ant-[A-Za-z0-9_-]{20,400}/g, kind: "anthropic-key" },
@@ -338,8 +371,18 @@ function highEntropy(text: string) {
 
 /** PEM private key blocks, found with plain searches over the whole text since a block spans lines. */
 function redactPrivateKeys(text: string) {
-  const parts: string[] = []
-  let cursor = 0
+  const blocks = privateKeyBlocks(text)
+  if (blocks.length === 0) return text
+  return (
+    blocks
+      .map((block, index) => text.slice(index === 0 ? 0 : blocks[index - 1].end, block.start) + placeholder("private-key"))
+      .join("") + text.slice(blocks[blocks.length - 1].end)
+  )
+}
+
+/** Where each PEM private key block starts and ends, in order. */
+function privateKeyBlocks(text: string) {
+  const blocks: { start: number; end: number }[] = []
   // The next `-----END ` at or after the block being read; -1 once none is left, so no search repeats.
   let end = 0
   let search = text.indexOf(PEM_BEGIN)
@@ -352,13 +395,10 @@ function redactPrivateKeys(text: string) {
     }
     if (end >= 0 && end < body) end = text.indexOf(PEM_END, body)
     const stop = end >= 0 && end - body <= PEM_MAX ? closeOf(text, end) : unterminated(text, body)
-    parts.push(text.slice(cursor, search), placeholder("private-key"))
-    cursor = stop
+    blocks.push({ start: search, end: stop })
     search = text.indexOf(PEM_BEGIN, stop)
   }
-  if (parts.length === 0) return text
-  parts.push(text.slice(cursor))
-  return parts.join("")
+  return blocks
 }
 
 /** Just past the dashes that close a `-----END … PRIVATE KEY-----` line. */
@@ -411,3 +451,110 @@ function redactField(key: string, text: string) {
   const kind = classify(key)
   return kind && plausible({ text, quoted: true, spaced: false, call: false }) ? placeholder(kind) : redact(text)
 }
+
+/** One `redact` pass that reports instead of replacing: new findings in `chunk`, which starts at `offset`. */
+type Finder = (chunk: string, offset: number, taken: readonly Finding[]) => Finding[]
+
+const finding = (start: number, value: string, kind: string, confidence: Confidence): Finding => ({
+  start,
+  end: start + value.length,
+  kind,
+  value,
+  confidence,
+})
+
+/** Whether `[start, end)` meets a finding already made; `taken` is sorted and disjoint, so a binary search does. */
+function overlaps(taken: readonly Finding[], start: number, end: number) {
+  let low = 0
+  let high = taken.length
+  while (low < high) {
+    const middle = (low + high) >> 1
+    if (taken[middle].end <= start) low = middle + 1
+    else high = middle
+  }
+  return low < taken.length && taken[low].start < end
+}
+
+const merge = (taken: readonly Finding[], found: readonly Finding[]) =>
+  found.length === 0 ? [...taken] : [...taken, ...found].sort((left, right) => left.start - right.start)
+
+const free = (taken: readonly Finding[]) => (item: Finding) => !overlaps(taken, item.start, item.end)
+
+function tokenFinder(rule: (typeof TOKENS)[number]): Finder {
+  return (chunk, offset, taken) =>
+    Array.from(chunk.matchAll(rule.pattern), (match) =>
+      finding(offset + match.index, match[0], rule.kind, "high"),
+    ).filter(free(taken))
+}
+
+/** The password in `scheme://user:password@host` and credential-named query parameters, as `redactURLParts`. */
+function urlFinder(chunk: string, offset: number, taken: readonly Finding[]) {
+  return Array.from(chunk.matchAll(URL_PATTERN)).flatMap((match) => {
+    const url = match[0]
+    const at = offset + match.index
+    const userinfo = USERINFO.exec(url)
+    const credentials = userinfo ? userinfoFinding(userinfo[1], userinfo[2], at) : []
+    const parameters = Array.from(url.matchAll(QUERY_PARAM)).flatMap((parameter) => {
+      const lower = parameter[2].toLowerCase()
+      const kind = lower === "key" ? "api-key" : lower === "sig" ? "signature" : classify(parameter[2])
+      if (!kind || parameter[3].startsWith(MARK)) return []
+      const start = at + parameter.index + parameter[1].length + parameter[2].length + 1
+      return [finding(start, parameter[3], kind, "high")]
+    })
+    return [...credentials, ...parameters].filter(free(taken))
+  })
+}
+
+function userinfoFinding(scheme: string, userinfo: string, at: number) {
+  const colon = userinfo.indexOf(":")
+  if (colon < 0)
+    return userinfo.length >= 20 ? [finding(at + scheme.length, userinfo, "url-credentials", "high")] : []
+  if (colon === userinfo.length - 1) return []
+  return [finding(at + scheme.length + colon + 1, userinfo.slice(colon + 1), "password", "high")]
+}
+
+function authorizationFinder(chunk: string, offset: number, taken: readonly Finding[]) {
+  return Array.from(chunk.matchAll(AUTHORIZATION)).flatMap((match) => {
+    const token = match[3]
+    if (match[1].toLowerCase() === "basic" && !/^[A-Za-z0-9+/]{8,4096}={0,2}$/.test(token)) return []
+    const credential =
+      /[^A-Za-z]/.test(token) || (/[a-z]/.test(token) && /[A-Z]/.test(token) && !/^[A-Z][a-z]+$/.test(token))
+    if (!credential) return []
+    return [finding(offset + match.index + match[1].length + match[2].length, token, "authorization", "low")]
+  }).filter(free(taken))
+}
+
+/** `redactAssignments` reporting: a secret name makes a high finding, the entropy heuristic under any name a low one. */
+function assignmentFinder(chunk: string, offset: number, taken: readonly Finding[]) {
+  const findings: Finding[] = []
+  NAME.lastIndex = 0
+  for (let match = NAME.exec(chunk); match; match = NAME.exec(chunk)) {
+    const kind = classify(match[2])
+    const value = readValue(chunk, NAME.lastIndex, match[3], kind !== undefined)
+    if (!value || !value.text || value.text.startsWith(MARK)) continue
+    if (kind) NAME.lastIndex = value.end
+    const found = kind ? (plausible(value) ? kind : undefined) : highEntropy(value.text) ? "secret" : undefined
+    if (!found) continue
+    NAME.lastIndex = value.end
+    const item = finding(offset + value.start, value.text, found, kind ? "high" : "low")
+    if (free(taken)(item)) findings.push(item)
+  }
+  return findings
+}
+
+function quotedFinder(chunk: string, offset: number, taken: readonly Finding[]) {
+  return Array.from(chunk.matchAll(QUOTED_TOKEN)).flatMap((match) =>
+    highEntropy(match[2]) ? [finding(offset + match.index + 1, match[2], "secret", "low")] : [],
+  ).filter(free(taken))
+}
+
+// The order of PASSES, each token family on its own so an earlier, more specific family wins. Secret-named
+// assignments come before `Authorization` credentials, so a quoted `"Authorization": "Bearer …"` stays one high
+// finding instead of a low one inside it.
+const FINDERS: readonly Finder[] = [
+  ...TOKENS.map(tokenFinder),
+  urlFinder,
+  assignmentFinder,
+  authorizationFinder,
+  quotedFinder,
+]

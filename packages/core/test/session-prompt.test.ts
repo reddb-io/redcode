@@ -31,6 +31,7 @@ import { Plugin } from "@opencode/core/plugin"
 import { PluginHooks } from "@opencode/core/plugin/hooks"
 import { Snapshot } from "@opencode/core/snapshot"
 import { Skill } from "@opencode/core/skill"
+import { Vault } from "@opencode/core/vault/vault"
 import { tmpdirScoped } from "./fixture/tmpdir"
 import { testEffect } from "./lib/effect"
 
@@ -91,7 +92,7 @@ const locations = makeGlobalNode({
 })
 const it = testEffect(
   AppNodeBuilder.build(
-    LayerNode.group([Database.node, Bus.node, SessionProjector.node, SessionStore.node, Session.node]),
+    LayerNode.group([Database.node, Bus.node, SessionProjector.node, SessionStore.node, Session.node, Vault.node]),
     [
       Bus.node.replace(Bus.configured({ persist: true })),
       SessionExecution.node.replace(execution),
@@ -249,6 +250,30 @@ describe("Session.prompt", () => {
         payload: { text: "Fix the failing tests" },
         delivery: "steer",
       })
+    }),
+  )
+
+  it.effect("moves high-confidence secrets into the project vault before anything is stored", () =>
+    Effect.gen(function* () {
+      yield* setup
+      const session = yield* Session.Service
+      const vault = yield* Vault.Service
+      const { db } = yield* Database.Service
+      // Assembled from parts so no secret scanner mistakes it for a real credential.
+      const token = "ghp" + "_" + "e".repeat(36)
+      const checksum = "aB1".repeat(12)
+      const text = `Push with GITHUB_TOKEN=${token} and keep checksum=${checksum}`
+
+      const message = yield* session.prompt({ sessionID, text, resume: false })
+
+      const [moved] = Schema.decodeUnknownSync(Vault.Moved)(message.payload.metadata?.vault)
+      expect(moved.kind).toBe("github-token")
+      expect(message.payload.text).toBe(`Push with GITHUB_TOKEN={vault:${moved.name}} and keep checksum=${checksum}`)
+      expect(yield* vault.resolve({ projectID: Project.ID.global, name: moved.name })).toBe(token)
+      const events = yield* db.select().from(EventTable).all().pipe(Effect.orDie)
+      const inbox = yield* db.select().from(SessionInboxTable).all().pipe(Effect.orDie)
+      expect(JSON.stringify([events, inbox])).not.toContain(token)
+      expect(JSON.stringify(inbox)).toContain(checksum)
     }),
   )
 

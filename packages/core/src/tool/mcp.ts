@@ -10,6 +10,7 @@ import { Mcp } from "../mcp/index.js"
 import { Permission } from "../permission.js"
 import { ProviderRouter } from "../provider-router.js"
 import { Tool } from "../tool.js"
+import { Vault } from "../vault/vault.js"
 
 /**
  * Registry namespace and permission action names for MCP tools.
@@ -70,11 +71,16 @@ export const layer = Layer.effect(
                         id: context.id,
                       },
                     })
+                    // Vault references resolve only in the arguments sent to the server; the stored call keeps them.
+                    const args = (input ?? {}) as Record<string, unknown>
+                    const vaulted = yield* Vault.resolveAll(Vault.references(JSON.stringify(args)))
+                    if ("missing" in vaulted)
+                      return yield* new ToolFailure({ message: Vault.unknownReference(vaulted.missing) })
                     const result = yield* mcp
                       .callTool({
                         server: tool.server,
                         name: tool.name,
-                        args: (input ?? {}) as Record<string, unknown>,
+                        args: vaulted.values.size === 0 ? args : Vault.fillRecord(args, vaulted.values),
                         sessionID: context.sessionID,
                       })
                       .pipe(

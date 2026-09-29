@@ -30,6 +30,8 @@ import { SessionShell } from "./shell.js"
 import { SessionSkill } from "./skill.js"
 import { SessionSchema } from "./schema.js"
 import { SessionStore } from "./store.js"
+import { Vault } from "../vault/vault.js"
+import { VaultAdmission } from "../vault/admission.js"
 
 type PromptRequest = SessionPrompt.Input & {
   id?: SessionMessage.ID
@@ -48,6 +50,7 @@ export const make = Effect.fn("Session.make")(function* () {
   const execution = yield* SessionExecution.Service
   const admission = yield* SessionInbox.Service
   const fs = yield* FSUtil.Service
+  const vault = yield* Vault.Service
   const scope = yield* Scope.Scope
 
   const get = Effect.fn("Session.get")(function* (sessionID: SessionSchema.ID) {
@@ -189,13 +192,18 @@ export const make = Effect.fn("Session.make")(function* () {
             delivery: input.delivery ?? "steer",
           })
           if (existing) return existing
-          const item = yield* restore(
+          const prepared = yield* restore(
             SessionPrompt.prepare({ session, messageID, input }).pipe(
               Effect.provideService(Instance.Service, instances),
               Effect.provideService(FSUtil.Service, fs),
             ),
           )
-          if (input.resume !== false) yield* restore(prepareBuildWorktree(session, messageID, undefined, input.text))
+          // Secrets leave the prompt before anything durable is written, so events and history hold references.
+          const item = { ...prepared, payload: yield* VaultAdmission.protect(vault, session.projectID, prepared.payload) }
+          if (input.resume !== false)
+            yield* restore(
+              prepareBuildWorktree(session, messageID, undefined, yield* vault.scrub(session.projectID, input.text)),
+            )
           // Commit a staged revert only after preparation succeeds, before admitting new work.
           if (session.revert) yield* SessionRevert.commit(bus, session)
           return yield* admission.admit({
@@ -240,13 +248,16 @@ export const make = Effect.fn("Session.make")(function* () {
       )
       const terminal = yield* started.result
       const preview = yield* started.output
+      // A command the user runs can print a vaulted value; what is stored and shown to the model has its reference.
       yield* bus.publish(SessionEvent.Shell.Ended, {
         sessionID,
         shell: terminal.info,
-        output: preview,
+        output: { ...preview, output: yield* vault.scrub(session.projectID, preview.output) },
       })
+      const notification = ShellResult.userNotification(terminal)
       yield* synthetic(sessionID, {
-        ...ShellResult.userNotification(terminal),
+        ...notification,
+        text: yield* vault.scrub(session.projectID, notification.text),
         resume: false,
       }).pipe(
         Effect.catchTag("Session.NotFoundError", () => Effect.void),
@@ -290,7 +301,10 @@ export const make = Effect.fn("Session.make")(function* () {
         id: inputID,
         sessionID,
         delivery: input.delivery ?? "steer",
-        focus: input.focus,
+        focus:
+          input.focus === undefined
+            ? undefined
+            : yield* VaultAdmission.protectText(vault, session.projectID, input.focus),
       })
       .pipe(
         Effect.catchTag("SessionInbox.LifecycleConflict", () => new CompactionConflictError({ sessionID, inputID })),

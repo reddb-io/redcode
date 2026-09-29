@@ -36,6 +36,7 @@ import { Skill } from "@opencode/core/skill"
 import { SkillDiscovery } from "@opencode/core/skill/discovery"
 import { Watcher } from "@opencode/core/filesystem/watcher"
 import { Tool } from "@opencode/core/tool"
+import { Vault } from "@opencode/core/vault/vault"
 import { Vcs } from "@opencode/core/vcs"
 import { WebSearch } from "@opencode/core/websearch"
 import { Worktree } from "@opencode/core/worktree"
@@ -109,6 +110,7 @@ export const PluginTestLayer = AppNodeBuilder.build(
     Skill.node,
     SkillDiscovery.node,
     Tool.node,
+    Vault.node,
     Vcs.node,
     Watcher.node,
     WebSearch.node,

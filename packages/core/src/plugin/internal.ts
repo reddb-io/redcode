@@ -101,6 +101,8 @@ import { WebFetchTool } from "../tool/plugin/webfetch.js"
 import { WebSearchTool } from "../tool/plugin/websearch.js"
 import { WellKnown } from "../wellknown.js"
 import { WriteTool } from "../tool/plugin/write.js"
+import { Vault } from "../vault/vault.js"
+import { VaultPlugin } from "./vault.js"
 import { AgentPlugin } from "./agent.js"
 import BrowserPlugin from "@opencode/plugin-browser"
 import { CommandPlugin } from "./command.js"
@@ -200,6 +202,7 @@ const services = [
   SkillDiscovery.Service,
   Tool.Service,
   ToolOutput.Service,
+  Vault.Service,
   Watcher.Service,
   WellKnown.Service,
   Worktree.Service,
@@ -269,6 +272,7 @@ export const requirements = LayerNode.group([
   SkillDiscovery.node,
   Tool.node,
   ToolOutput.node,
+  Vault.node,
   Watcher.node,
   WellKnown.node,
   Worktree.node,
@@ -332,6 +336,7 @@ const pre = [
   WebSearchTool.Plugin,
   WriteTool.Plugin,
   WarmingPlugin.Plugin,
+  VaultPlugin.Plugin,
 ] as const satisfies readonly InternalPlugin[]
 
 const post = [

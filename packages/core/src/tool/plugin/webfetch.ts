@@ -8,6 +8,7 @@ import { Parser } from "htmlparser2"
 import { Permission } from "../../permission.js"
 import { convertHTMLToMarkdown, MAX_MARKDOWN_BYTES } from "../html-markdown.js"
 import { collectBoundedResponseBody } from "../http-body.js"
+import { Vault } from "../../vault/vault.js"
 
 export const name = "webfetch"
 export const MAX_RESPONSE_BYTES = MAX_MARKDOWN_BYTES
@@ -16,7 +17,7 @@ export const MAX_TIMEOUT_SECONDS = 120
 
 export const description = `Fetch content from an HTTP or HTTPS URL and return it as text, markdown, or HTML. Markdown is the default.
 
-Use a more targeted tool when one is available. This tool is read-only. Large text results may be replaced with a preview while the complete output is retained in managed storage.`
+Use a more targeted tool when one is available. This tool is read-only. Large text results may be replaced with a preview while the complete output is retained in managed storage. A \`{vault:<name>}\` reference in the URL is replaced by that secret when the request is sent.`
 
 const Timeout = Schema.Finite.check(Schema.isGreaterThan(0), Schema.isLessThanOrEqualTo(MAX_TIMEOUT_SECONDS))
 
@@ -116,8 +117,13 @@ export const Plugin = {
           output: Output,
           execute: (input, context) =>
             Effect.gen(function* () {
+              // A vault reference resolves only here, in process: approval, the stored input and the result keep it.
+              const vaulted = yield* Vault.resolveAll(Vault.references(input.url))
+              if ("missing" in vaulted)
+                return yield* new ToolFailure({ message: Vault.unknownReference(vaulted.missing) })
+              const url = Vault.fill(input.url, vaulted.values)
               yield* Effect.try({
-                try: () => assertHttpUrl(new URL(input.url)),
+                try: () => assertHttpUrl(new URL(url)),
                 catch: (error) => error,
               })
 
@@ -132,8 +138,8 @@ export const Plugin = {
               })
 
               const { body, contentType } = yield* Effect.gen(function* () {
-                const response = yield* execute(http, input.url, input.format).pipe(
-                  Effect.catchIf(isCloudflareChallenge, () => execute(http, input.url, input.format, "opencode")),
+                const response = yield* execute(http, url, input.format).pipe(
+                  Effect.catchIf(isCloudflareChallenge, () => execute(http, url, input.format, "opencode")),
                 )
                 const contentType = response.headers["content-type"] || ""
                 const mime = mimeFrom(contentType)

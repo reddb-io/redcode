@@ -67,6 +67,7 @@ import { ProviderFailure } from "@opencode/core/session/provider-failure"
 import { DialogPrompt } from "../../ui/dialog-prompt"
 import { DialogSessionRename } from "../../component/dialog-session-rename"
 import { DialogImagePreview } from "../../component/dialog-image-preview"
+import { DialogVault, vaultMoved, vaultNotice } from "../../component/dialog-vault"
 import { DialogMessage } from "./dialog-message"
 import { DialogFork } from "./dialog-fork"
 import { DialogTimeline } from "./dialog-timeline"
@@ -338,6 +339,15 @@ export function Session(props: {
       // A publish, or a restore by design_history, which also reports the new revision.
       if (tool?.type !== "tool" || (tool.name !== "design_preview" && tool.name !== "design_history")) return
       void reviewDesign(false)
+    }),
+  )
+  onCleanup(
+    client.event.on("session.inbox.enqueued", (event) => {
+      if (event.data.sessionID !== route.sessionID || event.data.item.type !== "user") return
+      // An admission replayed after a reconnect was already announced.
+      if (Date.now() - event.created > 60_000) return
+      const moved = vaultMoved(event.data.item.payload.metadata)
+      if (moved.length > 0) toast.show({ variant: "info", message: vaultNotice(moved), duration: 12_000 })
     }),
   )
   const autoApproved = new Set<string>()
@@ -1004,6 +1014,16 @@ export function Session(props: {
 
   const goalCommand = useGoalCommand()
   const baseCommands = createMemo(() => [
+    {
+      title: "Project vault",
+      description: "List the secrets moved out of this project's conversations and forget them",
+      id: "session.vault",
+      group: "Session",
+      slash: { name: "vault" },
+      run: () => {
+        dialog.replace(() => <DialogVault sessionID={route.sessionID} directory={location()?.directory} />)
+      },
+    },
     {
       title: "Manage monitors",
       id: "session.monitors",
@@ -2563,6 +2583,7 @@ function UserMessage(props: { message: SessionMessageUser }) {
   const local = useLocal()
   const files = createMemo(() => deduplicateVisibleImages(props.message.files ?? []))
   const skills = createMemo(() => props.message.skills ?? [])
+  const vaulted = createMemo(() => vaultMoved(props.message.metadata))
   const images = createMemo(() =>
     files().flatMap((file) =>
       file.mime.startsWith("image/") ? [{ uri: `data:${file.mime};base64,${file.data}` }] : [],
@@ -2630,6 +2651,11 @@ function UserMessage(props: { message: SessionMessageUser }) {
           flexShrink={0}
         >
           <text fg={theme.text.base}>{props.message.text}</text>
+          <Show when={vaulted().length > 0}>
+            <box paddingTop={1}>
+              <text fg={theme.text.muted}>{vaultNotice(vaulted())}</text>
+            </box>
+          </Show>
           <Show when={skills().length}>
             <box flexDirection="row" paddingTop={1} gap={1} flexWrap="wrap">
               <For each={skills()}>

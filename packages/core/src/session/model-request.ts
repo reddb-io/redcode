@@ -40,6 +40,8 @@ import { toLLMMessages } from "./runner/to-llm-message.js"
 import type { SessionMessage } from "./message.js"
 import { SessionToolOutputPrune } from "./tool-output-prune.js"
 import { SessionStore } from "./store.js"
+import { toSessionError } from "./to-session-error.js"
+import { Vault } from "../vault/vault.js"
 
 const IMAGE_BYTES_TRIGGER = 25 * 1024 * 1024 // 25 MiB
 const IMAGE_BYTES_TARGET = 15 * 1024 * 1024 // 15 MiB
@@ -217,6 +219,46 @@ export const boundImages = (messages: LLMRequest["messages"]) => {
   )
 }
 
+/** User text through `clean`: a net for a value vaulted after an earlier message already carried it. */
+const scrubUserText = (messages: LLMRequest["messages"], clean: (text: string) => string) =>
+  messages.map((message) =>
+    message.role === "user"
+      ? Message.make({
+          ...message,
+          content: message.content.map((part) => (part.type === "text" ? { ...part, text: clean(part.text) } : part)),
+        })
+      : message,
+  )
+
+const scrubResult = (result: Tool.NormalizedResult, clean: (text: string) => string): Tool.NormalizedResult => ({
+  ...result,
+  content: result.content.map((item) => (item.type === "text" ? { ...item, text: clean(item.text) } : item)),
+  ...(result.output === undefined ? {} : { output: Vault.scrubDeep(result.output, clean) }),
+  ...(result.metadata === undefined ? {} : { metadata: Vault.scrubRecord(result.metadata, clean) }),
+})
+
+/**
+ * A tool failure as the model reads it, with vaulted values replaced. A changed message replaces the cause, which is
+ * where it came from; otherwise the cause stays, so the failure keeps its classification.
+ */
+const scrubError = (error: Tool.Error, clean: (text: string) => string) => {
+  const message = toSessionError(error).message
+  const scrubbed = clean(message)
+  const metadata = error.metadata === undefined ? {} : { metadata: Vault.scrubRecord(error.metadata, clean) }
+  if (scrubbed !== message) return new Tool.Error({ message: scrubbed, ...metadata })
+  if (error.metadata === undefined) return error
+  return new Tool.Error({
+    message: error.message,
+    ...(error.error === undefined ? {} : { error: error.error }),
+    ...metadata,
+  })
+}
+
+const scrubbedProgress = (
+  progress: ((update: Tool.Metadata) => Effect.Effect<void>) | undefined,
+  clean: (text: string) => string,
+) => (progress ? { progress: (update: Tool.Metadata) => progress(Vault.scrubRecord(update, clean)) } : {})
+
 type Definitions = PluginHooks.Domains["session"]["context"]["tools"]
 
 /** Builds the model request for each session flow. Each entry runs its own plugin hook. */
@@ -236,12 +278,14 @@ export const layer = Layer.effect(
     const transport = yield* SessionModelTransport.Service
     const store = yield* SessionStore.Service
     const app = yield* App.Metadata
+    const vault = yield* Vault.Service
     const prepare = Effect.fn("SessionModelRequest.prepare")(function* <
       S extends SessionRequest & { tools?: Definitions },
     >(kind: SessionRequestKind, input: Input, shape: (draft: SessionRequest, tools: Definitions) => Effect.Effect<S>) {
       const session = input.session
       const model = input.model
       const scope = { sessionID: session.id, agent: input.agent, model: model.ref, kind }
+      const clean = yield* vault.scrubber(session.projectID)
       const tools = input.tools ?? {
         definitions: [],
         execute: () => new Tool.Error({ message: "Tools are not available for this request" }),
@@ -305,7 +349,7 @@ export const layer = Layer.effect(
         },
         promptCacheKey: /^ses_[0-9a-f]{64}$/.test(affinity) ? affinity.slice(4) : affinity,
         system: shaped.system,
-        messages: boundImages(unsupportedParts(shaped.messages, model.capabilities)),
+        messages: boundImages(unsupportedParts(scrubUserText(shaped.messages, clean), model.capabilities)),
         tools: model.capabilities.tools ? Array.from(hooked, ([name, t]) => ({ ...t, name })) : [],
         toolChoice: model.capabilities.tools ? input.toolChoice : undefined,
         generation: Object.keys(generation).length === 0 ? undefined : generation,
@@ -411,8 +455,13 @@ export const layer = Layer.effect(
           hooks.trigger("session", "retry", event).pipe(Effect.asVoid),
         // Permission.assert and the question tool throw declines as defects so tools cannot
         // catch them and turn a "no" into model-visible output. Recover them here as failures.
+        // Sinks resolve vault references for this Session's project only, and whatever a tool returns, reports or
+        // fails with has every vaulted value of the project replaced by its reference before it is stored.
         executeTool: (call: Parameters<Prepared["executeTool"]>[0]) =>
-          tools.execute({ ...call, definitions: hooked }).pipe(
+          tools.execute({ ...call, definitions: hooked, ...scrubbedProgress(call.progress, clean) }).pipe(
+            Effect.map((result) => scrubResult(result, clean)),
+            Effect.catchTag("Tool.Error", (error) => Effect.fail(scrubError(error, clean))),
+            Effect.provideService(Vault.Current, Vault.bind(vault, session.projectID)),
             Effect.catchCauseFilter(
               (cause) => {
                 const decline = cause.reasons.flatMap((r) =>
@@ -445,5 +494,5 @@ export const layer = Layer.effect(
 export const node = makeLocationNode({
   service: Service,
   layer,
-  deps: [PluginHooks.node, SessionModelTransport.node, SessionStore.node, App.node],
+  deps: [PluginHooks.node, SessionModelTransport.node, SessionStore.node, App.node, Vault.node],
 })

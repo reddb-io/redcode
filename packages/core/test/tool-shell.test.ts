@@ -38,6 +38,8 @@ import { ID } from "@opencode/schema/shell"
 import { ShellTool } from "@opencode/core/tool/plugin/shell"
 import { ToolOutput } from "@opencode/core/tool-output"
 import { Tool } from "@opencode/core/tool"
+import { Vault } from "@opencode/core/vault/vault"
+import { Project } from "@opencode/schema/project"
 import { tmpdir, tmpdirScoped } from "./fixture/tmpdir"
 import { tempGlobalLayer } from "./fixture/global"
 import { offlineModels } from "./fixture/models"
@@ -1759,5 +1761,66 @@ describe("ShellTool", () => {
       (tmp) => Effect.promise(() => tmp[Symbol.asyncDispose]().then(() => undefined)),
     ),
     20_000,
+  )
+})
+
+describe("ShellTool vault references", () => {
+  const test = isWindows ? it.live.skip : it.live
+  // Assembled from parts so no secret scanner mistakes it for a real credential.
+  const token = "ghp" + "_" + "d".repeat(36)
+  const binding: Vault.Binding = {
+    projectID: Project.ID.global,
+    resolve: (name) => Effect.succeed(name === "github-token-1" ? token : undefined),
+    scrub: (text) => Effect.succeed(text.replaceAll(token, "{vault:github-token-1}")),
+  }
+
+  test("passes a vaulted value through the child environment, never through the command", () =>
+    Effect.acquireUseRelease(
+      Effect.promise(() => tmpdir()),
+      (tmp) => {
+        reset()
+        const input = { command: 'printf %s "{vault:github-token-1}" | wc -c' }
+        return withSession(tmp.path, (registry) =>
+          executeTool(registry, call(input)).pipe(Effect.provideService(Vault.Current, binding)),
+        ).pipe(
+          Effect.andThen((settled) =>
+            Effect.sync(() => {
+              expect(settled.status).toBe("completed")
+              expect(settled.output.output.trim()).toBe(String(token.length))
+              expect(input.command).toBe('printf %s "{vault:github-token-1}" | wc -c')
+              const approvals = JSON.stringify(assertions.filter((item) => item.action === "shell"))
+              expect(approvals).toContain("{vault:github-token-1}")
+              expect(approvals).not.toContain(token)
+            }),
+          ),
+        )
+      },
+      (tmp) => Effect.promise(() => tmp[Symbol.asyncDispose]().then(() => undefined)),
+    ),
+  )
+
+  test("fails an unknown reference before anything runs", () =>
+    Effect.acquireUseRelease(
+      Effect.promise(() => tmpdir()),
+      (tmp) => {
+        reset()
+        return withSession(tmp.path, (registry) =>
+          executeTool(registry, call({ command: "printf %s {vault:api-key-9}" })).pipe(
+            Effect.provideService(Vault.Current, binding),
+          ),
+        ).pipe(
+          Effect.andThen((settled) =>
+            Effect.sync(() => {
+              expect(settled).toEqual({
+                status: "error",
+                error: { type: "tool.execution", message: Vault.unknownReference("api-key-9") },
+              })
+              expect(assertions.filter((item) => item.action === "shell")).toEqual([])
+            }),
+          ),
+        )
+      },
+      (tmp) => Effect.promise(() => tmp[Symbol.asyncDispose]().then(() => undefined)),
+    ),
   )
 })
