@@ -69,6 +69,8 @@ import { directoryRecentValue } from "../../prompt/directory-completion"
 import { useWorkingDirectoryActions } from "../../ui/working-directory-actions"
 import { truncateFilePath } from "../../ui/file-path"
 import { PromptMetadataRow } from "./metadata"
+import { evaluatorModelName, evaluatorTransportName } from "../../util/intelligence-label"
+import { modelRoute } from "../../util/model-presentation"
 
 export type PromptProps = {
   sessionID?: string
@@ -1547,11 +1549,19 @@ export function Prompt(props: PromptProps) {
 
       const agent = local.agent.current()
       const model = local.model.parsed()
+      const selected = local.model.current()
+      const info =
+        selected &&
+        data.location.model
+          .list(location)
+          ?.find((item) => item.providerID === selected.providerID && item.id === selected.modelID)
+      const provider =
+        selected && data.location.provider.list(location)?.find((item) => item.id === selected.providerID)
       return {
         agentLabel: agent ? Locale.titlecase(agent.id) : undefined,
         agentColor: agent ? local.agent.color(agent.id) : undefined,
         modelLabel: model.model,
-        providerLabel: model.provider,
+        providerLabel: info ? modelRoute(info, provider) : model.provider,
         variant: local.model.variant.current(),
       }
     },
@@ -1567,6 +1577,15 @@ export function Prompt(props: PromptProps) {
     if (muted()) return theme.border.base
     if (store.mode === "shell") return theme.text.action.primary.selected
     return promptDisplay().agentColor ?? theme.border.base
+  })
+  const s1Display = createMemo(() => {
+    const status = local.model.intelligenceStatus()
+    if (status?.effective.reasoning !== "dual") return
+    const evaluator = status.settings.evaluator
+    return {
+      model: evaluator ? evaluatorModelName(evaluator.model) : "setup",
+      provider: evaluator ? evaluatorTransportName(evaluator.transport) : "",
+    }
   })
   const agentLabel = createMemo(() => (store.mode === "shell" ? "Shell" : promptDisplay().agentLabel))
   const animateMetadata = !revealedPromptMetadata.has(local)
@@ -1838,6 +1857,8 @@ export function Prompt(props: PromptProps) {
                 auto={local.permission.mode === "autoaccept"}
                 model={promptDisplay().modelLabel}
                 provider={promptDisplay().providerLabel}
+                s1={s1Display()}
+                onS1Click={() => keymap.dispatch("intelligence.status")}
                 variant={promptDisplay().variant}
                 muted={!!muted()}
                 highlight={highlight()}

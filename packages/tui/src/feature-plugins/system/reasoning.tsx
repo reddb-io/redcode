@@ -1,12 +1,11 @@
 import type { IntelligenceStatus } from "@opencode/client"
 import { Plugin } from "@opencode/plugin/tui"
-import { createResource, createSignal, onCleanup } from "solid-js"
+import { createResource, createSignal, onCleanup, Show } from "solid-js"
 import { useLocal } from "../../context/local"
 import { DialogDesignList } from "../../component/dialog-design-list"
 import { DialogIntelligence } from "../../component/dialog-intelligence"
 import { configureReasoning } from "../../component/reasoning-setup"
 import { errorMessage } from "../../util/error"
-import { Locale } from "../../util/locale"
 
 export default Plugin.define({
   id: "redcode.reasoning",
@@ -121,21 +120,29 @@ function IntelligenceIndicator(props: {
   )
   const pending = () => props.status?.settings.onboarding !== "completed"
   const warning = () =>
-    props.error ||
-    Boolean(history.error) ||
-    (!history.error && ["unavailable", "inconclusive", "needs_revision"].includes(history()?.[0]?.decision ?? ""))
-  const model = () => props.context.ui.model.current()
+    props.status?.effective.reasoning === "dual" &&
+    (Boolean(history.error) ||
+      (!history.error && ["unavailable", "inconclusive", "needs_revision"].includes(history()?.[0]?.decision ?? "")))
+  const label = () => {
+    if (props.error) return "S1/S2 offline"
+    if (!props.status) return ""
+    if (pending()) return "S1/S2 setup"
+    if (warning()) return "S1 needs attention"
+    return ""
+  }
   return (
-    <text
-      fg={warning() ? props.context.theme.text.feedback.warning.base : props.context.theme.text.muted}
-      wrapMode="none"
-      onMouseUp={() => props.context.keymap.dispatch(pending() ? "intelligence.setup" : "intelligence.status")}
-    >
-      {props.error
-        ? "S1/S2 offline"
-        : pending()
-          ? "S1/S2 setup"
-          : `S2 ${Locale.truncate(model()?.modelID ?? props.status?.settings.principal?.id ?? "unset", 14)} · S1 ${props.status?.effective.reasoning === "dual" ? Locale.truncate(props.status?.settings.evaluator?.model ?? "unset", 14) : "off"}${warning() ? " !" : ""}`}
-    </text>
+    <Show when={label()}>
+      {(value) => (
+        <text
+          fg={
+            props.error || warning() ? props.context.theme.text.feedback.warning.base : props.context.theme.text.muted
+          }
+          wrapMode="none"
+          onMouseUp={() => props.context.keymap.dispatch(pending() ? "intelligence.setup" : "intelligence.status")}
+        >
+          {value()}
+        </text>
+      )}
+    </Show>
   )
 }

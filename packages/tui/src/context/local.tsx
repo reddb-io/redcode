@@ -242,8 +242,7 @@ export const { use: useLocal, provider: LocalProvider } = createSimpleContext({
         if (route.data.type === "session") {
           const session = data.session.get(route.data.sessionID)
           const draft = current && selectionState.selectionBySessionAgent[route.data.sessionID]?.[current.id]
-          if (draft && isModelValid(draft))
-            return "TUI selection"
+          if (draft && isModelValid(draft)) return "TUI selection"
           if (
             session?.model &&
             (!session.agent || session.agent === current?.id) &&
@@ -252,16 +251,14 @@ export const { use: useLocal, provider: LocalProvider } = createSimpleContext({
             return "session model"
         }
         const selected = current && selectionState.newSessionModelByLocationAgent[locationAgentKey(current.id)]
-        if (selected && isModelValid(selected))
-          return "TUI selection"
+        if (selected && isModelValid(selected)) return "TUI selection"
         if (current?.model && isModelValid({ providerID: current.model.providerID, modelID: current.model.id }))
           return "agent model"
         if (args.model && isModelValid(parse(args.model))) return "CLI argument"
         const configured = configuredModel()
         if (configured && isModelValid(configured)) return "location config"
         const principal = reasoningStatus()?.settings.principal
-        if (principal && isModelValid({ providerID: principal.providerID, modelID: principal.id }))
-          return "global S2"
+        if (principal && isModelValid({ providerID: principal.providerID, modelID: principal.id })) return "global S2"
         if (preferences.recent.some(isModelValid)) return "recent model"
         return "catalog default"
       }
@@ -390,6 +387,7 @@ export const { use: useLocal, provider: LocalProvider } = createSimpleContext({
         current: currentModel,
         selection: currentSelection,
         source: selectionSource,
+        intelligenceStatus: reasoningStatus,
         refreshDefault: reasoning.refetch,
         remember() {
           const current = agent.current()

@@ -1,8 +1,8 @@
 import type { IntelligenceEvaluator, IntelligenceSettings, ModelInfo, ProviderInfo } from "@opencode/client"
 import type { Plugin } from "@opencode/plugin/tui"
-import { Router } from "@opencode/schema/router"
 import { DialogIntegration } from "./dialog-integration"
 import { errorMessage } from "../util/error"
+import { modelDescription, modelLabel, modelRoute } from "../util/model-presentation"
 
 export async function configureReasoning(
   context: Plugin.Context,
@@ -194,7 +194,10 @@ async function chooseModel(
             {
               value: "keep",
               title: `Keep ${current.name}`,
-              description: `${input.providers.find((item) => item.id === current.providerID)?.name ?? current.providerID} · ${current.id}`,
+              description: modelDescription(
+                current,
+                input.providers.find((item) => item.id === current.providerID),
+              ),
               category: "Current",
             },
           ]
@@ -243,20 +246,20 @@ async function chooseModel(
       .map((model) => ({
         value: model.id,
         title: model.name,
-        description: model.id,
+        description: modelDescription(
+          model,
+          input.providers.find((item) => item.id === model.providerID),
+        ),
         category:
           model.id === input.recommended && model.providerID === input.router
             ? "Recommended"
-            : provider === "red-router" || provider === "9router"
-              ? (Router.route(model.id).provider ?? "Router models")
-              : "Models",
+            : modelRoute(
+                model,
+                input.providers.find((item) => item.id === model.providerID),
+              ),
       })),
   })
   return models.find((model) => model.id === chosen)
-}
-
-function modelLabel(model: ModelInfo, providers: ProviderInfo[]) {
-  return `${providers.find((item) => item.id === model.providerID)?.name ?? model.providerID} · ${model.name} (${model.id})`
 }
 
 async function chooseEvaluator(

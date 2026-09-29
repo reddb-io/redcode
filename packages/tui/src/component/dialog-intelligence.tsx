@@ -1,10 +1,11 @@
-import type { IntelligenceStatus } from "@opencode/client"
 import type { Plugin } from "@opencode/plugin/tui"
 import { createResource, onCleanup } from "solid-js"
 import { DialogSelect } from "../ui/dialog-select"
 import { useTheme } from "../context/theme"
 import { errorMessage } from "../util/error"
 import { useLocal } from "../context/local"
+import { evaluatorModelName, evaluatorTransportName } from "../util/intelligence-label"
+import { modelLabel } from "../util/model-presentation"
 
 export function DialogIntelligence(props: { context: Plugin.Context; setup: () => void }) {
   const theme = useTheme().surface("dialog")
@@ -27,13 +28,22 @@ export function DialogIntelligence(props: { context: Plugin.Context; setup: () =
     const current = status()
     if (!current) return "Loading reasoning roles…"
     const selected = model()
-    const s2 = selected ? `${selected.providerID}/${selected.modelID}` : principal(current)
-    const s1 = current.effective.reasoning === "dual"
-      ? current.settings.evaluator
-        ? `${current.settings.evaluator.transport}/${current.settings.evaluator.model}`
-        : "not configured"
-      : "off"
-    return `${current.effective.reasoning} · mode from ${current.effective.source}${current.effective.source === "flag" ? ` (${current.environment})` : ""}\nS2 next prompt: ${s2} (${local.model.source()})\nS2 global default: ${principal(current)}\nS1: ${s1}`
+    const location = props.context.location ?? props.context.data.location.default()
+    const providers = props.context.data.location.provider.list(location) ?? []
+    const models = props.context.data.location.model.list(location) ?? []
+    const describe = (ref: { providerID: string; id: string } | undefined) => {
+      if (!ref) return "not configured"
+      const provider = providers.find((item) => item.id === ref.providerID)
+      const info = models.find((item) => item.providerID === ref.providerID && item.id === ref.id)
+      return info ? modelLabel(info, providers) : `${provider?.name ?? ref.providerID} · ${ref.id} (unavailable)`
+    }
+    const s1 =
+      current.effective.reasoning === "dual"
+        ? current.settings.evaluator
+          ? `${evaluatorTransportName(current.settings.evaluator.transport)} · ${evaluatorModelName(current.settings.evaluator.model)}`
+          : "not configured"
+        : "off"
+    return `${current.effective.reasoning === "dual" ? "Dual" : "Single"} reasoning · ${current.effective.source}${current.effective.source === "flag" ? ` (${current.environment})` : ""}\nS2 current: ${describe(selected && { providerID: selected.providerID, id: selected.modelID })} (${local.model.source()})\nS2 default: ${describe(current.settings.principal)}\nS2 transformations: ${current.settings.fast ? describe(current.settings.fast) : "reuse default"}\nS1 evaluator: ${s1}`
   }
   return (
     <DialogSelect
@@ -69,10 +79,4 @@ export function DialogIntelligence(props: { context: Plugin.Context; setup: () =
       }}
     />
   )
-}
-
-function principal(status: IntelligenceStatus) {
-  return status.settings.principal
-    ? `${status.settings.principal.providerID}/${status.settings.principal.id}`
-    : "not configured"
 }

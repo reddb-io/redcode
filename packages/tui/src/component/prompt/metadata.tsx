@@ -11,6 +11,8 @@ export function PromptMetadataRow(props: {
   auto: boolean
   model: string
   provider: string
+  s1?: { model: string; provider: string }
+  onS1Click?: () => void
   variant?: string
   muted: boolean
   highlight: RGBA
@@ -29,6 +31,7 @@ export function PromptMetadataRow(props: {
       auto: props.auto,
       model: props.model,
       provider: props.provider,
+      s1: props.s1,
       variant: props.variant,
     })
   })
@@ -57,15 +60,8 @@ export function PromptMetadataRow(props: {
               truncate
               fg={fade(props.muted ? theme.text.muted : theme.text.base, props.modelAlpha)}
             >
-              {layout().model}
+              S2 {layout().model}
             </text>
-            <Show when={layout().provider}>
-              {(provider) => (
-                <text flexShrink={0} fg={fade(theme.text.muted, props.modelAlpha)}>
-                  {provider()}
-                </text>
-              )}
-            </Show>
             <Show when={layout().variant}>
               {(variant) => (
                 <>
@@ -79,7 +75,21 @@ export function PromptMetadataRow(props: {
                 </>
               )}
             </Show>
+            <Show when={layout().s1}>
+              {(s1) => (
+                <text flexShrink={0} fg={fade(theme.text.muted, props.modelAlpha)} onMouseUp={props.onS1Click}>
+                  ⁄ S1 {s1()}
+                </text>
+              )}
+            </Show>
           </box>
+        </Show>
+        <Show when={props.mode === "normal" && layout().route}>
+          {(route) => (
+            <text flexShrink={0} fg={fade(theme.text.muted, props.modelAlpha)}>
+              {route()}
+            </text>
+          )}
         </Show>
       </Show>
     </box>
@@ -94,7 +104,8 @@ type Layout = {
   agent?: string
   auto?: boolean
   model: string
-  provider?: string
+  s1?: string
+  route?: string
   variant?: string
 }
 
@@ -105,33 +116,39 @@ function promptMetadataLayout(input: {
   auto?: boolean
   model: string
   provider: string
+  s1?: { model: string; provider: string }
   variant?: string
 }) {
   const agent = input.terminalWidth < 44 ? undefined : input.agent
-  const provider = input.terminalWidth < 44 ? "" : input.provider
+  const s1 = input.s1?.model
+  const route =
+    input.terminalWidth >= 100 ? [input.provider, input.s1?.provider].filter(Boolean).join(" · ") : undefined
   const candidates: Layout[] = [
-    { agent, auto: input.auto, model: input.model, provider, variant: input.variant },
-    { agent, model: input.model, provider, variant: input.variant },
+    { agent, auto: input.auto, model: input.model, s1, variant: input.variant, route },
+    { agent, model: input.model, s1, variant: input.variant, route },
+    { agent, auto: input.auto, model: input.model, s1, variant: input.variant },
+    { agent, model: input.model, s1, variant: input.variant },
     {
       agent,
       model: input.model,
-      provider: provider.split(" / ").at(-1) ?? provider,
+      s1: s1 && Locale.truncateWidth(s1, input.terminalWidth < 70 ? 12 : 24),
       variant: input.variant,
     },
-    { agent, model: input.model, variant: input.variant },
   ]
   const fit = candidates.find((candidate) => stringWidth(text(candidate)) <= input.width)
   if (fit) return fit
 
-  const prefix = agent ? `${agent} · ` : ""
-  const suffix = input.variant ? ` · ${input.variant}` : ""
+  const compact = s1 && Locale.truncateWidth(s1, 12)
+  const prefix = agent ? `${agent} · S2 ` : "S2 "
+  const suffix = compact ? ` ⁄ S1 ${compact}` : ""
+  const showS1 = input.width - stringWidth(prefix) - stringWidth(suffix) >= 9
   return {
     agent,
     model: Locale.truncateWidth(
       input.model,
-      Math.max(9, input.width - stringWidth(prefix) - stringWidth(suffix)),
+      Math.max(1, input.width - stringWidth(prefix) - (showS1 ? stringWidth(suffix) : 0)),
     ).replace(/\s+…$/, "…"),
-    variant: input.variant,
+    s1: showS1 ? compact : undefined,
   }
 }
 
@@ -139,8 +156,9 @@ function text(input: Layout) {
   return [
     ...(input.agent ? [input.agent] : []),
     ...(input.auto ? ["auto"] : []),
-    ...(input.model ? [...(input.agent ? ["·"] : []), input.model] : []),
-    ...(input.provider ? [input.provider] : []),
+    ...(input.model ? [...(input.agent ? ["·"] : []), "S2", input.model] : []),
     ...(input.variant ? ["·", input.variant] : []),
+    ...(input.s1 ? ["⁄", "S1", input.s1] : []),
+    ...(input.route ? [input.route] : []),
   ].join(" ")
 }

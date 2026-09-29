@@ -7,12 +7,20 @@ import { redRouterEndpoint } from "../../intelligence/red-router-endpoint.js"
 import { Integration } from "../../integration.js"
 import { KV } from "../../kv.js"
 import { Model } from "../../model.js"
+import { ModelsDev } from "../../models-dev.js"
 import { Provider } from "../../provider.js"
 import { Hash } from "@opencode/util/hash"
+import { Router } from "@opencode/schema/router"
 
 const catalogModel = Schema.Struct({
   id: Schema.String,
   name: Schema.optional(Schema.String),
+  display_name: Schema.optional(Schema.String),
+  owned_by: Schema.optional(Schema.String),
+  provider: Schema.optional(Schema.Unknown),
+  aliases: Schema.optional(Schema.Array(Schema.String)),
+  via: Schema.optional(Schema.String),
+  flat: Schema.optional(Schema.Boolean),
   type: Schema.optional(Schema.String),
   api_format: Schema.optional(Schema.String),
   supported_endpoints: Schema.optional(Schema.Array(Schema.String)),
@@ -65,7 +73,13 @@ function routerPlugin(options: {
       const credentials = yield* Credential.Service
       const kv = yield* KV.Service
       const bus = yield* Bus.Service
-      const loaded: { models: readonly CatalogModel[]; connection?: Connection; digest?: string } = { models: [] }
+      const modelsDev = yield* ModelsDev.Service
+      const loaded: {
+        models: readonly CatalogModel[]
+        names: ReturnType<typeof catalogNames>
+        connection?: Connection
+        digest?: string
+      } = { models: [], names: catalogNames(yield* modelsDev.get()) }
 
       const resolve = Effect.fn("RouterProvider.resolve")(function* () {
         const all = (yield* credentials.all()).toReversed()
@@ -196,11 +210,22 @@ function routerPlugin(options: {
             package: "@opencode/ai/providers/openai-compatible",
             settings: { baseURL: connection.baseURL, provider: providerID },
           },
-          models: loaded.models.flatMap((item) => model(item, providerID)),
+          models: loaded.models.flatMap((item) => model(item, providerID, loaded.names)),
         })
       })
       yield* bus.subscribe([Credential.Event.Updated, Credential.Event.Switched]).pipe(
         Stream.runForEach(() => safeRefresh()),
+        Effect.forkScoped({ startImmediately: true }),
+      )
+      yield* bus.subscribe(ModelsDev.Event.Refreshed).pipe(
+        Stream.runForEach(() =>
+          modelsDev.get().pipe(
+            Effect.flatMap((catalog) => {
+              loaded.names = catalogNames(catalog)
+              return ctx.provider.reload()
+            }),
+          ),
+        ),
         Effect.forkScoped({ startImmediately: true }),
       )
       yield* Effect.forkScoped(safeRefresh().pipe(Effect.repeat(Schedule.spaced("5 minutes"))), {
@@ -225,7 +250,7 @@ function routerEndpoint(credential: Credential.Info | undefined, fallback: strin
   return url.href.replace(/\/+$/, "")
 }
 
-function model(item: CatalogModel, providerID: Provider.ID): Model.Info[] {
+function model(item: CatalogModel, providerID: Provider.ID, names: ReturnType<typeof catalogNames>): Model.Info[] {
   if (!item.id || IntelligenceEvaluation.isJev(item.id)) return []
   if (item.type !== undefined && !["chat", "llm", "text"].includes(item.type)) return []
   if (item.api_format !== undefined && !["chat-completions", "responses", "openai-responses"].includes(item.api_format))
@@ -244,10 +269,46 @@ function model(item: CatalogModel, providerID: Provider.ID): Model.Info[] {
   if (context < 1 || limit < 1) return []
   const id = Model.ID.make(item.id)
   const input = item.input_modalities ?? ["text"]
+  const route = Router.route(item.id)
+  const reported = Schema.decodeUnknownOption(
+    Schema.Struct({
+      id: Schema.String,
+      name: Schema.optional(Schema.String),
+      slug: Schema.optional(Schema.String),
+      category: Schema.optional(Schema.String),
+      subscription: Schema.optional(Schema.Boolean),
+    }),
+  )(item.provider)
+  const source = Option.getOrUndefined(reported)
+  // A flat ID does not identify its serving provider. For routed IDs the catalog's
+  // owner is authoritative even when the public prefix is an alias (for example oc/).
+  const owner =
+    source?.id ?? (item.flat ? undefined : item.owned_by && item.owned_by !== "combo" ? item.owned_by : route.provider)
+  const upstream = owner
+    ? {
+        id: owner,
+        name: source?.name || names.providers.get(owner) || owner,
+        ...(source?.slug ? { slug: source.slug } : {}),
+        ...(source?.category ? { category: source.category } : {}),
+        ...(source?.subscription === undefined ? {} : { subscription: source.subscription }),
+      }
+    : item.owned_by === "combo"
+      ? { id: "combo", name: "Combo", category: "combo" }
+      : undefined
+  const display = item.display_name?.trim() || item.name?.trim()
   return [
     {
       ...Model.Info.default(providerID, id),
-      name: item.name || item.id,
+      name:
+        display && display !== item.id
+          ? display
+          : owner
+            ? (names.models.get(`${owner}/${route.model}`) ?? names.models.get(`${owner}/${item.id}`) ?? route.model)
+            : item.id,
+      ...(upstream ? { upstream } : {}),
+      ...(item.via ? { via: item.via } : {}),
+      ...(item.aliases?.length ? { aliases: item.aliases } : {}),
+      ...(item.flat ? { flat: true } : {}),
       package: responses
         ? "@opencode/ai/providers/openai-compatible-responses"
         : "@opencode/ai/providers/openai-compatible",
@@ -262,4 +323,11 @@ function model(item: CatalogModel, providerID: Provider.ID): Model.Info[] {
       limit: { context, output: Math.min(limit, context) },
     },
   ]
+}
+
+function catalogNames(catalog: readonly ModelsDev.Snapshot[]) {
+  return {
+    providers: new Map(catalog.map((item) => [item.info.id, item.info.name])),
+    models: new Map(catalog.flatMap((item) => item.models.map((model) => [`${item.info.id}/${model.id}`, model.name]))),
+  }
 }

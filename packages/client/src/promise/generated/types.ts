@@ -419,6 +419,8 @@ export type FormExternalField = { key: string; type: "external"; url: string; ti
 
 export type FormValue = string | number | "Infinity" | "-Infinity" | "NaN" | boolean | Array<string>
 
+export type RouterUpstream = { id: string; slug?: string; name: string; category?: string; subscription?: boolean }
+
 export type ModelReasoningField = "reasoning" | "reasoning_content" | "reasoning_text" | (string & {})
 
 export type ModelMaxTokensField = "max_completion_tokens" | "max_tokens"
@@ -2602,6 +2604,10 @@ export type ModelInfo = {
   canonical?: string
   family?: string
   name: string
+  upstream?: RouterUpstream
+  via?: string
+  aliases?: Array<string>
+  flat?: boolean
   compatibility?: ModelCompatibility
   package?: string
   settings?: ModelSettings

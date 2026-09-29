@@ -3,6 +3,7 @@ export * as Model from "./model.js"
 import { Schema } from "effect"
 import { optional, statics } from "./schema.js"
 import { Provider } from "./provider.js"
+import { Router } from "./router.js"
 import { Money } from "./money.js"
 import { ephemeral, inventory } from "./event.js"
 
@@ -45,7 +46,9 @@ export interface Ref extends Schema.Schema.Type<typeof Ref> {}
 export const Family = Schema.String.pipe(Schema.brand("Model.Family"))
 export type Family = typeof Family.Type
 
-export const Status = Schema.Literals(["alpha", "beta", "deprecated", "active"]).annotate({ identifier: "Model.Status" })
+export const Status = Schema.Literals(["alpha", "beta", "deprecated", "active"]).annotate({
+  identifier: "Model.Status",
+})
 export type Status = typeof Status.Type
 
 export type ReasoningField = "reasoning" | "reasoning_content" | "reasoning_text" | (string & {})
@@ -128,6 +131,10 @@ export const Info = Schema.Struct({
   canonical: Provider.ID.pipe(optional),
   family: Family.pipe(optional),
   name: Schema.String,
+  upstream: Router.Upstream.pipe(optional),
+  via: Schema.String.pipe(optional),
+  aliases: Schema.Array(Schema.String).pipe(optional),
+  flat: Schema.Boolean.pipe(optional),
   compatibility: Compatibility.pipe(optional),
   package: Provider.Package.pipe(optional),
   ...Overlays,

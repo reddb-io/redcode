@@ -9,6 +9,7 @@ import { useConnected } from "./use-connected"
 import { useData } from "../context/data"
 import { modelPreferenceKey } from "../model-preference"
 import { useLocation } from "../context/location"
+import { modelDescription, modelRoute } from "../util/model-presentation"
 
 export function DialogModel(props: { providerID?: string }) {
   const local = useLocal()
@@ -44,7 +45,7 @@ export function DialogModel(props: { providerID?: string }) {
             value: { providerID: model.providerID, modelID: model.id },
             title: model.name,
             releaseDate: model.time.released,
-            description: provider?.name ?? model.providerID,
+            description: modelDescription(model, provider),
             category,
             footer: free(model) ? "Free" : undefined,
             onSelect: () => {
@@ -77,8 +78,8 @@ export function DialogModel(props: { providerID?: string }) {
             providerName: provider?.name ?? model.providerID,
             title: model.name,
             releaseDate: model.time.released,
-            description: [provider?.name ?? model.providerID, model.id, ...(favorite ? ["Favorite"] : [])].join(" · "),
-            category: connected() ? (provider?.name ?? model.providerID) : undefined,
+            description: [modelDescription(model, provider), ...(favorite ? ["Favorite"] : [])].join(" · "),
+            category: connected() ? modelRoute(model, provider) : undefined,
             footer: free(model) ? "Free" : undefined,
             onSelect() {
               onSelect(model.providerID, model.id)

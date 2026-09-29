@@ -56,6 +56,22 @@ describe("Model.Compatibility", () => {
 })
 
 describe("Model.Info", () => {
+  test("preserves routed catalog names without replacing the requested model ID", () => {
+    const model = Model.Info.default(Provider.ID.make("red-router"), Model.ID.make("oc/gpt-6-astra"))
+    const routed = {
+      ...model,
+      name: "GPT-6 Astra",
+      upstream: { id: "opencode", slug: "oc", name: "OpenCode" },
+      aliases: ["opencode/gpt-6-astra"],
+      via: "9Router",
+      flat: false,
+    }
+
+    expect(Schema.encodeSync(Model.Info)(routed)).toMatchObject(routed)
+    expect(Schema.decodeUnknownSync(Model.Info)(routed).id).toBe(model.id)
+    expect(Schema.encodeSync(Model.Info)(model)).not.toHaveProperty("upstream")
+  })
+
   test("provider compaction policy is a typed setting", () => {
     const model = Model.Info.default(Provider.ID.openai, Model.ID.make("gpt-5.4-mini"))
     expect(Schema.encodeSync(Model.Info)({ ...model, settings: { compaction: undefined } }).settings).toEqual({})
