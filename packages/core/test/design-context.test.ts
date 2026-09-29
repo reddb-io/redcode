@@ -92,6 +92,8 @@ let documents: Design.Info[] = []
 let unreadable = false
 
 const store = Layer.mock(DesignStore.Service, {
+  storage: "/design/store",
+  blobs: "/design/blobs",
   list: () =>
     unreadable
       ? Effect.fail(new Design.Error({ code: "unavailable", message: "Design store is unreadable" }))
