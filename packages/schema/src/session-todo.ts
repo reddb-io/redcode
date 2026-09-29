@@ -8,6 +8,32 @@ import { optional, PositiveInt } from "./schema.js"
 export const Status = Schema.Literals(["pending", "in_progress", "blocked", "completed", "cancelled"])
 export const Priority = Schema.Literals(["high", "medium", "low"])
 
+/** The most graphemes a task label keeps before it is cut with an ellipsis. */
+export const TITLE_LIMIT = 80
+
+const graphemes = new Intl.Segmenter(undefined, { granularity: "grapheme" })
+
+/**
+ * The short label a task list shows: the model's title, or, for a task without one, the first line of
+ * its content, cut at the first sentence end when the line is too long. Deterministic and cut on
+ * grapheme boundaries, so accents, CJK and emoji stay whole; surfaces still fit it to their width.
+ */
+export function label(task: { readonly title?: string | undefined; readonly content: string }) {
+  const line = ((task.title?.trim() || task.content).split(/\r?\n/).find((entry) => entry.trim()) ?? "")
+    .replace(/\s+/gu, " ")
+    .trim()
+  const parts = Array.from(graphemes.segment(line), (entry) => entry.segment)
+  if (parts.length <= TITLE_LIMIT) return line
+  // A Latin sentence end must be followed by a space, so file names such as todo.ts are not taken for
+  // one; full-width CJK stops end a sentence on their own.
+  const sentence = /^.+?(?:[.!?](?= )|[。！？])/u.exec(line)?.[0]
+  if (sentence && Array.from(graphemes.segment(sentence)).length <= TITLE_LIMIT) return sentence
+  return `${parts
+    .slice(0, TITLE_LIMIT - 1)
+    .join("")
+    .trimEnd()}…`
+}
+
 export const Source = Schema.Struct({
   type: Schema.Literals(["request", "plan"]),
   id: Schema.String,
@@ -48,6 +74,11 @@ export type Evidence = typeof Evidence.Type
 
 export const PlanTask = Schema.Struct({
   key: Schema.String.check(Schema.isMinLength(1)),
+  title: optional(
+    Schema.String.annotate({
+      description: `Short one-line label for the task list, at most ${TITLE_LIMIT} characters; content keeps the full task`,
+    }),
+  ),
   content: Schema.String.check(Schema.isMinLength(1)),
   criterion: Schema.String.check(Schema.isMinLength(1)),
   quote: Schema.String.check(Schema.isMinLength(1)),
@@ -63,6 +94,13 @@ const tracking = {
     }),
   ),
   reason: optional(Schema.String),
+  // The task list shows the title and the model reads content, so a long task stays readable in a
+  // narrow panel without losing its definition of done.
+  title: optional(
+    Schema.String.annotate({
+      description: `Short one-line label shown in the task list: imperative, at most ${TITLE_LIMIT} characters. Put the full task and its acceptance detail in content`,
+    }),
+  ),
 }
 
 export const Input = Schema.Struct({
@@ -96,7 +134,8 @@ export const Input = Schema.Struct({
   // Content and priority are required to create a task; an update addressed by id keeps the stored values.
   content: optional(
     Schema.String.check(Schema.isMinLength(1)).annotate({
-      description: "Brief description of the task; required when creating, optional when updating by id",
+      description:
+        "The full task, with the detail needed to do and verify it; required when creating, optional when updating by id",
     }),
   ),
   // Nothing is required of one item: an update names only its id, revision and the fields that change,
@@ -112,20 +151,21 @@ export const Input = Schema.Struct({
 export interface Input extends Schema.Schema.Type<typeof Input> {}
 
 // Models routinely name the description text, title or task. Accept those spellings at the tool
-// boundary and fold them into content before the canonical Input is validated, so the JSON schema
-// the model sees still only advertises content.
+// boundary and fold them into content before the canonical Input is validated. Content is the first
+// non-blank of content, text, title and task, exactly as before titles existed; a title is kept as the
+// short label only when content or text supplied the content, so {"title":"X"} is still a task X.
 export const ModelInput = Schema.Struct({
   ...Input.fields,
   // Empty content is checked after folding, so {"content":"","title":"X"} still becomes X.
   content: optional(Schema.String),
   text: optional(Schema.String),
-  title: optional(Schema.String),
   task: optional(Schema.String),
 }).pipe(
   Schema.decodeTo(Input, {
     decode: SchemaGetter.transform(({ text, title, task, ...item }) => {
       const content = [item.content, text, title, task].find((value) => value?.trim()) ?? item.content
-      return content === undefined ? item : { ...item, content }
+      const labelled = title?.trim() && (item.content?.trim() || text?.trim()) ? { title } : {}
+      return content === undefined ? item : { ...item, ...labelled, content }
     }),
     encode: SchemaGetter.passthrough({ strict: false }),
   }),
@@ -148,7 +188,7 @@ export const Info = Schema.Struct({
       paraphrase: optional(Schema.String),
     }),
   ),
-  content: Schema.String.annotate({ description: "Brief description of the task" }),
+  content: Schema.String.annotate({ description: "The full task the model works from" }),
   status: Schema.String.annotate({
     description: "pending, in_progress, blocked, completed, cancelled; historical snapshots may contain other values",
   }),

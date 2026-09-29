@@ -960,6 +960,7 @@ export type Todo = {
   id?: string
   revision?: number
   reason?: string
+  title?: string
   legacyStatus?: string
   source?: TodoSource
   criterion?: string

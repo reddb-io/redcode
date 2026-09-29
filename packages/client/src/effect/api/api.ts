@@ -529,6 +529,7 @@ export type SessionTodoListOutput = ReadonlyArray<{
   readonly id?: string | undefined
   readonly revision?: number | undefined
   readonly reason?: string | undefined
+  readonly title?: string | undefined
   readonly legacyStatus?: string | undefined
   readonly source?:
     | {

@@ -109,6 +109,9 @@ const make = Effect.gen(function* () {
         if (seen.has(key)) return yield* new SessionTodo.Error({ message: `Duplicate task update: ${content}` })
         seen.add(key)
         if (input.origin?.type === "plan" && before) return before
+        // A title labels the content it was written for: new content without one drops the old title,
+        // and the list derives a label from the new content instead.
+        const title = item.title?.trim() || (content === before?.content ? before.title : undefined)
         const reason = item.reason?.trim() || (before?.status === status ? before.reason : undefined)
         if ((status === "blocked" || status === "cancelled") && !reason)
           return yield* new SessionTodo.Error({
@@ -234,6 +237,7 @@ const make = Effect.gen(function* () {
         return {
           id,
           revision: before?.revision ?? 1,
+          ...(title ? { title } : {}),
           content,
           status: capped ? ("blocked" as const) : status,
           priority,
@@ -292,6 +296,7 @@ const make = Effect.gen(function* () {
       const before = previous.find((item) => item.id === task.id)
       const unchanged =
         before &&
+        before.title === task.title &&
         before.content === task.content &&
         before.status === status &&
         before.priority === task.priority &&
@@ -506,6 +511,7 @@ const make = Effect.gen(function* () {
                   reason: task.reason ?? null,
                   legacy_status: task.legacyStatus ?? null,
                   details: {
+                    title: task.title,
                     source: task.source,
                     criterion: task.criterion,
                     evidence: task.evidence,
@@ -524,6 +530,7 @@ const make = Effect.gen(function* () {
                     reason: task.reason ?? null,
                     legacy_status: task.legacyStatus ?? null,
                     details: {
+                      title: task.title,
                       source: task.source,
                       criterion: task.criterion,
                       evidence: task.evidence,

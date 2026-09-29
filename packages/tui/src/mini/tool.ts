@@ -15,6 +15,7 @@ import os from "os"
 import path from "path"
 import stripAnsi from "strip-ansi"
 import type { SessionMessageAssistantTool } from "@opencode/client/promise"
+import { SessionTodo } from "@opencode/schema/session-todo"
 import { LANGUAGE_EXTENSIONS } from "../util/filetype"
 import { Locale } from "../util/locale"
 import {
@@ -40,6 +41,9 @@ type ToolView = {
 type ToolPhase = "start" | "progress" | "final"
 
 type ToolDict = Record<string, unknown>
+
+/** The widest inline summary a tool line gets before it is cut with an ellipsis. */
+const INLINE_WIDTH = 160
 
 type PatchFile = {
   status?: string
@@ -126,6 +130,7 @@ type ToolName =
   | "webfetch"
   | "websearch"
   | "skill"
+  | "todowrite"
 
 type ToolRule = {
   view: ToolView
@@ -334,9 +339,10 @@ function displayPath(p: ToolProps, input?: string, opts: { home?: boolean } = {}
 function fallbackInline(ctx: ToolFrame): ToolInline {
   const title = Object.keys(ctx.input).length > 0 ? JSON.stringify(ctx.input) : "Unknown"
 
+  // An unknown tool's input can hold a whole plan or document; its inline line stays one summary.
   return {
     icon: "⚙",
-    title: `${ctx.name} ${title}`,
+    title: Locale.truncateWidth(`${ctx.name} ${title}`, INLINE_WIDTH),
   }
 }
 
@@ -432,6 +438,24 @@ function runTask(p: ToolProps): ToolInline {
     title: desc || `${kind} Subagent`,
     description: desc ? `${kind} Agent` : undefined,
   }
+}
+
+// A task update names its tasks by their short labels; the full task text is for the model and
+// can run to thousands of characters, which would make `run` print one enormous line.
+function runTodo(p: ToolProps): ToolInline {
+  const todos = Array.isArray(p.frame.input.todos) ? p.frame.input.todos.map(dict) : []
+  if (!todos.length) return { icon: "☐", title: "Read tasks" }
+  const labels = todos.map((item) => {
+    const content = [item.content, item.text, item.task].map(text).find((value) => value.trim()) ?? ""
+    if (content.trim() || text(item.title).trim()) return SessionTodo.label({ title: text(item.title), content })
+    return [text(item.id), text(item.status)].filter(Boolean).join(" ")
+  })
+  return { icon: "☐", title: Locale.truncateWidth(`Tasks ${labels.join(" · ")}`, INLINE_WIDTH) }
+}
+
+function scrollTodoStart(p: ToolProps): string {
+  const inline = runTodo(p)
+  return `${inline.icon} ${inline.title}`
 }
 
 function runSkill(p: ToolProps): ToolInline {
@@ -1062,6 +1086,16 @@ const TOOL_RULES = {
     run: runSkill,
     scroll: {
       start: scrollSkillStart,
+    },
+  },
+  todowrite: {
+    view: {
+      output: false,
+      final: false,
+    },
+    run: runTodo,
+    scroll: {
+      start: scrollTodoStart,
     },
   },
 } as const satisfies ToolRegistry

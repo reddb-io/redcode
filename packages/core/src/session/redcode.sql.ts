@@ -57,7 +57,7 @@ export const TodoTable = sqliteTable(
     reason: text(),
     legacy_status: text(),
     details: text({ mode: "json" }).$type<
-      Pick<SessionTodo.Info, "source" | "criterion" | "evidence" | "scopeChange" | "closedAt">
+      Pick<SessionTodo.Info, "title" | "source" | "criterion" | "evidence" | "scopeChange" | "closedAt">
     >(),
     ...Timestamps,
   },

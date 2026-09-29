@@ -104,6 +104,28 @@ describe("Mini tool presentation", () => {
     ).toBe('→ Skill "effect"')
   })
 
+  test("names task updates by their short labels on one bounded line", () => {
+    const todo = (todos: ReadonlyArray<Record<string, unknown>>) =>
+      toolInlineInfo(
+        canonicalToolPart("todowrite", {
+          status: "completed",
+          input: { todos },
+          metadata: {},
+          content: [{ type: "text", text: "{}" }],
+        }),
+      ).title
+
+    expect(
+      todo([
+        { title: "Exportar relatório", content: "Exportar o relatório completo com todas as linhas" },
+        { id: "todo_2", status: "completed" },
+      ]),
+    ).toBe("Tasks Exportar relatório · todo_2 completed")
+    expect(todo([{ content: "a".repeat(1500) }])).toBe(`Tasks ${"a".repeat(79)}…`)
+    expect(todo(Array.from({ length: 5 }, (_, index) => ({ content: `${index}`.repeat(1500) }))).length).toBeLessThanOrEqual(160)
+    expect(todo([])).toBe("Read tasks")
+  })
+
   test("renders compact search metadata", () => {
     expect(
       toolInlineInfo(
