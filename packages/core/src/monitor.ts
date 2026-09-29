@@ -253,16 +253,18 @@ export const make = Effect.gen(function* () {
 
   /** Tells clients a monitor settled, once its terminal record (and its handover) is written. */
   const announce = (info: Monitor.Info) =>
-    Effect.asVoid(
-      info.status === "expired"
-        ? bus.publish(Monitor.Event.Expired, { sessionID: info.sessionID, monitorID: info.id, command: info.command })
-        : bus.publish(Monitor.Event.Finished, {
+    info.status === "expired"
+      ? bus
+          .publish(Monitor.Event.Expired, { sessionID: info.sessionID, monitorID: info.id, command: info.command })
+          .pipe(Effect.asVoid)
+      : bus
+          .publish(Monitor.Event.Finished, {
             sessionID: info.sessionID,
             monitorID: info.id,
             command: info.command,
             status: info.status,
-          }),
-    )
+          })
+          .pipe(Effect.asVoid)
 
   /**
    * Hands a terminal row to its Session, recording what came of it. What happened since the
