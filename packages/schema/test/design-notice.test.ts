@@ -1,6 +1,7 @@
 import { describe, expect, test } from "bun:test"
 import { Design } from "../src/design.js"
 import { DesignNotice } from "../src/design-notice.js"
+import { SessionMessage } from "../src/session-message.js"
 
 const checkout = Design.ID.make("design_checkout")
 
@@ -30,7 +31,7 @@ describe("DesignNotice.feedback", () => {
   test("recovers the compact card from a rendered review", () => {
     expect(DesignNotice.feedback(review)).toEqual({
       id: checkout,
-      feedback: "msg_review",
+      feedback: SessionMessage.ID.make("msg_review"),
       revision: "rev_1",
       variant: "stone",
       ended: true,
