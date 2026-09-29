@@ -94,6 +94,8 @@ export type PromptProps = {
   ref?: (ref: PromptRef | undefined) => void
   hint?: JSX.Element
   right?: JSX.Element
+  /** A compact live-status marker in the footer row, such as running monitors; render nothing when idle. */
+  indicator?: JSX.Element
   showPlaceholder?: boolean
   placeholders?: {
     normal?: string[]
@@ -346,14 +348,17 @@ export function Prompt(props: PromptProps) {
   const hasRightContent = createMemo(() => Boolean(props.right))
 
   function promptModelWarning() {
-    toast.show({
-      variant: "warning",
-      message: "Connect an integration to send prompts",
-      duration: 3000,
-    })
-    if (!connected()) {
-      dialog.replace(() => <DialogIntegration />)
+    if (connected()) {
+      toast.show({ variant: "warning", message: "Choose a model with /models to send prompts", duration: 3000 })
+      return
     }
+    // A fresh install has no provider; open the connect flow instead of letting the prompt fail.
+    toast.show({
+      variant: "info",
+      message: "No provider connected. Connect one (or set a provider key such as ANTHROPIC_API_KEY) to send prompts",
+      duration: 6000,
+    })
+    dialog.replace(() => <DialogIntegration />)
   }
 
   function dismissEditorContext() {
@@ -2073,6 +2078,7 @@ export function Prompt(props: PromptProps) {
                 </Switch>
               </box>
             </Slot>
+            {props.indicator}
             <Slot path="prompt.footer.file" input={footerInput()}>
               <Show when={editorContextLabelState() !== "none" ? editorFileLabelDisplay() : undefined}>
                 {(file) => (

@@ -6,6 +6,7 @@ import { SplitBorder } from "../../../ui/border"
 import { Keymap } from "../../../context/keymap"
 import { SubagentsTab } from "./subagents-tab"
 import { McpsTab } from "./mcps-tab"
+import { MonitorsTab, type SessionMonitors } from "./monitors-tab"
 import { ShellTab } from "./shell-tab"
 import { TerminalsTab } from "./terminals-tab"
 import { useConfig } from "../../../config"
@@ -20,6 +21,7 @@ export type ComposerProps = {
   defaultTab?: string
   onClose?: () => void
   visibleTerminalID?: string
+  monitors?: SessionMonitors
 }
 
 export function Composer(props: ComposerProps) {
@@ -134,6 +136,7 @@ export function Composer(props: ComposerProps) {
             <SubagentsTab sessionID={props.sessionID} />
             <McpsTab sessionID={props.sessionID} />
             <Slot path="session.composer.tabs" input={{ sessionID: props.sessionID }} />
+            <Show when={props.monitors}>{(monitors) => <MonitorsTab monitors={monitors()} />}</Show>
             <ShellTab sessionID={props.sessionID} />
             <Show when={config.session.terminal}>
               <TerminalsTab sessionID={props.sessionID} visibleTerminalID={props.visibleTerminalID} />

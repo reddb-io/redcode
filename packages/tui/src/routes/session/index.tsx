@@ -57,10 +57,10 @@ import { useRenderer, useTerminalDimensions, type JSX } from "@opentui/solid"
 import { useClient } from "../../context/client"
 import { useEditorContext } from "../../context/editor"
 import { openEditor } from "../../editor"
-import { browserDisabled, designBrowser, openUrl } from "@opencode/util/open"
+import { browserDisabled, NO_BROWSER, openDesignUrl } from "@opencode/util/open"
+import { openDesignReview } from "@opencode/util/design-review"
 import { useDialog } from "../../ui/dialog"
 import { DialogSelect } from "../../ui/dialog-select"
-import { DialogMonitors } from "../../component/dialog-monitors"
 import { useGoalCommand } from "../../component/goal-command"
 import { IntelligenceGoalCommand } from "@opencode/core/intelligence/goal-command"
 import { ProviderFailure } from "@opencode/core/session/provider-failure"
@@ -71,6 +71,7 @@ import { DialogMessage } from "./dialog-message"
 import { DialogFork } from "./dialog-fork"
 import { DialogTimeline } from "./dialog-timeline"
 import { Composer } from "./composer"
+import { createSessionMonitors, MonitorsIndicator } from "./composer/monitors-tab"
 import { filetype } from "../../util/filetype"
 import parsers from "../../parsers-config"
 import { errorMessage } from "../../util/error"
@@ -78,7 +79,6 @@ import { configuredDesignBrowser } from "../../util/design-browser"
 import { DesignNotice } from "@opencode/schema/design-notice"
 import { DesignApprovalNotice } from "../../component/design-approval"
 import { DesignFeedbackNotice } from "../../component/design-feedback"
-import { openDesignReview } from "./design-review"
 import { useToast } from "../../ui/toast"
 import stripAnsi from "strip-ansi"
 import { usePromptRef } from "../../context/prompt"
@@ -259,6 +259,8 @@ export function Session(props: {
   })
   props.onTerminalPicker?.(() => setComposer({ open: true, tab: "terminals" }))
   onCleanup(() => props.onTerminalPicker?.(undefined))
+  const openMonitors = () => setComposer({ open: true, tab: "monitors" })
+  const monitors = createSessionMonitors({ sessionID: () => route.sessionID, onOpen: openMonitors })
   createEffect(() => {
     if (props.promptMuted && composer.open) setComposer("open", false)
   })
@@ -312,13 +314,13 @@ export function Session(props: {
       sessionID: route.sessionID,
       endpoint,
       explicit,
-      disabled: blocked,
+      disabledBy: blocked ? NO_BROWSER : undefined,
       launch: async (url) => {
         const config = await client.api.config.get({ location: location() }).catch(() => [])
-        return openUrl(url, { browser: designBrowser(configuredDesignBrowser(config)) })
+        return openDesignUrl(url, { configured: configuredDesignBrowser(config) })
       },
     })
-    if (notice) toast.show({ ...notice, duration: 8_000 })
+    if (notice) toast.show({ variant: notice.variant, message: notice.message, duration: 8_000 })
   }
   onCleanup(
     client.event.on("session.tool.success", (event) => {
@@ -1004,7 +1006,10 @@ export function Session(props: {
       id: "session.monitors",
       group: "Session",
       slash: { name: "monitors" },
-      run: () => dialog.replace(() => <DialogMonitors sessionID={route.sessionID} />),
+      run: () => {
+        openMonitors()
+        dialog.clear()
+      },
     },
     {
       title: "Goal",
@@ -1784,6 +1789,7 @@ export function Session(props: {
                   setComposer("open", false)
                 }}
                 visibleTerminalID={props.visibleTerminalID}
+                monitors={monitors}
               />
               <Switch>
                 <Match when={composer.open || (!!session()?.parentID && forms().length === 0)}>{null}</Match>
@@ -1831,6 +1837,7 @@ export function Session(props: {
                       return mutatePending("steer", next.id)
                     }}
                     sessionID={route.sessionID}
+                    indicator={<MonitorsIndicator monitors={monitors} onOpen={openMonitors} />}
                   />
                 </Match>
               </Switch>

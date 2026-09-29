@@ -119,6 +119,7 @@ export function createFetch(override?: FetchHandler, events?: ReturnType<typeof 
       })
     if (url.pathname === "/api/lsp") return json({ location: { directory }, data: [] })
     if (/^\/api\/session\/[^/]+\/diff$/.test(url.pathname)) return json({ data: [] })
+    if (request.method === "GET" && /^\/api\/session\/[^/]+\/monitor$/.test(url.pathname)) return json({ data: [] })
     if (request.method === "GET" && /^\/api\/session\/[^/]+\/budget$/.test(url.pathname))
       return json({
         data: {

@@ -271,7 +271,7 @@ test("failed blank-session creation can be retried from the keyboard", async () 
   expect(attempts).toBe(2)
 })
 
-test("/monitors inspects evidence and stops observation through the V2 session API", async () => {
+test("/monitors opens the Monitors drawer to inspect evidence and stop observation via V2", async () => {
   await using state = await tmpdir()
   const cancelled: string[] = []
   const monitor = {
@@ -279,39 +279,42 @@ test("/monitors inspects evidence and stops observation through the V2 session A
     sessionID: "ses_fixture",
     command: "watch-build",
     workdir: directory,
-    options: { mode: "once" },
+    options: { mode: "once", deadline_ms: 600_000 },
     status: "running",
-    created: 1,
-    updated: 1,
+    created: Date.now(),
+    updated: Date.now(),
     attempts: 2,
-    delivery: "observed",
-    evidence: { exit: 0, output: "Build evidence visible", truncated: false },
+    delivery: "pending",
+    evidence: { exit: 0, output: "Build started\nBuild evidence visible", truncated: false },
   }
   await using setup = await createAppFixture({
     state: state.path,
     fetch: (url, request) => {
       if (/^\/api\/session\/[^/]+\/monitor$/.test(url.pathname)) return json({ data: [monitor] })
-      if (/\/monitor\/monitor_fixture$/.test(url.pathname)) return json({ data: monitor })
       if (/\/monitor\/monitor_fixture\/cancel$/.test(url.pathname) && request.method === "POST") {
         cancelled.push(url.pathname)
         monitor.status = "cancelled"
+        monitor.delivery = "suppressed"
         return json({ data: monitor })
       }
     },
   })
   await setup.ready
-  await setup.waitForFrame((frame) => !frame.includes("Opening session") && frame.includes("ctrl+p commands"))
+  await setup.waitForFrame((frame) => !frame.includes("Opening session") && frame.includes("1 monitor"))
   await setup.mockInput.typeText("/monitors")
   setup.mockInput.pressEnter()
-  await setup.waitForFrame((frame) => frame.includes("Session monitors") && frame.includes("watch-build"))
+  await setup.waitForFrame(
+    (frame) =>
+      frame.includes("Monitors") && frame.includes("watch-build") && frame.includes("2 checks · Build evidence visible"),
+  )
+  expect(setup.captureCharFrame()).not.toContain("Build started")
   setup.mockInput.pressEnter()
-  await setup.waitForFrame((frame) => frame.includes("View last result") && frame.includes("Stop monitoring"))
-  setup.mockInput.pressEnter()
-  await setup.waitForFrame((frame) => frame.includes("Build evidence visible"))
-  setup.mockInput.pressArrow("down")
+  await setup.waitForFrame((frame) => frame.includes("Build started"))
+  setup.mockInput.pressKey("d", { ctrl: true })
+  await setup.waitForFrame((frame) => frame.includes("Stop observing watch-build?"))
   setup.mockInput.pressEnter()
   await setup.waitForFrame(
-    (frame) => cancelled.length === 1 && frame.includes("cancelled: watch-build") && !frame.includes("Stop monitoring"),
+    (frame) => cancelled.length === 1 && frame.includes("cancelled") && frame.includes("not delivered"),
   )
   expect(cancelled[0]).toMatch(/^\/api\/session\/ses[^/]+\/monitor\/monitor_fixture\/cancel$/)
 })
