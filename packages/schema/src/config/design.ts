@@ -37,7 +37,7 @@ export class Info extends Schema.Class<Info>("ConfigV2.Design")({
   }),
   browser: Schema.String.pipe(Schema.optional).annotate({
     description:
-      'Browser that opens Design review pages: "default" for the system browser, an app name, or an executable path. Equivalent to REDCODE_DESIGN_BROWSER, which wins when both are set. Default: Chrome or Chromium when installed, else the system browser.',
+      'Browser that opens Design review pages: "default" for the system browser, "chrome" or "chromium" for that installed browser, "app" for a Chrome or Chromium app window (--app), an app name, or an executable path. Equivalent to REDCODE_DESIGN_BROWSER, which wins when both are set. Default: Chrome or Chromium when installed, else the system browser.',
   }),
   breakpoints: Schema.Array(Schema.Int.check(Schema.isBetween({ minimum: 240, maximum: 3840 })))
     .check(Schema.isMinLength(1), Schema.isMaxLength(6))

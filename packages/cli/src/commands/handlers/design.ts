@@ -1,12 +1,14 @@
 import { EOL } from "node:os"
+import { log } from "@clack/prompts"
 import { OpenCode, type ConfigEntry } from "@opencode/client"
 import { Service } from "@opencode/client/effect/service"
-import { designBrowser } from "@opencode/util/open"
+import { configuredDesignBrowser } from "@opencode/tui/util/design-browser"
+import { openDesignReview } from "@opencode/util/design-review"
+import { browserDisabled, NO_BROWSER, openDesignUrl } from "@opencode/util/open"
 import { Effect, Option, Schema } from "effect"
 import { Commands } from "../commands"
 import { Runtime } from "../../framework/runtime"
 import { ServerConnection } from "../../services/server-connection"
-import { openUrl } from "../../ui/prompt"
 import { selfCommand } from "../../util/process"
 
 export default Runtime.handler(
@@ -79,9 +81,17 @@ export default Runtime.handler(
     const entries = yield* Effect.tryPromise(() => client.config.get({ location: { directory: process.cwd() } })).pipe(
       Effect.orElseSucceed((): ConfigEntry[] => []),
     )
-    const configured = entries
-      .filter((entry): entry is Extract<ConfigEntry, { type: "document" }> => entry.type === "document")
-      .findLast((entry) => typeof entry.info.design?.browser === "string")?.info.design?.browser
-    yield* openUrl(link.url, { browser: designBrowser(configured) })
+    // The printed link stays the command's output; the launch claims through the server like the TUI and app.
+    const notice = yield* Effect.tryPromise(() =>
+      openDesignReview({
+        sessionID,
+        endpoint: { url: server.endpoint.url, headers: Service.headers(server.endpoint) },
+        explicit: true,
+        disabledBy: browserDisabled() ? NO_BROWSER : undefined,
+        launch: (url) => openDesignUrl(url, { configured: configuredDesignBrowser(entries) }),
+      }),
+    )
+    if (notice?.variant === "error") log.error(notice.message)
+    if (notice?.variant === "info") log.info(notice.message)
   }),
 )

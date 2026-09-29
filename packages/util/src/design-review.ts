@@ -1,9 +1,10 @@
 import { Option, Schema } from "effect"
-import { NO_BROWSER } from "@opencode/util/open"
 
 export interface Notice {
   readonly variant: "info" | "error"
   readonly message: string
+  /** The review link, when the server gave one, so a surface can offer to open it by hand. */
+  readonly url?: string
 }
 
 const Claim = Schema.Struct({
@@ -14,18 +15,19 @@ const Claim = Schema.Struct({
 const Link = Schema.Struct({ url: Schema.String })
 
 /**
- * Opens a Session's Design review in the browser at most once per review. The launch is claimed on the
- * server, which counts connected review pages and sees every client's claims: no duplicate tab, a publish
- * right after a request opens no second one, and a launch that opens no browser gives its claim back.
- * `explicit` is the user's request; a publish (`explicit: false`) stays quiet unless something failed.
- * Returns the toast to show, if any; every notice carries the review URL so the user can open it by hand.
+ * Opens a Session's Design review in a browser at most once per review, from any surface (TUI, CLI, web or
+ * desktop app). The launch is claimed on the server, which counts connected review pages and sees every
+ * client's claims: no duplicate tab, a publish right after a request opens no second one, and a launch that
+ * opens no browser gives its claim back. `explicit` is the user's request; a publish (`explicit: false`)
+ * stays quiet unless something failed. Returns the notice to show, if any; every notice carries the review
+ * URL so the user can open it by hand. It never launches anything itself: `launch` does.
  */
 export async function openDesignReview(input: {
   readonly sessionID: string
   readonly endpoint: { readonly url: string; readonly headers?: Record<string, string> }
   readonly explicit: boolean
-  /** Whether `REDCODE_NO_BROWSER` forbids launches; nothing is claimed then. */
-  readonly disabled: boolean
+  /** The variable forbidding browser launches (such as `REDCODE_NO_BROWSER`); nothing is claimed then. */
+  readonly disabledBy?: string
   /** Opens the URL in a browser; rejects when none opened. */
   readonly launch: (url: string) => Promise<unknown>
   readonly fetch?: (url: URL, init?: RequestInit) => Promise<Response>
@@ -45,10 +47,15 @@ export async function openDesignReview(input: {
       )
       .catch(() => undefined)
   const unreachable: Notice = { variant: "error", message: "Could not ask the server for the Design review link." }
-  if (input.disabled) {
+  const failed = (url: string): Notice => ({
+    variant: "error",
+    message: `Could not open a browser. Design review: ${url}`,
+    url,
+  })
+  if (input.disabledBy) {
     const url = await link()
     return url
-      ? { variant: "info", message: `Browser launch is disabled by ${NO_BROWSER}. Design review: ${url}` }
+      ? { variant: "info", message: `Browser launch is disabled by ${input.disabledBy}. Design review: ${url}`, url }
       : unreachable
   }
   const claim = await post("/launch", { explicit: input.explicit })
@@ -57,19 +64,21 @@ export async function openDesignReview(input: {
     )
     .catch(() => undefined)
   if (!claim) {
-    // A server without launch claims cannot count review pages; open its plain link as before.
+    // A server without launch claims (or one refusing this client's claim) cannot count review pages;
+    // open its plain link as before.
     const url = await link()
     if (!url) return unreachable
     return input.launch(url).then(
       () => undefined,
-      () => ({ variant: "error" as const, message: `Could not open a browser. Design review: ${url}` }),
+      () => failed(url),
     )
   }
   if (claim.outcome === "connected")
     return input.explicit
       ? {
           variant: "info",
-          message: `The Design review is already open in a browser tab; switch to it there (the terminal cannot focus it). ${claim.url}`,
+          message: `The Design review is already open in a browser tab; switch to it there. ${claim.url}`,
+          url: claim.url,
         }
       : undefined
   if (claim.outcome === "pending")
@@ -77,6 +86,7 @@ export async function openDesignReview(input: {
       ? {
           variant: "info",
           message: `A Design review tab was just requested, or a review page just closed; no new tab was opened. Design review: ${claim.url}`,
+          url: claim.url,
         }
       : undefined
   if (
@@ -87,5 +97,5 @@ export async function openDesignReview(input: {
   )
     return undefined
   if (claim.token !== undefined) await post("/launch/release", { token: claim.token }).catch(() => undefined)
-  return { variant: "error", message: `Could not open a browser. Design review: ${claim.url}` }
+  return failed(claim.url)
 }

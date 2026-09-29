@@ -39,6 +39,7 @@
     "./prompt/content": "./src/prompt/content.ts",
     "./prompt/display": "./src/prompt/display.ts",
     "./parsers-config": "./src/parsers-config.ts",
+    "./util/design-browser": "./src/util/design-browser.ts",
     "./util/error": "./src/util/error.ts",
     "./util/filetype": "./src/util/filetype.ts",
     "./util/form": "./src/util/form.ts",

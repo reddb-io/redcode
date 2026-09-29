@@ -261,7 +261,12 @@ function makeRoutes<AuthError, AuthServices>(
       const browser = DesignBrowser.routes(() => [
         ...(options.hostname ? [options.hostname] : []),
         ...serviceURLs().map((url) => new URL(url).hostname),
-      ]).pipe(Layer.provide(services), Layer.provide(auth), Layer.provideMerge(api))
+      ]).pipe(
+        Layer.provide(services),
+        Layer.provide(auth),
+        Layer.provide(Layer.succeed(CorsConfig, options)),
+        Layer.provideMerge(api),
+      )
       return runV1Migration ? Layer.merge(browser, V1Migration.layer.pipe(Layer.provide(services))) : browser
     }),
   )

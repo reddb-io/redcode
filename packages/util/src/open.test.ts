@@ -1,5 +1,13 @@
 import { describe, expect, test } from "bun:test"
-import { BrowserDisabledError, browserDisabled, designBrowser, openPath, openUrl } from "./open.js"
+import {
+  BrowserDisabledError,
+  browserDisabled,
+  designBrowser,
+  designLaunch,
+  openDesignUrl,
+  openPath,
+  openUrl,
+} from "./open.js"
 
 describe("openUrl", () => {
   test("rejects values that are not URLs", async () => {
@@ -24,6 +32,10 @@ describe("openUrl", () => {
     expect(error instanceof BrowserDisabledError && error.target).toBe("https://example.com/review?ticket=a")
     expect(error instanceof Error && error.message).toContain("https://example.com/review?ticket=a")
     await expect(openPath("/tmp/redcode.log", { env })).rejects.toBeInstanceOf(BrowserDisabledError)
+    await expect(openDesignUrl("https://example.com/review", { env, configured: "app" })).rejects.toBeInstanceOf(
+      BrowserDisabledError,
+    )
+    await expect(openDesignUrl("file:///etc/hosts", { env })).rejects.toThrow("Only http and https links")
   })
 })
 
@@ -49,5 +61,82 @@ describe("designBrowser", () => {
     expect(designBrowser(" firefox ", {})).toBe("firefox")
     expect(designBrowser(null, { REDCODE_DESIGN_BROWSER: " " })).toBeUndefined()
     expect(designBrowser(undefined, {})).toBeUndefined()
+  })
+})
+
+describe("designLaunch", () => {
+  const url = "http://127.0.0.1:4096/design/session/ses_a/review?ticket=signed"
+  /** A machine whose only files are `files`; nothing is launched or probed beyond them. */
+  const machine = (platform: NodeJS.Platform, files: string[], env: Record<string, string | undefined> = {}) => ({
+    platform,
+    env: { PATH: "/usr/local/bin:/usr/bin", ...env },
+    home: "/home/me",
+    exists: (file: string) => files.includes(file),
+  })
+
+  test("prefers an installed Chrome, then Chromium, else the system browser", () => {
+    expect(designLaunch(url, undefined, machine("linux", ["/usr/bin/chromium", "/usr/bin/google-chrome-stable"]))).toEqual({
+      kind: "tab",
+      app: "/usr/bin/google-chrome-stable",
+    })
+    expect(designLaunch(url, undefined, machine("linux", ["/usr/bin/chromium-browser"]))).toEqual({
+      kind: "tab",
+      app: "/usr/bin/chromium-browser",
+    })
+    expect(designLaunch(url, undefined, machine("linux", []))).toEqual({ kind: "system" })
+  })
+
+  test("follows PATH order for the same browser name", () => {
+    expect(
+      designLaunch(url, undefined, machine("linux", ["/usr/bin/google-chrome", "/usr/local/bin/google-chrome"])),
+    ).toEqual({ kind: "tab", app: "/usr/local/bin/google-chrome" })
+  })
+
+  test("chrome and chromium pick that family only", () => {
+    const linux = machine("linux", ["/usr/bin/google-chrome", "/usr/bin/chromium"])
+    expect(designLaunch(url, "Chromium", linux)).toEqual({ kind: "tab", app: "/usr/bin/chromium" })
+    expect(designLaunch(url, "chrome", linux)).toEqual({ kind: "tab", app: "/usr/bin/google-chrome" })
+    expect(designLaunch(url, "chrome", machine("linux", ["/usr/bin/chromium"]))).toEqual({ kind: "system" })
+  })
+
+  test("app opens a Chromium app window with the review URL as its only argument", () => {
+    expect(designLaunch(url, "app", machine("linux", ["/usr/bin/chromium"]))).toEqual({
+      kind: "window",
+      app: "/usr/bin/chromium",
+      arguments: [`--app=${url}`],
+      newInstance: false,
+    })
+    expect(designLaunch(url, "app", machine("darwin", ["/home/me/Applications/Google Chrome.app"]))).toEqual({
+      kind: "window",
+      app: "google chrome",
+      arguments: [`--app=${url}`],
+      newInstance: true,
+    })
+    expect(designLaunch(url, "app", machine("linux", []))).toEqual({ kind: "system" })
+  })
+
+  test("finds macOS bundles and Windows installs by path", () => {
+    expect(designLaunch(url, undefined, machine("darwin", ["/Applications/Chromium.app"]))).toEqual({
+      kind: "tab",
+      app: "chromium",
+    })
+    const chrome = "C:\\Users\\me\\AppData\\Local\\Google\\Chrome\\Application\\chrome.exe"
+    expect(
+      designLaunch(
+        url,
+        undefined,
+        machine("win32", [chrome], { ProgramFiles: "C:\\Program Files", LOCALAPPDATA: "C:\\Users\\me\\AppData\\Local" }),
+      ),
+    ).toEqual({ kind: "tab", app: chrome })
+  })
+
+  test("default, WSL and named apps keep their own browser", () => {
+    const linux = machine("linux", ["/usr/bin/google-chrome"])
+    expect(designLaunch(url, "default", linux)).toEqual({ kind: "system" })
+    expect(designLaunch(url, "firefox", linux)).toEqual({ kind: "tab", app: "firefox" })
+    expect(designLaunch(url, "/opt/brave/brave", linux)).toEqual({ kind: "tab", app: "/opt/brave/brave" })
+    expect(
+      designLaunch(url, undefined, machine("linux", ["/usr/bin/google-chrome"], { WSL_DISTRO_NAME: "Ubuntu" })),
+    ).toEqual({ kind: "system" })
   })
 })

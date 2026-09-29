@@ -1,11 +1,11 @@
 import { createResource, createSignal, onCleanup } from "solid-js"
 import type { Plugin } from "@opencode/plugin/tui"
-import { browserDisabled, designBrowser, openUrl } from "@opencode/util/open"
+import { browserDisabled, NO_BROWSER, openDesignUrl } from "@opencode/util/open"
+import { openDesignReview } from "@opencode/util/design-review"
 import { useClient } from "../context/client"
 import { useTheme } from "../context/theme"
 import { DialogSelect } from "../ui/dialog-select"
 import { configuredDesignBrowser } from "../util/design-browser"
-import { openDesignReview } from "../routes/session/design-review"
 import { errorMessage } from "../util/error"
 
 export function DialogDesignList(props: { context: Plugin.Context; review?: boolean }) {
@@ -80,13 +80,13 @@ export function DialogDesignList(props: { context: Plugin.Context; review?: bool
           sessionID: option.value,
           endpoint,
           explicit: true,
-          disabled: browserDisabled(),
+          disabledBy: browserDisabled() ? NO_BROWSER : undefined,
           fetch: (url, init) => fetch(url, { ...init, signal: abort.signal }),
           launch: async (url) => {
             const config = await props.context.client.config
               .get({ location: props.context.location ?? props.context.data.location.default() })
               .catch(() => [])
-            return openUrl(url, { browser: designBrowser(configuredDesignBrowser(config)) })
+            return openDesignUrl(url, { configured: configuredDesignBrowser(config) })
           },
         }).then((notice) => {
           if (abort.signal.aborted) return

@@ -23,6 +23,7 @@ import { SessionSchema } from "@opencode/core/session/schema"
 import { Cause, Duration, Effect, Exit, Option, Schema, Stream } from "effect"
 import { HttpRouter, HttpServerRequest, HttpServerResponse } from "effect/unstable/http"
 import { ServerAuth } from "./auth"
+import { CorsConfig } from "./cors"
 import { DesignAccess } from "./design-access"
 import { DesignBrowserPermissions } from "./design-browser-permissions"
 import { DesignPresence } from "./design-presence"
@@ -52,10 +53,11 @@ export const routes = (hosts: () => ReadonlyArray<string>) => HttpRouter.use((ro
     const bus = yield* Bus.Service
     const fork = Effect.runForkWith(yield* Effect.context<never>())
     const downloads = new Set<string>()
+    const cors = yield* CorsConfig
 
-    /** A review link to this server, signed so a browser can follow it without credentials. */
-    const reviewLink = (base: URL, sessionID: SessionSchema.ID) => {
-      const link = new URL(`/design/session/${sessionID}/review`, base)
+    /** A review link to this server at the address the client used, signed so a browser needs no credentials. */
+    const reviewLink = (host: string | undefined, sessionID: SessionSchema.ID) => {
+      const link = new URL(`/design/session/${sessionID}/review`, DesignAccess.reviewOrigin(host))
       link.searchParams.set("ticket", DesignAccess.ticket(secret, sessionID))
       return link.toString()
     }
@@ -125,7 +127,7 @@ export const routes = (hosts: () => ReadonlyArray<string>) => HttpRouter.use((ro
           ? Option.getOrUndefined(yield* appLink(sessionID, "/review", session.location, design?.app?.version))
           : undefined
         return HttpServerResponse.jsonUnsafe({
-          url: link ?? reviewLink(url, sessionID),
+          url: link ?? reviewLink(request.headers.host, sessionID),
           connected: DesignPresence.shared.connected(sessionID),
         })
       }
@@ -136,12 +138,14 @@ export const routes = (hosts: () => ReadonlyArray<string>) => HttpRouter.use((ro
         request.method === "POST" &&
         (parts.length === 1 || (parts.length === 2 && parts[1] === "release"))
       ) {
-        if (!trusted) return failure(401, "Server authorization is required to open a review")
-        const origin = request.headers.origin
-        if (origin && URL.parse(origin)?.host !== request.headers.host)
-          return failure(403, "Design refuses cross-origin writes")
-        if (!request.headers["content-type"]?.startsWith("application/json"))
-          return failure(403, "Design writes must be JSON")
+        const refusal = DesignAccess.launchRefusal({
+          trusted,
+          origin: request.headers.origin,
+          host: request.headers.host,
+          contentType: request.headers["content-type"],
+          cors,
+        })
+        if (refusal) return failure(refusal.status, refusal.message)
         if (parts[1] === "release") {
           const input = yield* request.json.pipe(
             Effect.flatMap(Schema.decodeUnknownEffect(Schema.Struct({ token: Schema.Number }))),
@@ -154,7 +158,7 @@ export const routes = (hosts: () => ReadonlyArray<string>) => HttpRouter.use((ro
         )
         return HttpServerResponse.jsonUnsafe({
           ...DesignPresence.shared.claim(sessionID, { explicit: input.explicit === true }),
-          url: reviewLink(url, sessionID),
+          url: reviewLink(request.headers.host, sessionID),
           connected: DesignPresence.shared.connected(sessionID),
         })
       }

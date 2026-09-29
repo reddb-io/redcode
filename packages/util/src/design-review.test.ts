@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test"
-import { openDesignReview } from "../src/routes/session/design-review"
+import { openDesignReview } from "./design-review.js"
 
 const endpoint = { url: "http://127.0.0.1:4096", headers: { authorization: "Basic test" } }
 const review = "http://127.0.0.1:4096/design/session/ses_a/review?ticket=signed"
@@ -40,14 +40,14 @@ describe("openDesignReview", () => {
         sessionID: "ses_a",
         endpoint,
         explicit: true,
-        disabled: false,
         fetch: remote.fetch,
         launch: opener.launch,
       })
     expect(await open()).toBeUndefined()
     expect(await open()).toEqual({
       variant: "info",
-      message: `The Design review is already open in a browser tab; switch to it there (the terminal cannot focus it). ${review}`,
+      message: `The Design review is already open in a browser tab; switch to it there. ${review}`,
+      url: review,
     })
     expect(opener.launched).toEqual([review])
     expect(remote.calls).toEqual([
@@ -63,7 +63,6 @@ describe("openDesignReview", () => {
       sessionID: "ses_a",
       endpoint,
       explicit: false,
-      disabled: false,
       fetch: remote.fetch,
       launch: opener.launch,
     })
@@ -78,11 +77,14 @@ describe("openDesignReview", () => {
       sessionID: "ses_a",
       endpoint,
       explicit: false,
-      disabled: false,
       fetch: remote.fetch,
       launch: browser(false).launch,
     })
-    expect(notice).toEqual({ variant: "error", message: `Could not open a browser. Design review: ${review}` })
+    expect(notice).toEqual({
+      variant: "error",
+      message: `Could not open a browser. Design review: ${review}`,
+      url: review,
+    })
     expect(remote.calls).toEqual([
       'POST /design/session/ses_a/launch {"explicit":false}',
       'POST /design/session/ses_a/launch/release {"token":7}',
@@ -96,13 +98,14 @@ describe("openDesignReview", () => {
       sessionID: "ses_a",
       endpoint,
       explicit: false,
-      disabled: true,
+      disabledBy: "REDCODE_NO_BROWSER",
       fetch: remote.fetch,
       launch: opener.launch,
     })
     expect(notice).toEqual({
       variant: "info",
       message: `Browser launch is disabled by REDCODE_NO_BROWSER. Design review: ${review}`,
+      url: review,
     })
     expect(opener.launched).toEqual([])
     expect(remote.calls).toEqual(["GET /design/session/ses_a/link"])
@@ -115,11 +118,30 @@ describe("openDesignReview", () => {
       sessionID: "ses_a",
       endpoint,
       explicit: true,
-      disabled: false,
       fetch: remote.fetch,
       launch: opener.launch,
     })
     expect(notice).toBeUndefined()
     expect(opener.launched).toEqual([review])
+  })
+
+  test("a refused claim falls back to the plain link, and a failed launch there shows it", async () => {
+    const remote = server([])
+    const notice = await openDesignReview({
+      sessionID: "ses_a",
+      endpoint,
+      explicit: true,
+      fetch: remote.fetch,
+      launch: browser(false).launch,
+    })
+    expect(notice).toEqual({
+      variant: "error",
+      message: `Could not open a browser. Design review: ${review}`,
+      url: review,
+    })
+    expect(remote.calls).toEqual([
+      'POST /design/session/ses_a/launch {"explicit":true}',
+      "GET /design/session/ses_a/link",
+    ])
   })
 })

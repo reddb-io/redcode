@@ -1,5 +1,5 @@
 import { createEffect, createMemo, on } from "solid-js"
-import { Schema } from "effect"
+import { openDesignReview } from "@opencode/util/design-review"
 import { useLanguage } from "@/runtime/i18n/language"
 import { usePlatform } from "@/runtime/platform/platform"
 import { authTokenFromCredentials } from "@/runtime/server/api"
@@ -9,9 +9,6 @@ import { showToast } from "@/shell/notifications/toast"
 import { SESSION_DESIGN_TAB } from "@/session/helpers"
 import type { SessionModel } from "../model"
 import { designActivity, latestDesignPreview } from "./state"
-
-const ReviewLink = Schema.Struct({ url: Schema.String })
-const ReviewError = Schema.Struct({ message: Schema.String })
 
 export function createSessionDesign(session: SessionModel) {
   const command = useCommand()
@@ -38,24 +35,43 @@ export function createSessionDesign(session: SessionModel) {
     ),
   )
 
-  // The review link carries a short-lived ticket, so it is requested on each open instead of cached.
+  // The review link carries a short-lived ticket, so it is requested on each open instead of cached. The
+  // launch is claimed on the server like the TUI's, so a review open elsewhere is reported instead of doubled.
   const openReview = (sessionID: string) => {
+    // A browser lets a click open a tab only before its first await, so the web app opens an empty tab now and
+    // sends it to the review once the claim answers; the desktop app opens links natively.
+    const tab = platform.platform === "web" ? window.open("", "_blank") : null
+    const sent = { value: false }
     const password = server.server.http.password
-    return (platform.fetch ?? fetch)(new URL(`/design/session/${encodeURIComponent(sessionID)}/link`, server.url), {
-      headers: password ? { Authorization: `Basic ${authTokenFromCredentials({ password })}` } : undefined,
-    })
-      .then(async (response) => {
-        const body = await response.json().catch(() => undefined)
-        if (!response.ok) throw new Error(Schema.is(ReviewError)(body) ? body.message : `HTTP ${response.status}`)
-        return Schema.decodeUnknownSync(ReviewLink)(body)
+    return openDesignReview({
+      sessionID,
+      endpoint: {
+        url: server.url,
+        headers: password ? { Authorization: `Basic ${authTokenFromCredentials({ password })}` } : undefined,
+      },
+      explicit: true,
+      fetch: platform.fetch,
+      launch: async (url) => {
+        if (platform.platform !== "web") return platform.openExternal(url)
+        if (!tab || tab.closed) throw new Error("The browser blocked the review tab")
+        // The review page must not reach back into the app through `window.opener`.
+        tab.opener = null
+        tab.location.href = url
+        sent.value = true
+      },
+    }).then((notice) => {
+      if (tab && !sent.value) tab.close()
+      if (!notice) return
+      const url = notice.url
+      showToast({
+        title: notice.variant === "error" ? language.t("session.design.review.failed") : undefined,
+        description: notice.message,
+        // A click is a fresh gesture, so this tab opens even where the automatic one was blocked.
+        actions: url
+          ? [{ label: language.t("session.design.review.open"), onClick: () => platform.openExternal(url) }]
+          : undefined,
       })
-      .then((link) => platform.openExternal(link.url))
-      .catch((error) =>
-        showToast({
-          title: language.t("session.design.review.failed"),
-          description: error instanceof Error ? error.message : String(error),
-        }),
-      )
+    })
   }
 
   command.register("session.design", () => [
