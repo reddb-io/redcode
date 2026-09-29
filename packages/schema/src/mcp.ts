@@ -107,6 +107,13 @@ export const Server = Schema.Struct({
   integrationID: optional(IntegrationID),
 }).annotate({ identifier: "Mcp.Server" })
 
+export const Tool = Schema.Struct({
+  server: Schema.String,
+  name: Schema.String,
+  description: optional(Schema.String),
+}).annotate({ identifier: "Mcp.Tool" })
+export type Tool = typeof Tool.Type
+
 export interface Resource extends Schema.Schema.Type<typeof Resource> {}
 export const Resource = Schema.Struct({
   server: Schema.String,

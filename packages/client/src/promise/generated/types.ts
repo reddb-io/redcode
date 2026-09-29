@@ -500,6 +500,8 @@ export type McpStatusFailed = { status: "failed"; error: string }
 
 export type McpStatusNeedsAuth = { status: "needs_auth"; error: string }
 
+export type McpTool = { server: string; name: string; description?: string }
+
 export type McpResource = { server: string; name: string; uri: string; description?: string; mimeType?: string }
 
 export type McpResourceTemplate = {
@@ -8015,6 +8017,12 @@ export type McpListInput = {
 }
 
 export type McpListOutput = { location: LocationPublicRef; data: Array<McpServer> }
+
+export type McpToolsInput = {
+  readonly location?: { readonly location?: { readonly directory?: string | undefined } | undefined }["location"]
+}
+
+export type McpToolsOutput = { location: LocationPublicRef; data: Array<McpTool> }
 
 export type McpAddInput = {
   readonly server: { readonly server: string }["server"]

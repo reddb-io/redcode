@@ -27,6 +27,21 @@ export const McpHandler = HttpApiBuilder.group(Api, "server.mcp", (handlers) =>
         }),
       )
       .handle(
+        "mcp.tools",
+        Effect.fn(function* () {
+          const service = yield* Mcp.Service
+          return yield* response(
+            service
+              .tools()
+              .pipe(
+                Effect.map((tools) =>
+                  tools.map((tool) => ({ server: tool.server, name: tool.name, description: tool.description })),
+                ),
+              ),
+          )
+        }),
+      )
+      .handle(
         "mcp.add",
         Effect.fn(function* (ctx) {
           const service = yield* Mcp.Service

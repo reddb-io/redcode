@@ -1604,6 +1604,15 @@ export function Session(props: {
       },
     },
     {
+      title: "Open MCPs drawer",
+      id: "session.composer.mcps",
+      group: "Session",
+      run: () => {
+        setComposer({ open: true, tab: "mcps" })
+        dialog.clear()
+      },
+    },
+    {
       title: "Toggle subagent picker",
       id: "session.child.first",
       group: "Session",

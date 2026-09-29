@@ -5,6 +5,7 @@ import { useTheme } from "../../../context/theme"
 import { SplitBorder } from "../../../ui/border"
 import { Keymap } from "../../../context/keymap"
 import { SubagentsTab } from "./subagents-tab"
+import { McpsTab } from "./mcps-tab"
 import { ShellTab } from "./shell-tab"
 import { TerminalsTab } from "./terminals-tab"
 import { useConfig } from "../../../config"
@@ -131,6 +132,7 @@ export function Composer(props: ComposerProps) {
               </text>
             </box>
             <SubagentsTab sessionID={props.sessionID} />
+            <McpsTab sessionID={props.sessionID} />
             <Slot path="session.composer.tabs" input={{ sessionID: props.sessionID }} />
             <ShellTab sessionID={props.sessionID} />
             <Show when={config.session.terminal}>

@@ -21,6 +21,20 @@ export const McpGroup = HttpApiGroup.make("server.mcp")
       ),
   )
   .add(
+    HttpApiEndpoint.get("mcp.tools", "/api/mcp/tool", {
+      query: LocationQuery,
+      success: Location.response(Schema.Array(Mcp.Tool)),
+    })
+      .annotateMerge(locationQueryOpenApi)
+      .annotateMerge(
+        OpenApi.annotations({
+          identifier: "mcp.tools",
+          summary: "List MCP tools",
+          description: "Retrieve tools from connected MCP servers.",
+        }),
+      ),
+  )
+  .add(
     HttpApiEndpoint.put("mcp.add", "/api/experimental/mcp/:server", {
       params: { server: Schema.String },
       query: LocationQuery,
