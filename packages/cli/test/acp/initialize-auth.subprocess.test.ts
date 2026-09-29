@@ -18,7 +18,7 @@ describe("acp initialize/auth subprocess", () => {
     expect(initialized.agentCapabilities?.sessionCapabilities?.fork).toEqual({})
     expect(initialized.agentCapabilities?.sessionCapabilities?.list).toEqual({})
     expect(initialized.agentCapabilities?.sessionCapabilities?.resume).toEqual({})
-    expect(initialized.agentInfo?.name).toBe("OpenCode")
+    expect(initialized.agentInfo?.name).toBe("Redcode")
   }, 60_000)
 
   test("auth negotiation is explicit and safe", async () => {
@@ -27,9 +27,9 @@ describe("acp initialize/auth subprocess", () => {
     const acp = fixture.spawn({ OPENCODE_AUTH_CONTENT: secret })
     const initialized = await initialize(acp)
 
-    expect(initialized.authMethods?.[0]?.id).toBe("opencode-login")
+    expect(initialized.authMethods?.[0]?.id).toBe("redcode-login")
     expect(initialized.authMethods?.[0]?._meta?.["terminal-auth"]).toBeDefined()
-    expect(expectOk(await acp.request<AuthenticateResponse>("authenticate", { methodId: "opencode-login" }))).toEqual(
+    expect(expectOk(await acp.request<AuthenticateResponse>("authenticate", { methodId: "redcode-login" }))).toEqual(
       {},
     )
 
@@ -44,7 +44,7 @@ describe("acp initialize/auth subprocess", () => {
       await fixture.spawn().request<InitializeResponse>("initialize", { protocolVersion: 1 }),
     )
 
-    expect(initialized.authMethods?.[0]?.id).toBe("opencode-login")
+    expect(initialized.authMethods?.[0]?.id).toBe("redcode-login")
     expect(initialized.authMethods?.[0]?._meta?.["terminal-auth"]).toBeUndefined()
   }, 60_000)
 })

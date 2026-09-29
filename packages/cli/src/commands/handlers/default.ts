@@ -12,6 +12,7 @@ import { Npm } from "@opencode/util/npm"
 import { OPENCODE_ARTIFACT, OPENCODE_CHANNEL, OPENCODE_VERSION } from "../../version"
 import { Env } from "../../env"
 import { BootTrace } from "../../boot-trace"
+import { applyReasoningFlag } from "../../reasoning-flag"
 import { Logging } from "@opencode/util/observability/logging"
 
 export default Runtime.handler(Commands, (input) =>
@@ -21,6 +22,8 @@ export default Runtime.handler(Commands, (input) =>
     if (input.fork && !input.continue && Option.isNone(input.session))
       return yield* Effect.fail(new Error("--fork requires --continue or --session"))
     if (requestedDirectory !== undefined) process.chdir(requestedDirectory)
+    // Set before the server resolves so the standalone server this invocation starts inherits it.
+    yield* applyReasoningFlag(input)
     const preflight = UpdatePreflight.make()
     yield* Effect.addFinalizer(() => Effect.promise(() => preflight.close()))
     const serviceStarts = yield* Queue.unbounded<{

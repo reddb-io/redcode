@@ -35,6 +35,9 @@ export interface Interface {
 
 export class Service extends Context.Service<Service, Interface>()("@opencode/Npm") {}
 
+// Generous: a cold install of a large plugin over a slow link takes minutes, not seconds.
+const REIFY_DEADLINE = "5 minutes"
+
 const illegal = process.platform === "win32" ? new Set(["<", ">", ":", '"', "|", "?", "*"]) : undefined
 
 export function sanitize(pkg: string) {
@@ -239,7 +242,23 @@ const layer = Layer.effect(
               add,
               dir: input.dir,
             }),
-        }) as Effect.Effect<ArboristTree, InstallFailedError>
+        }).pipe(
+          // The install lock is held across this and its heartbeat keeps refreshing, so a registry connection that
+          // never answers would hold every other installer forever. A deadline turns it into a reportable failure.
+          Effect.timeoutOrElse({
+            duration: REIFY_DEADLINE,
+            orElse: () =>
+              Effect.fail(
+                new InstallFailedError({
+                  cause: new Error(
+                    `npm install of ${add.join(", ") || "dependencies"} did not finish within ${REIFY_DEADLINE}`,
+                  ),
+                  add,
+                  dir: input.dir,
+                }),
+              ),
+          }),
+        ) as Effect.Effect<ArboristTree, InstallFailedError>
       }).pipe(
         Effect.withSpan("Npm.reify", {
           attributes: input,

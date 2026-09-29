@@ -59,7 +59,7 @@ const decodeMiseVersions = Schema.decodeUnknownOption(
 const decodeGitHubRelease = Schema.decodeUnknownOption(Schema.Struct({ tag_name: Schema.String }))
 
 const installNames: Record<Method, string> = {
-  curl: "The OpenCode installer",
+  curl: "The install script",
   npm: "npm",
   pnpm: "pnpm",
   bun: "Bun",
@@ -331,7 +331,7 @@ const make = Effect.gen(function* () {
     if (Option.isNone(info))
       return yield* Effect.fail(
         new UpgradeError({
-          title: "Could not read the OpenCode update information",
+          title: `Could not read the ${product} update information`,
           detail: "The update service returned incomplete release information.",
           retry: "Try again in a few minutes.",
         }),
@@ -519,16 +519,16 @@ const make = Effect.gen(function* () {
             method,
             command: ["curl", "-fsSL", "-o", installer, "https://opencode.ai/v2/install"],
             displayCommand: ["curl", "-fsSL", "https://opencode.ai/v2/install"],
-            title: "Could not download the OpenCode installer",
-            retry: "Check your network, then run opencode upgrade again.",
+            title: `Could not download the ${product} install script`,
+            retry: `Check your network, then run ${commandName} upgrade again.`,
           })
           return yield* retaining(
             method,
             runUpgrade({
               method,
               command: ["bash", installer, "--version", version, "--no-modify-path"],
-              displayCommand: ["opencode", "upgrade", version, "--method", "curl"],
-              title: "The OpenCode installer failed",
+              displayCommand: [commandName, "upgrade", version, "--method", "curl"],
+              title: `The ${product} install script failed`,
             }),
           )
         }

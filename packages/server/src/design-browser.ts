@@ -2,6 +2,7 @@ export * as DesignBrowser from "./design-browser"
 
 import { Design } from "@opencode/schema/design"
 import type { Agent } from "@opencode/schema/agent"
+import type { ConfigDesign } from "@opencode/schema/config/design"
 import type { Location } from "@opencode/schema/location"
 import { TuiEvent } from "@opencode/schema/tui-event"
 import { App } from "@opencode/core/app"
@@ -41,7 +42,12 @@ const DesignPermission = Schema.Union([
   Schema.Struct({ kind: Schema.Literal("tooling"), designID: Design.ID }),
 ])
 
-export const routes = (hosts: () => ReadonlyArray<string>) => HttpRouter.use((router) =>
+/**
+ * `hosts` are the names this server answers to besides its own; `network` is its origin for another device on the
+ * local network, undefined while it listens only on loopback.
+ */
+export const routes = (hosts: () => ReadonlyArray<string>, network: () => string | undefined = () => undefined) =>
+  HttpRouter.use((router) =>
   Effect.gen(function* () {
     const sessions = yield* Session.Service
     const instances = yield* Instance.Service
@@ -60,6 +66,20 @@ export const routes = (hosts: () => ReadonlyArray<string>) => HttpRouter.use((ro
       const link = new URL(`/design/session/${sessionID}/review`, DesignAccess.reviewOrigin(host))
       link.searchParams.set("ticket", DesignAccess.ticket(secret, sessionID))
       return link.toString()
+    }
+    /**
+     * The same review at this server's network address, unless the client already used that address. A review in
+     * the design app redirects to the app's own local address, which another device cannot reach, so it has none.
+     */
+    const networkLink = (
+      host: string | undefined,
+      sessionID: SessionSchema.ID,
+      design: ConfigDesign.Effective | undefined,
+    ) => {
+      const origin = network()
+      if (!origin || DesignAppMode.process(design) || new URL(origin).origin === DesignAccess.reviewOrigin(host))
+        return undefined
+      return reviewLink(new URL(origin).host, sessionID)
     }
 
     /** Starts or joins the design app; a first-use download shows its progress in the Session's TUIs. */
@@ -128,6 +148,7 @@ export const routes = (hosts: () => ReadonlyArray<string>) => HttpRouter.use((ro
           : undefined
         return HttpServerResponse.jsonUnsafe({
           url: link ?? reviewLink(request.headers.host, sessionID),
+          network: networkLink(request.headers.host, sessionID, design),
           connected: DesignPresence.shared.connected(sessionID),
         })
       }
@@ -159,6 +180,7 @@ export const routes = (hosts: () => ReadonlyArray<string>) => HttpRouter.use((ro
         return HttpServerResponse.jsonUnsafe({
           ...DesignPresence.shared.claim(sessionID, { explicit: input.explicit === true }),
           url: reviewLink(request.headers.host, sessionID),
+          network: networkLink(request.headers.host, sessionID, yield* configured),
           connected: DesignPresence.shared.connected(sessionID),
         })
       }

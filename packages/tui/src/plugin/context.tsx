@@ -630,10 +630,35 @@ function serverPluginName(plugin: PluginInfo) {
   )
 }
 
-async function disposeAll(cleanups: Dispose[]) {
+// A plugin's cleanups share one deadline, so a cleanup that never settles cannot hold a swap or the TUI's exit.
+const PLUGIN_DISPOSE_DEADLINE_MS = 2000
+
+export async function disposeAll(cleanups: Dispose[], deadline = PLUGIN_DISPOSE_DEADLINE_MS) {
   const failures: unknown[] = []
-  for (const cleanup of cleanups.splice(0).reverse()) await cleanup().catch((error) => failures.push(error))
+  const until = Date.now() + deadline
+  const pending = cleanups.splice(0).reverse()
+  for (const [index, cleanup] of pending.entries()) {
+    const outcome = await settleWithin(cleanup(), until - Date.now())
+    if (outcome === "timeout") {
+      // The rest still run so their listeners and intervals are released, but nothing waits for them.
+      pending.slice(index + 1).forEach((rest) => void rest().catch(() => undefined))
+      throw new Error(`Plugin cleanup did not finish within ${deadline} ms`)
+    }
+    if (outcome !== "ok") failures.push(outcome.error)
+  }
   if (failures.length) throw failures[0]
+}
+
+function settleWithin(task: Promise<void>, ms: number) {
+  const deadline = Promise.withResolvers<"timeout">()
+  const timer = setTimeout(() => deadline.resolve("timeout"), Math.max(0, ms))
+  return Promise.race([
+    task.then(
+      () => "ok" as const,
+      (error: unknown) => ({ error }),
+    ),
+    deadline.promise,
+  ]).finally(() => clearTimeout(timer))
 }
 
 async function setup(plugin: Plugin.Definition, context: Plugin.Context, owned: Dispose[]) {

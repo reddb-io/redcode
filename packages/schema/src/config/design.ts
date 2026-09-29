@@ -46,6 +46,16 @@ export class Info extends Schema.Class<Info>("ConfigV2.Design")({
       description:
         "Viewport widths in CSS pixels that web designs are reviewed and audited at, narrowest first. Default: [390, 768, 1440]. App designs use phone presets and presentations 1920×1080 instead.",
     }),
+  viewports: Schema.Array(Schema.String)
+    .pipe(Schema.optional)
+    .annotate({
+      description:
+        'Viewport classes the layout audit covers: "mobile" (up to 640px), "compact" (up to 1024px) and "desktop". Default: every class the target is reviewed at. Unknown names are ignored, and a list naming no known class, or leaving the target without a viewport, keeps every class.',
+    }),
+  gate: Schema.Boolean.pipe(Schema.optional).annotate({
+    description:
+      "Require a completed layout audit of the published revision at every viewport class in design.viewports before a Design can be approved. Default: false.",
+  }),
   app: Schema.Struct({
     mode: Schema.Literals(["process", "inline"]).pipe(Schema.optional).annotate({
       description:
@@ -68,12 +78,14 @@ export interface Effective {
   readonly application?: string
   readonly browser?: string
   readonly breakpoints?: readonly number[]
+  readonly viewports?: readonly string[]
+  readonly gate?: boolean
   readonly app?: Info["app"]
 }
 
 /**
  * Merges `design` sections from lowest to highest precedence, key by key, as the legacy
- * configuration does with its deep merge: `browser` and `breakpoints` come from the most specific
+ * configuration does with its deep merge: `browser`, `breakpoints`, `viewports` and `gate` come from the most specific
  * document that sets them, and `system` from the most specific one that sets it, together with that document's
  * `application` (paths are relative to it). A project that declares its system therefore keeps a
  * global `browser` and `app` settings.
@@ -85,6 +97,8 @@ export function merge<S>(
         readonly application?: string
         readonly browser?: string
         readonly breakpoints?: readonly number[]
+        readonly viewports?: readonly string[]
+        readonly gate?: boolean
         readonly app?: Info["app"]
       }
     | undefined
@@ -94,17 +108,29 @@ export function merge<S>(
   const application = system ? system.application : sections.findLast((section) => section?.application)?.application
   const browser = sections.findLast((section) => section?.browser !== undefined)?.browser
   const breakpoints = sections.findLast((section) => section?.breakpoints !== undefined)?.breakpoints
+  const viewports = sections.findLast((section) => section?.viewports !== undefined)?.viewports
+  const gate = sections.findLast((section) => section?.gate !== undefined)?.gate
   const app = sections.reduce(
     (current, section) => section?.app === undefined ? current : { ...current, ...section.app },
     undefined as Info["app"],
   )
-  if (!system && application === undefined && browser === undefined && breakpoints === undefined && app === undefined)
+  if (
+    !system &&
+    application === undefined &&
+    browser === undefined &&
+    breakpoints === undefined &&
+    viewports === undefined &&
+    gate === undefined &&
+    app === undefined
+  )
     return undefined
   return {
     ...(system ? { system: system.system as S } : {}),
     ...(application !== undefined ? { application } : {}),
     ...(browser !== undefined ? { browser } : {}),
     ...(breakpoints !== undefined ? { breakpoints } : {}),
+    ...(viewports !== undefined ? { viewports } : {}),
+    ...(gate !== undefined ? { gate } : {}),
     ...(app !== undefined ? { app } : {}),
   }
 }

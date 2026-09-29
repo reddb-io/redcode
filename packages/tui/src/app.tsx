@@ -1,6 +1,6 @@
 import { render, useRenderer, useTerminalDimensions } from "@opentui/solid"
 import { registerOpencodeSpinner } from "./component/register-spinner"
-import { Effect, Latch } from "effect"
+import { Effect, Latch, Option } from "effect"
 import { Service, type Endpoint } from "@opencode/client/effect/service"
 import { OpenCode, type SessionInfo } from "@opencode/client"
 import { name, short } from "@opencode/util/product"
@@ -86,6 +86,7 @@ import { PromptStashProvider } from "./prompt/stash"
 import { Toast, ToastProvider, useToast } from "./ui/toast"
 import { isFallbackTitle } from "@opencode/util/session-title-fallback"
 import * as Model from "./util/model"
+import { catalogUpdateMessage } from "./util/model-presentation"
 import { ArgsProvider, useArgs, type Args } from "./context/args"
 import { openUrl } from "@opencode/util/open"
 import { PromptRefProvider, usePromptRef } from "./context/prompt"
@@ -276,13 +277,24 @@ export const run = Effect.fn("Tui.run")(function* (input: TuiInput) {
           ),
       )
       const finalizers = new Set<() => Promise<void>>()
+      // Plugin and other resource finalizers get one overall deadline, so a disposal that never settles cannot hold
+      // the terminal after the user asked to exit.
       yield* Effect.addFinalizer(() =>
-        Effect.promise(async () => {
-          const results = await Promise.allSettled([...finalizers].reverse().map((finalizer) => finalizer()))
-          results
-            .filter((result): result is PromiseRejectedResult => result.status === "rejected")
-            .forEach((result) => log("error", "Failed to dispose TUI resource", { error: result.reason }))
-        }),
+        Effect.promise(() => Promise.allSettled([...finalizers].reverse().map((finalizer) => finalizer()))).pipe(
+          // Finalizers run uninterruptibly; the disposal itself must be interruptible for the deadline to end it.
+          Effect.interruptible,
+          Effect.timeoutOption("2 seconds"),
+          Effect.map(
+            Option.match({
+              onNone: () =>
+                log("error", "TUI resources did not finish disposing within 2 seconds; exiting without them"),
+              onSome: (results) =>
+                results
+                  .filter((result): result is PromiseRejectedResult => result.status === "rejected")
+                  .forEach((result) => log("error", "Failed to dispose TUI resource", { error: result.reason })),
+            }),
+          ),
+        ),
       )
       const shutdown = yield* Latch.make()
       const onSighup = () => destroyRenderer(renderer)
@@ -1316,6 +1328,13 @@ function App() {
       variant: evt.data.variant,
       duration: evt.data.duration,
     })
+  })
+
+  // Every Location's router plugin refreshes its own catalog; announce the one this TUI shows.
+  event.on("provider.catalog.updated", (evt, { directory }) => {
+    if (directory && directory !== (location.current?.directory ?? data.location.default().directory)) return
+    const message = catalogUpdateMessage(evt.data)
+    if (message) toast.show({ variant: "info", message, duration: 5_000 })
   })
 
   event.on("tui.session.select", (evt, { directory }) => {

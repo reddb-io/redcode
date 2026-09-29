@@ -26,7 +26,8 @@ export type V1RunCommandInput = {
 }
 
 export function runV1Bridge(input: V1RunCommandInput) {
-  const root = process.env.PWD ?? process.cwd()
+  // `PWD` is deliberately not consulted: a spawner that sets `cwd` can leave another shell's stale `PWD`.
+  const root = process.cwd()
   const attached = input.server !== undefined
   const local = !attached && input.directory ? path.resolve(root, input.directory) : root
   try {

@@ -2,7 +2,7 @@ import { Service, type Endpoint } from "@opencode/client/effect/service"
 import { ClientError, OpenCode, type OpenCodeClient } from "@opencode/client/promise"
 import type { MiniFrontendInput } from "@opencode/tui/mini"
 import { setTimeout } from "node:timers/promises"
-import { readStdin } from "./util/io"
+import { readStdinWithin } from "./util/io"
 import { createMiniHost, INTERACTIVE_INPUT_ERROR, usingInteractiveStdin } from "./mini-host"
 import { parseSessionTargetModel, resolveSessionTarget, type SessionTargetPreparation } from "./session-target"
 import { Env } from "./env"
@@ -34,9 +34,10 @@ export async function runMini(input: MiniCommandInput) {
   try {
     validate(input)
     const result = await usingInteractiveStdin(async (terminal) => {
-      const initialInput = mergeInput(process.stdin.isTTY ? undefined : await readStdin(), input.prompt)
+      const initialInput = mergeInput(process.stdin.isTTY ? undefined : await readStdinWithin(), input.prompt)
       const frontendTask = import("@opencode/tui/mini")
-      const directory = localDirectory()
+      // The real working directory: a stale `PWD` inherited from another shell must not move the session.
+      const directory = process.cwd()
       const connection = createMiniConnection(input.server)
       const sdk = connection.sdk
       const environment = input.server.reconnect ? Env.session() : undefined
@@ -197,16 +198,6 @@ function validate(input: MiniCommandInput) {
     fail("--replay-limit must be a positive integer")
   }
   if (input.fork && !input.continue && !input.session) fail("--fork requires --continue or --session")
-}
-
-function localDirectory(): string {
-  const root = process.env.PWD ?? process.cwd()
-  try {
-    process.chdir(root)
-    return process.cwd()
-  } catch {
-    throw new MiniInputError(`Failed to change directory to ${root}`)
-  }
 }
 
 function parseModel(value?: string) {

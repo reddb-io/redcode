@@ -26,6 +26,7 @@ import { SessionTaskFacts } from "@opencode/core/session/task-facts"
 import { SessionTodoStore } from "@opencode/core/session/todo-store"
 import { Intelligence } from "@opencode/core/intelligence"
 import { DesignAppConnection } from "@opencode/core/design/app-connection"
+import { DesignHost } from "@opencode/core/design/host"
 import { Instance } from "@opencode/core/instance/service"
 import { SessionTransfer } from "@opencode/core/session/transfer"
 import { SessionShare } from "@opencode/core/session/share"
@@ -258,10 +259,11 @@ function makeRoutes<AuthError, AuthServices>(
         Layer.provideMerge(services),
         Layer.provideMerge(HttpRouter.layer),
       )
-      const browser = DesignBrowser.routes(() => [
-        ...(options.hostname ? [options.hostname] : []),
-        ...serviceURLs().map((url) => new URL(url).hostname),
-      ]).pipe(
+      const browser = DesignBrowser.routes(
+        () => [...(options.hostname ? [options.hostname] : []), ...serviceURLs().map((url) => new URL(url).hostname)],
+        // A wildcard bind lists each interface address; a loopback bind has no network address.
+        () => serviceURLs().map((url) => DesignHost.networkURL(new URL(url))).find((url) => url !== undefined),
+      ).pipe(
         Layer.provide(services),
         Layer.provide(auth),
         Layer.provide(Layer.succeed(CorsConfig, options)),

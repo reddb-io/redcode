@@ -15,6 +15,8 @@ export interface Source {
   checkout: string
   /** Explicit bundle directory, `REDCODE_WHITEBOARD_DIR`; wins over both the checkout and a release. */
   directory: string | undefined
+  /** `REDCODE_DISABLE_WHITEBOARD_DOWNLOAD`: never fetch a release bundle; an installed or explicit one still loads. */
+  offline: boolean
   timeout: number
 }
 
@@ -23,6 +25,7 @@ let source: Source = {
   data: Global.Path.data,
   checkout: path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../../../cli/dist-whiteboard"),
   directory: process.env.REDCODE_WHITEBOARD_DIR,
+  offline: ["1", "true", "yes", "on"].includes(process.env.REDCODE_DISABLE_WHITEBOARD_DOWNLOAD?.trim().toLowerCase() ?? ""),
   timeout: 60_000,
 }
 
@@ -129,6 +132,12 @@ async function load(version: string) {
         code: "unavailable",
         message:
           "Build the whiteboard bundle with bun run build:whiteboard in packages/cli, or set REDCODE_WHITEBOARD_DIR",
+      })
+    if (source.offline)
+      throw new Design.Error({
+        code: "unavailable",
+        message:
+          "Whiteboard is unavailable: its bundle is not installed and REDCODE_DISABLE_WHITEBOARD_DOWNLOAD forbids downloading it. Set REDCODE_WHITEBOARD_DIR to a built bundle, or unset the variable",
       })
     await install(version, release)
   }

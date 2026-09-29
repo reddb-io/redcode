@@ -23,6 +23,7 @@ import { DesignRuntime } from "./runtime.js"
 import { DesignQuality } from "./quality.js"
 import { DesignRounds } from "./rounds.js"
 import { DesignViewports } from "./viewports.js"
+import { DesignGate } from "./gate.js"
 import { screens } from "./ui/screens.js"
 import { deck, slides } from "./ui/slides.js"
 import { device } from "./ui/devices.js"
@@ -275,7 +276,12 @@ export const make = Effect.gen(function* () {
     const started = Date.now()
     yield* store.putJob(sessionID, { ...job, status: "running", started })
     const revision = yield* store.revision(sessionID, job.designID, job.input.revision)
-    const sizes = DesignViewports.of(revision.document, yield* store.configured(revision.document.sessionID))
+    const design = yield* store.configured(revision.document.sessionID)
+    // The layout audit covers only the configured viewport classes (design.viewports), the ones the gate requires.
+    const sizes =
+      job.input.format === "audit"
+        ? DesignGate.viewports(revision.document, design, design?.viewports)
+        : DesignViewports.of(revision.document, design)
     const root = yield* directory(revision)
     const progress = (value: number) => store.putJob(sessionID, { ...job, status: "running", started, progress: value })
     const presentation = revision.document.target === "presentation"

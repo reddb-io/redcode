@@ -314,6 +314,8 @@ export function Session(props: {
       sessionID: route.sessionID,
       endpoint,
       explicit,
+      // A review the user asked for names its address for another device once it opens.
+      reportOpened: explicit,
       disabledBy: blocked ? NO_BROWSER : undefined,
       launch: async (url) => {
         const config = await client.api.config.get({ location: location() }).catch(() => [])

@@ -50,12 +50,22 @@ const WorktreeParams = {
   ),
 }
 
+const reasoningFlag = (description: string) =>
+  Flag.choice("reasoning", ["single", "dual"]).pipe(Flag.withDescription(description), Flag.optional)
+
+const ReasoningParams = {
+  reasoning: reasoningFlag(
+    "Reasoning mode for this invocation, like REDCODE_REASONING (requires --standalone; the background service keeps its own mode)",
+  ),
+}
+
 const Root = Spec.make(typeof OPENCODE_CLI_NAME === "string" ? OPENCODE_CLI_NAME : "opencode", {
   description: `${name} command line interface`,
   params: {
     ...ServerParams,
     ...PermissionParams,
     ...WorktreeParams,
+    ...ReasoningParams,
     directory: Argument.string("directory").pipe(
       Argument.withDescription(`Directory to start ${name} in`),
       Argument.optional,
@@ -689,6 +699,7 @@ const Root = Spec.make(typeof OPENCODE_CLI_NAME === "string" ? OPENCODE_CLI_NAME
         ),
         ...PermissionParams,
         ...WorktreeParams,
+        ...ReasoningParams,
       },
     }),
     Spec.make("github", {
@@ -874,6 +885,7 @@ const Root = Spec.make(typeof OPENCODE_CLI_NAME === "string" ? OPENCODE_CLI_NAME
         service: Flag.boolean("service").pipe(Flag.withDefault(false)),
         stdio: Flag.boolean("stdio").pipe(Flag.withDefault(false)),
         ...WorktreeParams,
+        reasoning: reasoningFlag("Reasoning mode for this server, overriding the saved mode like REDCODE_REASONING"),
       },
     }),
     Spec.make("web", {

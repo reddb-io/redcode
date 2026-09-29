@@ -272,7 +272,7 @@ try {
     reactionID = (await addReaction(commentType)).data.id
   }
 
-  // Setup opencode session
+  // Setup Redcode session
   const repoData = await fetchRepo()
   session = await client.session.create({
     location: { directory: process.cwd() },
@@ -289,7 +289,7 @@ try {
     const shared = await client.session.share({ sessionID: session.id })
     return shared.share?.url
   })()
-  console.log("opencode session", session.id)
+  console.log("Redcode session", session.id)
 
   // Handle event types:
   // REPO_EVENTS (schedule, workflow_dispatch): no issue/PR context, output to logs/PR only
@@ -602,7 +602,7 @@ async function summarize(response: string) {
 }
 
 async function chat(message: string, files: PromptFiles = []) {
-  console.log("Sending message to opencode...")
+  console.log("Sending message to Redcode...")
   const response = await send(message, files)
   if (response) return response
   console.log("Requesting summary from agent...")
@@ -1002,14 +1002,14 @@ function footer(opts?: { image?: boolean }) {
     if (!shareUrl) return ""
     if (!opts?.image) return ""
 
-    const title = session.title ?? "OpenCode session"
+    const title = session.title ?? "Redcode session"
     const titleAlt = encodeURIComponent(title.substring(0, 50))
     const title64 = encodeURIComponent(Buffer.from(encodeURIComponent(title.substring(0, 700)), "utf8").toString("base64"))
     const shareID = new URL(shareUrl).pathname.split("/").filter(Boolean).at(-1)
 
     return `<a href="${shareUrl}"><img width="200" alt="${titleAlt}" src="https://social-cards.sst.dev/opencode-share/${title64}.png?model=${providerID}/${modelID}&version=2&id=${shareID}" /></a>\n`
   })()
-  const shared = shareUrl ? `[opencode session](${shareUrl})&nbsp;&nbsp;|&nbsp;&nbsp;` : ""
+  const shared = shareUrl ? `[Redcode session](${shareUrl})&nbsp;&nbsp;|&nbsp;&nbsp;` : ""
   return `\n\n${image}${shared}[github run](${runUrl})`
 }
 

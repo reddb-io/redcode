@@ -73,10 +73,16 @@ export default Runtime.handler(
         new Error(`Unable to open Design review for ${sessionID}: HTTP ${response.status} ${response.statusText}`),
       )
     const link = yield* Effect.tryPromise(() => response.json()).pipe(
-      Effect.flatMap(Schema.decodeUnknownEffect(Schema.Struct({ url: Schema.String }))),
+      Effect.flatMap(
+        Schema.decodeUnknownEffect(Schema.Struct({ url: Schema.String, network: Schema.optional(Schema.String) })),
+      ),
     )
     process.stdout.write(link.url + EOL)
-    if (input.noOpen || !process.stdin.isTTY || !process.stdout.isTTY) return
+    if (input.noOpen || !process.stdin.isTTY || !process.stdout.isTTY) {
+      // The local link stays the only stdout line; another device's address goes beside it on stderr.
+      if (link.network) process.stderr.write(`On another device: ${link.network}${EOL}`)
+      return
+    }
     const client = OpenCode.make({ baseUrl: server.endpoint.url, headers: Service.headers(server.endpoint) })
     const entries = yield* Effect.tryPromise(() => client.config.get({ location: { directory: process.cwd() } })).pipe(
       Effect.orElseSucceed((): ConfigEntry[] => []),
@@ -87,6 +93,7 @@ export default Runtime.handler(
         sessionID,
         endpoint: { url: server.endpoint.url, headers: Service.headers(server.endpoint) },
         explicit: true,
+        reportOpened: true,
         disabledBy: browserDisabled() ? NO_BROWSER : undefined,
         launch: (url) => openDesignUrl(url, { configured: configuredDesignBrowser(entries) }),
       }),

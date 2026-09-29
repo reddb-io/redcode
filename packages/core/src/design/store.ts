@@ -23,6 +23,7 @@ import { DesignFiles } from "./files.js"
 import { DesignApproval } from "./approval.js"
 import { DesignParams } from "./params.js"
 import { DesignRounds } from "./rounds.js"
+import { DesignGate } from "./gate.js"
 import { DesignSystem } from "./system.js"
 import { DesignBuild } from "./build.js"
 import { DesignAssets } from "./assets.js"
@@ -818,7 +819,12 @@ const make = Effect.gen(function* () {
     const document = yield* get(sessionID, id)
     if (document.revision !== revisionID)
       return yield* new Design.Error({ code: "conflict", message: "Approve the currently published revision" })
-    const pending = document.approvedRevision === revisionID ? undefined : DesignRounds.blocking(document)
+    const design = yield* configured(sessionID)
+    const pending =
+      document.approvedRevision === revisionID
+        ? undefined
+        : (DesignRounds.blocking(document) ??
+          (design?.gate ? DesignGate.check(document, yield* jobs(sessionID, id), design, design.viewports) : undefined))
     if (pending)
       return yield* new Design.Error({ code: "conflict", message: `Approval is not possible yet. ${pending}` })
     const recorded = yield* revision(sessionID, id, revisionID)

@@ -10,7 +10,7 @@ import {
   type TextareaRenderable,
 } from "@opentui/core"
 import { openUrl } from "@opencode/util/open"
-import { useTheme } from "../../context/theme"
+import { useTheme, useThemes } from "../../context/theme"
 import type { FormAnswer, FormField, FormValue } from "@opencode/client"
 import { useData, type FormWithLocation } from "../../context/data"
 import { useClipboard } from "../../context/clipboard"
@@ -66,6 +66,7 @@ export function FormPrompt(props: {
   const data = useData()
   const client = useClient()
   const theme = useTheme()
+  const themes = useThemes()
   const renderer = useRenderer()
   const dimensions = useTerminalDimensions()
   const keymap = Keymap.use()
@@ -914,7 +915,23 @@ export function FormPrompt(props: {
         <Show when={!confirm() && answerField()}>
           <box paddingLeft={1} gap={1}>
             <box>
-              <text fg={theme.text.base}>{answerField()!.description ?? formLabel(answerField()!)}</text>
+              <Show
+                when={answerField()!.description}
+                fallback={<text fg={theme.text.base}>{formLabel(answerField()!)}</text>}
+              >
+                {(description) => (
+                  // Descriptions are model-authored Markdown, such as a plan under approval; render them like the transcript.
+                  <markdown
+                    syntaxStyle={themes.currentSyntax()}
+                    content={description()}
+                    conceal
+                    internalBlockMode="top-level"
+                    tableOptions={{ style: "grid", cellPaddingX: 1 }}
+                    fg={theme.markdown.text}
+                    bg={theme.background.raised.base}
+                  />
+                )}
+              </Show>
             </box>
             <Show when={textual() ? answerField()!.key : undefined} keyed>
               <box paddingLeft={1}>

@@ -9,7 +9,7 @@ import { FSUtil } from "@opencode/util/fs-util"
 import { SessionBudget } from "@opencode/schema/session-budget"
 import { open } from "node:fs/promises"
 import path from "node:path"
-import { readStdin } from "../util/io"
+import { readStdin, readStdinWithin } from "../util/io"
 import { ServerConnection } from "../services/server-connection"
 import { parseSessionTargetModel, resolveSessionTarget } from "../session-target"
 import { toolInlineInfo } from "@opencode/tui/mini/tool"
@@ -85,10 +85,12 @@ async function run(input: RunCommandInput, options: ExecutionOptions) {
   if (input.fork && !input.continue && !input.session) fail("--fork requires --continue or --session")
   // Parsed before anything runs, so a mistyped limit never starts an unlimited run.
   budgetLimits(input)
-  const root = options.root ?? process.env.PWD ?? process.cwd()
+  // `PWD` is deliberately not consulted: a spawner that sets `cwd` can leave another shell's stale `PWD`.
+  const root = options.root ?? process.cwd()
   const local = localDirectory(root)
   const directory = options.useServerDirectory ? undefined : (options.directory ?? local)
-  const message = mergeInput(formatMessage(input.message), process.stdin.isTTY ? undefined : await readStdin())
+  const argument = formatMessage(input.message)
+  const message = mergeInput(argument, await pipedInput(argument))
   if (!message?.trim()) fail("You must provide a message")
   const files = await Promise.all(input.file.map((file) => prepareFile(file, root, options)))
   const prepared = { directory, message, files }
@@ -185,6 +187,14 @@ export function mergeInput(message: string | undefined, piped: string | undefine
   if (!message) return piped || undefined
   if (!piped) return message
   return message + "\n" + piped
+}
+
+// With a prompt in the arguments, stdin is optional and must not hang the run when a wrapper never
+// closes it; without one, stdin is the prompt and is read to EOF.
+function pipedInput(argument: string | undefined) {
+  if (process.stdin.isTTY) return Promise.resolve(undefined)
+  if (argument) return readStdinWithin()
+  return readStdin()
 }
 
 function formatMessage(message: string[]) {

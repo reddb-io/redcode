@@ -59,7 +59,7 @@ import {
 } from "./event"
 import { ACPError } from "./error"
 
-export const AuthMethodID = "opencode-login"
+export const AuthMethodID = "redcode-login"
 
 type Catalog = {
   readonly providers: ConfigOptionProvider[]
@@ -189,13 +189,13 @@ export function make(input: {
       capabilities.writeTextFile = params.clientCapabilities?.fs?.writeTextFile === true
       capabilities.childSessionUpdates = params.clientCapabilities?._meta?.[ChildSessionUpdatesCapability] === true
       const authMethod: AuthMethod = {
-        description: "Run `opencode auth login` in the terminal",
-        name: "Login with opencode",
+        description: "Run `redcode auth login` in the terminal",
+        name: "Login with Redcode",
         id: AuthMethodID,
       }
       if (params.clientCapabilities?._meta?.["terminal-auth"] === true) {
         authMethod._meta = {
-          "terminal-auth": { command: "opencode", args: ["auth", "login"], label: "OpenCode Login" },
+          "terminal-auth": { command: "redcode", args: ["auth", "login"], label: "Redcode Login" },
         }
       }
       return {
@@ -208,7 +208,7 @@ export function make(input: {
           _meta: { [ChildSessionUpdatesCapability]: true },
         },
         authMethods: [authMethod],
-        agentInfo: { name: "OpenCode", version: OPENCODE_VERSION },
+        agentInfo: { name: "Redcode", version: OPENCODE_VERSION },
       }
     },
     authenticate: async (params) => {

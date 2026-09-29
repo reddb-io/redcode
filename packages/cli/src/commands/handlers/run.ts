@@ -3,6 +3,7 @@ import { Commands } from "../commands"
 import { Runtime } from "../../framework/runtime"
 import { ServerConnection } from "../../services/server-connection"
 import { BootTrace } from "../../boot-trace"
+import { applyReasoningFlag } from "../../reasoning-flag"
 
 export default Runtime.handler(Commands.commands.run, (input) =>
   Effect.gen(function* () {
@@ -10,6 +11,8 @@ export default Runtime.handler(Commands.commands.run, (input) =>
     const separator = process.argv.indexOf("--", 2)
     // A standalone server inherits it. A background service it spawns must not, so the Session's environment carries it there.
     if (input.tmp && input.standalone) process.env.REDCODE_WORKTREE_LOCATION = "tmp"
+    // Set before the server resolves so the standalone server this run starts inherits it.
+    yield* applyReasoningFlag(input)
     const server = yield* ServerConnection.resolve({
       server: Option.getOrUndefined(input.server),
       standalone: input.standalone,

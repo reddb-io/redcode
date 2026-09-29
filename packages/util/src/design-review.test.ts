@@ -144,4 +144,47 @@ describe("openDesignReview", () => {
       "GET /design/session/ses_a/link",
     ])
   })
+
+  test("a review with a network address names it after an announced launch and in every notice", async () => {
+    const network = "http://192.168.1.20:4096/design/session/ses_a/review?ticket=signed"
+    const remote = server([
+      { outcome: "claimed", token: 1, url: review, network, connected: 0 },
+      { outcome: "connected", url: review, network, connected: 1 },
+    ])
+    const opener = browser(true)
+    const open = () =>
+      openDesignReview({
+        sessionID: "ses_a",
+        endpoint,
+        explicit: true,
+        reportOpened: true,
+        fetch: remote.fetch,
+        launch: opener.launch,
+      })
+    expect(await open()).toEqual({
+      variant: "info",
+      message: `Design review opened in the browser.\nOn another device: ${network}`,
+      url: review,
+      network,
+    })
+    expect(await open()).toEqual({
+      variant: "info",
+      message: `The Design review is already open in a browser tab; switch to it there. ${review}\nOn another device: ${network}`,
+      url: review,
+      network,
+    })
+  })
+
+  test("a launch stays quiet without a network address even when announced", async () => {
+    const remote = server([{ outcome: "claimed", token: 1, url: review, connected: 0 }])
+    const notice = await openDesignReview({
+      sessionID: "ses_a",
+      endpoint,
+      explicit: true,
+      reportOpened: true,
+      fetch: remote.fetch,
+      launch: browser(true).launch,
+    })
+    expect(notice).toBeUndefined()
+  })
 })

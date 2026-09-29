@@ -568,6 +568,24 @@ test("typing a custom single-select answer selects it without submitting", async
   }
 })
 
+test("renders a field description as Markdown", async () => {
+  await using tmp = await tmpdir()
+  const prompt = await mountForm(tmp.path, 80, [
+    {
+      key: "choice",
+      type: "string",
+      description: "Execute **this** plan?",
+      options: [{ value: "Execute", label: "Execute" }],
+    },
+  ])
+  try {
+    const frame = await prompt.app.waitForFrame((frame) => frame.includes("Execute this plan?"))
+    expect(frame).not.toContain("**this**")
+  } finally {
+    prompt.app.renderer.destroy()
+  }
+})
+
 test("committing a custom multiselect answer keeps one editable custom row", async () => {
   await using tmp = await tmpdir()
   const prompt = await mountForm(tmp.path, 80, [
