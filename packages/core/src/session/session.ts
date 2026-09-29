@@ -319,20 +319,14 @@ export const make = Effect.fn("Session.make")(function* () {
         Effect.gen(function* () {
           yield* get(sessionID)
           const inputID = input.id ?? SessionMessage.ID.create()
-          const admittedInput = {
-            type: "synthetic",
-            payload: SessionInbox.SyntheticPayload.make({
+          const admitted = yield* admission
+            .admitSynthetic({
+              id: inputID,
+              sessionID,
               text: input.text,
               description: input.description,
               metadata: input.metadata,
-            }),
-            delivery: SessionInbox.Delivery.make(input.delivery ?? "steer"),
-          } satisfies SessionInbox.Item
-          const admitted = yield* admission
-            .admit({
-              id: inputID,
-              sessionID,
-              item: admittedInput,
+              delivery: input.delivery,
             })
             .pipe(
               Effect.catchTag(

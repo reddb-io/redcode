@@ -12,7 +12,7 @@ import { IntelligenceEvaluation } from "../intelligence/evaluation.js"
 import { SessionSchema } from "./schema.js"
 import { SessionGuardLog } from "./guard-log.js"
 import { SessionGoalTable, SessionGoalReviewTable } from "./redcode.sql.js"
-import { SessionInboxTable } from "./sql.js"
+import { SessionInbox } from "./inbox.js"
 import { SessionBudget } from "./budget.js"
 
 const owner = { id: "" }
@@ -56,14 +56,7 @@ const make = Effect.gen(function* () {
           eq(SessionGoalTable.revision, previous.revision),
           // A pending V2 steer takes priority over autonomous completion.
           next.status === "done" && previous.status !== "done"
-            ? notExists(
-                db
-                  .select({ id: SessionInboxTable.id })
-                  .from(SessionInboxTable)
-                  .where(
-                    and(eq(SessionInboxTable.session_id, previous.sessionID), eq(SessionInboxTable.delivery, "steer")),
-                  ),
-              )
+            ? notExists(SessionInbox.pendingQuery(db, previous.sessionID, { delivery: "steer" }))
             : undefined,
         ),
       )

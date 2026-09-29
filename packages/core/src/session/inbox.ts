@@ -228,6 +228,33 @@ export const make = Effect.fn("SessionInbox.make")(function* () {
     )
   })
 
+  /**
+   * The one synthetic admission every producer shares. The ID is the idempotency key, so a retried
+   * notification reconciles with the first admission. Waking execution stays with the caller.
+   */
+  const admitSynthetic = Effect.fn("SessionInbox.admitSynthetic")(function* (input: {
+    readonly id: SessionMessage.ID
+    readonly sessionID: SessionSchema.ID
+    readonly text: string
+    readonly description?: string
+    readonly metadata?: Record<string, unknown>
+    readonly delivery?: Delivery
+  }) {
+    return yield* admit({
+      id: input.id,
+      sessionID: input.sessionID,
+      item: {
+        type: "synthetic",
+        payload: SyntheticPayload.make({
+          text: input.text,
+          description: input.description,
+          metadata: input.metadata,
+        }),
+        delivery: Delivery.make(input.delivery ?? "steer"),
+      },
+    })
+  })
+
   const cancel = Effect.fn("SessionInbox.cancel")((input: PendingRef) =>
     publishMutation(
       input,
@@ -262,8 +289,10 @@ export const make = Effect.fn("SessionInbox.make")(function* () {
 
   return {
     list: (sessionID: SessionSchema.ID) => list(db, sessionID),
+    pending: (sessionID: SessionSchema.ID, filter?: PendingFilter) => pending(db, sessionID, filter),
     reconcile,
     admit,
+    admitSynthetic,
     admitCompaction,
     cancel,
     steer,
@@ -384,16 +413,42 @@ export const projectDeliveryChanged = Effect.fn("SessionInbox.projectDeliveryCha
     }),
 )
 
-export const list = Effect.fn("SessionInbox.list")(function* (db: DatabaseService, sessionID: SessionSchema.ID) {
+/** Narrows pending work by delivery mode and item type; an omitted field matches every value. */
+export type PendingFilter = { readonly delivery?: Delivery; readonly type?: Item["type"] }
+
+const pendingWhere = (sessionID: SessionSchema.ID, filter?: PendingFilter) =>
+  and(
+    eq(SessionInboxTable.session_id, sessionID),
+    filter?.delivery ? eq(SessionInboxTable.delivery, filter.delivery) : undefined,
+    filter?.type ? eq(SessionInboxTable.type, filter.type) : undefined,
+  )
+
+/** Pending items in admission order. The inbox table holds only unconsumed work. */
+export const pending = Effect.fn("SessionInbox.pending")(function* (
+  db: DatabaseService,
+  sessionID: SessionSchema.ID,
+  filter?: PendingFilter,
+) {
   const rows = yield* db
     .select()
     .from(SessionInboxTable)
-    .where(eq(SessionInboxTable.session_id, sessionID))
+    .where(pendingWhere(sessionID, filter))
     .orderBy(asc(SessionInboxTable.enqueued_seq))
     .all()
     .pipe(Effect.orDie)
   return rows.map(fromRow)
 })
+
+/**
+ * An unexecuted selection of matching pending IDs, for guards that must stay atomic with another
+ * statement, such as `notExists(...)` in a compare-and-swap update.
+ */
+export const pendingQuery = (db: DatabaseService, sessionID: SessionSchema.ID, filter?: PendingFilter) =>
+  db.select({ id: SessionInboxTable.id }).from(SessionInboxTable).where(pendingWhere(sessionID, filter))
+
+export const list = Effect.fn("SessionInbox.list")((db: DatabaseService, sessionID: SessionSchema.ID) =>
+  pending(db, sessionID),
+)
 
 export const moveIDs = Effect.fn("SessionInbox.moveIDs")(function* (db: DatabaseService, sessionID: SessionSchema.ID) {
   return yield* db

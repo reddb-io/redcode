@@ -870,6 +870,106 @@ describe("SessionInbox command contracts", () => {
     }),
   )
 
+  it.live("reads pending work by delivery and type in admission order", () =>
+    Effect.gen(function* () {
+      const fixture = yield* setup()
+      const admission = yield* SessionInbox.Service
+      const queued = yield* admission.admit({
+        id: SessionMessage.ID.create(),
+        sessionID,
+        item: { type: "user", payload: { text: "Queued input" }, delivery: "queue" },
+      })
+      const steered = yield* admission.admitSynthetic({
+        id: SessionMessage.ID.create(),
+        sessionID,
+        text: "Steered note",
+      })
+      const compaction = yield* admission.admitCompaction({
+        id: SessionMessage.ID.create(),
+        sessionID,
+        delivery: "steer",
+      })
+      yield* admission.admitSynthetic({ id: SessionMessage.ID.create(), sessionID: otherID, text: "Other Session" })
+
+      expect(yield* SessionInbox.pending(fixture.db, sessionID)).toEqual(
+        yield* SessionInbox.list(fixture.db, sessionID),
+      )
+      expect((yield* admission.pending(sessionID)).map((item) => item.id)).toEqual([
+        queued.id,
+        steered.id,
+        compaction.id,
+      ])
+      expect((yield* admission.pending(sessionID, { delivery: "steer" })).map((item) => item.id)).toEqual([
+        steered.id,
+        compaction.id,
+      ])
+      expect(yield* admission.pending(sessionID, { type: "synthetic" })).toEqual([steered])
+      expect(yield* admission.pending(sessionID, { delivery: "steer", type: "user" })).toEqual([])
+      expect(
+        (yield* SessionInbox.pendingQuery(fixture.db, sessionID, { delivery: "queue" }).all().pipe(Effect.orDie)).map(
+          (row) => row.id,
+        ),
+      ).toEqual([queued.id])
+      expect(yield* SessionInbox.has(fixture.db, sessionID, "steer")).toBe(true)
+      yield* admission.cancel({ id: steered.id, sessionID })
+      yield* admission.cancel({ id: compaction.id, sessionID })
+      expect(yield* SessionInbox.has(fixture.db, sessionID, "steer")).toBe(false)
+      expect(yield* admission.pending(sessionID, { delivery: "steer" })).toEqual([])
+      expect(fixture.wakes).toEqual([])
+    }),
+  )
+
+  it.live("admits synthetic items once per ID and rejects cross-Session or cross-type reuse", () =>
+    Effect.gen(function* () {
+      const fixture = yield* setup()
+      const admission = yield* SessionInbox.Service
+      const id = SessionMessage.ID.create()
+      const first = yield* admission
+        .admitSynthetic({ id, sessionID, text: "First", description: "Notice", metadata: { source: "test" } })
+        .pipe(Effect.satisfiesSuccessType<SessionInbox.Synthetic>())
+      expect(first).toMatchObject({
+        id,
+        sessionID,
+        type: "synthetic",
+        delivery: "steer",
+        payload: { text: "First", description: "Notice", metadata: { source: "test" } },
+      })
+      expect(
+        yield* admission.admitSynthetic({ id, sessionID, text: "Ignored retry", delivery: "queue" }),
+      ).toEqual(first)
+      expect(
+        yield* admission.admitSynthetic({ id, sessionID: otherID, text: "Other Session" }).pipe(Effect.flip),
+      ).toMatchObject({ _tag: "SessionInbox.LifecycleConflict", id })
+      expect(
+        yield* admission
+          .admit({ id, sessionID, item: { type: "user", payload: { text: "Other type" }, delivery: "steer" } })
+          .pipe(Effect.flip),
+      ).toMatchObject({ _tag: "SessionInbox.LifecycleConflict", id })
+      expect(yield* admission.pending(sessionID)).toEqual([first])
+      expect(yield* admission.pending(otherID)).toEqual([])
+      expect(fixture.wakes).toEqual([])
+    }),
+  )
+
+  it.live("wakes execution after synthetic admissions unless resume is false", () =>
+    Effect.gen(function* () {
+      const fixture = yield* setup()
+      const handle = fixture.sessions.forSession(sessionID)
+      const id = SessionMessage.ID.create()
+      const quiet = yield* handle.synthetic({ id, text: "Admit only", metadata: { source: "test" }, resume: false })
+      expect(fixture.wakes).toEqual([])
+      expect(yield* handle.synthetic({ id, text: "Ignored retry" })).toEqual(quiet)
+      expect(fixture.wakes).toEqual([{ sessionID, pending: [id], enqueued: 1 }])
+      expect(
+        yield* fixture.sessions
+          .forSession(otherID)
+          .synthetic({ id, text: "Other Session" })
+          .pipe(Effect.flip),
+      ).toMatchObject({ _tag: "Session.SyntheticConflictError", sessionID: otherID, inputID: id })
+      expect(fixture.wakes).toHaveLength(1)
+    }),
+  )
+
   it.live("returns checked user and synthetic admissions and typed pending or delivered conflicts", () =>
     Effect.gen(function* () {
       const fixture = yield* setup()

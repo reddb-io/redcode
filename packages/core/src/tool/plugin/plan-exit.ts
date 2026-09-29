@@ -4,7 +4,6 @@ import { ToolFailure } from "@opencode/ai"
 import type { Context } from "@opencode/plugin/effect/plugin"
 import { Agent } from "@opencode/schema/agent"
 import { SessionTodo } from "@opencode/schema/session-todo"
-import { and, eq } from "drizzle-orm"
 import { Effect, Schema } from "effect"
 import { Database } from "../../database/database.js"
 import { FileAccess } from "../../file-access.js"
@@ -19,7 +18,6 @@ import { SessionMessage } from "../../session/message.js"
 import { SessionPlan } from "../../session/plan.js"
 import { SessionTaskFacts } from "../../session/task-facts.js"
 import { SessionTodoStore } from "../../session/todo-store.js"
-import { SessionInboxTable } from "../../session/sql.js"
 import { SessionEvidence } from "../session-evidence.js"
 
 export const Plugin = {
@@ -172,17 +170,7 @@ export const Plugin = {
                       { ...ready, status: "approved", created: Date.now() },
                       Effect.gen(function* () {
                         const currentGoal = yield* goals.get(context.sessionID)
-                        const steer = yield* db
-                          .select({ id: SessionInboxTable.id })
-                          .from(SessionInboxTable)
-                          .where(
-                            and(
-                              eq(SessionInboxTable.session_id, context.sessionID),
-                              eq(SessionInboxTable.delivery, "steer"),
-                            ),
-                          )
-                          .get()
-                          .pipe(Effect.orDie)
+                        const steer = yield* SessionInbox.has(db, context.sessionID, "steer")
                         return (
                           currentGoal?.id === goal?.id &&
                           currentGoal?.revision === goal?.revision &&
@@ -198,10 +186,7 @@ export const Plugin = {
               return yield* SessionInbox.serialized(
                 context.sessionID,
                 Effect.gen(function* () {
-                  const pending = (yield* sessions.inbox(context.sessionID)).some(
-                    (item) => item.delivery === "steer",
-                  )
-                  if (pending) {
+                  if (yield* SessionInbox.has(db, context.sessionID, "steer")) {
                     const output = `Plan revision ${ready.revision} approved with ${admitted.todos.length} tasks. New user input is pending; address it before Build. ${review}`
                     return { output, content: output, metadata: { agent: "plan", revision: ready.revision, review } }
                   }

@@ -2,7 +2,6 @@ export * as SessionGoalCompletion from "./goal-completion.js"
 
 import { Monitor } from "@opencode/schema/monitor"
 import { makeLocationNode } from "@opencode/util/effect/app-node"
-import { and, eq } from "drizzle-orm"
 import { Context, Effect, Layer } from "effect"
 import { Database } from "../database/database.js"
 import { DesignRounds } from "../design/rounds.js"
@@ -15,7 +14,7 @@ import { SessionEvidence } from "../tool/session-evidence.js"
 import type { Tool } from "../tool.js"
 import { SessionGoal } from "./goal.js"
 import { SessionSchema } from "./schema.js"
-import { SessionInboxTable } from "./sql.js"
+import { SessionInbox } from "./inbox.js"
 import { SessionTodo } from "./todo.js"
 import { SessionTodoStore } from "./todo-store.js"
 
@@ -73,18 +72,8 @@ const make = Effect.gen(function* () {
     const current = yield* goals.get(input.goal.sessionID)
     if (!current || current.id !== input.goal.id || current.revision !== input.goal.revision || current.status !== "active")
       return yield* new SessionGoal.Error({ message: "Goal changed during verification; inspect it again" })
-    const steer = yield* db
-      .select({ id: SessionInboxTable.id })
-      .from(SessionInboxTable)
-      .where(
-        and(
-          eq(SessionInboxTable.session_id, input.goal.sessionID),
-          eq(SessionInboxTable.delivery, "steer"),
-        ),
-      )
-      .get()
-      .pipe(Effect.orDie)
-    if (steer) return yield* new SessionGoal.Error({ message: "New steering is pending; address it first" })
+    if (yield* SessionInbox.has(db, input.goal.sessionID, "steer"))
+      return yield* new SessionGoal.Error({ message: "New steering is pending; address it first" })
     candidates.set(input.goal.sessionID, {
       ...input,
       evidence: input.evidence.map((item) => ({ path: item.path, hash: item.hash, bytes: item.bytes })),
