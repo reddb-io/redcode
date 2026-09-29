@@ -56,6 +56,20 @@ const overrideModel = Model.Ref.make({
 })
 const tokens = { input: 0, output: 0, reasoning: 0, cache: { read: 0, write: 0 } }
 
+/** A session `depth` levels below `root`: the last one takes `leaf`, the ones above it are plain parents. */
+const nest = (
+  sessions: Session.Interface,
+  root: Session.Info,
+  depth: number,
+  leaf: { readonly title: string; readonly model?: Model.Ref },
+) =>
+  Effect.reduce(
+    Array.from({ length: depth }),
+    () => root,
+    (current, _, index) =>
+      sessions.create({ parentID: current.id, ...(index === depth - 1 ? leaf : { title: `ancestor ${index}` }) }),
+  )
+
 const outputSessionID = (value: unknown) =>
   Schema.decodeUnknownSync(Schema.Struct({ sessionID: Session.ID }))(value).sessionID
 
@@ -321,7 +335,7 @@ describe("SubagentTool", () => {
     ),
   )
 
-  it.live("prevents subagents from launching subagents by default", () =>
+  it.live("prevents subagents from nesting past the default depth", () =>
     Effect.acquireRelease(
       Effect.promise(() => tmpdir()),
       (dir) => Effect.promise(() => dir[Symbol.asyncDispose]()),
@@ -331,7 +345,7 @@ describe("SubagentTool", () => {
           const location = Location.Ref.make({ directory: AbsolutePath.make(dir.path) })
           const sessions = yield* Session.Service
           const root = yield* sessions.create({ location })
-          const parent = yield* sessions.create({ parentID: root.id, title: "parent" })
+          const parent = yield* nest(sessions, root, SubagentTool.LIMITS.depth, { title: "parent" })
           yield* withSubagent(parent.location)
           const locations = yield* LocationServiceMap.Service
           const registry = yield* Tool.Service.pipe(Effect.provide(locations.get(parent.location)))
@@ -351,7 +365,7 @@ describe("SubagentTool", () => {
             status: "error",
             error: {
               type: "tool.execution",
-              message: expect.stringContaining("Subagent depth limit reached (1)"),
+              message: expect.stringContaining(`Subagent depth limit reached (${SubagentTool.LIMITS.depth})`),
             },
           })
           expect((yield* sessions.list({ parentID: parent.id })).data).toHaveLength(0)
@@ -368,12 +382,15 @@ describe("SubagentTool", () => {
       Effect.flatMap((dir) =>
         Effect.gen(function* () {
           yield* Effect.promise(() =>
-            Bun.write(path.join(dir.path, "opencode.json"), JSON.stringify({ experimental: { subagent_depth: 2 } })),
+            Bun.write(
+              path.join(dir.path, "opencode.json"),
+              JSON.stringify({ experimental: { subagent_depth: SubagentTool.LIMITS.depth + 1 } }),
+            ),
           )
           const location = Location.Ref.make({ directory: AbsolutePath.make(dir.path) })
           const sessions = yield* Session.Service
           const root = yield* sessions.create({ location })
-          const parent = yield* sessions.create({ parentID: root.id, title: "parent", model: parentModel })
+          const parent = yield* nest(sessions, root, SubagentTool.LIMITS.depth, { title: "parent", model: parentModel })
           yield* withSubagent(parent.location)
           const locations = yield* LocationServiceMap.Service
           const registry = yield* Tool.Service.pipe(Effect.provide(locations.get(parent.location)))

@@ -95,7 +95,7 @@ export const description = [
 ].join("\n")
 
 /** The caps in force when a config sets none. */
-export const LIMITS = { depth: 1, concurrent: 4, perRequest: 12, background: 4, subtasks: 4 }
+export const LIMITS = { depth: 2, concurrent: 8, perRequest: 24, background: 8, subtasks: 8 }
 
 /** The caps in force, read per call so a config edit applies to the next subagent. */
 export function limits(entries: readonly Entry[]) {

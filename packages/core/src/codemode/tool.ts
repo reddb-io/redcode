@@ -62,7 +62,7 @@ export interface Limits {
   readonly maxOutputBytes: number
 }
 
-export const DEFAULT_LIMITS: Limits = { timeoutMs: 120_000, maxToolCalls: 50, maxOutputBytes: 1_000_000 }
+export const DEFAULT_LIMITS: Limits = { timeoutMs: 240_000, maxToolCalls: 100, maxOutputBytes: 2_000_000 }
 
 /**
  * Resolves `experimental.code_mode`. Code Mode stays off unless it is explicitly turned on: until

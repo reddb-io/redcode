@@ -9,27 +9,27 @@ export class Info extends Schema.Class<Info>("ConfigExperimental.Info")({
     description: "Enable the experimental portable shell permission scanner. Defaults to false.",
   }),
   subagent_depth: NonNegativeInt.pipe(optional).annotate({
-    description: "Maximum subagent nesting depth. Defaults to 1.",
+    description: "Maximum subagent nesting depth. Defaults to 2.",
   }),
   subagent_limits: Schema.Struct({
     concurrent: PositiveInt.pipe(optional).annotate({
       description:
-        "Foreground subagents one session may have in flight at once; past it the subagent tool refuses and asks the model to wait for one. Defaults to 4.",
+        "Foreground subagents one session may have in flight at once; past it the subagent tool refuses and asks the model to wait for one. Defaults to 8.",
     }),
     per_request: PositiveInt.pipe(optional).annotate({
       description:
-        "New subagents one session may start for a single user message; past it the subagent tool refuses and asks the model to finish with what it has. Defaults to 12.",
+        "New subagents one session may start for a single user message; past it the subagent tool refuses and asks the model to finish with what it has. Defaults to 24.",
     }),
   })
     .pipe(optional)
     .annotate({ description: "Fan-out caps on the subagent tool. Nesting depth is bounded by subagent_depth." }),
   background_subagents_max: PositiveInt.pipe(optional).annotate({
     description:
-      "Background subagents one session may have running at once; past it the subagent tool refuses and asks the model to wait or run the task in the foreground. Defaults to 4.",
+      "Background subagents one session may have running at once; past it the subagent tool refuses and asks the model to wait or run the task in the foreground. Defaults to 8.",
   }),
   subtask_concurrency: PositiveInt.pipe(optional).annotate({
     description:
-      "Foreground subagents of one session that run at the same time; further admitted calls wait for a slot and start in the order they were made. Defaults to 4.",
+      "Foreground subagents of one session that run at the same time; further admitted calls wait for a slot and start in the order they were made. Defaults to 8.",
   }),
   loop_guard: Schema.Union([
     Schema.Literal(false),
@@ -79,7 +79,7 @@ export class Info extends Schema.Class<Info>("ConfigExperimental.Info")({
     }),
   model_suggestions: Schema.Boolean.pipe(optional).annotate({
     description:
-      "Offer a card to switch to another model of a connected RedRouter when its recommend_models tool suggests one; nothing switches until you accept. Defaults to true.",
+      "Offer a card to switch to another model of a connected RedRouter when its recommend_models tool suggests one, asked by the agent or by Redcode when the session needs vision or tools the model lacks, nears its context limit, keeps failing at the provider or runs out of quota, or has a much cheaper equivalent; nothing switches until you accept. Defaults to true.",
   }),
   code_mode: Schema.Struct({
     enabled: Schema.Literals(["off", "on"]).pipe(optional).annotate({
@@ -87,14 +87,14 @@ export class Info extends Schema.Class<Info>("ConfigExperimental.Info")({
         'Call tools from a confined JavaScript program through the execute tool: "on" enables it. Defaults to "off", which advertises every tool directly.',
     }),
     max_tool_calls: PositiveInt.pipe(optional).annotate({
-      description: "Tool calls one program may make before it is stopped. Defaults to 50.",
+      description: "Tool calls one program may make before it is stopped. Defaults to 100.",
     }),
     timeout_ms: PositiveInt.pipe(optional).annotate({
       description:
-        "Milliseconds one program may run, not counting time spent waiting for a person. Defaults to 120000.",
+        "Milliseconds one program may run, not counting time spent waiting for a person. Defaults to 240000.",
     }),
     max_output_bytes: PositiveInt.pipe(optional).annotate({
-      description: "Bytes of program result and logs kept before the result is cut. Defaults to 1000000.",
+      description: "Bytes of program result and logs kept before the result is cut. Defaults to 2000000.",
     }),
   })
     .pipe(optional)

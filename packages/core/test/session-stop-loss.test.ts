@@ -5,6 +5,8 @@ import { LOOP_GUARD_REFUSAL } from "@opencode/core/session/loop-marker"
 import { SessionStopLoss } from "@opencode/core/session/stop-loss"
 
 const LIMITS = SessionStopLoss.limits(undefined, LoopGuard.LIMITS)!
+// The ceiling is three times the no-progress threshold; the first probe is progress, the rest are not.
+const PAST_CEILING = 3 * LIMITS.idleAt + 1
 const DEVICES = "List of devices attached\n"
 
 const call = (tool: string, input: unknown, output: string, status = "completed"): SessionStopLoss.Part => ({
@@ -71,33 +73,37 @@ describe("SessionStopLoss.observe", () => {
 
 describe("SessionStopLoss.signals", () => {
   const cases: Array<[string, SessionStopLoss.Step[], SessionStopLoss.Signal[]]> = [
-    ["two of the same result is not yet a loop", probes(2), []],
-    ["three of the same result with drifting arguments", probes(3), ["same_result"]],
+    ["one short of the repeat threshold is not yet a loop", probes(LIMITS.repeatAt - 1), []],
+    ["the same result at the repeat threshold with drifting arguments", probes(LIMITS.repeatAt), ["same_result"]],
     [
-      "three identical calls, which the loop guard also sees",
-      Array.from({ length: 3 }, () => step([call("bash", { command: "adb devices -l" }, DEVICES)])),
+      "identical calls at the repeat threshold, which the loop guard also sees",
+      Array.from({ length: LIMITS.repeatAt }, () => step([call("bash", { command: "adb devices -l" }, DEVICES)])),
       ["same_result"],
     ],
     [
       "the same error",
-      Array.from({ length: 3 }, (_, index) => step([call("read", { filePath: `${index}` }, "EACCES", "error")])),
+      Array.from({ length: LIMITS.repeatAt }, (_, index) =>
+        step([call("read", { filePath: `${index}` }, "EACCES", "error")]),
+      ),
       ["same_error"],
     ],
     [
       "steps that only re-read what is already known",
       [
         step([call("read", { filePath: "a" }, "a"), call("read", { filePath: "b" }, "b")]),
-        ...Array.from({ length: 5 }, (_, index) =>
+        ...Array.from({ length: LIMITS.idleAt }, (_, index) =>
           step([index % 2 ? call("read", { filePath: "b" }, "b") : call("read", { filePath: "a" }, "a")]),
         ),
       ],
       ["no_progress"],
     ],
-    ["spend while nothing moves", [step([read]), step([]), step([], { tokens: 160_000 })], ["spend"]],
+    ["spend while nothing moves", [step([read]), step([]), step([], { tokens: LIMITS.tokens })], ["spend"]],
     ["spend in a step that moved is not a loss", [step([read], { tokens: 900_000 })], []],
     [
       "task updates that keep failing",
-      Array.from({ length: 5 }, (_, index) => step([call("todowrite", { todos: [] }, `refused ${index}`, "error")])),
+      Array.from({ length: LIMITS.stopAt }, (_, index) =>
+        step([call("todowrite", { todos: [] }, `refused ${index}`, "error")]),
+      ),
       ["no_progress", "todo_failures"],
     ],
   ]
@@ -106,10 +112,10 @@ describe("SessionStopLoss.signals", () => {
   })
 
   test("a signal becomes severe at the loop guard's stop threshold, and the ceiling ends it regardless", () => {
-    expect(SessionStopLoss.severe(observe(probes(4)), LIMITS)).toEqual([])
-    expect(SessionStopLoss.severe(observe(probes(5)), LIMITS)).toEqual(["same_result"])
-    expect(SessionStopLoss.ceiling(observe(probes(15)), LIMITS)).toBe(false)
-    expect(SessionStopLoss.ceiling(observe(probes(16)), LIMITS)).toBe(true)
+    expect(SessionStopLoss.severe(observe(probes(LIMITS.stopAt - 1)), LIMITS)).toEqual([])
+    expect(SessionStopLoss.severe(observe(probes(LIMITS.stopAt)), LIMITS)).toEqual(["same_result"])
+    expect(SessionStopLoss.ceiling(observe(probes(PAST_CEILING - 1)), LIMITS)).toBe(false)
+    expect(SessionStopLoss.ceiling(observe(probes(PAST_CEILING)), LIMITS)).toBe(true)
   })
 })
 
@@ -139,30 +145,32 @@ describe("SessionStopLoss acknowledgements", () => {
   test("task list updates answered the same are bookkeeping, not a loop", () => {
     const update = (index: number) =>
       call("todowrite", { todos: [{ content: `task ${index}`, status: "pending" }] }, "[]")
-    expect(signals([step([read]), ...Array.from({ length: 3 }, (_, index) => step([update(index)]))])).toEqual([])
+    expect(
+      signals([step([read]), ...Array.from({ length: LIMITS.repeatAt }, (_, index) => step([update(index)]))]),
+    ).toEqual([])
   })
 
   test("the same edit made again and again is still the loop guard's case", () => {
-    const trajectory = observe(Array.from({ length: 3 }, () => step([edit(0)])))
-    expect(trajectory.repeat).toMatchObject({ tool: "edit", count: 3, identical: true })
+    const trajectory = observe(Array.from({ length: LIMITS.repeatAt }, () => step([edit(0)])))
+    expect(trajectory.repeat).toMatchObject({ tool: "edit", count: LIMITS.repeatAt, identical: true })
     expect(SessionStopLoss.signals(trajectory, LIMITS)).toEqual(["same_result"])
   })
 
   test("failed repeats, read-only probes and silent failures keep counting", () => {
-    const missed = Array.from({ length: 3 }, (_, index) =>
+    const missed = Array.from({ length: LIMITS.repeatAt }, (_, index) =>
       step([call("edit", { filePath: `${index}.ts` }, "oldString not found", "error")]),
     )
     expect(signals([step([read]), ...missed])).toEqual(["same_error"])
-    expect(signals(probes(3))).toEqual(["same_result"])
+    expect(signals(probes(LIMITS.repeatAt))).toEqual(["same_result"])
     // A search that finds nothing exits non-zero: its silence is an observation, not an acknowledgement.
     const search = (index: number): SessionStopLoss.Part => ({
       type: "tool",
       tool: "bash",
       state: { status: "completed", input: { command: `rg pattern-${index}` }, output: "", metadata: { exit: 1 } },
     })
-    expect(signals([step([read]), ...Array.from({ length: 3 }, (_, index) => step([search(index)]))])).toEqual([
-      "same_result",
-    ])
+    expect(
+      signals([step([read]), ...Array.from({ length: LIMITS.repeatAt }, (_, index) => step([search(index)]))]),
+    ).toEqual(["same_result"])
   })
 })
 
@@ -213,8 +221,8 @@ describe("SessionStopLoss spend", () => {
   test("tokens are spend only when what the steps cost agrees", () => {
     const heavy = (cost: number) => [
       step([read]),
-      step([], { tokens: 110_000, cost: cost / 2 }),
-      step([], { tokens: 110_000, cost: cost / 2 }),
+      step([], { tokens: LIMITS.tokens * 0.75, cost: cost / 2 }),
+      step([], { tokens: LIMITS.tokens * 0.75, cost: cost / 2 }),
     ]
     expect(signals(heavy(0.03))).toEqual([])
     expect(signals(heavy(0.5))).toEqual(["spend"])
@@ -223,11 +231,11 @@ describe("SessionStopLoss spend", () => {
   })
 
   test("the spend thresholds grow with the context", () => {
-    // 200k of new work in two steps is a signal at a small context, not at a 700k one.
+    // Twice the threshold of new work in two steps is a signal at a small context, not at a 700k one.
     const heavy = (context: number) => [
       step([read], { context }),
-      step([], { tokens: 100_000, context }),
-      step([], { tokens: 100_000, context }),
+      step([], { tokens: LIMITS.tokens, context }),
+      step([], { tokens: LIMITS.tokens, context }),
     ]
     expect(signals(heavy(50_000))).toEqual(["spend"])
     expect(signals(heavy(700_000))).toEqual([])
@@ -255,21 +263,29 @@ describe("SessionStopLoss spend", () => {
 })
 
 describe("SessionStopLoss.due", () => {
-  const due = (step: number, last: number, found: SessionStopLoss.Signal[] = [], interval = true, every = 8) =>
-    SessionStopLoss.due({ step, memory: { last, steers: 0 }, limits: { ...LIMITS, every }, signals: found, interval })
+  const due = (step: number, last: number, found: SessionStopLoss.Signal[] = [], interval = true) =>
+    SessionStopLoss.due({ step, memory: { last, steers: 0 }, limits: LIMITS, signals: found, interval })
   const cases: Array<[string, SessionStopLoss.Checkpoint, SessionStopLoss.Checkpoint]> = [
-    ["before the interval", due(7, 0), { type: "none" }],
-    ["at the interval", due(8, 0), { type: "interval" }],
-    ["no interval without S1", due(8, 0, [], false), { type: "none" }],
-    ["the interval counts from the last checkpoint", due(12, 8), { type: "none" }],
+    ["before the interval", due(LIMITS.every - 1, 0), { type: "none" }],
+    ["at the interval", due(LIMITS.every, 0), { type: "interval" }],
+    ["no interval without S1", due(LIMITS.every, 0, [], false), { type: "none" }],
+    [
+      "the interval counts from the last checkpoint",
+      due(LIMITS.every + LIMITS.cooldown, LIMITS.every),
+      { type: "none" },
+    ],
     [
       "a signal comes first, without repeats",
       due(2, 0, ["same_result", "no_progress", "same_result"]),
       { type: "signal", signals: ["same_result", "no_progress"] },
     ],
     ["once a step", due(5, 5, ["same_result"]), { type: "none" }],
-    ["a signal waits out the cooldown", due(6, 4, ["same_result"]), { type: "none" }],
-    ["and is looked at after it", due(7, 4, ["same_result"]), { type: "signal", signals: ["same_result"] }],
+    ["a signal waits out the cooldown", due(4 + LIMITS.cooldown - 1, 4, ["same_result"]), { type: "none" }],
+    [
+      "and is looked at after it",
+      due(4 + LIMITS.cooldown, 4, ["same_result"]),
+      { type: "signal", signals: ["same_result"] },
+    ],
   ]
   test.each(cases)("%s", (_name, actual, expected) => {
     expect(actual).toEqual(expected)
@@ -319,7 +335,7 @@ describe("SessionStopLoss.decide", () => {
     })
 
   test("dual: S1 reads the repeated probe as waiting on the user and asks them", () => {
-    expect(decide(probes(3), { asked: true, evaluation: sureS1("waiting", "ask_user") })).toEqual({
+    expect(decide(probes(LIMITS.repeatAt), { asked: true, evaluation: sureS1("waiting", "ask_user") })).toEqual({
       action: "ask_user",
       state: "waiting",
       signals: ["same_result"],
@@ -329,7 +345,7 @@ describe("SessionStopLoss.decide", () => {
   })
 
   test("a sure stop backed by a signal and a looping state ends the turn", () => {
-    expect(decide(probes(5), { asked: true, evaluation: sureS1("looping", "stop") })).toMatchObject({
+    expect(decide(probes(LIMITS.stopAt), { asked: true, evaluation: sureS1("looping", "stop") })).toMatchObject({
       action: "stop",
       state: "looping",
       verified: true,
@@ -349,7 +365,9 @@ describe("SessionStopLoss.decide", () => {
     })
     // A sure progressing state is enough on its own, even when the decision is unsure.
     const progressing = s1(sure("progressing", STATES), { continue: 0.43, ask_user: 0.34, steer: 0.19, stop: 0.04 })
-    expect(decide(probes(3), { asked: true, evaluation: progressing })).toMatchObject({ action: "continue" })
+    expect(decide(probes(LIMITS.repeatAt), { asked: true, evaluation: progressing })).toMatchObject({
+      action: "continue",
+    })
   })
 
   test("without a signal behind it, S1's wish to end the turn is a hint at most", () => {
@@ -365,14 +383,16 @@ describe("SessionStopLoss.decide", () => {
       action: "continue",
     })
     // A sure stop with a signal but no sure state is a hint too.
-    expect(decide(probes(3), { asked: true, evaluation: s1(unsureState, sure("stop", ACTIONS)) })).toMatchObject({
+    expect(
+      decide(probes(LIMITS.repeatAt), { asked: true, evaluation: s1(unsureState, sure("stop", ACTIONS)) }),
+    ).toMatchObject({
       action: "steer",
       verified: true,
     })
   })
 
   test("an unsure S1 falls back to the mechanical rules and is never harsher than no S1", () => {
-    expect(decide(probes(3), { asked: true, evaluation: unsure })).toEqual({
+    expect(decide(probes(LIMITS.repeatAt), { asked: true, evaluation: unsure })).toEqual({
       action: "steer",
       signals: ["same_result"],
       verified: false,
@@ -380,9 +400,9 @@ describe("SessionStopLoss.decide", () => {
       evaluationID: "evaluation-1",
     })
     for (const [steps, memory] of [
-      [probes(3), SessionStopLoss.FRESH],
-      [probes(9), { last: 6, steers: 1 }],
-      [probes(9), { last: 6, steers: 2 }],
+      [probes(LIMITS.repeatAt), SessionStopLoss.FRESH],
+      [probes(LIMITS.stopAt), { last: LIMITS.repeatAt, steers: 1 }],
+      [probes(LIMITS.stopAt), { last: LIMITS.repeatAt, steers: SessionStopLoss.MAX_STEERS }],
       [working(8), SessionStopLoss.FRESH],
     ] as const)
       expect(decide([...steps], { asked: true, evaluation: unsure, memory }).action).toBe(
@@ -390,42 +410,57 @@ describe("SessionStopLoss.decide", () => {
       )
   })
 
-  test("single: a hint on the first signal, a second hint, and a stop only on the third", () => {
-    expect(decide(probes(3))).toMatchObject({ action: "steer", verified: false })
-    expect(decide(probes(4), { memory: { last: 3, steers: 1 } })).toMatchObject({ action: "steer" })
-    expect(decide(probes(6), { memory: { last: 3, steers: 1 } })).toMatchObject({ action: "steer" })
-    expect(decide(probes(9), { memory: { last: 6, steers: 2 } })).toMatchObject({ action: "stop", verified: false })
+  test("single: a hint on each signal up to the cap, and a stop only after all of them", () => {
+    const last = LIMITS.repeatAt
+    expect(decide(probes(LIMITS.repeatAt))).toMatchObject({ action: "steer", verified: false })
+    expect(decide(probes(LIMITS.repeatAt + 1), { memory: { last, steers: 1 } })).toMatchObject({ action: "steer" })
+    expect(decide(probes(LIMITS.stopAt), { memory: { last, steers: SessionStopLoss.MAX_STEERS - 1 } })).toMatchObject({
+      action: "steer",
+    })
+    expect(decide(probes(LIMITS.stopAt), { memory: { last, steers: SessionStopLoss.MAX_STEERS } })).toMatchObject({
+      action: "stop",
+      verified: false,
+    })
     // Severe without the hints first still gets a hint.
-    expect(decide(probes(6))).toMatchObject({ action: "steer" })
+    expect(decide(probes(LIMITS.stopAt))).toMatchObject({ action: "steer" })
   })
 
   test("leaves the hint to the loop guard when it has just corrected the model", () => {
-    const refusal = call("bash", { command: "adb devices -l" }, `${LOOP_GUARD_REFUSAL}3 of \`bash\``, "error")
+    const refusal = call(
+      "bash",
+      { command: "adb devices -l" },
+      `${LOOP_GUARD_REFUSAL}${LIMITS.repeatAt} of \`bash\``,
+      "error",
+    )
     const same = call("bash", { command: "adb devices -l" }, DEVICES)
-    expect(decide([step([same]), step([same]), step([refusal])])).toMatchObject({ action: "continue" })
+    const steps = [...Array.from({ length: LIMITS.repeatAt - 1 }, () => step([same])), step([refusal])]
+    expect(SessionStopLoss.signals(observe(steps), LIMITS)).toEqual(["same_result"])
+    expect(decide(steps)).toMatchObject({ action: "continue" })
   })
 
   test("caps the hints a turn gets", () => {
     const capped = { memory: { last: 6, steers: SessionStopLoss.MAX_STEERS }, asked: true }
-    expect(decide(probes(4), { ...capped, evaluation: sureS1("looping", "steer") })).toMatchObject({
+    expect(decide(probes(LIMITS.stopAt - 1), { ...capped, evaluation: sureS1("looping", "steer") })).toMatchObject({
       action: "continue",
     })
-    expect(decide(probes(9), { ...capped, evaluation: sureS1("waiting", "steer") })).toMatchObject({
+    expect(decide(probes(LIMITS.stopAt), { ...capped, evaluation: sureS1("waiting", "steer") })).toMatchObject({
       action: "ask_user",
     })
-    expect(decide(probes(9), { ...capped, evaluation: sureS1("looping", "steer") })).toMatchObject({ action: "stop" })
-    expect(decide(probes(9), { memory: capped.memory })).toMatchObject({ action: "stop" })
+    expect(decide(probes(LIMITS.stopAt), { ...capped, evaluation: sureS1("looping", "steer") })).toMatchObject({
+      action: "stop",
+    })
+    expect(decide(probes(LIMITS.stopAt), { memory: capped.memory })).toMatchObject({ action: "stop" })
   })
 
   test("fails open to the mechanical rules when S1 cannot answer, and says so", () => {
-    expect(decide(probes(3), { asked: true })).toEqual({
+    expect(decide(probes(LIMITS.repeatAt), { asked: true })).toEqual({
       action: "steer",
       signals: ["same_result"],
       verified: false,
       unavailable: "System One did not answer",
     })
     expect(
-      decide(probes(3), {
+      decide(probes(LIMITS.repeatAt), {
         asked: true,
         evaluation: {
           ...sureS1("waiting", "ask_user"),
@@ -437,23 +472,24 @@ describe("SessionStopLoss.decide", () => {
   })
 
   test("ends the turn past the ceiling whatever S1 says", () => {
-    expect(decide(probes(16), { asked: true, evaluation: sureS1("progressing", "continue") })).toMatchObject({
+    const past = probes(PAST_CEILING)
+    expect(decide(past, { asked: true, evaluation: sureS1("progressing", "continue") })).toMatchObject({
       action: "stop",
       verified: true,
     })
-    expect(decide(probes(16), { asked: true, evaluation: sureS1("waiting", "continue") })).toMatchObject({
+    expect(decide(past, { asked: true, evaluation: sureS1("waiting", "continue") })).toMatchObject({
       action: "ask_user",
     })
   })
 
   test("a subagent has no user to ask: its question ends its run and goes to the parent", () => {
-    expect(decide(probes(3), { asked: true, subagent: true, evaluation: sureS1("waiting", "ask_user") })).toMatchObject(
-      { action: "stop", state: "waiting" },
-    )
+    expect(
+      decide(probes(LIMITS.repeatAt), { asked: true, subagent: true, evaluation: sureS1("waiting", "ask_user") }),
+    ).toMatchObject({ action: "stop", state: "waiting" })
   })
 
   test("remembers the checkpoint and counts the hints", () => {
-    const steer = decide(probes(3))
+    const steer = decide(probes(LIMITS.repeatAt))
     expect(SessionStopLoss.remember(SessionStopLoss.FRESH, 3, steer)).toEqual({ last: 3, steers: 1 })
     expect(SessionStopLoss.remember({ last: 3, steers: 1 }, 6, { ...steer, action: "continue" })).toEqual({
       last: 6,

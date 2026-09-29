@@ -21,7 +21,7 @@ const live = (goal: SessionGoal.Info) => goal.status === "active" || goal.status
 /** Synthetic metadata marking a goal continuation, the boundary of the work it asked for. */
 export const CONTINUATION_KEY = "goalContinuation"
 /** Consecutive continuations without progress that pause the goal instead of continuing it. */
-export const NO_PROGRESS_LIMIT = 2
+export const NO_PROGRESS_LIMIT = 4
 /** Consecutive continuations System One could not judge before the goal pauses. */
 export const JUDGE_FAILURE_LIMIT = 3
 export const WAITING = "Waiting for background work to finish; the goal continues when it reports"
@@ -169,7 +169,7 @@ const make = Effect.gen(function* () {
       executePlan: input.executePlan ?? false,
       status: "active",
       reason: "Starting",
-      turns: { used: 0, max: input.maxTurns ?? 50 },
+      turns: { used: 0, max: input.maxTurns ?? 100 },
       tokens: 0,
       reviews: 0,
       evidence: [],

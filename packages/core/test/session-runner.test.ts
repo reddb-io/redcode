@@ -621,8 +621,8 @@ const scenario = (
     }),
   )
 
-// Nominal retry gaps: exponential from 2s capped at 10s, for 10 retries.
-const RETRY_GAPS = [2_000, 4_000, 8_000, ...Array<number>(7).fill(10_000)]
+// Nominal retry gaps: exponential from 2s capped at 10s, for 20 retries.
+const RETRY_GAPS = [2_000, 4_000, 8_000, ...Array<number>(17).fill(10_000)]
 // Longest possible gap per retry (+20% jitter); advancing the clock by these always fires the retry.
 const RETRY_GAPS_MAX = RETRY_GAPS.map((gap) => gap * 1.2)
 const RETRY_ATTEMPTS = RETRY_GAPS.map((_, index) => index + 2)
@@ -1009,11 +1009,15 @@ describe("SessionRunnerLLM", () => {
   scenario("continues an active goal through the inbox and pauses it after replies without progress", function* (s) {
     const goals = yield* SessionGoal.Service
     yield* goals.start(sessionID, { objective: "Ship the feature" })
-    yield* s.llm.push(TestLLM.text("I will start now", "text-first"), TestLLM.text("Still thinking", "text-second"))
+    yield* s.llm.push(
+      ...Array.from({ length: SessionGoal.NO_PROGRESS_LIMIT }, (_, index) =>
+        TestLLM.text(`Still thinking ${index}`, `text-${index}`),
+      ),
+    )
 
     yield* s.runPrompt("Pursue the goal")
 
-    expect(s.requests).toHaveLength(2)
+    expect(s.requests).toHaveLength(SessionGoal.NO_PROGRESS_LIMIT)
     const continuation = (yield* s.messages).find(
       (message) => message.type === "synthetic" && message.metadata?.[SessionGoal.CONTINUATION_KEY] !== undefined,
     )
@@ -1022,7 +1026,7 @@ describe("SessionRunnerLLM", () => {
     const goal = yield* goals.get(sessionID)
     expect(goal?.status).toBe("paused")
     expect(goal?.reason).toContain("No verifiable progress")
-    expect(goal?.turns.used).toBe(2)
+    expect(goal?.turns.used).toBe(SessionGoal.NO_PROGRESS_LIMIT)
   })
 
   scenario("does not automatically replace an existing session title", function* (s) {

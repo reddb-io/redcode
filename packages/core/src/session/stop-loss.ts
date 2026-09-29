@@ -24,9 +24,9 @@
  * may steer (a hint, at most {@link MAX_STEERS} a turn), and ends the turn (ask the user or stop)
  * only when it is sure, reads the session as not progressing, and a mechanical signal backs it.
  * Single reasoning, read-only subagents and an S1 that is unsure or cannot answer use the
- * mechanical rules instead: a hint on the first signal, a second hint, and a stop only when a
- * strong signal persists after both. Whatever S1 says, a trajectory past {@link ceiling} ends the
- * turn: a loop never runs unbounded, yolo or not.
+ * mechanical rules instead: a hint on each signal up to {@link MAX_STEERS}, and a stop only when
+ * a strong signal persists after all of them. Whatever S1 says, a trajectory past {@link ceiling}
+ * ends the turn: a loop never runs unbounded, yolo or not.
  *
  * Pure and runtime-agnostic like the loop guard: the V2 runner turns its history into
  * {@link Step}s, asks S1 when {@link due} says so, and applies what {@link decide} returns.
@@ -63,14 +63,14 @@ export interface Limits {
 }
 
 export const LIMITS: Limits = {
-  every: 8,
-  cooldown: 3,
-  idleAt: 5,
-  repeatAt: 3,
-  stopAt: 5,
-  tokens: 150_000,
-  minutes: 15,
-  wait: 30,
+  every: 16,
+  cooldown: 6,
+  idleAt: 10,
+  repeatAt: LoopGuard.LIMITS.correctAt,
+  stopAt: LoopGuard.LIMITS.stopAt,
+  tokens: 300_000,
+  minutes: 30,
+  wait: 60,
 }
 
 /**
@@ -80,7 +80,7 @@ export const LIMITS: Limits = {
 export const CONTEXT_SCALE = 200_000
 
 /** Steps without progress before spend alone can end the turn, however large the steps are. */
-export const SPEND_STOP_STEPS = 6
+export const SPEND_STOP_STEPS = 12
 
 /**
  * What the steps since the last progress must have cost, in USD per threshold, before their tokens
@@ -98,7 +98,7 @@ export const END_MARGIN = 0.4
 export const POLL_AT = 2
 
 /** Hints a turn gets before a persisting signal ends it instead. */
-export const MAX_STEERS = 2
+export const MAX_STEERS = 4
 
 /** Opens the synthetic message that carries a steer to the model. */
 export const STEER = "[system:stop-loss-steer]"
@@ -650,7 +650,7 @@ export function decide(input: {
     return verdict(waiting ? "ask_user" : "stop")
   }
   if (!found.length) return verdict("continue")
-  // Two hints first: the turn ends only on the third checkpoint a strong signal is still there.
+  // The hints first: the turn ends only when a strong signal is still there after MAX_STEERS of them.
   if (strong.length && input.memory.steers >= MAX_STEERS) return verdict("stop")
   // The loop guard has just answered the model; a second voice on the same step is noise.
   if (input.memory.steers >= MAX_STEERS || input.trajectory.corrected) return verdict("continue")

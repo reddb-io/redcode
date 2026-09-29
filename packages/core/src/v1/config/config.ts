@@ -81,7 +81,8 @@ export const Info = Schema.Struct({
       "Default agent to use when none is specified. Must be a primary agent. Falls back to 'build' if not set or if the specified agent is invalid.",
   }),
   subagent_depth: Schema.optional(NonNegativeInt).annotate({
-    description: "Maximum subagent nesting depth. Defaults to 1, which prevents subagents from launching subagents.",
+    description:
+      "Maximum subagent nesting depth. Defaults to 2, which lets subagents launch subagents that cannot launch more.",
   }),
   username: Schema.optional(Schema.String).annotate({
     description: "Custom username to display in conversations instead of system username",
@@ -176,7 +177,7 @@ export const Info = Schema.Struct({
         description: "Tools that should only be available to primary agents.",
       }),
       subagent_depth: Schema.optional(NonNegativeInt).annotate({
-        description: "Maximum subagent nesting depth. Defaults to 1.",
+        description: "Maximum subagent nesting depth. Defaults to 2.",
       }),
       continue_loop_on_deny: Schema.optional(Schema.Boolean).annotate({
         description: "Continue the agent loop when a tool call is denied",

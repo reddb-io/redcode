@@ -37,7 +37,7 @@ export interface Limits {
   readonly failureStopAt: number
 }
 
-export const LIMITS: Limits = { correctAt: 3, stopAt: 5, nudgeAt: 12, failureStopAt: 8 }
+export const LIMITS: Limits = { correctAt: 6, stopAt: 10, nudgeAt: 24, failureStopAt: 16 }
 
 export function limits(
   config?: false | { correct_at?: number; stop_at?: number; nudge_at?: number },
