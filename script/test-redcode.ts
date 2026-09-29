@@ -36,7 +36,6 @@ const suites = {
     "test/session-diff.test.ts",
   ],
   tui: [
-    "test/config.test.tsx",
     "test/config-v2.test.tsx",
     "test/session-group-navigation.test.tsx",
     "test/redcode-workflows.test.tsx",
