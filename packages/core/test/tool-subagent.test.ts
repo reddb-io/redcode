@@ -5,6 +5,7 @@ import { OpenAIChat } from "@opencode/ai/protocols"
 import { TestLLM } from "@opencode/ai/testing"
 import path from "path"
 import { Money } from "@opencode/schema/money"
+import { SubagentReview } from "@opencode/schema/subagent-review"
 import { AppNodeBuilder } from "@opencode/core/effect/app-node-builder"
 import { LayerNodePlatform } from "@opencode/core/effect/app-node-platform"
 import { LayerNode } from "@opencode/util/effect/layer-node"
@@ -18,6 +19,7 @@ import { Model } from "@opencode/core/model"
 import { Provider } from "@opencode/core/provider"
 import { AbsolutePath } from "@opencode/core/schema"
 import { HookRuntime } from "@opencode/core/hook"
+import { Intelligence } from "@opencode/core/intelligence"
 import { Agent } from "@opencode/core/agent"
 import { Job } from "@opencode/core/job"
 import { KV } from "@opencode/core/kv"
@@ -124,6 +126,7 @@ const subagentPluginSupervisor = makeLocationNode({
     HookRuntime.node,
     Agent.node,
     Config.node,
+    Intelligence.node,
     Model.node,
     Permission.node,
     Session.node,
@@ -396,6 +399,109 @@ describe("SubagentTool", () => {
             status: "completed",
           })
           expect((yield* sessions.get(outputSessionID(settled.metadata))).parentID).toBe(parent.id)
+        }),
+      ),
+    ),
+  )
+
+  it.live("refuses new subagents past the per-request cap with an actionable error", () =>
+    Effect.acquireRelease(
+      Effect.promise(() => tmpdir()),
+      (dir) => Effect.promise(() => dir[Symbol.asyncDispose]()),
+    ).pipe(
+      Effect.flatMap((dir) =>
+        Effect.gen(function* () {
+          yield* Effect.promise(() =>
+            Bun.write(
+              path.join(dir.path, "opencode.json"),
+              JSON.stringify({ experimental: { subagent_limits: { per_request: 1 } } }),
+            ),
+          )
+          const location = Location.Ref.make({ directory: AbsolutePath.make(dir.path) })
+          const sessions = yield* Session.Service
+          const parent = yield* sessions.create({ location, model: parentModel })
+          yield* withSubagent(parent.location)
+          const locations = yield* LocationServiceMap.Service
+          const registry = yield* Tool.Service.pipe(Effect.provide(locations.get(parent.location)))
+          const call = (id: string) =>
+            executeTool(registry, {
+              sessionID: parent.id,
+              ...toolIdentity,
+              call: {
+                type: "tool-call",
+                id,
+                name: SubagentTool.name,
+                input: { agent: "reviewer", description: "review", prompt: "review this" },
+              },
+            })
+
+          expect(yield* call("call-within-cap")).toMatchObject({ status: "completed" })
+          expect(yield* call("call-over-cap")).toEqual({
+            status: "error",
+            error: {
+              type: "tool.execution",
+              message: expect.stringContaining("(limit 1, experimental.subagent_limits.per_request)"),
+            },
+          })
+          expect((yield* sessions.list({ parentID: parent.id })).data).toHaveLength(1)
+        }),
+      ),
+    ),
+  )
+
+  it.live("reviews a structured brief's result and records the verdict on the child", () =>
+    Effect.acquireRelease(
+      Effect.promise(() => tmpdir()),
+      (dir) => Effect.promise(() => dir[Symbol.asyncDispose]()),
+    ).pipe(
+      Effect.flatMap((dir) =>
+        Effect.gen(function* () {
+          const location = Location.Ref.make({ directory: AbsolutePath.make(dir.path) })
+          const sessions = yield* Session.Service
+          const parent = yield* sessions.create({ location, model: parentModel })
+          yield* withSubagent(parent.location)
+          const locations = yield* LocationServiceMap.Service
+          const registry = yield* Tool.Service.pipe(Effect.provide(locations.get(parent.location)))
+
+          const settled = yield* executeTool(registry, {
+            sessionID: parent.id,
+            ...toolIdentity,
+            call: {
+              type: "tool-call",
+              id: "call-structured-brief",
+              name: SubagentTool.name,
+              input: {
+                agent: "reviewer",
+                description: "review",
+                prompt: "Review the renderer module and report every finding with its location.",
+                scope: ["src/**"],
+                done_criteria: ["final response lists the findings"],
+                return_format: "A list of findings",
+              },
+            },
+          })
+
+          const childID = outputSessionID(settled.metadata)
+          // Single reasoning runs the mechanical checks only, so the result is never reported as checked.
+          expect(settled).toMatchObject({
+            status: "completed",
+            metadata: { sessionID: childID, status: "completed", review: { decision: "unverified", repaired: false } },
+            content: [{ type: "text", text: expect.stringContaining('<review decision="unverified">') }],
+          })
+          const brief = SubagentReview.read((yield* sessions.get(childID)).metadata)
+          expect(brief).toMatchObject({
+            prompt: "Review the renderer module and report every finding with its location.",
+            scope: ["src/**"],
+            criteria: ["final response lists the findings"],
+            returnFormat: "A list of findings",
+            parentSessionID: parent.id,
+            verdict: "unverified",
+            result: { decision: "unverified", repaired: false },
+          })
+          const prompt = (yield* sessions.inbox(childID)).find((message) => message.type === "user")?.payload.text
+          expect(prompt).toContain("<brief>")
+          expect(prompt).toContain("- src/**")
+          expect(prompt).toContain("Return format: A list of findings")
         }),
       ),
     ),

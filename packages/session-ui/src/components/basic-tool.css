@@ -297,6 +297,26 @@
     color: var(--v2-text-text-base);
   }
 
+  [data-component="task-tool-verdict"] {
+    flex-shrink: 0;
+    font-size: 13px;
+    line-height: var(--line-height-compact);
+    white-space: nowrap;
+    color: var(--v2-text-text-faint);
+
+    &[data-verdict="verified"] {
+      color: var(--v2-state-fg-success);
+    }
+
+    &[data-verdict="inconclusive"] {
+      color: var(--v2-state-fg-warning);
+    }
+
+    &[data-verdict="needs_revision"] {
+      color: var(--v2-state-fg-danger);
+    }
+  }
+
   &:hover,
   &:focus-visible {
     border-color: var(--border-weak-base, rgba(255, 255, 255, 0.08));

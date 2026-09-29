@@ -8,8 +8,11 @@ import { SubagentCompletion } from "./subagent-completion.js"
 
 type Recovery = Extract<Job.Recovery, { kind: "subagent" }>
 
+/** Reviews the run's final text before it reaches the parent, and returns the text the parent reads. */
+type Review = (text: string) => Effect.Effect<string, unknown>
+
 interface Runner {
-  start: (recovery: Recovery) => Effect.Effect<Job.Info>
+  start: (recovery: Recovery, review?: Review) => Effect.Effect<Job.Info>
   background: (recovery: Recovery) => Effect.Effect<void>
   notify: (recovery: Recovery, startedAt: number) => Effect.Effect<void>
 }
@@ -37,7 +40,7 @@ export const make: Effect.Effect<Runner, never, Session.Service | Job.Service | 
     })
 
     return {
-      start: (recovery: Recovery) =>
+      start: (recovery: Recovery, review?: Review) =>
         jobs.start({
           id: recovery.childSessionID,
           type: "subagent",
@@ -71,7 +74,7 @@ export const make: Effect.Effect<Runner, never, Session.Service | Job.Service | 
                   message.type === "assistant" && message.time.completed !== undefined && message.error === undefined,
               ),
             )
-          }),
+          }).pipe(Effect.flatMap((text) => (review ? review(text) : Effect.succeed(text)))),
         }),
       background: Effect.fn("SubagentJob.background")(function* (recovery: Recovery) {
         const info = yield* jobs.background(recovery.childSessionID)

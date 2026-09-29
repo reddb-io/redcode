@@ -2,7 +2,9 @@ export * as SessionRestart from "./restart.js"
 
 import { Context, Effect, Layer } from "effect"
 import { makeGlobalNode } from "@opencode/util/effect/app-node"
+import { SubagentReview } from "@opencode/schema/subagent-review"
 import { Bus } from "../../bus.js"
+import { IntelligenceSubagentReview } from "../../intelligence/subagent-review.js"
 import { Job } from "../../job.js"
 import { Session } from "../../session.js"
 import { SessionEvent } from "../event.js"
@@ -178,7 +180,11 @@ export const layer = (options?: Options) =>
                 (message) =>
                   message.type === "assistant" && message.time.completed !== undefined && message.error === undefined,
               )
-              return SubagentCompletion.text(assistant)
+              const text = SubagentCompletion.text(assistant)
+              // The parent's review ran in the process that died; a supervised result must not read as checked.
+              return SubagentReview.supervised(SubagentReview.read(child.metadata))
+                ? `${text}\n\n${IntelligenceSubagentReview.recoveredBlock()}`
+                : text
             }),
           ),
         })

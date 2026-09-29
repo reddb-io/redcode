@@ -205,6 +205,10 @@ const source = {
   "ui.tool.agent": "{{type}} Agent",
   "ui.tool.agent.default": "Agent",
   "ui.tool.agent.delegating": "Delegating agent…",
+  "ui.tool.agent.verdict.verified": "Verified",
+  "ui.tool.agent.verdict.inconclusive": "Inconclusive",
+  "ui.tool.agent.verdict.needs_revision": "Needs revision",
+  "ui.tool.agent.verdict.unverified": "Unverified",
   "ui.tool.skill": "Skill",
 
   "ui.basicTool.called": "Called `{{tool}}`",

@@ -11,6 +11,26 @@ export class Info extends Schema.Class<Info>("ConfigExperimental.Info")({
   subagent_depth: NonNegativeInt.pipe(optional).annotate({
     description: "Maximum subagent nesting depth. Defaults to 1.",
   }),
+  subagent_limits: Schema.Struct({
+    concurrent: PositiveInt.pipe(optional).annotate({
+      description:
+        "Foreground subagents one session may have in flight at once; past it the subagent tool refuses and asks the model to wait for one. Defaults to 4.",
+    }),
+    per_request: PositiveInt.pipe(optional).annotate({
+      description:
+        "New subagents one session may start for a single user message; past it the subagent tool refuses and asks the model to finish with what it has. Defaults to 12.",
+    }),
+  })
+    .pipe(optional)
+    .annotate({ description: "Fan-out caps on the subagent tool. Nesting depth is bounded by subagent_depth." }),
+  background_subagents_max: PositiveInt.pipe(optional).annotate({
+    description:
+      "Background subagents one session may have running at once; past it the subagent tool refuses and asks the model to wait or run the task in the foreground. Defaults to 4.",
+  }),
+  subtask_concurrency: PositiveInt.pipe(optional).annotate({
+    description:
+      "Foreground subagents of one session that run at the same time; further admitted calls wait for a slot and start in the order they were made. Defaults to 4.",
+  }),
   loop_guard: Schema.Union([
     Schema.Literal(false),
     Schema.Struct({

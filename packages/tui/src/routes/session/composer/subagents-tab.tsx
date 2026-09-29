@@ -15,6 +15,8 @@ import { useDialog } from "../../../ui/dialog"
 import { DialogConfirm } from "../../../ui/dialog-confirm"
 import { DialogPrompt } from "../../../ui/dialog-prompt"
 import { useToast } from "../../../ui/toast"
+import { SubagentReview } from "@opencode/schema/subagent-review"
+import { SubagentVerdict } from "../subagent"
 
 interface SubagentEntry {
   sessionID: string
@@ -24,6 +26,7 @@ interface SubagentEntry {
   current: boolean
   prefix: string
   model?: string
+  decision?: SubagentReview.Decision
 }
 
 export function SubagentsTab(props: { sessionID: string }) {
@@ -62,6 +65,7 @@ export function SubagentsTab(props: { sessionID: string }) {
           model: session.model
             ? `${session.model.id}${session.model.variant ? ` (${session.model.variant})` : ""}`
             : undefined,
+          decision: SubagentReview.read(session.metadata)?.result?.decision,
         }
       },
     )
@@ -299,6 +303,7 @@ export function SubagentsTab(props: { sessionID: string }) {
         {(entry) => (
           <box flexDirection="row" gap={2} paddingLeft={1} paddingRight={1}>
             <Show when={entry().model}>{(model) => <text fg={theme.text.muted}>{model()}</text>}</Show>
+            <SubagentVerdict decision={entry().decision} checkpoint={{ type: "in_scope" }} />
             <text
               id={`subagent-open-${entry().sessionID}`}
               fg={theme.text.action.primary.selected}

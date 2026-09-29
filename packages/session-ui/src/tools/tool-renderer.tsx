@@ -421,6 +421,35 @@ function sessionLink(id: string | undefined, href?: (id: string) => string | und
   return href?.(id)
 }
 
+const VERDICTS = ["verified", "inconclusive", "needs_revision", "unverified"] as const
+type Verdict = (typeof VERDICTS)[number]
+
+const VERDICT_SYMBOL: Record<Verdict, string> = {
+  verified: "✓",
+  inconclusive: "?",
+  needs_revision: "!",
+  unverified: "~",
+}
+
+const VERDICT_KEY = {
+  verified: "ui.tool.agent.verdict.verified",
+  inconclusive: "ui.tool.agent.verdict.inconclusive",
+  needs_revision: "ui.tool.agent.verdict.needs_revision",
+  unverified: "ui.tool.agent.verdict.unverified",
+} as const satisfies Record<Verdict, string>
+
+/**
+ * The verdict on a subagent's result: the one its task call returned, else the one its parent kept
+ * in the child session's brief (`subagentBrief.result`), since a background task reports later.
+ */
+function taskVerdict(metadata: Record<string, unknown>, child: Record<string, unknown> | undefined) {
+  const field = (value: unknown, key: string) =>
+    typeof value === "object" && value !== null && key in value ? (value as Record<string, unknown>)[key] : undefined
+  const own = field(metadata.review, "decision")
+  const kept = field(field(child?.subagentBrief, "result"), "decision")
+  return VERDICTS.find((item) => item === own) ?? VERDICTS.find((item) => item === kept)
+}
+
 function taskSession(
   input: Record<string, unknown>,
   parentID: string | undefined,
@@ -1581,6 +1610,11 @@ ToolRegistry.register({
       return (data.store.session_status[id]?.type ?? "idle") !== "idle"
     })
 
+    const verdict = createMemo(() => {
+      const id = childSessionId()
+      return taskVerdict(props.metadata, data.store.session.find((session) => session.id === id)?.metadata)
+    })
+
     const href = createMemo(() => sessionLink(childSessionId(), data.sessionHref))
     const clickable = createMemo(() => !!(childSessionId() && (data.navigateToSession || href())))
 
@@ -1631,6 +1665,13 @@ ToolRegistry.register({
               <span data-component="task-tool-title">{title()}</span>
               <Show when={subtitle()}>
                 <span data-slot="basic-tool-tool-subtitle">{subtitle()}</span>
+              </Show>
+              <Show when={verdict()}>
+                {(value) => (
+                  <span data-component="task-tool-verdict" data-verdict={value()}>
+                    <span aria-hidden="true">{VERDICT_SYMBOL[value()]}</span> {i18n.t(VERDICT_KEY[value()])}
+                  </span>
+                )}
               </Show>
             </div>
             <Show when={clickable()}>
