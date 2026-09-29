@@ -6,11 +6,19 @@ import { optional } from "./schema.js"
 
 /**
  * Why a session was offered another model of its RedRouter connection: images the model cannot see
- * (`vision`), a context close to its limit (`context`), a much cheaper equivalent (`cheaper`), or an
- * agent asking the router for alternatives without naming a need (`requested`). A session is never
- * offered a suggestion again for a trigger the person kept the model for.
+ * (`vision`), tools it cannot call (`tools`), a context close to its limit (`context`), a provider
+ * that keeps failing or is out of quota (`provider_errors`), a much cheaper equivalent (`cheaper`),
+ * or an agent asking the router for alternatives without naming a need (`requested`). A session is
+ * never offered a suggestion again for a trigger the person kept the model for.
  */
-export const Trigger = Schema.Literals(["vision", "context", "cheaper", "requested"]).annotate({
+export const Trigger = Schema.Literals([
+  "vision",
+  "tools",
+  "context",
+  "provider_errors",
+  "cheaper",
+  "requested",
+]).annotate({
   identifier: "ModelSuggestion.Trigger",
 })
 export type Trigger = typeof Trigger.Type

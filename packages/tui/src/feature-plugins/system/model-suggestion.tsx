@@ -27,8 +27,8 @@ export function suggestionText(suggestion: ModelSuggestion.Info, label: string, 
 /**
  * Shows the session's pending RedRouter model suggestion above the composer while the model it would
  * replace is still selected and the suggested model is listed. `switch` selects the suggested model
- * through the prompt's normal model selection; `keep` stops that trigger for the session. Either
- * answer drops the card on every client.
+ * in the prompt and switches the session to it, so a pending retry wait is retried on it; `keep`
+ * stops that trigger for the session. Either answer drops the card on every client.
  */
 export default Plugin.define({
   id: "redcode.model-suggestion",
@@ -63,14 +63,16 @@ function ModelSuggestionCard(props: { readonly context: Plugin.Context; readonly
   const answer = (choice: ModelSuggestion.Choice) => {
     const answered = ModelSuggestion.answer(data.session.get(props.sessionID)?.metadata, choice)
     if (!answered) return
-    if (choice === "switch")
-      local.model.set(
-        { providerID: answered.suggestion.model.providerID, modelID: answered.suggestion.model.id },
-        { recent: true },
-      )
-    void props.context.client.session
-      .update({ sessionID: props.sessionID, metadata: answered.metadata })
-      .catch((error) => props.context.ui.toast.show({ variant: "error", message: errorMessage(error) }))
+    const failed = (error: unknown) => props.context.ui.toast.show({ variant: "error", message: errorMessage(error) })
+    if (choice === "switch") {
+      const model = answered.suggestion.model
+      local.model.set({ providerID: model.providerID, modelID: model.id }, { recent: true })
+      // Switching the session itself ends a pending retry wait, which is retried on the new model.
+      void props.context.client.session
+        .switchModel({ sessionID: props.sessionID, model: { providerID: model.providerID, id: model.id } })
+        .catch(failed)
+    }
+    void props.context.client.session.update({ sessionID: props.sessionID, metadata: answered.metadata }).catch(failed)
   }
 
   return (

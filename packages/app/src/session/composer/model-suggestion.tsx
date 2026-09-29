@@ -11,8 +11,8 @@ import { showToast } from "@/shell/notifications/toast"
 /**
  * The session's pending RedRouter model suggestion, shown above the composer while the model it would
  * replace is still selected and the suggested model is listed. `switch` selects the suggested model
- * through the composer's normal model selection; `keep` stops that trigger for the session. Either
- * answer drops the card on every client, as in the terminal.
+ * in the composer and switches the session to it, so a pending retry wait is retried on it; `keep`
+ * stops that trigger for the session. Either answer drops the card on every client, as in the terminal.
  */
 export function SessionModelSuggestionCard(props: { sessionID: string; selection: ModelSelection }) {
   const command = useCommand()
@@ -40,17 +40,20 @@ export function SessionModelSuggestionCard(props: { sessionID: string; selection
   const answer = (choice: ModelSuggestion.Choice) => {
     const answered = ModelSuggestion.answer(data.session.get(props.sessionID)?.metadata, choice)
     if (!answered) return
-    if (choice === "switch")
-      props.selection.set(
-        { providerID: answered.suggestion.model.providerID, modelID: answered.suggestion.model.id },
-        { recent: true },
-      )
-    void server.api.session.update({ sessionID: props.sessionID, metadata: answered.metadata }).catch((error) =>
+    const failed = (error: unknown) =>
       showToast({
         title: language.t("session.modelSuggestion.failed"),
         description: error instanceof Error ? error.message : String(error),
-      }),
-    )
+      })
+    if (choice === "switch") {
+      const model = answered.suggestion.model
+      props.selection.set({ providerID: model.providerID, modelID: model.id }, { recent: true })
+      // Switching the session itself ends a pending retry wait, which is retried on the new model.
+      void server.api.session
+        .switchModel({ sessionID: props.sessionID, model: { providerID: model.providerID, id: model.id } })
+        .catch(failed)
+    }
+    void server.api.session.update({ sessionID: props.sessionID, metadata: answered.metadata }).catch(failed)
   }
 
   command.register("session.model-suggestion", () => [
