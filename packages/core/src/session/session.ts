@@ -2,7 +2,6 @@ export * as Session from "./session.js"
 
 import { DateTime, Effect, Fiber, Scope } from "effect"
 import { Agent } from "../agent.js"
-import { Git } from "../git.js"
 import type { Model } from "@opencode/schema/model"
 import type { Permission } from "@opencode/schema/permission"
 import { Event } from "@opencode/schema/event"
@@ -62,10 +61,11 @@ export const make = Effect.fn("Session.make")(function* () {
     agentID?: Agent.ID,
   ) {
     if (session.parentID) return
+    const marker = (yield* fs.up({ targets: [".git"], start: session.location.directory, mode: "first" }).pipe(
+      Effect.orElseSucceed(() => []),
+    ))[0]
+    if (!marker || (yield* fs.stat(marker).pipe(Effect.orElseSucceed(() => undefined)))?.type !== "Directory") return
     yield* Effect.gen(function* () {
-      const git = yield* Git.Service
-      const repository = yield* git.repo.discover(session.location.directory)
-      if (!repository || repository.gitDirectory !== repository.commonDirectory) return
       const { Plugin } = yield* Effect.promise(() => import("../plugin.js"))
       const plugins = yield* Plugin.Service
       yield* plugins.awaitActivation
