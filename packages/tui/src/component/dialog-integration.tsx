@@ -25,6 +25,7 @@ import { DialogSelect } from "../ui/dialog-select"
 import { Link } from "../ui/link"
 import { useToast } from "../ui/toast"
 import { errorMessage } from "../util/error"
+import { integrationKeyRole } from "../util/model-presentation"
 import { formLabel, formToggleMultiselect, formValidateValue, type FormAnswerField } from "../util/form"
 
 const INTEGRATION_PRIORITY: Record<string, number> = {
@@ -110,10 +111,13 @@ export function DialogIntegration(
       let category = "Services"
       if (integration.id in INTEGRATION_PRIORITY) category = "Popular"
       if (integration.metadata?.source === "mcp") category = "MCP"
+      // A RedRouter connection says what its key may do: an admin key also manages keys over MCP.
+      const role = integrationKeyRole(data.location.provider.list(location) ?? [], integration.id)
       return {
         title: integration.name,
         value: integration.id,
-        description: methods.length === 0 ? "Environment only" : undefined,
+        description:
+          [methods.length === 0 ? "Environment only" : undefined, role].filter(Boolean).join(" · ") || undefined,
         footer: connectionSummary(integration) || undefined,
         category,
         disabled: methods.length === 0 && credentials.length === 0,
@@ -193,6 +197,11 @@ function manageConnections(
                   ? `Press ${shortcuts.get("dialog.integration.delete")} again to confirm`
                   : connection.label,
                 value: connection.id,
+                // The saved router connection describes the active account's key.
+                description:
+                  credentialConnections(current() ?? integration)[0]?.id === connection.id
+                    ? integrationKeyRole(data.location.provider.list(location) ?? [], integration.id)
+                    : undefined,
                 category: "Connected accounts",
                 bg: confirming ? theme.background.action.destructive.focused : undefined,
                 fg: confirming ? theme.text.action.destructive.focused : undefined,

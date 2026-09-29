@@ -1,6 +1,7 @@
 import { describe, expect, test } from "bun:test"
 import type { SessionMessageInfo } from "@opencode/client"
-import { lastAssistantWithUsage, sessionFamily } from "../../src/util/session"
+import { Locale } from "../../src/util/locale"
+import { lastAssistantWithUsage, retryStatus, sessionFamily } from "../../src/util/session"
 
 const assistant = (id: string, input: number): SessionMessageInfo => ({
   id,
@@ -59,5 +60,23 @@ describe("util.session", () => {
 
     messages.push(assistant("msg_after", 5))
     expect(lastAssistantWithUsage(messages)?.tokens.input).toBe(5)
+  })
+
+  test("names the model a retry waits for, and when a quota resets", () => {
+    const at = Date.UTC(2026, 8, 29, 14, 5)
+    expect(
+      retryStatus({
+        model: "Gemini 3.7 Flash",
+        retry: { attempt: 2, at, error: { type: "provider.rate-limit", message: "Too many requests", status: 429 } },
+        seconds: 42,
+      }),
+    ).toBe("Retrying in 42s · Gemini 3.7 Flash · attempt 2 · Too many requests")
+    expect(
+      retryStatus({
+        model: "Gemini 3.7 Flash",
+        retry: { attempt: 3, at, error: { type: "provider.rate-limit", message: "Usage limit reached", status: 429 } },
+        seconds: 0,
+      }),
+    ).toBe(`Retry due · Gemini 3.7 Flash quota exhausted until ${Locale.time(at)} · attempt 3 · Usage limit reached`)
   })
 })

@@ -193,6 +193,16 @@ export const SettingsProviders: Component<{
     return currentSource !== "env" && currentSource !== "config"
   }
 
+  // A RedRouter connection says what its key may do: an admin key also manages keys over MCP.
+  const keyRole = (item: ProviderItem) => {
+    const role = data.location.provider
+      .list(props.directory ? { directory: props.directory } : undefined)
+      ?.find((provider) => provider.id === item.id)?.router?.role
+    if (role === "admin") return language.t("settings.providers.tag.adminKey")
+    if (role === "standard") return language.t("settings.providers.tag.standardKey")
+    return undefined
+  }
+
   const canManageAccounts = (item: ProviderItem) => providerAccounts(integration(item)).length > 0
 
   const note = (id: string) => PROVIDER_NOTES.find((item) => item.match(id))?.key
@@ -392,10 +402,9 @@ export const SettingsProviders: Component<{
                             <ProviderModelIcon provider={item} class="settings-provider-icon shrink-0" />
 
                             <div class="settings-provider-main">
-                              <span class="settings-provider-name truncate">
-                                {item.name}
-                              </span>
+                              <span class="settings-provider-name truncate">{item.name}</span>
                               <Badge>{type(item)}</Badge>
+                              <Show when={keyRole(item)}>{(role) => <Badge>{role()}</Badge>}</Show>
                             </div>
                           </div>
                           <Show
@@ -519,9 +528,7 @@ export const SettingsProviders: Component<{
 
                     <div class="settings-provider-copy">
                       <div class="settings-provider-main">
-                        <span class="settings-provider-name">
-                          {item.name}
-                        </span>
+                        <span class="settings-provider-name">{item.name}</span>
                         <Show when={item.id === "opencode" || item.id === "opencode-go"}>
                           <Badge>{language.t("dialog.provider.tag.recommended")}</Badge>
                         </Show>

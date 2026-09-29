@@ -1497,6 +1497,8 @@ export const dict = {
   "settings.providers.tag.custom": "Custom",
   "settings.providers.tag.account": "Account",
   "settings.providers.tag.other": "Other",
+  "settings.providers.tag.standardKey": "Standard key",
+  "settings.providers.tag.adminKey": "Admin key",
   "settings.models.title": "Models",
   "settings.models.description": "Choose which models appear in model picker",
   "settings.models.reasoning.title": "Reasoning roles",

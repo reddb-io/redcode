@@ -2,7 +2,7 @@ import type { IntelligenceEvaluator, IntelligenceSettings, ModelInfo, ProviderIn
 import type { Plugin } from "@opencode/plugin/tui"
 import { DialogIntegration } from "./dialog-integration"
 import { errorMessage } from "../util/error"
-import { modelDescription, modelLabel, modelRoute } from "../util/model-presentation"
+import { keyRoleLabel, modelDescription, modelLabel, modelRoute } from "../util/model-presentation"
 
 export async function configureReasoning(
   context: Plugin.Context,
@@ -212,7 +212,13 @@ async function chooseModel(
         .map(([id, list]) => ({
           value: id,
           title: input.providers.find((item) => item.id === id)?.name ?? id,
-          description: `${list?.length ?? 0} models${id === input.router && input.recommended ? " · recommended model available" : ""}`,
+          description: [
+            `${list?.length ?? 0} models`,
+            keyRoleLabel(input.providers.find((item) => item.id === id)),
+            id === input.router && input.recommended ? "recommended model available" : undefined,
+          ]
+            .filter(Boolean)
+            .join(" · "),
           category: "Providers",
         })),
       { value: "connect", title: "Connect another provider…", category: "Providers" },
@@ -287,7 +293,17 @@ async function chooseEvaluator(
     ...(status.router?.evaluator
       ? [
           {
-            name: `RedRouter · ${status.router.evaluator.model}`,
+            name: [
+              "RedRouter",
+              keyRoleLabel(
+                (context.data.location.provider.list(location) ?? []).find(
+                  (item) => item.id === status.router?.providerID,
+                ),
+              ),
+              status.router.evaluator.model,
+            ]
+              .filter(Boolean)
+              .join(" · "),
             evaluator: status.router.evaluator,
             keep: false,
             direct: true,

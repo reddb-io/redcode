@@ -77,7 +77,7 @@ test("custom commands commit the captured agent, model and variant before execut
     setup.mockInput.pressEnter()
     await setup.waitForFrame(
       (frame) =>
-        frame.includes("Plan · second model Demo · low") &&
+        frame.includes("Plan · second model·low") &&
         setup.renderer.currentFocusedRenderable instanceof TextareaRenderable,
     )
     await setup.mockInput.typeText("/review selected input")

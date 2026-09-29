@@ -72,6 +72,31 @@ export function contextUsage(
   }
 }
 
+// The runner's own wording for a quota or usage limit (`SessionRunnerRetry`), applied to what the event carries.
+const QUOTA_PATTERN = /quota|usage limit|insufficient[_\s]credits|credit balance/i
+
+/**
+ * The status line of a turn waiting to retry: which model it waits for and, when the failure names a
+ * quota, when it resets. A quota's retry waits at least as long as the provider asked, so the retry
+ * instant stands for the reset.
+ */
+export function retryStatus(input: {
+  model: string
+  retry: NonNullable<SessionMessageAssistant["retry"]>
+  seconds: number
+}) {
+  const error = input.retry.error
+  const quota = error.type === "provider.quota" || error.status === 402 || QUOTA_PATTERN.test(error.message)
+  return [
+    input.seconds > 0 ? `Retrying in ${input.seconds}s` : "Retry due",
+    quota ? `${input.model} quota exhausted until ${Locale.time(input.retry.at)}` : input.model,
+    `attempt ${input.retry.attempt}`,
+    error.message,
+  ]
+    .filter(Boolean)
+    .join(" · ")
+}
+
 export function formatContextUsage(tokens: number, percent?: number) {
   const value = Locale.number(tokens)
   return percent === undefined ? value : `${value} (${percent}%)`
