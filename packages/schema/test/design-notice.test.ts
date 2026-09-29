@@ -1,5 +1,8 @@
 import { describe, expect, test } from "bun:test"
+import { Design } from "../src/design.js"
 import { DesignNotice } from "../src/design-notice.js"
+
+const checkout = Design.ID.make("design_checkout")
 
 const review = [
   '<design-review id="design_checkout" revision="rev_1" feedback="msg_review" variant="stone" ended="true">',
@@ -26,7 +29,7 @@ const review = [
 describe("DesignNotice.feedback", () => {
   test("recovers the compact card from a rendered review", () => {
     expect(DesignNotice.feedback(review)).toEqual({
-      id: "design_checkout",
+      id: checkout,
       feedback: "msg_review",
       revision: "rev_1",
       variant: "stone",
@@ -71,13 +74,13 @@ describe("DesignNotice.approval", () => {
         text: "Design Checkout, revision rev_4, variant Stone (stone), approved. Continue in Plan.\n\nDesign plan: /tmp/plan.md",
         metadata,
       }),
-    ).toEqual({ id: "design_checkout", name: "Checkout", revision: "rev_4", variant: { id: "stone", name: "Stone" } })
+    ).toEqual({ id: checkout, name: "Checkout", revision: "rev_4", variant: { id: "stone", name: "Stone" } })
   })
 
   test("an approval of the entire revision has no variant, and a comma in the name stays in the name", () => {
     expect(
       DesignNotice.approval({ text: "Design Checkout, mobile, revision rev_4, approved. Continue in Plan.", metadata }),
-    ).toEqual({ id: "design_checkout", name: "Checkout, mobile", revision: "rev_4", variant: null })
+    ).toEqual({ id: checkout, name: "Checkout, mobile", revision: "rev_4", variant: null })
   })
 
   test("ignores other synthetic messages and malformed handoffs", () => {
