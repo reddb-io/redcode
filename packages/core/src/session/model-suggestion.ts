@@ -74,7 +74,7 @@ const Args = Schema.Struct({
 })
 export type Args = typeof Args.Type
 
-const decodeJson = Schema.decodeUnknownOption(Schema.UnknownFromJsonString)
+const decodeJson = Schema.decodeUnknownOption(Schema.fromJsonString(Schema.Unknown))
 const decodeEnvelope = Schema.decodeUnknownOption(
   Schema.Struct({ current: Schema.optional(Schema.Unknown), recommendations: Schema.Array(Schema.Unknown) }),
 )

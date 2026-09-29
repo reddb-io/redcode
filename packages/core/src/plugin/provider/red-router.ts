@@ -80,11 +80,11 @@ const catalogModel = Schema.Struct({
   flat: Schema.optional(Schema.Boolean),
   // Other OpenAI-compatible servers may send null for fields only RedRouter fills.
   strategy: Schema.optional(Schema.NullOr(Schema.String)),
-  offers: Schema.optional(Schema.NullOr(Schema.Array(Schema.Unknown))),
+  offers: Schema.optional(Schema.NullOr(Schema.Array(Schema.Json))),
   parameters: Schema.optional(Schema.Json),
   // `lead`: the parameters are the lead member's; `strictest`: the strictest of all members'.
   parameters_basis: Schema.optional(Schema.NullOr(Schema.String)),
-  member_parameters: Schema.optional(Schema.NullOr(Schema.Array(Schema.Unknown))),
+  member_parameters: Schema.optional(Schema.NullOr(Schema.Array(Schema.Json))),
   thinking_levels: Schema.optional(Schema.NullOr(Schema.Array(Schema.String))),
   type: Schema.optional(Schema.String),
   api_format: Schema.optional(Schema.String),
