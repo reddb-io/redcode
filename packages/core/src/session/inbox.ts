@@ -206,6 +206,7 @@ export const make = Effect.fn("SessionInbox.make")(function* () {
     readonly id: SessionMessage.ID
     readonly sessionID: SessionSchema.ID
     readonly delivery: Delivery
+    readonly focus?: string
   }) {
     return yield* serialized(
       input.sessionID,
@@ -217,12 +218,18 @@ export const make = Effect.fn("SessionInbox.make")(function* () {
         }
         if (yield* promotedFromMessage(db, input.sessionID, input.id, input.delivery))
           return yield* new LifecycleConflict({ id: input.id })
+        // A pending compaction coalesces a later request, which keeps the first request's focus.
         const pending = (yield* list(db, input.sessionID)).find((item) => item.type === "compaction")
         if (pending) return pending
+        const focus = input.focus?.trim()
         return yield* admit({
           id: input.id,
           sessionID: input.sessionID,
-          item: { type: "compaction", payload: {}, delivery: Delivery.make(input.delivery) },
+          item: {
+            type: "compaction",
+            payload: CompactionPayload.make(focus ? { focus } : {}),
+            delivery: Delivery.make(input.delivery),
+          },
         })
       }),
     )

@@ -16,4 +16,8 @@ export class Info extends Schema.Class<Info>("Config.Compaction")({
   keep: Keep.pipe(optional),
   buffer: NonNegativeInt.pipe(optional),
   summary_max_tokens: PositiveInt.pipe(optional),
+  background: Schema.Boolean.pipe(optional).annotate({
+    description:
+      "Prepare the automatic summary in the background shortly before the context reaches the compaction threshold. Off by default; the prepared summary is used only while the history it covers is unchanged.",
+  }),
 }) {}

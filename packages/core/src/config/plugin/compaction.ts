@@ -23,6 +23,9 @@ export const Plugin = define({
             : { summaryMaxTokens: entry.info.compaction.summary_max_tokens }),
           ...(entry.info.compaction.keep?.tokens === undefined ? {} : { keep: entry.info.compaction.keep.tokens }),
           ...(entry.info.compaction.keep?.turns === undefined ? {} : { keepTurns: entry.info.compaction.keep.turns }),
+          ...(entry.info.compaction.background === undefined
+            ? {}
+            : { background: entry.info.compaction.background }),
         })
       }
     })

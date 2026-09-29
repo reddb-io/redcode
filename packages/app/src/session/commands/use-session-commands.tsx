@@ -229,11 +229,11 @@ export const useSessionCommands = (actions: SessionCommandContext) => {
   const undo = actions.revert.undo
   const redo = actions.revert.redo
 
-  const compact = async () => {
+  const compact = async (focus?: string) => {
     const sessionID = actions.session.identity.params.id
     if (!sessionID) return
 
-    await serverSDK.api.session.compact({ sessionID })
+    await serverSDK.api.session.compact({ sessionID, focus: focus?.trim() || undefined })
   }
 
   const fork = () => {
@@ -274,8 +274,9 @@ export const useSessionCommands = (actions: SessionCommandContext) => {
       title: language.t("command.session.compact"),
       description: language.t("command.session.compact.description"),
       slash: "compact",
+      slashArguments: true,
       disabled: !actions.session.identity.params.id || actions.session.history.visibleUserMessages().length === 0,
-      onSelect: compact,
+      onSelect: (_source, input) => compact(input),
     }),
     sessionCommand({
       id: "session.background",

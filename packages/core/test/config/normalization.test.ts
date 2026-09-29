@@ -385,6 +385,7 @@ describe("ConfigNormalize", () => {
       ["conflict", ["compaction", "buffer"]],
     ])
     expect(decoded({ compaction: { prune: false } }).compaction?.prune).toBe(false)
+    expect(decoded({ compaction: { background: true } }).compaction?.background).toBe(true)
   })
 
   test("distinguishes empty, mixed, and wholly malformed enabled provider lists", () => {

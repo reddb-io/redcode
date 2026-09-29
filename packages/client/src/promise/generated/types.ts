@@ -135,7 +135,14 @@ export type ToolTextContent = { type: "text"; text: string }
 
 export type ToolFileContent = { type: "file"; uri: string; mime: string; name?: string | null }
 
-export type SessionStructuredError = { type: string; message: string; status?: number }
+export type SessionStructuredError = {
+  type: string
+  message: string
+  status?: number
+  provider?: string
+  model?: string
+  url?: string
+}
 
 export type SessionMessageCompactionRunning = {
   type: "compaction"
@@ -369,7 +376,7 @@ export type SessionInboxDelivery = "steer" | "queue"
 
 export type SessionInboxSyntheticPayload = { text: string; description?: string; metadata?: { [x: string]: JsonValue } }
 
-export type SessionInboxCompactionPayload = {}
+export type SessionInboxCompactionPayload = { focus?: string }
 
 export type InstructionEntryKey = string
 
@@ -685,6 +692,10 @@ export type ConfigWorktree = {
 }
 
 export type ConfigDatabase = { url: string }
+
+export type ConfigSessionBudget = { max_cost_usd?: number; max_tokens?: number }
+
+export type ConfigModels = { sources?: Array<string> }
 
 export type ConfigShellOption = { path: string; name: string; acceptable: boolean }
 
@@ -2223,6 +2234,8 @@ export type FileSystemMatch = {
   submatches: Array<FileSystemSubmatch>
 }
 
+export type ConfigSession = { budget?: ConfigSessionBudget }
+
 export type HookStatus = { trust: HookTrust; definitions: Array<HookDefinition> }
 
 export type IntelligenceEvaluation = {
@@ -2825,6 +2838,7 @@ export type ConfigEntry =
           keep?: { tokens?: number; turns?: number }
           buffer?: number
           summary_max_tokens?: number
+          background?: boolean
         }
         skills?: Array<string>
         commands?: {
@@ -2862,6 +2876,8 @@ export type ConfigEntry =
           app?: { mode?: "process" | "inline" | null; version?: string | null } | null
         }
         warming?: boolean | { prompt?: string; interval?: string; duration?: string }
+        session?: ConfigSession
+        models?: ConfigModels
         providers?: {
           [x: string]: {
             canonical?: string
@@ -2922,6 +2938,9 @@ export type ConfigEntry =
         experimental?: {
           portable_shell_scanner?: boolean
           subagent_depth?: number
+          subagent_limits?: { concurrent?: number; per_request?: number }
+          background_subagents_max?: number
+          subtask_concurrency?: number
           loop_guard?: false | { correct_at?: number; stop_at?: number; nudge_at?: number }
           stop_loss?: false | { every?: number; cooldown?: number; idle_at?: number; tokens?: number; minutes?: number }
           aux_timeout?: false | number
@@ -3050,7 +3069,7 @@ export type SessionInboxEnqueued = {
 export type SessionMessageAssistant = {
   id: string
   metadata?: { [x: string]: JsonValue }
-  time: { created: number; streamed?: number; completed?: number }
+  time: { created: number; first?: number; streamed?: number; completed?: number }
   type: "assistant"
   agent: string
   model: ModelRef
@@ -4013,7 +4032,12 @@ export type SessionImportInput = {
       | {
           readonly id: string
           readonly metadata?: { readonly [x: string]: JsonValue }
-          readonly time: { readonly created: number; readonly streamed?: number; readonly completed?: number }
+          readonly time: {
+            readonly created: number
+            readonly first?: number
+            readonly streamed?: number
+            readonly completed?: number
+          }
           readonly type: "assistant"
           readonly agent: string
           readonly model: { readonly id: string; readonly providerID: string; readonly variant?: string }
@@ -4067,7 +4091,14 @@ export type SessionImportInput = {
                   | {
                       readonly status: "error"
                       readonly input: { readonly [x: string]: JsonValue }
-                      readonly error: { readonly type: string; readonly message: string; readonly status?: number }
+                      readonly error: {
+                        readonly type: string
+                        readonly message: string
+                        readonly status?: number
+                        readonly provider?: string
+                        readonly model?: string
+                        readonly url?: string
+                      }
                       readonly content?: readonly [
                         (
                           | { readonly type: "text"; readonly text: string }
@@ -4104,11 +4135,25 @@ export type SessionImportInput = {
             readonly reasoning: number
             readonly cache: { readonly read: number; readonly write: number }
           }
-          readonly error?: { readonly type: string; readonly message: string; readonly status?: number }
+          readonly error?: {
+            readonly type: string
+            readonly message: string
+            readonly status?: number
+            readonly provider?: string
+            readonly model?: string
+            readonly url?: string
+          }
           readonly retry?: {
             readonly attempt: number
             readonly at: number
-            readonly error: { readonly type: string; readonly message: string; readonly status?: number }
+            readonly error: {
+              readonly type: string
+              readonly message: string
+              readonly status?: number
+              readonly provider?: string
+              readonly model?: string
+              readonly url?: string
+            }
           }
         }
       | (
@@ -4160,7 +4205,14 @@ export type SessionImportInput = {
               readonly time: { readonly created: number }
               readonly status: "failed"
               readonly reason: "auto" | "manual"
-              readonly error: { readonly type: string; readonly message: string; readonly status?: number }
+              readonly error: {
+                readonly type: string
+                readonly message: string
+                readonly status?: number
+                readonly provider?: string
+                readonly model?: string
+                readonly url?: string
+              }
               readonly cost?: number
               readonly tokens?: {
                 readonly input: number
@@ -4331,7 +4383,12 @@ export type SessionImportInput = {
       | {
           readonly id: string
           readonly metadata?: { readonly [x: string]: JsonValue }
-          readonly time: { readonly created: number; readonly streamed?: number; readonly completed?: number }
+          readonly time: {
+            readonly created: number
+            readonly first?: number
+            readonly streamed?: number
+            readonly completed?: number
+          }
           readonly type: "assistant"
           readonly agent: string
           readonly model: { readonly id: string; readonly providerID: string; readonly variant?: string }
@@ -4385,7 +4442,14 @@ export type SessionImportInput = {
                   | {
                       readonly status: "error"
                       readonly input: { readonly [x: string]: JsonValue }
-                      readonly error: { readonly type: string; readonly message: string; readonly status?: number }
+                      readonly error: {
+                        readonly type: string
+                        readonly message: string
+                        readonly status?: number
+                        readonly provider?: string
+                        readonly model?: string
+                        readonly url?: string
+                      }
                       readonly content?: readonly [
                         (
                           | { readonly type: "text"; readonly text: string }
@@ -4422,11 +4486,25 @@ export type SessionImportInput = {
             readonly reasoning: number
             readonly cache: { readonly read: number; readonly write: number }
           }
-          readonly error?: { readonly type: string; readonly message: string; readonly status?: number }
+          readonly error?: {
+            readonly type: string
+            readonly message: string
+            readonly status?: number
+            readonly provider?: string
+            readonly model?: string
+            readonly url?: string
+          }
           readonly retry?: {
             readonly attempt: number
             readonly at: number
-            readonly error: { readonly type: string; readonly message: string; readonly status?: number }
+            readonly error: {
+              readonly type: string
+              readonly message: string
+              readonly status?: number
+              readonly provider?: string
+              readonly model?: string
+              readonly url?: string
+            }
           }
         }
       | (
@@ -4478,7 +4556,14 @@ export type SessionImportInput = {
               readonly time: { readonly created: number }
               readonly status: "failed"
               readonly reason: "auto" | "manual"
-              readonly error: { readonly type: string; readonly message: string; readonly status?: number }
+              readonly error: {
+                readonly type: string
+                readonly message: string
+                readonly status?: number
+                readonly provider?: string
+                readonly model?: string
+                readonly url?: string
+              }
               readonly cost?: number
               readonly tokens?: {
                 readonly input: number
@@ -4649,7 +4734,12 @@ export type SessionImportInput = {
       | {
           readonly id: string
           readonly metadata?: { readonly [x: string]: JsonValue }
-          readonly time: { readonly created: number; readonly streamed?: number; readonly completed?: number }
+          readonly time: {
+            readonly created: number
+            readonly first?: number
+            readonly streamed?: number
+            readonly completed?: number
+          }
           readonly type: "assistant"
           readonly agent: string
           readonly model: { readonly id: string; readonly providerID: string; readonly variant?: string }
@@ -4703,7 +4793,14 @@ export type SessionImportInput = {
                   | {
                       readonly status: "error"
                       readonly input: { readonly [x: string]: JsonValue }
-                      readonly error: { readonly type: string; readonly message: string; readonly status?: number }
+                      readonly error: {
+                        readonly type: string
+                        readonly message: string
+                        readonly status?: number
+                        readonly provider?: string
+                        readonly model?: string
+                        readonly url?: string
+                      }
                       readonly content?: readonly [
                         (
                           | { readonly type: "text"; readonly text: string }
@@ -4740,11 +4837,25 @@ export type SessionImportInput = {
             readonly reasoning: number
             readonly cache: { readonly read: number; readonly write: number }
           }
-          readonly error?: { readonly type: string; readonly message: string; readonly status?: number }
+          readonly error?: {
+            readonly type: string
+            readonly message: string
+            readonly status?: number
+            readonly provider?: string
+            readonly model?: string
+            readonly url?: string
+          }
           readonly retry?: {
             readonly attempt: number
             readonly at: number
-            readonly error: { readonly type: string; readonly message: string; readonly status?: number }
+            readonly error: {
+              readonly type: string
+              readonly message: string
+              readonly status?: number
+              readonly provider?: string
+              readonly model?: string
+              readonly url?: string
+            }
           }
         }
       | (
@@ -4796,7 +4907,14 @@ export type SessionImportInput = {
               readonly time: { readonly created: number }
               readonly status: "failed"
               readonly reason: "auto" | "manual"
-              readonly error: { readonly type: string; readonly message: string; readonly status?: number }
+              readonly error: {
+                readonly type: string
+                readonly message: string
+                readonly status?: number
+                readonly provider?: string
+                readonly model?: string
+                readonly url?: string
+              }
               readonly cost?: number
               readonly tokens?: {
                 readonly input: number
@@ -6788,11 +6906,21 @@ export type SessionShellOutput = void
 
 export type SessionCompactInput = {
   readonly sessionID: { readonly sessionID: string }["sessionID"]
-  readonly id?: { readonly id?: string | undefined; readonly delivery?: ("steer" | "queue") | undefined }["id"]
+  readonly id?: {
+    readonly id?: string | undefined
+    readonly delivery?: ("steer" | "queue") | undefined
+    readonly focus?: string | undefined
+  }["id"]
   readonly delivery?: {
     readonly id?: string | undefined
     readonly delivery?: ("steer" | "queue") | undefined
+    readonly focus?: string | undefined
   }["delivery"]
+  readonly focus?: {
+    readonly id?: string | undefined
+    readonly delivery?: ("steer" | "queue") | undefined
+    readonly focus?: string | undefined
+  }["focus"]
 }
 
 export type SessionCompactOutput = { data: SessionInboxCompaction }["data"]

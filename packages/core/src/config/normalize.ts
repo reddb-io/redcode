@@ -213,6 +213,8 @@ export function normalize(input: unknown): Result {
     database: Info.fields.database,
     design: Info.fields.design,
     warming: Info.fields.warming,
+    session: Info.fields.session,
+    models: Info.fields.models,
   }
   Object.entries(nativeAtomic).forEach(([key, schema]) => {
     if (!own(input, key)) return
@@ -408,6 +410,15 @@ function normalizeCompaction(
     )
     if (value !== undefined) result.summary_max_tokens = value
   }
+  if (own(input.compaction, "background")) {
+    const value = decodeEncoded(
+      ConfigCompaction.Info.fields.background,
+      input.compaction.background,
+      ["compaction", "background"],
+      diagnostics,
+    )
+    if (value !== undefined) result.background = value
+  }
   if (Object.keys(result).length || !Object.keys(input.compaction).length) encoded.compaction = result
 }
 
@@ -471,6 +482,33 @@ function normalizeExperimental(
         )
         if (value !== undefined)
           result.subagent_depth = prefer(legacyDepth, value, ["experimental", "subagent_depth"], diagnostics)
+      }
+      if (own(experimental, "subagent_limits")) {
+        const value = decodeEncoded(
+          ConfigExperimental.Info.fields.subagent_limits,
+          experimental.subagent_limits,
+          ["experimental", "subagent_limits"],
+          diagnostics,
+        )
+        if (value !== undefined) result.subagent_limits = value
+      }
+      if (own(experimental, "background_subagents_max")) {
+        const value = decodeEncoded(
+          ConfigExperimental.Info.fields.background_subagents_max,
+          experimental.background_subagents_max,
+          ["experimental", "background_subagents_max"],
+          diagnostics,
+        )
+        if (value !== undefined) result.background_subagents_max = value
+      }
+      if (own(experimental, "subtask_concurrency")) {
+        const value = decodeEncoded(
+          ConfigExperimental.Info.fields.subtask_concurrency,
+          experimental.subtask_concurrency,
+          ["experimental", "subtask_concurrency"],
+          diagnostics,
+        )
+        if (value !== undefined) result.subtask_concurrency = value
       }
       if (own(experimental, "loop_guard")) {
         const value = decodeEncoded(

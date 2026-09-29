@@ -16,6 +16,7 @@ import { ModelLimit } from "../../model-limit.js"
 import { contextOverflowNumbers } from "../../model-limit-numbers.js"
 import { modelLimitNode } from "#model-limit-node"
 import { LocationLifecycle } from "../../location-lifecycle.js"
+import { Instructions } from "../../instructions/index.js"
 import { InstructionState } from "../instruction-state.js"
 import { SessionCompaction } from "../compaction.js"
 import { SessionContext } from "../context.js"
@@ -205,6 +206,7 @@ const layer = Layer.effect(
                     return yield* compaction.compact({
                       reason: "manual",
                       inputID: pending.id,
+                      focus: pending.payload.focus,
                       context: {
                         session: selected.session,
                         agent: selected.agent,
@@ -274,7 +276,8 @@ const layer = Layer.effect(
       while (true) {
         const next = yield* advanceToStep()
         if (next._tag !== "Ready") return next
-        if (!(yield* budgets.admit(sessionID))) return DrainResult.Complete()
+        const configuredBudget = SessionBudget.configured(Config.latest(yield* config.entries(), "session")?.budget)
+        if (!(yield* budgets.admit(sessionID, configuredBudget))) return DrainResult.Complete()
         // Classified before the goal accounts the Step, so an interruption while waiting spends nothing.
         const classification = yield* classify(next.context)
         yield* warmDesignSystem(next.context, IntelligenceClassification.workRoute(classification))
@@ -375,7 +378,11 @@ const layer = Layer.effect(
     })
 
     const prepareContext = Effect.fn("SessionRunner.prepareContext")(function* (sessionID: SessionSchema.ID) {
-      const selected = yield* context.select(sessionID)
+      const base = yield* context.select(sessionID)
+      const selected = {
+        ...base,
+        instructions: Instructions.combine([base.instructions, compaction.wrapUp(sessionID)]),
+      }
       // A blocked initial instruction baseline must leave admitted input pending.
       yield* InstructionState.prepare(db, bus, selected.instructions, sessionID)
       return selected
@@ -1072,7 +1079,10 @@ const layer = Layer.effect(
       }
     })
 
-    return Service.of({ drain })
+    // Work prepared in the background for a later compaction does not outlive the drain that started it.
+    return Service.of({
+      drain: (input) => drain(input).pipe(Effect.ensuring(compaction.discard(input.sessionID))),
+    })
   }),
 )
 

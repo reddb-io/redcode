@@ -95,7 +95,12 @@ type CreateBaseInput = {
 type CreateInput = CreateBaseInput &
   ({ location: Location.Ref; parentID?: never } | { parentID: SessionSchema.ID; location?: never })
 
-type CompactInput = { sessionID: SessionSchema.ID; id?: SessionMessage.ID; delivery?: SessionInbox.Delivery }
+type CompactInput = {
+  sessionID: SessionSchema.ID
+  id?: SessionMessage.ID
+  delivery?: SessionInbox.Delivery
+  focus?: string
+}
 
 type ForkInput = {
   sessionID: SessionSchema.ID

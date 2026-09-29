@@ -853,6 +853,7 @@ export function createData(config: CreateDataInput) {
             existing.rawFinish = undefined
             existing.providerState = undefined
             existing.time.created = event.data.started
+            existing.time.first = undefined
             existing.time.streamed = undefined
             existing.time.completed = undefined
             if (event.data.snapshot) existing.snapshot = { ...existing.snapshot, start: event.data.snapshot }
@@ -908,6 +909,7 @@ export function createData(config: CreateDataInput) {
         return
       case "session.text.started":
         message.editAssistant(event.data.sessionID, event.data.assistantMessageID, (assistant) => {
+          if (assistant.time.completed === undefined) assistant.time.first ??= event.created
           assistant.content.push({ type: "text", text: "" })
         })
         return
@@ -923,6 +925,7 @@ export function createData(config: CreateDataInput) {
         return
       case "session.tool.input.started":
         message.editAssistant(event.data.sessionID, event.data.assistantMessageID, (assistant) => {
+          if (assistant.time.completed === undefined) assistant.time.first ??= event.created
           assistant.content.push({
             type: "tool",
             id: event.data.id,
@@ -986,6 +989,7 @@ export function createData(config: CreateDataInput) {
         return
       case "session.reasoning.started":
         message.editAssistant(event.data.sessionID, event.data.assistantMessageID, (assistant) => {
+          if (assistant.time.completed === undefined) assistant.time.first ??= event.created
           assistant.content.push({
             type: "reasoning",
             text: "",
@@ -1498,7 +1502,7 @@ export function createData(config: CreateDataInput) {
         if (fresh) track(creating, id, request)
         return { id, request }
       },
-      compact(input: { sessionID: string; model?: ModelRef }) {
+      compact(input: { sessionID: string; model?: ModelRef; focus?: string }) {
         const active = compacting.get(input.sessionID)
         if (active) return active.request
         // A known pending control ID may be consumed while setup waits. Propose
@@ -1512,7 +1516,7 @@ export function createData(config: CreateDataInput) {
             time: { created: Date.now() },
             type: "compaction",
             delivery: "steer",
-            payload: {},
+            payload: input.focus ? { focus: input.focus } : {},
           })
         }
         // Compaction admission can coalesce onto a different ID. Retire the
@@ -1521,7 +1525,7 @@ export function createData(config: CreateDataInput) {
         const observed = new Set<string>()
         const request = sendAdmission(input.sessionID, async () => {
           if (input.model) await api().session.switchModel({ sessionID: input.sessionID, model: input.model })
-          return api().session.compact({ sessionID: input.sessionID, id })
+          return api().session.compact({ sessionID: input.sessionID, id, focus: input.focus })
         })
           .then((item) => {
             batch(() => {

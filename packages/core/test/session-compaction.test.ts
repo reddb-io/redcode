@@ -7,6 +7,7 @@ import { llmClient } from "@opencode/core/effect/app-node-platform"
 import { LayerNode } from "@opencode/util/effect/layer-node"
 import { Bus } from "@opencode/core/bus"
 import { EventTable } from "@opencode/core/event/sql"
+import { Instructions } from "@opencode/core/instructions/index"
 import { SessionCompaction } from "@opencode/core/session/compaction"
 import type { SessionContext } from "@opencode/core/session/context"
 import { SessionEvent } from "@opencode/core/session/event"
@@ -693,5 +694,202 @@ it.effect("forked session compaction reuses the fork root prompt cache key", () 
 
     expect(requests).toHaveLength(1)
     expect(requests[0]?.promptCacheKey).toBe(rootID)
+  }),
+)
+
+const userRequest = (text: string, created = 0) =>
+  SessionMessage.User.make({
+    id: SessionMessage.ID.create(),
+    type: "user",
+    text,
+    time: { created: DateTime.makeUnsafe(created) },
+  })
+
+/** An assistant reply whose provider count puts the context at `input` tokens. */
+const measuredReply = (input: number, text = "Done.") =>
+  Schema.decodeUnknownSync(SessionMessage.Assistant)({
+    id: SessionMessage.ID.create(),
+    type: "assistant",
+    agent: Agent.defaultID,
+    model: { id: "summary-model", providerID: "test" },
+    content: [{ type: "text", text }],
+    tokens: { input, output: 0, reasoning: 0, cache: { read: 0, write: 0 } },
+    time: { created: 1, completed: 1 },
+  })
+
+test("the kept tail scales with the usable window unless configured", () => {
+  expect(SessionCompaction.tailBudget(180_000)).toBe(18_000)
+  expect(SessionCompaction.tailBudget(1_000_000)).toBe(60_000)
+  expect(SessionCompaction.tailBudget(40_000)).toBe(8_000)
+  // A small window never keeps more than a quarter of itself verbatim.
+  expect(SessionCompaction.tailBudget(20_000)).toBe(5_000)
+  expect(SessionCompaction.tailBudget(180_000, 1_000)).toBe(1_000)
+  expect(SessionCompaction.requestBudget(180_000, 18_000)).toBe(18_000)
+  expect(SessionCompaction.requestBudget(40_000, 8_000)).toBe(10_000)
+})
+
+test("a text over its budget keeps a head and tail around an elision marker, whatever the script", () => {
+  expect(SessionCompaction.elideMiddle("short", 100)).toBe("short")
+  const text = "字".repeat(4_000) + "😀".repeat(4_000)
+  expect(SessionCompaction.elideMiddle(text, 100)).toBe(
+    `${"字".repeat(200)}\n[middle elided: 2850 tokens]\n${"😀".repeat(200)}`,
+  )
+})
+
+test("the wrap-up reminder is due in the last 5% below the threshold", () => {
+  expect(SessionCompaction.wrapUpDue({ used: 94_999, ceiling: 100_000 })).toBe(false)
+  expect(SessionCompaction.wrapUpDue({ used: 95_000, ceiling: 100_000 })).toBe(true)
+  expect(SessionCompaction.wrapUpDue({ used: 120_000, ceiling: 100_000 })).toBe(true)
+  expect(SessionCompaction.wrapUpDue({ used: 1_000_000, ceiling: Number.POSITIVE_INFINITY })).toBe(false)
+})
+
+test("background preparation starts only in the band just below the threshold", () => {
+  const input = { enabled: true, preparing: false, ceiling: 180_000 }
+  expect(SessionCompaction.shouldPrepare({ ...input, estimate: 171_999 })).toBe(false)
+  expect(SessionCompaction.shouldPrepare({ ...input, estimate: 172_000 })).toBe(true)
+  expect(SessionCompaction.shouldPrepare({ ...input, estimate: 180_000 })).toBe(false)
+  expect(SessionCompaction.shouldPrepare({ ...input, estimate: 175_000, preparing: true })).toBe(false)
+  expect(SessionCompaction.shouldPrepare({ ...input, estimate: 175_000, enabled: false })).toBe(false)
+  // In a small window the band is a tenth of the threshold.
+  expect(SessionCompaction.shouldPrepare({ ...input, ceiling: 50_000, estimate: 44_999 })).toBe(false)
+  expect(SessionCompaction.shouldPrepare({ ...input, ceiling: 50_000, estimate: 45_000 })).toBe(true)
+  expect(SessionCompaction.shouldPrepare({ ...input, ceiling: Number.POSITIVE_INFINITY, estimate: 1e9 })).toBe(false)
+})
+
+test("a /compact focus steers the summary prompt", () => {
+  expect(SessionCompaction.buildPrompt(false, false, "the failing migration")).toContain(
+    "Focus: the failing migration",
+  )
+  expect(SessionCompaction.buildPrompt(true, false, "the failing migration")).toContain(
+    "Focus: the failing migration",
+  )
+  expect(SessionCompaction.buildPrompt(false)).not.toContain("Focus:")
+})
+
+it.effect("a manual compaction's focus reaches the summary request", () =>
+  Effect.gen(function* () {
+    requests = []
+    const bus = yield* Bus.Service
+    const compaction = yield* SessionCompaction.Service
+    const session = yield* insertSession(Session.ID.make("ses_compaction_focus"))
+    const inputID = SessionMessage.ID.create()
+    yield* bus.publish(SessionEvent.Compaction.Started, { sessionID: session.id, reason: "manual", recent: "", inputID })
+    expect(
+      yield* compaction.compact({
+        reason: "manual",
+        context: loaded(session, [userRequest("First request"), userRequest("Latest request", 1)]),
+        inputID,
+        focus: "the failing migration",
+      }),
+    ).toEqual({ status: "completed" })
+
+    expect(requests).toHaveLength(1)
+    expect(JSON.stringify(requests[0]?.messages.at(-1))).toContain("Focus: the failing migration")
+  }),
+)
+
+it.effect("a huge latest request stays in the checkpoint as its head and tail", () =>
+  Effect.gen(function* () {
+    const id = Session.ID.make("ses_huge_request")
+    const session = yield* insertSession(id)
+    const huge = `HEAD ${"x".repeat(400_000)} TAIL`
+    expect(yield* compactManually(session, [userRequest("Earlier request"), userRequest(huge, 1)])).toEqual({
+      status: "completed",
+    })
+
+    const stored = (yield* (yield* SessionStore.Service).context(id))[0]
+    if (stored?.type !== "compaction" || stored.status !== "completed") throw new Error("Expected compaction")
+    expect(stored.recent).toStartWith("[User]: HEAD")
+    expect(stored.recent).toEndWith("TAIL")
+    expect(stored.recent).toMatch(/\n\[middle elided: \d+ tokens\]\n/)
+    // The 200k window keeps a request of up to 18k tokens verbatim.
+    expect(stored.recent.length).toBeLessThan(18_000 * 4 + 100)
+  }),
+)
+
+it.effect("an automatic check near the limit leaves a wrap-up reminder while compaction is off", () =>
+  Effect.gen(function* () {
+    const compaction = yield* SessionCompaction.Service
+    yield* compaction.transform((editor) => editor.configure({ auto: false }))
+    const session = yield* insertSession(Session.ID.make("ses_wrap_up"))
+    const reminder = Instructions.read(compaction.wrapUp(session.id)).pipe(Effect.map((read) => read[0]?.value))
+    const check = (input: number) =>
+      compaction.compact({ reason: "auto", context: loaded(session, [userRequest("Work"), measuredReply(input)]) })
+
+    expect(yield* check(100_000)).toEqual({ status: "skipped" })
+    expect(yield* reminder).toBe(Instructions.removed)
+    // The 200k window compacts at 180k, so 95% of it is 171k.
+    expect(yield* check(172_000)).toEqual({ status: "skipped" })
+    expect(yield* reminder).toBe(SessionCompaction.WRAP_UP)
+    // Room freed below the last 5% clears it again.
+    expect(yield* check(150_000)).toEqual({ status: "skipped" })
+    expect(yield* reminder).toBe(Instructions.removed)
+  }),
+)
+
+it.effect("no wrap-up reminder while automatic compaction can still run", () =>
+  Effect.gen(function* () {
+    const compaction = yield* SessionCompaction.Service
+    const session = yield* insertSession(Session.ID.make("ses_no_wrap_up"))
+    expect(
+      yield* compaction.compact({
+        reason: "auto",
+        context: loaded(session, [userRequest("Work"), measuredReply(172_000)]),
+      }),
+    ).toEqual({ status: "skipped" })
+    expect((yield* Instructions.read(compaction.wrapUp(session.id)))[0]?.value).toBe(Instructions.removed)
+  }),
+)
+
+it.effect("an automatic compaction commits the summary prepared in the background", () =>
+  Effect.gen(function* () {
+    requests = []
+    const compaction = yield* SessionCompaction.Service
+    yield* compaction.transform((editor) => editor.configure({ background: true }))
+    const id = Session.ID.make("ses_background_compaction")
+    const session = yield* insertSession(id)
+    const earlier = [userRequest("First request"), measuredReply(175_000)]
+
+    // 175k is inside the 8k band below the 180k threshold: the summary is prepared, nothing is compacted yet.
+    expect(yield* compaction.compact({ reason: "auto", context: loaded(session, earlier) })).toEqual({
+      status: "skipped",
+    })
+    expect((yield* (yield* SessionStore.Service).context(id)).some((message) => message.type === "compaction")).toBe(
+      false,
+    )
+
+    const later = [...earlier, userRequest("Next request", 2), measuredReply(181_000, "Working on it.")]
+    expect(yield* compaction.compact({ reason: "auto", context: loaded(session, later) })).toEqual({
+      status: "completed",
+    })
+    // The prepared summary was the only model call.
+    expect(requests).toHaveLength(1)
+    const stored = (yield* (yield* SessionStore.Service).context(id))[0]
+    if (stored?.type !== "compaction" || stored.status !== "completed") throw new Error("Expected compaction")
+    expect(SessionCompaction.stripAnchors(stored.summary)).toBe(summary)
+    expect(stored.recent).toContain("[User]: Next request")
+    expect(stored.recent).toContain("[Assistant]: Working on it.")
+    expect(stored.recent).not.toContain("First request")
+  }),
+)
+
+it.effect("a summary prepared for a history that changed is written again", () =>
+  Effect.gen(function* () {
+    requests = []
+    const compaction = yield* SessionCompaction.Service
+    yield* compaction.transform((editor) => editor.configure({ background: true }))
+    const session = yield* insertSession(Session.ID.make("ses_background_stale"))
+    const first = userRequest("First request")
+    expect(
+      yield* compaction.compact({ reason: "auto", context: loaded(session, [first, measuredReply(175_000)]) }),
+    ).toEqual({ status: "skipped" })
+
+    const rewritten = [first, measuredReply(175_000, "A different reply."), userRequest("Next request", 2)]
+    expect(
+      yield* compaction.compact({ reason: "auto", context: loaded(session, [...rewritten, measuredReply(181_000)]) }),
+    ).toEqual({ status: "completed" })
+    // The stale preparation may or may not have reached the model before it was cancelled; the checkpoint did not
+    // use it and summarized the current history instead.
+    expect(requests.some((request) => JSON.stringify(request.messages).includes("A different reply."))).toBe(true)
   }),
 )

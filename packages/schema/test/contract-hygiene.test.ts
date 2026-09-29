@@ -230,6 +230,17 @@ describe("contract hygiene", () => {
     }
   })
 
+  test("a compaction item carries an optional focus and still decodes without one", () => {
+    const decode = Schema.decodeUnknownSync(SessionInbox.Info)
+    const encode = Schema.encodeSync(SessionInbox.CompactionPayload)
+    const base = { id: "msg_inbox", sessionID: "ses_inbox", time: { created: 1 }, type: "compaction", delivery: "steer" }
+    expect(decode({ ...base, payload: {} })).toMatchObject({ payload: {} })
+    expect(decode({ ...base, payload: { focus: "the migration" } })).toMatchObject({
+      payload: { focus: "the migration" },
+    })
+    expect(Object.keys(encode(SessionInbox.CompactionPayload.make({})))).toEqual([])
+  })
+
   test("current source limits Any to reviewed boundaries and avoids mutable contract wrappers", async () => {
     const files = [...new Bun.Glob("*.ts").scanSync(new URL("../src", import.meta.url).pathname)].filter(
       (file) => !file.endsWith("-v1.ts"),

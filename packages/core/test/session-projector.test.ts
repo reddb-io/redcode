@@ -103,6 +103,24 @@ describe("SessionProjector", () => {
     }),
   )
 
+  it.effect("keeps the first compaction request's focus when a later one coalesces into it", () =>
+    Effect.gen(function* () {
+      const db = yield* seedSession()
+      const inbox = yield* SessionInbox.Service
+      const inputID = SessionMessage.ID.make("msg_focused_compaction")
+      yield* inbox.admitCompaction({ id: inputID, sessionID, delivery: "queue", focus: "  the failing migration  " })
+      const coalesced = yield* inbox.admitCompaction({
+        id: SessionMessage.ID.make("msg_later_compaction"),
+        sessionID,
+        delivery: "queue",
+        focus: "something else",
+      })
+
+      expect(coalesced).toMatchObject({ id: inputID, payload: { focus: "the failing migration" } })
+      expect(yield* SessionInbox.find(db, inputID)).toMatchObject({ payload: { focus: "the failing migration" } })
+    }),
+  )
+
   it.effect("loads legacy revert storage into canonical state", () =>
     Effect.gen(function* () {
       const db = yield* seedSession()
