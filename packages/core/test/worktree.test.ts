@@ -17,6 +17,7 @@ import { WorktreeStrategies } from "@opencode/core/worktree/strategies"
 import { WorktreeDirectory } from "@opencode/core/worktree/directory"
 import { WorktreeTable } from "@opencode/core/worktree/sql"
 import { WorktreeGit } from "@opencode/core/worktree/git"
+import { WorktreePlacement } from "@opencode/core/worktree/placement"
 import { Location } from "@opencode/core/location"
 import { Global } from "@opencode/util/global"
 import { FSUtil } from "@opencode/util/fs-util"
@@ -268,6 +269,32 @@ describe("Worktree", () => {
       expect(yield* Effect.promise(() => Bun.file(path.join(created.directory, ".git")).exists())).toBe(true)
       yield* worktree.remove({ directory: created.directory, force: false })
       yield* worktree.remove({ directory: duplicate.directory, force: false })
+    }),
+  )
+
+  it.live("places new worktrees in the temporary directory when worktree.location is tmp", () =>
+    Effect.gen(function* () {
+      const input = yield* setup()
+      const worktree = yield* fixtureWorktree()
+      const tmp = `${input.root.path}-tmp`
+      yield* Effect.addFinalizer(() => Effect.promise(() => fs.rm(tmp, { recursive: true, force: true })))
+      const config = yield* Config.Test
+      yield* config.setEntries([
+        new Document({
+          type: "document",
+          path: abs(path.join(input.root.path, "opencode.json")),
+          info: new Info({ worktree: { directory: ".lane/trees", location: "tmp", tmpdir: tmp } }),
+        }),
+      ])
+      yield* ConfigWorktreePlugin.Plugin.effect(host())
+
+      const created = yield* worktree.create({ name: "task" })
+
+      const parent = WorktreePlacement.temporaryParent(input.sourceDirectory, tmp)
+      expect(path.basename(path.dirname(parent))).toBe(WorktreePlacement.TEMPORARY)
+      expect(created.directory).toBe(abs(path.join(yield* Effect.promise(() => fs.realpath(parent)), "task")))
+      expect(WorktreePlacement.temporary(created.directory)).toBe(true)
+      yield* worktree.remove({ directory: created.directory, force: false })
     }),
   )
 

@@ -2,11 +2,13 @@ export * as ConfigWorktreePlugin from "./worktree.js"
 
 import { define } from "@opencode/plugin/effect/plugin"
 import { Effect } from "effect"
+import os from "os"
 import path from "path"
 import { Config } from "../../config.js"
 import { Global } from "@opencode/util/global"
 import { Location } from "../../location.js"
 import { AbsolutePath } from "../../schema.js"
+import { WorktreePlacement } from "../../worktree/placement.js"
 import { WorktreeStrategies } from "../../worktree/strategies.js"
 import { ConfigEntryObserver } from "./entry-observer.js"
 
@@ -31,6 +33,15 @@ export const Plugin = define({
           ),
         })
       }
+      // A temporary location wins over `worktree.directory`, as it does for Session worktrees. Without a
+      // Session, the server's own environment (`--tmp`, `REDCODE_WORKTREE_LOCATION`) applies.
+      const settings = Config.latest(loaded.entries, "worktree")
+      if (WorktreePlacement.location(settings, process.env) !== "tmp") return
+      editor.configure({
+        directory: AbsolutePath.make(
+          WorktreePlacement.temporaryParent(location.project.canonical, settings?.tmpdir || os.tmpdir()),
+        ),
+      })
     })
   }),
 })

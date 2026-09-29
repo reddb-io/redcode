@@ -1,6 +1,7 @@
 import { lstat, readdir, realpath, stat } from "node:fs/promises"
 import path from "node:path"
 import { Effect } from "effect"
+import { WorktreePlacement } from "@opencode/core/worktree/placement"
 import { project } from "./shared"
 
 type GitEntry = {
@@ -86,7 +87,7 @@ export const inventory = Effect.fn("cli.worktrees.inventory")(function* () {
         registered: Boolean(stored),
         primary,
         current,
-        temporary: directory.split(/[\\/]/).includes("redcode-worktrees"),
+        temporary: WorktreePlacement.temporary(directory),
         sessions: sessions.filter((session) => owner(session.directory) === directory).map((session) => ({
           id: session.id,
           title: session.title,

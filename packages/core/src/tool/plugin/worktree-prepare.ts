@@ -150,27 +150,26 @@ export const Plugin = {
                   ? { directory: existing.directory, branch: existing.branch ?? path.basename(existing.directory) }
                   : yield* Effect.gen(function* () {
                       const name = WorktreePlacement.slug(root.title || input.name || "")
+                      // Worktree.create suffixes a taken directory; the branch sharing its name must also be new.
                       // Only this name and its numbered variants can collide, so the branch listing stays small.
-                      const [branches, entries] = yield* Effect.all([
-                        run(repository.worktree, [
+                      const branches = new Set(
+                        (yield* run(repository.worktree, [
                           "for-each-ref",
                           "--format=%(refname:short)",
                           `refs/heads/${name}`,
                           `refs/heads/${name}-*`,
-                        ]),
-                        fs.readDirectoryEntries(parent).pipe(Effect.orElseSucceed(() => [])),
-                      ])
+                        ]))
+                          .split("\n")
+                          .map((line) => line.trim()),
+                      )
                       const created = yield* worktrees.create({
                         projectID: session.projectID,
                         from: repository.worktree,
-                        name: WorktreePlacement.nextName(
-                          name,
-                          new Set([...branches.split("\n").map((line) => line.trim()), ...entries.map((entry) => entry.name)]),
-                        ),
+                        name: WorktreePlacement.nextName(name, branches),
                         directory: parent,
                       })
-                      // The worktree directory and its branch share one name.
-                      const branch = path.basename(created.directory)
+                      // The branch takes the directory's name, suffixed only if that branch already exists.
+                      const branch = WorktreePlacement.nextName(path.basename(created.directory), branches)
                       yield* run(created.directory, ["switch", "-c", branch])
                       const linked = yield* git.repo.discover(created.directory)
                       if (!linked)

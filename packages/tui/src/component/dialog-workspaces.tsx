@@ -19,6 +19,7 @@ import { DialogWorkspaceFileChanges } from "./dialog-workspace-file-changes"
 import type { WorktreeListOutput } from "@opencode/client"
 import { useRoute } from "../context/route"
 import { DialogWorktreeName } from "./dialog-worktree-name"
+import { WorktreePlacement } from "@opencode/core/worktree/placement"
 
 export type WorkspaceSelection =
   | { type: "directory"; directory: string; subdirectory: boolean }
@@ -187,8 +188,7 @@ export function DialogWorkspaces(props: DialogWorkspacesProps) {
           </>
         ) : undefined,
         bg: deleting ? theme.background.action.destructive.base : undefined,
-        // A `--tmp` session worktree lives under `<tmpdir>/redcode-worktrees/`.
-        footer: item.root.directory.split(/[\\/]/).includes("redcode-worktrees") ? "tmp" : undefined,
+        footer: WorktreePlacement.temporary(item.root.directory) ? "tmp" : undefined,
         value: {
           type: "directory",
           directory: item.location,
