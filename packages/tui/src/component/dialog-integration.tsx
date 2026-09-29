@@ -36,6 +36,7 @@ const INTEGRATION_PRIORITY: Record<string, number> = {
   "github-copilot": 4,
   anthropic: 5,
   google: 6,
+  "openai-compatible": 7,
 }
 
 type ConnectMethod = Exclude<IntegrationInfo["methods"][number], { type: "env" }>
@@ -489,7 +490,18 @@ function KeyMethod(props: {
             key,
             ...(props.answer ? { answer: props.answer } : {}),
           })
-          .then(() => connected(props.integration, props.location, data, dialog, toast, props.onConnected))
+          .then(() =>
+            connected(
+              props.integration,
+              props.location,
+              data,
+              dialog,
+              toast,
+              props.onConnected,
+              // A wizard files the key under the provider its answer defines, not under the wizard itself.
+              typeof props.answer?.providerID === "string" ? props.answer.providerID : undefined,
+            ),
+          )
           .catch((cause) => setError(errorMessage(cause)))
       }}
       description={() => (
@@ -1005,6 +1017,7 @@ async function connected(
   dialog: ReturnType<typeof useDialog>,
   toast: ReturnType<typeof useToast>,
   onConnected?: OnIntegrationConnected,
+  target?: string,
 ) {
   data.location.integration.invalidate(location)
   data.location.model.invalidate(location)
@@ -1014,9 +1027,9 @@ async function connected(
     data.location.model.sync(location),
     data.location.provider.sync(location),
   ])
-  toast.show({ variant: "success", message: `Connected ${integration.name}` })
+  toast.show({ variant: "success", message: `Connected ${target ?? integration.name}` })
   if (onConnected && integration.metadata?.source !== "mcp") {
-    onConnected(providerID(data, location, integration.id))
+    onConnected(target ?? providerID(data, location, integration.id))
     return
   }
   dialog.clear()

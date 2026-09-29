@@ -28,6 +28,17 @@ describe("integrationOptions", () => {
     ).toEqual(["red-router", "opencode-go", "opencode", "openai", "anthropic", "mistral", "custom-z"])
   })
 
+  test("lists the OpenAI-compatible wizard with the popular providers", () => {
+    expect(
+      integrationOptions([
+        integration({ id: "mistral", name: "Mistral" }),
+        integration({ id: "openai-compatible", name: "OpenAI-compatible endpoint" }),
+        integration({ id: "google", name: "Google" }),
+        integration({ id: "red-router", name: "RedRouter" }),
+      ]).map((item) => item.id),
+    ).toEqual(["red-router", "google", "openai-compatible", "mistral"])
+  })
+
   test("keeps MCP integrations above popular integrations without relying on their IDs", () => {
     expect(
       integrationOptions([

@@ -221,6 +221,53 @@ describe("Integration", () => {
     }),
   )
 
+  it.effect("prepares a key and files it under the integration the wizard defines", () =>
+    Effect.gen(function* () {
+      const integrations = yield* Integration.Service
+      const credentials = yield* Credential.Service
+      const wizard = Integration.ID.make("wizard")
+      const target = Integration.ID.make("my-endpoint")
+      yield* integrations.transform((editor) =>
+        editor.method.update({
+          integrationID: wizard,
+          method: {
+            type: "key",
+            form: [{ type: "string", key: "providerID", title: "Provider ID", required: true }],
+          },
+          prepare: (input) =>
+            input.key === "rejected"
+              ? Effect.fail(new Error("The endpoint rejected the API key"))
+              : Effect.succeed({
+                  integrationID: Integration.ID.make(String(input.answer.providerID)),
+                  label: "My endpoint",
+                  configuration: {},
+                }),
+        }),
+      )
+
+      expect(
+        yield* integrations.connection
+          .key({ integrationID: wizard, key: "rejected", answer: { providerID: "my-endpoint" } })
+          .pipe(
+            Effect.flip,
+            Effect.map((error) => error.message),
+          ),
+      ).toBe("The endpoint rejected the API key")
+      expect(yield* credentials.all()).toEqual([])
+
+      yield* integrations.connection.key({ integrationID: wizard, key: "secret", answer: { providerID: "my-endpoint" } })
+
+      expect(yield* credentials.list(wizard)).toEqual([])
+      expect(yield* credentials.list(target)).toEqual([
+        expect.objectContaining({
+          integrationID: target,
+          label: "My endpoint",
+          value: Credential.Key.make({ type: "key", key: "secret" }),
+        }),
+      ])
+    }),
+  )
+
   it.live("runs command authentication and stores the final output line", () =>
     Effect.gen(function* () {
       const integrations = yield* Integration.Service

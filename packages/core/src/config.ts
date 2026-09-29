@@ -60,6 +60,11 @@ export interface Interface {
   }, FSUtil.Error>
   /** Clears only a provider-removal policy after a new credential is connected. */
   readonly enableProvider?: (providerID: string) => Effect.Effect<void, FSUtil.Error>
+  /**
+   * Writes one provider definition under `providers.<id>` in the global config, replacing a saved one and a
+   * legacy `provider.<id>` entry, and returns the file written. Secrets never belong in the definition.
+   */
+  readonly saveProvider?: (providerID: string, provider: Record<string, unknown>) => Effect.Effect<string, FSUtil.Error>
 }
 
 export const Options = Schema.Struct({
@@ -437,6 +442,48 @@ export const layer = (options?: Options) =>
         (effect) => updateLock.withPermit(effect),
       )
 
+      const saveProvider = Effect.fn("Config.saveProvider")(
+        function* (providerID: string, provider: Record<string, unknown>) {
+          const directory = initial.global ?? AbsolutePath.make(globalService.config)
+          const candidates = ConfigDiscovery.names.map((name) => path.join(directory, name))
+          const filepath = (yield* Effect.filter(candidates, fs.isFile)).at(-1) ?? path.join(directory, "opencode.jsonc")
+          const text = (yield* fs.readFileStringSafe(filepath)) ?? "{}\n"
+          const errors: ParseError[] = []
+          const data: unknown = parse(text, errors, { allowTrailingComma: true })
+          if (errors.length)
+            return yield* Effect.fail(
+              new FSUtil.FileSystemError({
+                method: "config.saveProvider",
+                cause: new Error(`${filepath} is not valid JSONC; fix it before connecting a provider`),
+              }),
+            )
+          const legacy = typeof data === "object" && data !== null && "provider" in data ? data.provider : undefined
+          // jsonc-parser cannot delete under a missing parent, so the legacy entry is removed only when present.
+          const edits = [
+            ...(typeof legacy === "object" && legacy !== null && Object.hasOwn(legacy, providerID)
+              ? [{ path: ["provider", providerID], value: undefined }]
+              : []),
+            { path: ["providers", providerID], value: provider },
+          ]
+          const updated = yield* Effect.try({
+            try: () =>
+              edits.reduce(
+                (current, edit) =>
+                  applyEdits(
+                    current,
+                    modify(current, edit.path, edit.value, { formattingOptions: { tabSize: 2, insertSpaces: true } }),
+                  ),
+                text,
+              ),
+            catch: (cause) => new FSUtil.FileSystemError({ method: "config.saveProvider", cause }),
+          })
+          yield* fs.writeWithDirs(filepath, updated.endsWith("\n") ? updated : `${updated}\n`)
+          yield* requestReload
+          return filepath
+        },
+        (effect) => updateLock.withPermit(effect),
+      )
+
       return Service.of({
         entries: Effect.fnUntraced(function* () {
           return configs
@@ -450,6 +497,7 @@ export const layer = (options?: Options) =>
         update,
         removeProvider,
         enableProvider,
+        saveProvider,
       })
     }),
   )

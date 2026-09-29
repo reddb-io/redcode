@@ -80,6 +80,23 @@ export interface OAuthImplementation {
 export interface KeyImplementation {
   readonly integrationID: ID
   readonly method: KeyMethod
+  /**
+   * Checks a key and its form answer before anything is stored, such as by reaching the endpoint they name.
+   * A wizard that defines a new integration files the credential under that integration instead.
+   */
+  readonly prepare?: (input: {
+    readonly key: string
+    readonly answer: Form.Answer
+  }) => Effect.Effect<KeyPrepared, unknown>
+}
+
+export interface KeyPrepared {
+  /** Integration that receives the credential instead of the one connected. */
+  readonly integrationID?: ID
+  /** Label for the credential when the caller gave none. */
+  readonly label?: string
+  /** Replaces the form answer as the credential's configuration; empty stores none. */
+  readonly configuration?: Form.Answer
 }
 
 export interface CommandImplementation {
@@ -136,6 +153,7 @@ type Entry = {
   ref: Types.DeepMutable<Ref>
   methods: Types.DeepMutable<Method>[]
   implementations: Map<MethodID, Types.DeepMutable<OAuthImplementation>>
+  prepare?: KeyImplementation["prepare"]
 }
 
 type Data = {
@@ -328,6 +346,8 @@ const layer = Layer.effect(
                 implementation as Types.DeepMutable<OAuthImplementation>,
               )
             }
+            if (implementation.method.type === "key")
+              current.prepare = "prepare" in implementation ? implementation.prepare : undefined
           },
           remove: (integrationID, method) => {
             const current = editor.integrations.get(integrationID)
@@ -340,6 +360,7 @@ const layer = Layer.effect(
             })
             if (index !== -1) current.methods.splice(index, 1)
             if (method.type === "oauth") current.implementations.delete(method.id)
+            if (method.type === "key") current.prepare = undefined
           },
         },
       }),
@@ -702,10 +723,8 @@ const layer = Layer.effect(
           return value
         }),
         key: Effect.fn("Integration.connection.key")(function* (input) {
-          const method = state
-            .get()
-            .integrations.get(input.integrationID)
-            ?.methods.find((method) => method.type === "key")
+          const entry = state.get().integrations.get(input.integrationID)
+          const method = entry?.methods.find((method) => method.type === "key")
           if (!method) return yield* Effect.die(new Error(`Key method not found: ${input.integrationID}`))
           const answer = input.answer ?? {}
           if (method.form) {
@@ -715,13 +734,15 @@ const layer = Layer.effect(
           if (!method.form && Object.keys(answer).length > 0) {
             return yield* new AuthorizationError({ cause: new Error("Key method does not accept a form answer") })
           }
+          const prepared = entry?.prepare ? yield* authorize(entry.prepare({ key: input.key, answer })) : undefined
+          const configuration = prepared ? (prepared.configuration ?? {}) : answer
           yield* authorize(createCredential({
-            integrationID: input.integrationID,
-            label: input.label,
+            integrationID: prepared?.integrationID ?? input.integrationID,
+            label: input.label ?? prepared?.label,
             value: Credential.Key.make({
               type: "key",
               key: input.key,
-              ...(Object.keys(answer).length > 0 ? { configuration: answer } : {}),
+              ...(Object.keys(configuration).length > 0 ? { configuration } : {}),
             }),
           }))
         }),
