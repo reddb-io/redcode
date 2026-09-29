@@ -24,6 +24,7 @@ function context(options?: { cost?: number; tokens?: number }) {
                   {
                     id: "message",
                     type: "assistant",
+                    time: { created: 1 },
                     model: { providerID: "provider", id: "model" },
                     tokens: {
                       input: options.tokens,

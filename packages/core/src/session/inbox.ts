@@ -334,14 +334,15 @@ export const projectAdmitted = Effect.fn("SessionInbox.projectAdmitted")(functio
       id: request.id,
       session_id: request.sessionID,
       type: request.item.type,
-      payload:
-        request.item.type === "user"
-          ? encodeUser(request.item.payload)
-          : request.item.type === "synthetic"
-            ? encodeSynthetic(request.item.payload)
-            : request.item.type === "compaction"
-              ? encodeCompaction(request.item.payload)
-              : encodeMove(request.item.payload),
+      // The column stores encoded payloads; the compaction payload is all-optional, so the encoded union is not
+      // assignable to the column's decoded type without stating it.
+      payload: (request.item.type === "user"
+        ? encodeUser(request.item.payload)
+        : request.item.type === "synthetic"
+          ? encodeSynthetic(request.item.payload)
+          : request.item.type === "compaction"
+            ? encodeCompaction(request.item.payload)
+            : encodeMove(request.item.payload)) as (typeof SessionInboxTable.$inferInsert)["payload"],
       delivery: request.item.delivery,
       enqueued_seq: request.enqueuedSeq,
       time_created: request.timeCreated,

@@ -60,7 +60,6 @@ export function result(input: { readonly tool: string; readonly detail: string; 
   return `${outcome}\n\nOutput captured before it stopped:\n${tail}`
 }
 
-/** Whether an assistant step ended interrupted, so the next user message carries {@link NOTE}. */
+/** Whether an assistant step left an interrupted tool call, so the next user message carries {@link NOTE}. */
 export const stepInterrupted = (message: SessionMessage.Assistant) =>
-  message.error?.type === "aborted" ||
   message.content.some((item) => item.type === "tool" && item.state.status === "error" && interrupted(item.state.error))
