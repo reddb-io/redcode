@@ -109,7 +109,7 @@ describe("Mini tool presentation", () => {
       toolInlineInfo(
         canonicalToolPart("todowrite", {
           status: "completed",
-          input: { todos },
+          input: { todos: [...todos] },
           metadata: {},
           content: [{ type: "text", text: "{}" }],
         }),
