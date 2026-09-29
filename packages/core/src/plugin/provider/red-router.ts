@@ -7,10 +7,21 @@ import { redRouterEndpoint } from "../../intelligence/red-router-endpoint.js"
 import { Integration } from "../../integration.js"
 import { KV } from "../../kv.js"
 import { Model } from "../../model.js"
+import { ModelLimit } from "../../model-limit.js"
 import { ModelsDev } from "../../models-dev.js"
 import { Provider } from "../../provider.js"
 import { Hash } from "@opencode/util/hash"
 import { Router } from "@opencode/schema/router"
+
+/**
+ * Limits for a model that neither the router nor the models catalog describes. They are a guess, not
+ * reported values: they keep proactive compaction working and stay small enough for most routed models.
+ * The context is held back by the estimate reserve, since a guess is as likely too large as too small.
+ */
+const DEFAULT_CONTEXT = 128_000
+const DEFAULT_OUTPUT = 8_192
+
+const limitValue = Schema.optional(Schema.NullOr(Schema.Number))
 
 const routerParameters = Schema.Struct({
   context_length: Schema.optional(Schema.Finite),
@@ -19,6 +30,7 @@ const routerParameters = Schema.Struct({
   thinking_levels: Schema.optional(Schema.NullOr(Schema.Array(Schema.String))),
   thinking_can_disable: Schema.optional(Schema.Boolean),
   tools: Schema.optional(Schema.Boolean),
+  forced_tool_choice: Schema.optional(Schema.Boolean),
   modalities: Schema.optional(
     Schema.Struct({
       input: Schema.optional(Schema.Array(Schema.String)),
@@ -43,8 +55,18 @@ const catalogModel = Schema.Struct({
   supported_endpoints: Schema.optional(Schema.Array(Schema.String)),
   input_modalities: Schema.optional(Schema.Array(Schema.String)),
   output_modalities: Schema.optional(Schema.Array(Schema.String)),
-  context_length: Schema.optional(Schema.Number),
-  max_output_tokens: Schema.optional(Schema.Number),
+  // OpenAI-compatible servers name their limits differently and some send null for unknown values.
+  context_length: limitValue,
+  max_context_length: limitValue,
+  context_window: limitValue,
+  max_input_tokens: limitValue,
+  max_output_tokens: limitValue,
+  max_output_length: limitValue,
+  max_completion_tokens: limitValue,
+  // OpenRouter reports the serving provider's own limits here.
+  top_provider: Schema.optional(
+    Schema.NullOr(Schema.Struct({ context_length: limitValue, max_completion_tokens: limitValue })),
+  ),
   capabilities: Schema.optional(
     Schema.Struct({
       tool_calling: Schema.optional(Schema.Boolean),
@@ -292,9 +314,7 @@ export function routerModel(
       endpoints.some((value) => /\/?responses$/.test(value)))
   const chat = endpoints.length === 0 || endpoints.some((value) => /chat|completions/.test(value))
   if (!responses && !chat) return []
-  const context = Math.floor(parameters?.context_length ?? item.context_length ?? 8_192)
-  const limit = Math.floor(parameters?.max_completion_tokens ?? item.max_output_tokens ?? 4_096)
-  if (context < 1 || limit < 1) return []
+  const limit = routerLimit(item, parameters, names.limits)
   const id = Model.ID.make(item.id)
   const input = parameters?.modalities?.input ?? item.input_modalities ?? ["text"]
   const levels =
@@ -364,14 +384,75 @@ export function routerModel(
         input: [...input],
         output: [...output],
       },
-      limit: { context, output: Math.min(limit, context) },
+      ...(parameters?.forced_tool_choice === undefined
+        ? {}
+        : { compatibility: { forcedToolChoice: parameters.forced_tool_choice } }),
+      limit,
     },
   ]
+}
+
+/**
+ * Router-reported limits win (RedRouter's `parameters` first, then the entry's own fields, then the serving
+ * provider's `top_provider` limits), then the models catalog, then a guess held back by the estimate reserve.
+ */
+function routerLimit(
+  item: CatalogModel,
+  parameters: typeof routerParameters.Type | undefined,
+  catalog: ReturnType<typeof catalogNames>["limits"],
+): Model.Info["limit"] {
+  const reported = {
+    context: firstPositive([
+      parameters?.context_length,
+      item.context_length,
+      item.max_context_length,
+      item.context_window,
+      item.max_input_tokens,
+      item.top_provider?.context_length,
+    ]),
+    output: firstPositive([
+      parameters?.max_completion_tokens,
+      item.max_output_tokens,
+      item.max_output_length,
+      item.max_completion_tokens,
+      item.top_provider?.max_completion_tokens,
+    ]),
+  }
+  // Routers prefix upstream ids (`cc/claude-...`), so leading segments are dropped until the catalog knows one.
+  const known =
+    reported.context !== undefined && reported.output !== undefined
+      ? undefined
+      : item.id
+          .split("/")
+          .map((_, start, parts) => catalog.get(parts.slice(start).join("/")))
+          .find((entry) => entry !== undefined)
+  const context = reported.context ?? known?.context ?? ModelLimit.conservative(DEFAULT_CONTEXT)
+  const input = firstPositive([item.max_input_tokens])
+  return {
+    context,
+    ...(input !== undefined && input < context ? { input } : {}),
+    output: Math.min(firstPositive([reported.output, known?.output]) ?? DEFAULT_OUTPUT, context),
+  }
+}
+
+function firstPositive(values: ReadonlyArray<number | null | undefined>) {
+  const value = values.find(
+    (candidate): candidate is number => typeof candidate === "number" && Number.isFinite(candidate) && candidate > 0,
+  )
+  return value === undefined ? undefined : Math.floor(value)
 }
 
 function catalogNames(catalog: readonly ModelsDev.Snapshot[]) {
   return {
     providers: new Map(catalog.map((item) => [String(item.info.id), item.info.name])),
     models: new Map(catalog.flatMap((item) => item.models.map((model) => [`${item.info.id}/${model.id}`, model.name]))),
+    // The first provider that lists a model id with a known context wins.
+    limits: new Map(
+      catalog
+        .flatMap((item) => item.models)
+        .filter((model) => model.limit.context > 0)
+        .map((model) => [String(model.id), { context: model.limit.context, output: model.limit.output }] as const)
+        .toReversed(),
+    ),
   }
 }

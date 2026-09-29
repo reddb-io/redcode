@@ -974,17 +974,24 @@ function fragmentEnd(kind: Fragment, id: string, providerMetadata?: ProviderMeta
 }
 
 function usage(input: Extract<LanguageModelV3StreamPart, { type: "finish" }>["usage"]): UsageInput | undefined {
+  // Output includes reasoning. An OpenAI-compatible server that counts reasoning apart from the completion
+  // only shows it in the raw payload, so it is normalized here before cost and totals read it.
+  const apart = ProviderShared.reasoningCountedApart(input.raw)
+  const outputTokens =
+    input.outputTokens.total === undefined || apart === undefined
+      ? input.outputTokens.total
+      : input.outputTokens.total + apart
   const output = {
     inputTokens: input.inputTokens.total,
     nonCachedInputTokens: input.inputTokens.noCache,
     cacheReadInputTokens: input.inputTokens.cacheRead,
     cacheWriteInputTokens: input.inputTokens.cacheWrite,
-    outputTokens: input.outputTokens.total,
-    reasoningTokens: input.outputTokens.reasoning,
+    outputTokens,
+    reasoningTokens: apart ?? input.outputTokens.reasoning,
     totalTokens:
-      input.inputTokens.total === undefined || input.outputTokens.total === undefined
+      input.inputTokens.total === undefined || outputTokens === undefined
         ? undefined
-        : input.inputTokens.total + input.outputTokens.total,
+        : input.inputTokens.total + outputTokens,
   }
   return Object.values(output).some((value) => value !== undefined) ? output : undefined
 }

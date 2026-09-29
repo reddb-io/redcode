@@ -888,10 +888,13 @@ const mapFinishReason = Effect.fn("OpenAIChat.mapFinishReason")(function* (event
 // Providers differ on cache-hit location: OpenAI uses
 // `prompt_tokens_details.cached_tokens`, DeepSeek uses
 // `prompt_cache_hit_tokens`, and Zai uses top-level `cached_tokens`.
+// A server that counts reasoning apart from `completion_tokens` is normalized
+// to the same inclusive shape so cost, budgets and compaction see all output.
 const mapUsage = (usage: OpenAIChatEvent["usage"], providerMetadataKey: string): Usage | undefined => {
   if (!usage) return undefined
   const input = usage.prompt_tokens ?? undefined
-  const output = usage.completion_tokens ?? undefined
+  const completion = usage.completion_tokens ?? undefined
+  const output = completion === undefined ? undefined : completion + (ProviderShared.reasoningCountedApart(usage) ?? 0)
   const cached = (usage.prompt_tokens_details?.cached_tokens ??
     (usage as { prompt_cache_hit_tokens?: number | null }).prompt_cache_hit_tokens ??
     (usage as { cached_tokens?: number | null }).cached_tokens ??

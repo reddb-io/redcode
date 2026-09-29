@@ -41,6 +41,10 @@ const patterns = [
   /too many tokens/i,
   /token limit exceeded/i,
   /request_too_large/i,
+  // Overflow codes quoted in text, such as an upstream body a router forwards as an escaped string.
+  /\b(?:too_many_tokens|input_too_long|prompt_too_long|max_prompt_tokens_exceeded|max_context_length_exceeded|context_window_exceeded)\b/i,
+  // vLLM-style arithmetic: "123 + max_tokens 4096 > 8192".
+  /[\d,]+\s*\+\s*max_tokens\s*[\d,]+\s*>\s*[\d,]+/i,
 ]
 
 const payloadPatterns = [/request entity too large/i, /payload too large/i, /request too large/i]
@@ -100,6 +104,19 @@ export const isRetryable = (error: AIError) => {
 }
 
 const decodeJson = Schema.decodeUnknownOption(Schema.fromJsonString(Schema.Unknown))
+// Codes providers and routers put in `error.code` or `error.type` for a request whose input does not fit the
+// model. Gateways forward the upstream code, so the list is shared by every protocol.
+const CONTEXT_OVERFLOW_CODES = new Set([
+  "context_length_exceeded",
+  "model_context_window_exceeded",
+  "request_too_large",
+  "too_many_tokens",
+  "input_too_long",
+  "prompt_too_long",
+  "max_prompt_tokens_exceeded",
+  "max_context_length_exceeded",
+  "context_window_exceeded",
+])
 // OpenCode Zen reports account caps as typed 429/402 errors that are not throttles.
 const QUOTA_CODES = new Set([
   "insufficient_quota",
@@ -188,13 +205,7 @@ export function classifyProviderFailure(input: ProviderFailure): AIError["reason
   const text = [input.message, body].filter((value) => value.length > 0).join("\n")
   const clientScoped = input.status === undefined || (input.status >= 400 && input.status < 500)
 
-  if (
-    clientScoped &&
-    (codes.includes("context_length_exceeded") ||
-      codes.includes("model_context_window_exceeded") ||
-      codes.includes("request_too_large") ||
-      isContextOverflow(text))
-  )
+  if (clientScoped && (codes.some((code) => CONTEXT_OVERFLOW_CODES.has(code)) || isContextOverflow(text)))
     return new InvalidRequestError({ ...details, classification: "context-overflow" })
   if (input.status === 413 || isPayloadTooLarge(text))
     return new InvalidRequestError({ ...details, classification: "payload-too-large" })

@@ -1013,6 +1013,62 @@ describe("OpenAI Chat route", () => {
     }),
   )
 
+  describe("reasoning counted apart from completion", () => {
+    const reply = (usage: object) =>
+      LLMClient.generate(request).pipe(
+        Effect.provide(
+          fixedResponse(
+            sseEvents(deltaChunk({ role: "assistant", content: "Done." }), deltaChunk({}, "stop"), usageChunk(usage)),
+          ),
+        ),
+      )
+
+    it.effect("adds reasoning to output when the total counts it apart", () =>
+      Effect.gen(function* () {
+        const response = yield* reply({
+          prompt_tokens: 1_200,
+          completion_tokens: 45,
+          total_tokens: 1_757,
+          completion_tokens_details: { reasoning_tokens: 512 },
+        })
+
+        expect(response.usage).toMatchObject({
+          inputTokens: 1_200,
+          outputTokens: 557,
+          reasoningTokens: 512,
+          totalTokens: 1_757,
+        })
+        expect(response.usage?.visibleOutputTokens).toBe(45)
+      }),
+    )
+
+    it.effect("keeps output when completion already includes reasoning", () =>
+      Effect.gen(function* () {
+        const response = yield* reply({
+          prompt_tokens: 1_200,
+          completion_tokens: 557,
+          total_tokens: 1_757,
+          completion_tokens_details: { reasoning_tokens: 512 },
+        })
+
+        expect(response.usage).toMatchObject({ outputTokens: 557, reasoningTokens: 512, totalTokens: 1_757 })
+        expect(response.usage?.visibleOutputTokens).toBe(45)
+      }),
+    )
+
+    it.effect("leaves a payload without a total as sent", () =>
+      Effect.gen(function* () {
+        const response = yield* reply({
+          prompt_tokens: 1_200,
+          completion_tokens: 45,
+          completion_tokens_details: { reasoning_tokens: 512 },
+        })
+
+        expect(response.usage).toMatchObject({ outputTokens: 45, reasoningTokens: 512 })
+      }),
+    )
+  })
+
   it.effect("finishes at the done sentinel without waiting for response EOF", () =>
     Effect.gen(function* () {
       const stream = new ReadableStream<Uint8Array>({

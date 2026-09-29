@@ -1,4 +1,5 @@
-import { Effect, JsonSchema, Schema, Stream } from "effect"
+import { Cause, Effect, Exit, JsonSchema, Schema, Stream } from "effect"
+import { supportsForcedToolChoice } from "./forced-tool-choice.js"
 import { tryRequest } from "./media-model.js"
 import { LLMClient, Service, type StreamOptions } from "./route/client.js"
 import {
@@ -19,6 +20,7 @@ import {
   type ToolEntryInput,
 } from "./schema/index.js"
 import { make as makeTool, toDefinitions, type ToolSchema } from "./tool.js"
+import { Json, encodeJson } from "./utils/json.js"
 
 /** Input accepted by `LLM.request`, normalized into the canonical `LLMRequest` class. */
 export type RequestInput<SelectedLanguageModel extends LanguageModel = LanguageModel> = Omit<
@@ -125,6 +127,8 @@ const runGenerateObject = Effect.fn("LLM.generateObject")(function* (
   tool: ReturnType<typeof makeTool>,
 ) {
   const baseRequest = request(options)
+  if (!supportsForcedToolChoice(baseRequest.model.id, baseRequest.model.compatibility?.forcedToolChoice))
+    return yield* generatePromptedObject(baseRequest, tool)
   const generateRequest = LLMRequest.update(baseRequest, {
     tools: toDefinitions({ [GENERATE_OBJECT_TOOL_NAME]: tool }),
     toolChoice: ToolChoice.named(GENERATE_OBJECT_TOOL_NAME),
@@ -153,10 +157,60 @@ const runGenerateObject = Effect.fn("LLM.generateObject")(function* (
   return new GenerateObjectResponse(object, response)
 })
 
+// Models that refuse a forced tool choice are asked for the bare JSON object instead; the reply is
+// validated against the schema and repaired once.
+const generatePromptedObject = Effect.fnUntraced(function* (
+  baseRequest: LLMRequest,
+  tool: ReturnType<typeof makeTool>,
+) {
+  const promptedRequest = LLMRequest.update(baseRequest, {
+    system: [
+      ...baseRequest.system,
+      SystemPart.make(
+        `Respond with ONLY a JSON object that matches this JSON Schema, no other text, do not wrap it in backticks:\n${encodeJson(tool._definition.inputSchema)}`,
+      ),
+    ],
+  })
+  const first = yield* LLMClient.generate(promptedRequest)
+  const parsed = yield* Effect.exit(decodePrompted(tool, first.text))
+  if (Exit.isSuccess(parsed)) return new GenerateObjectResponse(parsed.value, first)
+  const repair = yield* LLMClient.generate(
+    LLMRequest.update(promptedRequest, {
+      messages: [
+        ...promptedRequest.messages,
+        Message.assistant(first.text),
+        Message.user(
+          `That reply was not a valid JSON object for the schema: ${Cause.pretty(parsed.cause)}\n\nReturn ONLY the JSON object, no other text, do not wrap it in backticks.`,
+        ),
+      ],
+    }),
+  )
+  const object = yield* decodePrompted(tool, repair.text).pipe(
+    Effect.mapError(
+      (error) =>
+        new AIError({
+          reason: new InvalidProviderOutputError({
+            message: `generateObject: reply failed schema decode after one repair: ${error.message}`,
+            cause: error,
+          }),
+        }),
+    ),
+  )
+  return new GenerateObjectResponse(object, repair)
+})
+
+// Models asked for bare JSON still wrap it in a fenced block now and then.
+const decodePrompted = (tool: ReturnType<typeof makeTool>, text: string) =>
+  Schema.decodeUnknownEffect(Json)(/^\s*```(?:json)?\s*([\s\S]*?)\s*```\s*$/i.exec(text)?.[1] ?? text.trim()).pipe(
+    Effect.flatMap(tool._decode),
+  )
+
 /**
  * Run a model and decode its output against `schema`. Works on every protocol
  * because it forces a synthetic tool call internally — provider-native JSON
- * modes are intentionally avoided so behaviour is uniform.
+ * modes are intentionally avoided so behaviour is uniform. Models that refuse a
+ * forced tool choice (see `supportsForcedToolChoice`) are prompted for the bare
+ * JSON object instead, validated against the same schema and repaired once.
  *
  * Two input modes:
  *

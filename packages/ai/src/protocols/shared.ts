@@ -81,6 +81,33 @@ export const totalTokens = (
   return (inputTokens ?? 0) + (outputTokens ?? 0)
 }
 
+const ChatUsageTotals = Schema.Struct({
+  prompt_tokens: Schema.optional(Schema.NullOr(Schema.Number)),
+  completion_tokens: Schema.optional(Schema.NullOr(Schema.Number)),
+  total_tokens: Schema.optional(Schema.NullOr(Schema.Number)),
+  completion_tokens_details: Schema.optional(
+    Schema.NullOr(Schema.Struct({ reasoning_tokens: Schema.optional(Schema.NullOr(Schema.Number)) })),
+  ),
+})
+const decodeChatUsageTotals = Schema.decodeUnknownOption(ChatUsageTotals)
+
+/**
+ * The reasoning tokens a Chat Completions `usage` payload counts apart from `completion_tokens`, or
+ * `undefined` when the completion already includes them. OpenAI counts reasoning inside
+ * `completion_tokens`; some OpenAI-compatible servers and routers count it apart, and only
+ * `total_tokens` says so: `prompt_tokens + completion_tokens + reasoning_tokens`. Only that total
+ * decides; comparing reasoning with completion alone would flip at an arbitrary boundary, and a
+ * payload without a total is left as the provider sent it.
+ */
+export const reasoningCountedApart = (usage: unknown) => {
+  const totals = Option.getOrUndefined(decodeChatUsageTotals(usage))
+  const reasoning = totals?.completion_tokens_details?.reasoning_tokens
+  if (totals === undefined || typeof reasoning !== "number" || reasoning <= 0) return undefined
+  if (typeof totals.prompt_tokens !== "number" || typeof totals.completion_tokens !== "number") return undefined
+  if (typeof totals.total_tokens !== "number") return undefined
+  return totals.total_tokens === totals.prompt_tokens + totals.completion_tokens + reasoning ? reasoning : undefined
+}
+
 /**
  * Subtract `subtrahend` from `total`, clamping to zero if the provider
  * reports a non-sensical breakdown (e.g. `cached_tokens > prompt_tokens`).

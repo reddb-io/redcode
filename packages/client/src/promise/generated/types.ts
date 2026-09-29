@@ -1977,6 +1977,7 @@ export type ModelCompatibility = {
   requireFinishReason?: boolean
   requireAssistantAfterTool?: boolean
   supportsPromptCacheKey?: boolean
+  forcedToolChoice?: boolean
 }
 
 export type ModelCost = {
@@ -2893,6 +2894,12 @@ export type ConfigEntry =
           aux_timeout?: false | number
           turn_stall?: false | { warn_ms?: number; abort_ms?: number }
           tool_timeout?: false | number
+          code_mode?: {
+            enabled?: "off" | "on"
+            max_tool_calls?: number
+            timeout_ms?: number
+            max_output_bytes?: number
+          }
           policies?: Array<{
             action: "provider.use" | "permission"
             resource: string

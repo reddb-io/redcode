@@ -369,4 +369,80 @@ describe("provider error rawBody classification", () => {
       classifyProviderFailure({ message: "Request failed", rawBody: '{"error":{"code":"insufficient_quota"}}' })._tag,
     ).toBe("QuotaExceeded")
   })
+
+  describe("context overflow codes", () => {
+    const codes = [
+      "context_length_exceeded",
+      "model_context_window_exceeded",
+      "request_too_large",
+      "too_many_tokens",
+      "input_too_long",
+      "prompt_too_long",
+      "max_prompt_tokens_exceeded",
+      "max_context_length_exceeded",
+      "context_window_exceeded",
+    ]
+
+    test.each(codes)("classifies error.code %s as context overflow", (code) => {
+      expect(
+        classifyProviderFailure({
+          message: "Request failed",
+          status: 400,
+          rawBody: JSON.stringify({ error: { code: code, message: "Request rejected" } }),
+        }),
+      ).toMatchObject({ _tag: "InvalidRequest", classification: "context-overflow" })
+    })
+
+    test.each(codes)("classifies error.type %s as context overflow", (code) => {
+      expect(
+        classifyProviderFailure({
+          message: "Request failed",
+          status: 400,
+          rawBody: JSON.stringify({ type: "error", error: { type: code, message: "Request rejected" } }),
+        }),
+      ).toMatchObject({ _tag: "InvalidRequest", classification: "context-overflow" })
+    })
+
+    test.each(codes)("classifies %s forwarded in a router's error.metadata.raw", (code) => {
+      expect(
+        classifyProviderFailure({
+          message: "Provider returned error",
+          status: 400,
+          rawBody: JSON.stringify({
+            error: {
+              code: 400,
+              message: "Provider returned error",
+              metadata: { raw: JSON.stringify({ error: { code: code, message: "Request rejected" } }) },
+            },
+          }),
+        }),
+      ).toMatchObject({ _tag: "InvalidRequest", classification: "context-overflow" })
+    })
+
+    test.each([400, 413, 422])("classifies an overflow code on HTTP %d", (status) => {
+      expect(
+        classifyProviderFailure({
+          message: `Provider request failed with HTTP ${status}`,
+          status,
+          rawBody: '{"error":{"code":"prompt_too_long","message":"Prompt exceeds the limit"}}',
+        }),
+      ).toMatchObject({ _tag: "InvalidRequest", classification: "context-overflow" })
+    })
+
+    test("does not classify an overflow code on a server error", () => {
+      expect(
+        classifyProviderFailure({
+          message: "Provider request failed with HTTP 500",
+          status: 500,
+          rawBody: '{"error":{"code":"input_too_long"}}',
+        })._tag,
+      ).toBe("ProviderInternal")
+    })
+
+    test("classifies the max_tokens arithmetic refusal", () => {
+      expect(
+        isContextOverflow("This model's maximum context length is exceeded: 7,500 + max_tokens 4,096 > 8,192"),
+      ).toBe(true)
+    })
+  })
 })

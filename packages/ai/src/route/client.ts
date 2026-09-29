@@ -8,6 +8,7 @@ import type { HttpMiddleware, Transport, TransportRuntime, WebSocketChannelExecu
 import type { Protocol } from "./protocol.js"
 import { applyCachePolicy } from "../cache-policy.js"
 import { applyEffortUpdates } from "../effort-updates.js"
+import { applyForcedToolChoicePolicy } from "../forced-tool-choice.js"
 import { normalizeToolHistory } from "../tool-history.js"
 import { sanitizeSurrogates } from "../utils/sanitize.js"
 import * as ProviderShared from "../protocols/shared.js"
@@ -562,8 +563,10 @@ const prepareRequest = (request: LLMRequest) => {
       tool.type === "tool" ? tool : { ...tool, tools: dedupe(tool.tools) },
     )
   const resolved = applyCachePolicy(
-    applyEffortUpdates(
-      LLMRequest.update(sanitized, { tools: ToolSchemaProjection.tools(dedupe(sanitized.tools), sanitized.model) }),
+    applyForcedToolChoicePolicy(
+      applyEffortUpdates(
+        LLMRequest.update(sanitized, { tools: ToolSchemaProjection.tools(dedupe(sanitized.tools), sanitized.model) }),
+      ),
     ),
   )
   const headers = resolved.model.route.headers?.({ request: resolved })

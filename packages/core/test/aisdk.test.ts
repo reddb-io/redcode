@@ -627,6 +627,45 @@ it.effect("closes the open AI SDK reasoning part when the next one starts", () =
   }),
 )
 
+it.effect("adds reasoning an OpenAI-compatible server counted apart to AI SDK output", () =>
+  Effect.gen(function* () {
+    // AI SDK's OpenAI-compatible usage keeps `completion_tokens` as the output total and the payload in `raw`.
+    const aisdk = yield* AISDK.Service
+    yield* aisdk.hook.sdk((event) => {
+      event.sdk = {
+        languageModel: () =>
+          streamModel([
+            { type: "text-start", id: "text-0" },
+            { type: "text-delta", id: "text-0", delta: "Done." },
+            { type: "text-end", id: "text-0" },
+            {
+              type: "finish",
+              finishReason: { unified: "stop", raw: "stop" },
+              usage: {
+                inputTokens: { total: 1_200, noCache: 1_200, cacheRead: 0, cacheWrite: undefined },
+                outputTokens: { total: 45, text: -467, reasoning: 512 },
+                raw: {
+                  prompt_tokens: 1_200,
+                  completion_tokens: 45,
+                  total_tokens: 1_757,
+                  completion_tokens_details: { reasoning_tokens: 512 },
+                },
+              },
+            },
+          ]),
+      }
+    })
+
+    const resolved = yield* aisdk.model(model("@ai-sdk/gateway"))
+    const response = yield* LLMClient.generate(LLM.request({ model: resolved, prompt: "Think" })).pipe(
+      Effect.provide(client),
+    )
+
+    expect(response.usage).toMatchObject({ outputTokens: 557, reasoningTokens: 512, totalTokens: 1_757 })
+    expect(response.usage?.visibleOutputTokens).toBe(45)
+  }),
+)
+
 it.effect("normalizes repeated, reopened, and overlapping AI SDK fragment boundaries", () =>
   Effect.gen(function* () {
     const aisdk = yield* AISDK.Service
