@@ -62,7 +62,7 @@ export function McpsTab(props: { sessionID: string }) {
     if (y >= scroll.height || y < 0) scroll.scrollBy(y - Math.floor(scroll.height / 2))
   })
   onCleanup(
-    client.event.on("mcp.tools.changed", (event) => {
+    client.event.on("mcp.status.changed", (event) => {
       if (composer.active("mcps") && event.location?.directory === location().directory) refresh()
     }),
   )
@@ -181,6 +181,7 @@ export function McpsTab(props: { sessionID: string }) {
       label: "MCPs",
       hints: () => [
         { label: "tools", shortcut: shortcuts.get("composer.mcp.tools") ?? "" },
+        { label: "refresh", shortcut: shortcuts.get("composer.mcp.refresh") ?? "" },
         { label: "add", shortcut: shortcuts.get("composer.mcp.add") ?? "" },
         ...(current()
           ? [
@@ -223,6 +224,7 @@ export function McpsTab(props: { sessionID: string }) {
         },
       },
       { id: "composer.mcp.add", title: "Add MCP server", group: "Composer", run: add },
+      { id: "composer.mcp.refresh", title: "Refresh MCP tools", group: "Composer", run: refresh },
       {
         id: "composer.mcp.toggle",
         title: "Connect or disconnect MCP server",

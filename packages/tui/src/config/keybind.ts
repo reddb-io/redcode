@@ -259,6 +259,7 @@ export const Definitions = {
   "composer.mcp.down": keybind("down,j", "Next MCP server"),
   "composer.mcp.tools": keybind("return", "Show MCP tools"),
   "composer.mcp.add": keybind("a", "Add MCP server"),
+  "composer.mcp.refresh": keybind("r", "Refresh MCP tools"),
   "composer.mcp.toggle": keybind("c", "Connect or disconnect MCP server"),
   "composer.mcp.remove": keybind("ctrl+d", "Turn off MCP server"),
   "composer.worker.up": keybind("up,k", "Previous worker"),
