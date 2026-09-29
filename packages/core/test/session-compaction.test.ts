@@ -16,6 +16,7 @@ import { SessionModelRequest } from "@opencode/core/session/model-request"
 import { PluginHooks } from "@opencode/core/plugin/hooks"
 import { SessionProjector } from "@opencode/core/session/projector"
 import { SessionRunnerModel } from "@opencode/core/session/runner/model"
+import { toLLMMessages } from "@opencode/core/session/runner/to-llm-message"
 import { SessionTable } from "@opencode/core/session/sql"
 import { SessionStore } from "@opencode/core/session/store"
 import { Session } from "@opencode/core/session"
@@ -34,6 +35,8 @@ import { asc, eq } from "drizzle-orm"
 import { testEffect } from "./lib/effect"
 
 let requests: LLMRequest[] = []
+/** Appended to the mocked summary, to stand for a summarizer that repeats what it read. */
+let echo = ""
 const summary = [
   "## Objective", "- Continue the user's work.",
   "## Requirements", "- Preserve the user's constraints.",
@@ -64,7 +67,7 @@ const client = Layer.mock(LLMClient.Service)({
   stream: (request: LLMRequest) => {
     requests.push(request)
     return Stream.make(
-      LLMEvent.textDelta({ id: "summary", text: summary }),
+      LLMEvent.textDelta({ id: "summary", text: summary + echo }),
       LLMEvent.stepFinish({
         index: 0,
         reason: { normalized: "stop" },
@@ -787,6 +790,79 @@ it.effect("a manual compaction's focus reaches the summary request", () =>
     expect(JSON.stringify(requests[0]?.messages.at(-1))).toContain("Focus: the failing migration")
   }),
 )
+
+// Fake credentials are assembled from parts so no secret scanner mistakes them for real ones.
+const fakeKey = "sk-" + "proj-" + "Ab3".repeat(16)
+const fakePassword = "hunter" + "2"
+
+it.effect("a pasted key stays out of the summary request and the checkpoint, even when the summary repeats it", () =>
+  Effect.gen(function* () {
+    requests = []
+    const id = Session.ID.make("ses_redacted_checkpoint")
+    const session = yield* insertSession(id)
+    echo = `\n- The user's key is ${fakeKey}`
+    const outcome = yield* compactManually(session, [
+      userRequest(`Use OPENAI_API_KEY=${fakeKey} and https://admin:${fakePassword}@db.internal/app`),
+      userRequest(`Latest request with ${fakeKey}`, 1),
+    ])
+    echo = ""
+    expect(outcome).toEqual({ status: "completed" })
+
+    expect(requests).toHaveLength(1)
+    expect(JSON.stringify(requests[0]?.messages)).not.toContain(fakeKey)
+    expect(JSON.stringify(requests[0]?.messages)).not.toContain(fakePassword)
+    const stored = (yield* (yield* SessionStore.Service).context(id))[0]
+    if (stored?.type !== "compaction" || stored.status !== "completed") throw new Error("Expected compaction")
+    expect(stored.summary).not.toContain(fakeKey)
+    expect(stored.summary).not.toContain(fakePassword)
+    expect(stored.summary).toContain("The user's key is [redacted:openai-key]")
+    expect(stored.summary).toContain("OPENAI_API_KEY=[redacted:openai-key]")
+    expect(stored.summary).toContain("https://admin:[redacted:password]@db.internal/app")
+    expect(stored.recent).toBe("[User]: Latest request with [redacted:openai-key]")
+  }),
+)
+
+test("anchors carried forward from an earlier checkpoint lose the secrets it leaked", () => {
+  const token = "ghp" + "_" + "A1b".repeat(12)
+  const previous = [
+    summary,
+    "",
+    "<session-anchors>",
+    "User requests, newest first:",
+    `- ${JSON.stringify(`push with ${token}`)}`,
+    "",
+    "Identifiers from user requests:",
+    `- https://ci:${fakePassword}@ci.internal/hook?token=${"abc" + "123"}`,
+    "</session-anchors>",
+  ].join("\n")
+  const anchors = SessionCompaction.buildAnchors([userRequest("Continue")], previous)
+  expect(anchors).toContain("Earlier anchors:")
+  expect(anchors).toContain("push with [redacted:github-token]")
+  expect(anchors).toContain("https://ci:[redacted:password]@ci.internal/hook?token=[redacted:token]")
+  expect(anchors).not.toContain(token)
+  expect(anchors).not.toContain(fakePassword)
+})
+
+test("a checkpoint stored before redaction is redacted as it is sent", () => {
+  const [checkpoint] = toLLMMessages(
+    [
+      SessionMessage.Compaction.make({
+        id: SessionMessage.ID.create(),
+        type: "compaction",
+        status: "completed",
+        reason: "auto",
+        summary: `${summary}\n- Deploy with OPENAI_API_KEY=${fakeKey}`,
+        recent: `[User]: the database password: ${fakePassword}!`,
+        time: { created: DateTime.makeUnsafe(0) },
+      }),
+    ],
+    resolved.ref,
+  )
+  const sent = JSON.stringify(checkpoint?.content)
+  expect(sent).not.toContain(fakeKey)
+  expect(sent).not.toContain(fakePassword)
+  expect(sent).toContain("OPENAI_API_KEY=[redacted:openai-key]")
+})
 
 it.effect("a huge latest request stays in the checkpoint as its head and tail", () =>
   Effect.gen(function* () {

@@ -1,6 +1,6 @@
 export * as Status from "./service-status"
 
-import { ProviderFailure } from "@opencode/core/session/provider-failure"
+import { Redact } from "@opencode/util/redact"
 import { Cause, Effect, Ref } from "effect"
 
 /** What a failed boot tells clients: a short redacted reason and the log file that holds the full cause. */
@@ -40,11 +40,6 @@ export const make = Effect.fnUntraced(function* (options: { readonly initial?: S
 })
 
 const reasonLimit = 300
-const urlPattern = /\b[a-z][a-z0-9+.-]*:\/\/[^\s"'`<>]+/gi
-const schemePattern = /\b(bearer|basic)\s+[\w.~+\/=-]+/gi
-// `name: value` prose ("Unexpected token: }") stays readable; `name=value` and `name:value` are masked.
-const secretPattern =
-  /\b([\w.-]*(?:api.?key|secret|password|passwd|token|credential|authorization|cookie)[\w.-]*)(\s*=\s*|:(?=\S))("[^"]*"|'[^']*'|[^\s,;&]+)/gi
 
 /** The boot failure's first line, safe to show to clients; the full cause stays in the server log. */
 export function reason(cause: Cause.Cause<unknown>) {
@@ -62,9 +57,6 @@ export function summarize(text: string) {
     .map((item) => item.trim())
     .find((item) => item.length > 0)
   if (line === undefined) return undefined
-  const safe = line
-    .replace(urlPattern, (url) => ProviderFailure.redactURL(url))
-    .replace(schemePattern, "$1 ***")
-    .replace(secretPattern, "$1$2***")
+  const safe = Redact.redact(Redact.redactURLs(line))
   return safe.length > reasonLimit ? safe.slice(0, reasonLimit - 1) + "…" : safe
 }

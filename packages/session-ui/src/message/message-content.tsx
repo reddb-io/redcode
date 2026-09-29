@@ -6,6 +6,7 @@ import { useI18n } from "@opencode/ui/context/i18n"
 import { Markdown } from "../components/markdown"
 import { ImagePreview } from "@opencode/ui/image-preview"
 import { getFilename } from "@opencode/util/path"
+import { Redact } from "@opencode/util/redact"
 import { AttachmentCard } from "./attachment-card"
 import { CommentCard } from "./comment-card"
 import { TimelineSeparator } from "../components/timeline-separator"
@@ -399,7 +400,8 @@ type HighlightSegment = { text: string; type?: "file" | "agent" }
 
 export function SessionCompactionMessage(props: { message: SessionMessageCompaction; error: string }) {
   const i18n = useI18n()
-  const summary = () => (props.message.status === "failed" ? "" : props.message.summary)
+  // Checkpoints written before compaction redacted secrets still hold them, so they are redacted for display.
+  const summary = createMemo(() => (props.message.status === "failed" ? "" : Redact.redact(props.message.summary)))
   const error = () => {
     if (props.message.status !== "failed") return ""
     if (props.message.error.type === "aborted" || props.message.error.type === "compaction.interrupted") return ""

@@ -33,10 +33,10 @@ test("redacts credentials from a failure reason", () => {
     "cannot reach postgres://db.internal:5432/app",
   )
   expect(Status.summarize("request failed with Authorization: Bearer abc.def-ghi")).toBe(
-    "request failed with Authorization: Bearer ***",
+    "request failed with Authorization: Bearer [redacted:authorization]",
   )
   expect(Status.summarize("invalid config api_key=sk-live-123, password:'hunter2'")).toBe(
-    "invalid config api_key=***, password:***",
+    "invalid config api_key=[redacted:api-key], password:'[redacted:password]'",
   )
   expect(Status.summarize("Unexpected token: } in JSON")).toBe("Unexpected token: } in JSON")
 })

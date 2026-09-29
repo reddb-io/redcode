@@ -5,25 +5,11 @@
  * it is recorded, and every surface renders the context through `describe`.
  */
 
-const REDACTED = "__REDACTED__"
+import { Redact } from "@opencode/util/redact"
 
-/**
- * Keeps scheme, host, port and path, which are the diagnosis, and drops userinfo, the query string
- * and the fragment, which is where keys and signatures travel.
- */
+/** Keeps scheme, host, port and path, and drops userinfo, the query string and the fragment. */
 export function redactURL(input: string) {
-  const parsed = URL.parse(input)
-  if (!parsed) {
-    // Unparseable input keeps the same guarantee: nothing after the first `?` or `#` survives.
-    const head = input.split(/[?#]/)[0]
-    if (!head) return REDACTED
-    return head.replace(/\/\/[^/@\s]*@/, "//")
-  }
-  parsed.username = ""
-  parsed.password = ""
-  parsed.search = ""
-  parsed.hash = ""
-  return parsed.toString()
+  return Redact.redactURL(input)
 }
 
 /** The fields of a structured session error that carry request context. */

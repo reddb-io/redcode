@@ -10,6 +10,7 @@ import { Model } from "../model.js"
 import { Bus } from "../bus.js"
 import { makeLocationNode } from "@opencode/util/effect/app-node"
 import { isExactRootFallback } from "@opencode/util/session-title-fallback"
+import { Redact } from "@opencode/util/redact"
 import { llmClient } from "../effect/app-node-platform.js"
 import { SessionContext } from "./context.js"
 import { SessionEvent } from "./event.js"
@@ -86,7 +87,7 @@ export const layer = Layer.effect(
           return {}
         }),
         system: input.agent.system ? [SystemPart.make(input.agent.system)] : [],
-        messages: [Message.user(input.text)],
+        messages: [Message.user(Redact.redact(input.text))],
       })
       if (prepared.event.result !== undefined) return prepared.event.result
       yield* llm.stream(prepared.request, prepared.options).pipe(
@@ -108,12 +109,13 @@ export const layer = Layer.effect(
       )
       yield* recordUsage
       if (failed) return
-      return chunks
+      const title = chunks
         .join("")
         .replace(/<think>[\s\S]*?<\/think>\s*/g, "")
         .split("\n")
         .map((line) => line.trim())
         .find((line) => line.length > 0)
+      return title === undefined ? undefined : Redact.redact(title)
     })
 
     const generate = Effect.fn("SessionTitle.generate")(function* (sessionID: SessionSchema.ID) {

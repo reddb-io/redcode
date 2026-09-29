@@ -18,6 +18,7 @@ import type { StreamOptions } from "@opencode/ai/route"
 import type { SessionCompactionResult } from "@opencode/plugin/effect/session"
 import type { SessionError } from "@opencode/schema/session-error"
 import { makeLocationNode } from "@opencode/util/effect/app-node"
+import { Redact } from "@opencode/util/redact"
 import { Context, Duration, Effect, Exit, Fiber, Layer, Result, Schema, Scope, Stream } from "effect"
 import { Bus } from "../bus.js"
 import { HookRuntime } from "../hook.js"
@@ -230,12 +231,17 @@ export function stripAnchors(text: string) {
   return start < 0 ? text.trim() : end.slice(0, start).trim()
 }
 
-/** Verbatim user requests and file references survive a model-written checkpoint under a fixed budget. */
+/**
+ * Verbatim user requests and file references survive a model-written checkpoint under a fixed budget. Secrets do not:
+ * everything is redacted before it is cut to size, and earlier anchors are redacted again as they are carried forward,
+ * so a checkpoint written before redaction stops passing its secrets on.
+ */
 export function buildAnchors(messages: ReadonlyArray<SessionMessage.Info>, previous?: string) {
-  const users = messages.filter((message) => message.type === "user").map((message) => message.text)
+  const users = messages.filter((message) => message.type === "user").map((message) => Redact.redact(message.text))
   const references = users.flatMap(
     (text) =>
-      text.match(/https?:\/\/[^\s<>"'`]+|(?:\.{1,2}\/|~\/)[^\s<>"'`]+|\b[\w.-]+\.[a-zA-Z][\w]{0,5}\b|#\d+/gu) ?? [],
+      text.match(/https?:\/\/[^\s<>"'`]+|(?:\.{1,2}\/|~\/)[^\s<>"'`]+|\b[\w.-]{1,256}\.[a-zA-Z][\w]{0,5}\b|#\d+/gu) ??
+      [],
   )
   const files = messages.flatMap((message) =>
     message.type !== "assistant"
@@ -250,13 +256,15 @@ export function buildAnchors(messages: ReadonlyArray<SessionMessage.Info>, previ
             return []
           const input = part.state.input as Record<string, unknown>
           const path = input.filePath ?? input.file_path ?? input.path
-          return typeof path === "string" && path ? [path] : []
+          return typeof path === "string" && path ? [Redact.redact(path)] : []
         }),
   )
   const start = previous?.lastIndexOf(ANCHOR_OPEN) ?? -1
   const prior =
     start >= 0 && previous?.trimEnd().endsWith(ANCHOR_CLOSE)
-      ? previous.slice(start + ANCHOR_OPEN.length, previous.trimEnd().length - ANCHOR_CLOSE.length).trim()
+      ? Redact.redact(
+          previous.slice(start + ANCHOR_OPEN.length, previous.trimEnd().length - ANCHOR_CLOSE.length).trim(),
+        )
       : ""
   const sections = [
     users.length
@@ -327,6 +335,7 @@ const SUMMARY_RULES = `Rules:
 - Preserve exact file paths, symbols, commands, error strings, URLs, and identifiers.
 - Carry forward only user questions or requests that remain unanswered or require further action. Do not repeat ones that newer history has answered or resolved. Preserve exact wording when carrying one forward.
 - Preserve consequential workflow state, including whether changes are uncommitted, committed, pushed, under review, or merged.
+- Never reproduce credentials, tokens, API keys, passwords, private keys, or connection strings, not even in part. Refer to one by what it is instead, such as "the GitHub token the user provided".
 - Do not mention the summary process or that context was compacted.`
 
 export const buildPrompt = (update: boolean, legacy = false, focus?: string) => {
@@ -724,9 +733,12 @@ export const layer = Layer.effect(
             message: "Compaction summary is incomplete or does not match the required template",
           },
         })
-      const text = generated.hooked
-        ? result.text
-        : [stripAnchors(result.text), buildAnchors(split.older, previous?.summary)].filter(Boolean).join("\n\n")
+      // The summarizer never saw a secret, but the checkpoint is durable, so what it or a hook wrote is redacted too.
+      const text = Redact.redact(
+        generated.hooked
+          ? result.text
+          : [stripAnchors(result.text), buildAnchors(split.older, previous?.summary)].filter(Boolean).join("\n\n"),
+      )
       const source = split.older.reduce(
         (total, message) =>
           total +
@@ -754,7 +766,7 @@ export const layer = Layer.effect(
       const prompt = buildPrompt(
         previous !== undefined,
         previous?.summary.includes(LEGACY_HEADING) ?? false,
-        trigger.reason === "manual" ? trigger.focus : undefined,
+        trigger.reason === "manual" && trigger.focus !== undefined ? Redact.redact(trigger.focus) : undefined,
       )
       const prepared = yield* prepare(context, split.older, budget)
 
@@ -841,7 +853,7 @@ export const layer = Layer.effect(
         if (LLMClient.canCompact(request, { mechanism: "trigger" })) {
           return Effect.gen(function* () {
             const history = yield* SessionHistory.load(db, context.session.id, "local").pipe(Effect.orDie)
-            const retained = recentUserMessages(history, context.model, keep, turns)
+            const retained = redactMessages(recentUserMessages(history, context.model, keep, turns))
             const response = yield* llm.compact(request, { ...prepared.options, mechanism: "trigger" })
             return yield* toResult([...retained, Message.assistant(response.checkpoint)], response.usage)
           })
@@ -979,7 +991,7 @@ export const layer = Layer.effect(
           else groups[groups.length - 1] += `\n${text}`
           return groups
         },
-        summary?.recent ? [summary.recent] : [],
+        summary?.recent ? [Redact.redact(summary.recent)] : [],
       )
 
       const note = (omitted: number) =>
@@ -1101,7 +1113,7 @@ export const layer = Layer.effect(
         model: context.model,
         tools: context.tools,
         system: base.system,
-        messages: base.messages,
+        messages: redactMessages(base.messages),
         webSocket,
         inputTokens: { measured: budget, estimated: 0 },
         compactionMaxTokens: state.get().summaryMaxTokens,
@@ -1306,8 +1318,42 @@ const recentOf = (messages: ReadonlyArray<SessionMessage.Info>, preserve: number
     return text ? [{ message, text }] : []
   })
   const latest = entries.findLast((entry) => entry.message.type === "user")
-  return entries.map((entry) => (entry === latest ? elideMiddle(entry.text, preserve) : entry.text)).join("\n\n")
+  // Redacted before the elision, which could otherwise leave part of a secret on either side of its marker.
+  return entries
+    .map((entry) => {
+      const text = Redact.redact(entry.text)
+      return entry === latest ? elideMiddle(text, preserve) : text
+    })
+    .join("\n\n")
 }
+
+/**
+ * The request messages a compaction reads, with secrets redacted so a checkpoint has none to repeat: text, tool call
+ * inputs and tool results. Reasoning and provider compaction items stay as they are, since a provider may verify them
+ * byte for byte when they are replayed.
+ */
+const redactMessages = (messages: ReadonlyArray<Message>) =>
+  messages.map((message) =>
+    Message.make({
+      ...message,
+      content: message.content.map((part): ContentPart => {
+        if (part.type === "text") return { ...part, text: Redact.redact(part.text) }
+        if (part.type === "tool-call") return { ...part, input: Redact.redactDeep(part.input) }
+        if (part.type !== "tool-result") return part
+        if (part.result.type === "content")
+          return {
+            ...part,
+            result: {
+              ...part.result,
+              value: part.result.value.map((item) =>
+                item.type === "text" ? { ...item, text: Redact.redact(item.text) } : item,
+              ),
+            },
+          }
+        return { ...part, result: { ...part.result, value: Redact.redactDeep(part.result.value) } }
+      }),
+    }),
+  )
 
 /**
  * What a prepared summary depends on: the instruction baseline and the messages it covers. The model is left out, as

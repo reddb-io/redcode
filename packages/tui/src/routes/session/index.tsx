@@ -124,6 +124,7 @@ import { findMessageBoundary, messageNavigationSlack } from "./message-navigatio
 import { stringWidth } from "../../util/string-width"
 import { useArgs } from "../../context/args"
 import { withTimestampedFallback } from "@opencode/util/session-title-fallback"
+import { Redact } from "@opencode/util/redact"
 import { useSessionTabs, type ScrollAnchor } from "../../context/session-tabs"
 import { createSingleFlight } from "../../util/single-flight"
 import type { SessionInbox } from "@opencode/schema/session-inbox"
@@ -2371,7 +2372,11 @@ function CompactionMessage(props: { message: Extract<SessionMessageInfo, { type:
   const status = () => props.message.status
   const cancelled = () => props.message.status === "failed" && props.message.error.type === "aborted"
   const text = () =>
-    props.message.status === "failed" ? (cancelled() ? "" : props.message.error.message) : props.message.summary
+    props.message.status === "failed"
+      ? cancelled()
+        ? ""
+        : props.message.error.message
+      : Redact.redact(props.message.summary)
   const content = createMemo(() => text().trim())
   const color = () => (status() === "failed" && !cancelled() ? theme.text.feedback.error.base : theme.text.muted)
   // Usage of the compaction request itself; the resulting context size only shows on the next assistant step.
