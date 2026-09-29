@@ -53,6 +53,7 @@ export const RESET_WAIT_MAX = Duration.toMillis("2 minutes")
 // Routers in the 9Router family name the instant an account frees up and why it is unavailable.
 const ROUTER_RETRY_AT = "x-9router-retry-at"
 const ROUTER_REASON = "x-9router-reason"
+const NO_ACTIVE_CREDENTIALS = "no_active_credentials"
 // An explicit reset in the error text, as routers write it: "quota exhausted until 2026-09-25T18:00:00Z".
 const UNTIL_PATTERN = /\buntil\s+(\d{4}-\d{2}-\d{2}[T ]\d{2}:\d{2}(?::\d{2}(?:\.\d+)?)?(?:Z|[+-]\d{2}:?\d{2})?)/i
 const QUOTA_PATTERN = /quota|usage limit|insufficient[_\s]credits|credit balance/i
@@ -65,12 +66,12 @@ const retryAfter = (input: Input) => {
   return undefined
 }
 
-// Exponential from 2s capped at 10s per gap, for 10 retries: 2, 4, 8, then 10 × 7, about 84s of
-// waiting when every attempt fails (67–101s with jitter). `min` takes the faster schedule, so the
+// Exponential from 2s capped at 10s per gap, for 20 retries: 2, 4, 8, then 10 × 17, about 184s of
+// waiting when every attempt fails (147–221s with jitter). `min` takes the faster schedule, so the
 // cap applies per gap; `max` with `recurs` bounds the count.
 const schedule = Schedule.max([
   Schedule.min([Schedule.exponential("2 seconds"), Schedule.spaced("10 seconds")]),
-  Schedule.recurs(10),
+  Schedule.recurs(20),
 ]).pipe(
   Schedule.jittered,
   Schedule.setInputType<Input>(),
@@ -89,6 +90,9 @@ export const policy = (sessionID: SessionSchema.ID) =>
       Effect.gen(function* () {
         const now = yield* Clock.currentTimeMillis
         const far = exhausted(input.cause, now)
+        // A router with no active account for the model has none on the next attempt either:
+        // connecting one is the fix, so the failure is surfaced instead of retried.
+        const unconnected = input.cause.reason.http?.headers[ROUTER_REASON] === NO_ACTIVE_CREDENTIALS
         const stop: Stop = far
           ? {
               retry: false,
@@ -98,7 +102,15 @@ export const policy = (sessionID: SessionSchema.ID) =>
                 message: exhaustedMessage(`${input.model.providerID} · ${input.model.id}`, far, now),
               },
             }
-          : { retry: false }
+          : unconnected
+            ? {
+                retry: false,
+                error: {
+                  ...input.error,
+                  message: `${input.model.providerID} · ${input.model.id}: the router has no active account for this model; connect one in its dashboard`,
+                },
+              }
+            : { retry: false }
         const next = yield* step(now, input).pipe(Pull.catchDone(() => Effect.succeed(undefined)))
         if (!next) return stop
         const [, duration] = next
@@ -110,8 +122,8 @@ export const policy = (sessionID: SessionSchema.ID) =>
           model: input.model,
           error: input.error,
           attempt,
-          // A far reset is proposed as a stop; a hook may still choose to wait it out.
-          decision: input.retry && !far ? { retry: true, delay } : { retry: false },
+          // A far reset or a missing account is proposed as a stop; a hook may still choose to retry.
+          decision: input.retry && !far && !unconnected ? { retry: true, delay } : { retry: false },
         }
         yield* input.hook(event)
         if (!event.decision.retry) return stop

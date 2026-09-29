@@ -55,6 +55,7 @@ async function renderMonitors(initial: MonitorPublicInfo[]) {
   let toast!: ReturnType<typeof useToast>
   let dispatch!: ReturnType<typeof Keymap.use>["dispatch"]
   const [open, setOpen] = createSignal(true)
+  const events = createEventStream()
   const calls = createFetch((url) => {
     if (url.pathname !== "/api/session/parent") return undefined
     return json({
@@ -69,7 +70,7 @@ async function renderMonitors(initial: MonitorPublicInfo[]) {
         time: { created: 0, updated: 0 },
       },
     })
-  }, createEventStream())
+  }, events)
 
   function Content() {
     toast = useToast()
@@ -125,6 +126,7 @@ async function renderMonitors(initial: MonitorPublicInfo[]) {
     toast: () => toast.currentToast,
     dispatch: (command: string) => dispatch(command),
     setOpen,
+    emit: events.emit,
     /** Re-reads until the shared list matches, since a read already in flight skips a new one. */
     settle: async (predicate: (list: readonly MonitorPublicInfo[]) => boolean) => {
       await wait(() => {
@@ -223,6 +225,26 @@ test("a monitor that finishes toasts only while the Monitors tab is out of sight
     await view.settle((list) => list.every((info) => info.status !== "running"))
     expect(view.toast()).toMatchObject({ variant: "error", message: "Monitor failed: second-check" })
     expect(view.app.captureCharFrame()).not.toContain("monitor")
+  } finally {
+    view.app.renderer.destroy()
+  }
+})
+
+test("a monitor event re-reads the list without polling while the Monitors tab is hidden", async () => {
+  const view = await renderMonitors([monitor({ id: "build", command: "watch-build" })])
+  try {
+    view.setOpen(false)
+    await view.app.renderOnce()
+    view.store.list = view.store.list.map((info): MonitorPublicInfo => ({ ...info, status: "succeeded" }))
+    view.emit({
+      id: "evt_monitor_finished",
+      created: Date.now(),
+      type: "monitor.finished",
+      data: { sessionID: "parent", monitorID: "build", command: "watch-build", status: "succeeded" },
+    })
+    await wait(() => view.monitors().list().every((info) => info.status === "succeeded"))
+    await view.app.renderOnce()
+    expect(view.toast()).toMatchObject({ variant: "success", message: "Monitor succeeded: watch-build" })
   } finally {
     view.app.renderer.destroy()
   }

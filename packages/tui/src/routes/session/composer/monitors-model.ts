@@ -1,7 +1,7 @@
 import type { MonitorPublicInfo } from "@opencode/client"
 import { Monitor } from "@opencode/schema/monitor"
 
-/** How often monitors are re-read while the Monitors tab is on screen or any monitor still runs. */
+/** How often monitors are re-read while the Monitors tab is on screen and a monitor still runs; events cover the rest. */
 export const MONITOR_POLL_MS = 2_000
 /** The longest one-line result a row shows; the full evidence is one keypress away. */
 export const SUMMARY_CHARS = 160

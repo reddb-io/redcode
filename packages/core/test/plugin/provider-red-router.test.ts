@@ -6,7 +6,7 @@ import { Model } from "@opencode/core/model"
 import { Plugin } from "@opencode/core/plugin"
 import { PluginHooks } from "@opencode/core/plugin/hooks"
 import { PluginHost } from "@opencode/core/plugin/host"
-import { RedRouterPlugin, routerModel } from "@opencode/core/plugin/provider/red-router"
+import { catalogChanges, RedRouterPlugin, routerModel } from "@opencode/core/plugin/provider/red-router"
 import { Provider } from "@opencode/core/provider"
 import { ProviderRouter } from "@opencode/core/provider-router"
 import { Agent } from "@opencode/schema/agent"
@@ -28,6 +28,12 @@ const addPlugin = Effect.fn(function* () {
 })
 
 describe("RedRouterPlugin", () => {
+  test("counts the models a catalog refresh added and removed", () => {
+    const ids = (...values: string[]) => values.map((id) => ({ id }))
+    expect(catalogChanges(ids("a", "b", "c"), ids("b", "c", "d", "e"))).toEqual({ added: 2, removed: 1, renamed: 0 })
+    expect(catalogChanges(ids("a"), ids("a"))).toEqual({ added: 0, removed: 0, renamed: 0 })
+  })
+
   test("uses router parameters for limits, tools, modalities, and declared thinking levels", () => {
     const models = routerModel(
       {

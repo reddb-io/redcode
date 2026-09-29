@@ -18,6 +18,8 @@ import { EventManifest } from "../src/event-manifest.js"
 import { FileSystemV1 } from "../src/filesystem-v1.js"
 import { IdeEvent } from "../src/ide-event.js"
 import { McpEvent } from "../src/mcp-event.js"
+import { Monitor } from "../src/monitor.js"
+import { Router } from "../src/router.js"
 import { SessionEvent } from "../src/session-event.js"
 import { SessionID } from "../src/session-id.js"
 import { SessionMessage } from "../src/session-message.js"
@@ -104,6 +106,18 @@ describe("public event manifest", () => {
     expect(EventManifest.Server.has("credential.deleted")).toBe(false)
     expect(EventManifest.Server.has("integration.connection.updated")).toBe(false)
     expect(EventManifest.Latest.has("integration.connection.updated")).toBe(false)
+  })
+
+  test("publishes monitor lifecycle and router catalog events to clients", () => {
+    for (const definition of [...Monitor.Event.Definitions, ...Router.Event.Definitions]) {
+      expect(EventManifest.ServerDefinitions).toContain(definition)
+      expect(EventManifest.Server.get(definition.type)).toBe(definition)
+      expect(EventManifest.Latest.get(definition.type)).toBe(definition)
+      expect(definition.durability).toBe("ephemeral")
+      expect(EventManifest.Durable.has(definition.type)).toBe(false)
+    }
+    expect(Monitor.Event.Definitions).toEqual([Monitor.Event.Started, Monitor.Event.Finished, Monitor.Event.Expired])
+    expect(Router.Event.Definitions).toEqual([Router.Event.CatalogUpdated])
   })
 
   test("derives durable definitions from explicit definition durability", () => {

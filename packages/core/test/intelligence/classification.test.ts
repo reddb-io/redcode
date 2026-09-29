@@ -174,4 +174,36 @@ describe("IntelligenceClassification", () => {
     })
     expect(IntelligenceClassification.assessment(record("unavailable", {}))).toBeUndefined()
   })
+
+  test("guides a RedRouter with a valid hint and turns its decision off when System One chose a skill", () => {
+    const legend = { "0": "a", "1": "b", "2": "c", "3": "d" }
+    const score = (value: number, confidence: number) => ({
+      type: "score" as const,
+      score: value,
+      confidence,
+      probabilities: { "0": 0, "1": 0, "2": 0, "3": 0, [String(value)]: confidence },
+      legend,
+    })
+    const evaluation = record("accepted", {
+      complexity: score(1, 0.8),
+      consequence: score(2, 0.9),
+      frustration: score(3, 0.3),
+      user_feedback: choice("corrects", 0.9, ["agrees", "corrects", "neutral"]),
+    })
+    const guidance = IntelligenceClassification.routerGuidance(evaluation)
+    expect(guidance).toEqual({
+      hint: "complexity=0.333333;deliberation=0.666667;tier=medium;feedback=corrects",
+    })
+    expect(
+      IntelligenceClassification.routerGuidance(
+        record("accepted", {
+          complexity: score(3, 0.8),
+          recommended_skill: choice("tdd", 0.9, ["tdd", "no_matching_skill"]),
+        }),
+      ),
+    ).toEqual({ hint: "complexity=1;deliberation=1;needs_tool=true;tier=reasoning", decision: false })
+    expect(IntelligenceClassification.routerGuidance(record("accepted", {}))).toBeUndefined()
+    expect(IntelligenceClassification.routerGuidance(record("unavailable", {}))).toBeUndefined()
+    expect(IntelligenceClassification.routerGuidance(undefined)).toBeUndefined()
+  })
 })

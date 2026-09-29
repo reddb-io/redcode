@@ -3,7 +3,6 @@ import type { MonitorPublicInfo, OpenCodeClient } from "@opencode/client"
 import { createEffect, createMemo, createSignal, For, on, onCleanup, onMount, Show } from "solid-js"
 import { createStore, reconcile } from "solid-js/store"
 import { useClient } from "../../../context/client"
-import { useData } from "../../../context/data"
 import { useTheme } from "../../../context/theme"
 import { Keymap } from "../../../context/keymap"
 import { useDialog } from "../../../ui/dialog"
@@ -32,13 +31,12 @@ export type MonitorApi = Pick<OpenCodeClient["session"]["monitor"], "list" | "ca
 export type SessionMonitors = ReturnType<typeof createSessionMonitors>
 
 /**
- * Monitor changes are not published as client events, so the list is read once on mount, again when a tool
- * result or a delivered completion names a monitor or the Session goes idle, and on a light timer only while
- * the Monitors tab is on screen or a monitor still runs. A Session without monitors costs one read per run.
+ * The list is read once per Session, again whenever the server announces that one of its monitors started,
+ * finished or expired, and when the Monitors tab opens. Attempts and evidence change without an event, so
+ * only while the tab is on screen and a monitor still runs is it re-read on a light timer.
  */
 export function createSessionMonitors(props: { sessionID: () => string; onOpen: () => void; api?: MonitorApi }) {
   const client = useClient()
-  const data = useData()
   const toast = useToast()
   const api = () => props.api ?? client.api.session.monitor
   const [store, setStore] = createStore({
@@ -47,11 +45,15 @@ export function createSessionMonitors(props: { sessionID: () => string; onOpen: 
     now: Date.now(),
     visible: false,
   })
-  let loading = false
+  // A change announced while a read is in flight is read once more when it settles, so it is never lost.
+  const reading = { active: false, again: false }
 
   const refresh = () => {
-    if (loading) return
-    loading = true
+    if (reading.active) {
+      reading.again = true
+      return
+    }
+    reading.active = true
     const sessionID = props.sessionID()
     void api()
       .list({ sessionID })
@@ -68,41 +70,28 @@ export function createSessionMonitors(props: { sessionID: () => string; onOpen: 
         (error: unknown) => setStore("error", errorMessage(error)),
       )
       .finally(() => {
-        loading = false
+        reading.active = false
+        if (!reading.again) return
+        reading.again = false
+        refresh()
       })
   }
 
   createEffect(on(props.sessionID, refresh))
   createEffect(() => {
-    if (!store.visible && !store.list.some((info) => info.status === "running")) return
+    if (!store.visible || !store.list.some((info) => info.status === "running")) return
     const timer = setInterval(() => {
       setStore("now", Date.now())
       refresh()
     }, MONITOR_POLL_MS)
     onCleanup(() => clearInterval(timer))
   })
-  createEffect(
-    on(
-      () => data.session.status(props.sessionID()),
-      (status, previous) => {
-        if (previous === "running" && status !== "running") refresh()
-      },
-      { defer: true },
-    ),
-  )
-  onCleanup(
-    client.event.on("session.tool.success", (event) => {
-      if (event.data.sessionID !== props.sessionID()) return
-      // Every monitor tool call, start or control, answers with a rendered monitor_result.
-      if (event.data.content.some((part) => part.type === "text" && part.text.includes('"monitor_result"'))) refresh()
-    }),
-  )
-  onCleanup(
-    client.event.on("session.inbox.enqueued", (event) => {
-      if (event.data.sessionID !== props.sessionID() || event.data.item.type !== "synthetic") return
-      if (event.data.item.payload.metadata?.source === "monitor") refresh()
-    }),
-  )
+  const changed = (event: { data: { sessionID: string } }) => {
+    if (event.data.sessionID === props.sessionID()) refresh()
+  }
+  onCleanup(client.event.on("monitor.started", changed))
+  onCleanup(client.event.on("monitor.finished", changed))
+  onCleanup(client.event.on("monitor.expired", changed))
 
   return {
     list: () => store.list,

@@ -1405,6 +1405,15 @@ export type ProviderUpdated = {
   data: {}
 }
 
+export type ProviderCatalogUpdated = {
+  id: string
+  created: number
+  metadata?: { [x: string]: any }
+  type: "provider.catalog.updated"
+  location?: LocationRef
+  data: { providerID: string; name: string; added: number; removed: number; renamed: number }
+}
+
 export type ModelUpdated = {
   id: string
   created: number
@@ -1638,6 +1647,33 @@ export type WebsearchUpdated = {
   type: "websearch.updated"
   location?: LocationRef
   data: {}
+}
+
+export type MonitorStarted = {
+  id: string
+  created: number
+  metadata?: { [x: string]: any }
+  type: "monitor.started"
+  location?: LocationRef
+  data: { sessionID: string; monitorID: string; command: string }
+}
+
+export type MonitorFinished = {
+  id: string
+  created: number
+  metadata?: { [x: string]: any }
+  type: "monitor.finished"
+  location?: LocationRef
+  data: { sessionID: string; monitorID: string; command: string; status: string }
+}
+
+export type MonitorExpired = {
+  id: string
+  created: number
+  metadata?: { [x: string]: any }
+  type: "monitor.expired"
+  location?: LocationRef
+  data: { sessionID: string; monitorID: string; command: string }
 }
 
 export type SessionIdle = {
@@ -2873,6 +2909,8 @@ export type ConfigEntry =
           application?: string | null
           browser?: string | null
           breakpoints?: Array<number> | null
+          viewports?: Array<string> | null
+          gate?: boolean | null
           app?: { mode?: "process" | "inline" | null; version?: string | null } | null
         }
         warming?: boolean | { prompt?: string; interval?: string; duration?: string }
@@ -3262,6 +3300,7 @@ export type V2Event =
   | CredentialSwitched
   | IntegrationUpdated
   | ProviderUpdated
+  | ProviderCatalogUpdated
   | ModelUpdated
   | AgentUpdated
   | SessionCreated
@@ -3338,6 +3377,9 @@ export type V2Event =
   | FormReplied
   | FormCancelled
   | WebsearchUpdated
+  | MonitorStarted
+  | MonitorFinished
+  | MonitorExpired
   | SessionStatusUpdated
   | SessionIdle
   | TuiPromptAppend

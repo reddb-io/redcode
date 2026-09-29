@@ -1,7 +1,7 @@
 export * as Monitor from "./monitor.js"
 
 import { Schema } from "effect"
-import { ephemeral } from "./event.js"
+import { ephemeral, inventory } from "./event.js"
 import { SessionID } from "./session-id.js"
 
 const Milliseconds = Schema.Int.check(Schema.isGreaterThan(0), Schema.isLessThanOrEqualTo(86_400_000))
@@ -472,8 +472,11 @@ export function printable(text: string) {
   return text.replace(CSI, "").replace(OSC, "").replace(CONTROL, "")
 }
 
-/** Monitor lifecycle events on the session event bus: what is watched, and when it ends. Kept out of
- * the protocol manifest until a client surface asks for them - internal first. */
+/**
+ * Monitor lifecycle events: a monitor started, settled with its final status once its result was
+ * handed over (or withheld), or expired because its runtime died past the deadline. Clients such as
+ * the TUI Monitors tab re-read the Session's monitors on them instead of polling.
+ */
 const Started = ephemeral({
   type: "monitor.started",
   schema: { sessionID: SessionID, monitorID: Schema.String, command: Schema.String },
@@ -486,4 +489,4 @@ const Expired = ephemeral({
   type: "monitor.expired",
   schema: { sessionID: SessionID, monitorID: Schema.String, command: Schema.String },
 })
-export const Event = { Started, Finished, Expired }
+export const Event = { Started, Finished, Expired, Definitions: inventory(Started, Finished, Expired) }

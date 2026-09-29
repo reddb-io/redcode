@@ -3,6 +3,7 @@ export * as IntelligenceClassification from "./classification.js"
 import { Intelligence } from "@opencode/schema/intelligence"
 import { DesignTargetCriteria } from "../design/target-criteria.js"
 import type { EvaluationInput } from "../intelligence.js"
+import { ProviderRouter } from "../provider-router.js"
 import { IntelligenceEvaluation } from "./evaluation.js"
 
 /**
@@ -350,6 +351,39 @@ export function assessment(evaluation: Intelligence.Evaluation | undefined) {
     mustClarify: clarify?.type === "noul" ? clarify.noul : undefined,
     feedback: choice(evaluation, "user_feedback"),
   }
+}
+
+/**
+ * What the classification tells a RedRouter about the request, or undefined when there is nothing
+ * reliable to say. The hint carries complexity as a unit, deliberation as the greater of complexity
+ * and consequence, `needs_tool=true` when System One recommended a skill, the tier from the
+ * complexity bands 0.25, 0.5 and 0.75, the user's feedback on the previous work and their
+ * frustration. `needs_tool=false` is never claimed, since built-in tools stay available whatever
+ * System One recommended. A skill recommendation means System One already chose tools for the
+ * request, so the router's own decision layer is turned off. `ProviderRouter.requestHeaders` drops
+ * the signals a router does not read.
+ */
+export function routerGuidance(evaluation: Intelligence.Evaluation | undefined): ProviderRouter.Guidance | undefined {
+  const signals = assessment(evaluation)
+  if (!signals) return undefined
+  const complexity = signals.complexity
+  const assessed = [complexity, signals.consequence].filter((value) => value !== undefined)
+  const needsTool = recommendations(evaluation).length > 0
+  const value = [
+    complexity === undefined ? undefined : `complexity=${ProviderRouter.hintUnit(complexity)}`,
+    assessed.length ? `deliberation=${ProviderRouter.hintUnit(Math.max(...assessed))}` : undefined,
+    needsTool ? "needs_tool=true" : undefined,
+    complexity === undefined
+      ? undefined
+      : `tier=${complexity < 0.25 ? "simple" : complexity < 0.5 ? "medium" : complexity < 0.75 ? "complex" : "reasoning"}`,
+    signals.feedback === undefined ? undefined : `feedback=${signals.feedback}`,
+    signals.frustration === undefined ? undefined : `frustration=${ProviderRouter.hintUnit(signals.frustration)}`,
+  ]
+    .filter((pair) => pair !== undefined)
+    .join(";")
+  const hint = ProviderRouter.validHint(value) ? value : undefined
+  if (!hint && !needsTool) return undefined
+  return { ...(hint ? { hint } : {}), ...(needsTool ? { decision: false } : {}) }
 }
 
 /** The classification as the agent reads it; undefined when there is none to report. */

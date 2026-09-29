@@ -45,3 +45,13 @@ export function modelLabel(model: ModelInfo, providers: ProviderInfo[]) {
     providers.find((provider) => provider.id === model.providerID),
   )} · ${model.name} (${model.id})`
 }
+
+/**
+ * Announces a background router catalog refresh, e.g. `RedRouter catalog updated: +2/−1 models, 3 renamed`,
+ * or undefined when only limits or modes changed: the pickers already show those, nothing to announce.
+ */
+export function catalogUpdateMessage(update: { name: string; added: number; removed: number; renamed: number }) {
+  if (!update.added && !update.removed && !update.renamed) return undefined
+  const renamed = update.renamed > 0 ? `, ${update.renamed} renamed` : ""
+  return `${update.name} catalog updated: +${update.added}/−${update.removed} models${renamed}`
+}

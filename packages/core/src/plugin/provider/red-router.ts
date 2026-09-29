@@ -302,6 +302,7 @@ function routerPlugin(options: {
         const mcpInspected = mcpServer()
         loaded.inspection = inspection
         const changed = digest !== loaded.digest
+        const previous = loaded.models
         loaded.models = models
         loaded.digest = digest
         yield* ctx.provider.reload()
@@ -314,6 +315,14 @@ function routerPlugin(options: {
           discard: true,
         })
         yield* kv.set(`${cacheKey}:count`, chunks.length)
+        // A first read has nothing to compare against. Published even when no model was added or
+        // removed: limits or modes may have changed, and clients decide what is worth announcing.
+        if (previous.length === 0) return
+        yield* bus.publish(Router.Event.CatalogUpdated, {
+          providerID,
+          name: options.name,
+          ...catalogChanges(previous, models),
+        })
       })
       const safeRefresh = () =>
         refresh().pipe(
@@ -444,6 +453,20 @@ function routerPlugin(options: {
       })
     }),
   })
+}
+
+/**
+ * How a router's model list moved between two reads, counted by model id. The router keeps no
+ * record of renames, so a renamed model counts as one removed and one added.
+ */
+export function catalogChanges(previous: ReadonlyArray<{ id: string }>, next: ReadonlyArray<{ id: string }>) {
+  const before = new Set(previous.map((item) => item.id))
+  const after = new Set(next.map((item) => item.id))
+  return {
+    added: [...after].filter((id) => !before.has(id)).length,
+    removed: [...before].filter((id) => !after.has(id)).length,
+    renamed: 0,
+  }
 }
 
 function routerEndpoint(credential: Credential.Info | undefined, fallback: string) {

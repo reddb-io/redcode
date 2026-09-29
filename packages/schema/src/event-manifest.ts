@@ -18,6 +18,7 @@ import { LocationEvent } from "./location-event.js"
 import { McpEvent } from "./mcp-event.js"
 import { Model } from "./model.js"
 import { ModelsDev } from "./models-dev.js"
+import { Monitor } from "./monitor.js"
 import { Permission } from "./permission.js"
 import { PersistentPty } from "./persistent-pty.js"
 import { Plugin } from "./plugin.js"
@@ -26,6 +27,7 @@ import { Provider } from "./provider.js"
 import { Worktree } from "./worktree.js"
 import { Pty } from "./pty.js"
 import { Reference } from "./reference.js"
+import { Router } from "./router.js"
 import { ServerEvent } from "./server-event.js"
 import { Shell } from "./shell.js"
 import { Skill } from "./skill.js"
@@ -46,6 +48,7 @@ const foundationDefinitions = Event.inventory(
   ...Credential.Event.Definitions,
   ...Integration.Event.Definitions,
   ...Provider.Event.Definitions,
+  ...Router.Event.Definitions,
   ...Model.Event.Definitions,
   ...Agent.Event.Definitions,
   ...coreDefinitions,
@@ -66,6 +69,7 @@ const featureDefinitions = Event.inventory(
   ...Shell.Event.Definitions,
   ...Form.Event.Definitions,
   ...WebSearch.Event.Definitions,
+  ...Monitor.Event.Definitions,
 )
 
 export const ServerDefinitions = Event.inventory(

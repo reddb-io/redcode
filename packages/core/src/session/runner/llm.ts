@@ -40,6 +40,7 @@ import { SessionTodo } from "../todo.js"
 import { SessionTodoStore } from "../todo-store.js"
 import { HookRuntime } from "../../hook.js"
 import { MonitorRuntime } from "../../monitor.js"
+import { ProviderRouter } from "../../provider-router.js"
 import { toSessionError } from "../to-session-error.js"
 import { DrainResult, Service, type Interface } from "./index.js"
 import { Snapshot } from "../../snapshot.js"
@@ -280,6 +281,9 @@ const layer = Layer.effect(
         if (!(yield* budgets.admit(sessionID, configuredBudget))) return DrainResult.Complete()
         // Classified before the goal accounts the Step, so an interruption while waiting spends nothing.
         const classification = yield* classify(next.context)
+        // What System One made of the request steers a RedRouter's requests for this Step; without a
+        // classification the previous request's guidance is forgotten, never carried over.
+        ProviderRouter.guide(sessionID, IntelligenceClassification.routerGuidance(classification))
         yield* warmDesignSystem(next.context, IntelligenceClassification.workRoute(classification))
         const goalID = yield* goals.beginStep(sessionID)
         if (goalID === false) return DrainResult.Complete()

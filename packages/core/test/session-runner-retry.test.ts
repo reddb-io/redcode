@@ -134,6 +134,28 @@ describe("SessionRunnerRetry.policy", () => {
     }),
   )
 
+  it.effect("does not retry a router with no active account for the model", () =>
+    Effect.gen(function* () {
+      const decide = yield* SessionRunnerRetry.policy(id)
+      const cause = new AIError({
+        reason: new RateLimitError({
+          message: "Provider request failed with HTTP 503",
+          http: new HttpContext({
+            url: "http://router.test/v1/chat/completions",
+            status: 503,
+            headers: { "x-9router-reason": "no_active_credentials" },
+          }),
+        }),
+      })
+      const decision = yield* decide(input(cause))
+      expect(decision.retry).toBeFalse()
+      if (decision.retry) return
+      expect(decision.error?.message).toBe(
+        "red-router · gpt-6-sol: the router has no active account for this model; connect one in its dashboard",
+      )
+    }),
+  )
+
   it.effect("lets a hook wait out a far reset", () =>
     Effect.gen(function* () {
       const decide = yield* SessionRunnerRetry.policy(id)
