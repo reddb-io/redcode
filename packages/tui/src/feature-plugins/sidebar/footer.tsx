@@ -1,5 +1,5 @@
 import { Plugin } from "@opencode/plugin/tui"
-import { createMemo, createSignal, For, Show } from "solid-js"
+import { createEffect, createMemo, createSignal, For, on, Show } from "solid-js"
 import { useTerminalDimensions } from "@opentui/solid"
 import path from "path"
 import { abbreviateHome } from "../../runtime"
@@ -82,6 +82,12 @@ export function SidebarFooter(props: { context: Plugin.Context; sessionID: strin
   const paths = useTuiPaths()
   const [width, setWidth] = createSignal(32)
   const location = () => session()?.location ?? props.context.location ?? props.context.data.location.default()
+  createEffect(on(location, (current) => {
+    void Promise.allSettled([
+      props.context.data.location.syncInfo(current),
+      props.context.data.location.vcs.sync(current),
+    ])
+  }))
   const move = usePromptMove({
     projectID: () => session()?.projectID,
     sessionID: () => props.sessionID,
