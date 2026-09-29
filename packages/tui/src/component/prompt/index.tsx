@@ -51,6 +51,7 @@ import { DialogSkill } from "../dialog-skill"
 import { useConfig } from "../../config"
 import { usePromptMove } from "./move"
 import { resolvePastedAttachments } from "./local-attachment"
+import { createPasteDedupe } from "./paste-dedupe"
 import { locationKey, useData } from "../../context/data"
 import { useLocation } from "../../context/location"
 import { Keymap, type KeymapCommand } from "../../context/keymap"
@@ -373,6 +374,7 @@ export function Prompt(props: PromptProps) {
   })
   let disposed = false
   let pasteQueue = Promise.resolve()
+  const pasteDedupe = createPasteDedupe()
 
   function enqueuePaste(run: (changed: () => boolean) => Promise<void>) {
     pasteQueue = pasteQueue
@@ -477,6 +479,7 @@ export function Prompt(props: PromptProps) {
         run: (_input: string | undefined, event?: KeyEvent) => {
           event?.preventDefault()
           event?.stopPropagation()
+          const startedAt = pasteDedupe.keyStarted()
           return enqueuePaste(async (changed) => {
             const content = await clipboard.read()
             if (changed()) return
@@ -487,9 +490,10 @@ export function Prompt(props: PromptProps) {
               })
               return
             }
-            if (content?.mime === "text/plain") {
-              await pasteInputText(content.data, changed)
-            }
+            // A terminal that forwards the paste key and also performs its own bracketed paste
+            // already delivered this text.
+            if (content?.mime !== "text/plain" || !pasteDedupe.acceptKeyText(startedAt, content.data)) return
+            await pasteInputText(content.data, changed)
           })
         },
       },
@@ -1454,7 +1458,7 @@ export function Prompt(props: PromptProps) {
     }
 
     const lineCount = (pastedContent.match(/\n/g)?.length ?? 0) + 1
-    if ((lineCount >= 3 || pastedContent.length > 150) && config.prompt?.paste !== "full") {
+    if ((lineCount >= 3 || pastedContent.length > 250) && config.prompt?.paste !== "full") {
       const extmark = input.extmarks.getAllForTypeId(promptPartTypeId).find((extmark) => {
         const ref = store.extmarkToPart.get(extmark.id)
         return (
@@ -1804,14 +1808,19 @@ export function Prompt(props: PromptProps) {
 
                 // Windows Terminal <1.25 can surface image-only clipboard as an
                 // empty bracketed paste. Windows Terminal 1.25+ does not.
+                // The paste key may already be reading the same clipboard.
                 if (event.bytes.byteLength === 0) {
-                  keymap.dispatch("prompt.paste")
+                  if (pasteDedupe.acceptTerminalEmpty()) keymap.dispatch("prompt.paste")
                   return
                 }
 
                 // Once we cross an async boundary below, the terminal may perform its
                 // default paste unless we suppress it first and handle insertion ourselves.
                 event.preventDefault()
+
+                // The paste key already read this clipboard (a terminal that forwards the key and
+                // pastes too).
+                if (!pasteDedupe.acceptTerminalText(normalizedText)) return
 
                 void enqueuePaste((changed) => pasteInputText(normalizedText, changed))
               }}

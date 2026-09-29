@@ -15,9 +15,16 @@ export function requireInteractive(message: string) {
   return Effect.fail(new Error(message))
 }
 
-export const openUrl = Effect.fn("cli.prompt.open-url")(function* (url: string) {
+/** Opens `url` in a browser; a refused or failed launch never fails the command, since callers print the link first. */
+export const openUrl = Effect.fn("cli.prompt.open-url")(function* (url: string, options?: { browser?: string }) {
   const browser = yield* Effect.promise(() => import("@opencode/util/open"))
-  yield* Effect.promise(() => browser.openUrl(url)).pipe(Effect.ignore)
+  yield* Effect.tryPromise({ try: () => browser.openUrl(url, options), catch: (cause) => cause }).pipe(
+    Effect.catch((error) =>
+      Effect.sync(() => {
+        if (error instanceof browser.BrowserDisabledError) log.info(error.message)
+      }),
+    ),
+  )
 })
 
 export function handlePromptErrors<A, E, R>(effect: Effect.Effect<A, E, R>) {

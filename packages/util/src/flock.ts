@@ -73,6 +73,26 @@ export namespace Flock {
     return value
   }
 
+  // Windows keeps a removed file or directory name reserved ("delete pending") until every
+  // handle to it closes, and contenders hold short-lived handles inside a lock all the time:
+  // they stat the heartbeat, read meta.json and stat the lock directory. Meanwhile creating
+  // that name or opening it fails with EPERM/EACCES, and removing its parent fails with
+  // ENOTEMPTY/EBUSY. That is contention on the lock, not a failure of the caller.
+  function contended(err: unknown) {
+    if (process.platform !== "win32") return false
+    const errCode = code(err)
+    return errCode === "EPERM" || errCode === "EACCES" || errCode === "EBUSY" || errCode === "ENOTEMPTY"
+  }
+
+  // Release races the same handles; giving up would leave a lock that looks held until stale.
+  async function removeLockDir(lockDir: string, attempt = 0): Promise<void> {
+    return rm(lockDir, { recursive: true, force: true }).catch(async (err: unknown) => {
+      if (!contended(err) || attempt >= 20) throw err
+      await sleep((attempt + 1) * 10)
+      return removeLockDir(lockDir, attempt + 1)
+    })
+  }
+
   function sleep(ms: number, signal?: AbortSignal) {
     return new Promise<void>((resolve, reject) => {
       if (signal?.aborted) {
@@ -124,9 +144,44 @@ export namespace Flock {
     }
   }
 
+  async function readMeta(metaPath: string) {
+    const parsed: unknown = await readFile(metaPath, "utf8")
+      .then((raw) => JSON.parse(raw))
+      .catch(() => undefined)
+    if (!parsed || typeof parsed !== "object") return
+    const pid = "pid" in parsed ? parsed.pid : undefined
+    const hostname = "hostname" in parsed ? parsed.hostname : undefined
+    if (typeof pid !== "number" || !Number.isInteger(pid) || pid <= 0) return
+    if (typeof hostname !== "string") return
+    return { pid, hostname }
+  }
+
+  // Signal 0 tests for existence without delivering anything. EPERM means the process is
+  // alive and owned by someone else, which still counts as alive.
+  function alive(pid: number) {
+    try {
+      process.kill(pid, 0)
+      return true
+    } catch (err) {
+      return code(err) === "EPERM"
+    }
+  }
+
+  // A lock whose owner is gone is stale now, not staleMs from now. Waiting out the
+  // heartbeat window after a crash or a kill is a minute of a frozen app for nothing.
+  // Only decided on this host: a pid from another machine says nothing about this one.
+  async function abandoned(metaPath: string) {
+    const meta = await readMeta(metaPath)
+    if (!meta) return false
+    if (meta.hostname !== os.hostname()) return false
+    if (meta.pid === process.pid) return false
+    return !alive(meta.pid)
+  }
+
   async function stale(lockDir: string, heartbeatPath: string, metaPath: string, staleMs: number) {
     // Stale detection allows automatic recovery after crashed owners.
     const now = wall()
+    if (await abandoned(metaPath)) return true
     const heartbeat = await stats(heartbeatPath)
     if (heartbeat) {
       return now - heartbeat.mtimeMs > staleMs
@@ -211,12 +266,12 @@ export namespace Flock {
     }
 
     await writeFile(heartbeatPath, "", { flag: "wx" }).catch(async () => {
-      await rm(lockDir, { recursive: true, force: true })
+      await removeLockDir(lockDir).catch(() => undefined)
       throw new Error("Lock acquired but heartbeat already existed (possible compromise).")
     })
 
     await writeFile(metaPath, JSON.stringify(meta, null, 2), { flag: "wx" }).catch(async () => {
-      await rm(lockDir, { recursive: true, force: true })
+      await removeLockDir(lockDir).catch(() => undefined)
       throw new Error("Lock acquired but meta.json already existed (possible compromise).")
     })
 
@@ -261,7 +316,7 @@ export namespace Flock {
         throw new Error("Refusing to release: lock token mismatch (not the owner).")
       }
 
-      await rm(lockDir, { recursive: true, force: true })
+      await removeLockDir(lockDir)
     }
 
     return {
@@ -280,17 +335,24 @@ export namespace Flock {
     let attempt = 0
     let waited = 0
     let delay = opts.baseDelayMs
+    let busy: unknown
 
     while (true) {
       input.signal?.throwIfAborted()
 
-      const res = await tryAcquireLockDir(lockDir, opts)
+      // Every coded filesystem error from an attempt comes from probing a lock this process
+      // does not own yet: once the directory is ours, failures are rethrown as plain errors.
+      const res = await tryAcquireLockDir(lockDir, opts).catch((err: unknown) => {
+        if (!contended(err)) throw err
+        busy = err
+        return { acquired: false as const }
+      })
       if (res.acquired) {
         return res
       }
 
       if (mono() > stop) {
-        throw new Error(`Timed out waiting for lock: ${input.key}`)
+        throw new Error(`Timed out waiting for lock: ${input.key}`, { cause: busy })
       }
 
       attempt += 1

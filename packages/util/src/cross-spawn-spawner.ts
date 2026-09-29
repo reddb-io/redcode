@@ -229,8 +229,18 @@ const makeCrossSpawnSpawner = Effect.gen(function* () {
     Effect.suspend(() => {
       let sink: Sink.Sink<void, unknown, never, PlatformError.PlatformError> = Sink.drain
       if (Predicate.isNotNull(proc.stdin)) {
+        const input = proc.stdin
+        // Bun buffers a small write and flushes it only when the stream is destroyed after `end()`.
+        // If the child exited without reading its input, that flush fails with EPIPE after the sink
+        // stopped listening, and it would escape as an uncaught error. While the sink is attached it
+        // still reports every error; once it is gone only EPIPE is swallowed, so other errors keep
+        // surfacing as before.
+        input.on("error", (error: NodeJS.ErrnoException) => {
+          if (error.code === "EPIPE" || input.listenerCount("error") > 1) return
+          throw error
+        })
         sink = NodeSink.fromWritable({
-          evaluate: () => proc.stdin!,
+          evaluate: () => input,
           onError: (err) => toPlatformError("fromWritable(stdin)", toError(err), command),
           endOnDone: cfg.endOnDone,
           encoding: cfg.encoding,

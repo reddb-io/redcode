@@ -142,6 +142,79 @@ describe("util.flock", () => {
     }
   }, 20_000)
 
+  test("takes over immediately when the owning process is gone, without waiting out the heartbeat", async () => {
+    await using tmp = await tmpdir("flock-test-")
+    const dir = path.join(tmp.path, "locks")
+    const key = "flock:dead-owner"
+    const ready = path.join(tmp.path, "ready")
+    // A long stale window is exactly the case this covers: waiting it out after a crash
+    // is a frozen app for no reason, so recovery must come from the owner being gone.
+    const proc = spawnLockWorker(worker, {
+      key,
+      dir,
+      ready,
+      holdMs: 60_000,
+      staleMs: 60_000,
+      timeoutMs: 90_000,
+    } satisfies Msg)
+
+    try {
+      await waitForFile(ready, 5_000)
+      await stopLockWorker(proc)
+
+      const started = Date.now()
+      let hit = false
+      await Flock.withLock(
+        key,
+        async () => {
+          hit = true
+        },
+        { dir, staleMs: 60_000, timeoutMs: 20_000 },
+      )
+
+      expect(hit).toBe(true)
+      expect(Date.now() - started).toBeLessThan(10_000)
+    } finally {
+      await stopLockWorker(proc)
+    }
+  }, 40_000)
+
+  test("leaves a live owner's lock alone even when its pid is recorded", async () => {
+    await using tmp = await tmpdir("flock-test-")
+    const dir = path.join(tmp.path, "locks")
+    const key = "flock:live-owner"
+    const ready = path.join(tmp.path, "ready")
+    const proc = spawnLockWorker(worker, {
+      key,
+      dir,
+      ready,
+      holdMs: 3_000,
+      staleMs: 60_000,
+      timeoutMs: 30_000,
+    } satisfies Msg)
+
+    try {
+      await waitForFile(ready, 5_000)
+      const meta = await readJson<{ pid: number }>(path.join(lock(dir, key), "meta.json"))
+      expect(meta.pid).toBeGreaterThan(0)
+
+      // The holder is alive, so this must wait for it to finish rather than break in.
+      const started = Date.now()
+      let hit = false
+      await Flock.withLock(
+        key,
+        async () => {
+          hit = true
+        },
+        { dir, staleMs: 60_000, timeoutMs: 20_000 },
+      )
+      expect(hit).toBe(true)
+      expect(Date.now() - started).toBeGreaterThan(1_000)
+    } finally {
+      await stopLockWorker(proc)
+    }
+  }, 40_000)
+
   test("breaks stale lock dirs when heartbeat is missing", async () => {
     await using tmp = await tmpdir("flock-test-")
     const dir = path.join(tmp.path, "locks")

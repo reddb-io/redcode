@@ -56,7 +56,7 @@ import { useRenderer, useTerminalDimensions, type JSX } from "@opentui/solid"
 import { useClient } from "../../context/client"
 import { useEditorContext } from "../../context/editor"
 import { openEditor } from "../../editor"
-import { openUrl } from "@opencode/util/open"
+import { BrowserDisabledError, designBrowser, openUrl } from "@opencode/util/open"
 import { useDialog } from "../../ui/dialog"
 import { DialogSelect } from "../../ui/dialog-select"
 import { DialogMonitors } from "../../component/dialog-monitors"
@@ -70,6 +70,7 @@ import { Composer } from "./composer"
 import { filetype } from "../../util/filetype"
 import parsers from "../../parsers-config"
 import { errorMessage } from "../../util/error"
+import { configuredDesignBrowser } from "../../util/design-browser"
 import { useToast } from "../../ui/toast"
 import stripAnsi from "strip-ansi"
 import { usePromptRef } from "../../context/prompt"
@@ -1131,8 +1132,10 @@ export function Session(props: {
           if (!response.ok) throw new Error(`Unable to open Design review: HTTP ${response.status}`)
           const link: unknown = await response.json()
           if (!isRecord(link) || typeof link.url !== "string") throw new Error("The Design review link is invalid")
-          await openUrl(link.url)
+          const config = await client.api.config.get({ location: location() }).catch(() => [])
+          await openUrl(link.url, { browser: designBrowser(configuredDesignBrowser(config)) })
         } catch (error) {
+          if (error instanceof BrowserDisabledError) return toast.show({ message: error.message, variant: "info" })
           toast.error(error)
         }
       },

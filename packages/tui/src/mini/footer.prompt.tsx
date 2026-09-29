@@ -19,6 +19,7 @@ import { useRenderer, useTerminalDimensions } from "@opentui/solid"
 import { normalizePromptContent } from "../prompt/content"
 import { deduplicatePromptImages, promptAttachmentLabel } from "../prompt/attachment"
 import { resolvePastedAttachments } from "../component/prompt/local-attachment"
+import { createPasteDedupe } from "../component/prompt/paste-dedupe"
 import { createTuiClipboard, type OwnedClipboardService } from "../clipboard"
 import type { ClipboardService } from "../context/clipboard"
 import fuzzysort from "fuzzysort"
@@ -398,6 +399,7 @@ export function createPromptState(input: PromptInput): PromptState {
   )
   let clipboard: OwnedClipboardService | undefined
   let pasteQueue: Promise<void> | undefined
+  const pasteDedupe = createPasteDedupe()
   let applyingPaste = false
   let disposed = false
   let revision = 0
@@ -867,7 +869,9 @@ export function createPromptState(input: PromptInput): PromptState {
     syncDraft()
   }
 
-  const paste = (text?: string) => {
+  // `keyStartedAt` is set when the paste key triggered the clipboard read, so the same text from a
+  // terminal that also performs its own bracketed paste is inserted once.
+  const paste = (text?: string, keyStartedAt?: number) => {
     const next = (pasteQueue ?? Promise.resolve())
       .then(async () => {
         const target = area
@@ -886,6 +890,7 @@ export function createPromptState(input: PromptInput): PromptState {
           return
         }
         if (!image && content.mime !== "text/plain") return
+        if (!image && keyStartedAt !== undefined && !pasteDedupe.acceptKeyText(keyStartedAt, content.data)) return
         const normalized = image ? content.data : stripAnsiSequences(content.data).replace(/\r\n?/g, "\n")
         const files = image
           ? [{ type: "file" as const, uri: `data:${content.mime};base64,${content.data}`, filename: "clipboard" }]
@@ -926,7 +931,12 @@ export function createPromptState(input: PromptInput): PromptState {
 
   const onPaste = (event: PasteEvent) => {
     event.preventDefault()
-    return paste(event.bytes.length ? decodePasteBytes(event.bytes) : undefined)
+    // An empty bracketed paste (an image-only clipboard) reads the clipboard unless the paste key
+    // is already reading it.
+    if (!event.bytes.length) return pasteDedupe.acceptTerminalEmpty() ? paste() : Promise.resolve()
+    const text = decodePasteBytes(event.bytes)
+    if (!pasteDedupe.acceptTerminalText(text)) return Promise.resolve()
+    return paste(text)
   }
 
   const push = (value: RunPrompt) => {
@@ -1201,7 +1211,7 @@ export function createPromptState(input: PromptInput): PromptState {
         id: "prompt.paste",
         title: "Paste",
         group: "Prompt",
-        run: () => paste(),
+        run: () => paste(undefined, pasteDedupe.keyStarted()),
       },
       {
         id: "session.interrupt",

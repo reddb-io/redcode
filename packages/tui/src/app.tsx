@@ -10,12 +10,14 @@ import { LogProvider, useLog, type LogSink } from "./context/log"
 import { ExitProvider, useExit } from "./context/exit"
 import { EpilogueProvider } from "./context/epilogue"
 import { Selection } from "./util/selection"
+import { accidentalExitKey, createExitConfirm, EXIT_CONFIRM_WINDOW } from "./util/exit-confirm"
 import {
   CliRenderEvents,
   createCliRenderer,
   MouseButton,
   type CliRenderer,
   type CliRendererConfig,
+  type KeyEvent,
   type ThemeMode,
 } from "@opentui/core"
 import { RouteProvider, useRoute } from "./context/route"
@@ -480,6 +482,8 @@ function App() {
   const data = useData()
   const location = useLocation()
   const exit = useExit()
+  // A bare Ctrl+C or Ctrl+D exits only on a second press (see `accidentalExitKey`).
+  const exitConfirm = createExitConfirm()
   const promptRef = usePromptRef()
   const plugins = usePlugin()
   const clipboard = useClipboard()
@@ -1139,7 +1143,11 @@ function App() {
         name: "app.exit",
         title: "Exit the app",
         slash: { name: "exit", aliases: ["quit", "q"] },
-        run: () => exit(),
+        run: (_input: string | undefined, event?: KeyEvent) => {
+          const key = accidentalExitKey(event)
+          if (!key || exitConfirm.press(key)) return exit()
+          toast.show({ variant: "info", message: `Press ${key} again to exit`, duration: EXIT_CONFIRM_WINDOW })
+        },
         category: "System",
       },
       {

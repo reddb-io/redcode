@@ -1,5 +1,7 @@
 import { EOL } from "node:os"
+import { OpenCode, type ConfigEntry } from "@opencode/client"
 import { Service } from "@opencode/client/effect/service"
+import { designBrowser } from "@opencode/util/open"
 import { Effect, Option, Schema } from "effect"
 import { Commands } from "../commands"
 import { Runtime } from "../../framework/runtime"
@@ -56,6 +58,14 @@ export default Runtime.handler(
       Effect.flatMap(Schema.decodeUnknownEffect(Schema.Struct({ url: Schema.String }))),
     )
     process.stdout.write(link.url + EOL)
-    if (!input.noOpen && process.stdin.isTTY && process.stdout.isTTY) yield* openUrl(link.url)
+    if (input.noOpen || !process.stdin.isTTY || !process.stdout.isTTY) return
+    const client = OpenCode.make({ baseUrl: server.endpoint.url, headers: Service.headers(server.endpoint) })
+    const entries = yield* Effect.tryPromise(() => client.config.get({ location: { directory: process.cwd() } })).pipe(
+      Effect.orElseSucceed((): ConfigEntry[] => []),
+    )
+    const configured = entries
+      .filter((entry): entry is Extract<ConfigEntry, { type: "document" }> => entry.type === "document")
+      .findLast((entry) => typeof entry.info.design?.browser === "string")?.info.design?.browser
+    yield* openUrl(link.url, { browser: designBrowser(configured) })
   }),
 )

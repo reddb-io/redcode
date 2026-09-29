@@ -1,10 +1,11 @@
 import { createResource, createSignal, onCleanup } from "solid-js"
 import type { Plugin } from "@opencode/plugin/tui"
 import { Schema } from "effect"
-import { openUrl } from "@opencode/util/open"
+import { designBrowser, openUrl } from "@opencode/util/open"
 import { useClient } from "../context/client"
 import { useTheme } from "../context/theme"
 import { DialogSelect } from "../ui/dialog-select"
+import { configuredDesignBrowser } from "../util/design-browser"
 import { errorMessage } from "../util/error"
 
 export function DialogDesignList(props: { context: Plugin.Context; review?: boolean }) {
@@ -82,10 +83,14 @@ export function DialogDesignList(props: { context: Plugin.Context; review?: bool
           .then(async (response) => {
             if (!response.ok) throw new Error(`Unable to open Design review: HTTP ${response.status}`)
             const link = Schema.decodeUnknownSync(Schema.Struct({ url: Schema.String }))(await response.json())
-            await openUrl(link.url)
+            const config = await props.context.client.config
+              .get({ location: props.context.location ?? props.context.data.location.default() })
+              .catch(() => [])
+            await openUrl(link.url, { browser: designBrowser(configuredDesignBrowser(config)) })
             props.context.ui.dialog.clear()
           })
           .catch((error) => {
+            // The footer keeps the link visible when REDCODE_NO_BROWSER refuses the launch.
             if (!abort.signal.aborted) setError(errorMessage(error))
           })
       }}

@@ -1284,6 +1284,11 @@ test("ctrl+c dismisses autocomplete and shell mode before exiting", async () => 
   setup.mockInput.pressKey("c", { ctrl: true })
   await setup.waitForFrame((frame) => !frame.includes("Shell"))
   expect(setup.renderer.isDestroyed).toBe(false)
+
+  // With an empty prompt the first press only asks for confirmation.
+  setup.mockInput.pressKey("c", { ctrl: true })
+  await setup.waitForFrame((frame) => frame.includes("Press ctrl+c again to exit"))
+  expect(setup.renderer.isDestroyed).toBe(false)
 })
 
 test.skipIf(process.platform === "win32").each(["manual", "select"] as const)(
