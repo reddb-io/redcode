@@ -180,11 +180,10 @@ export function McpsTab(props: { sessionID: string }) {
       id: "mcps",
       label: "MCPs",
       hints: () => [
-        { label: "tools", shortcut: shortcuts.get("composer.mcp.tools") ?? "" },
-        { label: "refresh", shortcut: shortcuts.get("composer.mcp.refresh") ?? "" },
         { label: "add", shortcut: shortcuts.get("composer.mcp.add") ?? "" },
         ...(current()
           ? [
+              { label: "tools", shortcut: shortcuts.get("composer.mcp.tools") ?? "" },
               {
                 label: current()?.status.status === "connected" ? "disconnect" : "connect",
                 shortcut: shortcuts.get("composer.mcp.toggle") ?? "",
@@ -248,14 +247,18 @@ export function McpsTab(props: { sessionID: string }) {
 
   return (
     <Show when={composer.active("mcps")}>
-      <scrollbox
-        scrollbarOptions={{ visible: false }}
-        maxHeight={8}
-        ref={(value: ScrollBoxRenderable) => (scroll = value)}
+      <Show
+        when={servers().length > 0}
+        fallback={
+          <box paddingLeft={1}>
+            <text fg={theme.text.muted}>No MCP servers</text>
+          </box>
+        }
       >
-        <Show
-          when={servers().length > 0}
-          fallback={<text fg={theme.text.muted}> No MCP servers. Press a to add one.</text>}
+        <scrollbox
+          scrollbarOptions={{ visible: false }}
+          maxHeight={8}
+          ref={(value: ScrollBoxRenderable) => (scroll = value)}
         >
           <For each={servers()}>
             {(server, index) => (
@@ -329,44 +332,42 @@ export function McpsTab(props: { sessionID: string }) {
               </box>
             )}
           </For>
-        </Show>
-      </scrollbox>
-      <box flexDirection="row" gap={2} paddingLeft={1}>
-        <text fg={theme.text.action.primary.base} attributes={TextAttributes.UNDERLINE} onMouseUp={add}>
-          add
-        </text>
-        <Show when={current()}>
-          {(server) => (
-            <>
+        </scrollbox>
+      </Show>
+      <Show when={current()}>
+        {(server) => (
+          <box flexDirection="row" gap={2} paddingLeft={1}>
+            <text fg={theme.text.action.primary.base} attributes={TextAttributes.UNDERLINE} onMouseUp={add}>
+              add
+            </text>
+            <text
+              fg={theme.text.action.primary.base}
+              attributes={TextAttributes.UNDERLINE}
+              onMouseUp={() =>
+                server().status.status === "connected" ? operate(server(), "disconnect") : connect(server())
+              }
+            >
+              {server().status.status === "connected" ? "disconnect" : "connect"}
+            </text>
+            <text
+              fg={theme.text.action.destructive.base}
+              attributes={TextAttributes.UNDERLINE}
+              onMouseUp={() => unload(server())}
+            >
+              turn off
+            </text>
+            <Show when={server().status.status === "failed"}>
               <text
-                fg={theme.text.action.primary.base}
+                fg={theme.text.muted}
                 attributes={TextAttributes.UNDERLINE}
-                onMouseUp={() =>
-                  server().status.status === "connected" ? operate(server(), "disconnect") : connect(server())
-                }
+                onMouseUp={() => dialog.replace(() => <DialogMcp initialServer={server().name} details />)}
               >
-                {server().status.status === "connected" ? "disconnect" : "connect"}
+                details
               </text>
-              <text
-                fg={theme.text.action.destructive.base}
-                attributes={TextAttributes.UNDERLINE}
-                onMouseUp={() => unload(server())}
-              >
-                turn off
-              </text>
-              <Show when={server().status.status === "failed"}>
-                <text
-                  fg={theme.text.muted}
-                  attributes={TextAttributes.UNDERLINE}
-                  onMouseUp={() => dialog.replace(() => <DialogMcp initialServer={server().name} details />)}
-                >
-                  details
-                </text>
-              </Show>
-            </>
-          )}
-        </Show>
-      </box>
+            </Show>
+          </box>
+        )}
+      </Show>
     </Show>
   )
 }
