@@ -386,7 +386,15 @@ export const layer = Layer.effect(
         return yield* publish(trigger, {
           error: { type: "unknown", message: decision.reason ?? "Compaction denied by hook" },
         })
-      const fast = (yield* intelligence.read()).fast
+      const intelligenceSettings = yield* Effect.result(intelligence.read())
+      if (Result.isFailure(intelligenceSettings))
+        return yield* publish(trigger, {
+          error: {
+            type: "compaction.failed",
+            message: `Unable to read S2 transformations settings: ${intelligenceSettings.failure.message}`,
+          },
+        })
+      const fast = intelligenceSettings.success.fast
       const resolved =
         fast && context.model.compaction?.type !== "native"
           ? yield* Effect.result(models.resolve({ ...context.session, model: fast }, modelsCatalog.available))

@@ -71,9 +71,9 @@ test("Redcode setup, intelligence and Design commands reach their production UI 
   setup.mockInput.pressEnter()
   await setup.waitForFrame((frame) => frame.includes("Reasoning mode"))
   setup.mockInput.pressEnter()
-  await setup.waitForFrame((frame) => frame.includes("System Two model"))
+  await setup.waitForFrame((frame) => frame.includes("S2 principal") && frame.includes("Connect another provider"))
   setup.mockInput.pressEscape()
-  await setup.waitForFrame((frame) => !frame.includes("System Two model"))
+  await setup.waitForFrame((frame) => !frame.includes("S2 principal"))
   expect(writes).toEqual(["/api/session"])
 
   await setup.mockInput.typeText("/intelligence")
