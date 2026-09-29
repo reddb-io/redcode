@@ -1,9 +1,65 @@
 import { expect, test } from "bun:test"
 import { createAppFixture } from "./fixture/app"
 import { tmpdir } from "./fixture/fixture"
-import { directory, json } from "./fixture/tui-client"
+import { directory, json, worktree } from "./fixture/tui-client"
 
 const location = { directory, project: { id: "project", directory, canonical: directory } }
+
+test("session location stays visible without the sidebar while Build runs and moves to its worktree", async () => {
+  await using state = await tmpdir()
+  const destination = "/tmp/opencode/.red/worktrees/redcode-fixture/packages/tui"
+  const checkout = "/tmp/opencode/.red/worktrees/redcode-fixture"
+  const created: string[] = []
+  await using setup = await createAppFixture({
+    state: state.path,
+    width: 80,
+    height: 30,
+    config: { animations: false, session: { sidebar: "hide" } },
+    fetch: async (url, request) => {
+      if (url.pathname === "/api/session" && request.method === "POST")
+        created.push(((await request.clone().json()) as { id: string }).id)
+      if (url.searchParams.get("location[directory]") !== destination) return
+      if (url.pathname === "/api/location")
+        return json({ directory: destination, project: { id: "proj_test", directory: checkout, canonical: worktree } })
+      if (url.pathname === "/api/vcs")
+        return json({
+          location: { directory: destination },
+          data: { branch: { current: "redcode-fixture", default: "main" } },
+        })
+    },
+  })
+  await setup.ready
+  await setup.waitForFrame(
+    (frame) => frame.includes("/tmp/opencode") && frame.includes("primary checkout") && frame.includes("⑂ main"),
+  )
+  expect(created).toHaveLength(1)
+  const sessionID = created[0]!
+  expect(setup.renderer.root.findDescendantById("session.location")).toBeDefined()
+  expect(setup.captureCharFrame()).not.toContain("Context")
+
+  setup.events.emit({
+    id: "evt_build_started",
+    created: 1,
+    type: "session.execution.started",
+    durable: { aggregateID: sessionID, seq: 1, version: 1 },
+    data: { sessionID },
+  })
+  await setup.waitForFrame(
+    (frame) => frame.includes("interrupt") && frame.includes("primary checkout") && frame.includes("⑂ main"),
+  )
+
+  setup.events.emit({
+    id: "evt_worktree_moved",
+    created: 2,
+    type: "session.moved",
+    durable: { aggregateID: sessionID, seq: 2, version: 1 },
+    data: { sessionID, location: { directory: destination }, projectID: "proj_test", subpath: "packages/tui" },
+  })
+  await setup.waitForFrame(
+    (frame) => frame.includes(".red/worktrees/redcode-fixture") && frame.includes("⑂ redcode-fixture"),
+  )
+  expect(setup.captureCharFrame()).toContain("/tmp/opencode")
+})
 
 test.each([80, 160])("Redcode opens blank sessions with Context and the activity drawer at %i columns", async (width) => {
   await using state = await tmpdir()

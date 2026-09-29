@@ -1,13 +1,7 @@
 import { Plugin } from "@opencode/plugin/tui"
-import { createEffect, createMemo, createSignal, For, on, Show } from "solid-js"
+import { createMemo, Show } from "solid-js"
 import { useTerminalDimensions } from "@opentui/solid"
-import path from "path"
-import { abbreviateHome } from "../../runtime"
-import { useTuiPaths } from "../../context/runtime"
-import { useData } from "../../context/data"
-import { Locale } from "../../util/locale"
-import { useWorkingDirectoryActions } from "../../ui/working-directory-actions"
-import { usePromptMove } from "../../component/prompt/move"
+import { SessionLocation } from "../../component/session-location"
 import { hasConnectedProvider } from "../../util/connected-provider"
 
 export function SidebarOnboarding(props: { context: Plugin.Context; sessionID: string }) {
@@ -79,111 +73,12 @@ export function SidebarOnboarding(props: { context: Plugin.Context; sessionID: s
 }
 
 export function SidebarFooter(props: { context: Plugin.Context; sessionID: string }) {
-  const session = createMemo(() => props.context.data.session.get(props.sessionID))
-  const data = useData()
-  const paths = useTuiPaths()
-  const [width, setWidth] = createSignal(32)
-  const location = () => session()?.location ?? props.context.location ?? props.context.data.location.default()
-  createEffect(on(location, (current) => {
-    void Promise.allSettled([
-      data.location.syncInfo(current),
-      props.context.data.location.vcs.sync(current),
-    ])
-  }))
-  const move = usePromptMove({
-    projectID: () => session()?.projectID,
-    sessionID: () => props.sessionID,
-  })
-  const actions = useWorkingDirectoryActions({
-    directory: () => location().directory,
-    onMove: () => void move.open(),
-  })
-  const lines = createMemo(() =>
-    locationLines({
-      directory: location().directory,
-      checkout: data.location.info(location())?.project.canonical,
-      worktree: data.location.info(location())?.project.directory,
-      branch: props.context.data.location.vcs.info(location())?.branch.current,
-      home: paths.home,
-      width: width(),
-    }),
-  )
-
   return (
     <box gap={1}>
       <SidebarOnboarding context={props.context} sessionID={props.sessionID} />
-      <box
-        id="sidebar.footer.location"
-        width="100%"
-        onSizeChange={function () {
-          setWidth(this.width)
-        }}
-        onMouseOver={actions.onMouseOver}
-        onMouseOut={actions.onMouseOut}
-        onMouseUp={actions.onMouseUp}
-      >
-        <For each={lines()}>
-          {(line, index) => (
-            <text
-              fg={index() === 0 || actions.hovered() ? props.context.theme.text.base : props.context.theme.text.muted}
-              wrapMode="none"
-            >
-              {line}
-            </text>
-          )}
-        </For>
-      </box>
+      <SessionLocation sessionID={props.sessionID} id="sidebar.footer.location" />
     </box>
   )
-}
-
-/**
- * Project, worktree and branch as three short lines: the primary checkout's directory, then the
- * worktree (relative to the project when nested under it, marked `tmp` in the temporary directory)
- * and the branch. Outside Git only the directory remains. A line too long for `width` loses its
- * middle, so both its root and its name stay readable.
- */
-export function locationLines(input: {
-  directory: string
-  /** The project's primary checkout, as resolved by the server. */
-  checkout?: string
-  /** The Git worktree containing this Session's directory. */
-  worktree?: string
-  branch?: string
-  home: string
-  width: number
-}) {
-  const nested = input.directory.match(/^(.*?)[\\/]\.red[\\/]worktrees[\\/]([^\\/]+)/)
-  const prepared = input.directory.match(/^(.*?)[\\/]\.redcode-worktrees[\\/]([^\\/]+)[\\/]([^\\/]+)/)
-  // A temporary worktree (`--tmp`): `<tmp>/redcode-worktrees/<repository>-<hash>/<name>`.
-  const temporary =
-    nested || prepared ? undefined : input.directory.match(/^(.*?[\\/]redcode-worktrees[\\/][^\\/]+[\\/][^\\/]+)/)
-  const project = input.checkout ?? (nested ? nested[1] : prepared ? path.join(prepared[1], prepared[2]) : input.directory)
-  const worktree =
-    input.worktree && input.checkout && input.worktree !== input.checkout
-      ? contains(input.checkout, input.worktree)
-        ? path.relative(input.checkout, input.worktree).replaceAll("\\", "/")
-        : abbreviateHome(input.worktree, input.home)
-      : nested
-        ? [".red", "worktrees", nested[2]].join("/")
-        : prepared
-          ? abbreviateHome(path.join(prepared[1], ".redcode-worktrees", prepared[2], prepared[3]), input.home)
-          : temporary
-            ? abbreviateHome(temporary[1], input.home)
-            : undefined
-  // truncateMiddle needs room for a character on each side of its ellipsis.
-  const fit = (prefix: string, text: string) =>
-    prefix + Locale.truncateMiddle(text, Math.max(3, input.width - prefix.length))
-  return [
-    fit("", abbreviateHome(project, input.home)),
-    ...(worktree || input.branch ? [fit(temporary ? "⎇ tmp " : "⎇ ", worktree ?? "primary checkout")] : []),
-    ...(input.branch ? [fit("⑂ ", input.branch)] : []),
-  ]
-}
-
-function contains(parent: string, child: string) {
-  const relative = path.relative(parent, child)
-  return relative === "" || (!relative.startsWith("..") && !path.isAbsolute(relative))
 }
 
 export default Plugin.define({

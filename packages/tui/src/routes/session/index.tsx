@@ -26,6 +26,7 @@ import { PatchDiff } from "../../component/patch-diff"
 import { useTheme, useThemes } from "../../context/theme"
 import { BoxRenderable, ScrollBoxRenderable, addDefaultParsers, TextAttributes, RGBA, MouseEvent } from "@opentui/core"
 import { Prompt, type PromptRef } from "../../component/prompt"
+import { SessionLocation } from "../../component/session-location"
 import type {
   SessionMessageInfo,
   SessionMessageAssistant,
@@ -1798,6 +1799,9 @@ export function Session(props: {
                   </text>
                 </box>
               </Show>
+            </box>
+            <box flexShrink={0} paddingBottom={1}>
+              <SessionLocation sessionID={route.sessionID} />
             </box>
             <box flexShrink={0}>
               <Show when={!composer.open && !disabled() && queuedPrompts().length > 0}>
