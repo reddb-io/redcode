@@ -12,6 +12,21 @@ import { Provider } from "../../provider.js"
 import { Hash } from "@opencode/util/hash"
 import { Router } from "@opencode/schema/router"
 
+const routerParameters = Schema.Struct({
+  context_length: Schema.optional(Schema.Finite),
+  max_completion_tokens: Schema.optional(Schema.Finite),
+  reasoning: Schema.optional(Schema.Boolean),
+  thinking_levels: Schema.optional(Schema.NullOr(Schema.Array(Schema.String))),
+  thinking_can_disable: Schema.optional(Schema.Boolean),
+  tools: Schema.optional(Schema.Boolean),
+  modalities: Schema.optional(
+    Schema.Struct({
+      input: Schema.optional(Schema.Array(Schema.String)),
+      output: Schema.optional(Schema.Array(Schema.String)),
+    }),
+  ),
+})
+
 const catalogModel = Schema.Struct({
   id: Schema.String,
   name: Schema.optional(Schema.String),
@@ -21,6 +36,8 @@ const catalogModel = Schema.Struct({
   aliases: Schema.optional(Schema.Array(Schema.String)),
   via: Schema.optional(Schema.String),
   flat: Schema.optional(Schema.Boolean),
+  parameters: Schema.optional(Schema.Json),
+  thinking_levels: Schema.optional(Schema.NullOr(Schema.Array(Schema.String))),
   type: Schema.optional(Schema.String),
   api_format: Schema.optional(Schema.String),
   supported_endpoints: Schema.optional(Schema.Array(Schema.String)),
@@ -34,6 +51,7 @@ const catalogModel = Schema.Struct({
       reasoning: Schema.optional(Schema.Boolean),
       supportsThinking: Schema.optional(Schema.Boolean),
       temperature: Schema.optional(Schema.Boolean),
+      effort_tiers: Schema.optional(Schema.Array(Schema.String)),
     }),
   ),
 })
@@ -210,7 +228,7 @@ function routerPlugin(options: {
             package: "@opencode/ai/providers/openai-compatible",
             settings: { baseURL: connection.baseURL, provider: providerID },
           },
-          models: loaded.models.flatMap((item) => model(item, providerID, loaded.names)),
+          models: loaded.models.flatMap((item) => routerModel(item, providerID, loaded.names)),
         })
       })
       yield* bus.subscribe([Credential.Event.Updated, Credential.Event.Switched]).pipe(
@@ -250,25 +268,49 @@ function routerEndpoint(credential: Credential.Info | undefined, fallback: strin
   return url.href.replace(/\/+$/, "")
 }
 
-function model(item: CatalogModel, providerID: Provider.ID, names: ReturnType<typeof catalogNames>): Model.Info[] {
+export function routerModel(
+  item: CatalogModel,
+  providerID: Provider.ID,
+  names: ReturnType<typeof catalogNames>,
+): Model.Info[] {
   if (!item.id || IntelligenceEvaluation.isJev(item.id)) return []
   if (item.type !== undefined && !["chat", "llm", "text"].includes(item.type)) return []
   if (item.api_format !== undefined && !["chat-completions", "responses", "openai-responses"].includes(item.api_format))
     return []
-  const output = item.output_modalities ?? (item.type === undefined || item.type === "chat" ? ["text"] : [])
+  const parameters = Option.getOrUndefined(Schema.decodeUnknownOption(routerParameters)(item.parameters))
+  const output =
+    parameters?.modalities?.output ??
+    item.output_modalities ??
+    (item.type === undefined || item.type === "chat" ? ["text"] : [])
   if (!output.includes("text")) return []
   const endpoints = item.supported_endpoints ?? []
   const responses =
     item.api_format === "responses" ||
     item.api_format === "openai-responses" ||
-    endpoints.some((value) => /\/?responses$/.test(value))
+    (item.api_format === undefined &&
+      !endpoints.some((value) => /chat|completions/.test(value)) &&
+      endpoints.some((value) => /\/?responses$/.test(value)))
   const chat = endpoints.length === 0 || endpoints.some((value) => /chat|completions/.test(value))
   if (!responses && !chat) return []
-  const context = Math.floor(item.context_length ?? 8_192)
-  const limit = Math.floor(item.max_output_tokens ?? 4_096)
+  const context = Math.floor(parameters?.context_length ?? item.context_length ?? 8_192)
+  const limit = Math.floor(parameters?.max_completion_tokens ?? item.max_output_tokens ?? 4_096)
   if (context < 1 || limit < 1) return []
   const id = Model.ID.make(item.id)
-  const input = item.input_modalities ?? ["text"]
+  const input = parameters?.modalities?.input ?? item.input_modalities ?? ["text"]
+  const levels =
+    parameters?.thinking_levels !== undefined
+      ? (parameters.thinking_levels ?? [])
+      : (item.thinking_levels ?? item.capabilities?.effort_tiers ?? [])
+  const reasoning =
+    parameters?.reasoning ?? item.capabilities?.reasoning ?? item.capabilities?.supportsThinking ?? levels.length > 0
+  const variants = reasoning
+    ? [
+        ...new Set(levels.filter((level) => level && (level !== "none" || parameters?.thinking_can_disable !== false))),
+      ].map((level) => ({
+        id: Model.VariantID.make(level),
+        settings: { reasoningEffort: level },
+      }))
+    : []
   const route = Router.route(item.id)
   const reported = Schema.decodeUnknownOption(
     Schema.Struct({
@@ -313,9 +355,11 @@ function model(item: CatalogModel, providerID: Provider.ID, names: ReturnType<ty
         ? "@opencode/ai/providers/openai-compatible-responses"
         : "@opencode/ai/providers/openai-compatible",
       settings: { provider: providerID },
+      variants,
+      ...(variants.length ? { reasoningVariantIDs: variants.map((variant) => variant.id) } : {}),
       capabilities: {
-        tools: item.capabilities?.tool_calling === true,
-        reasoning: item.capabilities?.reasoning === true || item.capabilities?.supportsThinking === true,
+        tools: parameters?.tools ?? item.capabilities?.tool_calling === true,
+        reasoning,
         ...(item.capabilities?.temperature === undefined ? {} : { temperature: item.capabilities.temperature }),
         input: [...input],
         output: [...output],

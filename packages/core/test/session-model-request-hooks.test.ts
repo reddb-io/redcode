@@ -40,6 +40,28 @@ const transport = SessionModelTransport.Service.of({
 })
 
 describe("SessionModelRequest HTTP hooks", () => {
+  it.effect("omits tools and tool choice when the selected provider model forbids tools", () =>
+    Effect.gen(function* () {
+      const requests = yield* SessionModelRequest.Service.pipe(Effect.provide(SessionModelRequest.layer))
+      const input = {
+        session,
+        agent: Agent.ID.make("build"),
+        system: [],
+        messages: [],
+        toolChoice: "required" as const,
+      }
+      const blocked = yield* requests.primary({
+        ...input,
+        model: { ...model, capabilities: { ...model.capabilities, tools: false } },
+      })
+      const supported = yield* requests.primary({ ...input, model })
+
+      expect(blocked.request.tools).toEqual([])
+      expect(blocked.request.toolChoice).toBeUndefined()
+      expect(supported.request.toolChoice?.type).toBe("required")
+    }).pipe(Effect.provideService(SessionModelTransport.Service, transport)),
+  )
+
   it.effect("omits temperature when the selected model does not support it", () =>
     Effect.gen(function* () {
       const hooks = yield* PluginHooks.Service
