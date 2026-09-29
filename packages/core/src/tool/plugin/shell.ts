@@ -15,6 +15,7 @@ import { NonNegativeInt } from "../../schema.js"
 import { Session } from "../../session.js"
 import { SessionSchema } from "../../session/schema.js"
 import { Shell } from "../../shell.js"
+import { ShellGuard } from "../../shell/guard.js"
 import { ShellParse } from "../../shell/parse.js"
 import { ShellSelect } from "../../shell/select.js"
 import { ShellResult } from "../../shell/result.js"
@@ -22,6 +23,8 @@ import { ShellPolling } from "../shell-polling.js"
 
 export const name = "shell"
 export const DEFAULT_TIMEOUT_MS = 2 * 60 * 1_000
+/** Bytes of a stopped foreground command's output kept for its interrupted result. */
+const PARTIAL_OUTPUT_BYTES = 4_000
 
 const BACKGROUND_INSTRUCTION =
   "You will be notified automatically when the command finishes. The notification will include the command's output. Unless the user explicitly asks otherwise, DO NOT poll for completion, even if you need the final result to continue. Repeatedly sleeping and reading or searching the output file is polling, not useful work. You may read the current output if it lets you do useful work now, but do not repeatedly check it while waiting for the command to finish. Keep working on anything that does not depend on the result. If you have nothing else to do, end your response; you will be resumed automatically when the command finishes."
@@ -43,6 +46,7 @@ const description = (shell?: string) =>
     "Rely on automatic truncation unless filtering the output is more useful.",
     "Commands accept an optional timeout, background commands have no timeout by default.",
     "Background commands return immediately, and you will be notified when they complete.",
+    `Commands that discard or rewrite repository work are refused unless the user allowed them: git ${ShellGuard.FORBIDDEN_GIT.join(", git ")}, forced or deleting pushes, branch deletion, discarding switches, worktree removal, and recursive deletion of the repository; use a preserving alternative instead.`,
   ].join(" ")
 
 export const Input = Schema.Struct({
@@ -132,6 +136,27 @@ export const Plugin = {
         }),
       )
       yield* access.authorizeExternal([target, ...directories], context)
+      // The repository guard refuses before any prompt; only a rule the user wrote for the command lifts it.
+      const root = yield* access.resolve({ path: ".", kind: "directory" })
+      const refused = parsed.commands.flatMap((command) => {
+        const reason = ShellGuard.refusal(command.resource, { cwd: target.absolute, roots: [root.absolute] })
+        return reason === undefined ? [] : [{ reason, resource: command.resource }]
+      })
+      if (
+        refused.length > 0 &&
+        !(yield* permission.explicit({
+          sessionID: context.sessionID,
+          agent: context.agent,
+          action: name,
+          resources: refused.map((item) => item.resource),
+        }))
+      )
+        return yield* new Permission.BlockedError({
+          rules: [],
+          permission: name,
+          resources: refused.map((item) => item.resource),
+          reason: ShellGuard.message(refused[0].reason, refused[0].resource),
+        })
       if (parsed.commands.length > 0)
         yield* permission.assert({
           action: name,
@@ -258,9 +283,22 @@ export const Plugin = {
                 return backgroundResult(info.id, info.file)
               }
 
-              const result = yield* jobs
-                .block({ id: job.id, sessionID: context.sessionID })
-                .pipe(Effect.onInterrupt(() => jobs.cancel(job.id).pipe(Effect.ignore)))
+              const result = yield* jobs.block({ id: job.id, sessionID: context.sessionID }).pipe(
+                Effect.onInterrupt(() =>
+                  // Record the tail of what the command printed, so its interrupted result can show it.
+                  Effect.gen(function* () {
+                    const head = yield* shell.output(info.id, { limit: PARTIAL_OUTPUT_BYTES })
+                    const page =
+                      head.cursor >= head.size
+                        ? head
+                        : yield* shell.output(info.id, {
+                            cursor: head.size - PARTIAL_OUTPUT_BYTES,
+                            limit: PARTIAL_OUTPUT_BYTES,
+                          })
+                    if (page.output.trim()) yield* context.progress({ shellID: info.id, output: page.output })
+                  }).pipe(Effect.exit, Effect.andThen(jobs.cancel(job.id).pipe(Effect.ignore))),
+                ),
+              )
               if (result?.type === "backgrounded") {
                 yield* shell.timeout(info.id, 0)
                 yield* notifyWhenDone(context.sessionID, job.id, info.id, info.command, settled)

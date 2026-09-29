@@ -24,6 +24,8 @@ import { ConfigWarming } from "./config/warming.js"
 import { ConfigWorktree } from "./config/worktree.js"
 import { ConfigDesign } from "./config/design.js"
 import { ConfigDatabase } from "./config/database.js"
+import { ConfigSession } from "./config/session.js"
+import { ConfigModels } from "./config/models.js"
 
 export class Info extends Schema.Class<Info>("Config.Info")({
   $schema: optional(Schema.String).annotate({
@@ -116,6 +118,12 @@ export class Info extends Schema.Class<Info>("Config.Info")({
   }),
   warming: ConfigWarming.Warming.pipe(optional).annotate({
     description: "Keep recently active sessions warm with transient model requests (default: false)",
+  }),
+  session: ConfigSession.Info.pipe(optional).annotate({
+    description: "Session defaults, such as an opt-in spend budget",
+  }),
+  models: ConfigModels.Info.pipe(optional).annotate({
+    description: "Models catalog sources for restricted networks (global configuration only)",
   }),
   providers: Schema.Record(Schema.String, ConfigProvider.Info).pipe(optional),
   experimental: ConfigExperimental.Info.pipe(optional),

@@ -137,6 +137,23 @@ describe("ToolOutput", () => {
     ),
   )
 
+  it.live("keeps the bounded preview when the full output cannot be saved", () =>
+    withStore(
+      (output, fs, root) =>
+        Effect.gen(function* () {
+          // A regular file where the output directory belongs makes every write fail.
+          yield* fs.writeFileString(path.join(root, ToolOutput.DIRECTORY), "not a directory")
+          const result = yield* output.truncate({ content: [{ type: "text", text: "one\ntwo\nthree" }] })
+          expect(result.metadata).toEqual({ truncated: true })
+          expect(result.content).toEqual([
+            { type: "text", text: "one\ntwo" },
+            { type: "text", text: "[showing lines 1-2 of 3; the full output could not be saved, so the rest is lost]" },
+          ])
+        }),
+      { maxLines: 2, maxBytes: 1_000 },
+    ),
+  )
+
   it.live("uses file modification time when IDs wrap", () =>
     withStore((output, fs, root) =>
       Effect.gen(function* () {

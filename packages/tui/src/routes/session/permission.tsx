@@ -16,6 +16,8 @@ import { usePathFormatter } from "../../context/path-format"
 import { SimulationSemantics } from "../../simulation/semantics"
 import { PatchDiff } from "../../component/patch-diff"
 import { useToast } from "../../ui/toast"
+import { useClient } from "../../context/client"
+import { DialogEscape } from "../../util/dialog-escape"
 
 type PermissionStage = "permission" | "reject"
 
@@ -110,9 +112,24 @@ function EditBody(props: { file?: string; diff?: string; patch?: string }) {
   )
 }
 
-export function PermissionPrompt(props: { request: PermissionRequest; directory?: string }) {
+export function PermissionPrompt(props: {
+  request: PermissionRequest
+  directory?: string
+  /** Closes the dialog locally, without an answer from the server. */
+  onEscape?: () => void
+}) {
   const data = useData()
   const toast = useToast()
+  const client = useClient()
+  const dismissedTwice = DialogEscape.createPresses()
+  const watchReply = DialogEscape.createReplyWatch({
+    delay: () => DialogEscape.replyDelay(client.endpoint?.url),
+    slow: () => {
+      toast.show({ variant: "warning", message: DialogEscape.SLOW_NOTICE })
+      data.session.permission.invalidate(props.request.sessionID)
+      void data.session.permission.sync(props.request.sessionID).catch(() => undefined)
+    },
+  })
   const [store, setStore] = createStore({
     stage: "permission" as PermissionStage,
   })
@@ -134,9 +151,20 @@ export function PermissionPrompt(props: { request: PermissionRequest; directory?
   const theme = useTheme()
 
   function reply(value: PermissionReply, message?: string) {
-    void data.session.permission
-      .reply({ sessionID: props.request.sessionID, requestID: props.request.id, decision: value, message })
-      .catch((error: unknown) => toast.error(error))
+    // A second rejection soon after the first closes the dialog even when the server never answers.
+    if (value === "reject" && dismissedTwice() && props.onEscape) {
+      toast.show({ variant: "warning", message: DialogEscape.ESCAPED_NOTICE })
+      props.onEscape()
+      return
+    }
+    void watchReply(
+      data.session.permission.reply({
+        sessionID: props.request.sessionID,
+        requestID: props.request.id,
+        decision: value,
+        message,
+      }),
+    ).catch((error: unknown) => toast.error(error))
   }
 
   return (

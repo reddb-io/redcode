@@ -5,6 +5,7 @@ import type { useConfig } from "../../config"
 import type { ThinkingMode } from "../../context/thinking"
 import type { createTimelineAnchors } from "./anchors"
 import type { GroupKind } from "./grouping/session"
+import type { TodoFold } from "./todo-fold"
 
 export type PendingAction = "steer" | "queue" | "cancel"
 
@@ -33,6 +34,8 @@ export const context = createContext<{
   config: ReturnType<typeof useConfig>["data"]
   mutatePending: (action: PendingAction, inboxID: string) => Promise<boolean>
   pendingDelivery: (inboxID: string) => SessionInbox.Delivery | undefined
+  /** Runs of consecutive failed todowrite calls, keyed by tool call ID; absent renders each failure alone. */
+  todoFailures?: () => Map<string, TodoFold.Run>
 }>()
 
 export function use() {

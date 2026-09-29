@@ -81,11 +81,20 @@ const layer = Layer.effect(
         kept.push(line)
         bytes += size
       }
-      const file = path.join(directory, Identifier.ascending("tool"))
-      yield* fs.ensureDir(directory).pipe(Effect.orDie)
-      yield* fs.writeFileString(file, text).pipe(Effect.orDie)
+      const target = path.join(directory, Identifier.ascending("tool"))
+      // A full disk or an unwritable data directory must not fail a tool call that already succeeded:
+      // the bounded preview is still returned, only without a path to the full output.
+      const file = yield* fs.ensureDir(directory).pipe(
+        Effect.andThen(fs.writeFileString(target, text)),
+        Effect.as(target),
+        Effect.catch((error) =>
+          Effect.logWarning("Failed to save truncated tool output", { error }).pipe(Effect.as(undefined)),
+        ),
+      )
       const shown = kept.length > 0 ? `lines 1-${kept.length}` : "0 lines"
-      const marker = `[showing ${shown} of ${lines.length}; full output saved to ${file}]`
+      const marker = file
+        ? `[showing ${shown} of ${lines.length}; full output saved to ${file}]`
+        : `[showing ${shown} of ${lines.length}; the full output could not be saved, so the rest is lost]`
       const bounded: Tool.Content[] = []
       let remaining = kept.join("\n").length
       let seenText = false
@@ -111,7 +120,7 @@ const layer = Layer.effect(
       return {
         ...result,
         content: bounded,
-        metadata: { ...result.metadata, truncated: true, outputPath: file },
+        metadata: { ...result.metadata, truncated: true, ...(file ? { outputPath: file } : {}) },
       }
     })
 

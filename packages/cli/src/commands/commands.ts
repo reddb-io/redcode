@@ -11,6 +11,13 @@ export const PrintLogs = GlobalFlag.setting("print-logs")({
   ),
 })
 
+export const Verbose = GlobalFlag.setting("verbose")({
+  flag: Flag.boolean("verbose").pipe(
+    Flag.withDescription("Trace startup phases to stderr and log activity at debug level (also REDCODE_VERBOSE=1)"),
+    Flag.withDefault(false),
+  ),
+})
+
 declare const OPENCODE_CLI_NAME: string | undefined
 
 const ServerParams = {
@@ -192,6 +199,18 @@ const Root = Spec.make(typeof OPENCODE_CLI_NAME === "string" ? OPENCODE_CLI_NAME
               Flag.withDefault(20),
             ),
             json: Flag.boolean("json").pipe(Flag.withDefault(false)),
+          },
+        }),
+        Spec.make("startup", {
+          description: "Print startup phase timings",
+          params: {
+            json: Flag.boolean("json").pipe(Flag.withDescription("Print the phases as JSON"), Flag.withDefault(false)),
+          },
+        }),
+        Spec.make("memory", {
+          description: "Show memory use, database size and session counts",
+          params: {
+            json: Flag.boolean("json").pipe(Flag.withDescription("Print the report as JSON"), Flag.withDefault(false)),
           },
         }),
         Spec.make("todos", {
@@ -660,6 +679,14 @@ const Root = Spec.make(typeof OPENCODE_CLI_NAME === "string" ? OPENCODE_CLI_NAME
         ),
         title: Flag.string("title").pipe(Flag.withDescription("Session title"), Flag.optional),
         thinking: Flag.boolean("thinking").pipe(Flag.withDescription("Show thinking blocks"), Flag.withDefault(false)),
+        maxCost: Flag.string("max-cost").pipe(
+          Flag.withDescription("Stop once the session has spent this many US dollars, such as 2.50; exits 1"),
+          Flag.optional,
+        ),
+        maxTokens: Flag.string("max-tokens").pipe(
+          Flag.withDescription("Stop once the session has used this many tokens, such as 500k; exits 1"),
+          Flag.optional,
+        ),
         ...PermissionParams,
         ...WorktreeParams,
       },

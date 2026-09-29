@@ -8,6 +8,7 @@ import type {
   ToolContent,
 } from "@opencode/client/promise"
 import { SessionMessage } from "@opencode/schema/session-message"
+import { ProviderFailure } from "@opencode/core/session/provider-failure"
 import { EOL } from "node:os"
 import { readFile } from "node:fs/promises"
 import { nonEmptyToolContent, toolOutputText, type MiniToolPart } from "@opencode/tui/mini/tool"
@@ -229,6 +230,14 @@ export async function runNonInteractivePrompt(input: Input) {
         return
       if (!promoted) continue
       if (finalizing && !event.type.startsWith("session.execution.")) continue
+
+      // A budget stop ends the turn normally; the run still reports it as a failure.
+      if (event.type === "session.synthetic" && event.data.metadata?.source === "budget") {
+        process.exitCode = 1
+        if (!emit("budget", time, { message: event.data.text }))
+          UI.println(UI.Style.TEXT_WARNING_BOLD + "!", UI.Style.TEXT_NORMAL + event.data.text)
+        continue
+      }
 
       if (event.type === "session.step.started") {
         const part = {
@@ -484,7 +493,7 @@ export async function runNonInteractivePrompt(input: Input) {
         flushStep()
         emittedError = true
         process.exitCode = 1
-        if (!emit("error", time, { error: event.data.error })) UI.error(event.data.error.message)
+        if (!emit("error", time, { error: event.data.error })) UI.error(ProviderFailure.describe(event.data.error))
         continue
       }
       if (event.type === "session.execution.failed") {
@@ -493,7 +502,7 @@ export async function runNonInteractivePrompt(input: Input) {
         if (!emittedError && !formCancelled) {
           emittedError = true
           process.exitCode = 1
-          if (!emit("error", time, { error: event.data.error })) UI.error(event.data.error.message)
+          if (!emit("error", time, { error: event.data.error })) UI.error(ProviderFailure.describe(event.data.error))
         }
         return
       }

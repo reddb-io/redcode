@@ -113,6 +113,25 @@ describe("Permission", () => {
     }),
   )
 
+  it.effect("counts only a specific allow rule as explicit", () =>
+    Effect.gen(function* () {
+      const service = yield* Permission.Service
+      const input = { sessionID: Session.ID.make("ses_test"), action: "shell", resources: ["git stash pop"] }
+      yield* setup([{ action: "*", resource: "*", effect: "allow" }])
+      expect(yield* service.explicit(input)).toBe(false)
+      yield* setRules([{ action: "shell", resource: "*", effect: "allow" }])
+      expect(yield* service.explicit(input)).toBe(false)
+      yield* setRules([{ action: "shell", resource: "git stash *", effect: "allow" }])
+      expect(yield* service.explicit(input)).toBe(true)
+      expect(yield* service.explicit({ ...input, resources: ["git stash pop", "git reset --hard"] })).toBe(false)
+      yield* setRules([
+        { action: "shell", resource: "git stash *", effect: "allow" },
+        { action: "shell", resource: "git stash pop", effect: "deny" },
+      ])
+      expect(yield* service.explicit(input)).toBe(false)
+    }),
+  )
+
   it.effect("evaluates against an explicit agent", () =>
     Effect.gen(function* () {
       yield* setup([{ action: "read", resource: "*", effect: "allow" }])

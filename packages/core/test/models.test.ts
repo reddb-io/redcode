@@ -553,3 +553,95 @@ describe("ModelsDev Service", () => {
     }),
   )
 })
+
+describe("ModelsDev catalog sources", () => {
+  test("orders REDCODE_MODELS_URL, configured sources and the public catalogs without duplicates", () => {
+    expect(ModelsDev.sources(["https://mirror.example", " ", undefined, "https://mirror.example/", "not a url"])).toEqual([
+      "https://mirror.example/api.json",
+      ...ModelsDev.DEFAULT_SOURCES,
+    ])
+    expect(ModelsDev.sources(["https://cdn.example/catalog.json", "https://models.dev"])).toEqual([
+      "https://cdn.example/catalog.json",
+      "https://models.dev/api.json",
+      "https://models.opencode.ai/api.json",
+    ])
+  })
+
+  test("backs a blocked source off for 1h, then 6h, then 24h", () => {
+    const hour = 3_600_000
+    expect([1, 2, 3, 9].map(ModelsDev.backoff)).toEqual([hour, 6 * hour, 24 * hour, 24 * hour])
+  })
+
+  test("recognizes proxy and TLS failures without reading stack frames", () => {
+    expect(ModelsDev.classifyError(new Error("unable to verify the first certificate")).blocked).toBe(true)
+    expect(ModelsDev.classifyError({ message: "connect failed", cause: { code: "ERR_TLS_CERT_ALTNAME_INVALID" } }).blocked).toBe(
+      true,
+    )
+    const reset = Object.assign(new Error("socket hang up"), { stack: "at tls-socket.js:1" })
+    expect(ModelsDev.classifyError(reset)).toEqual({ blocked: false, reason: "socket hang up" })
+  })
+
+  test("reads persisted backoff defensively and caps it at 24 hours", () => {
+    const now = 1_000
+    expect(ModelsDev.decodeState(undefined, now)).toEqual({ sources: {} })
+    expect(ModelsDev.decodeState("{", now)).toEqual({ sources: {} })
+    expect(
+      ModelsDev.decodeState(
+        JSON.stringify({ source: "a", sources: { b: { failures: 2, blockedUntil: now + 99 * 3_600_000, reason: "HTTP 403" } } }),
+        now,
+      ),
+    ).toEqual({ source: "a", sources: { b: { failures: 2, blockedUntil: now + 24 * 3_600_000, reason: "HTTP 403" } } })
+  })
+
+  it.live("skips a blocked source, uses the next one and remembers the block", () =>
+    Effect.gen(function* () {
+      const cache = makeCache()
+      const calls: string[] = []
+      const client = HttpClient.make((request) =>
+        Effect.sync(() => {
+          calls.push(request.url)
+          const blocked = request.url.startsWith("https://blocked.example")
+          return HttpClientResponse.fromWeb(
+            request,
+            new Response(blocked ? "<html>denied</html>" : JSON.stringify(fixture2), { status: blocked ? 403 : 200 }),
+          )
+        }),
+      )
+      const layer = Layer.fresh(
+        AppNodeBuilder.build(LayerNode.group([ModelsDev.node, Bus.node]), [
+          ModelsDev.node.replace(
+            ModelsDev.configured({ url: "https://blocked.example", fetch: true, snapshot: false }),
+          ),
+          LayerNodePlatform.httpClient.replace(Layer.succeed(HttpClient.HttpClient, client)),
+          KV.node.replace(makeMockKV(cache)),
+        ]),
+      )
+      const result = yield* ModelsDev.Service.use((service) => service.get()).pipe(Effect.provide(layer))
+      expect(result).toEqual(fixture2Snapshot)
+      expect(calls).toEqual(["https://blocked.example/api.json", "https://models.opencode.ai/api.json"])
+      const state = ModelsDev.decodeState(cache.values.get("models-dev:sources"))
+      expect(state.source).toBe("https://models.opencode.ai/api.json")
+      expect(state.sources["https://blocked.example/api.json"]).toMatchObject({ failures: 1, reason: "HTTP 403" })
+    }),
+  )
+
+  it.live("a page that is not a catalog never replaces the cache", () =>
+    Effect.gen(function* () {
+      const cache = makeCache()
+      writeCache(cache, fixture, Date.now() - 10 * 60 * 1000)
+      const seeded = structuredClone(cache.values.get(cacheKey))
+      const state = yield* Ref.make({ ...initialState, body: "<html>captive portal</html>" })
+      const result = yield* provided(
+        state,
+        cache,
+        Effect.gen(function* () {
+          const svc = yield* ModelsDev.Service
+          yield* svc.refresh(true)
+          return yield* svc.get()
+        }),
+      )
+      expect(result).toEqual(fixtureSnapshot)
+      expect(cache.values.get(cacheKey)).toEqual(seeded)
+    }),
+  )
+})

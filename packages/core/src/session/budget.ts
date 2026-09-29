@@ -2,6 +2,7 @@ export * as SessionBudget from "./budget.js"
 export { Limits, Totals, View, Update } from "@opencode/schema/session-budget"
 
 import { SessionBudget } from "@opencode/schema/session-budget"
+import type { ConfigSession } from "@opencode/schema/config/session"
 import { makeGlobalNode } from "@opencode/util/effect/app-node"
 import { sql } from "drizzle-orm"
 import { Context, Effect, Layer } from "effect"
@@ -27,6 +28,11 @@ export function limitsOf(raw: unknown): SessionBudget.Limits {
     ...(cost === undefined ? {} : { maxCostUsd: cost }),
     ...(tokens === undefined ? {} : { maxTokens: Math.floor(tokens) }),
   }
+}
+
+/** Limits from the `session.budget` configuration, which apply to a session that has no budget of its own. */
+export function configured(budget: ConfigSession.Budget | undefined): SessionBudget.Limits {
+  return limitsOf({ maxCostUsd: budget?.max_cost_usd, maxTokens: budget?.max_tokens })
 }
 
 export const hasLimits = (limits: SessionBudget.Limits | undefined) =>
@@ -156,7 +162,11 @@ const make = Effect.gen(function* () {
     return yield* view(sessionID)
   })
 
-  const admit = Effect.fn("SessionBudget.admit")(function* (sessionID: SessionSchema.ID) {
+  /** `fallback` is the configured budget, applied to each session of the chain that has none of its own. */
+  const admit = Effect.fn("SessionBudget.admit")(function* (
+    sessionID: SessionSchema.ID,
+    fallback: SessionBudget.Limits = {},
+  ) {
     const chain: SessionSchema.Info[] = []
     let current = yield* store.get(sessionID)
     while (current && chain.length < 32) {
@@ -167,7 +177,8 @@ const make = Effect.gen(function* () {
       current = parentID ? yield* store.get(parentID) : undefined
     }
     for (const [index, session] of chain.entries()) {
-      const limits = limitsOf(session.metadata?.budget)
+      const own = limitsOf(session.metadata?.budget)
+      const limits = hasLimits(own) ? own : fallback
       if (!hasLimits(limits)) continue
       const status = check(limits, yield* totals(session.id))
       if (!status.exceeded) continue

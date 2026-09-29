@@ -1,6 +1,7 @@
 import { Service, type Endpoint } from "@opencode/client/effect/service"
 import { OpenCode, type OpenCodeClient, type SessionMessageAssistantTool } from "@opencode/client/promise"
 import { FSUtil } from "@opencode/util/fs-util"
+import { SessionBudget } from "@opencode/schema/session-budget"
 import { open } from "node:fs/promises"
 import path from "node:path"
 import { readStdin } from "../util/io"
@@ -24,6 +25,10 @@ export type RunCommandInput = {
   file: string[]
   title?: string
   thinking?: boolean
+  /** `--max-cost`: a session spend limit in US dollars, set by the person running the command. */
+  maxCost?: string
+  /** `--max-tokens`: a session token limit, such as 500k. */
+  maxTokens?: string
   auto?: boolean
 }
 
@@ -70,6 +75,8 @@ export function runNonInteractiveWithOptions(input: RunCommandInput, options: Ex
 
 async function run(input: RunCommandInput, options: ExecutionOptions) {
   if (input.fork && !input.continue && !input.session) fail("--fork requires --continue or --session")
+  // Parsed before anything runs, so a mistyped limit never starts an unlimited run.
+  budgetLimits(input)
   const root = options.root ?? process.env.PWD ?? process.cwd()
   const local = localDirectory(root)
   const directory = options.useServerDirectory ? undefined : (options.directory ?? local)
@@ -134,6 +141,9 @@ async function execute(input: RunCommandInput, prepared: Prepared, endpoint: End
     })
   }
 
+  const budget = budgetLimits(input)
+  if (Object.keys(budget).length > 0) await client.session.budget.update({ sessionID: target.session.id, ...budget })
+
   await runNonInteractivePrompt({
     client,
     sessionID: target.session.id,
@@ -170,6 +180,18 @@ function localDirectory(root: string) {
     return process.cwd()
   } catch {
     fail(`Failed to change directory to ${root}`)
+  }
+}
+
+/** The session limits `--max-cost` and `--max-tokens` set; a value that is not a limit fails the run. */
+export function budgetLimits(input: Pick<RunCommandInput, "maxCost" | "maxTokens">) {
+  const cost = input.maxCost === undefined ? undefined : SessionBudget.parseCost(input.maxCost)
+  if (cost && !cost.ok) fail(`--max-cost: ${cost.error}`)
+  const tokens = input.maxTokens === undefined ? undefined : SessionBudget.parseTokens(input.maxTokens)
+  if (tokens && !tokens.ok) fail(`--max-tokens: ${tokens.error}`)
+  return {
+    ...(cost?.ok ? { maxCostUsd: cost.value } : {}),
+    ...(tokens?.ok ? { maxTokens: tokens.value } : {}),
   }
 }
 

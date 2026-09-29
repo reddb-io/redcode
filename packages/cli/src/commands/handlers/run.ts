@@ -2,6 +2,7 @@ import { Effect, Option } from "effect"
 import { Commands } from "../commands"
 import { Runtime } from "../../framework/runtime"
 import { ServerConnection } from "../../services/server-connection"
+import { BootTrace } from "../../boot-trace"
 
 export default Runtime.handler(Commands.commands.run, (input) =>
   Effect.gen(function* () {
@@ -12,6 +13,9 @@ export default Runtime.handler(Commands.commands.run, (input) =>
     const server = yield* ServerConnection.resolve({
       server: Option.getOrUndefined(input.server),
       standalone: input.standalone,
+    })
+    BootTrace.mark("server.resolved", {
+      mode: Option.isSome(input.server) ? "explicit" : input.standalone ? "standalone" : "service",
     })
     if (input.tmp) process.env.REDCODE_WORKTREE_LOCATION = "tmp"
     yield* Effect.promise(() =>
@@ -27,6 +31,8 @@ export default Runtime.handler(Commands.commands.run, (input) =>
         file: [...input.file],
         title: Option.getOrUndefined(input.title),
         thinking: input.thinking,
+        maxCost: Option.getOrUndefined(input.maxCost),
+        maxTokens: Option.getOrUndefined(input.maxTokens),
         auto: input.auto || input.yolo || input.dangerouslySkipPermissions,
       }),
     )

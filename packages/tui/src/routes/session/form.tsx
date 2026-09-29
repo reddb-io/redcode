@@ -20,6 +20,8 @@ import { Keymap } from "../../context/keymap"
 import { useInteractivity } from "../../context/interactivity"
 import { useConfig } from "../../config"
 import { errorMessage } from "../../util/error"
+import { DialogEscape } from "../../util/dialog-escape"
+import { useClient } from "../../context/client"
 import {
   formCustom,
   formDisplayValue,
@@ -56,8 +58,13 @@ type FormDraft = {
 // component/prompt/draft-stash.ts: a draft is consumed on take.
 const drafts = new Map<string, FormDraft>()
 
-export function FormPrompt(props: { form: FormWithLocation }) {
+export function FormPrompt(props: {
+  form: FormWithLocation
+  /** Closes the dialog locally, without an answer from the server. */
+  onEscape?: () => void
+}) {
   const data = useData()
+  const client = useClient()
   const theme = useTheme()
   const renderer = useRenderer()
   const dimensions = useTerminalDimensions()
@@ -67,6 +74,15 @@ export function FormPrompt(props: { form: FormWithLocation }) {
   const config = useConfig().data
   const clipboard = useClipboard()
   const toast = useToast()
+  const dismissedTwice = DialogEscape.createPresses()
+  const watchReply = DialogEscape.createReplyWatch({
+    delay: () => DialogEscape.replyDelay(client.endpoint?.url),
+    slow: () => {
+      toast.show({ variant: "warning", message: DialogEscape.SLOW_NOTICE })
+      data.session.form.invalidate(props.form.sessionID, props.form.location)
+      void data.session.form.sync(props.form.sessionID, props.form.location).catch(() => undefined)
+    },
+  })
   const configuredFields = props.form.fields.filter(isFormAnswerField)
   const initial = formInitialValues(props.form.fields)
   const draft = drafts.get(props.form.id)
@@ -267,9 +283,9 @@ export function FormPrompt(props: { form: FormWithLocation }) {
   }
 
   function reply(answer: FormAnswer) {
-    void data.session.form
-      .reply({ sessionID: props.form.sessionID, formID: props.form.id, answer }, props.form.location)
-      .catch(showError)
+    void watchReply(
+      data.session.form.reply({ sessionID: props.form.sessionID, formID: props.form.id, answer }, props.form.location),
+    ).catch(showError)
   }
 
   function replySingle(field: FormAnswerField, value: FormValue) {
@@ -465,9 +481,15 @@ export function FormPrompt(props: { form: FormWithLocation }) {
   }
 
   function cancel() {
-    void data.session.form
-      .cancel({ sessionID: props.form.sessionID, formID: props.form.id }, props.form.location)
-      .catch(showError)
+    // A second dismissal soon after the first closes the dialog even when the server never answers.
+    if (dismissedTwice() && props.onEscape) {
+      toast.show({ variant: "warning", message: DialogEscape.ESCAPED_NOTICE })
+      props.onEscape()
+      return
+    }
+    void watchReply(
+      data.session.form.cancel({ sessionID: props.form.sessionID, formID: props.form.id }, props.form.location),
+    ).catch(showError)
   }
 
   function showError(error: unknown) {

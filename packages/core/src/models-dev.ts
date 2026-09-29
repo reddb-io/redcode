@@ -269,7 +269,10 @@ export interface Interface {
 }
 
 export const Options = Schema.Struct({
+  /** `REDCODE_MODELS_URL`, tried before every other source. */
   url: Schema.optional(Schema.String),
+  /** The global `models.sources` configuration, tried before the public catalogs. */
+  sources: Schema.optional(Schema.Array(Schema.String)),
   file: Schema.optional(Schema.String),
   fetch: Schema.optional(Schema.Boolean),
   snapshot: Schema.optional(Schema.Boolean),
@@ -288,7 +291,99 @@ const Cache = Schema.Struct({
   digest: Schema.optional(Schema.String),
   body: CatalogJson,
 })
-const defaultSource = "https://models.opencode.ai"
+const CACHE_KEY = "models-dev:catalog"
+const STATE_KEY = "models-dev:sources"
+/** Public catalogs, tried after `REDCODE_MODELS_URL` and the `models.sources` configuration. */
+export const DEFAULT_SOURCES = ["https://models.opencode.ai/api.json", "https://models.dev/api.json"] as const
+
+/** Catalog URLs in the order they are tried: a URL without a `.json` path gets `/api.json`, duplicates go. */
+export function sources(configured: readonly (string | undefined)[]) {
+  const urls = [...configured, ...DEFAULT_SOURCES].flatMap((value) => {
+    const url = value?.trim() ? URL.parse(value.trim()) : null
+    if (!url) return []
+    if (!url.pathname.endsWith(".json")) url.pathname = `${url.pathname.replace(/\/+$/, "")}/api.json`
+    return [url.toString()]
+  })
+  return [...new Set(urls)]
+}
+
+/** Statuses that mean a network policy refuses the source, not a transient outage. */
+const BLOCKED_STATUS = new Set([401, 403, 407, 451])
+const BLOCKED_ERROR = /proxy|certificate|cert_|self[- ]signed|tls|ssl|unable to (get|verify)/i
+const BACKOFF = [Duration.hours(1), Duration.hours(6), Duration.hours(24)]
+const MAX_BACKOFF = Duration.toMillis(Duration.hours(24))
+
+/** How long a source is skipped after its first, second and later consecutive blocked attempts. */
+export function backoff(failures: number) {
+  return Duration.toMillis(BACKOFF[Math.min(Math.max(failures, 1), BACKOFF.length) - 1])
+}
+
+/**
+ * Whether a request failure looks like a network block (proxy or TLS interception), read from the
+ * messages and codes of the error and its causes, never from stack frames.
+ */
+export function classifyError(error: unknown): { blocked: boolean; reason: string } {
+  const parts: string[] = []
+  let current: unknown = error
+  for (let depth = 0; depth < 5 && typeof current === "object" && current !== null; depth++) {
+    const record = current as Record<string, unknown>
+    if (typeof record.message === "string" && record.message) parts.push(record.message)
+    if (typeof record.code === "string" && record.code) parts.push(record.code)
+    current = record.cause ?? (typeof record.reason === "object" ? record.reason : undefined)
+  }
+  if (typeof error === "string") parts.push(error)
+  return {
+    blocked: parts.some((part) => BLOCKED_ERROR.test(part)),
+    reason: parts[0]?.split("\n")[0]?.trim() || "request failed",
+  }
+}
+
+const SourceState = Schema.Struct({
+  failures: Schema.Number,
+  blockedUntil: Schema.optional(Schema.Number),
+  reason: Schema.optional(Schema.String),
+})
+const StateJson = Schema.fromJsonString(
+  Schema.Struct({
+    source: Schema.optional(Schema.String),
+    fetchedAt: Schema.optional(Schema.Number),
+    sources: Schema.Record(Schema.String, SourceState),
+  }),
+)
+export type SourcesState = {
+  source?: string
+  fetchedAt?: number
+  sources: Record<string, { failures: number; blockedUntil?: number; reason?: string }>
+}
+
+/**
+ * The persisted source backoff. Malformed state reads as empty, and `blockedUntil` is capped at now + 24h
+ * so a clock that was wrong when it was written cannot block a source for longer.
+ */
+export function decodeState(value: unknown, now = Date.now()): SourcesState {
+  const decoded = Schema.decodeUnknownOption(StateJson)(value)
+  if (Option.isNone(decoded)) return { sources: {} }
+  return {
+    ...(decoded.value.source === undefined ? {} : { source: decoded.value.source }),
+    ...(decoded.value.fetchedAt === undefined ? {} : { fetchedAt: decoded.value.fetchedAt }),
+    sources: Object.fromEntries(
+      Object.entries(decoded.value.sources).map(([url, entry]) => [
+        url,
+        {
+          failures: Math.max(0, Math.floor(entry.failures)),
+          ...(entry.blockedUntil === undefined
+            ? {}
+            : { blockedUntil: Math.min(entry.blockedUntil, now + MAX_BACKOFF) }),
+          ...(entry.reason === undefined ? {} : { reason: entry.reason }),
+        },
+      ]),
+    ),
+  }
+}
+
+type Outcome =
+  | { readonly ok: true; readonly text: string }
+  | { readonly ok: false; readonly blocked: boolean; readonly reason: string }
 
 // Bundled snapshot of https://models.opencode.ai/api.json, committed at
 // packages/core/src/models-dev/snapshot.txt and refreshed via
@@ -310,11 +405,6 @@ const bundledSnapshot = Effect.suspend(() =>
 
 export const bundled = bundledSnapshot
 
-function cacheKey(source: string) {
-  if (source === defaultSource) return "models-dev:catalog"
-  return `models-dev:catalog:${Hash.fast(source)}`
-}
-
 export function bodyDigest(text: string) {
   return Hash.sha256(text)
 }
@@ -327,25 +417,23 @@ export const layer = (options?: Options) =>
       const bus = yield* Bus.Service
       const app = yield* App.Metadata
       const kv = yield* KV.Service
-      const http = HttpClient.filterStatusOk(
-        (yield* HttpClient.HttpClient).pipe(
-          HttpClient.retryTransient({
-            retryOn: "errors-and-responses",
-            times: 2,
-            schedule: Schedule.exponential(200).pipe(Schedule.jittered),
-          }),
-        ),
+      // Statuses are classified per source below, so a refused source is skipped rather than retried.
+      const http = (yield* HttpClient.HttpClient).pipe(
+        HttpClient.retryTransient({
+          retryOn: "errors-and-responses",
+          times: 2,
+          schedule: Schedule.exponential(200).pipe(Schedule.jittered),
+        }),
       )
 
-      const source = options?.url || defaultSource
+      const list = sources([options?.url, ...(options?.sources ?? [])])
       const fetch = options?.fetch ?? true
       const userAgent = App.useragent(app)
-      const key = cacheKey(source)
       const ttl = Duration.minutes(5)
       const lock = Semaphore.makeUnsafe(1)
 
       const loadFromCache = Effect.fnUntraced(function* () {
-        const value = yield* kv.get(key)
+        const value = yield* kv.get(CACHE_KEY)
         const cached = Schema.decodeUnknownOption(Cache)(value)
         if (Option.isSome(cached))
           return {
@@ -353,16 +441,85 @@ export const layer = (options?: Options) =>
             updatedAt: cached.value.updatedAt,
             digest: cached.value.digest,
           }
-        if (value !== undefined) yield* kv.remove(key)
+        if (value !== undefined) yield* kv.remove(CACHE_KEY)
       })
 
-      const fetchApi = Effect.fn("ModelsDev.fetchApi")(function* () {
-        return yield* HttpClientRequest.get(`${source}/api.json`).pipe(
+      const attempt = (url: string): Effect.Effect<Outcome> =>
+        HttpClientRequest.get(url).pipe(
           HttpClientRequest.setHeader("User-Agent", userAgent),
           http.execute,
-          Effect.flatMap((res) => res.text),
-          Effect.timeout("10 seconds"),
+          Effect.flatMap(
+            (res): Effect.Effect<Outcome, unknown> =>
+              res.status < 200 || res.status >= 300
+                ? Effect.succeed<Outcome>({
+                    ok: false,
+                    blocked: BLOCKED_STATUS.has(res.status),
+                    reason: `HTTP ${res.status}`,
+                  })
+                : res.text.pipe(
+                    Effect.flatMap((text) =>
+                      decodeCatalog(text).pipe(
+                        Effect.map((catalog): Outcome =>
+                          Object.keys(catalog).length > 0
+                            ? { ok: true, text }
+                            : { ok: false, blocked: true, reason: "response is not a models catalog" },
+                        ),
+                        // A 200 that is not a catalog is a captive portal or a proxy block page.
+                        Effect.orElseSucceed(
+                          (): Outcome => ({ ok: false, blocked: true, reason: "response is not a models catalog" }),
+                        ),
+                      ),
+                    ),
+                  ),
+          ),
+          Effect.timeout("30 seconds"),
+          Effect.catch((error) => Effect.succeed<Outcome>({ ok: false, ...classifyError(error) })),
         )
+
+      const readState = kv.get(STATE_KEY).pipe(Effect.map((value) => decodeState(value)))
+      const writeState = (state: SourcesState) =>
+        kv.set(STATE_KEY, JSON.stringify(state)).pipe(
+          Effect.catchCauseIf(
+            (cause) => !Cause.hasInterruptsOnly(cause),
+            (cause) => Effect.logWarning("Failed to save the models catalog source state", { cause }),
+          ),
+        )
+
+      // Tries every source that is not backing off (all of them when forced) and persists the outcome.
+      // Callers hold the lock, so the state has a single writer in this process.
+      const fetchChain = Effect.fn("ModelsDev.fetchChain")(function* (force: boolean) {
+        const state = yield* readState
+        const now = Date.now()
+        for (const url of list) {
+          const previous = state.sources[url]
+          if (!force && previous?.blockedUntil !== undefined && previous.blockedUntil > now) continue
+          const outcome = yield* attempt(url)
+          if (outcome.ok) {
+            if (previous?.blockedUntil !== undefined)
+              yield* Effect.logInfo("Models catalog source reachable again", { source: url })
+            yield* writeState({
+              source: url,
+              fetchedAt: now,
+              sources: Object.fromEntries(Object.entries(state.sources).filter(([key]) => key !== url)),
+            })
+            return outcome.text
+          }
+          if (!outcome.blocked) {
+            yield* Effect.logDebug("Models catalog source failed", { source: url, reason: outcome.reason })
+            continue
+          }
+          const failures = (previous?.failures ?? 0) + 1
+          const wait = backoff(failures)
+          state.sources[url] = { failures, blockedUntil: now + wait, reason: outcome.reason }
+          // Warn once when a source becomes blocked; later failures stay quiet until it recovers.
+          if (previous?.blockedUntil === undefined)
+            yield* Effect.logWarning(
+              `Models catalog source ${url} is blocked (${outcome.reason}); using the cached or bundled catalog and retrying in ${Math.round(wait / 3_600_000)}h. On a restricted network set REDCODE_MODELS_URL or "models": { "sources": [...] } in the global config to a reachable mirror.`,
+            )
+          else yield* Effect.logDebug("Models catalog source still blocked", { source: url, reason: outcome.reason })
+        }
+        yield* writeState(state)
+        return undefined
       })
 
       const loadFromFile = options?.file
@@ -381,7 +538,7 @@ export const layer = (options?: Options) =>
       // limits (Durable Object SQLite caps values at 2 MB and api.json
       // passed it in Aug 2026); a boot without a cache hit just refetches.
       const writeCache = Effect.fn("ModelsDev.writeCache")(function* (text: string, digest = bodyDigest(text)) {
-        yield* kv.set(key, { updatedAt: Date.now(), digest, body: text }).pipe(
+        yield* kv.set(CACHE_KEY, { updatedAt: Date.now(), digest, body: text }).pipe(
           Effect.catchCauseIf(
             (cause) => !Cause.hasInterruptsOnly(cause),
             (cause) => Effect.logWarning("Failed to cache models.dev catalog", { cause }),
@@ -390,7 +547,10 @@ export const layer = (options?: Options) =>
       })
 
       const fetchAndWrite = Effect.fn("ModelsDev.fetchAndWrite")(function* () {
-        const text = yield* fetchApi()
+        const text = yield* fetchChain(false)
+        // No source answered and there is no cache or bundled catalog: start empty; the refresh retries.
+        const empty: Record<string, SourceProvider> = {}
+        if (text === undefined) return empty
         const catalog = yield* decodeCatalog(text)
         yield* writeCache(text)
         return catalog
@@ -424,7 +584,9 @@ export const layer = (options?: Options) =>
             Effect.gen(function* () {
               const stored = yield* loadFromCache()
               if (!force && stored && Date.now() - stored.updatedAt < Duration.toMillis(ttl)) return
-              const text = yield* fetchApi()
+              // Blocked sources are skipped until their backoff ends; a block page never replaces the cache.
+              const text = yield* fetchChain(force)
+              if (text === undefined) return
               const digest = bodyDigest(text)
               // models.dev rarely changes between polls; skip the cache write,
               // invalidation, and Refreshed event for a byte-identical body so
@@ -437,7 +599,7 @@ export const layer = (options?: Options) =>
             }),
           )
           .pipe(
-            Effect.tapCause((cause) => Effect.logError("Failed to fetch models.dev", { cause: cause })),
+            Effect.tapCause((cause) => Effect.logWarning("Failed to refresh the models catalog", { cause: cause })),
             Effect.ignore,
           )
       })

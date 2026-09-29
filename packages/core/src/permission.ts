@@ -114,6 +114,13 @@ export interface Interface {
   readonly close: Effect.Effect<void>
   /** Resolve current rules and policy hooks without creating a permission request. */
   readonly evaluate: (input: AssertInput) => Effect.Effect<Permission.Effect, SessionErrors.NotFoundError>
+  /**
+   * Whether a rule naming this action and a specific resource pattern allows every resource. Wildcard
+   * defaults such as `* *: allow` do not count, so a policy that refuses by default can defer to it.
+   */
+  readonly explicit: (
+    input: Pick<AssertInput, "sessionID" | "agent" | "action" | "resources">,
+  ) => Effect.Effect<boolean, SessionErrors.NotFoundError>
   readonly ask: (input: AssertInput) => Effect.Effect<AskResult, SessionErrors.NotFoundError>
   readonly assert: (input: AssertInput) => Effect.Effect<void, Error | SessionErrors.NotFoundError>
   readonly reply: (input: ReplyInput) => Effect.Effect<void, NotFoundError>
@@ -352,6 +359,16 @@ const layer = Layer.effect(
       ),
     )
 
+    const explicit = Effect.fn("Permission.explicit")(function* (
+      input: Pick<AssertInput, "sessionID" | "agent" | "action" | "resources">,
+    ) {
+      const rules = [...(yield* configured(input.sessionID, input.agent)), ...(yield* savedRules())]
+      return input.resources.every((resource) => {
+        const rule = evaluate(input.action, resource, rules)
+        return rule.effect === "allow" && rule.action !== "*" && rule.resource !== "*"
+      })
+    })
+
     const list = Effect.fn("Permission.list")(function* () {
       return Array.from(pending.values(), (item) => item.request)
     })
@@ -368,6 +385,7 @@ const layer = Layer.effect(
       ask,
       assert,
       evaluate: (input) => evaluateInput(input).pipe(Effect.map((result) => result.effect)),
+      explicit,
       reply,
       get,
       forSession,

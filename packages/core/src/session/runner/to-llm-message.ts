@@ -12,6 +12,7 @@ import { Option, Schema } from "effect"
 import { fileURLToPath } from "url"
 import { SessionMessage } from "../message.js"
 import { SessionProviderContext } from "../provider-context.js"
+import { ToolInterrupted } from "../tool-interrupted.js"
 import type { FileAttachment } from "@opencode/schema/prompt"
 
 const imageMimes = new Set(["image/png", "image/jpeg", "image/gif", "image/webp"])
@@ -147,10 +148,20 @@ const toolResult = (tool: SessionMessage.AssistantTool, providerMetadata: Provid
     })
   }
   if (tool.state.status === "error") {
+    const error = ToolInterrupted.interrupted(tool.state.error)
+      ? {
+          ...tool.state.error,
+          message: ToolInterrupted.result({
+            tool: tool.name,
+            detail: tool.state.error.message,
+            partial: tool.state.metadata?.output,
+          }),
+        }
+      : tool.state.error
     return ToolResultPart.make({
       id: tool.id,
       name: tool.name,
-      result: { error: tool.state.error, content: tool.state.content ?? [] },
+      result: { error, content: tool.state.content ?? [] },
       resultType: "error",
       providerExecuted: tool.executed,
       providerMetadata,
@@ -255,7 +266,12 @@ const modelSwitched = (message: SessionMessage.ModelSelected, model: Model.Ref):
   return [Message.effort({ effort: to.effort, previous: from.effort })]
 }
 
-function toLLMMessage(message: SessionMessage.Info, model: Model.Ref, providerMetadataKey: string): Message[] {
+function toLLMMessage(
+  message: SessionMessage.Info,
+  model: Model.Ref,
+  providerMetadataKey: string,
+  interruptedNote: boolean,
+): Message[] {
   switch (message.type) {
     case "agent-switched":
     case "idle":
@@ -278,6 +294,8 @@ function toLLMMessage(message: SessionMessage.Info, model: Model.Ref, providerMe
         ...userAttachmentContent(message.files ?? []),
       ]
       if (content.length === 0) return []
+      // A trailing reminder keeps the prefix before it byte-identical for the prompt cache.
+      if (interruptedNote) content.push(Message.text(ToolInterrupted.NOTE))
       return [
         Message.make({
           id: message.id,
@@ -336,4 +354,13 @@ export const toLLMMessages = (
   messages: readonly SessionMessage.Info[],
   model: Model.Ref,
   providerMetadataKey: string = model.providerID,
-) => messages.flatMap((message) => toLLMMessage(message, model, providerMetadataKey))
+) => {
+  // Whether the latest conversational message is an interrupted assistant step, so the next user message says so.
+  let interrupted = false
+  return messages.flatMap((message) => {
+    const note = message.type === "user" && interrupted
+    if (message.type === "assistant") interrupted = ToolInterrupted.stepInterrupted(message)
+    if (message.type === "user" || message.type === "synthetic") interrupted = false
+    return toLLMMessage(message, model, providerMetadataKey, note)
+  })
+}
