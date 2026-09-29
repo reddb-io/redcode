@@ -9,6 +9,7 @@
 // restores the draft.
 export { displayCharAt, displaySlice, mentionTriggerIndex, slashTriggerIndex } from "../prompt/display"
 import { promptOffsetWidth } from "../prompt/display"
+import { parseQueueCommand } from "../prompt/delivery"
 import { stringWidth } from "../util/string-width"
 import type { RunPrompt } from "./types"
 
@@ -67,6 +68,29 @@ export function promptSame(a: RunPrompt, b: RunPrompt): boolean {
     JSON.stringify(a.parts) === JSON.stringify(b.parts) &&
     JSON.stringify(a.command) === JSON.stringify(b.command)
   )
+}
+
+/**
+ * Strips `/queue` from a prompt and moves its part ranges back by the removed prefix, or returns
+ * `undefined` when the prompt is not that command. See `parseQueueCommand`.
+ */
+export function stripQueueCommand(prompt: RunPrompt): RunPrompt | undefined {
+  const parsed = parseQueueCommand(prompt.text)
+  if (!parsed) return undefined
+  const offset = promptOffsetWidth(prompt.text.slice(0, parsed.prefix))
+  const shift = <T extends { start: number; end: number }>(range: T) => {
+    const start = Math.max(0, range.start - offset)
+    return { ...range, start, end: Math.max(start, range.end - offset) }
+  }
+  return {
+    ...prompt,
+    text: parsed.text,
+    parts: structuredClone(prompt.parts).map((part) => {
+      if (!part.source) return part
+      if (part.type === "file") return { ...part, source: { ...part.source, text: shift(part.source.text) } }
+      return { ...part, source: shift(part.source) }
+    }),
+  }
 }
 
 export const EXIT_COMMANDS = ["exit", "quit", "q"]

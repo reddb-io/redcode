@@ -33,6 +33,7 @@ import { createStore, produce, unwrap } from "solid-js/store"
 import { emptyPrompt, usePromptHistory, type PromptInfo, type PromptPartRef } from "../../prompt/history"
 import { saveDraft, takeDraft } from "./draft-stash"
 import { Skill } from "@opencode/schema/skill"
+import { Router } from "@opencode/schema/router"
 import { computePromptTraits } from "../../prompt/traits"
 import { expandPastedTextPlaceholders, expandTrackedPastedText } from "../../prompt/part"
 import { usePromptStash } from "../../prompt/stash"
@@ -59,6 +60,15 @@ import { useInteractivity } from "../../context/interactivity"
 import { abbreviateHome } from "../../runtime"
 import { Slot } from "../../plugin/render"
 import type { SessionInbox } from "@opencode/schema/session-inbox"
+import {
+  busyHint,
+  escCrIsAltReturn,
+  parseQueueCommand,
+  promptDelivery,
+  promptKeyRejects,
+  QUEUE_SLASH,
+  shiftMentions,
+} from "../../prompt/delivery"
 import {
   deduplicatePromptImages,
   preserveMentionlessPromptAttachments,
@@ -217,6 +227,22 @@ export function Prompt(props: PromptProps) {
   const stash = usePromptStash()
   const keymap = Keymap.use()
   const renderer = useRenderer()
+  const escCr = Keymap.useEscCr()
+  const submitShortcut = Keymap.useShortcut("input.submit")
+  const queueShortcut = Keymap.useShortcut("prompt.queue")
+  // The terminal answers the capability query after startup, so the busy hint re-reads it then.
+  const [kittyKeyboard, setKittyKeyboard] = createSignal(renderer.capabilities?.kitty_keyboard)
+  const onCapabilities = (capabilities: { kitty_keyboard?: boolean } | null | undefined) =>
+    setKittyKeyboard(capabilities?.kitty_keyboard)
+  renderer.on("capabilities", onCapabilities)
+  onCleanup(() => renderer.off("capabilities", onCapabilities))
+  const queuedPrompt = createMemo(
+    () =>
+      props.sessionID !== undefined &&
+      data.session.pending
+        .list(props.sessionID)
+        .some((item) => item.type === "user" && item.delivery === "queue"),
+  )
   const exit = useExit()
   const dimensions = useTerminalDimensions()
   const theme = useTheme()
@@ -449,16 +475,40 @@ export function Prompt(props: PromptProps) {
       },
       {
         title: "Queue prompt",
+        description: "Send the prompt after the agent's current turn instead of at its next step",
         name: "prompt.queue",
         category: "Prompt",
-        run: async (_input: string | undefined, event?: KeyEvent) => {
+        // `/queue <text>` is read by submit; picking the slash only leaves `/queue ` in the prompt. A
+        // server command named `queue` owns the slash.
+        slash: queueCommandServerOwned() ? undefined : { name: QUEUE_SLASH, arguments: true as const },
+        run: (_input: string | undefined, event?: KeyEvent) => {
+          if (!event) return queueFromPalette()
+          // The key keeps its own meaning outside the prompt, e.g. a newline in a dialog.
+          if (!input.focused) return false
+          // A bare ESC CR falls through to `input.newline` until it can only be alt+return.
+          if (promptKeyRejects(event, escCr())) return false
+          event.preventDefault()
+          event.stopPropagation()
+          if (auto()?.visible && !auto()?.completeQueueableCommand()) return
+          // Judged per press, so a press as the turn ends still does the right thing.
+          void submit(promptDelivery("queue", status() === "running")).then((handled) => {
+            if (handled) dialog.clear()
+          })
+        },
+      },
+      {
+        title: "Steer prompt",
+        description: "Send the prompt at the agent's next step, as Enter does",
+        name: "prompt.steer",
+        category: "Prompt",
+        run: (_input: string | undefined, event?: KeyEvent) => {
+          if (event && !input.focused) return false
+          if (promptKeyRejects(event, escCr())) return false
           event?.preventDefault()
           event?.stopPropagation()
-          if (!input.focused) return
-          if (auto()?.visible && !auto()?.completeQueueableCommand()) return
-          const handled = await submit("queue")
-          if (!handled) return
+          if (auto()?.visible) return
           dialog.clear()
+          void submit("steer")
         },
       },
       {
@@ -650,11 +700,29 @@ export function Prompt(props: PromptProps) {
     commands: promptCommands(),
   }))
 
+  // Above the managed textarea layer, where `input.newline` also lists alt+return: the queue and
+  // steer keys reject a bare ESC CR so it reaches the newline (see `src/prompt/delivery.ts`).
   Keymap.createLayer(() => ({
     priority: 1,
     enabled: !disabled(),
-    bindings: ["prompt.queue"],
+    bindings: ["prompt.queue", "prompt.steer"],
   }))
+
+  function queueCommandServerOwned() {
+    return (data.location.command.list(currentLocation.ref) ?? []).some((command) => command.name === QUEUE_SLASH)
+  }
+
+  // Picked from the command palette with nothing typed: leave `/queue ` in the prompt to type after.
+  function queueFromPalette() {
+    dialog.clear()
+    if (store.prompt.text.trim()) {
+      void submit(promptDelivery("queue", status() === "running"))
+      return
+    }
+    input.setText(`/${QUEUE_SLASH} `)
+    setStore("prompt", "text", input.plainText)
+    input.gotoBufferEnd()
+  }
 
   Keymap.createLayer(() => ({
     enabled: !disabled(),
@@ -1114,7 +1182,7 @@ export function Prompt(props: PromptProps) {
     }
   }
 
-  async function submitInner(delivery: SessionInbox.Delivery) {
+  async function submitInner(requested: SessionInbox.Delivery) {
     // IME: double-defer may fire before onContentChange flushes the last
     // composed character (e.g. Korean hangul) to the store, so read
     // plainText directly and sync before any downstream reads.
@@ -1125,10 +1193,11 @@ export function Prompt(props: PromptProps) {
     if (move.creating()) return false
     if (auto()?.visible) return false
     const trimmed = store.prompt.text.trim()
-    if (!trimmed && (!props.sessionID || store.mode === "shell" || delivery === "queue"))
-      return delivery === "steer" ? (await props.onEmptySubmit?.()) === true : false
+    // Nothing typed: a steer (Enter) moves the most recently queued prompt ahead, see `onEmptySubmit`.
+    if (!trimmed && (!props.sessionID || store.mode === "shell" || requested === "queue"))
+      return requested === "steer" ? (await props.onEmptySubmit?.()) === true : false
     const exitWord = trimmed === "exit" || trimmed === "quit" || trimmed === ":q"
-    const inputText = expandTrackedPastedText(
+    const typedText = expandTrackedPastedText(
       store.prompt.text,
       input.extmarks.getAllForTypeId(promptPartTypeId).flatMap((extmark) => {
         const ref = store.extmarkToPart.get(extmark.id)
@@ -1138,6 +1207,16 @@ export function Prompt(props: PromptProps) {
         return [{ start: extmark.start, end: extmark.end, text: part.text }]
       }),
     )
+    // `/queue <text>` queues from every terminal, whatever it reports for alt+return, and just sends
+    // while the agent is idle, like the queue key. A server command named `queue` keeps precedence.
+    const queueCommand =
+      store.mode === "normal" && !queueCommandServerOwned() ? parseQueueCommand(typedText) : undefined
+    // An empty `/queue` sends nothing; the text stays to be completed.
+    if (queueCommand && !queueCommand.text.trim()) return false
+    const inputText = queueCommand?.text ?? typedText
+    const delivery = queueCommand ? promptDelivery("queue", status() === "running") : requested
+    // Mentions line up with the typed text, so they move back by the removed `/queue` prefix.
+    const mentionShift = queueCommand ? promptOffsetWidth(typedText.slice(0, queueCommand.prefix)) : 0
     const slash = argumentSlash(inputText, keymapCommands())
     if (delivery === "queue" && (store.mode === "shell" || exitWord || slash)) {
       toast.show({ message: "This prompt cannot be queued", variant: "warning" })
@@ -1321,9 +1400,9 @@ export function Prompt(props: PromptProps) {
           sessionID: target,
           name: slashHead.name,
           text: slashHead.arguments,
-          files: entry.files,
-          agents: entry.agents,
-          skills: entry.skills?.length ? entry.skills : undefined,
+          files: shiftMentions(entry.files, mentionShift),
+          agents: shiftMentions(entry.agents, mentionShift),
+          skills: entry.skills?.length ? shiftMentions(entry.skills, mentionShift) : undefined,
           metadata: { source: "tui" },
           delivery,
         })
@@ -1363,9 +1442,9 @@ export function Prompt(props: PromptProps) {
         .prompt({
           sessionID: target,
           text: inputText,
-          files: entry.files,
-          agents: entry.agents,
-          skills: entry.skills?.length ? entry.skills : undefined,
+          files: shiftMentions(entry.files, mentionShift),
+          agents: shiftMentions(entry.agents, mentionShift),
+          skills: entry.skills?.length ? shiftMentions(entry.skills, mentionShift) : undefined,
           metadata: { source: "tui" },
           delivery,
           gate: newSession?.gate,
@@ -1565,7 +1644,7 @@ export function Prompt(props: PromptProps) {
         agentLabel: agent ? Locale.titlecase(agent.id) : undefined,
         agentColor: agent ? local.agent.color(agent.id) : undefined,
         modelLabel: model.model,
-        providerLabel: info ? modelRoute(info, provider) : model.provider,
+        providerLabel: info ? modelRoute(info, provider, Router.HOP_SEPARATOR_COMPACT) : model.provider,
         variant: local.model.variant.current(),
       }
     },
@@ -1587,7 +1666,7 @@ export function Prompt(props: PromptProps) {
     if (status?.effective.reasoning !== "dual") return
     const evaluator = status.settings.evaluator
     return {
-      model: evaluator ? evaluatorModelName(evaluator.model) : "setup",
+      model: evaluator ? evaluatorModelName(evaluator.model) : "S1 setup",
       provider: evaluator ? evaluatorTransportName(evaluator.transport) : "",
     }
   })
@@ -1867,7 +1946,11 @@ export function Prompt(props: PromptProps) {
                 model={promptDisplay().modelLabel}
                 provider={promptDisplay().providerLabel}
                 s1={s1Display()}
-                onS1Click={() => keymap.dispatch("intelligence.status")}
+                onS1Click={() =>
+                  keymap.dispatch(
+                    local.model.intelligenceStatus()?.settings.evaluator ? "intelligence.status" : "intelligence.setup",
+                  )
+                }
                 variant={promptDisplay().variant}
                 muted={!!muted()}
                 highlight={highlight()}
@@ -1937,6 +2020,16 @@ export function Prompt(props: PromptProps) {
                         warning={theme.text.feedback.warning.base}
                         flash={theme.decrease(theme.text.feedback.warning.base, 2)}
                       />
+                      <text fg={theme.text.muted} wrapMode="none" truncate flexShrink={1}>
+                        {busyHint({
+                          submitKey: submitShortcut(),
+                          queueKey: queueShortcut(),
+                          kittyKeyboard: kittyKeyboard(),
+                          env: { TERM_PROGRAM: process.env.TERM_PROGRAM, WT_SESSION: process.env.WT_SESSION },
+                          queued: !store.prompt.text.trim() && queuedPrompt(),
+                          escCrQueues: escCrIsAltReturn(escCr()),
+                        })}
+                      </text>
                     </box>
                   </Match>
                   <Match when={move.progress()}>

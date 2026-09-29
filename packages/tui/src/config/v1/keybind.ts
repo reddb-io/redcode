@@ -178,6 +178,9 @@ export const Definitions = {
   input_paste: keybind({ key: "ctrl+v,ctrl+shift+v", preventDefault: false }, "Paste from clipboard"),
   input_submit: keybind("return", "Submit input"),
   input_newline: keybind("shift+return,ctrl+return,alt+return,ctrl+j", "Insert newline in input"),
+  // Redcode V1 names: migrated to `prompt.queue` and `prompt.steer`.
+  input_queue: keybind("alt+return", "Queue prompt while the agent works"),
+  input_steer: keybind("none", "Steer running agent"),
   input_move_left: keybind("left,ctrl+b", "Move cursor left in input"),
   input_move_right: keybind("right,ctrl+f", "Move cursor right in input"),
   input_move_up: keybind("up", "Move cursor up in input"),
@@ -382,6 +385,8 @@ export const CommandMap = {
   input_paste: "prompt.paste",
   input_submit: "input.submit",
   input_newline: "input.newline",
+  input_queue: "prompt.queue",
+  input_steer: "prompt.steer",
   input_move_left: "input.move.left",
   input_move_right: "input.move.right",
   input_move_up: "input.move.up",

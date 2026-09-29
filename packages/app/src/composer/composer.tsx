@@ -33,7 +33,7 @@ export function Composer(props: {
         modelControlsVisible={!props.model.model.loading}
         attachKeybind={command.keybindParts("file.attach")}
         attachShortcut={command.keybind("file.attach")}
-        alternateKeybind={[formatKeybind("mod", language.t), "↵"]}
+        alternateKeybind={[formatKeybind("alt", language.t), "↵"]}
         exitShellKeybind={[formatKeybind("esc", language.t)]}
         suggestionBoundary={props.suggestionBoundary}
         modelControl={

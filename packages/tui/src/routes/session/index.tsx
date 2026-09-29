@@ -61,6 +61,8 @@ import { browserDisabled, designBrowser, openUrl } from "@opencode/util/open"
 import { useDialog } from "../../ui/dialog"
 import { DialogSelect } from "../../ui/dialog-select"
 import { DialogMonitors } from "../../component/dialog-monitors"
+import { useGoalCommand } from "../../component/goal-command"
+import { IntelligenceGoalCommand } from "@opencode/core/intelligence/goal-command"
 import { DialogPrompt } from "../../ui/dialog-prompt"
 import { DialogSessionRename } from "../../component/dialog-session-rename"
 import { DialogImagePreview } from "../../component/dialog-image-preview"
@@ -82,6 +84,7 @@ import { usePromptRef } from "../../context/prompt"
 import { projectedPromptInput } from "../../prompt/codec"
 import { deduplicateVisibleImages } from "../../prompt/attachment"
 import { pendingLabel, pendingPreview } from "../../prompt/pending"
+import { emptyPromptTarget } from "../../prompt/delivery"
 import { useEpilogue } from "../../context/epilogue"
 import { normalizePath } from "../../util/path"
 import { Budget } from "../../util/budget"
@@ -90,6 +93,7 @@ import { FormPrompt } from "./form"
 import { DialogExportOptions } from "../../ui/dialog-export-options"
 import { DialogExportResult } from "../../ui/dialog-export-result"
 import { sessionEpilogue } from "../../util/presentation"
+import { retryStatus } from "../../util/session"
 import { useConfig } from "../../config"
 import { useClipboard } from "../../context/clipboard"
 import { nextThinkingMode, type ThinkingMode } from "../../context/thinking"
@@ -175,7 +179,6 @@ export function Session(props: {
   const { navigate } = useRoute()
   const data = useData()
   const local = useLocal()
-  const keymap = Keymap.use()
   const args = useArgs()
   const paths = useTuiPaths()
   const configState = useConfig()
@@ -984,6 +987,7 @@ export function Session(props: {
     },
   ]
 
+  const goalCommand = useGoalCommand()
   const baseCommands = createMemo(() => [
     {
       title: "Manage monitors",
@@ -992,124 +996,29 @@ export function Session(props: {
       slash: { name: "monitors" },
       run: () => dialog.replace(() => <DialogMonitors sessionID={route.sessionID} />),
     },
-    ...(["pause", "resume", "drop", "budget"] as const).map((action) => ({
-      title: action === "budget" ? "Goal budget" : `Goal ${action}`,
-      id: `session.goal.${action}`,
-      group: "Session",
-      slash: { name: `goal-${action}` },
-      run: (input?: string) => {
-        if (action !== "budget" || input?.trim()) {
-          keymap.dispatch("session.goal", `${action} ${input ?? ""}`.trim())
-          return
-        }
-        dialog.replace(() => (
-          <DialogPrompt
-            title="Goal step budget"
-            placeholder="30 steps, $3, 500k tokens, $3 500k, or off"
-            onConfirm={(value) => keymap.dispatch("session.goal", `budget ${value}`)}
-            onCancel={() => dialog.clear()}
-          />
-        ))
-      },
-    })),
     {
-      title: "Manage goal",
+      title: "Goal",
+      description: "[pause|resume|drop|budget|status] or an objective: set, control, or show the goal",
       id: "session.goal",
       group: "Session",
       slash: { name: "goal", arguments: true as const },
       run: (input?: string) => {
-        const runGoal = async (value: string) => {
-          const text = value.trim()
-          const command = text.toLowerCase()
-          // Close the initiating dialog before the request, so its response cannot dismiss a newer one.
-          dialog.clear()
-          try {
-            if (command === "status") {
-              const result = await client.api.session.goal.get({ sessionID: route.sessionID })
-              const goal = result
-              toast.show({
-                message: goal
-                  ? `${goal.status}: ${goal.objective} · steps ${goal.turns.used}/${goal.turns.max} · ${goal.reason}`
-                  : "No goal yet. Use /goal <objective> to start one.",
-                variant: "info",
-                duration: 7000,
-              })
-              return
-            }
-            if (["pause", "resume", "drop"].includes(command)) {
-              const result = await client.api.session.goal.control({
-                sessionID: route.sessionID,
-                action: command as "pause" | "resume" | "drop",
-              })
-              toast.show({ message: result ? `Goal ${result.status}` : "Goal removed", variant: "info" })
-              return
-            }
-            if (command.startsWith("budget ")) {
-              const change = Budget.parse(text.slice(7).trim())
-              if (!change.ok) throw new Error(change.error)
-              if (change.value.maxTurns !== undefined && change.value.maxTurns > 1000)
-                throw new Error("Use a step budget from 1 to 1000")
-              const result = await client.api.session.goal.control({
-                sessionID: route.sessionID,
-                action: "budget",
-                ...change.value,
-              })
-              const spend =
-                result?.budget && Budget.hasLimits(result.budget) ? ` · ${Budget.describe(result.budget)}` : ""
-              toast.show({
-                message: result
-                  ? `Goal budget: ${result.turns.used}/${result.turns.max} steps${spend}`
-                  : "No goal to update",
-                variant: result ? "info" : "warning",
-              })
-              return
-            }
-            const objective = command.startsWith("set ") ? text.slice(4).trim() : text
-            if (!objective) throw new Error("Goal objective must not be empty")
-            const result = await client.api.session.goal.start({
-              sessionID: route.sessionID,
-              objective,
-              agent: local.agent.current()?.id,
-            })
-            toast.show({ message: `Goal started · ${result.turns.max} steps`, variant: "success" })
-          } catch (error) {
-            toast.show({ message: errorMessage(error), variant: "error", duration: 5000 })
-          }
-        }
-        if (input?.trim()) return void runGoal(input)
-        dialog.replace(() => (
-          <DialogSelect
-            title="Goal"
-            options={[
-              { title: "Start a goal", value: "set" },
-              { title: "Status", value: "status" },
-              { title: "Pause", value: "pause" },
-              { title: "Resume", value: "resume" },
-              { title: "Change budget", value: "budget" },
-              { title: "Drop", value: "drop" },
-            ]}
-            onSelect={(option) => {
-              if (option.value === "set" || option.value === "budget") {
-                dialog.replace(() => (
-                  <DialogPrompt
-                    title={option.value === "set" ? "Goal objective" : "Goal budget"}
-                    placeholder={
-                      option.value === "set"
-                        ? "What should Redcode complete?"
-                        : "30 steps, $3, 500k tokens, $3 500k, or off"
-                    }
-                    onConfirm={(value) => void runGoal(option.value === "set" ? `set ${value}` : `budget ${value}`)}
-                    onCancel={() => dialog.clear()}
-                  />
-                ))
-                return
-              }
-              void runGoal(option.value)
-            }}
-          />
-        ))
+        dialog.clear()
+        void goalCommand.run(route.sessionID, input ?? "")
       },
     },
+    // The retired `/goal-*` spellings: off the slash menu and the palette, still run when typed in full.
+    ...(["pause", "resume", "drop", "budget"] as const).map((action) => ({
+      title: IntelligenceGoalCommand.LABELS[action],
+      id: `session.goal.${action}`,
+      group: "Session",
+      palette: undefined,
+      slash: { name: `goal-${action}`, arguments: true as const, hidden: true as const },
+      run: (input?: string) => {
+        dialog.clear()
+        void goalCommand.run(route.sessionID, action === "budget" ? `budget ${input ?? ""}` : action)
+      },
+    })),
     {
       title: "Session budget",
       id: "session.budget",
@@ -1125,7 +1034,7 @@ export function Session(props: {
           if (change.value.maxTurns !== undefined) {
             toast.show({
               variant: "warning",
-              message: "Steps belong to /goal-budget. Enter $5, 200k tokens, $5 200k, or off.",
+              message: "Steps belong to /goal budget. Enter $5, 200k tokens, $5 200k, or off.",
               duration: 5000,
             })
             return
@@ -1892,7 +1801,8 @@ export function Session(props: {
                       toBottom()
                     }}
                     onEmptySubmit={async () => {
-                      const next = queuedPrompts()[0]
+                      // Enter with nothing typed steers the most recently queued prompt.
+                      const next = emptyPromptTarget("steer", queuedPrompts())
                       if (!next) return false
                       return mutatePending("steer", next.id)
                     }}
@@ -2296,7 +2206,7 @@ function AssistantFooter(props: { message: SessionMessageAssistant }) {
           <text fg={theme.text.feedback.error.base}>Error: {errorMessage(props.message.error)}</text>
         </box>
       </Show>
-      <AssistantRetry retry={props.message.retry} />
+      <AssistantRetry retry={props.message.retry} model={model()} />
       <box paddingLeft={3} marginTop={props.message.retry || (props.message.error && !interrupted()) ? 1 : 0}>
         <text>
           <span style={{ fg: props.message.error ? theme.text.muted : local.agent.color(props.message.agent) }}>
@@ -2771,7 +2681,7 @@ function QueuedPromptDock(props: { prompts: { id: string; text: string }[]; onOp
   )
 }
 
-function AssistantRetry(props: { retry: SessionMessageAssistant["retry"] }) {
+function AssistantRetry(props: { retry: SessionMessageAssistant["retry"]; model: string }) {
   const theme = useTheme()
   const [seconds, setSeconds] = createSignal(0)
   createEffect(() => {
@@ -2789,8 +2699,7 @@ function AssistantRetry(props: { retry: SessionMessageAssistant["retry"] }) {
       {(retry) => (
         <box paddingLeft={3}>
           <text fg={theme.text.feedback.warning.base}>
-            ⚠ {seconds() > 0 ? `Retrying in ${seconds()}s` : "Retry due"} · attempt {retry().attempt} ·{" "}
-            {retry().error.message}
+            ⚠ {retryStatus({ model: props.model, retry: retry(), seconds: seconds() })}
           </text>
         </box>
       )}

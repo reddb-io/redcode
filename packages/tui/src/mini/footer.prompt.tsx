@@ -51,7 +51,9 @@ import {
   movePromptHistory,
   promptCopy,
   pushPromptHistory,
+  stripQueueCommand,
 } from "./prompt.shared"
+import { emptyPromptTarget, promptDelivery, promptKeyRejects, QUEUE_SLASH } from "../prompt/delivery"
 import { parseFileLineRange, parseSlashHead, stripFileLineRange } from "../prompt/parse"
 import { Keymap } from "../context/keymap"
 import { realignEditorPromptParts, resolveEditorSlashValue } from "./prompt.editor"
@@ -106,7 +108,7 @@ type Auto = RunFooterMenuItem & {
 type SlashOption = RunFooterMenuItem & {
   kind: "slash"
   name: string
-  action?: "editor" | "settings" | "pending"
+  action?: "editor" | "settings" | "pending" | "queue"
 }
 
 type PromptOption = Auto | SlashOption
@@ -347,6 +349,7 @@ export function RunPromptBody(props: {
 
 export function createPromptState(input: PromptInput): PromptState {
   const renderer = useRenderer()
+  const escCr = Keymap.useEscCr()
   const term = useTerminalDimensions()
   const [lines, setLines] = createSignal(TEXTAREA_MIN_ROWS)
   const [statusRows, setStatusRows] = createSignal(1)
@@ -535,6 +538,13 @@ export function createPromptState(input: PromptInput): PromptState {
         name: "pending",
         display: "/pending",
         description: "manage prompts waiting for this session",
+      } satisfies SlashOption,
+      {
+        kind: "slash",
+        action: "queue" as const,
+        name: QUEUE_SLASH,
+        display: `/${QUEUE_SLASH}`,
+        description: "send after the current turn instead of steering it",
       } satisfies SlashOption,
       { kind: "slash", name: "new", display: "/new", description: "start a new session" } satisfies SlashOption,
       {
@@ -1093,7 +1103,8 @@ export function createPromptState(input: PromptInput): PromptState {
       area.cursorOffset = stringWidth(text)
       hide()
       syncDraft()
-      if (!shell()) {
+      // `/queue ` waits for the text to queue; every other command runs once picked.
+      if (!shell() && next.action !== "queue") {
         submitPrompt(promptCopy(draft), delivery)
         return
       }
@@ -1234,8 +1245,20 @@ export function createPromptState(input: PromptInput): PromptState {
         title: "Queue prompt",
         group: "Prompt",
         palette: true,
-        run() {
-          onSubmit("queue")
+        run(_input: string | undefined, event?: KeyEvent) {
+          // A bare ESC CR falls through to `input.newline` until it can only be alt+return.
+          if (promptKeyRejects(event, escCr())) return false
+          // Judged per press: idle, the queue key just sends.
+          onSubmit(promptDelivery("queue", input.state().phase === "running"))
+        },
+      },
+      {
+        id: "prompt.steer",
+        title: "Steer prompt",
+        group: "Prompt",
+        run(_input: string | undefined, event?: KeyEvent) {
+          if (promptKeyRejects(event, escCr())) return false
+          onSubmit("steer")
         },
       },
     ],
@@ -1397,7 +1420,8 @@ export function createPromptState(input: PromptInput): PromptState {
     if (submitting) return
 
     if (!next.text.trim() && !next.parts.some((part) => part.type === "file")) {
-      const queued = delivery === "steer" ? input.queuedPrompts()[0] : undefined
+      // Enter with nothing typed steers the most recently queued prompt.
+      const queued = emptyPromptTarget(delivery, input.queuedPrompts())
       if (queued) {
         submitting = true
         void input.onQueuedPromptSteer(queued.messageID).finally(() => {
@@ -1406,6 +1430,18 @@ export function createPromptState(input: PromptInput): PromptState {
         return
       }
       input.onStatus(input.state().phase === "running" ? "waiting for current response" : "empty prompt ignored")
+      return
+    }
+
+    // `/queue <text>` queues from every terminal, whatever it reports for alt+return, and just sends
+    // while idle, like the queue key.
+    const queueCommand = next.mode === "shell" ? undefined : stripQueueCommand(next)
+    if (queueCommand) {
+      if (!queueCommand.text.trim() && !queueCommand.parts.some((part) => part.type === "file")) {
+        input.onStatus(`type a prompt after /${QUEUE_SLASH}`)
+        return
+      }
+      submitPrompt(queueCommand, promptDelivery("queue", input.state().phase === "running"))
       return
     }
 

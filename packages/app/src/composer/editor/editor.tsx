@@ -231,7 +231,9 @@ export function ComposerEditor(props: ComposerEditorProps) {
               if (event.key === "Enter" && !event.shiftKey && !event.isComposing) {
                 event.preventDefault()
                 if (event.repeat) return
-                props.controller.submit(mod ? { alternate: true } : undefined)
+                // Enter steers a running turn; Alt+Enter (or Mod+Enter) takes the other delivery,
+                // which queues unless the follow-up setting makes Enter queue.
+                props.controller.submit(mod || event.altKey ? { alternate: true } : undefined)
               }
             }}
             onKeyUp={updateCursor}
@@ -331,7 +333,7 @@ export function ComposerEditor(props: ComposerEditorProps) {
             <Show when={state.mode === "normal"}>
               <ComposerEditorAlternateDelivery
                 controller={props.controller}
-                keybind={props.alternateKeybind ?? ["Mod", "Enter"]}
+                keybind={props.alternateKeybind ?? ["Alt", "Enter"]}
               />
             </Show>
             <Show when={state.mode === "shell"}>
@@ -870,7 +872,7 @@ function composerSuggestionMaxHeight(boundaryHeight: number, search: boolean) {
   )
 }
 
-// "Steer ⌘⏎" / "Queue ⌘⏎" hint next to the submit button: submits with the
+// "Steer ⌥⏎" / "Queue ⌥⏎" hint next to the submit button: submits with the
 // delivery opposite to what plain Enter does. Visible only while the queue
 // exposes an alternate (turn running and composer holding a value), so it
 // disappears on its own when the current turn ends.

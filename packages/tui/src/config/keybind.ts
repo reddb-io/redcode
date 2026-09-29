@@ -39,6 +39,7 @@ type Definition = {
 }
 
 export const LeaderDefault = "ctrl+x"
+const QUEUE_DEFAULT = "alt+return,<leader>return"
 
 const keybind = (value: Definition["default"], description: string): Definition => ({ default: value, description })
 
@@ -201,7 +202,14 @@ export const Definitions = {
   "session.toggle.thinking": keybind("none", "Toggle thinking blocks visibility"),
 
   "prompt.submit": keybind("none", "Submit prompt"),
-  "prompt.queue": keybind("<leader>return", "Queue prompt"),
+  "prompt.queue": keybind(
+    QUEUE_DEFAULT,
+    "While the agent works, queue the prompt until the running turn ends instead of steering it at the next step like input.submit does; idle, the key sends like input.submit. alt+return queues only when the terminal reports it unambiguously (kitty keyboard protocol or modifyOtherKeys) or has reported Shift+Enter on its own; otherwise a bare ESC CR stays a newline. /queue <text> works everywhere",
+  ),
+  "prompt.steer": keybind(
+    "none",
+    "While the agent works, steer it: deliver the prompt at its next step, as input.submit does; idle, the key sends like input.submit. Unbound by default since input.submit steers",
+  ),
   "prompt.editor_context.clear": keybind("none", "Clear editor context"),
   "prompt.images.view": keybind("<leader>i", "View image attachments"),
   "prompt.skills": keybind("none", "Open skill selector"),
@@ -359,12 +367,42 @@ export function defaultValue(name: KeybindName) {
 export function parse(keybinds: KeybindOverrides): Keybinds {
   const invalid = unknownKeys(keybinds)
   if (invalid.length) throw new Error(`Unrecognized keybind${invalid.length === 1 ? "" : "s"}: ${invalid.join(", ")}`)
+  const defaults: Partial<Keybinds> = { "prompt.queue": queueDefault(keybinds) }
   return Object.fromEntries(
     Object.entries(Definitions).map(([name, item]) => [
       name,
-      decodeBindingValue(keybinds[name as KeybindName] ?? item.default),
+      decodeBindingValue(keybinds[name as KeybindName] ?? defaults[name as KeybindName] ?? item.default),
     ]),
   ) as Keybinds
+}
+
+// A config that puts a queue key on `input.newline` or `prompt.steer` without mentioning
+// `prompt.queue` asked for that key to do something else, so the queue default steps aside there.
+// alt+return used to be the steer key: a config written back then with `"input_steer": "alt+return"`
+// (migrated to `prompt.steer`) keeps steering on it and the busy hint points at `/queue`. The
+// defaults share alt+return with `input.newline` on purpose: the queue key rejects a bare ESC CR,
+// so that legacy encoding reaches the newline and only an unambiguous alt+return queues.
+function queueDefault(keybinds: KeybindOverrides): BindingValueSchema {
+  const taken = new Set([...bindingKeys(keybinds["input.newline"]), ...bindingKeys(keybinds["prompt.steer"])])
+  const keys = QUEUE_DEFAULT.split(",").filter((key) => !taken.has(normalizeKey(key)))
+  return keys.length > 0 ? keys.join(",") : "none"
+}
+
+function normalizeKey(key: string) {
+  const parts = key
+    .trim()
+    .toLowerCase()
+    .split("+")
+    .map((part) => (part === "enter" ? "return" : part === "meta" || part === "option" ? "alt" : part))
+  const name = parts.pop() ?? ""
+  return [...parts.sort(), name].join("+")
+}
+
+function bindingKeys(value: unknown): string[] {
+  if (typeof value === "string") return value === "none" ? [] : value.split(",").map(normalizeKey).filter(Boolean)
+  if (Array.isArray(value)) return value.flatMap(bindingKeys)
+  if (typeof value === "object" && value !== null && "key" in value) return bindingKeys(value.key)
+  return []
 }
 
 export const Keybinds = { parse }

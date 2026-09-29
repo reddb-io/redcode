@@ -177,7 +177,6 @@ test("preserves migrated v1 keybind defaults", () => {
   const pairs = [
     ["app.exit", "app_exit"],
     ["prompt.paste", "input_paste"],
-    ["prompt.queue", "prompt_queue"],
     ["session.delete", "session_delete"],
     ["session.list", "session_list"],
     ["agent.list", "agent_list"],
@@ -187,6 +186,38 @@ test("preserves migrated v1 keybind defaults", () => {
     expect(CommandMap[name]).toBe(command)
     expect(TuiKeybind.Definitions[command].default).toEqual(Definitions[name].default)
   })
+})
+
+test("queues with alt+return and keeps the leader queue key", () => {
+  const config = resolve({}, { terminalSuspend: true })
+
+  expect(config.keybinds.get("prompt.queue")).toMatchObject([{ key: "alt+return,<leader>return" }])
+  expect(config.keybinds.get("prompt.steer")).toEqual([])
+  expect(config.keybinds.get("input.submit")).toMatchObject([{ key: "return" }])
+})
+
+test("migrates the V1 queue and steer key names", () => {
+  expect(CommandMap.input_queue).toBe("prompt.queue")
+  expect(CommandMap.input_steer).toBe("prompt.steer")
+  expect(CommandMap.prompt_queue).toBe("prompt.queue")
+})
+
+test("a config that steers with alt+return keeps it off the queue key", () => {
+  const steering = resolve({ keybinds: { "prompt.steer": "alt+return" } }, { terminalSuspend: true })
+  expect(steering.keybinds.get("prompt.steer")).toMatchObject([{ key: "alt+return" }])
+  expect(steering.keybinds.get("prompt.queue")).toMatchObject([{ key: "<leader>return" }])
+
+  const newline = resolve({ keybinds: { "input.newline": "shift+return,meta+enter" } }, { terminalSuspend: true })
+  expect(newline.keybinds.get("prompt.queue")).toMatchObject([{ key: "<leader>return" }])
+
+  const both = resolve(
+    { keybinds: { "prompt.steer": "alt+return", "prompt.queue": "alt+return" } },
+    { terminalSuspend: true },
+  )
+  expect(both.keybinds.get("prompt.queue")).toMatchObject([{ key: "alt+return" }])
+
+  const cleared = resolve({ keybinds: { "prompt.steer": "alt+return,<leader>return" } }, { terminalSuspend: true })
+  expect(cleared.keybinds.get("prompt.queue")).toEqual([])
 })
 
 test("accepts every v2-only named command ID", () => {

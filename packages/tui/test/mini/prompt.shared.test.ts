@@ -7,6 +7,7 @@ import {
   movePromptHistory,
   promptAppend,
   pushPromptHistory,
+  stripQueueCommand,
 } from "../../src/mini/prompt.shared"
 import type { RunPrompt } from "../../src/mini/types"
 
@@ -130,5 +131,31 @@ describe("promptAppend", () => {
       ],
     })
     expect(promptAppend(prompt(""), prompt("next"))).toEqual(prompt("next"))
+  })
+})
+
+describe("stripQueueCommand", () => {
+  test("strips /queue and moves part ranges back by its width", () => {
+    const output = stripQueueCommand(
+      prompt("/queue fix @a.ts", [
+        { type: "file", url: "file:///a.ts", source: { type: "file", text: { start: 11, end: 16, value: "@a.ts" } } },
+        { type: "agent", name: "plan" },
+      ]),
+    )
+
+    expect(output).toEqual({
+      text: "fix @a.ts",
+      parts: [
+        { type: "file", url: "file:///a.ts", source: { type: "file", text: { start: 4, end: 9, value: "@a.ts" } } },
+        { type: "agent", name: "plan" },
+      ],
+    })
+  })
+
+  test("reads only a leading /queue command", () => {
+    expect(stripQueueCommand(prompt("/queue"))?.text).toBe("")
+    expect(stripQueueCommand(prompt("/queue\nnext line"))?.text).toBe("next line")
+    expect(stripQueueCommand(prompt("/queued work"))).toBeUndefined()
+    expect(stripQueueCommand(prompt("please /queue this"))).toBeUndefined()
   })
 })

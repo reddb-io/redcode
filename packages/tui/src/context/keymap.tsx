@@ -25,6 +25,7 @@ import {
 } from "solid-js"
 import { useConfig } from "../config"
 import { TuiKeybind } from "../config/keybind"
+import { bindsAltReturn, distinctShiftReturn, type EscCrContext } from "../prompt/delivery"
 import { resolveInteractivity, useInteractivity } from "./interactivity"
 
 declare module "@opentui/keymap" {
@@ -34,6 +35,7 @@ declare module "@opentui/keymap" {
       name: string
       aliases?: string[]
       arguments?: true
+      hidden?: true
     }
   }
 }
@@ -393,6 +395,29 @@ function useState() {
   }
 }
 
+// Renderers whose terminal has reported Shift+Enter in a form of its own (see `distinctShiftReturn`),
+// kept per renderer so every prompt on it shares what the terminal has shown.
+const shiftReturnReporters = new WeakSet<object>()
+
+/** How a bare ESC CR reads for the queue and steer keys (see `src/prompt/delivery.ts`). */
+function useEscCr(): Accessor<EscCrContext> {
+  const value = useValue()
+  const renderer = useRenderer()
+  const [reported, setReported] = createSignal(shiftReturnReporters.has(renderer))
+  // Observed ahead of the bindings: the newline binding consumes the key before plain listeners.
+  onCleanup(
+    value.keymap.intercept("key", (context) => {
+      if (!distinctShiftReturn(context.event)) return
+      shiftReturnReporters.add(renderer)
+      setReported(true)
+    }),
+  )
+  return () => ({
+    shiftReturnReported: reported(),
+    newlineOnAltReturn: bindsAltReturn(value.config.keybinds.get("input.newline")),
+  })
+}
+
 function useValue() {
   const value = useContext(Context)
   if (!value) throw new Error("Keymap.Provider is missing")
@@ -410,6 +435,7 @@ export const Keymap = {
   usePendingSequence,
   useActiveKeys,
   useState,
+  useEscCr,
 } as const
 
 function createMode(keymap: OpenTuiKeymap) {

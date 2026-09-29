@@ -12,6 +12,7 @@ import { blobDataUrl, resolveBlobUrl } from "@/runtime/persistence/drafts"
 import { isAttachment } from "./prompt-parts"
 import type { ModelSelection } from "@/providers/models/selection"
 import { parseSlashCommand } from "./client-slash-command"
+import { QUEUE_SLASH, stripQueueCommand } from "./queue-command"
 
 const submitting = new WeakSet<object>()
 
@@ -78,15 +79,26 @@ export function createComposerSubmit(input: ComposerSubmitInput) {
         selection: item.selection ? { ...item.selection } : undefined,
       })),
     })
-    const read = readSubmission(input, submission.prompt, submission.context, text, options?.alternate ?? false)
+    // `/queue <text>` queues from any keyboard. A server command named `queue` keeps precedence.
+    const queued =
+      input.mode() === "normal" && !input.commands()?.some((item) => item.name === QUEUE_SLASH)
+        ? stripQueueCommand(submission.prompt)
+        : undefined
+    const read = queued
+      ? readSubmission(input, queued, submission.context, submissionText(queued), false)
+      : readSubmission(input, submission.prompt, submission.context, text, options?.alternate ?? false)
     if (!read) {
-      if (input.adapter.working() && input.adapter.kind === "active-session") void input.adapter.interrupt()
+      // An empty `/queue` sends nothing, and must not stop the running turn either.
+      if (!queued && input.adapter.working() && input.adapter.kind === "active-session")
+        void input.adapter.interrupt()
       return
     }
     if (submitting.has(input.adapter.state)) return
     // Images restored from a draft or history carry ids only; the optimistic message shows their URLs.
     const value = {
       ...read,
+      // Like Alt+Enter, `/queue` waits for the running turn to end and just sends while idle.
+      delivery: queued && input.adapter.working() ? ("queue" as const) : read.delivery,
       images: await Promise.all(
         read.images.map(async (image) => ({
           ...image,
