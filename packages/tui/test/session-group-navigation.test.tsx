@@ -130,9 +130,9 @@ test.each([
           .split("\n")
           .findIndex((line) => line.includes("Thought:")) - initial.viewport.y
       if (lines > 0) expect(summaryOffset).toBe(0)
-      setup.mockInput.pressKey("2", { ctrl: true })
+      setup.mockInput.pressKey("2", { meta: true })
       await setup.waitForFrame((frame) => frame.includes("Other session content"))
-      setup.mockInput.pressKey("1", { ctrl: true })
+      setup.mockInput.pressKey("1", { meta: true })
       await setup.waitForFrame((frame) => {
         const viewport = find(setup.renderer.root)
         return (
