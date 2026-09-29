@@ -18,6 +18,8 @@ export type Entry = GitEntry & {
   registered: boolean
   primary: boolean
   current: boolean
+  /** A `--tmp` session worktree under `<tmpdir>/redcode-worktrees/`. */
+  temporary: boolean
   size: number
   sizePartial: boolean
   changes?: { tracked: number; untracked: number }
@@ -84,6 +86,7 @@ export const inventory = Effect.fn("cli.worktrees.inventory")(function* () {
         registered: Boolean(stored),
         primary,
         current,
+        temporary: directory.split(/[\\/]/).includes("redcode-worktrees"),
         sessions: sessions.filter((session) => owner(session.directory) === directory).map((session) => ({
           id: session.id,
           title: session.title,
@@ -111,7 +114,27 @@ export const inventory = Effect.fn("cli.worktrees.inventory")(function* () {
   return { root, base, worktrees: entries }
 })
 
-function parse(output: string): GitEntry[] {
+/**
+ * Whether `clean` may remove an entry: a registered Git worktree other than the primary checkout, with no
+ * recent session, lock or uncommitted change, that is merged or last active before `cutoff`. A worktree
+ * whose directory is gone is pruned instead.
+ */
+export function removable(entry: Entry, input: { merged: boolean; cutoff?: number }) {
+  return (
+    entry.registered &&
+    entry.strategy === "git" &&
+    !entry.primary &&
+    !entry.current &&
+    !entry.locked &&
+    !entry.prunable &&
+    entry.changes !== undefined &&
+    entry.changes.tracked + entry.changes.untracked === 0 &&
+    ((input.merged && entry.merged === true) ||
+      (input.cutoff !== undefined && entry.activity !== undefined && entry.activity < input.cutoff))
+  )
+}
+
+export function parse(output: string): GitEntry[] {
   return output.split(/\r?\n\r?\n/).map((record) => record.split(/\r?\n/)).filter((lines) => lines[0]?.startsWith("worktree ")).map((lines) => {
     const value = (key: string) => lines.find((line) => line.startsWith(`${key} `))?.slice(key.length + 1)
     const branch = value("branch")
@@ -154,7 +177,7 @@ async function mergedPullRequests(root: string) {
   return new Set(exit === 0 ? output.split("\n").filter(Boolean) : [])
 }
 
-async function pending(directory: string) {
+export async function pending(directory: string) {
   const result = await git(directory, ["status", "--porcelain", "--untracked-files=normal"])
   if (result.exit !== 0) return undefined
   const lines = result.output.split("\n").filter(Boolean)

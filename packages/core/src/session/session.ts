@@ -59,6 +59,7 @@ export const make = Effect.fn("Session.make")(function* () {
     session: SessionSchema.Info,
     messageID: SessionMessage.ID,
     agentID?: Agent.ID,
+    name?: string,
   ) {
     if (session.parentID) return
     const marker = (yield* fs.up({ targets: [".git"], start: session.location.directory, mode: "first" }).pipe(
@@ -75,7 +76,8 @@ export const make = Effect.fn("Session.make")(function* () {
       const tools = yield* Tool.Service
       const prepare = (yield* tools.list()).find((item) => item.id === "worktree_prepare")
       if (!prepare) return yield* Effect.logWarning("Build worktree preparation is unavailable", { sessionID: session.id })
-      yield* prepare.execute({}, {
+      // The first prompt names a new worktree and its branch until the Session has a title.
+      yield* prepare.execute(name ? { name } : {}, {
         sessionID: session.id,
         agent: Agent.ID.make("build"),
         messageID,
@@ -193,7 +195,7 @@ export const make = Effect.fn("Session.make")(function* () {
               Effect.provideService(FSUtil.Service, fs),
             ),
           )
-          if (input.resume !== false) yield* restore(prepareBuildWorktree(session, messageID))
+          if (input.resume !== false) yield* restore(prepareBuildWorktree(session, messageID, undefined, input.text))
           // Commit a staged revert only after preparation succeeds, before admitting new work.
           if (session.revert) yield* SessionRevert.commit(bus, session)
           return yield* admission.admit({

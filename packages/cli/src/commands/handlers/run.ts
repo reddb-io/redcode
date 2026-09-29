@@ -7,10 +7,13 @@ export default Runtime.handler(Commands.commands.run, (input) =>
   Effect.gen(function* () {
     const { runNonInteractive } = yield* Effect.promise(() => import("../../run/run"))
     const separator = process.argv.indexOf("--", 2)
+    // A standalone server inherits it. A background service it spawns must not, so the Session's environment carries it there.
+    if (input.tmp && input.standalone) process.env.REDCODE_WORKTREE_LOCATION = "tmp"
     const server = yield* ServerConnection.resolve({
       server: Option.getOrUndefined(input.server),
       standalone: input.standalone,
     })
+    if (input.tmp) process.env.REDCODE_WORKTREE_LOCATION = "tmp"
     yield* Effect.promise(() =>
       runNonInteractive({
         server,

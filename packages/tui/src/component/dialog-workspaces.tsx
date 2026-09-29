@@ -187,6 +187,8 @@ export function DialogWorkspaces(props: DialogWorkspacesProps) {
           </>
         ) : undefined,
         bg: deleting ? theme.background.action.destructive.base : undefined,
+        // A `--tmp` session worktree lives under `<tmpdir>/redcode-worktrees/`.
+        footer: item.root.directory.split(/[\\/]/).includes("redcode-worktrees") ? "tmp" : undefined,
         value: {
           type: "directory",
           directory: item.location,

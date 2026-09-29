@@ -1,13 +1,14 @@
 export * as WorktreePrepareTool from "./worktree-prepare.js"
 
-import os from "node:os"
 import path from "node:path"
 import { ToolFailure } from "@opencode/ai"
 import type { Context } from "@opencode/plugin/effect/plugin"
+import { TuiEvent } from "@opencode/schema/tui-event"
 import { AppProcess } from "@opencode/util/process"
 import { FSUtil } from "@opencode/util/fs-util"
 import { Effect, Schema } from "effect"
 import { ChildProcess } from "effect/unstable/process"
+import { Bus } from "../../bus.js"
 import { Config } from "../../config.js"
 import { KeyedMutex } from "../../effect/keyed-mutex.js"
 import { FileAccess } from "../../file-access.js"
@@ -18,13 +19,18 @@ import { AbsolutePath } from "../../schema.js"
 import { Session } from "../../session.js"
 import { SessionTaskFacts } from "../../session/task-facts.js"
 import { Worktree } from "../../worktree.js"
+import { WorktreePlacement } from "../../worktree/placement.js"
 import { SessionEvidence } from "../session-evidence.js"
 
 const preparing = KeyedMutex.makeUnsafe<Session.ID>()
 
+/** Agents that never author source keep their own placement. */
+const readers = ["plan", "design", "question", "explore", "title", "summary", "compaction"]
+
 export const Plugin = {
   id: "redcode.tool.worktree-prepare",
   effect: Effect.fn("WorktreePrepareTool.Plugin")(function* (ctx: Context) {
+    const bus = yield* Bus.Service
     const config = yield* Config.Service
     const fs = yield* FSUtil.Service
     const git = yield* Git.Service
@@ -56,10 +62,14 @@ export const Plugin = {
           name: "worktree_prepare",
           options: { codemode: false },
           description:
-            "Prepare or reuse a linked Git worktree for this writing Session, show source and worktree status, and move the Session there at the next safe boundary. Existing changes in the source checkout remain in place. A non-Git directory stays where it is. Repeat file mutations after the move; do not run destination-dependent tools in the same execute call.",
-          input: Schema.Struct({}),
+            "Prepare or reuse a linked Git worktree for this writing Session, show source and worktree status, and move the Session there at the next safe boundary. Existing changes in the source checkout remain in place. A non-Git directory or a repository without commits stays where it is. Repeat file mutations after the move; do not run destination-dependent tools in the same execute call.",
+          input: Schema.Struct({
+            name: Schema.optional(Schema.String).annotate({
+              description: "Short task description that names a new worktree and its branch (default: the Session title)",
+            }),
+          }),
           output: Schema.String,
-          execute: (_input, context) =>
+          execute: (input, context) =>
             Effect.gen(function* () {
               let root = yield* sessions.get(context.sessionID)
               while (root.parentID) {
@@ -68,7 +78,7 @@ export const Plugin = {
                 root = parent
               }
               return yield* preparing.withLock(root.id)(Effect.gen(function* () {
-                if (["plan", "design", "question", "explore", "title", "summary", "compaction"].includes(context.agent))
+                if (readers.includes(context.agent))
                   return yield* new ToolFailure({ message: "Worktree preparation is available to writing agents in Build" })
                 const session = yield* sessions.get(context.sessionID)
                 const repository = yield* git.repo.discover(AbsolutePath.make(session.location.directory))
@@ -82,9 +92,17 @@ export const Plugin = {
                   return { output, content: output, metadata: { directory: repository.worktree } }
                 }
                 const settings = Config.latest(yield* config.entries(), "worktree")
-                if (settings?.auto === false || process.env.REDCODE_AUTO_WORKTREE === "0") {
+                const environment = WorktreePlacement.environment(
+                  yield* sessions.environment({ sessionID: root.id }),
+                  process.env,
+                )
+                if (!WorktreePlacement.automatic(settings, environment)) {
                   const status = yield* run(repository.worktree, ["status", "--short", "--branch"])
                   const output = `Automatic worktrees are disabled. Session remains in ${session.location.directory}.\n${status}`
+                  return { output, content: output }
+                }
+                if (!(yield* git.history.head(repository))) {
+                  const output = `Repository ${repository.worktree} has no commits yet, so there is no HEAD to branch a worktree from. Session remains in ${session.location.directory}.`
                   return { output, content: output }
                 }
                 yield* permission.assert({
@@ -95,31 +113,30 @@ export const Plugin = {
                   agent: context.agent,
                   source: { type: "tool", messageID: context.messageID, id: context.id },
                 })
-                const branch = `redcode-${SessionEvidence.hash(root.id).slice(0, 12)}`
                 const parent = AbsolutePath.make(
-                  settings?.directory
-                    ? path.resolve(repository.worktree, settings.directory)
-                    : (process.env.REDCODE_WORKTREE_LOCATION ?? settings?.location) === "tmp"
-                      ? path.join(
-                          settings?.tmpdir || os.tmpdir(),
-                          "redcode-worktrees",
-                          `${path.basename(repository.worktree)}-${SessionEvidence.hash(repository.worktree).slice(0, 8)}`,
-                        )
-                      : path.join(repository.worktree, ".red", "worktrees"),
+                  WorktreePlacement.parent({ root: repository.worktree, settings, environment }),
                 )
-                // Include worktrees created outside this process before deciding that the branch is unused.
+                // Worktrees prepared before ownership markers used this branch name.
+                const legacy = `redcode-${SessionEvidence.hash(root.id).slice(0, 12)}`
+                // Include worktrees created outside this process before deciding which one the Session owns.
                 yield* worktrees.refresh({ projectID: session.projectID })
                 const listed = yield* worktrees.list({ projectID: session.projectID })
                 const existing = (yield* Effect.forEach(listed, (item) =>
                   git.repo.discover(item.directory).pipe(
                     Effect.flatMap((entry) =>
                       entry && entry.gitDirectory !== entry.commonDirectory
-                        ? git.history.branch(entry)
+                        ? Effect.all({
+                            owner: fs
+                              .readFileStringSafe(path.join(entry.gitDirectory, WorktreePlacement.OWNER))
+                              .pipe(Effect.orElseSucceed(() => undefined)),
+                            branch: git.history.branch(entry),
+                          })
                         : Effect.succeed(undefined),
                     ),
-                    Effect.map((name) => ({ item, name })),
+                    Effect.map((found) => ({ directory: item.directory, owner: found?.owner?.trim(), branch: found?.branch })),
                   ),
-                )).find((entry) => entry.name === branch)?.item
+                )).find((entry) => entry.owner === root.id || (entry.branch !== undefined && entry.branch === legacy))
+                // A nested worktree must stay out of the primary checkout's status; a temporary one is not inside it.
                 if (!existing && parent === path.join(repository.worktree, ".red", "worktrees")) {
                   const exclude = path.join(repository.commonDirectory, "info", "exclude")
                   const current = yield* Effect.promise(() => Bun.file(exclude).text().catch(() => ""))
@@ -129,32 +146,73 @@ export const Plugin = {
                       catch: (error) => new ToolFailure({ message: `Cannot exclude managed worktrees: ${String(error)}` }),
                     })
                 }
-                const directory = existing?.directory ?? (yield* worktrees.create({
-                  projectID: session.projectID,
-                  from: repository.worktree,
-                  name: branch,
-                  directory: parent,
-                })).directory
-                if (!existing) {
-                  const branchExists = (yield* run(repository.worktree, ["branch", "--list", branch])).trim().length > 0
-                  yield* run(directory, ["switch", ...(branchExists ? [] : ["-c"]), branch])
-                }
+                const prepared = existing
+                  ? { directory: existing.directory, branch: existing.branch ?? path.basename(existing.directory) }
+                  : yield* Effect.gen(function* () {
+                      const name = WorktreePlacement.slug(root.title || input.name || "")
+                      // Only this name and its numbered variants can collide, so the branch listing stays small.
+                      const [branches, entries] = yield* Effect.all([
+                        run(repository.worktree, [
+                          "for-each-ref",
+                          "--format=%(refname:short)",
+                          `refs/heads/${name}`,
+                          `refs/heads/${name}-*`,
+                        ]),
+                        fs.readDirectoryEntries(parent).pipe(Effect.orElseSucceed(() => [])),
+                      ])
+                      const created = yield* worktrees.create({
+                        projectID: session.projectID,
+                        from: repository.worktree,
+                        name: WorktreePlacement.nextName(
+                          name,
+                          new Set([...branches.split("\n").map((line) => line.trim()), ...entries.map((entry) => entry.name)]),
+                        ),
+                        directory: parent,
+                      })
+                      // The worktree directory and its branch share one name.
+                      const branch = path.basename(created.directory)
+                      yield* run(created.directory, ["switch", "-c", branch])
+                      const linked = yield* git.repo.discover(created.directory)
+                      if (!linked)
+                        return yield* new ToolFailure({ message: `Created worktree ${created.directory} could not be opened` })
+                      yield* fs.writeWithDirs(path.join(linked.gitDirectory, WorktreePlacement.OWNER), `${root.id}\n`)
+                      return { directory: created.directory, branch }
+                    })
                 const relativeDestination = AbsolutePath.make(
-                  path.join(directory, path.relative(repository.worktree, session.location.directory)),
+                  path.join(prepared.directory, path.relative(repository.worktree, session.location.directory)),
                 )
-                const destination = (yield* fs.isDir(relativeDestination)) ? relativeDestination : directory
+                const destination = (yield* fs.isDir(relativeDestination)) ? relativeDestination : prepared.directory
                 const pendingMove = (yield* sessions.inbox(context.sessionID)).find((item) => item.type === "move")
                 if (pendingMove?.type === "move" && pendingMove.payload.location.directory !== destination)
                   return yield* new ToolFailure({ message: "Another Session move is pending; finish it before preparing this worktree" })
-                if (destination !== session.location.directory && !pendingMove)
-                  yield* sessions.move({ sessionID: context.sessionID, directory: destination, delivery: "steer" })
+                const moving = destination !== session.location.directory && !pendingMove
+                if (moving) yield* sessions.move({ sessionID: context.sessionID, directory: destination, delivery: "steer" })
+                // One notice per worktree: its creation or the Session's move into it.
+                if (!existing || moving) {
+                  const inside = path.relative(repository.worktree, prepared.directory)
+                  const label =
+                    inside && !inside.startsWith("..") && !path.isAbsolute(inside)
+                      ? `worktree ${inside.replaceAll("\\", "/")}`
+                      : WorktreePlacement.temporary(prepared.directory)
+                        ? `temporary worktree ${prepared.directory}`
+                        : `worktree ${prepared.directory}`
+                  yield* bus.publish(
+                    TuiEvent.ToastShow,
+                    {
+                      message: `Working in ${label} (branch ${prepared.branch}). Uncommitted changes in the primary checkout stay there.`,
+                      variant: "info",
+                      duration: 6_000,
+                    },
+                    { location: session.location },
+                  )
+                }
                 const [sourceStatus, worktreeStatus] = yield* Effect.all([
                   run(repository.worktree, ["status", "--short", "--branch"]),
-                  run(directory, ["status", "--short", "--branch"]),
+                  run(prepared.directory, ["status", "--short", "--branch"]),
                 ])
                 const output = [
-                  `Worktree: ${directory}`,
-                  `Branch: ${branch}`,
+                  `Worktree: ${prepared.directory}`,
+                  `Branch: ${prepared.branch}`,
                   `Session destination: ${destination} (move at the next safe boundary)`,
                   `Source checkout: ${repository.worktree}`,
                   `Source status:\n${sourceStatus}`,
@@ -162,7 +220,7 @@ export const Plugin = {
                   "Uncommitted source changes remain in the source checkout; inspect them before copying anything into the worktree.",
                   ...(destination !== relativeDestination ? [`The source subdirectory ${session.location.directory} is absent from HEAD; the Session will open at the worktree root.`] : []),
                 ].join("\n")
-                return { output, content: output, metadata: { directory, branch } }
+                return { output, content: output, metadata: { directory: prepared.directory, branch: prepared.branch } }
               }))
             }).pipe(Effect.mapError((error) => new ToolFailure({ message: error instanceof Error ? error.message : String(error), error }))),
         }),
@@ -171,7 +229,7 @@ export const Plugin = {
 
     yield* ctx.tool.hook("execute.before", (event) =>
       Effect.gen(function* () {
-        if (["plan", "design", "question", "explore", "title", "summary", "compaction"].includes(event.agent)) return
+        if (readers.includes(event.agent)) return
         if (!["write", "edit", "patch", "shell"].includes(event.tool)) return
         if (event.tool === "shell" && SessionTaskFacts.readOnly(event.input)) return
         if (typeof event.input !== "object" || event.input === null) return
@@ -200,7 +258,11 @@ export const Plugin = {
           return
         }
         const settings = Config.latest(yield* config.entries(), "worktree")
-        if (settings?.auto === false || process.env.REDCODE_AUTO_WORKTREE === "0") return
+        const environment = WorktreePlacement.environment(
+          yield* sessions.environment({ sessionID: event.sessionID }),
+          process.env,
+        )
+        if (!WorktreePlacement.automatic(settings, environment)) return
         const relative = path.relative(repository.worktree, absolute)
         if (relative === ".." || relative.startsWith(`..${path.sep}`) || path.isAbsolute(relative)) return
         if (relative === ".git" || relative.startsWith(`.git${path.sep}`))
@@ -215,8 +277,8 @@ export const Plugin = {
           progress: () => Effect.void,
         })
         const directory = prepared.metadata?.directory
-        if (typeof directory !== "string" || directory === repository.worktree)
-          return yield* new ToolFailure({ message: "The session worktree was not prepared; the source checkout is unchanged" })
+        // No worktree applies here (automatic worktrees are off for the Session, or HEAD has no commit yet).
+        if (typeof directory !== "string" || directory === repository.worktree) return
         return yield* new ToolFailure({
           message: `Session is moving to ${directory}. Repeat ${event.tool} after the next safe boundary so it uses the worktree's Location, permissions, and filesystem; the source checkout is unchanged.`,
         })

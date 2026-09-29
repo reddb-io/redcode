@@ -36,11 +36,19 @@ const PermissionParams = {
   ),
 }
 
+const WorktreeParams = {
+  tmp: Flag.boolean("tmp").pipe(
+    Flag.withDescription("Put automatic session worktrees in the temporary directory instead of <repository>/.red/worktrees"),
+    Flag.withDefault(false),
+  ),
+}
+
 const Root = Spec.make(typeof OPENCODE_CLI_NAME === "string" ? OPENCODE_CLI_NAME : "opencode", {
   description: `${name} command line interface`,
   params: {
     ...ServerParams,
     ...PermissionParams,
+    ...WorktreeParams,
     directory: Argument.string("directory").pipe(
       Argument.withDescription(`Directory to start ${name} in`),
       Argument.optional,
@@ -653,6 +661,7 @@ const Root = Spec.make(typeof OPENCODE_CLI_NAME === "string" ? OPENCODE_CLI_NAME
         title: Flag.string("title").pipe(Flag.withDescription("Session title"), Flag.optional),
         thinking: Flag.boolean("thinking").pipe(Flag.withDescription("Show thinking blocks"), Flag.withDefault(false)),
         ...PermissionParams,
+        ...WorktreeParams,
       },
     }),
     Spec.make("github", {
@@ -837,6 +846,7 @@ const Root = Spec.make(typeof OPENCODE_CLI_NAME === "string" ? OPENCODE_CLI_NAME
         ),
         service: Flag.boolean("service").pipe(Flag.withDefault(false)),
         stdio: Flag.boolean("stdio").pipe(Flag.withDefault(false)),
+        ...WorktreeParams,
       },
     }),
     Spec.make("web", {

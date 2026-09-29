@@ -25,6 +25,7 @@ export default Runtime.handler(
               : "clean"
       const details = [
         state,
+        entry.temporary ? "tmp" : undefined,
         entry.current ? "current" : undefined,
         entry.locked ? "locked" : undefined,
         entry.registered ? undefined : "unregistered",

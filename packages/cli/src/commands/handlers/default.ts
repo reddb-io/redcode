@@ -48,6 +48,9 @@ export default Runtime.handler(Commands, (input) =>
         Effect.promise(() => preflight.fail("Redcode update could not start the new background service")),
       ),
     )
+    // Set once the server is resolved so a background service spawned here does not inherit it; each Session's
+    // environment carries it to the server instead (an explicit --server receives no Session environment).
+    if (input.tmp) process.env.REDCODE_WORKTREE_LOCATION = "tmp"
     const updater = yield* Updater.Service
     let installing: string | undefined
     const updateListeners = new Set<(version: string) => void>()

@@ -4,7 +4,7 @@ import { Effect, Option, Result } from "effect"
 import { Commands } from "../../commands"
 import { Runtime } from "../../../framework/runtime"
 import { prompt, requireInteractive } from "../../../ui/prompt"
-import { bytes, git, inventory } from "./inventory"
+import { bytes, git, inventory, removable } from "./inventory"
 import { project } from "./shared"
 
 export default Runtime.handler(
@@ -15,17 +15,7 @@ export default Runtime.handler(
     const result = yield* inventory()
     const merged = input.merged || stale === undefined
     const cutoff = stale === undefined ? undefined : Date.now() - stale * 86_400_000
-    const candidates = result.worktrees.filter((entry) =>
-      entry.registered &&
-      entry.strategy === "git" &&
-      !entry.primary &&
-      !entry.current &&
-      !entry.locked &&
-      !entry.prunable &&
-      entry.changes !== undefined &&
-      entry.changes.tracked + entry.changes.untracked === 0 &&
-      ((merged && entry.merged === true) || (cutoff !== undefined && entry.activity !== undefined && entry.activity < cutoff)),
-    )
+    const candidates = result.worktrees.filter((entry) => removable(entry, { merged, cutoff }))
     const prunable = result.worktrees.filter((entry) => entry.prunable)
     if (candidates.length === 0 && prunable.length === 0) {
       process.stdout.write(`Nothing to clean.${EOL}`)
