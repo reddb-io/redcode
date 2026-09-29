@@ -1,5 +1,29 @@
 # @reddb-io/redcode
 
+## 0.62.0
+
+### Minor Changes
+
+- Approve and reopen a design from the app's Design tab. A design whose review is open shows Approve, which asks for confirmation before approving its published revision as a whole and handing the session to Plan; an ended review shows Reopen review. A refused approval, such as a feedback round whose notes have no recorded outcome yet, shows the server's reason in an error toast, and the list refreshes after each action. The new strings ship in English and Brazilian Portuguese.
+
+  The browser review message and the approval handoff line are now written and read back from one shared definition, so the terminal and app transcript cards can no longer drift from what the Design agent receives.
+
+- Add a Monitors tab to the TUI composer drawer. It lists the session's monitors, running ones first, with their state (running, succeeded, timed out, failed, cancelled), what they watch (the polled command or the probe, such as `probe: GET https://…`), the time left before the deadline, the last result or matched condition on one line, and whether the result was delivered. Enter expands the full evidence and ctrl+d stops a running monitor; the external job keeps running. `/monitors` now opens the drawer on this tab instead of a separate dialog.
+
+  While a monitor runs, the prompt footer shows "N monitors", and a monitor that finishes while the tab is out of sight shows a short toast with its outcome. Sessions without monitors show neither. The list refreshes when a monitor starts or reports, when the session goes idle, and every two seconds only while the tab is open or a monitor is running. Add a storybook story for the tab.
+
+- OpenCode Zen and Amazon Bedrock are opt-in again. A fresh install no longer loads OpenCode Zen's free tier through the public key, so no free Zen model becomes the default and the first prompt no longer fails with a Zen free-tier error. OpenCode Zen loads with an API key (environment, saved or configured), a connected Console account, or a `providers.opencode` (V1: `provider.opencode`) entry in the configuration; a bare entry still opts into the free models. Amazon Bedrock no longer loads just because AWS credentials are present in the environment or `~/.aws`: connect it with a Bedrock API key (saved or `AWS_BEARER_TOKEN_BEDROCK`), or add a `providers.amazon-bedrock` entry or a configured `profile`. System One's "OpenCode Zen — Jev Free" transport is unchanged.
+
+  With no provider connected, sending a prompt in the TUI explains that none is connected and opens the connect dialog, and `redcode run` stops before creating a session with "No provider connected. Run `redcode` and use /connect, or set a provider key". When the default model is not configured, a model reached only through an anonymous free tier is chosen only if no connected provider offers one.
+
+### Patch Changes
+
+- Open the Design review in Chrome or Chromium again when one is installed, as the schema already promised: the TUI, `redcode design` and the app pick an installed Chrome, then Chromium, else the system browser, without starting anything to find them. `design.browser` (or `REDCODE_DESIGN_BROWSER`) now also accepts `chrome` and `chromium` to pick that family, and `app` to open the review as a Chromium app window (`--app=<url>`) without tabs or an address bar; `default` keeps the system browser, and an app name or executable path works as before. A picked browser that fails to start falls back to the system browser, and WSL keeps the Windows default browser.
+
+  The web and desktop app now claim the review launch through the server like the TUI, so a review already open in another tab or requested moments ago from any surface is reported instead of opened twice. The web app opens the tab on the click itself, so a popup blocker no longer swallows it; when the tab is blocked anyway, the toast carries the link with an Open review action. `redcode design <session>` claims its launch the same way and still prints the link first. Review links follow the address the client reached the server at, so a client on another device gets a link it can open, and a client that connected to a wildcard bind address gets loopback instead of `0.0.0.0`.
+
+- The background service answers its own routes again when it serves the web app. Legacy RPC (`POST /rpc`, used by `redcode-rpc-sidecar`) no longer fails with HTTP 405, and a Design review no longer opens blank: `/design/session/...` pages reach the server instead of receiving the web app's index page, whose `/_assets/*` scripts the Design app cannot serve.
+
 ## 0.61.1
 
 ### Patch Changes
