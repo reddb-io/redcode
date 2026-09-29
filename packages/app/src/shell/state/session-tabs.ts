@@ -1,6 +1,8 @@
 export const SESSION_OPEN_FILE_TAB = "open-file"
 export const SESSION_BROWSER_TAB = "browser"
 export const SESSION_BTW_TAB = "btw"
+/** The session's Design documents: their review state and the link to each browser review. */
+export const SESSION_DESIGN_TAB = "design"
 export const sessionBrowserTab = (tabID: string) => `${SESSION_BROWSER_TAB}:${tabID}`
 export const isSessionBrowserTab = (tab: string | undefined) =>
   !!tab && (tab === SESSION_BROWSER_TAB || tab.startsWith(`${SESSION_BROWSER_TAB}:`))

@@ -14,6 +14,7 @@ import { SettingsRow } from "@/settings/row"
 import { CONSOLE_GROUP_KEY, consoleModelGroup, ProviderModelSections } from "@/providers/models/provider-group"
 import { SettingsSearchEmpty } from "@/settings/search-empty"
 import { SettingsSearchField } from "@/settings/search-field"
+import { SettingsReasoningRoles } from "@/settings/models/reasoning"
 
 import "@/settings/settings.css"
 
@@ -141,6 +142,9 @@ export const SettingsModels: Component<{
       </div>
 
       <div class="settings-tab-body settings-models">
+        <Show when={!searching()}>
+          <SettingsReasoningRoles />
+        </Show>
         <Show
           when={!list.grouped.loading}
           fallback={

@@ -26,6 +26,7 @@ import { createSessionRevert } from "../revert"
 import { SessionComposerRegion } from "./session-composer-region"
 import { createSessionComposerController, type SessionComposerController } from "./controller"
 import { SessionQueuePanel } from "./queue-panel"
+import { SessionModelSuggestionCard } from "./model-suggestion"
 import { resolveSessionComposerSelection } from "./selection"
 import { createSessionRequestModel } from "../requests/model"
 
@@ -222,6 +223,10 @@ export function ActiveSessionComposerRegion(props: {
       controller={props.model.region}
       composer={
         <div class="relative">
+          <SessionModelSuggestionCard
+            sessionID={props.model.sessionID}
+            selection={props.model.composer.model.selection}
+          />
           <SessionQueuePanel queue={props.model.queue} />
           <div class="relative z-10">
             <Composer

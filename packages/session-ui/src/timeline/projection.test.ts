@@ -318,4 +318,27 @@ describe("createTimelineProjection", () => {
       "assistant-2",
     ])
   })
+
+  test("keeps an undescribed Design approval as a notice", () => {
+    const messages = [
+      { id: "user-1", type: "user", text: "design a login page", time: { created: 1 } },
+      {
+        id: "approval",
+        type: "synthetic",
+        text: "Design Login, revision rev_1, approved. Continue in Plan.",
+        metadata: { source: "design.approval", designID: "design_login", revision: "rev_1" },
+        time: { created: 2 },
+      },
+      { id: "silent", type: "synthetic", text: "internal continuation", time: { created: 3 } },
+    ] satisfies SessionMessageInfo[]
+
+    const result = createTimelineProjection({
+      sessionMessages: messages,
+      status: { type: "idle" },
+      reasoningMode: "full",
+    })
+    const notices = result.rows.flatMap((row) => (row._tag === "Notice" ? [row.messageID] : []))
+
+    expect(notices).toEqual(["approval"])
+  })
 })

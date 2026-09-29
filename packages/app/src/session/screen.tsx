@@ -36,6 +36,7 @@ import { createSessionBrowser } from "./browser/model"
 import { createTimelineCache } from "./timeline/cache"
 import { ArtifactMarkdownProvider, ArtifactOpenerProvider } from "./files/open-artifact"
 import { createSessionBtw } from "./btw/model"
+import { createSessionDesign } from "./design/model"
 
 const SessionMobileFiles = lazy(async () => {
   const { SessionMobileFiles } = await import("./files/session-mobile-files")
@@ -69,6 +70,7 @@ function SessionScreenContent(props: { session: SessionModel; browser: ReturnTyp
   })
   const isDesktop = session.isDesktop
   const btw = createSessionBtw(session)
+  const design = createSessionDesign(session)
   const screen = createSessionScreenLayout(session)
   const timeline = createSessionTimelineInteraction(session)
   const timelineSearch = createTimelineSearchController({
@@ -434,6 +436,7 @@ function SessionScreenContent(props: { session: SessionModel; browser: ReturnTyp
                         review={review}
                         browser={browser}
                         btw={btw}
+                        design={design}
                         present={store.sideReviewPresent}
                       />
                     </div>

@@ -766,5 +766,8 @@ function isNotice(message: SessionMessageInfo): message is Notice {
   if (message.type === "user" || message.type === "assistant" || message.type === "shell" || message.type === "idle")
     return false
   if (message.type !== "synthetic") return true
-  return !!message.description?.trim() || timelineNoticeRequired(message)
+  // A Design approval hands the session to Plan without a description; it still marks the turn.
+  return (
+    !!message.description?.trim() || message.metadata?.source === "design.approval" || timelineNoticeRequired(message)
+  )
 }

@@ -36,6 +36,8 @@ import { useCommand } from "@/shell/commands/command"
 import { SessionAncestorTrail, SessionProjectMenu, SessionTitleHeader } from "../session-identity-header"
 import { SessionHeaderSpacer } from "@/session/header/session-header"
 import type { BackgroundTask } from "../summary/background"
+import { DesignNotice } from "@opencode/schema/design-notice"
+import { DesignApprovalCard, DesignFeedbackCard } from "../design/cards"
 
 const SessionSummaryPanel = lazy(async () => {
   const { SessionSummaryPanel } = await import("../summary/panel")
@@ -127,6 +129,7 @@ function MessageTimelineView(
   },
 ) {
   const language = useLanguage()
+  const command = useCommand()
   const server = useServer()
   const data = server.ctx.data
   const sdk = useWorkspaceLocation()
@@ -287,6 +290,19 @@ function MessageTimelineView(
         comments: value?.comments ?? (parsed ? [parsed] : []),
         references: value?.attachments,
       }
+    },
+    // Design cards rebuild from the recorded messages with the same parsers the terminal uses.
+    userCard: (message) => {
+      if (message.metadata?.source !== "design.feedback") return undefined
+      const notice = DesignNotice.feedback(message.text)
+      return notice ? <DesignFeedbackCard notice={notice} /> : undefined
+    },
+    noticeCard: (message) => {
+      if (message.type !== "synthetic") return undefined
+      const notice = DesignNotice.approval(message)
+      return notice ? (
+        <DesignApprovalCard notice={notice} onOpen={() => command.trigger("session.design")} />
+      ) : undefined
     },
     actions: props.actions,
     reasoningMode: props.data.reasoningMode,

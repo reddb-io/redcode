@@ -3,6 +3,7 @@ import { createMemo, createRoot } from "solid-js"
 import { createStore } from "solid-js/store"
 import {
   SESSION_BTW_TAB,
+  SESSION_DESIGN_TAB,
   SESSION_BROWSER_TAB,
   sessionBrowserTab,
   SESSION_OPEN_FILE_TAB,
@@ -251,6 +252,24 @@ describe("createSessionTabs", () => {
       expect(result.activeTab()).toBe(SESSION_BTW_TAB)
       expect(result.activeFileTab()).toBeUndefined()
       expect(result.closableTab()).toBe(SESSION_BTW_TAB)
+      dispose()
+    })
+  })
+
+  test("exposes the Design tab without treating it as a file tab", () => {
+    createRoot((dispose) => {
+      const tabs = createMemo(() => ({ active: () => SESSION_DESIGN_TAB, all: () => [SESSION_DESIGN_TAB] }))
+      const result = createSessionTabs({
+        tabs,
+        pathFromTab: () => undefined,
+        normalizeTab: (tab) => tab,
+      })
+
+      expect(result.panelTabs()).toEqual([SESSION_DESIGN_TAB])
+      expect(result.openedTabs()).toEqual([])
+      expect(result.activeTab()).toBe(SESSION_DESIGN_TAB)
+      expect(result.activeFileTab()).toBeUndefined()
+      expect(result.closableTab()).toBe(SESSION_DESIGN_TAB)
       dispose()
     })
   })

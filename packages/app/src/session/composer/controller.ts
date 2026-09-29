@@ -44,6 +44,7 @@ export function createSessionComposerController(input: {
   createEffect(on(editable, () => composer.onDragLeave()))
 
   return {
+    sessionID: input.sessionID,
     region,
     queue,
     composer,

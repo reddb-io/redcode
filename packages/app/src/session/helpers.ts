@@ -2,11 +2,17 @@ import { batch, createMemo, onCleanup, onMount, type Accessor } from "solid-js"
 import { createStore } from "solid-js/store"
 import { makeEventListener } from "@solid-primitives/event-listener"
 import { same } from "@/runtime/persistence/equality"
-import { isSessionBrowserTab, SESSION_BTW_TAB, SESSION_OPEN_FILE_TAB } from "@/shell/state/session-tabs"
+import {
+  isSessionBrowserTab,
+  SESSION_BTW_TAB,
+  SESSION_DESIGN_TAB,
+  SESSION_OPEN_FILE_TAB,
+} from "@/shell/state/session-tabs"
 
 export {
   SESSION_BROWSER_TAB,
   SESSION_BTW_TAB,
+  SESSION_DESIGN_TAB,
   SESSION_OPEN_FILE_TAB,
   sessionBrowserTab,
   isSessionBrowserTab,
@@ -66,7 +72,11 @@ export const createSessionTabs = (input: TabsInput) => {
   const openedTabs = createMemo(
     () =>
       panelTabs().filter(
-        (tab) => tab !== SESSION_OPEN_FILE_TAB && tab !== SESSION_BTW_TAB && !isSessionBrowserTab(tab),
+        (tab) =>
+          tab !== SESSION_OPEN_FILE_TAB &&
+          tab !== SESSION_BTW_TAB &&
+          tab !== SESSION_DESIGN_TAB &&
+          !isSessionBrowserTab(tab),
       ),
     emptyTabs,
     { equals: same },
@@ -74,7 +84,7 @@ export const createSessionTabs = (input: TabsInput) => {
   const activeTab = createMemo(() => {
     const active = input.tabs().active()
     if (active === "context") return active
-    if (active === SESSION_BTW_TAB) return active
+    if (active === SESSION_BTW_TAB || active === SESSION_DESIGN_TAB) return active
     if (active === SESSION_OPEN_FILE_TAB && openFileOpen()) return active
     if (active && isSessionBrowserTab(active) && browser()) return active
     if (active === "review" && review()) return active
@@ -94,7 +104,7 @@ export const createSessionTabs = (input: TabsInput) => {
   const closableTab = createMemo<string | undefined>(() => {
     const active = activeTab()
     if (active === "context") return active
-    if (active === SESSION_BTW_TAB) return active
+    if (active === SESSION_BTW_TAB || active === SESSION_DESIGN_TAB) return active
     if (active === SESSION_OPEN_FILE_TAB && openFileOpen()) return active
     if (active && isSessionBrowserTab(active) && browser()) return active
     if (!openedTabs().includes(active)) return

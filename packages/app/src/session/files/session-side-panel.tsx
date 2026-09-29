@@ -38,6 +38,7 @@ import { createFileTabListSync } from "@/session/files/file-tab-scroll"
 import {
   SESSION_OPEN_FILE_TAB,
   SESSION_BTW_TAB,
+  SESSION_DESIGN_TAB,
   isSessionBrowserTab,
   sessionBrowserTab,
   createOpenSessionFileTab,
@@ -76,6 +77,7 @@ export function SessionSidePanel(props: {
   stacked?: boolean
   browser: ReturnType<typeof createSessionBrowser>
   btwPanel: () => JSX.Element
+  designPanel: () => JSX.Element
 }) {
   const layout = useLayout()
   const settings = useSettings()
@@ -395,6 +397,14 @@ export function SessionSidePanel(props: {
                                     </div>
                                   </SortableTab>
                                 </Match>
+                                <Match when={tab === SESSION_DESIGN_TAB}>
+                                  <SortableTab tab={tab} index={tabs().all().indexOf(tab)} onTabClose={tabs().close}>
+                                    <div class="flex items-center gap-1.5">
+                                      <Icon name="window-cursor" size="small" />
+                                      <span>{language.t("session.tab.design")}</span>
+                                    </div>
+                                  </SortableTab>
+                                </Match>
                                 <Match when={isSessionBrowserTab(tab)}>
                                   <Show when={props.browser.tabs().find((item) => sessionBrowserTab(item.id) === tab)}>
                                     {(item) => (
@@ -596,6 +606,12 @@ export function SessionSidePanel(props: {
                       <Show when={activeTab() === SESSION_BTW_TAB}>
                         <Tabs.Content value={SESSION_BTW_TAB} class="flex h-full min-h-0 flex-col overflow-hidden">
                           {props.btwPanel()}
+                        </Tabs.Content>
+                      </Show>
+
+                      <Show when={activeTab() === SESSION_DESIGN_TAB}>
+                        <Tabs.Content value={SESSION_DESIGN_TAB} class="flex h-full min-h-0 flex-col overflow-hidden">
+                          {props.designPanel()}
                         </Tabs.Content>
                       </Show>
 

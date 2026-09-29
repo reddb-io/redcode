@@ -49,6 +49,10 @@ export function createSessionTimelineRowRenderer(input: {
   status: Accessor<SessionStatus>
   projection: Projection
   presentation: (message: SessionMessageUser) => SessionUserPresentation | undefined
+  /** Replaces the user bubble for prompts a surface renders as a card, such as Design review feedback. */
+  userCard?: (message: SessionMessageUser) => JSX.Element | undefined
+  /** Replaces a standalone notice row with a surface's card, such as a Design approval. */
+  noticeCard?: (message: SessionMessageInfo) => JSX.Element | undefined
   actions?: SessionUserActions
   reasoningMode: Accessor<ReasoningMode>
   shellToolDefaultOpen: Accessor<boolean>
@@ -356,6 +360,21 @@ export function createSessionTimelineRowRenderer(input: {
         data: message.description,
       }
     }
+    if (source === "design.approval")
+      return {
+        label: i18n.t("ui.sessionTimeline.notice.designApproved"),
+        data:
+          [message.metadata?.designID, message.metadata?.revision]
+            .filter((item): item is string => typeof item === "string")
+            .join(" · ") || undefined,
+      }
+    // System One review notes are localized from their issue ids instead of the English description.
+    const review = responseReview(message.metadata)
+    if (review) {
+      const items = review.issues.map((id) => i18n.t(reviewReason(id)))
+      if (items.length) return { label: i18n.t(review.key), items }
+      return { label: i18n.t(review.key) }
+    }
     return { label: message.description ?? message.text }
   }
 
@@ -596,6 +615,15 @@ export function createSessionTimelineRowRenderer(input: {
           <Show when={message()}>
             {(message) => {
               const presentation = () => input.presentation(message())
+              const card = input.userCard?.(message())
+              if (card)
+                return (
+                  <div data-slot="session-turn-message-container" class={`w-full ${padding()}`}>
+                    <div data-slot="session-turn-message-card" aria-live="off">
+                      {card}
+                    </div>
+                  </div>
+                )
               return (
                 <div data-slot="session-turn-message-container" class={`w-full ${padding()}`}>
                   <div data-slot="session-turn-message-content" aria-live="off">
@@ -635,9 +663,15 @@ export function createSessionTimelineRowRenderer(input: {
         if (value._tag !== "Notice") throw new Error("Expected a notice timeline row")
         return value
       }
+      const message = input.projection.messageByID().get(current().messageID)
+      const card = message ? input.noticeCard?.(message) : undefined
       return (
         <Frame row={current()}>
-          <Notice messageID={current().messageID} />
+          <Show when={card} fallback={<Notice messageID={current().messageID} />}>
+            <div data-slot="session-turn-message-container" class={`w-full pt-3 ${padding()}`}>
+              {card}
+            </div>
+          </Show>
         </Frame>
       )
     }
@@ -765,4 +799,48 @@ export function createSessionTimelineRowRenderer(input: {
 
 function capitalizeAgent(agent: string) {
   return agent.slice(0, 1).toUpperCase() + agent.slice(1)
+}
+
+const reviewReasons = {
+  omission: "ui.sessionTimeline.review.reason.omission",
+  unsupported: "ui.sessionTimeline.review.reason.unsupported",
+  tool_evidence: "ui.sessionTimeline.review.reason.toolEvidence",
+  premature: "ui.sessionTimeline.review.reason.premature",
+  writing: "ui.sessionTimeline.review.reason.writing",
+  refusal: "ui.sessionTimeline.review.reason.refusal",
+} as const
+
+function reviewReason(id: string) {
+  return id in reviewReasons
+    ? reviewReasons[id as keyof typeof reviewReasons]
+    : ("ui.sessionTimeline.review.reason.other" as const)
+}
+
+/**
+ * The System One final-response review a synthetic note records: `responseRepair` while the answer
+ * is being revised, `responseReview` once the review ended (revised, unresolved or unverified).
+ */
+function responseReview(metadata: Record<string, unknown> | undefined) {
+  const repair = metadata?.responseRepair
+  const outcome = metadata?.responseReview
+  const value = record(repair) ? repair : record(outcome) ? outcome : undefined
+  if (!value) return undefined
+  const issues = Array.isArray(value.issues)
+    ? value.issues.filter((item): item is string => typeof item === "string")
+    : []
+  if (value === repair) return { key: "ui.sessionTimeline.notice.responseRevising" as const, issues }
+  if (value.status === "revised") return { key: "ui.sessionTimeline.notice.responseRevised" as const, issues }
+  if (value.status === "unresolved")
+    return {
+      key:
+        value.revised === true
+          ? ("ui.sessionTimeline.notice.responseUnresolvedAfterRevision" as const)
+          : ("ui.sessionTimeline.notice.responseUnresolved" as const),
+      issues,
+    }
+  return { key: "ui.sessionTimeline.notice.responseUnverified" as const, issues }
+}
+
+function record(value: unknown): value is Record<string, unknown> {
+  return !!value && typeof value === "object" && !Array.isArray(value)
 }
