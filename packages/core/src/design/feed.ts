@@ -1,11 +1,11 @@
 export * as DesignFeed from "./feed.js"
 
 import { Design } from "@opencode/schema/design"
+import { DesignNotice } from "@opencode/schema/design-notice"
 import type { SessionEvent } from "@opencode/schema/session-event"
 import { Option, Schema, Stream } from "effect"
 import { Session } from "../session.js"
 import { SessionSchema } from "../session/schema.js"
-import { DesignFeedback } from "./feedback.js"
 
 export const LIMITS = { text: 12000, summary: 240 } as const
 
@@ -35,7 +35,7 @@ export function bound(text: string, limit: number) {
 }
 
 export function describe(text: string) {
-  const notice = DesignFeedback.summarize(text)
+  const notice = DesignNotice.feedback(text)
   if (!notice) return { text: bound(text, LIMITS.text), notes: 0 }
   return {
     text: bound(notice.text.trim() || (notice.operation ? `Variant operation: ${notice.operation}` : ""), LIMITS.text),

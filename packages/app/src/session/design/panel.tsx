@@ -2,12 +2,16 @@ import { createResource, For, Match, Show, Switch } from "solid-js"
 import { createStore } from "solid-js/store"
 import type { DesignInfo } from "@opencode/client/promise"
 import { Button } from "@opencode/ui/button"
+import { useDialog } from "@opencode/ui/context/dialog"
+import { Dialog, DialogFooter, DialogHeader, DialogTitleGroup } from "@opencode/ui/dialog"
 import { Icon } from "@opencode/ui/icon"
 import { IconButton } from "@opencode/ui/icon-button"
 import { ScrollView } from "@opencode/ui/scroll-view"
 import { Tooltip } from "@opencode/ui/tooltip"
 import { useLanguage } from "@/runtime/i18n/language"
 import { useServerSDK } from "@/runtime/server/client"
+import { formatServerError } from "@/runtime/server/errors"
+import { showToast } from "@/shell/notifications/toast"
 import type { SessionDesignModel } from "./model"
 import { designStatus } from "./state"
 
@@ -15,7 +19,9 @@ import { designStatus } from "./state"
 export function SessionDesignPanel(props: { design: SessionDesignModel }) {
   const language = useLanguage()
   const server = useServerSDK()
-  const [store, setStore] = createStore({ opening: false })
+  const dialog = useDialog()
+  // The design whose approval or reopening is in flight; one action at a time, like the review page.
+  const [store, setStore] = createStore({ opening: false, pending: "" })
   const [designs, { refetch }] = createResource(
     () => {
       const sessionID = props.design.sessionID()
@@ -30,6 +36,68 @@ export function SessionDesignPanel(props: { design: SessionDesignModel }) {
     if (!sessionID || store.opening) return
     setStore("opening", true)
     void props.design.openReview(sessionID).finally(() => setStore("opening", false))
+  }
+  // Approval freezes the current revision and hands the session to Plan; reopening lets the review take notes again.
+  const act = (design: DesignInfo, action: "approve" | "reopen") => {
+    const sessionID = props.design.sessionID()
+    if (!sessionID || store.pending) return
+    setStore("pending", design.id)
+    // Annotated so the two branches' different results share one continuation.
+    const request: Promise<unknown> =
+      action === "approve"
+        ? server.api.session.design
+            .approve({ sessionID, designID: design.id, revision: design.revision ?? "" })
+            .then((result) =>
+              showToast({
+                variant: "success",
+                title: language.t(
+                  result.agent === "plan" ? "session.design.approve.done.plan" : "session.design.approve.done",
+                ),
+              }),
+            )
+        : server.api.session.design.reopen({ sessionID, designID: design.id })
+    void request
+      .catch((error) =>
+        showToast({
+          variant: "error",
+          title: language.t(action === "approve" ? "session.design.approve.failed" : "session.design.reopen.failed"),
+          description: formatServerError(error, language.t, language.t("common.requestFailed")),
+        }),
+      )
+      .finally(() => {
+        setStore("pending", "")
+        void refetch()
+      })
+  }
+
+  function ApproveDialog(dialogProps: { design: DesignInfo }) {
+    return (
+      <Dialog fit>
+        <DialogHeader hideClose>
+          <DialogTitleGroup
+            title={language.t("session.design.approve.title")}
+            description={language.t("session.design.approve.confirm", {
+              name: dialogProps.design.name,
+              revision: dialogProps.design.revision ?? "",
+            })}
+          />
+        </DialogHeader>
+        <DialogFooter>
+          <Button variant="ghost" onClick={() => dialog.close()}>
+            {language.t("common.cancel")}
+          </Button>
+          <Button
+            variant="submit"
+            onClick={() => {
+              dialog.close()
+              act(dialogProps.design, "approve")
+            }}
+          >
+            {language.t("session.design.approve")}
+          </Button>
+        </DialogFooter>
+      </Dialog>
+    )
   }
 
   return (
@@ -77,7 +145,17 @@ export function SessionDesignPanel(props: { design: SessionDesignModel }) {
             {(items) => (
               <ScrollView class="absolute inset-0">
                 <ul class="flex flex-col pb-8">
-                  <For each={items()}>{(design) => <SessionDesignRow design={design} />}</For>
+                  <For each={items()}>
+                    {(design) => (
+                      <SessionDesignRow
+                        design={design}
+                        pending={store.pending === design.id}
+                        busy={store.pending !== ""}
+                        onApprove={() => dialog.show(() => <ApproveDialog design={design} />)}
+                        onReopen={() => act(design, "reopen")}
+                      />
+                    )}
+                  </For>
                 </ul>
               </ScrollView>
             )}
@@ -95,7 +173,13 @@ const statusLabels = {
   closed: "session.design.status.closed",
 } as const
 
-function SessionDesignRow(props: { design: DesignInfo }) {
+function SessionDesignRow(props: {
+  design: DesignInfo
+  pending: boolean
+  busy: boolean
+  onApprove: () => void
+  onReopen: () => void
+}) {
   const language = useLanguage()
   const status = () => designStatus(props.design)
   const target = () => {
@@ -147,6 +231,21 @@ function SessionDesignRow(props: { design: DesignInfo }) {
             {language.t("session.design.system", { name: name() })}
           </div>
         )}
+      </Show>
+      {/* The review page's actions: approve the published revision while the review is open, reopen it once ended. */}
+      <Show when={props.design.ended || props.design.revision}>
+        <div class="flex min-w-0 items-center gap-2 pt-1" aria-busy={props.pending}>
+          <Show when={!props.design.ended && props.design.revision}>
+            <Button size="small" variant="outline" disabled={props.busy} onClick={props.onApprove}>
+              {language.t("session.design.approve")}
+            </Button>
+          </Show>
+          <Show when={props.design.ended}>
+            <Button size="small" variant="ghost" disabled={props.busy} onClick={props.onReopen}>
+              {language.t("session.design.reopen")}
+            </Button>
+          </Show>
+        </div>
       </Show>
     </li>
   )

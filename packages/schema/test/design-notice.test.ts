@@ -84,6 +84,16 @@ describe("DesignNotice.approval", () => {
     ).toEqual({ id: checkout, name: "Checkout, mobile", revision: "rev_4", variant: null })
   })
 
+  test("reads back the line the handoff writes", () => {
+    for (const variant of [null, { id: "stone", name: "Stone, warm" }])
+      expect(
+        DesignNotice.approval({
+          text: `${DesignNotice.approvalLine({ name: "Checkout, mobile", revision: "rev_4", variant })}\n\nDesign plan: /tmp/plan.md`,
+          metadata,
+        }),
+      ).toEqual({ id: checkout, name: "Checkout, mobile", revision: "rev_4", variant })
+  })
+
   test("ignores other synthetic messages and malformed handoffs", () => {
     expect(
       DesignNotice.approval({ text: "Design Checkout, revision rev_4, approved. Continue in Plan." }),

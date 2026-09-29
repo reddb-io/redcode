@@ -2,6 +2,7 @@ export * as DesignHandoff from "./handoff.js"
 
 import { createHash } from "node:crypto"
 import { Design } from "@opencode/schema/design"
+import { DesignNotice } from "@opencode/schema/design-notice"
 import { Agent } from "../agent.js"
 import { Effect } from "effect"
 import { Session } from "../session.js"
@@ -44,7 +45,12 @@ export const approve = Effect.fn("DesignHandoff.approve")(function* (
         sessionID,
         id: messageID,
         text: [
-          `Design ${record.revision.document.name}, revision ${input.revision}${record.variant ? `, variant ${record.variant.name} (${record.variant.id})` : ""}, approved. Continue in Plan.`,
+          // Clients rebuild the approval card from this line, so it comes from the shared envelope.
+          DesignNotice.approvalLine({
+            name: record.revision.document.name,
+            revision: input.revision,
+            variant: record.variant,
+          }),
           `Design plan: ${approved.plan}`,
           DesignApproval.guidance(DesignApproval.summary(record)),
         ].join("\n\n"),
