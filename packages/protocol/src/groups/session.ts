@@ -509,6 +509,23 @@ export const makeSessionGroup = <I extends HttpApiMiddleware.AnyId, S, FormI ext
         ),
     )
     .add(
+      HttpApiEndpoint.post("session.goal.command", "/api/experimental/session/:sessionID/goal/command", {
+        params: { sessionID: Session.ID },
+        payload: SessionGoal.CommandInput,
+        success: Schema.Struct({ data: SessionGoal.CommandReading }),
+        error: [SessionNotFoundError, InvalidRequestError],
+      })
+        .middleware(sessionLocationMiddleware)
+        .annotateMerge(
+          OpenApi.annotations({
+            identifier: "experimental.session.goal.command",
+            summary: "Read a /goal command",
+            description:
+              "Read what the user typed after /goal without acting on it. An explicit subcommand (set, pause, resume, drop, budget, status) resolves directly. Other text is read by System One in dual reasoning; a reading that would drop or replace an unfinished goal below 0.85 confidence, or any other reading below 0.7, returns options to ask the user instead of an action. Without a reading the text is a new goal only when no goal is unfinished.",
+          }),
+        ),
+    )
+    .add(
       HttpApiEndpoint.get("session.budget.get", "/api/session/:sessionID/budget", {
         params: { sessionID: Session.ID },
         success: Schema.Struct({ data: SessionBudget.View }),

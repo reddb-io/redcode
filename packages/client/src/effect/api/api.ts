@@ -675,6 +675,16 @@ export type SessionGoalControlOperation<E = never> = (
   input: SessionGoalControlInput,
 ) => Effect.Effect<SessionGoalControlOutput, E>
 
+export type SessionGoalCommandInput = { readonly sessionID: Session.ID; readonly text: string }
+export type SessionGoalCommandOutput = {
+  readonly action?: ("set" | "pause" | "resume" | "drop" | "budget" | "status") | undefined
+  readonly options: ReadonlyArray<"set" | "pause" | "resume" | "drop" | "budget" | "status">
+  readonly confidence?: number | undefined
+}
+export type SessionGoalCommandOperation<E = never> = (
+  input: SessionGoalCommandInput,
+) => Effect.Effect<SessionGoalCommandOutput, E>
+
 export type SessionBudgetGetInput = { readonly sessionID: Session.ID }
 export type SessionBudgetGetOutput = {
   readonly limits: { readonly maxCostUsd?: number | undefined; readonly maxTokens?: number | undefined }
@@ -3598,6 +3608,7 @@ export interface SessionApi<E = never> {
     readonly get: SessionGoalGetOperation<E>
     readonly start: SessionGoalStartOperation<E>
     readonly control: SessionGoalControlOperation<E>
+    readonly command: SessionGoalCommandOperation<E>
   }
   readonly budget: { readonly get: SessionBudgetGetOperation<E>; readonly update: SessionBudgetUpdateOperation<E> }
   readonly remove: SessionRemoveOperation<E>

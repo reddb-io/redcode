@@ -61,7 +61,7 @@ export function parseCost(raw: string): Parsed<number> {
   const text = raw
     .trim()
     .replace(/^\$\s*/, "")
-    .replace(/\s*usd$/i, "")
+    .replace(/\s*(?:usd|\$)$/i, "")
   if (!text) return fail("a cost needs an amount, such as $2.50")
   return parseNumber(text)
 }
@@ -97,7 +97,7 @@ export function parse(raw: string): Parsed<Change> {
   for (let index = 0; index < words.length; index++) {
     const word = words[index]!
     const next = words[index + 1]
-    if (word.startsWith("$") || word.endsWith("usd")) {
+    if (word.startsWith("$") || word.endsWith("$") || word.endsWith("usd")) {
       const cost = parseCost(word)
       if (!cost.ok) return cost
       result.maxCostUsd = cost.value

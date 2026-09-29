@@ -62,4 +62,22 @@ export const Control = Schema.Struct({
 }).annotate({ identifier: "SessionGoal.Control" })
 export type Control = typeof Control.Type
 
+/** What one `/goal` command can ask for; `set` starts a goal and `status` shows the current one. */
+export const COMMAND_ACTIONS = ["set", "pause", "resume", "drop", "budget", "status"] as const
+export const CommandAction = Schema.Literals(COMMAND_ACTIONS).annotate({ identifier: "SessionGoal.CommandAction" })
+export type CommandAction = typeof CommandAction.Type
+
+export interface CommandInput extends Schema.Schema.Type<typeof CommandInput> {}
+export const CommandInput = Schema.Struct({
+  text: Schema.String.check(Schema.isMaxLength(16_000)),
+}).annotate({ identifier: "SessionGoal.CommandInput" })
+
+/** How the text after `/goal` was read: an action to take, or the interpretations to ask the user about. */
+export interface CommandReading extends Schema.Schema.Type<typeof CommandReading> {}
+export const CommandReading = Schema.Struct({
+  action: CommandAction.pipe(optional),
+  options: Schema.Array(CommandAction),
+  confidence: Schema.Finite.check(Schema.isBetween({ minimum: 0, maximum: 1 })).pipe(optional),
+}).annotate({ identifier: "SessionGoal.CommandReading" })
+
 export class Error extends Schema.TaggedError<Error>()("SessionGoal.Error", { message: Schema.String }) {}

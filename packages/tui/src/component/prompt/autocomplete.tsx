@@ -46,6 +46,8 @@ export type AutocompleteOption = {
   destructive?: { id: string; confirm: string; run: () => void }
   kind?: "skill" | "agent" | "reference"
   queueable?: boolean
+  /** Listed only when the query names it exactly. */
+  hidden?: boolean
 }
 
 type AutocompleteResults = {
@@ -478,6 +480,7 @@ export function Autocomplete(props: {
       return [slash.name, ...(slash.aliases ?? [])].map((name) => ({
         display: `/${name}`,
         description: command.description ?? command.title,
+        hidden: slash.hidden === true,
         onSelect: slash.arguments ? () => insertSlash(name) : command.run,
       }))
     })
@@ -542,7 +545,7 @@ export function Autocomplete(props: {
       store.visible === "reference"
         ? [...skillOptions(), ...referenceAliasesValue, ...agentsValue]
         : store.index === 0
-          ? [...commandsValue]
+          ? commandsValue.filter((item) => !item.hidden || item.display.trimEnd() === `/${searchValue}`)
           : []
 
     if (!searchValue) {

@@ -221,6 +221,8 @@ export type SessionBudgetLimits = { maxCostUsd?: number; maxTokens?: number }
 
 export type SessionBudgetTotals = { cost: number; tokens: number; unpriced: number }
 
+export type SessionGoalCommandAction = "set" | "pause" | "resume" | "drop" | "budget" | "status"
+
 export type DesignFeedEvent =
   | { seq: number; at: number; type: "state"; state: "working" | "idle" }
   | { seq: number; at: number; type: "user"; id: string; text: string; notes: number; pending?: boolean }
@@ -978,6 +980,12 @@ export type SessionGoalInfo = {
   spendStart?: SessionBudgetTotals
   created: number
   updated: number
+}
+
+export type SessionGoalCommandReading = {
+  action?: SessionGoalCommandAction
+  options: Array<SessionGoalCommandAction>
+  confidence?: number
 }
 
 export type SessionBudgetView = {
@@ -4982,6 +4990,13 @@ export type SessionGoalControlInput = {
 }
 
 export type SessionGoalControlOutput = { data: SessionGoalInfo | null }["data"]
+
+export type SessionGoalCommandInput = {
+  readonly sessionID: { readonly sessionID: string }["sessionID"]
+  readonly text: { readonly text: string }["text"]
+}
+
+export type SessionGoalCommandOutput = { data: SessionGoalCommandReading }["data"]
 
 export type SessionBudgetGetInput = { readonly sessionID: { readonly sessionID: string }["sessionID"] }
 

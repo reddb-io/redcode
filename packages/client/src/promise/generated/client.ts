@@ -52,6 +52,8 @@ import type {
   SessionGoalStartOutput,
   SessionGoalControlInput,
   SessionGoalControlOutput,
+  SessionGoalCommandInput,
+  SessionGoalCommandOutput,
   SessionBudgetGetInput,
   SessionBudgetGetOutput,
   SessionBudgetUpdateInput,
@@ -1072,6 +1074,18 @@ export function make(options: ClientOptions) {
                 maxCostUsd: input["maxCostUsd"],
                 maxTokens: input["maxTokens"],
               },
+              successStatus: 200,
+              declaredStatuses: [400, 401, 404],
+              empty: false,
+            },
+            requestOptions,
+          ).then((value) => value.data),
+        command: (input: SessionGoalCommandInput, requestOptions?: RequestOptions) =>
+          request<{ readonly data: SessionGoalCommandOutput }>(
+            {
+              method: "POST",
+              path: `/api/experimental/session/${encodeURIComponent(input.sessionID)}/goal/command`,
+              body: { text: input["text"] },
               successStatus: 200,
               declaredStatuses: [400, 401, 404],
               empty: false,

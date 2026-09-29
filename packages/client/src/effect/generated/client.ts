@@ -58,6 +58,8 @@ import type {
   SessionGoalStartOutput,
   SessionGoalControlInput,
   SessionGoalControlOutput,
+  SessionGoalCommandInput,
+  SessionGoalCommandOutput,
   SessionBudgetGetInput,
   SessionBudgetGetOutput,
   SessionBudgetUpdateInput,
@@ -668,6 +670,14 @@ const EndpointSessionGoalControl = (raw: RawClient["server.session"]) => (input:
     ),
   )
 
+const EndpointSessionGoalCommand = (raw: RawClient["server.session"]) => (input: SessionGoalCommandInput) =>
+  preserveEffect<SessionGoalCommandOutput>()(
+    raw["session.goal.command"]({ params: { sessionID: input["sessionID"] }, payload: { text: input["text"] } }).pipe(
+      Effect.mapError(mapClientError),
+      Effect.map((value) => value.data),
+    ),
+  )
+
 const EndpointSessionBudgetGet = (raw: RawClient["server.session"]) => (input: SessionBudgetGetInput) =>
   preserveEffect<SessionBudgetGetOutput>()(
     raw["session.budget.get"]({ params: { sessionID: input["sessionID"] } }).pipe(
@@ -1182,6 +1192,7 @@ const adaptGroupSession = (raw: RawClient["server.session"]) => ({
     get: EndpointSessionGoalGet(raw),
     start: EndpointSessionGoalStart(raw),
     control: EndpointSessionGoalControl(raw),
+    command: EndpointSessionGoalCommand(raw),
   },
   budget: { get: EndpointSessionBudgetGet(raw), update: EndpointSessionBudgetUpdate(raw) },
   remove: EndpointSessionRemove(raw),

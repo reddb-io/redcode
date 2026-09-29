@@ -4,6 +4,8 @@ import { Monitor } from "@opencode/schema/monitor"
 import { SessionTodoStore } from "@opencode/core/session/todo-store"
 import { SessionGoal } from "@opencode/core/session/goal"
 import { SessionBudget } from "@opencode/core/session/budget"
+import { Intelligence } from "@opencode/core/intelligence"
+import { IntelligenceGoalCommand } from "@opencode/core/intelligence/goal-command"
 import { DesignStore } from "@opencode/core/design/store"
 import { DesignConversations } from "@opencode/core/design/conversations"
 import { DesignFeed } from "@opencode/core/design/feed"
@@ -49,6 +51,7 @@ export const SessionHandler = HttpApiBuilder.group(Api, "server.session", (handl
     const session = yield* Session.Service
     const goals = yield* SessionGoal.Service
     const budgets = yield* SessionBudget.Service
+    const intelligence = yield* Intelligence.Service
     const transfer = yield* SessionTransfer.Service
     const sharing = yield* SessionShare.Service
     const requireOwnedForm = Effect.fnUntraced(function* (sessionID: Form.Info["sessionID"], formID: Form.ID) {
@@ -366,6 +369,27 @@ export const SessionHandler = HttpApiBuilder.group(Api, "server.session", (handl
               )
           return {
             data: goal,
+          }
+        }),
+      )
+      .handle(
+        "session.goal.command",
+        Effect.fn(function* (ctx) {
+          const goal = yield* goals
+            .get(ctx.params.sessionID)
+            .pipe(Effect.mapError((error) => new InvalidRequestError({ message: error.message })))
+          return {
+            data: yield* IntelligenceGoalCommand.resolve({
+              text: ctx.payload.text,
+              status: goal?.status,
+              classify: intelligence.evaluate(
+                IntelligenceGoalCommand.evaluation({
+                  sessionID: ctx.params.sessionID,
+                  text: ctx.payload.text,
+                  goal: goal ?? undefined,
+                }),
+              ),
+            }),
           }
         }),
       )
