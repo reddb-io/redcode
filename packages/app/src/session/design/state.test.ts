@@ -12,6 +12,7 @@ const assistant = (id: string, tools: { id: string; name: string; done: boolean 
       id: tool.id,
       type: "tool",
       name: tool.name,
+      time: { created: 1 },
       state: tool.done
         ? { status: "completed", input: {}, content: [{ type: "text", text: "ok" }] }
         : { status: "running", input: {}, metadata: {} },
