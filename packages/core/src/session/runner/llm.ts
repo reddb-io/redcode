@@ -371,13 +371,16 @@ const layer = Layer.effect(
           !(yield* SessionInbox.has(db, sessionID, "input")) &&
           !(yield* monitors.list(sessionID)).some(Monitor.parks)
         ) {
+          const started = yield* startReview(next.context, review)
           const pursued = yield* pursueGoal(next.context, goalLoop).pipe(
             // A goal changed by the user while it was judged is theirs to resume.
             Effect.catchTag("SessionGoal.Error", () => Effect.succeed({ memory: goalLoop, continued: false })),
+            Effect.onError(() => (started ? Fiber.interrupt(started) : Effect.void)),
           )
           goalLoop = pursued.memory
+          if (pursued.continued && started) yield* Fiber.interrupt(started)
           if (!pursued.continued) {
-            const reviewed = yield* reviewResponse(next.context, review)
+            const reviewed = yield* reviewResponse(next.context, review, started)
             review = reviewed.memory
             continuing = reviewed.repair
           }
@@ -735,46 +738,55 @@ const layer = Layer.effect(
      * established issue earns one repair pass; what remains is kept with a durable note, and an
      * unavailable review is signalled instead of approving the response.
      */
-    const reviewResponse = Effect.fn("SessionRunner.reviewResponse")(function* (
+    /**
+     * What a review of the final response would look at, without acting on it: nothing to review, a repaired response
+     * that changed nothing material, or the response to evaluate. Shared by the review and by its early start.
+     */
+    const planReview = Effect.fn("SessionRunner.planReview")(function* (
       loaded: SessionContext.Loaded,
       memory: ResponseReview,
     ) {
       const sessionID = loaded.session.id
-      if (loaded.session.parentID || !(yield* dual)) return { memory, repair: false }
+      if (loaded.session.parentID || !(yield* dual)) return { type: "none" as const, memory }
       const recent = (yield* store.messages({ sessionID, order: "desc", limit: RECENT })).toReversed()
       const index = recent.findLastIndex((message) => message.type === "user")
       const user = recent[index]
-      if (user?.type !== "user") return { memory, repair: false }
+      if (user?.type !== "user") return { type: "none" as const, memory }
       const current: ResponseReview = memory.userID === user.id ? memory : { userID: user.id, attempts: 0, issues: [] }
       const work = recent.slice(index + 1)
       const candidate = work.findLast((message) => message.type === "assistant")
       const text = candidate?.type === "assistant" ? responseText(candidate) : ""
-      if (!candidate || !text) return { memory: current, repair: false }
-      const settled = { ...current, text: undefined }
-      const revised = current.attempts > 0
+      if (!candidate || !text) return { type: "none" as const, memory: current }
       // A revision that changes nothing material settles nothing: the repaired issues stand.
-      if (current.text !== undefined && IntelligenceResponse.same(current.text, text)) {
-        yield* noteReview(sessionID, {
-          status: "unresolved",
-          issues: current.issues,
-          confidence: {},
-          revised,
-        })
-        return { memory: settled, repair: false }
-      }
+      if (current.text !== undefined && IntelligenceResponse.same(current.text, text))
+        return { type: "unchanged" as const, current }
+      return { type: "review" as const, current, user, work, candidate, text }
+    })
+
+    const evaluateReview = Effect.fn("SessionRunner.evaluateReview")(function* (
+      loaded: SessionContext.Loaded,
+      plan: {
+        readonly current: ResponseReview
+        readonly user: Extract<SessionMessage.Info, { type: "user" }>
+        readonly work: ReadonlyArray<SessionMessage.Info>
+        readonly candidate: SessionMessage.Info
+        readonly text: string
+      },
+    ) {
+      const sessionID = loaded.session.id
       const goal = yield* goals.get(sessionID)
       const classification = (yield* intelligence
-        .history(sessionID, { operation: "prompt_classification", subjectID: user.id, limit: 1 })
+        .history(sessionID, { operation: "prompt_classification", subjectID: plan.user.id, limit: 1 })
         .pipe(Effect.orElseSucceed(() => [])))[0]
-      const evaluation = yield* intelligence
+      return yield* intelligence
         .evaluate(
           IntelligenceResponse.evaluation({
             sessionID,
-            request: { id: user.id, text: user.text },
-            candidate: { id: candidate.id, text },
-            attempt: current.attempts,
+            request: { id: plan.user.id, text: plan.user.text },
+            candidate: { id: plan.candidate.id, text: plan.text },
+            attempt: plan.current.attempts,
             tools: SessionStopLoss.digest(
-              work.flatMap((message) => (message.type === "assistant" ? SessionStopLoss.parts(message) : [])),
+              plan.work.flatMap((message) => (message.type === "assistant" ? SessionStopLoss.parts(message) : [])),
               { directory: loaded.session.location.directory },
             ),
             tasks: (yield* todos.get(sessionID)).map((task) => ({
@@ -787,6 +799,47 @@ const layer = Layer.effect(
           }),
         )
         .pipe(Effect.orElseSucceed(() => undefined))
+    })
+
+    /**
+     * Starts the response review while an active goal is still being judged, so the two System One requests run
+     * side by side instead of one after the other. Joined by `reviewResponse` when the goal does not continue, and
+     * interrupted when it does.
+     */
+    const startReview = Effect.fn("SessionRunner.startReview")(function* (
+      loaded: SessionContext.Loaded,
+      memory: ResponseReview,
+    ) {
+      if (loaded.session.parentID || (yield* goals.get(loaded.session.id))?.status !== "active") return undefined
+      const plan = yield* planReview(loaded, memory)
+      if (plan.type !== "review") return undefined
+      return yield* Effect.forkChild(evaluateReview(loaded, plan))
+    })
+
+    const reviewResponse = Effect.fn("SessionRunner.reviewResponse")(function* (
+      loaded: SessionContext.Loaded,
+      memory: ResponseReview,
+      started?: Fiber.Fiber<Effect.Success<ReturnType<typeof evaluateReview>>>,
+    ) {
+      const sessionID = loaded.session.id
+      const plan = yield* planReview(loaded, memory)
+      // Whatever changed since it started, a review that is not going to be joined is not left running.
+      if (started && plan.type !== "review") yield* Fiber.interrupt(started)
+      if (plan.type === "none") return { memory: plan.memory, repair: false }
+      const current = plan.current
+      const settled = { ...current, text: undefined }
+      const revised = current.attempts > 0
+      if (plan.type === "unchanged") {
+        yield* noteReview(sessionID, {
+          status: "unresolved",
+          issues: current.issues,
+          confidence: {},
+          revised,
+        })
+        return { memory: settled, repair: false }
+      }
+      const { user, candidate, text } = plan
+      const evaluation = started ? yield* Fiber.join(started) : yield* evaluateReview(loaded, plan)
       const verdict = IntelligenceResponse.verdict(evaluation, current.issues)
       if (verdict.repair.length && current.attempts < IntelligenceResponse.REPAIRS) {
         // New input admitted while System One reviewed supersedes the repair.
