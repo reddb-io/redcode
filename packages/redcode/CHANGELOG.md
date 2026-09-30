@@ -1,5 +1,16 @@
 # @reddb-io/redcode
 
+## 0.69.0
+
+### Minor Changes
+
+- Connecting an OpenAI-compatible endpoint now asks for the API base URL and the key, and nothing else. The models and their context and output limits are read from the endpoint's `/models` (now also from the fields vLLM, LM Studio, OpenRouter and llama.cpp use), and the provider ID and display name come from the host, with a suffix if that ID is taken. The provider ID, display name, API, extra headers, model IDs and limits moved behind one "Customize the connection?" question that defaults to no.
+
+### Patch Changes
+
+- The model picker has a Refresh action (`ctrl+r`) beside Connect an integration and Favorite. It reloads the location's services, which asks every connected provider for its models again, then reads the list back into the picker.
+- While the satisfaction indicator has not read enough prompts to show a stage, the footer now shows a quiet `mood 1/3` count in dual reasoning, so you can tell it is there and what it waits for. A count that stays at zero means System One is classifying your prompts without enough confidence to read a reaction from them.
+
 ## 0.68.0
 
 ### Minor Changes
