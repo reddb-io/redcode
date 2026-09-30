@@ -195,6 +195,43 @@ jobs:
           bun run script/build.ts --single --skip-install --skip-web-ui
           bun run script/service-smoke.ts
 
+  vault-coverage:
+    # Non-blocking until proven stable: continue-on-error keeps a coverage shortfall out of the run result and no
+    # other job needs this one. It runs beside unit, off the critical path. To make it blocking, delete
+    # continue-on-error and require the `vault-coverage` check in the main branch protection.
+    needs: plan
+    runs-on: blacksmith-4vcpu-ubuntu-2404
+    timeout-minutes: 30
+    continue-on-error: true
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
+        with:
+          ref: ${{ needs.plan.outputs.sha }}
+      - uses: ./.github/actions/setup-bun
+      - name: Configure test git identity
+        run: |
+          git config --global user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git config --global user.name "github-actions[bot]"
+      - name: Install test dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install --yes ripgrep
+      - name: Test the coverage merge
+        working-directory: script/coverage
+        run: bun test ./vault.test.ts
+      - name: Measure vault coverage
+        run: bun script/coverage/vault.ts --out "$RUNNER_TEMP/vault-coverage"
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        if: always()
+        with:
+          name: vault-coverage
+          path: ${{ runner.temp }}/vault-coverage
+          if-no-files-found: warn
+          retention-days: 7
+
   sidecar:
     if: github.event_name == 'workflow_dispatch'
     needs: plan
