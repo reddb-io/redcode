@@ -8,11 +8,29 @@ export class Service extends Context.Service<
     readonly urls: () => ReadonlyArray<string>
     readonly app: NonNullable<ServerOptions["app"]>
     readonly paths: { readonly tmp: string }
+    /** The database this server was started with, as its options gave it. */
+    readonly database: { readonly path?: string; readonly url?: string } | undefined
+    /** When the server started, in epoch milliseconds. */
+    readonly started: number
   }
 >()("@opencode/server/ServerInfo") {}
 
-export function layer(urls: () => ReadonlyArray<string>, tmp: string, app: ServerOptions["app"] = {}) {
-  return Layer.succeed(Service, Service.of({ urls, app, paths: { tmp } }))
+export function layer(
+  urls: () => ReadonlyArray<string>,
+  tmp: string,
+  app: ServerOptions["app"] = {},
+  database?: ServerOptions["database"],
+) {
+  return Layer.succeed(
+    Service,
+    Service.of({
+      urls,
+      app,
+      paths: { tmp },
+      database: database && { path: database.path, url: database.url },
+      started: Date.now(),
+    }),
+  )
 }
 
 export function connectionURLs(value: string, requestedHostname?: string) {

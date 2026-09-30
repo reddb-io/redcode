@@ -290,6 +290,9 @@ export const Definitions = {
   "composer.terminal.up": keybind("up,k", "Previous terminal"),
   "composer.terminal.down": keybind("down,j", "Next terminal"),
   "composer.terminal.select": keybind("return", "Select terminal"),
+  "composer.system.up": keybind("up,k", "Scroll System up"),
+  "composer.system.down": keybind("down,j", "Scroll System down"),
+  "composer.system.refresh": keybind("r", "Refresh System"),
 
   "dialog.select.prev": keybind("up,ctrl+p", "Move to previous dialog item"),
   "dialog.select.next": keybind("down,ctrl+n", "Move to next dialog item"),

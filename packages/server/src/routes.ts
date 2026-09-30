@@ -234,7 +234,7 @@ function makeRoutes<AuthError, AuthServices>(
             WellKnown.Service,
           )(context),
         ),
-        ServerInfo.layer(serviceURLs, Context.get(context, Global.Service).tmp, options.app),
+        ServerInfo.layer(serviceURLs, Context.get(context, Global.Service).tmp, options.app, options.database),
       )
       const api = Layer.mergeAll(
         HttpApiBuilder.layer(Api, { openapiPath: "/openapi.json" }).pipe(
@@ -262,7 +262,10 @@ function makeRoutes<AuthError, AuthServices>(
       const browser = DesignBrowser.routes(
         () => [...(options.hostname ? [options.hostname] : []), ...serviceURLs().map((url) => new URL(url).hostname)],
         // A wildcard bind lists each interface address; a loopback bind has no network address.
-        () => serviceURLs().map((url) => DesignHost.networkURL(new URL(url))).find((url) => url !== undefined),
+        () =>
+          serviceURLs()
+            .map((url) => DesignHost.networkURL(new URL(url)))
+            .find((url) => url !== undefined),
       ).pipe(
         Layer.provide(services),
         Layer.provide(auth),

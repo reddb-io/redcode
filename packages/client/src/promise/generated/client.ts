@@ -1,5 +1,6 @@
 import type {
   ServerInfoOutput,
+  ServerSystemOutput,
   ServerPairOutput,
   ServerConnectInput,
   ServerConnectOutput,
@@ -535,6 +536,11 @@ export function make(options: ClientOptions) {
       info: (requestOptions?: RequestOptions) =>
         request<ServerInfoOutput>(
           { method: "GET", path: `/api/info`, successStatus: 200, declaredStatuses: [400, 401], empty: false },
+          requestOptions,
+        ),
+      system: (requestOptions?: RequestOptions) =>
+        request<ServerSystemOutput>(
+          { method: "GET", path: `/api/system`, successStatus: 200, declaredStatuses: [400, 401], empty: false },
           requestOptions,
         ),
       pair: (requestOptions?: RequestOptions) =>

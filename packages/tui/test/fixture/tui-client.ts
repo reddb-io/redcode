@@ -225,6 +225,18 @@ export function createFetch(override?: FetchHandler, events?: ReturnType<typeof 
     if (url.pathname === "/vcs") return json({ branch: "main" })
     if (url.pathname === "/api/experimental/migration/v1") return json({ status: "completed" })
     if (url.pathname === "/api/debug/guards") return json({ summary: [], recent: [] })
+    if (url.pathname === "/api/system")
+      return json({
+        version: "0.0.0-test",
+        runtime: "bun test",
+        platform: "linux x64",
+        pid: 1,
+        started: 0,
+        memory: 0,
+        urls: [],
+        paths: { config: "/c", data: "/d", state: "/s", cache: "/k", log: "/l", tmp: "/t" },
+        database: { kind: "memory" },
+      })
     throw new Error(`unexpected request: ${url.pathname}`)
   }
   fetch.preconnect = () => {}

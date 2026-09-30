@@ -1,3 +1,6 @@
+import { sql } from "drizzle-orm"
+import { Database } from "@opencode/core/database/database"
+import { Global } from "@opencode/util/global"
 import { Duration, Effect } from "effect"
 import { HttpServerRequest, HttpServerResponse } from "effect/unstable/http"
 import { HttpApiBuilder } from "effect/unstable/httpapi"
@@ -6,6 +9,7 @@ import { Api } from "../api"
 import { ServerAuth } from "../auth"
 import { ServerInfo } from "../server-info"
 import { ServerPairing } from "../pairing"
+import { database, runtime } from "../system-info"
 
 export const ServerHandler = HttpApiBuilder.group(Api, "server.server", (handlers) =>
   Effect.gen(function* () {
@@ -21,6 +25,39 @@ export const ServerHandler = HttpApiBuilder.group(Api, "server.server", (handler
             pid: process.pid ?? 0,
             urls: info.urls(),
             paths: info.paths,
+          }
+        }),
+      )
+      .handle("server.system", () =>
+        Effect.gen(function* () {
+          const info = yield* ServerInfo.Service
+          const global = yield* Global.Service
+          const storage = yield* Database.Service
+          const counted = yield* Effect.gen(function* () {
+            const [sessions] = yield* storage.db.all<{ total: number }>(sql`SELECT count(*) AS total FROM session_v2`)
+            const [messages] = yield* storage.db.all<{ total: number }>(
+              sql`SELECT count(*) AS total FROM session_message`,
+            )
+            return { sessions: sessions?.total ?? 0, messages: messages?.total ?? 0 }
+          }).pipe(Effect.orElseSucceed(() => undefined))
+          return {
+            version: info.app.version ?? "unknown",
+            runtime: runtime(),
+            platform: `${process.platform} ${process.arch}`,
+            pid: process.pid ?? 0,
+            started: info.started,
+            memory: process.memoryUsage().rss,
+            urls: info.urls(),
+            paths: {
+              config: global.config,
+              data: global.data,
+              state: global.state,
+              cache: global.cache,
+              log: global.log,
+              tmp: global.tmp,
+            },
+            database: yield* Effect.promise(() => database(info.database)),
+            ...(counted ? { counts: counted } : {}),
           }
         }),
       )

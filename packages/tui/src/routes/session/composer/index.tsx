@@ -8,6 +8,7 @@ import { SubagentsTab } from "./subagents-tab"
 import { McpsTab } from "./mcps-tab"
 import { MonitorsTab, type SessionMonitors } from "./monitors-tab"
 import { ShellTab } from "./shell-tab"
+import { SystemTab } from "./system-tab"
 import { TerminalsTab } from "./terminals-tab"
 import { useConfig } from "../../../config"
 import { ComposerContext, type ComposerTab } from "./context"
@@ -141,6 +142,7 @@ export function Composer(props: ComposerProps) {
             <Show when={config.session.terminal}>
               <TerminalsTab sessionID={props.sessionID} visibleTerminalID={props.visibleTerminalID} />
             </Show>
+            <SystemTab />
             <box flexDirection="row" gap={2} paddingLeft={1} flexShrink={0}>
               <For each={footerHints()}>
                 {(hint) => (

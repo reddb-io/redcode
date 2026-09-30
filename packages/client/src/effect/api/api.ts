@@ -50,6 +50,30 @@ export type ServerInfoOutput = {
 }
 export type ServerInfoOperation<E = never> = () => Effect.Effect<ServerInfoOutput, E>
 
+export type ServerSystemOutput = {
+  readonly version: string
+  readonly runtime: string
+  readonly platform: string
+  readonly pid: number
+  readonly started: number
+  readonly memory: number
+  readonly urls: ReadonlyArray<string>
+  readonly paths: {
+    readonly config: string
+    readonly data: string
+    readonly state: string
+    readonly cache: string
+    readonly log: string
+    readonly tmp: string
+  }
+  readonly database:
+    | { readonly kind: "local"; readonly path: string; readonly size?: number; readonly wal?: number }
+    | { readonly kind: "remote"; readonly protocol: string; readonly host: string }
+    | { readonly kind: "memory" }
+  readonly counts?: { readonly sessions: number; readonly messages: number }
+}
+export type ServerSystemOperation<E = never> = () => Effect.Effect<ServerSystemOutput, E>
+
 export type ServerPairOutput = { readonly code: string; readonly expires_in: number }
 export type ServerPairOperation<E = never> = () => Effect.Effect<ServerPairOutput, E>
 
@@ -59,6 +83,7 @@ export type ServerConnectOperation<E = never> = (input: ServerConnectInput) => E
 
 export interface ServerApi<E = never> {
   readonly info: ServerInfoOperation<E>
+  readonly system: ServerSystemOperation<E>
   readonly pair: ServerPairOperation<E>
   readonly connect: ServerConnectOperation<E>
 }

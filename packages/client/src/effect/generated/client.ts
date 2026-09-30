@@ -6,6 +6,7 @@ import { HttpApiClient } from "effect/unstable/httpapi"
 import { ClientApi } from "../../contract"
 import type {
   ServerInfoOutput,
+  ServerSystemOutput,
   ServerPairOutput,
   ServerConnectInput,
   ServerConnectOutput,
@@ -402,6 +403,9 @@ const preserveStream =
 const EndpointServerInfo = (raw: RawClient["server.server"]) => () =>
   preserveEffect<ServerInfoOutput>()(raw["server.info"]({}).pipe(Effect.mapError(mapClientError)))
 
+const EndpointServerSystem = (raw: RawClient["server.server"]) => () =>
+  preserveEffect<ServerSystemOutput>()(raw["server.system"]({}).pipe(Effect.mapError(mapClientError)))
+
 const EndpointServerPair = (raw: RawClient["server.server"]) => () =>
   preserveEffect<ServerPairOutput>()(raw["server.pair"]({}).pipe(Effect.mapError(mapClientError)))
 
@@ -412,6 +416,7 @@ const EndpointServerConnect = (raw: RawClient["server.server"]) => (input: Serve
 
 const adaptGroupServer = (raw: RawClient["server.server"]) => ({
   info: EndpointServerInfo(raw),
+  system: EndpointServerSystem(raw),
   pair: EndpointServerPair(raw),
   connect: EndpointServerConnect(raw),
 })

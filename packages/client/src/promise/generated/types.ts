@@ -2,6 +2,22 @@ export type JsonValue = null | boolean | number | string | Array<JsonValue> | { 
 
 export type ServerInfo = { version: string; pid: number; urls: Array<string>; paths: { tmp: string } }
 
+export type SystemInfo = {
+  version: string
+  runtime: string
+  platform: string
+  pid: number
+  started: number
+  memory: number
+  urls: Array<string>
+  paths: { config: string; data: string; state: string; cache: string; log: string; tmp: string }
+  database:
+    | { kind: "local"; path: string; size?: number; wal?: number }
+    | { kind: "remote"; protocol: string; host: string }
+    | { kind: "memory" }
+  counts?: { sessions: number; messages: number }
+}
+
 export type PairingCode = { code: string; expires_in: number }
 
 export type PairingSession = { token: string }
@@ -3644,6 +3660,8 @@ export const isWorktreeError = (value: unknown): value is WorktreeError =>
   typeof value === "object" && value !== null && "name" in value && value["name"] === "WorktreeError"
 
 export type ServerInfoOutput = ServerInfo
+
+export type ServerSystemOutput = SystemInfo
 
 export type ServerPairOutput = PairingCode
 
