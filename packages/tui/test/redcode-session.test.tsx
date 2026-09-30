@@ -523,14 +523,14 @@ test.each([80, 160])("large MCP catalogs and tools scroll inside their panels at
   expect(scroll.height).toBe(5)
   expect(scroll.y + scroll.height).toBe(bottom)
   for (let page = 0; page < 6; page++) {
-    setup.mockInput.pressKey("pagedown")
+    setup.mockInput.pressKey("\u001b[6~")
     await setup.renderOnce()
   }
   await setup.waitForFrame((frame) => frame.includes("tool-30"))
   expect(setup.captureCharFrame()).toContain("reload config")
   setup.mockInput.pressEnter()
   for (let index = 0; index < 39; index++) {
-    setup.mockInput.pressKey("down")
+    setup.mockInput.pressKey("ARROW_DOWN")
     await setup.renderOnce()
   }
   await setup.waitForFrame((frame) => frame.includes("server-39"))

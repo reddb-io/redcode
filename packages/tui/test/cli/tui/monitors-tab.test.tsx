@@ -247,6 +247,9 @@ test("many monitors and expanded evidence stay in the drawer scroll without movi
     await view.app.renderOnce()
     for (let index = 0; index < 39; index++) {
       view.dispatch("composer.monitor.down")
+      await view.app.waitFor(() =>
+        Boolean(view.app.renderer.root.findDescendantById(`monitor-stop-monitor-${index + 1}`)),
+      )
       await view.app.renderOnce()
     }
     expect(view.app.captureCharFrame()).toContain("watch-job-39")

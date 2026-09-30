@@ -233,8 +233,7 @@ function manageConnections(
                   title: "Test remote API",
                   value: "check",
                   description: "Check the active account: HTTP status, response time, received bytes and catalog",
-                  onSelect: () =>
-                    dialog.replace(() => <RemoteApiCheck integrationID={integration.id} location={location} />),
+                  onSelect: () => void checkRemoteApi(client, dialog, integration.id, location),
                 },
               ]),
           {
@@ -1126,14 +1125,10 @@ async function connected(
         ?.find((item) => credentialConnections(item).some((connection) => !saved.has(connection.id)))
     : undefined
   const id = resolved?.id ?? target ?? integration.id
-  dialog.replace(() => (
-    <RemoteApiCheck
-      integrationID={id}
-      location={location}
-      saved
-      onContinue={() => onConnected?.(providerID(data, location, id) ?? id)}
-    />
-  ))
+  await checkRemoteApi(client, dialog, id, location, {
+    saved: true,
+    onContinue: () => onConnected?.(providerID(data, location, id) ?? id),
+  })
 }
 
 function providerID(data: ReturnType<typeof useData>, location: LocationRef, integrationID: string) {
@@ -1152,55 +1147,55 @@ function locationQuery(location: LocationRef) {
   return { directory: location.directory }
 }
 
-function RemoteApiCheck(props: {
-  integrationID: string
-  location: LocationRef
-  saved?: boolean
-  onContinue?: () => void
-}) {
-  const client = useClient()
-  const dialog = useDialog()
-  const theme = useTheme().surface("dialog")
-  const [report, setReport] = createSignal<ConnectionCheck.Report>()
-  onMount(() => {
-    void client.api.integration
-      .check({ integrationID: props.integrationID, location: locationQuery(props.location) })
-      .then(setReport)
-      .catch((error: unknown) =>
-        setReport({ ok: false, message: errorMessage(error), requests: ConnectionCheck.requestsFrom(error) }),
-      )
-  })
-  return (
-    <Show
-      when={report()}
-      fallback={
+async function checkRemoteApi(
+  client: ReturnType<typeof useClient>,
+  dialog: ReturnType<typeof useDialog>,
+  integrationID: string,
+  location: LocationRef,
+  options: { saved?: boolean; onContinue?: () => void } = {},
+) {
+  const controller = new AbortController()
+  dialog.replace(
+    () => {
+      const theme = useTheme().surface("dialog")
+      return (
         <box padding={2}>
           <text fg={theme.text.muted}>Testing remote API…</text>
         </box>
-      }
-    >
-      {(value) => (
-        <DialogConfirm
-          title={value().ok ? "Remote API test passed" : "Remote API test failed"}
-          message={[
-            props.saved ? "Credential saved." : undefined,
-            value().message,
-            ConnectionCheck.describe(value().requests),
-          ]
-            .filter(Boolean)
-            .join("\n\n")}
-          label={{ confirm: value().ok ? "Continue" : "Retry", cancel: "Close" }}
-          onConfirm={() =>
-            queueMicrotask(() => {
-              if (value().ok) {
-                props.onContinue?.()
-                return
-              }
-              dialog.replace(() => <RemoteApiCheck {...props} />)
-            })
-          }
-        />
-      )}
-    </Show>
+      )
+    },
+    () => controller.abort(),
   )
+  const report = await client.api.integration
+    .check({ integrationID, location: locationQuery(location) }, { signal: controller.signal })
+    .catch(
+      (error: unknown): ConnectionCheck.Report => ({
+        ok: false,
+        message: errorMessage(error),
+        requests: ConnectionCheck.requestsFrom(error),
+      }),
+    )
+  if (controller.signal.aborted) return
+  dialog.replace(() => (
+    <DialogConfirm
+      title={report.ok ? "Remote API test passed" : "Remote API test failed"}
+      message={[
+        options.saved ? "Credential saved." : undefined,
+        report.message,
+        ConnectionCheck.describe(report.requests),
+      ]
+        .filter(Boolean)
+        .join("\n\n")}
+      label={{ confirm: report.ok ? "Continue" : "Retry", cancel: "Close" }}
+      onConfirm={() =>
+        queueMicrotask(() => {
+          if (report.ok) {
+            options.onContinue?.()
+            return
+          }
+          void checkRemoteApi(client, dialog, integrationID, location, options)
+        })
+      }
+    />
+  ))
 }

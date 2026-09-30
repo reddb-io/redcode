@@ -75,6 +75,7 @@ export function host(overrides: Overrides = {}): Plugin.Context {
       text: () => Effect.die("unused generate.text"),
     },
     integration: overrides.integration ?? {
+      check: () => Effect.die("unused integration.check"),
       list: () => Effect.die("unused integration.list"),
       get: () => Effect.die("unused integration.get"),
       console: {
@@ -232,13 +233,15 @@ export function providerHost(providers: Provider.Interface): Plugin.Context["pro
   return {
     list: () => providers.available().pipe(Effect.map(located)),
     get: (input) =>
-      providers.get(Provider.ID.make(input.providerID)).pipe(
-        Effect.flatMap((provider) =>
-          provider === undefined
-            ? Effect.fail(new Error(`Provider not found: ${input.providerID}`))
-            : Effect.succeed(located(provider)),
+      providers
+        .get(Provider.ID.make(input.providerID))
+        .pipe(
+          Effect.flatMap((provider) =>
+            provider === undefined
+              ? Effect.fail(new Error(`Provider not found: ${input.providerID}`))
+              : Effect.succeed(located(provider)),
+          ),
         ),
-      ),
     reload: providers.reload,
     remove: () => Effect.die("unused provider.remove"),
     transform: (callback) =>
@@ -297,6 +300,7 @@ export function modelHost(models: Model.Interface): Plugin.Context["model"] {
 
 export function integrationHost(integration: Integration.Interface): Plugin.Context["integration"] {
   return {
+    check: () => Effect.die("unused integration.check"),
     list: () => Effect.die("unused integration.list"),
     get: () => Effect.die("unused integration.get"),
     console: {
