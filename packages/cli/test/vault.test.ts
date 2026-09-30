@@ -155,13 +155,13 @@ describe("vault commands against a server", () => {
       () => Response.json({ output: "github-token" }),
       async (fixture) => {
         // The handler reports a failure by setting the exit code rather than by failing.
-        process.exitCode = undefined
+        process.exitCode = 0
         await withStdin("\n", () =>
           fixture.runPromise(setVault({ server: Option.some(fixture.url), name: "GITHUB_TOKEN" })),
         )
-        const code = process.exitCode
-        process.exitCode = undefined
-        expect(code).toBe(1)
+        const code = String(process.exitCode)
+        process.exitCode = 0
+        expect(code).toBe("1")
         expect(fixture.requests).toEqual([])
       },
     ))
