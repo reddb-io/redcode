@@ -5,6 +5,7 @@ import { TextField } from "@opencode/ui/text-field"
 import { firstConnectionFailure, type ConnectionFailure } from "@opencode/util/connection-failure"
 import { createMemo, createResource, Show } from "solid-js"
 import { createStore } from "solid-js/store"
+import { useIntegrations } from "@/providers/catalog/integrations"
 import { useModels } from "@/providers/models/models"
 import { useLanguage } from "@/runtime/i18n/language"
 import { useServerSDK } from "@/runtime/server/client"
@@ -39,7 +40,6 @@ type Draft = {
   fast?: string
   evaluator?: string
   evaluatorModel?: string
-  apiKey: string
   checking: boolean
   failure?: { role: keyof typeof failureRoles; failure: ConnectionFailure }
 }
@@ -53,10 +53,11 @@ type EvaluatorChoice = { key: string; label: string; evaluator: IntelligenceEval
 export function SettingsReasoningRoles() {
   const language = useLanguage()
   const models = useModels()
+  const integrations = useIntegrations(() => undefined)
   const server = useServerSDK()
   const api = server.api["server.intelligence"]
   const [status, { refetch }] = createResource(() => api.status())
-  const [draft, setDraft] = createStore<Draft>({ apiKey: "", checking: false })
+  const [draft, setDraft] = createStore<Draft>({ checking: false })
   // Reading an unresolved resource would suspend the settings page, so only settled values are read.
   const current = () => (status.state === "ready" || status.state === "refreshing" ? status.latest : undefined)
   const modelKey = (ref: { providerID: string; id: string } | undefined) =>
@@ -76,14 +77,25 @@ export function SettingsReasoningRoles() {
     { key: "", ref: undefined, label: language.t("settings.models.reasoning.fast.reuse") },
     ...modelOptions(),
   ])
+  const connected = createMemo(
+    () =>
+      new Set(
+        integrations
+          .list()
+          .filter((integration) => integration.connections.length > 0)
+          .map((integration) => integration.id),
+      ),
+  )
   const evaluatorOptions = (value: IntelligenceStatus): EvaluatorChoice[] => {
     const choices = [
       ...(value.settings.evaluator
         ? [{ label: language.t("settings.models.reasoning.evaluator.current"), evaluator: value.settings.evaluator }]
         : []),
       ...(value.router?.evaluator ? [{ label: "RedRouter", evaluator: value.router.evaluator }] : []),
+      // Only services with an active connection are offered; the connection's own credential does the evaluating.
       ...value.evaluators
         .filter((option) => option.evaluator.transport !== "red-router" || !value.router?.evaluator)
+        .filter((option) => connected().has(option.evaluator.transport))
         .map((option) => ({ label: option.name, evaluator: option.evaluator })),
     ].map((choice) => ({
       key: `${choice.evaluator.transport} ${choice.evaluator.baseURL} ${choice.evaluator.model}`,
@@ -116,7 +128,6 @@ export function SettingsReasoningRoles() {
         ? { ...chosen.evaluator, model: evaluatorModel(value).trim() }
         : undefined
     if (dual && !s1) return
-    const apiKey = draft.apiKey.trim() ? { apiKey: draft.apiKey.trim() } : {}
     setDraft({ checking: true, failure: undefined })
     const failed = await firstConnectionFailure([
       {
@@ -144,7 +155,7 @@ export function SettingsReasoningRoles() {
             {
               role: "evaluator" as const,
               run: () =>
-                api.probe({ evaluator: s1, ...apiKey }, { signal: AbortSignal.timeout(30_000) }).then((check) => {
+                api.probe({ evaluator: s1 }, { signal: AbortSignal.timeout(30_000) }).then((check) => {
                   if (!check.ok) throw new Error(check.message)
                 }),
             },
@@ -166,7 +177,6 @@ export function SettingsReasoningRoles() {
           fast: transformation && modelKey(transformation) !== selected.key ? transformation : undefined,
           ...(s1 ? { evaluator: s1 } : {}),
         },
-        ...apiKey,
       })
       .then(
         () => true,
@@ -186,7 +196,6 @@ export function SettingsReasoningRoles() {
       fast: undefined,
       evaluator: undefined,
       evaluatorModel: undefined,
-      apiKey: "",
     })
     showToast({ variant: "success", icon: "circle-check", title: language.t("settings.models.reasoning.saved") })
     void refetch()
@@ -278,25 +287,13 @@ export function SettingsReasoningRoles() {
               </SettingsRow>
               <SettingsRow
                 title={language.t("settings.models.reasoning.evaluator.model")}
-                description={evaluator(value())?.evaluator.baseURL ?? ""}
+                description={evaluator(value())?.evaluator.transport ?? ""}
               >
                 <TextField
                   hideLabel
                   label={language.t("settings.models.reasoning.evaluator.model")}
                   value={evaluatorModel(value())}
                   onChange={(model) => setDraft({ evaluatorModel: model, failure: undefined })}
-                />
-              </SettingsRow>
-              <SettingsRow
-                title={language.t("settings.models.reasoning.evaluator.apiKey")}
-                description={language.t("settings.models.reasoning.evaluator.apiKey.description")}
-              >
-                <TextField
-                  hideLabel
-                  type="password"
-                  label={language.t("settings.models.reasoning.evaluator.apiKey")}
-                  value={draft.apiKey}
-                  onChange={(apiKey) => setDraft({ apiKey })}
                 />
               </SettingsRow>
             </Show>

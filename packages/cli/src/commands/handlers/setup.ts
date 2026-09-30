@@ -1,4 +1,4 @@
-import { autocomplete, intro, log, outro, password, select, text } from "@clack/prompts"
+import { autocomplete, intro, log, outro, select, text } from "@clack/prompts"
 import {
   type IntelligenceEvaluator,
   type IntelligenceStatus,
@@ -12,7 +12,7 @@ import { Effect, Option } from "effect"
 import { Commands } from "../commands"
 import { Runtime } from "../../framework/runtime"
 import { handlePromptErrors, prompt, requireInteractive } from "../../ui/prompt"
-import { createClient, location, request } from "./auth/shared"
+import { createClient, loadIntegrations, location, request } from "./auth/shared"
 
 export default Runtime.handler(Commands.commands.setup, (input) =>
   Effect.gen(function* () {
@@ -247,10 +247,27 @@ const configureEvaluator = Effect.fn("cli.setup.evaluator")(function* (
     : "change"
   if (action === "continue" && current) return { evaluator: current, key: undefined }
 
+  // System One only offers services that already have an active connection; nothing is asked for inline, and the
+  // connection's own credential does the evaluating.
+  const connected = new Set(
+    (yield* loadIntegrations(client))
+      .filter((integration) => integration.connections.length > 0)
+      .map((item) => item.id),
+  )
   const options = [
     ...(status.router?.evaluator ? [{ name: "Detected RedRouter", evaluator: status.router.evaluator }] : []),
-    ...status.evaluators,
+    ...status.evaluators.filter(
+      (option) =>
+        connected.has(option.evaluator.transport) &&
+        (option.evaluator.transport !== "red-router" || !status.router?.evaluator),
+    ),
   ]
+  if (options.length === 0)
+    return yield* Effect.fail(
+      new Error(
+        "No connected service can evaluate. Run `redcode auth login` to connect one, then run the setup again.",
+      ),
+    )
   const index = Number(
     yield* prompt<string>(() =>
       autocomplete({
@@ -264,25 +281,9 @@ const configureEvaluator = Effect.fn("cli.setup.evaluator")(function* (
       }),
     ),
   )
-  const chosen = options[index]
-  if (!chosen) return yield* Effect.fail(new Error("System One connection is unavailable"))
-  const baseURL = yield* prompt<string>(() =>
-    text({
-      message: "System One API base URL",
-      initialValue: chosen.evaluator.baseURL,
-    }),
-  )
-  const key = yield* prompt<string>(() =>
-    password({ message: "API key (leave empty to reuse saved credentials or the provider connection)" }),
-  )
-  const evaluator: IntelligenceEvaluator = {
-    ...chosen.evaluator,
-    baseURL,
-    credentialID: chosen.evaluator.baseURL === baseURL ? chosen.evaluator.credentialID : undefined,
-  }
-  const discovered = yield* request((signal) =>
-    client["server.intelligence"].discover({ evaluator, ...(key ? { apiKey: key } : {}) }, { signal }),
-  )
+  const evaluator: IntelligenceEvaluator | undefined = options[index]?.evaluator
+  if (!evaluator) return yield* Effect.fail(new Error("System One connection is unavailable"))
+  const discovered = yield* request((signal) => client["server.intelligence"].discover({ evaluator }, { signal }))
   const model = discovered.models.length
     ? yield* prompt<string>(() =>
         autocomplete({
@@ -298,5 +299,5 @@ const configureEvaluator = Effect.fn("cli.setup.evaluator")(function* (
       )
     : yield* prompt<string>(() => text({ message: "System One model", initialValue: evaluator.model }))
   log.info("Sources and candidates will be sent to the selected System One evaluator")
-  return { evaluator: { ...evaluator, model }, key: key || undefined }
+  return { evaluator: { ...evaluator, model }, key: undefined }
 })
