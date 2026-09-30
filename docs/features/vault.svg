@@ -1,0 +1,54 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 230" width="1200" height="230" role="img" aria-labelledby="t-vault d-vault">
+  <title id="t-vault">vault</title>
+  <desc id="d-vault">The vault: per-project secrets the model references by name and the harness resolves.</desc>
+  <defs>
+    <linearGradient id="bg-vault" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#0d1117"/>
+      <stop offset="1" stop-color="#07090d"/>
+    </linearGradient>
+    <radialGradient id="glow-vault" cx="0.5" cy="0.5" r="0.5">
+      <stop offset="0" stop-color="#f78166" stop-opacity="0.32"/>
+      <stop offset="1" stop-color="#f78166" stop-opacity="0"/>
+    </radialGradient>
+    <linearGradient id="rule-vault" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0" stop-color="#f78166"/>
+      <stop offset="1" stop-color="#f78166" stop-opacity="0"/>
+    </linearGradient>
+    <pattern id="grid-vault" width="24" height="24" patternUnits="userSpaceOnUse">
+      <path d="M24 0H0V24" fill="none" stroke="#ffffff" stroke-opacity="0.028" stroke-width="1"/>
+    </pattern>
+    <clipPath id="frame-vault">
+      <rect x="0" y="0" width="1200" height="230" rx="18"/>
+    </clipPath>
+  </defs>
+  <g clip-path="url(#frame-vault)">
+    <rect width="1200" height="230" fill="url(#bg-vault)"/>
+    <rect width="1200" height="230" fill="url(#grid-vault)"/>
+    <ellipse cx="130" cy="115" rx="360" ry="220" fill="url(#glow-vault)"/>
+    <ellipse cx="1130" cy="230" rx="300" ry="170" fill="url(#glow-vault)" opacity="0.45"/>
+    <rect x="0" y="0" width="6" height="230" fill="#f78166"/>
+
+    <g transform="translate(70 45)" fill="none" stroke="#f78166" stroke-width="3" stroke-linecap="round" stroke-linejoin="round">
+      <rect x="18" y="62" width="104" height="72" rx="14" stroke-opacity="0.6"/>
+      <path d="M40 62 V44 C40 22 100 22 100 44 V62"/>
+      <circle cx="70" cy="96" r="9"/>
+      <line x1="70" y1="105" x2="70" y2="119"/>
+    </g>
+
+    <g font-family="ui-monospace, SFMono-Regular, 'JetBrains Mono', Menlo, Consolas, monospace">
+      <text x="262" y="60" font-size="11" fill="#6e7681" letter-spacing="2.5">PER-PROJECT SECRETS</text>
+      <text x="260" y="118" font-size="60" font-weight="700" letter-spacing="-2" fill="#f0f6fc">vault</text>
+      <rect x="262" y="132" width="120" height="3" fill="url(#rule-vault)"/>
+      <text x="262" y="160" font-size="18" fill="#8b949e">Secrets the model can use, obtain and ask for, without ever seeing them.</text>
+      <rect x="262" y="176" width="121" height="26" rx="13" fill="#ffffff" fill-opacity="0.04" stroke="#f78166" stroke-opacity="0.45"/>
+      <text x="271" y="194" font-size="13" fill="#c9d1d9">{vault:name}</text>
+      <rect x="393" y="176" width="130" height="26" rx="13" fill="#ffffff" fill-opacity="0.04" stroke="#f78166" stroke-opacity="0.45"/>
+      <text x="402" y="194" font-size="13" fill="#c9d1d9">vault_request</text>
+      <rect x="533" y="176" width="121" height="26" rx="13" fill="#ffffff" fill-opacity="0.04" stroke="#f78166" stroke-opacity="0.45"/>
+      <text x="542" y="194" font-size="13" fill="#c9d1d9">host binding</text>
+      <rect x="664" y="176" width="147" height="26" rx="13" fill="#ffffff" fill-opacity="0.04" stroke="#f78166" stroke-opacity="0.45"/>
+      <text x="673" y="194" font-size="13" fill="#c9d1d9">scrubbed output</text>
+      <text x="1130" y="200" font-size="120" font-weight="700" fill="#f78166" fill-opacity="0.07" text-anchor="end" letter-spacing="-6">{}</text>
+    </g>
+  </g>
+</svg>

@@ -1,0 +1,52 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 230" width="1200" height="230" role="img" aria-labelledby="t-stop-loss d-stop-loss">
+  <title id="t-stop-loss">stop-loss</title>
+  <desc id="d-stop-loss">Loop guard and stop-loss: halting an agent that repeats itself or spends without progress.</desc>
+  <defs>
+    <linearGradient id="bg-stop-loss" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#0d1117"/>
+      <stop offset="1" stop-color="#07090d"/>
+    </linearGradient>
+    <radialGradient id="glow-stop-loss" cx="0.5" cy="0.5" r="0.5">
+      <stop offset="0" stop-color="#f0883e" stop-opacity="0.32"/>
+      <stop offset="1" stop-color="#f0883e" stop-opacity="0"/>
+    </radialGradient>
+    <linearGradient id="rule-stop-loss" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0" stop-color="#f0883e"/>
+      <stop offset="1" stop-color="#f0883e" stop-opacity="0"/>
+    </linearGradient>
+    <pattern id="grid-stop-loss" width="24" height="24" patternUnits="userSpaceOnUse">
+      <path d="M24 0H0V24" fill="none" stroke="#ffffff" stroke-opacity="0.028" stroke-width="1"/>
+    </pattern>
+    <clipPath id="frame-stop-loss">
+      <rect x="0" y="0" width="1200" height="230" rx="18"/>
+    </clipPath>
+  </defs>
+  <g clip-path="url(#frame-stop-loss)">
+    <rect width="1200" height="230" fill="url(#bg-stop-loss)"/>
+    <rect width="1200" height="230" fill="url(#grid-stop-loss)"/>
+    <ellipse cx="130" cy="115" rx="360" ry="220" fill="url(#glow-stop-loss)"/>
+    <ellipse cx="1130" cy="230" rx="300" ry="170" fill="url(#glow-stop-loss)" opacity="0.45"/>
+    <rect x="0" y="0" width="6" height="230" fill="#f0883e"/>
+
+    <g transform="translate(70 45)" fill="none" stroke="#f0883e" stroke-width="3" stroke-linecap="round" stroke-linejoin="round">
+      <path d="M44 6 H96 L134 44 V96 L96 134 H44 L6 96 V44 Z" stroke-opacity="0.6"/>
+      <line x1="46" y1="70" x2="94" y2="70" stroke-width="7"/>
+    </g>
+
+    <g font-family="ui-monospace, SFMono-Regular, 'JetBrains Mono', Menlo, Consolas, monospace">
+      <text x="262" y="60" font-size="11" fill="#6e7681" letter-spacing="2.5">SAFETY NETS</text>
+      <text x="260" y="118" font-size="60" font-weight="700" letter-spacing="-2" fill="#f0f6fc">stop-loss</text>
+      <rect x="262" y="132" width="120" height="3" fill="url(#rule-stop-loss)"/>
+      <text x="262" y="160" font-size="18" fill="#8b949e">Halts a stuck or runaway agent without punishing steady progress.</text>
+      <rect x="262" y="176" width="104" height="26" rx="13" fill="#ffffff" fill-opacity="0.04" stroke="#f0883e" stroke-opacity="0.45"/>
+      <text x="271" y="194" font-size="13" fill="#c9d1d9">loop guard</text>
+      <rect x="376" y="176" width="95" height="26" rx="13" fill="#ffffff" fill-opacity="0.04" stroke="#f0883e" stroke-opacity="0.45"/>
+      <text x="385" y="194" font-size="13" fill="#c9d1d9">stop-loss</text>
+      <rect x="481" y="176" width="78" height="26" rx="13" fill="#ffffff" fill-opacity="0.04" stroke="#f0883e" stroke-opacity="0.45"/>
+      <text x="490" y="194" font-size="13" fill="#c9d1d9">/budget</text>
+      <rect x="569" y="176" width="130" height="26" rx="13" fill="#ffffff" fill-opacity="0.04" stroke="#f0883e" stroke-opacity="0.45"/>
+      <text x="578" y="194" font-size="13" fill="#c9d1d9">opt-in limits</text>
+      <text x="1130" y="200" font-size="120" font-weight="700" fill="#f0883e" fill-opacity="0.07" text-anchor="end" letter-spacing="-6">■</text>
+    </g>
+  </g>
+</svg>

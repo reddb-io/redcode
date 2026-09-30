@@ -1,0 +1,51 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 230" width="1200" height="230" role="img" aria-labelledby="t-question d-question">
+  <title id="t-question">question</title>
+  <desc id="d-question">Question mode: investigative questions answered with read-only tool access.</desc>
+  <defs>
+    <linearGradient id="bg-question" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#0d1117"/>
+      <stop offset="1" stop-color="#07090d"/>
+    </linearGradient>
+    <radialGradient id="glow-question" cx="0.5" cy="0.5" r="0.5">
+      <stop offset="0" stop-color="#ffa657" stop-opacity="0.32"/>
+      <stop offset="1" stop-color="#ffa657" stop-opacity="0"/>
+    </radialGradient>
+    <linearGradient id="rule-question" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0" stop-color="#ffa657"/>
+      <stop offset="1" stop-color="#ffa657" stop-opacity="0"/>
+    </linearGradient>
+    <pattern id="grid-question" width="24" height="24" patternUnits="userSpaceOnUse">
+      <path d="M24 0H0V24" fill="none" stroke="#ffffff" stroke-opacity="0.028" stroke-width="1"/>
+    </pattern>
+    <clipPath id="frame-question">
+      <rect x="0" y="0" width="1200" height="230" rx="18"/>
+    </clipPath>
+  </defs>
+  <g clip-path="url(#frame-question)">
+    <rect width="1200" height="230" fill="url(#bg-question)"/>
+    <rect width="1200" height="230" fill="url(#grid-question)"/>
+    <ellipse cx="130" cy="115" rx="360" ry="220" fill="url(#glow-question)"/>
+    <ellipse cx="1130" cy="230" rx="300" ry="170" fill="url(#glow-question)" opacity="0.45"/>
+    <rect x="0" y="0" width="6" height="230" fill="#ffa657"/>
+
+    <g transform="translate(70 45)" fill="none" stroke="#ffa657" stroke-width="3" stroke-linecap="round" stroke-linejoin="round">
+      <circle cx="70" cy="70" r="64" stroke-opacity="0.45"/>
+      <path d="M46 54 C46 34 94 34 94 56 C94 74 70 72 70 92"/>
+      <circle cx="70" cy="112" r="5" fill="#ffa657" stroke="none"/>
+    </g>
+
+    <g font-family="ui-monospace, SFMono-Regular, 'JetBrains Mono', Menlo, Consolas, monospace">
+      <text x="262" y="60" font-size="11" fill="#6e7681" letter-spacing="2.5">MODE 04 / 04</text>
+      <text x="260" y="118" font-size="60" font-weight="700" letter-spacing="-2" fill="#f0f6fc">question</text>
+      <rect x="262" y="132" width="120" height="3" fill="url(#rule-question)"/>
+      <text x="262" y="160" font-size="18" fill="#8b949e">Ask investigative questions of the codebase. Read-only tools, nothing is edited.</text>
+      <rect x="262" y="176" width="95" height="26" rx="13" fill="#ffffff" fill-opacity="0.04" stroke="#ffa657" stroke-opacity="0.45"/>
+      <text x="271" y="194" font-size="13" fill="#c9d1d9">read-only</text>
+      <rect x="367" y="176" width="113" height="26" rx="13" fill="#ffffff" fill-opacity="0.04" stroke="#ffa657" stroke-opacity="0.45"/>
+      <text x="376" y="194" font-size="13" fill="#c9d1d9">investigate</text>
+      <rect x="490" y="176" width="87" height="26" rx="13" fill="#ffffff" fill-opacity="0.04" stroke="#ffa657" stroke-opacity="0.45"/>
+      <text x="499" y="194" font-size="13" fill="#c9d1d9">no edits</text>
+      <text x="1130" y="200" font-size="120" font-weight="700" fill="#ffa657" fill-opacity="0.07" text-anchor="end" letter-spacing="-6">?</text>
+    </g>
+  </g>
+</svg>

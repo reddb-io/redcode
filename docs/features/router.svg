@@ -1,0 +1,57 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 230" width="1200" height="230" role="img" aria-labelledby="t-router d-router">
+  <title id="t-router">RedRouter</title>
+  <desc id="d-router">RedRouter: a provider that routes across many models with pinned offers and an auto variant.</desc>
+  <defs>
+    <linearGradient id="bg-router" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#0d1117"/>
+      <stop offset="1" stop-color="#07090d"/>
+    </linearGradient>
+    <radialGradient id="glow-router" cx="0.5" cy="0.5" r="0.5">
+      <stop offset="0" stop-color="#f778ba" stop-opacity="0.32"/>
+      <stop offset="1" stop-color="#f778ba" stop-opacity="0"/>
+    </radialGradient>
+    <linearGradient id="rule-router" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0" stop-color="#f778ba"/>
+      <stop offset="1" stop-color="#f778ba" stop-opacity="0"/>
+    </linearGradient>
+    <pattern id="grid-router" width="24" height="24" patternUnits="userSpaceOnUse">
+      <path d="M24 0H0V24" fill="none" stroke="#ffffff" stroke-opacity="0.028" stroke-width="1"/>
+    </pattern>
+    <clipPath id="frame-router">
+      <rect x="0" y="0" width="1200" height="230" rx="18"/>
+    </clipPath>
+  </defs>
+  <g clip-path="url(#frame-router)">
+    <rect width="1200" height="230" fill="url(#bg-router)"/>
+    <rect width="1200" height="230" fill="url(#grid-router)"/>
+    <ellipse cx="130" cy="115" rx="360" ry="220" fill="url(#glow-router)"/>
+    <ellipse cx="1130" cy="230" rx="300" ry="170" fill="url(#glow-router)" opacity="0.45"/>
+    <rect x="0" y="0" width="6" height="230" fill="#f778ba"/>
+
+    <g transform="translate(70 45)" fill="none" stroke="#f778ba" stroke-width="3" stroke-linecap="round" stroke-linejoin="round">
+      <circle cx="16" cy="70" r="10" fill="#f778ba" stroke="none"/>
+      <path d="M26 70 C60 70 60 24 104 24" stroke-opacity="0.7"/>
+      <path d="M26 70 L104 70" stroke-opacity="0.7"/>
+      <path d="M26 70 C60 70 60 116 104 116" stroke-opacity="0.7"/>
+      <circle cx="118" cy="24" r="10"/>
+      <circle cx="118" cy="70" r="10"/>
+      <circle cx="118" cy="116" r="10"/>
+    </g>
+
+    <g font-family="ui-monospace, SFMono-Regular, 'JetBrains Mono', Menlo, Consolas, monospace">
+      <text x="262" y="60" font-size="11" fill="#6e7681" letter-spacing="2.5">PROVIDER</text>
+      <text x="260" y="118" font-size="60" font-weight="700" letter-spacing="-2" fill="#f0f6fc">RedRouter</text>
+      <rect x="262" y="132" width="120" height="3" fill="url(#rule-router)"/>
+      <text x="262" y="160" font-size="18" fill="#8b949e">One key, many providers: pinned offers, auto variants, tools wired in.</text>
+      <rect x="262" y="176" width="121" height="26" rx="13" fill="#ffffff" fill-opacity="0.04" stroke="#f778ba" stroke-opacity="0.45"/>
+      <text x="271" y="194" font-size="13" fill="#c9d1d9">auto variant</text>
+      <rect x="393" y="176" width="130" height="26" rx="13" fill="#ffffff" fill-opacity="0.04" stroke="#f778ba" stroke-opacity="0.45"/>
+      <text x="402" y="194" font-size="13" fill="#c9d1d9">pinned offers</text>
+      <rect x="533" y="176" width="164" height="26" rx="13" fill="#ffffff" fill-opacity="0.04" stroke="#f778ba" stroke-opacity="0.45"/>
+      <text x="542" y="194" font-size="13" fill="#c9d1d9">model suggestions</text>
+      <rect x="707" y="176" width="199" height="26" rx="13" fill="#ffffff" fill-opacity="0.04" stroke="#f778ba" stroke-opacity="0.45"/>
+      <text x="716" y="194" font-size="13" fill="#c9d1d9">MCP auto-registration</text>
+      <text x="1130" y="200" font-size="120" font-weight="700" fill="#f778ba" fill-opacity="0.07" text-anchor="end" letter-spacing="-6">&gt;&gt;</text>
+    </g>
+  </g>
+</svg>

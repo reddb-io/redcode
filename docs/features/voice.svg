@@ -1,0 +1,52 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 230" width="1200" height="230" role="img" aria-labelledby="t-voice d-voice">
+  <title id="t-voice">dictation</title>
+  <desc id="d-voice">Voice input: structured dictation delivered to the active composer.</desc>
+  <defs>
+    <linearGradient id="bg-voice" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#0d1117"/>
+      <stop offset="1" stop-color="#07090d"/>
+    </linearGradient>
+    <radialGradient id="glow-voice" cx="0.5" cy="0.5" r="0.5">
+      <stop offset="0" stop-color="#d2a8ff" stop-opacity="0.32"/>
+      <stop offset="1" stop-color="#d2a8ff" stop-opacity="0"/>
+    </radialGradient>
+    <linearGradient id="rule-voice" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0" stop-color="#d2a8ff"/>
+      <stop offset="1" stop-color="#d2a8ff" stop-opacity="0"/>
+    </linearGradient>
+    <pattern id="grid-voice" width="24" height="24" patternUnits="userSpaceOnUse">
+      <path d="M24 0H0V24" fill="none" stroke="#ffffff" stroke-opacity="0.028" stroke-width="1"/>
+    </pattern>
+    <clipPath id="frame-voice">
+      <rect x="0" y="0" width="1200" height="230" rx="18"/>
+    </clipPath>
+  </defs>
+  <g clip-path="url(#frame-voice)">
+    <rect width="1200" height="230" fill="url(#bg-voice)"/>
+    <rect width="1200" height="230" fill="url(#grid-voice)"/>
+    <ellipse cx="130" cy="115" rx="360" ry="220" fill="url(#glow-voice)"/>
+    <ellipse cx="1130" cy="230" rx="300" ry="170" fill="url(#glow-voice)" opacity="0.45"/>
+    <rect x="0" y="0" width="6" height="230" fill="#d2a8ff"/>
+
+    <g transform="translate(70 45)" fill="none" stroke="#d2a8ff" stroke-width="3" stroke-linecap="round" stroke-linejoin="round">
+      <rect x="48" y="0" width="44" height="80" rx="22" stroke-opacity="0.7"/>
+      <path d="M22 62 C22 106 118 106 118 62"/>
+      <line x1="70" y1="100" x2="70" y2="130"/>
+      <line x1="46" y1="132" x2="94" y2="132" stroke-opacity="0.6"/>
+    </g>
+
+    <g font-family="ui-monospace, SFMono-Regular, 'JetBrains Mono', Menlo, Consolas, monospace">
+      <text x="262" y="60" font-size="11" fill="#6e7681" letter-spacing="2.5">VOICE INPUT</text>
+      <text x="260" y="118" font-size="60" font-weight="700" letter-spacing="-2" fill="#f0f6fc">dictation</text>
+      <rect x="262" y="132" width="120" height="3" fill="url(#rule-voice)"/>
+      <text x="262" y="160" font-size="18" fill="#8b949e">Speak into the composer through dit; you decide when it is sent.</text>
+      <rect x="262" y="176" width="44" height="26" rx="13" fill="#ffffff" fill-opacity="0.04" stroke="#d2a8ff" stroke-opacity="0.45"/>
+      <text x="271" y="194" font-size="13" fill="#c9d1d9">dit</text>
+      <rect x="316" y="176" width="121" height="26" rx="13" fill="#ffffff" fill-opacity="0.04" stroke="#d2a8ff" stroke-opacity="0.45"/>
+      <text x="325" y="194" font-size="13" fill="#c9d1d9">local socket</text>
+      <rect x="447" y="176" width="173" height="26" rx="13" fill="#ffffff" fill-opacity="0.04" stroke="#d2a8ff" stroke-opacity="0.45"/>
+      <text x="456" y="194" font-size="13" fill="#c9d1d9">never auto-submits</text>
+      <text x="1130" y="200" font-size="120" font-weight="700" fill="#d2a8ff" fill-opacity="0.07" text-anchor="end" letter-spacing="-6">((</text>
+    </g>
+  </g>
+</svg>

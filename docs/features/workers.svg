@@ -1,0 +1,56 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 230" width="1200" height="230" role="img" aria-labelledby="t-workers d-workers">
+  <title id="t-workers">workers</title>
+  <desc id="d-workers">Workers: a live, project-scoped console over the RedSkills worker fleet.</desc>
+  <defs>
+    <linearGradient id="bg-workers" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#0d1117"/>
+      <stop offset="1" stop-color="#07090d"/>
+    </linearGradient>
+    <radialGradient id="glow-workers" cx="0.5" cy="0.5" r="0.5">
+      <stop offset="0" stop-color="#ff2056" stop-opacity="0.32"/>
+      <stop offset="1" stop-color="#ff2056" stop-opacity="0"/>
+    </radialGradient>
+    <linearGradient id="rule-workers" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0" stop-color="#ff2056"/>
+      <stop offset="1" stop-color="#ff2056" stop-opacity="0"/>
+    </linearGradient>
+    <pattern id="grid-workers" width="24" height="24" patternUnits="userSpaceOnUse">
+      <path d="M24 0H0V24" fill="none" stroke="#ffffff" stroke-opacity="0.028" stroke-width="1"/>
+    </pattern>
+    <clipPath id="frame-workers">
+      <rect x="0" y="0" width="1200" height="230" rx="18"/>
+    </clipPath>
+  </defs>
+  <g clip-path="url(#frame-workers)">
+    <rect width="1200" height="230" fill="url(#bg-workers)"/>
+    <rect width="1200" height="230" fill="url(#grid-workers)"/>
+    <ellipse cx="130" cy="115" rx="360" ry="220" fill="url(#glow-workers)"/>
+    <ellipse cx="1130" cy="230" rx="300" ry="170" fill="url(#glow-workers)" opacity="0.45"/>
+    <rect x="0" y="0" width="6" height="230" fill="#ff2056"/>
+
+    <g transform="translate(70 45)" fill="none" stroke="#ff2056" stroke-width="3" stroke-linecap="round" stroke-linejoin="round">
+      <rect x="0" y="0" width="62" height="62" rx="12" stroke-opacity="0.6"/>
+      <rect x="78" y="0" width="62" height="62" rx="12" stroke-opacity="0.35"/>
+      <rect x="0" y="78" width="62" height="62" rx="12" stroke-opacity="0.35"/>
+      <rect x="78" y="78" width="62" height="62" rx="12" stroke-opacity="0.6"/>
+      <circle cx="31" cy="31" r="7" fill="#ff2056" stroke="none"/>
+      <circle cx="109" cy="109" r="7" fill="#ff2056" stroke="none"/>
+    </g>
+
+    <g font-family="ui-monospace, SFMono-Regular, 'JetBrains Mono', Menlo, Consolas, monospace">
+      <text x="262" y="60" font-size="11" fill="#6e7681" letter-spacing="2.5">REDSKILLS</text>
+      <text x="260" y="118" font-size="60" font-weight="700" letter-spacing="-2" fill="#f0f6fc">workers</text>
+      <rect x="262" y="132" width="120" height="3" fill="url(#rule-workers)"/>
+      <text x="262" y="160" font-size="18" fill="#8b949e">The RedSkills worker fleet as a tab in your session, not a dashboard.</text>
+      <rect x="262" y="176" width="87" height="26" rx="13" fill="#ffffff" fill-opacity="0.04" stroke="#ff2056" stroke-opacity="0.45"/>
+      <text x="271" y="194" font-size="13" fill="#c9d1d9">/workers</text>
+      <rect x="359" y="176" width="61" height="26" rx="13" fill="#ffffff" fill-opacity="0.04" stroke="#ff2056" stroke-opacity="0.45"/>
+      <text x="368" y="194" font-size="13" fill="#c9d1d9">drain</text>
+      <rect x="430" y="176" width="52" height="26" rx="13" fill="#ffffff" fill-opacity="0.04" stroke="#ff2056" stroke-opacity="0.45"/>
+      <text x="439" y="194" font-size="13" fill="#c9d1d9">stop</text>
+      <rect x="492" y="176" width="113" height="26" rx="13" fill="#ffffff" fill-opacity="0.04" stroke="#ff2056" stroke-opacity="0.45"/>
+      <text x="501" y="194" font-size="13" fill="#c9d1d9">per-project</text>
+      <text x="1130" y="200" font-size="120" font-weight="700" fill="#ff2056" fill-opacity="0.07" text-anchor="end" letter-spacing="-6">##</text>
+    </g>
+  </g>
+</svg>

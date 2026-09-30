@@ -1,0 +1,54 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 230" width="1200" height="230" role="img" aria-labelledby="t-compaction d-compaction">
+  <title id="t-compaction">compaction</title>
+  <desc id="d-compaction">Compaction: anchored, focused, background summaries that keep restricted content out.</desc>
+  <defs>
+    <linearGradient id="bg-compaction" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#0d1117"/>
+      <stop offset="1" stop-color="#07090d"/>
+    </linearGradient>
+    <radialGradient id="glow-compaction" cx="0.5" cy="0.5" r="0.5">
+      <stop offset="0" stop-color="#3fb950" stop-opacity="0.32"/>
+      <stop offset="1" stop-color="#3fb950" stop-opacity="0"/>
+    </radialGradient>
+    <linearGradient id="rule-compaction" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0" stop-color="#3fb950"/>
+      <stop offset="1" stop-color="#3fb950" stop-opacity="0"/>
+    </linearGradient>
+    <pattern id="grid-compaction" width="24" height="24" patternUnits="userSpaceOnUse">
+      <path d="M24 0H0V24" fill="none" stroke="#ffffff" stroke-opacity="0.028" stroke-width="1"/>
+    </pattern>
+    <clipPath id="frame-compaction">
+      <rect x="0" y="0" width="1200" height="230" rx="18"/>
+    </clipPath>
+  </defs>
+  <g clip-path="url(#frame-compaction)">
+    <rect width="1200" height="230" fill="url(#bg-compaction)"/>
+    <rect width="1200" height="230" fill="url(#grid-compaction)"/>
+    <ellipse cx="130" cy="115" rx="360" ry="220" fill="url(#glow-compaction)"/>
+    <ellipse cx="1130" cy="230" rx="300" ry="170" fill="url(#glow-compaction)" opacity="0.45"/>
+    <rect x="0" y="0" width="6" height="230" fill="#3fb950"/>
+
+    <g transform="translate(70 45)" fill="none" stroke="#3fb950" stroke-width="3" stroke-linecap="round" stroke-linejoin="round">
+      <line x1="10" y1="16" x2="130" y2="16" stroke-opacity="0.35"/>
+      <line x1="10" y1="34" x2="130" y2="34" stroke-opacity="0.35"/>
+      <path d="M36 62 L70 90 L104 62"/>
+      <path d="M36 92 L70 120 L104 92" stroke-opacity="0.55"/>
+    </g>
+
+    <g font-family="ui-monospace, SFMono-Regular, 'JetBrains Mono', Menlo, Consolas, monospace">
+      <text x="262" y="60" font-size="11" fill="#6e7681" letter-spacing="2.5">LONG SESSIONS</text>
+      <text x="260" y="118" font-size="60" font-weight="700" letter-spacing="-2" fill="#f0f6fc">compaction</text>
+      <rect x="262" y="132" width="120" height="3" fill="url(#rule-compaction)"/>
+      <text x="262" y="160" font-size="18" fill="#8b949e">Focused background compaction that keeps anchors and drops secrets.</text>
+      <rect x="262" y="176" width="138" height="26" rx="13" fill="#ffffff" fill-opacity="0.04" stroke="#3fb950" stroke-opacity="0.45"/>
+      <text x="271" y="194" font-size="13" fill="#c9d1d9">/compact focus</text>
+      <rect x="410" y="176" width="78" height="26" rx="13" fill="#ffffff" fill-opacity="0.04" stroke="#3fb950" stroke-opacity="0.45"/>
+      <text x="419" y="194" font-size="13" fill="#c9d1d9">anchors</text>
+      <rect x="498" y="176" width="104" height="26" rx="13" fill="#ffffff" fill-opacity="0.04" stroke="#3fb950" stroke-opacity="0.45"/>
+      <text x="507" y="194" font-size="13" fill="#c9d1d9">background</text>
+      <rect x="612" y="176" width="113" height="26" rx="13" fill="#ffffff" fill-opacity="0.04" stroke="#3fb950" stroke-opacity="0.45"/>
+      <text x="621" y="194" font-size="13" fill="#c9d1d9">/restricted</text>
+      <text x="1130" y="200" font-size="120" font-weight="700" fill="#3fb950" fill-opacity="0.07" text-anchor="end" letter-spacing="-6">↓</text>
+    </g>
+  </g>
+</svg>
