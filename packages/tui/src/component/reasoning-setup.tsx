@@ -362,7 +362,6 @@ async function chooseEvaluator(
             name: "Keep current S1 evaluator",
             evaluator: status.settings.evaluator,
             keep: true,
-            direct: true,
             category: "Current",
           },
         ]
@@ -383,21 +382,28 @@ async function chooseEvaluator(
               .join(" · "),
             evaluator: status.router.evaluator,
             keep: false,
-            direct: true,
             category: "Connected",
           },
         ]
       : []),
+    // S1 only offers services that already have an active connection; nothing is asked for inline.
     ...status.evaluators
       .filter((option) => option.evaluator.transport !== "red-router" || !status.router?.evaluator)
+      .filter((option) => connected.has(option.evaluator.transport))
       .map((option) => ({
         name: `${option.name} · ${option.evaluator.model}`,
         evaluator: option.evaluator,
         keep: false,
-        direct: connected.has(option.evaluator.transport),
-        category: connected.has(option.evaluator.transport) ? "Connected" : "Other services",
+        category: "Connected",
       })),
   ]
+  if (options.length === 0) {
+    context.ui.toast.show({
+      variant: "warning",
+      message: "No connected service can evaluate. Connect an integration first, then run the setup again.",
+    })
+    return
+  }
   const index = await context.ui.dialog.select({
     title: "S1 evaluator · checks S2 work",
     options: options.map((option, index) => ({
@@ -410,26 +416,10 @@ async function chooseEvaluator(
   if (index === undefined) return
   const chosen = options[index]
   if (chosen.keep) return { evaluator: chosen.evaluator, apiKey: undefined }
-  const baseURL = chosen.direct
-    ? chosen.evaluator.baseURL
-    : await context.ui.dialog.prompt({ title: "S1 API base URL", value: chosen.evaluator.baseURL })
-  if (baseURL === undefined) return
-  const apiKey = chosen.direct
-    ? ""
-    : await context.ui.dialog.prompt({
-        title: "S1 API key",
-        description: "Leave empty to reuse a saved credential or provider connection.",
-      })
-  if (apiKey === undefined) return
-  const evaluator: IntelligenceEvaluator = {
-    ...chosen.evaluator,
-    baseURL: baseURL.trim(),
-    // A credential selected for one endpoint must not follow an edited URL.
-    credentialID: baseURL.trim() === chosen.evaluator.baseURL ? chosen.evaluator.credentialID : undefined,
-  }
+  const evaluator: IntelligenceEvaluator = chosen.evaluator
   const discovered = await context.client["server.intelligence"]
     .discover(
-      { evaluator, ...(apiKey.trim() ? { apiKey: apiKey.trim() } : {}) },
+      { evaluator },
       { signal: AbortSignal.timeout(30_000) },
     )
     .catch((error) => {
@@ -462,7 +452,7 @@ async function chooseEvaluator(
   if (model === undefined) return
   const id = model || (await context.ui.dialog.prompt({ title: "S1 model ID", value: evaluator.model }))
   if (!id?.trim()) return
-  return { evaluator: { ...evaluator, model: id.trim() }, ...(apiKey.trim() ? { apiKey: apiKey.trim() } : {}) }
+  return { evaluator: { ...evaluator, model: id.trim() }, apiKey: undefined }
 }
 
 // Checks each role in order; a failure names the role and the reason and offers Retry, which reruns every check.
