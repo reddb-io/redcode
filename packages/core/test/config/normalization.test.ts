@@ -425,6 +425,15 @@ describe("ConfigNormalize", () => {
     })
   })
 
+  test("carries the V1 turn step wall over to the V2 turn step ceiling", () => {
+    expect(normalized({ experimental: { turn_steps: { wrap_up_at: 2, stop_at: 3 } } }).encoded.experimental).toEqual({
+      turn_steps: 3,
+    })
+    expect(normalized({ experimental: { turn_steps: false } }).encoded.experimental).toEqual({ turn_steps: false })
+    expect(normalized({ experimental: { turn_steps: 50 } }).encoded.experimental).toEqual({ turn_steps: 50 })
+    expect(normalized({ experimental: { turn_steps: { wrap_up_at: 2 } } }).encoded.experimental).toBeUndefined()
+  })
+
   test("preserves the V1 subagent depth and prefers the V2 setting", () => {
     expect(normalized({ subagent_depth: 3 }).encoded.experimental).toEqual({ subagent_depth: 3 })
     const combined = normalized({ subagent_depth: 3, experimental: { subagent_depth: 2 } })

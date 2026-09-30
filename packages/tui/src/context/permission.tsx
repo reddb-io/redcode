@@ -11,7 +11,10 @@ export const { use: usePermission, provider: PermissionProvider } = createSimple
     const config = useConfig()
     return {
       get mode(): PermissionMode {
-        return args.auto ? "autoaccept" : config.data.session.permissions
+        return args.auto || args.yolo ? "autoaccept" : config.data.session.permissions
+      },
+      get yolo() {
+        return args.yolo === true
       },
     }
   },

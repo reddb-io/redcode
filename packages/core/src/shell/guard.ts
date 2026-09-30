@@ -33,6 +33,18 @@ export type Input = {
   readonly roots: readonly string[]
 }
 
+/**
+ * Whether a Session runs with the guard lifted. Only `--yolo` does that, carried as `REDCODE_YOLO=1` in the
+ * Session's client environment, else the server's own; `--auto` only answers permission prompts and leaves
+ * the guard in place. Deny rules, secret protection and automatic worktrees apply in every mode.
+ */
+export function lifted(
+  session: Readonly<Record<string, string | undefined>> | undefined,
+  server: Readonly<Record<string, string | undefined>>,
+) {
+  return (session ?? server)["REDCODE_YOLO"] === "1"
+}
+
 /** Why one parsed command is refused, or undefined when the guard allows it. */
 export function refusal(command: string, input: Input): string | undefined {
   return check(words(command), input, 0)

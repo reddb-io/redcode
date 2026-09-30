@@ -4,6 +4,7 @@ import { Runtime } from "../../framework/runtime"
 import { ServerConnection } from "../../services/server-connection"
 import { BootTrace } from "../../boot-trace"
 import { applyReasoningFlag } from "../../reasoning-flag"
+import { applyYoloFlag, permissionMode } from "../../permission-mode"
 
 export default Runtime.handler(Commands.commands.run, (input) =>
   Effect.gen(function* () {
@@ -11,6 +12,8 @@ export default Runtime.handler(Commands.commands.run, (input) =>
     const separator = process.argv.indexOf("--", 2)
     // A standalone server inherits it. A background service it spawns must not, so the Session's environment carries it there.
     if (input.tmp && input.standalone) process.env.REDCODE_WORKTREE_LOCATION = "tmp"
+    const permissions = permissionMode(input)
+    applyYoloFlag(permissions.yolo && input.standalone)
     // Set before the server resolves so the standalone server this run starts inherits it.
     yield* applyReasoningFlag(input)
     const server = yield* ServerConnection.resolve({
@@ -21,6 +24,7 @@ export default Runtime.handler(Commands.commands.run, (input) =>
       mode: Option.isSome(input.server) ? "explicit" : input.standalone ? "standalone" : "service",
     })
     if (input.tmp) process.env.REDCODE_WORKTREE_LOCATION = "tmp"
+    applyYoloFlag(permissions.yolo)
     yield* Effect.promise(() =>
       runNonInteractive({
         server,
@@ -36,7 +40,7 @@ export default Runtime.handler(Commands.commands.run, (input) =>
         thinking: input.thinking,
         maxCost: Option.getOrUndefined(input.maxCost),
         maxTokens: Option.getOrUndefined(input.maxTokens),
-        auto: input.auto || input.yolo || input.dangerouslySkipPermissions,
+        auto: permissions.auto,
       }),
     )
   }),

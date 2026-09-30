@@ -1949,6 +1949,7 @@ export function Prompt(props: PromptProps) {
                 mode={store.mode}
                 agent={agentLabel()}
                 auto={local.permission.mode === "autoaccept"}
+                yolo={local.permission.yolo}
                 model={promptDisplay().modelLabel}
                 provider={promptDisplay().providerLabel}
                 s1={s1Display()}

@@ -14,3 +14,13 @@ Response must include:
 - Recommendations for what should be done next
 
 Any attempt to use tools is a critical violation. Respond with text ONLY.`
+
+/** Far above any real turn: the wall that stops a runaway model, not a budget. */
+export const TURN_STEPS_DEFAULT = 400
+
+/** Steps one turn may run: the agent's own `steps`, else `experimental.turn_steps`; undefined means unbounded. */
+export function stepLimit(agentSteps: number | undefined, turnSteps: number | false | undefined) {
+  if (agentSteps !== undefined) return agentSteps
+  if (turnSteps === false) return undefined
+  return turnSteps ?? TURN_STEPS_DEFAULT
+}

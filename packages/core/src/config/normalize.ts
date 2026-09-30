@@ -537,6 +537,14 @@ function normalizeExperimental(
         )
         if (value !== undefined) result.aux_timeout = value
       }
+      if (own(experimental, "turn_steps")) {
+        // V1 spelled the ceiling as { wrap_up_at, stop_at }; only the wall carries over.
+        const legacy = isRecord(experimental.turn_steps) ? experimental.turn_steps.stop_at : experimental.turn_steps
+        const value = legacy === undefined
+          ? undefined
+          : decodeEncoded(ConfigExperimental.Info.fields.turn_steps, legacy, ["experimental", "turn_steps"], diagnostics)
+        if (value !== undefined) result.turn_steps = value
+      }
       if (own(experimental, "turn_stall")) {
         const value = decodeEncoded(
           ConfigExperimental.Info.fields.turn_stall,

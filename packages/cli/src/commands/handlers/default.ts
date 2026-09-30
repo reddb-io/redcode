@@ -13,6 +13,7 @@ import { OPENCODE_ARTIFACT, OPENCODE_CHANNEL, OPENCODE_VERSION } from "../../ver
 import { Env } from "../../env"
 import { BootTrace } from "../../boot-trace"
 import { applyReasoningFlag } from "../../reasoning-flag"
+import { applyYoloFlag, permissionMode } from "../../permission-mode"
 import { Logging } from "@opencode/util/observability/logging"
 
 export default Runtime.handler(Commands, (input) =>
@@ -59,6 +60,8 @@ export default Runtime.handler(Commands, (input) =>
     // Set once the server is resolved so a background service spawned here does not inherit it; each Session's
     // environment carries it to the server instead (an explicit --server receives no Session environment).
     if (input.tmp) process.env.REDCODE_WORKTREE_LOCATION = "tmp"
+    const permissions = permissionMode(input)
+    applyYoloFlag(permissions.yolo)
     const updater = yield* Updater.Service
     let installing: string | undefined
     const updateListeners = new Set<(version: string) => void>()
@@ -100,7 +103,9 @@ export default Runtime.handler(Commands, (input) =>
         prompt: Option.getOrUndefined(input.prompt),
         agent: Option.getOrUndefined(input.agent),
         model: Option.getOrUndefined(input.model),
-        auto: input.auto || input.yolo || input.dangerouslySkipPermissions,
+        auto: permissions.auto,
+        // The server lifts its repository guard for REDCODE_YOLO from the Session environment, however it was set.
+        yolo: process.env.REDCODE_YOLO === "1",
       },
       config: {
         path: config.path,

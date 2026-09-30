@@ -650,6 +650,14 @@ function App() {
   const [startupPending, setStartupPending] = createSignal(Boolean(args.continue || args.sessionID))
   const startupPrompt = args.prompt ? { text: args.prompt, files: [], agents: [], pasted: [] } : undefined
   onMount(() => {
+    if (args.yolo)
+      toast.show({
+        variant: "warning",
+        title: "YOLO mode",
+        message:
+          "Permission prompts are approved and destructive Git commands are no longer refused. Deny rules, secret protection and automatic worktrees still apply.",
+        duration: 8000,
+      })
     batch(() => {
       if (args.agent) local.agent.set(args.agent)
       if (args.model) {

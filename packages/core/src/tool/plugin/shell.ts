@@ -121,6 +121,19 @@ export const Plugin = {
     const permission = yield* Permission.Service
     const config = yield* Config.Service
 
+    // `--yolo` reaches the server in the root Session's client environment; a subagent shares its root's mode.
+    const yolo = Effect.fn("ShellTool.yolo")(function* (sessionID: SessionSchema.ID) {
+      let root = yield* sessions.get(sessionID).pipe(Effect.orElseSucceed(() => undefined))
+      while (root?.parentID) {
+        const parent = yield* sessions.get(root.parentID).pipe(Effect.orElseSucceed(() => undefined))
+        if (!parent) break
+        root = parent
+      }
+      if (!root) return false
+      const environment = yield* sessions.environment({ sessionID: root.id }).pipe(Effect.orElseSucceed(() => undefined))
+      return ShellGuard.lifted(environment, process.env)
+    })
+
     const prepare = Effect.fn("ShellTool.prepare")(function* (invocation: ShellCreateBefore, context: Tool.Context) {
       const source = {
         type: "tool" as const,
@@ -139,7 +152,7 @@ export const Plugin = {
         }),
       )
       yield* access.authorizeExternal([target, ...directories], context)
-      // The repository guard refuses before any prompt; only a rule the user wrote for the command lifts it.
+      // The repository guard refuses before any prompt; only `--yolo` or a rule the user wrote for the command lifts it.
       const root = yield* access.resolve({ path: ".", kind: "directory" })
       const refused = parsed.commands.flatMap((command) => {
         const reason = ShellGuard.refusal(command.resource, { cwd: target.absolute, roots: [root.absolute] })
@@ -147,6 +160,7 @@ export const Plugin = {
       })
       if (
         refused.length > 0 &&
+        !(yield* yolo(context.sessionID)) &&
         !(yield* permission.explicit({
           sessionID: context.sessionID,
           agent: context.agent,

@@ -8,6 +8,8 @@ export function PromptMetadataRow(props: {
   mode: "normal" | "shell"
   agent?: string
   auto: boolean
+  /** Shows the marker as `yolo` in the warning color: the repository guard is lifted, not only prompts. */
+  yolo?: boolean
   model: string
   provider: string
   s1?: { model: string; provider: string }
@@ -45,7 +47,9 @@ export function PromptMetadataRow(props: {
           {(agent) => <text fg={fade(props.highlight, props.agentAlpha)}>{agent()}</text>}
         </Show>
         <Show when={props.mode === "normal" && layout().auto}>
-          <text fg={fade(theme.text.muted, props.agentAlpha)}>auto</text>
+          <text fg={fade(props.yolo ? theme.text.feedback.warning.base : theme.text.muted, props.agentAlpha)}>
+            {props.yolo ? "yolo" : "auto"}
+          </text>
         </Show>
         <Show when={props.mode === "normal" && layout().model}>
           <Show when={layout().agent}>

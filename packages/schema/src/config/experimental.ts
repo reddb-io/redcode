@@ -60,6 +60,12 @@ export class Info extends Schema.Class<Info>("ConfigExperimental.Info")({
     .annotate({
       description: "Deadline in milliseconds for auxiliary model calls; false disables it.",
     }),
+  turn_steps: Schema.Union([Schema.Literal(false), PositiveInt])
+    .pipe(optional)
+    .annotate({
+      description:
+        "Steps one turn may run when its agent sets no steps of its own; the last one runs with tools disabled and asks for a report of what was done and what is left. New user input starts the count over. Defaults to 400; false removes the ceiling.",
+    }),
   turn_stall: Schema.Union([
     Schema.Literal(false),
     Schema.Struct({

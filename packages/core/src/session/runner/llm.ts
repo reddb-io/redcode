@@ -62,7 +62,9 @@ import { IntelligenceEvaluation } from "../../intelligence/evaluation.js"
 import { IntelligenceResponse } from "../../intelligence/response.js"
 import { Job } from "../../job.js"
 import { Skill } from "../../skill.js"
-import { MAX_STEPS_PROMPT } from "./max-steps.js"
+import { Vault } from "../../vault/vault.js"
+import { VaultRestricted } from "../../vault/restricted.js"
+import { MAX_STEPS_PROMPT, stepLimit } from "./max-steps.js"
 
 const CONTINUE_AFTER_INCOMPLETE_STREAM =
   "The previous response was interrupted. Continue from where you left off without repeating completed content."
@@ -115,6 +117,7 @@ const layer = Layer.effect(
     const designs = yield* DesignStore.Service
     const location = yield* Location.Service
     const global = yield* Global.Service
+    const vault = yield* Vault.Service
     const steps = yield* SessionStep.make
     // Title generation starts once input is visible and must not delay model execution.
     const titles = yield* FiberMap.make<SessionSchema.ID, void, never>()
@@ -339,7 +342,11 @@ const layer = Layer.effect(
           next.context.agent.id !== "question" &&
           !(yield* SessionInbox.nextPromotable(db, sessionID, "steer")) &&
           !(yield* monitors.list(sessionID)).some(Monitor.parks) &&
-          (next.context.agent.info.steps === undefined || step < next.context.agent.info.steps)
+          step <
+            (stepLimit(
+              next.context.agent.info.steps,
+              Config.latestExperimental(yield* config.entries(), "turn_steps"),
+            ) ?? Infinity)
         ) {
           const reminder = SessionTodo.reminder(
             yield* Effect.firstSuccessOf([todos.review(sessionID), todos.get(sessionID)]),
@@ -510,6 +517,7 @@ const layer = Layer.effect(
       const preceding = loaded.messages.slice(0, index)
       const request = IntelligenceClassification.evaluation({
         sessionID,
+        scrub: yield* vault.scrubber(loaded.session.projectID),
         request: { id: user.id, text: user.text, files: user.files },
         history: preceding.slice(-IntelligenceClassification.HISTORY).flatMap(historyEntry),
         omitted: Math.max(0, preceding.length - IntelligenceClassification.HISTORY),
@@ -529,13 +537,31 @@ const layer = Layer.effect(
           )
           .toSorted((left, right) => left.name.localeCompare(right.name)),
       })
+      // A message S1 reads as carrying restricted content is marked once its answer lands, however late; the marker
+      // only keeps it out of derived text and shows a notice, and nothing waits for it.
       const fiber = yield* FiberMap.run(
         classifications,
         user.id,
-        intelligence.evaluate(request).pipe(Effect.orElseSucceed(() => undefined)),
+        intelligence.evaluate(request).pipe(
+          Effect.orElseSucceed(() => undefined),
+          Effect.tap((evaluation) =>
+            IntelligenceClassification.restricted(evaluation) === "flagged"
+              ? markRestricted(sessionID, user.id)
+              : Effect.void,
+          ),
+        ),
       )
       const settled = yield* Fiber.await(fiber).pipe(Effect.timeoutOption(CLASSIFICATION_WAIT))
       return Option.isSome(settled) && Exit.isSuccess(settled.value) ? settled.value.value : undefined
+    })
+
+    const markRestricted = Effect.fn("SessionRunner.markRestricted")(function* (
+      sessionID: SessionSchema.ID,
+      messageID: SessionMessage.ID,
+    ) {
+      const session = yield* store.get(sessionID)
+      const metadata = session && VaultRestricted.mark(session.metadata, messageID, "sensitive")
+      if (metadata) yield* bus.publish(SessionEvent.MetadataUpdated, { sessionID, metadata })
     })
 
     /**
@@ -882,7 +908,8 @@ const layer = Layer.effect(
           assistantMessageID = SessionMessage.ID.create()
           continue
         }
-        const stepLimitReached = loaded.agent.info.steps !== undefined && step >= loaded.agent.info.steps
+        const limit = stepLimit(loaded.agent.info.steps, Config.latestExperimental(yield* config.entries(), "turn_steps"))
+        const stepLimitReached = limit !== undefined && step >= limit
         const loopLimits = LoopGuard.limits(Config.latestExperimental(yield* config.entries(), "loop_guard"))
         const latestUser = (yield* store.messages({ sessionID, type: "user", limit: 1 })).at(0)
         const stallLimits = SessionStall.limits(Config.latestExperimental(yield* config.entries(), "turn_stall"), {
@@ -893,13 +920,13 @@ const layer = Layer.effect(
           ),
         })
         const toolTimeout = Config.latestExperimental(yield* config.entries(), "tool_timeout")
-        if (stepLimitReached && loaded.agent.info.steps !== undefined)
+        if (stepLimitReached)
           yield* guards.record({
             sessionID,
             guard: "steps",
             action: "stop",
             subject: loaded.agent.id,
-            detail: `Tools disabled at agent step ${step} of ${loaded.agent.info.steps}`,
+            detail: `Tools disabled at agent step ${step} of ${limit}`,
           })
         const transcript = SessionModelRequest.baseTranscript({
           agent: loaded.agent.info,
@@ -1098,15 +1125,14 @@ function responseText(message: SessionMessage.Assistant) {
     .trim()
 }
 
-/** One bounded message of the history a prompt classification reads. */
+/** One message of the history a prompt classification reads; the classification redacts and bounds its text. */
 function historyEntry(message: SessionMessage.Info): IntelligenceClassification.HistoryEntry[] {
-  const clip = (text: string) => IntelligenceEvaluation.evidence(text, { limit: 2_000 }).content
-  if (message.type === "user" || message.type === "synthetic") return [{ role: message.type, text: clip(message.text) }]
+  if (message.type === "user" || message.type === "synthetic") return [{ role: message.type, text: message.text }]
   if (message.type !== "assistant") return []
   return [
     {
       role: "assistant",
-      text: clip(responseText(message)),
+      text: responseText(message),
       tools: message.content.flatMap((part) => (part.type === "tool" ? [part.name] : [])),
     },
   ]
@@ -1145,6 +1171,7 @@ export const node = makeLocationNode({
     DesignStore.node,
     Location.node,
     Global.node,
+    Vault.node,
     modelLimitNode,
   ],
 })

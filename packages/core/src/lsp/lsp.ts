@@ -9,6 +9,7 @@ import type { Info } from "@opencode/schema/config"
 import { Config } from "../config.js"
 import { Location } from "../location.js"
 import type { LSPClient } from "./client.js"
+import { LSPLaunch } from "./launch.js"
 import type { LSPServer } from "./server.js"
 
 export type Operation =
@@ -51,6 +52,8 @@ const layer = Layer.effect(
   Effect.gen(function* () {
     const location = yield* Location.Service
     const config = yield* Config.Service
+    const context = yield* Effect.context()
+    const runFork = Effect.runForkWith(context)
     const downloads = !["1", "true"].includes(process.env["REDCODE_DISABLE_LSP_DOWNLOAD"]?.toLowerCase() ?? "")
     const backend = yield* Effect.promise(() => import("#lsp"))
     const entries = yield* config.entries()
@@ -129,8 +132,10 @@ const layer = Layer.effect(
           used.set(key, ++sequence)
           return pending
         }
-        const started = Promise.resolve().then(async () => {
-          const handle = await backend.start(server, root, location.directory, downloads)
+        // A Node-based server whose runtime rejects a flag in the inherited NODE_OPTIONS exits
+        // before initialize. Restart it exactly once without that flag instead of staying broken.
+        const launch = async (info: LSPServer.Info, retry: boolean): Promise<LSPClient.Info> => {
+          const handle = await backend.start(info, root, location.directory, downloads)
           return backend.createClient({
               serverID: server.id,
               server: handle,
@@ -158,11 +163,27 @@ const layer = Layer.effect(
                 void client.shutdown().catch(() => undefined)
               })
               return client
-            }, (error) => {
+            }, (error: unknown) => {
               handle.process.kill("SIGTERM")
-              throw error
+              const flag = retry
+                ? LSPLaunch.rejectedNodeOption(
+                    handle.process.exitCode,
+                    error instanceof Error && "stderr" in error && typeof error.stderr === "string" ? error.stderr : undefined,
+                  )
+                : undefined
+              if (!flag) throw error
+              runFork(Effect.logWarning("language server rejected a NODE_OPTIONS flag; restarting without it", {
+                serverID: server.id,
+                root,
+                flag,
+              }))
+              return launch({
+                ...info,
+                env: { ...info.env, NODE_OPTIONS: LSPLaunch.withoutNodeOption(info.env?.["NODE_OPTIONS"] ?? process.env["NODE_OPTIONS"], flag) },
+              }, false)
             })
-        }).catch((error) => {
+        }
+        const started = Promise.resolve().then(() => launch(server, true)).catch((error) => {
           if (clients.get(key) !== started) return undefined
           clients.delete(key)
           used.delete(key)

@@ -33,10 +33,17 @@ const ServerParams = {
 
 const PermissionParams = {
   auto: Flag.boolean("auto").pipe(
-    Flag.withDescription("Auto-approve permissions that are not explicitly denied"),
+    Flag.withDescription(
+      "Auto-approve permission prompts that no rule denies; the repository guard still refuses destructive Git commands",
+    ),
     Flag.withDefault(false),
   ),
-  yolo: Flag.boolean("yolo").pipe(Flag.withDefault(false), Flag.withHidden),
+  yolo: Flag.boolean("yolo").pipe(
+    Flag.withDescription(
+      "Like --auto, and also lift the repository guard for destructive Git commands (dangerous); deny rules, secret protection and automatic worktrees still apply",
+    ),
+    Flag.withDefault(false),
+  ),
   dangerouslySkipPermissions: Flag.boolean("dangerously-skip-permissions").pipe(
     Flag.withDefault(false),
     Flag.withHidden,

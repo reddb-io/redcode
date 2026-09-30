@@ -100,3 +100,21 @@ describe("ShellGuard", () => {
     expect(text).toContain('"resource": "git stash *"')
   })
 })
+
+describe("ShellGuard.lifted", () => {
+  test("--yolo in the Session environment lifts the guard", () => {
+    expect(ShellGuard.lifted({ REDCODE_YOLO: "1" }, {})).toBe(true)
+  })
+
+  test("--auto alone never lifts the guard", () => {
+    expect(ShellGuard.lifted({ PATH: "/usr/bin" }, {})).toBe(false)
+    expect(ShellGuard.lifted({ REDCODE_YOLO: "0" }, {})).toBe(false)
+    expect(ShellGuard.lifted({ REDCODE_YOLO: "" }, {})).toBe(false)
+  })
+
+  test("a Session environment replaces the server's, as it does for worktree placement", () => {
+    expect(ShellGuard.lifted({}, { REDCODE_YOLO: "1" })).toBe(false)
+    expect(ShellGuard.lifted(undefined, { REDCODE_YOLO: "1" })).toBe(true)
+    expect(ShellGuard.lifted(undefined, {})).toBe(false)
+  })
+})

@@ -8,6 +8,8 @@ export interface Args {
   sessionID?: string
   fork?: boolean
   auto?: boolean
+  /** `--yolo`: prompts are auto-approved and the server's repository guard is lifted. */
+  yolo?: boolean
 }
 
 export const { use: useArgs, provider: ArgsProvider } = createSimpleContext({
