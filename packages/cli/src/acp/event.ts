@@ -89,6 +89,8 @@ export async function streamTurn(input: {
   readonly submit: (signal: AbortSignal) => Promise<unknown>
   readonly control: TurnControl
   readonly childSessionUpdate?: (update: ChildSessionUpdate) => Promise<void>
+  // Extra `_meta` for the turn's permission requests, such as a governed child Agent's parent binding.
+  readonly permissionMeta?: Record<string, unknown>
   readonly connectionSignal?: AbortSignal
   readonly sessionSignal?: AbortSignal
 }): Promise<PromptResponse> {
@@ -170,6 +172,7 @@ export async function streamTurn(input: {
           clientSessionID: input.sessionID,
           cwd: input.cwd,
           tool,
+          meta: input.permissionMeta,
           signal: control.admission.signal,
           ...(child ? { toolCallPrefix: child.id, titlePrefix: child.title } : {}),
         })

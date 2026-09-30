@@ -46,6 +46,7 @@ import {
   parseModelSelection,
   type ConfigOptionProvider,
 } from "./config-option"
+import { ACPChildAgent } from "./child-agent"
 import type { ACPConnection } from "./connection"
 import { promptContentToParts } from "./content"
 import {
@@ -77,6 +78,7 @@ type Attached = {
   catalog: Catalog
   model: ModelRef
   modeID: string
+  readonly childAgent?: ACPChildAgent.Contract
 }
 
 type PreparedPrompt = {
@@ -107,12 +109,15 @@ export interface Interface {
 export function make(input: {
   readonly client: OpenCodeClient
   readonly connection: ACPConnection.Connection
+  readonly env?: Readonly<Record<string, string | undefined>>
 }): Interface {
   const sessions = new Map<string, Attached>()
   const catalogs = new Map<string, Promise<Catalog>>()
   const registeredMcp = new Map<string, Set<string>>()
   const active = new Map<string, { readonly control: TurnControl; readonly turn: Promise<PromptResponse> }>()
   const capabilities = { writeTextFile: false, childSessionUpdates: false }
+  const admit = (meta: { readonly [key: string]: unknown } | null | undefined, mcpServers: readonly McpServer[]) =>
+    ACPChildAgent.admit(meta, mcpServers, input.env ?? process.env)
 
   const catalog = (cwd: string) => {
     const cached = catalogs.get(cwd)
@@ -146,7 +151,12 @@ export function make(input: {
     return input.client.session.interrupt({ sessionID })
   }
 
-  const attach = async (session: SessionInfo, cwd: string, mcpServers: readonly McpServer[]) => {
+  const attach = async (
+    session: SessionInfo,
+    cwd: string,
+    mcpServers: readonly McpServer[],
+    childAgent: ACPChildAgent.Contract | undefined,
+  ) => {
     const currentCatalog = await catalog(cwd)
     sessions.get(session.id)?.abort.abort()
     const state: Attached = {
@@ -156,6 +166,7 @@ export function make(input: {
       catalog: currentCatalog,
       model: session.model ?? currentCatalog.defaultModel,
       modeID: session.agent ?? currentCatalog.defaultModeID,
+      childAgent,
     }
     sessions.set(session.id, state)
     await registerMcpServers(input.client, registeredMcp, state, mcpServers)
@@ -216,20 +227,23 @@ export function make(input: {
       return {}
     },
     newSession: async (params) => {
+      // Refuse an invalid governed child Agent before it creates a Session.
+      const childAgent = admit(params._meta, params.mcpServers)
       const currentCatalog = await catalog(params.cwd)
       const created = await input.client.session.create({
         location: { directory: params.cwd },
         agent: currentCatalog.defaultModeID,
         model: currentCatalog.defaultModel,
       })
-      const state = await attach(created, params.cwd, params.mcpServers)
-      return { sessionId: state.id, configOptions: configOptions(state) }
+      const state = await attach(created, params.cwd, params.mcpServers, childAgent)
+      return { sessionId: state.id, ...childAgentMeta(state), configOptions: configOptions(state) }
     },
     loadSession: async (params) => {
+      const childAgent = admit(params._meta, params.mcpServers)
       const session = await getSession(input.client, params.sessionId, params.cwd)
-      const state = await attach(session, session.location.directory, params.mcpServers)
+      const state = await attach(session, session.location.directory, params.mcpServers, childAgent)
       await replay(state)
-      return { configOptions: configOptions(state) }
+      return { ...childAgentMeta(state), configOptions: configOptions(state) }
     },
     listSessions: async (params) => {
       const page = await input.client.session.list({
@@ -256,9 +270,10 @@ export function make(input: {
       return {}
     },
     resumeSession: async (params) => {
+      const childAgent = admit(params._meta, params.mcpServers ?? [])
       const session = await getSession(input.client, params.sessionId, params.cwd)
-      const state = await attach(session, session.location.directory, params.mcpServers ?? [])
-      return { configOptions: configOptions(state) }
+      const state = await attach(session, session.location.directory, params.mcpServers ?? [], childAgent)
+      return { ...childAgentMeta(state), configOptions: configOptions(state) }
     },
     closeSession: async (params) => {
       const turn = active.get(params.sessionId)
@@ -270,12 +285,13 @@ export function make(input: {
       return {}
     },
     forkSession: async (params) => {
+      const childAgent = admit(params._meta, params.mcpServers ?? [])
       const forked = await input.client.session.fork({
         sessionID: params.sessionId,
       })
-      const state = await attach(forked, forked.location.directory, params.mcpServers ?? [])
+      const state = await attach(forked, forked.location.directory, params.mcpServers ?? [], childAgent)
       await replay(state)
-      return { sessionId: state.id, configOptions: configOptions(state) }
+      return { sessionId: state.id, ...childAgentMeta(state), configOptions: configOptions(state) }
     },
     setSessionConfigOption: async (params) => {
       const state = await requireSession(params.sessionId)
@@ -330,6 +346,7 @@ export function make(input: {
           : undefined
       // A `$/cancel_request` for this prompt behaves like `session/cancel` for its turn.
       const cancel = () => void cancelTurn(state.id).catch(() => {})
+      const binding = state.childAgent ? ACPChildAgent.metadata(state.childAgent) : undefined
       const turn = streamTurn({
         client: input.client,
         connection: input.connection,
@@ -343,10 +360,12 @@ export function make(input: {
         sessionSignal: state.abort.signal,
         submit: (signal) => submitPrompt(input.client, state, prepared, signal),
         ...(childSessionUpdate ? { childSessionUpdate } : {}),
+        ...(binding ? { permissionMeta: binding } : {}),
       })
         .then(async (response) => {
           await sendUsageUpdate(input.client, input.connection, state, response.usage?.totalTokens).catch(() => {})
-          return response
+          // Every outcome of a governed child Agent names the parent it answers to, including cancellation.
+          return binding ? { ...response, _meta: { ...response._meta, ...binding } } : response
         })
         .finally(() => {
           signal?.removeEventListener("abort", cancel)
@@ -362,6 +381,10 @@ export function make(input: {
       await cancelTurn(params.sessionId).catch(() => {})
     },
   }
+}
+
+function childAgentMeta(state: Attached) {
+  return state.childAgent ? { _meta: ACPChildAgent.metadata(state.childAgent) } : {}
 }
 
 function preparePrompt(catalog: Catalog, prompt: PromptRequest["prompt"], messageID: string): PreparedPrompt {

@@ -26,6 +26,7 @@ export async function replyPermission(input: {
   readonly tool?: Tool
   readonly toolCallPrefix?: string
   readonly titlePrefix?: string
+  readonly meta?: Record<string, unknown>
   readonly signal?: AbortSignal
 }) {
   const toolName = input.tool?.name ?? input.event.data.action
@@ -35,6 +36,7 @@ export async function replyPermission(input: {
   const title = permissionTitle(toolName, toolInput, previews)
   const request = {
     sessionId: input.clientSessionID ?? input.sessionID,
+    ...(input.meta ? { _meta: input.meta } : {}),
     toolCall: {
       ...pendingToolCall({
         toolCallId: input.toolCallPrefix ? `${input.toolCallPrefix}:${toolCallID}` : toolCallID,

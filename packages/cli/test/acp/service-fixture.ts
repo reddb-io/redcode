@@ -33,6 +33,7 @@ type FixtureOptions = {
   readonly defaultModel?: ModelInfo
   readonly agents?: readonly AgentInfo[]
   readonly commands?: readonly CommandInfo[]
+  readonly env?: Readonly<Record<string, string | undefined>>
 }
 
 export const testModel = {
@@ -178,6 +179,8 @@ export function makeACPFixture(options: FixtureOptions = {}) {
       },
       requestPermission: async () => ({ outcome: { outcome: "cancelled" } }),
     },
+    // Keep ambient CI credentials out of the governed child Agent boundary unless a test supplies them.
+    env: options.env ?? {},
   })
 
   return {

@@ -34,6 +34,11 @@ export class UnknownAuthMethodError extends Schema.TaggedError<UnknownAuthMethod
   methodId: Schema.String,
 }) {}
 
+export class InvalidChildAgentError extends Schema.TaggedError<InvalidChildAgentError>()(
+  "ACPInvalidChildAgentError",
+  { reason: Schema.String },
+) {}
+
 export class ServiceFailureError extends Schema.TaggedError<ServiceFailureError>()("ACPServiceFailureError", {
   safeMessage: Schema.String,
   service: Schema.optional(Schema.String),
@@ -49,6 +54,7 @@ export type Error =
   | InvalidModeError
   | AuthRequiredError
   | UnknownAuthMethodError
+  | InvalidChildAgentError
   | ServiceFailureError
 
 export function toRequestError(error: Error): RequestError {
@@ -75,6 +81,8 @@ export function toRequestError(error: Error): RequestError {
       return RequestError.authRequired({}, "provider authentication required")
     case "ACPUnknownAuthMethodError":
       return RequestError.invalidParams({ methodId: error.methodId }, `unknown auth method: ${error.methodId}`)
+    case "ACPInvalidChildAgentError":
+      return RequestError.invalidParams({ boundary: "redskills-child-agent" }, error.reason)
     case "ACPServiceFailureError":
       return RequestError.internalError(
         {
