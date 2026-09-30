@@ -21,6 +21,8 @@ const it = testEffect(PluginTestLayer)
 
 // Assembled from parts so no secret scanner mistakes it for a real credential.
 const token = "ghp" + "_" + "c".repeat(36)
+const jwt = ["eyJ" + "hbGciOiJIUzI1NiJ9", "eyJ" + "zdWIiOiIxMjM0NTY3ODkwIn0", "c2lnbmF0dXJl" + "LXBhcnQ"].join(".")
+const otherProject = Project.ID.make("prj_vault_request_other")
 const agent = Agent.ID.make("build")
 const session = Session.Info.make({
   id: Session.ID.make("ses_vault_request"),
@@ -122,6 +124,94 @@ describe("SessionModelRequest vault seam", () => {
       )
       expect(JSON.stringify(prepared.request.messages)).not.toContain(token)
       expect(JSON.stringify(prepared.request.messages)).toContain(`{vault:${name}}`)
+    }).pipe(Effect.provideService(SessionModelTransport.Service, transport)),
+  )
+
+  it.effect("scrubs a value the tool captured during the call from its own result", () =>
+    Effect.gen(function* () {
+      const vault = yield* Vault.Service
+      const login = JSON.stringify({ token: jwt })
+      const prepared = yield* prepare(() =>
+        Effect.gen(function* () {
+          const binding = yield* Vault.Current
+          const captured = binding ? yield* binding.capture([login], ["api.example.com"]) : undefined
+          return {
+            output: { body: login },
+            content: [{ type: "text" as const, text: `${login}\n\n${Vault.captureNote(captured?.names ?? [])}` }],
+          }
+        }),
+      )
+      const result = yield* prepared.executeTool(call("call_vault_capture"))
+      const [entry] = yield* vault.list(session.projectID)
+      expect(entry).toMatchObject({ name: "jwt-1", kind: "jwt", hosts: ["api.example.com"] })
+      expect(result.content).toEqual([
+        {
+          type: "text",
+          text: '{"token":"{vault:jwt-1}"}\n\nStored 1 secret from the output as {vault:jwt-1}; use that reference in later commands.',
+        },
+      ])
+      expect(result.output).toEqual({ body: '{"token":"{vault:jwt-1}"}' })
+      expect(JSON.stringify(result)).not.toContain(jwt)
+    }).pipe(Effect.provideService(SessionModelTransport.Service, transport)),
+  )
+
+  it.effect("scrubs progress updates and the metadata of a failure whose message is clean", () =>
+    Effect.gen(function* () {
+      const vault = yield* Vault.Service
+      const name = yield* vault.put({ projectID: session.projectID, kind: "github-token", value: token })
+      const updates: unknown[] = []
+      const prepared = yield* prepare((input) =>
+        Effect.gen(function* () {
+          if (input.progress) yield* input.progress({ line: `sending ${token}`, nested: { list: [token] } })
+          return yield* new Tool.Error({ message: "request failed", metadata: { output: `401 for ${token}` } })
+        }),
+      )
+      const error = yield* prepared
+        .executeTool({
+          ...call("call_vault_progress"),
+          progress: (update) => Effect.sync(() => void updates.push(update)),
+        })
+        .pipe(Effect.flip)
+      expect(updates).toEqual([{ line: `sending {vault:${name}}`, nested: { list: [`{vault:${name}}`] } }])
+      expect(error.message).toBe("request failed")
+      expect(error instanceof Tool.Error ? error.metadata : undefined).toEqual({ output: `401 for {vault:${name}}` })
+      expect(JSON.stringify([updates, error])).not.toContain(token)
+    }).pipe(Effect.provideService(SessionModelTransport.Service, transport)),
+  )
+
+  it.effect("returns a clean failure without metadata as it was", () =>
+    Effect.gen(function* () {
+      const vault = yield* Vault.Service
+      yield* vault.put({ projectID: session.projectID, kind: "github-token", value: token })
+      const failure = new Tool.Error({ message: "nothing secret here" })
+      const prepared = yield* prepare(() => Effect.fail(failure))
+      const error = yield* prepared.executeTool(call("call_vault_clean_error")).pipe(Effect.flip)
+      expect(error.message).toBe("nothing secret here")
+      expect(error instanceof Tool.Error ? error.metadata : "not a tool error").toBeUndefined()
+    }).pipe(Effect.provideService(SessionModelTransport.Service, transport)),
+  )
+
+  it.effect("neither resolves nor scrubs another project's secret", () =>
+    Effect.gen(function* () {
+      const vault = yield* Vault.Service
+      const foreign = yield* vault.put({ projectID: otherProject, kind: "github-token", value: token })
+      const prepared = yield* prepare(
+        () =>
+          Effect.gen(function* () {
+            const resolved = yield* Vault.resolveAll([foreign])
+            return {
+              content: [
+                { type: "text" as const, text: "missing" in resolved ? `missing ${resolved.missing}` : "resolved" },
+              ],
+            }
+          }),
+        [Message.user(`from elsewhere ${token}`)],
+      )
+      const result = yield* prepared.executeTool(call("call_vault_foreign"))
+      expect(result.content).toEqual([{ type: "text", text: `missing ${foreign}` }])
+      // The Session's project does not hold this value, so its request carries the text as the user wrote it.
+      expect(JSON.stringify(prepared.request.messages)).toContain(token)
+      expect(yield* vault.list(session.projectID)).toEqual([])
     }).pipe(Effect.provideService(SessionModelTransport.Service, transport)),
   )
 })

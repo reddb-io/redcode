@@ -3,6 +3,8 @@
 // Smoke-tests a built Redcode binary through its real flows, in a fresh home, without model credentials:
 // version and RPC sidecar, background service boot on a non-default port, a scripted session against a fake
 // OpenAI-compatible provider (tool call, final text, stored token accounting), a `--tmp` worktree session,
+// secrets through the project vault (a pasted token never reaches the provider, a reference resolves inside single
+// quotes against a loopback server, a token in tool output comes back as a reference, listings show names only),
 // an optional Design review rendered in headless Chromium, and the failure reason of a port collision.
 //
 //   bun script/smoke/run.ts --binary <path> [--version <x.y.z>] [--design] [--design-bin <path>]
@@ -17,6 +19,12 @@ import { FakeProvider } from "./fake-provider"
 
 const NOTE_TEXT = "SMOKE-NOTE-4711"
 const DESIGN_TEXT = "SMOKE-DESIGN-RENDERED"
+// Fake credentials, assembled from parts so no secret scanner mistakes them for real ones. The two tokens match the
+// GitHub token pattern, which the vault moves with high confidence; the CLI value is stored by name.
+const PROMPT_TOKEN = "ghp_" + "SmokeVaultPrompt" + "0123456789abcdefghij"
+const OUTPUT_TOKEN = "gho_" + "SmokeVaultOutput" + "abcdefghij0123456789"
+const CLI_SECRET = "smoke-" + "cli-" + "value-" + "9f8e7d6c5b4a"
+const SECRETS = [PROMPT_TOKEN, OUTPUT_TOKEN, CLI_SECRET]
 
 const args = parseArgs({
   options: {
@@ -63,7 +71,34 @@ const env = {
   ...(args["design-bin"] ? { REDCODE_DESIGN_BIN: path.resolve(args["design-bin"]) } : {}),
 }
 
+// The API the vault scenario calls: `/` echoes the Authorization header it received, which the shell output must show
+// as a reference again, and `/login` issues a new token, which the vault must capture from the output.
+const authorizations: Array<string> = []
+const loopback = Bun.serve({
+  hostname: "127.0.0.1",
+  port: 0,
+  fetch(request) {
+    if (new URL(request.url).pathname === "/login") return new Response(`issued ${OUTPUT_TOKEN}\n`)
+    const authorization = request.headers.get("authorization") ?? ""
+    authorizations.push(authorization)
+    return new Response(`received ${authorization}\n`)
+  },
+})
+
 const provider = FakeProvider.start({
+  vault: {
+    calls: [
+      // Single quotes on purpose: the value must reach curl although the shell expands nothing there.
+      {
+        name: "shell",
+        input: {
+          command: `curl -s -H 'Authorization: Bearer {vault:github-token-1}' http://127.0.0.1:${loopback.port}/`,
+        },
+      },
+      { name: "shell", input: { command: `curl -s http://127.0.0.1:${loopback.port}/login` } },
+    ],
+    text: "SMOKE-FINAL vault",
+  },
   read: {
     calls: [{ name: "read", input: { path: path.join(root, "project", "note.txt") } }],
     text: "SMOKE-FINAL read",
@@ -100,6 +135,8 @@ const provider = FakeProvider.start({
   },
 })
 
+const vaultSession = once(runVaultSession)
+
 await configureProvider()
 // A hand run stopped with Ctrl-C or `timeout` must not leave the detached service or Design app behind.
 ;["SIGINT", "SIGTERM"].forEach((signal) =>
@@ -113,6 +150,15 @@ const checks = [
   { name: "service boot", run: checkService },
   { name: "rpc sidecar", run: checkSidecar },
   { name: "session with a tool call", run: checkSession },
+  // The scenario's commands are POSIX shell; the smoke job runs on Linux.
+  ...(process.platform === "win32"
+    ? []
+    : [
+        { name: "vault: a pasted token never reaches the provider", run: checkVaultPrompt },
+        { name: "vault: a reference resolves inside single quotes", run: checkVaultShell },
+        { name: "vault: a token in tool output is captured", run: checkVaultCapture },
+        { name: "vault: CLI set and listing show names only", run: checkVaultList },
+      ]),
   { name: "--tmp worktree", run: checkWorktree },
   ...(args.design ? [{ name: "design review", run: checkDesign }] : []),
   { name: "port collision reason", run: checkCollision },
@@ -202,19 +248,115 @@ async function checkSession() {
   if (field(state, "status") !== "completed" || !String(field(state, "output")).includes(NOTE_TEXT))
     throw new Error(`The read tool did not complete with the note: ${JSON.stringify(state)}`)
   expectFinalText(events, "SMOKE-FINAL read")
-  const sessionID = String(field(events[0], "sessionID"))
-  const service = await registration()
-  const response = await fetch(new URL(`/api/session/${sessionID}/message`, service.url), {
-    headers: { authorization: `Basic ${btoa(`opencode:${service.password}`)}` },
-    signal: AbortSignal.timeout(10_000),
-  })
-  if (!response.ok) throw new Error(`Reading the stored session answered HTTP ${response.status}`)
-  const messages: unknown = await response.json()
+  const messages = await api(`/api/session/${String(field(events[0], "sessionID"))}/message`)
   await Bun.write(path.join(artifacts, "session-read-messages.json"), JSON.stringify(messages, null, 2))
   // The fake provider counts reasoning apart from completion; the stored output must not collapse to zero.
   const outputs = collect(messages, "tokens").map((tokens) => field(tokens, "output"))
   if (!outputs.some((value) => typeof value === "number" && value > 0))
     throw new Error(`The stored session has no non-zero output token count: ${JSON.stringify(outputs)}`)
+}
+
+// One session serves every vault check, which each assert one property of it. No error message quotes a secret.
+async function runVaultSession() {
+  const project = path.join(root, "vault")
+  await mkdir(project)
+  // A failed run's error quotes its command line, which holds the pasted token.
+  const events = await session(
+    project,
+    `smoke:vault Call the loopback API with GITHUB_TOKEN=${PROMPT_TOKEN} in the Authorization header.`,
+  ).catch((cause: unknown) => {
+    throw new Error(masked(cause instanceof Error ? cause.message : String(cause)))
+  })
+  const sessionID = String(field(events[0], "sessionID"))
+  const messages = await api(`/api/session/${sessionID}/message`)
+  await Bun.write(path.join(artifacts, "session-vault-messages.json"), JSON.stringify(messages, null, 2))
+  const shells = events
+    .filter((event) => event.type === "tool_use" && field(event.part, "tool") === "shell")
+    .map((event) => field(event.part, "state"))
+  return {
+    project,
+    events,
+    sessionID,
+    shells,
+    stored: JSON.stringify(messages),
+    requests: provider.requests.filter((request) => request.scenario === "vault"),
+  }
+}
+
+async function checkVaultPrompt() {
+  const run = await vaultSession()
+  if (run.requests.length === 0) throw new Error("The fake provider received no request for the vault scenario")
+  const leaked = run.requests.filter((request) =>
+    SECRETS.some((secret) => JSON.stringify(request.body).includes(secret)),
+  )
+  if (leaked.length > 0)
+    throw new Error(`${leaked.length} of ${run.requests.length} provider requests carried a secret`)
+  // The vault guide in the system prompt names a reference too, so look for the one in place of the pasted token.
+  const moved = "GITHUB_TOKEN={vault:github-token-1}"
+  if (!run.requests.some((request) => request.prompts.some((prompt) => prompt.includes(moved))))
+    throw new Error(`No provider request carried the prompt with ${moved}`)
+  if (run.stored.includes(PROMPT_TOKEN)) throw new Error("The stored session holds the pasted token")
+  if (!run.stored.includes(moved)) throw new Error(`The stored prompt does not hold ${moved}`)
+}
+
+async function checkVaultShell() {
+  const run = await vaultSession()
+  // The server echoes what it received, so show anything unexpected with the token masked.
+  if (!authorizations.includes(`Bearer ${PROMPT_TOKEN}`))
+    throw new Error(
+      `The loopback server never received the stored token; it saw ${masked(JSON.stringify(authorizations))}`,
+    )
+  const state = run.shells[0]
+  const output = String(field(state, "output"))
+  if (field(state, "status") !== "completed" || output.includes(PROMPT_TOKEN))
+    throw new Error(
+      `The first shell call did not complete with a clean output: status ${String(field(state, "status"))}`,
+    )
+  const echoed = "received Bearer {vault:github-token-1}"
+  if (!output.includes(echoed))
+    throw new Error(`The first shell output does not show ${echoed}: ${masked(JSON.stringify(output))}`)
+  if (!run.stored.includes(echoed)) throw new Error(`The stored tool result does not show ${echoed}`)
+}
+
+async function checkVaultCapture() {
+  const run = await vaultSession()
+  const result = run.requests.find((request) => request.results.length >= 2)?.results[1]
+  if (result === undefined) throw new Error("No provider request followed the second shell call")
+  if (result.includes(OUTPUT_TOKEN))
+    throw new Error("The provider request after the second call carried the issued token")
+  const name = /issued \{vault:([a-z0-9-]+)\}/.exec(result)?.[1]
+  if (!name)
+    throw new Error(`The second tool result shows no reference for the issued token: ${masked(JSON.stringify(result))}`)
+  const note = `Stored 1 secret from the output as {vault:${name}}`
+  if (!result.includes(note)) throw new Error(`The second tool result lacks "${note}": ${masked(JSON.stringify(result))}`)
+  if (run.stored.includes(OUTPUT_TOKEN)) throw new Error("The stored session holds the issued token")
+  expectFinalText(run.events, "SMOKE-FINAL vault")
+}
+
+// There is no `vault list` command; the TUI lists through the `redcode.vault` RPC, which this calls on the same
+// background service for the scenario's Session after `vault set` stored a value for its directory.
+async function checkVaultList() {
+  const run = await vaultSession()
+  const set = await redcode(["vault", "set", "SMOKE_API_KEY"], { cwd: run.project, stdin: CLI_SECRET })
+  const printed = set.stdout + set.stderr
+  if (printed.includes(CLI_SECRET)) throw new Error("vault set printed the value")
+  if (set.stdout.trim() !== "Stored {vault:smoke-api-key}")
+    throw new Error(`vault set printed ${masked(JSON.stringify(printed))}`)
+  const listed = await api(
+    `/api/rpc/redcode.vault/list?${new URLSearchParams({ "location[directory]": run.project })}`,
+    JSON.stringify({ input: { sessionID: run.sessionID } }),
+  )
+  const text = JSON.stringify(listed)
+  if (SECRETS.some((secret) => text.includes(secret))) throw new Error("The vault listing carried a value")
+  const entries = field(listed, "output")
+  if (!Array.isArray(entries)) throw new Error(`The vault listing is not a list: ${text}`)
+  const names = entries.map((entry) => field(entry, "name"))
+  const missing = ["github-token-1", "smoke-api-key"].filter((name) => !names.includes(name))
+  // The third entry is the token the scenario captured from the loopback server's output.
+  if (missing.length > 0 || entries.length < 3)
+    throw new Error(`The vault listing lacks ${missing.join(", ") || "the captured token"}: ${text}`)
+  if (!entries.every((entry) => typeof field(entry, "kind") === "string" && field(entry, "kind") !== ""))
+    throw new Error(`A vault entry has no kind: ${text}`)
 }
 
 async function checkWorktree() {
@@ -368,12 +510,12 @@ async function configureProvider() {
 
 async function redcode(
   command: ReadonlyArray<string>,
-  options: { readonly cwd?: string; readonly timeout?: number; readonly check?: boolean } = {},
+  options: { readonly cwd?: string; readonly timeout?: number; readonly check?: boolean; readonly stdin?: string } = {},
 ) {
   const child = Bun.spawn([binary, ...command], {
     cwd: options.cwd ?? root,
     env,
-    stdin: "ignore",
+    stdin: options.stdin === undefined ? "ignore" : new TextEncoder().encode(options.stdin),
     stdout: "pipe",
     stderr: "pipe",
     timeout: options.timeout ?? 30_000,
@@ -408,9 +550,38 @@ async function registration() {
   return { url, password }
 }
 
+/** A JSON route of the background service: a GET, or a POST of `body`. */
+async function api(pathname: string, body?: string) {
+  const service = await registration()
+  const response = await fetch(new URL(pathname, service.url), {
+    method: body === undefined ? "GET" : "POST",
+    body,
+    headers: {
+      authorization: `Basic ${btoa(`opencode:${service.password}`)}`,
+      ...(body === undefined ? {} : { "content-type": "application/json" }),
+    },
+    signal: AbortSignal.timeout(10_000),
+  })
+  if (!response.ok) throw new Error(`${pathname} answered HTTP ${response.status}: ${await response.text()}`)
+  const json: unknown = await response.json()
+  return json
+}
+
+/** `text` with every fake secret of this run masked, for an error message that quotes what Redcode produced. */
+function masked(text: string) {
+  return SECRETS.reduce((current, secret) => current.replaceAll(secret, "<secret>"), text)
+}
+
+/** `run` started on the first call; every later call shares its outcome. */
+function once<T>(run: () => Promise<T>) {
+  let started: Promise<T> | undefined
+  return () => (started ??= run())
+}
+
 // Stops everything this run started: the service and a detached Design app outlive their clients by design.
 async function cleanup() {
   provider.stop()
+  loopback.stop(true)
   await redcode(["service", "stop"], { check: false })
   const pids = await Promise.all(
     ["service.json", "design.json"].map((file) =>

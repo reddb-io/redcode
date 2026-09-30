@@ -601,3 +601,52 @@ it.effect("preserves a manual rename completed while generation is in flight", (
     expect((yield* store.get(sessionID))?.title).toBe("Manual title")
   }),
 )
+
+it.effect("sends a restricted first message to the title model only as the placeholder", () =>
+  Effect.gen(function* () {
+    yield* enableTitleAgent
+    const sessionID = Session.ID.make("ses_title_restricted")
+    yield* insertSession(sessionID)
+    const bus = yield* Bus.Service
+    const messageID = SessionMessage.ID.create()
+    // Prose a user might write; nothing here is a real credential.
+    const prose = "the server password is " + "banana" + "123"
+    yield* bus.publish(SessionEvent.InboxEnqueued, {
+      sessionID,
+      inboxID: messageID,
+      item: { type: "user", payload: { text: prose }, delivery: "steer" },
+    })
+    yield* bus.publish(SessionEvent.InboxDelivered, { sessionID, inboxID: messageID })
+    yield* bus.publish(SessionEvent.MetadataUpdated, { sessionID, metadata: { restricted: { [messageID]: "sensitive" } } })
+
+    const title = yield* SessionTitle.Service
+    yield* title.generate(sessionID)
+
+    expect(requests).toHaveLength(1)
+    expect(JSON.stringify(requests[0]?.messages)).not.toContain("banana")
+    expect(JSON.stringify(requests[0]?.messages)).toContain("[message withheld: restricted content]")
+  }),
+)
+
+it.effect("redacts a secret the title model writes into the title", () =>
+  Effect.gen(function* () {
+    yield* enableTitleAgent
+    const sessionID = Session.ID.make("ses_title_secret")
+    yield* insertSession(sessionID)
+    yield* prompt(sessionID, "Rotate the deploy token")
+    // Assembled from parts so no secret scanner mistakes it for a real credential.
+    const token = "ghp" + "_" + "t".repeat(36)
+    titleStream = () =>
+      Stream.make(
+        LLMEvent.textDelta({ id: "title", text: `Rotate ${token}\n` }),
+        LLMEvent.finish({ reason: { normalized: "stop" } }),
+      )
+
+    const title = yield* SessionTitle.Service
+    const store = yield* SessionStore.Service
+    yield* title.generate(sessionID)
+    const renamed = (yield* store.get(sessionID))?.title ?? ""
+    expect(renamed).toStartWith("Rotate")
+    expect(renamed).not.toContain(token)
+  }),
+)

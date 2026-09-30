@@ -498,5 +498,100 @@ describe("WriteTool", () => {
         )
       }),
     )
+
+    it.live("shows only references in the approval for an env file that already holds the value", () =>
+      withTempDir((tmp) => {
+        const fixture = makeWriteFixture()
+        const vault = bound()
+        return withTool(tmp.path, fixture, (registry) =>
+          Effect.gen(function* () {
+            const target = path.join(tmp.path, ".env.local")
+            yield* Effect.promise(() => fs.writeFile(target, `STRIPE_KEY=${secret}\n`))
+            const content = `STRIPE_KEY={vault:${vault.name}}\nMODE=live\n`
+            const settled = yield* executeTool(registry, call({ path: ".env.local", content })).pipe(
+              Effect.provideService(Vault.Current, vault.binding),
+            )
+            expect(settled).toMatchObject({ status: "completed" })
+            expect(yield* Effect.promise(() => fs.readFile(target, "utf8"))).toBe(`STRIPE_KEY=${secret}\nMODE=live\n`)
+            expect(JSON.stringify(fixture.assertions[0]?.metadata)).toContain(`{vault:${vault.name}}`)
+            expect(JSON.stringify([fixture.assertions, settled])).not.toContain(secret)
+          }),
+        )
+      }),
+    )
+
+    it.live("keeps a reference literal in an env template, which may be committed", () =>
+      withTempDir((tmp) => {
+        const fixture = makeWriteFixture()
+        const vault = bound()
+        return withTool(tmp.path, fixture, (registry) =>
+          Effect.gen(function* () {
+            const content = `STRIPE_KEY={vault:${vault.name}}\n`
+            const settled = yield* executeTool(registry, call({ path: ".env.example", content })).pipe(
+              Effect.provideService(Vault.Current, vault.binding),
+            )
+            expect(yield* Effect.promise(() => fs.readFile(path.join(tmp.path, ".env.example"), "utf8"))).toBe(content)
+            expect(JSON.stringify(settled)).toContain("was NOT resolved in this file")
+            expect(fixture.assertions.map((input) => input.action)).toEqual(["edit"])
+          }),
+        )
+      }),
+    )
+
+    it.live("fails an unknown reference in an env file and writes nothing", () =>
+      withTempDir((tmp) => {
+        const fixture = makeWriteFixture()
+        const vault = bound()
+        return withTool(tmp.path, fixture, (registry) =>
+          Effect.gen(function* () {
+            const settled = yield* executeTool(
+              registry,
+              call({ path: ".env", content: "API_KEY={vault:api-key-9}\n" }),
+            ).pipe(Effect.provideService(Vault.Current, vault.binding))
+            expect(settled).toEqual({
+              status: "error",
+              error: { type: "tool.execution", message: Vault.unknownReference("api-key-9") },
+            })
+            expect(yield* Effect.promise(() => Bun.file(path.join(tmp.path, ".env")).exists())).toBe(false)
+          }),
+        )
+      }),
+    )
+
+    const git = Bun.which("git")
+    const inRepository = process.platform === "win32" || !git ? it.live.skip : it.live
+    inRepository("inside a repository writes values only into a path git ignores, whatever its name", () =>
+      withTempDir((tmp) => {
+        const fixture = makeWriteFixture()
+        const vault = bound()
+        return withTool(tmp.path, fixture, (registry) =>
+          Effect.gen(function* () {
+            yield* Effect.promise(async () => {
+              Bun.spawnSync([git ?? "git", "init", "-q"], { cwd: tmp.path, stdout: "ignore", stderr: "ignore" })
+              // The negation keeps a global excludes file that ignores `.env` from deciding this case.
+              await fs.writeFile(path.join(tmp.path, ".gitignore"), "local.secrets\n!.env\n")
+            })
+            const content = `STRIPE_KEY={vault:${vault.name}}\n`
+            const tracked = yield* executeTool(registry, call({ path: ".env", content }, "call-write-tracked")).pipe(
+              Effect.provideService(Vault.Current, vault.binding),
+            )
+            const ignored = yield* executeTool(
+              registry,
+              call({ path: "local.secrets", content }, "call-write-ignored"),
+            ).pipe(Effect.provideService(Vault.Current, vault.binding))
+            // A `.env` git would commit keeps the reference; the ignored file receives the value.
+            expect(yield* Effect.promise(() => fs.readFile(path.join(tmp.path, ".env"), "utf8"))).toBe(content)
+            expect(JSON.stringify(tracked)).toContain("was NOT resolved in this file")
+            expect(yield* Effect.promise(() => fs.readFile(path.join(tmp.path, "local.secrets"), "utf8"))).toBe(
+              `STRIPE_KEY=${secret}\n`,
+            )
+            expect(fixture.assertions.find((input) => input.action === "vault")).toMatchObject({
+              resources: [`${vault.name}@file:local.secrets`],
+            })
+            expect(JSON.stringify([fixture.assertions, tracked, ignored])).not.toContain(secret)
+          }),
+        )
+      }),
+    )
   })
 })

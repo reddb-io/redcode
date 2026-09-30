@@ -1909,4 +1909,121 @@ describe("ShellTool vault references", () => {
       (tmp) => Effect.promise(() => tmp[Symbol.asyncDispose]().then(() => undefined)),
     ),
   )
+
+  test("asks about an unknown destination without always, and runs nothing on a decline", () =>
+    Effect.acquireUseRelease(
+      Effect.promise(() => tmpdir()),
+      (tmp) => {
+        reset()
+        denyAction = "vault"
+        const marker = path.join(tmp.path, "ran.txt")
+        // `nc` is a network program, so a segment that names it without a host has no destination to tell.
+        const command = `printf '%s' nc {vault:github-token-1} > ${marker}`
+        return withSession(tmp.path, (registry) =>
+          executeTool(registry, call({ command }, "call-vault-unknown")).pipe(
+            Effect.provideService(Vault.Current, binding),
+          ),
+        ).pipe(
+          Effect.andThen((settled) =>
+            Effect.gen(function* () {
+              expect(assertions.find((item) => item.action === "vault")).toMatchObject({
+                resources: ["github-token-1@unknown"],
+                save: [],
+                force: true,
+                metadata: { secrets: ["github-token-1"], destinations: ["an unknown destination"], command },
+              })
+              expect(yield* Effect.promise(() => Bun.file(marker).exists())).toBe(false)
+              expect(JSON.stringify([assertions, settled])).not.toContain(token)
+            }),
+          ),
+        )
+      },
+      (tmp) => Effect.promise(() => tmp[Symbol.asyncDispose]().then(() => undefined)),
+    ),
+  )
+
+  test("hands a value inside backticks to the shell through a variable set only for the child", () =>
+    Effect.acquireUseRelease(
+      Effect.promise(() => tmpdir()),
+      (tmp) => {
+        reset()
+        const command = "printf '%s' \"`printf '%s' {vault:github-token-1}`\" | wc -c"
+        return withSession(tmp.path, (registry) =>
+          executeTool(registry, call({ command }, "call-vault-backticks")).pipe(
+            Effect.provideService(Vault.Current, binding),
+          ),
+        ).pipe(
+          Effect.andThen((settled) =>
+            Effect.sync(() => {
+              expect(settled.status === "completed" ? settled.output.output.trim() : settled).toBe(
+                String(token.length),
+              )
+              expect(JSON.stringify([assertions, settled])).not.toContain(token)
+            }),
+          ),
+        )
+      },
+      (tmp) => Effect.promise(() => tmp[Symbol.asyncDispose]().then(() => undefined)),
+    ),
+  )
+
+  test("skips a capture after a failed command and still shows a known secret only as its reference", () =>
+    Effect.acquireUseRelease(
+      Effect.promise(() => tmpdir()),
+      (tmp) => {
+        reset()
+        const input = { command: "printf '%s' {vault:github-token-1}; exit 3", capture: { from: "stdout" } }
+        return withSession(tmp.path, (registry) =>
+          executeTool(registry, call(input, "call-vault-exit")).pipe(Effect.provideService(Vault.Current, binding)),
+        ).pipe(
+          Effect.andThen((settled) =>
+            Effect.gen(function* () {
+              const output = settled.status === "completed" ? settled.output.output : JSON.stringify(settled)
+              expect(output).toContain("{vault:github-token-1}")
+              expect(output).toContain("Nothing was captured: the command exited with 3.")
+              expect(output).not.toContain("Stored")
+              expect(JSON.stringify(settled)).not.toContain(token)
+              expect((yield* vault.list(Project.ID.global)).map((entry) => entry.name)).toEqual(["github-token-1"])
+            }),
+          ),
+        )
+      },
+      (tmp) => Effect.promise(() => tmp[Symbol.asyncDispose]().then(() => undefined)),
+    ),
+  )
+
+  test("stores an unnamed capture under a generated name and explains an unknown capture source", () =>
+    Effect.acquireUseRelease(
+      Effect.promise(() => tmpdir()),
+      (tmp) => {
+        reset()
+        const own = Vault.bind(Vault.make(), Project.ID.global)
+        const run = (input: typeof ShellTool.Input.Type, id: string) =>
+          withSession(tmp.path, (registry) =>
+            executeTool(registry, call(input, id)).pipe(Effect.provideService(Vault.Current, own)),
+          )
+        return Effect.gen(function* () {
+          const whole = yield* run(
+            { command: `printf '  %s\\n' ${opaque}`, capture: { from: "stdout" } },
+            "call-capture-stdout",
+          )
+          expect(whole.status === "completed" ? whole.output.output : whole).toBe(
+            "Stored the captured value as {vault:captured-1}; use that reference in later commands. The output is not shown because it holds the secret.",
+          )
+          expect(yield* own.resolve("captured-1")).toBe(opaque)
+
+          const unknown = yield* run(
+            { command: `printf '%s' ${opaque}`, capture: { name: "session", from: "body" } },
+            "call-capture-unknown",
+          )
+          expect(unknown.status === "completed" ? unknown.output.output : unknown).toBe(
+            'Nothing was captured: "body" is not a capture source; use "stdout", "json:$.path" or "regex:<pattern with one group>". The output is not shown because it may hold the secret.',
+          )
+          expect(yield* own.resolve("session")).toBeUndefined()
+          expect(JSON.stringify([whole, unknown])).not.toContain(opaque)
+        })
+      },
+      (tmp) => Effect.promise(() => tmp[Symbol.asyncDispose]().then(() => undefined)),
+    ),
+  )
 })

@@ -67,6 +67,48 @@ describe("VaultInstructions", () => {
     ),
   )
 
+  it.effect("tells an agent that loses its sinks that references no longer resolve", () =>
+    provided(
+      Effect.gen(function* () {
+        const context = yield* VaultInstructions.Service
+        const withSinks = yield* readInitial(context.load(projectA, { sinks: true }))
+        const without = yield* readUpdate(context.load(projectA, { sinks: false }), withSinks)
+        expect(without.text).toBe("Vault references no longer resolve for you; do not write them.")
+        expect((yield* readUpdate(context.load(projectA, { sinks: false }), without)).changed).toBe(false)
+        expect(Array.from(VaultInstructions.SINKS).toSorted()).toEqual([
+          "edit",
+          "patch",
+          "shell",
+          "vault_request",
+          "webfetch",
+          "write",
+        ])
+      }),
+    ),
+  )
+
+  it.effect("lists names sorted, with the hosts each may go to, in the initial baseline", () =>
+    provided(
+      Effect.gen(function* () {
+        const vault = yield* Vault.Service
+        const context = yield* VaultInstructions.Service
+        yield* vault.set({ projectID: projectA, name: "zeta-key", value: token, origin: "user" })
+        yield* vault.set({ projectID: projectA, name: "alpha-key", value: "other-" + token, origin: "user" })
+        yield* vault.allow({ projectID: projectA, name: "zeta-key", destination: "b.example" })
+        yield* vault.allow({ projectID: projectA, name: "zeta-key", destination: "a.example" })
+        const initial = yield* readInitial(context.load(projectA, { sinks: false }))
+        expect(initial.text).toBe(
+          [
+            "Vault references in this project (values are never shown):",
+            "- {vault:alpha-key} (alpha-key)",
+            "- {vault:zeta-key} (zeta-key; may go to a.example, b.example without asking)",
+          ].join("\n"),
+        )
+        expect(initial.text).not.toContain(token)
+      }),
+    ),
+  )
+
   it.effect("never shows another project's names", () =>
     provided(
       Effect.gen(function* () {

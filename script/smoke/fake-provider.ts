@@ -4,6 +4,8 @@
 // answers one scripted tool call per step, counting the tool results that follow that message, and then a final
 // text. Requests without tools (titles, summaries) get a short plain answer so they never consume a step.
 // Usage counts reasoning apart from completion, which Redcode must still store as non-zero output.
+// Every request is recorded with its body, its user texts and the tool results that follow the marked prompt, so a
+// check can assert what Redcode sent, such as that no secret reached the provider.
 
 export * as FakeProvider from "./fake-provider"
 
@@ -22,6 +24,10 @@ export type Request = {
   readonly scenario?: string
   readonly tools: ReadonlyArray<string>
   readonly body: Record<string, unknown>
+  /** The text of every user message, in order. */
+  readonly prompts: ReadonlyArray<string>
+  /** The tool results after the marked prompt, in order. */
+  readonly results: ReadonlyArray<string>
 }
 
 // Counts reasoning apart from completion, as some OpenAI-compatible proxies do: total = prompt + completion +
@@ -55,12 +61,13 @@ export function start(scenarios: Readonly<Record<string, Scenario>>) {
       // Agents may inject their own user-role context after a tool call, so anchor on the marked prompt.
       const latest = messages.findLastIndex((message) => message.role === "user" && MARKER.test(text(message.content)))
       const name = latest === -1 ? undefined : MARKER.exec(text(messages[latest].content))?.[1]
-      requests.push({ scenario: name, tools, body })
-      const scenario = name === undefined || tools.length === 0 ? undefined : scenarios[name]
       const results = messages
         .slice(latest + 1)
         .filter((message) => message.role === "tool")
         .map((message) => text(message.content))
+      const prompts = messages.filter((message) => message.role === "user").map((message) => text(message.content))
+      requests.push({ scenario: name, tools, body, prompts, results })
+      const scenario = name === undefined || tools.length === 0 ? undefined : scenarios[name]
       const call = scenario?.calls[results.length]
       const answer = call
         ? {

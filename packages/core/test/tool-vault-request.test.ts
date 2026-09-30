@@ -24,6 +24,7 @@ const sessionID = Session.ID.make("ses_vault_request_tool_test")
 const projectID = Project.ID.make("prj_vault_request")
 let asked: Form.CreateInput | undefined
 let answer: Form.TerminalState = { status: "cancelled" }
+let deny = false
 
 const form = Layer.mock(Form.Service, {
   ask: (input: Form.CreateInput) =>
@@ -40,20 +41,29 @@ const toolNode = makeLocationNode({
 
 const it = testEffect(
   AppNodeBuilder.build(LayerNode.group([Tool.node, toolNode]), [
-    Permission.node.replace(permissionLayer({ assert: () => Effect.void })),
+    Permission.node.replace(
+      permissionLayer({
+        assert: (input) =>
+          deny
+            ? Effect.fail(
+                new Permission.BlockedError({ rules: [], permission: input.action, resources: [...input.resources] }),
+              )
+            : Effect.void,
+      }),
+    ),
     Form.node.replace(form),
     Image.node.replace(imagePassthrough),
   ]),
 )
 
-const call = (id: string) => ({
+const call = (id: string, name = "Stripe Key") => ({
   sessionID,
   ...toolIdentity,
   call: {
     type: "tool-call" as const,
     id,
     name: VaultRequestTool.name,
-    input: { name: "Stripe Key", purpose: "Create a test payment" },
+    input: { name, purpose: "Create a test payment" },
   },
 })
 
@@ -108,6 +118,106 @@ describe("VaultRequestTool", () => {
       })
       expect(yield* vault.list(projectID)).toEqual([])
     }),
+  )
+
+  it.effect("reads an empty or non-text answer as a decline and stores nothing", () =>
+    Effect.gen(function* () {
+      const registry = yield* Tool.Service
+      const answers: ReadonlyArray<Form.TerminalState> = [
+        { status: "answered", answer: { value: "" } },
+        { status: "answered", answer: { value: 42 } },
+        { status: "answered", answer: { value: [typed] } },
+        { status: "answered", answer: {} },
+      ]
+      const settled = yield* Effect.forEach(answers, (item, index) =>
+        Effect.gen(function* () {
+          const vault = Vault.make()
+          answer = item
+          const result = yield* executeTool(registry, call(`call-vault-empty-${index}`)).pipe(
+            Effect.provideService(Vault.Current, Vault.bind(vault, projectID)),
+          )
+          expect(yield* vault.list(projectID)).toEqual([])
+          return result
+        }),
+      )
+      expect(settled.map((item) => (item.status === "completed" ? item.metadata : item))).toEqual([
+        { name: "stripe-key", declined: true },
+        { name: "stripe-key", declined: true },
+        { name: "stripe-key", declined: true },
+        { name: "stripe-key", declined: true },
+      ])
+      // An array answer carrying the typed text is refused whole, and never echoed back.
+      expect(JSON.stringify(settled)).not.toContain(typed)
+    }),
+  )
+
+  it.effect("asks under a generic name when the requested one has nothing usable", () =>
+    Effect.gen(function* () {
+      const vault = Vault.make()
+      answer = { status: "answered", answer: { value: typed } }
+      const registry = yield* Tool.Service
+      const settled = yield* executeTool(registry, call("call-vault-unusable", "!!!")).pipe(
+        Effect.provideService(Vault.Current, Vault.bind(vault, projectID)),
+      )
+      expect(asked?.title).toBe("Secret requested: {vault:secret}")
+      expect(settled).toMatchObject({ status: "completed", output: { name: "secret", declined: false } })
+      expect(yield* vault.resolve({ projectID, name: "secret" })).toBe(typed)
+    }),
+  )
+
+  it.effect("never replaces a secret the user stored under the requested name", () =>
+    Effect.gen(function* () {
+      const vault = Vault.make()
+      const own = "user" + "-" + "owned-value-1234"
+      yield* vault.set({ projectID, name: "stripe-key", value: own, origin: "user" })
+      answer = { status: "answered", answer: { value: typed } }
+      const registry = yield* Tool.Service
+      const settled = yield* executeTool(registry, call("call-vault-held")).pipe(
+        Effect.provideService(Vault.Current, Vault.bind(vault, projectID)),
+      )
+      expect(settled).toMatchObject({ status: "completed", output: { name: "stripe-key-1", declined: false } })
+      expect(yield* vault.resolve({ projectID, name: "stripe-key" })).toBe(own)
+      expect(yield* vault.resolve({ projectID, name: "stripe-key-1" })).toBe(typed)
+      // The same value typed again under the held name keeps the name it already has.
+      answer = { status: "answered", answer: { value: own } }
+      const again = yield* executeTool(registry, call("call-vault-same")).pipe(
+        Effect.provideService(Vault.Current, Vault.bind(vault, projectID)),
+      )
+      expect(again).toMatchObject({ status: "completed", output: { name: "stripe-key", declined: false } })
+      expect(JSON.stringify([settled, again])).not.toContain(own)
+      expect(JSON.stringify([settled, again])).not.toContain(typed)
+    }),
+  )
+
+  it.effect("fails outside a Session's tool execution without asking", () =>
+    Effect.gen(function* () {
+      asked = undefined
+      const registry = yield* Tool.Service
+      expect(yield* executeTool(registry, call("call-vault-unbound"))).toEqual({
+        status: "error",
+        error: { type: "tool.execution", message: "The vault is not available outside a session." },
+      })
+      expect(asked).toBeUndefined()
+    }),
+  )
+
+  it.effect("stops at a denied question permission before the form opens", () =>
+    Effect.gen(function* () {
+      const vault = Vault.make()
+      asked = undefined
+      deny = true
+      answer = { status: "answered", answer: { value: typed } }
+      const registry = yield* Tool.Service
+      const settled = yield* executeTool(registry, call("call-vault-denied")).pipe(
+        Effect.provideService(Vault.Current, Vault.bind(vault, projectID)),
+      )
+      expect(settled).toEqual({
+        status: "error",
+        error: { type: "permission.rejected", message: "Permission denied: question" },
+      })
+      expect(asked).toBeUndefined()
+      expect(yield* vault.list(projectID)).toEqual([])
+    }).pipe(Effect.ensuring(Effect.sync(() => (deny = false)))),
   )
 
   it.effect("hides the tool from an agent that may not ask questions", () =>

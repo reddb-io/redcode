@@ -8,6 +8,8 @@ import { LayerNodePlatform } from "@opencode/util/effect/app-node-platform"
 import { Permission } from "@opencode/core/permission"
 import { Session } from "@opencode/core/session"
 import { Tool } from "@opencode/core/tool"
+import { Vault } from "@opencode/core/vault/vault"
+import { Project } from "@opencode/schema/project"
 import { WebFetchTool } from "@opencode/core/tool/plugin/webfetch"
 import { makeLocationNode } from "@opencode/util/effect/app-node"
 import { Image } from "@opencode/core/image"
@@ -39,7 +41,12 @@ const http = Layer.succeed(
     ),
   ),
 )
-const permission = permissionLayer({ assert: (input) => Effect.sync(() => assertions.push(input)) })
+let reply: Permission.Decision = "once"
+const permission = permissionLayer({
+  assert: (input) => Effect.sync(() => assertions.push(input)),
+  // A vault host prompt; only a call under a vault binding asks it.
+  decide: (input) => Effect.sync(() => assertions.push(input)).pipe(Effect.map(() => reply)),
+})
 const toolLayer = (replacements: LayerNode.Replacements = []) =>
   AppNodeBuilder.build(LayerNode.group([Tool.node, webFetchToolNode]), [
     Permission.node.replace(permission),
@@ -52,6 +59,7 @@ const live = testEffect(toolLayer())
 const reset = () => {
   requests.length = 0
   assertions.length = 0
+  reply = "once"
   respond = () => Effect.succeed(new Response("hello", { headers: { "content-type": "text/plain" } }))
 }
 
@@ -660,6 +668,117 @@ describe("WebFetchTool registration", () => {
         status: "error",
         error: { type: "unknown", message: "Request timed out" },
       })
+    }),
+  )
+})
+
+describe("WebFetchTool vault references", () => {
+  // Assembled from parts so no secret scanner mistakes it for a real credential.
+  const token = "ghp" + "_" + "w".repeat(36)
+  const jwt = ["eyJ" + "hbGciOiJIUzI1NiJ9", "eyJ" + "zdWIiOiJ3ZWIifQ", "c2lnbmF0dXJl" + "LXdlYg"].join(".")
+  const projectID = Project.ID.make("prj_webfetch_vault")
+  const bound = () => {
+    const vault = Vault.make()
+    Effect.runSync(vault.set({ projectID, name: "api-key", value: token, origin: "user" }))
+    return Vault.bind(vault, projectID)
+  }
+  // The full URL each request went to, query included, and a body that echoes it.
+  const sent: string[] = []
+  const echo = (request: HttpClientRequest.HttpClientRequest) =>
+    HttpClientRequest.toWeb(request).pipe(
+      Effect.orDie,
+      Effect.map((web) => {
+        sent.push(web.url)
+        return new Response(`fetched ${web.url}`, { headers: { "content-type": "text/plain" } })
+      }),
+    )
+
+  it.effect("sends the value only in the request, asks for its host by name, and shows the reference back", () =>
+    Effect.gen(function* () {
+      reset()
+      sent.length = 0
+      respond = echo
+      const registry = yield* Tool.Service
+      const url = "https://api.example.com/items?key={vault:api-key}"
+      const settled = yield* executeTool(registry, call({ url, format: "text" }, "call-webfetch-vault")).pipe(
+        Effect.provideService(Vault.Current, bound()),
+      )
+      expect(sent).toEqual([`https://api.example.com/items?key=${token}`])
+      expect(settled).toMatchObject({
+        status: "completed",
+        output: { url, output: "fetched https://api.example.com/items?key={vault:api-key}" },
+      })
+      expect(assertions).toMatchObject([
+        { action: "webfetch", resources: [url] },
+        { action: "vault", resources: ["api-key@api.example.com"], force: true, metadata: { url } },
+      ])
+      expect(JSON.stringify([assertions, settled])).not.toContain(token)
+    }),
+  )
+
+  it.effect("fails an unknown reference before asking or fetching", () =>
+    Effect.gen(function* () {
+      reset()
+      const registry = yield* Tool.Service
+      const settled = yield* executeTool(
+        registry,
+        call({ url: "https://api.example.com/?key={vault:api-key-9}", format: "text" }, "call-webfetch-unknown"),
+      ).pipe(Effect.provideService(Vault.Current, bound()))
+      expect(settled).toEqual({
+        status: "error",
+        error: { type: "tool.execution", message: Vault.unknownReference("api-key-9") },
+      })
+      expect(requests).toEqual([])
+      expect(assertions).toEqual([])
+    }),
+  )
+
+  it.effect("asks without always when a reference names the host itself", () =>
+    Effect.gen(function* () {
+      reset()
+      sent.length = 0
+      respond = echo
+      const vault = Vault.make()
+      Effect.runSync(vault.set({ projectID, name: "host", value: "internal-" + "host-01", origin: "user" }))
+      const registry = yield* Tool.Service
+      const url = "https://{vault:host}.example.com/status"
+      yield* executeTool(registry, call({ url, format: "text" }, "call-webfetch-host")).pipe(
+        Effect.provideService(Vault.Current, Vault.bind(vault, projectID)),
+      )
+      expect(assertions.find((input) => input.action === "vault")).toMatchObject({
+        resources: ["host@unknown"],
+        save: [],
+        metadata: { destinations: ["an unknown destination"], url },
+      })
+      expect(sent).toEqual(["https://internal-host-01.example.com/status"])
+    }),
+  )
+
+  it.effect("stores a token the response returns, bound to the host it came from", () =>
+    Effect.gen(function* () {
+      reset()
+      respond = () =>
+        Effect.succeed(new Response(JSON.stringify({ token: jwt }), { headers: { "content-type": "text/plain" } }))
+      const binding = bound()
+      const registry = yield* Tool.Service
+      const settled = yield* executeTool(
+        registry,
+        call({ url: "https://auth.example.com/login", format: "text" }, "call-webfetch-capture"),
+      ).pipe(Effect.provideService(Vault.Current, binding))
+      expect(settled).toMatchObject({
+        status: "completed",
+        content: [
+          {
+            type: "text",
+            text: '{"token":"{vault:jwt-1}"}\n\nStored 1 secret from the output as {vault:jwt-1}; use that reference in later commands.',
+          },
+        ],
+      })
+      expect(yield* binding.resolve("jwt-1")).toBe(jwt)
+      expect(yield* binding.hosts(["jwt-1"])).toEqual(new Map([["jwt-1", ["auth.example.com"]]]))
+      // No reference went out, so nothing was asked beyond the fetch itself.
+      expect(assertions.map((input) => input.action)).toEqual(["webfetch"])
+      expect(JSON.stringify(settled)).not.toContain(jwt)
     }),
   )
 })

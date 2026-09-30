@@ -16,6 +16,8 @@ import { AbsolutePath } from "@opencode/core/schema"
 import { Session } from "@opencode/core/session"
 import { Tool } from "@opencode/core/tool"
 import { EditTool } from "@opencode/core/tool/plugin/edit"
+import { Vault } from "@opencode/core/vault/vault"
+import { Project } from "@opencode/schema/project"
 import { transformEnvironmentFiles } from "./fixture/environment"
 import { location } from "./fixture/location"
 import { tmpdir, withTempDir } from "./fixture/tmpdir"
@@ -72,6 +74,8 @@ const makeEditFixture = () => {
             : Effect.void,
         ),
       ),
+    // A vault prompt for a secret file, answered once like any approval.
+    decide: (input) => Effect.sync(() => fixture.assertions.push(input)).pipe(Effect.as("once" as const)),
   })
 
   const formatter = Layer.mock(Formatter.Service, {
@@ -656,6 +660,65 @@ describe("EditTool", () => {
             expect(edit.writes).toEqual([target])
           }),
         ),
+      )
+    }),
+  )
+})
+
+describe("EditTool vault references", () => {
+  // Assembled from parts so no secret scanner mistakes it for a real credential.
+  const secret = "sk" + "_" + "live_" + "e".repeat(24)
+  const projectID = Project.ID.make("prj_edit_vault")
+  const bound = () => {
+    const vault = Vault.make()
+    Effect.runSync(vault.set({ projectID, name: "stripe-key", value: secret, origin: "user" }))
+    return Vault.bind(vault, projectID)
+  }
+
+  it.live("edits an env file in its reference form and keeps the value on disk", () =>
+    withTempDir((tmp) => {
+      const fixture = makeEditFixture()
+      const target = path.join(tmp.path, ".env")
+      return withTool(tmp.path, fixture, (registry) =>
+        Effect.gen(function* () {
+          yield* Effect.promise(() => fs.writeFile(target, `STRIPE_KEY=${secret}\nMODE=test\n`))
+          const settled = yield* executeTool(
+            registry,
+            call({
+              path: ".env",
+              oldString: "STRIPE_KEY={vault:stripe-key}\nMODE=test",
+              newString: "STRIPE_KEY={vault:stripe-key}\nMODE=live",
+            }),
+          ).pipe(Effect.provideService(Vault.Current, bound()))
+          expect(settled).toMatchObject({ status: "completed" })
+          expect(yield* Effect.promise(() => fs.readFile(target, "utf8"))).toBe(`STRIPE_KEY=${secret}\nMODE=live\n`)
+          expect(fixture.assertions.map((input) => input.action)).toEqual(["edit", "vault"])
+          expect(fixture.assertions[1]).toMatchObject({ resources: ["stripe-key@file:.env"] })
+          // The diff, the prompts and the result carry the reference, never the value.
+          expect(JSON.stringify(settled)).toContain("{vault:stripe-key}")
+          expect(JSON.stringify([fixture.assertions, settled])).not.toContain(secret)
+        }),
+      )
+    }),
+  )
+
+  it.live("keeps a reference literal in a source file and says so", () =>
+    withTempDir((tmp) => {
+      const fixture = makeEditFixture()
+      const target = path.join(tmp.path, "config.ts")
+      return withTool(tmp.path, fixture, (registry) =>
+        Effect.gen(function* () {
+          yield* Effect.promise(() => fs.writeFile(target, 'export const key = ""\n'))
+          const settled = yield* executeTool(
+            registry,
+            call({ path: "config.ts", oldString: 'key = ""', newString: 'key = "{vault:stripe-key}"' }),
+          ).pipe(Effect.provideService(Vault.Current, bound()))
+          expect(yield* Effect.promise(() => fs.readFile(target, "utf8"))).toBe(
+            'export const key = "{vault:stripe-key}"\n',
+          )
+          expect(JSON.stringify(settled)).toContain("was NOT resolved in this file")
+          expect(fixture.assertions.map((input) => input.action)).toEqual(["edit"])
+        }),
       )
     }),
   )

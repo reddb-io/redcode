@@ -32,6 +32,49 @@ describe("VaultRestricted", () => {
   test("reads an unreadable marker as none", () => {
     expect(VaultRestricted.read({ restricted: { msg_a: "maybe" } })).toEqual({})
     expect(VaultRestricted.read(undefined)).toEqual({})
+    expect(VaultRestricted.read({ restricted: "withheld" })).toEqual({})
+    expect(VaultRestricted.withheld(undefined)).toEqual(new Set())
+    expect(VaultRestricted.excluded(undefined)).toEqual(new Set())
+  })
+
+  test("marks a message on a Session without metadata and keeps other markers", () => {
+    expect(VaultRestricted.mark(undefined, "msg_a", "withheld")).toEqual({ restricted: { msg_a: "withheld" } })
+    const both = VaultRestricted.mark({ restricted: { msg_a: "withheld" } }, "msg_b", "sensitive")
+    expect(both).toEqual({ restricted: { msg_a: "withheld", msg_b: "sensitive" } })
+    expect(VaultRestricted.withheld(both)).toEqual(new Set(["msg_a"]))
+    expect(VaultRestricted.excluded(both)).toEqual(new Set(["msg_a", "msg_b"]))
+  })
+
+  test("replaces only marked user messages and drops their attachments", () => {
+    const marked = SessionMessage.User.make({
+      id: SessionMessage.ID.create(),
+      type: "user",
+      text: prose,
+      files: [{ data: Buffer.from(prose).toString("base64"), mime: "text/plain", source: { type: "inline" } }],
+      agents: [{ name: "build" }],
+      time: { created: DateTime.makeUnsafe(0) },
+    })
+    const kept = user("keep this")
+    const messages = [marked, kept]
+    expect(VaultRestricted.withholdMessages(messages, new Set())).toBe(messages)
+    const [withheld, other] = VaultRestricted.withholdMessages(messages, new Set([marked.id]))
+    expect(withheld).toMatchObject({ type: "user", text: VaultRestricted.WITHHELD })
+    expect(withheld?.type === "user" ? [withheld.files, withheld.agents, withheld.skills] : []).toEqual([
+      undefined,
+      undefined,
+      undefined,
+    ])
+    expect(other).toBe(kept)
+    expect(JSON.stringify(VaultRestricted.withholdMessages(messages, new Set([marked.id])))).not.toContain("banana")
+  })
+
+  test("sends every message unchanged when none is withheld, and keeps messages without an ID", () => {
+    const anonymous = Message.user(prose)
+    const messages = [anonymous]
+    const sent = VaultRestricted.withholdRequest(messages, new Set())
+    expect(sent).toEqual(messages)
+    expect(sent).not.toBe(messages)
+    expect(VaultRestricted.withholdRequest(messages, new Set(["msg_other"]))[0]).toBe(anonymous)
   })
 
   test("keeps a flagged message's words out of the checkpoint anchors", () => {

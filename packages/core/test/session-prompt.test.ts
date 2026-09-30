@@ -277,6 +277,75 @@ describe("Session.prompt", () => {
     }),
   )
 
+  it.effect("keeps only the reference when the admitted prompt becomes a visible message", () =>
+    Effect.gen(function* () {
+      yield* setup
+      const session = yield* Session.Service
+      const vault = yield* Vault.Service
+      const bus = yield* Bus.Service
+      const { db } = yield* Database.Service
+      // Assembled from parts so no secret scanner mistakes it for a real credential.
+      const token = "ghp" + "_" + "m".repeat(36)
+
+      const admittedMessage = yield* session.prompt({ sessionID, text: `deploy with ${token}`, resume: false })
+      yield* SessionInbox.promote(db, bus, sessionID, "steer")
+
+      const visible = yield* session.message({ sessionID, messageID: admittedMessage.id })
+      expect(visible?.type === "user" ? visible.text : "").toBe("deploy with {vault:github-token-1}")
+      expect(visible?.type === "user" ? visible.metadata?.vault : undefined).toEqual([
+        { name: "github-token-1", kind: "github-token" },
+      ])
+      const rows = yield* db.select().from(SessionMessageTable).all().pipe(Effect.orDie)
+      const events = yield* db.select().from(EventTable).all().pipe(Effect.orDie)
+      expect(rows.length).toBeGreaterThan(0)
+      expect(JSON.stringify([rows, events])).not.toContain(token)
+      // The secret belongs to the Session's project only.
+      expect(yield* vault.list(Project.ID.make("prj_prompt_other"))).toEqual([])
+    }),
+  )
+
+  it.effect("stores nothing new when a prompt ID is retried with a different secret", () =>
+    Effect.gen(function* () {
+      yield* setup
+      const session = yield* Session.Service
+      const vault = yield* Vault.Service
+      const { db } = yield* Database.Service
+      const first = "ghp" + "_" + "f".repeat(36)
+      const retried = "ghp" + "_" + "g".repeat(36)
+      const id = SessionMessage.ID.create()
+
+      const original = yield* session.prompt({ sessionID, id, text: `use ${first}`, resume: false })
+      const again = yield* session.prompt({ sessionID, id, text: `use ${retried}`, resume: false })
+
+      expect(again.payload.text).toBe(original.payload.text)
+      expect((yield* vault.list(Project.ID.global)).map((entry) => entry.name)).toEqual(["github-token-1"])
+      // The retried value was never admitted, so the vault does not know it and nothing durable holds it.
+      expect(yield* vault.scrub(Project.ID.global, retried)).toBe(retried)
+      const events = yield* db.select().from(EventTable).all().pipe(Effect.orDie)
+      const inbox = yield* db.select().from(SessionInboxTable).all().pipe(Effect.orDie)
+      expect(JSON.stringify([events, inbox])).not.toContain(first)
+      expect(JSON.stringify([events, inbox])).not.toContain(retried)
+    }),
+  )
+
+  it.effect("moves a secret out of a compaction focus before it is admitted", () =>
+    Effect.gen(function* () {
+      yield* setup
+      const session = yield* Session.Service
+      const vault = yield* Vault.Service
+      const { db } = yield* Database.Service
+      const token = "ghp" + "_" + "k".repeat(36)
+
+      const compaction = yield* session.compact({ sessionID, focus: `keep the ${token} steps` })
+
+      expect(compaction.payload.focus).toBe("keep the {vault:github-token-1} steps")
+      expect(yield* vault.resolve({ projectID: Project.ID.global, name: "github-token-1" })).toBe(token)
+      const events = yield* db.select().from(EventTable).all().pipe(Effect.orDie)
+      const inbox = yield* db.select().from(SessionInboxTable).all().pipe(Effect.orDie)
+      expect(JSON.stringify([events, inbox])).not.toContain(token)
+    }),
+  )
+
   it.effect("commits a staged revert before admitting a new prompt", () =>
     Effect.gen(function* () {
       yield* setup

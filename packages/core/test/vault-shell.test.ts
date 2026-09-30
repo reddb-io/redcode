@@ -107,7 +107,48 @@ const shapes: ReadonlyArray<{
     command: `export TOKEN={vault:t}; printf '%s' "$TOKEN"`,
     expect: (value) => value,
   },
+  {
+    name: "subshell inside command substitution",
+    command: `printf '%s' "$( (printf '%s' {vault:t}) )"`,
+    expect: (value) => value,
+  },
+  { name: "hash inside a word", command: "printf '%s' a#{vault:t}", expect: (value) => `a#${value}` },
+  {
+    name: "single quotes inside backticks",
+    command: "x=`printf '%s' 'k={vault:t}'`; printf '%s' \"$x\"",
+    expect: (value) => `k=${value}`,
+  },
+  {
+    name: "double quotes inside backticks",
+    command: "x=`printf '%s' \"k={vault:t}\"`; printf '%s' \"$x\"",
+    expect: (value) => `k=${value}`,
+  },
+  { name: "dollar-quote inside double quotes", command: `printf '%s' "$'{vault:t}"`, expect: (value) => `$'${value}` },
+  {
+    name: "double-quoted heredoc delimiter",
+    command: 'cat <<"EOF"\nkey={vault:t}\nEOF',
+    expect: (value) => `key=${value}\n`,
+  },
+  { name: "escaped heredoc delimiter", command: "cat <<\\EOF\nkey={vault:t}\nEOF", expect: (value) => `key=${value}\n` },
+  {
+    name: "two heredocs opened on one line",
+    command: "cat <<A; cat <<'B'\nx={vault:t}\nA\ny={vault:t}\nB",
+    expect: (value) => `x=${value}\ny=${value}\n`,
+  },
 ]
+
+// Quoting only bash reads: ANSI-C strings, locale strings and here-strings.
+const bashShapes: typeof shapes = [
+  { name: "ANSI-C string", command: "printf '%s' $'k={vault:t}\\tz'", expect: (value) => `k=${value}\tz` },
+  {
+    name: "ANSI-C string inside backticks",
+    command: "x=`printf '%s' $'k={vault:t}'`; printf '%s' \"$x\"",
+    expect: (value) => `k=${value}`,
+  },
+  { name: "locale string", command: `printf '%s' $"k={vault:t}"`, expect: (value) => `k=${value}` },
+  { name: "here-string", command: "cat <<<{vault:t}", expect: (value) => `${value}\n` },
+]
+const bashRuns = process.platform === "win32" || !bash ? [] : [bash]
 
 describe("VaultShell.bind on POSIX shells", () => {
   for (const shell of runs)
@@ -126,6 +167,68 @@ describe("VaultShell.bind on POSIX shells", () => {
           expect("failure" in result.bound ? "" : result.bound.command).toBe(shape.command)
           expect(ShellSelect.scriptArgs(shell).join(" ")).not.toContain(value)
         })
+
+  for (const shell of bashRuns)
+    for (const shape of bashShapes)
+      for (const [label, value] of [
+        ["plain", plain],
+        ["hostile", hostile],
+        ["multi-line", multiline],
+      ] as const)
+        test(`bash only: ${shape.name} with a ${label} value`, async () => {
+          const result = await run(shell, shape.command, value)
+          expect(result.failure).toBeUndefined()
+          expect(result.output).toBe(shape.expect(value))
+          expect(result.output).not.toContain("pwned\n")
+          expect("failure" in result.bound ? "" : result.bound.command).toBe(shape.command)
+        })
+
+  test("reads a value inside backticks through one variable per name", () => {
+    const other = "other-" + plain
+    expect(
+      VaultShell.bind(
+        "echo `echo {vault:t} {vault:t} {vault:u}`",
+        "/bin/sh",
+        new Map([
+          ["t", plain],
+          ["u", other],
+        ]),
+      ),
+    ).toEqual({
+      script: 'echo `echo "${REDCODE_VAULT_1}" "${REDCODE_VAULT_1}" "${REDCODE_VAULT_2}"`',
+      command: "echo `echo {vault:t} {vault:t} {vault:u}`",
+      env: { REDCODE_VAULT_1: plain, REDCODE_VAULT_2: other },
+    })
+  })
+
+  test("keeps escaped and unresolved references in an unquoted heredoc body", () => {
+    expect(
+      VaultShell.bind("cat <<EOF\n\\{vault:t} {vault:u} {vault:t}\nEOF", "/bin/bash", new Map([["t", plain]])),
+    ).toEqual({
+      script: "cat <<EOF\n\\{vault:t} {vault:u} ${REDCODE_VAULT_1}\nEOF",
+      command: expect.any(String),
+      env: { REDCODE_VAULT_1: plain },
+    })
+  })
+
+  test("refuses a value that would end a tab-stripped or CRLF quoted heredoc, and only that one", () => {
+    const tabbed = "a\n\t\tEOF\nb"
+    const stripped = VaultShell.bind("cat <<-'EOF'\n\t{vault:t}\n\tEOF", "/bin/bash", new Map([["t", tabbed]]))
+    expect("failure" in stripped ? stripped.failure : "").toContain("{vault:t} would end the quoted heredoc EOF early")
+    expect(JSON.stringify(stripped)).not.toContain(tabbed)
+    // Without `<<-` a tab-indented line does not end the body.
+    const kept = VaultShell.bind("cat <<'EOF'\n{vault:t}\nEOF", "/bin/bash", new Map([["t", tabbed]]))
+    expect("script" in kept ? kept.script : "").toBe(`cat <<'EOF'\n${tabbed}\nEOF`)
+    const crlf = VaultShell.bind("cat <<'EOF'\n{vault:t}\nEOF", "/bin/bash", new Map([["t", "x\nEOF\r\ny"]]))
+    expect("failure" in crlf ? crlf.failure : "").toContain("would end the quoted heredoc EOF early")
+  })
+
+  test("writes into a heredoc that never ends, and keeps a reference after an unclosed delimiter quote", () => {
+    const open = VaultShell.bind("cat <<'EOF'\n{vault:t}\n", "/bin/bash", new Map([["t", plain]]))
+    expect("script" in open ? open.script : "").toBe(`cat <<'EOF'\n${plain}\n`)
+    const unclosed = VaultShell.bind("cat <<'EOF\n{vault:t}", "/bin/bash", new Map([["t", plain]]))
+    expect("script" in unclosed ? unclosed.script : "").toBe("cat <<'EOF\n{vault:t}")
+  })
 
   test("keeps an escaped reference and a comment literal", () => {
     const bound = VaultShell.bind("printf '%s' \\{vault:t} # uses {vault:t}", "/bin/sh", new Map([["t", plain]]))
@@ -191,6 +294,46 @@ describe("VaultShell.bind on PowerShell", () => {
     expect("failure" in literal ? literal.failure : "").toContain("{vault:t} would end the literal here-string early")
   })
 
+  test("keeps doubled quotes inside strings and closes typographic single quotes", () => {
+    expect(script("Write-Output 'it''s {vault:t}'")).toBe(`Write-Output 'it''s ${quoted}'`)
+    expect(script('Write-Output "say ""hi"" {vault:t}"')).toBe(
+      `Write-Output "say ""hi"" ${hostile.replace(/[`$"]/g, "`$&")}"`,
+    )
+    const curly = "it’s-" + plain
+    const bound = VaultShell.bind("Write-Output ‘Bearer {vault:t}’", "pwsh", new Map([["t", curly]]))
+    expect("script" in bound ? bound.script : "").toBe(`Write-Output ‘Bearer it’’s-${plain}’`)
+  })
+
+  test("quotes a value inside a subexpression, also within a string and nested parentheses", () => {
+    expect(script('Write-Output "x $(Get-Item {vault:t}) y"')).toBe(`Write-Output "x $(Get-Item '${quoted}') y"`)
+    expect(script("$( (Get-A) + {vault:t} )")).toBe(`$( (Get-A) + '${quoted}' )`)
+    expect(script("@('a', {vault:t})")).toBe(`@('a', '${quoted}')`)
+  })
+
+  test("keeps references in comments and after a backtick escape", () => {
+    expect(script("Write-Output x # {vault:t}")).toBe("Write-Output x # {vault:t}")
+    expect(script("<# {vault:t} #> Write-Output {vault:t}")).toBe(`<# {vault:t} #> Write-Output '${quoted}'`)
+    expect(script("Write-Output `{vault:t}")).toBe("Write-Output `{vault:t}")
+    expect(script("Write-Output a#{vault:t}")).toBe(`Write-Output a#'${quoted}'`)
+  })
+
+  test("writes a literal here-string value as is and resumes code after it", () => {
+    expect(script("$body = @'\n{vault:t}\n'@ + {vault:t}")).toBe(`$body = @'\n${hostile}\n'@ + '${quoted}'`)
+    expect(VaultShell.bind('$body = @"   \n{vault:t}\n"@', "pwsh", values)).toEqual({
+      script: '$body = @"   \n${env:REDCODE_VAULT_1}\n"@',
+      command: '$body = @"   \n{vault:t}\n"@',
+      env: { REDCODE_VAULT_1: hostile },
+    })
+  })
+
+  test("refuses a NUL character and treats Windows PowerShell alike", () => {
+    expect(VaultShell.bind("Write-Output {vault:t}", "pwsh", new Map([["t", "a\0b"]]))).toEqual({
+      failure: "{vault:t} holds a NUL character, which no shell script can carry.",
+    })
+    const bound = VaultShell.bind("Write-Output {vault:t}", "powershell", values)
+    expect("script" in bound ? bound.script : "").toBe(`Write-Output '${quoted}'`)
+  })
+
   test("reads the script from standard input", () => {
     expect(ShellSelect.scriptArgs("pwsh").at(-1)).toBe("Invoke-Expression ([Console]::In.ReadToEnd())")
   })
@@ -203,5 +346,15 @@ describe("VaultShell.bind on cmd", () => {
       command: "curl -u me:%REDCODE_VAULT_1% https://x",
       env: { REDCODE_VAULT_1: plain },
     })
+  })
+
+  test("shares one variable per name and leaves an unresolved reference as written", () => {
+    const bound = VaultShell.bind("set A={vault:t}&& set B={vault:t}&& echo {vault:u}", "cmd", new Map([["t", plain]]))
+    expect(bound).toEqual({
+      script: undefined,
+      command: "set A=%REDCODE_VAULT_1%&& set B=%REDCODE_VAULT_1%&& echo {vault:u}",
+      env: { REDCODE_VAULT_1: plain },
+    })
+    expect("command" in bound ? bound.command : plain).not.toContain(plain)
   })
 })

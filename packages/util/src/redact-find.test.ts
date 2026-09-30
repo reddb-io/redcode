@@ -73,3 +73,52 @@ describe("findSecrets", () => {
     expect(Redact.redact(text)).toBe(text)
   })
 })
+
+describe("findSecrets decisions", () => {
+  test("reports a long user part and credential query parameters as high, and skips redacted ones", () => {
+    const credentials = "deploy" + "0123456789abcdefXYZ"
+    const text = `curl https://${credentials}@h.example/p?key=abcd1234&sig=zzzz&access_token=[redacted:token]`
+    expect(summary(text)).toEqual([
+      { kind: "url-credentials", value: credentials, confidence: "high" },
+      { kind: "api-key", value: "abcd1234", confidence: "high" },
+      { kind: "signature", value: "zzzz", confidence: "high" },
+    ])
+    expect(Redact.findSecrets("https://user:@host.example/")).toEqual([])
+    expect(Redact.findSecrets("https://git@github.com/o/r")).toEqual([])
+  })
+
+  test("reports a mixed-case Bearer credential as low and Basic prose as nothing", () => {
+    expect(summary("x BEARER abcdef" + "GHIJ")).toEqual([
+      { kind: "authorization", value: "abcdefGHIJ", confidence: "low" },
+    ])
+    expect(Redact.findSecrets("Authorization: Basic not-base64!")).toEqual([])
+    expect(Redact.findSecrets("Send the Bearer Tokens later")).toEqual([])
+  })
+
+  test("reports a quoted random token as low, in the text's offsets", () => {
+    const random = ["Ab1Cd2", "Ef3Gh4", "Ij5Kl6", "Mn7Op8", "Qr9St0", "Uv"].join("+")
+    const text = `const p = "${random}"`
+    expect(Redact.findSecrets(text)).toEqual([
+      { start: 11, end: 11 + random.length, kind: "secret", value: random, confidence: "low" },
+    ])
+  })
+
+  test("drops every later finding that meets an earlier one, however many came before", () => {
+    const first = "ghp" + "_" + repeat("A1b", 36)
+    const second = "ghp" + "_" + repeat("C2d", 36)
+    const third = "ghp" + "_" + repeat("E3f", 36)
+    const text = `A=${first} B=${second} GITHUB_TOKEN=${third}`
+    expect(summary(text)).toEqual([
+      { kind: "github-token", value: first, confidence: "high" },
+      { kind: "github-token", value: second, confidence: "high" },
+      { kind: "github-token", value: third, confidence: "high" },
+    ])
+  })
+
+  test("gives nothing high for what only the heuristics see", () => {
+    const text = `checksum=${repeat("aB1", 36)}\nx BEARER abcdef${"GHIJ"}\nconst p = "${repeat("Ab1Cd2+", 40)}"`
+    const found = Redact.findSecrets(text)
+    expect(found.length).toBe(3)
+    expect(found.every((item) => item.confidence === "low")).toBe(true)
+  })
+})
