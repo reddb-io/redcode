@@ -24,7 +24,7 @@ const binding = {
       authority: "parent",
     },
   },
-}
+} as const
 
 describe("RedSkills governed child Agent contract", () => {
   test("accepts the explicit parent-owned launch contract and projects the parent binding", () => {
