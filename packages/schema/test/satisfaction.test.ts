@@ -138,3 +138,21 @@ describe("Satisfaction with the work's trips", () => {
     expect(Satisfaction.read(early, [trip("loop", "stop", 3)])?.stops).toBe(1)
   })
 })
+
+describe("Satisfaction.progress", () => {
+  test("counts the prompts classified and the ones read with enough confidence", () => {
+    const unsure = {
+      ...prompt(3, "agrees", 0),
+      answers: { user_feedback: choice("agrees", 0.4), frustration: score(1, 0.3) },
+    }
+    const evaluations = [
+      prompt(1, "agrees", 0),
+      prompt(2, "neutral", 0),
+      unsure,
+      prompt(4, "agrees", 0, { decision: "unavailable" }),
+      prompt(5, "agrees", 0, { operation: "session_progress" }),
+    ]
+    expect(Satisfaction.progress(evaluations)).toEqual({ classified: 3, usable: 2, needed: 3 })
+    expect(Satisfaction.progress([])).toEqual({ classified: 0, usable: 0, needed: 3 })
+  })
+})

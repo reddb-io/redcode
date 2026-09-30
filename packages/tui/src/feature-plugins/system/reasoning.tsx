@@ -169,8 +169,29 @@ function SatisfactionIndicator(props: { context: Plugin.Context; sessionID?: str
     if (stage === "good") return feedback.info.base
     return props.context.theme.text.muted
   }
+  // Until enough prompts were read, a quiet count says the indicator exists and what it waits for.
+  const waiting = () => {
+    if (view.hidden || props.status?.effective.reasoning !== "dual" || !history() || reading()) return undefined
+    const { usable, needed } = Satisfaction.progress(history()?.evaluations ?? [])
+    return `mood ${usable}/${needed}`
+  }
   return (
-    <Show when={reading()}>
+    <Show
+      when={reading()}
+      fallback={
+        <Show when={waiting()}>
+          {(value) => (
+            <text
+              fg={props.context.theme.text.muted}
+              wrapMode="none"
+              onMouseUp={() => props.context.keymap.dispatch("intelligence.status")}
+            >
+              {value()}
+            </text>
+          )}
+        </Show>
+      }
+    >
       {(value) => (
         <text
           fg={tone(value().stage)}

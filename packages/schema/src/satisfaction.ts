@@ -91,6 +91,18 @@ export function stage(mood: number): Stage {
   return "frustrated"
 }
 
+/**
+ * How far the reading is from showing: the prompts System One classified, and how many of them it read with enough
+ * confidence to count. A session whose prompts are all classified but none read shows why nothing appears.
+ */
+export function progress(evaluations: ReadonlyArray<Evaluation>) {
+  const classified = evaluations.filter(
+    (evaluation) => evaluation.operation === "prompt_classification" && evaluation.decision !== "unavailable",
+  )
+  const usable = classified.filter((evaluation) => sample(evaluation) !== undefined).length
+  return { classified: classified.length, usable, needed: MINIMUM }
+}
+
 /** How the recent work moved the mood: stops the harness made cost it, work resuming after a hint earns some back. */
 export function work(trips: ReadonlyArray<Trip>, since: number) {
   const recent = trips.filter((trip) => trip.at >= since)
