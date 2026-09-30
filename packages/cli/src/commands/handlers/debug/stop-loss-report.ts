@@ -5,7 +5,9 @@ import { SessionGuard } from "@opencode/schema/session-guard"
  * how often the work moved after a hint. A high dismissed share points at signals that fire too easily; hints that are
  * rarely followed by progress point at hints that do not help.
  */
-export function stopLossReport(entries: ReadonlyArray<SessionGuard.Entry>) {
+export function stopLossReport(
+  entries: ReadonlyArray<{ readonly guard: string; readonly action: string; readonly subject?: string }>,
+) {
   const trips = entries.filter((entry) => entry.guard === "stop_loss")
   const dismissed = trips.filter((entry) => entry.subject?.startsWith(SessionGuard.STOP_LOSS_DISMISSED)).length
   const progressed = trips.filter((entry) => entry.subject === SessionGuard.STOP_LOSS_PROGRESSED).length
