@@ -15,7 +15,8 @@
  * is work getting done unless the arguments are the same too. What a step spent is the work it
  * added: what it generated and the new context it read uncached, never the context it re-read, so
  * a large session is not judged by its size nor by how its provider accounts for its cache; and
- * tokens are spend only when what the steps cost agrees. A status check of something outside the
+ * tokens are spend only when what the steps cost agrees. Time spent running tools is excluded from
+ * the spend clock; parallel tools count once. A status check of something outside the
  * session (a CI run, a deploy) that keeps answering the same is waiting, not looping: it is steered
  * to a monitor, and its steps do not count as stalled until the wait budget runs out. In dual
  * reasoning a signal, or every `every` steps, is a checkpoint where S1 reads the user's request and
@@ -146,6 +147,7 @@ export interface Part {
   readonly callID?: string
   readonly synthetic?: boolean
   readonly text?: string
+  readonly time?: { readonly ran: number; readonly completed: number }
   readonly state?: {
     readonly status: string
     readonly input?: unknown
@@ -195,11 +197,13 @@ export interface Repeat {
 
 export interface Trajectory {
   readonly steps: number
+  /** Wall time since the last progress, including tools, for the external-work wait budget. */
+  readonly elapsed: number
   /** Steps since the last one that made progress. */
   readonly idle: number
   readonly repeat?: Repeat
   readonly todoFailures: number
-  /** Spent since the last progress, or since the turn began: new work in tokens, the actual cost, and time. */
+  /** Spent since the last progress: new work in tokens, the actual cost, and time outside tool execution. */
   readonly spent: { readonly tokens: number; readonly cost: number; readonly ms: number }
   /** The context the latest step carried, 0 when unknown. */
   readonly context?: number
@@ -216,19 +220,40 @@ export function observe(
   const idle = steps.slice(last + 1)
   const parts = steps.flatMap((step) => step.parts)
   const since = last >= 0 ? (steps[last]!.completed ?? input.started) : input.started
+  const elapsed = Math.max(0, input.now - since)
   return {
     steps: steps.length,
+    elapsed,
     idle: idle.length,
     repeat: repeat(parts),
     todoFailures: LoopGuard.todoFailures(parts),
     spent: {
       tokens: idle.reduce((total, step, index) => total + step.tokens + added(steps, last + 1 + index), 0),
       cost: idle.reduce((total, step) => total + step.cost, 0),
-      ms: Math.max(0, input.now - since),
+      ms: elapsed - toolTime(parts, since, input.now),
     },
     context: steps.at(-1)?.context ?? 0,
     corrected: steps.at(-1)?.parts.some((part) => settled(part) && refused(result(part))) ?? false,
   }
+}
+
+/** Tools can run concurrently or cross the progress boundary: count only their union inside the clock window. */
+function toolTime(parts: ReadonlyArray<Part>, since: number, now: number) {
+  return parts
+    .flatMap((part) =>
+      part.type === "tool" && part.time
+        ? [{ start: Math.max(since, part.time.ran), end: Math.min(now, part.time.completed) }]
+        : [],
+    )
+    .filter((interval) => interval.end > interval.start)
+    .toSorted((left, right) => left.start - right.start)
+    .reduce(
+      (total, interval) => ({
+        end: Math.max(total.end, interval.end),
+        ms: total.ms + Math.max(0, interval.end - Math.max(total.end, interval.start)),
+      }),
+      { end: since, ms: 0 },
+    ).ms
 }
 
 /**
@@ -395,7 +420,7 @@ const spending = (trajectory: Trajectory, limits: Limits, times: number) => {
 /** Whether the turn is polling a status check that has not moved, and whether the wait budget is spent. */
 function waits(trajectory: Trajectory, limits: Limits) {
   if (!trajectory.repeat?.probe || trajectory.repeat.count < POLL_AT) return undefined
-  return trajectory.spent.ms >= limits.wait * 60_000 ? ("waited" as const) : ("polling" as const)
+  return trajectory.elapsed >= limits.wait * 60_000 ? ("waited" as const) : ("polling" as const)
 }
 
 /** What a turn remembers between checkpoints; a new user prompt starts it over. */
@@ -782,7 +807,7 @@ export function line(trajectory: Trajectory, verdict: Verdict, input: { readonly
 /** Why the turn is not worth continuing, for a stop or a paused goal. */
 export function reason(trajectory: Trajectory, verdict: Verdict) {
   if (trajectory.repeat && verdict.signals.includes("waited"))
-    return `${call(trajectory.repeat)} answered the same for ${Math.round(trajectory.spent.ms / 60_000)} minutes: what it checks has not moved`
+    return `${call(trajectory.repeat)} answered the same for ${Math.round(trajectory.elapsed / 60_000)} minutes: what it checks has not moved`
   if (trajectory.repeat && polls(verdict))
     return `${call(trajectory.repeat)} was polled ${trajectory.repeat.count} times instead of waited for, and answered the same each time`
   if (verdict.state === "waiting") return "it is waiting on something outside the session"
@@ -962,12 +987,17 @@ export function parts(message: SessionMessage.Assistant): Part[] {
   return message.content.flatMap((item): Part[] => {
     if (item.type === "text") return [{ type: "text", text: item.text }]
     if (item.type !== "tool" || item.executed === true) return []
+    const time =
+      item.time.ran && item.time.completed
+        ? { ran: DateTime.toEpochMillis(item.time.ran), completed: DateTime.toEpochMillis(item.time.completed) }
+        : undefined
     if (item.state.status === "completed")
       return [
         {
           type: "tool",
           tool: item.name,
           callID: item.id,
+          time,
           state: {
             status: "completed",
             input: item.state.input,
@@ -984,6 +1014,7 @@ export function parts(message: SessionMessage.Assistant): Part[] {
           type: "tool",
           tool: item.name,
           callID: item.id,
+          time,
           state: {
             status: "error",
             input: item.state.input,

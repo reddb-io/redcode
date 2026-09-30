@@ -196,8 +196,7 @@ jobs:
           bun run script/service-smoke.ts
 
   vault-coverage:
-    # The vault handles secrets, so a coverage shortfall fails the run. Publishing does not wait for this job; require
-    # the `vault-coverage` check in the main branch protection to make it gate merges too.
+    # Secret-handling tests and their coverage must pass before publication.
     needs: plan
     runs-on: blacksmith-4vcpu-ubuntu-2404
     timeout-minutes: 30
@@ -427,15 +426,12 @@ jobs:
           compression-level: 0
 
   smoke:
-    # Non-blocking until proven stable: publish does not need this job and continue-on-error keeps its failures
-    # out of the run result. It drives the shipped binary through real flows in a fresh home with a scripted
-    # OpenAI-compatible provider, so it needs no model credentials. Add it to publish.needs once it is reliable.
-    name: smoke (built binary, non-blocking)
+    # Exercise the exact shipped archive in a fresh home before publication, without model credentials.
+    name: smoke (built binary)
     if: github.event_name == 'workflow_dispatch'
     needs: [plan, build, design]
     runs-on: ubuntu-latest
     timeout-minutes: 15
-    continue-on-error: true
     steps:
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
         with:
@@ -485,7 +481,7 @@ jobs:
 
   publish:
     if: inputs.publish && github.repository == 'reddb-io/redcode' && github.ref == 'refs/heads/main'
-    needs: [plan, verify, tests, build, design]
+    needs: [plan, verify, tests, vault-coverage, build, design, smoke]
     runs-on: ubuntu-latest
     timeout-minutes: 45
     environment: red-release

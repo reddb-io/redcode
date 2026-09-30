@@ -12,11 +12,14 @@ Every push runs:
 - Workflow syntax, lint, types and generated-client checks.
 - Redcode product contracts on Linux and Windows.
 - Compiled background-service startup and shutdown checks on both platforms.
+- Secret-handling tests and vault coverage (90% lines and functions, 75% lines per file).
 
 The product contracts are listed in `script/test-redcode.ts` and run from their
 package directories. They cover Redcode behavior changed by the migration rather
 than automatically repeating every inherited upstream suite. No local test run is
-required. Pull requests, if explicitly requested, use the same checks.
+required. They include stop-loss, goal judgment, S1 classification and reviews,
+model recommendations, provider connection, native compaction, subagents and
+Design contracts. Pull requests, if explicitly requested, use the same checks.
 
 The separate check, test, Nix and Storybook workflows have been removed. Their
 product source remains available. Inherited automation archived under
@@ -31,7 +34,12 @@ product source remains available. Inherited automation archived under
    and commits the version directly to `main`. No release branch or Version PR.
 4. Checks and tests validate that exact versioned commit. In parallel, build
    Redcode native packages, the RPC sidecars and the Design app.
-5. Only after all required jobs pass, publish npm platform packages and the main
+5. Run the smoke against the exact Linux archives, including the Design companion,
+   in a fresh home with a scripted provider. It checks the service, tools and token
+   accounting, temporary worktrees, vault isolation from model requests and outputs,
+   and the browser review. Its failure blocks publication.
+6. Only after lint/types, product contracts, vault coverage, builds and the smoke
+   pass, publish npm platform packages and the main
    package, verify registry availability and an isolated install, then publish
    the GitHub releases with checksums and Changesets notes.
 
@@ -87,3 +95,16 @@ pipelines. Full lint and type checks still cover workspace integration. See
 `migration-parity.md` for remaining feature parity work; CI success alone does not
 prove visual parity. Compare completed run durations before claiming a specific
 build-time reduction.
+
+## Stop-loss calibration
+
+Use `redcode debug guards --days 7` against the running service to inspect signals,
+S1 dismissals, hints followed by progress and stopped turns. `--json` includes
+the recorded intervention details. Compare the same usage period after an update;
+old trips alone cannot validate a new calibration. These are intervention counts,
+not a measured false-positive rate or proof that a hint caused progress.
+
+The spend clock excludes the union of recorded tool-execution intervals after
+the last progress. Older history without execution timestamps uses wall time.
+The external-job wait budget always uses wall time, including tools, so repeated
+status checks still expire even when each command takes a long time.

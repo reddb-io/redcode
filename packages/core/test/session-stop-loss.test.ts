@@ -1,5 +1,7 @@
 import { describe, expect, test } from "bun:test"
+import { Schema } from "effect"
 import { Intelligence } from "@opencode/schema/intelligence"
+import { SessionMessage } from "@opencode/core/session/message"
 import { LoopGuard } from "@opencode/core/session/loop-guard"
 import { LOOP_GUARD_REFUSAL } from "@opencode/core/session/loop-marker"
 import { SessionStopLoss } from "@opencode/core/session/stop-loss"
@@ -68,6 +70,104 @@ describe("SessionStopLoss.observe", () => {
     expect(trajectory.spent.tokens).toBe(40_000)
     expect(trajectory.spent.cost).toBeCloseTo(0.2)
     expect(trajectory.spent.ms).toBe(60_000)
+  })
+
+  test("a long failed build does not become time spent without progress", () => {
+    const trajectory = observe(
+      [
+        step([read], { completed: 1_000 }),
+        step([
+          {
+            ...call("bash", { command: "bun run build" }, "failed", "error"),
+            time: { ran: 2_000, completed: 2_402_000 },
+          },
+        ]),
+        step([]),
+      ],
+      2_403_000,
+    )
+    expect(trajectory.elapsed).toBe(2_402_000)
+    expect(trajectory.spent.ms).toBe(2_000)
+    expect(SessionStopLoss.signals(trajectory, LIMITS)).not.toContain("spend")
+  })
+
+  test("overlapping tools count once and only inside the period since progress", () => {
+    const timed = (ran: number, completed: number) => ({
+      ...call("bash", { command: "bun run build" }, "failed", "error"),
+      time: { ran, completed },
+    })
+    const trajectory = observe(
+      [
+        step([read], { completed: 10_000 }),
+        step([timed(5_000, 20_000), timed(15_000, 30_000), timed(40_000, 80_000)]),
+        step([]),
+      ],
+      60_000,
+    )
+    expect(trajectory.elapsed).toBe(50_000)
+    expect(trajectory.spent.ms).toBe(10_000)
+  })
+
+  test("history without tool timing still uses the wall clock", () => {
+    const trajectory = observe([step([read]), step([]), step([])], 40 * 60_000)
+    expect(trajectory.spent.ms).toBe(trajectory.elapsed)
+    expect(SessionStopLoss.signals(trajectory, LIMITS)).toContain("spend")
+  })
+
+  test("projects execution timing from completed and failed V2 tools, not their creation time", () => {
+    const message = Schema.decodeUnknownSync(SessionMessage.Assistant)({
+      id: "msg_timed",
+      type: "assistant",
+      agent: "build",
+      model: { providerID: "test", id: "model" },
+      time: { created: 0, completed: 50_000 },
+      content: [
+        {
+          type: "tool",
+          id: "call_build",
+          name: "bash",
+          state: { status: "error", input: { command: "bun run build" }, error: { type: "test", message: "failed" } },
+          time: { created: 1_000, ran: 10_000, completed: 30_000 },
+        },
+        {
+          type: "tool",
+          id: "call_read",
+          name: "read",
+          state: { status: "completed", input: {}, content: [{ type: "text", text: "ok" }] },
+          time: { created: 2_000, ran: 20_000, completed: 40_000 },
+        },
+        {
+          type: "tool",
+          id: "call_refused",
+          name: "bash",
+          state: { status: "error", input: {}, error: { type: "test", message: "refused" } },
+          time: { created: 0, completed: 50_000 },
+        },
+      ],
+    })
+    const baseline = Schema.decodeUnknownSync(SessionMessage.Assistant)({
+      id: "msg_baseline",
+      type: "assistant",
+      agent: "build",
+      model: { providerID: "test", id: "model" },
+      time: { created: 0, completed: 0 },
+      content: [
+        {
+          type: "tool",
+          id: "call_baseline",
+          name: "read",
+          state: { status: "completed", input: {}, content: [{ type: "text", text: "ok" }] },
+          time: { created: 0 },
+        },
+      ],
+    })
+    const turn = SessionStopLoss.projected([baseline, message])
+    expect(turn.steps[1]?.parts.map((part) => part.time)).toEqual([
+      { ran: 10_000, completed: 30_000 },
+      { ran: 20_000, completed: 40_000 },
+      undefined,
+    ])
+    expect(observe(turn.steps, 60_000).spent.ms).toBe(30_000)
   })
 })
 
@@ -517,6 +617,7 @@ describe("SessionStopLoss.answer", () => {
 describe("SessionStopLoss wording", () => {
   const trajectory: SessionStopLoss.Trajectory = {
     steps: 10,
+    elapsed: 60_000,
     idle: 9,
     todoFailures: 0,
     spent: { tokens: 40_000, cost: 0, ms: 60_000 },
@@ -584,6 +685,20 @@ describe("SessionStopLoss waiting on an outside job", () => {
     const trajectory = observe(Array.from({ length: 2 }, () => step([poll])))
     expect(trajectory.repeat).toMatchObject({ tool: "bash", count: 2, probe: RUN })
     expect(SessionStopLoss.signals(trajectory, LIMITS)).toEqual(["polling"])
+  })
+
+  test("the external wait budget includes time inside a status-check tool", () => {
+    const waited = LIMITS.wait * 60_000
+    const trajectory = observe(
+      [step([poll], { completed: 0 }), step([{ ...poll, time: { ran: 0, completed: waited } }])],
+      waited,
+    )
+    expect(trajectory.spent.ms).toBe(0)
+    expect(trajectory.elapsed).toBe(waited)
+    expect(SessionStopLoss.signals(trajectory, LIMITS)).toEqual(["waited"])
+    expect(
+      SessionStopLoss.final(trajectory, { action: "ask_user", state: "waiting", signals: ["waited"], verified: false }),
+    ).toContain(`for ${LIMITS.wait} minutes`)
   })
 })
 
