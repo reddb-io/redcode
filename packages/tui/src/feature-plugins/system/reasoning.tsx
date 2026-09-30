@@ -1,5 +1,6 @@
 import type { IntelligenceStatus } from "@opencode/client"
 import { Plugin } from "@opencode/plugin/tui"
+import { Satisfaction } from "@opencode/schema/satisfaction"
 import { createResource, createSignal, onCleanup, Show } from "solid-js"
 import { useLocal } from "../../context/local"
 import { DialogDesignList } from "../../component/dialog-design-list"
@@ -96,8 +97,60 @@ export default Plugin.define({
         />
       ),
     })
+    context.ui.slot({
+      append: "prompt.footer.status",
+      render: (props) => (
+        <SatisfactionIndicator
+          context={context}
+          sessionID={props.sessionID}
+          status={status.error ? undefined : status()}
+        />
+      ),
+    })
   },
 })
+
+/**
+ * How the user is taking the session: one block glyph that grows with satisfaction and its stage, read from what
+ * System One classifies for each prompt. Shown only in dual reasoning, once enough prompts were read.
+ */
+function SatisfactionIndicator(props: { context: Plugin.Context; sessionID?: string; status?: IntelligenceStatus }) {
+  const abort = new AbortController()
+  onCleanup(() => abort.abort())
+  const [history] = createResource(
+    () =>
+      props.sessionID
+        ? { sessionID: props.sessionID, state: props.context.data.session.status(props.sessionID) }
+        : undefined,
+    (input) =>
+      props.context.client["server.intelligence"]
+        .history({ sessionID: input.sessionID, limit: 100 }, { signal: abort.signal })
+        .catch(() => undefined),
+  )
+  const reading = () =>
+    props.status?.effective.reasoning === "dual" && history() ? Satisfaction.read(history() ?? []) : undefined
+  const tone = (stage: Satisfaction.Stage) => {
+    const feedback = props.context.theme.text.feedback
+    if (stage === "frustrated") return feedback.error.base
+    if (stage === "rough") return feedback.warning.base
+    if (stage === "great") return feedback.success.base
+    if (stage === "good") return feedback.info.base
+    return props.context.theme.text.muted
+  }
+  return (
+    <Show when={reading()}>
+      {(value) => (
+        <text
+          fg={tone(value().stage)}
+          wrapMode="none"
+          onMouseUp={() => props.context.keymap.dispatch("intelligence.status")}
+        >
+          {`${Satisfaction.glyph(value().stage)} ${value().stage}`}
+        </text>
+      )}
+    </Show>
+  )
+}
 
 function IntelligenceIndicator(props: {
   context: Plugin.Context
