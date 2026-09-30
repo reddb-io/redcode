@@ -170,6 +170,7 @@ export const Definitions = {
   "stash.delete": keybind("ctrl+d", "Delete stash entry"),
   "model.dialog.provider": keybind("ctrl+a", "Open provider list from model dialog"),
   "model.dialog.favorite": keybind("ctrl+f", "Toggle model favorite status"),
+  "model.dialog.refresh": keybind("ctrl+r", "Refresh the models from the model dialog"),
   // Shadows the global open.menu only while the model dialog lists router offers.
   "model.dialog.offers": keybind("ctrl+o", "Show or hide a router model's offers"),
   "model.list": keybind("<leader>m", "List available models"),

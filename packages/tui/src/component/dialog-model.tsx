@@ -6,7 +6,9 @@ import { DialogIntegration } from "./dialog-integration"
 import { DialogVariant } from "./dialog-variant"
 import * as fuzzysort from "fuzzysort"
 import { useConnected } from "./use-connected"
+import { useClient } from "../context/client"
 import { useData } from "../context/data"
+import { useToast } from "../ui/toast"
 import { modelPreferenceKey } from "../model-preference"
 import { useLocation } from "../context/location"
 import { modelDescription, modelRoute, offerDetails } from "../util/model-presentation"
@@ -20,8 +22,11 @@ export function DialogModel(props: { providerID?: string }) {
   const local = useLocal()
   const data = useData()
   const dialog = useDialog()
+  const client = useClient()
+  const toast = useToast()
   const location = useLocation()
   const [query, setQuery] = createSignal("")
+  const [refreshing, setRefreshing] = createSignal(false)
   const favoritePriority = new Set(local.model.favorite().map(modelPreferenceKey))
 
   const connected = useConnected()
@@ -202,6 +207,19 @@ export function DialogModel(props: { providerID?: string }) {
     dialog.clear()
   }
 
+  // Rebuilds the location's services, which asks every provider for its models again, then reads the list back.
+  const refresh = async () => {
+    if (refreshing()) return
+    setRefreshing(true)
+    toast.show({ variant: "info", message: "Refreshing models…", duration: 30000 })
+    await client.api.location
+      .reload()
+      .then(() => data.location.sync(location.ref))
+      .then(() => toast.show({ variant: "success", message: "Models refreshed" }))
+      .catch(toast.error)
+      .finally(() => setRefreshing(false))
+  }
+
   onMount(() => {
     dialog.setSize("xlarge")
     dialog.setCentered(true)
@@ -223,6 +241,12 @@ export function DialogModel(props: { providerID?: string }) {
               />
             ))
           },
+        },
+        {
+          command: "model.dialog.refresh",
+          title: refreshing() ? "Refreshing…" : "Refresh",
+          selection: "none",
+          onTrigger: () => void refresh(),
         },
         {
           command: "model.dialog.favorite",
