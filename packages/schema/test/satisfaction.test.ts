@@ -97,3 +97,44 @@ describe("Satisfaction.read", () => {
     expect(Satisfaction.STAGES.map(Satisfaction.glyph)).toEqual(["▁", "▂", "▄", "▆", "█"])
   })
 })
+
+describe("Satisfaction with the work's trips", () => {
+  const steady = [1, 2, 3, 4].map((created) => prompt(created, "neutral", 0))
+  const trip = (guard: string, action: string, at: number, subject?: string) => ({
+    guard,
+    action,
+    at,
+    ...(subject ? { subject } : {}),
+  })
+
+  test("a turn the harness had to stop pulls the stage down, and recovery earns some back", () => {
+    expect(Satisfaction.read(steady)?.stage).toBe("steady")
+    const stopped = Satisfaction.read(steady, [trip("stop_loss", "stop", 4), trip("goal", "stop", 4)])
+    expect(stopped?.stage).toBe("rough")
+    expect(stopped?.stops).toBe(2)
+    const recovered = Satisfaction.read(steady, [
+      trip("stop_loss", "stop", 4),
+      trip("stop_loss", "warn", 4, "outcome:progressed"),
+      trip("stop_loss", "warn", 4, "outcome:progressed"),
+    ])
+    expect(recovered?.stage).toBe("steady")
+    expect(recovered?.recovered).toBe(2)
+  })
+
+  test("the work moves the mood by a bounded amount, never past what the user said", () => {
+    const many = Array.from({ length: 10 }, () => trip("stop_loss", "stop", 4))
+    expect(Satisfaction.read(steady, many)?.mood).toBeCloseTo(-0.4)
+    const happy = [1, 2, 3].map((created) => prompt(created, "agrees", 0))
+    const relieved = Array.from({ length: 10 }, () => trip("stop_loss", "warn", 3, "outcome:progressed"))
+    expect(Satisfaction.read(happy, relieved)?.mood).toBe(1)
+  })
+
+  test("counts only stops of guards that mean the work fell short, in the recent turns", () => {
+    expect(Satisfaction.read(steady, [trip("budget", "stop", 4)])?.stops).toBe(0)
+    expect(Satisfaction.read(steady, [trip("stop_loss", "correct", 4)])?.stops).toBe(0)
+    const early = [1, 2, 3, 4, 5, 6, 7].map((created) => prompt(created, "neutral", 0))
+    // The window starts at the fifth-latest prompt, so a stop before it no longer counts.
+    expect(Satisfaction.read(early, [trip("loop", "stop", 2)])?.stops).toBe(0)
+    expect(Satisfaction.read(early, [trip("loop", "stop", 3)])?.stops).toBe(1)
+  })
+})

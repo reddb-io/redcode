@@ -54,6 +54,24 @@ export default Plugin.define({
               run: () => context.ui.dialog.show(() => <DialogIntelligence context={context} setup={setup} />),
             },
             {
+              id: "satisfaction.toggle",
+              title: "Show or hide the satisfaction indicator",
+              group: "Provider",
+              palette: true,
+              slash: { name: "satisfaction" },
+              run: () => {
+                const [view, update] = context.storage.store("satisfaction", { initial: { hidden: false } })
+                void update((draft) => {
+                  draft.hidden = !draft.hidden
+                }).then(() =>
+                  context.ui.toast.show({
+                    variant: "info",
+                    message: view.hidden ? "Satisfaction indicator hidden." : "Satisfaction indicator shown.",
+                  }),
+                )
+              },
+            },
+            {
               id: "agent.design",
               title: "Switch to Design mode",
               group: "Agent",
@@ -122,13 +140,24 @@ function SatisfactionIndicator(props: { context: Plugin.Context; sessionID?: str
       props.sessionID
         ? { sessionID: props.sessionID, state: props.context.data.session.status(props.sessionID) }
         : undefined,
-    (input) =>
-      props.context.client["server.intelligence"]
+    async (input) => {
+      const evaluations = await props.context.client["server.intelligence"]
         .history({ sessionID: input.sessionID, limit: 100 }, { signal: abort.signal })
-        .catch(() => undefined),
+        .catch(() => undefined)
+      if (!evaluations) return undefined
+      // What the work showed: turns the harness ended and work that resumed after a hint, since the oldest prompt read.
+      const since = Math.min(Infinity, ...evaluations.map((evaluation) => evaluation.created))
+      const report = await props.context.client.debug
+        .guards({ since: Number.isFinite(since) ? since : 0, limit: 200 }, { signal: abort.signal })
+        .catch(() => undefined)
+      return { evaluations, trips: report?.recent.filter((trip) => trip.sessionID === input.sessionID) ?? [] }
+    },
   )
+  const [view] = props.context.storage.store("satisfaction", { initial: { hidden: false } })
   const reading = () =>
-    props.status?.effective.reasoning === "dual" && history() ? Satisfaction.read(history() ?? []) : undefined
+    !view.hidden && props.status?.effective.reasoning === "dual" && history()
+      ? Satisfaction.read(history()?.evaluations ?? [], history()?.trips ?? [])
+      : undefined
   const tone = (stage: Satisfaction.Stage) => {
     const feedback = props.context.theme.text.feedback
     if (stage === "frustrated") return feedback.error.base
