@@ -689,13 +689,22 @@ describe("SessionStopLoss waiting on an outside job", () => {
 
   test("the external wait budget includes time inside a status-check tool", () => {
     const waited = LIMITS.wait * 60_000
-    const trajectory = observe(
-      [step([poll], { completed: 0 }), step([{ ...poll, time: { ran: 0, completed: waited } }])],
-      waited,
-    )
+    const steps = [step([poll], { completed: 0 }), step([{ ...poll, time: { ran: 0, completed: waited } }])]
+    const trajectory = observe(steps, waited)
     expect(trajectory.spent.ms).toBe(0)
     expect(trajectory.elapsed).toBe(waited)
     expect(SessionStopLoss.signals(trajectory, LIMITS)).toEqual(["waited"])
+    expect(
+      SessionStopLoss.evaluation({
+        sessionID: "ses_wait",
+        request: { text: "Wait for the CI job" },
+        steps,
+        trajectory,
+        checkpoint: { type: "signal", signals: ["waited"] },
+        subagent: false,
+        limits: LIMITS,
+      }).sources,
+    ).toMatchObject({ observed: { elapsed_minutes: LIMITS.wait, spent_since_progress: { minutes: 0 } } })
     expect(
       SessionStopLoss.final(
         trajectory,
