@@ -1,4 +1,4 @@
-import { createMemo, createSignal } from "solid-js"
+import { createMemo, createSignal, onMount } from "solid-js"
 import { useLocal } from "../context/local"
 import { DialogSelect } from "../ui/dialog-select"
 import { useDialog } from "../ui/dialog"
@@ -202,8 +202,14 @@ export function DialogModel(props: { providerID?: string }) {
     dialog.clear()
   }
 
+  onMount(() => {
+    dialog.setSize("xlarge")
+    dialog.setCentered(true)
+  })
+
   return (
     <DialogSelect<Value>
+      tall
       options={options()}
       actions={[
         {

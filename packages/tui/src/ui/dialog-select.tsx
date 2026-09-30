@@ -43,6 +43,7 @@ export interface DialogSelectProps<T> {
   focusTarget?: T
   focusCurrent?: boolean
   sectionNavigation?: boolean
+  tall?: boolean
 }
 
 type DialogSelectActionBase<T> = {
@@ -238,7 +239,9 @@ export function DialogSelect<T>(props: DialogSelectProps<T>) {
   })
 
   const dimensions = useTerminalDimensions()
-  const height = createMemo(() => Math.min(rows(), Math.floor(dimensions().height / 2) - 6))
+  const height = createMemo(() =>
+    Math.min(rows(), props.tall ? dimensions().height - 12 : Math.floor(dimensions().height / 2) - 6),
+  )
 
   const selected = createMemo(() => flat()[store.selected])
 
