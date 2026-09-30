@@ -269,15 +269,17 @@ function routerPlugin(options: {
         yield* ctx.provider.reload()
         const fetched = yield* Effect.tryPromise({
           try: async (signal) => {
-            const request = (suffix: string) => fetch(`${connection.baseURL}/${suffix}`, {
-              redirect: "error",
-              signal: AbortSignal.any([signal, AbortSignal.timeout(15_000)]),
-              headers: { accept: "application/json", authorization: `Bearer ${connection.key}` },
-            })
+            const request = (suffix: string) =>
+              fetch(`${connection.baseURL}/${suffix}`, {
+                redirect: "error",
+                signal: AbortSignal.any([signal, AbortSignal.timeout(15_000)]),
+                headers: { accept: "application/json", authorization: `Bearer ${connection.key}` },
+              })
             const filtered = await request(options.id === "red-router" ? "models?capabilities=chat" : "models")
-            const result = options.id === "red-router" && [400, 404, 405].includes(filtered.status)
-              ? await request("models")
-              : filtered
+            const result =
+              options.id === "red-router" && [400, 404, 405].includes(filtered.status)
+                ? await request("models")
+                : filtered
             if (!result.ok) throw new Error(`${options.name} model catalog HTTP ${result.status}`)
             return { body: (await result.json()) as unknown, headers: result.headers }
           },
@@ -372,6 +374,14 @@ function routerPlugin(options: {
             ...(loaded.inspection.router ? { router: loaded.inspection.router } : {}),
           },
           models: loaded.models.flatMap((item) => routerModel(item, providerID, loaded.names, enabled)),
+          sourceConnection: connection.credential
+            ? {
+                type: "credential",
+                id: connection.credential.id,
+                label: connection.credential.label,
+                method: connection.credential.value.type,
+              }
+            : { type: "env", name: options.keyEnv },
         })
       })
       if (options.id === "red-router")

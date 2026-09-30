@@ -1,6 +1,7 @@
 import { describe, expect, test } from "bun:test"
 import { Credential } from "@opencode/core/credential"
 import { Integration } from "@opencode/core/integration"
+import { KV } from "@opencode/core/kv"
 import { Mcp } from "@opencode/core/mcp/index"
 import { Model } from "@opencode/core/model"
 import { Plugin } from "@opencode/core/plugin"
@@ -11,7 +12,7 @@ import { Provider } from "@opencode/core/provider"
 import { ProviderRouter } from "@opencode/core/provider-router"
 import { Agent } from "@opencode/schema/agent"
 import { SessionID } from "@opencode/schema/session-id"
-import { Effect } from "effect"
+import { Effect, Schedule } from "effect"
 import { withEnv } from "../fixture/env"
 import { emptyMcp } from "../fixture/mcp"
 import { advance, drain } from "../lib/clock"
@@ -169,7 +170,9 @@ describe("RedRouterPlugin", () => {
 
     test("offers no auto without the router's autopilot or with a single level", () => {
       const [plain] = routerModel(item, Provider.ID.make("red-router"), names)
-      expect(plain?.variants.map((variant) => variant.id)).toEqual(["low", "high"].map((id) => Model.VariantID.make(id)))
+      expect(plain?.variants.map((variant) => variant.id)).toEqual(
+        ["low", "high"].map((id) => Model.VariantID.make(id)),
+      )
       const [single] = routerModel(
         { id: "combo/coder", parameters: { reasoning: true, thinking_levels: ["high"] } },
         Provider.ID.make("red-router"),
@@ -487,6 +490,88 @@ describe("RedRouterPlugin", () => {
       (server) => Effect.promise(() => server.stop(true)),
     ),
   )
+
+  it.effect("hides the previous account's models while the new account's catalog loads", () => {
+    const cache = Promise.withResolvers<void>()
+    const pending = { hold: false, reached: false }
+    return Effect.acquireUseRelease(
+      Effect.sync(() =>
+        Bun.serve({
+          port: 0,
+          fetch: (request) => {
+            if (new URL(request.url).pathname !== "/v1/models") return new Response(null, { status: 404 })
+            const account = request.headers.get("authorization") === "Bearer first" ? "first" : "second"
+            return Response.json({ data: [{ id: `account/${account}` }] })
+          },
+        }),
+      ),
+      (server) =>
+        withEnv({ RED_ROUTER_API_KEY: undefined, RED_ROUTER_BASE_URL: undefined }, () =>
+          Effect.gen(function* () {
+            const credentials = yield* Credential.Service
+            const first = yield* credentials.create({
+              integrationID,
+              label: "first",
+              value: Credential.Key.make({
+                type: "key",
+                key: "first",
+                configuration: { baseURL: `${server.url.origin}/v1` },
+              }),
+            })
+            const second = yield* credentials.create({
+              integrationID,
+              label: "second",
+              value: Credential.Key.make({
+                type: "key",
+                key: "second",
+                configuration: { baseURL: `${server.url.origin}/v1` },
+              }),
+            })
+            yield* credentials.activate(first.id)
+            const kv = yield* KV.Service
+            yield* addPlugin().pipe(
+              Effect.provideService(
+                KV.Service,
+                KV.Service.of({
+                  ...kv,
+                  get: (key) =>
+                    Effect.gen(function* () {
+                      if (pending.hold) {
+                        pending.reached = true
+                        yield* Effect.promise(() => cache.promise)
+                      }
+                      return yield* kv.get(key)
+                    }),
+                }),
+              ),
+            )
+            const models = yield* Model.Service
+            const observed = new Set<string>()
+            yield* models.available().pipe(
+              Effect.tap((catalog) => Effect.sync(() => catalog.forEach((model) => observed.add(model.id)))),
+              Effect.repeat(Schedule.spaced("1 millisecond")),
+              Effect.forkScoped,
+            )
+            yield* advance(() => observed.has("account/first"))
+            pending.hold = true
+            yield* credentials.activate(second.id)
+            yield* advance(() => pending.reached)
+            expect((yield* models.available()).filter((model) => model.providerID === "red-router")).toEqual([])
+            pending.hold = false
+            cache.resolve()
+            yield* advance(() => observed.has("account/second"))
+            expect(
+              (yield* models.available()).filter((model) => model.providerID === "red-router").map((model) => model.id),
+            ).toEqual(["account/second"])
+          }),
+        ),
+      (server) =>
+        Effect.promise(() => {
+          cache.resolve()
+          return server.stop(true)
+        }),
+    )
+  })
 
   it.effect("asks for the API endpoint and stores it with the key", () =>
     withEnv({ RED_ROUTER_API_KEY: undefined, RED_ROUTER_BASE_URL: "https://router.example/v1" }, () =>
