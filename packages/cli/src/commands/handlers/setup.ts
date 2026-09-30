@@ -1,4 +1,4 @@
-import { autocomplete, intro, log, outro, select, text } from "@clack/prompts"
+import { autocomplete, intro, log, outro, select } from "@clack/prompts"
 import {
   type IntelligenceEvaluator,
   type IntelligenceStatus,
@@ -39,53 +39,46 @@ export default Runtime.handler(Commands.commands.setup, (input) =>
         ],
       }),
     )
-    const currentFast = models.find(
-      (model) => model.providerID === status.settings.fast?.providerID && model.id === status.settings.fast?.id,
-    )
-    const choice = yield* chooseModel({
+    const principal = yield* chooseModel({
+      client,
       models,
       providers,
-      role: "S2 principal: generates responses and does the work",
+      role: "S2 principal",
       current: status.settings.principal,
-      keepRoles: status.settings.onboarding === "completed",
-      currentFast,
       recommended: status.router?.recommended?.default?.id,
       router: status.router?.providerID,
     })
-    const principal =
-      choice === "keep-roles"
-        ? models.find(
-            (model) =>
-              model.providerID === status.settings.principal?.providerID && model.id === status.settings.principal.id,
-          )
-        : choice
-    if (!principal) return yield* Effect.fail(new Error("Current System Two model is unavailable"))
-    const fastChoice =
-      choice === "keep-roles"
-        ? currentFast
-          ? "keep"
-          : "reuse"
-        : yield* prompt<"reuse" | "keep" | "change">(() =>
-            select({
-              message: "S2 transformations: summaries and bounded text",
-              initialValue: currentFast ? "keep" : "reuse",
-              options: [
-                { value: "reuse", label: `Reuse principal: ${principal.providerID}/${principal.id}` },
-                ...(currentFast
-                  ? [{ value: "keep" as const, label: `Keep ${currentFast.name}`, hint: currentFast.providerID }]
-                  : []),
-                { value: "change", label: "Choose another provider and model" },
-              ],
-            }),
-          )
+    const evaluator = reasoning === "dual" ? yield* configureEvaluator(client, status) : undefined
+    const available = (yield* request((signal) => client.model.list({ location }, { signal }))).data
+    const currentFast = available.find(
+      (model) =>
+        model.enabled && model.providerID === status.settings.fast?.providerID && model.id === status.settings.fast?.id,
+    )
+    const fastChoice = yield* prompt<"reuse" | "keep" | "change">(() =>
+      select({
+        message: "S2 transformations: summaries and bounded text",
+        initialValue: currentFast ? "keep" : "reuse",
+        options: [
+          { value: "reuse", label: `Reuse principal: ${principal.providerID}/${principal.id}` },
+          ...(currentFast
+            ? [{ value: "keep" as const, label: `Keep ${currentFast.name}`, hint: currentFast.providerID }]
+            : []),
+          { value: "change", label: "Choose another connection and model" },
+        ],
+      }),
+    )
     const fast =
       fastChoice === "change"
-        ? yield* chooseModel({ models, providers, role: "S2 transformations: summaries and bounded text" })
+        ? yield* chooseModel({
+            client,
+            models: available,
+            principalProvider: principal.providerID,
+            providers,
+            role: "S2 transformations",
+          })
         : fastChoice === "keep"
           ? currentFast
           : undefined
-    if (fast === "keep-roles") return yield* Effect.fail(new Error("Unexpected System Two selection"))
-    const evaluator = reasoning === "dual" ? yield* configureEvaluator(client, status) : undefined
     const model = { providerID: principal.providerID, id: principal.id }
     log.info(`S2 principal: ${principal.name} (${principal.providerID}/${principal.id})`)
     log.info(`S2 transformations: ${fast ? `${fast.name} (${fast.providerID}/${fast.id})` : "reuse principal"}`)
@@ -151,58 +144,76 @@ export default Runtime.handler(Commands.commands.setup, (input) =>
 )
 
 const chooseModel = Effect.fn("cli.setup.model")(function* (input: {
+  client: OpenCodeClient
   models: ModelInfo[]
   providers: ProviderInfo[]
   role: string
+  principalProvider?: string
   current?: { providerID: string; id: string }
-  keepRoles?: boolean
-  currentFast?: ModelInfo
   recommended?: string
   router?: string
 }) {
   const current = input.models.find(
     (model) => model.providerID === input.current?.providerID && model.id === input.current?.id,
   )
-  const groups = Object.groupBy(input.models, (model) => model.providerID)
-  const provider = yield* prompt<string>(() =>
-    autocomplete({
-      message: `${input.role} · provider`,
-      maxItems: 10,
-      initialValue: current ? (input.keepRoles ? "keep-roles" : "keep") : input.router,
-      options: [
-        ...(current && input.keepRoles
-          ? [
-              {
-                value: "keep-roles",
-                label: "Continue with current S2 setup",
-                hint: `${current.providerID}/${current.id} · transformations: ${input.currentFast ? `${input.currentFast.providerID}/${input.currentFast.id}` : "reuse principal"}`,
-              },
-            ]
-          : []),
-        ...(current
-          ? [{ value: "keep", label: `Keep ${current.name}`, hint: `${current.providerID}/${current.id}` }]
-          : []),
-        ...Object.entries(groups)
-          .toSorted(
-            ([left], [right]) =>
-              Number(right === "red-router") - Number(left === "red-router") ||
-              Number(right === "9router") - Number(left === "9router") ||
-              left.localeCompare(right),
-          )
-          .map(([id, models]) => ({
-            value: id,
-            label: input.providers.find((item) => item.id === id)?.name ?? id,
-            hint: `${models?.length ?? 0} models${id === input.router && input.recommended ? " · recommendation available" : ""}`,
-          })),
-      ],
-    }),
+  const integrations = yield* loadIntegrations(input.client)
+  const connections = input.providers.flatMap((provider) => {
+    if (!input.models.some((model) => model.providerID === provider.id)) return []
+    const integration = integrations.find((item) => item.id === (provider.integrationID ?? provider.id))
+    return (integration?.connections ?? [])
+      .filter((connection) => connection.type === "credential" || integration?.connections[0]?.type === "env")
+      .map((connection, index) => ({ provider, connection, active: index === 0 }))
+  })
+  const selectable = connections.filter((item) => item.provider.id !== input.principalProvider || item.active)
+  if (!selectable.length) return yield* Effect.fail(new Error("Connect a generative service before setup"))
+  const index = Number(
+    yield* prompt<string>(() =>
+      autocomplete({
+        message: `${input.role} · connection`,
+        maxItems: 10,
+        initialValue: String(
+          selectable.findIndex((item) => item.provider.id === (current?.providerID ?? input.router) && item.active),
+        ),
+        options: selectable.map((item, index) => ({
+          value: String(index),
+          label: item.connection.type === "credential" ? item.connection.label : item.connection.name,
+          hint: `${item.provider.name}${item.active ? " · active" : " · activates account"}`,
+        })),
+      }),
+    ),
   )
-  if (provider === "keep-roles") return "keep-roles" as const
-  if (provider === "keep" && current) return current
-  const models = groups[provider] ?? []
+  const connection = selectable[index]
+  const provider = connection.provider.id
+  if (!connection.active && connection.connection.type === "credential") {
+    const credentialID = connection.connection.id
+    yield* request((signal) => input.client.credential.activate({ credentialID }, { signal }))
+  }
+  const deadline = Date.now() + 30_000
+  const load = (): Effect.Effect<ModelInfo[], unknown> =>
+    request((signal) => input.client.model.list({ location }, { signal })).pipe(
+      Effect.map((response) =>
+        response.data.filter(
+          (model) =>
+            model.providerID === provider &&
+            model.enabled &&
+            model.capabilities.output.includes("text") &&
+            !IntelligenceEvaluation.isJev(model.id),
+        ),
+      ),
+      Effect.flatMap((models) =>
+        models.length || Date.now() >= deadline
+          ? Effect.succeed(models)
+          : Effect.sleep("250 millis").pipe(Effect.andThen(load)),
+      ),
+    )
+  const models = yield* load()
+  if (!models.length)
+    return yield* Effect.fail(
+      new Error("This connection has no S2 models. Check its catalog or choose another connection."),
+    )
   const selected = yield* prompt<string>(() =>
     autocomplete({
-      message: `${input.role} · ${input.providers.find((item) => item.id === provider)?.name ?? provider}`,
+      message: `${input.role} · model · ${input.providers.find((item) => item.id === provider)?.name ?? provider}`,
       maxItems: 10,
       initialValue:
         current?.providerID === provider ? current.id : input.router === provider ? input.recommended : undefined,
@@ -229,75 +240,68 @@ const chooseModel = Effect.fn("cli.setup.model")(function* (input: {
   return model
 })
 
-const configureEvaluator = Effect.fn("cli.setup.evaluator")(function* (
+const configureEvaluator: (
   client: OpenCodeClient,
   status: IntelligenceStatus,
-) {
-  const current = status.settings.evaluator
-  const action = current
-    ? yield* prompt<"continue" | "change">(() =>
-        select({
-          message: "System One evaluator",
-          options: [
-            { value: "continue", label: `Keep ${current.transport}/${current.model}` },
-            { value: "change", label: "Choose another evaluator" },
-          ],
-        }),
+  retry?: number,
+) => Effect.Effect<{ evaluator: IntelligenceEvaluator; key: undefined }, unknown> = Effect.fn("cli.setup.evaluator")(
+  function* (client: OpenCodeClient, status: IntelligenceStatus, retry?: number) {
+    const options = status.evaluators
+    if (!options.length)
+      return yield* Effect.fail(
+        new Error("No S1 connection available. Run `redcode auth login` to connect a service that supports decisions."),
       )
-    : "change"
-  if (action === "continue" && current) return { evaluator: current, key: undefined }
-
-  // System One only offers services that already have an active connection; nothing is asked for inline, and the
-  // connection's own credential does the evaluating.
-  const connected = new Set(
-    (yield* loadIntegrations(client))
-      .filter((integration) => integration.connections.length > 0)
-      .map((item) => item.id),
-  )
-  const options = [
-    ...(status.router?.evaluator ? [{ name: "Detected RedRouter", evaluator: status.router.evaluator }] : []),
-    ...status.evaluators.filter(
-      (option) =>
-        connected.has(option.evaluator.transport) &&
-        (option.evaluator.transport !== "red-router" || !status.router?.evaluator),
-    ),
-  ]
-  if (options.length === 0)
-    return yield* Effect.fail(
-      new Error(
-        "No connected service can evaluate. Run `redcode auth login` to connect one, then run the setup again.",
+    const index =
+      retry ??
+      Number(
+        yield* prompt<string>(() =>
+          autocomplete({
+            message: "S1 evaluator · connection",
+            maxItems: 10,
+            initialValue: String(options.findIndex((option) => option.configured)),
+            options: options.map((option, index) => ({
+              value: String(index),
+              label: option.name,
+              hint: `${option.evaluator.transport} · ${option.evaluator.baseURL}`,
+            })),
+          }),
+        ),
+      )
+    const evaluator: IntelligenceEvaluator = options[index].evaluator
+    const discovered = yield* request((signal) =>
+      client["server.intelligence"].discover(
+        { evaluator },
+        { signal: AbortSignal.any([signal, AbortSignal.timeout(30_000)]) },
       ),
-    )
-  const index = Number(
-    yield* prompt<string>(() =>
-      autocomplete({
-        message: "System One connection",
-        maxItems: 10,
-        options: options.map((option, index) => ({
-          value: String(index),
-          label: option.name,
-          hint: `${option.evaluator.transport}/${option.evaluator.model}`,
-        })),
+    ).pipe(
+      Effect.catch((error) => {
+        log.warn(error instanceof Error ? error.message : "S1 model discovery failed")
+        return Effect.succeed(undefined)
       }),
-    ),
-  )
-  const evaluator: IntelligenceEvaluator | undefined = options[index]?.evaluator
-  if (!evaluator) return yield* Effect.fail(new Error("System One connection is unavailable"))
-  const discovered = yield* request((signal) => client["server.intelligence"].discover({ evaluator }, { signal }))
-  const model = discovered.models.length
-    ? yield* prompt<string>(() =>
-        autocomplete({
-          message: "System One model",
-          maxItems: 10,
+    )
+    if (!discovered?.models.length) {
+      const action = yield* prompt<"retry" | "connection">(() =>
+        select({
+          message: discovered ? "No S1 models available" : "S1 catalog unavailable",
           options: [
-            { value: evaluator.model, label: evaluator.model },
-            ...discovered.models
-              .filter((item) => item.id !== evaluator.model)
-              .map((item) => ({ value: item.id, label: item.name })),
+            { value: "retry", label: "Refresh model list" },
+            { value: "connection", label: "Choose another connection" },
           ],
         }),
       )
-    : yield* prompt<string>(() => text({ message: "System One model", initialValue: evaluator.model }))
-  log.info("Sources and candidates will be sent to the selected System One evaluator")
-  return { evaluator: { ...evaluator, model }, key: undefined }
-})
+      return yield* configureEvaluator(client, status, action === "retry" ? index : undefined)
+    }
+    const model = yield* prompt<string>(() =>
+      autocomplete({
+        message: `S1 evaluator · model · ${options[index].name}`,
+        maxItems: 10,
+        initialValue: evaluator.model,
+        options: discovered.models
+          .toSorted((a, b) => a.name.localeCompare(b.name))
+          .map((item) => ({ value: item.id, label: item.name, hint: item.id })),
+      }),
+    )
+    log.info("Sources and candidates will be sent to the selected System One evaluator")
+    return { evaluator: { ...evaluator, model }, key: undefined }
+  },
+)

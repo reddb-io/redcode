@@ -21,6 +21,7 @@ const suites = {
     "test/instruction-discovery.test.ts",
     "test/instruction-state.test.ts",
     "test/intelligence/red-router-endpoint.test.ts",
+    "test/intelligence/transport.test.ts",
     "test/intelligence/classification.test.ts",
     "test/intelligence/evaluation.test.ts",
     "test/intelligence/goal-command.test.ts",

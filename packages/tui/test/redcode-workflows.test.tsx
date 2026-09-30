@@ -146,3 +146,177 @@ test("/hooks requires confirmation before trusting or importing project commands
   await setup.waitForFrame((frame) => frame.includes("Imported 1 hooks"))
   expect(writes).toEqual(["POST /api/hook/trust", "POST /api/hook/import/claude"])
 })
+
+for (const width of [80, 140]) {
+  test(`setup always chooses a connection then a catalog model for S2 and S1 at ${width} columns`, async () => {
+    await using state = await tmpdir()
+    const location = { directory, project: { id: "project", directory, canonical: directory } }
+    const discoveries: unknown[] = []
+    const evaluator = {
+      transport: "red-router",
+      baseURL: "http://router.local/v1",
+      model: "unlisted-preset",
+      credentialID: "cred_router",
+    }
+    await using setup = await createAppFixture({
+      state: state.path,
+      width,
+      fetch: async (url, request) => {
+        if (url.pathname === "/api/model")
+          return json({
+            location,
+            data: [
+              {
+                id: "generator",
+                providerID: "provider",
+                name: "Generator",
+                enabled: true,
+                capabilities: { output: ["text"] },
+                variants: [],
+                time: { released: 0 },
+                cost: [],
+              },
+            ],
+          })
+        if (url.pathname === "/api/provider") return json({ location, data: [{ id: "provider", name: "Provider" }] })
+        if (url.pathname === "/api/integration")
+          return json({
+            location,
+            data: [
+              {
+                id: "provider",
+                name: "Provider",
+                methods: [],
+                connections: [{ type: "credential", id: "cred_generator", label: "Work account", method: "key" }],
+              },
+            ],
+          })
+        if (url.pathname === "/api/experimental/intelligence")
+          return json({
+            settings: {
+              enabled: true,
+              reasoning: "dual",
+              onboarding: "completed",
+              principal: { providerID: "provider", id: "generator" },
+              evaluator,
+            },
+            environment: "",
+            effective: { reasoning: "dual", source: "config" },
+            evaluators: [{ name: "Router account", configured: true, evaluator }],
+          })
+        if (url.pathname === "/api/experimental/intelligence/models") {
+          discoveries.push(await request.json())
+          return json({ models: [{ id: "native-decision", name: "Native decision" }], manual: false })
+        }
+      },
+    })
+    await setup.ready
+    await setup.waitForFrame((frame) => frame.includes("Build") && frame.includes("Generator"))
+    await setup.mockInput.typeText("/setup")
+    setup.mockInput.pressEnter()
+    await setup.waitForFrame((frame) => frame.includes("Reasoning mode"))
+    setup.mockInput.pressEnter()
+    await setup.waitForFrame((frame) => frame.includes("S2 principal · connection") && frame.includes("Work account"))
+    expect(setup.captureCharFrame()).not.toContain("Keep Generator")
+    expect(setup.captureCharFrame()).not.toContain("Continue with current")
+    setup.mockInput.pressEnter()
+    await setup.waitForFrame((frame) => frame.includes("S2 principal · model") && frame.includes("Generator"))
+    setup.mockInput.pressEnter()
+    await setup.waitForFrame((frame) => frame.includes("S1 evaluator · connection") && frame.includes("Router account"))
+    setup.mockInput.pressEnter()
+    await setup.waitForFrame((frame) => frame.includes("S1 evaluator · model") && frame.includes("Native decision"))
+    expect(setup.captureCharFrame()).not.toContain("unlisted-preset")
+    expect(setup.captureCharFrame()).not.toContain("manually")
+    expect(discoveries).toEqual([{ evaluator }])
+    setup.mockInput.pressEnter()
+    await setup.waitForFrame((frame) => frame.includes("S2 transformations") && frame.includes("Reuse S2 principal"))
+    setup.mockInput.pressEnter()
+    await setup.waitForFrame(
+      (frame) => frame.includes("Test and save reasoning roles") && frame.includes("native-decision"),
+    )
+    setup.mockInput.pressEscape()
+  })
+}
+
+test("an empty S1 catalog offers refresh and another connection instead of model text entry", async () => {
+  await using state = await tmpdir()
+  const location = { directory, project: { id: "project", directory, canonical: directory } }
+  const evaluator = {
+    transport: "red-router",
+    baseURL: "http://router.local/v1",
+    model: "unlisted-preset",
+    credentialID: "cred_router",
+  }
+  const discoveries: unknown[] = []
+  await using setup = await createAppFixture({
+    state: state.path,
+    fetch: async (url, request) => {
+      if (url.pathname === "/api/model")
+        return json({
+          location,
+          data: [
+            {
+              id: "generator",
+              providerID: "provider",
+              name: "Generator",
+              enabled: true,
+              capabilities: { output: ["text"] },
+              variants: [],
+              time: { released: 0 },
+              cost: [],
+            },
+          ],
+        })
+      if (url.pathname === "/api/provider") return json({ location, data: [{ id: "provider", name: "Provider" }] })
+      if (url.pathname === "/api/integration")
+        return json({
+          location,
+          data: [
+            {
+              id: "provider",
+              name: "Provider",
+              methods: [],
+              connections: [{ type: "credential", id: "cred_generator", label: "Work account", method: "key" }],
+            },
+          ],
+        })
+      if (url.pathname === "/api/experimental/intelligence")
+        return json({
+          settings: { enabled: true, reasoning: "dual", onboarding: "completed" },
+          environment: "",
+          effective: { reasoning: "dual", source: "config" },
+          evaluators: [{ name: "Router account", configured: false, evaluator }],
+        })
+      if (url.pathname === "/api/experimental/intelligence/models") {
+        discoveries.push(await request.json())
+        return json({
+          models: discoveries.length === 1 ? [] : [{ id: "native-decision", name: "Native decision" }],
+          manual: false,
+        })
+      }
+    },
+  })
+  await setup.ready
+  await setup.waitForFrame((frame) => frame.includes("Build") && frame.includes("Generator"))
+  await setup.mockInput.typeText("/setup")
+  setup.mockInput.pressEnter()
+  await setup.waitForFrame((frame) => frame.includes("Reasoning mode"))
+  setup.mockInput.pressEnter()
+  await setup.waitForFrame((frame) => frame.includes("S2 principal · connection"))
+  setup.mockInput.pressEnter()
+  await setup.waitForFrame((frame) => frame.includes("S2 principal · model"))
+  setup.mockInput.pressEnter()
+  await setup.waitForFrame((frame) => frame.includes("S1 evaluator · connection"))
+  setup.mockInput.pressEnter()
+  await setup.waitForFrame(
+    (frame) =>
+      frame.includes("No S1 models available") &&
+      frame.includes("Refresh model list") &&
+      frame.includes("Choose another connection"),
+  )
+  expect(setup.captureCharFrame()).not.toContain("S1 model ID")
+  setup.mockInput.pressEnter()
+  await setup.waitForFrame((frame) => frame.includes("S1 evaluator · model") && frame.includes("Native decision"))
+  expect(discoveries).toEqual([{ evaluator }, { evaluator }])
+  setup.mockInput.pressEscape()
+})

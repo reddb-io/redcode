@@ -304,7 +304,8 @@ const make = Effect.gen(function* () {
 
   const status = Effect.fn("Intelligence.status")(function* () {
     const selected = yield* settings.read()
-    const router = yield* IntelligenceRouter.detect(yield* transport.connection("red-router"))
+    const connection = yield* transport.connection("red-router")
+    const router = yield* IntelligenceRouter.detect(connection)
     const transports = [
       "opencode-zen",
       "openrouter",
@@ -320,14 +321,23 @@ const make = Effect.gen(function* () {
       environment: process.env.REDCODE_REASONING ?? "",
       effective: IntelligenceEvaluation.reasoning(selected),
       ...(router ? { router } : {}),
-      evaluators: transports.map((transport) => ({
-        name: transport,
-        configured: selected.evaluator?.transport === transport,
-        evaluator:
-          selected.evaluator?.transport === transport
-            ? selected.evaluator
-            : IntelligenceEvaluation.evaluatorPreset(transport),
-      })),
+      evaluators: (yield* Effect.forEach(transports, (id) => transport.options(id))).flat().map((option) => {
+        const current = selected.evaluator
+        const configured =
+          current?.transport === option.evaluator.transport &&
+          current.credentialID === option.evaluator.credentialID &&
+          current.baseURL === option.evaluator.baseURL
+        return {
+          ...option,
+          configured,
+          evaluator: configured
+            ? { ...option.evaluator, model: current.model }
+            : router?.evaluator && router.evaluator.credentialID === option.evaluator.credentialID &&
+                option.evaluator.transport === "red-router"
+              ? { ...option.evaluator, model: router.evaluator.model }
+              : option.evaluator,
+        }
+      }),
     } satisfies Intelligence.Status
   })
 

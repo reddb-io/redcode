@@ -50,59 +50,50 @@ export async function configureReasoning(
   const resumedModel = models.find(
     (model) => model.providerID === resume?.principal?.providerID && model.id === resume?.principal?.id,
   )
-  const currentFast = models.find(
-    (model) => model.providerID === status.settings.fast?.providerID && model.id === status.settings.fast?.id,
-  )
-  const choice =
+  const selected =
     resumedModel ??
     (await chooseModel(context, {
-      role: "S2 principal · generates responses and does the work",
+      role: "S2 principal",
       models,
       providers,
       current: status.settings.principal,
-      keepRoles: status.settings.onboarding === "completed",
-      currentFast,
       recommended: status.router?.recommended?.default?.id,
       router: status.router?.providerID,
       onConnect: () => configureReasoning(context, saved, { reasoning }),
     }))
-  const selected =
-    choice === "keep-roles"
-      ? models.find(
-          (model) =>
-            model.providerID === status.settings.principal?.providerID && model.id === status.settings.principal.id,
-        )
-      : choice
   if (!selected) return
   const principal = `${selected.providerID}/${selected.id}`
-  const fast =
-    choice === "keep-roles"
-      ? currentFast
-        ? "keep-fast"
-        : "reuse-principal"
-      : await context.ui.dialog.select({
-          title: "S2 transformations · summaries and bounded text",
-          current: currentFast ? "keep-fast" : "reuse-principal",
-          options: [
-            { value: "reuse-principal", title: "Reuse S2 principal", description: modelLabel(selected, providers) },
-            ...(currentFast
-              ? [
-                  {
-                    value: "keep-fast",
-                    title: "Keep current transformations model",
-                    description: modelLabel(currentFast, providers),
-                  },
-                ]
-              : []),
-            { value: "choose-fast", title: "Choose another model", description: "Select provider, then model" },
-          ],
-        })
+  const evaluator = reasoning === "dual" ? await chooseEvaluator(context, status) : undefined
+  if (reasoning === "dual" && !evaluator) return
+  const available = (await context.client.model.list({ location })).data
+  const currentFast = available.find(
+    (model) =>
+      model.enabled && model.providerID === status.settings.fast?.providerID && model.id === status.settings.fast?.id,
+  )
+  const fast = await context.ui.dialog.select({
+    title: "S2 transformations · summaries and bounded text",
+    current: currentFast ? "keep-fast" : "reuse-principal",
+    options: [
+      { value: "reuse-principal", title: "Reuse S2 principal", description: modelLabel(selected, providers) },
+      ...(currentFast
+        ? [
+            {
+              value: "keep-fast",
+              title: "Keep current transformations model",
+              description: modelLabel(currentFast, providers),
+            },
+          ]
+        : []),
+      { value: "choose-fast", title: "Choose another model", description: "Select connection, then model" },
+    ],
+  })
   if (!fast) return
   const transformation =
     fast === "choose-fast"
       ? await chooseModel(context, {
-          role: "S2 transformations · summaries and bounded text",
-          models,
+          role: "S2 transformations",
+          models: available,
+          principalProvider: selected.providerID,
           providers,
           onConnect: () =>
             configureReasoning(context, saved, {
@@ -113,10 +104,7 @@ export async function configureReasoning(
       : fast === "keep-fast"
         ? currentFast
         : undefined
-  if (transformation === "keep-roles") return
   if (fast !== "reuse-principal" && !transformation) return
-  const evaluator = reasoning === "dual" ? await chooseEvaluator(context, status) : undefined
-  if (reasoning === "dual" && !evaluator) return
   const model = { providerID: selected.providerID, id: selected.id }
   const confirmed = await context.ui.dialog.confirm({
     title: "Test and save reasoning roles",
@@ -189,71 +177,47 @@ async function chooseModel(
     role: string
     models: ModelInfo[]
     providers: ProviderInfo[]
+    principalProvider?: string
     current?: IntelligenceSettings["principal"]
-    keepRoles?: boolean
-    currentFast?: ModelInfo
     recommended?: string
     router?: string
     onConnect: () => Promise<void>
   },
-) {
+): Promise<ModelInfo | undefined> {
   const current = input.models.find(
     (model) => model.providerID === input.current?.providerID && model.id === input.current.id,
   )
-  const groups = Object.groupBy(input.models, (model) => model.providerID)
-  const provider = await context.ui.dialog.select({
-    title: input.role,
-    current: current ? (input.keepRoles ? "keep-roles" : "keep") : input.router,
+  const location = context.location ?? context.data.location.default()
+  const integrations = (await context.client.integration.list({ location })).data
+  const connections = input.providers.flatMap((provider) => {
+    if (!input.models.some((model) => model.providerID === provider.id)) return []
+    const integration = integrations.find((item) => item.id === (provider.integrationID ?? provider.id))
+    return (integration?.connections ?? [])
+      .filter((connection) => connection.type === "credential" || integration?.connections[0]?.type === "env")
+      .map((connection, index) => ({ provider, connection, active: index === 0 }))
+  })
+  const selectable = connections.filter((item) => item.provider.id !== input.principalProvider || item.active)
+  const selected = await context.ui.dialog.select({
+    title: `${input.role} · connection`,
+    current: selectable.findIndex((item) => item.provider.id === (current?.providerID ?? input.router) && item.active),
     options: [
-      ...(current && input.keepRoles
-        ? [
-            {
-              value: "keep-roles",
-              title: "Continue with current S2 setup",
-              description: `${modelLabel(current, input.providers)} · transformations: ${input.currentFast ? modelLabel(input.currentFast, input.providers) : "reuse principal"}`,
-              category: "Current",
-            },
-          ]
-        : []),
-      ...(current
-        ? [
-            {
-              value: "keep",
-              title: `Keep ${current.name}`,
-              description: modelDescription(
-                current,
-                input.providers.find((item) => item.id === current.providerID),
-              ),
-              category: "Current",
-            },
-          ]
-        : []),
-      ...Object.entries(groups)
-        .toSorted(
-          ([left], [right]) =>
-            Number(right === "red-router") - Number(left === "red-router") ||
-            Number(right === "9router") - Number(left === "9router") ||
-            left.localeCompare(right),
-        )
-        .map(([id, list]) => ({
-          value: id,
-          title: input.providers.find((item) => item.id === id)?.name ?? id,
-          description: [
-            `${Router.offerGroups(list ?? []).length} models`,
-            keyRoleLabel(input.providers.find((item) => item.id === id)),
-            id === input.router && input.recommended ? "recommended model available" : undefined,
-          ]
-            .filter(Boolean)
-            .join(" · "),
-          category: "Providers",
-        })),
-      { value: "connect", title: "Connect another provider…", category: "Providers" },
+      ...selectable.map((item, index) => ({
+        value: index,
+        title: item.connection.type === "credential" ? item.connection.label : item.connection.name,
+        description: [
+          item.provider.name,
+          item.active ? "active" : "activates account",
+          item.active ? keyRoleLabel(item.provider) : undefined,
+        ]
+          .filter(Boolean)
+          .join(" · "),
+        category: "Connections",
+      })),
+      { value: -1, title: "Connect another provider…", category: "Connections" },
     ],
   })
-  if (!provider) return
-  if (provider === "keep-roles") return "keep-roles" as const
-  if (provider === "keep") return current
-  if (provider === "connect") {
+  if (selected === undefined) return
+  if (selected === -1) {
     context.ui.dialog.show(() => (
       <DialogIntegration
         onConnected={() => {
@@ -265,10 +229,37 @@ async function chooseModel(
     ))
     return
   }
+  const connection = selectable[selected]
+  const provider = connection.provider.id
+  if (!connection.active && connection.connection.type === "credential")
+    await context.client.credential.activate({ credentialID: connection.connection.id })
+  // Account switches invalidate the old catalog before the new discovery finishes.
+  const deadline = Date.now() + 30_000
+  const load = async (): Promise<ModelInfo[]> => {
+    const models = (await context.client.model.list({ location })).data.filter(
+      (model) =>
+        model.providerID === provider &&
+        model.enabled &&
+        model.capabilities.output.includes("text") &&
+        !/(^|\/)jev(?:$|[-.])/i.test(model.id),
+    )
+    if (models.length || Date.now() >= deadline) return models
+    await new Promise((resolve) => setTimeout(resolve, 250))
+    return load()
+  }
+  const available = await load()
+  if (!available.length) {
+    const retry = await context.ui.dialog.confirm({
+      title: "No S2 models available",
+      message: "This connection has no generative models. Check its catalog or choose another connection.",
+      label: { confirm: "Choose connection", cancel: "Cancel" },
+    })
+    return retry ? chooseModel(context, input) : undefined
+  }
   // Models pinning one offer of a flat model are reached through that model's offers row.
-  const offered = Router.offerGroups(groups[provider] ?? [])
+  const offered = Router.offerGroups(available)
   const chosen = await context.ui.dialog.select({
-    title: `${input.role} · ${input.providers.find((item) => item.id === provider)?.name ?? provider}`,
+    title: `${input.role} · model · ${input.providers.find((item) => item.id === provider)?.name ?? provider}`,
     current:
       current?.providerID === provider
         ? current.pinOf
@@ -348,111 +339,66 @@ const OFFERS = "offers:"
 async function chooseEvaluator(
   context: Plugin.Context,
   status: Awaited<ReturnType<Plugin.Context["client"]["server.intelligence"]["status"]>>,
-) {
-  const location = context.location ?? context.data.location.default()
-  const connected = new Set(
-    (context.data.location.integration.list(location) ?? [])
-      .filter((integration) => integration.connections.length > 0)
-      .map((integration) => integration.id),
-  )
-  const options = [
-    ...(status.settings.evaluator
-      ? [
-          {
-            name: "Keep current S1 evaluator",
-            evaluator: status.settings.evaluator,
-            keep: true,
-            category: "Current",
-          },
-        ]
-      : []),
-    ...(status.router?.evaluator
-      ? [
-          {
-            name: [
-              "RedRouter",
-              keyRoleLabel(
-                (context.data.location.provider.list(location) ?? []).find(
-                  (item) => item.id === status.router?.providerID,
-                ),
-              ),
-              status.router.evaluator.model,
-            ]
-              .filter(Boolean)
-              .join(" · "),
-            evaluator: status.router.evaluator,
-            keep: false,
-            category: "Connected",
-          },
-        ]
-      : []),
-    // S1 only offers services that already have an active connection; nothing is asked for inline.
-    ...status.evaluators
-      .filter((option) => option.evaluator.transport !== "red-router" || !status.router?.evaluator)
-      .filter((option) => connected.has(option.evaluator.transport))
-      .map((option) => ({
-        name: `${option.name} · ${option.evaluator.model}`,
-        evaluator: option.evaluator,
-        keep: false,
-        category: "Connected",
-      })),
-  ]
-  if (options.length === 0) {
+  retry?: number,
+): Promise<{ evaluator: IntelligenceEvaluator; apiKey: undefined } | undefined> {
+  const options = status.evaluators
+  if (!options.length) {
     context.ui.toast.show({
       variant: "warning",
-      message: "No connected service can evaluate. Connect an integration first, then run the setup again.",
+      message: "No S1 connection available. Connect a service that supports decisions, then run /setup again.",
     })
     return
   }
-  const index = await context.ui.dialog.select({
-    title: "S1 evaluator · checks S2 work",
-    options: options.map((option, index) => ({
-      value: index,
-      title: option.name,
-      description: `${option.evaluator.transport} · ${option.evaluator.baseURL}`,
-      category: option.category,
-    })),
-  })
+  const index =
+    retry ??
+    (await context.ui.dialog.select({
+      title: "S1 evaluator · connection",
+      current: options.findIndex((option) => option.configured),
+      options: options.map((option, index) => ({
+        value: index,
+        title: option.name,
+        description: `${option.evaluator.transport} · ${option.evaluator.baseURL}`,
+        category: "Connections",
+      })),
+    }))
   if (index === undefined) return
   const chosen = options[index]
-  if (chosen.keep) return { evaluator: chosen.evaluator, apiKey: undefined }
-  const evaluator: IntelligenceEvaluator = chosen.evaluator
+  context.ui.toast.show({ variant: "info", message: `Loading S1 models from ${chosen.name}…` })
   const discovered = await context.client["server.intelligence"]
-    .discover(
-      { evaluator },
-      { signal: AbortSignal.timeout(30_000) },
-    )
+    .discover({ evaluator: chosen.evaluator }, { signal: AbortSignal.timeout(30_000) })
     .catch((error) => {
-      context.ui.toast.show({
-        variant: "warning",
-        message: `Model discovery failed: ${errorMessage(error)}. Enter a model ID to test it.`,
-      })
+      context.ui.toast.show({ variant: "warning", message: `Model discovery failed: ${errorMessage(error)}` })
       return undefined
     })
-  const model = discovered?.models.length
-    ? await context.ui.dialog.select({
-        title: `S1 model · ${chosen.evaluator.transport}`,
-        current: evaluator.model,
-        options: [
-          ...discovered.models
-            .toSorted(
-              (a, b) =>
-                Number(b.id === evaluator.model) - Number(a.id === evaluator.model) || a.name.localeCompare(b.name),
-            )
-            .map((model) => ({
-              value: model.id,
-              title: model.name,
-              description: model.id,
-              category: model.id === evaluator.model ? "Recommended" : "Available",
-            })),
-          { value: "", title: "Enter model ID manually" },
-        ],
-      })
-    : ""
-  if (model === undefined) return
-  const id = model || (await context.ui.dialog.prompt({ title: "S1 model ID", value: evaluator.model }))
-  if (!id?.trim()) return
-  return { evaluator: { ...evaluator, model: id.trim() }, apiKey: undefined }
+  if (!discovered?.models.length) {
+    const action = await context.ui.dialog.select({
+      title: discovered ? "No S1 models available" : "S1 catalog unavailable",
+      options: [
+        { value: "retry", title: "Refresh model list", description: "Check this connection again" },
+        {
+          value: "connection",
+          title: "Choose another connection",
+          description: "S1 requires models that support decisions",
+        },
+      ],
+    })
+    if (!action) return
+    return chooseEvaluator(context, status, action === "retry" ? index : undefined)
+  }
+  const model = await context.ui.dialog.select({
+    title: `S1 evaluator · model · ${chosen.name}`,
+    current: chosen.evaluator.model,
+    options: discovered.models
+      .toSorted((a, b) => a.name.localeCompare(b.name))
+      .map((model) => ({
+        value: model.id,
+        title: model.name,
+        description: model.id,
+        category: "Decision models",
+      })),
+  })
+  if (!model) return
+  return { evaluator: { ...chosen.evaluator, model }, apiKey: undefined }
 }
 
 // Checks each role in order; a failure names the role and the reason and offers Retry, which reruns every check.

@@ -108,7 +108,7 @@ function fromCapabilities(document: Record<string, unknown>): Router.Detection {
   const models = Array.isArray(systemOne.models)
     ? systemOne.models.filter((item): item is string => typeof item === "string" && item.length > 0)
     : []
-  const available = systemOne.available === true && models.length > 0
+  const available = systemOne.available !== false && models.length > 0
   const flags: Array<[Router.Feature, boolean]> = [
     ["capabilities", true],
     ["systemone", available],
