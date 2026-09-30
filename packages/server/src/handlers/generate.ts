@@ -1,4 +1,6 @@
 import { Generate } from "@opencode/core/generate"
+import { RemoteCheck } from "@opencode/core/remote-check"
+import { ConnectionCheck } from "@opencode/schema/connection-check"
 import { Location } from "@opencode/core/location"
 import { LocationServiceMap } from "@opencode/core/location-services"
 import { AbsolutePath } from "@opencode/core/schema"
@@ -18,14 +20,35 @@ export const GenerateHandler = HttpApiBuilder.group(Api, "server.generate", (han
         const directory = request.query.location?.directory ?? global.config
         return yield* Effect.gen(function* () {
           const generate = yield* Generate.Service
-          const text = yield* generate.text(request.payload).pipe(
+          const requests: ConnectionCheck.Request[] = []
+          const call = generate.text({
+            ...request.payload,
+            ...(request.payload.check ? { http: RemoteCheck.http(requests) } : {}),
+          })
+          const checked = request.payload.check
+            ? call.pipe(
+                Effect.timeout("15 seconds"),
+                Effect.catchTag("TimeoutError", () => {
+                  const last = requests.at(-1)
+                  if (last) last.failure = "timeout"
+                  return Effect.fail(
+                    new Generate.UnavailableError({ message: "Remote API check timed out after 15 seconds" }),
+                  )
+                }),
+              )
+            : call
+          const text = yield* checked.pipe(
             Effect.mapError((error) =>
               error._tag === "Generate.ModelSelectionError"
                 ? new InvalidRequestError({ message: error.message })
-                : new ServiceUnavailableError({ message: error.message, service: error.service }),
+                : new ServiceUnavailableError({
+                    message: error.message,
+                    service: error.service,
+                    requests: request.payload.check ? requests : undefined,
+                  }),
             ),
           )
-          return { data: { text } }
+          return { data: { text, requests: request.payload.check ? requests : undefined } }
         }).pipe(Effect.provide(locations.get(Location.Ref.make({ directory: AbsolutePath.make(directory) }))))
       }),
     )

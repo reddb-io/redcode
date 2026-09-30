@@ -9,6 +9,8 @@ import { Credential } from "../credential.js"
 import { IntelligenceEvaluation } from "./evaluation.js"
 import { IntelligenceSettings } from "./settings.js"
 import { redRouterEndpoint } from "./red-router-endpoint.js"
+import { ConnectionCheck } from "@opencode/schema/connection-check"
+import { RemoteCheck } from "../remote-check.js"
 
 const make = Effect.gen(function* () {
   const credentials = yield* Credential.Service
@@ -72,6 +74,7 @@ const make = Effect.gen(function* () {
     suffix: string,
     body?: unknown,
     apiKey?: string,
+    requests?: ConnectionCheck.Request[],
   ) {
     if (!IntelligenceSettings.validURL(evaluator.baseURL))
       return yield* new IntelligenceEvaluation.Error({
@@ -118,7 +121,7 @@ const make = Effect.gen(function* () {
     const cloudflare = evaluator.transport === "cloudflare-ai-gateway" && body !== undefined
     return yield* Effect.tryPromise({
       try: async (signal) => {
-        const response = await fetch(
+        const response = await RemoteCheck.request(
           cloudflare
             ? `${url.href.replace(/\/$/, "")}/accounts/${accountID}/ai/run`
             : `${url.href.replace(/\/$/, "")}/${vercel ? "evaluation-model" : openrouter ? "decisions" : suffix}`,
@@ -136,6 +139,7 @@ const make = Effect.gen(function* () {
               ? {}
               : { body: JSON.stringify(cloudflare ? cloudflareBody(body) : vercel ? vercelBody(body) : body) }),
           },
+          requests,
         )
         if (!response.ok)
           throw new IntelligenceEvaluation.Error({
@@ -158,21 +162,24 @@ const make = Effect.gen(function* () {
     )
   })
 
-  const discover = Effect.fn("IntelligenceTransport.discover")(function* (input: Intelligence.Probe) {
+  const discover = Effect.fn("IntelligenceTransport.discover")(function* (
+    input: Intelligence.Probe,
+    requests?: ConnectionCheck.Request[],
+  ) {
     if (["openrouter", "cloudflare-ai-gateway", "vercel"].includes(input.evaluator.transport))
       return { models: [{ id: input.evaluator.model, name: input.evaluator.model }], manual: false }
     const router = input.evaluator.transport === "red-router"
     // Prefer the capability-filtered OpenAI catalog; older routers still expose a dedicated list.
     const dedicated = router
-      ? yield* request(input.evaluator, "models?capabilities=decision", undefined, input.apiKey).pipe(
+      ? yield* request(input.evaluator, "models?capabilities=decision", undefined, input.apiKey, requests).pipe(
           Effect.map((response) => ({ response, dedicated: false })),
           Effect.catch((error) =>
             [400, 404, 405].includes(error.status ?? 0)
-              ? request(input.evaluator, "models/systemone", undefined, input.apiKey).pipe(
+              ? request(input.evaluator, "models/systemone", undefined, input.apiKey, requests).pipe(
                   Effect.map((response) => ({ response, dedicated: true })),
                   Effect.catch((error) =>
                     error.status === 404 || error.status === 405
-                      ? request(input.evaluator, "models", undefined, input.apiKey).pipe(
+                      ? request(input.evaluator, "models", undefined, input.apiKey, requests).pipe(
                           Effect.map((response) => ({ response, dedicated: false })),
                         )
                       : Effect.fail(error),
@@ -181,7 +188,7 @@ const make = Effect.gen(function* () {
               : Effect.fail(error),
           ),
         )
-      : { response: yield* request(input.evaluator, "models", undefined, input.apiKey), dedicated: false }
+      : { response: yield* request(input.evaluator, "models", undefined, input.apiKey, requests), dedicated: false }
     const catalog = yield* Schema.decodeUnknownEffect(
       Schema.Struct({
         data: Schema.optional(
@@ -253,8 +260,9 @@ const make = Effect.gen(function* () {
   })
 
   const probe = Effect.fn("IntelligenceTransport.probe")(function* (input: Intelligence.Probe) {
+    const requests: ConnectionCheck.Request[] = []
     if (input.evaluator.transport === "opencode-zen") {
-      const catalog = yield* discover(input).pipe(
+      const catalog = yield* discover(input, requests).pipe(
         Effect.match({
           onFailure: (left) => ({ _tag: "Left" as const, left }),
           onSuccess: (right) => ({ _tag: "Right" as const, right }),
@@ -264,6 +272,7 @@ const make = Effect.gen(function* () {
         return {
           ok: false,
           message: "Selected Zen evaluator is unavailable. Connect Zen or choose another evaluator explicitly.",
+          requests,
         }
     }
     const result = yield* request(
@@ -275,6 +284,7 @@ const make = Effect.gen(function* () {
         questions: { check: { type: "noul", instructions: "Does the text explicitly say the sky is blue?" } },
       },
       input.apiKey,
+      requests,
     ).pipe(
       Effect.flatMap(Schema.decodeUnknownEffect(Intelligence.Response)),
       Effect.match({
@@ -283,10 +293,15 @@ const make = Effect.gen(function* () {
       }),
     )
     if (result._tag === "Left")
-      return { ok: false, message: result.left instanceof Error ? result.left.message : "Invalid System One response" }
+      return {
+        ok: false,
+        message: result.left instanceof Error ? result.left.message : "Invalid System One response",
+        requests,
+      }
     return {
       ok: result.right.answers.check?.type === "noul",
       message: result.right.answers.check?.type === "noul" ? "Connection checked" : "Invalid System One response",
+      requests,
     }
   })
 

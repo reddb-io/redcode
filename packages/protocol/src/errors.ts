@@ -1,5 +1,6 @@
 import { Schema } from "effect"
 import { Skill } from "@opencode/schema/skill"
+import { ConnectionCheck } from "@opencode/schema/connection-check"
 
 export class InvalidRequestError extends Schema.TaggedError<InvalidRequestError>()(
   "InvalidRequestError",
@@ -60,6 +61,7 @@ export class ServiceUnavailableError extends Schema.TaggedError<ServiceUnavailab
   {
     message: Schema.String,
     service: Schema.optional(Schema.String),
+    requests: Schema.optional(Schema.Array(ConnectionCheck.Request)),
   },
   { httpApiStatus: 503 },
 ) {}

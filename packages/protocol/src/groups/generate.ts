@@ -1,4 +1,5 @@
 import { Model } from "@opencode/schema/model"
+import { ConnectionCheck } from "@opencode/schema/connection-check"
 import { Schema } from "effect"
 import { HttpApiEndpoint, HttpApiGroup, OpenApi } from "effect/unstable/httpapi"
 import { InvalidRequestError, ServiceUnavailableError } from "../errors.js"
@@ -11,19 +12,22 @@ export const GenerateGroup = HttpApiGroup.make("server.generate")
       payload: Schema.Struct({
         prompt: Schema.String,
         model: Model.Ref.pipe(Schema.optional),
+        check: Schema.optional(Schema.Boolean),
       }),
       success: Schema.Struct({
-        data: Schema.Struct({ text: Schema.String }),
+        data: Schema.Struct({ text: Schema.String, requests: Schema.optional(Schema.Array(ConnectionCheck.Request)) }),
       }).annotate({ identifier: "GenerateTextResponse" }),
       error: [InvalidRequestError, ServiceUnavailableError],
-    }).annotateMerge(locationQueryOpenApi).annotateMerge(
-      OpenApi.annotations({
-        identifier: "experimental.generate.text",
-        summary: "Generate text",
-        description:
-          "Run one stateless model generation using the server's base configuration and return the assistant text. Uses the base configuration's default model when none is specified.",
-      }),
-    ),
+    })
+      .annotateMerge(locationQueryOpenApi)
+      .annotateMerge(
+        OpenApi.annotations({
+          identifier: "experimental.generate.text",
+          summary: "Generate text",
+          description:
+            "Run one stateless model generation using the server's base configuration and return the assistant text. Uses the base configuration's default model when none is specified.",
+        }),
+      ),
   )
   .annotateMerge(
     OpenApi.annotations({

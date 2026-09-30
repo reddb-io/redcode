@@ -1,4 +1,5 @@
 import { Integration } from "@opencode/schema/integration"
+import { ConnectionCheck } from "@opencode/schema/connection-check"
 import { Credential } from "@opencode/schema/credential"
 import { Location } from "@opencode/schema/location"
 import { Form } from "@opencode/schema/form"
@@ -13,6 +14,22 @@ import {
 import { LocationQuery, locationQueryOpenApi } from "./location.js"
 
 export const IntegrationGroup = HttpApiGroup.make("server.integration")
+  .add(
+    HttpApiEndpoint.post("integration.check", "/api/integration/:integrationID/check", {
+      params: { integrationID: Integration.ID },
+      query: LocationQuery,
+      success: ConnectionCheck.Report,
+    })
+      .annotateMerge(locationQueryOpenApi)
+      .annotateMerge(
+        OpenApi.annotations({
+          identifier: "integration.check",
+          summary: "Test a remote connection",
+          description:
+            "Probe the active account and report upstream HTTP status, elapsed time, received body bytes and catalog size.",
+        }),
+      ),
+  )
   .add(
     HttpApiEndpoint.get("integration.console.organizations", "/api/integration/opencode/organizations", {
       query: LocationQuery,
@@ -31,7 +48,9 @@ export const IntegrationGroup = HttpApiGroup.make("server.integration")
       error: InvalidRequestError,
     })
       .annotateMerge(locationQueryOpenApi)
-      .annotateMerge(OpenApi.annotations({ identifier: "integration.console.organizations", summary: "List Console organizations" })),
+      .annotateMerge(
+        OpenApi.annotations({ identifier: "integration.console.organizations", summary: "List Console organizations" }),
+      ),
   )
   .add(
     HttpApiEndpoint.post("integration.console.organization.select", "/api/integration/opencode/organizations/select", {
@@ -41,7 +60,12 @@ export const IntegrationGroup = HttpApiGroup.make("server.integration")
       error: InvalidRequestError,
     })
       .annotateMerge(locationQueryOpenApi)
-      .annotateMerge(OpenApi.annotations({ identifier: "integration.console.organization.select", summary: "Select Console organization" })),
+      .annotateMerge(
+        OpenApi.annotations({
+          identifier: "integration.console.organization.select",
+          summary: "Select Console organization",
+        }),
+      ),
   )
   .add(
     HttpApiEndpoint.get("integration.list", "/api/integration", {

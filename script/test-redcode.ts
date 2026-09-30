@@ -28,6 +28,8 @@ const suites = {
     "test/intelligence/response.test.ts",
     "test/intelligence/subagent-review.test.ts",
     "test/models.test.ts",
+    "test/remote-check.test.ts",
+    "test/integration-check.test.ts",
     "test/plugin/provider-red-router.test.ts",
     "test/plugin/provider-openai-compatible.test.ts",
     "test/session-compaction.test.ts",

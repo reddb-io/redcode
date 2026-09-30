@@ -5,6 +5,7 @@ import { Commands } from "../../commands"
 import { Runtime } from "../../../framework/runtime"
 import { selectIntegration, type IntegrationChoice } from "../../../ui/integration-picker"
 import { handlePromptErrors, openUrl, prompt, requireInteractive } from "../../../ui/prompt"
+import { checkConnection } from "./check"
 import { answerForm, secret } from "./form"
 import {
   createClient,
@@ -56,7 +57,18 @@ const login = Effect.fn("cli.auth.login.run")(function* (input: {
   if (methods.length === 0) yield* Effect.fail(new Error(`${integration.name} has no interactive login methods`))
   const method = yield* chooseMethod(methods, input.method)
   const answer = yield* answerForm(method.type === "command" ? undefined : method.form, input.answer)
+  const before = new Set(
+    (yield* loadIntegrations(client)).flatMap((item) =>
+      item.connections.filter((connection) => connection.type === "credential").map((connection) => connection.id),
+    ),
+  )
   yield* authenticate(client, integration, method, answer)
+  if (integration.metadata?.source !== "mcp") {
+    const saved = (yield* loadIntegrations(client)).find((item) =>
+      item.connections.some((connection) => connection.type === "credential" && !before.has(connection.id)),
+    )
+    yield* checkConnection(client, saved?.id ?? integration.id)
+  }
   outro("Done")
 })
 
@@ -144,7 +156,7 @@ const keyLogin = Effect.fn("cli.auth.login.key")(function* (
   yield* request((signal) =>
     client.integration.connect.key({ integrationID: integration.id, key, answer, location }, { signal }),
   ).pipe(
-    Effect.tap(() => Effect.sync(() => progress.stop(`Connected to ${integration.name}`))),
+    Effect.tap(() => Effect.sync(() => progress.stop(`Credential saved for ${integration.name}`))),
     Effect.tapCause(() => Effect.sync(() => progress.stop("Authentication failed", 1))),
   )
 })
@@ -191,7 +203,7 @@ export const oauthLogin = Effect.fn("cli.auth.login.oauth")(function* (
         { signal },
       ),
     ).pipe(
-      Effect.tap(() => Effect.sync(() => completing.stop(`Connected to ${integration.name}`))),
+      Effect.tap(() => Effect.sync(() => completing.stop(`Authenticated ${integration.name}`))),
       Effect.tapCause(() => Effect.sync(() => completing.stop("Authentication failed", 1))),
     )
     return
@@ -202,7 +214,7 @@ export const oauthLogin = Effect.fn("cli.auth.login.oauth")(function* (
   log.step("Waiting for authorization...")
   const status = yield* waitForOAuth(client, integration.id, attempt.attemptID)
   if (status.status === "complete") {
-    log.success(`Connected to ${integration.name}`)
+    log.success(`Authenticated ${integration.name}`)
     return
   }
   if (status.status === "failed") yield* Effect.fail(new Error(status.message))
@@ -243,7 +255,7 @@ const commandLogin = Effect.fn("cli.auth.login.command")(function* (
     if (output) log.message(output)
   })
   if (status.status === "complete") {
-    log.success(`Connected to ${integration.name}`)
+    log.success(`Authenticated ${integration.name}`)
     return
   }
   if (status.status === "failed") yield* Effect.fail(new Error(status.message))

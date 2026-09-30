@@ -4,6 +4,7 @@ import { firstConnectionFailure, type ConnectionFailure } from "@opencode/util/c
 import { DialogIntegration } from "./dialog-integration"
 import { errorMessage } from "../util/error"
 import { Router } from "@opencode/schema/router"
+import { ConnectionCheck } from "@opencode/schema/connection-check"
 import { keyRoleLabel, modelDescription, modelLabel, modelRoute, offerDetails } from "../util/model-presentation"
 
 export async function configureReasoning(
@@ -116,24 +117,26 @@ export async function configureReasoning(
     {
       role: `S2 principal ${modelLabel(selected, providers)}`,
       run: () =>
-        context.client.generate.text(
-          { prompt: "Reply with OK.", model, location },
-          { signal: AbortSignal.timeout(30_000) },
-        ),
+        context.client.generate
+          .text({ prompt: "Reply with OK.", model, location, check: true }, { signal: AbortSignal.timeout(30_000) })
+          .then((result) => result.data.requests ?? []),
     },
     ...(transformation && `${transformation.providerID}/${transformation.id}` !== principal
       ? [
           {
             role: `S2 transformations ${modelLabel(transformation, providers)}`,
             run: () =>
-              context.client.generate.text(
-                {
-                  prompt: "Reply with OK.",
-                  model: { providerID: transformation.providerID, id: transformation.id },
-                  location,
-                },
-                { signal: AbortSignal.timeout(30_000) },
-              ),
+              context.client.generate
+                .text(
+                  {
+                    prompt: "Reply with OK.",
+                    model: { providerID: transformation.providerID, id: transformation.id },
+                    location,
+                    check: true,
+                  },
+                  { signal: AbortSignal.timeout(30_000) },
+                )
+                .then((result) => result.data.requests ?? []),
           },
         ]
       : []),
@@ -143,7 +146,8 @@ export async function configureReasoning(
             role: `S1 evaluator ${evaluator.evaluator.transport}/${evaluator.evaluator.model}`,
             run: () =>
               api.probe(evaluator, { signal: AbortSignal.timeout(30_000) }).then((check) => {
-                if (!check.ok) throw new Error(check.message)
+                if (!check.ok) throw Object.assign(new Error(check.message), { requests: check.requests })
+                return check.requests ?? []
               }),
           },
         ]
@@ -414,14 +418,36 @@ async function chooseEvaluator(
 // Checks each role in order; a failure names the role and the reason and offers Retry, which reruns every check.
 async function checkConnections(
   context: Plugin.Context,
-  checks: { role: string; run: () => Promise<unknown> }[],
+  checks: { role: string; run: () => Promise<readonly ConnectionCheck.Request[]> }[],
 ): Promise<boolean> {
   context.ui.toast.show({ variant: "info", message: "Checking reasoning connections…" })
-  const failed = await firstConnectionFailure(checks)
-  if (!failed) return true
+  const completed: string[] = []
+  const failed = await firstConnectionFailure(
+    checks.map((check) => ({
+      role: check.role,
+      run: () =>
+        check
+          .run()
+          .then((requests) => {
+            completed.push(`${check.role}\n${ConnectionCheck.describe(requests)}`)
+          })
+          .catch((error: unknown) => {
+            throw new Error(
+              `${errorMessage(error)}\n\n${ConnectionCheck.describe(ConnectionCheck.requestsFrom(error))}`,
+              { cause: error },
+            )
+          }),
+    })),
+  )
+  if (!failed)
+    return context.ui.dialog.confirm({
+      title: "Connection test results",
+      message: completed.join("\n\n"),
+      label: { confirm: "Save roles", cancel: "Cancel" },
+    })
   const retry = await context.ui.dialog.confirm({
     title: `${failed.role} failed`,
-    message: `${failureReason(failed.failure)}${failed.failure.detail ? `\n${failed.failure.detail}` : ""}\nYour saved roles are unchanged.`,
+    message: `${completed.length ? `${completed.join("\n\n")}\n\n` : ""}${failureReason(failed.failure)}${failed.failure.detail ? `\n${failed.failure.detail}` : ""}\nYour saved roles are unchanged.`,
     label: { confirm: "Retry", cancel: "Cancel" },
   })
   if (!retry) return false

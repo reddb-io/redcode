@@ -8,6 +8,7 @@ import {
 } from "@opencode/client"
 import { IntelligenceEvaluation } from "@opencode/core/intelligence/evaluation"
 import { Router } from "@opencode/schema/router"
+import { ConnectionCheck } from "@opencode/schema/connection-check"
 import { Effect, Option } from "effect"
 import { Commands } from "../commands"
 import { Runtime } from "../../framework/runtime"
@@ -85,8 +86,13 @@ export default Runtime.handler(Commands.commands.setup, (input) =>
     log.info("Checking the System Two connection...")
     yield* request((signal) =>
       client.generate.text(
-        { prompt: "Reply with OK.", model, location },
+        { prompt: "Reply with OK.", model, location, check: true },
         { signal: AbortSignal.any([signal, AbortSignal.timeout(30_000)]) },
+      ),
+    ).pipe(
+      Effect.tap((result) => Effect.sync(() => log.info(ConnectionCheck.describe(result.data.requests ?? [])))),
+      Effect.tapError((error) =>
+        Effect.sync(() => log.error(ConnectionCheck.describe(ConnectionCheck.requestsFrom(error)))),
       ),
     )
     if (fast && (fast.providerID !== principal.providerID || fast.id !== principal.id)) {
@@ -97,8 +103,14 @@ export default Runtime.handler(Commands.commands.setup, (input) =>
             prompt: "Reply with OK.",
             model: { providerID: fast.providerID, id: fast.id },
             location,
+            check: true,
           },
           { signal: AbortSignal.any([signal, AbortSignal.timeout(30_000)]) },
+        ),
+      ).pipe(
+        Effect.tap((result) => Effect.sync(() => log.info(ConnectionCheck.describe(result.data.requests ?? [])))),
+        Effect.tapError((error) =>
+          Effect.sync(() => log.error(ConnectionCheck.describe(ConnectionCheck.requestsFrom(error)))),
         ),
       )
     }
@@ -110,6 +122,7 @@ export default Runtime.handler(Commands.commands.setup, (input) =>
           { signal },
         ),
       )
+      log.info(ConnectionCheck.describe(check.requests ?? []))
       if (!check.ok) return yield* Effect.fail(new Error(check.message))
     }
     const saved = yield* request((signal) =>

@@ -33,6 +33,42 @@ const connect = (baseURL: string, label: string, key: string) =>
   })
 
 describe("connection-scoped System One discovery", () => {
+  it.live("a System One probe reports upstream status, response bytes and latency", () =>
+    Effect.gen(function* () {
+      const body = JSON.stringify({
+        model: "native-decision",
+        answers: { check: { type: "noul", noul: 1 } },
+        usage: { input_tokens: 2, output_tokens: 1 },
+      })
+      const server = yield* serve((request) => {
+        expect(new URL(request.url).pathname).toBe("/v1/systemone")
+        return new Response(body)
+      })
+      yield* connect(`${server.url.href}v1`, "Router", "selected")
+      const transport = yield* IntelligenceTransport.Service
+      const result = yield* transport.probe({
+        evaluator: { ...(yield* transport.options("red-router"))[0].evaluator, model: "native-decision" },
+      })
+      expect(result.ok).toBe(true)
+      expect(result.requests[0]).toMatchObject({
+        status: 200,
+        method: "POST",
+        bytes: new TextEncoder().encode(body).byteLength,
+      })
+      expect(result.requests[0].durationMs).toBeGreaterThan(0)
+    }),
+  )
+
+  it.live("a denied System One probe keeps the upstream 401 diagnostics", () =>
+    Effect.gen(function* () {
+      const server = yield* serve(() => new Response("Unauthorized", { status: 401 }))
+      yield* connect(`${server.url.href}v1`, "Router", "selected")
+      const transport = yield* IntelligenceTransport.Service
+      const result = yield* transport.probe({ evaluator: (yield* transport.options("red-router"))[0].evaluator })
+      expect(result.ok).toBe(false)
+      expect(result.requests[0]).toMatchObject({ status: 401, bytes: 12 })
+    }),
+  )
   it.live("lists the selected account's decision models from the OpenAI catalog when the old route is absent", () =>
     Effect.gen(function* () {
       const requests: string[] = []

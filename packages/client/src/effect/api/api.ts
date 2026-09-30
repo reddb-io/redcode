@@ -3766,8 +3766,22 @@ export type GenerateTextInput = {
   readonly location?: { readonly directory?: string | undefined } | undefined
   readonly prompt: string
   readonly model?: Model.Ref | undefined
+  readonly check?: boolean | undefined
 }
-export type GenerateTextOutput = { readonly text: string }
+export type GenerateTextOutput = {
+  readonly text: string
+  readonly requests?:
+    | ReadonlyArray<{
+        readonly url: string
+        readonly method: string
+        status?: number | undefined
+        durationMs: number
+        bytes: number
+        models?: number | undefined
+        failure?: "timeout" | "network" | "body" | undefined
+      }>
+    | undefined
+}
 export type GenerateTextOperation<E = never> = (input: GenerateTextInput) => Effect.Effect<GenerateTextOutput, E>
 
 export interface GenerateApi<E = never> {
@@ -3814,6 +3828,27 @@ export interface ProviderApi<E = never> {
   readonly get: ProviderGetOperation<E>
   readonly remove: ProviderRemoveOperation<E>
 }
+
+export type IntegrationCheckInput = {
+  readonly integrationID: Integration.ID
+  readonly location?: { readonly directory?: string | undefined } | undefined
+}
+export type IntegrationCheckOutput = {
+  readonly ok: boolean
+  readonly message: string
+  readonly requests: ReadonlyArray<{
+    readonly url: string
+    readonly method: string
+    status?: number | undefined
+    durationMs: number
+    bytes: number
+    models?: number | undefined
+    failure?: "timeout" | "network" | "body" | undefined
+  }>
+}
+export type IntegrationCheckOperation<E = never> = (
+  input: IntegrationCheckInput,
+) => Effect.Effect<IntegrationCheckOutput, E>
 
 export type IntegrationConsoleOrganizationsInput = {
   readonly location?: { readonly directory?: string | undefined } | undefined
@@ -3967,6 +4002,7 @@ export type IntegrationCommandCancelOperation<E = never> = (
 ) => Effect.Effect<IntegrationCommandCancelOutput, E>
 
 export interface IntegrationApi<E = never> {
+  readonly check: IntegrationCheckOperation<E>
   readonly console: {
     readonly organizations: IntegrationConsoleOrganizationsOperation<E>
     readonly organization: { readonly select: IntegrationConsoleOrganizationSelectOperation<E> }
@@ -6044,7 +6080,21 @@ export type ServerIntelligenceProbeInput = {
   }
   readonly apiKey?: string | undefined
 }
-export type ServerIntelligenceProbeOutput = { readonly ok: boolean; readonly message: string }
+export type ServerIntelligenceProbeOutput = {
+  readonly ok: boolean
+  readonly message: string
+  readonly requests?:
+    | ReadonlyArray<{
+        readonly url: string
+        readonly method: string
+        status?: number | undefined
+        durationMs: number
+        bytes: number
+        models?: number | undefined
+        failure?: "timeout" | "network" | "body" | undefined
+      }>
+    | undefined
+}
 export type ServerIntelligenceProbeOperation<E = never> = (
   input: ServerIntelligenceProbeInput,
 ) => Effect.Effect<ServerIntelligenceProbeOutput, E>

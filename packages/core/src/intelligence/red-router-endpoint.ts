@@ -9,6 +9,10 @@ export function redRouterEndpoint(credential?: Credential.Info) {
       : typeof value?.metadata?.baseURL === "string"
         ? value.metadata.baseURL
         : (process.env.RED_ROUTER_BASE_URL ?? IntelligenceEvaluation.evaluatorPreset("red-router").baseURL)
+  return normalizeRouterEndpoint(configured)
+}
+
+export function normalizeRouterEndpoint(configured: string) {
   if (!URL.canParse(configured)) return
   const url = new URL(configured)
   if (!["http:", "https:"].includes(url.protocol) || url.username || url.password || url.search || url.hash) return

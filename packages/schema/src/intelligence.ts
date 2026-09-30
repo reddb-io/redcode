@@ -2,6 +2,7 @@ export * as Intelligence from "./intelligence.js"
 
 import { Schema } from "effect"
 import { Credential } from "./credential.js"
+import { ConnectionCheck } from "./connection-check.js"
 import { Model } from "./model.js"
 import { Router } from "./router.js"
 import { optional } from "./schema.js"
@@ -182,6 +183,10 @@ export const Probe = Schema.Struct({ evaluator: Evaluator, apiKey: Text.pipe(opt
   identifier: "Intelligence.Probe",
 })
 export interface Check extends Schema.Schema.Type<typeof Check> {}
-export const Check = Schema.Struct({ ok: Schema.Boolean, message: Schema.String }).annotate({
+export const Check = Schema.Struct({
+  ok: Schema.Boolean,
+  message: Schema.String,
+  requests: Schema.optional(Schema.Array(ConnectionCheck.Request)),
+}).annotate({
   identifier: "Intelligence.Check",
 })

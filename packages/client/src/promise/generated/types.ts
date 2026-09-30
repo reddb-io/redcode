@@ -464,7 +464,15 @@ export type MoneyUSDPerMillionTokens = number
 
 export type ModelStatus = "alpha" | "beta" | "deprecated" | "active"
 
-export type GenerateTextResponse = { data: { text: string } }
+export type ConnectionCheckRequest = {
+  url: string
+  method: string
+  status?: number | undefined
+  durationMs: number
+  bytes: number
+  models?: number | undefined
+  failure?: "timeout" | "network" | "body" | undefined
+}
 
 export type RouterKeyRole = "standard" | "admin"
 
@@ -846,8 +854,6 @@ export type RouterRecommendation = {
 }
 
 export type IntelligenceModels = { models: Array<{ id: string; name: string }>; manual: boolean }
-
-export type IntelligenceCheck = { ok: boolean; message: string }
 
 export type SessionMessageLocationSwitched = {
   id: string
@@ -2072,6 +2078,12 @@ export type ModelCost = {
   output: MoneyUSDPerMillionTokens
   cache: { read: MoneyUSDPerMillionTokens; write: MoneyUSDPerMillionTokens }
 }
+
+export type GenerateTextResponse = { data: { text: string; requests?: Array<ConnectionCheckRequest> | undefined } }
+
+export type ConnectionCheckReport = { ok: boolean; message: string; requests: Array<ConnectionCheckRequest> }
+
+export type IntelligenceCheck = { ok: boolean; message: string; requests?: Array<ConnectionCheckRequest> | undefined }
 
 export type RouterConnection = {
   kind: "red-router" | "9router"
@@ -3431,6 +3443,17 @@ export type ServiceUnavailableError = {
   readonly _tag: "ServiceUnavailableError"
   readonly message: string
   readonly service?: string | undefined
+  readonly requests?:
+    | ReadonlyArray<{
+        readonly url: string
+        readonly method: string
+        status?: number | undefined
+        durationMs: number
+        bytes: number
+        models?: number | undefined
+        failure?: "timeout" | "network" | "body" | undefined
+      }>
+    | undefined
 }
 export const isServiceUnavailableError = (value: unknown): value is ServiceUnavailableError =>
   typeof value === "object" && value !== null && "_tag" in value && value["_tag"] === "ServiceUnavailableError"
@@ -8095,11 +8118,18 @@ export type GenerateTextInput = {
   readonly prompt: {
     readonly prompt: string
     readonly model?: { readonly id: string; readonly providerID: string; readonly variant?: string } | null
+    readonly check?: boolean | null
   }["prompt"]
   readonly model?: {
     readonly prompt: string
     readonly model?: { readonly id: string; readonly providerID: string; readonly variant?: string } | null
+    readonly check?: boolean | null
   }["model"]
+  readonly check?: {
+    readonly prompt: string
+    readonly model?: { readonly id: string; readonly providerID: string; readonly variant?: string } | null
+    readonly check?: boolean | null
+  }["check"]
 }
 
 export type GenerateTextOutput = GenerateTextResponse["data"]
@@ -8124,6 +8154,13 @@ export type ProviderRemoveInput = {
 }
 
 export type ProviderRemoveOutput = { location: LocationPublicRef; data: ProviderRemovalResult }
+
+export type IntegrationCheckInput = {
+  readonly integrationID: { readonly integrationID: string }["integrationID"]
+  readonly location?: { readonly location?: { readonly directory?: string | undefined } | undefined }["location"]
+}
+
+export type IntegrationCheckOutput = ConnectionCheckReport
 
 export type IntegrationConsoleOrganizationsInput = {
   readonly location?: { readonly location?: { readonly directory?: string | undefined } | undefined }["location"]

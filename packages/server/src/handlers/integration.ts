@@ -1,4 +1,5 @@
 import { Integration } from "@opencode/core/integration"
+import { IntegrationCheck } from "@opencode/core/integration-check"
 import { ConsoleOrganization } from "@opencode/core/console-organization"
 import { Plugin } from "@opencode/core/plugin"
 import { Effect } from "effect"
@@ -29,16 +30,24 @@ export const IntegrationHandler = HttpApiBuilder.group(Api, "server.integration"
   Effect.gen(function* () {
     return handlers
       .handle(
+        "integration.check",
+        Effect.fn(function* (ctx) {
+          yield* Plugin.awaitActivation
+          return yield* IntegrationCheck.check(ctx.params.integrationID)
+        }),
+      )
+      .handle(
         "integration.console.organizations",
         Effect.fn(function* () {
           yield* Plugin.awaitActivation
           return yield* response(
             ConsoleOrganization.list().pipe(
-              Effect.mapError((error) =>
-                new InvalidRequestError({
-                  message: error instanceof Error ? error.message : "Unable to list Console organizations",
-                  kind: "console_organizations",
-                }),
+              Effect.mapError(
+                (error) =>
+                  new InvalidRequestError({
+                    message: error instanceof Error ? error.message : "Unable to list Console organizations",
+                    kind: "console_organizations",
+                  }),
               ),
             ),
           )
@@ -49,11 +58,12 @@ export const IntegrationHandler = HttpApiBuilder.group(Api, "server.integration"
         Effect.fn(function* (ctx) {
           yield* Plugin.awaitActivation
           yield* ConsoleOrganization.select(ctx.payload.credentialID, ctx.payload.orgID).pipe(
-            Effect.mapError((error) =>
-              new InvalidRequestError({
-                message: error instanceof Error ? error.message : "Unable to select Console organization",
-                kind: "console_organization_select",
-              }),
+            Effect.mapError(
+              (error) =>
+                new InvalidRequestError({
+                  message: error instanceof Error ? error.message : "Unable to select Console organization",
+                  kind: "console_organization_select",
+                }),
             ),
           )
           return HttpApiSchema.NoContent.make()

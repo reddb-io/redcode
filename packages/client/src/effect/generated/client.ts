@@ -177,6 +177,8 @@ import type {
   ProviderGetOutput,
   ProviderRemoveInput,
   ProviderRemoveOutput,
+  IntegrationCheckInput,
+  IntegrationCheckOutput,
   IntegrationConsoleOrganizationsInput,
   IntegrationConsoleOrganizationsOutput,
   IntegrationConsoleOrganizationSelectInput,
@@ -1281,7 +1283,7 @@ const EndpointGenerateText = (raw: RawClient["server.generate"]) => (input: Gene
   preserveEffect<GenerateTextOutput>()(
     raw["generate.text"]({
       query: { location: input["location"] },
-      payload: { prompt: input["prompt"], model: input["model"] },
+      payload: { prompt: input["prompt"], model: input["model"], check: input["check"] },
     }).pipe(
       Effect.mapError(mapClientError),
       Effect.map((value) => value.data),
@@ -1316,6 +1318,14 @@ const adaptGroupProvider = (raw: RawClient["server.provider"]) => ({
   get: EndpointProviderGet(raw),
   remove: EndpointProviderRemove(raw),
 })
+
+const EndpointIntegrationCheck = (raw: RawClient["server.integration"]) => (input: IntegrationCheckInput) =>
+  preserveEffect<IntegrationCheckOutput>()(
+    raw["integration.check"]({
+      params: { integrationID: input["integrationID"] },
+      query: { location: input["location"] },
+    }).pipe(Effect.mapError(mapClientError)),
+  )
 
 const EndpointIntegrationConsoleOrganizations =
   (raw: RawClient["server.integration"]) => (input?: IntegrationConsoleOrganizationsInput) =>
@@ -1429,6 +1439,7 @@ const EndpointIntegrationCommandCancel =
     )
 
 const adaptGroupIntegration = (raw: RawClient["server.integration"]) => ({
+  check: EndpointIntegrationCheck(raw),
   console: {
     organizations: EndpointIntegrationConsoleOrganizations(raw),
     organization: { select: EndpointIntegrationConsoleOrganizationSelect(raw) },

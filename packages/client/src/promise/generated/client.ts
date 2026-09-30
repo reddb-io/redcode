@@ -171,6 +171,8 @@ import type {
   ProviderGetOutput,
   ProviderRemoveInput,
   ProviderRemoveOutput,
+  IntegrationCheckInput,
+  IntegrationCheckOutput,
   IntegrationConsoleOrganizationsInput,
   IntegrationConsoleOrganizationsOutput,
   IntegrationConsoleOrganizationSelectInput,
@@ -1630,7 +1632,7 @@ export function make(options: ClientOptions) {
             method: "POST",
             path: `/api/experimental/generate`,
             query: { location: input["location"] },
-            body: { prompt: input["prompt"], model: input["model"] },
+            body: { prompt: input["prompt"], model: input["model"], check: input["check"] },
             successStatus: 200,
             declaredStatuses: [400, 401, 503],
             empty: false,
@@ -1678,6 +1680,18 @@ export function make(options: ClientOptions) {
         ),
     },
     integration: {
+      check: (input: IntegrationCheckInput, requestOptions?: RequestOptions) =>
+        request<IntegrationCheckOutput>(
+          {
+            method: "POST",
+            path: `/api/integration/${encodeURIComponent(input.integrationID)}/check`,
+            query: { location: input["location"] },
+            successStatus: 200,
+            declaredStatuses: [400, 401],
+            empty: false,
+          },
+          requestOptions,
+        ),
       console: {
         organizations: (input?: IntegrationConsoleOrganizationsInput, requestOptions?: RequestOptions) =>
           request<IntegrationConsoleOrganizationsOutput>(

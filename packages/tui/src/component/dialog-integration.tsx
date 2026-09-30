@@ -11,6 +11,7 @@ import type {
   FormValue,
   LocationRef,
 } from "@opencode/client"
+import { ConnectionCheck } from "@opencode/schema/connection-check"
 import { ProviderRemoval } from "@opencode/schema/provider-removal"
 import { openUrl } from "@opencode/util/open"
 import { createEffect, createMemo, createSignal, onCleanup, onMount, Show } from "solid-js"
@@ -225,6 +226,17 @@ function manageConnections(
                 },
               }
             }),
+          ...(integration.metadata?.source === "mcp"
+            ? []
+            : [
+                {
+                  title: "Test remote API",
+                  value: "check",
+                  description: "Check the active account: HTTP status, response time, received bytes and catalog",
+                  onSelect: () =>
+                    dialog.replace(() => <RemoteApiCheck integrationID={integration.id} location={location} />),
+                },
+              ]),
           {
             title: "Remove provider…",
             value: "remove",
@@ -236,8 +248,9 @@ function manageConnections(
           {
             command: "dialog.integration.rename",
             title: "rename",
-            hidden: selected() === "add" || selected() === "remove",
-            disabled: (option) => !option || option.value === "add" || option.value === "remove",
+            hidden: selected() === "add" || selected() === "remove" || selected() === "check",
+            disabled: (option) =>
+              !option || option.value === "add" || option.value === "remove" || option.value === "check",
             onTrigger: (option) => {
               dialog.replace(() => (
                 <DialogPrompt
@@ -261,8 +274,9 @@ function manageConnections(
           {
             command: "dialog.integration.delete",
             title: "delete",
-            hidden: selected() === "add" || selected() === "remove",
-            disabled: (option) => !option || option.value === "add" || option.value === "remove",
+            hidden: selected() === "add" || selected() === "remove" || selected() === "check",
+            disabled: (option) =>
+              !option || option.value === "add" || option.value === "remove" || option.value === "check",
             onTrigger: (option) => {
               if (deleting() !== option.value) return setDeleting(option.value)
               const final = credentialConnections(current() ?? integration).length === 1
@@ -467,7 +481,7 @@ function CommandPending(props: {
         }
         settled = true
         if (status.status === "complete") {
-          void connected(props.integration, props.location, data, dialog, toast, props.onConnected)
+          void connected(props.integration, props.location, data, dialog, toast, client, props.onConnected)
           return
         }
         toast.show({
@@ -548,6 +562,11 @@ function KeyMethod(props: {
       placeholder="API key"
       onConfirm={(key) => {
         if (!key) return
+        const saved = new Set(
+          (data.location.integration.list(props.location) ?? []).flatMap((item) =>
+            credentialConnections(item).map((connection) => connection.id),
+          ),
+        )
         void client.api.integration.connect
           .key({
             integrationID: props.integration.id,
@@ -562,9 +581,11 @@ function KeyMethod(props: {
               data,
               dialog,
               toast,
+              client,
               props.onConnected,
               // A wizard files the key under the provider its answer defines, not under the wizard itself.
               typeof props.answer?.providerID === "string" ? props.answer.providerID : undefined,
+              saved,
             ),
           )
           .catch((cause) => setError(errorMessage(cause)))
@@ -708,7 +729,7 @@ function OAuthAuto(props: {
         }
         settled = true
         if (status.status === "complete") {
-          void connected(props.integration, props.location, data, dialog, toast, props.onConnected)
+          void connected(props.integration, props.location, data, dialog, toast, client, props.onConnected)
           return
         }
         toast.show({ variant: "error", message: status.status === "failed" ? status.message : "Authorization expired" })
@@ -783,7 +804,7 @@ function OAuthCode(props: {
           })
           .then(() => {
             settled = true
-            return connected(props.integration, props.location, data, dialog, toast, props.onConnected)
+            return connected(props.integration, props.location, data, dialog, toast, client, props.onConnected)
           })
           .catch((cause) => setError(errorMessage(cause)))
       }}
@@ -1081,8 +1102,10 @@ async function connected(
   data: ReturnType<typeof useData>,
   dialog: ReturnType<typeof useDialog>,
   toast: ReturnType<typeof useToast>,
+  client: ReturnType<typeof useClient>,
   onConnected?: OnIntegrationConnected,
   target?: string,
+  saved?: ReadonlySet<string>,
 ) {
   data.location.integration.invalidate(location)
   data.location.model.invalidate(location)
@@ -1092,12 +1115,25 @@ async function connected(
     data.location.model.sync(location),
     data.location.provider.sync(location),
   ])
-  toast.show({ variant: "success", message: `Connected ${target ?? integration.name}` })
-  if (onConnected && integration.metadata?.source !== "mcp") {
-    onConnected(target ?? providerID(data, location, integration.id))
+  if (integration.metadata?.source === "mcp") {
+    toast.show({ variant: "success", message: `Authenticated ${integration.name}` })
+    dialog.clear()
     return
   }
-  dialog.clear()
+  const resolved = saved
+    ? data.location.integration
+        .list(location)
+        ?.find((item) => credentialConnections(item).some((connection) => !saved.has(connection.id)))
+    : undefined
+  const id = resolved?.id ?? target ?? integration.id
+  dialog.replace(() => (
+    <RemoteApiCheck
+      integrationID={id}
+      location={location}
+      saved
+      onContinue={() => onConnected?.(providerID(data, location, id) ?? id)}
+    />
+  ))
 }
 
 function providerID(data: ReturnType<typeof useData>, location: LocationRef, integrationID: string) {
@@ -1114,4 +1150,57 @@ function providerID(data: ReturnType<typeof useData>, location: LocationRef, int
 
 function locationQuery(location: LocationRef) {
   return { directory: location.directory }
+}
+
+function RemoteApiCheck(props: {
+  integrationID: string
+  location: LocationRef
+  saved?: boolean
+  onContinue?: () => void
+}) {
+  const client = useClient()
+  const dialog = useDialog()
+  const theme = useTheme().surface("dialog")
+  const [report, setReport] = createSignal<ConnectionCheck.Report>()
+  onMount(() => {
+    void client.api.integration
+      .check({ integrationID: props.integrationID, location: locationQuery(props.location) })
+      .then(setReport)
+      .catch((error: unknown) =>
+        setReport({ ok: false, message: errorMessage(error), requests: ConnectionCheck.requestsFrom(error) }),
+      )
+  })
+  return (
+    <Show
+      when={report()}
+      fallback={
+        <box padding={2}>
+          <text fg={theme.text.muted}>Testing remote API…</text>
+        </box>
+      }
+    >
+      {(value) => (
+        <DialogConfirm
+          title={value().ok ? "Remote API test passed" : "Remote API test failed"}
+          message={[
+            props.saved ? "Credential saved." : undefined,
+            value().message,
+            ConnectionCheck.describe(value().requests),
+          ]
+            .filter(Boolean)
+            .join("\n\n")}
+          label={{ confirm: value().ok ? "Continue" : "Retry", cancel: "Close" }}
+          onConfirm={() =>
+            queueMicrotask(() => {
+              if (value().ok) {
+                props.onContinue?.()
+                return
+              }
+              dialog.replace(() => <RemoteApiCheck {...props} />)
+            })
+          }
+        />
+      )}
+    </Show>
+  )
 }

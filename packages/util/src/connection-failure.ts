@@ -86,8 +86,16 @@ function describe(value: unknown) {
   return `${value.name} ${value.message} ${"code" in value && typeof value.code === "string" ? value.code : ""}`
 }
 
-function statusOf(value: unknown) {
-  if (typeof value !== "object" || value === null || !("status" in value)) return undefined
+function statusOf(value: unknown): number | undefined {
+  if (typeof value !== "object" || value === null) return undefined
+  if ("requests" in value && Array.isArray(value.requests)) {
+    const observed = value.requests
+      .toReversed()
+      .map(statusOf)
+      .find((status) => status !== undefined)
+    if (observed !== undefined) return observed
+  }
+  if (!("status" in value)) return undefined
   return typeof value.status === "number" ? value.status : undefined
 }
 

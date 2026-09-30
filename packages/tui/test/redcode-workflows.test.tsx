@@ -381,3 +381,66 @@ test("an empty S1 catalog offers refresh and another connection instead of model
   expect(discoveries).toEqual([{ evaluator }, { evaluator }])
   setup.mockInput.pressEscape()
 })
+
+test("saving a Router key shows remote HTTP diagnostics and keeps an empty catalog visibly failed", async () => {
+  await using state = await tmpdir()
+  const location = { directory, project: { id: "project", directory, canonical: directory } }
+  const account = { saved: false, checks: 0 }
+  await using setup = await createAppFixture({
+    state: state.path,
+    fetch: (url, request) => {
+      if (url.pathname === "/api/integration")
+        return json({
+          location,
+          data: [
+            {
+              id: "red-router",
+              name: "RedRouter",
+              methods: [{ type: "key", label: "Router API key" }],
+              connections: account.saved
+                ? [{ type: "credential", id: "cred_router_check", label: "Router", method: "key" }]
+                : [],
+            },
+          ],
+        })
+      if (url.pathname === "/api/integration/red-router/connect/key" && request.method === "POST") {
+        account.saved = true
+        return new Response(null, { status: 204 })
+      }
+      if (url.pathname === "/api/integration/red-router/check") {
+        account.checks++
+        return json({
+          ok: false,
+          message: "HTTP 200 returned an empty model catalog.",
+          requests: [
+            {
+              url: "http://router.test/v1/models",
+              method: "GET",
+              status: 200,
+              durationMs: 123,
+              bytes: 11,
+              models: 0,
+            },
+          ],
+        })
+      }
+    },
+  })
+  await setup.ready
+  await setup.waitForFrame(() => Boolean(setup.renderer.root.findDescendantById("session-pane")))
+  await setup.mockInput.typeText("/connect")
+  setup.mockInput.pressEnter()
+  await setup.waitForFrame((frame) => frame.includes("Connect an integration") && frame.includes("RedRouter"))
+  setup.mockInput.pressEnter()
+  await setup.waitForFrame((frame) => frame.includes("Router API key"))
+  await setup.mockInput.typeText("fixture-key")
+  setup.mockInput.pressEnter()
+  await setup.waitForFrame((frame) => frame.includes("Remote API test failed"))
+  expect(setup.captureCharFrame()).toContain("Credential saved.")
+  expect(setup.captureCharFrame()).toContain("HTTP 200 · 123 ms · 11 bytes · 0 models")
+  expect(setup.captureCharFrame()).toContain("http://router.test/v1/models")
+  expect(setup.captureCharFrame()).not.toContain("fixture-key")
+  setup.mockInput.pressEnter()
+  await setup.waitForFrame((frame) => account.checks === 2 && frame.includes("Remote API test failed"))
+  expect(account.saved).toBe(true)
+})

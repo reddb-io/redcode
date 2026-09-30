@@ -6,10 +6,12 @@ import { makeLocationNode } from "@opencode/util/effect/app-node"
 import { llmClient } from "./effect/app-node-platform.js"
 import { ModelResolver } from "./model-resolver.js"
 import { Model } from "./model.js"
+import type { HttpMiddleware } from "@opencode/ai/route"
 
 export interface TextInput {
   readonly prompt: string
   readonly model?: Model.Ref
+  readonly http?: HttpMiddleware
 }
 
 export class ModelSelectionError extends Schema.TaggedError<ModelSelectionError>()("Generate.ModelSelectionError", {
@@ -60,15 +62,17 @@ export const layer = Layer.effect(
             ? `Model unavailable: ${input.model.providerID}/${input.model.id}`
             : "No model specified and no supported model is available",
         })
-      const response = yield* llm.generate(LLM.request({ model: resolved.model, prompt: input.prompt })).pipe(
-        Effect.mapError(
-          (error: AIError) =>
-            new UnavailableError({
-              message: error.message,
-              service: resolved.ref.providerID,
-            }),
-        ),
-      )
+      const response = yield* llm
+        .generate(LLM.request({ model: resolved.model, prompt: input.prompt }), { http: input.http })
+        .pipe(
+          Effect.mapError(
+            (error: AIError) =>
+              new UnavailableError({
+                message: error.message,
+                service: resolved.ref.providerID,
+              }),
+          ),
+        )
       return response.text
     })
 

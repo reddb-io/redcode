@@ -52,7 +52,9 @@ const PermissionParams = {
 
 const WorktreeParams = {
   tmp: Flag.boolean("tmp").pipe(
-    Flag.withDescription("Put automatic session worktrees in the temporary directory instead of <repository>/.red/worktrees"),
+    Flag.withDescription(
+      "Put automatic session worktrees in the temporary directory instead of <repository>/.red/worktrees",
+    ),
     Flag.withDefault(false),
   ),
 }
@@ -87,10 +89,7 @@ const Root = Spec.make(typeof OPENCODE_CLI_NAME === "string" ? OPENCODE_CLI_NAME
       Flag.withDescription("Session ID to continue"),
       Flag.optional,
     ),
-    fork: Flag.boolean("fork").pipe(
-      Flag.withDescription("Fork the session when continuing"),
-      Flag.withDefault(false),
-    ),
+    fork: Flag.boolean("fork").pipe(Flag.withDescription("Fork the session when continuing"), Flag.withDefault(false)),
     prompt: Flag.string("prompt").pipe(Flag.withDescription("Prompt to use"), Flag.optional),
     agent: Flag.string("agent").pipe(Flag.withDescription("Agent to use for a new session"), Flag.optional),
     model: Flag.string("model").pipe(Flag.withDescription("Model for a new session"), Flag.optional),
@@ -267,8 +266,14 @@ const Root = Spec.make(typeof OPENCODE_CLI_NAME === "string" ? OPENCODE_CLI_NAME
         Spec.make("logs", {
           description: "Print or open the diagnostic log",
           params: {
-            path: Flag.boolean("path").pipe(Flag.withDescription("Print only the log file path"), Flag.withDefault(false)),
-            open: Flag.boolean("open").pipe(Flag.withDescription("Open the log with the system handler"), Flag.withDefault(false)),
+            path: Flag.boolean("path").pipe(
+              Flag.withDescription("Print only the log file path"),
+              Flag.withDefault(false),
+            ),
+            open: Flag.boolean("open").pipe(
+              Flag.withDescription("Open the log with the system handler"),
+              Flag.withDefault(false),
+            ),
           },
         }),
         Spec.make("paths", {
@@ -306,6 +311,16 @@ const Root = Spec.make(typeof OPENCODE_CLI_NAME === "string" ? OPENCODE_CLI_NAME
             format: Flag.choice("format", ["default", "json"]).pipe(
               Flag.withDescription("Output format"),
               Flag.withDefault("default"),
+            ),
+          },
+        }),
+        Spec.make("check", {
+          description: "test the active remote API and show HTTP status, latency, received bytes and catalog size",
+          params: {
+            ...ServerParams,
+            target: Argument.string("target").pipe(
+              Argument.withDescription("Integration ID or name"),
+              Argument.optional,
             ),
           },
         }),
@@ -576,7 +591,10 @@ const Root = Spec.make(typeof OPENCODE_CLI_NAME === "string" ? OPENCODE_CLI_NAME
         Spec.make("path", {
           description: "Print the usage sidecar path, or the V2 database path with --v2",
           params: {
-            v2: Flag.boolean("v2").pipe(Flag.withDescription("Print the V2 session database path"), Flag.withDefault(false)),
+            v2: Flag.boolean("v2").pipe(
+              Flag.withDescription("Print the V2 session database path"),
+              Flag.withDefault(false),
+            ),
           },
         }),
         Spec.make("backfill", {
@@ -740,7 +758,10 @@ const Root = Spec.make(typeof OPENCODE_CLI_NAME === "string" ? OPENCODE_CLI_NAME
         Spec.make("run", {
           description: "Run the GitHub agent for the current Actions event",
           params: {
-            event: Flag.string("event").pipe(Flag.withDescription("GitHub event payload for a local run"), Flag.optional),
+            event: Flag.string("event").pipe(
+              Flag.withDescription("GitHub event payload for a local run"),
+              Flag.optional,
+            ),
             token: Flag.string("token").pipe(Flag.withDescription("GitHub token for a local run"), Flag.optional),
           },
         }),
@@ -760,7 +781,9 @@ const Root = Spec.make(typeof OPENCODE_CLI_NAME === "string" ? OPENCODE_CLI_NAME
           params: {
             ...ServerParams,
             sessionID: Argument.string("sessionID").pipe(Argument.withDescription("Imported session ID")),
-            credentialID: Argument.string("credentialID").pipe(Argument.withDescription("Console credential ID from console orgs")),
+            credentialID: Argument.string("credentialID").pipe(
+              Argument.withDescription("Console credential ID from console orgs"),
+            ),
             orgID: Argument.string("orgID").pipe(Argument.withDescription("Console organization ID from console orgs")),
           },
         }),
