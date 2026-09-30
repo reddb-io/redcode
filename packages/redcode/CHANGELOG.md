@@ -1,5 +1,11 @@
 # @reddb-io/redcode
 
+## 0.65.0
+
+### Minor Changes
+
+- A project's secrets now live in its `.env` file, the convention every project already follows. The vault reads the `.env` at the root of the repository (the main checkout, from any linked worktree) and shows each variable as a reference: `GITHUB_TOKEN` is `{vault:github-token}`. A secret you paste, set with `/vault add` or `redcode vault set`, import, or that the agent asks you for with `vault_request` is written back to that file, under the variable it was assigned to when the text says so (`GITHUB_TOKEN=ghp_…`), and `.env` is added to `.gitignore` when the project is a git repository. Secrets survive a restart, edits you make to the file are picked up while a session runs, and forgetting a name removes its line. Only variables named like credentials, or holding a recognized secret, are hidden from tool output, so `PORT` and `NODE_ENV` stay readable. A token the agent captured from a tool's output stays in memory only. The guidance the agent receives now says secrets come from `.env`.
+
 ## 0.64.0
 
 ### Minor Changes
