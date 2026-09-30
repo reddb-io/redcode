@@ -150,7 +150,7 @@ export function MonitorsTab(props: { monitors: SessionMonitors }) {
   )
   const current = createMemo(() => monitors()[selected()])
   const tone = (value: MonitorTone) => (value === "muted" ? theme.text.muted : theme.text.feedback[value].base)
-  let scroll: ScrollBoxRenderable | undefined
+  const [scroll, setScroll] = createSignal<ScrollBoxRenderable>()
 
   createEffect(
     on(
@@ -163,13 +163,14 @@ export function MonitorsTab(props: { monitors: SessionMonitors }) {
   )
   onCleanup(() => props.monitors.show(false))
   createEffect(() => {
-    if (!scroll || !composer.active("monitors")) return
-    const rows = scroll.getChildren()
+    const area = scroll()
+    if (!area || !composer.active("monitors")) return
+    const rows = area.getChildren()
     if (!rows[selected()]) return
     // Culled rows can retain old screen coordinates. Their layout heights still locate the header in the content.
     const top = rows.slice(0, selected()).reduce((height, row) => height + row.height, 0)
-    if (top < scroll.scrollTop) scroll.scrollTo(top)
-    if (top >= scroll.scrollTop + scroll.height) scroll.scrollTo(top - Math.floor(scroll.height / 2))
+    if (top < area.scrollTop) area.scrollTo(top)
+    if (top >= area.scrollTop + area.height) area.scrollTo(top - Math.floor(area.height / 2))
   })
 
   const move = (step: number) => {
@@ -223,13 +224,13 @@ export function MonitorsTab(props: { monitors: SessionMonitors }) {
         bind: "pageup",
         title: "Previous monitor evidence page",
         group: "Composer",
-        run: () => scroll?.scrollBy(-scroll.height),
+        run: () => scroll()?.scrollBy(-(scroll()?.height ?? 0)),
       },
       {
         bind: "pagedown",
         title: "Next monitor evidence page",
         group: "Composer",
-        run: () => scroll?.scrollBy(scroll.height),
+        run: () => scroll()?.scrollBy(scroll()?.height ?? 0),
       },
       { id: "composer.monitor.up", title: "Previous monitor", group: "Composer", run: () => move(-1) },
       { id: "composer.monitor.down", title: "Next monitor", group: "Composer", run: () => move(1) },
@@ -275,7 +276,7 @@ export function MonitorsTab(props: { monitors: SessionMonitors }) {
           height={5}
           minHeight={0}
           flexShrink={0}
-          ref={(value: ScrollBoxRenderable) => (scroll = value)}
+          ref={setScroll}
         >
           <For each={monitors()}>
             {(info, index) => {

@@ -33,7 +33,7 @@ export function McpsTab(props: { sessionID: string }) {
   const [busy, setBusy] = createSignal<string | undefined>()
   const current = createMemo(() => servers()[selected()])
   const currentTools = createMemo(() => tools().filter((tool) => tool.server === expanded()))
-  let scroll: ScrollBoxRenderable | undefined
+  const [scroll, setScroll] = createSignal<ScrollBoxRenderable>()
 
   const refresh = () => {
     const target = location()
@@ -55,13 +55,14 @@ export function McpsTab(props: { sessionID: string }) {
     if (expanded() && !servers().some((server) => server.name === expanded())) setExpanded(undefined)
   })
   createEffect(() => {
-    if (!scroll || !composer.active("mcps")) return
-    const rows = scroll.getChildren()
+    const area = scroll()
+    if (!area || !composer.active("mcps")) return
+    const rows = area.getChildren()
     if (!rows[selected()]) return
     // Culled rows can retain old screen coordinates. Their layout heights still locate the header in the content.
     const top = rows.slice(0, selected()).reduce((height, row) => height + row.height, 0)
-    if (top < scroll.scrollTop) scroll.scrollTo(top)
-    if (top >= scroll.scrollTop + scroll.height) scroll.scrollTo(top - Math.floor(scroll.height / 2))
+    if (top < area.scrollTop) area.scrollTo(top)
+    if (top >= area.scrollTop + area.height) area.scrollTo(top - Math.floor(area.height / 2))
   })
   onCleanup(
     client.event.on("mcp.status.changed", (event) => {
@@ -240,9 +241,14 @@ export function McpsTab(props: { sessionID: string }) {
         bind: "pageup",
         title: "Previous MCP tools page",
         group: "Composer",
-        run: () => scroll?.scrollBy(-scroll.height),
+        run: () => scroll()?.scrollBy(-(scroll()?.height ?? 0)),
       },
-      { bind: "pagedown", title: "Next MCP tools page", group: "Composer", run: () => scroll?.scrollBy(scroll.height) },
+      {
+        bind: "pagedown",
+        title: "Next MCP tools page",
+        group: "Composer",
+        run: () => scroll()?.scrollBy(scroll()?.height ?? 0),
+      },
       {
         id: "composer.mcp.up",
         title: "Previous MCP server",
@@ -326,7 +332,7 @@ export function McpsTab(props: { sessionID: string }) {
           height={5}
           minHeight={0}
           flexShrink={0}
-          ref={(value: ScrollBoxRenderable) => (scroll = value)}
+          ref={setScroll}
         >
           <For each={servers()}>
             {(server, index) => (
