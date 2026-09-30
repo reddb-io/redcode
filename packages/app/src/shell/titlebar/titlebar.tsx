@@ -33,8 +33,8 @@ import { useSettingsDialog } from "@/settings/command"
 import { updaterAction } from "@/shell/updates/action"
 import type { UpdaterState } from "@/shell/updates/types"
 import { rootSession } from "@/shell/routes/session"
-import devIcon from "../../../../desktop/icons/dev/64x64.png"
-import betaIcon from "../../../../desktop/icons/beta/64x64.png"
+import devIcon from "./icons/dev.png"
+import betaIcon from "./icons/beta.png"
 
 const titlebarHeight = 36
 const windowsTitlebarHeight = 44 // Includes the content inset; matches the native Windows overlay.
