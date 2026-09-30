@@ -222,6 +222,7 @@ export function McpsTab(props: { sessionID: string }) {
               { label: "reconnect all", shortcut: shortcuts.get("composer.mcp.restart") ?? "" },
             ]
           : []),
+        { label: "scroll", shortcut: "pgup/pgdn" },
         { label: "reload config", shortcut: shortcuts.get("composer.mcp.reload") ?? "" },
       ],
     })
@@ -233,6 +234,13 @@ export function McpsTab(props: { sessionID: string }) {
     enabled: () => composer.active("mcps"),
     priority: 1,
     commands: [
+      {
+        bind: "pageup",
+        title: "Previous MCP tools page",
+        group: "Composer",
+        run: () => scroll?.scrollBy(-scroll.height),
+      },
+      { bind: "pagedown", title: "Next MCP tools page", group: "Composer", run: () => scroll?.scrollBy(scroll.height) },
       {
         id: "composer.mcp.up",
         title: "Previous MCP server",

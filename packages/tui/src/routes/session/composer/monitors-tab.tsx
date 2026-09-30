@@ -205,6 +205,7 @@ export function MonitorsTab(props: { monitors: SessionMonitors }) {
         ...(current()?.status === "running"
           ? [{ label: "stop", shortcut: shortcuts.get("composer.monitor.cancel") ?? "" }]
           : []),
+        { label: "scroll", shortcut: "pgup/pgdn" },
         { label: "refresh", shortcut: shortcuts.get("composer.monitor.refresh") ?? "" },
       ],
     })
@@ -216,6 +217,18 @@ export function MonitorsTab(props: { monitors: SessionMonitors }) {
     enabled: () => composer.active("monitors"),
     priority: 1,
     commands: [
+      {
+        bind: "pageup",
+        title: "Previous monitor evidence page",
+        group: "Composer",
+        run: () => scroll?.scrollBy(-scroll.height),
+      },
+      {
+        bind: "pagedown",
+        title: "Next monitor evidence page",
+        group: "Composer",
+        run: () => scroll?.scrollBy(scroll.height),
+      },
       { id: "composer.monitor.up", title: "Previous monitor", group: "Composer", run: () => move(-1) },
       { id: "composer.monitor.down", title: "Next monitor", group: "Composer", run: () => move(1) },
       {
