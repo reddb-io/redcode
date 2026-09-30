@@ -27,6 +27,8 @@ import { Database } from "../database/database.js"
 import { llmClient } from "../effect/app-node-platform.js"
 import { ModelLimit } from "../model-limit.js"
 import { Model } from "../model.js"
+import { Intelligence } from "../intelligence.js"
+import { IntelligenceClassification } from "../intelligence/classification.js"
 import { IntelligenceSettings } from "../intelligence/settings.js"
 import { Instructions } from "../instructions/index.js"
 import { modelLimitNode } from "#model-limit-node"
@@ -47,6 +49,7 @@ import { toLLMMessages } from "./runner/to-llm-message.js"
 import { SessionToolOutputPrune } from "./tool-output-prune.js"
 import { toSessionError } from "./to-session-error.js"
 import { SessionUsage } from "./usage.js"
+import { VaultRestricted } from "../vault/restricted.js"
 
 export type Settings = {
   auto: boolean
@@ -377,6 +380,14 @@ export const buildPrompt = (update: boolean, legacy = false, focus?: string) => 
 const NUDGE =
   "The previous response did not fill in the required summary template. Do not call tools. Return the summary as text using the exact section headings from the template."
 
+const repairPrompt = (text: string) =>
+  [
+    "A review found that the checkpoint below states restricted content: a credential, secret, personal data or another confidential value.",
+    'Rewrite it with the same sections and headings, keeping every fact the next agent needs, but leave every such value out. Refer to one only by what it is, such as "the password the user gave".',
+    "Do not call tools. Return only the rewritten checkpoint.",
+    `<checkpoint>\n${Redact.redact(text)}\n</checkpoint>`,
+  ].join("\n\n")
+
 /** Summaries written with the previous template carry this catch-all heading. */
 const LEGACY_HEADING = "## Additional Context"
 const SUMMARY_HEADINGS = [
@@ -412,6 +423,7 @@ export const layer = Layer.effect(
     const db = (yield* Database.Service).db
     const limits = yield* ModelLimit.Service
     const intelligence = yield* IntelligenceSettings.Service
+    const evaluator = yield* Intelligence.Service
     const models = yield* SessionRunnerModel.Service
     const modelsCatalog = yield* Model.Service
     const requests = yield* SessionModelRequest.Service
@@ -617,7 +629,10 @@ export const layer = Layer.effect(
      */
     const startDraft = Effect.fnUntraced(function* (context: SessionContext.Loaded, settings: Settings, ceiling: number) {
       const split = splitConversation(
-        SessionToolOutputPrune.apply(context.messages, context.prune, context.tools),
+        VaultRestricted.withholdMessages(
+          SessionToolOutputPrune.apply(context.messages, context.prune, context.tools),
+          VaultRestricted.excluded(context.session.metadata),
+        ),
         tailBudget(ceiling, settings.keep),
         settings.keepTurns,
       )
@@ -715,7 +730,11 @@ export const layer = Layer.effect(
       preserve: number,
     ): Effect.fn.Return<Result, Failure> {
       const context = trigger.context
-      const messages = SessionToolOutputPrune.apply(context.messages, context.prune, context.tools)
+      // A restricted message reaches the summarizer, the anchors and the recent context only as its placeholder.
+      const messages = VaultRestricted.withholdMessages(
+        SessionToolOutputPrune.apply(context.messages, context.prune, context.tools),
+        VaultRestricted.excluded(context.session.metadata),
+      )
       const drafted = trigger.reason === "auto" ? yield* adopt(context, messages, keep, preserve) : undefined
       const split = drafted?.split ?? splitConversation(messages, keep, turns, preserve)
       if (!split) return yield* Effect.fail(NOTHING_TO_COMPACT)
@@ -733,11 +752,12 @@ export const layer = Layer.effect(
             message: "Compaction summary is incomplete or does not match the required template",
           },
         })
+      const screened = generated.hooked ? result : yield* screen(context, result, budget)
       // The summarizer never saw a secret, but the checkpoint is durable, so what it or a hook wrote is redacted too.
       const text = Redact.redact(
         generated.hooked
           ? result.text
-          : [stripAnchors(result.text), buildAnchors(split.older, previous?.summary)].filter(Boolean).join("\n\n"),
+          : [stripAnchors(screened.text), buildAnchors(split.older, previous?.summary)].filter(Boolean).join("\n\n"),
       )
       const source = split.older.reduce(
         (total, message) =>
@@ -753,7 +773,47 @@ export const layer = Layer.effect(
         return yield* Effect.fail<Failure>({
           error: { type: "compaction.failed", message: "Compaction summary did not reduce the conversation" },
         })
-      return { ...result, text }
+      return { ...screened, text }
+    })
+
+    /**
+     * S1 reads the checkpoint the summarizer wrote, redacted and on its own. One it reads as stating restricted
+     * content is rewritten once without it. A rewrite that fails, or that S1 flags again, falls back to the pattern
+     * redaction `summarize` always applies; an unavailable or unsure review neither approves nor blocks.
+     */
+    const screen = Effect.fnUntraced(function* (context: SessionContext.Loaded, result: Result, budget: number) {
+      const sessionID = context.session.id
+      const review = (text: string, attempt: number) =>
+        evaluator.evaluate(IntelligenceClassification.checkpointEvaluation({ sessionID, text, attempt })).pipe(
+          Effect.orElseSucceed(() => undefined),
+          Effect.map((evaluation) => IntelligenceClassification.restricted(evaluation)),
+        )
+      if ((yield* review(stripAnchors(result.text), 0)) !== "flagged") return result
+      const repaired = yield* repair(context, stripAnchors(result.text), budget).pipe(
+        Effect.orElseSucceed(() => undefined),
+      )
+      if (!repaired) return result
+      if ((yield* review(repaired.text, 1)) === "flagged")
+        yield* Effect.logWarning("Compaction checkpoint flagged again after its rewrite; keeping the redacted rewrite", {
+          sessionID,
+        })
+      return { ...result, text: repaired.text, providerState: repaired.providerState }
+    })
+
+    /** One rewrite of a flagged checkpoint from the checkpoint alone; its usage joins the compaction's total. */
+    const repair = Effect.fnUntraced(function* (context: SessionContext.Loaded, text: string, budget: number) {
+      const prepared = yield* prepare(context, [], budget)
+      if (prepared.event.result !== undefined) return undefined
+      const reply = yield* stream(
+        context,
+        LLMRequest.update(prepared.request, {
+          messages: [...prepared.request.messages, Message.user(repairPrompt(text))],
+        }),
+        prepared.options,
+        true,
+      )
+      if (reply.usage) tally(context.session.id, reply.usage)
+      return validSummary(reply.text) ? reply : undefined
     })
 
     const generate = Effect.fnUntraced(function* (
@@ -853,7 +913,10 @@ export const layer = Layer.effect(
         if (LLMClient.canCompact(request, { mechanism: "trigger" })) {
           return Effect.gen(function* () {
             const history = yield* SessionHistory.load(db, context.session.id, "local").pipe(Effect.orDie)
-            const retained = redactMessages(recentUserMessages(history, context.model, keep, turns))
+            const retained = VaultRestricted.withholdRequest(
+              redactMessages(recentUserMessages(history, context.model, keep, turns)),
+              VaultRestricted.excluded(context.session.metadata),
+            )
             const response = yield* llm.compact(request, { ...prepared.options, mechanism: "trigger" })
             return yield* toResult([...retained, Message.assistant(response.checkpoint)], response.usage)
           })
@@ -1263,6 +1326,7 @@ export const node = makeLocationNode({
     SessionGuardLog.node,
     SessionStore.node,
     IntelligenceSettings.node,
+    Intelligence.node,
     SessionRunnerModel.node,
     Model.node,
   ],
@@ -1357,10 +1421,11 @@ const redactMessages = (messages: ReadonlyArray<Message>) =>
 
 /**
  * What a prepared summary depends on: the instruction baseline and the messages it covers. The model is left out, as
- * the summary may be written by the S2 transformations model and stays valid text across a model switch.
+ * the summary may be written by the S2 transformations model and stays valid text across a model switch. The
+ * restricted marker is part of it: a message marked after a draft began leaves the draft stale, as it may carry it.
  */
 const fingerprint = (context: SessionContext.Loaded, count: number) =>
-  JSON.stringify([context.initial, context.messages.slice(0, count)])
+  JSON.stringify([context.initial, context.messages.slice(0, count), VaultRestricted.read(context.session.metadata)])
 
 const recentStart = (
   entries: ReadonlyArray<{ readonly message: SessionMessage.Info; readonly text: string }>,

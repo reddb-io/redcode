@@ -21,6 +21,7 @@ import { SessionUsage } from "./usage.js"
 import { SessionStore } from "./store.js"
 import { SessionGuardLog } from "./guard-log.js"
 import { AuxDeadline } from "./aux-deadline.js"
+import { VaultRestricted } from "../vault/restricted.js"
 
 const MAX_LENGTH = 100
 const MAX_CONTEXT_LENGTH = 8_000
@@ -123,13 +124,17 @@ export const layer = Layer.effect(
       if (!session) return
       const firstUser = yield* SessionHistory.firstUserMessage(db, session.id)
       if (!firstUser) return
+      // A title is derived text: a message marked restricted gives it only its placeholder.
+      const excluded = VaultRestricted.excluded(session.metadata)
+      const said = (message: { readonly id: string; readonly text: string }) =>
+        excluded.has(message.id) ? VaultRestricted.WITHHELD : message.text
       const text = !isUntitled(session)
         ? yield* store.context(session.id).pipe(
             Effect.map((messages) => {
-              const original = `Original request:\n${firstUser.text.slice(0, MAX_FIRST_MESSAGE_LENGTH)}`
+              const original = `Original request:\n${said(firstUser).slice(0, MAX_FIRST_MESSAGE_LENGTH)}`
               const recent = messages
                 .flatMap((message) => {
-                  if (message.type === "user" && message.id !== firstUser.id) return [`User: ${message.text.trim()}`]
+                  if (message.type === "user" && message.id !== firstUser.id) return [`User: ${said(message).trim()}`]
                   if (message.type !== "assistant") return []
                   const text = message.content
                     .flatMap((part) => (part.type === "text" ? [part.text.trim()] : []))
@@ -142,9 +147,9 @@ export const layer = Layer.effect(
               const prefix = `${original}\n\nRecent conversation:\n`
               return `${prefix}${recent.slice(-(MAX_CONTEXT_LENGTH - prefix.length))}`
             }),
-            Effect.orElseSucceed(() => firstUser.text),
+            Effect.orElseSucceed(() => said(firstUser)),
           )
-        : firstUser.text
+        : said(firstUser)
       const selection = yield* context.selectTitle(session)
       if (!selection) return
       const deadline = AuxDeadline.deadlineMs("title", Config.latestExperimental(yield* config.entries(), "aux_timeout"))

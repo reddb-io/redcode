@@ -53,6 +53,8 @@ export function createSessionTimelineRowRenderer(input: {
   userCard?: (message: SessionMessageUser) => JSX.Element | undefined
   /** Replaces a standalone notice row with a surface's card, such as a Design approval. */
   noticeCard?: (message: SessionMessageInfo) => JSX.Element | undefined
+  /** A surface's line under the user bubble, such as what happened to secrets in the message. */
+  userNotice?: (message: SessionMessageUser) => JSX.Element | undefined
   actions?: SessionUserActions
   reasoningMode: Accessor<ReasoningMode>
   shellToolDefaultOpen: Accessor<boolean>
@@ -637,6 +639,7 @@ export function createSessionTimelineRowRenderer(input: {
                       historicalModel={context()?.model ?? { id: "", providerID: "" }}
                       actions={input.actions}
                     />
+                    {input.userNotice?.(message())}
                   </div>
                 </div>
               )

@@ -89,6 +89,29 @@ describe("SessionModelRequest vault seam", () => {
     }).pipe(Effect.provideService(SessionModelTransport.Service, transport)),
   )
 
+  it.effect("sends a placeholder for a message the user withheld, by its ID, and leaves the rest", () =>
+    Effect.gen(function* () {
+      const withheld = SessionMessage.ID.create()
+      const requests = yield* SessionModelRequest.Service.pipe(Effect.provide(SessionModelRequest.layer))
+      const prepared = yield* requests.primary({
+        session: Session.Info.make({ ...session, metadata: { restricted: { [withheld]: "withheld" } } }),
+        agent,
+        model,
+        system: [],
+        messages: [
+          Message.make({ id: withheld, role: "user", content: "a senha é " + "banana" + "123" }),
+          Message.assistant("noted"),
+          Message.user("next request"),
+        ],
+        tools: { definitions: [], execute: () => Effect.die("unused tool") },
+      })
+      const sent = JSON.stringify(prepared.request.messages)
+      expect(sent).not.toContain("banana")
+      expect(sent).toContain("[message withheld: restricted content]")
+      expect(sent).toContain("next request")
+    }).pipe(Effect.provideService(SessionModelTransport.Service, transport)),
+  )
+
   it.effect("replaces a vaulted value in user text rebuilt for the provider", () =>
     Effect.gen(function* () {
       const vault = yield* Vault.Service

@@ -38,6 +38,7 @@ import { SessionHeaderSpacer } from "@/session/header/session-header"
 import type { BackgroundTask } from "../summary/background"
 import { DesignNotice } from "@opencode/schema/design-notice"
 import { DesignApprovalCard, DesignFeedbackCard } from "../design/cards"
+import { announceRestricted, RestrictedNotice } from "./restricted-notice"
 
 const SessionSummaryPanel = lazy(async () => {
   const { SessionSummaryPanel } = await import("../summary/panel")
@@ -278,6 +279,7 @@ function MessageTimelineView(
     setTitle({ draft: "", editing: false, menuOpen: false, pendingRename: false })
   })
 
+  announceRestricted(props.session.data.info)
   const rowRenderer = createSessionTimelineRowRenderer({
     sessionID: () => sessionID()!,
     status: sessionStatus,
@@ -291,6 +293,14 @@ function MessageTimelineView(
         references: value?.attachments,
       }
     },
+    userNotice: (message) => (
+      <RestrictedNotice
+        message={message}
+        sessionID={sessionID()!}
+        directory={sessionDirectory()}
+        metadata={() => props.session.data.info()?.metadata}
+      />
+    ),
     // Design cards rebuild from the recorded messages with the same parsers the terminal uses.
     userCard: (message) => {
       if (message.metadata?.source !== "design.feedback") return undefined

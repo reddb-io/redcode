@@ -42,6 +42,7 @@ import { SessionToolOutputPrune } from "./tool-output-prune.js"
 import { SessionStore } from "./store.js"
 import { toSessionError } from "./to-session-error.js"
 import { Vault } from "../vault/vault.js"
+import { VaultRestricted } from "../vault/restricted.js"
 
 const IMAGE_BYTES_TRIGGER = 25 * 1024 * 1024 // 25 MiB
 const IMAGE_BYTES_TARGET = 15 * 1024 * 1024 // 15 MiB
@@ -349,7 +350,16 @@ export const layer = Layer.effect(
         },
         promptCacheKey: /^ses_[0-9a-f]{64}$/.test(affinity) ? affinity.slice(4) : affinity,
         system: shaped.system,
-        messages: boundImages(unsupportedParts(scrubUserText(shaped.messages, clean), model.capabilities)),
+        // A message the user withheld reaches the provider only as a placeholder, whatever the hooks returned.
+        messages: boundImages(
+          unsupportedParts(
+            scrubUserText(
+              VaultRestricted.withholdRequest(shaped.messages, VaultRestricted.withheld(session.metadata)),
+              clean,
+            ),
+            model.capabilities,
+          ),
+        ),
         tools: model.capabilities.tools ? Array.from(hooked, ([name, t]) => ({ ...t, name })) : [],
         toolChoice: model.capabilities.tools ? input.toolChoice : undefined,
         generation: Object.keys(generation).length === 0 ? undefined : generation,
@@ -459,7 +469,7 @@ export const layer = Layer.effect(
         // fails with has every vaulted value of the project replaced by its reference before it is stored.
         executeTool: (call: Parameters<Prepared["executeTool"]>[0]) =>
           tools.execute({ ...call, definitions: hooked, ...scrubbedProgress(call.progress, clean) }).pipe(
-            Effect.map((result) => scrubResult(result, clean)),
+            Effect.map((result: Tool.NormalizedResult) => scrubResult(result, clean)),
             Effect.mapError((error) => (error instanceof Tool.Error ? scrubError(error, clean) : error)),
             Effect.provideService(Vault.Current, Vault.bind(vault, session.projectID)),
             Effect.catchCauseFilter(

@@ -67,7 +67,14 @@ import { ProviderFailure } from "@opencode/core/session/provider-failure"
 import { DialogPrompt } from "../../ui/dialog-prompt"
 import { DialogSessionRename } from "../../component/dialog-session-rename"
 import { DialogImagePreview } from "../../component/dialog-image-preview"
-import { DialogVault, vaultMoved, vaultNotice } from "../../component/dialog-vault"
+import {
+  DialogRestricted,
+  DialogVault,
+  restrictedMessages,
+  restrictedNotice,
+  vaultMoved,
+  vaultNotice,
+} from "../../component/dialog-vault"
 import { DialogMessage } from "./dialog-message"
 import { DialogFork } from "./dialog-fork"
 import { DialogTimeline } from "./dialog-timeline"
@@ -348,6 +355,22 @@ export function Session(props: {
       if (Date.now() - event.created > 60_000) return
       const moved = vaultMoved(event.data.item.payload.metadata)
       if (moved.length > 0) toast.show({ variant: "info", message: vaultNotice(moved), duration: 12_000 })
+    }),
+  )
+  // A System One flag is announced once, when it lands shortly after its message; older flags only keep their line.
+  const announced = new Set<string>()
+  onCleanup(
+    client.event.on("session.metadata.updated", (event) => {
+      if (event.data.sessionID !== route.sessionID || Date.now() - event.created > 60_000) return
+      const flagged = Object.entries(restrictedMessages(event.data.metadata)).filter(
+        ([messageID, state]) =>
+          state === "sensitive" &&
+          !announced.has(messageID) &&
+          Date.now() - (data.session.message.get(route.sessionID, messageID)?.time.created ?? 0) < 300_000,
+      )
+      flagged.forEach(([messageID]) => announced.add(messageID))
+      if (flagged.length > 0)
+        toast.show({ variant: "warning", message: restrictedNotice("sensitive"), duration: 12_000 })
     }),
   )
   const autoApproved = new Set<string>()
@@ -1022,6 +1045,16 @@ export function Session(props: {
       slash: { name: "vault" },
       run: () => {
         dialog.replace(() => <DialogVault sessionID={route.sessionID} directory={location()?.directory} />)
+      },
+    },
+    {
+      title: "Restricted messages",
+      description: "List the messages marked as restricted content and remove one from the context",
+      id: "session.restricted",
+      group: "Session",
+      slash: { name: "restricted" },
+      run: () => {
+        dialog.replace(() => <DialogRestricted sessionID={route.sessionID} />)
       },
     },
     {
@@ -2584,6 +2617,9 @@ function UserMessage(props: { message: SessionMessageUser }) {
   const files = createMemo(() => deduplicateVisibleImages(props.message.files ?? []))
   const skills = createMemo(() => props.message.skills ?? [])
   const vaulted = createMemo(() => vaultMoved(props.message.metadata))
+  const restricted = createMemo(
+    () => restrictedMessages(data.session.get(ctx.sessionID)?.metadata)[props.message.id],
+  )
   const images = createMemo(() =>
     files().flatMap((file) =>
       file.mime.startsWith("image/") ? [{ uri: `data:${file.mime};base64,${file.data}` }] : [],
@@ -2655,6 +2691,13 @@ function UserMessage(props: { message: SessionMessageUser }) {
             <box paddingTop={1}>
               <text fg={theme.text.muted}>{vaultNotice(vaulted())}</text>
             </box>
+          </Show>
+          <Show when={restricted()}>
+            {(state) => (
+              <box paddingTop={1}>
+                <text fg={theme.text.muted}>{restrictedNotice(state())}</text>
+              </box>
+            )}
           </Show>
           <Show when={skills().length}>
             <box flexDirection="row" paddingTop={1} gap={1} flexWrap="wrap">

@@ -8,6 +8,7 @@ import { errorMessage } from "../../util/error"
 import { DialogFork } from "./dialog-fork"
 import type { PromptInfo } from "../../prompt/history"
 import { projectedPromptInput } from "../../prompt/codec"
+import { restrictedMessages, useWithhold } from "../../component/dialog-vault"
 
 export function DialogMessage(props: {
   messageID: string
@@ -19,6 +20,13 @@ export function DialogMessage(props: {
   const toast = useToast()
   const client = useClient()
   const message = createMemo(() => data.session.message.get(props.sessionID, props.messageID))
+  const withhold = useWithhold()
+  // Never automatic: the message may carry an instruction the user still wants, so only the user removes it.
+  const removable = createMemo(
+    () =>
+      message()?.type === "user" &&
+      restrictedMessages(data.session.get(props.sessionID)?.metadata)[props.messageID] !== "withheld",
+  )
 
   return (
     <DialogSelect
@@ -84,6 +92,16 @@ export function DialogMessage(props: {
             dialog.replace(() => <DialogFork sessionID={props.sessionID} messageID={props.messageID} />)
           },
         },
+        ...(removable()
+          ? [
+              {
+                title: "Remove from context",
+                value: "message.withhold",
+                description: "send a placeholder instead of it from now on",
+                onSelect: () => withhold(props.sessionID, props.messageID),
+              },
+            ]
+          : []),
       ]}
     />
   )

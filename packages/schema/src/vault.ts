@@ -21,12 +21,27 @@ export type Moved = typeof Moved.Type
 /** The text the model reads and writes in place of a stored value. */
 export const reference = (name: string) => `{vault:${name}}`
 
-/** Lists and forgets the secrets of a Session's project. No method returns a value. */
+/**
+ * The `metadata.restricted` marker on a Session, by user message ID: `sensitive` when System One read the message as
+ * carrying restricted content in prose, `withheld` once the user removed it from every later provider request.
+ * Withheld supersedes sensitive and is never downgraded.
+ */
+export const Restricted = Schema.Record(Schema.String, Schema.Literals(["sensitive", "withheld"])).annotate({
+  identifier: "Vault.Restricted",
+})
+export type Restricted = typeof Restricted.Type
+
+/** What every later provider request carries in place of a withheld message. */
+export const WITHHELD = "[message withheld: restricted content]"
+
+/** Lists and forgets the secrets of a Session's project, and withholds a message. No method returns a value. */
 export const Definition = define({
   id: "redcode.vault",
   methods: {
     list: { input: Schema.Struct({ sessionID: SessionID }), output: Schema.Array(Entry) },
     forget: { input: Schema.Struct({ sessionID: SessionID, name: Schema.String }), output: Schema.Boolean },
+    /** Whether the user message was withheld now; false when it already was or is not a user message. */
+    withhold: { input: Schema.Struct({ sessionID: SessionID, messageID: Schema.String }), output: Schema.Boolean },
   },
   events: {},
 })

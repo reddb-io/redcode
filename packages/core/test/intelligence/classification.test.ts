@@ -88,6 +88,7 @@ describe("IntelligenceClassification", () => {
       omitted: 3,
       session: { mode: "build", goal: "", plan: "" },
       skills: [{ name: "tdd", description: "Test-driven development" }],
+      scrub: (text) => text,
     })
     expect(input.operation).toBe("prompt_classification")
     expect(input.kind).toBe("classification")
@@ -95,10 +96,88 @@ describe("IntelligenceClassification", () => {
     expect(input.candidate).toBeUndefined()
     expect(JSON.stringify(input.sources).length).toBeLessThan(40_000)
     expect(Object.keys(input.questions)).toEqual(
-      expect.arrayContaining(["work_route", "must_clarify", "design_target", "design_platform", "recommended_skill"]),
+      expect.arrayContaining([
+        "work_route",
+        "must_clarify",
+        "design_target",
+        "design_platform",
+        "restricted_content",
+        "recommended_skill",
+      ]),
     )
+    expect(input.questions.restricted_content?.type).toBe("noul")
     const skill = input.questions.recommended_skill
     expect(skill?.type === "choice" ? Object.keys(skill.criteria) : []).toEqual(["tdd", "no_matching_skill"])
+  })
+
+  test("shows S1 only references and redaction markers, never a vaulted or pattern-detected value", () => {
+    // Assembled from parts so no secret scanner mistakes them for real credentials.
+    const vaulted = "ghp" + "_" + "V4u".repeat(12)
+    const detected = "sk-" + "proj-" + "Zq7".repeat(16)
+    const scrub = (text: string) => text.replaceAll(vaulted, "{vault:github-token-1}")
+    const input = IntelligenceClassification.evaluation({
+      sessionID: "ses_test",
+      request: { id: "msg_request", text: `Use ${vaulted} to push, and OPENAI_API_KEY=${detected} for the eval` },
+      history: [
+        { role: "user", text: `Earlier: ${vaulted}` },
+        { role: "assistant", text: `Configured ${detected}`, tools: ["bash"] },
+      ],
+      omitted: 0,
+      session: { mode: "build", goal: `Deploy with ${detected}`, plan: "" },
+      skills: [],
+      scrub,
+    })
+    const seen = JSON.stringify(input.sources)
+    expect(seen).not.toContain(vaulted)
+    expect(seen).not.toContain(detected)
+    expect(seen).toContain("{vault:github-token-1}")
+    expect(seen).toContain("[redacted:openai-key]")
+  })
+
+  test("reads restricted content by the lead of its answer, and never reads unknown as clean", () => {
+    const noul = (value: number) => record("accepted", { restricted_content: { type: "noul", noul: value } })
+    // Jev's clean answers sit well above zero; a low-margin clean one still reads as clean.
+    expect(IntelligenceClassification.restricted(noul(0.3))).toBe("clean")
+    expect(IntelligenceClassification.restricted(noul(0.9))).toBe("flagged")
+    expect(IntelligenceClassification.restricted(noul(0.55))).toBe("unknown")
+    expect(IntelligenceClassification.restricted(noul(0.4))).toBe("unknown")
+    expect(
+      IntelligenceClassification.restricted(record("inconclusive", { restricted_content: { type: "noul", noul: 0.8 } })),
+    ).toBe("flagged")
+    expect(IntelligenceClassification.restricted(record("unavailable", {}))).toBe("unknown")
+    expect(IntelligenceClassification.restricted(record("accepted", {}))).toBe("unknown")
+    expect(IntelligenceClassification.restricted(undefined)).toBe("unknown")
+  })
+
+  test("tells the agent not to repeat content S1 flagged, and says nothing for a clean or unknown answer", () => {
+    const flagged = IntelligenceClassification.context(
+      record("accepted", {
+        work_route: choice("answer", 0.9, ["answer", "local_change"]),
+        restricted_content: { type: "noul", noul: 0.9 },
+      }),
+    )
+    expect(flagged).toContain("do not repeat, quote or store it")
+    expect(flagged).not.toContain("restricted_content: probability")
+    const clean = IntelligenceClassification.context(
+      record("accepted", {
+        work_route: choice("answer", 0.9, ["answer", "local_change"]),
+        restricted_content: { type: "noul", noul: 0.5 },
+      }),
+    )
+    expect(clean).not.toContain("restricted content")
+  })
+
+  test("reviews a compaction checkpoint on its own, redacted, as a gate", () => {
+    const key = "sk-" + "proj-" + "Yw2".repeat(16)
+    const input = IntelligenceClassification.checkpointEvaluation({
+      sessionID: "ses_test",
+      text: `## Objective\n- Deploy with OPENAI_API_KEY=${key}`,
+      attempt: 1,
+    })
+    expect(input).toMatchObject({ operation: "compaction", kind: "gate", attempt: 1, sources: [] })
+    expect(Object.keys(input.questions)).toEqual(["restricted_content"])
+    expect(JSON.stringify(input.candidate)).not.toContain(key)
+    expect(JSON.stringify(input.candidate)).toContain("[redacted:openai-key]")
   })
 
   test("splits a large skill catalog into independently answered groups", () => {
