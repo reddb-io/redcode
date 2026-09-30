@@ -196,13 +196,11 @@ jobs:
           bun run script/service-smoke.ts
 
   vault-coverage:
-    # Non-blocking until proven stable: continue-on-error keeps a coverage shortfall out of the run result and no
-    # other job needs this one. It runs beside unit, off the critical path. To make it blocking, delete
-    # continue-on-error and require the `vault-coverage` check in the main branch protection.
+    # The vault handles secrets, so a coverage shortfall fails the run. Publishing does not wait for this job; require
+    # the `vault-coverage` check in the main branch protection to make it gate merges too.
     needs: plan
     runs-on: blacksmith-4vcpu-ubuntu-2404
     timeout-minutes: 30
-    continue-on-error: true
     defaults:
       run:
         shell: bash
