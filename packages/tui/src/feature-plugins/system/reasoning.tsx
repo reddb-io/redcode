@@ -119,24 +119,35 @@ function IntelligenceIndicator(props: {
       ),
   )
   const pending = () => props.status?.settings.onboarding !== "completed"
-  const warning = () =>
-    props.status?.effective.reasoning === "dual" &&
-    (Boolean(history.error) ||
-      (!history.error && ["unavailable", "inconclusive", "needs_revision"].includes(history()?.[0]?.decision ?? "")))
+  // What the session's latest evaluation says, in words that do not read as an outage unless S1 truly was unreachable.
+  const outcome = () => {
+    if (props.status?.effective.reasoning !== "dual") return undefined
+    if (history.error) return "unavailable" as const
+    const decision = history()?.[0]?.decision
+    if (decision === "unavailable" || decision === "inconclusive" || decision === "needs_revision") return decision
+    return undefined
+  }
   const label = () => {
     if (props.error) return "S1/S2 offline"
     if (!props.status) return ""
     if (pending()) return "S1/S2 setup"
-    if (warning()) return "S1 needs attention"
+    const value = outcome()
+    if (value === "unavailable") return "S1 unavailable"
+    if (value === "inconclusive") return "S1 unsure"
+    if (value === "needs_revision") return "S1 flagged answer"
     return ""
+  }
+  // Only a real outage takes the warning colour: a flagged or unsure answer is S1 working, not S1 broken.
+  const tone = () => {
+    if (props.error || outcome() === "unavailable") return props.context.theme.text.feedback.warning.base
+    if (outcome()) return props.context.theme.text.feedback.info.base
+    return props.context.theme.text.muted
   }
   return (
     <Show when={label()}>
       {(value) => (
         <text
-          fg={
-            props.error || warning() ? props.context.theme.text.feedback.warning.base : props.context.theme.text.muted
-          }
+          fg={tone()}
           wrapMode="none"
           onMouseUp={() => props.context.keymap.dispatch(pending() ? "intelligence.setup" : "intelligence.status")}
         >
