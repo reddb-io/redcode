@@ -234,7 +234,7 @@ describe("Design agent permissions", () => {
       const effect = (action: string, resource: string) =>
         Permission.evaluate(action, resource, Permission.forAgent(agent as never, session)).effect
 
-      expect(agent.name).toBe("Design")
+      expect(String(agent.name)).toBe("Design")
       expect(agent.mode).toBe("primary")
       expect(agent.system).toBeString()
       const tools = [
