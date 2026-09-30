@@ -700,7 +700,7 @@ describe("SessionStopLoss waiting on an outside job", () => {
       SessionStopLoss.final(
         trajectory,
         { action: "ask_user", state: "waiting", signals: ["waited"], verified: false },
-        {},
+        { subagent: false },
       ),
     ).toContain(`for ${LIMITS.wait} minutes`)
   })
