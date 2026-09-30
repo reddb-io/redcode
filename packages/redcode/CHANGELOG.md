@@ -1,5 +1,44 @@
 # @reddb-io/redcode
 
+## 0.64.0
+
+### Minor Changes
+
+- `redcode acp` again accepts the governed RedSkills child Agent contract. A parent that sends `_meta.redskills.childAgent` with `session/new`, `session/load`, `session/resume` or `session/fork` gets the parent binding (version, parent session, worker and authority) back in the session response, in every prompt outcome including cancellation, and in every permission request of the turn. The child refuses to start with `invalid params` when the contract is malformed, when it inherits `GITHUB_TOKEN`, `GH_TOKEN` or any `REDSKILLED_*` variable, or when an MCP server points at redskilled, so GitHub and redskilled authority stay with the parent. Ordinary editor sessions are unchanged.
+- Several features whose backend already existed are available in the interfaces again.
+
+  The MCPs tab in the TUI can reconnect every enabled MCP server (`R`, asks first when a connection is live) and reload the MCP configuration (`L`), which re-reads the config files and drops servers added or turned off for this run. The API has matching `mcp.restart` and `mcp.reload` routes.
+
+  `/worktrees` in the TUI shows each worktree's state (dirty, merged, clean or missing), size and last activity, and a clean action (`ctrl+l`) removes merged, idle worktrees without uncommitted changes after a confirmation, using the same rules as `redcode worktrees clean`.
+
+  Removing a provider in the TUI (`ctrl+d` in the provider list, or "Remove provider…" in its accounts) and in the web provider settings now shows what will be removed, such as saved credentials, config entries and, for a router, its MCP server, and asks for confirmation, like `redcode auth remove`.
+
+  The model pickers in the TUI, the S2 picker in `/setup` and the web model picker no longer list RedRouter pinned offers as separate models. `ctrl+o` in the TUI, or the offers row on the web, expands a model's offers with provider, price and availability, and choosing one selects that pinned offer.
+
+  The web "Reasoning roles" settings can now set the reasoning mode, the S2 principal and fast models and the S1 evaluator. Connections are checked before saving. When a check fails, both the web and TUI `/setup` show the reason (credential, HTTP status, timeout or unreachable) and offer Retry.
+
+- Secrets you paste into a conversation are moved into a per-project vault before the message is stored, and the model only ever sees a reference such as `{vault:github-token-1}`. Known token families (GitHub, GitLab, OpenAI, Anthropic, OpenRouter, AWS, Google, Slack, Stripe, npm), JWTs, PEM private keys, passwords in URLs, credential query parameters and literal values under secret names such as `API_KEY=…` are replaced in the prompt text, in queued and steered prompts, in text attachments and in the `/compact` focus; mentions keep pointing at the right text. Long random-looking strings that might be hashes are left as they are. A secret belongs to the session's project, which all worktrees of a repository share, and no other project can see or use it.
+
+  The shell tool passes a vaulted value to the command through an environment variable set only for that process, so the command you approve, the stored tool call and the process list show the reference. `webfetch` URLs and MCP tool arguments resolve references in process when the call runs. No other tool resolves them. Tool results, shell output, background shell notifications, tool errors and the output of commands you run with `!` have every vaulted value of the project replaced by its reference before they are stored or sent to the model.
+
+  The TUI shows a notice under the protected message and a toast, and `/vault` lists the names and kinds in the current project's vault and forgets an entry. Values are never shown. In this release the vault is kept in memory and is emptied when the service restarts. Anything you sent before it was vaulted stays in your history and with your provider, so rotate it.
+
+- With dual reasoning, System One now also reads each new message for secrets or personal data written in prose that pattern detection cannot catch, such as "my password is …". It only ever sees the message after vaulted values became `{vault:name}` and recognized secrets became `[redacted:kind]`, and it judges that one message on its own. A message it flags is kept out of compaction summaries, their anchors and recent context, and titles from then on, and the TUI and the web app show a notice under it and a toast. The notice says the message is still in the current conversation, that the original stays in your local history and was already sent to your provider, and that anything real should be rotated. An answer System One could not give, or gave without a clear lead, counts as not checked, never as clean.
+
+  Remove from context, in the message actions, in `/restricted` or under the notice in the web app, replaces a message with `[message withheld: restricted content]` in every later request to the model. It is never automatic, since the message may carry an instruction you still want, and stored history is not rewritten.
+
+  Before a compaction checkpoint is saved, System One also reviews the checkpoint on its own for restricted content. A flagged checkpoint is rewritten once without it; if that fails or is flagged again, the pattern redaction that always runs is what protects it. An unavailable review neither approves nor blocks the checkpoint.
+
+  The vault notice now says that the replaced secrets are no longer part of the context sent to the model from now on.
+
+- `--yolo` is its own mode again. `--auto` approves permission prompts that no rule denies and leaves the repository guard in place, so destructive Git commands such as `git reset`, `git stash` or a forced push are still refused. `--yolo` (also `--dangerously-skip-permissions`) does the same and lifts that guard for the session. Deny rules, secret protection, authentication and automatic worktrees apply in both modes. Both flags now explain this in `--help`, and a session in yolo mode shows `yolo` in the warning color in the prompt footer and a toast when it starts.
+
+  A turn whose agent sets no `steps` of its own is now bounded by `experimental.turn_steps` (default 400): the last step runs with tools off and asks for a report of what was done and what is left, and new input starts the count over. Set it to `false` to remove the ceiling. A V1 `turn_steps: { stop_at }` setting carries over.
+
+  A language server that exits at startup because its Node runtime rejects a flag in the inherited `NODE_OPTIONS` restarts once without that flag instead of staying broken.
+
+- The agent can now use, obtain and ask for secrets without seeing them. A `{vault:name}` reference works anywhere in a shell command, in single or double quotes, heredocs and JSON bodies, on bash, zsh, sh and PowerShell: the shell reads the command with the value written in on standard input, so it is not in the process arguments, while approvals and history keep the name. Secrets in shell, webfetch and MCP output, such as a token a login returns, are stored and shown as new references, and the shell tool's `capture` stores an opaque value by JSON path or pattern. The new `vault_request` tool asks you for a missing secret in a masked field in the TUI and the web app, and `/vault add`, `/vault import`, `redcode vault set` and `redcode vault import` pre-load secrets. The first time a secret goes to a new host, local command, MCP server or file you approve that pair once or always, and a token captured from a host may go back to it without asking. References become values only in `.env`-style files git ignores; other files keep them as text. The agent is told how the vault works and which references the project holds. Values still live only in memory until the service restarts.
+
 ## 0.63.0
 
 ### Minor Changes
