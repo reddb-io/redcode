@@ -92,7 +92,7 @@ const provider = FakeProvider.start({
       {
         name: "shell",
         input: {
-          command: `curl -s -H 'Authorization: Bearer {vault:github-token-1}' http://127.0.0.1:${loopback.port}/`,
+          command: `curl -s -H 'Authorization: Bearer {vault:github-token}' http://127.0.0.1:${loopback.port}/`,
         },
       },
       { name: "shell", input: { command: `curl -s http://127.0.0.1:${loopback.port}/login` } },
@@ -292,7 +292,7 @@ async function checkVaultPrompt() {
   if (leaked.length > 0)
     throw new Error(`${leaked.length} of ${run.requests.length} provider requests carried a secret`)
   // The vault guide in the system prompt names a reference too, so look for the one in place of the pasted token.
-  const moved = "GITHUB_TOKEN={vault:github-token-1}"
+  const moved = "GITHUB_TOKEN={vault:github-token}"
   if (!run.requests.some((request) => request.prompts.some((prompt) => prompt.includes(moved))))
     throw new Error(`No provider request carried the prompt with ${moved}`)
   if (run.stored.includes(PROMPT_TOKEN)) throw new Error("The stored session holds the pasted token")
@@ -312,7 +312,7 @@ async function checkVaultShell() {
     throw new Error(
       `The first shell call did not complete with a clean output: status ${String(field(state, "status"))}`,
     )
-  const echoed = "received Bearer {vault:github-token-1}"
+  const echoed = "received Bearer {vault:github-token}"
   if (!output.includes(echoed))
     throw new Error(`The first shell output does not show ${echoed}: ${masked(JSON.stringify(output))}`)
   if (!run.stored.includes(echoed)) throw new Error(`The stored tool result does not show ${echoed}`)
@@ -328,7 +328,8 @@ async function checkVaultCapture() {
   if (!name)
     throw new Error(`The second tool result shows no reference for the issued token: ${masked(JSON.stringify(result))}`)
   const note = `Stored 1 secret from the output as {vault:${name}}`
-  if (!result.includes(note)) throw new Error(`The second tool result lacks "${note}": ${masked(JSON.stringify(result))}`)
+  if (!result.includes(note))
+    throw new Error(`The second tool result lacks "${note}": ${masked(JSON.stringify(result))}`)
   if (run.stored.includes(OUTPUT_TOKEN)) throw new Error("The stored session holds the issued token")
   expectFinalText(run.events, "SMOKE-FINAL vault")
 }
@@ -351,12 +352,16 @@ async function checkVaultList() {
   const entries = field(listed, "output")
   if (!Array.isArray(entries)) throw new Error(`The vault listing is not a list: ${text}`)
   const names = entries.map((entry) => field(entry, "name"))
-  const missing = ["github-token-1", "smoke-api-key"].filter((name) => !names.includes(name))
+  const missing = ["github-token", "smoke-api-key"].filter((name) => !names.includes(name))
   // The third entry is the token the scenario captured from the loopback server's output.
   if (missing.length > 0 || entries.length < 3)
     throw new Error(`The vault listing lacks ${missing.join(", ") || "the captured token"}: ${text}`)
   if (!entries.every((entry) => typeof field(entry, "kind") === "string" && field(entry, "kind") !== ""))
     throw new Error(`A vault entry has no kind: ${text}`)
+  // The project's secrets live in its `.env`: the pasted token under the variable it was assigned to, and the CLI value.
+  const dotenv = await Bun.file(path.join(run.project, ".env")).text()
+  if (!dotenv.includes("GITHUB_TOKEN=") || !dotenv.includes("SMOKE_API_KEY="))
+    throw new Error("The project's .env lacks the pasted token or the value vault set stored")
 }
 
 async function checkWorktree() {
