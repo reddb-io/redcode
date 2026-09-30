@@ -13,6 +13,10 @@ import { Tool } from "@opencode/core/tool"
 import { VaultRequestTool } from "@opencode/core/tool/plugin/vault-request"
 import { Vault } from "@opencode/core/vault/vault"
 import { Project } from "@opencode/schema/project"
+import { Config } from "@opencode/core/config"
+import { Location } from "@opencode/core/location"
+import { AbsolutePath } from "@opencode/core/schema"
+import { location } from "./fixture/location"
 import { testEffect } from "./lib/effect"
 import { imagePassthrough } from "./lib/image"
 import { permissionLayer } from "./lib/permission"
@@ -52,6 +56,10 @@ const it = testEffect(
       }),
     ),
     Form.node.replace(form),
+    Config.node.replace(Config.testLayer()),
+    Location.node.replace(
+      Layer.succeed(Location.Service, Location.Service.of(location({ directory: AbsolutePath.make(process.cwd()) }))),
+    ),
     Image.node.replace(imagePassthrough),
   ]),
 )

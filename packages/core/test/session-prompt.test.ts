@@ -10,7 +10,6 @@ import { LayerNode } from "@opencode/util/effect/layer-node"
 import { makeGlobalNode } from "@opencode/util/effect/app-node"
 import { Bus } from "@opencode/core/bus"
 import { EventTable } from "@opencode/core/event/sql"
-import { Location } from "@opencode/schema/location"
 import { SessionEvent } from "@opencode/core/session/event"
 import { Model } from "@opencode/core/model"
 import { Provider } from "@opencode/core/provider"
@@ -31,6 +30,10 @@ import { Plugin } from "@opencode/core/plugin"
 import { PluginHooks } from "@opencode/core/plugin/hooks"
 import { Snapshot } from "@opencode/core/snapshot"
 import { Skill } from "@opencode/core/skill"
+import { Config } from "@opencode/core/config"
+import { HookRuntime } from "@opencode/core/hook"
+import { Location } from "@opencode/core/location"
+import { location } from "./fixture/location"
 import { Vault } from "@opencode/core/vault/vault"
 import { tmpdirScoped } from "./fixture/tmpdir"
 import { testEffect } from "./lib/effect"
@@ -69,11 +72,15 @@ const locations = makeGlobalNode({
     Effect.gen(function* () {
       const bus = yield* Bus.Service
       return yield* LayerMap.make(
-        (_ref: Location.Ref) =>
+        (ref: Location.Ref) =>
           // oxlint-disable-next-line typescript-eslint/no-unsafe-type-assertion
           Layer.mergeAll(
-            LayerNode.compile(LayerNode.group([PluginHooks.node, Skill.node]), {
-              replacements: [Bus.node.replace(Layer.succeed(Bus.Service, bus))],
+            LayerNode.compile(LayerNode.group([PluginHooks.node, Skill.node, HookRuntime.node]), {
+              replacements: [
+                Bus.node.replace(Layer.succeed(Bus.Service, bus)),
+                Config.node.replace(Config.testLayer()),
+                Location.node.replace(Layer.succeed(Location.Service, location(ref))),
+              ],
             }),
             Layer.mock(Image.Service, {
               normalize: (_resource, content) =>

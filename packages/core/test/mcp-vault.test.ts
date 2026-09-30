@@ -11,6 +11,10 @@ import { Tool } from "@opencode/core/tool"
 import { McpTool } from "@opencode/core/tool/mcp"
 import { Vault } from "@opencode/core/vault/vault"
 import { Project } from "@opencode/schema/project"
+import { Config } from "@opencode/core/config"
+import { Location } from "@opencode/core/location"
+import { AbsolutePath } from "@opencode/core/schema"
+import { location } from "./fixture/location"
 import { testEffect } from "./lib/effect"
 import { imagePassthrough } from "./lib/image"
 import { permissionLayer } from "./lib/permission"
@@ -79,6 +83,10 @@ const permissions = permissionLayer({
 const it = testEffect(
   AppNodeBuilder.build(LayerNode.group([Tool.node, McpTool.node]), [
     Mcp.node.replace(mcp),
+    Config.node.replace(Config.testLayer()),
+    Location.node.replace(
+      Layer.succeed(Location.Service, Location.Service.of(location({ directory: AbsolutePath.make(process.cwd()) }))),
+    ),
     Permission.node.replace(permissions),
     Bus.node.replace(Layer.mock(Bus.Service, { subscribe: () => Stream.never })),
     Image.node.replace(imagePassthrough),
