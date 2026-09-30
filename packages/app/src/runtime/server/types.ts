@@ -1,4 +1,4 @@
-import type { ProjectListOutput, WorktreeDirectory } from "@opencode/client/promise"
+import type { ProjectListOutput, RouterOffer, WorktreeDirectory } from "@opencode/client/promise"
 
 export type Project = Omit<ProjectListOutput[number], "canonical"> & {
   worktree: string
@@ -68,6 +68,10 @@ export type Agent = {
 export type Model = {
   id: string
   providerID: string
+  /** The flat router model this model pins one offer of; pickers list it among that model's offers. */
+  pinOf?: string
+  /** The ways a router serves this flat model id, in policy order. */
+  offers?: RouterOffer[]
   api: {
     id: string
     url: string

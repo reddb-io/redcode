@@ -8,6 +8,7 @@ import { showToast } from "@/shell/notifications/toast"
 import { popularProviders, useProviders } from "@/providers/catalog/providers"
 import { consoleProviderGroup } from "@/providers/catalog/console"
 import { useIntegrations } from "@/providers/catalog/integrations"
+import { ProviderRemoval } from "@opencode/schema/provider-removal"
 import { createEffect, createMemo, type Component, For, Show } from "solid-js"
 import { createStore, reconcile } from "solid-js/store"
 import { useLanguage } from "@/runtime/i18n/language"
@@ -18,6 +19,7 @@ import { DialogConnectProvider, useProviderConnectController } from "@/providers
 import { ProviderModelIcon } from "@/providers/models/provider-group"
 import { SettingsList } from "@/settings/list"
 import { activeProviderAccount, providerAccounts, type ProviderAccount } from "./accounts"
+import { DialogRemoveProvider } from "./remove-dialog"
 import "@/settings/settings.css"
 
 type ProviderSource = "env" | "api" | "account" | "config" | "custom"
@@ -306,6 +308,46 @@ export const SettingsProviders: Component<{
       .finally(() => setState("credentialID", undefined))
   }
 
+  // Previews everything saved for the provider (credentials, config entries, learned limits and, for a
+  // router, its MCP registration) and removes it only after the user confirms that list.
+  const removeProvider = async (item: ProviderItem, name: string) => {
+    const providerID = item.integrationID ?? item.id
+    const location = props.directory ? { directory: props.directory } : undefined
+    await serverSdk.api.provider
+      .remove({ providerID, dryRun: true, location })
+      .then((preview) => {
+        if (ProviderRemoval.empty(preview.data)) {
+          showToast({ title: language.t("settings.providers.remove.empty", { provider: name }) })
+          return
+        }
+        void dialog.show(() => (
+          <DialogRemoveProvider
+            name={name}
+            preview={preview.data}
+            onRemove={() =>
+              serverSdk.api.provider
+                .remove({ providerID, dryRun: false, location })
+                .then(refreshAccounts)
+                .then(() => {
+                  showToast({
+                    variant: "success",
+                    icon: "circle-check",
+                    title: language.t("settings.providers.remove.removed.title", { provider: name }),
+                    description: language.t("settings.providers.remove.removed.description"),
+                  })
+                  return true
+                })
+                .catch((error: unknown) => {
+                  accountError(error)
+                  return false
+                })
+            }
+          />
+        ))
+      })
+      .catch(accountError)
+  }
+
   function AccountMenu(menuProps: { provider: ProviderItem; name?: string }) {
     const accounts = () => providerAccounts(integration(menuProps.provider))
     const active = () => activeProviderAccount(integration(menuProps.provider))
@@ -365,6 +407,13 @@ export const SettingsProviders: Component<{
                 </For>
               </Menu.SubContent>
             </Menu.Sub>
+            <Menu.Separator />
+            <Menu.Item
+              disabled={state.credentialID !== undefined}
+              onSelect={() => void removeProvider(menuProps.provider, name())}
+            >
+              {language.t("settings.providers.remove.action")}
+            </Menu.Item>
           </Menu.Content>
         </Menu.Portal>
       </Menu>
@@ -429,6 +478,16 @@ export const SettingsProviders: Component<{
                             }
                           >
                             <AccountMenu provider={item} />
+                          </Show>
+                          <Show when={!canManageAccounts(item)}>
+                            <Button
+                              size="normal"
+                              variant="ghost-muted"
+                              aria-label={language.t("settings.providers.remove.title", { provider: item.name })}
+                              onClick={() => void removeProvider(item, item.name)}
+                            >
+                              {language.t("settings.providers.remove.action")}
+                            </Button>
                           </Show>
                         </div>
                       }

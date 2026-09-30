@@ -214,6 +214,10 @@ import type {
   McpConnectOutput,
   McpDisconnectInput,
   McpDisconnectOutput,
+  McpRestartInput,
+  McpRestartOutput,
+  McpReloadInput,
+  McpReloadOutput,
   McpResourceCatalogInput,
   McpResourceCatalogOutput,
   CredentialUpdateInput,
@@ -1481,6 +1485,16 @@ const EndpointMcpDisconnect = (raw: RawClient["server.mcp"]) => (input: McpDisco
     ),
   )
 
+const EndpointMcpRestart = (raw: RawClient["server.mcp"]) => (input?: McpRestartInput) =>
+  preserveEffect<McpRestartOutput>()(
+    raw["mcp.restart"]({ query: { location: input?.["location"] } }).pipe(Effect.mapError(mapClientError)),
+  )
+
+const EndpointMcpReload = (raw: RawClient["server.mcp"]) => (input?: McpReloadInput) =>
+  preserveEffect<McpReloadOutput>()(
+    raw["mcp.reload"]({ query: { location: input?.["location"] } }).pipe(Effect.mapError(mapClientError)),
+  )
+
 const EndpointMcpResourceCatalog = (raw: RawClient["server.mcp"]) => (input?: McpResourceCatalogInput) =>
   preserveEffect<McpResourceCatalogOutput>()(
     raw["mcp.resource.catalog"]({ query: { location: input?.["location"] } }).pipe(Effect.mapError(mapClientError)),
@@ -1493,6 +1507,8 @@ const adaptGroupMcp = (raw: RawClient["server.mcp"]) => ({
   remove: EndpointMcpRemove(raw),
   connect: EndpointMcpConnect(raw),
   disconnect: EndpointMcpDisconnect(raw),
+  restart: EndpointMcpRestart(raw),
+  reload: EndpointMcpReload(raw),
   resource: { catalog: EndpointMcpResourceCatalog(raw) },
 })
 

@@ -1,3 +1,4 @@
+import { Config } from "@opencode/core/config"
 import { Mcp } from "@opencode/core/mcp/index"
 import { McpServerNotFoundError } from "@opencode/protocol/errors"
 import { Effect } from "effect"
@@ -70,6 +71,24 @@ export const McpHandler = HttpApiBuilder.group(Api, "server.mcp", (handlers) =>
         Effect.fn(function* (ctx) {
           const service = yield* Mcp.Service
           yield* notFound(service.disconnect(ctx.params.server))
+          return HttpApiSchema.NoContent.make()
+        }),
+      )
+      .handle(
+        "mcp.restart",
+        Effect.fn(function* () {
+          const service = yield* Mcp.Service
+          yield* service.restart()
+          return HttpApiSchema.NoContent.make()
+        }),
+      )
+      .handle(
+        "mcp.reload",
+        Effect.fn(function* () {
+          const config = yield* Config.Service
+          const service = yield* Mcp.Service
+          if (config.reload) yield* config.reload()
+          yield* service.reset()
           return HttpApiSchema.NoContent.make()
         }),
       )

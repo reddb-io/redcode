@@ -109,6 +109,10 @@ export interface Interface extends State.Transformable<Editor> {
   readonly connect: (server: ServerName | string) => Effect.Effect<void, NotFoundError>
   readonly disconnect: (server: ServerName | string) => Effect.Effect<void, NotFoundError>
   readonly remove: (server: ServerName | string) => Effect.Effect<void, NotFoundError>
+  /** Reconnects every server its configuration enables, including servers disconnected at runtime. */
+  readonly restart: () => Effect.Effect<void>
+  /** Discards runtime additions and removals so the configured server set applies again. */
+  readonly reset: () => Effect.Effect<void>
   readonly tools: () => Effect.Effect<Tool[]>
   readonly callTool: (input: {
     readonly server: ServerName | string
@@ -652,6 +656,23 @@ export const layer = (options?: Options) =>
           const name = ServerName.make(server)
           yield* requireServer(name)
           overrides.set(name, false)
+          yield* state.reload()
+        }),
+        restart: Effect.fn("MCP.restart")(function* () {
+          yield* Effect.forEach(
+            Array.from(entries).filter(([, entry]) => !entry.config.disabled),
+            ([name, entry]) =>
+              Effect.gen(function* () {
+                // add() or remove() may have replaced or deleted the entry while this waited for the lock.
+                if (entries.get(name) !== entry) return
+                yield* stopServer(name, entry)
+                yield* startServer(name, entry)
+              }).pipe(locks.withLock(name)),
+            { concurrency: "unbounded", discard: true },
+          )
+        }),
+        reset: Effect.fn("MCP.reset")(function* () {
+          overrides.clear()
           yield* state.reload()
         }),
         // Reads report what is connected now; servers still starting contribute once they publish a change.

@@ -2983,6 +2983,7 @@ export type ConfigEntry =
           loop_guard?: false | { correct_at?: number; stop_at?: number; nudge_at?: number }
           stop_loss?: false | { every?: number; cooldown?: number; idle_at?: number; tokens?: number; minutes?: number }
           aux_timeout?: false | number
+          turn_steps?: false | number
           turn_stall?: false | { warn_ms?: number; abort_ms?: number }
           tool_timeout?: false | number
           model_suggestions?: boolean
@@ -8329,6 +8330,18 @@ export type McpDisconnectInput = {
 }
 
 export type McpDisconnectOutput = void
+
+export type McpRestartInput = {
+  readonly location?: { readonly location?: { readonly directory?: string | undefined } | undefined }["location"]
+}
+
+export type McpRestartOutput = void
+
+export type McpReloadInput = {
+  readonly location?: { readonly location?: { readonly directory?: string | undefined } | undefined }["location"]
+}
+
+export type McpReloadOutput = void
 
 export type McpResourceCatalogInput = {
   readonly location?: { readonly location?: { readonly directory?: string | undefined } | undefined }["location"]

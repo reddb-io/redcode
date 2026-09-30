@@ -49,6 +49,8 @@ export interface Interface {
    * source files they parse and rebuild their own state.
    */
   readonly changes: () => Stream.Stream<Watcher.Update>
+  /** Re-reads config sources now instead of waiting for a filesystem watch; failures are logged. */
+  readonly reload?: () => Effect.Effect<void>
   /** Updates supported global config fields while preserving unrelated JSONC content. */
   readonly update?: (patch: Patch) => Effect.Effect<void, FSUtil.Error>
   /** Removes authored global references to a provider and can hide ambient credentials. */
@@ -494,6 +496,7 @@ export const layer = (options?: Options) =>
             agents: Effect.filter(sources.agents, fs.isDir),
           }),
         changes: () => Stream.fromPubSub(updates),
+        reload: () => reload().pipe(Effect.catchCause((cause) => Effect.logError("failed to reload config", { cause }))),
         update,
         removeProvider,
         enableProvider,

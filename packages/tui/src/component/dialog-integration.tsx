@@ -11,6 +11,7 @@ import type {
   FormValue,
   LocationRef,
 } from "@opencode/client"
+import { ProviderRemoval } from "@opencode/schema/provider-removal"
 import { openUrl } from "@opencode/util/open"
 import { createEffect, createMemo, createSignal, onCleanup, onMount, Show } from "solid-js"
 import { useClipboard } from "../context/clipboard"
@@ -20,6 +21,7 @@ import { Keymap } from "../context/keymap"
 import { useLocation } from "../context/location"
 import { useTheme } from "../context/theme"
 import { useDialog } from "../ui/dialog"
+import { DialogConfirm } from "../ui/dialog-confirm"
 import { DialogPrompt } from "../ui/dialog-prompt"
 import { DialogSelect } from "../ui/dialog-select"
 import { Link } from "../ui/link"
@@ -82,6 +84,8 @@ export function DialogIntegration(
   props: { onConnected?: OnIntegrationConnected; integrationID?: string; autoConnect?: boolean } = {},
 ) {
   const data = useData()
+  const client = useClient()
+  const toast = useToast()
   const currentLocation = useLocation()
   const dialog = useDialog()
   const theme = useTheme().surface("dialog")
@@ -135,6 +139,16 @@ export function DialogIntegration(
     <DialogSelect
       title="Connect an integration"
       options={options()}
+      actions={[
+        {
+          command: "dialog.integration.remove",
+          title: "remove provider",
+          onTrigger: (option) => {
+            const integration = integrations().find((item) => item.id === option.value)
+            if (integration) removeProvider(integration, location, dialog, client, toast)
+          },
+        },
+      ]}
       emptyView={
         <box paddingLeft={4} paddingRight={4}>
           <text fg={theme.text.muted}>No integrations available</text>
@@ -211,13 +225,19 @@ function manageConnections(
                 },
               }
             }),
+          {
+            title: "Remove provider…",
+            value: "remove",
+            description: "Preview everything saved for this provider, then remove it",
+            onSelect: () => removeProvider(current() ?? integration, location, dialog, client, toast),
+          },
         ]}
         actions={[
           {
             command: "dialog.integration.rename",
             title: "rename",
-            hidden: selected() === "add",
-            disabled: (option) => !option || option.value === "add",
+            hidden: selected() === "add" || selected() === "remove",
+            disabled: (option) => !option || option.value === "add" || option.value === "remove",
             onTrigger: (option) => {
               dialog.replace(() => (
                 <DialogPrompt
@@ -241,8 +261,8 @@ function manageConnections(
           {
             command: "dialog.integration.delete",
             title: "delete",
-            hidden: selected() === "add",
-            disabled: (option) => !option || option.value === "add",
+            hidden: selected() === "add" || selected() === "remove",
+            disabled: (option) => !option || option.value === "add" || option.value === "remove",
             onTrigger: (option) => {
               if (deleting() !== option.value) return setDeleting(option.value)
               const final = credentialConnections(current() ?? integration).length === 1
@@ -264,6 +284,42 @@ function manageConnections(
       />
     )
   })
+}
+
+/** Previews a complete provider removal, then removes it once the user confirms what will go. */
+function removeProvider(
+  integration: IntegrationInfo,
+  location: LocationRef,
+  dialog: ReturnType<typeof useDialog>,
+  client: ReturnType<typeof useClient>,
+  toast: ReturnType<typeof useToast>,
+) {
+  void client.api.provider
+    .remove({ providerID: integration.id, dryRun: true, location: locationQuery(location) })
+    .then((preview) => {
+      if (ProviderRemoval.empty(preview.data)) {
+        toast.show({ variant: "info", message: `Nothing to remove for ${integration.name}` })
+        return
+      }
+      dialog.replace(() => (
+        <DialogConfirm
+          title={`Remove ${integration.name}`}
+          message={ProviderRemoval.items(preview.data)
+            .map((item) =>
+              item.kind === "referencingFile" ? ProviderRemoval.describe(item) : `• ${ProviderRemoval.describe(item)}`,
+            )
+            .join("\n")}
+          label={{ confirm: "Remove" }}
+          onConfirm={() => {
+            void client.api.provider
+              .remove({ providerID: integration.id, dryRun: false, location: locationQuery(location) })
+              .then(() => toast.show({ variant: "success", message: `Removed ${integration.name}` }))
+              .catch(toast.error)
+          }}
+        />
+      ))
+    })
+    .catch(toast.error)
 }
 
 function selectMethod(

@@ -3,7 +3,8 @@ import path from "node:path"
 import { Effect } from "effect"
 import { Commands } from "../../commands"
 import { Runtime } from "../../../framework/runtime"
-import { canonical, git, inventory } from "./inventory"
+import { WorktreeInventory } from "@opencode/core/worktree/inventory"
+import { inventory } from "./inventory"
 import { project } from "./shared"
 
 export default Runtime.handler(
@@ -13,8 +14,8 @@ export default Runtime.handler(
     yield* Effect.promise(() => context.client.worktree.refresh({ projectID: context.projectID }))
     const result = yield* inventory()
     const targets = new Set([
-      yield* Effect.promise(() => canonical(path.resolve(args.target))),
-      ...(result.root ? [yield* Effect.promise(() => canonical(path.resolve(result.root, args.target)))] : []),
+      yield* Effect.promise(() => WorktreeInventory.canonical(path.resolve(args.target))),
+      ...(result.root ? [yield* Effect.promise(() => WorktreeInventory.canonical(path.resolve(result.root, args.target)))] : []),
     ])
     const matches = result.worktrees.filter((entry) =>
       targets.has(entry.path) || entry.branch === args.target || path.basename(entry.path) === args.target,
@@ -40,7 +41,7 @@ export default Runtime.handler(
       force: args.force,
     }))
     if (args.deleteBranch && branch && root) {
-      const deleted = yield* Effect.promise(() => git(root, ["branch", "-D", branch], true))
+      const deleted = yield* Effect.promise(() => WorktreeInventory.git(root, ["branch", "-D", branch], true))
       if (deleted.exit !== 0) return yield* Effect.fail(new Error(`Removed ${entry.path}, but could not delete ${branch}: ${deleted.error.trim()}`))
     }
     process.stdout.write(`Removed ${entry.path}${args.deleteBranch ? ` and branch ${entry.branch}` : ""}${EOL}`)

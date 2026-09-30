@@ -2,7 +2,8 @@ import { EOL } from "node:os"
 import { Effect } from "effect"
 import { Commands } from "../../commands"
 import { Runtime } from "../../../framework/runtime"
-import { bytes, inventory } from "./inventory"
+import { WorktreeInventory } from "@opencode/core/worktree/inventory"
+import { inventory } from "./inventory"
 
 export default Runtime.handler(
   Commands.commands.worktrees.commands.list,
@@ -13,18 +14,8 @@ export default Runtime.handler(
       return
     }
     const rows = result.worktrees.map((entry) => {
-      const pending = entry.changes ? entry.changes.tracked + entry.changes.untracked : undefined
-      const state = entry.prunable
-        ? "missing"
-        : pending === undefined
-          ? "unknown"
-          : pending > 0
-            ? "dirty"
-            : entry.merged
-              ? "merged"
-              : "clean"
       const details = [
-        state,
+        WorktreeInventory.state(entry),
         entry.temporary ? "tmp" : undefined,
         entry.current ? "current" : undefined,
         entry.locked ? "locked" : undefined,
@@ -34,7 +25,7 @@ export default Runtime.handler(
       return [
         entry.relative ?? (entry.primary ? "primary checkout" : entry.path),
         entry.branch ?? (entry.head.slice(0, 7) || "-"),
-        entry.changes ? `${entry.sizePartial ? "≥" : ""}${bytes(entry.size)}` : "-",
+        WorktreeInventory.size(entry) ?? "-",
         details,
       ]
     })

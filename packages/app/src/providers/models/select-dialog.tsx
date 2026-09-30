@@ -22,6 +22,7 @@ import { createEventListener } from "@solid-primitives/event-listener"
 import { matchesModelSearch } from "./search"
 import { SettingsList } from "@/settings/list"
 import { CONSOLE_GROUP_KEY, consoleModelGroup, ProviderModelSections } from "@/providers/models/provider-group"
+import { Router } from "@opencode/schema/router"
 import "@/settings/settings.css"
 
 const isFree = (provider: string, cost: { input: number } | undefined) =>
@@ -29,8 +30,30 @@ const isFree = (provider: string, cost: { input: number } | undefined) =>
 
 type ModelState = ModelSelection
 type ModelItem = ReturnType<ModelState["list"]>[number]
+type OfferEntry = ReturnType<typeof Router.offerGroups<ModelItem>>[number]["offers"][number]
 
 const modelKey = (model: ModelItem) => `${model.provider.id}:${model.id}`
+
+/** How an offer of a flat router model reads: price, availability, and whether it serves now or can be pinned. */
+function offerDetails(language: ReturnType<typeof useLanguage>, entry: OfferEntry) {
+  const dollars = (value: number | undefined) => (value === undefined ? "?" : String(Number(value.toFixed(4))))
+  const price = entry.offer.free
+    ? language.t("model.tag.free")
+    : entry.offer.price
+      ? language.t("model.offers.price", {
+          input: dollars(entry.offer.price.input),
+          output: dollars(entry.offer.price.output),
+        })
+      : undefined
+  return [
+    price,
+    entry.offer.available ? language.t("model.offers.available") : language.t("model.offers.unavailable"),
+    entry.lead ? language.t("model.offers.lead") : undefined,
+    entry.model ? undefined : language.t("model.offers.unpinnable"),
+  ]
+    .filter((part): part is string => !!part)
+    .join(" · ")
+}
 const manageKey = "action:manage"
 
 const sortModelGroups = (a: { category: string; items: ModelItem[] }, b: { category: string; items: ModelItem[] }) => {
@@ -60,6 +83,7 @@ const ModelList: Component<{
     search: "",
     active: "",
     collapsed: {} as Record<string, boolean>,
+    offers: {} as Record<string, boolean>,
   })
   const models = createMemo(() => controller.models(store.search))
   const modelGroups = createMemo(() => controller.groups(models()))
@@ -98,42 +122,89 @@ const ModelList: Component<{
       <SettingsList variant="catalog">
         <For each={props.items}>
           {(item) => (
-            <button
-              type="button"
-              data-component="settings-row"
-              data-option-key={modelKey(item)}
-              class="-mx-4 w-[calc(100%+32px)] px-4 text-start first:rounded-t-lg last:rounded-b-lg hover:bg-v2-overlay-simple-overlay-hover focus-visible:bg-v2-overlay-simple-overlay-hover focus-visible:outline-none"
-              classList={{ "bg-v2-overlay-simple-overlay-hover": store.active === modelKey(item) }}
-              onMouseEnter={() => setStore("active", modelKey(item))}
-              onMouseLeave={() => setStore("active", "")}
-              onClick={() => controller.select(item)}
-            >
-              <div data-slot="settings-row-copy">
-                <div data-slot="settings-row-title" class="flex items-center gap-2">
-                  <Tooltip
-                    placement="right-start"
-                    gutter={12}
-                    openDelay={0}
-                    value={
-                      <ModelTooltip model={item} latest={item.latest} free={isFree(item.provider.id, item.cost)} v2 />
-                    }
-                  >
-                    <span class="min-w-0 truncate">{item.name}</span>
-                  </Tooltip>
-                  <Show when={isFree(item.provider.id, item.cost)}>
-                    <Badge class="shrink-0">{language.t("model.tag.free")}</Badge>
-                  </Show>
-                  <Show when={item.latest}>
-                    <Badge class="shrink-0">{language.t("model.tag.latest")}</Badge>
+            <>
+              <button
+                type="button"
+                data-component="settings-row"
+                data-option-key={modelKey(item)}
+                class="-mx-4 w-[calc(100%+32px)] px-4 text-start first:rounded-t-lg last:rounded-b-lg hover:bg-v2-overlay-simple-overlay-hover focus-visible:bg-v2-overlay-simple-overlay-hover focus-visible:outline-none"
+                classList={{ "bg-v2-overlay-simple-overlay-hover": store.active === modelKey(item) }}
+                onMouseEnter={() => setStore("active", modelKey(item))}
+                onMouseLeave={() => setStore("active", "")}
+                onClick={() => controller.select(item)}
+              >
+                <div data-slot="settings-row-copy">
+                  <div data-slot="settings-row-title" class="flex items-center gap-2">
+                    <Tooltip
+                      placement="right-start"
+                      gutter={12}
+                      openDelay={0}
+                      value={
+                        <ModelTooltip model={item} latest={item.latest} free={isFree(item.provider.id, item.cost)} v2 />
+                      }
+                    >
+                      <span class="min-w-0 truncate">{item.name}</span>
+                    </Tooltip>
+                    <Show when={isFree(item.provider.id, item.cost)}>
+                      <Badge class="shrink-0">{language.t("model.tag.free")}</Badge>
+                    </Show>
+                    <Show when={item.latest}>
+                      <Badge class="shrink-0">{language.t("model.tag.latest")}</Badge>
+                    </Show>
+                  </div>
+                </div>
+                <div data-slot="settings-row-control" class="size-4">
+                  <Show when={controller.current() === modelKey(item)}>
+                    <Icon name="check" size="small" class="shrink-0 text-v2-icon-icon-base" />
                   </Show>
                 </div>
-              </div>
-              <div data-slot="settings-row-control" class="size-4">
-                <Show when={controller.current() === modelKey(item)}>
-                  <Icon name="check" size="small" class="shrink-0 text-v2-icon-icon-base" />
+              </button>
+              <Show when={controller.offers(item).length > 0}>
+                <button
+                  type="button"
+                  data-component="settings-row"
+                  class="-mx-4 w-[calc(100%+32px)] px-4 ps-8 text-start hover:bg-v2-overlay-simple-overlay-hover focus-visible:bg-v2-overlay-simple-overlay-hover focus-visible:outline-none"
+                  aria-expanded={Boolean(store.offers[modelKey(item)])}
+                  onClick={() => setStore("offers", modelKey(item), (value) => !value)}
+                >
+                  <div data-slot="settings-row-copy">
+                    <div data-slot="settings-row-title" class="flex items-center gap-2 text-v2-text-text-muted">
+                      <Icon name={store.offers[modelKey(item)] ? "chevron-down" : "chevron-right"} size="small" />
+                      <span class="min-w-0 truncate">
+                        {language.plural("model.offers.count", controller.offers(item).length)}
+                      </span>
+                    </div>
+                  </div>
+                </button>
+                <Show when={store.offers[modelKey(item)]}>
+                  <For each={controller.offers(item)}>
+                    {(entry) => (
+                      <button
+                        type="button"
+                        data-component="settings-row"
+                        class="-mx-4 w-[calc(100%+32px)] px-4 ps-12 text-start hover:bg-v2-overlay-simple-overlay-hover focus-visible:bg-v2-overlay-simple-overlay-hover focus-visible:outline-none disabled:opacity-50"
+                        disabled={!entry.model}
+                        onClick={() => {
+                          if (entry.model) controller.select(entry.model)
+                        }}
+                      >
+                        <div data-slot="settings-row-copy">
+                          <div data-slot="settings-row-title" class="flex items-center gap-2">
+                            <span class="min-w-0 truncate">{Router.offerRoute(entry.offer)}</span>
+                          </div>
+                          <div data-slot="settings-row-description">{offerDetails(language, entry)}</div>
+                        </div>
+                        <div data-slot="settings-row-control" class="size-4">
+                          <Show when={entry.model && controller.current() === modelKey(entry.model)}>
+                            <Icon name="check" size="small" class="shrink-0 text-v2-icon-icon-base" />
+                          </Show>
+                        </div>
+                      </button>
+                    )}
+                  </For>
                 </Show>
-              </div>
-            </button>
+              </Show>
+            </>
           )}
         </For>
       </SettingsList>
@@ -229,6 +300,7 @@ export function ModelSelectorPopover(props: {
       trigger={props.trigger}
       models={controller.models}
       groups={controller.groups}
+      offers={controller.offers}
       current={controller.current()}
       select={controller.select}
       onManage={() => {
@@ -247,22 +319,25 @@ function createModelSelectorController(input: {
   onSelect: () => void
 }) {
   const model = input.model ?? useLocal().model
+  const all = () => model.list().filter((item) => (input.provider() ? item.provider.id === input.provider() : true))
   const allModels = createMemo(() =>
-    model
-      .list()
-      .filter((item) => model.visible({ modelID: item.id, providerID: item.provider.id }))
-      .filter((item) => (input.provider() ? item.provider.id === input.provider() : true)),
+    all().filter((item) => model.visible({ modelID: item.id, providerID: item.provider.id })),
+  )
+  // Models pinning one offer of a flat router model are listed among that model's offers instead.
+  const offers = createMemo(
+    () => new Map(Router.offerGroups(all()).map((group) => [modelKey(group.model), group.offers] as const)),
   )
 
   return {
-    all: () => model.list().filter((item) => (input.provider() ? item.provider.id === input.provider() : true)),
+    all,
     models: (search: string) => {
       const query = search.trim()
       const filtered = query
         ? allModels().filter((item) => matchesModelSearch(query, [item.name, item.id, item.provider.name]))
         : allModels()
-      return [...filtered].sort((a, b) => a.name.localeCompare(b.name))
+      return Router.offerGroups([...filtered].sort((a, b) => a.name.localeCompare(b.name))).map((group) => group.model)
     },
+    offers: (item: ModelItem): OfferEntry[] => offers().get(modelKey(item)) ?? [],
     groups: (models: ModelItem[]) => {
       const byProvider = new Map<string, ModelItem[]>()
       for (const item of models) {
@@ -285,13 +360,14 @@ function ModelSelectorPopoverView(props: {
   trigger: ModelSelectorTrigger
   models: (search: string) => ModelItem[]
   groups: (models: ModelItem[]) => { category: string; items: ModelItem[] }[]
+  offers: (item: ModelItem) => OfferEntry[]
   current: string | undefined
   select: (item: ModelItem) => void
   onManage: () => void
   onClose: () => void
 }) {
   const language = useLanguage()
-  const [store, setStore] = createStore({ open: false, search: "", active: "" })
+  const [store, setStore] = createStore({ open: false, search: "", active: "", offers: {} as Record<string, boolean> })
   let searchRef: HTMLInputElement | undefined
   let contentRef: HTMLDivElement | undefined
   const dismiss = createMenuDismissController(() => contentRef)
@@ -446,41 +522,80 @@ function ModelSelectorPopoverView(props: {
                       <Menu.RadioGroup value={props.current}>
                         <For each={group.items}>
                           {(item) => (
-                            <Tooltip
-                              class="w-full"
-                              placement="right-start"
-                              gutter={6}
-                              openDelay={0}
-                              value={
-                                <ModelTooltip
-                                  model={item}
-                                  latest={item.latest}
-                                  free={isFree(item.provider.id, item.cost)}
-                                  v2
-                                />
-                              }
-                            >
-                              <Menu.RadioItem
-                                value={modelKey(item)}
-                                data-option-key={modelKey(item)}
-                                data-selected-model={props.current === modelKey(item) ? true : undefined}
-                                class="scroll-my-6 w-full"
-                                classList={{ "!bg-v2-overlay-simple-overlay-hover": store.active === modelKey(item) }}
-                                onMouseEnter={() => {
-                                  setStore("active", modelKey(item))
-                                  setTimeout(() => searchRef?.focus())
-                                }}
-                                onSelect={() => selectModel(item)}
+                            <>
+                              <Tooltip
+                                class="w-full"
+                                placement="right-start"
+                                gutter={6}
+                                openDelay={0}
+                                value={
+                                  <ModelTooltip
+                                    model={item}
+                                    latest={item.latest}
+                                    free={isFree(item.provider.id, item.cost)}
+                                    v2
+                                  />
+                                }
                               >
-                                <span class="min-w-0 truncate leading-5">{item.name}</span>
-                                <Show when={isFree(item.provider.id, item.cost)}>
-                                  <Badge class="shrink-0">{language.t("model.tag.free")}</Badge>
+                                <Menu.RadioItem
+                                  value={modelKey(item)}
+                                  data-option-key={modelKey(item)}
+                                  data-selected-model={props.current === modelKey(item) ? true : undefined}
+                                  class="scroll-my-6 w-full"
+                                  classList={{ "!bg-v2-overlay-simple-overlay-hover": store.active === modelKey(item) }}
+                                  onMouseEnter={() => {
+                                    setStore("active", modelKey(item))
+                                    setTimeout(() => searchRef?.focus())
+                                  }}
+                                  onSelect={() => selectModel(item)}
+                                >
+                                  <span class="min-w-0 truncate leading-5">{item.name}</span>
+                                  <Show when={isFree(item.provider.id, item.cost)}>
+                                    <Badge class="shrink-0">{language.t("model.tag.free")}</Badge>
+                                  </Show>
+                                  <Show when={item.latest}>
+                                    <Badge class="shrink-0">{language.t("model.tag.latest")}</Badge>
+                                  </Show>
+                                </Menu.RadioItem>
+                              </Tooltip>
+                              <Show when={props.offers(item).length > 0}>
+                                <Menu.Item
+                                  closeOnSelect={false}
+                                  class="w-full ps-6"
+                                  aria-expanded={Boolean(store.offers[modelKey(item)])}
+                                  onSelect={() => setStore("offers", modelKey(item), (value) => !value)}
+                                >
+                                  <Icon
+                                    name={store.offers[modelKey(item)] ? "chevron-down" : "chevron-right"}
+                                    size="small"
+                                  />
+                                  <span class="min-w-0 truncate leading-5">
+                                    {language.plural("model.offers.count", props.offers(item).length)}
+                                  </span>
+                                </Menu.Item>
+                                <Show when={store.offers[modelKey(item)]}>
+                                  <For each={props.offers(item)}>
+                                    {(entry) => (
+                                      <Menu.Item
+                                        class="w-full ps-9"
+                                        disabled={!entry.model}
+                                        title={offerDetails(language, entry)}
+                                        onSelect={() => {
+                                          if (entry.model) selectModel(entry.model)
+                                        }}
+                                      >
+                                        <span class="min-w-0 flex-1 truncate leading-5">
+                                          {Router.offerRoute(entry.offer)}
+                                        </span>
+                                        <span class="shrink-0 truncate leading-5 text-v2-text-text-faint">
+                                          {offerDetails(language, entry)}
+                                        </span>
+                                      </Menu.Item>
+                                    )}
+                                  </For>
                                 </Show>
-                                <Show when={item.latest}>
-                                  <Badge class="shrink-0">{language.t("model.tag.latest")}</Badge>
-                                </Show>
-                              </Menu.RadioItem>
-                            </Tooltip>
+                              </Show>
+                            </>
                           )}
                         </For>
                       </Menu.RadioGroup>

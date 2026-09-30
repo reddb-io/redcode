@@ -84,6 +84,36 @@ export function McpsTab(props: { sessionID: string }) {
       .finally(() => setBusy(undefined))
   }
 
+  const operateAll = (action: "restart" | "reload") => {
+    if (busy()) return
+    setBusy(action)
+    void client.api.mcp[action]({ location: { directory: location().directory } })
+      .then(() => {
+        toast.show({
+          variant: "success",
+          message: action === "restart" ? "MCP servers reconnected" : "MCP configuration reloaded",
+        })
+        refresh()
+      })
+      .catch(toast.error)
+      .finally(() => setBusy(undefined))
+  }
+
+  // Reconnecting drops every live connection, so it asks first; reloading config only touches changed servers.
+  const restart = () => {
+    if (!servers().some((server) => server.status.status === "connected")) {
+      operateAll("restart")
+      return
+    }
+    dialog.replace(() => (
+      <DialogConfirm
+        title="Reconnect all MCP servers"
+        message="Close every live MCP connection and reconnect the enabled servers? Running tool calls may fail."
+        onConfirm={() => operateAll("restart")}
+      />
+    ))
+  }
+
   const connect = (server: McpServer) => {
     const integrationID = server.integrationID
     if (server.status.status === "needs_auth" && integrationID) {
@@ -189,8 +219,10 @@ export function McpsTab(props: { sessionID: string }) {
                 shortcut: shortcuts.get("composer.mcp.toggle") ?? "",
               },
               { label: "turn off", shortcut: shortcuts.get("composer.mcp.remove") ?? "" },
+              { label: "reconnect all", shortcut: shortcuts.get("composer.mcp.restart") ?? "" },
             ]
           : []),
+        { label: "reload config", shortcut: shortcuts.get("composer.mcp.reload") ?? "" },
       ],
     })
     onCleanup(cleanup)
@@ -242,6 +274,20 @@ export function McpsTab(props: { sessionID: string }) {
           if (server) unload(server)
         },
       },
+      {
+        id: "composer.mcp.restart",
+        title: "Reconnect all MCP servers",
+        group: "Composer",
+        run: () => {
+          if (servers().length > 0) restart()
+        },
+      },
+      {
+        id: "composer.mcp.reload",
+        title: "Reload MCP configuration",
+        group: "Composer",
+        run: () => operateAll("reload"),
+      },
     ],
   }))
 
@@ -252,6 +298,13 @@ export function McpsTab(props: { sessionID: string }) {
         fallback={
           <box height={5} paddingLeft={1}>
             <text fg={theme.text.muted}>No MCP servers</text>
+            <text
+              fg={theme.text.action.primary.base}
+              attributes={TextAttributes.UNDERLINE}
+              onMouseUp={() => operateAll("reload")}
+            >
+              reload config
+            </text>
           </box>
         }
       >
@@ -355,6 +408,16 @@ export function McpsTab(props: { sessionID: string }) {
               onMouseUp={() => unload(server())}
             >
               turn off
+            </text>
+            <text fg={theme.text.action.primary.base} attributes={TextAttributes.UNDERLINE} onMouseUp={restart}>
+              reconnect all
+            </text>
+            <text
+              fg={theme.text.action.primary.base}
+              attributes={TextAttributes.UNDERLINE}
+              onMouseUp={() => operateAll("reload")}
+            >
+              reload config
             </text>
             <Show when={server().status.status === "failed"}>
               <text

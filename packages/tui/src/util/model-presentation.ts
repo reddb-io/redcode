@@ -39,6 +39,26 @@ export function modelDescription(model: ModelInfo, provider: ProviderInfo | unde
   ].join(" · ")
 }
 
+/** How an offer of a flat model reads in a picker: price, availability, and whether it serves now or can be pinned. */
+export function offerDetails(entry: { offer: Router.Offer; lead: boolean; model?: unknown }) {
+  return [
+    offerPrice(entry.offer),
+    entry.offer.available ? "available" : "unavailable",
+    ...(entry.lead ? ["serving now"] : []),
+    ...(entry.model ? [] : ["cannot be pinned"]),
+  ]
+    .filter((part): part is string => !!part)
+    .join(" · ")
+}
+
+/** An offer's price in dollars per million tokens (`$3/$15 per 1M`), `free`, or undefined when unknown. */
+export function offerPrice(offer: Pick<Router.Offer, "price" | "free">) {
+  if (offer.free) return "free"
+  if (!offer.price) return undefined
+  const dollars = (value: number | undefined) => (value === undefined ? "?" : `$${Number(value.toFixed(4))}`)
+  return `${dollars(offer.price.input)}/${dollars(offer.price.output)} per 1M`
+}
+
 export function modelLabel(model: ModelInfo, providers: ProviderInfo[]) {
   return `${modelRoute(
     model,

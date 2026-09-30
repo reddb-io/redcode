@@ -4000,6 +4000,14 @@ export type McpDisconnectInput = {
 export type McpDisconnectOutput = void
 export type McpDisconnectOperation<E = never> = (input: McpDisconnectInput) => Effect.Effect<McpDisconnectOutput, E>
 
+export type McpRestartInput = { readonly location?: { readonly directory?: string | undefined } | undefined }
+export type McpRestartOutput = void
+export type McpRestartOperation<E = never> = (input?: McpRestartInput) => Effect.Effect<McpRestartOutput, E>
+
+export type McpReloadInput = { readonly location?: { readonly directory?: string | undefined } | undefined }
+export type McpReloadOutput = void
+export type McpReloadOperation<E = never> = (input?: McpReloadInput) => Effect.Effect<McpReloadOutput, E>
+
 export type McpResourceCatalogInput = { readonly location?: { readonly directory?: string | undefined } | undefined }
 export type McpResourceCatalogOutput = { readonly location: Location.PublicRef; readonly data: Mcp.ResourceCatalog }
 export type McpResourceCatalogOperation<E = never> = (
@@ -4013,6 +4021,8 @@ export interface McpApi<E = never> {
   readonly remove: McpRemoveOperation<E>
   readonly connect: McpConnectOperation<E>
   readonly disconnect: McpDisconnectOperation<E>
+  readonly restart: McpRestartOperation<E>
+  readonly reload: McpReloadOperation<E>
   readonly resource: { readonly catalog: McpResourceCatalogOperation<E> }
 }
 

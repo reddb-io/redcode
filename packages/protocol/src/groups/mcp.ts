@@ -101,6 +101,36 @@ export const McpGroup = HttpApiGroup.make("server.mcp")
       ),
   )
   .add(
+    HttpApiEndpoint.post("mcp.restart", "/api/experimental/mcp/restart", {
+      query: LocationQuery,
+      success: HttpApiSchema.NoContent,
+    })
+      .annotateMerge(locationQueryOpenApi)
+      .annotateMerge(
+        OpenApi.annotations({
+          identifier: "experimental.mcp.restart",
+          summary: "Reconnect all MCP servers",
+          description:
+            "Close and reopen the connection of every MCP server its configuration enables, including servers disconnected at runtime.",
+        }),
+      ),
+  )
+  .add(
+    HttpApiEndpoint.post("mcp.reload", "/api/experimental/mcp/reload", {
+      query: LocationQuery,
+      success: HttpApiSchema.NoContent,
+    })
+      .annotateMerge(locationQueryOpenApi)
+      .annotateMerge(
+        OpenApi.annotations({
+          identifier: "experimental.mcp.reload",
+          summary: "Reload MCP configuration",
+          description:
+            "Re-read configuration files and discard runtime MCP additions and removals; only servers whose configuration changed reconnect.",
+        }),
+      ),
+  )
+  .add(
     HttpApiEndpoint.get("mcp.resource.catalog", "/api/mcp/resource", {
       query: LocationQuery,
       success: Location.response(Mcp.ResourceCatalog),

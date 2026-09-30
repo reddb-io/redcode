@@ -208,6 +208,10 @@ import type {
   McpConnectOutput,
   McpDisconnectInput,
   McpDisconnectOutput,
+  McpRestartInput,
+  McpRestartOutput,
+  McpReloadInput,
+  McpReloadOutput,
   McpResourceCatalogInput,
   McpResourceCatalogOutput,
   CredentialUpdateInput,
@@ -1913,6 +1917,30 @@ export function make(options: ClientOptions) {
             query: { location: input["location"] },
             successStatus: 204,
             declaredStatuses: [400, 401, 404],
+            empty: true,
+          },
+          requestOptions,
+        ),
+      restart: (input?: McpRestartInput, requestOptions?: RequestOptions) =>
+        request<McpRestartOutput>(
+          {
+            method: "POST",
+            path: `/api/experimental/mcp/restart`,
+            query: { location: input?.["location"] },
+            successStatus: 204,
+            declaredStatuses: [400, 401],
+            empty: true,
+          },
+          requestOptions,
+        ),
+      reload: (input?: McpReloadInput, requestOptions?: RequestOptions) =>
+        request<McpReloadOutput>(
+          {
+            method: "POST",
+            path: `/api/experimental/mcp/reload`,
+            query: { location: input?.["location"] },
+            successStatus: 204,
+            declaredStatuses: [400, 401],
             empty: true,
           },
           requestOptions,

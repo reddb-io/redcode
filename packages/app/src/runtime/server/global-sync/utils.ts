@@ -68,6 +68,8 @@ export function normalizeProviderList(
     provider.models[model.id] = {
       id: model.id,
       providerID: model.providerID,
+      ...(model.pinOf ? { pinOf: model.pinOf } : {}),
+      ...(model.offers?.length ? { offers: model.offers } : {}),
       api: {
         id: model.modelID,
         url: "",

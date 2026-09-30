@@ -1,8 +1,10 @@
 import type { IntelligenceEvaluator, IntelligenceSettings, ModelInfo, ProviderInfo } from "@opencode/client"
 import type { Plugin } from "@opencode/plugin/tui"
+import { firstConnectionFailure, type ConnectionFailure } from "@opencode/util/connection-failure"
 import { DialogIntegration } from "./dialog-integration"
 import { errorMessage } from "../util/error"
-import { keyRoleLabel, modelDescription, modelLabel, modelRoute } from "../util/model-presentation"
+import { Router } from "@opencode/schema/router"
+import { keyRoleLabel, modelDescription, modelLabel, modelRoute, offerDetails } from "../util/model-presentation"
 
 export async function configureReasoning(
   context: Plugin.Context,
@@ -121,20 +123,44 @@ export async function configureReasoning(
     message: `Mode: ${reasoning === "dual" ? "Dual" : "Single"}\nS2 principal: ${modelLabel(selected, providers)}\nS2 transformations: ${transformation ? modelLabel(transformation, providers) : "reuse principal"}\nS1 evaluator: ${evaluator ? `${evaluator.evaluator.transport}/${evaluator.evaluator.model}` : "off"}${evaluator ? "\nSources and candidates will be sent to S1." : ""}\nThe selected connections will be checked before saving.${status.effective.source === "flag" ? `\nREDCODE_REASONING=${status.environment} overrides the saved mode.` : ""}`,
   })
   if (!confirmed) return
-  context.ui.toast.show({ variant: "info", message: "Checking reasoning connections…" })
-  await context.client.generate.text(
-    { prompt: "Reply with OK.", model, location },
-    { signal: AbortSignal.timeout(30_000) },
-  )
-  if (transformation && `${transformation.providerID}/${transformation.id}` !== principal)
-    await context.client.generate.text(
-      { prompt: "Reply with OK.", model: { providerID: transformation.providerID, id: transformation.id }, location },
-      { signal: AbortSignal.timeout(30_000) },
-    )
-  if (evaluator) {
-    const check = await api.probe(evaluator, { signal: AbortSignal.timeout(30_000) })
-    if (!check.ok) throw new Error(check.message)
-  }
+  const checked = await checkConnections(context, [
+    {
+      role: `S2 principal ${modelLabel(selected, providers)}`,
+      run: () =>
+        context.client.generate.text(
+          { prompt: "Reply with OK.", model, location },
+          { signal: AbortSignal.timeout(30_000) },
+        ),
+    },
+    ...(transformation && `${transformation.providerID}/${transformation.id}` !== principal
+      ? [
+          {
+            role: `S2 transformations ${modelLabel(transformation, providers)}`,
+            run: () =>
+              context.client.generate.text(
+                {
+                  prompt: "Reply with OK.",
+                  model: { providerID: transformation.providerID, id: transformation.id },
+                  location,
+                },
+                { signal: AbortSignal.timeout(30_000) },
+              ),
+          },
+        ]
+      : []),
+    ...(evaluator
+      ? [
+          {
+            role: `S1 evaluator ${evaluator.evaluator.transport}/${evaluator.evaluator.model}`,
+            run: () =>
+              api.probe(evaluator, { signal: AbortSignal.timeout(30_000) }).then((check) => {
+                if (!check.ok) throw new Error(check.message)
+              }),
+          },
+        ]
+      : []),
+  ])
+  if (!checked) return
   const settings = await api.save({
     settings: {
       ...status.settings,
@@ -213,7 +239,7 @@ async function chooseModel(
           value: id,
           title: input.providers.find((item) => item.id === id)?.name ?? id,
           description: [
-            `${list?.length ?? 0} models`,
+            `${Router.offerGroups(list ?? []).length} models`,
             keyRoleLabel(input.providers.find((item) => item.id === id)),
             id === input.router && input.recommended ? "recommended model available" : undefined,
           ]
@@ -239,36 +265,85 @@ async function chooseModel(
     ))
     return
   }
-  const models = groups[provider] ?? []
+  // Models pinning one offer of a flat model are reached through that model's offers row.
+  const offered = Router.offerGroups(groups[provider] ?? [])
   const chosen = await context.ui.dialog.select({
     title: `${input.role} · ${input.providers.find((item) => item.id === provider)?.name ?? provider}`,
-    current: current?.providerID === provider ? current.id : input.router === provider ? input.recommended : undefined,
-    options: models
+    current:
+      current?.providerID === provider
+        ? current.pinOf
+          ? `${OFFERS}${current.pinOf}`
+          : current.id
+        : input.router === provider
+          ? input.recommended
+          : undefined,
+    options: offered
       .toSorted(
         (a, b) =>
-          Number(b.id === input.recommended && b.providerID === input.router) -
-            Number(a.id === input.recommended && a.providerID === input.router) || a.name.localeCompare(b.name),
+          Number(b.model.id === input.recommended && b.model.providerID === input.router) -
+            Number(a.model.id === input.recommended && a.model.providerID === input.router) ||
+          a.model.name.localeCompare(b.model.name),
       )
-      .map((model) => ({
-        value: model.id,
-        title: model.name,
-        // Names differ between routed providers ("GLM-5.3 Max" against "GLM 5.3 Flash"), so the id is searchable too.
-        searchText: model.id,
-        description: modelDescription(
-          model,
-          input.providers.find((item) => item.id === model.providerID),
-        ),
-        category:
+      .flatMap((group) => {
+        const model = group.model
+        const category =
           model.id === input.recommended && model.providerID === input.router
             ? "Recommended"
             : modelRoute(
                 model,
                 input.providers.find((item) => item.id === model.providerID),
-              ),
-      })),
+              )
+        const option = {
+          value: model.id,
+          title: model.name,
+          // Names differ between routed providers ("GLM-5.3 Max" against "GLM 5.3 Flash"), so the id is searchable too.
+          searchText: model.id,
+          description: modelDescription(
+            model,
+            input.providers.find((item) => item.id === model.providerID),
+          ),
+          category,
+        }
+        if (!group.offers.some((entry) => entry.model)) return [option]
+        return [
+          option,
+          {
+            value: `${OFFERS}${model.id}`,
+            title: `  ▸ ${group.offers.length} offers`,
+            searchText: model.id,
+            description: "Pin one provider, price and route for this model",
+            category,
+          },
+        ]
+      }),
   })
-  return models.find((model) => model.id === chosen)
+  const group = offered.find((item) => `${OFFERS}${item.model.id}` === chosen)
+  if (!group) return offered.find((item) => item.model.id === chosen)?.model
+  const pinned = group.offers.flatMap((entry) => (entry.model ? [{ ...entry, model: entry.model }] : []))
+  const unpinned = group.offers.length - pinned.length
+  const offer = await context.ui.dialog.select({
+    title: `${input.role} · ${group.model.name} offers`,
+    current: current?.pinOf === group.model.id ? current.id : group.model.id,
+    options: [
+      {
+        value: group.model.id,
+        title: "Automatic · the router picks the first available offer",
+        description: [group.model.id, ...(unpinned ? [`${unpinned} offers cannot be pinned`] : [])].join(" · "),
+        category: "Route",
+      },
+      ...pinned.map((entry) => ({
+        value: entry.model.id,
+        title: Router.offerRoute(entry.offer),
+        description: offerDetails(entry),
+        category: "Offers",
+      })),
+    ],
+  })
+  return [group.model, ...pinned.map((entry) => entry.model)].find((model) => model.id === offer)
 }
+
+/** Value prefix of the row that opens a flat model's offers in the S2 model picker. */
+const OFFERS = "offers:"
 
 async function chooseEvaluator(
   context: Plugin.Context,
@@ -388,4 +463,30 @@ async function chooseEvaluator(
   const id = model || (await context.ui.dialog.prompt({ title: "S1 model ID", value: evaluator.model }))
   if (!id?.trim()) return
   return { evaluator: { ...evaluator, model: id.trim() }, ...(apiKey.trim() ? { apiKey: apiKey.trim() } : {}) }
+}
+
+// Checks each role in order; a failure names the role and the reason and offers Retry, which reruns every check.
+async function checkConnections(
+  context: Plugin.Context,
+  checks: { role: string; run: () => Promise<unknown> }[],
+): Promise<boolean> {
+  context.ui.toast.show({ variant: "info", message: "Checking reasoning connections…" })
+  const failed = await firstConnectionFailure(checks)
+  if (!failed) return true
+  const retry = await context.ui.dialog.confirm({
+    title: `${failed.role} failed`,
+    message: `${failureReason(failed.failure)}${failed.failure.detail ? `\n${failed.failure.detail}` : ""}\nYour saved roles are unchanged.`,
+    label: { confirm: "Retry", cancel: "Cancel" },
+  })
+  if (!retry) return false
+  return checkConnections(context, checks)
+}
+
+function failureReason(failure: ConnectionFailure) {
+  if (failure.kind === "credential")
+    return `The credential was rejected${failure.status ? ` (HTTP ${failure.status})` : ""}. Reconnect the provider or enter another key.`
+  if (failure.kind === "timeout") return "No answer within 30 seconds."
+  if (failure.kind === "status") return `The server answered HTTP ${failure.status}.`
+  if (failure.kind === "unreachable") return "The address could not be reached. Check the URL and your network."
+  return "The connection check failed."
 }

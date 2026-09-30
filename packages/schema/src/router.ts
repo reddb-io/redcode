@@ -244,6 +244,41 @@ export function leadOffer<T extends { available?: boolean }>(model: { offers?: R
 }
 
 /**
+ * A model list as a picker shows it: a model that pins one offer of a flat model (`pinOf`) leaves the
+ * list and returns among that flat model's offers, in the router's policy order. Each offer carries
+ * the pinned model that selects it, none when the router cannot pin it, and whether it is the lead
+ * offer that serves the flat id now. A pinned model whose flat model is not in the list stays listed,
+ * so filtering the flat model out never hides a pinnable choice.
+ */
+export function offerGroups<
+  M extends { id: string; providerID: string; pinOf?: string; offers?: ReadonlyArray<Offer> },
+>(models: ReadonlyArray<M>) {
+  const key = (providerID: string, id: string) => `${providerID}\u0000${id}`
+  const listed = new Set(models.map((model) => key(model.providerID, model.id)))
+  const pinned = new Map(
+    models.flatMap((model) => (model.pinOf ? [[key(model.providerID, model.id), model] as const] : [])),
+  )
+  return models
+    .filter((model) => !model.pinOf || !listed.has(key(model.providerID, model.pinOf)))
+    .map((model) => {
+      const lead = leadOffer(model)
+      return {
+        model,
+        offers: (model.offers ?? []).map((offer) => ({
+          offer,
+          lead: offer === lead,
+          model: offer.pinID ? pinned.get(key(model.providerID, offer.pinID)) : undefined,
+        })),
+      }
+    })
+}
+
+/** An offer's route in words: the routers it passes through, then its provider (`RedRouter » OpenCode Zen`). */
+export function offerRoute(offer: Pick<Offer, "provider" | "via">) {
+  return [...offer.via.map((hop) => hop.name), offer.provider.name].join(HOP_SEPARATOR)
+}
+
+/**
  * A route in words: the routers joined by `HOP_SEPARATOR`, then the upstream and the model. A
  * single router reads `RedRouter » OpenCode Zen (via OpenCode Go) · JEV 1.13`; a chain continues the
  * same separator into the upstream: `RedRouter » RedRouter » OpenCode Zen (via OpenCode Go) · JEV

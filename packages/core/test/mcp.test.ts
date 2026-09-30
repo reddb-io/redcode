@@ -1629,6 +1629,33 @@ test("adds, disconnects, and reconnects MCP servers at runtime", async () => {
   )
 })
 
+test("reconnects enabled MCP servers and resets runtime overrides to the configuration", async () => {
+  const fixture = [process.execPath, path.join(import.meta.dir, "fixture/mcp-output-schema.ts")]
+  await Effect.runPromise(
+    Effect.scoped(
+      Effect.gen(function* () {
+        const service = yield* Mcp.Service
+        const status = (name: string) =>
+          service.servers().pipe(Effect.map((servers) => servers.find((server) => server.name === name)?.status))
+
+        yield* service.add("dynamic", new ConfigMCP.Local({ type: "local", command: fixture }))
+        yield* service.disconnect("dynamic")
+        expect(yield* status("dynamic")).toEqual({ status: "disabled" })
+
+        yield* service.restart()
+        expect(yield* status("dynamic")).toEqual({ status: "connected" })
+        expect(yield* status("resources")).toEqual({ status: "disabled" })
+
+        yield* service.reset()
+        expect(yield* status("dynamic")).toBeUndefined()
+        expect(yield* status("resources")).toEqual({ status: "disabled" })
+      }).pipe(
+        Effect.provide(resourceMcpLayer(new ConfigMCP.Local({ type: "local", command: fixture, disabled: true }))),
+      ),
+    ),
+  )
+})
+
 testEffect(Layer.empty).live(
   "merges MCP defaults into the winning configured server without changing runtime overrides",
   () =>

@@ -20,6 +20,8 @@ import type { WorktreeListOutput } from "@opencode/client"
 import { useRoute } from "../context/route"
 import { DialogWorktreeName } from "./dialog-worktree-name"
 import { WorktreePlacement } from "@opencode/core/worktree/placement"
+import { WorktreeInventory } from "@opencode/core/worktree/inventory"
+import { DialogConfirm } from "../ui/dialog-confirm"
 
 export type WorkspaceSelection =
   | { type: "directory"; directory: string; subdirectory: boolean }
@@ -124,6 +126,33 @@ export function DialogWorkspaces(props: DialogWorkspacesProps) {
       .toSorted((a, b) => b.directory.length - a.directory.length)[0]
   })
 
+  // Size, changes, merge state and activity come from Git on this machine. A failed inspection only hides them.
+  const [inventory] = createResource(
+    () => (props.fixture || showError() ? undefined : directoryData()),
+    (registered) =>
+      WorktreeInventory.collect({
+        cwd: currentDirectory() ?? currentCheckout() ?? registered[0]?.directory ?? paths.cwd,
+        registered,
+        sessions: sessionData.session
+          .list()
+          .filter((session) => session.projectID === props.projectID)
+          .map((session) => ({
+            id: session.id,
+            title: session.title,
+            directory: session.location.directory,
+            updated: session.time.updated,
+          })),
+      }).catch(() => undefined),
+  )
+  const cleanable = createMemo(() => {
+    const worktrees = inventory.latest?.worktrees ?? []
+    return {
+      root: inventory.latest?.root,
+      candidates: worktrees.filter((entry) => WorktreeInventory.removable(entry, { merged: true })),
+      prunable: worktrees.filter((entry) => entry.prunable),
+    }
+  })
+
   const options = createMemo<DialogSelectOption<WorkspaceSelection | undefined>[]>(() => {
     if (showError()) return []
     const data = directoryData()
@@ -163,12 +192,22 @@ export function DialogWorkspaces(props: DialogWorkspacesProps) {
       if (b.location === b.root.directory) return 1
       return a.location.localeCompare(b.location)
     })
-    const titleWidth = Math.max(1, dialogSelectContentWidth(Math.min(dialogWidth("xlarge"), dimensions().width - 2)))
+    const contentWidth = Math.max(1, dialogSelectContentWidth(Math.min(dialogWidth("xlarge"), dimensions().width - 2)))
+    const worktrees = inventory.latest?.worktrees ?? []
+    const now = Date.now()
 
     return list.map((item) => {
       const title = abbreviateHome(item.location, paths.home)
       const suffix =
         item.location === item.root.directory ? undefined : path.sep + path.relative(item.root.directory, item.location)
+      const entry = suffix ? undefined : worktrees.find((worktree) => worktree.directory === item.root.directory)
+      const footer = entry
+        ? WorktreeInventory.summary(entry, now)
+        : WorktreePlacement.temporary(item.root.directory)
+          ? "tmp"
+          : undefined
+      // The footer does not shrink, so leave it room instead of clipping the end of a left-truncated path.
+      const titleWidth = footer ? Math.max(1, contentWidth - footer.length - 1) : contentWidth
       const visible = Locale.truncateLeft(title, titleWidth)
       const split = suffix ? Math.max(0, visible.length - suffix.length) : visible.length
       const deleting = toDelete() === item.location
@@ -188,7 +227,7 @@ export function DialogWorkspaces(props: DialogWorkspacesProps) {
           </>
         ) : undefined,
         bg: deleting ? theme.background.action.destructive.base : undefined,
-        footer: WorktreePlacement.temporary(item.root.directory) ? "tmp" : undefined,
+        footer,
         value: {
           type: "directory",
           directory: item.location,
@@ -305,6 +344,65 @@ export function DialogWorkspaces(props: DialogWorkspacesProps) {
     if (await removedCurrent(deletingCurrent)) return
   }
 
+  async function clean() {
+    const target = cleanable()
+    const count = target.candidates.length + target.prunable.length
+    if (count === 0) {
+      toast.show({ variant: "info", message: "No merged, clean worktrees to remove" })
+      return
+    }
+    const freed = WorktreeInventory.bytes(target.candidates.reduce((sum, entry) => sum + entry.size, 0))
+    const accepted = await new Promise<boolean>((resolve) =>
+      dialog.replace(
+        () => (
+          <DialogConfirm
+            title="Clean worktrees?"
+            message={[
+              target.candidates.length
+                ? `Remove ${target.candidates.length} merged worktree(s) with no uncommitted changes and their branches, freeing about ${freed}:`
+                : `Prune ${target.prunable.length} stale Git registration(s):`,
+              ...[
+                ...target.candidates.map(
+                  (entry) => `  ${abbreviateHome(entry.path, paths.home)}  ${entry.branch ?? entry.head.slice(0, 7)}`,
+                ),
+                ...target.prunable.map((entry) => `  stale Git registration ${abbreviateHome(entry.path, paths.home)}`),
+              ].slice(0, 8),
+              ...(count > 8 ? [`  …and ${count - 8} more`] : []),
+            ].join("\n")}
+            label={{ confirm: "clean" }}
+            onConfirm={() => resolve(true)}
+            onCancel={() => resolve(false)}
+          />
+        ),
+        () => resolve(false),
+      ),
+    )
+    reopen()
+    if (!accepted) return
+    toast.show({ variant: "info", message: `Cleaning ${count} worktree(s)…` })
+    const outcome = await WorktreeInventory.clean({
+      root: target.root,
+      candidates: target.candidates,
+      prunable: target.prunable,
+      remove: (entry) =>
+        client.api.worktree.remove({ projectID: props.projectID, directory: entry.path, force: false }),
+      refresh,
+    }).catch((error: unknown) => {
+      toast.show({ variant: "error", title: "Failed to clean worktrees", message: errorMessage(error) })
+      return undefined
+    })
+    if (!outcome) return
+    const failures = [
+      ...outcome.kept.map((kept) => `kept ${abbreviateHome(kept.entry.path, paths.home)}: ${errorMessage(kept.error)}`),
+      ...outcome.branches.map((failure) => `could not delete branch ${failure.branch}: ${failure.error}`),
+    ]
+    toast.show({
+      variant: failures.length ? "warning" : "success",
+      title: `Removed ${outcome.removed.length} worktree(s)`,
+      message: failures.join("\n") || "Merged worktrees and their branches were removed.",
+    })
+  }
+
   async function create() {
     const name = await DialogWorktreeName.show(dialog)
     if (name === null) return
@@ -392,6 +490,13 @@ export function DialogWorkspaces(props: DialogWorkspacesProps) {
                     return !directoryData()?.find((item) => item.directory === value.directory)?.strategy
                   },
                   onTrigger: remove,
+                },
+                {
+                  command: "dialog.move_session.clean",
+                  title: "clean",
+                  selection: "none",
+                  disabled: () => cleanable().candidates.length + cleanable().prunable.length === 0,
+                  onTrigger: () => void clean(),
                 },
                 {
                   command: "dialog.move_session.refresh",

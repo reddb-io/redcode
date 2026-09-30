@@ -9,7 +9,12 @@ import { useConnected } from "./use-connected"
 import { useData } from "../context/data"
 import { modelPreferenceKey } from "../model-preference"
 import { useLocation } from "../context/location"
-import { modelDescription, modelRoute } from "../util/model-presentation"
+import { modelDescription, modelRoute, offerDetails } from "../util/model-presentation"
+import { Router } from "@opencode/schema/router"
+
+// Offer rows carry the flat model they belong to, so a pinned model listed elsewhere (favorites,
+// recents) never shares a row value with its offer row.
+type Value = { providerID: string; modelID: string; offerOf?: string; pinned?: boolean }
 
 export function DialogModel(props: { providerID?: string }) {
   const local = useLocal()
@@ -24,6 +29,23 @@ export function DialogModel(props: { providerID?: string }) {
     () => new Map((data.location.provider.list(location.ref) ?? []).map((item) => [item.id, item])),
   )
   const models = createMemo(() => data.location.model.list(location.ref) ?? [])
+  // Models pinning one offer of a flat model are listed under that model's offers instead.
+  const groups = createMemo(() => Router.offerGroups(models()))
+  const offerKey = (providerID: string, modelID: string) => `${providerID}/${modelID}`
+  // A pinned current model opens with its flat model's offers expanded, so the choice stays visible.
+  const initial = local.model.current()
+  const pinnedCurrent = initial
+    ? models().find((model) => model.providerID === initial.providerID && model.id === initial.modelID)?.pinOf
+    : undefined
+  const [expanded, setExpanded] = createSignal<ReadonlySet<string>>(
+    new Set(initial && pinnedCurrent ? [offerKey(initial.providerID, pinnedCurrent)] : []),
+  )
+  const toggleOffers = (value: Value) => {
+    const key = offerKey(value.providerID, value.offerOf ?? value.modelID)
+    const next = new Set(expanded())
+    if (!next.delete(key)) next.add(key)
+    setExpanded(next)
+  }
 
   const showExtra = createMemo(() => connected() && !props.providerID)
 
@@ -67,22 +89,29 @@ export function DialogModel(props: { providerID?: string }) {
     )
 
     const modelOptions = sortModelOptions(
-      models()
-        .filter((model) => model.status !== "deprecated")
-        .filter((model) => (props.providerID ? model.providerID === props.providerID : true))
-        .map((model) => {
+      groups()
+        .filter((group) => group.model.status !== "deprecated")
+        .filter((group) => (props.providerID ? group.model.providerID === props.providerID : true))
+        .map((group) => {
+          const model = group.model
           const provider = providers().get(model.providerID)
           const key = modelPreferenceKey({ providerID: model.providerID, modelID: model.id })
           const favorite = favorites.some((item) => modelPreferenceKey(item) === key)
+          const value: Value = { providerID: model.providerID, modelID: model.id }
           return {
-            value: { providerID: model.providerID, modelID: model.id },
+            value,
             providerID: model.providerID,
             providerName: provider?.name ?? model.providerID,
             title: model.name,
             releaseDate: model.time.released,
-            description: [modelDescription(model, provider), ...(favorite ? ["Favorite"] : [])].join(" · "),
+            description: [
+              modelDescription(model, provider),
+              ...(favorite ? ["Favorite"] : []),
+              ...(group.offers.length ? [`${group.offers.length} offers`] : []),
+            ].join(" · "),
             category: connected() ? modelRoute(model, provider) : undefined,
             footer: free(model) ? "Free" : undefined,
+            offers: group.offers,
             onSelect() {
               onSelect(model.providerID, model.id)
             },
@@ -105,17 +134,49 @@ export function DialogModel(props: { providerID?: string }) {
       connected(),
     )
 
+    // An expanded flat model is followed by its offers; selecting a pinnable one selects its pinned model.
+    const withOffers = (items: typeof modelOptions) =>
+      items.flatMap((option) => {
+        if (!option.offers.length || !expanded().has(offerKey(option.value.providerID, option.value.modelID)))
+          return [option]
+        return [
+          option,
+          ...option.offers.map((entry) => {
+            const pinned = entry.model
+            const value: Value = {
+              providerID: option.value.providerID,
+              modelID: pinned?.id ?? entry.offer.id,
+              offerOf: option.value.modelID,
+              pinned: Boolean(pinned),
+            }
+            return {
+              ...option,
+              value,
+              title: `  ↳ ${Router.offerRoute(entry.offer)}`,
+              description: offerDetails(entry),
+              footer: undefined,
+              offers: [],
+              onSelect() {
+                if (pinned) onSelect(pinned.providerID, pinned.id)
+              },
+            }
+          }),
+        ]
+      })
+
     if (needle) {
-      return prioritizeFavorites(
-        sortModelOptions(
-          fuzzysort.go(needle, modelOptions, { keys: ["title", "category", "description"] }).map((item) => item.obj),
-          false,
+      return withOffers(
+        prioritizeFavorites(
+          sortModelOptions(
+            fuzzysort.go(needle, modelOptions, { keys: ["title", "category", "description"] }).map((item) => item.obj),
+            false,
+          ),
+          favoritePriority,
         ),
-        favoritePriority,
       )
     }
 
-    return [...favoriteOptions, ...recentOptions, ...modelOptions]
+    return [...favoriteOptions, ...recentOptions, ...withOffers(modelOptions)]
   })
 
   const provider = createMemo(() => (props.providerID ? providers().get(props.providerID) : undefined))
@@ -142,7 +203,7 @@ export function DialogModel(props: { providerID?: string }) {
   }
 
   return (
-    <DialogSelect<ReturnType<typeof options>[number]["value"]>
+    <DialogSelect<Value>
       options={options()}
       actions={[
         {
@@ -161,9 +222,24 @@ export function DialogModel(props: { providerID?: string }) {
           command: "model.dialog.favorite",
           title: "Favorite",
           hidden: !connected(),
+          disabled: (option) => option?.value.pinned === false,
           onTrigger: (option) => {
-            local.model.toggleFavorite(option.value as { providerID: string; modelID: string })
+            local.model.toggleFavorite({ providerID: option.value.providerID, modelID: option.value.modelID })
           },
+        },
+        {
+          command: "model.dialog.offers",
+          title: "Offers",
+          hidden: !groups().some((group) => group.offers.length > 0),
+          disabled: (option) =>
+            !option ||
+            !groups().some(
+              (group) =>
+                group.offers.length > 0 &&
+                group.model.providerID === option.value.providerID &&
+                group.model.id === (option.value.offerOf ?? option.value.modelID),
+            ),
+          onTrigger: (option) => toggleOffers(option.value),
         },
       ]}
       onFilter={setQuery}

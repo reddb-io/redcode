@@ -1,6 +1,7 @@
 import { confirm, intro, log, outro, select } from "@clack/prompts"
 import { Effect, Option } from "effect"
 import { EOL } from "node:os"
+import { ProviderRemoval } from "@opencode/schema/provider-removal"
 import { Commands } from "../../commands"
 import { Runtime } from "../../../framework/runtime"
 import { handlePromptErrors, prompt, requireInteractive } from "../../../ui/prompt"
@@ -33,17 +34,8 @@ export default Runtime.handler(Commands.commands.auth.commands.remove, (input) =
     const preview = (yield* request((signal) =>
       client.provider.remove({ providerID, dryRun: true, location }, { signal }),
     )).data
-    const lines = [
-      `${preview.removed.credentials} saved credential(s)`,
-      ...(preview.removed.config ? ["Global provider configuration"] : []),
-      ...preview.removed.references.map((reference) => `Reference: ${reference}`),
-      ...(preview.removed.learnedLimits ? [`${preview.removed.learnedLimits} learned model limit(s)`] : []),
-      ...(preview.removed.hidden ? ["Ambient provider will be hidden by policy"] : []),
-      ...preview.referencingFiles.map((file) => `Other configuration still references this provider: ${file}`),
-    ]
-    if (!preview.removed.credentials && !preview.removed.config && !preview.removed.references.length &&
-        !preview.removed.learnedLimits && !preview.removed.hidden)
-      return yield* Effect.fail(new Error(`Nothing to remove for ${providerID}`))
+    const lines = ProviderRemoval.items(preview).map(ProviderRemoval.describe)
+    if (ProviderRemoval.empty(preview)) return yield* Effect.fail(new Error(`Nothing to remove for ${providerID}`))
     if (interactive) lines.forEach((line) => log.info(line))
     if (!interactive) process.stdout.write(lines.join(EOL) + EOL)
     if (!input.yes) {
