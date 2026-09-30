@@ -352,7 +352,8 @@ describe("RedRouterPlugin", () => {
                 token_saver_header: "x-red-router-token-saver",
                 reasoning: { header: "x-red-router-reasoning", accepts: ["auto"] },
               })
-            if (path === "/v1/models")
+            if (path === "/v1/models") {
+              expect(new URL(request.url).searchParams.get("capabilities")).toBe("chat")
               return Response.json(
                 {
                   data: [
@@ -372,6 +373,7 @@ describe("RedRouterPlugin", () => {
                   },
                 },
               )
+            }
             return new Response(null, { status: 404 })
           },
         }),

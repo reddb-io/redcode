@@ -269,11 +269,15 @@ function routerPlugin(options: {
         yield* ctx.provider.reload()
         const fetched = yield* Effect.tryPromise({
           try: async (signal) => {
-            const result = await fetch(`${connection.baseURL}/models`, {
+            const request = (suffix: string) => fetch(`${connection.baseURL}/${suffix}`, {
               redirect: "error",
               signal: AbortSignal.any([signal, AbortSignal.timeout(15_000)]),
               headers: { accept: "application/json", authorization: `Bearer ${connection.key}` },
             })
+            const filtered = await request(options.id === "red-router" ? "models?capabilities=chat" : "models")
+            const result = options.id === "red-router" && [400, 404, 405].includes(filtered.status)
+              ? await request("models")
+              : filtered
             if (!result.ok) throw new Error(`${options.name} model catalog HTTP ${result.status}`)
             return { body: (await result.json()) as unknown, headers: result.headers }
           },

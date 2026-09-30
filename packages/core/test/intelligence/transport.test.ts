@@ -37,8 +37,9 @@ describe("connection-scoped System One discovery", () => {
     Effect.gen(function* () {
       const requests: string[] = []
       const server = yield* serve((request) => {
-        requests.push(new URL(request.url).pathname)
+        requests.push(new URL(request.url).pathname + new URL(request.url).search)
         expect(request.headers.get("authorization")).toBe("Bearer selected")
+        if (new URL(request.url).search) return new Response(null, { status: 400 })
         if (new URL(request.url).pathname === "/v1/models/systemone") return new Response(null, { status: 404 })
         return Response.json({
           object: "list",
@@ -60,13 +61,14 @@ describe("connection-scoped System One discovery", () => {
       const catalog = yield* transport.discover({ evaluator })
       expect(catalog.models.map((model) => model.id)).toEqual(["typesafe/jev-1.13.0", "other-decision"])
       expect(catalog.manual).toBe(false)
-      expect(requests).toEqual(["/v1/models/systemone", "/v1/models"])
+      expect(requests).toEqual(["/v1/models?capabilities=decision", "/v1/models/systemone", "/v1/models"])
     }),
   )
 
   it.live("preserves the old dedicated decision catalog", () =>
     Effect.gen(function* () {
       const server = yield* serve((request) => {
+        if (new URL(request.url).search) return new Response(null, { status: 400 })
         expect(new URL(request.url).pathname).toBe("/v1/models/systemone")
         return Response.json({ data: [{ id: "native-decision", name: "Native decision" }] })
       })
@@ -81,7 +83,7 @@ describe("connection-scoped System One discovery", () => {
     Effect.gen(function* () {
       const requests: string[] = []
       const server = yield* serve((request) => {
-        requests.push(new URL(request.url).pathname)
+        requests.push(new URL(request.url).pathname + new URL(request.url).search)
         return new Response(null, { status: 401 })
       })
       yield* connect(`${server.url.href}v1`, "Denied", "selected")
@@ -90,7 +92,7 @@ describe("connection-scoped System One discovery", () => {
         .discover({ evaluator: (yield* transport.options("red-router"))[0].evaluator })
         .pipe(Effect.flip)
       expect(result.status).toBe(401)
-      expect(requests).toEqual(["/v1/models/systemone"])
+      expect(requests).toEqual(["/v1/models?capabilities=decision"])
     }),
   )
 
@@ -110,7 +112,11 @@ describe("connection-scoped System One discovery", () => {
       const intelligence = yield* Intelligence.Service
       const status = yield* intelligence.status()
       expect(status.evaluators.filter((option) => option.evaluator.transport === "red-router")).toEqual([
-        { name: "Router", configured: false, evaluator: router!.evaluator },
+        expect.objectContaining({
+          name: "Router",
+          configured: false,
+          evaluator: expect.objectContaining({ model: "typesafe/jev-1.13.0", credentialID: chosen.id }),
+        }),
       ])
     }),
   )
@@ -118,7 +124,7 @@ describe("connection-scoped System One discovery", () => {
     Effect.gen(function* () {
       const requests: string[] = []
       const server = yield* serve((request) => {
-        requests.push(new URL(request.url).pathname)
+        requests.push(new URL(request.url).pathname + new URL(request.url).search)
         return Response.json({ data: [{ id: "jev" }] })
       })
       const chosen = yield* connect(`${server.url.href}v1`, "Work", "selected")
@@ -149,6 +155,27 @@ describe("connection-scoped System One discovery", () => {
       expect((yield* transport.options("opencode-zen"))[0].evaluator.credentialID).toBe(zen.id)
       expect((yield* transport.options("cloudflare-ai-gateway"))[0].evaluator.credentialID).toBe(cloudflare.id)
       expect(yield* transport.options("typesafe")).toEqual([])
+    }),
+  )
+  it.live("prefers the new decision-capability catalog and recognizes its metadata", () =>
+    Effect.gen(function* () {
+      const requests: string[] = []
+      const server = yield* serve((request) => {
+        requests.push(new URL(request.url).pathname + new URL(request.url).search)
+        return Response.json({
+          object: "list",
+          data: [
+            { id: "choice-model", capabilities: { decision: true } },
+            { id: "score-model", supported_endpoints: ["decisions"] },
+            { id: "generator", capabilities: { decision: false } },
+          ],
+        })
+      })
+      yield* connect(`${server.url.href}v1`, "Router", "selected")
+      const transport = yield* IntelligenceTransport.Service
+      const catalog = yield* transport.discover({ evaluator: (yield* transport.options("red-router"))[0].evaluator })
+      expect(catalog.models.map((model) => model.id)).toEqual(["choice-model", "score-model"])
+      expect(requests).toEqual(["/v1/models?capabilities=decision"])
     }),
   )
 })

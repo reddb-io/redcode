@@ -162,15 +162,21 @@ const make = Effect.gen(function* () {
     if (["openrouter", "cloudflare-ai-gateway", "vercel"].includes(input.evaluator.transport))
       return { models: [{ id: input.evaluator.model, name: input.evaluator.model }], manual: false }
     const router = input.evaluator.transport === "red-router"
-    // Older routers expose a dedicated list. OpenAI-compatible routers reserve /models/:id
-    // for one model and advertise decision models in the ordinary catalog instead.
+    // Prefer the capability-filtered OpenAI catalog; older routers still expose a dedicated list.
     const dedicated = router
-      ? yield* request(input.evaluator, "models/systemone", undefined, input.apiKey).pipe(
-          Effect.map((response) => ({ response, dedicated: true })),
+      ? yield* request(input.evaluator, "models?capabilities=decision", undefined, input.apiKey).pipe(
+          Effect.map((response) => ({ response, dedicated: false })),
           Effect.catch((error) =>
-            error.status === 404 || error.status === 405
-              ? request(input.evaluator, "models", undefined, input.apiKey).pipe(
-                  Effect.map((response) => ({ response, dedicated: false })),
+            [400, 404, 405].includes(error.status ?? 0)
+              ? request(input.evaluator, "models/systemone", undefined, input.apiKey).pipe(
+                  Effect.map((response) => ({ response, dedicated: true })),
+                  Effect.catch((error) =>
+                    error.status === 404 || error.status === 405
+                      ? request(input.evaluator, "models", undefined, input.apiKey).pipe(
+                          Effect.map((response) => ({ response, dedicated: false })),
+                        )
+                      : Effect.fail(error),
+                  ),
                 )
               : Effect.fail(error),
           ),
@@ -184,6 +190,7 @@ const make = Effect.gen(function* () {
               id: Schema.String,
               name: Schema.optional(Schema.String),
               type: Schema.optional(Schema.String),
+              capabilities: Schema.optional(Schema.Struct({ decision: Schema.optional(Schema.Boolean) })),
               supported_endpoints: Schema.optional(Schema.Array(Schema.String)),
               provider: Schema.optional(
                 Schema.Union([
@@ -209,9 +216,10 @@ const make = Effect.gen(function* () {
           .filter(
             (model) =>
               dedicated.dedicated ||
+              model.capabilities?.decision === true ||
               model.type === "systemone" ||
               model.type === "decision" ||
-              model.supported_endpoints?.some((endpoint) => /\/(systemone|decisions)$/.test(endpoint)) ||
+              model.supported_endpoints?.some((endpoint) => /(^|\/)(systemone|decisions)$/.test(endpoint)) ||
               IntelligenceEvaluation.isJev(model.id),
           )
           .filter((model, index, models) => models.findIndex((item) => item.id === model.id) === index)

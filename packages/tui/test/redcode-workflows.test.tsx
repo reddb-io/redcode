@@ -211,7 +211,7 @@ for (const width of [80, 140]) {
       },
     })
     await setup.ready
-    await setup.waitForFrame((frame) => frame.includes("Build") && frame.includes("Generator"))
+    await setup.waitForFrame(() => Boolean(setup.renderer.root.findDescendantById("session-pane")))
     await setup.mockInput.typeText("/setup")
     setup.mockInput.pressEnter()
     await setup.waitForFrame((frame) => frame.includes("Reasoning mode"))
@@ -297,7 +297,7 @@ test("an empty S1 catalog offers refresh and another connection instead of model
     },
   })
   await setup.ready
-  await setup.waitForFrame((frame) => frame.includes("Build") && frame.includes("Generator"))
+  await setup.waitForFrame(() => Boolean(setup.renderer.root.findDescendantById("session-pane")))
   await setup.mockInput.typeText("/setup")
   setup.mockInput.pressEnter()
   await setup.waitForFrame((frame) => frame.includes("Reasoning mode"))
