@@ -385,13 +385,13 @@ describe("VaultAdmission", () => {
         }),
       )
       expect(payload.text).toBe(
-        `Push with GITHUB_TOKEN={vault:github-token-1} but keep checksum=${checksum} as is @build`,
+        `Push with GITHUB_TOKEN={vault:github-token} but keep checksum=${checksum} as is @build`,
       )
       const mention = payload.agents?.[0]?.mention
       expect(mention && payload.text.slice(mention.start, mention.end)).toBe("@build")
-      expect(payload.metadata).toEqual({ source: "tui", vault: [{ name: "github-token-1", kind: "github-token" }] })
+      expect(payload.metadata).toEqual({ source: "tui", vault: [{ name: "github-token", kind: "github-token" }] })
       expect(JSON.stringify(payload)).not.toContain(token)
-      expect(yield* vault.resolve({ projectID: projectA, name: "github-token-1" })).toBe(token)
+      expect(yield* vault.resolve({ projectID: projectA, name: "github-token" })).toBe(token)
     }),
   )
 
@@ -418,10 +418,10 @@ describe("VaultAdmission", () => {
       )
       const file = payload.files?.[0]
       expect(file?.mention).toBeUndefined()
-      expect(Buffer.from(file?.data ?? "", "base64").toString("utf8")).toBe("API_KEY={vault:api-key-1}\n")
+      expect(Buffer.from(file?.data ?? "", "base64").toString("utf8")).toBe("API_KEY={vault:api-key}\n")
       expect(payload.metadata?.vault).toEqual([
         { name: "github-token-1", kind: "github-token" },
-        { name: "api-key-1", kind: "api-key" },
+        { name: "api-key", kind: "api-key" },
       ])
     }),
   )
@@ -516,9 +516,9 @@ describe("VaultAdmission", () => {
       expect(payload.files?.[0]?.mention).toEqual(mention)
       expect(payload.agents?.[0]?.mention).toEqual(mention)
       expect(Buffer.from(payload.files?.[0]?.data ?? "", "base64").toString("utf8")).toBe(
-        "GITHUB_TOKEN={vault:github-token-1}\n",
+        "GITHUB_TOKEN={vault:github-token}\n",
       )
-      expect(payload.metadata).toEqual({ vault: [{ name: "github-token-1", kind: "github-token" }] })
+      expect(payload.metadata).toEqual({ vault: [{ name: "github-token", kind: "github-token" }] })
     }),
   )
 

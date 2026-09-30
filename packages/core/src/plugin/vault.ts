@@ -26,19 +26,24 @@ export const Plugin = define({
     const files = yield* FSUtil.Service
     // The Session's project, or the routed location's when a caller such as the CLI names no Session.
     const project = Effect.fnUntraced(function* (sessionID: SessionID | undefined) {
-      if (sessionID === undefined) return location.project.id
-      return (yield* sessions.get(sessionID)).projectID
+      if (sessionID === undefined) {
+        yield* vault.attach({ projectID: location.project.id, directory: location.directory })
+        return location.project.id
+      }
+      const session = yield* sessions.get(sessionID)
+      yield* vault.attach({ projectID: session.projectID, directory: session.location.directory })
+      return session.projectID
     })
     yield* ctx.rpc
       .register(Vault.Definition, {
         list: (input) =>
-          sessions.get(input.sessionID).pipe(
-            Effect.flatMap((session) => vault.list(session.projectID)),
+          project(input.sessionID).pipe(
+            Effect.flatMap((projectID) => vault.list(projectID)),
             Effect.orDie,
           ),
         forget: (input) =>
-          sessions.get(input.sessionID).pipe(
-            Effect.flatMap((session) => vault.forget({ projectID: session.projectID, name: input.name })),
+          project(input.sessionID).pipe(
+            Effect.flatMap((projectID) => vault.forget({ projectID, name: input.name })),
             Effect.orDie,
           ),
         set: (input) =>

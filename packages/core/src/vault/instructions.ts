@@ -11,7 +11,7 @@ import { Vault } from "./vault.js"
  * baseline and the provider cache. Bump `GUIDE_VERSION` with the text so a running Session receives the new one.
  */
 export const GUIDE = [
-  "Secrets: this project keeps secrets in a vault, and you see each one only as a reference such as {vault:github-token-1}, never its value.",
+  "Secrets: this project keeps secrets in its git-ignored .env file, and you see each one only as a reference such as {vault:github-token}, the variable GITHUB_TOKEN, never its value.",
   "A reference in a user message stands for that credential; use it and do not ask for the value again.",
   "Write references where the value belongs: in shell commands (any quoting, headers, JSON bodies, heredocs), webfetch URLs, MCP arguments, and .env files git ignores.",
   "Secrets in tool output, such as a token a login returns, come back as new references; for an opaque value no pattern recognizes, run the command with `capture`.",
@@ -21,7 +21,7 @@ export const GUIDE = [
   "An unknown reference means the vault does not hold it, for example after the service restarted: request it again.",
 ].join(" ")
 
-const GUIDE_VERSION = 1
+const GUIDE_VERSION = 2
 
 const Entry = Schema.Struct({ name: Schema.String, kind: Schema.String, hosts: Schema.Array(Schema.String) })
 type Entry = typeof Entry.Type
@@ -39,7 +39,10 @@ export interface Interface {
    * The guide, only when `sinks` says the agent has a tool that resolves references, and the names the project's
    * vault holds, never a value. Another project's names never appear; an empty vault adds nothing.
    */
-  readonly load: (projectID: Project.ID, options: { readonly sinks: boolean }) => Instructions.List
+  readonly load: (
+    projectID: Project.ID,
+    options: { readonly sinks: boolean; readonly directory?: string },
+  ) => Instructions.List
 }
 
 export class Service extends Context.Service<Service, Interface>()("@redcode/VaultInstructions") {}
@@ -67,17 +70,19 @@ const layer = Layer.effect(
           Instructions.make<ReadonlyArray<Entry>>({
             key: Instructions.Key.make("vault/names"),
             codec: Schema.toCodecJson(Schema.Array(Entry)),
-            read: vault
-              .list(projectID)
-              .pipe(
-                Effect.map((entries) =>
-                  entries.length === 0
-                    ? Instructions.removed
-                    : entries
-                        .map((entry) => ({ name: entry.name, kind: entry.kind, hosts: entry.hosts ?? [] }))
-                        .toSorted((left, right) => left.name.localeCompare(right.name)),
-                ),
+            read: (options.directory === undefined
+              ? Effect.void
+              : vault.attach({ projectID, directory: options.directory })
+            ).pipe(
+              Effect.andThen(vault.list(projectID)),
+              Effect.map((entries) =>
+                entries.length === 0
+                  ? Instructions.removed
+                  : entries
+                      .map((entry) => ({ name: entry.name, kind: entry.kind, hosts: entry.hosts ?? [] }))
+                      .toSorted((left, right) => left.name.localeCompare(right.name)),
               ),
+            ),
             render: {
               initial: (entries) => `Vault references in this project (values are never shown):\n${list(entries)}`,
               changed: (_previous, entries) =>

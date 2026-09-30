@@ -1,10 +1,12 @@
 export * as Vault from "./vault.js"
 
 import { Clock, Context, Effect, Layer } from "effect"
-import type { Project } from "@opencode/schema/project"
+import { Project } from "@opencode/schema/project"
 import { Definition, Entry, Moved, reference, sanitize } from "@opencode/schema/vault"
 import { makeGlobalNode } from "@opencode/util/effect/app-node"
 import { Redact } from "@opencode/util/redact"
+import { VaultDotenv } from "./dotenv.js"
+import { VaultEnvFile } from "./env-file.js"
 
 /**
  * The project vault: secrets moved out of a conversation, which the model only ever sees as `{vault:<name>}`.
@@ -14,11 +16,12 @@ import { Redact } from "@opencode/util/redact"
  * another project is a later, explicit grant that `resolve` and `list` will check; callers keep passing the project
  * that asks.
  *
- * This implementation keeps values in this process's memory, so they are lost when the service restarts and a
- * reference to one then resolves to nothing. The interface is what a persistent backend replaces without changing
- * callers: an encrypted store with a passphrase-derived key, AES-256-GCM and per-project subkeys, which the user
- * unlocks and locks. A value leaves the vault only through `resolve`, at an execution sink; nothing here logs or
- * publishes one.
+ * A project's secrets live in the `.env` file at the root of its repository, git ignored, which is the project's own
+ * convention: the vault hydrates from it, so `GITHUB_TOKEN` there is `{vault:github-token}` here, and writes what the
+ * user pastes, sets or is asked for back to it. A value the model captured from a tool's output is short-lived and
+ * stays in this process's memory only, as does every value while no directory is attached. The interface is what a
+ * global, encrypted store replaces without changing callers. A value leaves the vault only through `resolve`, at an
+ * execution sink; nothing here logs or publishes one.
  */
 
 export { Definition, Entry, Moved, reference, sanitize }
@@ -27,7 +30,7 @@ export { Definition, Entry, Moved, reference, sanitize }
  * Where a secret came from, which decides what a new value under a taken name does: the user's own `set` replaces
  * it, a value the model captured under a name replaces only another captured value, and a request never replaces.
  */
-export type Origin = "pasted" | "user" | "requested" | "captured"
+export type Origin = "pasted" | "user" | "requested" | "captured" | "env"
 
 export interface Interface {
   /** The name of `value` in the project, stored under a new `<kind>-<n>` name unless it is already there. */
@@ -35,6 +38,8 @@ export interface Interface {
     readonly projectID: Project.ID
     readonly kind: string
     readonly value: string
+    /** The name the text called it, such as the variable it was assigned to; used when no other value holds it. */
+    readonly name?: string
     /** Destinations the value may go back to without asking, such as the host whose response carried it. */
     readonly hosts?: ReadonlyArray<string>
   }) => Effect.Effect<string>
@@ -50,6 +55,11 @@ export interface Interface {
     readonly kind?: string
     readonly hosts?: ReadonlyArray<string>
   }) => Effect.Effect<string>
+  /**
+   * Tells the vault where the project's `.env` is, from any directory of its Session, and reads it. Without it the
+   * project's secrets stay in memory. Calling it again, also with another directory, is harmless.
+   */
+  readonly attach: (input: { readonly projectID: Project.ID; readonly directory: string }) => Effect.Effect<void>
   /** The value behind a name, or undefined for a name this project does not have. */
   readonly resolve: (input: {
     readonly projectID: Project.ID
@@ -198,24 +208,48 @@ export const strings = (value: unknown) => {
   return found
 }
 
-type Stored = Entry & { readonly value: string; readonly origin: Origin; readonly allowed: Set<string> }
+type Stored = Entry & {
+  readonly value: string
+  readonly origin: Origin
+  readonly allowed: Set<string>
+  /** Whether the project's `.env` holds it, so a change to the file changes it and a `forget` edits the file. */
+  readonly persisted: boolean
+  /** Whether its value is replaced in text; a `.env` value that is no secret, such as `PORT`, must not be. */
+  readonly scrub: boolean
+}
 
 type Shelf = {
   readonly byName: Map<string, Stored>
   readonly byValue: Map<string, string>
   /** Only grows, so a forgotten name is never reused for another value that old references would then reach. */
   readonly counters: Map<string, number>
+  /** The `.env` text last read and when, so an unchanged file costs nothing and the file is read at most once a tick. */
+  env: { text: string | undefined; checked: number }
   /** Every value, longest first, so a value that contains another is replaced whole; undefined for an empty shelf. */
   pattern: RegExp | undefined
 }
 
-/** A process-memory vault; `layer` provides one, and tests build their own. */
-export const make = (): Interface => {
+/** A `.env` variable named like a credential, which is what makes a short or unrecognized value worth scrubbing. */
+const CREDENTIAL_NAME = /key|token|secret|passw|pwd|credential|auth|private|dsn|salt|signature|cert/i
+
+/**
+ * A vault over `env`, the project's `.env` files; without one every value stays in this process's memory. `layer`
+ * provides one over the file system, and tests build their own. `refreshMs` is how long a read of the file is trusted.
+ */
+export const make = (env?: VaultEnvFile.Store, options: { readonly refreshMs?: number } = {}): Interface => {
+  const refreshMs = options.refreshMs ?? 1000
   const shelves = new Map<Project.ID, Shelf>()
+  const directories = new Map<Project.ID, string>()
   const shelf = (projectID: Project.ID) => {
     const existing = shelves.get(projectID)
     if (existing) return existing
-    const created: Shelf = { byName: new Map(), byValue: new Map(), counters: new Map(), pattern: undefined }
+    const created: Shelf = {
+      byName: new Map(),
+      byValue: new Map(),
+      counters: new Map(),
+      pattern: undefined,
+      env: { text: undefined, checked: Number.NEGATIVE_INFINITY },
+    }
     shelves.set(projectID, created)
     return created
   }
@@ -223,7 +257,7 @@ export const make = (): Interface => {
   const index = (target: Shelf) => {
     target.byValue.clear()
     target.byName.forEach((stored) => {
-      if (!target.byValue.has(stored.value)) target.byValue.set(stored.value, stored.name)
+      if (stored.scrub && !target.byValue.has(stored.value)) target.byValue.set(stored.value, stored.name)
     })
     const values = Array.from(target.byValue.keys()).toSorted((left, right) => right.length - left.length)
     target.pattern =
@@ -240,7 +274,57 @@ export const make = (): Interface => {
         return name === undefined ? value : reference(name)
       })
   }
+  // The project's `.env` folded into the shelf: what the file holds replaces what the shelf took from it before,
+  // while a value never written to the file, such as a captured token, stays as it is.
+  const refresh = Effect.fn("Vault.refresh")(function* (projectID: Project.ID) {
+    const directory = directories.get(projectID)
+    if (!env || directory === undefined) return
+    const target = shelf(projectID)
+    const now = yield* Clock.currentTimeMillis
+    if (now - target.env.checked < refreshMs) return
+    target.env.checked = now
+    const text = yield* env.read(directory)
+    if (text === target.env.text) return
+    target.env.text = text
+    const found = new Map(
+      VaultDotenv.parse(text ?? "").entries.flatMap((entry) => {
+        const name = sanitize(entry.name)
+        return name === "" ? [] : [[name, { variable: entry.name, value: entry.value }] as const]
+      }),
+    )
+    target.byName.forEach((stored, name) => {
+      if (stored.persisted && !found.has(name)) target.byName.delete(name)
+    })
+    found.forEach((entry, name) => {
+      const held = target.byName.get(name)
+      if (held && !held.persisted) return
+      if (held?.value === entry.value) return
+      target.byName.set(name, {
+        name,
+        kind: held?.kind ?? "env",
+        created: held?.created ?? now,
+        value: entry.value,
+        origin: held?.origin ?? "env",
+        allowed: held?.allowed ?? new Set(),
+        persisted: true,
+        scrub:
+          held?.scrub ??
+          (entry.value.length >= MIN_LENGTH &&
+            (CREDENTIAL_NAME.test(entry.variable) || capturable(entry.value).length > 0)),
+      })
+    })
+    index(target)
+  })
+  // Writes what the user gave, not what a tool printed, to the `.env`; a refused write leaves it in memory.
+  const persist = Effect.fn("Vault.persist")(function* (projectID: Project.ID, target: Shelf, name: string) {
+    const stored = target.byName.get(name)
+    const directory = directories.get(projectID)
+    if (!env || directory === undefined || !stored || stored.origin === "captured") return
+    const written = yield* env.update(directory, (text) => VaultEnvFile.upsert(text, name, stored.value))
+    if (written) target.byName.set(name, { ...stored, persisted: true })
+  })
   const store = Effect.fn("Vault.store")(function* (
+    projectID: Project.ID,
     target: Shelf,
     input: { name: string; kind: string; value: string; origin: Origin; hosts?: ReadonlyArray<string> },
   ) {
@@ -253,13 +337,24 @@ export const make = (): Interface => {
       origin: input.origin,
       // A new value under a known name keeps where the name may go: the user or the login flow replaced it.
       allowed: new Set([...(previous?.allowed ?? []), ...(input.hosts ?? [])]),
+      persisted: false,
+      scrub: true,
     })
     index(target)
+    yield* persist(projectID, target, input.name)
     return input.name
   })
 
   return Service.of({
+    attach: Effect.fn("Vault.attach")(function* (input) {
+      if (input.projectID === Project.ID.global) return
+      if (directories.get(input.projectID) !== input.directory)
+        shelf(input.projectID).env.checked = Number.NEGATIVE_INFINITY
+      directories.set(input.projectID, input.directory)
+      yield* refresh(input.projectID)
+    }),
     put: Effect.fn("Vault.put")(function* (input) {
+      yield* refresh(input.projectID)
       const target = shelf(input.projectID)
       const existing = target.byValue.get(input.value)
       if (existing !== undefined) {
@@ -267,8 +362,11 @@ export const make = (): Interface => {
         return existing
       }
       const kind = sanitize(input.kind).slice(0, 48).replace(/-$/, "") || "secret"
-      return yield* store(target, {
-        name: nextName(target, kind),
+      const preferred = sanitize(input.name ?? "")
+      const held = preferred === "" ? undefined : target.byName.get(preferred)
+      if (held?.value === input.value) return held.name
+      return yield* store(input.projectID, target, {
+        name: preferred !== "" && held === undefined ? preferred : nextName(target, kind),
         kind,
         value: input.value,
         origin: "pasted",
@@ -276,8 +374,12 @@ export const make = (): Interface => {
       })
     }),
     set: Effect.fn("Vault.set")(function* (input) {
+      yield* refresh(input.projectID)
       const target = shelf(input.projectID)
-      const kind = sanitize(input.kind ?? input.name).slice(0, 48).replace(/-$/, "") || "secret"
+      const kind =
+        sanitize(input.kind ?? input.name)
+          .slice(0, 48)
+          .replace(/-$/, "") || "secret"
       const asked = sanitize(input.name)
       const held = asked ? target.byName.get(asked) : undefined
       if (held?.value === input.value) {
@@ -287,40 +389,52 @@ export const make = (): Interface => {
       const replaces =
         held === undefined || input.origin === "user" || (input.origin === "captured" && held.origin === "captured")
       const name = asked === "" ? nextName(target, kind) : replaces ? asked : nextName(target, asked)
-      return yield* store(target, { name, kind, value: input.value, origin: input.origin, hosts: input.hosts })
+      return yield* store(input.projectID, target, {
+        name,
+        kind,
+        value: input.value,
+        origin: input.origin,
+        hosts: input.hosts,
+      })
     }),
-    resolve: (input) => Effect.sync(() => shelves.get(input.projectID)?.byName.get(input.name)?.value),
-    list: (projectID) =>
-      Effect.sync(() =>
-        Array.from(shelves.get(projectID)?.byName.values() ?? [], (stored) =>
-          Entry.make({
-            name: stored.name,
-            kind: stored.kind,
-            created: stored.created,
-            ...(stored.allowed.size === 0 ? {} : { hosts: Array.from(stored.allowed).toSorted() }),
-          }),
-        ),
-      ),
-    forget: (input) =>
-      Effect.sync(() => {
-        const target = shelves.get(input.projectID)
-        const stored = target?.byName.get(input.name)
-        if (!target || !stored) return false
-        target.byName.delete(input.name)
-        index(target)
-        return true
-      }),
+    resolve: Effect.fn("Vault.resolve")(function* (input) {
+      yield* refresh(input.projectID)
+      return shelves.get(input.projectID)?.byName.get(input.name)?.value
+    }),
+    list: Effect.fn("Vault.list")(function* (projectID) {
+      yield* refresh(projectID)
+      return Array.from(shelves.get(projectID)?.byName.values() ?? [], (stored) =>
+        Entry.make({
+          name: stored.name,
+          kind: stored.kind,
+          created: stored.created,
+          ...(stored.allowed.size === 0 ? {} : { hosts: Array.from(stored.allowed).toSorted() }),
+        }),
+      )
+    }),
+    forget: Effect.fn("Vault.forget")(function* (input) {
+      yield* refresh(input.projectID)
+      const target = shelves.get(input.projectID)
+      const stored = target?.byName.get(input.name)
+      const directory = directories.get(input.projectID)
+      if (!target || !stored) return false
+      target.byName.delete(input.name)
+      index(target)
+      if (env && directory !== undefined && stored.persisted)
+        yield* env.update(directory, (text) => VaultEnvFile.remove(text, input.name))
+      return true
+    }),
     allow: (input) =>
       Effect.sync(() => {
         shelves.get(input.projectID)?.byName.get(input.name)?.allowed.add(input.destination)
       }),
-    scrub: (projectID, text) => Effect.sync(() => clean(projectID)(text)),
-    scrubber: (projectID) => Effect.sync(() => clean(projectID)),
+    scrub: (projectID, text) => refresh(projectID).pipe(Effect.map(() => clean(projectID)(text))),
+    scrubber: (projectID) => refresh(projectID).pipe(Effect.map(() => clean(projectID))),
     references,
   })
 }
 
-export const layer = Layer.sync(Service, make)
+export const layer = Layer.sync(Service, () => make(VaultEnvFile.store()))
 
 export const node = makeGlobalNode({ service: Service, layer, deps: [] })
 

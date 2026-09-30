@@ -65,9 +65,9 @@ export const make = Effect.fn("Session.make")(function* () {
     name?: string,
   ) {
     if (session.parentID) return
-    const marker = (yield* fs.up({ targets: [".git"], start: session.location.directory, mode: "first" }).pipe(
-      Effect.orElseSucceed(() => []),
-    ))[0]
+    const marker = (yield* fs
+      .up({ targets: [".git"], start: session.location.directory, mode: "first" })
+      .pipe(Effect.orElseSucceed(() => [])))[0]
     if (!marker || (yield* fs.stat(marker).pipe(Effect.orElseSucceed(() => undefined)))?.type !== "Directory") return
     yield* Effect.gen(function* () {
       const { Plugin } = yield* Effect.promise(() => import("../plugin.js"))
@@ -78,7 +78,8 @@ export const make = Effect.fn("Session.make")(function* () {
       const { Tool } = yield* Effect.promise(() => import("../tool.js"))
       const tools = yield* Tool.Service
       const prepare = (yield* tools.list()).find((item) => item.id === "worktree_prepare")
-      if (!prepare) return yield* Effect.logWarning("Build worktree preparation is unavailable", { sessionID: session.id })
+      if (!prepare)
+        return yield* Effect.logWarning("Build worktree preparation is unavailable", { sessionID: session.id })
       // The first prompt names a new worktree and its branch until the Session has a title.
       yield* prepare.execute(name ? { name } : {}, {
         sessionID: session.id,
@@ -199,7 +200,11 @@ export const make = Effect.fn("Session.make")(function* () {
             ),
           )
           // Secrets leave the prompt before anything durable is written, so events and history hold references.
-          const item = { ...prepared, payload: yield* VaultAdmission.protect(vault, session.projectID, prepared.payload) }
+          yield* vault.attach({ projectID: session.projectID, directory: session.location.directory })
+          const item = {
+            ...prepared,
+            payload: yield* VaultAdmission.protect(vault, session.projectID, prepared.payload),
+          }
           if (input.resume !== false)
             yield* restore(
               prepareBuildWorktree(session, messageID, undefined, yield* vault.scrub(session.projectID, input.text)),

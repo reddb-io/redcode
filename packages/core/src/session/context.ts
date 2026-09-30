@@ -170,6 +170,7 @@ const layer = Layer.effect(
           // Subagents share the Location's project, so they see the same names; only the guide needs a sink.
           vaultInstructions.load(session.projectID, {
             sinks: tools.definitions.some((definition) => VaultInstructions.SINKS.has(definition.name)),
+            directory: session.location.directory,
           }),
           loaded.entries,
         ]),

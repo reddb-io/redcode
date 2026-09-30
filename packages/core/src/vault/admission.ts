@@ -68,10 +68,17 @@ const replacements = Effect.fn("VaultAdmission.replacements")(function* (
 ) {
   return yield* Effect.forEach(Vault.capturable(text), (item) =>
     vault
-      .put({ projectID, kind: item.kind, value: item.value })
+      .put({ projectID, kind: item.kind, value: item.value, name: assignedTo(text, item.start) })
       .pipe(Effect.map((name): Replacement => ({ start: item.start, end: item.end, name, kind: item.kind }))),
   )
 })
+
+/** The variable or key a value at `start` was assigned to, such as `GITHUB_TOKEN` in `GITHUB_TOKEN=ghp_…`. */
+function assignedTo(text: string, start: number) {
+  return /(?:^|[\s"'{,;(])([A-Za-z_][A-Za-z0-9_.-]*)["']?[ \t]*[=:][ \t]*["']?$/.exec(
+    text.slice(Math.max(0, start - 96), start),
+  )?.[1]
+}
 
 /** `text` with each replacement's span replaced by its reference; the replacements are sorted and disjoint. */
 function splice(text: string, replaced: ReadonlyArray<Replacement>) {

@@ -286,6 +286,7 @@ export const layer = Layer.effect(
       const session = input.session
       const model = input.model
       const scope = { sessionID: session.id, agent: input.agent, model: model.ref, kind }
+      yield* vault.attach({ projectID: session.projectID, directory: session.location.directory })
       const clean = yield* vault.scrubber(session.projectID)
       const tools = input.tools ?? {
         definitions: [],

@@ -120,8 +120,8 @@ reference such as `{vault:github-token}` instead of the value.
 - **The model can use a secret.** References in shell commands and env-style file writes are resolved by
   the harness at the last step, in a way that survives shell quoting. Tool output is scrubbed of every
   known value on the way back.
-- **The model can obtain one.** A token that a tool prints, such as a login response, is captured into the
-  vault automatically, so the next call can use it without the value ever entering the context.
+- **The model can obtain one.** A token that a tool prints, such as a login response, is captured
+  automatically, so the next call can use it without the value ever entering the context.
 - **The model can ask for one.** `vault_request` opens a masked input for you. The model gets a reference back.
 - **Hosts are bound.** The first time a secret is used against a host, you are asked once; after that
   the secret only goes where you approved.
@@ -130,9 +130,15 @@ reference such as `{vault:github-token}` instead of the value.
 - **Restricted content is flagged.** S1 marks messages that carry restricted content, protects them, and tells
   you the secrets were removed from the context. `/compact` and session titles pass through the same redaction.
 
-Secrets belong to the project (worktrees of one repository share it) and never fall back to a global
-scope. Manage them with `/vault`, `redcode vault set NAME` (masked prompt, or a piped value), or
-`redcode vault import .env`. Vault coverage is measured in CI against a 90% line target.
+A project's secrets live where your project already keeps them: the `.env` file at the root of the
+repository, which Redcode adds to `.gitignore`. `GITHUB_TOKEN` in the file is `{vault:github-token}` in a
+prompt, a pasted `GITHUB_TOKEN=ghp_…` is written back under that name, and edits you make to the file are
+picked up while a session runs. Worktrees share the main checkout's `.env`. Only variables named like
+credentials, or holding a recognized secret, are hidden from tool output, so `PORT` stays readable. A token the
+agent captured from a tool's output is short-lived and stays in memory only.
+
+Manage secrets with `/vault`, `redcode vault set NAME` (masked prompt, or a piped value), or
+`redcode vault import other.env`. Vault coverage is measured in CI against a 90% line target.
 
 ## S1 · S2 dual reasoning
 
