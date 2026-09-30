@@ -9,7 +9,7 @@ import { tmpdir } from "./fixture/tmpdir"
 
 const problems = (body: string) =>
   DesignQuality.screenProblems(
-    parseHTML(`<!doctype html><html><body>${body}</body></html>`).document as unknown as ParentNode,
+    parseHTML(`<!doctype html><html><body>${body}</body></html>`).document as never,
   )
 
 const designID = Design.ID.make("design_quality")

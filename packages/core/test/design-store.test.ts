@@ -34,7 +34,7 @@ const it = testEffect(
     Intelligence.node.replace(Layer.mock(Intelligence.Service, {})),
     Worktree.node.replace(Layer.mock(Worktree.Service, {})),
     WorktreeStrategies.node.replace(
-      Layer.mock(WorktreeStrategies.Service, { directory: AbsolutePath.make("/unused-worktrees") }),
+      Layer.mock(WorktreeStrategies.Service, { directory: AbsolutePath.make("/unused-worktrees") } as never),
     ),
   ]),
 )

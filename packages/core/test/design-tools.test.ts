@@ -232,7 +232,7 @@ describe("Design agent permissions", () => {
       const agent = yield* designAgent()
       const session: Permission.Ruleset = [{ action: "*", resource: "*", effect: "allow" }]
       const effect = (action: string, resource: string) =>
-        Permission.evaluate(action, resource, Permission.forAgent(agent, session)).effect
+        Permission.evaluate(action, resource, Permission.forAgent(agent as never, session)).effect
 
       expect(agent.name).toBe("Design")
       expect(agent.mode).toBe("primary")

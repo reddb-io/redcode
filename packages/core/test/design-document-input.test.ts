@@ -2,7 +2,9 @@ import { describe, expect, test } from "bun:test"
 import { Schema } from "effect"
 import { DesignDocumentTool } from "../src/design/document-tool"
 
-const decode = Schema.decodeUnknownSync(DesignDocumentTool.Input)
+const decoder = Schema.decodeUnknownSync(DesignDocumentTool.Input)
+// Compared structurally against plain literals, whose ids are unbranded strings.
+const decode = (value: unknown): unknown => decoder(value)
 
 describe("design_document input", () => {
   test("keeps every operation and its payload through decoding", () => {

@@ -486,6 +486,9 @@ export const layer = (options?: Options) =>
         (effect) => updateLock.withPermit(effect),
       )
 
+      // `reload` needs the same services the watchers already run with; the public method must not.
+      const reloadServices = yield* Effect.context<Global.Service | FSUtil.Service | Location.Service>()
+
       return Service.of({
         entries: Effect.fnUntraced(function* () {
           return configs
@@ -496,7 +499,11 @@ export const layer = (options?: Options) =>
             agents: Effect.filter(sources.agents, fs.isDir),
           }),
         changes: () => Stream.fromPubSub(updates),
-        reload: () => reload().pipe(Effect.catchCause((cause) => Effect.logError("failed to reload config", { cause }))),
+        reload: () =>
+          reload().pipe(
+            Effect.provideContext(reloadServices),
+            Effect.catchCause((cause) => Effect.logError("failed to reload config", { cause })),
+          ),
         update,
         removeProvider,
         enableProvider,
