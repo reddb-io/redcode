@@ -1,8 +1,10 @@
 import { afterAll, describe, expect, test } from "bun:test"
 import { Effect } from "effect"
+import { catalogLimits, knownLimit } from "@opencode/core/plugin/provider/catalog-limits"
 import {
   deriveProviderID,
   discover,
+  isRedRouter,
   normalizeBaseURL,
   parseEndpoint,
   parseHeaders,
@@ -23,6 +25,10 @@ const server = Bun.serve({
         ],
       })
     if (url.pathname === "/plain/models") return new Response("not json")
+    if (url.pathname === "/rr/v1/capabilities") return Response.json({ product: "red-router" })
+    if (url.pathname === "/old/v1/models/systemone")
+      return Response.json({ data: [{ id: "jev-small" }, { id: "jev-large" }] })
+    if (url.pathname === "/mixed/v1/models/systemone") return Response.json({ data: [{ id: "jev" }, { id: "gpt" }] })
     return new Response("missing", { status: 404 })
   },
 })
@@ -157,5 +163,44 @@ describe("OpenAI-compatible discovery", () => {
       Effect.flip(discover(endpoint({ baseURL: "http://127.0.0.1:9/v1" }), "sk-good")),
     )
     expect(error.message).toStartWith("Could not reach http://127.0.0.1:9/v1/models")
+  })
+})
+
+describe("OpenAI-compatible endpoints that the catalog and the router know", () => {
+  const base = `http://127.0.0.1:${server.port}`
+  const at = (path: string) => endpoint({ baseURL: `${base}${path}` })
+
+  test("takes a limit the endpoint did not report from the models catalog, dropping router prefixes", () => {
+    const limits = new Map([
+      ["gpt-4o", { context: 128_000, output: 16_384 }],
+      ["claude-sonnet", { context: 200_000, output: 64_000 }],
+    ])
+    expect(knownLimit(limits, "gpt-4o")).toEqual({ context: 128_000, output: 16_384 })
+    expect(knownLimit(limits, "openai/gpt-4o")).toEqual({ context: 128_000, output: 16_384 })
+    expect(knownLimit(limits, "cc/anthropic/claude-sonnet")?.context).toBe(200_000)
+    expect(knownLimit(limits, "unknown-model")).toBeUndefined()
+
+    const config = providerConfig(
+      endpoint({ baseURL: "https://gw.example.com/v1" }),
+      [{ id: "openai/gpt-4o" }, { id: "vllm-own", max_model_len: 32_768 }, { id: "mystery" }],
+      limits,
+    )
+    expect(config.models["openai/gpt-4o"]?.limit).toEqual({ context: 128_000, output: 16_384 })
+    // What the endpoint reports wins over the catalog.
+    expect(config.models["vllm-own"]?.limit.context).toBe(32_768)
+    expect(config.models.mystery?.limit.context).toBeLessThan(128_000)
+    expect(catalogLimits([]).size).toBe(0)
+  })
+
+  test("recognizes a RedRouter by its capabilities or by serving only System One models", async () => {
+    expect(await Effect.runPromise(isRedRouter(at("/rr/v1"), "sk-good"))).toBe(true)
+    expect(await Effect.runPromise(isRedRouter(at("/old/v1"), "sk-good"))).toBe(true)
+  })
+
+  test("does not take another endpoint for a RedRouter", async () => {
+    expect(await Effect.runPromise(isRedRouter(at("/v1"), "sk-good"))).toBe(false)
+    expect(await Effect.runPromise(isRedRouter(at("/mixed/v1"), "sk-good"))).toBe(false)
+    expect(await Effect.runPromise(isRedRouter(at("/rr/v1"), "sk-wrong"))).toBe(false)
+    expect(await Effect.runPromise(isRedRouter(endpoint({ baseURL: "http://127.0.0.1:1/v1" }), "sk-good"))).toBe(false)
   })
 })

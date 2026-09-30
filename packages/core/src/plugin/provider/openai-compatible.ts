@@ -4,6 +4,8 @@ import { Effect, Option, Schema } from "effect"
 import { Config } from "../../config.js"
 import { Integration } from "../../integration.js"
 import { ModelLimit } from "../../model-limit.js"
+import { ModelsDev } from "../../models-dev.js"
+import { catalogLimits, knownLimit, type CatalogLimits } from "./catalog-limits.js"
 import { Provider } from "../../provider.js"
 
 /**
@@ -12,7 +14,12 @@ import { Provider } from "../../provider.js"
  * and files the key in the credential store under the new provider's own integration, never in configuration.
  *
  * The URL and the key are all it asks: the models and their limits come from `/models`, and the provider ID and
- * display name come from the host. Everything else sits behind one "customize" question.
+ * display name come from the host. Everything else sits behind one "customize" question. A limit the endpoint does
+ * not report is taken from the models catalog, and one the catalog lacks is guessed and later corrected by the size
+ * refusals the provider sends (see `ModelLimit`).
+ *
+ * An endpoint that turns out to be a RedRouter is not a generic endpoint: it is connected as the RedRouter
+ * integration, which reads its own catalog, routes, key role and capabilities.
  */
 export const INTEGRATION_ID = Integration.ID.make("openai-compatible")
 
@@ -113,7 +120,19 @@ export const OpenAICompatiblePlugin = define({
           new Error(`${endpoint.providerID} is already a provider (${existing.name}); choose another provider ID`),
         )
       const listed = yield* discover(endpoint, input.key)
-      const provider = providerConfig(endpoint, listed)
+      // A RedRouter keeps everything that makes it special only as the RedRouter integration, whichever way it was added.
+      if (yield* isRedRouter(endpoint, input.key))
+        return {
+          integrationID: Integration.ID.make("red-router"),
+          label: endpoint.name,
+          configuration: { baseURL: endpoint.baseURL },
+        }
+      const catalog = yield* Effect.serviceOption(ModelsDev.Service).pipe(
+        Effect.flatMap((service) => (Option.isSome(service) ? service.value.get() : Effect.succeed([]))),
+        Effect.map(catalogLimits),
+        Effect.orElseSucceed(() => catalogLimits([])),
+      )
+      const provider = providerConfig(endpoint, listed, catalog)
       if (Object.keys(provider.models).length === 0)
         return yield* Effect.fail(
           new Error(
@@ -332,8 +351,34 @@ export const discover = Effect.fn("OpenAICompatible.discover")(function* (endpoi
   return list.data.flatMap((item) => Option.toArray(Schema.decodeUnknownOption(ListedModel)(item)))
 })
 
+/**
+ * Whether the endpoint is a RedRouter, by the capabilities document the router publishes about itself, or by serving
+ * only System One models on `/models/systemone` as older routers do. Best effort: an endpoint that does not answer, or
+ * answers with anything else, is not one.
+ */
+export const isRedRouter = Effect.fn("OpenAICompatible.isRedRouter")(function* (endpoint: Endpoint, key: string) {
+  const get = (route: string) =>
+    fetch(`${endpoint.baseURL}/${route}`, {
+      redirect: "error",
+      signal: AbortSignal.timeout(3_000),
+      headers: { ...endpoint.headers, accept: "application/json", authorization: `Bearer ${key}` },
+    })
+      .then((response) => (response.ok ? (response.json() as Promise<unknown>) : undefined))
+      .catch(() => undefined)
+  const capabilities = yield* Effect.promise(() => get("capabilities"))
+  if (isRecord(capabilities) && capabilities.product === "red-router") return true
+  const systemOne = yield* Effect.promise(() => get("models/systemone"))
+  const data = isRecord(systemOne) ? systemOne.data : undefined
+  const ids = Array.isArray(data)
+    ? data.flatMap((item) => (isRecord(item) && typeof item.id === "string" ? [item.id] : []))
+    : []
+  return ids.length > 0 && ids.every((id) => /\bjev\b/i.test(id))
+})
+
+const isRecord = (value: unknown): value is Record<string, unknown> => typeof value === "object" && value !== null
+
 /** The provider as written under `providers.<id>` in the global configuration. */
-export function providerConfig(endpoint: Endpoint, listed: ReadonlyArray<Listed>) {
+export function providerConfig(endpoint: Endpoint, listed: ReadonlyArray<Listed>, catalog?: CatalogLimits) {
   const byID = new Map(listed.filter((model) => model.id.trim()).map((model) => [model.id, model]))
   const ids = [...new Set([...byID.keys(), ...endpoint.models])].slice(0, MAX_MODELS)
   return {
@@ -345,6 +390,7 @@ export function providerConfig(endpoint: Endpoint, listed: ReadonlyArray<Listed>
       ids.map((id) => {
         const model = byID.get(id)
         const display = model?.display_name?.trim() || model?.name?.trim()
+        const known = catalog ? knownLimit(catalog, id) : undefined
         const context =
           endpoint.context ??
           positive([
@@ -356,6 +402,7 @@ export function providerConfig(endpoint: Endpoint, listed: ReadonlyArray<Listed>
             model?.top_provider?.context_length,
             model?.meta?.n_ctx_train,
           ]) ??
+          known?.context ??
           ModelLimit.conservative(DEFAULT_CONTEXT)
         const output = Math.min(
           endpoint.output ??
@@ -364,6 +411,7 @@ export function providerConfig(endpoint: Endpoint, listed: ReadonlyArray<Listed>
               model?.max_output_tokens,
               model?.top_provider?.max_completion_tokens,
             ]) ??
+            known?.output ??
             DEFAULT_OUTPUT,
           context,
         )
