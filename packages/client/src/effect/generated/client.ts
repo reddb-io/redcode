@@ -735,6 +735,7 @@ const EndpointSessionDesignCreate = (raw: RawClient["server.session"]) => (input
         journey: input["journey"],
         engine: input["engine"],
         kind: input["kind"],
+        designSystem: input["designSystem"],
         application: input["application"],
         target: input["target"],
         platform: input["platform"],

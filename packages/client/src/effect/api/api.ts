@@ -14,13 +14,13 @@ import type { Permission } from "@opencode/schema/permission"
 import type { SessionMessage } from "@opencode/schema/session-message"
 import type { Credential } from "@opencode/schema/credential"
 import type { Event } from "@opencode/schema/event"
+import type { Schema } from "effect"
 import type { SessionInbox } from "@opencode/schema/session-inbox"
 import type { PromptInput } from "@opencode/schema/prompt-input"
 import type { AgentAttachment } from "@opencode/schema/prompt"
 import type { Skill } from "@opencode/schema/skill"
 import type { FileDiff } from "@opencode/schema/file-diff"
 import type { InstructionEntry } from "@opencode/schema/instruction-entry"
-import type { Schema } from "effect"
 import type { EventLog } from "@opencode/schema/event-log"
 import type { Shell } from "@opencode/schema/shell"
 import type { Provider } from "@opencode/schema/provider"
@@ -555,6 +555,7 @@ export type SessionTodoListOutput = ReadonlyArray<{
   readonly revision?: number | undefined
   readonly reason?: string | undefined
   readonly title?: string | undefined
+  readonly phase?: "build" | "design" | "plan" | undefined
   readonly legacyStatus?: string | undefined
   readonly source?:
     | {
@@ -870,7 +871,7 @@ export type SessionDesignListOutput = ReadonlyArray<{
     readonly notApplicable?: string | undefined
   }>
   readonly targets?: ReadonlyArray<{ readonly path: string; readonly role: string }> | undefined
-  readonly designSystem: string
+  readonly designSystem: string | { readonly [x: string]: Schema.Json }
   readonly system?:
     | {
         readonly paths: ReadonlyArray<string>
@@ -962,6 +963,7 @@ export type SessionDesignCreateInput = {
   readonly journey: "new" | "existing"
   readonly engine: "html" | "react" | "solid"
   readonly kind: "screen" | "flow" | "comparison" | "deck"
+  readonly designSystem?: (string | { readonly [x: string]: Schema.Json }) | undefined
   readonly application?: string | undefined
   readonly target?: "web" | "app" | "presentation" | undefined
   readonly platform?: "ios" | "android" | undefined
@@ -1043,7 +1045,7 @@ export type SessionDesignCreateOutput = {
     readonly notApplicable?: string | undefined
   }>
   readonly targets?: ReadonlyArray<{ readonly path: string; readonly role: string }> | undefined
-  readonly designSystem: string
+  readonly designSystem: string | { readonly [x: string]: Schema.Json }
   readonly system?:
     | {
         readonly paths: ReadonlyArray<string>
@@ -1210,7 +1212,7 @@ export type SessionDesignGetOutput = {
     readonly notApplicable?: string | undefined
   }>
   readonly targets?: ReadonlyArray<{ readonly path: string; readonly role: string }> | undefined
-  readonly designSystem: string
+  readonly designSystem: string | { readonly [x: string]: Schema.Json }
   readonly system?:
     | {
         readonly paths: ReadonlyArray<string>
@@ -1467,7 +1469,7 @@ export type SessionDesignUpdateInput = {
       }>
     | undefined
   readonly targets?: ReadonlyArray<{ readonly path: string; readonly role: string }> | undefined
-  readonly designSystem?: string | undefined
+  readonly designSystem?: (string | { readonly [x: string]: Schema.Json }) | undefined
   readonly entry?: string | undefined
   readonly tweaks?: { readonly [x: string]: string } | undefined
 }
@@ -1548,7 +1550,7 @@ export type SessionDesignUpdateOutput = {
     readonly notApplicable?: string | undefined
   }>
   readonly targets?: ReadonlyArray<{ readonly path: string; readonly role: string }> | undefined
-  readonly designSystem: string
+  readonly designSystem: string | { readonly [x: string]: Schema.Json }
   readonly system?:
     | {
         readonly paths: ReadonlyArray<string>
@@ -1715,7 +1717,7 @@ export type SessionDesignRefreshOutput = {
     readonly notApplicable?: string | undefined
   }>
   readonly targets?: ReadonlyArray<{ readonly path: string; readonly role: string }> | undefined
-  readonly designSystem: string
+  readonly designSystem: string | { readonly [x: string]: Schema.Json }
   readonly system?:
     | {
         readonly paths: ReadonlyArray<string>
@@ -1898,7 +1900,7 @@ export type SessionDesignReopenOutput = {
     readonly notApplicable?: string | undefined
   }>
   readonly targets?: ReadonlyArray<{ readonly path: string; readonly role: string }> | undefined
-  readonly designSystem: string
+  readonly designSystem: string | { readonly [x: string]: Schema.Json }
   readonly system?:
     | {
         readonly paths: ReadonlyArray<string>
@@ -2072,7 +2074,7 @@ export type SessionDesignRevisionsOutput = ReadonlyArray<{
       readonly notApplicable?: string | undefined
     }>
     readonly targets?: ReadonlyArray<{ readonly path: string; readonly role: string }> | undefined
-    readonly designSystem: string
+    readonly designSystem: string | { readonly [x: string]: Schema.Json }
     readonly system?:
       | {
           readonly paths: ReadonlyArray<string>
@@ -2330,7 +2332,7 @@ export type SessionDesignRevisionOutput = {
       readonly notApplicable?: string | undefined
     }>
     readonly targets?: ReadonlyArray<{ readonly path: string; readonly role: string }> | undefined
-    readonly designSystem: string
+    readonly designSystem: string | { readonly [x: string]: Schema.Json }
     readonly system?:
       | {
           readonly paths: ReadonlyArray<string>

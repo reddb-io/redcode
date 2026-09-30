@@ -25,7 +25,8 @@ export const Plugin = {
           description: `${SessionTodo.guidance} Send todos: [] to inspect current tasks and available evidence.`,
           input: Schema.Struct({
             todos: Schema.Array(SessionTodo.ModelInput).annotate({
-              description: "Tasks to create or update; omitted tasks are preserved. Empty array reads the current list.",
+              description:
+                "Tasks to create or update; omitted tasks are preserved. Empty array reads the current list.",
             }),
           }),
           output: Schema.String,
@@ -44,11 +45,12 @@ export const Plugin = {
                 sessionID: context.sessionID,
                 todos: input.todos,
                 messageID: context.messageID,
+                phase: SessionTodo.phase(context.agent),
               })
               const notes = [
                 ...SessionTodo.notes(
                   input.todos,
-                  written.todos,
+                  SessionTodo.forAgent(written.todos, context.agent),
                   SessionTodo.quotesCommand(input.todos, written.todos)
                     ? (yield* facts.load(context.sessionID)).results
                     : [],
@@ -56,7 +58,7 @@ export const Plugin = {
                 ...written.notes,
               ]
               const output = JSON.stringify({
-                todos: written.todos,
+                todos: SessionTodo.forAgent(written.todos, context.agent),
                 ...(notes.length ? { notes } : {}),
                 ...(input.todos.length ? {} : { availableEvidence: yield* facts.available(context.sessionID) }),
               })

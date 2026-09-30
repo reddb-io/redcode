@@ -7,6 +7,17 @@ import { optional, PositiveInt } from "./schema.js"
 
 export const Status = Schema.Literals(["pending", "in_progress", "blocked", "completed", "cancelled"])
 export const Priority = Schema.Literals(["high", "medium", "low"])
+export const Phase = Schema.Literals(["build", "design", "plan"])
+
+export function phase(agent: string): typeof Phase.Type {
+  return agent === "design" ? "design" : agent === "plan" ? "plan" : "build"
+}
+
+export function forAgent<T extends { readonly phase?: typeof Phase.Type }>(tasks: readonly T[], agent: string) {
+  return tasks.filter(
+    (task) => (task.phase ?? "build") === phase(agent) || (agent === "plan" && task.phase === "design"),
+  )
+}
 
 /** The most graphemes a task label keeps before it is cut with an ellipsis. */
 export const TITLE_LIMIT = 80
@@ -175,6 +186,7 @@ export const Info = Schema.Struct({
   // Old tool results and event snapshots predate task identity and closed states.
   // Keep the read contract compatible; all new writes pass through Input.
   ...tracking,
+  phase: optional(Phase),
   legacyStatus: optional(Schema.String),
   source: optional(Source),
   criterion: optional(Schema.String),

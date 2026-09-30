@@ -17,6 +17,7 @@ export function SidebarTodo(props: { context: Plugin.Context; sessionID: string 
   const [all, setAll] = createSignal(false)
   const [expanded, setExpanded] = createSignal<string>()
   const [clock, setClock] = createSignal(Date.now())
+  const agent = () => props.context.data.session.get(props.sessionID)?.agent ?? "build"
   const [tasks, { refetch }] = createResource(
     () => props.sessionID,
     (sessionID) =>
@@ -31,7 +32,7 @@ export function SidebarTodo(props: { context: Plugin.Context; sessionID: string 
   }, 5_000)
   onCleanup(() => clearInterval(timer))
   const visible = createMemo(() =>
-    (tasks()?.data ?? []).filter(
+    SessionTodo.forAgent(tasks()?.data ?? [], agent()).filter(
       (item) =>
         (item.status !== "completed" && item.status !== "cancelled") ||
         (item.closedAt !== undefined && clock() - item.closedAt < CLOSED_WINDOW_MS),
@@ -47,7 +48,7 @@ export function SidebarTodo(props: { context: Plugin.Context; sessionID: string 
             <text fg={theme.text.action.primary.base}>{open() ? "▼" : "▶"}</text>
           </Show>
           <text fg={theme.text.action.primary.base}>
-            <b>Todo</b>
+            <b>Todo · {agent() === "design" ? "Design" : agent() === "plan" ? "Plan / Design" : "Build"}</b>
           </text>
         </box>
         <Show when={tasks()?.error}>

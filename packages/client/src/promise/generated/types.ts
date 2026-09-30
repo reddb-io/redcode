@@ -298,6 +298,8 @@ export type DesignDecision = { id: string; text: string; revision?: string; feed
 
 export type DesignTarget = { path: string; role: string }
 
+export type DesignSystemDescription = string | { [x: string]: JsonValue }
+
 export type DesignSystem = {
   paths: Array<string>
   css: Array<string>
@@ -983,6 +985,7 @@ export type Todo = {
   revision?: number
   reason?: string
   title?: string
+  phase?: "build" | "design" | "plan"
   legacyStatus?: string
   source?: TodoSource
   criterion?: string
@@ -3171,7 +3174,7 @@ export type DesignInfo = {
   questions: Array<string>
   scenarios: Array<DesignScenario>
   targets?: Array<DesignTarget>
-  designSystem: string
+  designSystem: DesignSystemDescription
   system?: DesignSystem
   sources: Array<{
     file: string
@@ -5231,6 +5234,7 @@ export type SessionDesignCreateInput = {
     readonly journey: "new" | "existing"
     readonly engine: "html" | "react" | "solid"
     readonly kind: "screen" | "flow" | "comparison" | "deck"
+    readonly designSystem?: string | { readonly [x: string]: JsonValue }
     readonly application?: string
     readonly target?: "web" | "app" | "presentation"
     readonly platform?: "ios" | "android"
@@ -5240,6 +5244,7 @@ export type SessionDesignCreateInput = {
     readonly journey: "new" | "existing"
     readonly engine: "html" | "react" | "solid"
     readonly kind: "screen" | "flow" | "comparison" | "deck"
+    readonly designSystem?: string | { readonly [x: string]: JsonValue }
     readonly application?: string
     readonly target?: "web" | "app" | "presentation"
     readonly platform?: "ios" | "android"
@@ -5249,6 +5254,7 @@ export type SessionDesignCreateInput = {
     readonly journey: "new" | "existing"
     readonly engine: "html" | "react" | "solid"
     readonly kind: "screen" | "flow" | "comparison" | "deck"
+    readonly designSystem?: string | { readonly [x: string]: JsonValue }
     readonly application?: string
     readonly target?: "web" | "app" | "presentation"
     readonly platform?: "ios" | "android"
@@ -5258,15 +5264,27 @@ export type SessionDesignCreateInput = {
     readonly journey: "new" | "existing"
     readonly engine: "html" | "react" | "solid"
     readonly kind: "screen" | "flow" | "comparison" | "deck"
+    readonly designSystem?: string | { readonly [x: string]: JsonValue }
     readonly application?: string
     readonly target?: "web" | "app" | "presentation"
     readonly platform?: "ios" | "android"
   }["kind"]
+  readonly designSystem?: {
+    readonly name: string
+    readonly journey: "new" | "existing"
+    readonly engine: "html" | "react" | "solid"
+    readonly kind: "screen" | "flow" | "comparison" | "deck"
+    readonly designSystem?: string | { readonly [x: string]: JsonValue }
+    readonly application?: string
+    readonly target?: "web" | "app" | "presentation"
+    readonly platform?: "ios" | "android"
+  }["designSystem"]
   readonly application?: {
     readonly name: string
     readonly journey: "new" | "existing"
     readonly engine: "html" | "react" | "solid"
     readonly kind: "screen" | "flow" | "comparison" | "deck"
+    readonly designSystem?: string | { readonly [x: string]: JsonValue }
     readonly application?: string
     readonly target?: "web" | "app" | "presentation"
     readonly platform?: "ios" | "android"
@@ -5276,6 +5294,7 @@ export type SessionDesignCreateInput = {
     readonly journey: "new" | "existing"
     readonly engine: "html" | "react" | "solid"
     readonly kind: "screen" | "flow" | "comparison" | "deck"
+    readonly designSystem?: string | { readonly [x: string]: JsonValue }
     readonly application?: string
     readonly target?: "web" | "app" | "presentation"
     readonly platform?: "ios" | "android"
@@ -5285,6 +5304,7 @@ export type SessionDesignCreateInput = {
     readonly journey: "new" | "existing"
     readonly engine: "html" | "react" | "solid"
     readonly kind: "screen" | "flow" | "comparison" | "deck"
+    readonly designSystem?: string | { readonly [x: string]: JsonValue }
     readonly application?: string
     readonly target?: "web" | "app" | "presentation"
     readonly platform?: "ios" | "android"
@@ -5383,7 +5403,7 @@ export type SessionDesignUpdateInput = {
       readonly notApplicable?: string
     }>
     readonly targets?: ReadonlyArray<{ readonly path: string; readonly role: string }>
-    readonly designSystem?: string
+    readonly designSystem?: string | { readonly [x: string]: JsonValue }
     readonly entry?: string
     readonly tweaks?: { readonly [x: string]: string }
   }["notes"]
@@ -5460,7 +5480,7 @@ export type SessionDesignUpdateInput = {
       readonly notApplicable?: string
     }>
     readonly targets?: ReadonlyArray<{ readonly path: string; readonly role: string }>
-    readonly designSystem?: string
+    readonly designSystem?: string | { readonly [x: string]: JsonValue }
     readonly entry?: string
     readonly tweaks?: { readonly [x: string]: string }
   }["by"]
@@ -5537,7 +5557,7 @@ export type SessionDesignUpdateInput = {
       readonly notApplicable?: string
     }>
     readonly targets?: ReadonlyArray<{ readonly path: string; readonly role: string }>
-    readonly designSystem?: string
+    readonly designSystem?: string | { readonly [x: string]: JsonValue }
     readonly entry?: string
     readonly tweaks?: { readonly [x: string]: string }
   }["controls"]
@@ -5614,7 +5634,7 @@ export type SessionDesignUpdateInput = {
       readonly notApplicable?: string
     }>
     readonly targets?: ReadonlyArray<{ readonly path: string; readonly role: string }>
-    readonly designSystem?: string
+    readonly designSystem?: string | { readonly [x: string]: JsonValue }
     readonly entry?: string
     readonly tweaks?: { readonly [x: string]: string }
   }["presets"]
@@ -5691,7 +5711,7 @@ export type SessionDesignUpdateInput = {
       readonly notApplicable?: string
     }>
     readonly targets?: ReadonlyArray<{ readonly path: string; readonly role: string }>
-    readonly designSystem?: string
+    readonly designSystem?: string | { readonly [x: string]: JsonValue }
     readonly entry?: string
     readonly tweaks?: { readonly [x: string]: string }
   }["name"]
@@ -5768,7 +5788,7 @@ export type SessionDesignUpdateInput = {
       readonly notApplicable?: string
     }>
     readonly targets?: ReadonlyArray<{ readonly path: string; readonly role: string }>
-    readonly designSystem?: string
+    readonly designSystem?: string | { readonly [x: string]: JsonValue }
     readonly entry?: string
     readonly tweaks?: { readonly [x: string]: string }
   }["target"]
@@ -5845,7 +5865,7 @@ export type SessionDesignUpdateInput = {
       readonly notApplicable?: string
     }>
     readonly targets?: ReadonlyArray<{ readonly path: string; readonly role: string }>
-    readonly designSystem?: string
+    readonly designSystem?: string | { readonly [x: string]: JsonValue }
     readonly entry?: string
     readonly tweaks?: { readonly [x: string]: string }
   }["platform"]
@@ -5922,7 +5942,7 @@ export type SessionDesignUpdateInput = {
       readonly notApplicable?: string
     }>
     readonly targets?: ReadonlyArray<{ readonly path: string; readonly role: string }>
-    readonly designSystem?: string
+    readonly designSystem?: string | { readonly [x: string]: JsonValue }
     readonly entry?: string
     readonly tweaks?: { readonly [x: string]: string }
   }["brief"]
@@ -5999,7 +6019,7 @@ export type SessionDesignUpdateInput = {
       readonly notApplicable?: string
     }>
     readonly targets?: ReadonlyArray<{ readonly path: string; readonly role: string }>
-    readonly designSystem?: string
+    readonly designSystem?: string | { readonly [x: string]: JsonValue }
     readonly entry?: string
     readonly tweaks?: { readonly [x: string]: string }
   }["decisions"]
@@ -6076,7 +6096,7 @@ export type SessionDesignUpdateInput = {
       readonly notApplicable?: string
     }>
     readonly targets?: ReadonlyArray<{ readonly path: string; readonly role: string }>
-    readonly designSystem?: string
+    readonly designSystem?: string | { readonly [x: string]: JsonValue }
     readonly entry?: string
     readonly tweaks?: { readonly [x: string]: string }
   }["questions"]
@@ -6153,7 +6173,7 @@ export type SessionDesignUpdateInput = {
       readonly notApplicable?: string
     }>
     readonly targets?: ReadonlyArray<{ readonly path: string; readonly role: string }>
-    readonly designSystem?: string
+    readonly designSystem?: string | { readonly [x: string]: JsonValue }
     readonly entry?: string
     readonly tweaks?: { readonly [x: string]: string }
   }["scenarios"]
@@ -6230,7 +6250,7 @@ export type SessionDesignUpdateInput = {
       readonly notApplicable?: string
     }>
     readonly targets?: ReadonlyArray<{ readonly path: string; readonly role: string }>
-    readonly designSystem?: string
+    readonly designSystem?: string | { readonly [x: string]: JsonValue }
     readonly entry?: string
     readonly tweaks?: { readonly [x: string]: string }
   }["targets"]
@@ -6307,7 +6327,7 @@ export type SessionDesignUpdateInput = {
       readonly notApplicable?: string
     }>
     readonly targets?: ReadonlyArray<{ readonly path: string; readonly role: string }>
-    readonly designSystem?: string
+    readonly designSystem?: string | { readonly [x: string]: JsonValue }
     readonly entry?: string
     readonly tweaks?: { readonly [x: string]: string }
   }["designSystem"]
@@ -6384,7 +6404,7 @@ export type SessionDesignUpdateInput = {
       readonly notApplicable?: string
     }>
     readonly targets?: ReadonlyArray<{ readonly path: string; readonly role: string }>
-    readonly designSystem?: string
+    readonly designSystem?: string | { readonly [x: string]: JsonValue }
     readonly entry?: string
     readonly tweaks?: { readonly [x: string]: string }
   }["entry"]
@@ -6461,7 +6481,7 @@ export type SessionDesignUpdateInput = {
       readonly notApplicable?: string
     }>
     readonly targets?: ReadonlyArray<{ readonly path: string; readonly role: string }>
-    readonly designSystem?: string
+    readonly designSystem?: string | { readonly [x: string]: JsonValue }
     readonly entry?: string
     readonly tweaks?: { readonly [x: string]: string }
   }["tweaks"]

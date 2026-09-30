@@ -6,6 +6,64 @@ import { directory, json, worktree } from "./fixture/tui-client"
 
 const location = { directory, project: { id: "project", directory, canonical: directory } }
 
+test("a resumed prototype keeps its review address visible without launching another browser", async () => {
+  await using state = await tmpdir()
+  const session = {
+    id: "ses_profile_design",
+    projectID: "project",
+    title: "Profile design",
+    agent: "design",
+    location: { directory },
+    cost: 0,
+    tokens: { input: 0, output: 0, reasoning: 0, cache: { read: 0, write: 0 } },
+    time: { created: 1, updated: 1 },
+  }
+  const review = "http://localhost/review/profile"
+  const requests: string[] = []
+  await using setup = await createAppFixture({
+    state: state.path,
+    width: 120,
+    args: { sessionID: session.id },
+    config: { animations: false, session: { sidebar: "hide" } },
+    fetch: (url) => {
+      if (url.pathname.startsWith("/design/")) requests.push(url.pathname)
+      if (url.pathname === `/design/session/${session.id}/link`) return json({ url: review })
+      if (url.pathname === `/api/session/${session.id}`) return json({ data: session })
+      if (url.pathname === `/api/session/${session.id}/message`)
+        return json({
+          data: [
+            {
+              id: "msg_preview",
+              type: "assistant",
+              agent: "design",
+              model: { providerID: "fixture", id: "model" },
+              time: { created: 1, completed: 2 },
+              content: [
+                {
+                  type: "tool",
+                  id: "call_preview",
+                  name: "design_preview",
+                  time: { created: 1, completed: 2 },
+                  state: {
+                    status: "completed",
+                    input: { id: "design_profile", name: "Profile" },
+                    content: [{ type: "text", text: "Published profile" }],
+                    metadata: { designID: "design_profile", revision: "rev_profile" },
+                  },
+                },
+              ],
+            },
+          ],
+          cursor: {},
+        })
+    },
+  })
+  await setup.ready
+  await setup.waitForFrame((frame) => frame.includes(`Prototype review: ${review}`))
+  for (let index = 0; index < 3; index++) await setup.renderOnce()
+  expect(requests).toEqual([`/design/session/${session.id}/link`])
+})
+
 test("session location stays visible without the sidebar while Build runs and moves to its worktree", async () => {
   await using state = await tmpdir()
   const destination = "/tmp/opencode/.red/worktrees/redcode-fixture/packages/tui"

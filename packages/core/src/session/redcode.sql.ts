@@ -57,7 +57,7 @@ export const TodoTable = sqliteTable(
     reason: text(),
     legacy_status: text(),
     details: text({ mode: "json" }).$type<
-      Pick<SessionTodo.Info, "title" | "source" | "criterion" | "evidence" | "scopeChange" | "closedAt">
+      Pick<SessionTodo.Info, "title" | "phase" | "source" | "criterion" | "evidence" | "scopeChange" | "closedAt">
     >(),
     ...Timestamps,
   },
@@ -105,7 +105,9 @@ export const SessionShareTable = sqliteTable("session_share", {
   id: text().notNull(),
   secret: text().notNull(),
   url: text().notNull(),
-  resource: text({ enum: ["share", "shares"] }).notNull().default("share"),
+  resource: text({ enum: ["share", "shares"] })
+    .notNull()
+    .default("share"),
   credential_id: text(),
   account_id: text(),
   org_id: text(),

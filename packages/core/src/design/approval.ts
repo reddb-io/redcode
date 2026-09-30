@@ -59,7 +59,7 @@ export function summary(record: Design.Approval): typeof Summary.Type {
     constraints: document.brief.constraints,
     content: document.brief.content,
     references: document.brief.references,
-    designSystem: document.designSystem,
+    designSystem: Design.describeSystem(document.designSystem),
     decisions: document.decisions.map((item) => item.text),
     scenarios: document.scenarios,
     journey: document.journey,

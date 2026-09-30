@@ -349,7 +349,10 @@ const layer = Layer.effect(
             ) ?? Infinity)
         ) {
           const reminder = SessionTodo.reminder(
-            yield* Effect.firstSuccessOf([todos.review(sessionID), todos.get(sessionID)]),
+            SessionTodo.forAgent(
+              yield* Effect.firstSuccessOf([todos.review(sessionID), todos.get(sessionID)]),
+              next.context.agent.id,
+            ),
           )
           if (reminder && todoContinuations < 7) {
             yield* bus.publish(SessionEvent.Synthetic, { sessionID, text: reminder })

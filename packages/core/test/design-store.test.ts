@@ -17,8 +17,6 @@ import { Intelligence } from "../src/intelligence"
 import { Location } from "../src/location"
 import { ProjectTable } from "../src/project/sql"
 import { SessionTable } from "../src/session/sql"
-import { Worktree } from "../src/worktree"
-import { WorktreeStrategies } from "../src/worktree/strategies"
 import { tempLocationLayer } from "./fixture/location"
 import { testEffect } from "./lib/effect"
 
@@ -26,16 +24,12 @@ const project = Project.ID.make("design-store")
 const sessionID = Session.ID.make("ses_design_store")
 const elsewhere = Session.ID.make("ses_design_elsewhere")
 
-// The temporary location is not a Git checkout, so the store never reaches worktrees or System One.
+// The store always authors prototypes inside its Session Location; worktree preparation belongs to the Session.
 const it = testEffect(
   AppNodeBuilder.build(LayerNode.group([Database.node, Location.node, DesignStore.node]), [
     Location.node.replace(tempLocationLayer),
     Config.node.replace(Config.testLayer()),
     Intelligence.node.replace(Layer.mock(Intelligence.Service, {})),
-    Worktree.node.replace(Layer.mock(Worktree.Service, {})),
-    WorktreeStrategies.node.replace(
-      Layer.mock(WorktreeStrategies.Service, { directory: AbsolutePath.make("/unused-worktrees") } as never),
-    ),
   ]),
 )
 

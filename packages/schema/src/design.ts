@@ -244,11 +244,22 @@ export const Round = Schema.Struct({
 }).annotate({ identifier: "Design.Round" })
 export interface Round extends Schema.Schema.Type<typeof Round> {}
 
+export const SystemDescription = Schema.Union([Schema.String, Schema.Record(Schema.String, Schema.Json)]).annotate({
+  identifier: "Design.SystemDescription",
+  description:
+    "Design-system notes as text or structured JSON, including application, framework, components and tokens.",
+})
+
+export function describeSystem(value: typeof SystemDescription.Type) {
+  return typeof value === "string" ? value : JSON.stringify(value, null, 2)
+}
+
 export const Create = Schema.Struct({
   name: Schema.NonEmptyString,
   journey: Journey,
   engine: Engine,
   kind: Kind,
+  designSystem: SystemDescription.pipe(optional),
   application: Schema.String.pipe(optional),
   /** Defaults to web. */
   target: Surface.pipe(optional),
@@ -276,7 +287,7 @@ export const Update = Schema.Struct({
   questions: Schema.Array(Schema.String).pipe(optional),
   scenarios: Schema.Array(Scenario).pipe(optional),
   targets: Schema.Array(Target).check(Schema.isMaxLength(20)).pipe(optional),
-  designSystem: Schema.String.pipe(optional),
+  designSystem: SystemDescription.pipe(optional),
   entry: Schema.String.pipe(optional),
   tweaks: Tweaks.pipe(optional),
 }).annotate({ identifier: "Design.Update" })
@@ -302,7 +313,7 @@ export const Info = Schema.Struct({
   questions: Schema.Array(Schema.String),
   scenarios: Schema.Array(Scenario),
   targets: Schema.Array(Target).pipe(optional),
-  designSystem: Schema.String,
+  designSystem: SystemDescription,
   system: System.pipe(optional),
   sources: Schema.Array(Source),
   inventory: Schema.Array(Component).pipe(optional),

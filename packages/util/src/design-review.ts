@@ -17,6 +17,22 @@ const Claim = Schema.Struct({
 })
 const Link = Schema.Struct({ url: Schema.String, network: Schema.optional(Schema.String) })
 
+/** Read a stable review address without launching a browser. */
+export async function getDesignReviewLink(input: {
+  readonly sessionID: string
+  readonly endpoint: { readonly url: string; readonly headers?: Record<string, string> }
+  readonly fetch?: (url: URL, init?: RequestInit) => Promise<Response>
+}) {
+  return (input.fetch ?? fetch)(
+    new URL(`/design/session/${encodeURIComponent(input.sessionID)}/link`, input.endpoint.url),
+    { headers: input.endpoint.headers },
+  )
+    .then(async (response) =>
+      response.ok ? Option.getOrUndefined(Schema.decodeUnknownOption(Link)(await response.json())) : undefined,
+    )
+    .catch(() => undefined)
+}
+
 /**
  * Opens a Session's Design review in a browser at most once per review, from any surface (TUI, CLI, web or
  * desktop app). The launch is claimed on the server, which counts connected review pages and sees every
@@ -45,12 +61,7 @@ export async function openDesignReview(input: {
       headers: { ...input.endpoint.headers, "content-type": "application/json" },
       body: JSON.stringify(body),
     })
-  const link = () =>
-    request(new URL(`${root}/link`, input.endpoint.url), { headers: input.endpoint.headers })
-      .then(async (response) =>
-        response.ok ? Option.getOrUndefined(Schema.decodeUnknownOption(Link)(await response.json())) : undefined,
-      )
-      .catch(() => undefined)
+  const link = () => getDesignReviewLink(input)
   const unreachable: Notice = { variant: "error", message: "Could not ask the server for the Design review link." }
   const notice = (variant: Notice["variant"], message: string, review: { url: string; network?: string }): Notice => ({
     variant,
@@ -61,7 +72,7 @@ export async function openDesignReview(input: {
   const failed = (review: { url: string; network?: string }) =>
     notice("error", `Could not open a browser. Design review: ${review.url}`, review)
   const opened = (review: { url: string; network?: string }) =>
-    input.reportOpened && review.network ? notice("info", "Design review opened in the browser.", review) : undefined
+    input.reportOpened ? notice("info", `Design review: ${review.url}`, review) : undefined
   if (input.disabledBy) {
     const review = await link()
     return review
@@ -84,11 +95,11 @@ export async function openDesignReview(input: {
     )
   }
   if (claim.outcome === "connected")
-    return input.explicit
+    return input.explicit || input.reportOpened
       ? notice("info", `The Design review is already open in a browser tab; switch to it there. ${claim.url}`, claim)
       : undefined
   if (claim.outcome === "pending")
-    return input.explicit
+    return input.explicit || input.reportOpened
       ? notice(
           "info",
           `A Design review tab was just requested, or a review page just closed; no new tab was opened. Design review: ${claim.url}`,

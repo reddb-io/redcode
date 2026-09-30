@@ -239,6 +239,7 @@ describe("Design agent permissions", () => {
       expect(agent.system).toBeString()
       const tools = [
         "design_document",
+        "worktree_prepare",
         "design_preview",
         "design_read",
         "design_export",

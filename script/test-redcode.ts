@@ -12,6 +12,11 @@ const suites = {
     "test/database-stream.test.ts",
     "test/design-app-host.test.ts",
     "test/design-context.test.ts",
+    "test/design-document-input.test.ts",
+    "test/design-build-home.test.ts",
+    "test/design-store.test.ts",
+    "test/design-tools.test.ts",
+    "test/design-task-phases.test.ts",
     "test/design-conversations.test.ts",
     "test/design-feedback.test.ts",
     "test/design-prompt.test.ts",
@@ -44,6 +49,7 @@ const suites = {
     "test/session-tool-output-prune.test.ts",
     "test/v1-migration.test.ts",
     "test/tool-subagent.test.ts",
+    "test/tool-edit.test.ts",
     "test/worktree.test.ts",
   ],
   cli: [
@@ -77,6 +83,7 @@ const suites = {
     "test/system-model.test.ts",
   ],
   schema: ["test/config.test.ts"],
+  util: ["src/design-review.test.ts"],
   redcode: ["test/script/publish-registry.test.ts"],
   "rpc-sidecar": ["test/sidecar.test.ts"],
 }

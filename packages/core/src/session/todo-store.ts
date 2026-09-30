@@ -56,6 +56,9 @@ const make = Effect.gen(function* () {
       sessionID: SessionSchema.ID
       todos: ReadonlyArray<SessionTodo.Input>
       origin?: SessionTodo.Source
+      phase?: typeof SessionTodo.Phase.Type
+      /** Only an approved implementation plan may accept the preceding Design tasks. */
+      acceptDesign?: boolean
       /** The assistant message issuing this update; its still-running sibling tools are not held against it. */
       messageID?: string
     },
@@ -66,7 +69,9 @@ const make = Effect.gen(function* () {
     )
     if (!incoming.length) return { todos: yield* get(input.sessionID), notes: [] }
     const settings = yield* intelligence.read().pipe(
-      Effect.tap((settings) => input.origin?.type === "plan" ? Effect.void : IntelligenceEvaluation.requireConfigured(settings)),
+      Effect.tap((settings) =>
+        input.origin?.type === "plan" ? Effect.void : IntelligenceEvaluation.requireConfigured(settings),
+      ),
       Effect.mapError((error) => new SessionTodo.Error({ message: error.message })),
     )
     const observed = yield* facts.load(input.sessionID)
@@ -86,7 +91,7 @@ const make = Effect.gen(function* () {
             ? task.id === item.id
             : input.origin
               ? task.source?.id === input.origin.id && task.source?.key === item.planKey
-              : task.content === supplied,
+              : task.content === supplied && (task.phase ?? "build") === (input.phase ?? "build"),
         )
         if (matches.length > 1)
           return yield* new SessionTodo.Error({
@@ -239,6 +244,7 @@ const make = Effect.gen(function* () {
           revision: before?.revision ?? 1,
           ...(title ? { title } : {}),
           content,
+          phase: before?.phase ?? input.phase ?? "build",
           status: capped ? ("blocked" as const) : status,
           priority,
           ...(source ? { source } : {}),
@@ -286,17 +292,29 @@ const make = Effect.gen(function* () {
     const merged = previous
       .map((task) => changes.find((item) => item.id === task.id) ?? task)
       .concat(changes.filter((task) => !previous.some((item) => item.id === task.id)))
+      .map((task) =>
+        input.acceptDesign && input.origin?.type === "plan" && task.phase === "design" && task.status !== "cancelled"
+          ? {
+              ...task,
+              status: "completed",
+              evidence: undefined,
+              reason: "Prototype and implementation plan approved by the user",
+              closedAt: task.closedAt ?? Date.now(),
+            }
+          : task,
+      )
     // Updating one task never removes another. The first actionable task advances automatically.
-    const current =
-      changes.find((task) => task.status === "in_progress") ??
-      merged.find((task) => task.status === "in_progress") ??
-      merged.find((task) => task.status === "pending")
     const result = merged.map((task) => {
+      const current =
+        changes.find((item) => (item.phase ?? "build") === (task.phase ?? "build") && item.status === "in_progress") ??
+        merged.find((item) => (item.phase ?? "build") === (task.phase ?? "build") && item.status === "in_progress") ??
+        merged.find((item) => (item.phase ?? "build") === (task.phase ?? "build") && item.status === "pending")
       const status = task.id === current?.id ? "in_progress" : task.status === "in_progress" ? "pending" : task.status
       const before = previous.find((item) => item.id === task.id)
       const unchanged =
         before &&
         before.title === task.title &&
+        before.phase === task.phase &&
         before.content === task.content &&
         before.status === status &&
         before.priority === task.priority &&
@@ -374,7 +392,10 @@ const make = Effect.gen(function* () {
               ? {
                   origin: {
                     ...input.origin,
-                    quote: IntelligenceEvaluation.evidence(input.origin.quote, { reference: input.origin.id, limit: 8000 }),
+                    quote: IntelligenceEvaluation.evidence(input.origin.quote, {
+                      reference: input.origin.id,
+                      limit: 8000,
+                    }),
                   },
                 }
               : {}),
@@ -512,6 +533,7 @@ const make = Effect.gen(function* () {
                   legacy_status: task.legacyStatus ?? null,
                   details: {
                     title: task.title,
+                    phase: task.phase,
                     source: task.source,
                     criterion: task.criterion,
                     evidence: task.evidence,
@@ -531,6 +553,7 @@ const make = Effect.gen(function* () {
                     legacy_status: task.legacyStatus ?? null,
                     details: {
                       title: task.title,
+                      phase: task.phase,
                       source: task.source,
                       criterion: task.criterion,
                       evidence: task.evidence,

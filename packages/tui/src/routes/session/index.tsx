@@ -58,7 +58,7 @@ import { useClient } from "../../context/client"
 import { useEditorContext } from "../../context/editor"
 import { openEditor } from "../../editor"
 import { browserDisabled, NO_BROWSER, openDesignUrl } from "@opencode/util/open"
-import { openDesignReview } from "@opencode/util/design-review"
+import { getDesignReviewLink, openDesignReview } from "@opencode/util/design-review"
 import { useDialog } from "../../ui/dialog"
 import { DialogSelect } from "../../ui/dialog-select"
 import { useGoalCommand } from "../../component/goal-command"
@@ -313,6 +313,33 @@ export function Session(props: {
   const client = useClient()
   // A publish seen with launches disabled prints the review link once, not on every revision.
   const reviewLink = { shown: false }
+  const [reviewAddress, setReviewAddress] = createSignal<string>()
+  const hasPublishedDesign = createMemo(() =>
+    messages().some(
+      (message) =>
+        message.type === "assistant" &&
+        message.content.some(
+          (part) =>
+            part.type === "tool" &&
+            ["design_preview", "design_history"].includes(part.name) &&
+            part.state.status === "completed" &&
+            typeof part.state.metadata?.revision === "string",
+        ),
+    ),
+  )
+  createEffect(() => {
+    const endpoint = client.endpoint
+    const sessionID = route.sessionID
+    setReviewAddress(undefined)
+    if (!endpoint || !hasPublishedDesign()) return
+    let active = true
+    onCleanup(() => {
+      active = false
+    })
+    void getDesignReviewLink({ sessionID, endpoint }).then((review) => {
+      if (active) setReviewAddress(review?.url)
+    })
+  })
   const reviewDesign = async (explicit: boolean) => {
     const endpoint = client.endpoint
     if (!endpoint) {
@@ -327,14 +354,17 @@ export function Session(props: {
       endpoint,
       explicit,
       // A review the user asked for names its address for another device once it opens.
-      reportOpened: explicit,
+      reportOpened: true,
       disabledBy: blocked ? NO_BROWSER : undefined,
       launch: async (url) => {
         const config = await client.api.config.get({ location: location() }).catch(() => [])
         return openDesignUrl(url, { configured: configuredDesignBrowser(config) })
       },
     })
-    if (notice) toast.show({ variant: notice.variant, message: notice.message, duration: 8_000 })
+    if (notice?.url) setReviewAddress(notice.url)
+    if (notice && (explicit || !reviewLink.shown || notice.variant === "error"))
+      toast.show({ variant: notice.variant, message: notice.message, duration: 8_000 })
+    if (notice?.url) reviewLink.shown = true
   }
   onCleanup(
     client.event.on("session.tool.success", (event) => {
@@ -1846,6 +1876,20 @@ export function Session(props: {
               </box>
             </Show>
             <box flexShrink={0}>
+              <Show when={reviewAddress()}>
+                {(url) => (
+                  <text
+                    id="session-design-review-link"
+                    paddingLeft={1}
+                    fg={theme.text.action.primary.base}
+                    wrapMode="none"
+                    truncate
+                    onMouseUp={() => void reviewDesign(true)}
+                  >
+                    Prototype review: {url()}
+                  </text>
+                )}
+              </Show>
               <Show when={!composer.open && !disabled() && queuedPrompts().length > 0}>
                 <QueuedPromptDock prompts={queuedPrompts()} onOpen={openPendingPrompts} />
               </Show>
@@ -2644,9 +2688,7 @@ function UserMessage(props: { message: SessionMessageUser }) {
   const files = createMemo(() => deduplicateVisibleImages(props.message.files ?? []))
   const skills = createMemo(() => props.message.skills ?? [])
   const vaulted = createMemo(() => vaultMoved(props.message.metadata))
-  const restricted = createMemo(
-    () => restrictedMessages(data.session.get(ctx.sessionID)?.metadata)[props.message.id],
-  )
+  const restricted = createMemo(() => restrictedMessages(data.session.get(ctx.sessionID)?.metadata)[props.message.id])
   const images = createMemo(() =>
     files().flatMap((file) =>
       file.mime.startsWith("image/") ? [{ uri: `data:${file.mime};base64,${file.data}` }] : [],

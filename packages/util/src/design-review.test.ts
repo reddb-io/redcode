@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test"
-import { openDesignReview } from "./design-review.js"
+import { getDesignReviewLink, openDesignReview } from "./design-review.js"
 
 const endpoint = { url: "http://127.0.0.1:4096", headers: { authorization: "Basic test" } }
 const review = "http://127.0.0.1:4096/design/session/ses_a/review?ticket=signed"
@@ -29,6 +29,27 @@ function browser(opens: boolean) {
 }
 
 describe("openDesignReview", () => {
+  test("reportOpened returns a persistent address even on loopback and never opens a connected review twice", async () => {
+    const remote = server([
+      { outcome: "claimed", token: 1, url: review },
+      { outcome: "connected", url: review },
+    ])
+    const opener = browser(true)
+    const open = () =>
+      openDesignReview({
+        sessionID: "ses_a",
+        endpoint,
+        explicit: false,
+        reportOpened: true,
+        fetch: remote.fetch,
+        launch: opener.launch,
+      })
+    expect((await open())?.url).toBe(review)
+    expect((await open())?.url).toBe(review)
+    expect(opener.launched).toEqual([review])
+    expect(await getDesignReviewLink({ sessionID: "ses_a", endpoint, fetch: remote.fetch })).toEqual({ url: review })
+    expect(opener.launched).toEqual([review])
+  })
   test("a granted claim opens the review once; a connected page is reported instead of a second tab", async () => {
     const remote = server([
       { outcome: "claimed", token: 1, url: review, connected: 0 },
@@ -163,7 +184,7 @@ describe("openDesignReview", () => {
       })
     expect(await open()).toEqual({
       variant: "info",
-      message: `Design review opened in the browser.\nOn another device: ${network}`,
+      message: `Design review: ${review}\nOn another device: ${network}`,
       url: review,
       network,
     })

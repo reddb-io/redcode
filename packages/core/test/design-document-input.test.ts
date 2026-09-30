@@ -48,6 +48,28 @@ describe("design_document input", () => {
     inputs.forEach((input) => expect(decode(input)).toEqual(input))
   })
 
+  test("preserves structured design-system metadata on create and update", () => {
+    const designSystem = {
+      application: "apps/profile",
+      framework: "react",
+      components: [{ name: "SubscriptionCard", states: ["trial", "active", "past_due"] }],
+      tokens: { colors: { accent: "#123456" }, spacing: [4, 8, 16] },
+      darkMode: true,
+    }
+    const create = {
+      action: "create",
+      input: { name: "Profile", journey: "existing", engine: "react", kind: "screen", designSystem },
+    }
+    const update = { action: "update", id: "design_profile", input: { designSystem } }
+    expect(decode(create)).toEqual(create)
+    expect(decode(update)).toEqual(update)
+    expect(decode({ ...update, input: { designSystem: "Use project components" } })).toEqual({
+      ...update,
+      input: { designSystem: "Use project components" },
+    })
+    expect(() => decode({ ...update, input: { designSystem: 42 } })).toThrow()
+  })
+
   test("never lets the agent record statuses as the reviewer", () => {
     expect(
       decode({

@@ -7,6 +7,7 @@ import { Design } from "@opencode/schema/design"
 import { Global } from "@opencode/util/global"
 import { Effect, Ref, Schema } from "effect"
 import { DesignDetection } from "../../design/detection.js"
+import { DesignBuild } from "../../design/build.js"
 import { DesignDocumentTool } from "../../design/document-tool.js"
 import { DesignIdentify } from "../../design/identify.js"
 import { DesignProposal } from "../../design/proposal.js"
@@ -158,7 +159,9 @@ export const Plugin = {
                             intelligence.evaluate(
                               DesignTarget.evaluation({
                                 sessionID: context.sessionID,
-                                requests: messages.flatMap((message) => (message.type === "user" ? [message.text] : [])),
+                                requests: messages.flatMap((message) =>
+                                  message.type === "user" ? [message.text] : [],
+                                ),
                                 design: { name: input.input.name, kind: input.input.kind },
                               }),
                             ),
@@ -168,7 +171,10 @@ export const Plugin = {
                       })
                       if (target.settled)
                         yield* Effect.promise(() => DesignTarget.remember(memory, location.directory, target))
-                      return { document: yield* designs.create(context.sessionID, { ...input.input, ...target }), target }
+                      return {
+                        document: yield* designs.create(context.sessionID, { ...input.input, ...target }),
+                        target,
+                      }
                     }),
                   )
                   const chip = DesignTarget.chip(created.value.target, DesignProposal.chip(created.decision))
@@ -181,12 +187,7 @@ export const Plugin = {
                   return [
                     {
                       ...created.value.document,
-                      manifest: [
-                        created.value.document.manifest,
-                        chip,
-                        created.value.target.note,
-                        created.report,
-                      ]
+                      manifest: [created.value.document.manifest, chip, created.value.target.note, created.report]
                         .filter(Boolean)
                         .join(". "),
                     },
@@ -196,23 +197,35 @@ export const Plugin = {
                 if (input.action === "refresh") {
                   const current = yield* designs.get(context.sessionID, input.id)
                   const application =
-                    path.relative(path.resolve(current.root, "../../../../.."), current.application).replaceAll("\\", "/") ||
-                    "."
+                    path
+                      .relative(path.resolve(current.root, "../../../../.."), current.application)
+                      .replaceAll("\\", "/") || "."
                   const refreshed = yield* DesignProposal.around(
                     yield* proposal(context, application, undefined, false),
                     designs.refresh(context.sessionID, input.id),
                   )
-                  return [{ ...refreshed.value, manifest: [refreshed.value.manifest, refreshed.report].filter(Boolean).join(". ") }]
+                  return [
+                    {
+                      ...refreshed.value,
+                      manifest: [refreshed.value.manifest, refreshed.report].filter(Boolean).join(". "),
+                    },
+                  ]
                 }
                 return [yield* designs.update(context.sessionID, input.id, input.input)]
               })
+              const dependencies =
+                typeof output === "string"
+                  ? []
+                  : yield* Effect.forEach(output, (document) =>
+                      Effect.promise(() => DesignBuild.dependencies(document)),
+                    )
               const content =
                 typeof output === "string"
                   ? output
                   : output
                       .map(
-                        (document) =>
-                          `Design ${document.id}: ${document.name}\n${DesignTarget.describe(document)}\nRoot: ${document.root}\nEngine: ${document.engine}\nEntry: ${document.entry}\nCurrent revision: ${document.revision ?? "unpublished"}\n${document.designSystem}\n${input.action === "list" ? `Design system: ${DesignSystem.summary(document) || "none detected"}` : DesignSystem.describe(document)}\nParams: ${JSON.stringify({ controls: document.controls ?? [], presets: document.presets ?? [] })}\nQuestions: ${document.questions.join("; ")}\nFeedback rounds: ${DesignRounds.summary(document)}${document.manifest ? `\n${document.manifest}` : ""}`,
+                        (document, index) =>
+                          `Design ${document.id}: ${document.name}\n${DesignTarget.describe(document)}\nRoot: ${document.root}\nDependencies: ${dependencies[index]}\nEngine: ${document.engine}\nEntry: ${document.entry}\nCurrent revision: ${document.revision ?? "unpublished"}\n${Design.describeSystem(document.designSystem)}\n${input.action === "list" ? `Design system: ${DesignSystem.summary(document) || "none detected"}` : DesignSystem.describe(document)}\nParams: ${JSON.stringify({ controls: document.controls ?? [], presets: document.presets ?? [] })}\nQuestions: ${document.questions.join("; ")}\nFeedback rounds: ${DesignRounds.summary(document)}${document.manifest ? `\n${document.manifest}` : ""}`,
                       )
                       .join("\n\n")
               return { output, content, metadata: { action: input.action, ...(yield* Ref.get(display)) } }

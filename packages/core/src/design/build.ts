@@ -65,7 +65,10 @@ const repository = async (directory: string) => {
   )
   const [output, exit] = await Promise.all([new Response(process.stdout).text(), process.exited])
   if (exit !== 0) return undefined
-  const lines = output.trimEnd().split("\n").map((line) => line.replace(/\r$/, ""))
+  const lines = output
+    .trimEnd()
+    .split("\n")
+    .map((line) => line.replace(/\r$/, ""))
   if (lines.length !== 3) return undefined
   const [root, gitDirectory, commonDirectory] = await Promise.all(lines.map((line) => realpath(line)))
   return { root, commonDirectory, linked: gitDirectory !== commonDirectory }
@@ -247,11 +250,34 @@ export async function materialize(revision: Design.Revision, blobs: string, dire
  * dependencies. A linked task worktree usually has no node_modules of its own.
  */
 export async function home(application: string) {
-  if (await exists(path.join(application, "node_modules"))) return application
   const placement = await repository(application).catch(() => undefined)
+  const installed = async (directory: string, root: string) => {
+    const depth = path.relative(root, directory).split(path.sep).filter(Boolean).length
+    return (
+      await Promise.all(
+        Array.from({ length: depth + 1 }, (_, index) =>
+          exists(path.resolve(directory, ...Array.from({ length: index }, () => ".."), "node_modules")),
+        ),
+      )
+    ).some(Boolean)
+  }
+  if (await installed(application, placement?.root ?? application)) return application
   if (!placement?.linked) return application
   const main = path.join(path.dirname(placement.commonDirectory), path.relative(placement.root, application))
-  return (await exists(path.join(main, "node_modules"))) ? main : application
+  return (await installed(main, path.dirname(placement.commonDirectory))) ? main : application
+}
+
+/** Explains dependency resolution before the first preview, without installing or linking anything. */
+export async function dependencies(document: Design.Info) {
+  if (document.engine === "html") return "Portable HTML; no framework dependencies or node_modules symlink needed."
+  const base = await home(document.application)
+  const required = document.engine === "react" ? ["react", "react-dom/client"] : ["solid-js/web"]
+  const missing = (
+    await Promise.all(required.map(async (name) => ((await locatePackage(base, name)) ? undefined : name)))
+  ).filter((name): name is string => name !== undefined)
+  return missing.length
+    ? `Missing project dependencies: ${missing.join(", ")}. Dependency checkout: ${base}. Do not repeat file edits or create node_modules symlinks. Report the missing packages; use HTML only if the brief permits it.`
+    : `Project dependencies resolve from ${base}; no node_modules symlink needed.`
 }
 
 /** The effective design system of an application: its configuration completed with package.json and tailwind.config.* defaults. */

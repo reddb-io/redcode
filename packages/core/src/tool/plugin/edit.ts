@@ -139,7 +139,7 @@ export const Plugin = {
               }
               if (input.oldString === input.newString) {
                 return yield* new ToolFailure({
-                  message: "No changes to apply: oldString and newString are identical.",
+                  message: `No changes to apply: oldString and newString are identical. Read the current file and send a real change only when needed. This call cannot fix dependencies or create a symlink.${context.agent === "design" ? " In Design, use design_preview: it resolves project dependencies automatically. Do not repeat no-op edits or attempt shell commands to link node_modules." : ""}`,
                 })
               }
               if (input.oldString === "") {
@@ -214,16 +214,23 @@ export const Plugin = {
               const replacementBom = replaced.startsWith("\uFEFF")
               const result = yield* fileMutation.write({
                 target,
-                content: Bom.join(vault.secret ? yield* VaultFiles.fill(replaced) : replaced, original.bom || replacementBom),
+                content: Bom.join(
+                  vault.secret ? yield* VaultFiles.fill(replaced) : replaced,
+                  original.bom || replacementBom,
+                ),
               })
               const bom = original.bom || replacementBom
               const formatted = (yield* formatter.file(target.absolute))
                 ? yield* FileMutation.syncTextBom(environment.files, target.absolute, bom)
                 : (yield* FileMutation.readText(environment.files, target.absolute)).text
               yield* FileMutation.publishChanges(bus, [{ file: target.absolute, event: "change" }])
-              yield* lsp.touchFile(target.absolute, "document").pipe(
-                Effect.catchCause((cause) => Effect.logWarning("LSP notification failed after edit", { file: target.absolute, cause })),
-              )
+              yield* lsp
+                .touchFile(target.absolute, "document")
+                .pipe(
+                  Effect.catchCause((cause) =>
+                    Effect.logWarning("LSP notification failed after edit", { file: target.absolute, cause }),
+                  ),
+                )
               const diagnostics = yield* lsp.diagnostics()
               return {
                 output: {

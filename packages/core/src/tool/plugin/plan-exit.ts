@@ -6,6 +6,7 @@ import { Agent } from "@opencode/schema/agent"
 import { SessionTodo } from "@opencode/schema/session-todo"
 import { Effect, Schema } from "effect"
 import { Database } from "../../database/database.js"
+import { DesignStore } from "../../design/store.js"
 import { FileAccess } from "../../file-access.js"
 import { Form } from "../../form.js"
 import { Intelligence } from "../../intelligence.js"
@@ -24,6 +25,7 @@ export const Plugin = {
   id: "redcode.tool.plan-exit",
   effect: Effect.fn("PlanExitTool.Plugin")(function* (ctx: Context) {
     const access = yield* FileAccess.Service
+    const designs = yield* DesignStore.Service
     const db = (yield* Database.Service).db
     const facts = yield* SessionTaskFacts.Service
     const forms = yield* Form.Service
@@ -85,12 +87,12 @@ export const Plugin = {
                 settings,
                 evaluation,
                 evaluation
-                  ? yield* intelligence.history(context.sessionID, { operation: "plan", limit: 20 }).pipe(Effect.orElseSucceed(() => []))
+                  ? yield* intelligence
+                      .history(context.sessionID, { operation: "plan", limit: 20 })
+                      .pipe(Effect.orElseSucceed(() => []))
                   : [],
               )
-              const current = input.path
-                ? yield* SessionEvidence.read(input.path, context, access)
-                : source
+              const current = input.path ? yield* SessionEvidence.read(input.path, context, access) : source
               if (
                 current.hash !== source.hash ||
                 IntelligenceEvaluation.fingerprint(requests) !==
@@ -115,7 +117,8 @@ export const Plugin = {
               }
               if (!ready.tasks?.length)
                 return yield* new ToolFailure({
-                  message: "Before Build, supply tasks for every plan deliverable and verification with key, content, criterion and exact quote.",
+                  message:
+                    "Before Build, supply tasks for every plan deliverable and verification with key, content, criterion and exact quote.",
                 })
               if (!goal?.executePlan && previous?.status !== "approved") {
                 const answer = yield* forms.ask({
@@ -129,7 +132,11 @@ export const Plugin = {
                       description: `${source.path}, revision ${source.hash}\n\n${source.content}\n\nExecution tasks:\n${ready.tasks.map((task) => `- ${task.key}: ${task.content} — ${task.criterion}`).join("\n")}\n\n${review}`,
                       type: "string",
                       options: [
-                        { value: "Execute", label: "Execute", description: "Approve this revision and continue in Build" },
+                        {
+                          value: "Execute",
+                          label: "Execute",
+                          description: "Approve this revision and continue in Build",
+                        },
                         { value: "Refine", label: "Refine", description: "Stay in Plan" },
                       ],
                       custom: false,
@@ -143,12 +150,24 @@ export const Plugin = {
               }
               const latestGoal = yield* goals.get(context.sessionID)
               if (latestGoal?.id !== goal?.id || latestGoal?.revision !== goal?.revision)
-                return yield* new ToolFailure({ message: "Goal changed during plan approval; review the current scope" })
+                return yield* new ToolFailure({
+                  message: "Goal changed during plan approval; review the current scope",
+                })
               if (input.path && (yield* SessionEvidence.read(input.path, context, access)).hash !== source.hash)
                 return yield* new ToolFailure({ message: "Plan changed during approval; review the current revision" })
+              const documents = yield* designs.list(context.sessionID)
               const admitted = yield* todos.write(
                 {
                   sessionID: context.sessionID,
+                  phase: "build",
+                  acceptDesign:
+                    documents.length > 0 &&
+                    documents.every(
+                      (document) =>
+                        document.ended &&
+                        document.approvedRevision !== null &&
+                        document.approvedRevision === document.revision,
+                    ),
                   origin: { type: "plan", id: ready.revision, quote: ready.content, created: ready.created },
                   todos: ready.tasks.map((task) => ({
                     planKey: task.key,
@@ -181,7 +200,10 @@ export const Plugin = {
                         )
                       }).pipe(Effect.mapError((error) => new SessionPlan.Error({ message: error.message }))),
                     )
-                    .pipe(Effect.asVoid, Effect.mapError((error) => new SessionTodo.Error({ message: error.message }))),
+                    .pipe(
+                      Effect.asVoid,
+                      Effect.mapError((error) => new SessionTodo.Error({ message: error.message })),
+                    ),
                 },
               )
               return yield* SessionInbox.serialized(

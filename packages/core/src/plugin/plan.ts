@@ -37,6 +37,7 @@ export const Plugin = define({
         item.description = "Read-only agent for exploring the codebase and planning work before implementation."
         item.mode = "primary"
         item.permissions.push({ action: "question", resource: "*", effect: "allow" })
+        item.permissions.push({ action: "worktree_prepare", resource: "*", effect: "allow" })
         item.permissions.push({ action: "edit", resource: "*", effect: "deny" })
         item.permissions.push({ action: "design_edit", resource: "*", effect: "deny" })
         item.permissions.push({ action: "edit", resource: path.join(directory, "*"), effect: "allow" })

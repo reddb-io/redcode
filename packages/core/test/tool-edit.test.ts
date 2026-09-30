@@ -413,7 +413,8 @@ describe("EditTool", () => {
                 status: "error",
                 error: {
                   type: "tool.execution",
-                  message: "No changes to apply: oldString and newString are identical.",
+                  message:
+                    "No changes to apply: oldString and newString are identical. Read the current file and send a real change only when needed. This call cannot fix dependencies or create a symlink.",
                 },
               })
               expect(

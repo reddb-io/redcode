@@ -9,13 +9,10 @@ import { and, desc, eq, sql } from "drizzle-orm"
 import { Context, Effect, Layer, Schema, Semaphore } from "effect"
 import { Database } from "../database/database.js"
 import { Config } from "../config.js"
-import { Git } from "../git.js"
 import { Intelligence } from "../intelligence.js"
 import { IntelligenceEvaluation } from "../intelligence/evaluation.js"
 import { Location } from "../location.js"
 import { SessionStore } from "../session/store.js"
-import { Worktree } from "../worktree.js"
-import { WorktreeStrategies } from "../worktree/strategies.js"
 import { AssetTable, DesignTable, FeedbackTable, JobTable, RevisionTable } from "./sql.js"
 import { SessionSchema } from "../session/schema.js"
 import { AbsolutePath } from "../schema.js"
@@ -34,24 +31,19 @@ const make = Effect.gen(function* () {
   const location = yield* Location.Service
   const sessions = yield* SessionStore.Service
   const config = yield* Config.Service
-  const git = yield* Git.Service
-  const worktrees = yield* Worktree.Service
-  const strategies = yield* WorktreeStrategies.Service
   const lock = yield* Semaphore.make(1)
   const storage = path.join(location.directory, ".red", "code", "design")
   const blobs = path.join(storage, "blobs")
   const pending = new Map<SessionSchema.ID, ConfigDesign.Effective>()
   let committed: ConfigDesign.Effective | undefined
   const configured = Effect.fn("DesignStore.configured")(function* (sessionID?: SessionSchema.ID) {
-    return ConfigDesign.merge(
-      [
-        committed,
-        sessionID === undefined ? undefined : pending.get(sessionID),
-        ...(yield* config.entries()).flatMap((entry) =>
-          entry.type === "document" && entry.info.design ? [entry.info.design] : [],
-        ),
-      ],
-    )
+    return ConfigDesign.merge([
+      committed,
+      sessionID === undefined ? undefined : pending.get(sessionID),
+      ...(yield* config.entries()).flatMap((entry) =>
+        entry.type === "document" && entry.info.design ? [entry.info.design] : [],
+      ),
+    ])
   })
   const adopt = (sessionID: SessionSchema.ID, design: ConfigDesign.Effective | undefined, commit = false) =>
     Effect.sync(() => {
@@ -89,27 +81,11 @@ const make = Effect.gen(function* () {
           ? error
           : new Design.Error({ code: "invalid", message: "Application directory is unavailable" }),
     })
-    const repository = yield* git.repo.discover(location.directory)
-    const workspace = yield* Effect.gen(function* () {
-      if (!repository || repository.gitDirectory !== repository.commonDirectory) return location.directory
-      const name = `design-${sessionID}`
-      const existing = (yield* worktrees.list({ projectID: location.project.id }).pipe(
-        Effect.mapError(() => new Design.Error({ code: "unavailable", message: "Design project is unavailable" })),
-      )).find(
-        (item) => item.strategy && path.basename(item.directory) === name,
-      )
-      const selected = existing?.directory ??
-        (yield* worktrees.create({ projectID: location.project.id, name }, strategies).pipe(
-          Effect.mapError((error) =>
-            new Design.Error({ code: "unavailable", message: `Unable to prepare Design worktree: ${String(error)}` }),
-          ),
-        )).directory
-      return path.join(selected, path.relative(repository.worktree, location.directory))
-    })
+    // All modes share the Session Location, including a worktree prepared with --tmp.
+    const workspace = location.directory
     const application = path.join(workspace, path.relative(location.directory, source))
     const system = yield* Effect.tryPromise({
-      try: () =>
-        DesignSystem.resolve(application, applicable(design, named)),
+      try: () => DesignSystem.resolve(application, applicable(design, named)),
       catch: () => new Design.Error({ code: "unavailable", message: "Unable to resolve the Design system" }),
     })
     const id = Design.ID.make(`design_${crypto.randomUUID()}`)
@@ -143,7 +119,7 @@ const make = Effect.gen(function* () {
       decisions: [],
       questions: [],
       scenarios: [],
-      designSystem: "",
+      designSystem: input.designSystem ?? "",
       ...(system ? { system } : {}),
       ...discovery,
       tweaks: {},
@@ -271,7 +247,10 @@ const make = Effect.gen(function* () {
       catch: (error) =>
         error instanceof Design.Error
           ? error
-          : new Design.Error({ code: "unavailable", message: `Unable to snapshot the Design prototype: ${DesignBuild.reason(error)}` }),
+          : new Design.Error({
+              code: "unavailable",
+              message: `Unable to snapshot the Design prototype: ${DesignBuild.reason(error)}`,
+            }),
     })
     if (!files[document.entry])
       return yield* new Design.Error({ code: "invalid", message: `Write ${document.entry} before publishing` })
@@ -286,7 +265,8 @@ const make = Effect.gen(function* () {
     }
     if (document.engine !== "html") {
       const directory = yield* Effect.tryPromise({
-        try: (signal) => DesignBuild.build(recorded, blobs, path.join(storage, id, "builds", recorded.id), read, signal),
+        try: (signal) =>
+          DesignBuild.build(recorded, blobs, path.join(storage, id, "builds", recorded.id), read, signal),
         catch: (error) =>
           error instanceof Design.Error
             ? error
@@ -510,9 +490,7 @@ const make = Effect.gen(function* () {
     const bytes = yield* Effect.try({
       try: () => DesignAssets.validate(input.data, input.mime),
       catch: (error) =>
-        error instanceof Design.Error
-          ? error
-          : new Design.Error({ code: "invalid", message: "Invalid image asset" }),
+        error instanceof Design.Error ? error : new Design.Error({ code: "invalid", message: "Invalid image asset" }),
     })
     if (input.mime !== "image/svg+xml") {
       const { make } = yield* Effect.promise(() => import("../image/photon.js"))
@@ -1053,5 +1031,5 @@ export class Service extends Context.Service<Service, Effect.Success<typeof make
 export const node = makeLocationNode({
   service: Service,
   layer: Layer.effect(Service, make),
-  deps: [Database.node, Intelligence.node, Location.node, SessionStore.node, Config.node, Git.node, Worktree.node, WorktreeStrategies.node],
+  deps: [Database.node, Intelligence.node, Location.node, SessionStore.node, Config.node],
 })
