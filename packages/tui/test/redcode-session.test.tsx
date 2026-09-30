@@ -526,13 +526,26 @@ test.each([80, 160])("large MCP catalogs and tools scroll inside their panels at
     setup.mockInput.pressKey("\u001b[6~")
     await setup.renderOnce()
   }
-  await setup.waitForFrame((frame) => frame.includes("tool-30"))
+  await setup
+    .waitForFrame((frame) => frame.includes("tool-30"))
+    .catch((cause: unknown) => {
+      throw new Error(`Paging MCP tools: height=${scroll.height}, top=${scroll.scrollTop}`, { cause })
+    })
   expect(setup.captureCharFrame()).toContain("reload config")
   setup.mockInput.pressEnter()
   for (let index = 0; index < 39; index++) {
     setup.mockInput.pressKey("ARROW_DOWN")
+    await setup.waitFor(() =>
+      Boolean(
+        setup.renderer.root.findDescendantById(`composer-mcp-controls-server-${String(index + 1).padStart(2, "0")}`),
+      ),
+    )
     await setup.renderOnce()
   }
-  await setup.waitForFrame((frame) => frame.includes("server-39"))
+  await setup
+    .waitForFrame((frame) => frame.includes("server-39"))
+    .catch((cause: unknown) => {
+      throw new Error(`Last MCP server: height=${scroll.height}, top=${scroll.scrollTop}`, { cause })
+    })
   expect(scroll.height).toBe(5)
 })

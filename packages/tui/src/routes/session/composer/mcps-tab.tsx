@@ -56,10 +56,12 @@ export function McpsTab(props: { sessionID: string }) {
   })
   createEffect(() => {
     if (!scroll || !composer.active("mcps")) return
-    const target = scroll.getChildren()[selected()]
-    if (!target) return
-    const y = target.y - scroll.y
-    if (y >= scroll.height || y < 0) scroll.scrollBy(y - Math.floor(scroll.height / 2))
+    const rows = scroll.getChildren()
+    if (!rows[selected()]) return
+    // Culled rows can retain old screen coordinates. Their layout heights still locate the header in the content.
+    const top = rows.slice(0, selected()).reduce((height, row) => height + row.height, 0)
+    if (top < scroll.scrollTop) scroll.scrollTo(top)
+    if (top >= scroll.scrollTop + scroll.height) scroll.scrollTo(top - Math.floor(scroll.height / 2))
   })
   onCleanup(
     client.event.on("mcp.status.changed", (event) => {
@@ -402,7 +404,7 @@ export function McpsTab(props: { sessionID: string }) {
       </Show>
       <Show when={current()}>
         {(server) => (
-          <box flexDirection="row" gap={2} paddingLeft={1}>
+          <box id={`composer-mcp-controls-${server().name}`} flexDirection="row" gap={2} paddingLeft={1}>
             <text fg={theme.text.action.primary.base} attributes={TextAttributes.UNDERLINE} onMouseUp={add}>
               add
             </text>

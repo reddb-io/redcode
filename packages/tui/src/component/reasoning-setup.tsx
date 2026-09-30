@@ -119,7 +119,7 @@ export async function configureReasoning(
       run: () =>
         context.client.generate
           .text({ prompt: "Reply with OK.", model, location, check: true }, { signal: AbortSignal.timeout(30_000) })
-          .then((result) => result.data.requests ?? []),
+          .then((result) => result.requests ?? []),
     },
     ...(transformation && `${transformation.providerID}/${transformation.id}` !== principal
       ? [
@@ -136,7 +136,7 @@ export async function configureReasoning(
                   },
                   { signal: AbortSignal.timeout(30_000) },
                 )
-                .then((result) => result.data.requests ?? []),
+                .then((result) => result.requests ?? []),
           },
         ]
       : []),
@@ -440,11 +440,13 @@ async function checkConnections(
     })),
   )
   if (!failed)
-    return context.ui.dialog.confirm({
-      title: "Connection test results",
-      message: completed.join("\n\n"),
-      label: { confirm: "Save roles", cancel: "Cancel" },
-    })
+    return (
+      (await context.ui.dialog.confirm({
+        title: "Connection test results",
+        message: completed.join("\n\n"),
+        label: { confirm: "Save roles", cancel: "Cancel" },
+      })) === true
+    )
   const retry = await context.ui.dialog.confirm({
     title: `${failed.role} failed`,
     message: `${completed.length ? `${completed.join("\n\n")}\n\n` : ""}${failureReason(failed.failure)}${failed.failure.detail ? `\n${failed.failure.detail}` : ""}\nYour saved roles are unchanged.`,

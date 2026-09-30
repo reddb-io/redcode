@@ -90,7 +90,7 @@ export default Runtime.handler(Commands.commands.setup, (input) =>
         { signal: AbortSignal.any([signal, AbortSignal.timeout(30_000)]) },
       ),
     ).pipe(
-      Effect.tap((result) => Effect.sync(() => log.info(ConnectionCheck.describe(result.data.requests ?? [])))),
+      Effect.tap((result) => Effect.sync(() => log.info(ConnectionCheck.describe(result.requests ?? [])))),
       Effect.tapError((error) =>
         Effect.sync(() => log.error(ConnectionCheck.describe(ConnectionCheck.requestsFrom(error)))),
       ),
@@ -108,7 +108,7 @@ export default Runtime.handler(Commands.commands.setup, (input) =>
           { signal: AbortSignal.any([signal, AbortSignal.timeout(30_000)]) },
         ),
       ).pipe(
-        Effect.tap((result) => Effect.sync(() => log.info(ConnectionCheck.describe(result.data.requests ?? [])))),
+        Effect.tap((result) => Effect.sync(() => log.info(ConnectionCheck.describe(result.requests ?? [])))),
         Effect.tapError((error) =>
           Effect.sync(() => log.error(ConnectionCheck.describe(ConnectionCheck.requestsFrom(error)))),
         ),

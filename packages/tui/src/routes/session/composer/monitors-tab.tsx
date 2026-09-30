@@ -164,10 +164,12 @@ export function MonitorsTab(props: { monitors: SessionMonitors }) {
   onCleanup(() => props.monitors.show(false))
   createEffect(() => {
     if (!scroll || !composer.active("monitors")) return
-    const target = scroll.getChildren()[selected()]
-    if (!target) return
-    const y = target.y - scroll.y
-    if (y >= scroll.height || y < 0) scroll.scrollBy(y - Math.floor(scroll.height / 2))
+    const rows = scroll.getChildren()
+    if (!rows[selected()]) return
+    // Culled rows can retain old screen coordinates. Their layout heights still locate the header in the content.
+    const top = rows.slice(0, selected()).reduce((height, row) => height + row.height, 0)
+    if (top < scroll.scrollTop) scroll.scrollTo(top)
+    if (top >= scroll.scrollTop + scroll.height) scroll.scrollTo(top - Math.floor(scroll.height / 2))
   })
 
   const move = (step: number) => {
