@@ -117,7 +117,7 @@ async function renderMonitors(initial: MonitorPublicInfo[]) {
     ),
     { width: 100, height: 24, kittyKeyboard: true },
   )
-  await wait(() => monitors.list().length === initial.length)
+  await wait(() => monitors?.list().length === initial.length)
   await app.renderOnce()
   return {
     app,

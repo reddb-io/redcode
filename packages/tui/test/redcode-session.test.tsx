@@ -473,8 +473,20 @@ test.each([80, 160])("large MCP catalogs and tools scroll inside their panels at
     state: state.path,
     width,
     height: 24,
-    config: { animations: false, tabs: { mode: "off" }, keybinds: {} },
+    config: { animations: false, tabs: { mode: "off" } },
     fetch: (url) => {
+      if (url.pathname === "/api/integration")
+        return json({
+          location,
+          data: [
+            {
+              id: "provider",
+              name: "Provider",
+              methods: [],
+              connections: [{ type: "env", name: "FIXTURE_PROVIDER_KEY" }],
+            },
+          ],
+        })
       if (url.pathname === "/api/mcp") return json({ location, data: servers })
       if (url.pathname === "/api/mcp/tool")
         return json({
@@ -495,7 +507,9 @@ test.each([80, 160])("large MCP catalogs and tools scroll inside their panels at
     expect(setup.captureCharFrame()).toContain("server-39")
   }
   setup.mockInput.pressKey("p", { ctrl: true })
+  await setup.waitForFrame((frame) => frame.includes("Commands"))
   await setup.mockInput.typeText("Open MCPs drawer")
+  await setup.waitForFrame((frame) => frame.includes("Open MCPs drawer"))
   setup.mockInput.pressEnter()
   await setup.waitForFrame((frame) => frame.includes("MCPS") || frame.includes("MCPs"))
   const scroll = setup.renderer.root.findDescendantById("composer-mcps-scroll")
