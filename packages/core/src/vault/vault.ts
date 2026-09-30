@@ -74,16 +74,24 @@ export const unknownReference = (name: string) =>
  * The values of `names` for the running tool call's project, or the first name that has none. Without a binding,
  * such as outside a Session's tool execution, no name resolves.
  */
+/** Every reference resolved, or the first name that did not. */
+export type Resolution = { readonly missing: string } | { readonly values: ReadonlyMap<string, string> }
+
 export const resolveAll = Effect.fn("Vault.resolveAll")(function* (names: ReadonlyArray<string>) {
   const binding = yield* Current
   const resolved = yield* Effect.forEach(names, (name) =>
     (binding ? binding.resolve(name) : Effect.succeed(undefined)).pipe(Effect.map((value) => ({ name, value }))),
   )
   const missing = resolved.find((item) => item.value === undefined)
-  if (missing) return { missing: missing.name } as const
-  return {
-    values: new Map(resolved.flatMap((item) => (item.value === undefined ? [] : [[item.name, item.value] as const]))),
-  } as const
+  // Declared, not inferred: an inferred union of two object literals gains `?: undefined` members and `in` stops narrowing.
+  const result: Resolution = missing
+    ? { missing: missing.name }
+    : {
+        values: new Map(
+          resolved.flatMap((item) => (item.value === undefined ? [] : [[item.name, item.value] as const])),
+        ),
+      }
+  return result
 })
 
 /** `text` with each resolved reference replaced by its value; an unresolved one stays as written. */
@@ -186,7 +194,7 @@ export const bind = (vault: Interface, projectID: Project.ID): Binding => ({
   scrub: (text) => vault.scrub(projectID, text),
 })
 
-function nextName(target: Shelf, kind: string) {
+function nextName(target: Shelf, kind: string): string {
   const count = (target.counters.get(kind) ?? 0) + 1
   target.counters.set(kind, count)
   const name = `${kind}-${count}`

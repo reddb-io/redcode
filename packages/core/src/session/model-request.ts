@@ -460,7 +460,7 @@ export const layer = Layer.effect(
         executeTool: (call: Parameters<Prepared["executeTool"]>[0]) =>
           tools.execute({ ...call, definitions: hooked, ...scrubbedProgress(call.progress, clean) }).pipe(
             Effect.map((result) => scrubResult(result, clean)),
-            Effect.catchTag("Tool.Error", (error) => Effect.fail(scrubError(error, clean))),
+            Effect.mapError((error) => (error instanceof Tool.Error ? scrubError(error, clean) : error)),
             Effect.provideService(Vault.Current, Vault.bind(vault, session.projectID)),
             Effect.catchCauseFilter(
               (cause) => {
