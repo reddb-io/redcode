@@ -1,0 +1,89 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 520" width="1200" height="520" role="img" aria-labelledby="t-review d-review">
+  <title id="t-review">The design review page</title>
+  <desc id="d-review">A browser window showing a prototype with numbered annotation pins on the left and the conversation panel with queued notes and a Send to Agent button on the right.</desc>
+  <defs>
+    <linearGradient id="bg-review" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#0d1117"/>
+      <stop offset="1" stop-color="#07090d"/>
+    </linearGradient>
+    <radialGradient id="glow-review" cx="0.5" cy="0.5" r="0.5">
+      <stop offset="0" stop-color="#f4c95d" stop-opacity="0.26"/>
+      <stop offset="1" stop-color="#f4c95d" stop-opacity="0"/>
+    </radialGradient>
+    <pattern id="grid-review" width="24" height="24" patternUnits="userSpaceOnUse">
+      <path d="M24 0H0V24" fill="none" stroke="#ffffff" stroke-opacity="0.028" stroke-width="1"/>
+    </pattern>
+    <marker id="arrow-review" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse">
+      <path d="M0 0 L10 5 L0 10 Z" fill="#f4c95d"/>
+    </marker>
+    <clipPath id="frame-review">
+      <rect x="0" y="0" width="1200" height="520" rx="18"/>
+    </clipPath>
+  </defs>
+  <g clip-path="url(#frame-review)" font-family="ui-monospace, SFMono-Regular, 'JetBrains Mono', Menlo, Consolas, monospace">
+    <rect width="1200" height="520" fill="url(#bg-review)"/>
+    <rect width="1200" height="520" fill="url(#grid-review)"/>
+    <ellipse cx="160" cy="80" rx="420" ry="260" fill="url(#glow-review)"/>
+    <ellipse cx="1120" cy="520" rx="380" ry="220" fill="url(#glow-review)" opacity="0.4"/>
+    <rect x="0" y="0" width="6" height="520" fill="#f4c95d"/>
+    <rect x="60" y="50" width="1080" height="420" rx="14" fill="#0b0f15" stroke="#ffffff" stroke-opacity="0.1"/>
+    <rect x="60" y="50" width="1080" height="38" rx="14" fill="#ffffff" fill-opacity="0.04"/>
+    <circle cx="84" cy="69" r="5" fill="#ff5f57"/><circle cx="102" cy="69" r="5" fill="#febc2e"/><circle cx="120" cy="69" r="5" fill="#28c840"/>
+    <rect x="200" y="58" width="520" height="22" rx="11" fill="#0d1117" stroke="#ffffff" stroke-opacity="0.08"/>
+    <text x="216" y="73" font-size="11.5" fill="#8b949e">localhost:4096/design/2026-09-30-pricing-page</text>
+    <rect x="890" y="57" width="110" height="24" rx="12" fill="#ffffff" fill-opacity="0.05" stroke="#f4c95d" stroke-opacity="0.25"/>
+      <text x="902" y="73" font-size="11.5" fill="#c9d1d9">Explore</text>
+    <rect x="1008" y="57" width="116" height="24" rx="12" fill="#f4c95d" fill-opacity="0.16" stroke="#f4c95d" stroke-opacity="0.7"/>
+      <text x="1020" y="73" font-size="11.5" fill="#c9d1d9">Annotate</text>
+
+    <line x1="820" y1="88" x2="820" y2="470" stroke="#ffffff" stroke-opacity="0.08"/>
+
+    <!-- the prototype -->
+    <rect x="84" y="108" width="712" height="42" rx="8" fill="#ffffff" fill-opacity="0.05"/>
+    <rect x="100" y="123" width="90" height="12" rx="6" fill="#f4c95d" fill-opacity="0.7"/>
+    <rect x="600" y="123" width="40" height="12" rx="6" fill="#ffffff" fill-opacity="0.2"/><rect x="652" y="123" width="40" height="12" rx="6" fill="#ffffff" fill-opacity="0.2"/><rect x="704" y="123" width="70" height="12" rx="6" fill="#ffffff" fill-opacity="0.35"/>
+    <rect x="84" y="166" width="712" height="104" rx="10" fill="#ffffff" fill-opacity="0.035"/>
+    <rect x="112" y="190" width="300" height="20" rx="6" fill="#f0f6fc" fill-opacity="0.75"/>
+    <rect x="112" y="222" width="420" height="10" rx="5" fill="#ffffff" fill-opacity="0.22"/>
+    <rect x="112" y="240" width="360" height="10" rx="5" fill="#ffffff" fill-opacity="0.16"/>
+    <rect x="620" y="200" width="140" height="36" rx="18" fill="#f4c95d" fill-opacity="0.85"/>
+    <rect x="84" y="286" width="224" height="150" rx="10" fill="#ffffff" fill-opacity="0.04" stroke="#ffffff" stroke-opacity="0.08"/>
+    <rect x="322" y="286" width="224" height="150" rx="10" fill="#ffffff" fill-opacity="0.04" stroke="#f4c95d" stroke-dasharray="6 4"/>
+    <rect x="560" y="286" width="236" height="150" rx="10" fill="#ffffff" fill-opacity="0.04" stroke="#ffffff" stroke-opacity="0.08"/>
+    <rect x="102" y="306" width="90" height="12" rx="6" fill="#ffffff" fill-opacity="0.4"/>
+    <rect x="340" y="306" width="90" height="12" rx="6" fill="#ffffff" fill-opacity="0.4"/>
+    <rect x="578" y="306" width="90" height="12" rx="6" fill="#ffffff" fill-opacity="0.4"/>
+    <rect x="102" y="336" width="150" height="8" rx="4" fill="#ffffff" fill-opacity="0.14"/><rect x="102" y="354" width="120" height="8" rx="4" fill="#ffffff" fill-opacity="0.14"/>
+    <rect x="340" y="336" width="150" height="8" rx="4" fill="#ffffff" fill-opacity="0.14"/><rect x="340" y="354" width="120" height="8" rx="4" fill="#ffffff" fill-opacity="0.14"/>
+    <rect x="578" y="336" width="150" height="8" rx="4" fill="#ffffff" fill-opacity="0.14"/><rect x="578" y="354" width="120" height="8" rx="4" fill="#ffffff" fill-opacity="0.14"/>
+    <circle cx="626" cy="196" r="11" fill="#f4c95d" stroke="#0d1117" stroke-width="2"/>
+      <text x="626" y="200.5" font-size="12" font-weight="700" fill="#0d1117" text-anchor="middle">1</text>
+    <circle cx="546" cy="290" r="11" fill="#f4c95d" stroke="#0d1117" stroke-width="2"/>
+      <text x="546" y="294.5" font-size="12" font-weight="700" fill="#0d1117" text-anchor="middle">2</text>
+    <!-- the note card -->
+    <rect x="410" y="330" width="230" height="86" rx="12" fill="#0d1117" stroke="#f4c95d" stroke-opacity="0.7"/>
+    <text x="426" y="352" font-size="11" fill="#6e7681" letter-spacing="1.5">NOTE 2</text>
+    <text x="426" y="374" font-size="12.5" fill="#f0f6fc">Make this a comparison</text>
+    <text x="426" y="392" font-size="12.5" fill="#f0f6fc">table, not three cards.</text>
+    <text x="426" y="408" font-size="10.5" fill="#6e7681">Enter queues · Ctrl+Enter sends</text>
+    <rect x="96" y="443" width="152" height="24" rx="12" fill="#ffffff" fill-opacity="0.05" stroke="#f4c95d" stroke-opacity="0.25"/>
+      <text x="108" y="459" font-size="11.5" fill="#c9d1d9">Layout issues  2</text>
+
+    <!-- the conversation panel -->
+    <text x="844" y="116" font-size="11" fill="#6e7681" letter-spacing="2">CONVERSATION</text>
+    <text x="844" y="146" font-size="12.5" fill="#8b949e">Agent</text>
+    <text x="844" y="166" font-size="12.5" fill="#c9d1d9">Prototype v3 is ready. Two open</text>
+    <text x="844" y="184" font-size="12.5" fill="#c9d1d9">questions about the plan tiers.</text>
+    <text x="844" y="220" font-size="11" fill="#6e7681" letter-spacing="2">QUEUE</text>
+    <rect x="844" y="232" width="264" height="24" rx="12" fill="#f4c95d" fill-opacity="0.16" stroke="#f4c95d" stroke-opacity="0.7"/>
+      <text x="856" y="248" font-size="11.5" fill="#c9d1d9">1 · Bigger call to action  ✕</text>
+    <rect x="844" y="264" width="264" height="24" rx="12" fill="#f4c95d" fill-opacity="0.16" stroke="#f4c95d" stroke-opacity="0.7"/>
+      <text x="856" y="280" font-size="11.5" fill="#c9d1d9">2 · Make this a comparison table  ✕</text>
+    <rect x="844" y="316" width="264" height="70" rx="10" fill="#ffffff" fill-opacity="0.04" stroke="#ffffff" stroke-opacity="0.1"/>
+    <text x="858" y="340" font-size="12.5" fill="#6e7681">Add a note for the agent…</text>
+    <rect x="844" y="404" width="82" height="34" rx="17" fill="#ffffff" fill-opacity="0.05" stroke="#ffffff" stroke-opacity="0.15"/>
+    <text x="885" y="425" font-size="12.5" fill="#c9d1d9" text-anchor="middle">Hold</text>
+    <rect x="936" y="404" width="172" height="34" rx="17" fill="#f4c95d"/>
+    <text x="1022" y="425" font-size="13" font-weight="700" fill="#0d1117" text-anchor="middle">Send to Agent</text>
+  </g>
+</svg>

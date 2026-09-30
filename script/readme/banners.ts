@@ -381,10 +381,163 @@ const hero = () => {
 `
 }
 
+const YELLOW = "#f4c95d"
+
+const frame = (id: string, title: string, description: string, height: number, body: string) => `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 ${height}" width="1200" height="${height}" role="img" aria-labelledby="t-${id} d-${id}">
+  <title id="t-${id}">${escape(title)}</title>
+  <desc id="d-${id}">${escape(description)}</desc>
+  <defs>
+    <linearGradient id="bg-${id}" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#0d1117"/>
+      <stop offset="1" stop-color="#07090d"/>
+    </linearGradient>
+    <radialGradient id="glow-${id}" cx="0.5" cy="0.5" r="0.5">
+      <stop offset="0" stop-color="${YELLOW}" stop-opacity="0.26"/>
+      <stop offset="1" stop-color="${YELLOW}" stop-opacity="0"/>
+    </radialGradient>
+    <pattern id="grid-${id}" width="24" height="24" patternUnits="userSpaceOnUse">
+      <path d="M24 0H0V24" fill="none" stroke="#ffffff" stroke-opacity="0.028" stroke-width="1"/>
+    </pattern>
+    <marker id="arrow-${id}" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse">
+      <path d="M0 0 L10 5 L0 10 Z" fill="${YELLOW}"/>
+    </marker>
+    <clipPath id="frame-${id}">
+      <rect x="0" y="0" width="1200" height="${height}" rx="18"/>
+    </clipPath>
+  </defs>
+  <g clip-path="url(#frame-${id})" font-family="${FONT}">
+    <rect width="1200" height="${height}" fill="url(#bg-${id})"/>
+    <rect width="1200" height="${height}" fill="url(#grid-${id})"/>
+    <ellipse cx="160" cy="80" rx="420" ry="260" fill="url(#glow-${id})"/>
+    <ellipse cx="1120" cy="${height}" rx="380" ry="220" fill="url(#glow-${id})" opacity="0.4"/>
+    <rect x="0" y="0" width="6" height="${height}" fill="${YELLOW}"/>
+    ${body}
+  </g>
+</svg>
+`
+
+type Step = { n: string; title: string; lines: string[]; x: number; y: number; hot?: boolean }
+
+const designFlow = () => {
+  const W = 230
+  const H = 92
+  const steps: Step[] = [
+    { n: "1", title: "Describe", lines: ["Tab to the design agent;", "pick web, app or slides"], x: 50, y: 110 },
+    { n: "2", title: "Prototype", lines: ["writes .redcode/designs/", "reads your DESIGN.md"], x: 340, y: 110 },
+    { n: "3", title: "design_preview", lines: ["your browser opens on", "the review page"], x: 630, y: 110 },
+    { n: "4", title: "Review", lines: ["annotate, explore, draw,", "audit the layout"], x: 920, y: 110, hot: true },
+    { n: "5", title: "Send to Agent", lines: ["queued notes become", "one agent turn"], x: 920, y: 300, hot: true },
+    { n: "6", title: "Revise", lines: ["the agent edits the", "prototype; page reloads"], x: 630, y: 300 },
+    { n: "7", title: "design_exit", lines: ["writes the plan from the", "decisions in design.json"], x: 340, y: 300 },
+    { n: "8", title: "plan, then build", lines: ["plan agent refines it;", "build implements it"], x: 50, y: 300 },
+  ]
+  const node = (step: Step) => `<g>
+      <rect x="${step.x}" y="${step.y}" width="${W}" height="${H}" rx="14" fill="${step.hot ? YELLOW : "#ffffff"}" fill-opacity="${step.hot ? 0.1 : 0.04}" stroke="${YELLOW}" stroke-opacity="${step.hot ? 0.75 : 0.35}"/>
+      <circle cx="${step.x + 26}" cy="${step.y + 28}" r="12" fill="${YELLOW}"/>
+      <text x="${step.x + 26}" y="${step.y + 33}" font-size="14" font-weight="700" fill="#0d1117" text-anchor="middle">${step.n}</text>
+      <text x="${step.x + 48}" y="${step.y + 33}" font-size="17" font-weight="700" fill="#f0f6fc">${escape(step.title)}</text>
+      <text x="${step.x + 20}" y="${step.y + 58}" font-size="12.5" fill="#8b949e">${escape(step.lines[0])}</text>
+      <text x="${step.x + 20}" y="${step.y + 76}" font-size="12.5" fill="#8b949e">${escape(step.lines[1])}</text>
+    </g>`
+  const line = (d: string, dashed = false) =>
+    `<path d="${d}" fill="none" stroke="${YELLOW}" stroke-width="2" stroke-opacity="0.8"${dashed ? ' stroke-dasharray="6 5"' : ""} marker-end="url(#arrow-flow)"/>`
+  const label = (x: number, y: number, text: string, anchor = "middle") =>
+    `<text x="${x}" y="${y}" font-size="12" fill="${YELLOW}" text-anchor="${anchor}">${escape(text)}</text>`
+  return frame(
+    "flow",
+    "How design mode works",
+    "Design mode flow: describe, prototype, preview, review in the browser, send to the agent, revise until settled, then design_exit writes the plan and build implements it.",
+    500,
+    `<text x="50" y="52" font-size="11" fill="#6e7681" letter-spacing="2.5">HOW DESIGN MODE WORKS</text>
+    <text x="50" y="84" font-size="26" font-weight="700" fill="#f0f6fc">A prototype you can click, then a plan you can build</text>
+    ${steps.map(node).join("\n    ")}
+    ${line("M280 156 H336")}
+    ${line("M570 156 H626")}
+    ${line("M860 156 H916")}
+    ${line("M1035 202 V296")}
+    ${label(1047, 252, "Send", "start")}
+    ${line("M916 346 H864")}
+    ${line("M626 346 H574")}
+    ${label(600, 336, "settled")}
+    ${line("M340 346 H284")}
+    ${line("M745 296 V206", true)}
+    ${label(757, 252, "not yet: reload, review again", "start")}
+    <rect x="50" y="430" width="1100" height="44" rx="12" fill="#ffffff" fill-opacity="0.04" stroke="#ffffff" stroke-opacity="0.08"/>
+    <text x="72" y="457" font-size="13.5" fill="#c9d1d9">Nothing reaches the agent until you press <tspan fill="${YELLOW}" font-weight="700">Send to Agent</tspan>, and the agent can edit the prototype but never the product.</text>`,
+  )
+}
+
+const designReview = () => {
+  const pill = (x: number, y: number, w: number, text: string, hot = false) => `<rect x="${x}" y="${y}" width="${w}" height="24" rx="12" fill="${hot ? YELLOW : "#ffffff"}" fill-opacity="${hot ? 0.16 : 0.05}" stroke="${YELLOW}" stroke-opacity="${hot ? 0.7 : 0.25}"/>
+      <text x="${x + 12}" y="${y + 16}" font-size="11.5" fill="#c9d1d9">${escape(text)}</text>`
+  const pin = (x: number, y: number, n: string) => `<circle cx="${x}" cy="${y}" r="11" fill="${YELLOW}" stroke="#0d1117" stroke-width="2"/>
+      <text x="${x}" y="${y + 4.5}" font-size="12" font-weight="700" fill="#0d1117" text-anchor="middle">${n}</text>`
+  return frame(
+    "review",
+    "The design review page",
+    "A browser window showing a prototype with numbered annotation pins on the left and the conversation panel with queued notes and a Send to Agent button on the right.",
+    520,
+    `<rect x="60" y="50" width="1080" height="420" rx="14" fill="#0b0f15" stroke="#ffffff" stroke-opacity="0.1"/>
+    <rect x="60" y="50" width="1080" height="38" rx="14" fill="#ffffff" fill-opacity="0.04"/>
+    <circle cx="84" cy="69" r="5" fill="#ff5f57"/><circle cx="102" cy="69" r="5" fill="#febc2e"/><circle cx="120" cy="69" r="5" fill="#28c840"/>
+    <rect x="200" y="58" width="520" height="22" rx="11" fill="#0d1117" stroke="#ffffff" stroke-opacity="0.08"/>
+    <text x="216" y="73" font-size="11.5" fill="#8b949e">localhost:4096/design/2026-09-30-pricing-page</text>
+    ${pill(890, 57, 110, "Explore", false)}
+    ${pill(1008, 57, 116, "Annotate", true)}
+
+    <line x1="820" y1="88" x2="820" y2="470" stroke="#ffffff" stroke-opacity="0.08"/>
+
+    <!-- the prototype -->
+    <rect x="84" y="108" width="712" height="42" rx="8" fill="#ffffff" fill-opacity="0.05"/>
+    <rect x="100" y="123" width="90" height="12" rx="6" fill="${YELLOW}" fill-opacity="0.7"/>
+    <rect x="600" y="123" width="40" height="12" rx="6" fill="#ffffff" fill-opacity="0.2"/><rect x="652" y="123" width="40" height="12" rx="6" fill="#ffffff" fill-opacity="0.2"/><rect x="704" y="123" width="70" height="12" rx="6" fill="#ffffff" fill-opacity="0.35"/>
+    <rect x="84" y="166" width="712" height="104" rx="10" fill="#ffffff" fill-opacity="0.035"/>
+    <rect x="112" y="190" width="300" height="20" rx="6" fill="#f0f6fc" fill-opacity="0.75"/>
+    <rect x="112" y="222" width="420" height="10" rx="5" fill="#ffffff" fill-opacity="0.22"/>
+    <rect x="112" y="240" width="360" height="10" rx="5" fill="#ffffff" fill-opacity="0.16"/>
+    <rect x="620" y="200" width="140" height="36" rx="18" fill="${YELLOW}" fill-opacity="0.85"/>
+    <rect x="84" y="286" width="224" height="150" rx="10" fill="#ffffff" fill-opacity="0.04" stroke="#ffffff" stroke-opacity="0.08"/>
+    <rect x="322" y="286" width="224" height="150" rx="10" fill="#ffffff" fill-opacity="0.04" stroke="${YELLOW}" stroke-dasharray="6 4"/>
+    <rect x="560" y="286" width="236" height="150" rx="10" fill="#ffffff" fill-opacity="0.04" stroke="#ffffff" stroke-opacity="0.08"/>
+    <rect x="102" y="306" width="90" height="12" rx="6" fill="#ffffff" fill-opacity="0.4"/>
+    <rect x="340" y="306" width="90" height="12" rx="6" fill="#ffffff" fill-opacity="0.4"/>
+    <rect x="578" y="306" width="90" height="12" rx="6" fill="#ffffff" fill-opacity="0.4"/>
+    <rect x="102" y="336" width="150" height="8" rx="4" fill="#ffffff" fill-opacity="0.14"/><rect x="102" y="354" width="120" height="8" rx="4" fill="#ffffff" fill-opacity="0.14"/>
+    <rect x="340" y="336" width="150" height="8" rx="4" fill="#ffffff" fill-opacity="0.14"/><rect x="340" y="354" width="120" height="8" rx="4" fill="#ffffff" fill-opacity="0.14"/>
+    <rect x="578" y="336" width="150" height="8" rx="4" fill="#ffffff" fill-opacity="0.14"/><rect x="578" y="354" width="120" height="8" rx="4" fill="#ffffff" fill-opacity="0.14"/>
+    ${pin(626, 196, "1")}
+    ${pin(546, 290, "2")}
+    <!-- the note card -->
+    <rect x="410" y="330" width="230" height="86" rx="12" fill="#0d1117" stroke="${YELLOW}" stroke-opacity="0.7"/>
+    <text x="426" y="352" font-size="11" fill="#6e7681" letter-spacing="1.5">NOTE 2</text>
+    <text x="426" y="374" font-size="12.5" fill="#f0f6fc">Make this a comparison</text>
+    <text x="426" y="392" font-size="12.5" fill="#f0f6fc">table, not three cards.</text>
+    <text x="426" y="408" font-size="10.5" fill="#6e7681">Enter queues · Ctrl+Enter sends</text>
+    ${pill(96, 443, 152, "Layout issues  2", false)}
+
+    <!-- the conversation panel -->
+    <text x="844" y="116" font-size="11" fill="#6e7681" letter-spacing="2">CONVERSATION</text>
+    <text x="844" y="146" font-size="12.5" fill="#8b949e">Agent</text>
+    <text x="844" y="166" font-size="12.5" fill="#c9d1d9">Prototype v3 is ready. Two open</text>
+    <text x="844" y="184" font-size="12.5" fill="#c9d1d9">questions about the plan tiers.</text>
+    <text x="844" y="220" font-size="11" fill="#6e7681" letter-spacing="2">QUEUE</text>
+    ${pill(844, 232, 264, "1 · Bigger call to action  ✕", true)}
+    ${pill(844, 264, 264, "2 · Make this a comparison table  ✕", true)}
+    <rect x="844" y="316" width="264" height="70" rx="10" fill="#ffffff" fill-opacity="0.04" stroke="#ffffff" stroke-opacity="0.1"/>
+    <text x="858" y="340" font-size="12.5" fill="#6e7681">Add a note for the agent…</text>
+    <rect x="844" y="404" width="82" height="34" rx="17" fill="#ffffff" fill-opacity="0.05" stroke="#ffffff" stroke-opacity="0.15"/>
+    <text x="885" y="425" font-size="12.5" fill="#c9d1d9" text-anchor="middle">Hold</text>
+    <rect x="936" y="404" width="172" height="34" rx="17" fill="${YELLOW}"/>
+    <text x="1022" y="425" font-size="13" font-weight="700" fill="#0d1117" text-anchor="middle">Send to Agent</text>`,
+  )
+}
+
 const root = path.resolve(import.meta.dir, "../..")
 await fs.mkdir(path.join(root, "docs/features"), { recursive: true })
 await Promise.all([
   Bun.write(path.join(root, "docs/hero.svg"), hero()),
+  Bun.write(path.join(root, "docs/features/design-flow.svg"), designFlow()),
+  Bun.write(path.join(root, "docs/features/design-review.svg"), designReview()),
   ...banners.map((banner) => Bun.write(path.join(root, "docs/features", `${banner.id}.svg`), render(banner))),
 ])
 console.log(`wrote docs/hero.svg and ${banners.length} banners`)

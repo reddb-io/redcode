@@ -177,6 +177,8 @@ rather than trusting it. `Ctrl+C` pauses a goal, and so does a new process: a lo
 
 ## Design mode
 
+<img src="docs/features/design-flow.svg" alt="How design mode works: describe, prototype, preview, review, send to the agent, revise until settled, design_exit writes the plan, build implements it" width="100%" />
+
 Design mode is for working out what something should be by building it. The agent writes an interactive
 prototype, you review it in your browser, and what you decide becomes a plan. The agent cannot edit the
 product in this mode, only the prototype, so nothing you say changes code until you leave.
@@ -191,6 +193,8 @@ product in this mode, only the prototype, so nothing you say changes code until 
 - **Your design system.** The agent reads `DESIGN.md` (or `.red/DESIGN.md`) and reuses the project's real
   components. Set `design.system` in `redcode.json` to point at it.
 - **Finish.** `design_exit` writes the plan from the decisions and open questions recorded in `design.json`.
+
+<img src="docs/features/design-review.svg" alt="The review page: the prototype with numbered annotation pins, and the conversation panel with the queued notes and Send to Agent" width="100%" />
 
 Prototypes live in `.redcode/designs/<name>/`. `redcode serve --hostname 0.0.0.0` lets you review from a phone.
 
