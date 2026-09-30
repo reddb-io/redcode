@@ -549,7 +549,7 @@ describe("RedRouterPlugin", () => {
             const observed = new Set<string>()
             yield* models.available().pipe(
               Effect.tap((catalog) => Effect.sync(() => catalog.forEach((model) => observed.add(model.id)))),
-              Effect.repeat(Schedule.spaced("1 millisecond")),
+              Effect.repeat(Schedule.spaced("1 millis")),
               Effect.forkScoped,
             )
             yield* advance(() => observed.has("account/first"))
@@ -562,7 +562,7 @@ describe("RedRouterPlugin", () => {
             yield* advance(() => observed.has("account/second"))
             expect(
               (yield* models.available()).filter((model) => model.providerID === "red-router").map((model) => model.id),
-            ).toEqual(["account/second"])
+            ).toEqual([Model.ID.make("account/second")])
           }),
         ),
       (server) =>
