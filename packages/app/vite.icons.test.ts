@@ -77,7 +77,7 @@ async function check(channel: string, read: (path: string) => Promise<Uint8Array
       "web-app-manifest-512x512.png": "icon.png",
     }).map(async ([name, source]) => {
       const bytes = await read(`/icons/${channel}/${name}`)
-      expect(bytes).toEqual(await Bun.file(new URL(`../desktop/icons/${channel}/${source}`, import.meta.url)).bytes())
+      expect(bytes).toEqual(await Bun.file(new URL(`./icons/${channel}/${source}`, import.meta.url)).bytes())
       if (!name.endsWith(".png")) return
       const size = name === "apple-touch-icon.png" ? 180 : Number(name.match(/(192|512)/)?.[0])
       expect(new DataView(bytes.buffer, bytes.byteOffset).getUint32(16)).toBe(size)
