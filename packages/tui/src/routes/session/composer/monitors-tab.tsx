@@ -246,18 +246,16 @@ export function MonitorsTab(props: { monitors: SessionMonitors }) {
       <Show
         when={monitors().length > 0}
         fallback={
-          <box height={2} paddingLeft={1}>
-            <text fg={props.monitors.error() ? theme.text.feedback.error.base : theme.text.muted}>
-              {props.monitors.error()
-                ? `Could not load monitors: ${props.monitors.error()}`
-                : "No monitors in this session"}
-            </text>
-          </box>
+          <text fg={props.monitors.error() ? theme.text.feedback.error.base : theme.text.muted}>
+            {props.monitors.error()
+              ? ` Could not load monitors: ${props.monitors.error()}`
+              : " No monitors in this session"}
+          </text>
         }
       >
         <scrollbox
           scrollbarOptions={{ visible: false }}
-          maxHeight={6}
+          maxHeight={5}
           ref={(value: ScrollBoxRenderable) => (scroll = value)}
         >
           <For each={monitors()}>
