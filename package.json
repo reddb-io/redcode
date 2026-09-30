@@ -11,12 +11,7 @@
     "dev:live": "sh -c 'OPENCODE_TUI_CHANNEL=dev OPENCODE_PASSWORD=\"$(opencode service get password)\" exec bun run dev \"$@\" --server \"$(opencode service status)\"' --",
     "dev:vite": "bun run --cwd packages/cli --conditions=browser dev/vite.ts",
     "dev:vite:live": "sh -c 'OPENCODE_TUI_CHANNEL=dev OPENCODE_PASSWORD=\"$(opencode service get password)\" exec bun run dev:vite \"$@\" --server \"$(opencode service status)\"' --",
-    "dev:desktop": "bun --cwd packages/desktop dev",
     "dev:web": "bun --cwd packages/app dev",
-    "dev:console": "ulimit -n 10240 2>/dev/null; bun run --cwd packages/console/app dev",
-    "dev:stats": "bun sst shell --stage=production -- bun run --cwd packages/stats/app dev",
-    "dev:www": "bun run --cwd services/www dev",
-    "dev:storybook": "bun --cwd packages/storybook storybook",
     "bench:devex": "bun run --cwd packages/app test:bench:devex",
     "lint": "oxlint",
     "lint:effect-patterns": "ast-grep scan -c script/ast-grep/sgconfig.yml packages/util/src packages/core/src packages/server/src packages/protocol/src packages/cli/src",
@@ -31,7 +26,6 @@
     "postinstall": "bun run --cwd packages/core fix-node-pty",
     "prepare": "husky",
     "random": "echo 'Random script'",
-    "sso": "aws sso login --sso-session=opencode --no-browser",
     "test": "echo 'do not run tests from root' && exit 1",
     "changeset": "bunx @changesets/cli@3.0.3",
     "release:status": "bun run changeset status",
@@ -39,10 +33,7 @@
   },
   "workspaces": {
     "packages": [
-      "packages/*",
-      "services/*",
-      "packages/console/*",
-      "packages/stats/*"
+      "packages/*"
     ],
     "catalog": {
       "@effect/opentelemetry": "4.0.0-rc.112",
@@ -99,7 +90,6 @@
       "@typescript/native-preview": "7.0.0-dev.20251207.1",
       "zod": "4.1.8",
       "remeda": "2.26.0",
-      "sst": "4.13.1",
       "shiki": "4.4.3",
       "solid-list": "0.3.0",
       "string-width": "7.2.0",
@@ -131,11 +121,9 @@
     "oxlint-tsgolint": "0.21.0",
     "prettier": "3.6.2",
     "semver": "^7.6.0",
-    "sst": "catalog:",
     "turbo": "2.10.2"
   },
   "dependencies": {
-    "@aws-sdk/client-s3": "3.933.0",
     "@opencode/plugin": "workspace:*",
     "@opencode/script": "workspace:*",
     "heap-snapshot-toolkit": "1.1.3",

@@ -1,5 +1,5 @@
 - After changing the public Protocol or Server `HttpApi`, run `bun run generate` from `packages/client`. Do not edit generated client files directly.
-- Keep runtime dependencies directed from Schema to Core and Protocol, then from Core and Protocol to Server. Client runtime code may depend on Schema and Protocol but never Core or Server; `sdk` composes Client, Core, and Server.
+- Keep runtime dependencies directed from Schema to Core and Protocol, then from Core and Protocol to Server. Client runtime code may depend on Schema and Protocol but never Core or Server.
 - Current implementation changes belong in `packages/core`, `packages/cli`, `packages/server`, `packages/protocol`, `packages/schema`, and related generated client surfaces when required.
 - Record user-visible Redcode changes with a Changeset for `@reddb-io/redcode`. The existing `redcode.yml` workflow consumes changesets and publishes from `main`; do not create release branches or Version PRs.
 - The default and sole development branch of this fork is `main`. Keep V2 migration work on `main` and use `main` or `origin/main` for diffs.
@@ -36,9 +36,9 @@ Examples: `session-recovery`, `fix-scroll-state`, `regenerate-sdk`.
 
 Use conventional commit-style messages and PR titles: `type(scope): summary`.
 
-Valid types are `feat`, `fix`, `docs`, `chore`, `refactor`, and `test`. Scopes are optional; use the affected package or area when helpful, e.g. `core`, `opencode`, `tui`, `app`, `desktop`, `sdk`, or `plugin`.
+Valid types are `feat`, `fix`, `docs`, `chore`, `refactor`, and `test`. Scopes are optional; use the affected package or area when helpful, e.g. `core`, `opencode`, `tui`, `app`, or `plugin`.
 
-Examples: `fix(tui): simplify thinking toggle styling`, `docs: update contributing guide`, `chore(sdk): regenerate types`.
+Examples: `fix(tui): simplify thinking toggle styling`, `docs: update contributing guide`, `chore(client): regenerate types`.
 
 ## Style Guide
 
