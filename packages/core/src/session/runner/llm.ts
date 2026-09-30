@@ -819,7 +819,10 @@ const layer = Layer.effect(
     const reviewResponse = Effect.fn("SessionRunner.reviewResponse")(function* (
       loaded: SessionContext.Loaded,
       memory: ResponseReview,
-      started?: Fiber.Fiber<Effect.Success<ReturnType<typeof evaluateReview>>>,
+      started?: Fiber.Fiber<
+        Effect.Success<ReturnType<typeof evaluateReview>>,
+        Effect.Error<ReturnType<typeof evaluateReview>>
+      >,
     ) {
       const sessionID = loaded.session.id
       const plan = yield* planReview(loaded, memory)
