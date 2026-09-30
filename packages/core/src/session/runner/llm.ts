@@ -1081,8 +1081,11 @@ const layer = Layer.effect(
             if (raised) yield* limits.learn(loaded.model.ref.providerID, loaded.model.ref.id, raised)
           }),
           allowLoop: (tool) =>
-            Permission.evaluate("doom_loop", tool, loaded.agent.info.permissions, loaded.session.permissions ?? [])
-              .effect === "allow",
+            Permission.evaluate(
+              "doom_loop",
+              tool,
+              Permission.forAgent(loaded.agent.info, loaded.session.permissions ?? []),
+            ).effect === "allow",
           loopLimits,
           stallLimits,
           toolTimeout,

@@ -270,7 +270,7 @@ export function assess(input: {
   if (noOpEdit(input.next)) {
     const count = noOpEdits(input.parts) + 1
     const recovery =
-      "An edit cannot create a symlink or repair dependencies. In Design, call design_preview to build and publish through the project dependency resolver; inspect its actual error and report a missing package if needed. Outside Design, read the file and make a real change only when needed. Do not claim a shell command ran when you called edit."
+      "This no-op edit cannot create a symlink or repair dependencies. In Design, call design_preview to build and publish through the project dependency resolver; inspect its actual error and report a missing package if needed. Outside Design, read the file and make a real change only when needed. Do not claim a shell command ran when you called edit."
     if (count >= Math.min(3, input.limits.stopAt))
       return {
         type: "stop",

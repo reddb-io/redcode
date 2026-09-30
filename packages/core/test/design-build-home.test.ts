@@ -1,6 +1,7 @@
 import { expect, test } from "bun:test"
 import { cp, mkdir, realpath } from "node:fs/promises"
 import path from "node:path"
+import { createRequire } from "node:module"
 import { Schema } from "effect"
 import { Design } from "@opencode/schema/design"
 import { DesignBuild } from "../src/design/build"
@@ -19,13 +20,13 @@ test("a nested app in a temporary worktree reuses the primary monorepo's hoisted
   await git(source, "commit", "-m", "profile")
   await mkdir(path.join(source, "node_modules"), { recursive: true })
   // Use the installed React packages themselves, including React DOM's scheduler dependency.
+  const require = createRequire(import.meta.url)
   await Promise.all(
     ["react", "react-dom", "scheduler"].map(async (name) => {
-      const manifest = await DesignBuild.locatePackage(
-        path.resolve(import.meta.dir, "../../.."),
-        `${name}/package.json`,
-      )
-      if (!manifest) throw new Error(`Missing test dependency: ${name}`)
+      const manifest =
+        name === "scheduler"
+          ? createRequire(require.resolve("react-dom/package.json")).resolve("scheduler/package.json")
+          : require.resolve(`${name}/package.json`)
       await cp(await realpath(path.dirname(manifest)), path.join(source, "node_modules", name), { recursive: true })
     }),
   )

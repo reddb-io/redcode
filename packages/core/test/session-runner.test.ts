@@ -63,6 +63,7 @@ import { IdentityPlugin } from "@opencode/core/plugin/identity"
 import { QuestionTool } from "@opencode/core/tool/plugin/question"
 import { Agent } from "@opencode/core/agent"
 import { AgentPlugin } from "@opencode/core/plugin/agent"
+import { DesignPlugin } from "@opencode/core/plugin/design"
 import { Config } from "@opencode/core/config"
 import { Document, Info } from "@opencode/schema/config"
 import { ConfigCompaction } from "@opencode/schema/config/compaction"
@@ -1005,7 +1006,15 @@ const watchRename = Effect.fnUntraced(function* (sessionID: Session.ID) {
 })
 
 describe("SessionRunnerLLM", () => {
-  scenario("stops no-op edits at the third call and never executes the refused attempts", function* (s) {
+  scenario("stops Design no-op edits at the third call even with inherited Build permissions", function* (s) {
+    const agents = yield* Agent.Service
+    yield* DesignPlugin.Plugin.effect(host({ agent: agentHost(agents) }))
+    yield* s.db
+      .update(SessionTable)
+      .set({ permissions: [{ action: "*", resource: "*", effect: "allow" }] })
+      .where(eq(SessionTable.id, sessionID))
+      .run()
+      .pipe(Effect.orDie)
     const registry = yield* Tool.Service
     const executions: string[] = []
     yield* registry.transform((editor) =>
@@ -1030,7 +1039,13 @@ describe("SessionRunnerLLM", () => {
         }),
       ),
     )
-    yield* s.runPrompt("Publish the profile prototype")
+    yield* s.session.prompt({
+      sessionID,
+      agent: Agent.ID.make("design"),
+      text: "Publish the profile prototype",
+      resume: false,
+    })
+    yield* s.resume
     expect(s.requests).toHaveLength(3)
     expect(executions).toEqual(["src/0.tsx"])
     const errors = (yield* s.context).flatMap((message) =>
@@ -1046,6 +1061,8 @@ describe("SessionRunnerLLM", () => {
   })
 
   scenario("allows recovery with another tool after a no-op edit warning", function* (s) {
+    const agents = yield* Agent.Service
+    yield* DesignPlugin.Plugin.effect(host({ agent: agentHost(agents) }))
     const registry = yield* Tool.Service
     yield* registry.transform((editor) =>
       editor.add({
@@ -1057,15 +1074,34 @@ describe("SessionRunnerLLM", () => {
         execute: () => new ToolFailure({ message: "No changes to apply: oldString and newString are identical." }),
       }),
     )
+    yield* registry.transform((editor) =>
+      editor.add({
+        name: "design_preview",
+        options: { codemode: false },
+        description: "A preview that records recovery from the invalid edit",
+        input: Schema.Struct({ id: Schema.String, name: Schema.String }),
+        output: Schema.String,
+        execute: () =>
+          Effect.sync(() => s.executions.push("Published")).pipe(
+            Effect.as({ output: "Published", content: "Published" }),
+          ),
+      }),
+    )
     yield* s.llm.push(
       TestLLM.tool("call_noop_0", "edit", { path: "entry.tsx", oldString: "same", newString: "same" }),
       TestLLM.tool("call_noop_1", "edit", { path: "main.tsx", oldString: "same", newString: "same" }),
-      TestLLM.tool("call_recovered", "echo", { text: "Recovered" }),
+      TestLLM.tool("call_recovered", "design_preview", { id: "design_profile", name: "Profile" }),
       TestLLM.stop(),
     )
-    yield* s.runPrompt("Recover from the failed edit")
+    yield* s.session.prompt({
+      sessionID,
+      agent: Agent.ID.make("design"),
+      text: "Recover from the failed edit",
+      resume: false,
+    })
+    yield* s.resume
     expect(s.requests).toHaveLength(4)
-    expect(s.executions).toEqual(["Recovered"])
+    expect(s.executions).toEqual(["Published"])
   })
 
   scenario("generates the title while the first model step is still running", function* (s) {
