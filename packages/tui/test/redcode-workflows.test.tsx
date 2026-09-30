@@ -238,6 +238,67 @@ for (const width of [80, 140]) {
   })
 }
 
+test("a connected router remains selectable before its first catalog loads", async () => {
+  await using state = await tmpdir()
+  const location = { directory, project: { id: "project", directory, canonical: directory } }
+  const catalog = { ready: false }
+  const model = (providerID: string, id: string, name: string) => ({
+    id,
+    providerID,
+    name,
+    enabled: true,
+    capabilities: { output: ["text"] },
+    variants: [],
+    time: { released: 0 },
+    cost: [],
+  })
+  await using setup = await createAppFixture({
+    state: state.path,
+    fetch: async (url) => {
+      if (url.pathname === "/api/model")
+        return json({
+          location,
+          data: [
+            model("opencode", "minimax", "Minimax"),
+            ...(catalog.ready ? [model("red-router", "router/generator", "Router generator")] : []),
+          ],
+        })
+      if (url.pathname === "/api/provider") return json({ location, data: [{ id: "opencode", name: "Zen" }] })
+      if (url.pathname === "/api/integration")
+        return json({
+          location,
+          data: [
+            {
+              id: "red-router",
+              name: "RedRouter",
+              methods: [],
+              connections: [{ type: "credential", id: "cred_router", label: "Router account", method: "key" }],
+            },
+          ],
+        })
+      if (url.pathname === "/api/experimental/intelligence")
+        return json({
+          settings: { enabled: true, reasoning: "single", principal: { providerID: "opencode", id: "minimax" } },
+          effective: { reasoning: "single", source: "config" },
+          environment: "",
+          evaluators: [],
+        })
+    },
+  })
+  await setup.ready
+  await setup.waitForFrame(() => Boolean(setup.renderer.root.findDescendantById("session-pane")))
+  await setup.mockInput.typeText("/setup")
+  setup.mockInput.pressEnter()
+  await setup.waitForFrame((frame) => frame.includes("Reasoning mode"))
+  setup.mockInput.pressEnter()
+  await setup.waitForFrame((frame) => frame.includes("S2 principal · connection") && frame.includes("Router account"))
+  catalog.ready = true
+  setup.mockInput.pressEnter()
+  await setup.waitForFrame((frame) => frame.includes("S2 principal · model") && frame.includes("Router generator"))
+  expect(setup.captureCharFrame()).not.toContain("Connect an integration")
+  setup.mockInput.pressEscape()
+})
+
 test("an empty S1 catalog offers refresh and another connection instead of model text entry", async () => {
   await using state = await tmpdir()
   const location = { directory, project: { id: "project", directory, canonical: directory } }

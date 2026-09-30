@@ -20,7 +20,8 @@ export async function configureReasoning(
     )
     .toSorted((a, b) => a.providerID.localeCompare(b.providerID) || a.name.localeCompare(b.name))
   const providers = context.data.location.provider.list(location) ?? []
-  if (!models.length) {
+  const integrations = (await context.client.integration.list({ location })).data
+  if (!models.length && !integrations.some((integration) => integration.connections.length)) {
     context.ui.dialog.show(() => (
       <DialogIntegration
         onConnected={() => {
@@ -189,26 +190,32 @@ async function chooseModel(
   )
   const location = context.location ?? context.data.location.default()
   const integrations = (await context.client.integration.list({ location })).data
-  const connections = input.providers.flatMap((provider) => {
-    if (!input.models.some((model) => model.providerID === provider.id)) return []
-    const integration = integrations.find((item) => item.id === (provider.integrationID ?? provider.id))
-    return (integration?.connections ?? [])
-      .filter((connection) => connection.type === "credential" || integration?.connections[0]?.type === "env")
-      .map((connection, index) => ({ provider, connection, active: index === 0 }))
+  const connections = integrations.flatMap((integration) => {
+    const providers = input.providers.filter((provider) => (provider.integrationID ?? provider.id) === integration.id)
+    const routes = providers.length
+      ? providers.map((provider) => ({ id: provider.id, name: provider.name, provider }))
+      : ["red-router", "9router"].includes(integration.id)
+        ? [{ id: integration.id, name: integration.name, provider: undefined }]
+        : []
+    return routes.flatMap((route) =>
+      integration.connections
+        .filter((connection) => connection.type === "credential" || integration.connections[0]?.type === "env")
+        .map((connection, index) => ({ ...route, connection, active: index === 0 })),
+    )
   })
-  const selectable = connections.filter((item) => item.provider.id !== input.principalProvider || item.active)
+  const selectable = connections.filter((item) => item.id !== input.principalProvider || item.active)
   const selected = await context.ui.dialog.select({
     title: `${input.role} · connection`,
     current: Math.max(
       0,
-      selectable.findIndex((item) => item.provider.id === (current?.providerID ?? input.router) && item.active),
+      selectable.findIndex((item) => item.id === (current?.providerID ?? input.router) && item.active),
     ),
     options: [
       ...selectable.map((item, index) => ({
         value: index,
         title: item.connection.type === "credential" ? item.connection.label : item.connection.name,
         description: [
-          item.provider.name,
+          item.name,
           item.active ? "active" : "activates account",
           item.active ? keyRoleLabel(item.provider) : undefined,
         ]
@@ -233,7 +240,7 @@ async function chooseModel(
     return
   }
   const connection = selectable[selected]
-  const provider = connection.provider.id
+  const provider = connection.id
   if (!connection.active && connection.connection.type === "credential")
     await context.client.credential.activate({ credentialID: connection.connection.id })
   // Account switches invalidate the old catalog before the new discovery finishes.

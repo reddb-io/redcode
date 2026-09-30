@@ -26,7 +26,6 @@ export default Runtime.handler(Commands.commands.setup, (input) =>
       )
       .toSorted((a, b) => a.providerID.localeCompare(b.providerID) || a.name.localeCompare(b.name))
     const providers = (yield* request((signal) => client.provider.list({ location }, { signal }))).data
-    if (models.length === 0) return yield* Effect.fail(new Error("Connect a generative provider before setup"))
 
     intro("Configure reasoning roles")
     const reasoning = yield* prompt<"single" | "dual">(() =>
@@ -157,14 +156,20 @@ const chooseModel = Effect.fn("cli.setup.model")(function* (input: {
     (model) => model.providerID === input.current?.providerID && model.id === input.current?.id,
   )
   const integrations = yield* loadIntegrations(input.client)
-  const connections = input.providers.flatMap((provider) => {
-    if (!input.models.some((model) => model.providerID === provider.id)) return []
-    const integration = integrations.find((item) => item.id === (provider.integrationID ?? provider.id))
-    return (integration?.connections ?? [])
-      .filter((connection) => connection.type === "credential" || integration?.connections[0]?.type === "env")
-      .map((connection, index) => ({ provider, connection, active: index === 0 }))
+  const connections = integrations.flatMap((integration) => {
+    const providers = input.providers.filter((provider) => (provider.integrationID ?? provider.id) === integration.id)
+    const routes = providers.length
+      ? providers.map((provider) => ({ id: provider.id, name: provider.name }))
+      : ["red-router", "9router"].includes(integration.id)
+        ? [{ id: integration.id, name: integration.name }]
+        : []
+    return routes.flatMap((route) =>
+      integration.connections
+        .filter((connection) => connection.type === "credential" || integration.connections[0]?.type === "env")
+        .map((connection, index) => ({ ...route, connection, active: index === 0 })),
+    )
   })
-  const selectable = connections.filter((item) => item.provider.id !== input.principalProvider || item.active)
+  const selectable = connections.filter((item) => item.id !== input.principalProvider || item.active)
   if (!selectable.length) return yield* Effect.fail(new Error("Connect a generative service before setup"))
   const index = Number(
     yield* prompt<string>(() =>
@@ -172,18 +177,21 @@ const chooseModel = Effect.fn("cli.setup.model")(function* (input: {
         message: `${input.role} · connection`,
         maxItems: 10,
         initialValue: String(
-          selectable.findIndex((item) => item.provider.id === (current?.providerID ?? input.router) && item.active),
+          Math.max(
+            0,
+            selectable.findIndex((item) => item.id === (current?.providerID ?? input.router) && item.active),
+          ),
         ),
         options: selectable.map((item, index) => ({
           value: String(index),
           label: item.connection.type === "credential" ? item.connection.label : item.connection.name,
-          hint: `${item.provider.name}${item.active ? " · active" : " · activates account"}`,
+          hint: `${item.name}${item.active ? " · active" : " · activates account"}`,
         })),
       }),
     ),
   )
   const connection = selectable[index]
-  const provider = connection.provider.id
+  const provider = connection.id
   if (!connection.active && connection.connection.type === "credential") {
     const credentialID = connection.connection.id
     yield* request((signal) => input.client.credential.activate({ credentialID }, { signal }))
