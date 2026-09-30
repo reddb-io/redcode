@@ -10,6 +10,9 @@ import { Provider } from "../../provider.js"
  * The `/connect` wizard for any OpenAI-compatible endpoint. Connecting checks the URL and key by reading the
  * endpoint's `/models`, writes the provider (URL, API, headers, models and limits) into the global configuration,
  * and files the key in the credential store under the new provider's own integration, never in configuration.
+ *
+ * The URL and the key are all it asks: the models and their limits come from `/models`, and the provider ID and
+ * display name come from the host. Everything else sits behind one "customize" question.
  */
 export const INTEGRATION_ID = Integration.ID.make("openai-compatible")
 
@@ -27,17 +30,28 @@ const MAX_MODELS = 500
 const DEFAULT_CONTEXT = 128_000
 const DEFAULT_OUTPUT = 8_192
 
+/** The fields shown only when the user asks to customize the connection. */
+const ADVANCED = [{ key: "advanced", op: "eq" as const, value: true }]
+
 const limitValue = Schema.optional(Schema.NullOr(Schema.Number))
 const ListedModel = Schema.Struct({
   id: Schema.String,
   name: Schema.optional(Schema.String),
   display_name: Schema.optional(Schema.String),
-  // OpenAI-compatible servers name their limits differently and some send null for unknown values.
+  // OpenAI-compatible servers name their limits differently and some send null for unknown values: `context_length`
+  // (OpenRouter, LiteLLM), `context_window`, `max_context_length` and `loaded_context_length` (LM Studio),
+  // `max_model_len` (vLLM), `top_provider` (OpenRouter) and `meta.n_ctx_train` (llama.cpp).
   context_length: limitValue,
   context_window: limitValue,
   max_context_length: limitValue,
+  loaded_context_length: limitValue,
+  max_model_len: limitValue,
   max_output_tokens: limitValue,
   max_completion_tokens: limitValue,
+  top_provider: Schema.optional(
+    Schema.NullOr(Schema.Struct({ context_length: limitValue, max_completion_tokens: limitValue })),
+  ),
+  meta: Schema.optional(Schema.NullOr(Schema.Struct({ n_ctx_train: limitValue }))),
 })
 const ModelList = Schema.Struct({ data: Schema.Array(Schema.Unknown) })
 
@@ -61,12 +75,30 @@ export const OpenAICompatiblePlugin = define({
     const providers = yield* Provider.Service
     const config = yield* Config.Service
 
+    const freeProviderID = Effect.fn("OpenAICompatible.freeProviderID")(function* (base: string) {
+      const taken = Effect.fnUntraced(function* (id: string) {
+        const existing = yield* providers.get(Provider.ID.make(id))
+        const saved = (yield* config.entries()).some(
+          (entry) => entry.type === "document" && typeof entry.info.providers?.[id]?.settings?.baseURL === "string",
+        )
+        return existing !== undefined && !saved
+      })
+      for (let attempt = 1; attempt < 50; attempt++) {
+        const id = attempt === 1 ? base : `${base.slice(0, 60)}-${attempt}`
+        if (!(yield* taken(id))) return id
+      }
+      return base
+    })
+
     const prepare = Effect.fn("OpenAICompatible.prepare")(function* (input: {
       readonly key: string
       readonly answer: Form.Answer
     }) {
-      const endpoint = parseEndpoint(input.answer)
-      if (typeof endpoint === "string") return yield* Effect.fail(new Error(endpoint))
+      const parsed = parseEndpoint(input.answer)
+      if (typeof parsed === "string") return yield* Effect.fail(new Error(parsed))
+      // A provider ID the user did not choose is derived from the host, so it yields to one that is already taken.
+      const chosen = text(input.answer.providerID) !== ""
+      const endpoint = chosen ? parsed : { ...parsed, providerID: yield* freeProviderID(parsed.providerID) }
       if (!API_KEY.test(input.key))
         return yield* Effect.fail(new Error("The API key must be one word of printable characters"))
       const existing = yield* providers.get(Provider.ID.make(endpoint.providerID))
@@ -84,7 +116,9 @@ export const OpenAICompatiblePlugin = define({
       const provider = providerConfig(endpoint, listed)
       if (Object.keys(provider.models).length === 0)
         return yield* Effect.fail(
-          new Error(`${endpoint.baseURL}/models lists no models; enter the model IDs to use instead`),
+          new Error(
+            `${endpoint.baseURL}/models lists no models; customize the connection to enter the model IDs to use`,
+          ),
         )
       if (!config.saveProvider) return yield* Effect.fail(new Error("The configuration cannot be written"))
       yield* config.saveProvider(endpoint.providerID, provider)
@@ -111,20 +145,29 @@ export const OpenAICompatiblePlugin = define({
               required: true,
             },
             {
+              type: "boolean",
+              key: "advanced",
+              title: "Customize the connection?",
+              description:
+                "Models and their limits are read from the endpoint's /models. Say yes to set the provider ID, display name, API, extra headers, model IDs or limits yourself.",
+              default: false,
+            },
+            {
               type: "string",
               key: "providerID",
               title: "Provider ID",
               description:
-                "Lowercase letters, numbers, hyphens and underscores. Models are referenced as <provider ID>/<model ID>.",
+                "Lowercase letters, numbers, hyphens and underscores. Models are referenced as <provider ID>/<model ID>. Defaults to the host.",
               placeholder: "my-endpoint",
               pattern: PROVIDER_ID,
-              required: true,
+              when: ADVANCED,
             },
             {
               type: "string",
               key: "name",
               title: "Display name",
-              description: "Defaults to the provider ID.",
+              description: "Defaults to the host.",
+              when: ADVANCED,
             },
             {
               type: "string",
@@ -136,6 +179,7 @@ export const OpenAICompatiblePlugin = define({
               ],
               default: "chat",
               required: true,
+              when: ADVANCED,
             },
             {
               type: "string",
@@ -143,6 +187,7 @@ export const OpenAICompatiblePlugin = define({
               title: "Model IDs",
               description:
                 "Comma-separated IDs added to the ones /models lists. Required when the endpoint has no /models.",
+              when: ADVANCED,
             },
             {
               type: "string",
@@ -150,6 +195,7 @@ export const OpenAICompatiblePlugin = define({
               title: "Extra headers",
               description:
                 "Name: value pairs separated by semicolons, such as X-Org: acme; X-Env: prod. The API key is sent as a bearer token, so credential headers are not accepted here.",
+              when: ADVANCED,
             },
             {
               type: "integer",
@@ -157,6 +203,7 @@ export const OpenAICompatiblePlugin = define({
               title: "Context window (tokens)",
               description: "Overrides what the endpoint reports for every model.",
               minimum: 1,
+              when: ADVANCED,
             },
             {
               type: "integer",
@@ -164,6 +211,7 @@ export const OpenAICompatiblePlugin = define({
               title: "Maximum output tokens",
               description: "Overrides what the endpoint reports for every model.",
               minimum: 1,
+              when: ADVANCED,
             },
           ],
         },
@@ -177,7 +225,8 @@ export const OpenAICompatiblePlugin = define({
 export function parseEndpoint(answer: Form.Answer): Endpoint | string {
   const baseURL = normalizeBaseURL(text(answer.baseURL))
   if (!baseURL) return "The API base URL must be an http or https URL without credentials, query or fragment"
-  const providerID = text(answer.providerID)
+  const chosen = text(answer.providerID)
+  const providerID = chosen || deriveProviderID(baseURL)
   if (!new RegExp(PROVIDER_ID).test(providerID))
     return "The provider ID must be 1 to 64 lowercase letters, numbers, hyphens or underscores, starting with a letter or number"
   const headers = parseHeaders(text(answer.headers))
@@ -195,7 +244,7 @@ export function parseEndpoint(answer: Form.Answer): Endpoint | string {
   const output = limit(answer.output)
   return {
     providerID,
-    name: text(answer.name) || providerID,
+    name: text(answer.name) || (chosen ? providerID : new URL(baseURL).host),
     baseURL,
     responses: answer.api === "responses",
     headers,
@@ -203,6 +252,18 @@ export function parseEndpoint(answer: Form.Answer): Endpoint | string {
     ...(context === undefined ? {} : { context }),
     ...(output === undefined ? {} : { output }),
   }
+}
+
+/** A provider ID from the endpoint's host, such as `api-example-com` or `localhost-1234`. */
+export function deriveProviderID(baseURL: string) {
+  const host = URL.canParse(baseURL) ? new URL(baseURL).host : ""
+  const id = host
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "")
+    .slice(0, 64)
+    .replace(/-+$/, "")
+  return id || "endpoint"
 }
 
 /** An OpenAI-compatible base URL without a trailing slash or a pasted endpoint path, or undefined when unusable. */
@@ -263,8 +324,8 @@ export const discover = Effect.fn("OpenAICompatible.discover")(function* (endpoi
     return yield* Effect.fail(
       new Error(
         response.ok
-          ? `${url} did not return an OpenAI model list; enter the model IDs to use instead`
-          : `${url} answered HTTP ${response.status}; check the URL, or enter the model IDs to use instead`,
+          ? `${url} did not return an OpenAI model list; customize the connection to enter the model IDs to use`
+          : `${url} answered HTTP ${response.status}; check the URL, or customize the connection to enter the model IDs to use`,
       ),
     )
   }
@@ -286,10 +347,24 @@ export function providerConfig(endpoint: Endpoint, listed: ReadonlyArray<Listed>
         const display = model?.display_name?.trim() || model?.name?.trim()
         const context =
           endpoint.context ??
-          positive([model?.context_length, model?.context_window, model?.max_context_length]) ??
+          positive([
+            model?.context_length,
+            model?.context_window,
+            model?.max_context_length,
+            model?.loaded_context_length,
+            model?.max_model_len,
+            model?.top_provider?.context_length,
+            model?.meta?.n_ctx_train,
+          ]) ??
           ModelLimit.conservative(DEFAULT_CONTEXT)
         const output = Math.min(
-          endpoint.output ?? positive([model?.max_completion_tokens, model?.max_output_tokens]) ?? DEFAULT_OUTPUT,
+          endpoint.output ??
+            positive([
+              model?.max_completion_tokens,
+              model?.max_output_tokens,
+              model?.top_provider?.max_completion_tokens,
+            ]) ??
+            DEFAULT_OUTPUT,
           context,
         )
         return [id, { name: display || id, limit: { context, output } }] as const

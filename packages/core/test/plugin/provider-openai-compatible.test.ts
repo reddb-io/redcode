@@ -1,6 +1,7 @@
 import { afterAll, describe, expect, test } from "bun:test"
 import { Effect } from "effect"
 import {
+  deriveProviderID,
   discover,
   normalizeBaseURL,
   parseEndpoint,
@@ -75,6 +76,41 @@ describe("OpenAI-compatible wizard answers", () => {
       models: ["a", "b"],
       context: 32_000,
     })
+  })
+
+  test("asks for nothing but the URL: the provider ID and name come from the host", () => {
+    expect(deriveProviderID("https://api.example.com/v1")).toBe("api-example-com")
+    expect(deriveProviderID("http://localhost:1234/v1")).toBe("localhost-1234")
+    expect(deriveProviderID("http://127.0.0.1:8080")).toBe("127-0-0-1-8080")
+    expect(deriveProviderID("not a url")).toBe("endpoint")
+    expect(parseEndpoint({ baseURL: "https://api.example.com/v1" })).toEqual({
+      providerID: "api-example-com",
+      name: "api.example.com",
+      baseURL: "https://api.example.com/v1",
+      responses: false,
+      headers: {},
+      models: [],
+    })
+    // A provider ID the user typed is kept, and names the provider when no display name was given.
+    expect(parseEndpoint({ baseURL: "https://api.example.com/v1", providerID: "mine" })).toMatchObject({
+      providerID: "mine",
+      name: "mine",
+    })
+  })
+
+  test("reads a model's limits from whichever field the endpoint uses", () => {
+    const config = providerConfig(endpoint({ baseURL: "https://api.example.com/v1" }), [
+      { id: "vllm", max_model_len: 32_768 },
+      { id: "lmstudio", loaded_context_length: 16_384 },
+      { id: "openrouter", top_provider: { context_length: 200_000, max_completion_tokens: 16_000 } },
+      { id: "llamacpp", meta: { n_ctx_train: 8_192 } },
+      { id: "silent" },
+    ])
+    expect(config.models.vllm?.limit.context).toBe(32_768)
+    expect(config.models.lmstudio?.limit.context).toBe(16_384)
+    expect(config.models.openrouter?.limit).toEqual({ context: 200_000, output: 16_000 })
+    expect(config.models.llamacpp?.limit.context).toBe(8_192)
+    expect(config.models.silent?.limit.context).toBeGreaterThan(0)
   })
 
   test("writes discovered and entered models with their limits", () => {
