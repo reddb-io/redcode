@@ -697,7 +697,11 @@ describe("SessionStopLoss waiting on an outside job", () => {
     expect(trajectory.elapsed).toBe(waited)
     expect(SessionStopLoss.signals(trajectory, LIMITS)).toEqual(["waited"])
     expect(
-      SessionStopLoss.final(trajectory, { action: "ask_user", state: "waiting", signals: ["waited"], verified: false }),
+      SessionStopLoss.final(
+        trajectory,
+        { action: "ask_user", state: "waiting", signals: ["waited"], verified: false },
+        {},
+      ),
     ).toContain(`for ${LIMITS.wait} minutes`)
   })
 })
