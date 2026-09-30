@@ -5,7 +5,9 @@ import { Effect, Exit, FileSystem, Option, Scope } from "effect"
 import fs from "node:fs/promises"
 import os from "node:os"
 import path from "node:path"
+import { Readable } from "node:stream"
 import importVault from "../src/commands/handlers/vault/import"
+import setVault from "../src/commands/handlers/vault/set"
 import { callVault, importSummary, pipedValue } from "../src/commands/handlers/vault/shared"
 import { OPENCODE_VERSION } from "../src/version"
 
@@ -132,4 +134,50 @@ describe("vault commands against a server", () => {
         expect(String(Exit.isFailure(exit) ? exit.cause : "")).not.toContain(value)
       },
     ))
+
+  test("set reads a piped value, sends it once and prints only the reference", () =>
+    withServer(
+      () => Response.json({ output: "github-token" }),
+      async (fixture) => {
+        const { printed } = await withStdin(value + "\n", () =>
+          fixture.runPromise(setVault({ server: Option.some(fixture.url), name: "GITHUB_TOKEN" })),
+        )
+        expect(fixture.requests).toEqual([
+          { path: "/api/rpc/redcode.vault/set", body: { input: { name: "GITHUB_TOKEN", value } } },
+        ])
+        expect(printed).toBe("Stored {vault:github-token}" + os.EOL)
+        expect(printed).not.toContain(value)
+      },
+    ))
+
+  test("set refuses an empty piped value before calling the server", () =>
+    withServer(
+      () => Response.json({ output: "github-token" }),
+      async (fixture) => {
+        const { result: exit } = await withStdin("\n", () =>
+          fixture.runPromise(Effect.exit(setVault({ server: Option.some(fixture.url), name: "GITHUB_TOKEN" }))),
+        )
+        expect(Exit.isFailure(exit)).toBe(true)
+        expect(fixture.requests).toEqual([])
+      },
+    ))
 })
+
+/** Runs `run` with `text` piped to stdin and returns its result with what it wrote to stdout. */
+async function withStdin<A>(text: string, run: () => Promise<A>) {
+  const stdin = Object.getOwnPropertyDescriptor(process, "stdin")
+  const write = process.stdout.write
+  const written: string[] = []
+  Object.defineProperty(process, "stdin", { value: Readable.from([text]), configurable: true })
+  process.stdout.write = ((chunk: string | Uint8Array) => {
+    written.push(String(chunk))
+    return true
+  }) as typeof process.stdout.write
+  try {
+    const result = await run()
+    return { result, printed: written.join("") }
+  } finally {
+    process.stdout.write = write
+    if (stdin) Object.defineProperty(process, "stdin", stdin)
+  }
+}
