@@ -47,45 +47,56 @@ export function SidebarMcp(props: { context: Plugin.Context; sessionID: string }
           </text>
         </box>
         <Show when={list().length <= 2 || view.open}>
-          <For each={list()}>
-            {(item) => (
-              <box
-                flexDirection="row"
-                gap={1}
-                minWidth={0}
-                onMouseUp={() =>
-                  props.context.ui.dialog.show(() => (
-                    <DialogMcp initialServer={item.name} details={item.status.status === "failed"} />
-                  ))
-                }
-              >
-                <text
+          <scrollbox
+            id="sidebar-mcps-scroll"
+            height={Math.min(5, list().length)}
+            minHeight={0}
+            flexShrink={0}
+            scrollY
+            scrollX={false}
+            horizontalScrollbarOptions={{ visible: false }}
+          >
+            <For each={list()}>
+              {(item) => (
+                <box
+                  flexDirection="row"
+                  gap={1}
+                  minWidth={0}
                   flexShrink={0}
-                  style={{
-                    fg: dot(item.status.status),
-                  }}
+                  onMouseUp={() =>
+                    props.context.ui.dialog.show(() => (
+                      <DialogMcp initialServer={item.name} details={item.status.status === "failed"} />
+                    ))
+                  }
                 >
-                  •
-                </text>
-                <text fg={theme.text.base} wrapMode="none" truncate flexGrow={1} flexShrink={1} minWidth={0}>
-                  <b>{item.name}</b>
-                </text>
-                <text
-                  fg={item.status.status === "failed" ? theme.text.feedback.error.base : theme.text.muted}
-                  wrapMode="none"
-                  flexShrink={0}
-                >
-                  <Switch fallback={item.status.status}>
-                    <Match when={item.status.status === "connected"}>Connected</Match>
-                    <Match when={item.status.status === "pending"}>Connecting</Match>
-                    <Match when={item.status.status === "failed"}>Error</Match>
-                    <Match when={item.status.status === "disabled"}>Disabled</Match>
-                    <Match when={item.status.status === "needs_auth"}>Sign in</Match>
-                  </Switch>
-                </text>
-              </box>
-            )}
-          </For>
+                  <text
+                    flexShrink={0}
+                    style={{
+                      fg: dot(item.status.status),
+                    }}
+                  >
+                    •
+                  </text>
+                  <text fg={theme.text.base} wrapMode="none" truncate flexGrow={1} flexShrink={1} minWidth={0}>
+                    <b>{item.name}</b>
+                  </text>
+                  <text
+                    fg={item.status.status === "failed" ? theme.text.feedback.error.base : theme.text.muted}
+                    wrapMode="none"
+                    flexShrink={0}
+                  >
+                    <Switch fallback={item.status.status}>
+                      <Match when={item.status.status === "connected"}>Connected</Match>
+                      <Match when={item.status.status === "pending"}>Connecting</Match>
+                      <Match when={item.status.status === "failed"}>Error</Match>
+                      <Match when={item.status.status === "disabled"}>Disabled</Match>
+                      <Match when={item.status.status === "needs_auth"}>Sign in</Match>
+                    </Switch>
+                  </text>
+                </box>
+              )}
+            </For>
+          </scrollbox>
         </Show>
       </box>
     </Show>

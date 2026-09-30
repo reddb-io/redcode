@@ -149,7 +149,6 @@ export function MonitorsTab(props: { monitors: SessionMonitors }) {
     ),
   )
   const current = createMemo(() => monitors()[selected()])
-  const detail = createMemo(() => monitors().find((info) => info.id === expanded()))
   const tone = (value: MonitorTone) => (value === "muted" ? theme.text.muted : theme.text.feedback[value].base)
   let scroll: ScrollBoxRenderable | undefined
 
@@ -254,8 +253,13 @@ export function MonitorsTab(props: { monitors: SessionMonitors }) {
         }
       >
         <scrollbox
-          scrollbarOptions={{ visible: false }}
-          maxHeight={5}
+          id="composer-monitors-scroll"
+          scrollY
+          scrollX={false}
+          horizontalScrollbarOptions={{ visible: false }}
+          height={5}
+          minHeight={0}
+          flexShrink={0}
           ref={(value: ScrollBoxRenderable) => (scroll = value)}
         >
           <For each={monitors()}>
@@ -264,6 +268,7 @@ export function MonitorsTab(props: { monitors: SessionMonitors }) {
               const state = createMemo(() => monitorState(info.status))
               return (
                 <box
+                  flexShrink={0}
                   paddingLeft={1}
                   paddingRight={1}
                   backgroundColor={
@@ -297,20 +302,18 @@ export function MonitorsTab(props: { monitors: SessionMonitors }) {
                     {"  "}
                     {monitorSummary(info)}
                   </text>
+                  <Show when={expanded() === info.id}>
+                    <box paddingLeft={1} flexShrink={0}>
+                      <text fg={theme.text.muted} wrapMode="word">
+                        {monitorDetail(info)}
+                      </text>
+                    </box>
+                  </Show>
                 </box>
               )
             }}
           </For>
         </scrollbox>
-      </Show>
-      <Show when={detail()}>
-        {(info) => (
-          <scrollbox maxHeight={10} paddingLeft={2} paddingRight={2}>
-            <text fg={theme.text.muted} wrapMode="word">
-              {monitorDetail(info())}
-            </text>
-          </scrollbox>
-        )}
       </Show>
       <Show when={current()}>
         {(info) => (

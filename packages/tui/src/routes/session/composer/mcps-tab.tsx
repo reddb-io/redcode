@@ -309,13 +309,18 @@ export function McpsTab(props: { sessionID: string }) {
         }
       >
         <scrollbox
-          scrollbarOptions={{ visible: false }}
+          id="composer-mcps-scroll"
+          scrollY
+          scrollX={false}
+          horizontalScrollbarOptions={{ visible: false }}
           height={5}
+          minHeight={0}
+          flexShrink={0}
           ref={(value: ScrollBoxRenderable) => (scroll = value)}
         >
           <For each={servers()}>
             {(server, index) => (
-              <box>
+              <box flexShrink={0}>
                 <box
                   flexDirection="row"
                   paddingLeft={1}

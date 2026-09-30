@@ -1,4 +1,5 @@
 /** @jsxImportSource @opentui/solid */
+import { ScrollBoxRenderable } from "@opentui/core"
 import { testRender } from "@opentui/solid"
 import { expect, test } from "bun:test"
 import type { MonitorPublicInfo } from "@opencode/client"
@@ -204,6 +205,51 @@ test("the Monitors tab expands evidence and stops a running monitor through the 
   }
 })
 
+test("many monitors and expanded evidence stay in the drawer scroll without moving its controls", async () => {
+  const view = await renderMonitors(
+    Array.from({ length: 40 }, (_, index) =>
+      monitor({
+        id: `monitor-${index}`,
+        command: `watch-job-${index}`,
+        created: Date.now() - index,
+        evidence: {
+          exit: 0,
+          output: Array.from({ length: 40 }, (_, line) => `evidence-line-${line}`).join("\n"),
+          truncated: false,
+        },
+      }),
+    ),
+  )
+  try {
+    const scroll = view.app.renderer.root.findDescendantById("composer-monitors-scroll")
+    expect(scroll).toBeInstanceOf(ScrollBoxRenderable)
+    if (!(scroll instanceof ScrollBoxRenderable)) throw new Error("Missing monitor scroll")
+    const controls = view.app.renderer.root.findDescendantById("monitor-stop-monitor-0")!
+    const controlsY = controls.y
+    expect(scroll.height).toBe(5)
+    expect(scroll.scrollHeight).toBeGreaterThan(scroll.height)
+    view.dispatch("composer.monitor.evidence")
+    await view.app.renderOnce()
+    expect(scroll.height).toBe(5)
+    expect(controls.y).toBe(controlsY)
+    expect(view.app.captureCharFrame()).toContain("hide evidence")
+    scroll.scrollBy(30)
+    await view.app.renderOnce()
+    expect(view.app.captureCharFrame()).toContain("evidence-line-30")
+    expect(controls.y).toBe(controlsY)
+    view.dispatch("composer.monitor.evidence")
+    await view.app.renderOnce()
+    for (let index = 0; index < 39; index++) {
+      view.dispatch("composer.monitor.down")
+      await view.app.renderOnce()
+    }
+    expect(view.app.captureCharFrame()).toContain("watch-job-39")
+    expect(scroll.height).toBe(5)
+  } finally {
+    view.app.renderer.destroy()
+  }
+})
+
 test("a monitor that finishes toasts only while the Monitors tab is out of sight", async () => {
   const view = await renderMonitors([
     monitor({ id: "first", command: "first-check" }),
@@ -242,7 +288,12 @@ test("a monitor event re-reads the list without polling while the Monitors tab i
       type: "monitor.finished",
       data: { sessionID: "parent", monitorID: "build", command: "watch-build", status: "succeeded" },
     })
-    await wait(() => view.monitors().list().every((info) => info.status === "succeeded"))
+    await wait(() =>
+      view
+        .monitors()
+        .list()
+        .every((info) => info.status === "succeeded"),
+    )
     await view.app.renderOnce()
     expect(view.toast()).toMatchObject({ variant: "success", message: "Monitor succeeded: watch-build" })
   } finally {

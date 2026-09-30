@@ -1,3 +1,4 @@
+import { ScrollBoxRenderable } from "@opentui/core"
 import { expect, test } from "bun:test"
 import { createAppFixture } from "./fixture/app"
 import { tmpdir } from "./fixture/fixture"
@@ -64,140 +65,145 @@ test("session location stays visible without the sidebar while Build runs and mo
   expect(setup.captureCharFrame()).toContain("/tmp/opencode")
 })
 
-test.each([80, 160])("Redcode opens blank sessions with Context and the activity drawer at %i columns", async (width) => {
-  await using state = await tmpdir()
-  const created: string[] = []
-  const writes: string[] = []
-  await using setup = await createAppFixture({
-    state: state.path,
-    width,
-    height: 40,
-    config: {
-      animations: false,
-      tabs: { mode: "off" },
-      keybinds: { "session.sidebar.toggle": "f6", "sidebar.tab.next": "f7" },
-    },
-    fetch: async (url, request) => {
-      if (request.method !== "GET") writes.push(url.pathname)
-      if (url.pathname === "/api/session" && request.method === "POST") {
-        const input = (await request.clone().json()) as { id: string }
-        created.push(input.id)
-      }
-      if (/^\/api\/session\/[^/]+\/todo$/.test(url.pathname))
-        return json({
-          data: [
-            { id: "task_pending", content: "Preserve Redcode work", status: "in_progress", priority: "high" },
-            {
-              id: "task_blocked",
-              content: "External verification",
-              status: "blocked",
-              priority: "medium",
-              reason: "Waiting for reviewer",
+test.each([80, 160])(
+  "Redcode opens blank sessions with Context and the activity drawer at %i columns",
+  async (width) => {
+    await using state = await tmpdir()
+    const created: string[] = []
+    const writes: string[] = []
+    await using setup = await createAppFixture({
+      state: state.path,
+      width,
+      height: 40,
+      config: {
+        animations: false,
+        tabs: { mode: "off" },
+        keybinds: { "session.sidebar.toggle": "f6", "sidebar.tab.next": "f7" },
+      },
+      fetch: async (url, request) => {
+        if (request.method !== "GET") writes.push(url.pathname)
+        if (url.pathname === "/api/session" && request.method === "POST") {
+          const input = (await request.clone().json()) as { id: string }
+          created.push(input.id)
+        }
+        if (/^\/api\/session\/[^/]+\/todo$/.test(url.pathname))
+          return json({
+            data: [
+              { id: "task_pending", content: "Preserve Redcode work", status: "in_progress", priority: "high" },
+              {
+                id: "task_blocked",
+                content: "External verification",
+                status: "blocked",
+                priority: "medium",
+                reason: "Waiting for reviewer",
+              },
+              { id: "task_old", content: "Old completed task", status: "completed", priority: "low", closedAt: 1 },
+            ],
+          })
+        if (/^\/api\/session\/[^/]+\/diff$/.test(url.pathname)) {
+          expect(url.searchParams.get("scope")).toBe("session")
+          return json({ data: [{ file: "redcode.ts", patch: "", additions: 12, deletions: 3, status: "modified" }] })
+        }
+        if (url.pathname === "/api/lsp") {
+          expect(url.searchParams.get("location[directory]")).toBe(directory)
+          return json({ location, data: [{ id: "typescript", root: ".", status: "connected" }] })
+        }
+        if (url.pathname === "/api/agent")
+          return json({
+            location,
+            data: ["build", "plan", "design", "question"].map((id) => ({
+              id,
+              mode: "primary",
+              hidden: false,
+              permissions: [],
+            })),
+          })
+        if (url.pathname === "/api/model")
+          return json({
+            location,
+            data: [
+              {
+                id: "model",
+                providerID: "provider",
+                name: "Model",
+                enabled: true,
+                capabilities: { output: ["text"] },
+                variants: [],
+                time: { released: 0 },
+                cost: [],
+              },
+            ],
+          })
+        if (url.pathname === "/api/provider") return json({ location, data: [{ id: "provider", name: "Provider" }] })
+        if (url.pathname === "/api/integration")
+          return json({
+            location,
+            data: [
+              {
+                id: "provider",
+                name: "Provider",
+                methods: [],
+                connections: [{ type: "env", name: "FIXTURE_PROVIDER_KEY" }],
+              },
+            ],
+          })
+        if (url.pathname === "/api/redskilled")
+          return json({
+            location,
+            data: {
+              lifecycle: "unavailable",
+              consent: "unknown",
+              scope: "project",
+              native: true,
+              error: "Fixture worker unavailable",
             },
-            { id: "task_old", content: "Old completed task", status: "completed", priority: "low", closedAt: 1 },
-          ],
-        })
-      if (/^\/api\/session\/[^/]+\/diff$/.test(url.pathname)) {
-        expect(url.searchParams.get("scope")).toBe("session")
-        return json({ data: [{ file: "redcode.ts", patch: "", additions: 12, deletions: 3, status: "modified" }] })
-      }
-      if (url.pathname === "/api/lsp") {
-        expect(url.searchParams.get("location[directory]")).toBe(directory)
-        return json({ location, data: [{ id: "typescript", root: ".", status: "connected" }] })
-      }
-      if (url.pathname === "/api/agent")
-        return json({
-          location,
-          data: ["build", "plan", "design", "question"].map((id) => ({
-            id,
-            mode: "primary",
-            hidden: false,
-            permissions: [],
-          })),
-        })
-      if (url.pathname === "/api/model")
-        return json({
-          location,
-          data: [
-            {
-              id: "model",
-              providerID: "provider",
-              name: "Model",
-              enabled: true,
-              capabilities: { output: ["text"] },
-              variants: [],
-              time: { released: 0 },
-              cost: [],
-            },
-          ],
-        })
-      if (url.pathname === "/api/provider") return json({ location, data: [{ id: "provider", name: "Provider" }] })
-      if (url.pathname === "/api/integration")
-        return json({
-          location,
-          data: [
-            {
-              id: "provider",
-              name: "Provider",
-              methods: [],
-              connections: [{ type: "env", name: "FIXTURE_PROVIDER_KEY" }],
-            },
-          ],
-        })
-      if (url.pathname === "/api/redskilled")
-        return json({
-          location,
-          data: {
-            lifecycle: "unavailable",
-            consent: "unknown",
-            scope: "project",
-            native: true,
-            error: "Fixture worker unavailable",
-          },
-        })
-    },
-  })
-  await setup.ready
-  await setup.waitForFrame((frame) => frame.includes("Build") && frame.includes("Model"))
-  expect(created).toHaveLength(1)
-  for (const command of ["/new", "/clear", "/new"]) {
-    const before = created.length
-    await setup.mockInput.typeText(command)
-    setup.mockInput.pressEnter()
+          })
+      },
+    })
+    await setup.ready
+    await setup.waitForFrame((frame) => frame.includes("Build") && frame.includes("Model"))
+    expect(created).toHaveLength(1)
+    for (const command of ["/new", "/clear", "/new"]) {
+      const before = created.length
+      await setup.mockInput.typeText(command)
+      setup.mockInput.pressEnter()
+      await setup.waitForFrame(
+        (frame) =>
+          created.length === before + 1 &&
+          frame.includes("Build") &&
+          frame.includes("Model") &&
+          !frame.includes(command),
+      )
+    }
+    expect(new Set(created).size).toBe(4)
+    // No deletion or prompt submission is allowed while creating/clearing sessions.
+    expect(writes).toEqual(Array(4).fill("/api/session"))
+    expect(setup.captureCharFrame()).not.toContain("█")
+    if (width === 80) setup.mockInput.pressKey("F6")
+    await setup.waitForFrame((frame) => frame.includes("Context"))
+    await setup.waitForFrame((frame) => frame.includes("Preserve Redcode work") && /Waiting\s+for reviewer/.test(frame))
+    expect(setup.captureCharFrame()).not.toContain("Old completed task")
+    expect(setup.captureCharFrame()).toContain("Todo")
+    expect(setup.captureCharFrame()).toContain("[•] Preserve Redcode work")
+    expect(setup.captureCharFrame()).toContain("[!] External verification")
     await setup.waitForFrame(
       (frame) =>
-        created.length === before + 1 && frame.includes("Build") && frame.includes("Model") && !frame.includes(command),
+        frame.includes("typescript") && frame.includes("redcode.ts") && frame.includes("+12") && frame.includes("-3"),
     )
-  }
-  expect(new Set(created).size).toBe(4)
-  // No deletion or prompt submission is allowed while creating/clearing sessions.
-  expect(writes).toEqual(Array(4).fill("/api/session"))
-  expect(setup.captureCharFrame()).not.toContain("█")
-  if (width === 80) setup.mockInput.pressKey("F6")
-  await setup.waitForFrame((frame) => frame.includes("Context"))
-  await setup.waitForFrame((frame) => frame.includes("Preserve Redcode work") && /Waiting\s+for reviewer/.test(frame))
-  expect(setup.captureCharFrame()).not.toContain("Old completed task")
-  expect(setup.captureCharFrame()).toContain("Todo")
-  expect(setup.captureCharFrame()).toContain("[•] Preserve Redcode work")
-  expect(setup.captureCharFrame()).toContain("[!] External verification")
-  await setup.waitForFrame(
-    (frame) =>
-      frame.includes("typescript") && frame.includes("redcode.ts") && frame.includes("+12") && frame.includes("-3"),
-  )
-  expect(setup.captureCharFrame()).not.toContain("▼ LSP")
-  expect(setup.captureCharFrame()).not.toContain("▼ Modified Files")
-  expect(setup.captureCharFrame().indexOf("Modified Files")).toBeLessThan(setup.captureCharFrame().indexOf("LSP"))
-  await setup.mockInput.typeText("/workers")
-  setup.mockInput.pressEnter()
-  await setup.waitForFrame(
-    (frame) =>
-      frame.includes("Subagents") && frame.includes("Workers") && frame.includes("No workers connected."),
-  )
-  setup.mockInput.pressEscape()
-  await setup.mockInput.typeText("/subagents")
-  setup.mockInput.pressEnter()
-  await setup.waitForFrame((frame) => frame.includes("No active subagents"))
-})
+    expect(setup.captureCharFrame()).not.toContain("▼ LSP")
+    expect(setup.captureCharFrame()).not.toContain("▼ Modified Files")
+    expect(setup.captureCharFrame().indexOf("Modified Files")).toBeLessThan(setup.captureCharFrame().indexOf("LSP"))
+    await setup.mockInput.typeText("/workers")
+    setup.mockInput.pressEnter()
+    await setup.waitForFrame(
+      (frame) => frame.includes("Subagents") && frame.includes("Workers") && frame.includes("No workers connected."),
+    )
+    setup.mockInput.pressEscape()
+    await setup.mockInput.typeText("/subagents")
+    setup.mockInput.pressEnter()
+    await setup.waitForFrame((frame) => frame.includes("No active subagents"))
+  },
+)
 
 test("--continue with no prior session opens a blank session", async () => {
   await using state = await tmpdir()
@@ -305,7 +311,9 @@ test("/monitors opens the Monitors drawer to inspect evidence and stop observati
   setup.mockInput.pressEnter()
   await setup.waitForFrame(
     (frame) =>
-      frame.includes("Monitors") && frame.includes("watch-build") && frame.includes("2 checks · Build evidence visible"),
+      frame.includes("Monitors") &&
+      frame.includes("watch-build") &&
+      frame.includes("2 checks · Build evidence visible"),
   )
   expect(setup.captureCharFrame()).not.toContain("Build started")
   setup.mockInput.pressEnter()
@@ -418,42 +426,92 @@ test.each([
   { columns: 80, expected: 36 },
   { columns: 160, expected: 40 },
   { columns: 240, expected: 44 },
-])(
-  "Context sidebar retains its Redcode width after reopening at $columns columns",
-  async ({ columns, expected }) => {
-    await using state = await tmpdir()
-    const config = {
-      animations: false,
-      tabs: { mode: "off" as const },
-      keybinds: {
-        "session.sidebar.toggle": "f6",
-        "session.sidebar.tab.cycle": "f7",
-        "session.sidebar.width.increase": "f8",
-        "session.sidebar.width.decrease": "f9",
-      },
-    }
-    {
-      await using setup = await createAppFixture({ state: state.path, width: columns, height: 40, config })
-      await setup.ready
-      await setup.waitForFrame(() => Boolean(setup.renderer.root.findDescendantById("session-pane")))
-      if (columns === 80) setup.mockInput.pressKey("F6")
-      await setup.waitForFrame(() => setup.renderer.root.findDescendantById("session-sidebar")?.width === expected)
-      setup.mockInput.pressKey("F8")
-      await setup.waitForFrame(() => setup.renderer.root.findDescendantById("session-sidebar")?.width === expected + 4)
-      setup.mockInput.pressKey("F9")
-      await setup.waitForFrame(() => setup.renderer.root.findDescendantById("session-sidebar")?.width === expected)
-      setup.mockInput.pressKey("F8")
-      await setup.waitForFrame(() => setup.renderer.root.findDescendantById("session-sidebar")?.width === expected + 4)
-      await setup.mockInput.typeText("/workers")
-      setup.mockInput.pressEnter()
-      await setup.waitForFrame((frame) => frame.includes("No workers connected."))
-    }
-    {
-      await using setup = await createAppFixture({ state: state.path, width: columns, height: 40, config })
-      await setup.ready
-      await setup.waitForFrame(() => Boolean(setup.renderer.root.findDescendantById("session-pane")))
-      if (columns === 80) setup.mockInput.pressKey("F6")
-      await setup.waitForFrame(() => setup.renderer.root.findDescendantById("session-sidebar")?.width === expected + 4)
-    }
-  },
-)
+])("Context sidebar retains its Redcode width after reopening at $columns columns", async ({ columns, expected }) => {
+  await using state = await tmpdir()
+  const config = {
+    animations: false,
+    tabs: { mode: "off" as const },
+    keybinds: {
+      "session.sidebar.toggle": "f6",
+      "session.sidebar.tab.cycle": "f7",
+      "session.sidebar.width.increase": "f8",
+      "session.sidebar.width.decrease": "f9",
+    },
+  }
+  {
+    await using setup = await createAppFixture({ state: state.path, width: columns, height: 40, config })
+    await setup.ready
+    await setup.waitForFrame(() => Boolean(setup.renderer.root.findDescendantById("session-pane")))
+    if (columns === 80) setup.mockInput.pressKey("F6")
+    await setup.waitForFrame(() => setup.renderer.root.findDescendantById("session-sidebar")?.width === expected)
+    setup.mockInput.pressKey("F8")
+    await setup.waitForFrame(() => setup.renderer.root.findDescendantById("session-sidebar")?.width === expected + 4)
+    setup.mockInput.pressKey("F9")
+    await setup.waitForFrame(() => setup.renderer.root.findDescendantById("session-sidebar")?.width === expected)
+    setup.mockInput.pressKey("F8")
+    await setup.waitForFrame(() => setup.renderer.root.findDescendantById("session-sidebar")?.width === expected + 4)
+    await setup.mockInput.typeText("/workers")
+    setup.mockInput.pressEnter()
+    await setup.waitForFrame((frame) => frame.includes("No workers connected."))
+  }
+  {
+    await using setup = await createAppFixture({ state: state.path, width: columns, height: 40, config })
+    await setup.ready
+    await setup.waitForFrame(() => Boolean(setup.renderer.root.findDescendantById("session-pane")))
+    if (columns === 80) setup.mockInput.pressKey("F6")
+    await setup.waitForFrame(() => setup.renderer.root.findDescendantById("session-sidebar")?.width === expected + 4)
+  }
+})
+
+test.each([80, 160])("large MCP catalogs and tools scroll inside their panels at %i columns", async (width) => {
+  await using state = await tmpdir()
+  const servers = Array.from({ length: 40 }, (_, index) => ({
+    name: `server-${String(index).padStart(2, "0")}`,
+    status: { status: "connected" },
+  }))
+  await using setup = await createAppFixture({
+    state: state.path,
+    width,
+    height: 24,
+    config: { animations: false, tabs: { mode: "off" }, keybinds: { "session.composer.mcps": "f8" } },
+    fetch: (url) => {
+      if (url.pathname === "/api/mcp") return json({ location, data: servers })
+      if (url.pathname === "/api/mcp/tool")
+        return json({
+          location,
+          data: Array.from({ length: 40 }, (_, index) => ({ server: "server-00", name: `tool-${index}` })),
+        })
+    },
+  })
+  await setup.ready
+  await setup.waitForFrame((frame) => !frame.includes("Opening session"))
+  const sidebar = setup.renderer.root.findDescendantById("sidebar-mcps-scroll")
+  if (width === 160) expect(sidebar).toBeInstanceOf(ScrollBoxRenderable)
+  if (sidebar instanceof ScrollBoxRenderable) {
+    expect(sidebar.height).toBe(5)
+    expect(sidebar.scrollHeight).toBeGreaterThan(5)
+    sidebar.scrollTo(sidebar.scrollHeight)
+    await setup.renderOnce()
+    expect(setup.captureCharFrame()).toContain("server-39")
+  }
+  setup.mockInput.pressKey("f8")
+  await setup.waitForFrame((frame) => frame.includes("MCPS") || frame.includes("MCPs"))
+  const scroll = setup.renderer.root.findDescendantById("composer-mcps-scroll")
+  if (!(scroll instanceof ScrollBoxRenderable)) throw new Error("Missing MCP drawer scroll")
+  expect(scroll.height).toBe(5)
+  const bottom = scroll.y + scroll.height
+  setup.mockInput.pressEnter()
+  await setup.waitForFrame((frame) => frame.includes("tool-0"))
+  expect(scroll.height).toBe(5)
+  expect(scroll.y + scroll.height).toBe(bottom)
+  scroll.scrollBy(30)
+  await setup.waitForFrame((frame) => frame.includes("tool-30"))
+  expect(setup.captureCharFrame()).toContain("reload config")
+  setup.mockInput.pressEnter()
+  for (let index = 0; index < 39; index++) {
+    setup.mockInput.pressKey("down")
+    await setup.renderOnce()
+  }
+  await setup.waitForFrame((frame) => frame.includes("server-39"))
+  expect(scroll.height).toBe(5)
+})
