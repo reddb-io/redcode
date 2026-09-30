@@ -67,6 +67,7 @@ const permissionLayer = Layer.succeed(
     explicit: () => Effect.succeed(false),
     ask: (input) => Effect.succeed({ id: input.id ?? Permission.ID.create(), effect: "ask" }),
     assert: () => Effect.void,
+    decide: () => Effect.succeed("allow"),
     reply: () => Effect.void,
     get: () => Effect.succeed(undefined),
     forSession: () => Effect.succeed([]),

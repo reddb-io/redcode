@@ -4,7 +4,6 @@ import { Project } from "@opencode/schema/project"
 import { UserPayload } from "@opencode/schema/session-inbox"
 import { Vault } from "../src/vault/vault.js"
 import { VaultAdmission } from "../src/vault/admission.js"
-import { VaultShell } from "../src/vault/shell.js"
 import { testEffect } from "./lib/effect"
 
 const it = testEffect(Vault.layer)
@@ -155,25 +154,6 @@ describe("VaultAdmission", () => {
       const payload = UserPayload.make({ text: `checksum=${"aB1".repeat(12)} and {vault:github-token-1}` })
       expect(yield* VaultAdmission.protect(vault, projectA, payload)).toBe(payload)
       expect(yield* vault.list(projectA)).toEqual([])
-    }),
-  )
-})
-
-describe("VaultShell", () => {
-  const values = new Map([["github-token-1", token]])
-
-  it.effect("reads a reference from the child environment in every POSIX quoting", () =>
-    Effect.sync(() => {
-      const bound = VaultShell.bind(
-        `curl -H "Authorization: Bearer {vault:github-token-1}" -u me:{vault:github-token-1} 'x{vault:github-token-1}y' \\{vault:github-token-1}`,
-        "/bin/sh",
-        values,
-      )
-      expect(bound.command).toBe(
-        `curl -H "Authorization: Bearer \${REDCODE_VAULT_1}" -u me:"\${REDCODE_VAULT_1}" 'x'"\${REDCODE_VAULT_1}"'y' \\{vault:github-token-1}`,
-      )
-      expect(bound.env).toEqual({ REDCODE_VAULT_1: token })
-      expect(bound.command).not.toContain(token)
     }),
   )
 })

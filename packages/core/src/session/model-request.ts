@@ -466,11 +466,23 @@ export const layer = Layer.effect(
         // Permission.assert and the question tool throw declines as defects so tools cannot
         // catch them and turn a "no" into model-visible output. Recover them here as failures.
         // Sinks resolve vault references for this Session's project only, and whatever a tool returns, reports or
-        // fails with has every vaulted value of the project replaced by its reference before it is stored.
+        // fails with has every vaulted value of the project replaced by its reference before it is stored. The
+        // result is cleaned with the vault as it is when the call ends, so a secret another call just captured is
+        // replaced too.
         executeTool: (call: Parameters<Prepared["executeTool"]>[0]) =>
           tools.execute({ ...call, definitions: hooked, ...scrubbedProgress(call.progress, clean) }).pipe(
-            Effect.map((result: Tool.NormalizedResult) => scrubResult(result, clean)),
-            Effect.mapError((error) => (error instanceof Tool.Error ? scrubError(error, clean) : error)),
+            Effect.flatMap((result: Tool.NormalizedResult) =>
+              vault.scrubber(session.projectID).pipe(Effect.map((current) => scrubResult(result, current))),
+            ),
+            Effect.catch((error) =>
+              vault
+                .scrubber(session.projectID)
+                .pipe(
+                  Effect.flatMap((current) =>
+                    Effect.fail(error instanceof Tool.Error ? scrubError(error, current) : error),
+                  ),
+                ),
+            ),
             Effect.provideService(Vault.Current, Vault.bind(vault, session.projectID)),
             Effect.catchCauseFilter(
               (cause) => {

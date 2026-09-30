@@ -2,8 +2,9 @@ export * as Vault from "./vault.js"
 
 import { Clock, Context, Effect, Layer } from "effect"
 import type { Project } from "@opencode/schema/project"
-import { Definition, Entry, Moved, reference } from "@opencode/schema/vault"
+import { Definition, Entry, Moved, reference, sanitize } from "@opencode/schema/vault"
 import { makeGlobalNode } from "@opencode/util/effect/app-node"
+import { Redact } from "@opencode/util/redact"
 
 /**
  * The project vault: secrets moved out of a conversation, which the model only ever sees as `{vault:<name>}`.
@@ -20,7 +21,13 @@ import { makeGlobalNode } from "@opencode/util/effect/app-node"
  * publishes one.
  */
 
-export { Definition, Entry, Moved, reference }
+export { Definition, Entry, Moved, reference, sanitize }
+
+/**
+ * Where a secret came from, which decides what a new value under a taken name does: the user's own `set` replaces
+ * it, a value the model captured under a name replaces only another captured value, and a request never replaces.
+ */
+export type Origin = "pasted" | "user" | "requested" | "captured"
 
 export interface Interface {
   /** The name of `value` in the project, stored under a new `<kind>-<n>` name unless it is already there. */
@@ -28,6 +35,20 @@ export interface Interface {
     readonly projectID: Project.ID
     readonly kind: string
     readonly value: string
+    /** Destinations the value may go back to without asking, such as the host whose response carried it. */
+    readonly hosts?: ReadonlyArray<string>
+  }) => Effect.Effect<string>
+  /**
+   * `value` under `name`, made reference-safe; the stored name, which differs from the asked one when that name
+   * is held by a value `origin` may not replace. An unusable name falls back to `<kind>-<n>`.
+   */
+  readonly set: (input: {
+    readonly projectID: Project.ID
+    readonly name: string
+    readonly value: string
+    readonly origin: Exclude<Origin, "pasted">
+    readonly kind?: string
+    readonly hosts?: ReadonlyArray<string>
   }) => Effect.Effect<string>
   /** The value behind a name, or undefined for a name this project does not have. */
   readonly resolve: (input: {
@@ -37,7 +58,13 @@ export interface Interface {
   readonly list: (projectID: Project.ID) => Effect.Effect<ReadonlyArray<Entry>>
   /** Whether the name existed; its name is never given to another value. */
   readonly forget: (input: { readonly projectID: Project.ID; readonly name: string }) => Effect.Effect<boolean>
-  /** `text` with every stored value of the project replaced by its reference, longest value first. */
+  /** Lets the secret go to `destination` without asking again, until it is forgotten. */
+  readonly allow: (input: {
+    readonly projectID: Project.ID
+    readonly name: string
+    readonly destination: string
+  }) => Effect.Effect<void>
+  /** `text` with every stored value of the project replaced by its reference, longest value first, in one pass. */
   readonly scrub: (projectID: Project.ID, text: string) => Effect.Effect<string>
   /** `scrub` for one project as a plain function, for callers that clean many strings of one result. */
   readonly scrubber: (projectID: Project.ID) => Effect.Effect<(text: string) => string>
@@ -45,6 +72,12 @@ export interface Interface {
 }
 
 export class Service extends Context.Service<Service, Interface>()("@opencode/Vault") {}
+
+/** What a sink's `capture` stored: a cleaner that knows the new values too, and the new names in order. */
+export interface Captured {
+  readonly clean: (text: string) => string
+  readonly names: ReadonlyArray<string>
+}
 
 /**
  * The project of the Session whose tool call is running, provided around tool execution. Outside it nothing
@@ -54,6 +87,24 @@ export interface Binding {
   readonly projectID: Project.ID
   readonly resolve: (name: string) => Effect.Effect<string | undefined>
   readonly scrub: (text: string) => Effect.Effect<string>
+  /** `scrub` as a plain function over the vault as it is now. */
+  readonly scrubber: Effect.Effect<(text: string) => string>
+  /**
+   * Stores every high-confidence secret in `texts` that the vault does not hold yet, bound to `hosts`, the
+   * destinations the output came from, and returns a cleaner that replaces every stored value by its reference.
+   */
+  readonly capture: (texts: ReadonlyArray<string>, hosts?: ReadonlyArray<string>) => Effect.Effect<Captured>
+  /** `Interface.set` for this project; an empty name stores under a new `<kind>-<n>` name. */
+  readonly set: (input: {
+    readonly name: string
+    readonly value: string
+    readonly origin: "requested" | "captured"
+    readonly kind?: string
+    readonly hosts?: ReadonlyArray<string>
+  }) => Effect.Effect<string>
+  /** The destinations each name may be sent to without asking; a name the project lacks has none. */
+  readonly hosts: (names: ReadonlyArray<string>) => Effect.Effect<ReadonlyMap<string, ReadonlyArray<string>>>
+  readonly allow: (name: string, destination: string) => Effect.Effect<void>
 }
 
 export const Current = Context.Reference<Binding | undefined>("@opencode/Vault/Current", {
@@ -62,21 +113,45 @@ export const Current = Context.Reference<Binding | undefined>("@opencode/Vault/C
 
 const PATTERN = /\{vault:([a-z0-9][a-z0-9-]{0,63})\}/g
 
+/**
+ * A value shorter than this is not moved out of text on its own, such as `"password": "test"`: every later tool
+ * result is scrubbed of a stored value, and scrubbing a common short word would corrupt them.
+ */
+const MIN_LENGTH = 8
+
 /** The names referenced in `text`, each once, in order of appearance. */
 export const references = (text: string) =>
   text.includes("{vault:") ? Array.from(new Set(Array.from(text.matchAll(PATTERN), (match) => match[1]))) : []
 
+/**
+ * The high-confidence secrets in `text` that are worth moving into the vault. Low-confidence findings stay, since
+ * replacing a hash someone meant would break their request, and a reference is never a secret itself.
+ */
+export const capturable = (text: string) =>
+  Redact.findSecrets(text).filter(
+    (item) => item.confidence === "high" && item.value.length >= MIN_LENGTH && references(item.value).length === 0,
+  )
+
 /** What a sink tells the model when a reference does not resolve for its project. */
 export const unknownReference = (name: string) =>
-  `Unknown vault reference ${reference(name)}: ask the user to add it by pasting the secret in a message in this project.`
+  `Unknown vault reference ${reference(name)}: call vault_request to ask the user for it, or ask them to add it with /vault add ${name}.`
+
+/** The line a result ends with after `capture` stored secrets from it, naming only references. */
+export const captureNote = (names: ReadonlyArray<string>) => {
+  if (names.length === 0) return ""
+  const listed = names.map(reference).join(", ")
+  return names.length === 1
+    ? `Stored 1 secret from the output as ${listed}; use that reference in later commands.`
+    : `Stored ${names.length} secrets from the output as ${listed}; use those references in later commands.`
+}
+
+/** Every reference resolved, or the first name that did not. */
+export type Resolution = { readonly missing: string } | { readonly values: ReadonlyMap<string, string> }
 
 /**
  * The values of `names` for the running tool call's project, or the first name that has none. Without a binding,
  * such as outside a Session's tool execution, no name resolves.
  */
-/** Every reference resolved, or the first name that did not. */
-export type Resolution = { readonly missing: string } | { readonly values: ReadonlyMap<string, string> }
-
 export const resolveAll = Effect.fn("Vault.resolveAll")(function* (names: ReadonlyArray<string>) {
   const binding = yield* Current
   const resolved = yield* Effect.forEach(names, (name) =>
@@ -109,64 +184,121 @@ export const scrubDeep = (value: unknown, clean: (text: string) => string) => ma
 export const scrubRecord = (record: Readonly<Record<string, unknown>>, clean: (text: string) => string) =>
   Object.fromEntries(Object.entries(record).map(([key, item]) => [key, mapStrings(item, clean, 0)]))
 
-type Stored = Entry & { readonly value: string }
+/** Every string of a JSON-like value, such as a tool's structured output, for `capture`. */
+export const strings = (value: unknown) => {
+  const found: string[] = []
+  mapStrings(
+    value,
+    (text) => {
+      found.push(text)
+      return text
+    },
+    0,
+  )
+  return found
+}
+
+type Stored = Entry & { readonly value: string; readonly origin: Origin; readonly allowed: Set<string> }
 
 type Shelf = {
   readonly byName: Map<string, Stored>
   readonly byValue: Map<string, string>
   /** Only grows, so a forgotten name is never reused for another value that old references would then reach. */
   readonly counters: Map<string, number>
-  /** Longest value first, so a value that contains another is replaced whole. */
-  longest: ReadonlyArray<Stored>
+  /** Every value, longest first, so a value that contains another is replaced whole; undefined for an empty shelf. */
+  pattern: RegExp | undefined
 }
 
-export const layer = Layer.sync(Service, () => {
+/** A process-memory vault; `layer` provides one, and tests build their own. */
+export const make = (): Interface => {
   const shelves = new Map<Project.ID, Shelf>()
   const shelf = (projectID: Project.ID) => {
     const existing = shelves.get(projectID)
     if (existing) return existing
-    const created: Shelf = { byName: new Map(), byValue: new Map(), counters: new Map(), longest: [] }
+    const created: Shelf = { byName: new Map(), byValue: new Map(), counters: new Map(), pattern: undefined }
     shelves.set(projectID, created)
     return created
   }
-  const sort = (target: Shelf) => {
-    target.longest = Array.from(target.byName.values()).toSorted(
-      (left, right) => right.value.length - left.value.length,
-    )
+  // Rebuilt on every change: a value two names hold is scrubbed to the older one, whichever of them changes.
+  const index = (target: Shelf) => {
+    target.byValue.clear()
+    target.byName.forEach((stored) => {
+      if (!target.byValue.has(stored.value)) target.byValue.set(stored.value, stored.name)
+    })
+    const values = Array.from(target.byValue.keys()).toSorted((left, right) => right.length - left.length)
+    target.pattern =
+      values.length === 0 ? undefined : new RegExp(values.map((value) => value.replace(ESCAPE, "\\$&")).join("|"), "g")
   }
+  // One pass over the text, so a replacement is never matched again by a shorter value inside its reference.
   const clean = (projectID: Project.ID) => {
-    const entries = shelves.get(projectID)?.longest ?? []
+    const target = shelves.get(projectID)
+    const pattern = target?.pattern
+    if (!target || !pattern) return (text: string) => text
     return (text: string) =>
-      entries.reduce(
-        (current, entry) =>
-          current.includes(entry.value) ? current.replaceAll(entry.value, reference(entry.name)) : current,
-        text,
-      )
+      text.replace(pattern, (value) => {
+        const name = target.byValue.get(value)
+        return name === undefined ? value : reference(name)
+      })
   }
+  const store = Effect.fn("Vault.store")(function* (
+    target: Shelf,
+    input: { name: string; kind: string; value: string; origin: Origin; hosts?: ReadonlyArray<string> },
+  ) {
+    const previous = target.byName.get(input.name)
+    target.byName.set(input.name, {
+      name: input.name,
+      kind: input.kind,
+      created: yield* Clock.currentTimeMillis,
+      value: input.value,
+      origin: input.origin,
+      // A new value under a known name keeps where the name may go: the user or the login flow replaced it.
+      allowed: new Set([...(previous?.allowed ?? []), ...(input.hosts ?? [])]),
+    })
+    index(target)
+    return input.name
+  })
 
   return Service.of({
     put: Effect.fn("Vault.put")(function* (input) {
       const target = shelf(input.projectID)
       const existing = target.byValue.get(input.value)
-      if (existing !== undefined) return existing
-      const kind =
-        input.kind
-          .toLowerCase()
-          .replace(/[^a-z0-9]+/g, "-")
-          .replace(/^-+|-+$/g, "")
-          .slice(0, 48) || "secret"
-      const name = nextName(target, kind)
-      const stored = { name, kind, created: yield* Clock.currentTimeMillis, value: input.value }
-      target.byName.set(name, stored)
-      target.byValue.set(input.value, name)
-      sort(target)
-      return name
+      if (existing !== undefined) {
+        input.hosts?.forEach((host) => target.byName.get(existing)?.allowed.add(host))
+        return existing
+      }
+      const kind = sanitize(input.kind).slice(0, 48).replace(/-$/, "") || "secret"
+      return yield* store(target, {
+        name: nextName(target, kind),
+        kind,
+        value: input.value,
+        origin: "pasted",
+        hosts: input.hosts,
+      })
+    }),
+    set: Effect.fn("Vault.set")(function* (input) {
+      const target = shelf(input.projectID)
+      const kind = sanitize(input.kind ?? input.name).slice(0, 48).replace(/-$/, "") || "secret"
+      const asked = sanitize(input.name)
+      const held = asked ? target.byName.get(asked) : undefined
+      if (held?.value === input.value) {
+        input.hosts?.forEach((host) => held.allowed.add(host))
+        return held.name
+      }
+      const replaces =
+        held === undefined || input.origin === "user" || (input.origin === "captured" && held.origin === "captured")
+      const name = asked === "" ? nextName(target, kind) : replaces ? asked : nextName(target, asked)
+      return yield* store(target, { name, kind, value: input.value, origin: input.origin, hosts: input.hosts })
     }),
     resolve: (input) => Effect.sync(() => shelves.get(input.projectID)?.byName.get(input.name)?.value),
     list: (projectID) =>
       Effect.sync(() =>
         Array.from(shelves.get(projectID)?.byName.values() ?? [], (stored) =>
-          Entry.make({ name: stored.name, kind: stored.kind, created: stored.created }),
+          Entry.make({
+            name: stored.name,
+            kind: stored.kind,
+            created: stored.created,
+            ...(stored.allowed.size === 0 ? {} : { hosts: Array.from(stored.allowed).toSorted() }),
+          }),
         ),
       ),
     forget: (input) =>
@@ -175,15 +307,20 @@ export const layer = Layer.sync(Service, () => {
         const stored = target?.byName.get(input.name)
         if (!target || !stored) return false
         target.byName.delete(input.name)
-        target.byValue.delete(stored.value)
-        sort(target)
+        index(target)
         return true
+      }),
+    allow: (input) =>
+      Effect.sync(() => {
+        shelves.get(input.projectID)?.byName.get(input.name)?.allowed.add(input.destination)
       }),
     scrub: (projectID, text) => Effect.sync(() => clean(projectID)(text)),
     scrubber: (projectID) => Effect.sync(() => clean(projectID)),
     references,
   })
-})
+}
+
+export const layer = Layer.sync(Service, make)
 
 export const node = makeGlobalNode({ service: Service, layer, deps: [] })
 
@@ -192,7 +329,30 @@ export const bind = (vault: Interface, projectID: Project.ID): Binding => ({
   projectID,
   resolve: (name) => vault.resolve({ projectID, name }),
   scrub: (text) => vault.scrub(projectID, text),
+  scrubber: vault.scrubber(projectID),
+  capture: (texts, hosts) =>
+    Effect.gen(function* () {
+      const known = yield* vault.scrubber(projectID)
+      const names = yield* Effect.forEach(
+        texts.flatMap((text) => capturable(known(text))),
+        (item) => vault.put({ projectID, kind: item.kind, value: item.value, hosts }),
+      )
+      return { clean: yield* vault.scrubber(projectID), names: Array.from(new Set(names)) }
+    }),
+  set: (input) => vault.set({ projectID, ...input }),
+  hosts: (names) =>
+    vault
+      .list(projectID)
+      .pipe(
+        Effect.map(
+          (entries) =>
+            new Map(names.map((name) => [name, entries.find((entry) => entry.name === name)?.hosts ?? []] as const)),
+        ),
+      ),
+  allow: (name, destination) => vault.allow({ projectID, name, destination }),
 })
+
+const ESCAPE = /[.*+?^${}()|[\]\\]/g
 
 function nextName(target: Shelf, kind: string): string {
   const count = (target.counters.get(kind) ?? 0) + 1

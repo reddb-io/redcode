@@ -20,6 +20,7 @@ import { Diagnostic } from "../../lsp/diagnostic.js"
 import { Location } from "../../location.js"
 import { FileAccess } from "../../file-access.js"
 import { Permission } from "../../permission.js"
+import { VaultFiles } from "../../vault/files.js"
 import { fileDiff } from "./file-diff.js"
 
 export const name = "edit"
@@ -126,7 +127,7 @@ export const Plugin = {
           name,
           options: { codemode: false, permission: "edit" },
           description:
-            "Edit the contents of a file by finding and replacing exact text. When editing text from Read output, preserve the exact indentation (tabs or spaces) and omit the line-number prefix, such as `1: `. Never include the prefix in oldString or newString. The edit fails if oldString is not found. By default, oldString must identify a UNIQUE location. Multiple matches FAIL unless replaceAll is true. Add more surrounding context to disambiguate, or set replaceAll to true to replace every occurrence. Use replaceAll when the change should apply to every occurrence, such as renaming a variable.",
+            "Edit the contents of a file by finding and replacing exact text. When editing text from Read output, preserve the exact indentation (tabs or spaces) and omit the line-number prefix, such as `1: `. Never include the prefix in oldString or newString. The edit fails if oldString is not found. By default, oldString must identify a UNIQUE location. Multiple matches FAIL unless replaceAll is true. Add more surrounding context to disambiguate, or set replaceAll to true to replace every occurrence. Use replaceAll when the change should apply to every occurrence, such as renaming a variable. A `{vault:<name>}` reference becomes the secret only in a .env-style file git ignores, after the user approves it; anywhere else it stays as text.",
           input: Input,
           output: Output,
           execute: (input, context) => {
@@ -160,7 +161,15 @@ export const Plugin = {
                     : Effect.fail(new ToolFailure({ message: `Unable to edit ${input.path}`, error })),
                 ),
               )
-              const source = original.text
+              // A file meant for secrets is edited in its reference form, the form the model read it in.
+              const vault = yield* VaultFiles.mode({
+                environment,
+                root: location.directory,
+                file: target.absolute,
+                written: input.newString,
+                current: original.text,
+              })
+              const source = vault.secret ? vault.clean(original.text) : original.text
               const ending = source.includes(crlf) ? crlf : "\n"
               const oldString = input.oldString.replaceAll(crlf, "\n").replaceAll("\n", ending)
               const newString = input.newString.replaceAll(crlf, "\n").replaceAll("\n", ending)
@@ -179,7 +188,7 @@ export const Plugin = {
                 )
               const preview =
                 replacements > 0 && (replacements === 1 || input.replaceAll === true)
-                  ? fileDiff(target.resource, source, replaced)
+                  ? fileDiff(target.resource, vault.clean(source), vault.clean(replaced))
                   : undefined
               yield* permission.assert({
                 action: "edit",
@@ -200,10 +209,12 @@ export const Plugin = {
                   message: `Found ${replacements} matches for oldString, but expected exactly one. Add more surrounding context to make oldString unique, or set replaceAll to true to replace every occurrence.`,
                 })
               }
+              if (vault.secret)
+                yield* VaultFiles.approve({ permission, context, resource: target.resource, names: vault.names })
               const replacementBom = replaced.startsWith("\uFEFF")
               const result = yield* fileMutation.write({
                 target,
-                content: Bom.join(replaced, original.bom || replacementBom),
+                content: Bom.join(vault.secret ? yield* VaultFiles.fill(replaced) : replaced, original.bom || replacementBom),
               })
               const bom = original.bom || replacementBom
               const formatted = (yield* formatter.file(target.absolute))
@@ -216,17 +227,18 @@ export const Plugin = {
               const diagnostics = yield* lsp.diagnostics()
               return {
                 output: {
-                  files: [fileDiff(result.resource, source, formatted)],
+                  files: [fileDiff(result.resource, vault.clean(source), vault.clean(formatted))],
                   replacements,
                 } satisfies Output,
                 report: Diagnostic.report(target.absolute, diagnostics[target.absolute] ?? []),
                 diagnostics: Diagnostic.pick(diagnostics, [target.absolute]),
+                literal: vault.secret ? "" : VaultFiles.notice(vault.names),
               }
             }).pipe(
               fileMutation.withLock([FileAccess.resolvePath(location.directory, input.path)]),
               Effect.map((result) => ({
                 output: result.output,
-                content: `Edited ${result.output.files[0]?.file} (${result.output.replacements} replacement${result.output.replacements === 1 ? "" : "s"})${result.report ? `\n\nLSP errors detected in this file, please fix:\n${result.report}` : ""}`,
+                content: `Edited ${result.output.files[0]?.file} (${result.output.replacements} replacement${result.output.replacements === 1 ? "" : "s"})${result.literal ? `\n\n${result.literal}` : ""}${result.report ? `\n\nLSP errors detected in this file, please fix:\n${result.report}` : ""}`,
                 metadata: { files: result.output.files, diagnostics: result.diagnostics },
               })),
               Effect.mapError((error) =>

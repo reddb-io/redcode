@@ -38,6 +38,12 @@ type CreateInput = Shell.CreateInput & {
   shell?: string
 }
 
+/**
+ * What `create.before` hooks and the caller's `before` shape. A `script` set by the caller is what the shell
+ * reads on standard input and runs, while `command` stays what is stored, published and shown.
+ */
+export type Invocation = ShellCreateBefore & { script?: string }
+
 type Active = {
   // Immutable snapshot; lifecycle updates replace it via immer `produce`.
   info: Info
@@ -64,7 +70,7 @@ type Active = {
 export interface Interface {
   readonly create: <E = never, R = never>(
     input: CreateInput,
-    before?: (input: ShellCreateBefore) => Effect.Effect<void, E, R>,
+    before?: (input: Invocation) => Effect.Effect<void, E, R>,
   ) => Effect.Effect<Shell.Info, E | AppProcess.AppProcessError, R>
   // Currently running commands only; exited shells are retained for get/output but excluded here.
   readonly list: () => Effect.Effect<Shell.Info[]>
@@ -259,14 +265,14 @@ const layer = () =>
 
       const create = Effect.fn("Shell.create")(function* <E = never, R = never>(
         input: CreateInput,
-        before?: (input: ShellCreateBefore) => Effect.Effect<void, E, R>,
+        before?: (input: Invocation) => Effect.Effect<void, E, R>,
       ) {
         const sessionID = input.metadata?.sessionID
         const sessionEnvironment =
           location.workspaceID === undefined && Schema.is(SessionSchema.ID)(sessionID)
             ? yield* environments.get(sessionID)
             : undefined
-        const invocation: ShellCreateBefore = {
+        const invocation: Invocation = {
           command: input.command,
           cwd: input.cwd ?? location.directory,
           timeout: input.timeout ?? 0,
@@ -281,7 +287,11 @@ const layer = () =>
         if (before) yield* before(invocation)
 
         const id = Shell.ID.ascending()
-        const args = ShellSelect.args(invocation.shell, invocation.command)
+        const script = invocation.script
+        const args =
+          script === undefined
+            ? ShellSelect.args(invocation.shell, invocation.command)
+            : ShellSelect.scriptArgs(invocation.shell)
         const file = path.join(outputDir, `${id}.out`)
 
         const info: Info = {
@@ -307,7 +317,7 @@ const layer = () =>
                   ChildProcess.make(invocation.shell, args, {
                     cwd: invocation.cwd,
                     env: invocation.env,
-                    stdin: "ignore",
+                    stdin: script === undefined ? "ignore" : Stream.make(new TextEncoder().encode(script)),
                     detached: process.platform !== "win32",
                     forceKillAfter: Duration.seconds(3),
                   }),

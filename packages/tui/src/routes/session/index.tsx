@@ -72,6 +72,7 @@ import {
   DialogVault,
   restrictedMessages,
   restrictedNotice,
+  useVaultActions,
   vaultMoved,
   vaultNotice,
 } from "../../component/dialog-vault"
@@ -89,6 +90,7 @@ import { DesignApprovalNotice } from "../../component/design-approval"
 import { DesignFeedbackNotice } from "../../component/design-feedback"
 import { useToast } from "../../ui/toast"
 import stripAnsi from "strip-ansi"
+import { Option } from "effect"
 import { usePromptRef } from "../../context/prompt"
 import { projectedPromptInput } from "../../prompt/codec"
 import { deduplicateVisibleImages } from "../../prompt/attachment"
@@ -99,6 +101,7 @@ import { normalizePath } from "../../util/path"
 import { Budget } from "../../util/budget"
 import { PermissionPrompt } from "./permission"
 import { FormPrompt } from "./form"
+import { decodeVaultForm, SecretPrompt } from "./secret-prompt"
 import { DialogExportOptions } from "../../ui/dialog-export-options"
 import { DialogExportResult } from "../../ui/dialog-export-result"
 import { sessionEpilogue } from "../../util/presentation"
@@ -1036,15 +1039,33 @@ export function Session(props: {
   ]
 
   const goalCommand = useGoalCommand()
+  const vault = useVaultActions()
   const baseCommands = createMemo(() => [
     {
       title: "Project vault",
-      description: "List the secrets moved out of this project's conversations and forget them",
+      description:
+        "List this project's secrets and forget them; /vault add <name> stores one, /vault import <file.env> a file",
       id: "session.vault",
       group: "Session",
-      slash: { name: "vault" },
-      run: () => {
-        dialog.replace(() => <DialogVault sessionID={route.sessionID} directory={location()?.directory} />)
+      slash: { name: "vault", arguments: true as const },
+      run: (input?: string) => {
+        const target = { sessionID: route.sessionID, directory: location()?.directory }
+        const text = input?.trim() ?? ""
+        if (!text) {
+          dialog.replace(() => <DialogVault sessionID={target.sessionID} directory={target.directory} />)
+          return
+        }
+        const verb = text.replace(/\s.*$/s, "")
+        const argument = text.slice(verb.length).trim()
+        if (verb === "add" && argument) {
+          vault.add(target, argument)
+          return
+        }
+        if (verb === "import" && argument) {
+          vault.import(target, argument)
+          return
+        }
+        toast.show({ variant: "info", message: "Usage: /vault, /vault add <name>, /vault import <file.env>" })
       },
     },
     {
@@ -1867,7 +1888,13 @@ export function Session(props: {
                   <Show when={forms()[0]?.id} keyed>
                     {(_) => {
                       const form = forms()[0]
-                      return form ? <FormPrompt form={form} onEscape={() => escapeDialog(form.id)} /> : null
+                      if (!form) return null
+                      const request = decodeVaultForm(form.metadata)
+                      if (Option.isSome(request))
+                        return (
+                          <SecretPrompt form={form} request={request.value} onEscape={() => escapeDialog(form.id)} />
+                        )
+                      return <FormPrompt form={form} onEscape={() => escapeDialog(form.id)} />
                     }}
                   </Show>
                 </Match>

@@ -17,6 +17,7 @@ import { LSP } from "../../lsp/lsp.js"
 import { Location } from "../../location.js"
 import { Patch } from "@opencode/util/patch"
 import { Permission } from "../../permission.js"
+import { VaultFiles } from "../../vault/files.js"
 import DESCRIPTION from "../patch.txt"
 import { fileDiff } from "./file-diff.js"
 import { PatchTransaction } from "./patch-transaction.js"
@@ -114,6 +115,12 @@ export const Plugin = {
                 return yield* new ToolFailure({ message: "patch rejected: empty patch" })
               }
               const prepared: Prepared[] = []
+              // Per written file, whether it receives secrets and which references the patch writes into it.
+              const vaulted: Array<{
+                readonly resource: string
+                readonly secret: boolean
+                readonly names: ReadonlyArray<string>
+              }> = []
               const staged = new Map<string, string | undefined>()
               const originals = new Map<string, PatchTransaction.Snapshot>()
               const resolveTarget = Effect.fnUntraced(function* (value: string) {
@@ -133,14 +140,23 @@ export const Plugin = {
                   if (hunk.type === "add") {
                     const content =
                       hunk.contents.endsWith("\n") || hunk.contents === "" ? hunk.contents : `${hunk.contents}\n`
+                    const vault = yield* VaultFiles.mode({
+                      environment,
+                      root: location.directory,
+                      file: target.absolute,
+                      written: content,
+                      current: "",
+                    })
+                    vaulted.push({ resource: target.resource, secret: vault.secret, names: vault.names })
+                    const written = vault.secret ? yield* VaultFiles.fill(content) : content
                     prepared.push({
                       ...hunk,
                       target,
-                      content,
+                      content: written,
                       before: "",
                       after: Bom.split(content).text,
                     })
-                    staged.set(target.absolute, content)
+                    staged.set(target.absolute, written)
                     return
                   }
                   if (hunk.type === "delete") {
@@ -159,7 +175,8 @@ export const Plugin = {
                       return yield* new ToolFailure({
                         message: `patch verification failed: Failed to delete ${target.resource}: file does not exist`,
                       })
-                    prepared.push({ ...hunk, target, before: Bom.split(content).text, after: "" })
+                    const clean = yield* VaultFiles.cleaner
+                    prepared.push({ ...hunk, target, before: clean(Bom.split(content).text), after: "" })
                     staged.set(target.absolute, undefined)
                     return
                   }
@@ -180,22 +197,33 @@ export const Plugin = {
                     return yield* new ToolFailure({
                       message: `patch verification failed: Failed to read file to update ${target.absolute}: file does not exist`,
                     })
-                  const before = Bom.split(original).text
-                  const update = yield* Effect.try({
-                    try: () => Patch.derive(hunk.path, hunk.chunks, original),
-                    catch: (error) => new ToolFailure({ message: `patch verification failed: ${errorMessage(error)}` }),
-                  })
                   const destination = hunk.movePath ? yield* resolveTarget(hunk.movePath) : undefined
                   const moveTarget = destination?.absolute === target.absolute ? undefined : destination
+                  // A file meant for secrets is patched in its reference form, the form the model read it in.
+                  const vault = yield* VaultFiles.mode({
+                    environment,
+                    root: location.directory,
+                    file: (moveTarget ?? target).absolute,
+                    written: JSON.stringify(hunk.chunks),
+                    current: original,
+                  })
+                  vaulted.push({ resource: (moveTarget ?? target).resource, secret: vault.secret, names: vault.names })
+                  const base = vault.secret ? vault.clean(original) : original
+                  const update = yield* Effect.try({
+                    try: () => Patch.derive(hunk.path, hunk.chunks, base),
+                    catch: (error) => new ToolFailure({ message: `patch verification failed: ${errorMessage(error)}` }),
+                  })
+                  const joined = Patch.joinBom(update.content, update.bom)
+                  const content = vault.secret ? yield* VaultFiles.fill(joined) : joined
                   prepared.push({
                     ...hunk,
                     target,
-                    content: Patch.joinBom(update.content, update.bom),
-                    before,
-                    after: update.content,
+                    content,
+                    before: vault.clean(Bom.split(base).text),
+                    after: vault.clean(update.content),
                     moveTarget,
                   })
-                  staged.set(moveTarget?.absolute ?? target.absolute, Patch.joinBom(update.content, update.bom))
+                  staged.set(moveTarget?.absolute ?? target.absolute, content)
                   if (moveTarget) staged.set(target.absolute, undefined)
                 }).pipe(
                   Effect.mapError((error) =>
@@ -224,6 +252,11 @@ export const Plugin = {
                 agent: context.agent,
                 source,
               })
+              yield* Effect.forEach(
+                vaulted.filter((item) => item.secret && item.names.length > 0),
+                (item) => VaultFiles.approve({ permission, context, resource: item.resource, names: item.names }),
+                { discard: true },
+              )
 
               yield* PatchTransaction.commit(
                 environment.files,
@@ -268,10 +301,12 @@ export const Plugin = {
                   }),
                 { discard: true },
               )
+              const clean = yield* VaultFiles.cleaner
               const files = prepared.map((change) => {
                 if (change.type === "delete") return patchFile(change)
                 const target = change.type === "update" && change.moveTarget ? change.moveTarget : change.target
-                return patchFile(change, formatted.get(target.absolute))
+                const after = formatted.get(target.absolute)
+                return patchFile(change, after === undefined ? undefined : clean(after))
               })
               yield* FileMutation.publishChanges(
                 bus,
@@ -299,7 +334,10 @@ export const Plugin = {
               if (Exit.isFailure(report))
                 warnings.push(`Warning: patch applied, but LSP diagnostics were unavailable: ${errorMessage(Cause.squash(report.cause))}`)
               const diagnostics: Record<string, LSPClient.Diagnostic[]> = Exit.isSuccess(report) ? report.value : {}
-              return { applied, files, written, diagnostics, warnings }
+              const literal = VaultFiles.notice(
+                Array.from(new Set(vaulted.flatMap((item) => (item.secret ? [] : item.names)))),
+              )
+              return { applied, files, written, diagnostics, warnings: literal ? [...warnings, literal] : warnings }
             }).pipe(
               fileMutation.withLock(lockTargets),
               Effect.map((output) => ({

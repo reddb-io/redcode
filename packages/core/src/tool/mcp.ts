@@ -11,6 +11,7 @@ import { Permission } from "../permission.js"
 import { ProviderRouter } from "../provider-router.js"
 import { Tool } from "../tool.js"
 import { Vault } from "../vault/vault.js"
+import { VaultHosts } from "../vault/hosts.js"
 
 /**
  * Registry namespace and permission action names for MCP tools.
@@ -76,7 +77,22 @@ export const layer = Layer.effect(
                     const vaulted = yield* Vault.resolveAll(Vault.references(JSON.stringify(args)))
                     if ("missing" in vaulted)
                       return yield* new ToolFailure({ message: Vault.unknownReference(vaulted.missing) })
-                    const result = yield* mcp
+                    const server = `mcp:${tool.identity ?? tool.server}`
+                    yield* VaultHosts.approve({
+                      permission,
+                      context,
+                      names: Array.from(vaulted.values.keys()),
+                      destinations: { known: [server] },
+                      detail: { command: name(tool.server, tool.name) },
+                    }).pipe(
+                      Effect.mapError(
+                        (error) =>
+                          new ToolFailure({
+                            message: "feedback" in error ? `The user declined: ${error.feedback}` : error.message,
+                          }),
+                      ),
+                    )
+                    const called = yield* mcp
                       .callTool({
                         server: tool.server,
                         name: tool.name,
@@ -90,6 +106,27 @@ export const layer = Layer.effect(
                           "MCP.ToolCallError": (error) => new ToolFailure({ message: error.message }),
                         }),
                       )
+                    // Secrets the server returns, such as a token it issued, are stored and read as references.
+                    const binding = yield* Vault.Current
+                    const captured = binding
+                      ? yield* binding.capture(
+                          [
+                            ...called.content.flatMap((part) => (part.type === "text" ? [part.text] : [])),
+                            ...Vault.strings(called.structured),
+                          ],
+                          [server],
+                        )
+                      : undefined
+                    const clean = captured?.clean ?? ((text: string) => text)
+                    const note = Vault.captureNote(captured?.names ?? [])
+                    const result = {
+                      isError: called.isError,
+                      structured:
+                        called.structured === undefined ? undefined : Vault.scrubDeep(called.structured, clean),
+                      content: called.content.map((part) =>
+                        part.type === "text" ? { ...part, text: clean(part.text) } : part,
+                      ),
+                    }
                     if (result.isError)
                       return yield* new ToolFailure({
                         message:
@@ -119,9 +156,11 @@ export const layer = Layer.effect(
                       }
                       return text
                     }
+                    // The note follows the parsed output, so JSON returned as text still parses.
+                    const noted = note ? [...content, { type: "text" as const, text: note }] : content
                     return {
                       output: output(),
-                      ...(content.length === 0 ? {} : { content }),
+                      ...(noted.length === 0 ? {} : { content: noted }),
                     }
                   }).pipe(
                     Effect.mapError((error) =>

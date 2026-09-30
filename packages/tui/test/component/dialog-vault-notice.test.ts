@@ -1,17 +1,28 @@
 import { describe, expect, test } from "bun:test"
-import { restrictedMessages, restrictedNotice, vaultNotice } from "../../src/component/dialog-vault"
+import { importedNotice, restrictedMessages, restrictedNotice, vaultNotice } from "../../src/component/dialog-vault"
 
 describe("vault and restricted-content notices", () => {
   test("say what the vault replaced, without claiming earlier messages are safe", () => {
     const one = vaultNotice([{ name: "github-token-1", kind: "github-token" }])
     expect(one).toContain("1 secret was replaced by {vault:github-token-1}")
     expect(one).toContain("no longer part of the context sent to the model from now on")
+    expect(one).toContain("can use a reference in commands without seeing its value")
+    expect(one).toContain("can ask you for a secret it is missing")
+    expect(one).toContain("in memory until the service restarts")
     expect(one).toContain("rotate anything real")
     const two = vaultNotice([
       { name: "github-token-1", kind: "github-token" },
       { name: "openai-key-1", kind: "openai-key" },
     ])
     expect(two).toContain("2 secrets were replaced by {vault:github-token-1}, {vault:openai-key-1}")
+  })
+
+  test("an import names the stored references and the skipped lines", () => {
+    expect(importedNotice({ names: ["github-token", "db-password"], skipped: 0 })).toBe(
+      "Imported 2 secrets: {vault:github-token}, {vault:db-password}",
+    )
+    expect(importedNotice({ names: ["api-key"], skipped: 1 })).toBe("Imported 1 secret: {vault:api-key} (skipped 1 line)")
+    expect(importedNotice({ names: [], skipped: 3 })).toBe("Imported no secrets (skipped 3 lines)")
   })
 
   test("a flag says the message is still in the conversation and was already sent", () => {

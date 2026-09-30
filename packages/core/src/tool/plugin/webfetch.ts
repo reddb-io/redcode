@@ -9,6 +9,7 @@ import { Permission } from "../../permission.js"
 import { convertHTMLToMarkdown, MAX_MARKDOWN_BYTES } from "../html-markdown.js"
 import { collectBoundedResponseBody } from "../http-body.js"
 import { Vault } from "../../vault/vault.js"
+import { VaultHosts } from "../../vault/hosts.js"
 
 export const name = "webfetch"
 export const MAX_RESPONSE_BYTES = MAX_MARKDOWN_BYTES
@@ -17,7 +18,7 @@ export const MAX_TIMEOUT_SECONDS = 120
 
 export const description = `Fetch content from an HTTP or HTTPS URL and return it as text, markdown, or HTML. Markdown is the default.
 
-Use a more targeted tool when one is available. This tool is read-only. Large text results may be replaced with a preview while the complete output is retained in managed storage. A \`{vault:<name>}\` reference in the URL is replaced by that secret when the request is sent.`
+Use a more targeted tool when one is available. This tool is read-only. Large text results may be replaced with a preview while the complete output is retained in managed storage. A \`{vault:<name>}\` reference in the URL is replaced by that secret when the request is sent; secrets in the response come back as references.`
 
 const Timeout = Schema.Finite.check(Schema.isGreaterThan(0), Schema.isLessThanOrEqualTo(MAX_TIMEOUT_SECONDS))
 
@@ -136,6 +137,14 @@ export const Plugin = {
                 agent: context.agent,
                 source: { type: "tool", messageID: context.messageID, id: context.id },
               })
+              const destination = VaultHosts.url(input.url)
+              yield* VaultHosts.approve({
+                permission,
+                context,
+                names: Array.from(vaulted.values.keys()),
+                destinations: destination,
+                detail: { url: input.url },
+              })
 
               const { body, contentType } = yield* Effect.gen(function* () {
                 const response = yield* execute(http, url, input.format).pipe(
@@ -155,10 +164,17 @@ export const Plugin = {
                 }),
               )
               const content = new TextDecoder().decode(body)
-              const output = yield* Effect.try({
+              const converted = yield* Effect.try({
                 try: () => convert(content, contentType, input.format),
                 catch: (error) => error,
               })
+              // A secret in the response, such as a token a login returns, is stored and shown as its reference.
+              const binding = yield* Vault.Current
+              const captured = binding
+                ? yield* binding.capture([converted], "known" in destination ? destination.known : [])
+                : undefined
+              const note = Vault.captureNote(captured?.names ?? [])
+              const output = `${captured ? captured.clean(converted) : converted}${note ? `\n\n${note}` : ""}`
               const result = {
                 url: input.url,
                 contentType,

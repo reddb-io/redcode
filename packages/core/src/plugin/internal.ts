@@ -88,6 +88,7 @@ import { McpResourceTools } from "../tool/plugin/mcp-resource.js"
 import { MonitorTool } from "../tool/plugin/monitor.js"
 import { OpenCodeTools } from "../tool/plugin/opencode.js"
 import { QuestionTool } from "../tool/plugin/question.js"
+import { VaultRequestTool } from "../tool/plugin/vault-request.js"
 import { ReadToolFileSystem } from "../tool/read-filesystem.js"
 import { ReadTool } from "../tool/plugin/read.js"
 import { ShellTool } from "../tool/plugin/shell.js"
@@ -315,6 +316,7 @@ const pre = [
   McpResourceTools.Plugin,
   MonitorTool.Plugin,
   QuestionTool.Plugin,
+  VaultRequestTool.Plugin,
   DesignReadTool.Plugin,
   DesignDetectTool.Plugin,
   DesignDocumentToolPlugin.Plugin,

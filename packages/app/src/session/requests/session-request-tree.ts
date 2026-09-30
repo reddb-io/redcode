@@ -1,4 +1,5 @@
 import type { FormInfo, PermissionRequest, SessionInfo } from "@opencode/client/promise"
+import { Vault } from "@opencode/schema/vault"
 
 function sessionTreeRequest<T>(
   session: SessionInfo[],
@@ -56,6 +57,9 @@ export function sessionFormRequest(
     session,
     request,
     sessionID,
-    (item) => item.metadata?.kind === "question" || item.metadata?.kind === "websearch.provider",
+    (item) =>
+      item.metadata?.kind === "question" ||
+      item.metadata?.kind === "websearch.provider" ||
+      item.metadata?.kind === Vault.FORM_KIND,
   )
 }

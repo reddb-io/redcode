@@ -420,6 +420,30 @@ const Root = Spec.make(typeof OPENCODE_CLI_NAME === "string" ? OPENCODE_CLI_NAME
         }),
       ],
     }),
+    Spec.make("vault", {
+      description:
+        "Store secrets for the current project; agents see only {vault:<name>} references. The service keeps values in memory until it restarts",
+      commands: [
+        Spec.make("set", {
+          description:
+            "Store a secret, read from stdin when piped or from a hidden prompt; the service keeps it in memory until it restarts",
+          params: {
+            server: ServerParams.server,
+            name: Argument.string("name").pipe(
+              Argument.withDescription("Secret name; lowercased with dashes, so GITHUB_TOKEN becomes github-token"),
+            ),
+          },
+        }),
+        Spec.make("import", {
+          description:
+            "Store every NAME=value line of a .env file, read by the service; it keeps them in memory until it restarts",
+          params: {
+            server: ServerParams.server,
+            file: Argument.string("file").pipe(Argument.withDescription(".env file to import")),
+          },
+        }),
+      ],
+    }),
     Spec.make("plugin", {
       description: "Manage plugins",
       commands: [

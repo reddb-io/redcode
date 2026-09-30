@@ -192,6 +192,8 @@ function SessionSurfaceState(props: SessionPreviewProps & { onReset: () => void 
   const region = {
     state: {
       questionRequest: () => (state.request?.type === "question" ? state.request.value : undefined),
+      // The vault dock replies through the live server data, so the local-only story never opens it.
+      vaultRequest: () => undefined,
       websearch: {
         request: () => (state.request?.type === "websearch" ? state.request.value : undefined),
         options: () => [

@@ -123,6 +123,14 @@ export interface Interface {
   ) => Effect.Effect<boolean, SessionErrors.NotFoundError>
   readonly ask: (input: AssertInput) => Effect.Effect<AskResult, SessionErrors.NotFoundError>
   readonly assert: (input: AssertInput) => Effect.Effect<void, Error | SessionErrors.NotFoundError>
+  /**
+   * `assert` that also says how the request was allowed: by a rule or policy, or by the person once or always.
+   * With `persist: false` an "always" reply saves no rule; the caller remembers it, as the vault does for hosts.
+   */
+  readonly decide: (
+    input: AssertInput,
+    options?: { readonly persist?: boolean },
+  ) => Effect.Effect<Decision, Error | SessionErrors.NotFoundError>
   readonly reply: (input: ReplyInput) => Effect.Effect<void, NotFoundError>
   readonly get: (id: ID) => Effect.Effect<Request | undefined>
   readonly forSession: (sessionID: SessionSchema.ID) => Effect.Effect<ReadonlyArray<Request>>
@@ -131,10 +139,15 @@ export interface Interface {
 
 export class Service extends Context.Service<Service, Interface>()("@opencode/Permission") {}
 
+/** How an allowed request was allowed. */
+export type Decision = "allow" | "once" | "always"
+
 interface Pending {
   readonly request: Request
   readonly agent?: Agent.ID
-  readonly deferred: Deferred.Deferred<void, DeclinedError | CorrectedError>
+  /** False when an "always" reply is the caller's to remember instead of a saved rule. */
+  readonly persist: boolean
+  readonly deferred: Deferred.Deferred<"once" | "always", DeclinedError | CorrectedError>
 }
 
 const layer = Layer.effect(
@@ -238,11 +251,11 @@ const layer = Layer.effect(
       }
     }
 
-    const create = (request: Request, agent?: Agent.ID) =>
+    const create = (request: Request, agent?: Agent.ID, persist = true) =>
       Effect.uninterruptible(
         Effect.gen(function* () {
-          const deferred = yield* Deferred.make<void, DeclinedError | CorrectedError>()
-          const item = { request, agent, deferred }
+          const deferred = yield* Deferred.make<"once" | "always", DeclinedError | CorrectedError>()
+          const item = { request, agent, persist, deferred }
           if (closed) {
             yield* Deferred.fail(deferred, new DeclinedError())
             return item
@@ -265,7 +278,7 @@ const layer = Layer.effect(
       return { id: value.id, effect: result.effect }
     })
 
-    const assert = Effect.fn("Permission.assert")((input: AssertInput) =>
+    const decide = Effect.fn("Permission.decide")((input: AssertInput, options?: { readonly persist?: boolean }) =>
       Effect.gen(function* () {
         if (closed) return yield* Effect.die(new DeclinedError())
         const result = yield* evaluateInput(input)
@@ -279,8 +292,8 @@ const layer = Layer.effect(
                 reason: result.message,
               })
             }
-            if (result.effect === "allow") return
-            const item = yield* create(request(input, result.message), input.agent)
+            if (result.effect === "allow") return "allow" as const
+            const item = yield* create(request(input, result.message), input.agent, options?.persist !== false)
             const endWait = input.source?.type === "tool" ? HumanWait.start(input.sessionID, input.source.id) : () => {}
             return yield* restore(Deferred.await(item.deferred)).pipe(
               // Deliberate defect tunnel: leaves wrap execution in blanket `mapError`, which
@@ -331,16 +344,17 @@ const layer = Layer.effect(
             return
           }
 
-          if (input.reply === "always" && existing.request.save?.length) {
+          const save = input.reply === "always" && existing.persist && existing.request.save?.length
+          if (save) {
             yield* saved.add({
               projectID: location.project.id,
               action: existing.request.action,
               resources: existing.request.save,
             })
           }
-          yield* Deferred.succeed(existing.deferred, undefined)
+          yield* Deferred.succeed(existing.deferred, input.reply)
           pending.delete(input.requestID)
-          if (input.reply !== "always" || !existing.request.save?.length) return
+          if (!save) return
 
           for (const [id, item] of pending) {
             const result = yield* evaluateInput({ ...item.request, agent: item.agent }).pipe(
@@ -352,7 +366,7 @@ const layer = Layer.effect(
               requestID: item.request.id,
               reply: "always",
             })
-            yield* Deferred.succeed(item.deferred, undefined)
+            yield* Deferred.succeed(item.deferred, "always")
             pending.delete(id)
           }
         }),
@@ -383,7 +397,8 @@ const layer = Layer.effect(
 
     return Service.of({
       ask,
-      assert,
+      assert: (input) => decide(input).pipe(Effect.asVoid),
+      decide,
       evaluate: (input) => evaluateInput(input).pipe(Effect.map((result) => result.effect)),
       explicit,
       reply,

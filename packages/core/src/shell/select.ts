@@ -168,6 +168,16 @@ export function args(file: string, command: string) {
   return ["-c", command]
 }
 
+/**
+ * The arguments that make `file` read its whole script from standard input before running any of it, so the
+ * script is in no argument vector and the commands it runs see an input that has ended, as with `-c`.
+ */
+export function scriptArgs(file: string) {
+  if (ps(file))
+    return ["-NoLogo", "-NoProfile", "-NonInteractive", "-Command", "Invoke-Expression ([Console]::In.ReadToEnd())"]
+  return ["-c", 'eval "$(cat)"']
+}
+
 // Resolve afresh so removing a shell does not leave terminals using a stale cached path.
 export function environment(bin?: string, filter?: { compatible?: boolean }) {
   return select(process.env.SHELL, undefined, filter, bin) ?? fallback(bin)

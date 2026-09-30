@@ -17,7 +17,9 @@ import { Formatter } from "../../formatter.js"
 import { LSP } from "../../lsp/lsp.js"
 import { Diagnostic } from "../../lsp/diagnostic.js"
 import { FileAccess } from "../../file-access.js"
+import { Location } from "../../location.js"
 import { Permission } from "../../permission.js"
+import { VaultFiles } from "../../vault/files.js"
 import { fileDiff } from "./file-diff.js"
 
 export const name = "write"
@@ -55,6 +57,7 @@ export const Plugin = {
     const formatter = yield* Formatter.Service
     const lsp = yield* LSP.Service
     const permission = yield* Permission.Service
+    const location = yield* Location.Service
 
     yield* ctx.tool
       .transform((editor) =>
@@ -62,7 +65,7 @@ export const Plugin = {
           name,
           options: { codemode: false, permission: "edit" },
           description:
-            "Writes a file to the local filesystem, overwriting if one exists.\n\nMissing parent directories are created automatically.\n\nUse this tool to create new files or overwrite existing files. For partial changes, use the edit tool instead.",
+            "Writes a file to the local filesystem, overwriting if one exists.\n\nMissing parent directories are created automatically.\n\nUse this tool to create new files or overwrite existing files. For partial changes, use the edit tool instead.\n\nA `{vault:<name>}` reference becomes the secret only in a .env-style file git ignores, after the user approves it; anywhere else it stays as text.",
           input: Input,
           output: Output,
           execute: (input, context) =>
@@ -78,7 +81,19 @@ export const Plugin = {
                 Effect.catchTag("Environment.NotFound", () => Effect.undefined),
               )
               const next = Bom.split(input.content)
-              const preview = fileDiff(target.resource, current?.text ?? "", next.text, current ? "modified" : "added")
+              const vault = yield* VaultFiles.mode({
+                environment,
+                root: location.directory,
+                file: target.absolute,
+                written: input.content,
+                current: current?.text ?? "",
+              })
+              const preview = fileDiff(
+                target.resource,
+                vault.clean(current?.text ?? ""),
+                next.text,
+                current ? "modified" : "added",
+              )
               yield* permission.assert({
                 action: "edit",
                 resources: [target.resource],
@@ -88,7 +103,10 @@ export const Plugin = {
                 agent: context.agent,
                 source,
               })
-              const result = yield* fileMutation.writeTextPreservingBom({ target, content: input.content })
+              if (vault.secret)
+                yield* VaultFiles.approve({ permission, context, resource: target.resource, names: vault.names })
+              const content = vault.secret ? yield* VaultFiles.fill(input.content) : input.content
+              const result = yield* fileMutation.writeTextPreservingBom({ target, content })
               const bom = (yield* FileMutation.readText(environment.files, target.absolute)).bom
               if (yield* formatter.file(target.absolute)) {
                 yield* FileMutation.syncTextBom(environment.files, target.absolute, bom)
@@ -102,11 +120,12 @@ export const Plugin = {
                 output: result,
                 report: Diagnostic.report(target.absolute, diagnostics[target.absolute] ?? []),
                 diagnostics: Diagnostic.pick(diagnostics, [target.absolute]),
+                literal: vault.secret ? "" : VaultFiles.notice(vault.names),
               }
             }).pipe(
               Effect.map((result) => ({
                 output: result.output,
-                content: `${toModelContent(result.output)}${result.report ? `\n\nLSP errors detected in this file, please fix:\n${result.report}` : ""}`,
+                content: `${toModelContent(result.output)}${result.literal ? `\n\n${result.literal}` : ""}${result.report ? `\n\nLSP errors detected in this file, please fix:\n${result.report}` : ""}`,
                 metadata: { diagnostics: result.diagnostics },
               })),
               Effect.mapError((error) => new ToolFailure({ message: `Unable to write ${input.path}`, error })),

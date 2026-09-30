@@ -1,6 +1,8 @@
 import { createEffect, createMemo } from "solid-js"
 import { createStore } from "solid-js/store"
 import type { FormInfo, PermissionRequest } from "@opencode/client/promise"
+import { Vault } from "@opencode/schema/vault"
+import { Option, Schema } from "effect"
 import { useParams } from "@solidjs/router"
 import { showToast } from "@/shell/notifications/toast"
 import { useServerSDK } from "@/runtime/server/client"
@@ -55,8 +57,21 @@ export function createSessionRequestModel() {
     reply: (input) => data.session.form.reply(input),
     events: serverSDK.event,
   })
+  // Keyed on the form itself so a re-sync of the same form does not remount the dock and drop what was typed.
+  const vaultRequest = createMemo(
+    (): SessionVaultRequest | undefined => {
+      const form = formRequest()
+      if (!form) return
+      const secret = decodeVaultRequest(form.metadata)
+      if (Option.isNone(secret)) return
+      return { form, secret: secret.value }
+    },
+    undefined,
+    { equals: (a, b) => a?.form === b?.form },
+  )
   const questionRequest = createMemo(() => {
     if (websearch.request()) return
+    if (vaultRequest()) return
     const form = formRequest()
     return form?.metadata?.kind === "question" ? form : undefined
   })
@@ -71,7 +86,7 @@ export function createSessionRequestModel() {
   const blocked = createMemo(() => {
     const id = params.id
     if (!id) return false
-    return !!permissionRequest() || !!questionRequest() || !!websearch.request()
+    return !!permissionRequest() || !!questionRequest() || !!vaultRequest() || !!websearch.request()
   })
 
   const primary = () => {
@@ -127,6 +142,7 @@ export function createSessionRequestModel() {
   return {
     blocked,
     questionRequest,
+    vaultRequest,
     websearch,
     permissionRequest,
     permissionResponding,
@@ -140,3 +156,8 @@ export function createSessionRequestModel() {
 }
 
 export type SessionRequestModel = ReturnType<typeof createSessionRequestModel>
+
+/** A pending `vault_request` form with its decoded metadata: which secret the agent asks for and why. */
+export type SessionVaultRequest = { form: FormInfo; secret: Vault.FormRequest }
+
+const decodeVaultRequest = Schema.decodeUnknownOption(Vault.FormRequest)

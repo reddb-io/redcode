@@ -70,6 +70,12 @@ const permission = permissionLayer({
           : Effect.void,
       ),
     ),
+  // A vault host prompt, answered once like any approval.
+  decide: (input) =>
+    Effect.sync(() => assertions.push(input)).pipe(
+      Effect.andThen(Effect.suspend(() => afterPermission(input))),
+      Effect.as("once" as const),
+    ),
 })
 
 const reset = () => {
@@ -1768,13 +1774,11 @@ describe("ShellTool vault references", () => {
   const test = isWindows ? it.live.skip : it.live
   // Assembled from parts so no secret scanner mistakes it for a real credential.
   const token = "ghp" + "_" + "d".repeat(36)
-  const binding: Vault.Binding = {
-    projectID: Project.ID.global,
-    resolve: (name) => Effect.succeed(name === "github-token-1" ? token : undefined),
-    scrub: (text) => Effect.succeed(text.replaceAll(token, "{vault:github-token-1}")),
-  }
+  const vault = Vault.make()
+  Effect.runSync(vault.set({ projectID: Project.ID.global, name: "github-token-1", value: token, origin: "user" }))
+  const binding = Vault.bind(vault, Project.ID.global)
 
-  test("passes a vaulted value through the child environment, never through the command", () =>
+  test("passes a vaulted value to the shell on standard input, never through the command", () =>
     Effect.acquireUseRelease(
       Effect.promise(() => tmpdir()),
       (tmp) => {
@@ -1791,6 +1795,11 @@ describe("ShellTool vault references", () => {
               const approvals = JSON.stringify(assertions.filter((item) => item.action === "shell"))
               expect(approvals).toContain("{vault:github-token-1}")
               expect(approvals).not.toContain(token)
+              // printf is a local command: the user approves the secret for it once, by name.
+              expect(assertions.find((item) => item.action === "vault")?.resources).toEqual([
+                "github-token-1@cmd:printf",
+              ])
+              expect(JSON.stringify([assertions, settled])).not.toContain(token)
             }),
           ),
         )
@@ -1819,6 +1828,83 @@ describe("ShellTool vault references", () => {
             }),
           ),
         )
+      },
+      (tmp) => Effect.promise(() => tmp[Symbol.asyncDispose]().then(() => undefined)),
+    ),
+  )
+
+  // A login response, assembled by the command so the token is never in its text.
+  const parts = ["eyJ" + "hbGciOiJIUzI1NiJ9", "eyJ" + "zdWIiOiJtZSJ9", "c2lnbmF0dXJl" + "LXBhcnQ"]
+  const jwt = parts.join(".")
+  const opaque = "op" + "aque" + "7f3a9c2e1b"
+
+  test("stores a token the command prints and shows only its reference", () =>
+    Effect.acquireUseRelease(
+      Effect.promise(() => tmpdir()),
+      (tmp) => {
+        reset()
+        const own = Vault.bind(Vault.make(), Project.ID.global)
+        return withSession(tmp.path, (registry) =>
+          executeTool(registry, call({ command: `printf '{"token":"%s.%s.%s"}' ${parts.join(" ")}` })).pipe(
+            Effect.provideService(Vault.Current, own),
+          ),
+        ).pipe(
+          Effect.andThen((settled) =>
+            Effect.gen(function* () {
+              expect(settled.status).toBe("completed")
+              expect(settled.output.output).toBe(
+                '{"token":"{vault:jwt-1}"}\n\nStored 1 secret from the output as {vault:jwt-1}; use that reference in later commands.',
+              )
+              expect(yield* own.resolve("jwt-1")).toBe(jwt)
+              expect(JSON.stringify(settled)).not.toContain(jwt)
+            }),
+          ),
+        )
+      },
+      (tmp) => Effect.promise(() => tmp[Symbol.asyncDispose]().then(() => undefined)),
+    ),
+  )
+
+  test("captures an opaque value by JSON path and by pattern", () =>
+    Effect.acquireUseRelease(
+      Effect.promise(() => tmpdir()),
+      (tmp) => {
+        reset()
+        const own = Vault.bind(Vault.make(), Project.ID.global)
+        const run = (input: typeof ShellTool.Input.Type, id: string) =>
+          withSession(tmp.path, (registry) =>
+            executeTool(registry, call(input, id)).pipe(Effect.provideService(Vault.Current, own)),
+          )
+        return Effect.gen(function* () {
+          const json = yield* run(
+            {
+              command: `printf '{"data":{"session":"%s"}}' ${opaque}`,
+              capture: { name: "session", from: "json:$.data.session" },
+            },
+            "call-capture-json",
+          )
+          expect(json.status === "completed" ? json.output.output : json).toBe(
+            "Stored the captured value as {vault:session}; use that reference in later commands. The output is not shown because it holds the secret.",
+          )
+          expect(yield* own.resolve("session")).toBe(opaque)
+
+          const pattern = yield* run(
+            { command: `printf 'id=%s\n' ${opaque}r`, capture: { name: "session", from: "regex:id=(\\S+)" } },
+            "call-capture-regex",
+          )
+          expect(pattern.status === "completed" ? pattern.output.output : pattern).toContain("{vault:session}")
+          // Capturing again under its own name renews the value, so later commands keep working.
+          expect(yield* own.resolve("session")).toBe(`${opaque}r`)
+
+          const missing = yield* run(
+            { command: `printf '{"data":{}}'`, capture: { from: "json:$.data.session" } },
+            "call-capture-missing",
+          )
+          expect(missing.status === "completed" ? missing.output.output : missing).toBe(
+            "Nothing was captured: $.data.session is not in the output; $.data holds an empty object. The output is not shown because it may hold the secret.",
+          )
+          expect(JSON.stringify([json, pattern, missing])).not.toContain(opaque)
+        })
       },
       (tmp) => Effect.promise(() => tmp[Symbol.asyncDispose]().then(() => undefined)),
     ),

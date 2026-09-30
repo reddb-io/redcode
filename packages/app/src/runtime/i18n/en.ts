@@ -896,9 +896,17 @@ export const dict = {
   "session.timeline.notice.failed": "{{actor}} failed",
   "session.timeline.notice.cancelled": "{{actor}} cancelled",
   "session.vault.moved.one":
-    "1 secret was replaced by {{references}} before this message was stored, so it is no longer part of the context sent to the model from now on. The vault keeps values in memory until the service restarts. Anything you sent before this message stays in your local history and with your provider: rotate anything real.",
+    "1 secret was replaced by {{references}} before this message was stored, so it is no longer part of the context sent to the model from now on. The model can use a reference in commands without seeing its value, and can ask you for a secret it is missing. The vault keeps values in memory until the service restarts. Anything you sent before this message stays in your local history and with your provider: rotate anything real.",
   "session.vault.moved.other":
-    "{{count}} secrets were replaced by {{references}} before this message was stored, so they are no longer part of the context sent to the model from now on. The vault keeps values in memory until the service restarts. Anything you sent before this message stays in your local history and with your provider: rotate anything real.",
+    "{{count}} secrets were replaced by {{references}} before this message was stored, so they are no longer part of the context sent to the model from now on. The model can use a reference in commands without seeing its value, and can ask you for a secret it is missing. The vault keeps values in memory until the service restarts. Anything you sent before this message stays in your local history and with your provider: rotate anything real.",
+  "session.vault.request.title": "The agent asks for the secret {{reference}}",
+  "session.vault.request.value": "Value for {{name}}",
+  "session.vault.request.placeholder": "Paste the value",
+  "session.vault.request.hint":
+    "The value goes straight to the vault; the agent only sees the reference. The vault keeps values in memory until the service restarts.",
+  "session.vault.request.store": "Store",
+  "session.vault.request.decline": "Decline",
+  "session.vault.failed": "Could not reach the vault. Please try again.",
   "session.restricted.sensitive":
     "Possible restricted content in this message; it is excluded from summaries and titles from now on. It is still in the current conversation until you remove it. The original text stays in your local history and has already been sent to your provider: rotate anything real.",
   "session.restricted.withheld":

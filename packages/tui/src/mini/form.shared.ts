@@ -1,4 +1,6 @@
 import type { FormAnswer, FormField, FormInfo, FormValue } from "@opencode/client/promise"
+import { Vault } from "@opencode/schema/vault"
+import { Schema } from "effect"
 import {
   formCustom,
   formDisplayValue,
@@ -47,7 +49,12 @@ export function formSync(state: FormBodyState, form: FormInfo): FormBodyState {
   return state.formID === form.id ? state : createFormBodyState(form)
 }
 
+const isVaultForm = Schema.is(Vault.FormRequest)
+
 export function formUnsupported(form: FormInfo): string | undefined {
+  // Mini has no masked input, so a secret request never gets a visible editor here.
+  if (isVaultForm(form.metadata))
+    return "Secret requests are not supported in Mini: answer it in the full TUI, or dismiss it to decline."
   if (!Array.isArray(form.fields) || form.fields.length === 0) return "This form has no supported fields."
   for (const field of form.fields as ReadonlyArray<FormField | Record<string, unknown>>) {
     if (!field || typeof field !== "object" || typeof field.type !== "string") return "This form uses an unknown field."

@@ -16,6 +16,8 @@ import { AbsolutePath } from "@opencode/core/schema"
 import { Session } from "@opencode/core/session"
 import { Tool } from "@opencode/core/tool"
 import { WriteTool } from "@opencode/core/tool/plugin/write"
+import { Vault } from "@opencode/core/vault/vault"
+import { Project } from "@opencode/schema/project"
 import { transformEnvironmentFiles } from "./fixture/environment"
 import { location } from "./fixture/location"
 import { tmpdir, withTempDir } from "./fixture/tmpdir"
@@ -27,7 +29,17 @@ import { toolIdentity, executeTool, registerToolPlugin, toolDefinitions } from "
 const writeToolNode = makeLocationNode({
   name: "test/write-tool-plugin",
   layer: Layer.effectDiscard(registerToolPlugin(WriteTool.Plugin)),
-  deps: [Tool.node, Bus.node, FileAccess.node, FileMutation.node, Environment.node, Formatter.node, LSP.node, Permission.node],
+  deps: [
+    Tool.node,
+    Bus.node,
+    FileAccess.node,
+    FileMutation.node,
+    Environment.node,
+    Formatter.node,
+    LSP.node,
+    Location.node,
+    Permission.node,
+  ],
 })
 
 const sessionID = Session.ID.make("ses_write_tool_test")
@@ -58,6 +70,7 @@ const makeWriteFixture = () => {
             : Effect.void,
         ),
       ),
+    decide: (input) => Effect.sync(() => fixture.assertions.push(input)).pipe(Effect.as("once" as const)),
   })
 
   const formatter = Layer.mock(Formatter.Service, {
@@ -420,4 +433,70 @@ describe("WriteTool", () => {
         ),
     ),
   )
+
+  describe("vault references", () => {
+    // Assembled from parts so no secret scanner mistakes it for a real credential.
+    const secret = "sk" + "_" + "live_" + "q".repeat(24)
+    const projectID = Project.ID.make("prj_write_vault")
+    const bound = () => {
+      const vault = Vault.make()
+      const name = Effect.runSync(vault.set({ projectID, name: "stripe-key", value: secret, origin: "user" }))
+      return { binding: Vault.bind(vault, projectID), name }
+    }
+
+    it.live("writes the value into an env file after the user approves the secret for it", () =>
+      withTempDir((tmp) => {
+        const fixture = makeWriteFixture()
+        const vault = bound()
+        return withTool(tmp.path, fixture, (registry) =>
+          Effect.gen(function* () {
+            const content = `STRIPE_KEY={vault:${vault.name}}\n`
+            const settled = yield* executeTool(registry, call({ path: ".env", content })).pipe(
+              Effect.provideService(Vault.Current, vault.binding),
+            )
+            expect(settled).toMatchObject({ status: "completed" })
+            expect(yield* Effect.promise(() => fs.readFile(path.join(tmp.path, ".env"), "utf8"))).toBe(
+              `STRIPE_KEY=${secret}\n`,
+            )
+            expect(fixture.assertions.map((input) => input.action)).toEqual(["edit", "vault"])
+            expect(fixture.assertions[1]).toMatchObject({
+              resources: [`${vault.name}@file:.env`],
+              metadata: { secrets: [vault.name], file: ".env" },
+            })
+            // The prompt, the stored input and the result carry the reference, never the value.
+            expect(JSON.stringify([fixture.assertions, settled])).not.toContain(secret)
+          }),
+        )
+      }),
+    )
+
+    it.live("keeps a reference literal in any other file and says so", () =>
+      withTempDir((tmp) => {
+        const fixture = makeWriteFixture()
+        const vault = bound()
+        return withTool(tmp.path, fixture, (registry) =>
+          Effect.gen(function* () {
+            const content = `export const key = "{vault:${vault.name}}"\n`
+            const settled = yield* executeTool(registry, call({ path: "src/config.ts", content })).pipe(
+              Effect.provideService(Vault.Current, vault.binding),
+            )
+            expect(yield* Effect.promise(() => fs.readFile(path.join(tmp.path, "src", "config.ts"), "utf8"))).toBe(
+              content,
+            )
+            expect(settled).toMatchObject({
+              status: "completed",
+              content: [
+                {
+                  type: "text",
+                  text: `Created file successfully: src/config.ts\n\n{vault:${vault.name}} was NOT resolved in this file (secrets are only written into .env-style ignored files); use an environment variable or ask the user.`,
+                },
+              ],
+            })
+            expect(fixture.assertions.map((input) => input.action)).toEqual(["edit"])
+            expect(JSON.stringify([fixture.assertions, settled])).not.toContain(secret)
+          }),
+        )
+      }),
+    )
+  })
 })

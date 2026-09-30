@@ -3,13 +3,10 @@ export * as VaultAdmission from "./admission.js"
 import { Base64, type PromptMention } from "@opencode/schema/prompt"
 import type { Project } from "@opencode/schema/project"
 import { UserPayload } from "@opencode/schema/session-inbox"
-import { Redact } from "@opencode/util/redact"
 import { Effect } from "effect"
 import { Vault } from "./vault.js"
 
 type Replacement = { readonly start: number; readonly end: number; readonly name: string; readonly kind: string }
-
-const MIN_LENGTH = 8
 
 /**
  * A user prompt about to be admitted, with every high-confidence secret in its text and its text attachments moved
@@ -69,14 +66,7 @@ const replacements = Effect.fn("VaultAdmission.replacements")(function* (
   projectID: Project.ID,
   text: string,
 ) {
-  // A reference the user typed is not a secret, even where a secret-named value would be. A value shorter than
-  // MIN_LENGTH, such as `"password": "test"`, stays: every later tool result is scrubbed of it, and scrubbing a
-  // common short word would corrupt them.
-  const findings = Redact.findSecrets(text).filter(
-    (item) =>
-      item.confidence === "high" && item.value.length >= MIN_LENGTH && Vault.references(item.value).length === 0,
-  )
-  return yield* Effect.forEach(findings, (item) =>
+  return yield* Effect.forEach(Vault.capturable(text), (item) =>
     vault
       .put({ projectID, kind: item.kind, value: item.value })
       .pipe(Effect.map((name): Replacement => ({ start: item.start, end: item.end, name, kind: item.kind }))),

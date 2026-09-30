@@ -19,7 +19,11 @@ const IDLE_MS = 15_000
 /** The words every timeout carries, so callers can count them. */
 export const TIMEOUT_ERROR = "regex timed out"
 
-export type Outcome = { readonly match: string | undefined } | { readonly timedOut: true } | { readonly error: string }
+/** A match carries its first capture group too, when the pattern has one and it took part in the match. */
+export type Outcome =
+  | { readonly match: string | undefined; readonly group?: string }
+  | { readonly timedOut: true }
+  | { readonly error: string }
 
 export interface Matcher {
   /** Matches `source` against `text`, one match at a time on this matcher, each bounded by `timeoutMs`. */
@@ -33,7 +37,7 @@ const { parentPort } = require("node:worker_threads")
 parentPort.on("message", ({ id, source, text }) => {
   try {
     const hit = new RegExp(source).exec(text)
-    parentPort.postMessage({ id, match: hit ? hit[0] : null })
+    parentPort.postMessage({ id, match: hit ? hit[0] : null, group: hit && hit[1] !== undefined ? hit[1] : null })
   } catch (error) {
     parentPort.postMessage({ id, error: String((error && error.message) || error) })
   }
@@ -94,11 +98,18 @@ export function create(): Matcher {
     }
     const id = ++sequence
     const outcome = await new Promise<Outcome>((resolve) => {
-      const listen = (message: { id?: number; match?: string | null; error?: string }) => {
+      const listen = (message: { id?: number; match?: string | null; group?: string | null; error?: string }) => {
         if (message.id !== id) return
         clearTimeout(timer)
         current.worker.off("message", listen)
-        resolve(message.error !== undefined ? { error: message.error } : { match: message.match ?? undefined })
+        resolve(
+          message.error !== undefined
+            ? { error: message.error }
+            : {
+                match: message.match ?? undefined,
+                ...(message.group === null || message.group === undefined ? {} : { group: message.group }),
+              },
+        )
       }
       const timer = setTimeout(() => {
         current.worker.off("message", listen)

@@ -23,6 +23,7 @@ import { AgentNotFoundError } from "./error.js"
 import { SessionHistory } from "./history.js"
 import { SessionProviderContext } from "./provider-context.js"
 import { InstructionEntry } from "./instruction-entry.js"
+import { VaultInstructions } from "../vault/instructions.js"
 import { SessionMessage } from "./message.js"
 import { SessionModelRequest } from "./model-request.js"
 import { RedcodeLegacyInstructions } from "./redcode-legacy-instructions.js"
@@ -97,6 +98,7 @@ const layer = Layer.effect(
     const skillInstructions = yield* SkillInstructions.Service
     const store = yield* SessionStore.Service
     const registry = yield* Tool.Service
+    const vaultInstructions = yield* VaultInstructions.Service
 
     const resolveModel = (session: SessionSchema.Info) => models.resolve(session, model.available)
 
@@ -165,6 +167,10 @@ const layer = Layer.effect(
           loaded.references,
           loaded.mcp,
           designs.load(sessionID),
+          // Subagents share the Location's project, so they see the same names; only the guide needs a sink.
+          vaultInstructions.load(session.projectID, {
+            sinks: tools.definitions.some((definition) => VaultInstructions.SINKS.has(definition.name)),
+          }),
           loaded.entries,
         ]),
         tools,
@@ -218,5 +224,6 @@ export const node = makeLocationNode({
     SessionStore.node,
     SkillInstructions.node,
     Tool.node,
+    VaultInstructions.node,
   ],
 })

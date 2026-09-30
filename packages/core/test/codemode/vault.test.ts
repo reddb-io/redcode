@@ -36,11 +36,10 @@ const codeMode = CodeModeTool.create({ tools: new Map([["reveal", reveal]]) }, (
   execute(tool, input, context),
 )
 
-const binding: Vault.Binding = {
-  projectID: Project.ID.make("prj_codemode_vault"),
-  resolve: (name) => Effect.succeed(name === "api-key" ? "value-one" : undefined),
-  scrub: (text) => Effect.succeed(text),
-}
+const projectID = Project.ID.make("prj_codemode_vault")
+const vault = Vault.make()
+Effect.runSync(vault.set({ projectID, name: "api-key", value: "value-one", origin: "user" }))
+const binding = Vault.bind(vault, projectID)
 
 const code = `
 const [first, second] = await Promise.all([

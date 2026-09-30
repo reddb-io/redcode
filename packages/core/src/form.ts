@@ -188,12 +188,14 @@ export const layer = Layer.effect(
           const invalid = validateAnswer(entry.form.fields, input.answer)
           if (invalid) return yield* new InvalidAnswerError({ id: input.id, message: invalid })
           const next: TerminalState = { status: "answered", answer: input.answer }
+          // A secret form's answer goes only to the asker: events and the retained state carry none of it.
+          const kept: Answer = secret(entry.form) ? {} : input.answer
           yield* bus.publish(Form.Event.Replied, {
             id: input.id,
             sessionID: entry.form.sessionID,
-            answer: input.answer,
+            answer: kept,
           })
-          yield* Cache.set(forms, input.id, { ...entry, state: next })
+          yield* Cache.set(forms, input.id, { ...entry, state: { status: "answered", answer: kept } })
           yield* Deferred.succeed(entry.deferred, next)
         }),
       ),
@@ -231,6 +233,9 @@ export const layer = Layer.effect(
 )
 
 export const node = makeLocationNode({ service: Service, layer, deps: [Bus.node] })
+
+/** Whether the form asks for a secret, such as `vault_request`'s, whose answer must never be published or kept. */
+export const secret = (form: Info) => form.metadata?.secret === true
 
 export function validateAnswer(form: ReadonlyArray<Form.Field>, answer: Answer) {
   const fields = new Map(form.map((field) => [field.key, field] as const))

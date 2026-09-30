@@ -2,12 +2,19 @@ import { Show, type JSX } from "solid-js"
 import { useLanguage } from "@/runtime/i18n/language"
 import { SessionPermissionDock } from "@/session/requests/session-permission-dock"
 import { SessionQuestionDock } from "@/session/requests/session-question-dock"
+import { SessionVaultDock } from "@/session/requests/session-vault-dock"
 import { SessionWebSearchDock } from "@/session/requests/session-websearch-dock"
 import type { SessionComposerRegionController } from "./session-composer-region-controller"
 
 type SessionComposerRegionState = Pick<
   SessionComposerRegionController["state"],
-  "questionRequest" | "websearch" | "permissionRequest" | "permissionResponding" | "decide" | "blocked"
+  | "questionRequest"
+  | "vaultRequest"
+  | "websearch"
+  | "permissionRequest"
+  | "permissionResponding"
+  | "decide"
+  | "blocked"
 >
 
 export type SessionComposerRegionViewController = Pick<
@@ -40,6 +47,13 @@ export function SessionComposerRegion(props: {
           {(request) => (
             <div>
               <SessionQuestionDock request={request} onSubmit={controller.onResponseSubmit} />
+            </div>
+          )}
+        </Show>
+        <Show when={controller.state.vaultRequest()} keyed>
+          {(request) => (
+            <div>
+              <SessionVaultDock request={request} onSubmit={controller.onResponseSubmit} />
             </div>
           )}
         </Show>

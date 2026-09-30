@@ -3,7 +3,6 @@ export * as ShellTool from "./shell.js"
 import { ToolFailure } from "@opencode/ai"
 import type { Context } from "@opencode/plugin/effect/plugin"
 import type { SessionHooks } from "@opencode/plugin/effect/session"
-import type { ShellCreateBefore } from "@opencode/plugin/effect/shell"
 import type { Tool } from "@opencode/schema/tool"
 import { Deferred, Effect, Schema, Scope } from "effect"
 import { Config } from "../../config.js"
@@ -21,6 +20,8 @@ import { ShellSelect } from "../../shell/select.js"
 import { ShellResult } from "../../shell/result.js"
 import { ShellPolling } from "../shell-polling.js"
 import { Vault } from "../../vault/vault.js"
+import { VaultCapture } from "../../vault/capture.js"
+import { VaultHosts } from "../../vault/hosts.js"
 import { VaultShell } from "../../vault/shell.js"
 
 export const name = "shell"
@@ -48,7 +49,7 @@ const description = (shell?: string) =>
     "Rely on automatic truncation unless filtering the output is more useful.",
     "Commands accept an optional timeout, background commands have no timeout by default.",
     "Background commands return immediately, and you will be notified when they complete.",
-    "A `{vault:<name>}` reference reaches the command as an environment variable holding that secret; write it as it is and never print the value.",
+    "A `{vault:<name>}` reference works anywhere in the command, in any quoting, heredoc or JSON body, and the command receives that secret without you seeing it; never print or echo it. Secrets in the output come back as references. Set `capture` to store an opaque value from the output, such as a token no pattern recognizes, and get back only its reference.",
     `Commands that discard or rewrite repository work are refused unless the user allowed them: git ${ShellGuard.FORBIDDEN_GIT.join(", git ")}, forced or deleting pushes, branch deletion, discarding switches, worktree removal, and recursive deletion of the repository; use a preserving alternative instead.`,
   ].join(" ")
 
@@ -65,7 +66,23 @@ export const Input = Schema.Struct({
     description:
       "Run the command in the background and return immediately (useful for dev servers and long-running builds). You do not need to use '&' at the end of the command when using this parameter. You will be notified when it completes. DO NOT poll for completion.",
   }),
+  capture: Schema.optionalKey(
+    Schema.Struct({
+      name: Schema.optionalKey(Schema.String).annotate({
+        description: "Name of the reference; capturing again under the same name replaces the value.",
+      }),
+      from: Schema.String.annotate({
+        description:
+          'What to store after a successful exit: "stdout" (the whole output, trimmed), "json:$.path.to.field" or "regex:<pattern with one group>".',
+      }),
+    }),
+  ).annotate({
+    description:
+      "Store part of the output as a vault secret and return only its {vault:name} reference instead of the output. The output combines stdout and stderr, so silence progress and errors (curl -s).",
+  }),
 })
+
+export type Input = typeof Input.Type
 
 const StructuredOutput = Schema.Struct({
   exit: Schema.optionalKey(Schema.Number),
@@ -134,7 +151,7 @@ export const Plugin = {
       return ShellGuard.lifted(environment, process.env)
     })
 
-    const prepare = Effect.fn("ShellTool.prepare")(function* (invocation: ShellCreateBefore, context: Tool.Context) {
+    const prepare = Effect.fn("ShellTool.prepare")(function* (invocation: Shell.Invocation, context: Tool.Context) {
       const source = {
         type: "tool" as const,
         messageID: context.messageID,
@@ -191,7 +208,42 @@ export const Plugin = {
       )
       if (workdir !== "directory")
         return yield* Effect.fail(new Error(`Working directory is not a directory: ${target.absolute}`))
-      return timeout
+      return { timeout, segments: parsed.commands.map((command) => command.resource) }
+    })
+
+    /**
+     * The output as the model may read it: an explicit `capture` stores the part it names and shows only the
+     * reference; otherwise every high-confidence secret in the output is stored and replaced by its reference,
+     * with a note that names them. Both happen before the output reaches a result, a job or a notification.
+     */
+    const vaultOutput = Effect.fn("ShellTool.vaultOutput")(function* (
+      /** The whole output up to the capture limit, where `shown` may be a truncated tail. */
+      whole: Effect.Effect<string>,
+      shown: { readonly output: string; readonly exit?: number },
+      capture: Input["capture"],
+      hosts: ReadonlyArray<string>,
+      binding: Vault.Binding | undefined,
+    ) {
+      if (!binding) return shown.output
+      if (capture && shown.exit === 0) {
+        const selected = yield* VaultCapture.select(yield* whole, capture.from)
+        if ("value" in selected) {
+          // A named capture renews its own value; an unnamed one gets a new `captured-<n>` name each time.
+          const name = yield* binding.set({
+            name: capture.name ?? "",
+            kind: "captured",
+            value: selected.value,
+            origin: "captured",
+            hosts,
+          })
+          return `Stored the captured value as ${Vault.reference(name)}; use that reference in later commands. The output is not shown because it holds the secret.`
+        }
+        return `Nothing was captured: ${selected.failure}. The output is not shown because it may hold the secret.`
+      }
+      const captured = yield* binding.capture([shown.output], hosts)
+      const note = Vault.captureNote(captured.names)
+      const failed = capture ? `\n\nNothing was captured: the command exited with ${shown.exit ?? "no status"}.` : ""
+      return `${captured.clean(shown.output)}${failed}${note ? `\n\n${note}` : ""}`
     })
 
     const notifyWhenDone = Effect.fn("ShellTool.notifyWhenDone")(
@@ -250,13 +302,15 @@ export const Plugin = {
             return Effect.gen(function* () {
               const timeout = input.background === true ? (input.timeout ?? 0) : (input.timeout ?? DEFAULT_TIMEOUT_MS)
               let finalTimeout = timeout
-              // Values stay out of the command: approval and the stored input see the reference, the process an
-              // environment variable set only for it.
+              // Values stay out of the command: approval and the stored input see the reference, and the shell reads
+              // the script with the values written in on its standard input, once the user let them go where it sends.
               const vaulted = yield* Vault.resolveAll(Vault.references(input.command))
               if ("missing" in vaulted)
                 return yield* new ToolFailure({ message: Vault.unknownReference(vaulted.missing) })
               const values = vaulted.values
               const binding = yield* Vault.Current
+              // Where the command sends what it carries; a secret found in its output may go back there unasked.
+              let hosts: ReadonlyArray<string> = []
               const info = yield* shell.create(
                 {
                   command: input.command,
@@ -267,10 +321,22 @@ export const Plugin = {
                 },
                 (invocation) =>
                   Effect.gen(function* () {
-                    finalTimeout = yield* prepare(invocation, context)
+                    const prepared = yield* prepare(invocation, context)
+                    finalTimeout = prepared.timeout
+                    const destinations = VaultHosts.shell(prepared.segments)
+                    hosts = "known" in destinations ? destinations.known.filter(VaultHosts.isHost) : []
                     if (values.size === 0) return
+                    yield* VaultHosts.approve({
+                      permission,
+                      context,
+                      names: Array.from(values.keys()),
+                      destinations,
+                      detail: { command: input.command },
+                    })
                     const bound = VaultShell.bind(invocation.command, invocation.shell, values)
+                    if ("failure" in bound) return yield* new ToolFailure({ message: bound.failure })
                     invocation.command = bound.command
+                    invocation.script = bound.script
                     invocation.env = { ...invocation.env, ...bound.env }
                   }),
               )
@@ -280,7 +346,11 @@ export const Plugin = {
               const run = Effect.gen(function* () {
                 const result = yield* shell.result(info)
                 if (!result.capture) return yield* new Shell.NotFoundError({ id: info.id })
-                const output = ShellResult.output(result)
+                const shown = ShellResult.output(result)
+                const whole = shell
+                  .output(info.id, { limit: VaultCapture.MAX_BYTES })
+                  .pipe(Effect.map((page) => page.output), Effect.orDie)
+                const output = { ...shown, output: yield* vaultOutput(whole, shown, input.capture, hosts, binding) }
                 return {
                   ...output,
                   output: output.timeout

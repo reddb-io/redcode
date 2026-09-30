@@ -1,0 +1,38 @@
+[data-component="session-vault-dock"] {
+  width: 100%;
+  border: 0.5px solid var(--v2-border-border-base);
+  border-radius: 12px;
+
+  .vault-body {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    padding: 16px;
+    box-shadow: var(--v2-elevation-raised);
+  }
+
+  .vault-title {
+    color: var(--v2-text-text-base);
+    font-size: 14px;
+    font-weight: 500;
+    line-height: var(--line-height-base);
+    overflow-wrap: anywhere;
+  }
+
+  .vault-purpose,
+  .vault-hint {
+    color: var(--v2-text-text-muted);
+    font-size: 13px;
+    line-height: var(--line-height-compact);
+    overflow-wrap: anywhere;
+  }
+
+  .vault-footer {
+    display: flex;
+    align-items: center;
+    justify-content: flex-end;
+    gap: 16px;
+    padding: 24px 16px 12px;
+    border: 0;
+  }
+}

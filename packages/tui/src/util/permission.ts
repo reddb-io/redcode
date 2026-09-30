@@ -1,3 +1,4 @@
+import { Vault } from "@opencode/schema/vault"
 import { Locale } from "./locale"
 import { canonicalToolName, finiteNumber, webSearchProviderLabel } from "./tool-display"
 
@@ -128,6 +129,31 @@ export function permissionPresentation(
     }
   }
 
+  if (action === "vault") {
+    const pairs = resources.map(vaultPair)
+    const secrets = strings(metadata.secrets)
+    const destinations = strings(metadata.destinations)
+    const command = text(metadata.command)
+    const url = text(metadata.url)
+    const file = text(metadata.file)
+    const references = (secrets.length > 0 ? secrets : [...new Set(pairs.map((pair) => pair.name))])
+      .map((name) => Vault.reference(name))
+      .join(", ")
+    const targets = (destinations.length > 0 ? destinations : [...new Set(pairs.map((pair) => pair.destination))])
+      .map(vaultDestination)
+      .join(", ")
+    return {
+      icon: "⚿",
+      title: `Allow ${references} to be sent to ${targets}?`,
+      lines: [
+        ...(command ? [`Command: ${command}`] : []),
+        ...(url ? [`URL: ${url}`] : []),
+        ...(file ? [`File: ${formatPath(file)}`] : []),
+        "The value itself is never shown to the model.",
+      ],
+    }
+  }
+
   if (action === "doom_loop") {
     return {
       icon: "⟳",
@@ -153,10 +179,29 @@ function wildcardDirectory(value: string) {
 
 export function permissionAlwaysLines(input: { action: string; save?: ReadonlyArray<string> }): string[] {
   const save = input.save ?? []
+  if (input.action === "vault")
+    return save.map(vaultPair).map(
+      (pair) =>
+        `This will always allow ${Vault.reference(pair.name)} to be sent to ${vaultDestination(pair.destination)} while the vault holds it.`,
+    )
   if (save.length === 1 && save[0] === "*") {
     return [`This will always allow ${input.action} for this project.`]
   }
   return ["This will always allow the following patterns for this project.", ...save.map((item) => `- ${item}`)]
+}
+
+/** A vault permission resource, `<name>@<destination>`; names never contain "@", destinations may. */
+function vaultPair(value: string) {
+  const at = value.indexOf("@")
+  if (at === -1) return { name: value, destination: "" }
+  return { name: value.slice(0, at), destination: value.slice(at + 1) }
+}
+
+function vaultDestination(value: string) {
+  if (value.startsWith("cmd:")) return `the ${value.slice("cmd:".length)} command`
+  if (value.startsWith("mcp:")) return `the MCP server ${value.slice("mcp:".length)}`
+  if (value.startsWith("file:")) return `the file ${value.slice("file:".length)}`
+  return value
 }
 
 export function permissionOptionLabel(option: "once" | "always" | "reject" | "confirm" | "cancel") {
@@ -181,6 +226,10 @@ function normalizeInput(action: string, value: unknown): Dict {
 function dict(value: unknown): Dict {
   if (!value || typeof value !== "object" || Array.isArray(value)) return {}
   return value as Dict
+}
+
+function strings(value: unknown) {
+  return Array.isArray(value) ? value.filter((item): item is string => typeof item === "string") : []
 }
 
 function text(value: unknown) {

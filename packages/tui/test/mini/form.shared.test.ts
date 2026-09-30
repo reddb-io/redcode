@@ -64,3 +64,14 @@ describe("Mini form state", () => {
     ).toContain("Conditional")
   })
 })
+
+describe("Mini secret requests", () => {
+  test("a vault form is unsupported, so its value never gets a visible editor", () => {
+    const form: FormInfo = {
+      ...request([{ key: "value", type: "string", title: "github-token", required: true }]),
+      metadata: { kind: "vault", secret: true, name: "github-token", purpose: "Open a pull request" },
+    }
+    expect(formUnsupported(form)).toContain("Secret requests are not supported in Mini")
+    expect(formUnsupported(request([{ key: "value", type: "string" }]))).toBeUndefined()
+  })
+})
