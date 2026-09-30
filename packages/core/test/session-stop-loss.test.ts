@@ -272,6 +272,24 @@ describe("SessionStopLoss acknowledgements", () => {
       signals([step([read]), ...Array.from({ length: LIMITS.repeatAt }, (_, index) => step([search(index)]))]),
     ).toEqual(["same_result"])
   })
+
+  test("no-op Design edits remain a loop even when file paths and promises of a symlink change", () => {
+    const trajectory = observe(
+      Array.from({ length: LIMITS.stopAt }, (_, index) =>
+        step([
+          { type: "text", text: "I will fix the node_modules symlink now" },
+          call(
+            "edit",
+            { path: `src/${index}.tsx`, oldString: "same", newString: "same" },
+            "No changes to apply: oldString and newString are identical.",
+            "error",
+          ),
+        ]),
+      ),
+    )
+    expect(trajectory.repeat).toMatchObject({ tool: "edit", failed: true, identical: false, count: LIMITS.stopAt })
+    expect(SessionStopLoss.severe(trajectory, LIMITS)).toContain("same_error")
+  })
 })
 
 describe("SessionStopLoss spend", () => {

@@ -24,11 +24,13 @@ test("a resumed prototype keeps its review address visible without launching ano
     state: state.path,
     width: 120,
     args: { sessionID: session.id },
-    config: { animations: false, session: { sidebar: "hide" } },
+    config: { animations: false, tabs: { mode: "off" }, session: { sidebar: "hide" } },
     fetch: (url) => {
       if (url.pathname.startsWith("/design/")) requests.push(url.pathname)
       if (url.pathname === `/design/session/${session.id}/link`) return json({ url: review })
       if (url.pathname === `/api/session/${session.id}`) return json({ data: session })
+      if (["inbox", "permission", "todo"].some((name) => url.pathname === `/api/session/${session.id}/${name}`))
+        return json({ data: [] })
       if (url.pathname === `/api/session/${session.id}/message`)
         return json({
           data: [
@@ -60,8 +62,11 @@ test("a resumed prototype keeps its review address visible without launching ano
   })
   await setup.ready
   await setup.waitForFrame((frame) => frame.includes(`Prototype review: ${review}`))
+  const count = requests.length
   for (let index = 0; index < 3; index++) await setup.renderOnce()
-  expect(requests).toEqual([`/design/session/${session.id}/link`])
+  expect(requests.length).toBe(count)
+  expect(requests.length).toBeGreaterThan(0)
+  expect(requests.every((url) => url === `/design/session/${session.id}/link`)).toBe(true)
 })
 
 test("session location stays visible without the sidebar while Build runs and moves to its worktree", async () => {

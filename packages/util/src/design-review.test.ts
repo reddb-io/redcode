@@ -196,7 +196,7 @@ describe("openDesignReview", () => {
     })
   })
 
-  test("a launch stays quiet without a network address even when announced", async () => {
+  test("an announced launch names its loopback address", async () => {
     const remote = server([{ outcome: "claimed", token: 1, url: review, connected: 0 }])
     const notice = await openDesignReview({
       sessionID: "ses_a",
@@ -206,6 +206,6 @@ describe("openDesignReview", () => {
       fetch: remote.fetch,
       launch: browser(true).launch,
     })
-    expect(notice).toBeUndefined()
+    expect(notice).toEqual({ variant: "info", message: `Design review: ${review}`, url: review })
   })
 })

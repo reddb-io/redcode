@@ -18,6 +18,7 @@ import { Location } from "../src/location"
 import { ProjectTable } from "../src/project/sql"
 import { SessionTable } from "../src/session/sql"
 import { tempLocationLayer } from "./fixture/location"
+import { initRepo } from "./fixture/git"
 import { testEffect } from "./lib/effect"
 
 const project = Project.ID.make("design-store")
@@ -77,6 +78,27 @@ const write = (file: string, content: string) =>
 const read = (file: string) => Effect.promise(() => Bun.file(file).text())
 
 describe("DesignStore lifecycle", () => {
+  it.live("a Git-backed Session authors and restores its prototype in the same Location", () =>
+    Effect.gen(function* () {
+      const directory = yield* seed
+      yield* Effect.promise(() => initRepo(directory))
+      yield* write(path.join(directory, "product.ts"), "export const product = 'unchanged'\n")
+      const store = yield* DesignStore.Service
+      const designSystem = { application: ".", framework: "html", components: ["Profile"] }
+      const created = yield* store.create(sessionID, { ...checkout, designSystem })
+      expect(created.application).toBe(directory)
+      expect(created.root).toBe(path.join(directory, ".red", "code", "design", created.id, "work"))
+      expect(created.designSystem).toEqual(designSystem)
+      const entry = path.join(created.root, "index.html")
+      yield* write(entry, "<main>first profile</main>")
+      const first = yield* store.publish(sessionID, created.id, "First profile")
+      yield* write(entry, "<main>second profile</main>")
+      yield* store.restore(sessionID, created.id, first.id)
+      expect(yield* read(entry)).toBe("<main>first profile</main>")
+      expect(yield* read(path.join(directory, "product.ts"))).toBe("export const product = 'unchanged'\n")
+      expect(yield* Effect.promise(() => Bun.file(path.join(directory, ".red", "worktrees")).exists())).toBe(false)
+    }),
+  )
   it.live("creates a design with a starter prototype in this Session's location only", () =>
     Effect.gen(function* () {
       const directory = yield* seed

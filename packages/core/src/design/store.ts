@@ -15,7 +15,6 @@ import { Location } from "../location.js"
 import { SessionStore } from "../session/store.js"
 import { AssetTable, DesignTable, FeedbackTable, JobTable, RevisionTable } from "./sql.js"
 import { SessionSchema } from "../session/schema.js"
-import { AbsolutePath } from "../schema.js"
 import { DesignFiles } from "./files.js"
 import { DesignApproval } from "./approval.js"
 import { DesignParams } from "./params.js"
@@ -636,12 +635,6 @@ const make = Effect.gen(function* () {
     if (current.ended)
       return yield* new Design.Error({ code: "conflict", message: "Reopen this design before restoring" })
     const previous = yield* revision(sessionID, id, revisionID)
-    const repository = yield* git.repo.discover(AbsolutePath.make(current.root))
-    if (repository && repository.gitDirectory === repository.commonDirectory)
-      return yield* new Design.Error({
-        code: "conflict",
-        message: "Restore the Design in its isolated worktree, not in the primary checkout",
-      })
     yield* Effect.tryPromise({
       try: () => DesignFiles.restore(current.root, blobs, previous.files),
       catch: (error) =>

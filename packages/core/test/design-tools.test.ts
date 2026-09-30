@@ -6,6 +6,7 @@ import { AppNodeBuilder } from "@opencode/core/effect/app-node-builder"
 import { DesignRenderer } from "@opencode/core/design/renderer"
 import { DesignStore } from "@opencode/core/design/store"
 import { Image } from "@opencode/core/image"
+import { Location } from "@opencode/core/location"
 import { Permission } from "@opencode/core/permission"
 import { DesignPlugin } from "@opencode/core/plugin/design"
 import { Session } from "@opencode/core/session"
@@ -20,6 +21,7 @@ import { imagePassthrough } from "./lib/image"
 import { permissionLayer } from "./lib/permission"
 import { executeTool, registerToolPlugin, toolDefinitions, toolIdentity } from "./lib/tool"
 import { host } from "./plugin/host"
+import { tempLocationLayer } from "./fixture/location"
 
 const sessionID = Session.ID.make("ses_design_tools")
 const designID = Design.ID.make("design_tools")
@@ -108,6 +110,7 @@ const designToolsNode = makeLocationNode({
 
 const tools = testEffect(
   AppNodeBuilder.build(LayerNode.group([Tool.node, designToolsNode]), [
+    Location.node.replace(tempLocationLayer),
     Permission.node.replace(permissionLayer({ assert: (input) => Effect.sync(() => assertions.push(input)) })),
     Image.node.replace(imagePassthrough),
     DesignStore.node.replace(store),

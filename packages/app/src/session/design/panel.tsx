@@ -1,6 +1,7 @@
 import { createResource, For, Match, Show, Switch } from "solid-js"
 import { createStore } from "solid-js/store"
 import type { DesignInfo } from "@opencode/client/promise"
+import { Design } from "@opencode/schema/design"
 import { Button } from "@opencode/ui/button"
 import { useDialog } from "@opencode/ui/context/dialog"
 import { Dialog, DialogFooter, DialogHeader, DialogTitleGroup } from "@opencode/ui/dialog"
@@ -225,7 +226,7 @@ function SessionDesignRow(props: {
           </span>
         </Show>
       </div>
-      <Show when={props.design.designSystem.trim()}>
+      <Show when={Design.describeSystem(props.design.designSystem).trim()}>
         {(name) => (
           <div class="min-w-0 truncate text-12-regular text-v2-text-text-faint">
             {language.t("session.design.system", { name: name() })}

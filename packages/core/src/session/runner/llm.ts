@@ -339,7 +339,8 @@ const layer = Layer.effect(
         if (
           !continuing &&
           !guardStopped &&
-          next.context.agent.id !== "question" &&
+          // A Design reply can hand a preview to the reviewer while approval tasks remain pending.
+          !["question", "design"].includes(next.context.agent.id) &&
           !(yield* SessionInbox.nextPromotable(db, sessionID, "steer")) &&
           !(yield* monitors.list(sessionID)).some(Monitor.parks) &&
           step <
@@ -645,7 +646,7 @@ const layer = Layer.effect(
         yield* goals.save(goal, { ...goal, status: "waiting", reason: SessionGoal.WAITING })
         return { memory: current, continued: false }
       }
-      const blocker = SessionTodo.blocker(yield* todos.get(sessionID))
+      const blocker = SessionTodo.blocker(SessionTodo.forAgent(yield* todos.get(sessionID), loaded.agent.id))
       if (blocker) {
         yield* goals.save(goal, { ...goal, status: "blocked", reason: blocker })
         return { memory: current, continued: false }
@@ -792,7 +793,7 @@ const layer = Layer.effect(
               plan.work.flatMap((message) => (message.type === "assistant" ? SessionStopLoss.parts(message) : [])),
               { directory: loaded.session.location.directory },
             ),
-            tasks: (yield* todos.get(sessionID)).map((task) => ({
+            tasks: SessionTodo.forAgent(yield* todos.get(sessionID), loaded.agent.id).map((task) => ({
               content: task.content,
               status: task.status,
               ...(task.reason ? { reason: task.reason } : {}),
