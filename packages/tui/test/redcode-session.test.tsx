@@ -473,7 +473,7 @@ test.each([80, 160])("large MCP catalogs and tools scroll inside their panels at
     state: state.path,
     width,
     height: 24,
-    config: { animations: false, tabs: { mode: "off" }, keybinds: { "session.composer.mcps": "f8" } },
+    config: { animations: false, tabs: { mode: "off" }, keybinds: {} },
     fetch: (url) => {
       if (url.pathname === "/api/mcp") return json({ location, data: servers })
       if (url.pathname === "/api/mcp/tool")
@@ -494,7 +494,9 @@ test.each([80, 160])("large MCP catalogs and tools scroll inside their panels at
     await setup.renderOnce()
     expect(setup.captureCharFrame()).toContain("server-39")
   }
-  setup.mockInput.pressKey("f8")
+  setup.mockInput.pressKey("p", { ctrl: true })
+  await setup.mockInput.typeText("Open MCPs drawer")
+  setup.mockInput.pressEnter()
   await setup.waitForFrame((frame) => frame.includes("MCPS") || frame.includes("MCPs"))
   const scroll = setup.renderer.root.findDescendantById("composer-mcps-scroll")
   if (!(scroll instanceof ScrollBoxRenderable)) throw new Error("Missing MCP drawer scroll")

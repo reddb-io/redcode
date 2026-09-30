@@ -11,10 +11,11 @@ import { Keymap } from "../../../src/context/keymap"
 import { LocationProvider } from "../../../src/context/location"
 import { RouteProvider } from "../../../src/context/route"
 import { ThemeProvider } from "../../../src/context/theme"
-import { Composer } from "../../../src/routes/session/composer"
+import { ComposerContext } from "../../../src/routes/session/composer/context"
 import {
   createSessionMonitors,
   MonitorsIndicator,
+  MonitorsTab,
   type MonitorApi,
   type SessionMonitors,
 } from "../../../src/routes/session/composer/monitors-tab"
@@ -79,13 +80,12 @@ async function renderMonitors(initial: MonitorPublicInfo[]) {
     monitors = createSessionMonitors({ sessionID: () => "parent", onOpen: () => setOpen(true), api })
     return (
       <box>
-        <Composer
-          sessionID="parent"
-          open={open()}
-          defaultTab="monitors"
-          monitors={monitors}
-          onClose={() => setOpen(false)}
-        />
+        <ComposerContext.Provider
+          value={{ register: () => () => {}, active: (id) => open() && id === "monitors", close: () => setOpen(false) }}
+        >
+          <text>Monitors</text>
+          <MonitorsTab monitors={monitors} />
+        </ComposerContext.Provider>
         <MonitorsIndicator monitors={monitors} onOpen={() => setOpen(true)} />
       </box>
     )
