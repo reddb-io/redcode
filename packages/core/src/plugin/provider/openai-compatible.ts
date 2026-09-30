@@ -122,11 +122,11 @@ export const OpenAICompatiblePlugin = define({
       const listed = yield* discover(endpoint, input.key)
       // A RedRouter keeps everything that makes it special only as the RedRouter integration, whichever way it was added.
       if (yield* isRedRouter(endpoint, input.key))
-        return {
+        return prepared({
           integrationID: Integration.ID.make("red-router"),
           label: endpoint.name,
           configuration: { baseURL: endpoint.baseURL },
-        }
+        })
       const catalog = yield* Effect.serviceOption(ModelsDev.Service).pipe(
         Effect.flatMap((service) => (Option.isSome(service) ? service.value.get() : Effect.succeed([]))),
         Effect.map(catalogLimits),
@@ -141,7 +141,11 @@ export const OpenAICompatiblePlugin = define({
         )
       if (!config.saveProvider) return yield* Effect.fail(new Error("The configuration cannot be written"))
       yield* config.saveProvider(endpoint.providerID, provider)
-      return { integrationID: Integration.ID.make(endpoint.providerID), label: endpoint.name, configuration: {} }
+      return prepared({
+        integrationID: Integration.ID.make(endpoint.providerID),
+        label: endpoint.name,
+        configuration: {},
+      })
     })
 
     yield* integrations.transform((editor) => {
@@ -374,6 +378,9 @@ export const isRedRouter = Effect.fn("OpenAICompatible.isRedRouter")(function* (
     : []
   return ids.length > 0 && ids.every((id) => /\bjev\b/i.test(id))
 })
+
+// Declared, not inferred: two returned object literals would gain `?: undefined` members that the form answer rejects.
+const prepared = (value: Integration.KeyPrepared): Integration.KeyPrepared => value
 
 const isRecord = (value: unknown): value is Record<string, unknown> => typeof value === "object" && value !== null
 
