@@ -35,6 +35,7 @@
 
 import { DateTime, Option, Schema } from "effect"
 import { Intelligence } from "@opencode/schema/intelligence"
+import { SessionGuard } from "@opencode/schema/session-guard"
 import type { EvaluationInput } from "../intelligence.js"
 import { IntelligenceEvaluation } from "../intelligence/evaluation.js"
 import { LoopGuard } from "./loop-guard.js"
@@ -532,7 +533,10 @@ export function evaluation(input: {
     sources: {
       request: IntelligenceEvaluation.evidence(input.request.text, { reference: input.request.id, limit: 4000 }),
       trajectory: IntelligenceEvaluation.evidence(
-        digest(input.steps.flatMap((step) => step.parts), { directory: input.directory }),
+        digest(
+          input.steps.flatMap((step) => step.parts),
+          { directory: input.directory },
+        ),
         { limit: 10_000 },
       ),
       observed: {
@@ -874,15 +878,7 @@ export function final(
       "",
       ...evidence,
     ].join("\n")
-  return [
-    head,
-    "",
-    `I stopped here: ${reason(trajectory, verdict)}. ${spent}`,
-    "",
-    ...evidence,
-    "",
-    ...next,
-  ].join("\n")
+  return [head, "", `I stopped here: ${reason(trajectory, verdict)}. ${spent}`, "", ...evidence, "", ...next].join("\n")
 }
 
 /** What the guard log records for a checkpoint that acted. */
@@ -891,6 +887,31 @@ export function detail(trajectory: Trajectory, verdict: Verdict) {
     `${line(trajectory, verdict)} → ${verdict.action}`,
     ...(verdict.unavailable ? [`S1 gave no verdict: ${verdict.unavailable}`] : []),
   ].join("; ")
+}
+
+/** Prefixes of the guard log's `subject` for what a checkpoint did not act on, so a report can tell them from acts. */
+export const DISMISSED = SessionGuard.STOP_LOSS_DISMISSED
+export const PROGRESSED = SessionGuard.STOP_LOSS_PROGRESSED
+
+/**
+ * What the guard log records for a checkpoint that saw a signal and let the turn go on. These are the candidate
+ * false positives: with S1 asked, a signal that it read as no reason to intervene.
+ */
+export function dismissed(checkpoint: Checkpoint, trajectory: Trajectory, verdict: Verdict) {
+  if (checkpoint.type !== "signal" || verdict.action !== "continue") return undefined
+  return { subject: `${DISMISSED}${checkpoint.signals.join(",")}`, detail: detail(trajectory, verdict) }
+}
+
+/**
+ * What the guard log records when the work moved after a hint: `before` still held the hints, `after` no longer
+ * does. Without the hint's outcome the log shows only that hints were given, never whether they helped.
+ */
+export function outcome(before: Memory, after: Memory, step: number, trajectory: Trajectory) {
+  if (before.steers === 0 || after.steers !== 0 || step < before.last) return undefined
+  return {
+    subject: PROGRESSED,
+    detail: `progress after ${before.steers} hint${before.steers === 1 ? "" : "s"}; ${trajectory.idle} idle step${trajectory.idle === 1 ? "" : "s"} at step ${step}, last checkpoint at step ${before.last}`,
+  }
 }
 
 /** The notice kept on the text part that carries a steer or a final message, for surfaces to show. */
@@ -951,7 +972,7 @@ export function parts(message: SessionMessage.Assistant): Part[] {
             status: "completed",
             input: item.state.input,
             output: item.state.content
-              .map((content) => content.type === "text" ? content.text : JSON.stringify(content))
+              .map((content) => (content.type === "text" ? content.text : JSON.stringify(content)))
               .join("\n"),
             metadata: item.state.metadata,
           },
@@ -963,7 +984,12 @@ export function parts(message: SessionMessage.Assistant): Part[] {
           type: "tool",
           tool: item.name,
           callID: item.id,
-          state: { status: "error", input: item.state.input, error: item.state.error.message, metadata: item.state.metadata },
+          state: {
+            status: "error",
+            input: item.state.input,
+            error: item.state.error.message,
+            metadata: item.state.metadata,
+          },
         },
       ]
     return []

@@ -427,6 +427,8 @@ const layer = Layer.effect(
       const asked = settings.enabled && IntelligenceEvaluation.mode(settings) === "dual"
       const remembered = memory === SessionStopLoss.FRESH ? (SessionStopLoss.recover(messages) ?? memory) : memory
       const current = SessionStopLoss.current(remembered, step, trajectory.idle)
+      const helped = SessionStopLoss.outcome(remembered, current, step, trajectory)
+      if (helped) yield* guards.record({ sessionID, guard: "stop_loss", action: "warn", ...helped })
       const checkpoint = SessionStopLoss.due({
         step,
         memory: current,
@@ -461,7 +463,11 @@ const layer = Layer.effect(
         subagent,
       })
       const next = SessionStopLoss.remember(current, step, verdict)
-      if (verdict.action === "continue") return { memory: next, ended: false }
+      if (verdict.action === "continue") {
+        const ignored = SessionStopLoss.dismissed(checkpoint, trajectory, verdict)
+        if (ignored) yield* guards.record({ sessionID, guard: "stop_loss", action: "warn", ...ignored })
+        return { memory: next, ended: false }
+      }
       // New input admitted while S1 evaluated takes the next boundary instead of a stale intervention.
       if (yield* SessionInbox.nextPromotable(db, sessionID, "steer")) return { memory, ended: false }
       yield* guards.record({
@@ -908,7 +914,10 @@ const layer = Layer.effect(
           assistantMessageID = SessionMessage.ID.create()
           continue
         }
-        const limit = stepLimit(loaded.agent.info.steps, Config.latestExperimental(yield* config.entries(), "turn_steps"))
+        const limit = stepLimit(
+          loaded.agent.info.steps,
+          Config.latestExperimental(yield* config.entries(), "turn_steps"),
+        )
         const stepLimitReached = limit !== undefined && step >= limit
         const loopLimits = LoopGuard.limits(Config.latestExperimental(yield* config.entries(), "loop_guard"))
         const latestUser = (yield* store.messages({ sessionID, type: "user", limit: 1 })).at(0)

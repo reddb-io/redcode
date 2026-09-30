@@ -586,3 +586,50 @@ describe("SessionStopLoss waiting on an outside job", () => {
     expect(SessionStopLoss.signals(trajectory, LIMITS)).toEqual(["polling"])
   })
 })
+
+describe("SessionStopLoss guard log records", () => {
+  const trajectory = observe(probes(LIMITS.repeatAt))
+  const continued: SessionStopLoss.Verdict = {
+    action: "continue",
+    state: "progressing",
+    signals: ["same_result"],
+    verified: true,
+  }
+
+  test("a signal the turn was allowed to keep going through is recorded as dismissed", () => {
+    const recorded = SessionStopLoss.dismissed(
+      { type: "signal", signals: ["same_result", "no_progress"] },
+      trajectory,
+      continued,
+    )
+    expect(recorded?.subject).toBe("dismissed:same_result,no_progress")
+    expect(recorded?.detail).toContain("→ continue")
+  })
+
+  test("an interval checkpoint, or a checkpoint that acted, records nothing as dismissed", () => {
+    expect(SessionStopLoss.dismissed({ type: "interval" }, trajectory, continued)).toBeUndefined()
+    expect(
+      SessionStopLoss.dismissed({ type: "signal", signals: ["same_result"] }, trajectory, {
+        ...continued,
+        action: "steer",
+      }),
+    ).toBeUndefined()
+  })
+
+  test("the work moving after a hint is recorded once, when the hints are cleared", () => {
+    const hinted = { last: 12, steers: 2 }
+    const recorded = SessionStopLoss.outcome(hinted, { last: 12, steers: 0 }, 15, trajectory)
+    expect(recorded?.subject).toBe(SessionStopLoss.PROGRESSED)
+    expect(recorded?.detail).toContain("progress after 2 hints")
+    expect(recorded?.detail).toContain("step 15, last checkpoint at step 12")
+    expect(SessionStopLoss.outcome({ last: 12, steers: 1 }, { last: 12, steers: 0 }, 13, trajectory)?.detail).toContain(
+      "1 hint;",
+    )
+  })
+
+  test("no outcome without a hint, while the hints stand, or for a turn that started over", () => {
+    expect(SessionStopLoss.outcome({ last: 12, steers: 0 }, { last: 12, steers: 0 }, 15, trajectory)).toBeUndefined()
+    expect(SessionStopLoss.outcome({ last: 12, steers: 2 }, { last: 12, steers: 2 }, 15, trajectory)).toBeUndefined()
+    expect(SessionStopLoss.outcome({ last: 12, steers: 2 }, SessionStopLoss.FRESH, 3, trajectory)).toBeUndefined()
+  })
+})

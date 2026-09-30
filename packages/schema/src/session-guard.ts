@@ -18,6 +18,13 @@ export const Guard = Schema.Literals([
 ])
 export type Guard = typeof Guard.Type
 
+/**
+ * How a stop-loss trip's `subject` says what it is. An act (a hint or a stop) names the signals that caused it; a
+ * signal the turn was allowed to go through starts with `DISMISSED`, and the work moving after a hint is `PROGRESSED`.
+ */
+export const STOP_LOSS_DISMISSED = "dismissed:"
+export const STOP_LOSS_PROGRESSED = "outcome:progressed"
+
 export const Action = Schema.Literals(["warn", "correct", "stop"])
 export type Action = typeof Action.Type
 
