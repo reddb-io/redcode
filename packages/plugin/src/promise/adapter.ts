@@ -353,6 +353,7 @@ export function fromPromise(plugin: Plugin) {
             reload: () => run(host.provider.reload()),
           },
           integration: {
+            check: adaptApiMethod(IntegrationEndpoints["integration.check"], host.integration.check),
             list: adaptApiMethod(IntegrationEndpoints["integration.list"], host.integration.list),
             get: adaptApiMethod(IntegrationEndpoints["integration.get"], host.integration.get),
             console: {

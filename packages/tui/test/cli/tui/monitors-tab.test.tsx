@@ -3,7 +3,7 @@ import { ScrollBoxRenderable } from "@opentui/core"
 import { testRender } from "@opentui/solid"
 import { expect, test } from "bun:test"
 import type { MonitorPublicInfo } from "@opencode/client"
-import { createSignal } from "solid-js"
+import { createEffect, createSignal, onCleanup } from "solid-js"
 import { ConfigProvider } from "../../../src/config"
 import { ClientProvider } from "../../../src/context/client"
 import { DataProvider } from "../../../src/context/data"
@@ -76,7 +76,13 @@ async function renderMonitors(initial: MonitorPublicInfo[]) {
 
   function Content() {
     toast = useToast()
-    dispatch = Keymap.use().dispatch
+    const keymap = Keymap.use()
+    dispatch = keymap.dispatch
+    createEffect(() => {
+      if (!open()) return
+      const pop = keymap.mode.push("composer")
+      onCleanup(pop)
+    })
     monitors = createSessionMonitors({ sessionID: () => "parent", onOpen: () => setOpen(true), api })
     return (
       <box>

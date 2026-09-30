@@ -497,6 +497,8 @@ test.each([80, 160])("large MCP catalogs and tools scroll inside their panels at
   })
   await setup.ready
   await setup.waitForFrame((frame) => !frame.includes("Opening session"))
+  if (width === 160)
+    await setup.waitForFrame(() => setup.renderer.root.findDescendantById("sidebar-mcps-scroll")?.height === 5)
   const sidebar = setup.renderer.root.findDescendantById("sidebar-mcps-scroll")
   if (width === 160) expect(sidebar).toBeInstanceOf(ScrollBoxRenderable)
   if (sidebar instanceof ScrollBoxRenderable) {
@@ -511,7 +513,7 @@ test.each([80, 160])("large MCP catalogs and tools scroll inside their panels at
   await setup.mockInput.typeText("Open MCPs drawer")
   await setup.waitForFrame((frame) => frame.includes("Open MCPs drawer"))
   setup.mockInput.pressEnter()
-  await setup.waitForFrame((frame) => frame.includes("MCPS") || frame.includes("MCPs"))
+  await setup.waitForFrame(() => setup.renderer.root.findDescendantById("composer-mcps-scroll")?.height === 5)
   const scroll = setup.renderer.root.findDescendantById("composer-mcps-scroll")
   if (!(scroll instanceof ScrollBoxRenderable)) throw new Error("Missing MCP drawer scroll")
   expect(scroll.height).toBe(5)

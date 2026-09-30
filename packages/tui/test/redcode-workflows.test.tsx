@@ -426,21 +426,28 @@ test("saving a Router key shows remote HTTP diagnostics and keeps an empty catal
       }
     },
   })
+  const waitForStep = (step: string, predicate: (frame: string) => boolean) =>
+    setup.waitForFrame(predicate).catch((cause: unknown) => {
+      throw new Error(`${step}: saved=${account.saved}, checks=${account.checks}`, { cause })
+    })
   await setup.ready
-  await setup.waitForFrame(() => Boolean(setup.renderer.root.findDescendantById("session-pane")))
+  await waitForStep("session ready", () => Boolean(setup.renderer.root.findDescendantById("session-pane")))
   await setup.mockInput.typeText("/connect")
   setup.mockInput.pressEnter()
-  await setup.waitForFrame((frame) => frame.includes("Connect an integration") && frame.includes("RedRouter"))
+  await waitForStep(
+    "integration picker",
+    (frame) => frame.includes("Connect an integration") && frame.includes("RedRouter"),
+  )
   setup.mockInput.pressEnter()
-  await setup.waitForFrame((frame) => frame.includes("Router API key"))
+  await waitForStep("key prompt", (frame) => frame.includes("Router API key"))
   await setup.mockInput.typeText("fixture-key")
   setup.mockInput.pressEnter()
-  await setup.waitForFrame((frame) => frame.includes("Remote API test failed"))
+  await waitForStep("remote report", (frame) => frame.includes("Remote API test failed"))
   expect(setup.captureCharFrame()).toContain("Credential saved.")
   expect(setup.captureCharFrame()).toContain("HTTP 200 · 123 ms · 11 bytes · 0 models")
   expect(setup.captureCharFrame()).toContain("http://router.test/v1/models")
   expect(setup.captureCharFrame()).not.toContain("fixture-key")
   setup.mockInput.pressEnter()
-  await setup.waitForFrame((frame) => account.checks === 2 && frame.includes("Remote API test failed"))
+  await waitForStep("retry report", (frame) => account.checks === 2 && frame.includes("Remote API test failed"))
   expect(account.saved).toBe(true)
 })

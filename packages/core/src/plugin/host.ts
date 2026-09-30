@@ -15,6 +15,7 @@ import { Credential } from "../credential.js"
 import { ConsoleOrganization } from "../console-organization.js"
 import { Bus } from "../bus.js"
 import { Integration } from "../integration.js"
+import { IntegrationCheck } from "../integration-check.js"
 import { KV } from "../kv.js"
 import { Location } from "../location.js"
 import { LocationServiceMap } from "../location-service-map.js"
@@ -280,14 +281,24 @@ export const make = Effect.fn("PluginHost.make")(function* (
       text: (input) => generate.text(input).pipe(Effect.map((text) => ({ text }))),
     },
     integration: {
+      check: (input) =>
+        IntegrationCheck.check(Integration.ID.make(input.integrationID)).pipe(
+          Effect.provideService(Integration.Service, integration),
+          Effect.provideService(Credential.Service, credentials),
+          Effect.provideService(Provider.Service, providers),
+          Effect.provideService(Model.Service, models),
+          Effect.provideService(Generate.Service, generate),
+        ),
       list: () => response(integration.list()),
       console: {
         organizations: () =>
-          response(ConsoleOrganization.list().pipe(
-            Effect.provideService(Integration.Service, integration),
-            Effect.provideService(Credential.Service, credentials),
-            Effect.provideService(HttpClient.HttpClient, http),
-          )),
+          response(
+            ConsoleOrganization.list().pipe(
+              Effect.provideService(Integration.Service, integration),
+              Effect.provideService(Credential.Service, credentials),
+              Effect.provideService(HttpClient.HttpClient, http),
+            ),
+          ),
         organization: {
           select: (input) =>
             ConsoleOrganization.select(input.credentialID, input.orgID).pipe(
