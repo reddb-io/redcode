@@ -33,7 +33,7 @@ export function filename(channel = OPENCODE_CHANNEL) {
 
 export function defaultPort(channel = OPENCODE_CHANNEL) {
   if (channel === "latest" || channel === "dev" || channel === "beta" || channel === "next")
-    return OPENCODE_ARTIFACT === "redcode" ? 0xc0dd : 0xc0de
+    return OPENCODE_ARTIFACT === "redcode" ? 35555 : 0xc0de
   if (channel === "local") return 0xc0df
   return 10_000 + (Number.parseInt(Hash.fast(channel).slice(0, 8), 16) % 50_000)
 }
