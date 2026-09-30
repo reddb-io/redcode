@@ -1,5 +1,21 @@
 # @reddb-io/redcode
 
+## 0.66.0
+
+### Minor Changes
+
+- The prompt footer now shows how the user is taking the session: a block glyph that grows across five stages (frustrated, rough, steady, good, great), coloured from red to green. It is read from what System One already classifies for every prompt, how your message judges the previous work (approves, corrects, rejects) and how frustrated it sounds, weighting the latest prompts most, so it costs no extra model call and stores nothing. It appears in dual reasoning once three prompts have been read, works in any language, and clicking it opens `/intelligence`.
+
+### Patch Changes
+
+- Make the model picker larger: it now opens centered at the extra-large width and uses most of the terminal height instead of half.
+- The Monitors tab now takes the same room as the other composer tabs: its empty message is one line like theirs, and its list shows at most five rows instead of six.
+- The S1 evaluator step of the reasoning setup now lists only services that already have an active connection, like the S2 model step. It no longer asks for an API base URL or key inline for services that are not connected.
+- The S1 indicator in the prompt footer now says what happened instead of "S1 needs attention", which read like something was down. It shows "S1 unavailable" (in the warning colour) only when System One could not be reached, and "S1 unsure" or "S1 flagged answer" (in the informational colour) when it answered without a confident reading or found a problem with the last answer. Click it or run `/intelligence` for the details.
+- At the end of a turn with an active goal in dual reasoning, System One now judges the goal and reviews the final response at the same time instead of one after the other, so the turn settles in the time of the slower request rather than the sum of both. If the goal continues, the review that was started is cancelled.
+- `redcode setup` and the web reasoning settings now choose the System One evaluator the way the terminal `/setup` does: only from services that already have an active connection, with that connection's own credential. The command no longer asks for an API base URL or an API key, and the web page no longer shows a key field. With no connected service it tells you to run `redcode auth login` first.
+- The stop-loss now records what it decided not to do and whether its hints helped, so its calibration can be measured. A signal that System One read as no reason to intervene is logged as dismissed, and work that moves after a hint is logged as progress. `redcode debug guards` prints a Stop-loss section with how many signals were checked, how many System One let through, how many hints were given and how many were followed by progress, and its `--json` output carries the same counts.
+
 ## 0.65.0
 
 ### Minor Changes
