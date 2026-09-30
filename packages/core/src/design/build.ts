@@ -193,7 +193,10 @@ function packageTarget(target: string) {
 
 const required = async (directory: string, specifier: string, conditions: string[], boundary: string) => {
   const file = await locatePackage(directory, specifier, conditions, boundary)
-  if (!file) throw new Error(`Cannot find ${specifier} in the node_modules of ${directory}`)
+  if (!file)
+    throw new Error(
+      `Cannot resolve project dependency ${specifier} from ${directory} up to ${boundary}. No node_modules symlink is needed: the preview resolver already checks the project dependency checkout. Report the missing package or unresolved export; identical file edits cannot fix it.`,
+    )
   return file
 }
 

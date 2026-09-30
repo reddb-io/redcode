@@ -9,7 +9,8 @@
  *
  * What counts as a loop here is narrower and more honest: the same tool, the same arguments, and
  * the same result, several times running. Identical calls that return *different* results are how
- * polling looks, and are left alone. Nothing about this needs a person.
+ * polling looks, and are left alone. Edits with identical replacement text have a shorter recovery
+ * window: changing their path or text cannot make them useful. Nothing about this needs a person.
  */
 
 import { LOOP_GUARD_PAUSE, LOOP_GUARD_REFUSAL } from "./loop-marker.js"
@@ -122,9 +123,7 @@ const settled = (part: Part) =>
 const result = (part: Part) => part.state?.output ?? part.state?.error ?? ""
 
 const progressText = (part: Part) =>
-  part.type === "text" && !part.synthetic && part.text
-    ? part.text.replace(/\s+/g, " ").trim()
-    : undefined
+  part.type === "text" && !part.synthetic && part.text ? part.text.replace(/\s+/g, " ").trim() : undefined
 
 /**
  * Repeated visible progress followed by the same empty or unchanged tool result.
@@ -268,6 +267,24 @@ export function assess(input: {
   limits?: Limits
 }): Decision {
   if (!input.limits) return { type: "ok" }
+  if (noOpEdit(input.next)) {
+    const count = noOpEdits(input.parts) + 1
+    const recovery =
+      "An edit cannot create a symlink or repair dependencies. In Design, call design_preview to build and publish through the project dependency resolver; inspect its actual error and report a missing package if needed. Outside Design, read the file and make a real change only when needed. Do not claim a shell command ran when you called edit."
+    if (count >= Math.min(3, input.limits.stopAt))
+      return {
+        type: "stop",
+        streak: count,
+        message: `Stopped: ${count} consecutive edits had identical oldString and newString, even if their paths or text changed. The recovery warning was ignored. No file was changed by this call. ${recovery}`,
+        summary: `${LOOP_GUARD_PAUSE}edits with no changes repeated ${count} times`,
+      }
+    if (count >= Math.min(2, input.limits.correctAt))
+      return {
+        type: "correct",
+        streak: count,
+        message: `${REFUSAL}${count} of \`edit\` with identical oldString and newString. The call was not run; changing the file path does not fix this. ${recovery}`,
+      }
+  }
   // The call about to be made is part of the run, so a streak of two prior calls makes this the third.
   const same = streak(input.parts, input.next) + 1
   const repeatedProgress = progress(input.parts, input.next)
@@ -317,6 +334,27 @@ export function assess(input: {
   const made = repeats(input.parts, input.next) + 1
   if (made === input.limits.nudgeAt) return { type: "correct", streak: made, message: nudge(input.next, made) }
   return { type: "ok" }
+}
+
+function noOpEdit(next: { tool?: string; input: unknown }) {
+  if (next.tool !== "edit" || !next.input || typeof next.input !== "object") return false
+  return (
+    "oldString" in next.input &&
+    typeof next.input.oldString === "string" &&
+    "newString" in next.input &&
+    next.input.oldString === next.input.newString
+  )
+}
+
+/** Count invalid edits across interleaved narration and our own refusals, regardless of file path. */
+function noOpEdits(parts: readonly Part[]) {
+  let count = 0
+  for (const part of parts.toReversed()) {
+    if (!settled(part)) continue
+    if (part.state?.status !== "error" || !noOpEdit({ tool: part.tool, input: part.state.input })) break
+    count++
+  }
+  return count
 }
 
 const args = (input: unknown) => {

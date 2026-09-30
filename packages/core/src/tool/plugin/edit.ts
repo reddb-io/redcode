@@ -139,7 +139,7 @@ export const Plugin = {
               }
               if (input.oldString === input.newString) {
                 return yield* new ToolFailure({
-                  message: `No changes to apply: oldString and newString are identical. Read the current file and send a real change only when needed. This call cannot fix dependencies or create a symlink.${context.agent === "design" ? " In Design, use design_preview: it resolves project dependencies automatically. Do not repeat no-op edits or attempt shell commands to link node_modules." : ""}`,
+                  message: `No changes to apply: oldString and newString are identical. Read the current file and send a real change only when needed. This call cannot fix dependencies or create a symlink.${context.agent === "design" ? " Shell is unavailable in Design. Use design_preview to build through the project dependency resolver; inspect its error or design_document's dependency report if it fails. Do not repeat this edit in another file or claim that a shell command ran." : ""}`,
                 })
               }
               if (input.oldString === "") {

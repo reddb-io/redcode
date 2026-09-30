@@ -93,17 +93,28 @@ import { agentHost, modelHost, host, noProviders } from "./plugin/host"
 import { CodeModeInstructions } from "@opencode/core/codemode/instructions"
 
 const emptyCodeMode = `\n\n${CodeModeInstructions.render({ total: 0, shown: 0, namespaces: [] })}`
-const checkpoint = (objective: string) => [
-  "## Objective", `- ${objective}`,
-  "## Requirements", "- Preserve the user's current request.",
-  "## Decisions", "- (none)",
-  "## Work State", "### Completed", "- (none)",
-  "### Active", "- Continue the request.",
-  "### Blocked", "- (none)",
-  "## Next Move", "1. Continue the request.",
-  "## Relevant Files", "- (none)",
-  "## Important Context", "- (none)",
-].join("\n")
+const checkpoint = (objective: string) =>
+  [
+    "## Objective",
+    `- ${objective}`,
+    "## Requirements",
+    "- Preserve the user's current request.",
+    "## Decisions",
+    "- (none)",
+    "## Work State",
+    "### Completed",
+    "- (none)",
+    "### Active",
+    "- Continue the request.",
+    "### Blocked",
+    "- (none)",
+    "## Next Move",
+    "1. Continue the request.",
+    "## Relevant Files",
+    "- (none)",
+    "## Important Context",
+    "- (none)",
+  ].join("\n")
 const projectDirectory = await mkdtemp(path.join(tmpdir(), "redcode-runner-"))
 afterAll(() => rm(projectDirectory, { recursive: true, force: true }))
 type ToolBarrier = {
@@ -433,7 +444,9 @@ const layer = Layer.unwrap(
       Agent.node.replace(
         Agent.node.mapLayer((layer) =>
           layer.pipe(
-            Layer.tap((context) => AgentPlugin.Plugin.effect(host({ agent: agentHost(Context.get(context, Agent.Service)) }))),
+            Layer.tap((context) =>
+              AgentPlugin.Plugin.effect(host({ agent: agentHost(Context.get(context, Agent.Service)) })),
+            ),
           ),
         ),
       ),
@@ -992,6 +1005,69 @@ const watchRename = Effect.fnUntraced(function* (sessionID: Session.ID) {
 })
 
 describe("SessionRunnerLLM", () => {
+  scenario("stops no-op edits at the third call and never executes the refused attempts", function* (s) {
+    const registry = yield* Tool.Service
+    const executions: string[] = []
+    yield* registry.transform((editor) =>
+      editor.add({
+        name: "edit",
+        options: { codemode: false },
+        description: "An edit that fails without changing the file",
+        input: Schema.Struct({ path: Schema.String, oldString: Schema.String, newString: Schema.String }),
+        output: Schema.String,
+        execute: (input) =>
+          Effect.sync(() => executions.push(input.path)).pipe(
+            Effect.andThen(new ToolFailure({ message: "No changes to apply: oldString and newString are identical." })),
+          ),
+      }),
+    )
+    yield* s.llm.push(
+      ...[0, 1, 2, 3].map((index) =>
+        TestLLM.tool(`call_noop_${index}`, "edit", {
+          path: `src/${index}.tsx`,
+          oldString: `same ${index}`,
+          newString: `same ${index}`,
+        }),
+      ),
+    )
+    yield* s.runPrompt("Publish the profile prototype")
+    expect(s.requests).toHaveLength(3)
+    expect(executions).toEqual(["src/0.tsx"])
+    const errors = (yield* s.context).flatMap((message) =>
+      message.type === "assistant"
+        ? message.content.flatMap((part) =>
+            part.type === "tool" && part.state.status === "error" ? [part.state.error.message] : [],
+          )
+        : [],
+    )
+    expect(errors).toHaveLength(3)
+    expect(errors[1]).toContain("design_preview")
+    expect(errors[2]).toContain("Stopped: 3 consecutive edits")
+  })
+
+  scenario("allows recovery with another tool after a no-op edit warning", function* (s) {
+    const registry = yield* Tool.Service
+    yield* registry.transform((editor) =>
+      editor.add({
+        name: "edit",
+        options: { codemode: false },
+        description: "An edit that fails without changing the file",
+        input: Schema.Struct({ path: Schema.String, oldString: Schema.String, newString: Schema.String }),
+        output: Schema.String,
+        execute: () => new ToolFailure({ message: "No changes to apply: oldString and newString are identical." }),
+      }),
+    )
+    yield* s.llm.push(
+      TestLLM.tool("call_noop_0", "edit", { path: "entry.tsx", oldString: "same", newString: "same" }),
+      TestLLM.tool("call_noop_1", "edit", { path: "main.tsx", oldString: "same", newString: "same" }),
+      TestLLM.tool("call_recovered", "echo", { text: "Recovered" }),
+      TestLLM.stop(),
+    )
+    yield* s.runPrompt("Recover from the failed edit")
+    expect(s.requests).toHaveLength(4)
+    expect(s.executions).toEqual(["Recovered"])
+  })
+
   scenario("generates the title while the first model step is still running", function* (s) {
     yield* prepareTitleGeneration
 
