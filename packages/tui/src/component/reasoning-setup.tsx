@@ -199,7 +199,10 @@ async function chooseModel(
   const selectable = connections.filter((item) => item.provider.id !== input.principalProvider || item.active)
   const selected = await context.ui.dialog.select({
     title: `${input.role} · connection`,
-    current: selectable.findIndex((item) => item.provider.id === (current?.providerID ?? input.router) && item.active),
+    current: Math.max(
+      0,
+      selectable.findIndex((item) => item.provider.id === (current?.providerID ?? input.router) && item.active),
+    ),
     options: [
       ...selectable.map((item, index) => ({
         value: index,
