@@ -31,7 +31,11 @@ describe("toLLMMessages", () => {
           type: "tool",
           id: "jobs-call",
           name: "design_jobs",
-          state: SessionMessage.ToolStateRunning.make({ status: "running", input: { id: "design_profile" } }),
+          state: SessionMessage.ToolStateRunning.make({
+            status: "running",
+            input: { id: "design_profile" },
+            metadata: {},
+          }),
           time: { created },
         }),
       ],
