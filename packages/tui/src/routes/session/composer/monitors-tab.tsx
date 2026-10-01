@@ -212,6 +212,7 @@ export function MonitorsTab(props: { monitors: SessionMonitors }) {
               {
                 id: `monitor-stop-${current()!.id}`,
                 label: "stop",
+                tone: "destructive" as const,
                 shortcut: shortcuts.get("composer.monitor.cancel") ?? "",
                 onSelect: () => cancel(current()!),
               },

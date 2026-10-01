@@ -36,7 +36,7 @@ export function ComposerFooter(props: { hints: ComposerHint[] }) {
       <For each={props.hints}>
         {(hint) => (
           <text id={hint.id} wrapMode="none" flexShrink={0} onMouseUp={hint.onSelect}>
-            <span style={{ fg: hint.onSelect ? theme.text.action.primary.base : theme.text.base }}>
+            <span style={{ fg: hint.onSelect ? theme.text.action[hint.tone ?? "primary"].base : theme.text.base }}>
               <b>{hint.label}</b>{" "}
             </span>
             <span style={{ fg: theme.text.muted }}>{hint.shortcut}</span>

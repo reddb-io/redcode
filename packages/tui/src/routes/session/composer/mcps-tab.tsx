@@ -230,6 +230,7 @@ export function McpsTab(props: { sessionID: string }) {
               },
               {
                 label: "turn off",
+                tone: "destructive" as const,
                 shortcut: shortcuts.get("composer.mcp.remove") ?? "",
                 onSelect: () => unload(current()!),
               },

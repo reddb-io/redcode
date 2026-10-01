@@ -5,6 +5,7 @@ export interface ComposerHint {
   label: string
   shortcut: string
   onSelect?: () => void
+  tone?: "destructive"
 }
 
 export interface ComposerTab {
