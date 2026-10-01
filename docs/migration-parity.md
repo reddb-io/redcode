@@ -171,6 +171,15 @@ budget totals mark their usage as unpriced rather than assuming it is free.
 The required database regression covers descendant isolation, repeated reads,
 Goal baseline subtraction, unknown pricing, and parent budget enforcement.
 
+Evaluation accounting also retains the usage of each schema-valid S1 response
+before semantic answer validation. If answers are missing or a later batch
+fails, the evaluation remains unavailable with no accepted answers, while its
+observed usage persists and contributes to Session and Goal budgets. Unknown
+usage from transport failures or schema-invalid responses is not estimated.
+Loopback HTTP/database regressions exercise both gate and classification
+failures, partial compaction batches, fresh retries, and successful cache reuse.
+These corrections are on `main`, pending the next patch release after 0.70.2.
+
 ## Redcode 0.70.2 release verification (2026-09-30)
 
 The [release workflow](https://github.com/reddb-io/redcode/actions/runs/36806030244)

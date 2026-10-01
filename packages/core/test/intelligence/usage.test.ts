@@ -40,8 +40,11 @@ const configure = (baseURL: string) =>
       }),
       (previous) =>
         Effect.sync(() => {
-          if (previous === undefined) delete process.env.REDCODE_REASONING
-          else process.env.REDCODE_REASONING = previous
+          if (previous === undefined) {
+            delete process.env.REDCODE_REASONING
+            return
+          }
+          process.env.REDCODE_REASONING = previous
         }),
     )
     const db = (yield* Database.Service).db
