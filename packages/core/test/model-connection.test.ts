@@ -164,7 +164,7 @@ it.effect("a cold connection persists every catalog chunk and reopens while its 
     Effect.gen(function* () {
       const state = { offline: false, failures: 0 }
       const catalog = Array.from({ length: 205 }, (_, index) => ({
-        id: `router/model-${index}`,
+        id: Model.ID.make(`router/model-${index}`),
         context_length: 32_000,
       }))
       const server = yield* Effect.acquireRelease(
