@@ -79,6 +79,18 @@ describe("ConfigNormalize", () => {
     expect(Duration.toMillis(info.warming.duration ?? Duration.zero)).toBe(1_800_000)
   })
 
+  test("preserves explicit enabled and disabled reasoning experiments", () => {
+    for (const enabled of [true, false]) {
+      const experimental = {
+        reasoning_verification: enabled,
+        reasoning_tool_selection: enabled,
+        reasoning_context_curation: enabled,
+        reasoning_learning: enabled,
+      }
+      expect(normalized({ experimental }).encoded.experimental).toEqual(experimental)
+    }
+  })
+
   test("preserves arbitrary JSON-round-tripped native configuration", () => {
     FastCheck.assert(
       FastCheck.property(Schema.toArbitrary(Info)(FastCheck), (info) => {
@@ -378,7 +390,12 @@ describe("ConfigNormalize", () => {
         prune: true,
       },
     })
-    expect(result.encoded.compaction).toEqual({ auto: false, prune: true, keep: { tokens: 2000, turns: 3 }, buffer: 4000 })
+    expect(result.encoded.compaction).toEqual({
+      auto: false,
+      prune: true,
+      keep: { tokens: 2000, turns: 3 },
+      buffer: 4000,
+    })
     expect(result.diagnostics.map((item) => [item.kind, item.path])).toEqual([
       ["conflict", ["compaction", "keep", "tokens"]],
       ["conflict", ["compaction", "keep", "turns"]],

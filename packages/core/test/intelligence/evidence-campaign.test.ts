@@ -136,7 +136,8 @@ describe("offline evidence campaign", () => {
     const heldout = cases.filter((item) => item.split === "heldout")
     expect(calibration).toHaveLength(10)
     expect(heldout).toHaveLength(10)
-    expect(heldout.some((item) => calibration.some((before) => before.family === item.family))).toBe(false)
+    const families = new Set<string>(calibration.map((item) => item.family))
+    expect(heldout.some((item) => families.has(item.family))).toBe(false)
   })
 
   edits.forEach((fixture) =>

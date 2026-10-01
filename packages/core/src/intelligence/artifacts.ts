@@ -17,8 +17,7 @@ const make = Effect.gen(function* () {
     )
 
   const save = Effect.fn("IntelligenceArtifacts.save")(function* (artifact: Intelligence.Artifact) {
-    const value = yield* Schema.decodeUnknownEffect(Schema.UnknownFromJsonString)(JSON.stringify(artifact)).pipe(
-      Effect.flatMap(Schema.decodeUnknownEffect(Schema.Json)),
+    const value = yield* Schema.decodeUnknownEffect(Schema.fromJsonString(Schema.Json))(JSON.stringify(artifact)).pipe(
       Effect.mapError(() => new IntelligenceEvaluation.Error({ message: "Invalid reasoning artifact" })),
     )
     yield* db

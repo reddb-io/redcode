@@ -148,17 +148,23 @@ const layer = Layer.effect(
       const permissions = Permission.forAgent(agent.info, session.permissions)
       const codeMode = CodeModeTool.gate(Config.latestExperimental(yield* config.entries(), "code_mode"))
       const tools = yield* registry.snapshot(permissions, { codeMode })
-      const settings = yield* intelligence.read(sessionID)
-      const user = (yield* store.messages({ sessionID, type: "user", limit: 1 }))[0]
+      const settings = yield* intelligence
+        .read(sessionID)
+        .pipe(Effect.orElseSucceed(() => IntelligenceEvaluation.defaults))
+      const user = (yield* store
+        .messages({ sessionID, type: "user", limit: 1 })
+        .pipe(Effect.orElseSucceed(() => [])))[0]
       const classified =
         user &&
         IntelligenceEvaluation.mode(settings) === "dual" &&
         Config.latestExperimental(yield* config.entries(), "reasoning_tool_selection") === true
-          ? (yield* intelligence.history(sessionID, {
-              operation: "prompt_classification",
-              subjectID: user.id,
-              limit: 1,
-            }))[0]
+          ? (yield* intelligence
+              .history(sessionID, {
+                operation: "prompt_classification",
+                subjectID: user.id,
+                limit: 1,
+              })
+              .pipe(Effect.orElseSucceed(() => [])))[0]
           : undefined
       const preferred = IntelligenceClassification.toolNamespace(classified)
       const legacy = yield* RedcodeLegacyInstructions.load(db, sessionID)

@@ -168,6 +168,7 @@ export function createFetch(override?: FetchHandler, events?: ReturnType<typeof 
         effective: { reasoning: "single", source: "config" },
       })
     if (url.pathname === "/api/experimental/intelligence/history") return json([])
+    if (url.pathname === "/api/experimental/intelligence/artifacts") return json([])
     if (url.pathname === "/api/session" && request.method === "POST") {
       const input = (await request.json()) as Pick<SessionInfo, "id" | "title" | "agent" | "model" | "location">
       const created: SessionInfo = {

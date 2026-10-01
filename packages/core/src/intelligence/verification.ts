@@ -1,10 +1,11 @@
 export * as IntelligenceVerification from "./verification.js"
 
-import { Effect } from "effect"
-import type { SessionMessage } from "../session/message.js"
+import { Effect, Option, Schema } from "effect"
+import { SessionMessage } from "../session/message.js"
 import { Tool } from "../tool.js"
 
 export const KEY = "responseVerification"
+const Marker = Schema.Struct({ userID: SessionMessage.ID })
 const READ_ONLY = new Set(["read", "glob", "grep", "session_history"])
 
 /** Durable admission survives restart/compaction; a new user request supersedes it. */
@@ -14,9 +15,8 @@ export function state(messages: ReadonlyArray<SessionMessage.Info>) {
   const at = messages.findLastIndex((message) => message.type === "synthetic" && message.metadata?.[KEY] !== undefined)
   const marker = messages[at]
   if (marker?.type !== "synthetic") return undefined
-  const payload = marker.metadata?.[KEY]
-  if (typeof payload !== "object" || payload === null || Array.isArray(payload) || payload.userID !== user.id)
-    return undefined
+  const payload = Schema.decodeUnknownOption(Marker)(marker.metadata?.[KEY])
+  if (Option.isNone(payload) || payload.value.userID !== user.id) return undefined
   return { pending: !messages.slice(at + 1).some((message) => message.type === "assistant"), markerID: marker.id }
 }
 

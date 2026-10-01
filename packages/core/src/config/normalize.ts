@@ -540,9 +540,15 @@ function normalizeExperimental(
       if (own(experimental, "turn_steps")) {
         // V1 spelled the ceiling as { wrap_up_at, stop_at }; only the wall carries over.
         const legacy = isRecord(experimental.turn_steps) ? experimental.turn_steps.stop_at : experimental.turn_steps
-        const value = legacy === undefined
-          ? undefined
-          : decodeEncoded(ConfigExperimental.Info.fields.turn_steps, legacy, ["experimental", "turn_steps"], diagnostics)
+        const value =
+          legacy === undefined
+            ? undefined
+            : decodeEncoded(
+                ConfigExperimental.Info.fields.turn_steps,
+                legacy,
+                ["experimental", "turn_steps"],
+                diagnostics,
+              )
         if (value !== undefined) result.turn_steps = value
       }
       if (own(experimental, "turn_stall")) {
@@ -571,6 +577,21 @@ function normalizeExperimental(
           diagnostics,
         )
         if (value !== undefined) result.model_suggestions = value
+      }
+      for (const key of [
+        "reasoning_verification",
+        "reasoning_tool_selection",
+        "reasoning_context_curation",
+        "reasoning_learning",
+      ] as const) {
+        if (!own(experimental, key)) continue
+        const value = decodeEncoded(
+          ConfigExperimental.Info.fields[key],
+          experimental[key],
+          ["experimental", key],
+          diagnostics,
+        )
+        if (value !== undefined) result[key] = value
       }
       if (own(experimental, "code_mode")) {
         const value = decodeEncoded(

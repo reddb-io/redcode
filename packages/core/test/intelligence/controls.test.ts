@@ -61,6 +61,13 @@ test("durable verification permits one Step and new input supersedes it", () => 
   expect(IntelligenceVerification.state([user("msg_request"), marker(), user("msg_new")])).toBeUndefined()
 })
 
+test("malformed or unrelated verification metadata cannot admit a Step", () => {
+  for (const payload of [null, [], "msg_request", { userID: 3 }, { userID: "invalid" }, { userID: "msg_other" }]) {
+    const invalid = { ...marker(), metadata: { [IntelligenceVerification.KEY]: payload } }
+    expect(IntelligenceVerification.state([user("msg_request"), invalid])).toBeUndefined()
+  }
+})
+
 test("verification denies invasive tools at execution, not just in listings", () => {
   const calls: string[] = []
   const snapshot: Tool.Snapshot = {
@@ -106,8 +113,8 @@ test("curation preserves calls/results together, live requests and edit evidence
     },
   })
   const curated = SessionContextCuration.apply(messages, record)
-  expect(curated.omitted.map((item) => item.messageID)).toEqual(["msg_read"])
-  expect(curated.messages.map((message) => message.id)).toEqual([
+  expect(curated.omitted.map((item) => String(item.messageID))).toEqual(["msg_read"])
+  expect(curated.messages.map((message) => String(message.id))).toEqual([
     "msg_old",
     "msg_edit",
     "msg_middle",

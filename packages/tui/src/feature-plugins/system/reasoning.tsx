@@ -71,7 +71,11 @@ export default Plugin.define({
                 if (!choice) return
                 await context.client["server.intelligence"]
                   .sessionMode({ sessionID: route.sessionID, reasoning: choice === "default" ? null : choice })
-                  .then(() => refetch())
+                  .then(async () => {
+                    context.data.session.invalidate(route.sessionID)
+                    await context.data.session.sync(route.sessionID)
+                    await refetch()
+                  })
                   .catch((error) => context.ui.toast.show({ variant: "error", message: errorMessage(error) }))
               },
             },
@@ -261,8 +265,15 @@ function IntelligenceIndicator(props: {
       ),
   )
   const [scoped] = createResource(
-    () => props.sessionID,
-    (sessionID) => props.context.client["server.intelligence"].status({ sessionID }, { signal: abort.signal }),
+    () =>
+      props.sessionID
+        ? {
+            sessionID: props.sessionID,
+            reasoning: props.context.data.session.get(props.sessionID)?.metadata?.reasoning,
+          }
+        : undefined,
+    (input) =>
+      props.context.client["server.intelligence"].status({ sessionID: input.sessionID }, { signal: abort.signal }),
   )
   const mode = () => scoped()?.effective.reasoning ?? props.status?.effective.reasoning
   const pending = () => props.status?.settings.onboarding !== "completed"

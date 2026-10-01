@@ -539,7 +539,7 @@ const layer = Layer.effect(
     const classify = Effect.fn("SessionRunner.classify")(function* (loaded: SessionContext.Loaded) {
       const sessionID = loaded.session.id
       const index = loaded.messages.findLastIndex((message) => message.type === "user")
-      const user = loaded.messages[index]
+      const user = (yield* store.messages({ sessionID, type: "user", limit: 1 }))[0]
       const settings = yield* intelligence.read(sessionID)
       const mode = IntelligenceEvaluation.mode(settings)
       if (user?.type !== "user" || !settings.enabled || mode === "single") return undefined
@@ -550,7 +550,7 @@ const layer = Layer.effect(
       if (stored && stored.mode === mode) return mode === "observe" ? undefined : stored
       // A classification still running from an earlier Step is not awaited again.
       if (yield* FiberMap.has(classifications, user.id)) return undefined
-      const preceding = loaded.messages.slice(0, index)
+      const preceding = index < 0 ? loaded.messages : loaded.messages.slice(0, index)
       const request = IntelligenceClassification.evaluation({
         sessionID,
         scrub: yield* vault.scrubber(loaded.session.projectID),
@@ -806,10 +806,10 @@ const layer = Layer.effect(
         return { type: "none" as const, memory }
       const recent = (yield* store.messages({ sessionID, order: "desc", limit: RECENT })).toReversed()
       const index = recent.findLastIndex((message) => message.type === "user")
-      const user = recent[index]
+      const user = (yield* store.messages({ sessionID, type: "user", limit: 1 }))[0]
       if (user?.type !== "user") return { type: "none" as const, memory }
       const current: ResponseReview = memory.userID === user.id ? memory : { userID: user.id, attempts: 0, issues: [] }
-      const work = recent.slice(index + 1)
+      const work = index < 0 ? recent : recent.slice(index + 1)
       const candidate = work.findLast((message) => message.type === "assistant")
       const text = candidate?.type === "assistant" ? responseText(candidate) : ""
       if (!candidate || !text) {
@@ -1120,20 +1120,32 @@ const layer = Layer.effect(
                 )
                 .pipe(Effect.orElseSucceed(() => undefined))
             : undefined
-        const curated =
+        const proposed =
           (yield* dual(sessionID)) && !(yield* SessionInbox.has(db, sessionID, "steer"))
             ? SessionContextCuration.apply(loaded.messages, curation)
             : { messages: loaded.messages, omitted: [] }
-        if (curated.omitted.length && curation)
-          yield* artifacts.save({
-            type: "curation",
-            id: curation.id,
-            sessionID,
-            subjectID: curation.subjectID ?? sessionID,
-            policy: curation.policy,
-            created: curation.created,
-            omitted: curated.omitted,
-          })
+        const recorded =
+          proposed.omitted.length && curation
+            ? yield* artifacts
+                .save({
+                  type: "curation",
+                  id: curation.id,
+                  sessionID,
+                  subjectID: curation.subjectID ?? sessionID,
+                  policy: curation.policy,
+                  created: curation.created,
+                  omitted: proposed.omitted,
+                })
+                .pipe(
+                  Effect.as(true),
+                  Effect.catchCause((cause) =>
+                    Effect.logWarning("Context curation manifest unavailable", { sessionID, cause }).pipe(
+                      Effect.as(false),
+                    ),
+                  ),
+                )
+            : false
+        const curated = recorded ? proposed : { messages: loaded.messages, omitted: [] }
         const transcript = SessionModelRequest.baseTranscript({
           agent: loaded.agent.info,
           model: loaded.model,
@@ -1385,6 +1397,7 @@ export const node = makeLocationNode({
     Skill.node,
     Snapshot.node,
     ToolOutput.node,
+    Tool.node,
     Database.node,
     DesignStore.node,
     Location.node,

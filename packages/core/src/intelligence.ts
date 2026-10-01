@@ -66,7 +66,8 @@ const make = Effect.gen(function* () {
     if (change.reasoning === null) delete metadata.reasoning
     if (change.reasoning !== null) metadata.reasoning = change.reasoning
     yield* bus.publish(SessionEvent.MetadataUpdated, { sessionID: id, metadata })
-    return yield* read(sessionID)
+    const selected = yield* read(sessionID)
+    return { ...selected, reasoning: IntelligenceEvaluation.mode(selected) }
   })
 
   const recordEvaluation = Effect.fn("Intelligence.recordEvaluation")(function* (
