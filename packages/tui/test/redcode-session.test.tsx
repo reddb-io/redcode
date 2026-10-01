@@ -144,6 +144,16 @@ test("a resumed prototype keeps its review address visible without launching ano
   expect(requests.length).toBe(count)
   expect(requests.length).toBeGreaterThan(0)
   expect(requests.every((url) => url === `/design/session/${session.id}/link`)).toBe(true)
+  setup.events.emit({
+    id: "evt_design_handoff",
+    created: 3,
+    type: "session.agent.selected",
+    durable: { aggregateID: session.id, seq: 3, version: 1 },
+    data: { sessionID: session.id, agent: "plan" },
+  })
+  await setup.waitForFrame((frame) => !frame.includes("» Preview:"))
+  expect(setup.renderer.root.findDescendantById("session-design-review-link")).toBeUndefined()
+  expect(requests.length).toBe(count)
 })
 
 test("session location stays visible without the sidebar while Build runs and moves to its worktree", async () => {

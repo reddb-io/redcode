@@ -155,7 +155,7 @@ async function renderMonitors(initial: MonitorPublicInfo[]) {
   }
 }
 
-test("the Monitors tab lists running monitors first with time left, results and delivery", async () => {
+test("the Monitors tab lists live monitors and omits settled results", async () => {
   const view = await renderMonitors([
     monitor({
       id: "done",
@@ -172,11 +172,12 @@ test("the Monitors tab lists running monitors first with time left, results and 
   try {
     const frame = view.app.captureCharFrame()
     expect(frame).toContain("Monitors")
-    expect(frame.indexOf("probe: GET https://example.com/health")).toBeLessThan(frame.indexOf("gh run view 42"))
+    expect(frame).toContain("probe: GET https://example.com/health")
+    expect(frame).not.toContain("gh run view 42")
     expect(frame).toMatch(/running\s+(10m 0s|9m \d+s) left/)
-    expect(frame).toContain("succeeded")
-    expect(frame).toContain("delivered")
-    expect(frame).toContain("3 checks · exit code 0")
+    expect(frame).not.toContain("succeeded")
+    expect(frame).not.toContain("delivered")
+    expect(frame).not.toContain("3 checks · exit code 0")
     expect(frame).toContain("1 monitor")
   } finally {
     view.app.renderer.destroy()
@@ -215,7 +216,8 @@ test("the Monitors tab expands evidence and stops a running monitor through the 
     await view.app.renderOnce()
     expect(view.cancelled).toEqual(["live"])
     const frame = view.app.captureCharFrame()
-    expect(frame).toContain("cancelled")
+    expect(frame).toContain("No active monitors in this session")
+    expect(view.app.renderer.root.findDescendantById("monitor-stop-live")).toBeUndefined()
     expect(frame).not.toContain("1 monitor")
     // A cancellation the user asked for is not announced as a finish.
     expect(view.toast()?.message).toBe("Stopped monitoring watch-build")
@@ -285,6 +287,8 @@ test("a monitor that finishes toasts only while the Monitors tab is out of sight
     )
     await view.settle((list) => list.some((info) => info.id === "first" && info.status === "succeeded"))
     expect(view.toast()).toBeNull()
+    expect(view.app.captureCharFrame()).not.toContain("first-check")
+    expect(view.app.renderer.root.findDescendantById("monitor-stop-second")).toBeDefined()
 
     view.setOpen(false)
     await view.app.renderOnce()
@@ -328,7 +332,7 @@ test("a session without monitors shows no indicator and an empty tab", async () 
   const view = await renderMonitors([])
   try {
     const frame = view.app.captureCharFrame()
-    expect(frame).toContain("No monitors in this session")
+    expect(frame).toContain("No active monitors in this session")
     view.setOpen(false)
     await view.app.renderOnce()
     expect(view.app.captureCharFrame()).not.toContain("monitor")

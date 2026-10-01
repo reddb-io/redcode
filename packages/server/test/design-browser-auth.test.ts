@@ -6,6 +6,72 @@ import { it } from "../../core/test/lib/effect"
 import { DesignAccess } from "../src/design-access"
 import { startServer } from "./fixture/server"
 
+it.live("approval into Plan retires preview routes while keeping the immutable approval readable", () =>
+  Effect.gen(function* () {
+    const directory = yield* Effect.acquireDisposable(Effect.promise(() => tmpdir()))
+    const server = yield* startServer(directory.path)
+    const sessionID = "ses_design_retired"
+    const headers = { ...server.headers, "content-type": "application/json" }
+    const request = (pathname: string, input?: unknown) =>
+      Effect.promise(() =>
+        fetch(new URL(pathname, server.base), {
+          headers,
+          method: input === undefined ? "GET" : "POST",
+          body: input === undefined ? undefined : JSON.stringify(input),
+        }),
+      )
+    const created = yield* request("/api/session", {
+      id: sessionID,
+      agent: "design",
+      location: { directory: directory.path },
+      permissions: [{ action: "*", resource: "*", effect: "allow" }],
+    })
+    expect(created.status).toBe(200)
+    yield* Effect.promise(() => created.arrayBuffer())
+    const designResponse = yield* request(`/design/session/${sessionID}`, {
+      name: "Profile",
+      journey: "new",
+      engine: "html",
+      kind: "screen",
+    })
+    const document = yield* Effect.promise(() => designResponse.json()).pipe(
+      Effect.flatMap(Schema.decodeUnknownEffect(Design.Info)),
+    )
+    const published = yield* request(`/design/session/${sessionID}/${document.id}/revision`, { name: "Profile" })
+    const revision = yield* Effect.promise(() => published.json()).pipe(
+      Effect.flatMap(Schema.decodeUnknownEffect(Design.Revision)),
+    )
+    const approved = yield* request(`/design/session/${sessionID}/${document.id}/approve`, { revision: revision.id })
+    expect(approved.status).toBe(200)
+    expect(yield* Effect.promise(() => approved.json())).toMatchObject({ agent: "plan", revision: revision.id })
+    yield* Effect.forEach(
+      ["link", "review", "feed", `${document.id}/present`, `${document.id}/revision/${revision.id}/preview`],
+      (route) =>
+        Effect.gen(function* () {
+          const response = yield* request(`/design/session/${sessionID}/${route}`)
+          expect(response.status).toBe(410)
+          expect(response.headers.get("www-authenticate")).toBeNull()
+          yield* Effect.promise(() => response.arrayBuffer())
+        }),
+    )
+    const launch = yield* request(`/design/session/${sessionID}/launch`, { explicit: true })
+    expect(launch.status).toBe(410)
+    yield* Effect.promise(() => launch.arrayBuffer())
+    const record = yield* request(`/design/session/${sessionID}/${document.id}/approval/${revision.id}`)
+    expect(record.status).toBe(200)
+    expect(yield* Effect.promise(() => record.json())).toMatchObject({ revision: { id: revision.id } })
+    const other = yield* request("/api/session", {
+      id: "ses_design_other",
+      agent: "design",
+      location: { directory: directory.path },
+    })
+    yield* Effect.promise(() => other.arrayBuffer())
+    const otherLink = yield* request("/design/session/ses_design_other/link")
+    expect(otherLink.status).toBe(200)
+    yield* Effect.promise(() => otherLink.arrayBuffer())
+  }),
+)
+
 it.live("signed Design pages exchange tickets for scoped cookies without a Basic credentials prompt", () =>
   Effect.gen(function* () {
     const directory = yield* Effect.acquireDisposable(Effect.promise(() => tmpdir()))

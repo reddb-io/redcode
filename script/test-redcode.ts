@@ -96,6 +96,8 @@ const suites = {
     "test/redcode-workflows.test.tsx",
     "test/redcode-session.test.tsx",
     "test/cli/tui/monitors-tab.test.tsx",
+    "test/cli/tui/monitors-model.test.ts",
+    "test/cli/tui/session-terminals.test.tsx",
     "test/redcode-theme.test.ts",
     "test/feature-plugins/sidebar-context.test.tsx",
     "test/feature-plugins/sidebar-footer.test.tsx",

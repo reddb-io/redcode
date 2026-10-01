@@ -34,13 +34,9 @@ export function monitorDelivery(delivery: MonitorPublicInfo["delivery"]) {
   return DELIVERIES[delivery]
 }
 
-/** Running monitors first, newest started first; finished ones after them, most recently settled first. */
+/** Only live monitors belong in the operational drawer, newest started first. */
 export function sortMonitors(list: readonly MonitorPublicInfo[]) {
-  return list.toSorted(
-    (a, b) =>
-      Number(b.status === "running") - Number(a.status === "running") ||
-      (a.status === "running" ? b.created - a.created : b.updated - a.updated),
-  )
+  return list.filter((info) => info.status === "running").toSorted((a, b) => b.created - a.created)
 }
 
 export function runningMonitors(list: readonly MonitorPublicInfo[]) {

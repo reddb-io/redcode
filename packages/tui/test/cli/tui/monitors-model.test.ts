@@ -43,14 +43,19 @@ describe("monitor rows", () => {
     expect(monitorDelivery("suppressed")).toBe("not delivered")
   })
 
-  test("sorts running monitors first, newest first, then settled ones by last update", () => {
+  test("lists only running monitors, newest first", () => {
     const sorted = sortMonitors([
       monitor({ id: "old-done", status: "succeeded", created: 1, updated: 10 }),
       monitor({ id: "old-running", created: 2 }),
       monitor({ id: "new-done", status: "failed", created: 3, updated: 30 }),
       monitor({ id: "new-running", created: 4 }),
     ])
-    expect(sorted.map((info) => info.id)).toEqual(["new-running", "old-running", "new-done", "old-done"])
+    expect(sorted.map((info) => info.id)).toEqual(["new-running", "old-running"])
+  })
+
+  test("all terminal monitor outcomes leave the operational list", () => {
+    const statuses = ["succeeded", "failed", "timed_out", "cancelled", "interrupted", "expired"] as const
+    expect(sortMonitors(statuses.map((status) => monitor({ id: status, status })))).toEqual([])
   })
 
   test("counts down to the deadline only while running", () => {

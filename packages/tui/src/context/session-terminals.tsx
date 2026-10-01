@@ -1,5 +1,5 @@
 import type { PersistentPtyInfo } from "@opencode/client"
-import { createSignal, onCleanup } from "solid-js"
+import { createEffect, createSignal, onCleanup } from "solid-js"
 import { createSimpleContext } from "./helper"
 import { useClient } from "./client"
 import { useConfig } from "../config"
@@ -29,15 +29,36 @@ export const { use: useSessionTerminals, provider: SessionTerminalsProvider } = 
 
     const refresh = async (sessionID: string) => {
       if (!terminals[sessionID]) updateTerminals((draft) => (draft[sessionID] = []))
-      const result = await client.api.experimental.persistentPty.list({ sessionID })
+      const result = (await client.api.experimental.persistentPty.list({ sessionID })).filter(
+        (terminal) => terminal.status === "running",
+      )
       updateTerminals((draft) => (draft[sessionID] = result))
       const selected = store.sessions[sessionID]
       if (!selected || result.some((terminal) => terminal.id === selected)) return
+      if (focus() === selected) setFocus(undefined)
       await update((draft) => {
         if (draft.sessions[sessionID] !== selected) return
         draft.sessions[sessionID] = null
       })
     }
+
+    // Unattached terminals have no exit event subscription. Reconcile while any session still has a live pane.
+    createEffect(() => {
+      if (!config.session.terminal || !Object.values(terminals).some((list) => list.length > 0)) return
+      const polling = new Set<string>()
+      const timer = setInterval(() => {
+        Object.entries(terminals)
+          .filter(([, list]) => list.length > 0)
+          .forEach(([sessionID]) => {
+            if (polling.has(sessionID)) return
+            polling.add(sessionID)
+            void refresh(sessionID)
+              .catch((error) => console.error("Failed to refresh persistent terminal panes", error))
+              .finally(() => polling.delete(sessionID))
+          })
+      }, 2_000)
+      onCleanup(() => clearInterval(timer))
+    })
 
     const selectTerminal = async (sessionID: string, ptyID: string | null) => {
       if (ptyID !== null && !terminals[sessionID]?.some((terminal) => terminal.id === ptyID)) return

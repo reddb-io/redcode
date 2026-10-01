@@ -80,6 +80,7 @@ export function mountReview(host: HTMLElement, options: ReviewOptions) {
     options.endpoint ?? `${options.base.replace(/\/$/, "")}/api/session/${encodeURIComponent(options.sessionID)}/design`
   const state = {
     creating: false,
+    mode: "",
     design: undefined as Design.Info | undefined,
     revision: "",
     /** A revision the reader picked whose load is still queued behind another task, such as a poll. */
@@ -1718,7 +1719,11 @@ details{border-top:1px solid var(--edge);padding:14px 0}summary{cursor:pointer;f
         state.idleCheck = setTimeout(agentIdle, 2000)
       return
     }
-    if (event.type === "agent") return
+    if (event.type === "agent") {
+      state.mode = event.agent
+      if (state.mode !== "design" && state.design) void run(refresh, undefined, true)
+      return
+    }
     upsert(event)
     if (event.type === "user" && !event.pending) {
       // Delivered into a turn: from here on the agent's working and idle states are about this operation.
@@ -1863,6 +1868,10 @@ details{border-top:1px solid var(--edge);padding:14px 0}summary{cursor:pointer;f
       drawVariants()
     }
     state.design = current
+    if (current.ended && current.approvedRevision && state.mode && state.mode !== "design") {
+      closeReview()
+      return
+    }
     loadingEvent({ type: "design", revision: current.revision ?? undefined, at: Date.now() })
     drawWidths()
     // Lock stale revision actions before the remaining refresh requests can yield.
@@ -2297,16 +2306,24 @@ details{border-top:1px solid var(--edge);padding:14px 0}summary{cursor:pointer;f
           reason: copy.approvalRecordAll,
         })),
       })
-    await api(`/${state.design!.id}/approve`, "POST", state.approving)
+    const approval = await api<{ agent: string }>(`/${state.design!.id}/approve`, "POST", state.approving)
     element<HTMLDialogElement>("approve-dialog").close()
+    if (approval.agent === "plan") {
+      closeReview()
+      return
+    }
     await refresh()
     status(copy.approved, "approved", "success")
   })
   element("cancel-approve").onclick = () => element<HTMLDialogElement>("approve-dialog").close()
   click("confirm-approve", async () => {
     if (!state.approving) return
-    await api(`/${state.design!.id}/approve`, "POST", state.approving)
+    const approval = await api<{ agent: string }>(`/${state.design!.id}/approve`, "POST", state.approving)
     element<HTMLDialogElement>("approve-dialog").close()
+    if (approval.agent === "plan") {
+      closeReview()
+      return
+    }
     await refresh()
     status(copy.approved, "approved", "success")
   })
@@ -3375,6 +3392,7 @@ details{border-top:1px solid var(--edge);padding:14px 0}summary{cursor:pointer;f
   }, 1000)
   void run(refresh)
   const dispose = () => {
+    if (state.stopped) return
     save()
     clearInterval(ticker)
     clearTimeout(loading.reveal)
@@ -3394,6 +3412,14 @@ details{border-top:1px solid var(--edge);padding:14px 0}summary{cursor:pointer;f
     window.removeEventListener("blur", blurred)
     window.removeEventListener("message", message)
     root.replaceChildren()
+  }
+  function closeReview() {
+    const styles = [...root.querySelectorAll("style")]
+    dispose()
+    const message = document.createElement("p")
+    message.textContent = copy.approved
+    message.style.padding = "24px"
+    root.append(...styles, message)
   }
   return Object.assign(dispose, {
     updateCopy(next: ReviewCopy) {

@@ -222,6 +222,25 @@ try {
   assert.ok(interactionMs < 2000, `Prototype click took ${interactionMs}ms`)
   assert.deepEqual(errors, [])
   assert.equal(state.calls.filter((call) => call.startsWith("POST ")).length, 0)
+  // A CLI approval moves the live session to Plan; the open browser clears its prototype and feed.
+  state.document = { ...state.document, approvedRevision: "rev_new", ended: true }
+  state.feed.enqueue(
+    new TextEncoder().encode(
+      `data: ${JSON.stringify({
+        type: "agent",
+        seq: 51,
+        at: 51,
+        agent: "plan",
+      })}\n\n`,
+    ),
+  )
+  await page.waitForFunction(() => {
+    const root = document.querySelector("#review")!.shadowRoot!
+    return !root.querySelector("iframe") && root.textContent?.includes("Design approved")
+  })
+  const closedRequests = state.calls.length
+  await page.clock.runFor(15000)
+  assert.equal(state.calls.length, closedRequests, "Closed Design reviews must stop polling")
   console.log(
     JSON.stringify({
       jobs: jobs.length,
@@ -234,6 +253,8 @@ try {
       interactionMs,
       browserErrors: errors.length,
       automaticPublications: 0,
+      closedPreviewFrames: await page.locator("iframe").count(),
+      closedPollingRequests: state.calls.length - closedRequests,
     }),
   )
 } finally {

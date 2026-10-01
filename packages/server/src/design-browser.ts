@@ -143,7 +143,19 @@ export const routes = (hosts: () => ReadonlyArray<string>, network: () => string
         const store = yield* DesignStore.Service
         return yield* store.configured(sessionID)
       }).pipe(instances.provide(session))
-      if (parts[0] === "link" && parts.length === 1 && request.method === "GET") {
+      const surface =
+          ["review", "feed", "link"].includes(parts[0] ?? "") ||
+          (parts[0] === "launch" && parts[1] !== "release") ||
+          parts[1] === "present" ||
+          (parts[1] === "revision" && parts[3] === "preview")
+        if (surface && session.agent !== "design") {
+          const ended = yield* Effect.gen(function* () {
+            const store = yield* DesignStore.Service
+            return (yield* store.list(sessionID)).some((document) => document.ended && !!document.approvedRevision)
+          }).pipe(instances.provide(session))
+          if (ended) return failure(410, "Design approved. Continue in the terminal with the implementation plan.")
+        }
+        if (parts[0] === "link" && parts.length === 1 && request.method === "GET") {
         if (!trusted) return failure(401, "Server authorization is required to create a review link")
         const design = yield* configured
         // A first download must not block the caller: the link to this server waits for the app on its own page.
@@ -386,7 +398,7 @@ function read(
       return HttpServerResponse.text(content, {
         contentType: "text/html",
         headers: {
-          "cache-control": "private, max-age=31536000, immutable",
+          "cache-control": "private, no-cache",
           "content-security-policy": previewCSP,
         },
       })

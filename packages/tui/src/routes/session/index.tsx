@@ -314,6 +314,7 @@ export function Session(props: {
   // A publish seen with launches disabled prints the review link once, not on every revision.
   const reviewLink = { shown: false }
   const [reviewAddress, setReviewAddress] = createSignal<string>()
+  const designActive = createMemo(() => session()?.agent === "design")
   const hasPublishedDesign = createMemo(() =>
     messages().some(
       (message) =>
@@ -331,13 +332,17 @@ export function Session(props: {
     const endpoint = client.endpoint
     const sessionID = route.sessionID
     setReviewAddress(undefined)
+    if (!designActive()) {
+      reviewLink.shown = false
+      return
+    }
     if (!endpoint || !hasPublishedDesign()) return
     let active = true
     onCleanup(() => {
       active = false
     })
     void getDesignReviewLink({ sessionID, endpoint }).then((review) => {
-      if (active) setReviewAddress(review?.url)
+      if (active && designActive()) setReviewAddress(review?.url)
     })
   })
   const reviewDesign = async (explicit: boolean) => {
@@ -347,6 +352,7 @@ export function Session(props: {
       return
     }
     const blocked = browserDisabled()
+    if (!explicit && !designActive()) return
     if (!explicit && blocked && reviewLink.shown) return
     if (!explicit && blocked) reviewLink.shown = true
     const notice = await openDesignReview({
@@ -361,7 +367,7 @@ export function Session(props: {
         return openDesignUrl(url, { configured: configuredDesignBrowser(config) })
       },
     })
-    if (notice?.url) setReviewAddress(notice.url)
+    if (notice?.url && designActive()) setReviewAddress(notice.url)
     if (notice && (explicit || !reviewLink.shown || notice.variant === "error"))
       toast.show({ variant: notice.variant, message: notice.message, duration: 8_000 })
     if (notice?.url) reviewLink.shown = true
@@ -1876,7 +1882,7 @@ export function Session(props: {
               </box>
             </Show>
             <box flexShrink={0}>
-              <Show when={reviewAddress()}>
+              <Show when={designActive() && reviewAddress()}>
                 {(url) => (
                   <text
                     id="session-design-review-link"

@@ -61,9 +61,7 @@ export function createSessionMonitors(props: { sessionID: () => string; onOpen: 
         (list) => {
           if (sessionID !== props.sessionID()) return
           if (!store.visible)
-            finishedMonitors(store.list, list).forEach((info) =>
-              toast.show({ ...finishToast(info), duration: 3_000, action: { label: "view", run: props.onOpen } }),
-            )
+            finishedMonitors(store.list, list).forEach((info) => toast.show({ ...finishToast(info), duration: 3_000 }))
           setStore("list", reconcile(list, { key: "id" }))
           setStore({ error: undefined, now: Date.now() })
         },
@@ -141,7 +139,7 @@ export function MonitorsTab(props: { monitors: SessionMonitors }) {
   const monitors = createMemo(() => sortMonitors(props.monitors.list()))
   const [selectedID, setSelectedID] = createSignal<string>()
   const [expanded, setExpanded] = createSignal<string>()
-  // Selection follows the monitor, not its row: a finish reorders the list.
+  // Selection follows the monitor while live rows arrive and leave.
   const selected = createMemo(() =>
     Math.max(
       0,
@@ -149,6 +147,11 @@ export function MonitorsTab(props: { monitors: SessionMonitors }) {
     ),
   )
   const current = createMemo(() => monitors()[selected()])
+  createEffect(() => {
+    const list = monitors()
+    if (selectedID() && !list.some((info) => info.id === selectedID())) setSelectedID(list[0]?.id)
+    if (expanded() && !list.some((info) => info.id === expanded())) setExpanded(undefined)
+  })
   const tone = (value: MonitorTone) => (value === "muted" ? theme.text.muted : theme.text.feedback[value].base)
   const [scroll, setScroll] = createSignal<ScrollBoxRenderable>()
 
@@ -279,7 +282,7 @@ export function MonitorsTab(props: { monitors: SessionMonitors }) {
             <text fg={props.monitors.error() ? theme.text.feedback.error.base : theme.text.muted}>
               {props.monitors.error()
                 ? ` Could not load monitors: ${props.monitors.error()}`
-                : " No monitors in this session"}
+                : " No active monitors in this session"}
             </text>
           </box>
         }
