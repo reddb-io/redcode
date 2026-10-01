@@ -63,7 +63,8 @@ for (const scenario of [
       },
     })
     await setup.ready
-    await setup.waitForFrame((frame) => frame.includes(session.title) && statuses.length > 0)
+    await setup.waitForFrame((frame) => !frame.includes("Opening session") && statuses.length > 0)
+    await setup.waitForFrame(() => Boolean(setup.renderer.root.findDescendantById("session-pane")))
     if (scenario.width === 80) setup.mockInput.pressKey("F6")
     await setup.waitForFrame(() => Boolean(setup.renderer.root.findDescendantById("session-sidebar-heading")))
     if (!scenario.label) {
