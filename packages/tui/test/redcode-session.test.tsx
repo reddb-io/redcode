@@ -41,18 +41,22 @@ for (const scenario of [
     expect(action.x + action.width).toBeLessThanOrEqual(scenario.width)
     const before = created.length
     await setup.mockMouse.click(action.x + 2, action.y)
-    await setup.waitForFrame(
-      (frame) => created.length === before + 1 && frame.includes(`New session ${scenario.shortcut}`),
-    )
+    await setup
+      .waitForFrame((frame) => created.length === before + 1 && frame.includes(`New session ${scenario.shortcut}`))
+      .catch((cause: unknown) => {
+        throw new Error(`Click: before=${before}, created=${created.join(",")}`, { cause })
+      })
     if (scenario.leader) setup.mockInput.pressKey(scenario.leader, { ctrl: true })
     if (scenario.key) setup.mockInput.pressKey(scenario.key)
     if (!scenario.key) {
       await setup.mockInput.typeText("/new")
       setup.mockInput.pressEnter()
     }
-    await setup.waitForFrame(
-      (frame) => created.length === before + 2 && frame.includes(`New session ${scenario.shortcut}`),
-    )
+    await setup
+      .waitForFrame((frame) => created.length === before + 2 && frame.includes(`New session ${scenario.shortcut}`))
+      .catch((cause: unknown) => {
+        throw new Error(`Shortcut: before=${before}, created=${created.join(",")}`, { cause })
+      })
     expect(new Set(created).size).toBe(created.length)
   })
 }
@@ -712,7 +716,7 @@ test.each([80, 160])("large MCP catalogs and tools scroll inside their panels at
   setup.mockInput.pressKey("p", { ctrl: true })
   await setup.waitForFrame((frame) => frame.includes("Commands"))
   await setup.mockInput.typeText("Open MCPs drawer")
-  await setup.waitForFrame((frame) => frame.includes("Open MCPs drawer"))
+  await setup.waitForFrame((frame) => (frame.match(/Open MCPs drawer/g)?.length ?? 0) >= 2)
   setup.mockInput.pressEnter()
   await setup.waitForFrame(() => setup.renderer.root.findDescendantById("composer-mcps-scroll")?.height === 5)
   const scroll = setup.renderer.root.findDescendantById("composer-mcps-scroll")
