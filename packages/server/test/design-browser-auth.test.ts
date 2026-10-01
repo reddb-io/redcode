@@ -71,8 +71,12 @@ it.live("signed Design pages exchange tickets for scoped cookies without a Basic
       headers: browserHeaders,
       body: JSON.stringify({ revision: "missing-revision" }),
     })
-    expect(invalidApproval.status).toBe(409)
-    yield* Effect.promise(() => invalidApproval.arrayBuffer())
+    expect({ status: invalidApproval.status, body: yield* Effect.promise(() => invalidApproval.json()) }).toMatchObject(
+      {
+        status: 409,
+        body: { message: "Approve the currently published revision" },
+      },
+    )
     const feedback = {
       id: "msg_design_delete_variant",
       revision: revision.id,
