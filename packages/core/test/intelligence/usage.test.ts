@@ -31,6 +31,19 @@ const serve = (fetch: (request: Request) => Response) =>
 
 const configure = (baseURL: string) =>
   Effect.gen(function* () {
+    // The test preload disables S1 globally; enable only this isolated fixture's scope.
+    yield* Effect.acquireRelease(
+      Effect.sync(() => {
+        const previous = process.env.REDCODE_REASONING
+        process.env.REDCODE_REASONING = "dual"
+        return previous
+      }),
+      (previous) =>
+        Effect.sync(() => {
+          if (previous === undefined) delete process.env.REDCODE_REASONING
+          else process.env.REDCODE_REASONING = previous
+        }),
+    )
     const db = (yield* Database.Service).db
     const credentials = yield* Credential.Service
     const intelligence = yield* Intelligence.Service
