@@ -243,20 +243,20 @@ test("many monitors and expanded evidence stay in the drawer scroll without movi
     const scroll = view.app.renderer.root.findDescendantById("composer-monitors-scroll")
     expect(scroll).toBeInstanceOf(ScrollBoxRenderable)
     if (!(scroll instanceof ScrollBoxRenderable)) throw new Error("Missing monitor scroll")
-    const controls = view.app.renderer.root.findDescendantById("monitor-stop-monitor-0")!
-    const controlsY = controls.y
+    const controls = () => view.app.renderer.root.findDescendantById("monitor-stop-monitor-0")!
+    const controlsY = controls().y
     expect(view.app.renderer.root.findDescendantById("composer-actions")?.height).toBe(1)
     expect(scroll.height).toBe(5)
     expect(scroll.scrollHeight).toBeGreaterThan(scroll.height)
     view.dispatch("composer.monitor.evidence")
     await view.app.renderOnce()
     expect(scroll.height).toBe(5)
-    expect(controls.y).toBe(controlsY)
+    expect(controls().y).toBe(controlsY)
     expect(view.app.captureCharFrame()).toContain("hide evidence")
     scroll.scrollBy(30)
     await view.app.renderOnce()
     expect(view.app.captureCharFrame()).toContain("evidence-line-30")
-    expect(controls.y).toBe(controlsY)
+    expect(controls().y).toBe(controlsY)
     view.dispatch("composer.monitor.evidence")
     await view.app.renderOnce()
     for (let index = 0; index < 39; index++) {

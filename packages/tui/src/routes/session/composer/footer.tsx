@@ -1,10 +1,17 @@
 import type { ScrollBoxRenderable } from "@opentui/core"
-import { For } from "solid-js"
+import { createMemo, For } from "solid-js"
 import { useTheme } from "../../../context/theme"
+import { stringWidth } from "../../../util/string-width"
 import type { ComposerHint } from "./context"
 
 export function ComposerFooter(props: { hints: ComposerHint[] }) {
   const theme = useTheme()
+  const width = createMemo(
+    () =>
+      1 +
+      props.hints.reduce((sum, hint) => sum + stringWidth(`${hint.label} ${hint.shortcut}`), 0) +
+      Math.max(0, props.hints.length - 1) * 2,
+  )
   let scroll: ScrollBoxRenderable | undefined
   return (
     <scrollbox
@@ -24,7 +31,7 @@ export function ComposerFooter(props: { hints: ComposerHint[] }) {
       scrollY={false}
       horizontalScrollbarOptions={{ visible: false }}
       verticalScrollbarOptions={{ visible: false }}
-      contentOptions={{ flexDirection: "row", gap: 2, paddingLeft: 1 }}
+      contentOptions={{ flexDirection: "row", gap: 2, paddingLeft: 1, width: width() }}
     >
       <For each={props.hints}>
         {(hint) => (
