@@ -4,9 +4,8 @@
   "compilerOptions": {
     "incremental": true,
     "noUncheckedIndexedAccess": false,
-    "tsBuildInfoFile": "node_modules/.ts-dist/tests.tsbuildinfo"
+    "tsBuildInfoFile": "node_modules/.ts-dist/browser.tsbuildinfo"
   },
-  "include": ["drizzle.config.ts", "script", "test"],
-  "exclude": ["script/design-review-smoke.ts"],
+  "include": ["script/design-review-smoke.ts"],
   "references": [{ "path": "./tsconfig.json" }]
 }

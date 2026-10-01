@@ -47,12 +47,14 @@ describe("toLLMMessages", () => {
       model,
     )
     expect(completed.map((message) => message.role)).toEqual(["assistant", "tool"])
-    expect(completed[1]?.content).toMatchObject({
-      type: "tool-result",
-      id: "jobs-call",
-      name: "design_jobs",
-      result: { type: "error" },
-    })
+    expect(completed[1]?.content).toMatchObject([
+      {
+        type: "tool-result",
+        id: "jobs-call",
+        name: "design_jobs",
+        result: { type: "error" },
+      },
+    ])
     expect(JSON.stringify(completed[1])).toContain("session_history")
     expect(JSON.stringify(completed[1])).toContain("msg_unfinished-design")
     expect(JSON.stringify(completed[1])).toContain("Do not claim verification or infer that its service is unavailable")
