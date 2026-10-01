@@ -37,12 +37,21 @@ for (const scenario of [
     await setup.ready
     await setup.waitForFrame((frame) => frame.includes(`New session ${scenario.shortcut}`))
     const action = setup.renderer.root.findDescendantById("prompt-new-session")!
+    const pane = setup.renderer.root.findDescendantById("session-pane")!
     expect(action.height).toBe(1)
     expect(action.x + action.width).toBeLessThanOrEqual(scenario.width)
     const before = created.length
     await setup.mockMouse.click(action.x + 2, action.y)
     await setup
-      .waitForFrame((frame) => created.length === before + 1 && frame.includes(`New session ${scenario.shortcut}`))
+      .waitForFrame((frame) => {
+        const current = setup.renderer.root.findDescendantById("session-pane")
+        return (
+          created.length === before + 1 &&
+          Boolean(current) &&
+          current !== pane &&
+          frame.includes(`New session ${scenario.shortcut}`)
+        )
+      })
       .catch((cause: unknown) => {
         throw new Error(`Click: before=${before}, created=${created.join(",")}`, { cause })
       })
