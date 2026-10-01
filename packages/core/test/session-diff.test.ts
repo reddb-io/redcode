@@ -202,9 +202,57 @@ describe("Session.diff", () => {
           expect((yield* sessions.diff({ sessionID: forked.id, context: 0 })).map(summarize)).toEqual([
             ["third.txt", "added", 1, 0],
           ])
+
+          // The sidebar follows the current Location; explicit historical ranges cannot cross repositories.
+          const destination = path.join(tmp.path, "destination")
+          yield* Effect.promise(async () => {
+            await fs.mkdir(destination)
+            await Bun.write(path.join(destination, "destination.txt"), "before\n")
+            await $`git init -q`.cwd(destination).quiet()
+            await $`git -c core.fsmonitor=false add .`.cwd(destination).quiet()
+          })
+          const target = yield* sessions.create({ location: { directory: AbsolutePath.make(destination) } })
+          yield* bus.publish(SessionEvent.Moved, {
+            sessionID: created.id,
+            location: target.location,
+            projectID: target.projectID,
+          })
+          expect(yield* diff({ scope: "session" })).toEqual([])
+          const movedPrompt = yield* prompt("Edit in the worktree")
+          yield* Effect.gen(function* () {
+            const plugins = yield* Plugin.Service
+            yield* plugins.awaitActivation
+            const snapshot = yield* Snapshot.Service
+            const before = yield* snapshot.capture()
+            if (!before) throw new Error("Destination start snapshot missing")
+            const assistantMessageID = SessionMessage.ID.create()
+            yield* bus.publish(SessionEvent.Step.Started, {
+              sessionID: created.id,
+              assistantMessageID,
+              agent: Agent.defaultID,
+              model: { id: Model.ID.make("test-model"), providerID: Provider.ID.make("test-provider") },
+              snapshot: before,
+              started: 0,
+            })
+            yield* Effect.promise(() => Bun.write(path.join(destination, "destination.txt"), "after\n"))
+            const after = yield* snapshot.capture()
+            yield* bus.publish(SessionEvent.Step.Ended, {
+              sessionID: created.id,
+              assistantMessageID,
+              finish: "stop",
+              ...usage,
+              snapshot: after,
+            })
+          }).pipe(Effect.provide(LocationServiceMap.Service.get(target.location)))
+          yield* idle("succeeded")
+          expect(yield* diff({ scope: "session" })).toEqual([["destination.txt", "modified", 1, 1]])
+          expect(yield* diff({ from: first, to: movedPrompt }).pipe(Effect.flip)).toMatchObject({
+            _tag: "Session.TurnRangeError",
+            message: "Turn range spans a location change",
+          })
         }).pipe(Effect.provide(LocationServiceMap.Service.get(created.location)))
       }),
     // Real Location/plugin startup and Git snapshots can exceed five seconds under CI load.
-    { timeout: 30_000 },
+    { timeout: 60_000 },
   )
 })

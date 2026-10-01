@@ -20,6 +20,40 @@ const model = Model.Ref.make({ id: Model.ID.make("model"), providerID: Provider.
 const build = Agent.defaultID
 
 describe("toLLMMessages", () => {
+  test("completed Steps explain unsettled tools while active tools remain pending", () => {
+    const assistant = SessionMessage.Assistant.make({
+      id: id("unfinished-design"),
+      type: "assistant",
+      agent: build,
+      model,
+      content: [
+        SessionMessage.AssistantTool.make({
+          type: "tool",
+          id: "jobs-call",
+          name: "design_jobs",
+          state: SessionMessage.ToolStateRunning.make({ status: "running", input: { id: "design_profile" } }),
+          time: { created },
+        }),
+      ],
+      time: { created },
+    })
+    expect(toLLMMessages([assistant], model).map((message) => message.role)).toEqual(["assistant"])
+    const completed = toLLMMessages(
+      [SessionMessage.Assistant.make({ ...assistant, time: { created, completed: created } })],
+      model,
+    )
+    expect(completed.map((message) => message.role)).toEqual(["assistant", "tool"])
+    expect(completed[1]?.content).toMatchObject({
+      type: "tool-result",
+      id: "jobs-call",
+      name: "design_jobs",
+      result: { type: "error" },
+    })
+    expect(JSON.stringify(completed[1])).toContain("session_history")
+    expect(JSON.stringify(completed[1])).toContain("msg_unfinished-design")
+    expect(JSON.stringify(completed[1])).toContain("Do not claim verification or infer that its service is unavailable")
+  })
+
   test("background user shells enter model context only through their completion notification", () => {
     const shell = SessionMessage.Shell.make({
       id: id("background-shell"),
@@ -807,7 +841,7 @@ Earlier work
               time: { created, completed: created },
             }),
           ],
-          time: { created, completed: created },
+          time: { created },
         }),
       ],
       model,

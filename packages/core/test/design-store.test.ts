@@ -1,7 +1,7 @@
 import { describe, expect, test } from "bun:test"
 import path from "node:path"
 import { mkdir, rm, symlink, writeFile } from "node:fs/promises"
-import { Effect, Layer } from "effect"
+import { Effect, Layer, Schema } from "effect"
 import { Design } from "@opencode/schema/design"
 import { Project } from "@opencode/schema/project"
 import { Session } from "@opencode/schema/session"
@@ -180,6 +180,42 @@ describe("DesignStore lifecycle", () => {
 })
 
 describe("DesignStore revisions", () => {
+  it.live("repeating an unchanged publication reuses the revision until the draft changes", () =>
+    Effect.gen(function* () {
+      yield* seed
+      const store = yield* DesignStore.Service
+      const created = yield* store.create(sessionID, checkout)
+      const first = yield* store.publish(sessionID, created.id, "Preview")
+      const repeated = yield* store.publish(sessionID, created.id, "Preview")
+      expect(repeated.id).toBe(first.id)
+      expect(yield* store.revisions(sessionID, created.id)).toHaveLength(1)
+      yield* store.update(sessionID, created.id, { brief: { ...created.brief, objective: "Updated objective" } })
+      const changed = yield* store.publish(sessionID, created.id, "Preview")
+      expect(changed.id).not.toBe(first.id)
+      expect(yield* store.revisions(sessionID, created.id)).toHaveLength(2)
+      yield* write(path.join(created.root, created.entry), "<main>Changed prototype</main>")
+      const edited = yield* store.publish(sessionID, created.id, "Preview")
+      expect(edited.id).not.toBe(changed.id)
+
+      const feedback = Schema.decodeUnknownSync(Design.Feedback)({
+        id: "msg_publication_round",
+        revision: edited.id,
+        text: "Review this",
+        items: [{ target: "main", text: "Check it" }],
+        assets: [],
+        snapshot: "",
+        delivery: "steer",
+        end: false,
+      })
+      yield* store.prepareFeedback(sessionID, created.id, feedback, () => "Review this")
+      yield* store.acknowledge(sessionID, created.id, feedback)
+      const reviewed = yield* store.publish(sessionID, created.id, "Preview")
+      expect(reviewed.id).not.toBe(edited.id)
+      expect((yield* store.get(sessionID, created.id)).rounds?.at(-1)?.published).toBe(reviewed.id)
+      expect((yield* store.publish(sessionID, created.id, "Preview")).id).toBe(reviewed.id)
+    }),
+  )
+
   it.live("publishes immutable revisions and restores an earlier one as a new revision", () =>
     Effect.gen(function* () {
       yield* seed

@@ -86,6 +86,7 @@ export function mountReview(host: HTMLElement, options: ReviewOptions) {
     choice: "",
     failedPreview: "",
     revisionInfo: undefined as Design.Revision | undefined,
+    revisions: [] as Design.Revision[],
     audits: [] as Design.Job[],
     notes: [] as Design.Feedback["items"][number][],
     params: {} as Design.ParamValues,
@@ -1658,9 +1659,22 @@ details{border-top:1px solid var(--edge);padding:14px 0}summary{cursor:pointer;f
     }
     if (bottom) list.scrollTop = list.scrollHeight
   }
+  const polling = { pending: false }
   const poll = () => {
-    if (!state.loading && !state.working && !state.creating && !document.hidden && !root.querySelector("dialog[open]"))
-      void run(refresh, undefined, true)
+    if (
+      polling.pending ||
+      state.loading ||
+      state.working ||
+      state.creating ||
+      document.hidden ||
+      root.querySelector("dialog[open]")
+    )
+      return
+    // Feed events can arrive in one burst before the queued refresh begins.
+    polling.pending = true
+    void run(refresh, undefined, true).finally(() => {
+      polling.pending = false
+    })
   }
   /**
    * The agent went idle after taking the operation up. It counts only once the agent is still idle a
@@ -1725,9 +1739,9 @@ details{border-top:1px solid var(--edge);padding:14px 0}summary{cursor:pointer;f
     if (event.revision !== state.revision && event.revision !== state.design?.revision) poll()
   }
   const chooseRevision = async (revisionID: string, keep = false) => {
-    const revision = await api<Design.Revision[]>(`/${state.design!.id}/revision`).then((items) =>
-      items.find((item) => item.id === revisionID),
-    )
+    const revision =
+      state.revisions.find((item) => item.id === revisionID) ??
+      (await api<Design.Revision[]>(`/${state.design!.id}/revision`)).find((item) => item.id === revisionID)
     if (!revision) return
     clearTimeout(loading.reveal)
     loadingEvent({ type: "load", revision: revisionID, at: Date.now(), quiet: keep })
@@ -1805,11 +1819,21 @@ details{border-top:1px solid var(--edge);padding:14px 0}summary{cursor:pointer;f
     drawSources(revision)
     drawParams()
   }
+  const picker = (id: string, items: { id: string; name: string }[]) => {
+    const select = element<HTMLSelectElement>(id)
+    if (
+      select.options.length === items.length &&
+      items.every(
+        (item, index) => select.options[index].value === item.id && select.options[index].textContent === item.name,
+      )
+    )
+      return
+    select.replaceChildren(...items.map((item) => new Option(item.name, item.id)))
+  }
+  const jobRows = new Map<string, { signature: string; row: HTMLElement }>()
   const refresh = async (designID = state.design?.id) => {
     const documents = await api<Design.Info[]>()
-    element("designs").innerHTML = documents
-      .map((item) => `<option value="${escape(item.id)}">${escape(item.name)}</option>`)
-      .join("")
+    picker("designs", documents)
     const current = documents.find((item) => item.id === designID) ?? documents.at(-1)
     // Without a design yet the brief is the page; one the agent creates replaces it on a later refresh.
     if (!current) {
@@ -1818,6 +1842,7 @@ details{border-top:1px solid var(--edge);padding:14px 0}summary{cursor:pointer;f
     }
     const changed = state.design?.id !== current.id
     const onLatest = !changed && !!state.revision && state.revision === state.design?.revision
+    const revisionChanged = changed || current.revision !== state.design?.revision
     if (changed) {
       // A pick from the design that was on screen means nothing for the one replacing it.
       state.choice = ""
@@ -1866,13 +1891,13 @@ details{border-top:1px solid var(--edge);padding:14px 0}summary{cursor:pointer;f
     element("approve").hidden = current.ended
     element("reopen").hidden = !current.ended
     element<HTMLButtonElement>("send").disabled = current.ended && !state.pending
-    const revisions = await api<Design.Revision[]>(`/${current.id}/revision`)
-    element("revisions").innerHTML = revisions
-      .map(
-        (revision) =>
-          `<option value="${escape(revision.id)}">${escape(revision.name)} · ${escape(revision.id.slice(-8))}</option>`,
-      )
-      .join("")
+    if (revisionChanged || !state.revisions.length)
+      state.revisions = await api<Design.Revision[]>(`/${current.id}/revision`)
+    const revisions = state.revisions
+    picker(
+      "revisions",
+      revisions.map((revision) => ({ id: revision.id, name: `${revision.name} · ${revision.id.slice(-8)}` })),
+    )
     const initial = changed || !state.revision
     // A new revision replaces the one on screen only while the reader is on the latest one and
     // nothing is in flight; while browsing history the button offers it instead.
@@ -1883,6 +1908,8 @@ details{border-top:1px solid var(--edge);padding:14px 0}summary{cursor:pointer;f
       current.revision !== state.revision &&
       !state.pending &&
       !document.hidden &&
+      !(root.activeElement instanceof HTMLSelectElement) &&
+      !(root.activeElement instanceof HTMLIFrameElement) &&
       !root.querySelector("dialog[open]")
     if (current.revision && (initial || live) && state.failedPreview !== current.revision) {
       await chooseRevision(current.revision, live)
@@ -1936,50 +1963,65 @@ details{border-top:1px solid var(--edge);padding:14px 0}summary{cursor:pointer;f
       element("jobs").before(summary)
     }
     drawEvidence()
-    element("jobs").replaceChildren(
-      ...jobs.map((job) => {
-        const row = document.createElement("div")
-        row.className = "note"
-        row.textContent = `${job.input.format} · ${job.status} · ${Math.round(job.progress * 100)}%${job.error ? ` · ${job.error}` : ""}`
-        if (job.audit) {
-          const details = document.createElement("details")
-          const summary = document.createElement("summary")
-          summary.dataset.copy = "findings"
-          summary.dataset.copySuffix = `: ${job.audit.findings.length}`
-          summary.textContent = `${copy.findings}: ${job.audit.findings.length}`
-          const content = document.createElement("div")
-          content.textContent = [...job.audit.scenarios, ...job.audit.findings].join("\n")
-          content.style.whiteSpace = "pre-wrap"
-          details.append(summary, content)
-          row.append(details)
-        }
-        if (job.status === "queued" || job.status === "running" || job.status === "completed") {
-          const button = document.createElement("button")
-          button.dataset.copy = job.status !== "completed" ? "cancel" : "download"
-          button.textContent = job.status !== "completed" ? copy.cancel : copy.download
-          button.onclick = () =>
-            void run(async () => {
-              if (job.status !== "completed") {
-                await api(`/${current.id}/job/${job.id}/cancel`, "POST")
-                await refresh()
-                return
-              }
-              const response = await request(`${endpoint}/${current.id}/job/${job.id}/file`, {
-                signal: controller.signal,
-              })
-              if (!response.ok) throw new Error(copy.failure)
-              const url = URL.createObjectURL(await response.blob())
-              const anchor = document.createElement("a")
-              anchor.href = url
-              anchor.download = `${current.name}.${job.input.format === "gif" ? "gif" : job.input.format === "pdf" ? "pdf" : "html"}`
-              anchor.click()
-              setTimeout(() => URL.revokeObjectURL(url), 1000)
+    const jobList = element("jobs")
+    const rows = jobs.map((job) => {
+      const signature = JSON.stringify([current.id, current.name, job])
+      const previous = jobRows.get(job.id)
+      if (previous?.signature === signature) return previous.row
+      const row = document.createElement("div")
+      row.className = "note"
+      row.textContent = `${job.input.format} · ${job.status} · ${Math.round(job.progress * 100)}%${job.error ? ` · ${job.error}` : ""}`
+      if (job.audit) {
+        const details = document.createElement("details")
+        const summary = document.createElement("summary")
+        summary.dataset.copy = "findings"
+        summary.dataset.copySuffix = `: ${job.audit.findings.length}`
+        summary.textContent = `${copy.findings}: ${job.audit.findings.length}`
+        const content = document.createElement("div")
+        content.textContent = [...job.audit.scenarios, ...job.audit.findings].join("\n")
+        content.style.whiteSpace = "pre-wrap"
+        details.open = previous?.row.querySelector("details")?.open ?? false
+        details.append(summary, content)
+        row.append(details)
+      }
+      if (job.status === "queued" || job.status === "running" || job.status === "completed") {
+        const button = document.createElement("button")
+        button.dataset.copy = job.status !== "completed" ? "cancel" : "download"
+        button.textContent = job.status !== "completed" ? copy.cancel : copy.download
+        button.onclick = () =>
+          void run(async () => {
+            if (job.status !== "completed") {
+              await api(`/${current.id}/job/${job.id}/cancel`, "POST")
+              await refresh()
+              return
+            }
+            const response = await request(`${endpoint}/${current.id}/job/${job.id}/file`, {
+              signal: controller.signal,
             })
-          row.append(button)
-        }
-        return row
-      }),
-    )
+            if (!response.ok) throw new Error(copy.failure)
+            const url = URL.createObjectURL(await response.blob())
+            const anchor = document.createElement("a")
+            anchor.href = url
+            anchor.download = `${current.name}.${job.input.format === "gif" ? "gif" : job.input.format === "pdf" ? "pdf" : "html"}`
+            anchor.click()
+            setTimeout(() => URL.revokeObjectURL(url), 1000)
+          })
+        row.append(button)
+      }
+      jobRows.set(job.id, { signature, row })
+      return row
+    })
+    const jobIDs = new Set(jobs.map((job) => job.id))
+    for (const [id, item] of jobRows) {
+      if (jobIDs.has(id)) continue
+      item.row.remove()
+      jobRows.delete(id)
+    }
+    rows.forEach((row, index) => {
+      if (jobList.children[index] !== row) jobList.insertBefore(row, jobList.children[index] ?? null)
+    })
+    // Replaced rows stay beside their replacement until the new order is in place.
+    while (jobList.children.length > rows.length) jobList.lastElementChild!.remove()
     const message = current.ended ? "closed" : current.revision ? "draft" : "waiting"
     text("review-state", copy[message])
     element("review-state").dataset.copy = message

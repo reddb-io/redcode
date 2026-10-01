@@ -232,14 +232,21 @@ const assistant = (message: SessionMessage.Assistant, model: Model.Ref, provider
   })
   const results = message.content
     .filter((item): item is SessionMessage.AssistantTool => item.type === "tool" && item.executed !== true)
-    .map((item) =>
-      toolResult(
+    .map((item) => {
+      const result = toolResult(
         item,
         reuseProviderMetadata
           ? providerMetadata(providerMetadataKey, item.providerResultState ?? item.providerState)
           : undefined,
-      ),
-    )
+      )
+      if (result || message.time.completed === undefined) return result
+      return ToolResultPart.make({
+        id: item.id,
+        name: item.name,
+        resultType: "error",
+        result: `The completed Step has no durable terminal result for ${item.name} (status=${item.state.status}). Inspect session_history({"messageID":"${message.id}","toolCallID":"${item.id}"}) to diagnose the incomplete execution. Repeating the tool cannot recover this historical result. Do not claim verification or infer that its service is unavailable.`,
+      })
+    })
     .filter((message) => message !== undefined)
     .map(Message.tool)
   if (meaningful.length === 0) return results

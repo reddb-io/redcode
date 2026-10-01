@@ -364,8 +364,10 @@ export async function call<A>(
   route: string,
   schema: Schema.Codec<A, unknown, never, never>,
   input?: unknown,
+  signal?: AbortSignal,
 ) {
   const response = await fetch(new URL(`/design/session/${encodeURIComponent(sessionID)}${route}`, connection.url), {
+    signal: signal ? AbortSignal.any([signal, AbortSignal.timeout(30_000)]) : AbortSignal.timeout(30_000),
     method: input === undefined ? "GET" : "POST",
     body: input === undefined ? undefined : JSON.stringify(input),
     headers: {

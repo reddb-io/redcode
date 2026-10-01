@@ -40,9 +40,9 @@ const make = Effect.gen(function* () {
     input?: unknown,
   ) =>
     Effect.tryPromise({
-      try: async () => {
+      try: async (signal) => {
         const { DesignApp } = await import("./app.js")
-        return DesignApp.call(app, sessionID, route, schema, input)
+        return DesignApp.call(app, sessionID, route, schema, input, signal)
       },
       catch: (error) =>
         error instanceof Design.Error

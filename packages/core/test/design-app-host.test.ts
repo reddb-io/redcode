@@ -180,6 +180,38 @@ describe("DesignApp session calls", () => {
     )
   })
 
+  test("private calls cancel a stalled response body without waiting for the app", async () => {
+    const started = Promise.withResolvers<void>()
+    const app = fake(
+      () =>
+        new Response(
+          new ReadableStream({
+            start(controller) {
+              controller.enqueue(new TextEncoder().encode('{"ready":'))
+              started.resolve()
+            },
+          }),
+          { headers: { "content-type": "application/json" } },
+        ),
+    )
+    const controller = new AbortController()
+    const result = DesignApp.call(
+      { url: app.url, token: "shared-token" },
+      sessionID,
+      "/job",
+      Schema.Struct({ ready: Schema.Boolean }),
+      undefined,
+      controller.signal,
+    ).then(
+      () => "completed",
+      () => "cancelled",
+    )
+    await started.promise
+    controller.abort()
+    expect(await result).toBe("cancelled")
+    expect(app.requests).toHaveLength(1)
+  })
+
   test("private calls decode the answer and turn failures into Design errors", async () => {
     const app = fake((route) => {
       if (route.endsWith("/busy"))

@@ -253,6 +253,44 @@ const make = Effect.gen(function* () {
     })
     if (!files[document.entry])
       return yield* new Design.Error({ code: "invalid", message: `Write ${document.entry} before publishing` })
+    const previous = document.revision ? yield* revision(sessionID, id, document.revision) : undefined
+    // Compiled prototypes can depend on project files outside this snapshot. A new feedback round
+    // still needs its own publication, even when the agent leaves the prototype unchanged.
+    if (
+      document.engine === "html" &&
+      previous?.name === name &&
+      DesignRounds.latest(current)?.number === DesignRounds.latest(previous.document)?.number &&
+      Object.entries(files).length ===
+        Object.keys(previous.files).filter((file) => !file.startsWith(".compiled/")).length &&
+      Object.entries(files).every(([file, hash]) => previous.files[file] === hash) &&
+      (
+        [
+          "controls",
+          "presets",
+          "name",
+          "journey",
+          "engine",
+          "kind",
+          "target",
+          "platform",
+          "root",
+          "application",
+          "entry",
+          "brief",
+          "decisions",
+          "questions",
+          "scenarios",
+          "targets",
+          "designSystem",
+          "system",
+          "sources",
+          "inventory",
+          "manifest",
+          "tweaks",
+        ] as const
+      ).every((field) => JSON.stringify(document[field]) === JSON.stringify(previous.document[field]))
+    )
+      return previous
     const recorded: Design.Revision = {
       id: `rev_${crypto.randomUUID()}`,
       designID: id,

@@ -194,6 +194,14 @@ jobs:
         run: |
           bun run script/build.ts --single --skip-install --skip-web-ui
           bun run script/service-smoke.ts
+      - name: Install Chromium for Design integration
+        if: runner.os == 'Linux'
+        working-directory: packages/core
+        run: bun node_modules/playwright-core/cli.js install --with-deps --only-shell chromium
+      - name: Verify Design review responsiveness and revision selection
+        if: runner.os == 'Linux'
+        working-directory: packages/core
+        run: bun script/design-review-smoke.ts
 
   vault-coverage:
     # Secret-handling tests and their coverage must pass before publication.

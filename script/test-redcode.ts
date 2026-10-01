@@ -60,6 +60,7 @@ const suites = {
     "test/session-model-suggestion.test.ts",
     "test/session-native-compaction.test.ts",
     "test/session-runner.test.ts",
+    "test/session-runner-message.test.ts",
     "test/session-loop-guard.test.ts",
     "test/session-stop-loss.test.ts",
     "test/session-tool-output-prune.test.ts",

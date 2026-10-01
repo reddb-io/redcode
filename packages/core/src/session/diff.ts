@@ -33,7 +33,8 @@ const decodeLocation = Schema.decodeUnknownSync(Schema.fromJsonString(Location.R
  * next user message instead.
  *
  * Snapshot trees live in the repository of the Location that captured them, so a
- * range spanning a location switch is rejected rather than diffed wrongly.
+ * explicit range spanning a location switch is rejected rather than diffed wrongly.
+ * Session scope summarizes the current Location segment, as shown in the files sidebar.
  */
 export const turn = Effect.fn("SessionDiff.turn")(function* (
   db: Database.Interface["db"],
@@ -95,6 +96,17 @@ export const turn = Effect.fn("SessionDiff.turn")(function* (
   const opened = markers.findLast((row) => row.seq < anchor.seq)?.seq ?? -1
   const start = legacy ? anchor.seq : (users.find((row) => row.seq > opened)?.seq ?? anchor.seq)
   const end = legacy ? users.find((row) => row.seq > last.seq)?.seq : markers.find((row) => row.seq > last.seq)?.seq
+  const switches = yield* db
+    .select({
+      seq: SessionMessageTable.seq,
+      location: sql<string>`json_extract(${SessionMessageTable.data}, '$.location')`,
+      previous: sql<string | null>`json_extract(${SessionMessageTable.data}, '$.previous.location')`,
+    })
+    .from(SessionMessageTable)
+    .where(and(eq(SessionMessageTable.session_id, sessionID), eq(SessionMessageTable.type, "location-switched")))
+    .orderBy(asc(SessionMessageTable.seq))
+    .all()
+    .pipe(Effect.orDie)
   const steps = yield* db
     .select({
       seq: SessionMessageTable.seq,
@@ -108,6 +120,7 @@ export const turn = Effect.fn("SessionDiff.turn")(function* (
         eq(SessionMessageTable.session_id, sessionID),
         eq(SessionMessageTable.type, "assistant"),
         gt(SessionMessageTable.seq, start),
+        input.scope === "session" ? gt(SessionMessageTable.seq, switches.at(-1)?.seq ?? -1) : undefined,
         end === undefined ? undefined : lt(SessionMessageTable.seq, end),
       ),
     )
@@ -118,17 +131,6 @@ export const turn = Effect.fn("SessionDiff.turn")(function* (
   const final = steps[steps.length - 1]
   const from = steps.find((step) => step.start)?.start
   if (!first || !final || !from) return []
-  const switches = yield* db
-    .select({
-      seq: SessionMessageTable.seq,
-      location: sql<string>`json_extract(${SessionMessageTable.data}, '$.location')`,
-      previous: sql<string | null>`json_extract(${SessionMessageTable.data}, '$.previous.location')`,
-    })
-    .from(SessionMessageTable)
-    .where(and(eq(SessionMessageTable.session_id, sessionID), eq(SessionMessageTable.type, "location-switched")))
-    .orderBy(asc(SessionMessageTable.seq))
-    .all()
-    .pipe(Effect.orDie)
   if (switches.some((row) => row.seq > first.seq && row.seq < final.seq))
     return yield* new TurnRangeError({ sessionID, field: "to", message: "Turn range spans a location change" })
   const before = switches.findLast((row) => row.seq < first.seq)?.location
