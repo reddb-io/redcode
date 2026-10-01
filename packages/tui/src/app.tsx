@@ -766,6 +766,7 @@ function App() {
         category: "Session",
         slash: { name: "new" },
         run: () => {
+          if (route.data.type === "home") return
           const model = local.model.current()
           const agent = local.agent.current()
           const current =
