@@ -1,14 +1,15 @@
 import { Generate } from "@opencode/core/generate"
 import { RemoteCheck } from "@opencode/core/remote-check"
 import { ConnectionCheck } from "@opencode/schema/connection-check"
-import { Location } from "@opencode/core/location"
 import { LocationServiceMap } from "@opencode/core/location-services"
-import { AbsolutePath } from "@opencode/core/schema"
+import { Plugin } from "@opencode/core/plugin"
 import { InvalidRequestError, ServiceUnavailableError } from "@opencode/protocol/errors"
 import { Global } from "@opencode/util/global"
 import { Effect } from "effect"
+import { HttpServerRequest } from "effect/unstable/http"
 import { HttpApiBuilder } from "effect/unstable/httpapi"
 import { Api } from "../api"
+import { requestRef } from "../location"
 
 export const GenerateHandler = HttpApiBuilder.group(Api, "server.generate", (handlers) =>
   Effect.gen(function* () {
@@ -17,8 +18,9 @@ export const GenerateHandler = HttpApiBuilder.group(Api, "server.generate", (han
     return handlers.handle(
       "generate.text",
       Effect.fn("server.generate.text")(function* (request) {
-        const directory = request.query.location?.directory ?? global.config
+        const incoming = yield* HttpServerRequest.HttpServerRequest
         return yield* Effect.gen(function* () {
+          yield* Plugin.awaitActivation
           const generate = yield* Generate.Service
           const requests: ConnectionCheck.Request[] = []
           const call = generate.text({
@@ -49,7 +51,7 @@ export const GenerateHandler = HttpApiBuilder.group(Api, "server.generate", (han
             ),
           )
           return { data: { text, requests: request.payload.check ? requests : undefined } }
-        }).pipe(Effect.provide(locations.get(Location.Ref.make({ directory: AbsolutePath.make(directory) }))))
+        }).pipe(Effect.provide(locations.get(requestRef(incoming, global.config))))
       }),
     )
   }),

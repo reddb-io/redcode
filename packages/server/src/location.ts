@@ -36,11 +36,11 @@ export const sessionInfo = Effect.fnUntraced(function* (sessions: Session.Interf
   return yield* sessions.get(id).pipe(Effect.catchTag("Session.NotFoundError", missingSession))
 })
 
-export function requestRef(request: HttpServerRequest.HttpServerRequest): Location.Ref {
+export function requestRef(request: HttpServerRequest.HttpServerRequest, fallback = process.cwd()): Location.Ref {
   const query = new URL(request.url, "http://localhost").searchParams
   const directory =
     query.get("location[directory]") ||
-    (request.headers["x-opencode-directory"] ? decode(request.headers["x-opencode-directory"]) : process.cwd())
+    (request.headers["x-opencode-directory"] ? decode(request.headers["x-opencode-directory"]) : fallback)
   return Location.Ref.make({
     directory: AbsolutePath.make(directory),
   })

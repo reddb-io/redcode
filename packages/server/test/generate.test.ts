@@ -30,11 +30,11 @@ const generate = makeLocationNode({
   deps: [Config.node],
 })
 
-it.live("uses base configuration without depending on process.cwd()", () =>
+it.live("uses base configuration by default and honors the client's selected project", () =>
   Effect.gen(function* () {
     const tmp = yield* Effect.acquireDisposable(Effect.promise(() => tmpdir("opencode-generate-endpoint-")))
     const global = path.join(tmp.path, "global")
-    const project = path.join(tmp.path, "project")
+    const project = path.join(tmp.path, "project with spaces")
     yield* Effect.promise(() => Promise.all([fs.mkdir(global), fs.mkdir(project)]))
     yield* Effect.promise(() =>
       Promise.all([
@@ -57,10 +57,10 @@ it.live("uses base configuration without depending on process.cwd()", () =>
       model: { providerID: "base", model: "default" },
     })
 
-    const legacy = new URL("http://opencode.local/api/experimental/generate")
-    legacy.searchParams.set("location[directory]", project)
-    expect(yield* request(handler, legacy)).toEqual({
-      model: { providerID: "base", model: "default" },
+    const selected = new URL("http://opencode.local/api/experimental/generate")
+    selected.searchParams.set("location[directory]", project)
+    expect(yield* request(handler, selected)).toEqual({
+      model: { providerID: "project", model: "default" },
     })
   }),
 )
