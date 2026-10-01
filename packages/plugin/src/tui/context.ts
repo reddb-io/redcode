@@ -198,6 +198,7 @@ export interface SlotMap {
   readonly "session.composer.tabs": { readonly sessionID: string }
   readonly "session.composer.top": { readonly sessionID: string }
   readonly "session.panel": PanelInput
+  readonly "sidebar.header": { readonly sessionID: string }
   readonly "sidebar.content": { readonly sessionID: string }
   readonly "sidebar.workers.count": { readonly sessionID: string }
   readonly "sidebar.workers": { readonly sessionID: string; readonly width: number }

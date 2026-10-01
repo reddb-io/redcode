@@ -17,26 +17,16 @@ and an autonomous fleet on screen next to your session.
 
 ---
 
+[TL;DR](#tldr) · [Install](#install) · [Use](#use) · [Features](#features) · [Development](#development) · [Releases](#releases) · [License](#license)
+
+## TL;DR
+
 Redcode is reddb.io's coding agent for our own engineering work. It is built on
 [OpenCode](https://github.com/anomalyco/opencode): its agent loop, providers, tools and terminal UI are the
 foundation this stands on. Attribution is preserved in [NOTICE](NOTICE).
 
-## What Redcode adds
-
-| | Feature | In one line |
-| --- | --- | --- |
-| 🔐 | [Vault](#vault) | Per-project secrets the model can use, obtain and ask for without seeing the value |
-| 🧠 | [S1 · S2 reasoning](#s1--s2-dual-reasoning) | A second model evaluates the first with typed questions |
-| 🎯 | [/goal](#goal) | A definition of done pursued across turns, judged every turn |
-| 🎨 | [Design mode](#design-mode) | Prototype in the browser, review it there, leave with a plan |
-| 🧭 | [Modes](#modes) | Build, plan, design and question: four agents, one `Tab` apart |
-| 🔀 | [RedRouter](#redrouter) | One key, many providers, with pinned offers and an auto variant |
-| 👁 | [Monitors](#monitors) | Background watches the agent starts, in one tab |
-| 🛠 | [Workers](#workers) | The RedSkills fleet as a tab in your session |
-| 🛑 | [Stop-loss](#stop-loss-and-loop-guard) | Halts a stuck or runaway agent without punishing progress |
-| 🗜 | [Compaction](#compaction) | Focused, anchored, background, and free of secrets |
-| 🌿 | [Worktrees and service](#worktrees-and-the-background-service) | Isolated worktrees per task, and a server that outlives the TUI |
-| 🎙 | [Dictation](#dictation) | Speak into the composer; you decide when it is sent |
+Work in Build, Plan, Design or Question mode. Redcode adds project secrets, S1/S2 reasoning,
+autonomous goals, browser prototypes, monitors and RedSkills workers to the terminal workflow.
 
 ## Install
 
@@ -81,7 +71,9 @@ method per machine.
 | `redcode acp`               | Run the Agent Client Protocol integration       |
 | `redcode --help`            | List CLI commands                               |
 
-## Modes
+## Features
+
+### Modes
 
 A session runs one of four primary agents. `Tab` cycles through them (`Shift+Tab` goes back), and the
 switch is durable: the next prompt is admitted under the agent you picked. Each mode is a different
@@ -107,7 +99,7 @@ build and start on it.
 
 **Question** answers investigative questions about the codebase with read-only tool access. Nothing is edited.
 
-## Vault
+### Vault
 
 <img src="docs/features/vault.svg" alt="Vault" width="100%" />
 
@@ -140,7 +132,7 @@ agent captured from a tool's output is short-lived and stays in memory only.
 Manage secrets with `/vault`, `redcode vault set NAME` (masked prompt, or a piped value), or
 `redcode vault import other.env`. Vault coverage is measured in CI against a 90% line target.
 
-## S1 · S2 dual reasoning
+### S1 · S2 dual reasoning
 
 <img src="docs/features/intelligence.svg" alt="S1 and S2 dual reasoning" width="100%" />
 
@@ -150,7 +142,7 @@ TypeSafe/JEV questions, so a claim is checked before you trust it. **Single** re
 to inspect the current models, the effective mode and recent evaluations. An unavailable, inconclusive
 or rejected evaluation is shown as such, never as an approval. See [reasoning roles](docs/system-one.md).
 
-## Goal
+### Goal
 
 <img src="docs/features/goal.svg" alt="Goal" width="100%" />
 
@@ -166,13 +158,13 @@ constraints: do not touch the app package; stop when: a test needs a network
 Free text is the objective. The optional fields, one per line or separated by `;`, are the contract the
 judge holds the agent to:
 
-| Field | What it fixes |
-| --- | --- |
-| `outcome:` / `done when:` | What has to be true at the end |
-| `verify:` | How the agent should prove it |
-| `gate:` | A shell command that must exit 0 before the goal can be judged done; several allowed |
-| `constraints:` / `scope:` | What may not be touched or changed |
-| `stop when:` | What should make the agent stop and ask instead of pushing on |
+| Field                     | What it fixes                                                                        |
+| ------------------------- | ------------------------------------------------------------------------------------ |
+| `outcome:` / `done when:` | What has to be true at the end                                                       |
+| `verify:`                 | How the agent should prove it                                                        |
+| `gate:`                   | A shell command that must exit 0 before the goal can be judged done; several allowed |
+| `constraints:` / `scope:` | What may not be touched or changed                                                   |
+| `stop when:`              | What should make the agent stop and ask instead of pushing on                        |
 
 At the end of every turn the gates run, and a failing gate feeds its output into the next turn. Then a
 small judge reads the objective and the last answer and says **DONE**, **CONTINUE**, **BLOCKED** or
@@ -181,7 +173,7 @@ away. The agent may claim completion with `goal_complete`, but the next judgemen
 rather than trusting it. `Ctrl+C` pauses a goal, and so does a new process: a loop never restarts itself.
 `/goal-pause`, `/goal-resume` and `/goal-drop` do what they say.
 
-## Design mode
+### Design mode
 
 <img src="docs/features/design-flow.svg" alt="How design mode works: describe, prototype, preview, review, send to the agent, revise until settled, design_exit writes the plan, build implements it" width="100%" />
 
@@ -204,7 +196,7 @@ product in this mode, only the prototype, so nothing you say changes code until 
 
 Prototypes live in `.redcode/designs/<name>/`. `redcode serve --hostname 0.0.0.0` lets you review from a phone.
 
-## RedRouter
+### RedRouter
 
 <img src="docs/features/router.svg" alt="RedRouter" width="100%" />
 
@@ -212,7 +204,7 @@ RedRouter is a provider that fronts many models behind one key. Redcode understa
 `auto` variant lets the router choose, pinned offers fix a model to a specific provider, model
 suggestions surface what your key can reach, and the router's MCP tools are registered for you.
 
-## Monitors
+### Monitors
 
 <img src="docs/features/monitors.svg" alt="Monitors" width="100%" />
 
@@ -220,7 +212,7 @@ When the agent starts something that should keep running, such as a dev server, 
 starts a monitor instead of sleeping in a loop. `/monitors` lists them in one tab with their state, and the
 session is woken when one finishes or expires.
 
-## Workers
+### Workers
 
 <img src="docs/features/workers.svg" alt="Workers" width="100%" />
 
@@ -229,7 +221,7 @@ Redcode integrates natively with [RedSkills](https://github.com/reddb-io/red-ski
 process and time, an activity feed of arrivals and departures, and project controls such as drain, stop
 and status. Redcode keeps no separate control state; the daemon owns it.
 
-## Stop-loss and loop guard
+### Stop-loss and loop guard
 
 <img src="docs/features/stop-loss.svg" alt="Stop-loss" width="100%" />
 
@@ -239,7 +231,7 @@ calibrated to ignore normal work: an edit acknowledgement is not a repeat, and c
 growth. There are no default cost limits. `/budget` sets a limit only when you ask for one, and a
 model can never set its own.
 
-## Compaction
+### Compaction
 
 <img src="docs/features/compaction.svg" alt="Compaction" width="100%" />
 
@@ -248,7 +240,7 @@ anchors: the user messages and decisions that must survive verbatim. Its output 
 redaction as the vault, so a secret pasted earlier in the chat does not come back in the summary.
 `/restricted` lists the messages marked as restricted content and lets you remove one from the context.
 
-## Worktrees and the background service
+### Worktrees and the background service
 
 <img src="docs/features/worktrees.svg" alt="Worktrees" width="100%" />
 
@@ -257,7 +249,7 @@ creates, refreshes and cleans the project's worktrees. The server that holds you
 background, so closing the terminal does not stop them: `redcode service status|start|stop|restart`. If
 it fails to start, the message says why.
 
-## Dictation
+### Dictation
 
 <img src="docs/features/voice.svg" alt="Dictation" width="100%" />
 

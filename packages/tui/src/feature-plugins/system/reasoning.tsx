@@ -150,7 +150,7 @@ export default Plugin.define({
       ),
     })
     context.ui.slot({
-      append: "prompt.footer.status",
+      append: "sidebar.header",
       render: (props) => (
         <SatisfactionIndicator
           context={context}
@@ -164,14 +164,19 @@ export default Plugin.define({
 
 /**
  * How the user is taking the session: one block glyph that grows with satisfaction and its stage, read from what
- * System One classifies for each prompt. Shown only in dual reasoning, once enough prompts were read.
+ * System One classifies for each prompt. Dual reasoning shows progress until enough prompts were read.
  */
 function SatisfactionIndicator(props: { context: Plugin.Context; sessionID?: string; status?: IntelligenceStatus }) {
   const abort = new AbortController()
   onCleanup(() => abort.abort())
+  const [view] = props.context.storage.store("satisfaction", { initial: { hidden: false } })
+  const mode = () =>
+    (props.sessionID ? props.context.data.session.get(props.sessionID)?.metadata?.reasoning : undefined) ??
+    props.status?.effective.reasoning
+  const enabled = () => !view.hidden && mode() === "dual"
   const [history] = createResource(
     () =>
-      props.sessionID
+      enabled() && props.sessionID
         ? { sessionID: props.sessionID, state: props.context.data.session.status(props.sessionID) }
         : undefined,
     async (input) => {
@@ -179,9 +184,6 @@ function SatisfactionIndicator(props: { context: Plugin.Context; sessionID?: str
         .history({ sessionID: input.sessionID, limit: 100 }, { signal: abort.signal })
         .catch(() => undefined)
       if (!evaluations) return undefined
-      const effective =
-        props.context.data.session.get(input.sessionID)?.metadata?.reasoning ?? props.status?.effective.reasoning
-      if (effective !== "dual") return undefined
       // Too few prompts read to show anything: the guard log would not change that, so it is not asked for.
       if (
         evaluations.filter((item) => item.operation === "prompt_classification" && item.mode !== "observe").length <
@@ -196,11 +198,8 @@ function SatisfactionIndicator(props: { context: Plugin.Context; sessionID?: str
       return { evaluations, trips: report?.recent.filter((trip) => trip.sessionID === input.sessionID) ?? [] }
     },
   )
-  const [view] = props.context.storage.store("satisfaction", { initial: { hidden: false } })
   const reading = () =>
-    !view.hidden && props.status?.effective.reasoning === "dual" && history()
-      ? Satisfaction.read(history()?.evaluations ?? [], history()?.trips ?? [])
-      : undefined
+    enabled() && history() ? Satisfaction.read(history()?.evaluations ?? [], history()?.trips ?? []) : undefined
   const tone = (stage: Satisfaction.Stage) => {
     const feedback = props.context.theme.text.feedback
     if (stage === "frustrated") return feedback.error.base
@@ -211,7 +210,8 @@ function SatisfactionIndicator(props: { context: Plugin.Context; sessionID?: str
   }
   // Until enough prompts were read, a quiet count says the indicator exists and what it waits for.
   const waiting = () => {
-    if (view.hidden || props.status?.effective.reasoning !== "dual" || !history() || reading()) return undefined
+    if (!enabled() || reading()) return undefined
+    if (!history()) return history.loading ? "mood …" : "mood unavailable"
     const { usable, needed } = Satisfaction.progress(history()?.evaluations ?? [])
     return `mood ${usable}/${needed}`
   }
@@ -222,8 +222,10 @@ function SatisfactionIndicator(props: { context: Plugin.Context; sessionID?: str
         <Show when={waiting()}>
           {(value) => (
             <text
+              id="session-satisfaction-indicator"
               fg={props.context.theme.text.muted}
               wrapMode="none"
+              flexShrink={0}
               onMouseUp={() => props.context.keymap.dispatch("intelligence.status")}
             >
               {value()}
@@ -234,8 +236,10 @@ function SatisfactionIndicator(props: { context: Plugin.Context; sessionID?: str
     >
       {(value) => (
         <text
+          id="session-satisfaction-indicator"
           fg={tone(value().stage)}
           wrapMode="none"
+          flexShrink={0}
           onMouseUp={() => props.context.keymap.dispatch("intelligence.status")}
         >
           {`${Satisfaction.glyph(value().stage)} ${value().stage}`}

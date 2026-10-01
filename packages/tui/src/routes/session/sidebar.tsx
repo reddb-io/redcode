@@ -47,10 +47,18 @@ export function Sidebar(props: { sessionID: string; width: number; overlay?: boo
             {withTimestampedFallback(session())}
           </title_shimmer>
         </box>
-        <box flexShrink={0} paddingBottom={1}>
-          <text fg={theme.text.action.primary.selected} attributes={TextAttributes.BOLD}>
+        <box
+          id="session-sidebar-heading"
+          flexShrink={0}
+          paddingBottom={1}
+          flexDirection="row"
+          justifyContent="space-between"
+          gap={1}
+        >
+          <text fg={theme.text.action.primary.selected} attributes={TextAttributes.BOLD} wrapMode="none" flexShrink={0}>
             Context
           </text>
+          <Slot path="sidebar.header" input={{ sessionID: props.sessionID }} />
         </box>
         <scrollbox
           flexGrow={1}

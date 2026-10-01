@@ -95,6 +95,7 @@ const suites = {
     "test/session-group-navigation.test.tsx",
     "test/redcode-workflows.test.tsx",
     "test/redcode-session.test.tsx",
+    "test/context-satisfaction.test.tsx",
     "test/cli/tui/monitors-tab.test.tsx",
     "test/cli/tui/monitors-model.test.ts",
     "test/cli/tui/session-terminals.test.tsx",
