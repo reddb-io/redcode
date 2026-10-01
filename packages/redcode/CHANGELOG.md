@@ -1,5 +1,18 @@
 # @reddb-io/redcode
 
+## 0.71.0
+
+### Minor Changes
+
+- Add asynchronous S1 observation and per-session reasoning controls, structured completion evidence and continuation context, and explicit S1 monetary accounting. Keep inference caching in the router. Add independent opt-in experiments for bounded S2 verification, Code Mode tool selection, reversible context curation and reviewable learning proposals, with authenticated evidence inspection and offline regression coverage.
+
+### Patch Changes
+
+- Align the satisfaction thermometer with the Context heading in the sidebar. Show its pending state as soon as dual reasoning is active, respect session reasoning overrides, and keep the prompt footer uncluttered.
+- Retire the Design preview after approval into Plan: remove the CLI link, stop the open review's iframe and polling, and return HTTP 410 from preview links. Keep the immutable approval package available to Plan and Build.
+- Coalesce Design review refreshes, preserve revision pickers on unchanged polls, reuse unchanged HTML publications within the same feedback round and bound cancellable Design app job requests. Keep the files sidebar scoped to the current session location after a worktree move. Explain incomplete recorded tool executions with their durable history references instead of an ambiguous missing-result placeholder.
+- Keep operational drawers free of settled monitors and exited terminal panes. Reconcile unattended terminal exits, clear stale selection and focus, and preserve completion notifications and session evidence.
+
 ## 0.70.7
 
 ### Patch Changes
