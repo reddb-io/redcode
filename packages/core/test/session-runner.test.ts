@@ -1009,9 +1009,10 @@ describe("SessionRunnerLLM", () => {
   scenario("stops Design no-op edits at the third call even with inherited Build permissions", function* (s) {
     const agents = yield* Agent.Service
     yield* DesignPlugin.Plugin.effect(host({ agent: agentHost(agents) }))
+    yield* s.bus.publish(SessionEvent.AgentSelected, { sessionID, agent: Agent.ID.make("design") })
     yield* s.db
       .update(SessionTable)
-      .set({ permissions: [{ action: "*", resource: "*", effect: "allow" }] })
+      .set({ permission: [{ action: "*", resource: "*", effect: "allow" }] })
       .where(eq(SessionTable.id, sessionID))
       .run()
       .pipe(Effect.orDie)
@@ -1039,13 +1040,7 @@ describe("SessionRunnerLLM", () => {
         }),
       ),
     )
-    yield* s.session.prompt({
-      sessionID,
-      agent: Agent.ID.make("design"),
-      text: "Publish the profile prototype",
-      resume: false,
-    })
-    yield* s.resume
+    yield* s.runPrompt("Publish the profile prototype")
     expect(s.requests).toHaveLength(3)
     expect(executions).toEqual(["src/0.tsx"])
     const errors = (yield* s.context).flatMap((message) =>
@@ -1063,6 +1058,7 @@ describe("SessionRunnerLLM", () => {
   scenario("allows recovery with another tool after a no-op edit warning", function* (s) {
     const agents = yield* Agent.Service
     yield* DesignPlugin.Plugin.effect(host({ agent: agentHost(agents) }))
+    yield* s.bus.publish(SessionEvent.AgentSelected, { sessionID, agent: Agent.ID.make("design") })
     const registry = yield* Tool.Service
     yield* registry.transform((editor) =>
       editor.add({
@@ -1093,13 +1089,7 @@ describe("SessionRunnerLLM", () => {
       TestLLM.tool("call_recovered", "design_preview", { id: "design_profile", name: "Profile" }),
       TestLLM.stop(),
     )
-    yield* s.session.prompt({
-      sessionID,
-      agent: Agent.ID.make("design"),
-      text: "Recover from the failed edit",
-      resume: false,
-    })
-    yield* s.resume
+    yield* s.runPrompt("Recover from the failed edit")
     expect(s.requests).toHaveLength(4)
     expect(s.executions).toEqual(["Published"])
   })
