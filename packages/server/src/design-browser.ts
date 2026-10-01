@@ -219,7 +219,7 @@ export const routes = (hosts: () => ReadonlyArray<string>, network: () => string
           ? yield* authorize(request, sessionID, session.agent).pipe(instances.provide(session))
           : failure(405, "Design permission requests must use POST")
         : request.method === "GET"
-          ? yield* read(url, sessionID, parts, sessions, app.version, previews).pipe(instances.provide(session))
+          ? yield* read(url, sessionID, parts, sessions, bus, app.version, previews).pipe(instances.provide(session))
           : yield* mutate(request, sessionID, parts, session.agent).pipe(instances.provide(session))
       if (!linked) return response
       return response.pipe(
@@ -301,6 +301,7 @@ function read(
   sessionID: SessionSchema.ID,
   parts: string[],
   sessions: Session.Interface,
+  bus: Bus.Interface,
   version: string,
   previews: Map<string, "building" | "ready" | "failed">,
 ) {
@@ -323,7 +324,7 @@ function read(
         { type: "state", seq: 0, at, state: active.has(sessionID) ? "working" : "idle" },
       ]
       const events = Stream.make(...initial).pipe(
-        Stream.concat(DesignFeed.follow(sessions, sessionID, cursor).pipe(Stream.orDie)),
+        Stream.concat(DesignFeed.stream(sessions, bus, sessionID).pipe(Stream.orDie)),
         Stream.map((event) => `data: ${JSON.stringify(event)}\n\n`),
       )
       const heartbeat = Stream.tick("15 seconds").pipe(Stream.map(() => ": heartbeat\n\n"))

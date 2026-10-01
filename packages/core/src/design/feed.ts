@@ -2,10 +2,13 @@ export * as DesignFeed from "./feed.js"
 
 import { Design } from "@opencode/schema/design"
 import { DesignNotice } from "@opencode/schema/design-notice"
-import type { SessionEvent } from "@opencode/schema/session-event"
-import { Option, Schema, Stream } from "effect"
+import { SessionEvent } from "@opencode/schema/session-event"
+import { DateTime, Effect, Option, Schema, Stream } from "effect"
 import { Session } from "../session.js"
 import { SessionSchema } from "../session/schema.js"
+import type { SessionMessage } from "@opencode/schema/session-message"
+import type { SessionInbox } from "@opencode/schema/session-inbox"
+import { Bus } from "../bus.js"
 
 export const LIMITS = { text: 12000, summary: 240 } as const
 
@@ -28,6 +31,7 @@ const Verified = Schema.Array(
   }),
 )
 const decodeVerified = Schema.decodeUnknownOption(Verified)
+const isSessionEvent = Schema.is(Schema.toType(SessionEvent.Durable))
 
 export function bound(text: string, limit: number) {
   const value = text.trim()
@@ -111,52 +115,7 @@ export function reduce(
       ],
     ]
   }
-  if (event.type === "session.tool.success") {
-    const call = state.calls.get(event.data.id)
-    const metadata = event.data.metadata
-    const design = metadata?.designID
-    const revision = metadata?.revision
-    const published =
-      // design_history reports a revision only when it restored one.
-      (call?.name === "design_preview" || call?.name === "design_history") &&
-      typeof design === "string" &&
-      Schema.is(Design.ID)(design) &&
-      typeof revision === "string"
-        ? [{ ...base, type: "published" as const, design, revision, name: String(call.input.name ?? "") }]
-        : []
-    const verified =
-      call?.name === "design_jobs"
-        ? Option.getOrElse(decodeVerified(metadata?.verified), () => [])
-            .filter((item) => !state.announced.has(item.job))
-            .map((item) => ({
-              ...base,
-              type: "verified" as const,
-              ...item,
-              notes: item.notes.map((note) => ({
-                ...note,
-                label: bound(note.label, LIMITS.summary),
-                reason: bound(note.reason, LIMITS.summary),
-              })),
-            }))
-        : []
-    return [
-      verified.length
-        ? { ...state, announced: new Set([...state.announced, ...verified.map((item) => item.job)]) }
-        : state,
-      [
-        {
-          ...base,
-          type: "tool",
-          id: event.data.id,
-          tool: call?.name ?? "",
-          status: "done",
-          summary: summarize(call?.input ?? {}),
-        },
-        ...published,
-        ...verified,
-      ],
-    ]
-  }
+  if (event.type === "session.tool.success") return completed(state, base, event.data.id, event.data.metadata)
   if (event.type === "session.tool.failed")
     return [
       state,
@@ -187,4 +146,165 @@ export function follow(sessions: Pick<Session.Interface, "log">, sessionID: Sess
       },
     ),
   )
+}
+
+/** The normal server retains message projections even when durable event payload retention is off. */
+export function stream(
+  sessions: Pick<Session.Interface, "messages" | "inbox">,
+  bus: Pick<Bus.Interface, "subscribe">,
+  sessionID: SessionSchema.ID,
+) {
+  return Stream.unwrap(
+    Effect.gen(function* () {
+      // Subscribe before reading projections; queued live entries merge with the snapshot by their stable IDs.
+      const live = yield* Stream.toPull(
+        bus
+          .subscribe()
+          .pipe(
+            Stream.filter(
+              (event): event is SessionEvent.DurableEvent =>
+                isSessionEvent(event) && event.durable.aggregateID === sessionID,
+            ),
+          ),
+      )
+      const messages = yield* sessions.messages({ sessionID, order: "asc" })
+      const inbox = yield* sessions.inbox(sessionID)
+      const snapshot = history(messages, inbox)
+      return Stream.fromIterable(snapshot.entries).pipe(
+        Stream.concat(Stream.fromPull(Effect.succeed(live)).pipe(Stream.mapAccum(() => snapshot.state, reduce))),
+      )
+    }),
+  )
+}
+
+export function history(messages: readonly SessionMessage.Info[], inbox: readonly SessionInbox.Info[]) {
+  const snapshot = messages.reduce(
+    (result, message) => {
+      const base = { seq: 0, at: DateTime.toEpochMillis(message.time.created) }
+      if (message.type === "user") {
+        const summary = describe(message.text)
+        return {
+          state: { ...result.state, users: new Map(result.state.users).set(message.id, summary) },
+          entries: [...result.entries, { ...base, type: "user" as const, id: message.id, ...summary }],
+        }
+      }
+      if (message.type !== "assistant") return result
+      return message.content.reduce((result, part, ordinal) => {
+        if (part.type === "text") {
+          const text = bound(part.text, LIMITS.text)
+          return text
+            ? {
+                ...result,
+                entries: [...result.entries, { ...base, type: "reply" as const, id: `${message.id}:${ordinal}`, text }],
+              }
+            : result
+        }
+        if (part.type !== "tool") return result
+        const state = {
+          ...result.state,
+          calls: new Map(result.state.calls).set(part.id, {
+            name: part.name,
+            input: part.state.status === "streaming" ? {} : part.state.input,
+          }),
+        }
+        if (part.state.status === "completed") {
+          const [next, entries] = completed(state, base, part.id, part.state.metadata)
+          return { state: next, entries: [...result.entries, ...entries] }
+        }
+        return {
+          state,
+          entries: [
+            ...result.entries,
+            {
+              ...base,
+              type: "tool" as const,
+              id: part.id,
+              tool: part.name,
+              status: part.state.status === "error" ? ("failed" as const) : ("running" as const),
+              summary:
+                part.state.status === "error"
+                  ? bound(part.state.error.message, LIMITS.summary)
+                  : summarize(state.calls.get(part.id)!.input),
+            },
+          ],
+        }
+      }, result)
+    },
+    { state: initial, entries: [] as Design.FeedEvent[] },
+  )
+  const pending = inbox.flatMap((item) =>
+    item.type === "user"
+      ? [
+          {
+            seq: 0,
+            at: DateTime.toEpochMillis(item.time.created),
+            type: "user" as const,
+            id: item.id,
+            ...describe(item.payload.text),
+            pending: true,
+          },
+        ]
+      : [],
+  )
+  return {
+    state: {
+      ...snapshot.state,
+      users: new Map([
+        ...snapshot.state.users,
+        ...pending.map((item) => [item.id, { text: item.text, notes: item.notes }] as const),
+      ]),
+    },
+    entries: [...snapshot.entries, ...pending],
+  }
+}
+
+function completed(
+  state: State,
+  base: { seq: number; at: number },
+  id: string,
+  metadata?: Readonly<Record<string, unknown>>,
+): readonly [State, ReadonlyArray<Design.FeedEvent>] {
+  const call = state.calls.get(id)
+  const design = metadata?.designID
+  const revision = metadata?.revision
+  const published =
+    // design_history reports a revision only when it restored one.
+    (call?.name === "design_preview" || call?.name === "design_history") &&
+    typeof design === "string" &&
+    Schema.is(Design.ID)(design) &&
+    typeof revision === "string"
+      ? [{ ...base, type: "published" as const, design, revision, name: String(call.input.name ?? "") }]
+      : []
+  const verified =
+    call?.name === "design_jobs"
+      ? Option.getOrElse(decodeVerified(metadata?.verified), () => [])
+          .filter((item) => !state.announced.has(item.job))
+          .map((item) => ({
+            ...base,
+            type: "verified" as const,
+            ...item,
+            notes: item.notes.map((note) => ({
+              ...note,
+              label: bound(note.label, LIMITS.summary),
+              reason: bound(note.reason, LIMITS.summary),
+            })),
+          }))
+      : []
+  return [
+    verified.length
+      ? { ...state, announced: new Set([...state.announced, ...verified.map((item) => item.job)]) }
+      : state,
+    [
+      {
+        ...base,
+        type: "tool",
+        id: id,
+        tool: call?.name ?? "",
+        status: "done",
+        summary: summarize(call?.input ?? {}),
+      },
+      ...published,
+      ...verified,
+    ],
+  ]
 }

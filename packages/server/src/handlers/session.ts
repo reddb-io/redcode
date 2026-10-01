@@ -1,4 +1,5 @@
 import { Session } from "@opencode/core/session"
+import { Bus } from "@opencode/core/bus"
 import { MonitorRuntime } from "@opencode/core/monitor"
 import { Monitor } from "@opencode/schema/monitor"
 import { SessionTodoStore } from "@opencode/core/session/todo-store"
@@ -49,6 +50,7 @@ function missingForm(id: Form.ID) {
 export const SessionHandler = HttpApiBuilder.group(Api, "server.session", (handlers) =>
   Effect.gen(function* () {
     const session = yield* Session.Service
+    const bus = yield* Bus.Service
     const goals = yield* SessionGoal.Service
     const budgets = yield* SessionBudget.Service
     const intelligence = yield* Intelligence.Service
@@ -98,7 +100,7 @@ export const SessionHandler = HttpApiBuilder.group(Api, "server.session", (handl
             { type: "state", seq: 0, at, state: active.has(ctx.params.sessionID) ? "working" : "idle" },
           ]
           return Stream.make(...initial).pipe(
-            Stream.concat(DesignFeed.follow(session, ctx.params.sessionID, ctx.query.after).pipe(Stream.orDie)),
+            Stream.concat(DesignFeed.stream(session, bus, ctx.params.sessionID).pipe(Stream.orDie)),
           )
         }),
       )

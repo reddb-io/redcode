@@ -81,6 +81,55 @@ describe("DesignFeed.follow", () => {
   })
 })
 
+describe("DesignFeed.history", () => {
+  test("reconstructs replies and published revisions without retained event payloads", () => {
+    const user = Schema.decodeUnknownSync(SessionMessage.User)({
+      id: "msg_history_user",
+      type: "user",
+      text: "Make the title larger",
+      time: { created: at },
+    })
+    const assistant = Schema.decodeUnknownSync(SessionMessage.Assistant)({
+      id: assistantMessageID,
+      type: "assistant",
+      agent: "design",
+      model: { providerID: "smoke", id: "smoke-model" },
+      time: { created: at },
+      content: [
+        {
+          type: "tool",
+          id: "call_history_preview",
+          name: "design_preview",
+          time: { created: at },
+          state: {
+            status: "completed",
+            input: { name: "Updated screen" },
+            content: [{ type: "text", text: "ok" }],
+            metadata: { designID, revision: "rev_history" },
+          },
+        },
+        { type: "text", text: "Feedback applied" },
+      ],
+    })
+    const snapshot = DesignFeed.history([user, assistant], [])
+    expect(snapshot.entries).toEqual([
+      { seq: 0, at, type: "user", id: user.id, text: user.text, notes: 0 },
+      {
+        seq: 0,
+        at,
+        type: "tool",
+        id: "call_history_preview",
+        tool: "design_preview",
+        status: "done",
+        summary: "Updated screen",
+      },
+      { seq: 0, at, type: "published", design: designID, revision: "rev_history", name: "Updated screen" },
+      { seq: 0, at, type: "reply", id: `${assistantMessageID}:1`, text: "Feedback applied" },
+    ])
+    expect(snapshot.state.users.get(user.id)).toEqual({ text: user.text, notes: 0 })
+  })
+})
+
 describe("DesignFeed.reduce", () => {
   test("turns a review turn into user, tool, published, reply and agent entries at the durable cursor", () => {
     const review = DesignFeedback.render(
