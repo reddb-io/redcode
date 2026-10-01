@@ -45,6 +45,9 @@ export const { use: useLocal, provider: LocalProvider } = createSimpleContext({
     const providers = () => data.location.provider.list(location.ref)
 
     function isModelValid(model: ModelPreferenceModel) {
+      // A saved connection can have a different catalog from the currently active account.
+      // Keep the selection so the server resolves it or reports why that access is unavailable.
+      if (model.connection) return true
       return !!models()?.some((item) => item.providerID === model.providerID && item.id === model.modelID)
     }
 
@@ -157,9 +160,12 @@ export const { use: useLocal, provider: LocalProvider } = createSimpleContext({
       })
 
       const repository = createModelPreferenceRepository(path.join(paths.state, "model.json"))
-      const pendingSelectionCommits = new Map<string, { agentID: string; selection: string }>()
+      const pendingSelectionCommits = new Map<
+        string,
+        { agentID: string; selection: string; connection?: ModelPreferenceModel["connection"] }
+      >()
       const selectionKey = (value: ModelSelection) =>
-        `${modelPreferenceKey(value)}:${normalizeModelVariant(value.variant) ?? "default"}`
+        `${modelPreferenceKey(value)}:${normalizeModelVariant(value.variant) ?? "default"}:${JSON.stringify(value.connection)}`
 
       function applyPreferences(value: ModelPreference) {
         batch(() => {
@@ -198,8 +204,11 @@ export const { use: useLocal, provider: LocalProvider } = createSimpleContext({
         if (configured && isModelValid(configured)) return configured
 
         const principal = reasoningStatus()?.settings.principal
-        if (principal && isModelValid({ providerID: principal.providerID, modelID: principal.id }))
-          return { providerID: principal.providerID, modelID: principal.id }
+        if (
+          principal &&
+          isModelValid({ providerID: principal.providerID, modelID: principal.id, connection: principal.connection })
+        )
+          return { providerID: principal.providerID, modelID: principal.id, connection: principal.connection }
 
         for (const item of preferences.recent) {
           if (isModelValid(item)) {
@@ -219,7 +228,7 @@ export const { use: useLocal, provider: LocalProvider } = createSimpleContext({
         const a = agent.current()
         return getFirstValidModel(
           () => a && selectionState.newSessionModelByLocationAgent[locationAgentKey(a.id)],
-          () => a?.model && { providerID: a.model.providerID, modelID: a.model.id },
+          () => a?.model && { providerID: a.model.providerID, modelID: a.model.id, connection: a.model.connection },
           fallbackModel,
         )
       })
@@ -234,7 +243,7 @@ export const { use: useLocal, provider: LocalProvider } = createSimpleContext({
       const currentModel = createMemo(() => {
         const selection = currentSelection()
         if (!selection) return
-        return { providerID: selection.providerID, modelID: selection.modelID }
+        return { providerID: selection.providerID, modelID: selection.modelID, connection: selection.connection }
       })
 
       function selectionSource() {
@@ -292,6 +301,7 @@ export const { use: useLocal, provider: LocalProvider } = createSimpleContext({
           providerID: model.providerID,
           modelID: model.id,
           variant: normalizeModelVariant(model.variant),
+          connection: model.connection,
         }
       }
 
@@ -307,7 +317,11 @@ export const { use: useLocal, provider: LocalProvider } = createSimpleContext({
           const info = models()?.find((item) => item.providerID === selected.providerID && item.id === selected.modelID)
           return {
             ...selected,
-            variant: info?.variants.some((variant) => variant.id === selected.variant) ? selected.variant : undefined,
+            variant: info
+              ? info.variants.some((variant) => variant.id === selected.variant)
+                ? selected.variant
+                : undefined
+              : selected.variant,
           }
         }
         const model = newSessionModel()
@@ -343,7 +357,9 @@ export const { use: useLocal, provider: LocalProvider } = createSimpleContext({
           const current = sessionSelection(sessionID)
           setSessionDraft(
             sessionID,
-            current?.providerID === model.providerID && current.modelID === model.modelID
+            current?.providerID === model.providerID &&
+              current.modelID === model.modelID &&
+              JSON.stringify(current.connection) === JSON.stringify(model.connection)
               ? current
               : preferredSelection(model),
           )
@@ -359,7 +375,8 @@ export const { use: useLocal, provider: LocalProvider } = createSimpleContext({
         const expected = pendingSelectionCommits.get(sessionID)
         const durable = durableSelection(sessionID)
         if (!expected || !durable || data.session.get(sessionID)?.agent !== expected.agentID) return
-        if (selectionKey(durable) !== expected.selection) return
+        if (selectionKey(expected.connection ? durable : { ...durable, connection: undefined }) !== expected.selection)
+          return
         pendingSelectionCommits.delete(sessionID)
         // Inactive agents keep their remembered choices after another agent commits.
         if (
@@ -404,12 +421,19 @@ export const { use: useLocal, provider: LocalProvider } = createSimpleContext({
             providerID: string
             id: string
             variant?: string
+            connection?: ModelPreferenceModel["connection"]
           },
           agentID: string,
         ) {
           const committed = {
             agentID,
-            selection: selectionKey({ providerID: value.providerID, modelID: value.id, variant: value.variant }),
+            selection: selectionKey({
+              providerID: value.providerID,
+              modelID: value.id,
+              variant: value.variant,
+              connection: value.connection,
+            }),
+            connection: value.connection,
           }
           pendingSelectionCommits.set(sessionID, committed)
           // An unchanged model emits no event; the agent may be the only durable change.
@@ -487,7 +511,7 @@ export const { use: useLocal, provider: LocalProvider } = createSimpleContext({
           setPreferences("recent", recentModels(next, preferences.recent))
           void repository.addRecent(next).catch(() => undefined)
         },
-        set(model: { providerID: string; modelID: string }, options?: { recent?: boolean }) {
+        set(model: ModelPreferenceModel, options?: { recent?: boolean }) {
           batch(() => {
             if (!isModelValid(model)) return
             if (!selectModel(model)) return

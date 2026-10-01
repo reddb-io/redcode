@@ -7,10 +7,13 @@ import { Context, Effect, Layer, Schema, Struct } from "effect"
 import { AISDK } from "./aisdk.js"
 import { Credential } from "./credential.js"
 import { Integration } from "./integration.js"
+import { IntegrationConnection } from "./integration/connection.js"
 import { Capabilities, ID, Info, Model, Ref, VariantID } from "./model.js"
 import type { RuntimeInfo } from "./model.js"
 import { Npm } from "@opencode/util/npm"
 import { Provider } from "./provider.js"
+import { KV } from "./kv.js"
+import { ModelsDev } from "./models-dev.js"
 
 export class VariantUnavailableError extends Schema.TaggedError<VariantUnavailableError>()(
   "SessionRunnerModel.VariantUnavailableError",
@@ -128,7 +131,11 @@ export interface Resolved {
 
 export interface Interface {
   readonly resolve: (requested?: Ref) => Effect.Effect<Resolved | undefined, Error>
-  readonly resolveModel: (model: Info, variant?: VariantID) => Effect.Effect<Resolved, Error>
+  readonly resolveModel: (
+    model: Info,
+    variant?: VariantID,
+    connection?: Ref["connection"],
+  ) => Effect.Effect<Resolved, Error>
 }
 
 export class Service extends Context.Service<Service, Interface>()("@opencode/ModelResolver") {}
@@ -283,7 +290,10 @@ function prepareProviderSettings(
   )
 }
 
-function prepareProviderURL(model: RuntimeInfo, baseURL: string): Effect.Effect<string, UnresolvedProviderVariablesError> {
+function prepareProviderURL(
+  model: RuntimeInfo,
+  baseURL: string,
+): Effect.Effect<string, UnresolvedProviderVariablesError> {
   if (!baseURL.includes("${")) return Effect.succeed(baseURL)
   const prepared = baseURL.replace(/\$\{([^}]+)\}/g, (placeholder, name: string) => process.env[name] ?? placeholder)
   const failure = unresolvedProviderVariables(model, prepared)
@@ -347,6 +357,23 @@ export const resolveModel = (
 
 export const hasPackage = (model: Info) => Boolean(model.package)
 
+/** Bind the access used by the displayed catalog without changing the integration's active account. */
+export const bind = Effect.fn("ModelResolver.bind")(function* (model: Ref) {
+  if (model.connection) return model
+  const providers = yield* Provider.Service
+  const integrations = yield* Integration.Service
+  const definition = (yield* providers.snapshot()).records.get(model.providerID)
+  const connection =
+    definition?.sourceConnection ??
+    (yield* integrations.connection.active(definition?.provider.integrationID ?? Integration.ID.make(model.providerID)))
+  return connection
+    ? Ref.make({
+        ...model,
+        connection: IntegrationConnection.ref(connection),
+      })
+    : model
+})
+
 /** Resolves catalog selections into runtime models for the current Location. */
 export const layer = Layer.effect(
   Service,
@@ -356,16 +383,72 @@ export const layer = Layer.effect(
     const integrations = yield* Integration.Service
     const npm = yield* Npm.Service
     const aisdk = yield* AISDK.Service
-    const load = Effect.fn("ModelResolver.resolveModel")(function* (selected: Info, variant?: VariantID) {
+    const credentials = yield* Credential.Service
+    const kv = yield* KV.Service
+    const modelsDev = yield* ModelsDev.Service
+    const load = Effect.fn("ModelResolver.resolveModel")(function* (
+      selected: Info,
+      variant?: VariantID,
+      pinned?: Ref["connection"],
+    ) {
       const provider = yield* providers.get(selected.providerID)
-      const connection = yield* integrations.connection.active(
-        provider?.integrationID ?? Integration.ID.make(selected.providerID),
-      )
+      const integrationID = provider?.integrationID ?? Integration.ID.make(selected.providerID)
+      const connection = pinned
+        ? (yield* integrations.get(integrationID))?.connections.find(
+            (connection) => IntegrationConnection.key(connection) === IntegrationConnection.key(pinned),
+          )
+        : yield* integrations.connection.active(integrationID)
+      if (pinned && !connection)
+        return yield* new ModelConfigurationError({
+          providerID: selected.providerID,
+          modelID: selected.id,
+          package: selected.package ?? "",
+          detail:
+            "The selected connection is unavailable. Reconnect it or explicitly select another connection; the active account will not be substituted.",
+        })
       const credential = connection ? yield* integrations.connection.resolve(connection) : undefined
-      const selectedVariant = yield* withVariant(selected, variant)
+      if (pinned && (!credential || (credential.type === "oauth" && credential.expires <= Date.now())))
+        return yield* new ModelConfigurationError({
+          providerID: selected.providerID,
+          modelID: selected.id,
+          package: selected.package ?? "",
+          detail:
+            "The selected connection has no usable credential. Reconnect it; the active account will not be substituted.",
+        })
+      const router = pinned && ["red-router", "9router"].includes(selected.providerID)
+      const bound =
+        router && credential && connection
+          ? yield* Effect.gen(function* () {
+              const { connectionModel } = yield* Effect.promise(() => import("./plugin/provider/red-router.js"))
+              return yield* connectionModel(selected.providerID, selected.id, connection, credential).pipe(
+                Effect.provideService(Credential.Service, credentials),
+                Effect.provideService(KV.Service, kv),
+                Effect.provideService(ModelsDev.Service, modelsDev),
+              )
+            })
+          : selected
+      if (!bound)
+        return yield* new ModelConfigurationError({
+          providerID: selected.providerID,
+          modelID: selected.id,
+          package: selected.package ?? "",
+          detail:
+            "The model is not in this connection's cached catalog. Refresh that connection's catalog before continuing.",
+        })
+      const source = router
+        ? (yield* providers.snapshot()).records.get(selected.providerID)?.sourceConnection
+        : undefined
+      const catalog =
+        router && selected.package && IntegrationConnection.key(source) === IntegrationConnection.key(pinned)
+          ? { ...selected, settings: { ...selected.settings, baseURL: bound.settings?.baseURL } }
+          : bound
+      const selectedVariant = yield* withVariant(catalog, variant)
       const runtimeInfo: RuntimeInfo = {
         ...selectedVariant,
-        settings: Provider.mergeOverlay(provider?.settings, Provider.modelSettings(selectedVariant.settings)),
+        settings: Provider.mergeOverlay(
+          router && provider?.settings ? Struct.omit(provider.settings, ["baseURL"]) : provider?.settings,
+          Provider.modelSettings(selectedVariant.settings),
+        ),
       }
       const model = yield* fromCatalogModel(runtimeInfo, credential, {
         loadPackage: (specifier) => Provider.loadPackage(specifier, npm),
@@ -384,10 +467,11 @@ export const layer = Layer.effect(
           id: selected.id,
           providerID: selected.providerID,
           ...(variant === undefined ? {} : { variant }),
+          ...(connection ? { connection: IntegrationConnection.ref(connection) } : {}),
         }),
-        capabilities: selected.capabilities,
-        cost: selected.cost,
-        limit: selected.limit,
+        capabilities: catalog.capabilities,
+        cost: catalog.cost,
+        limit: catalog.limit,
         compaction: runtimeInfo.settings?.compaction,
         transport: provider?.settings?.transport,
         chunkTimeout: provider?.settings?.chunkTimeout,
@@ -396,7 +480,10 @@ export const layer = Layer.effect(
     return Service.of({
       resolve: Effect.fn("ModelResolver.resolve")(function* (requested) {
         const selected = requested
-          ? yield* models.get(requested.providerID, requested.id)
+          ? ((yield* models.get(requested.providerID, requested.id)) ??
+            (requested.connection && ["red-router", "9router"].includes(requested.providerID)
+              ? Info.default(requested.providerID, requested.id)
+              : undefined))
           : yield* models
               .default()
               .pipe(
@@ -407,7 +494,7 @@ export const layer = Layer.effect(
                 ),
               )
         if (!selected) return undefined
-        return yield* load(selected, requested?.variant)
+        return yield* load(selected, requested?.variant, requested?.connection)
       }),
       resolveModel: load,
     })
@@ -461,5 +548,5 @@ function usesAPIKeyAuth(packageName: string | undefined) {
 export const node = makeLocationNode({
   service: Service,
   layer,
-  deps: [Provider.node, Model.node, Integration.node, Npm.node, AISDK.node],
+  deps: [Provider.node, Model.node, Integration.node, Credential.node, KV.node, ModelsDev.node, Npm.node, AISDK.node],
 })

@@ -120,6 +120,9 @@ const layer = Layer.effect(
           model: Model.Ref.make({
             providerID: info.providerID,
             id: info.id,
+            ...(agent.model?.connection || (primary?.ref.providerID === info.providerID && primary.ref.connection)
+              ? { connection: agent.model?.connection ?? primary?.ref.connection }
+              : {}),
             ...(variant ? { variant } : {}),
           }),
         }).pipe(Effect.orElseSucceed(() => undefined)))

@@ -146,6 +146,8 @@ describe("OpenAI-compatible discovery", () => {
       Effect.flip(discover(endpoint({ baseURL: `${base}/v1`, models: "alpha" }), "sk-bad")),
     )
     expect(error.message).toStartWith("The endpoint rejected the API key (HTTP 401")
+    expect(error.message).toMatch(/HTTP 401.*ms.*bytes/)
+    expect(error.message).not.toContain("sk-bad")
   })
 
   test("accepts entered models when the endpoint has no model list", async () => {

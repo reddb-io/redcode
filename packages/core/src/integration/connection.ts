@@ -11,6 +11,10 @@ export type EnvInfo = Connection.EnvInfo
 export const Info = Connection.Info
 export type Info = Connection.Info
 
+export function ref(connection: Info): Connection.Ref {
+  return connection.type === "credential" ? { type: connection.type, id: connection.id } : connection
+}
+
 /** Identity of an access choice; labels and refreshed token values do not identify a new connection. */
 export function key(
   connection:

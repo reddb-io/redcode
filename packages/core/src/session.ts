@@ -8,6 +8,7 @@ import { ListAnchor } from "@opencode/schema/session"
 import { and, desc, eq } from "drizzle-orm"
 import { Project } from "./project.js"
 import { Model } from "@opencode/schema/model"
+import { ModelResolver } from "./model-resolver.js"
 import { Location } from "./location.js"
 import { SessionMessage } from "./session/message.js"
 import { PromptInput } from "@opencode/schema/prompt-input"
@@ -179,7 +180,10 @@ export interface Interface {
     after?: number
     follow?: boolean
   }) => Stream.Stream<SessionEvent.DurableEvent | EventLog.Synced, NotFoundError>
-  readonly switchAgent: (input: { sessionID: SessionSchema.ID; agent: Agent.ID }) => Effect.Effect<void, NotFoundError | Tool.Error>
+  readonly switchAgent: (input: {
+    sessionID: SessionSchema.ID
+    agent: Agent.ID
+  }) => Effect.Effect<void, NotFoundError | Tool.Error>
   readonly switchModel: (input: { sessionID: SessionSchema.ID; model: Model.Ref }) => Effect.Effect<void, NotFoundError>
   readonly rename: (input: { sessionID: SessionSchema.ID; title: string }) => Effect.Effect<void, NotFoundError>
   readonly setMetadata: (input: {
@@ -285,6 +289,9 @@ const layer = Layer.effect(
         if (location === undefined)
           return yield* Effect.die(new Error("Session.create requires either location or an existing parentID"))
         const project = yield* projects.resolve(location.directory)
+        const model = input.model
+          ? yield* ModelResolver.bind(input.model).pipe(Effect.provide(locations.get(location)))
+          : undefined
         const projected = yield* bus
           .publish(
             SessionEvent.Created,
@@ -302,13 +309,7 @@ const layer = Layer.effect(
               // location, so host policies that read them treat the family uniformly.
               metadata: input.metadata ?? parent?.metadata,
               permissions: input.permissions ?? parent?.permissions,
-              model: input.model
-                ? {
-                    id: Model.ID.make(input.model.id),
-                    providerID: input.model.providerID,
-                    variant: input.model.variant,
-                  }
-                : undefined,
+              model,
             },
             { location },
           )
@@ -455,7 +456,11 @@ const layer = Layer.effect(
       shell: (input) => sessions.forSession(input.sessionID).shell(input),
       skill: (input) => sessions.forSession(input.sessionID).skill(input),
       switchAgent: (input) => sessions.forSession(input.sessionID).switchAgent(input),
-      switchModel: (input) => sessions.forSession(input.sessionID).switchModel(input),
+      switchModel: Effect.fn("Session.switchModel")(function* (input) {
+        const session = yield* result.get(input.sessionID)
+        const model = yield* ModelResolver.bind(input.model).pipe(instances.provide(session))
+        yield* sessions.forSession(input.sessionID).switchModel({ ...input, model })
+      }),
       rename: (input) => sessions.forSession(input.sessionID).rename(input),
       setMetadata: (input) => sessions.forSession(input.sessionID).setMetadata(input),
       setPermissions: (input) => sessions.forSession(input.sessionID).setPermissions(input),

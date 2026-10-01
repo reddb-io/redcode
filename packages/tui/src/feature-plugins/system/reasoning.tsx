@@ -26,7 +26,11 @@ export default Plugin.define({
             void local.model.refreshDefault()
             if (settings.principal)
               local.model.set(
-                { providerID: settings.principal.providerID, modelID: settings.principal.id },
+                {
+                  providerID: settings.principal.providerID,
+                  modelID: settings.principal.id,
+                  connection: settings.principal.connection,
+                },
                 { recent: true },
               )
             void refetch()

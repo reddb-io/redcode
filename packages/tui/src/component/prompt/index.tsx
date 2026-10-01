@@ -242,9 +242,7 @@ export function Prompt(props: PromptProps) {
   const queuedPrompt = createMemo(
     () =>
       props.sessionID !== undefined &&
-      data.session.pending
-        .list(props.sessionID)
-        .some((item) => item.type === "user" && item.delivery === "queue"),
+      data.session.pending.list(props.sessionID).some((item) => item.type === "user" && item.delivery === "queue"),
   )
   const exit = useExit()
   const dimensions = useTerminalDimensions()
@@ -1326,6 +1324,7 @@ export function Prompt(props: PromptProps) {
         model: {
           providerID: selection.providerID,
           id: selection.modelID,
+          connection: selection.connection,
           variant,
         },
       })
@@ -1371,7 +1370,12 @@ export function Prompt(props: PromptProps) {
       }
     }
     const commitModel = () => {
-      const model = { providerID: selection.providerID, id: selection.modelID, variant }
+      const model = {
+        providerID: selection.providerID,
+        id: selection.modelID,
+        variant,
+        connection: selection.connection,
+      }
       const cancelCommit = local.model.trackSessionCommit(target, model, agent.id)
       return client.api.session.switchModel({ sessionID: target, model }).catch((error) => {
         cancelCommit()

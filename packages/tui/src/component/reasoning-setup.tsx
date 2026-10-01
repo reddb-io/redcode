@@ -7,6 +7,8 @@ import { Router } from "@opencode/schema/router"
 import { ConnectionCheck } from "@opencode/schema/connection-check"
 import { keyRoleLabel, modelDescription, modelLabel, modelRoute, offerDetails } from "../util/model-presentation"
 
+type SelectedModel = ModelInfo & { connection?: NonNullable<IntelligenceSettings["principal"]>["connection"] }
+
 export async function configureReasoning(
   context: Plugin.Context,
   saved: (settings: IntelligenceSettings) => void,
@@ -49,9 +51,10 @@ export async function configureReasoning(
       ],
     }))
   if (!reasoning) return
-  const resumedModel = models.find(
+  const resumed = models.find(
     (model) => model.providerID === resume?.principal?.providerID && model.id === resume?.principal?.id,
   )
+  const resumedModel = resumed ? { ...resumed, connection: resume?.principal?.connection } : undefined
   const selected =
     resumedModel ??
     (await chooseModel(context, {
@@ -64,14 +67,17 @@ export async function configureReasoning(
       onConnect: () => configureReasoning(context, saved, { reasoning }),
     }))
   if (!selected) return
-  const principal = `${selected.providerID}/${selected.id}`
+  const principal = JSON.stringify([selected.providerID, selected.id, selected.connection])
   const evaluator = reasoning === "dual" ? await chooseEvaluator(context, status) : undefined
   if (reasoning === "dual" && !evaluator) return
   const available = (await context.client.model.list({ location })).data
-  const currentFast = available.find(
+  const currentFastModel = available.find(
     (model) =>
       model.enabled && model.providerID === status.settings.fast?.providerID && model.id === status.settings.fast?.id,
   )
+  const currentFast = currentFastModel
+    ? { ...currentFastModel, connection: status.settings.fast?.connection }
+    : undefined
   const fast = await context.ui.dialog.select({
     title: "S2 transformations · summaries and bounded text",
     current: currentFast ? "keep-fast" : "reuse-principal",
@@ -95,19 +101,18 @@ export async function configureReasoning(
       ? await chooseModel(context, {
           role: "S2 transformations",
           models: available,
-          principalProvider: selected.providerID,
           providers,
           onConnect: () =>
             configureReasoning(context, saved, {
               reasoning,
-              principal: { providerID: selected.providerID, id: selected.id },
+              principal: { providerID: selected.providerID, id: selected.id, connection: selected.connection },
             }),
         })
       : fast === "keep-fast"
         ? currentFast
         : undefined
   if (fast !== "reuse-principal" && !transformation) return
-  const model = { providerID: selected.providerID, id: selected.id }
+  const model = { providerID: selected.providerID, id: selected.id, connection: selected.connection }
   const confirmed = await context.ui.dialog.confirm({
     title: "Test and save reasoning roles",
     message: `Mode: ${reasoning === "dual" ? "Dual" : "Single"}\nS2 principal: ${modelLabel(selected, providers)}\nS2 transformations: ${transformation ? modelLabel(transformation, providers) : "reuse principal"}\nS1 evaluator: ${evaluator ? `${evaluator.evaluator.transport}/${evaluator.evaluator.model}` : "off"}${evaluator ? "\nSources and candidates will be sent to S1." : ""}\nThe selected connections will be checked before saving.${status.effective.source === "flag" ? `\nREDCODE_REASONING=${status.environment} overrides the saved mode.` : ""}`,
@@ -121,7 +126,8 @@ export async function configureReasoning(
           .text({ prompt: "Reply with OK.", model, location, check: true }, { signal: AbortSignal.timeout(30_000) })
           .then((result) => result.requests ?? []),
     },
-    ...(transformation && `${transformation.providerID}/${transformation.id}` !== principal
+    ...(transformation &&
+    JSON.stringify([transformation.providerID, transformation.id, transformation.connection]) !== principal
       ? [
           {
             role: `S2 transformations ${modelLabel(transformation, providers)}`,
@@ -130,7 +136,11 @@ export async function configureReasoning(
                 .text(
                   {
                     prompt: "Reply with OK.",
-                    model: { providerID: transformation.providerID, id: transformation.id },
+                    model: {
+                      providerID: transformation.providerID,
+                      id: transformation.id,
+                      connection: transformation.connection,
+                    },
                     location,
                     check: true,
                   },
@@ -162,8 +172,9 @@ export async function configureReasoning(
       onboarding: "completed",
       principal: model,
       fast:
-        transformation && `${transformation.providerID}/${transformation.id}` !== principal
-          ? { providerID: transformation.providerID, id: transformation.id }
+        transformation &&
+        JSON.stringify([transformation.providerID, transformation.id, transformation.connection]) !== principal
+          ? { providerID: transformation.providerID, id: transformation.id, connection: transformation.connection }
           : undefined,
       ...(evaluator ? { evaluator: evaluator.evaluator } : {}),
     },
@@ -182,13 +193,12 @@ async function chooseModel(
     role: string
     models: ModelInfo[]
     providers: ProviderInfo[]
-    principalProvider?: string
     current?: IntelligenceSettings["principal"]
     recommended?: string
     router?: string
     onConnect: () => Promise<void>
   },
-): Promise<ModelInfo | undefined> {
+): Promise<SelectedModel | undefined> {
   const current = input.models.find(
     (model) => model.providerID === input.current?.providerID && model.id === input.current.id,
   )
@@ -207,12 +217,23 @@ async function chooseModel(
         .map((connection, index) => ({ ...route, connection, active: index === 0 })),
     )
   })
-  const selectable = connections.filter((item) => item.id !== input.principalProvider || item.active)
+  const selectable = connections
   const selected = await context.ui.dialog.select({
     title: `${input.role} · connection`,
     current: Math.max(
       0,
-      selectable.findIndex((item) => item.id === (current?.providerID ?? input.router) && item.active),
+      selectable.findIndex(
+        (item) =>
+          item.id === (current?.providerID ?? input.router) &&
+          (input.current?.connection
+            ? item.connection.type === input.current.connection.type &&
+              (item.connection.type === "credential" && input.current.connection.type === "credential"
+                ? item.connection.id === input.current.connection.id
+                : item.connection.type === "env" &&
+                  input.current.connection.type === "env" &&
+                  item.connection.name === input.current.connection.name)
+            : item.active),
+      ),
     ),
     options: [
       ...selectable.map((item, index) => ({
@@ -244,6 +265,16 @@ async function chooseModel(
     return
   }
   const connection = selectable[selected]
+  const bind = (model: ModelInfo | undefined): SelectedModel | undefined =>
+    model
+      ? {
+          ...model,
+          connection:
+            connection.connection.type === "credential"
+              ? { type: "credential", id: connection.connection.id }
+              : { type: "env", name: connection.connection.name },
+        }
+      : undefined
   const provider = connection.id
   if (!connection.active && connection.connection.type === "credential")
     await context.client.credential.activate({ credentialID: connection.connection.id })
@@ -323,7 +354,7 @@ async function chooseModel(
       }),
   })
   const group = offered.find((item) => `${OFFERS}${item.model.id}` === chosen)
-  if (!group) return offered.find((item) => item.model.id === chosen)?.model
+  if (!group) return bind(offered.find((item) => item.model.id === chosen)?.model)
   const pinned = group.offers.flatMap((entry) => (entry.model ? [{ ...entry, model: entry.model }] : []))
   const unpinned = group.offers.length - pinned.length
   const offer = await context.ui.dialog.select({
@@ -344,7 +375,7 @@ async function chooseModel(
       })),
     ],
   })
-  return [group.model, ...pinned.map((entry) => entry.model)].find((model) => model.id === offer)
+  return bind([group.model, ...pinned.map((entry) => entry.model)].find((model) => model.id === offer))
 }
 
 /** Value prefix of the row that opens a flat model's offers in the S2 model picker. */

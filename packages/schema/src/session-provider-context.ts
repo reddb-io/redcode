@@ -2,10 +2,13 @@ export * as SessionProviderContext from "./session-provider-context.js"
 
 import { Schema } from "effect"
 import { Provider } from "./provider.js"
+import { optional } from "./schema.js"
 
 /** Exact producing model/deployment and route identity, never credentials or a connection ID. */
 export interface Provenance extends Schema.Schema.Type<typeof Provenance> {}
 export const Provenance = Schema.Struct({
+  /** Hash of the selected access identity; native state cannot move between accounts. */
+  connection: Schema.String.pipe(optional),
   providerID: Provider.ID,
   provider: Schema.String,
   modelID: Schema.String,

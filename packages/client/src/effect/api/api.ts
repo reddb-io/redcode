@@ -3419,6 +3419,7 @@ export type SessionLogOutput =
               | {
                   readonly version: 1
                   readonly provenance: {
+                    readonly connection?: string | undefined
                     readonly providerID: Provider.ID
                     readonly provider: string
                     readonly modelID: string

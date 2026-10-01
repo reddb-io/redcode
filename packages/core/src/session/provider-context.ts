@@ -7,6 +7,7 @@ import { isDeepStrictEqual } from "node:util"
 import { Hash } from "@opencode/util/hash"
 import type { SessionMessage } from "./message.js"
 import type { SessionRunnerModel } from "./runner/model.js"
+import { IntegrationConnection } from "../integration/connection.js"
 
 export type Provenance = SessionProviderContext.Provenance
 export const Info = SessionProviderContext.Info
@@ -20,6 +21,9 @@ export function provenance(resolved: Pick<SessionRunnerModel.Resolved, "model" |
   const endpoint = model.route.endpoint
   if (!endpoint.baseURL || typeof endpoint.path !== "string") return undefined
   return {
+    ...(resolved.ref.connection
+      ? { connection: Hash.sha256(IntegrationConnection.key(resolved.ref.connection)!) }
+      : {}),
     providerID: resolved.ref.providerID,
     provider: model.provider,
     modelID: model.id,

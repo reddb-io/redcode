@@ -21,6 +21,7 @@ import { Model } from "@opencode/core/model"
 import { Project } from "@opencode/core/project"
 import { ProjectTable } from "@opencode/core/project/sql"
 import { Provider } from "@opencode/core/provider"
+import { Credential } from "@opencode/core/credential"
 import { AbsolutePath, RelativePath } from "@opencode/core/schema"
 import { Session } from "@opencode/core/session"
 import { SessionMessage } from "@opencode/core/session/message"
@@ -809,9 +810,10 @@ describe("Session.create", () => {
       const session = yield* Session.Service
       const parent = yield* session.create({ location })
 
-      expect(
-        yield* session.fork({ sessionID: parent.id }).pipe(Effect.flip),
-      ).toMatchObject({ _tag: "Session.ForkEmptyError", sessionID: parent.id })
+      expect(yield* session.fork({ sessionID: parent.id }).pipe(Effect.flip)).toMatchObject({
+        _tag: "Session.ForkEmptyError",
+        sessionID: parent.id,
+      })
     }),
   )
 
@@ -1179,6 +1181,26 @@ describe("Session.create", () => {
       expect(yield* session.messages({ sessionID: created.id, order: "asc" })).toMatchObject([
         { type: "model-switched", model, previous },
       ])
+    }),
+  )
+
+  it.effect("persists connection identity and records switching accounts for the same model", () =>
+    Effect.gen(function* () {
+      const session = yield* Session.Service
+      const first = Model.Ref.make({
+        providerID: Provider.ID.anthropic,
+        id: Model.ID.make("sonnet"),
+        connection: { type: "credential", id: Credential.ID.make("cred_first") },
+      })
+      const created = yield* session.create({ location, model: first })
+      expect((yield* session.get(created.id)).model?.connection).toEqual(first.connection)
+      const second = { ...first, connection: { type: "credential" as const, id: Credential.ID.make("cred_second") } }
+      yield* session.switchModel({ sessionID: created.id, model: second })
+      expect((yield* session.get(created.id)).model?.connection).toEqual(second.connection)
+      const messages = yield* session.messages({ sessionID: created.id, order: "asc" })
+      expect(messages).toMatchObject([{ type: "model-switched", model: second, previous: first }])
+      yield* session.switchModel({ sessionID: created.id, model: second })
+      expect(yield* session.messages({ sessionID: created.id, order: "asc" })).toHaveLength(messages.length)
     }),
   )
 

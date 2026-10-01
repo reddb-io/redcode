@@ -3,10 +3,12 @@ import { isRecord } from "./util/record"
 import { Flock } from "@opencode/util/flock"
 import { watch } from "node:fs"
 import path from "node:path"
+import type { ConnectionRef } from "@opencode/client"
 
 export type ModelPreferenceModel = {
   providerID: string
   modelID: string
+  connection?: ConnectionRef
 }
 
 export type ModelPreference = {

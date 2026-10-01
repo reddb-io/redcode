@@ -33,6 +33,7 @@ export function fromRow(row: typeof SessionTable.$inferSelect): SessionSchema.In
           id: Model.ID.make(row.model.id),
           providerID: Provider.ID.make(row.model.providerID),
           variant: Model.VariantID.make(row.model.variant ?? "default"),
+          ...(row.model.connection ? { connection: row.model.connection } : {}),
         }
       : undefined,
     cost: Money.USD.make(row.cost),

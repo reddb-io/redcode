@@ -7,6 +7,8 @@ import { ModelLimit } from "../../model-limit.js"
 import { ModelsDev } from "../../models-dev.js"
 import { catalogLimits, knownLimit, type CatalogLimits } from "./catalog-limits.js"
 import { Provider } from "../../provider.js"
+import { RemoteCheck } from "../../remote-check.js"
+import { ConnectionCheck } from "@opencode/schema/connection-check"
 
 /**
  * The `/connect` wizard for any OpenAI-compatible endpoint. Connecting checks the URL and key by reading the
@@ -326,33 +328,44 @@ export function parseHeaders(value: string): Record<string, string> | string {
  */
 export const discover = Effect.fn("OpenAICompatible.discover")(function* (endpoint: Endpoint, key: string) {
   const url = `${endpoint.baseURL}/models`
+  const requests: ConnectionCheck.Request[] = []
+  const failure = (message: string) =>
+    Object.assign(new Error(`${message}\n\n${ConnectionCheck.describe(requests)}`), { requests })
   const response = yield* Effect.tryPromise({
     try: async (signal) => {
-      const result = await fetch(url, {
-        redirect: "error",
-        signal: AbortSignal.any([signal, AbortSignal.timeout(15_000)]),
-        headers: { ...endpoint.headers, accept: "application/json", authorization: `Bearer ${key}` },
-      })
+      const result = await RemoteCheck.request(
+        url,
+        {
+          redirect: "error",
+          signal: AbortSignal.any([signal, AbortSignal.timeout(15_000)]),
+          headers: { ...endpoint.headers, accept: "application/json", authorization: `Bearer ${key}` },
+        },
+        requests,
+      )
       return { status: result.status, ok: result.ok, body: result.ok ? await result.text() : "" }
     },
-    catch: (cause) => new Error(`Could not reach ${url}: ${cause instanceof Error ? cause.message : String(cause)}`),
+    catch: (cause) =>
+      failure(`Could not reach the model catalog: ${cause instanceof Error ? cause.message : String(cause)}`),
   })
   if (response.status === 401 || response.status === 403)
-    return yield* Effect.fail(new Error(`The endpoint rejected the API key (HTTP ${response.status} from ${url})`))
+    return yield* Effect.fail(failure(`The endpoint rejected the API key (HTTP ${response.status})`))
   const list = response.ok
     ? Option.getOrUndefined(Schema.decodeUnknownOption(Schema.fromJsonString(ModelList))(response.body))
     : undefined
   if (!list) {
     if (endpoint.models.length > 0) return []
     return yield* Effect.fail(
-      new Error(
+      failure(
         response.ok
           ? `${url} did not return an OpenAI model list; customize the connection to enter the model IDs to use`
           : `${url} answered HTTP ${response.status}; check the URL, or customize the connection to enter the model IDs to use`,
       ),
     )
   }
-  return list.data.flatMap((item) => Option.toArray(Schema.decodeUnknownOption(ListedModel)(item)))
+  const models = list.data.flatMap((item) => Option.toArray(Schema.decodeUnknownOption(ListedModel)(item)))
+  requests[requests.length - 1].models = models.length
+  yield* Effect.logInfo("OpenAI-compatible catalog checked", { requests })
+  return models
 })
 
 /**

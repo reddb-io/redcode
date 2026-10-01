@@ -7,6 +7,8 @@ import { Headers } from "effect/unstable/http"
 import { AISDKNative } from "@opencode/core/aisdk-native"
 import { Credential } from "@opencode/core/credential"
 import { Integration } from "@opencode/core/integration"
+import { KV } from "@opencode/core/kv"
+import { ModelsDev } from "@opencode/core/models-dev"
 import { Compatibility, ID, Info, Model, VariantID } from "@opencode/core/model"
 import { Provider } from "@opencode/core/provider"
 import { ModelResolver } from "@opencode/core/model-resolver"
@@ -398,7 +400,20 @@ describe("ModelResolver", () => {
       },
       model: () => Effect.die("unused"),
     })
-    const layer = ModelResolver.layer.pipe(Layer.provide(Layer.mergeAll(providers, models, integrations, npm, aisdk)))
+    const layer = ModelResolver.layer.pipe(
+      Layer.provide(
+        Layer.mergeAll(
+          providers,
+          models,
+          integrations,
+          npm,
+          aisdk,
+          Layer.mock(Credential.Service, {}),
+          Layer.mock(KV.Service, {}),
+          Layer.mock(ModelsDev.Service, {}),
+        ),
+      ),
+    )
 
     return withConfigEnv({}, () =>
       Effect.gen(function* () {

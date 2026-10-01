@@ -92,14 +92,17 @@ const layer = Layer.effect(
         const settings = yield* intelligence.read()
         yield* IntelligenceEvaluation.requireConfigured(settings)
         const selected =
-          settings.enabled && !session.model && settings.principal
-            ? { ...session, model: settings.principal }
-            : session
+          settings.enabled && !session.model && settings.principal ? { ...session, model: settings.principal } : session
         // Location plugins populate and filter the catalog asynchronously during layer startup.
         if (!selected.model) {
           const resolved = yield* resolver.resolve()
           if (resolved) return resolved
           return yield* new ModelNotSelectedError({ sessionID: session.id })
+        }
+        if (selected.model.connection) {
+          const resolved = yield* resolver.resolve(selected.model)
+          if (resolved) return resolved
+          return yield* new ModelUnavailableError({ providerID: selected.model.providerID, modelID: selected.model.id })
         }
         const model = (yield* available()).find(
           (model) => model.providerID === selected.model?.providerID && model.id === selected.model.id,

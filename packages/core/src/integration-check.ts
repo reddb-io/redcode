@@ -43,7 +43,7 @@ export const check = Effect.fn("IntegrationCheck.check")(function* (integrationI
       const catalog = yield* Effect.tryPromise({
         try: async (signal) => {
           const response = await RemoteCheck.request(
-            `${baseURL}/models`,
+            `${baseURL}/models${integrationID === "red-router" ? "?capabilities=chat" : ""}`,
             {
               redirect: "error",
               signal: AbortSignal.any([signal, AbortSignal.timeout(15_000)]),
@@ -73,7 +73,7 @@ export const check = Effect.fn("IntegrationCheck.check")(function* (integrationI
             "HTTP 200 returned an empty model catalog. Check the key's allowed models and the Router's upstream connections.",
           ),
         )
-      return `Catalog checked: ${catalog.data.length} models visible to this connection`
+      return `Catalog checked: ${catalog.data.length} models visible to this connection. Generation was not checked; use /setup to test a selected S2 model.`
     }
     const providers = yield* Provider.Service
     const ids = new Set(

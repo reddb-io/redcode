@@ -44,6 +44,7 @@ import { SessionEvent } from "@opencode/core/session/event"
 import { SessionCompaction } from "@opencode/core/session/compaction"
 import { SessionInbox } from "@opencode/core/session/inbox"
 import { SessionGoal } from "@opencode/core/session/goal"
+import { SessionGoalTable } from "@opencode/core/session/redcode.sql"
 import { SessionMessage } from "@opencode/core/session/message"
 import { SessionModelTransport } from "@opencode/core/session/model-transport"
 import { SessionProviderContext } from "@opencode/core/session/provider-context"
@@ -1106,6 +1107,25 @@ describe("SessionRunnerLLM", () => {
 
     expect((yield* s.session.get(sessionID)).title).toBe("Generated title")
     yield* Fiber.interrupt(fiber)
+  })
+
+  scenario("a waiting goal recovered from another process requires an explicit resume", function* (s) {
+    const goals = yield* SessionGoal.Service
+    const database = yield* Database.Service
+    const goal = yield* goals.start(sessionID, { objective: "Wait for the build result", maxTurns: 8 })
+    yield* database.db
+      .update(SessionGoalTable)
+      .set({ owner: "previous-process", data: { ...goal, status: "waiting" } })
+      .where(eq(SessionGoalTable.session_id, sessionID))
+      .run()
+    const recovered = yield* goals.get(sessionID)
+    expect(recovered?.status).toBe("paused")
+    expect(recovered?.reason).toContain("Resume explicitly")
+    expect(yield* s.inbox).toEqual([])
+    const resumed = yield* goals.control(sessionID, { action: "resume" })
+    expect(resumed?.id).toBe(goal.id)
+    expect(resumed?.status).toBe("active")
+    expect(resumed?.turns).toEqual(goal.turns)
   })
 
   scenario("continues an active goal through the inbox and pauses it after replies without progress", function* (s) {

@@ -6,6 +6,7 @@ import { IntelligenceEvaluation } from "../../intelligence/evaluation.js"
 import { redRouterEndpoint } from "../../intelligence/red-router-endpoint.js"
 import { IntelligenceRouter } from "../../intelligence/router.js"
 import { Integration } from "../../integration.js"
+import { IntegrationConnection } from "../../integration/connection.js"
 import { KV } from "../../kv.js"
 import { Model } from "../../model.js"
 import { ModelLimit } from "../../model-limit.js"
@@ -15,6 +16,8 @@ import { ProviderRouter } from "../../provider-router.js"
 import { Hash } from "@opencode/util/hash"
 import { Money } from "@opencode/schema/money"
 import { Router } from "@opencode/schema/router"
+import { RemoteCheck } from "../../remote-check.js"
+import { ConnectionCheck } from "@opencode/schema/connection-check"
 
 /**
  * Limits for a model that neither the router nor the models catalog describes. They are a guess, not
@@ -267,25 +270,38 @@ function routerPlugin(options: {
           }
         }
         yield* ctx.provider.reload()
+        const requests: ConnectionCheck.Request[] = []
         const fetched = yield* Effect.tryPromise({
           try: async (signal) => {
             const request = (suffix: string) =>
-              fetch(`${connection.baseURL}/${suffix}`, {
-                redirect: "error",
-                signal: AbortSignal.any([signal, AbortSignal.timeout(15_000)]),
-                headers: { accept: "application/json", authorization: `Bearer ${connection.key}` },
-              })
+              RemoteCheck.request(
+                `${connection.baseURL}/${suffix}`,
+                {
+                  redirect: "error",
+                  signal: AbortSignal.any([signal, AbortSignal.timeout(15_000)]),
+                  headers: { accept: "application/json", authorization: `Bearer ${connection.key}` },
+                },
+                requests,
+              )
             const filtered = await request(options.id === "red-router" ? "models?capabilities=chat" : "models")
             const result =
               options.id === "red-router" && [400, 404, 405].includes(filtered.status)
                 ? await request("models")
                 : filtered
-            if (!result.ok) throw new Error(`${options.name} model catalog HTTP ${result.status}`)
+            if (!result.ok)
+              throw new Error(
+                `${options.name} model catalog HTTP ${result.status}\n${ConnectionCheck.describe(requests)}`,
+              )
             return { body: (await result.json()) as unknown, headers: result.headers }
           },
-          catch: (cause) => cause,
+          catch: (cause) =>
+            new Error(
+              `${cause instanceof Error ? cause.message : "Catalog request failed"}\n${ConnectionCheck.describe(requests)}`,
+            ),
         })
+        yield* Effect.logInfo(`${options.name} catalog checked`, { requests })
         const response = yield* Schema.decodeUnknownEffect(catalog)(fetched.body)
+        requests[requests.length - 1].models = response.data.length
         const current = yield* resolve()
         if (!current || current.baseURL !== connection.baseURL || current.key !== connection.key) return
         const flat = response.id_format === "flat"
@@ -304,6 +320,7 @@ function routerPlugin(options: {
         loaded.catalogVersion =
           fetched.headers.get(ProviderRouter.Header.catalogVersion)?.trim() || loaded.catalogVersion
         const digest = Hash.sha256(JSON.stringify(models))
+        yield* kv.set(`${cacheKey}:features`, [...inspection.features])
         if (digest === loaded.digest && JSON.stringify(inspection) === JSON.stringify(loaded.inspection)) return
         const mcpInspected = mcpServer()
         loaded.inspection = inspection
@@ -402,6 +419,16 @@ function routerPlugin(options: {
         "model.request",
         (event) =>
           Effect.sync(() => {
+            if (
+              event.model.connection &&
+              IntegrationConnection.key(event.model.connection) !==
+                IntegrationConnection.key(
+                  loaded.connection?.credential
+                    ? { type: "credential", id: loaded.connection.credential.id }
+                    : { type: "env", name: options.keyEnv },
+                )
+            )
+              return
             Object.assign(
               event.headers,
               ProviderRouter.requestHeaders({
@@ -468,6 +495,45 @@ function routerPlugin(options: {
     }),
   })
 }
+
+/** Resolve a router model from the catalog belonging to its saved access, never the active account's catalog. */
+export const connectionModel = Effect.fn("RouterProvider.connectionModel")(function* (
+  providerID: Provider.ID,
+  modelID: Model.ID,
+  connection: IntegrationConnection.Info,
+  value: Credential.Value,
+) {
+  const credentials = yield* Credential.Service
+  const kv = yield* KV.Service
+  const modelsDev = yield* ModelsDev.Service
+  const credential = connection.type === "credential" ? yield* credentials.get(connection.id) : undefined
+  const baseURL =
+    providerID === "red-router"
+      ? redRouterEndpoint(credential)
+      : routerEndpoint(credential, process.env.NINE_ROUTER_BASE_URL ?? "http://127.0.0.1:20128/v1")
+  if (!baseURL) return
+  const key = value.type === "key" ? value.key : value.access
+  const cacheKey = `${providerID}:models:${Hash.sha256(`${baseURL}\n${key}`)}`
+  const count = yield* kv.get(`${cacheKey}:count`)
+  if (typeof count !== "number" || !Number.isSafeInteger(count) || count <= 0 || count >= 10_000) return
+  const chunks = yield* Effect.forEach(
+    Array.from({ length: count }, (_, index) => index),
+    (index) => kv.get(`${cacheKey}:${index}`),
+  )
+  const decoded = chunks.map((chunk) =>
+    Option.getOrUndefined(Schema.decodeUnknownOption(Schema.Array(catalogModel))(chunk)),
+  )
+  if (decoded.some((chunk) => chunk === undefined)) return
+  const names = catalogNames(yield* modelsDev.get())
+  const features =
+    Option.getOrUndefined(
+      Schema.decodeUnknownOption(Schema.Array(Router.Feature))(yield* kv.get(`${cacheKey}:features`)),
+    ) ?? []
+  const model = decoded
+    .flatMap((chunk) => (chunk ?? []).flatMap((item) => routerModel(item, providerID, names, new Set(features))))
+    .find((model) => model.id === modelID)
+  return model ? { ...model, settings: { ...model.settings, baseURL } } : undefined
+})
 
 /**
  * How a router's model list moved between two reads, counted by model id. The router keeps no
@@ -750,10 +816,9 @@ function strictest(members: ReadonlyArray<RouterParameters>): RouterParameters |
   const levels = members.every((member) => member.thinking_levels !== undefined)
     ? members
         .slice(1)
-        .reduce<ReadonlyArray<string>>(
-          (kept, member) => kept.filter((level) => (member.thinking_levels ?? []).includes(level)),
-          first.thinking_levels ?? [],
-        )
+        .reduce<
+          ReadonlyArray<string>
+        >((kept, member) => kept.filter((level) => (member.thinking_levels ?? []).includes(level)), first.thinking_levels ?? [])
     : undefined
   const reasoning = all(members.map((member) => member.reasoning))
   const canDisable = all(members.map((member) => member.thinking_can_disable))

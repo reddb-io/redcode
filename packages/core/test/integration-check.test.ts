@@ -18,6 +18,7 @@ const checkCatalog = (body: string, status = 200) =>
           port: 0,
           fetch: (request) => {
             expect(new URL(request.url).pathname).toBe("/v1/models")
+            expect(new URL(request.url).searchParams.get("capabilities")).toBe("chat")
             expect(request.headers.get("authorization")).toBe("Bearer selected-key")
             return new Response(body, { status })
           },
@@ -49,6 +50,7 @@ it.live("checks the active Router catalog without waiting for background model p
   Effect.gen(function* () {
     const report = yield* checkCatalog(JSON.stringify({ data: [{ id: "chat-model" }, { id: "decision-model" }] }))
     expect(report.ok).toBe(true)
+    expect(report.message).toContain("Generation was not checked")
     expect(report.requests[0].models).toBe(2)
   }),
 )

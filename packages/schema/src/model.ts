@@ -5,6 +5,7 @@ import { optional, statics } from "./schema.js"
 import { Provider } from "./provider.js"
 import { Router } from "./router.js"
 import { Money } from "./money.js"
+import { Connection } from "./connection.js"
 import { ephemeral, inventory } from "./event.js"
 
 export const ID = Schema.String.pipe(Schema.brand("Model.ID"))
@@ -20,6 +21,7 @@ export const Ref = Schema.Struct({
   id: ID,
   providerID: Provider.ID,
   variant: VariantID.pipe(optional),
+  connection: Connection.Ref.pipe(optional),
 })
   .annotate({ identifier: "Model.Ref" })
   .pipe(

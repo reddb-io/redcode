@@ -22,3 +22,10 @@ export const Info = Schema.Union([CredentialInfo, EnvInfo])
   .pipe(Schema.toTaggedUnion("type"))
   .annotate({ identifier: "Connection.Info" })
 export type Info = typeof Info.Type
+
+/** Stable access identity; labels and refreshed OAuth tokens are not part of a selection. */
+export const Ref = Schema.Union([
+  Schema.Struct({ type: Schema.Literal("credential"), id: Credential.ID }),
+  EnvInfo,
+]).annotate({ identifier: "Connection.Ref" })
+export type Ref = typeof Ref.Type
