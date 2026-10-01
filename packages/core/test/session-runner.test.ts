@@ -54,6 +54,7 @@ import { SessionExecution } from "@opencode/core/session/execution"
 import { SessionRunCoordinator } from "@opencode/core/session/run-coordinator"
 import { SessionRunner } from "@opencode/core/session/runner/index"
 import { SessionRunnerLLM } from "@opencode/core/session/runner/llm"
+import { IntelligenceVerification } from "@opencode/core/intelligence/verification"
 import { SessionRunnerModel } from "@opencode/core/session/runner/model"
 import { SessionUsage } from "@opencode/core/session/usage"
 import { PluginSupervisor } from "@opencode/core/plugin/supervisor"
@@ -1347,6 +1348,75 @@ describe("SessionRunnerLLM", () => {
         Expected.completedTool({ id: "call-reloaded" }, { content: [Expected.text('{"value":"advertised"}')] }),
       ]),
     ])
+  })
+
+  scenario("verification survives a long history, spends one Step and a new user supersedes it", function* (s) {
+    yield* s.llm.push(TestLLM.text("Initial answer", "initial"))
+    const user = yield* s.runPrompt("Inspect this result")
+    yield* Effect.forEach(
+      Array.from({ length: 70 }, (_, index) => index),
+      (index) => s.bus.publish(SessionEvent.Synthetic, { sessionID, text: `Earlier context ${index}` }),
+    )
+    yield* s.bus.publish(SessionEvent.Synthetic, {
+      sessionID,
+      text: "Independently verify the answer",
+      metadata: { [IntelligenceVerification.KEY]: { userID: user.id } },
+    })
+    yield* s.llm.push(TestLLM.text("Verified answer", "verified"))
+    yield* s.resume
+    expect(s.requests).toHaveLength(2)
+    expect(s.requests[1]?.generation?.maxTokens).toBeLessThanOrEqual(2_048)
+    expect(s.requests[1]?.tools.every((tool) => ["read", "glob", "grep", "session_history"].includes(tool.name))).toBe(
+      true,
+    )
+    expect(s.requests[1]?.tools.some((tool) => tool.name === "echo")).toBe(false)
+
+    // Move the marker outside any recent window, then resume from durable projections.
+    yield* Effect.forEach(
+      Array.from({ length: 70 }, (_, index) => index),
+      (index) => s.bus.publish(SessionEvent.Synthetic, { sessionID, text: `Later context ${index}` }),
+    )
+    yield* s.resume
+    expect(s.requests).toHaveLength(2)
+    yield* s.llm.push(TestLLM.text("Next answer", "next"))
+    yield* s.runPrompt("Continue with the next request")
+    expect(s.requests).toHaveLength(3)
+    expect(s.requests[2]?.tools.some((tool) => tool.name === "echo")).toBe(true)
+  })
+
+  scenario("a tool-only verification cannot earn another synthesis Step", function* (s) {
+    const registry = yield* Tool.Service
+    const inspections: string[] = []
+    yield* transformTools(
+      registry,
+      {
+        read: {
+          name: "read",
+          description: "Inspect evidence",
+          input: Schema.Struct({ path: Schema.String }),
+          output: Schema.Struct({ text: Schema.String }),
+          execute: (input) =>
+            Effect.sync(() => {
+              inspections.push(input.path)
+              return { output: { text: "Evidence" } }
+            }),
+        },
+      },
+      { codemode: false },
+    )
+    yield* s.llm.push(TestLLM.text("Initial answer", "initial"))
+    const user = yield* s.runPrompt("Inspect this result")
+    yield* s.bus.publish(SessionEvent.Synthetic, {
+      sessionID,
+      text: "Verify using the evidence",
+      metadata: { [IntelligenceVerification.KEY]: { userID: user.id } },
+    })
+    yield* s.llm.push(TestLLM.tool("read-evidence", "read", { path: "evidence.txt" }))
+    yield* s.resume
+    expect(inspections).toEqual(["evidence.txt"])
+    expect(s.requests).toHaveLength(2)
+    yield* s.resume
+    expect(s.requests).toHaveLength(2)
   })
 
   scenario("starts a real runner step after default prompt recording", function* (s) {

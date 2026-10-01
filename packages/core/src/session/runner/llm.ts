@@ -144,6 +144,30 @@ const layer = Layer.effect(
         Effect.orElseSucceed(() => false),
       )
 
+    // Verification admission is a durable fact, independent of the model window or recent-message limit.
+    const verificationState = Effect.fn("SessionRunner.verificationState")(function* (sessionID: SessionSchema.ID) {
+      const user = (yield* store.messages({ sessionID, type: "user", limit: 1 }))[0]
+      if (!user) return undefined
+      const markers = yield* store.messages({
+        sessionID,
+        type: "synthetic",
+        order: "asc",
+        cursor: { id: user.id, direction: "next" },
+      })
+      const marker = markers.findLast(
+        (message) => message.type === "synthetic" && message.metadata?.[IntelligenceVerification.KEY] !== undefined,
+      )
+      if (!marker) return undefined
+      const after = yield* store.messages({
+        sessionID,
+        type: "assistant",
+        order: "asc",
+        cursor: { id: marker.id, direction: "next" },
+        limit: 1,
+      })
+      return IntelligenceVerification.state([user, marker, ...after])
+    })
+
     const drain = Effect.fn("SessionRunner.drain")(function* (input: Parameters<Interface["drain"]>[0]) {
       const sessionID = input.sessionID
       let force = input.force
@@ -295,9 +319,7 @@ const layer = Layer.effect(
         const configuredBudget = SessionBudget.configured(Config.latest(yield* config.entries(), "session")?.budget)
         if (!(yield* budgets.admit(sessionID, configuredBudget))) return DrainResult.Complete()
         // Classified before the goal accounts the Step, so an interruption while waiting spends nothing.
-        const verification = IntelligenceVerification.state(
-          (yield* store.messages({ sessionID, order: "desc", limit: RECENT })).toReversed(),
-        )
+        const verification = yield* verificationState(sessionID)
         if (verification && !verification.pending) return DrainResult.Complete()
         const classification = verification?.pending ? undefined : yield* classify(next.context)
         // What System One made of the request steers a RedRouter's requests for this Step; without a
@@ -1049,10 +1071,7 @@ const layer = Layer.effect(
       stopGuard: () => void,
     ) {
       const sessionID = first.session.id
-      const verifying =
-        IntelligenceVerification.state(
-          (yield* store.messages({ sessionID, order: "desc", limit: RECENT })).toReversed(),
-        )?.pending === true
+      const verifying = (yield* verificationState(sessionID))?.pending === true
       let assistantMessageID = SessionMessage.ID.create()
       const retry = yield* SessionRunnerRetry.make(bus, sessionID)
       let initial: SessionContext.Loaded | undefined = first
