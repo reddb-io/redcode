@@ -6,7 +6,9 @@ import { ProjectTable } from "@opencode/core/project/sql"
 import { SessionBudget } from "@opencode/core/session/budget"
 import { SessionTable } from "@opencode/core/session/sql"
 import { Integration } from "@opencode/schema/integration"
+import { Model } from "@opencode/schema/model"
 import { Project } from "@opencode/schema/project"
+import { Provider } from "@opencode/schema/provider"
 import { AbsolutePath } from "@opencode/schema/schema"
 import { Session } from "@opencode/schema/session"
 import { LayerNode } from "@opencode/util/effect/layer-node"
@@ -52,7 +54,7 @@ const configure = (baseURL: string) =>
         enabled: true,
         reasoning: "dual",
         onboarding: "completed",
-        principal: { providerID: "red-router", id: "chat" },
+        principal: { providerID: Provider.ID.make("red-router"), id: Model.ID.make("chat") },
         evaluator: { transport: "red-router", baseURL, model: "jev", credentialID: credential.id },
       },
     })
@@ -89,7 +91,7 @@ describe("System One usage accounting", () => {
           answers: {},
           usage: { input_tokens: 100, output_tokens: 5 },
         })
-        expect(yield* intelligence.history(sessionID)).toEqual([failed])
+        expect(yield* intelligence.history(sessionID)).toEqual([failed!])
         expect(yield* budgets.totals(sessionID)).toEqual({ cost: 0, tokens: 105, unpriced: 1 })
         expect(yield* budgets.admit(sessionID, { maxTokens: 100 })).toBe(false)
 
@@ -135,7 +137,7 @@ describe("System One usage accounting", () => {
       expect(failed!.usage.input_tokens).toBeLessThanOrEqual(200)
       expect(failed!.usage.input_tokens % 100).toBe(0)
       expect(failed!.usage.output_tokens).toBe(failed!.usage.input_tokens / 20)
-      expect(yield* intelligence.history(sessionID)).toEqual([failed])
+      expect(yield* intelligence.history(sessionID)).toEqual([failed!])
       const spent = yield* budgets.totals(sessionID)
       expect(spent).toEqual({
         cost: 0,
@@ -179,7 +181,7 @@ describe("System One usage accounting", () => {
         answers: {},
         usage: { input_tokens: 0, output_tokens: 0 },
       })
-      expect(yield* intelligence.history(sessionID)).toEqual([failed])
+      expect(yield* intelligence.history(sessionID)).toEqual([failed!])
       expect(yield* budgets.totals(sessionID)).toEqual({ cost: 0, tokens: 0, unpriced: 0 })
     }),
   )
