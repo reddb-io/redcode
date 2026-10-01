@@ -532,7 +532,7 @@ export function verification(evaluation: Intelligence.Evaluation | undefined) {
   if (focus === "arithmetic")
     return "Before answering, recompute numerical results independently from the original inputs. Apply the requested rounding at the correct stage, then check the final total against its rounded components. Do not reuse an unchecked intermediate result."
   if (focus === "code")
-    return "Before answering, trace the supplied code with the requested inputs, including zero, false, empty and missing values where applicable. Separately derive intended behavior from the stated policy. Check that actual and expected results have not been exchanged. Follow the user's limits on execution and edits."
+    return "Before answering, substitute the requested inputs into each expression and evaluate one operator at a time. Resolve truthiness, coercion and short-circuit branches before later operations. Include zero, false, empty and missing values where applicable. Derive intended behavior separately from the stated contract. Assign actual and expected results to their requested fields only after checking both against these separate derivations. Follow the user's limits on execution and edits."
   if (focus === "evidence")
     return "Before answering, check each factual claim against its source and the user's constraints. Preserve unknown facts as unknown. A pending or partial result does not prove completion; do not invent requirements beyond the stated policy."
   return undefined
