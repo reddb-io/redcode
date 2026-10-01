@@ -1,5 +1,13 @@
 # @reddb-io/redcode
 
+## 0.70.5
+
+### Patch Changes
+
+- Provide the global Session, execution and goal services to browser Design feedback and approval requests so variant actions reach the active session. Display the prototype link as a compact Preview line using the Design agent color.
+- Show feedback delivery progress and persistent HTTP errors beside the Design composer, preserve the failed draft across reloads, and confirm when the agent receives feedback. Verify saved-feedback retry and actual agent delivery in the shipped browser smoke test.
+- Use System One to select focused correctness checks before System Two answers, omit unreliable classification labels, and review correctness even for plain answers. Reduce repeated evaluator instructions and add a reasoning evaluation gate requiring better accuracy, no case regressions, and known total cost within twice single reasoning.
+
 ## 0.70.4
 
 ### Patch Changes
