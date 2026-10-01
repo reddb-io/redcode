@@ -139,9 +139,9 @@ and passed on Linux and Windows in CI.
 
 This validates discovery, one-shot generation, decision probing and durable
 selection through the production APIs; it does not establish full interactive
-TUI onboarding or comparative single/dual reasoning behavior. The candidate
-verification does not imply publication: the 0.70.1 publication is pending npm
-maintainer approval for its staged Windows ARM64 package.
+TUI onboarding or comparative single/dual reasoning behavior. The initial 0.70.1 publication stopped on a staged Windows ARM64 package.
+The subsequent 0.70.2 publication completed; its final archive and npm install
+were independently verified as recorded below.
 
 ## Single and dual Session runtime verification (2026-09-30)
 
@@ -170,6 +170,31 @@ changing model-visible steps. Evaluation records have no monetary price, so
 budget totals mark their usage as unpriced rather than assuming it is free.
 The required database regression covers descendant isolation, repeated reads,
 Goal baseline subtraction, unknown pricing, and parent budget enforcement.
+
+## Redcode 0.70.2 release verification (2026-09-30)
+
+The [release workflow](https://github.com/reddb-io/redcode/actions/runs/36806030244)
+completed successfully. Public tags `v0.70.2` and `design-v0.70.2` both point to
+`cff6d7ac471a970fdb09563f4842c45ec47e1c5a`; their releases contain 13 and 15
+assets respectively. CI verified all archive checksums and installed the exact
+npm version. The main package, its `latest` tag, and all twelve platform packages
+are available at 0.70.2; a direct main-package tarball fetch returned HTTP 200.
+
+Independent local verification checked the final Linux archive checksum and a
+fresh npm installation. That installation discovered 934 generative models and
+one decision model, generated `OK` through S2, passed the S1 probe, and retained
+its catalog plus selected connection identities after restarting. Both remote
+probes returned HTTP 200 with latency and complete response-byte diagnostics.
+Temporary credential storage was removed after the check.
+
+The mise-managed installation was upgraded to 0.70.2. Its normal managed service
+responded at `http://127.0.0.1:35555/api/info` with HTTP 200 and version 0.70.2;
+the process executable belongs to the mise 0.70.2 installation.
+
+The evaluator-budget correction at `5f9f824ff3` is subsequent work on `main`,
+with Linux/Windows contracts and full lint/typecheck passing in
+[CI](https://github.com/reddb-io/redcode/actions/runs/36806522678). Its Changeset
+is pending the next patch release; it is not part of the 0.70.2 tag.
 
 ## Completion gate
 
