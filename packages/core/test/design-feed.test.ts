@@ -1,10 +1,11 @@
 import { describe, expect, test } from "bun:test"
-import { Schema } from "effect"
+import { Effect, Schema, Stream } from "effect"
 import { Design } from "@opencode/schema/design"
 import { SessionEvent } from "@opencode/schema/session-event"
 import { SessionMessage } from "@opencode/schema/session-message"
 import { DesignFeed } from "@opencode/core/design/feed"
 import { DesignFeedback } from "@opencode/core/design/feedback"
+import { SessionSchema } from "@opencode/core/session/schema"
 
 const sessionID = "ses_design_feed"
 const assistantMessageID = "msg_feed_assistant"
@@ -46,6 +47,39 @@ const success = (seq: number, id: string, metadata: Record<string, unknown>) =>
     metadata,
     executed: false,
   })
+
+describe("DesignFeed.follow", () => {
+  test("emits individual browser events and reconstructs call state before the reconnect cursor", async () => {
+    const entries = await Effect.runPromise(
+      DesignFeed.follow(
+        {
+          log: () =>
+            Stream.fromIterable([
+              ...tool(1, "call_preview", "design_preview", { name: "Updated screen" }),
+              success(3, "call_preview", { designID, revision: "rev_updated" }),
+              event(SessionEvent.Text.Ended, 4, { assistantMessageID, ordinal: 0, text: "Feedback applied" }),
+            ]),
+        },
+        SessionSchema.ID.make(sessionID),
+        2,
+      ).pipe(Stream.runCollect),
+    )
+    expect(entries).toEqual([
+      {
+        type: "tool",
+        seq: 3,
+        at,
+        id: "call_preview",
+        tool: "design_preview",
+        status: "done",
+        summary: "Updated screen",
+      },
+      { type: "published", seq: 3, at, design: designID, revision: "rev_updated", name: "Updated screen" },
+      { type: "reply", seq: 4, at, id: `${assistantMessageID}:0`, text: "Feedback applied" },
+    ])
+    expect(entries.every((entry) => Schema.is(Design.FeedEvent)(entry))).toBe(true)
+  })
+})
 
 describe("DesignFeed.reduce", () => {
   test("turns a review turn into user, tool, published, reply and agent entries at the durable cursor", () => {

@@ -422,7 +422,30 @@ async function checkDesign() {
     Bun.resolveSync("playwright-core", path.join(import.meta.dir, "..", "..", "packages", "core"))
   )
   const browser = await chromium.launch({ headless: true })
-  await renderReview(browser, review).finally(() => browser.close())
+  await renderReview(browser, review)
+    .catch(async (error: unknown) => {
+      await Bun.write(
+        path.join(artifacts, "design-provider-requests.json"),
+        masked(
+          JSON.stringify(
+            provider.requests.filter((request) => request.scenario?.startsWith("design")),
+            null,
+            2,
+          ),
+        ),
+      )
+      const messages = await api(`/api/session/${String(field(events[0], "sessionID"))}/message`)
+      await Bun.write(path.join(artifacts, "design-messages.json"), masked(JSON.stringify(messages, null, 2)))
+      for (const page of browser.contexts().flatMap((context) => context.pages())) {
+        await page.screenshot({ path: path.join(artifacts, "design-feedback-failure.png"), fullPage: true })
+        await Bun.write(
+          path.join(artifacts, "design-feedback-failure.html"),
+          await page.locator("#review").evaluate((node) => node.shadowRoot?.innerHTML ?? node.innerHTML),
+        )
+      }
+      throw error
+    })
+    .finally(() => browser.close())
   expectFinalText(events, "SMOKE-FINAL design")
 }
 

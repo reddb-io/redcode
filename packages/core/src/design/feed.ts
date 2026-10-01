@@ -62,7 +62,10 @@ export interface State {
 export const initial: State = { calls: new Map(), users: new Map(), announced: new Set() }
 
 /** Reduce one durable V2 Session event into the review's conversation vocabulary. */
-export function reduce(state: State, event: SessionEvent.DurableEvent): readonly [State, ReadonlyArray<Design.FeedEvent>] {
+export function reduce(
+  state: State,
+  event: SessionEvent.DurableEvent,
+): readonly [State, ReadonlyArray<Design.FeedEvent>] {
   const base = { seq: event.durable.seq, at: event.created }
   if (event.type === "session.inbox.enqueued" && event.data.item.type === "user") {
     const summary = describe(event.data.item.payload.text)
@@ -84,19 +87,28 @@ export function reduce(state: State, event: SessionEvent.DurableEvent): readonly
     return [state, [{ ...base, type: "state", state: "idle" }]]
   if (event.type === "session.text.ended") {
     const text = bound(event.data.text, LIMITS.text)
-    return [state, text ? [{ ...base, type: "reply", id: `${event.data.assistantMessageID}:${event.data.ordinal}`, text }] : []]
+    return [
+      state,
+      text ? [{ ...base, type: "reply", id: `${event.data.assistantMessageID}:${event.data.ordinal}`, text }] : [],
+    ]
   }
   if (event.type === "session.tool.input.started")
-    return [
-      { ...state, calls: new Map(state.calls).set(event.data.id, { name: event.data.name, input: {} }) },
-      [],
-    ]
+    return [{ ...state, calls: new Map(state.calls).set(event.data.id, { name: event.data.name, input: {} }) }, []]
   if (event.type === "session.tool.called") {
     const previous = state.calls.get(event.data.id)
     const call = { name: previous?.name ?? "", input: event.data.input }
     return [
       { ...state, calls: new Map(state.calls).set(event.data.id, call) },
-      [{ ...base, type: "tool", id: event.data.id, tool: call.name, status: "running", summary: summarize(call.input) }],
+      [
+        {
+          ...base,
+          type: "tool",
+          id: event.data.id,
+          tool: call.name,
+          status: "running",
+          summary: summarize(call.input),
+        },
+      ],
     ]
   }
   if (event.type === "session.tool.success") {
@@ -112,24 +124,34 @@ export function reduce(state: State, event: SessionEvent.DurableEvent): readonly
       typeof revision === "string"
         ? [{ ...base, type: "published" as const, design, revision, name: String(call.input.name ?? "") }]
         : []
-    const verified = call?.name === "design_jobs"
-      ? Option.getOrElse(decodeVerified(metadata?.verified), () => [])
-          .filter((item) => !state.announced.has(item.job))
-          .map((item) => ({
-            ...base,
-            type: "verified" as const,
-            ...item,
-            notes: item.notes.map((note) => ({
-              ...note,
-              label: bound(note.label, LIMITS.summary),
-              reason: bound(note.reason, LIMITS.summary),
-            })),
-          }))
-      : []
+    const verified =
+      call?.name === "design_jobs"
+        ? Option.getOrElse(decodeVerified(metadata?.verified), () => [])
+            .filter((item) => !state.announced.has(item.job))
+            .map((item) => ({
+              ...base,
+              type: "verified" as const,
+              ...item,
+              notes: item.notes.map((note) => ({
+                ...note,
+                label: bound(note.label, LIMITS.summary),
+                reason: bound(note.reason, LIMITS.summary),
+              })),
+            }))
+        : []
     return [
-      verified.length ? { ...state, announced: new Set([...state.announced, ...verified.map((item) => item.job)]) } : state,
+      verified.length
+        ? { ...state, announced: new Set([...state.announced, ...verified.map((item) => item.job)]) }
+        : state,
       [
-        { ...base, type: "tool", id: event.data.id, tool: call?.name ?? "", status: "done", summary: summarize(call?.input ?? {}) },
+        {
+          ...base,
+          type: "tool",
+          id: event.data.id,
+          tool: call?.name ?? "",
+          status: "done",
+          summary: summarize(call?.input ?? {}),
+        },
         ...published,
         ...verified,
       ],
@@ -138,21 +160,23 @@ export function reduce(state: State, event: SessionEvent.DurableEvent): readonly
   if (event.type === "session.tool.failed")
     return [
       state,
-      [{
-        ...base,
-        type: "tool",
-        id: event.data.id,
-        tool: state.calls.get(event.data.id)?.name ?? "",
-        status: "failed",
-        summary: bound(event.data.error.message, LIMITS.summary),
-      }],
+      [
+        {
+          ...base,
+          type: "tool",
+          id: event.data.id,
+          tool: state.calls.get(event.data.id)?.name ?? "",
+          status: "failed",
+          summary: bound(event.data.error.message, LIMITS.summary),
+        },
+      ],
     ]
   if (event.type === "session.agent.selected") return [state, [{ ...base, type: "agent", agent: event.data.agent }]]
   return [state, []]
 }
 
 /** Replay from the beginning to reconstruct call and inbox state, then emit from the requested cursor. */
-export function follow(sessions: Session.Interface, sessionID: SessionSchema.ID, after = 0) {
+export function follow(sessions: Pick<Session.Interface, "log">, sessionID: SessionSchema.ID, after = 0) {
   return sessions.log({ sessionID, follow: true }).pipe(
     Stream.filter((event): event is SessionEvent.DurableEvent => event.type !== "log.synced"),
     Stream.mapAccum(
@@ -162,5 +186,6 @@ export function follow(sessions: Session.Interface, sessionID: SessionSchema.ID,
         return [next, entries.filter((entry) => entry.seq > after)] as const
       },
     ),
+    Stream.flatMap((entries) => Stream.fromIterable(entries)),
   )
 }
