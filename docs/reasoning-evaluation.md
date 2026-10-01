@@ -92,3 +92,6 @@ rounds and known billing prices before choosing dual mode as a universal default
 
 The [0.70.3 diagnostic results](evaluations/reasoning-0.70.3.md) retain the paired
 grades, latency and usage from the first complete validated sample.
+The [accuracy experiments from 2026-10-01](evaluations/reasoning-accuracy-2026-10-01.md)
+retain both focused-verification candidates, complete paired grades, known cost
+provenance and acceptance verdicts.

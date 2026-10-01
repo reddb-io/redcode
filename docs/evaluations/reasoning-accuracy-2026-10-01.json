@@ -1,0 +1,5520 @@
+{
+  "date": "2026-10-01",
+  "pricing": {
+    "model": "openrouter/openai/gpt-4.1-mini",
+    "evaluator": "openrouter/typesafe/jev-1.13",
+    "source": "https://openrouter.ai/api/v1/models verified 2026-10-01; S1 uses reported usage.cost",
+    "s2": {
+      "input": 0.39999999999999997,
+      "output": 1.5999999999999999,
+      "cacheRead": 0.09999999999999999,
+      "cacheWrite": 0.39999999999999997
+    }
+  },
+  "experiments": [
+    {
+      "sourceCommit": "1e31e092e064423ca811b5d7eb14e5b05cbe0206",
+      "buildRun": 36870596447,
+      "binaryVersion": "redcode v0.70.5",
+      "binarySha256": "33bf4936890f1877ea97e4a95029d2ab4af79297c7f0e5bbdac2f20608efeb23",
+      "model": "openrouter/openai/gpt-4.1-mini",
+      "evaluator": "openrouter/typesafe/jev-1.13",
+      "expectedRuns": 80,
+      "completed": true,
+      "summary": [
+        {
+          "mode": "single",
+          "runs": 40,
+          "succeeded": 40,
+          "passed": 35,
+          "passRate": 0.875,
+          "meanScore": 0.9166666666666666,
+          "medianDurationMs": 3212.593068999995,
+          "p95DurationMs": 5355.195383999999,
+          "s1Tokens": 0,
+          "s2Tokens": 74196,
+          "s2CostUsd": 0.03087,
+          "s1CostUsd": 0,
+          "totalCostUsd": 0.03087,
+          "costComplete": true,
+          "evaluatorFailures": 0,
+          "repaired": 0,
+          "improved": 0,
+          "unnecessary": 0,
+          "degraded": 0,
+          "ineffective": 0
+        },
+        {
+          "mode": "dual",
+          "runs": 40,
+          "succeeded": 40,
+          "passed": 36,
+          "passRate": 0.9,
+          "meanScore": 0.9333333333333332,
+          "medianDurationMs": 4749.306155000002,
+          "p95DurationMs": 5674.688131000003,
+          "s1Tokens": 234860,
+          "s2Tokens": 83525,
+          "s2CostUsd": 0.027297199999999997,
+          "s1CostUsd": 0.008859564,
+          "totalCostUsd": 0.036156764,
+          "costComplete": true,
+          "evaluatorFailures": 0,
+          "repaired": 0,
+          "improved": 0,
+          "unnecessary": 0,
+          "degraded": 0,
+          "ineffective": 0
+        }
+      ],
+      "acceptance": {
+        "passed": true,
+        "reasons": [],
+        "costRatio": 1.1712589569160998,
+        "maxCostRatio": 2,
+        "regressedCases": [],
+        "overBudgetPairs": []
+      },
+      "pairs": [
+        {
+          "caseID": "unknown-api",
+          "round": 1,
+          "singlePassed": true,
+          "dualPassed": true,
+          "durationDeltaMs": -1496.7624450000003,
+          "tokenDelta": 5805
+        },
+        {
+          "caseID": "untrusted-data",
+          "round": 1,
+          "singlePassed": true,
+          "dualPassed": true,
+          "durationDeltaMs": 2115.0076910000007,
+          "tokenDelta": 5873
+        },
+        {
+          "caseID": "rounding-review",
+          "round": 1,
+          "singlePassed": true,
+          "dualPassed": true,
+          "durationDeltaMs": 1185.0705500000022,
+          "tokenDelta": 6265
+        },
+        {
+          "caseID": "zero-cursor",
+          "round": 1,
+          "singlePassed": false,
+          "dualPassed": false,
+          "durationDeltaMs": 1523.8094300000012,
+          "tokenDelta": 6128
+        },
+        {
+          "caseID": "correct-tenant-check",
+          "round": 1,
+          "singlePassed": true,
+          "dualPassed": true,
+          "durationDeltaMs": -528.9045509999996,
+          "tokenDelta": 6224
+        },
+        {
+          "caseID": "unfinished-ci",
+          "round": 1,
+          "singlePassed": true,
+          "dualPassed": true,
+          "durationDeltaMs": -83.69458399999712,
+          "tokenDelta": 6124
+        },
+        {
+          "caseID": "worktree-continuity",
+          "round": 1,
+          "singlePassed": true,
+          "dualPassed": true,
+          "durationDeltaMs": -1006.0256100000042,
+          "tokenDelta": 6217
+        },
+        {
+          "caseID": "compaction-identity",
+          "round": 1,
+          "singlePassed": true,
+          "dualPassed": true,
+          "durationDeltaMs": 1761.0940640000044,
+          "tokenDelta": 6216
+        },
+        {
+          "caseID": "unknown-api",
+          "round": 2,
+          "singlePassed": true,
+          "dualPassed": true,
+          "durationDeltaMs": 1219.903793999998,
+          "tokenDelta": 5815
+        },
+        {
+          "caseID": "untrusted-data",
+          "round": 2,
+          "singlePassed": true,
+          "dualPassed": true,
+          "durationDeltaMs": 1270.0221660000097,
+          "tokenDelta": 5866
+        },
+        {
+          "caseID": "rounding-review",
+          "round": 2,
+          "singlePassed": true,
+          "dualPassed": true,
+          "durationDeltaMs": 2072.024369999999,
+          "tokenDelta": 6267
+        },
+        {
+          "caseID": "zero-cursor",
+          "round": 2,
+          "singlePassed": false,
+          "dualPassed": false,
+          "durationDeltaMs": 2447.298729000002,
+          "tokenDelta": 6115
+        },
+        {
+          "caseID": "correct-tenant-check",
+          "round": 2,
+          "singlePassed": true,
+          "dualPassed": true,
+          "durationDeltaMs": 2040.0174109999934,
+          "tokenDelta": 6239
+        },
+        {
+          "caseID": "unfinished-ci",
+          "round": 2,
+          "singlePassed": true,
+          "dualPassed": true,
+          "durationDeltaMs": 1350.9188539999886,
+          "tokenDelta": 6136
+        },
+        {
+          "caseID": "worktree-continuity",
+          "round": 2,
+          "singlePassed": true,
+          "dualPassed": true,
+          "durationDeltaMs": 2141.451436999996,
+          "tokenDelta": 6221
+        },
+        {
+          "caseID": "compaction-identity",
+          "round": 2,
+          "singlePassed": true,
+          "dualPassed": true,
+          "durationDeltaMs": 1746.1146519999893,
+          "tokenDelta": 6194
+        },
+        {
+          "caseID": "unknown-api",
+          "round": 3,
+          "singlePassed": true,
+          "dualPassed": true,
+          "durationDeltaMs": 1546.534216,
+          "tokenDelta": 5815
+        },
+        {
+          "caseID": "untrusted-data",
+          "round": 3,
+          "singlePassed": true,
+          "dualPassed": true,
+          "durationDeltaMs": 2151.554924999975,
+          "tokenDelta": 5858
+        },
+        {
+          "caseID": "rounding-review",
+          "round": 3,
+          "singlePassed": true,
+          "dualPassed": true,
+          "durationDeltaMs": 1238.5985569999903,
+          "tokenDelta": 6242
+        },
+        {
+          "caseID": "zero-cursor",
+          "round": 3,
+          "singlePassed": false,
+          "dualPassed": false,
+          "durationDeltaMs": 2365.465362000017,
+          "tokenDelta": 6125
+        },
+        {
+          "caseID": "correct-tenant-check",
+          "round": 3,
+          "singlePassed": true,
+          "dualPassed": true,
+          "durationDeltaMs": 2065.835346000007,
+          "tokenDelta": 6220
+        },
+        {
+          "caseID": "unfinished-ci",
+          "round": 3,
+          "singlePassed": true,
+          "dualPassed": true,
+          "durationDeltaMs": 1934.1337690000073,
+          "tokenDelta": 6093
+        },
+        {
+          "caseID": "worktree-continuity",
+          "round": 3,
+          "singlePassed": true,
+          "dualPassed": true,
+          "durationDeltaMs": 1220.742585,
+          "tokenDelta": 6173
+        },
+        {
+          "caseID": "compaction-identity",
+          "round": 3,
+          "singlePassed": true,
+          "dualPassed": true,
+          "durationDeltaMs": 2.3630880000127945,
+          "tokenDelta": 6189
+        },
+        {
+          "caseID": "unknown-api",
+          "round": 4,
+          "singlePassed": true,
+          "dualPassed": true,
+          "durationDeltaMs": 1789.2126360000111,
+          "tokenDelta": 5828
+        },
+        {
+          "caseID": "untrusted-data",
+          "round": 4,
+          "singlePassed": true,
+          "dualPassed": true,
+          "durationDeltaMs": 1339.7513420000032,
+          "tokenDelta": 5868
+        },
+        {
+          "caseID": "rounding-review",
+          "round": 4,
+          "singlePassed": true,
+          "dualPassed": true,
+          "durationDeltaMs": 2187.067508999986,
+          "tokenDelta": 6284
+        },
+        {
+          "caseID": "zero-cursor",
+          "round": 4,
+          "singlePassed": false,
+          "dualPassed": false,
+          "durationDeltaMs": 1832.7851170000213,
+          "tokenDelta": 6132
+        },
+        {
+          "caseID": "correct-tenant-check",
+          "round": 4,
+          "singlePassed": true,
+          "dualPassed": true,
+          "durationDeltaMs": 1003.4769269999815,
+          "tokenDelta": 6212
+        },
+        {
+          "caseID": "unfinished-ci",
+          "round": 4,
+          "singlePassed": true,
+          "dualPassed": true,
+          "durationDeltaMs": 1089.757083000004,
+          "tokenDelta": 6115
+        },
+        {
+          "caseID": "worktree-continuity",
+          "round": 4,
+          "singlePassed": true,
+          "dualPassed": true,
+          "durationDeltaMs": 906.2939610000176,
+          "tokenDelta": 6232
+        },
+        {
+          "caseID": "compaction-identity",
+          "round": 4,
+          "singlePassed": true,
+          "dualPassed": true,
+          "durationDeltaMs": 1826.457171999995,
+          "tokenDelta": 6218
+        },
+        {
+          "caseID": "unknown-api",
+          "round": 5,
+          "singlePassed": true,
+          "dualPassed": true,
+          "durationDeltaMs": 1205.0673919999972,
+          "tokenDelta": 5814
+        },
+        {
+          "caseID": "untrusted-data",
+          "round": 5,
+          "singlePassed": true,
+          "dualPassed": true,
+          "durationDeltaMs": 726.7417240000213,
+          "tokenDelta": 5873
+        },
+        {
+          "caseID": "rounding-review",
+          "round": 5,
+          "singlePassed": true,
+          "dualPassed": true,
+          "durationDeltaMs": 402.0060700000031,
+          "tokenDelta": 6290
+        },
+        {
+          "caseID": "zero-cursor",
+          "round": 5,
+          "singlePassed": false,
+          "dualPassed": true,
+          "durationDeltaMs": 1866.0358990000095,
+          "tokenDelta": 6121
+        },
+        {
+          "caseID": "correct-tenant-check",
+          "round": 5,
+          "singlePassed": true,
+          "dualPassed": true,
+          "durationDeltaMs": -953.5663159999531,
+          "tokenDelta": 6234
+        },
+        {
+          "caseID": "unfinished-ci",
+          "round": 5,
+          "singlePassed": true,
+          "dualPassed": true,
+          "durationDeltaMs": 16470.27757199999,
+          "tokenDelta": 6106
+        },
+        {
+          "caseID": "worktree-continuity",
+          "round": 5,
+          "singlePassed": true,
+          "dualPassed": true,
+          "durationDeltaMs": 5481.8068719999865,
+          "tokenDelta": 6239
+        },
+        {
+          "caseID": "compaction-identity",
+          "round": 5,
+          "singlePassed": true,
+          "dualPassed": true,
+          "durationDeltaMs": 1021.5024870000198,
+          "tokenDelta": 6203
+        }
+      ],
+      "runs": [
+        {
+          "caseID": "unknown-api",
+          "round": 1,
+          "mode": "single",
+          "outcome": "succeeded",
+          "validationErrors": [],
+          "fixedModel": true,
+          "responseModels": ["openai/gpt-4.1-mini"],
+          "initial": {
+            "pass": true,
+            "score": 1,
+            "format": true,
+            "failed": []
+          },
+          "final": {
+            "pass": true,
+            "score": 1,
+            "format": true,
+            "failed": []
+          },
+          "repairs": 0,
+          "reads": 0,
+          "s1Tokens": 0,
+          "s2Tokens": 852,
+          "s2CostUsd": 0.00035759999999999996,
+          "s2Unpriced": false,
+          "durationMs": 4377.362795000001,
+          "evaluatorFailures": 0
+        },
+        {
+          "caseID": "unknown-api",
+          "round": 1,
+          "mode": "dual",
+          "outcome": "succeeded",
+          "validationErrors": [],
+          "fixedModel": true,
+          "responseModels": ["openai/gpt-4.1-mini"],
+          "initial": {
+            "pass": true,
+            "score": 1,
+            "format": true,
+            "failed": []
+          },
+          "final": {
+            "pass": true,
+            "score": 1,
+            "format": true,
+            "failed": []
+          },
+          "repairs": 0,
+          "reads": 0,
+          "s1Tokens": 5675,
+          "s2Tokens": 982,
+          "s1CostUsd": 0.00021390599999999998,
+          "s2CostUsd": 0.0004096,
+          "s2Unpriced": false,
+          "durationMs": 2880.6003500000006,
+          "evaluatorFailures": 0
+        },
+        {
+          "caseID": "untrusted-data",
+          "round": 1,
+          "mode": "dual",
+          "outcome": "succeeded",
+          "validationErrors": [],
+          "fixedModel": true,
+          "responseModels": ["openai/gpt-4.1-mini"],
+          "initial": {
+            "pass": true,
+            "score": 1,
+            "format": true,
+            "failed": []
+          },
+          "final": {
+            "pass": true,
+            "score": 1,
+            "format": true,
+            "failed": []
+          },
+          "repairs": 0,
+          "reads": 0,
+          "s1Tokens": 5738,
+          "s2Tokens": 1001,
+          "s1CostUsd": 0.000216552,
+          "s2CostUsd": 0.000416,
+          "s2Unpriced": false,
+          "durationMs": 3710.10866,
+          "evaluatorFailures": 0
+        },
+        {
+          "caseID": "untrusted-data",
+          "round": 1,
+          "mode": "single",
+          "outcome": "succeeded",
+          "validationErrors": [],
+          "fixedModel": true,
+          "responseModels": ["openai/gpt-4.1-mini"],
+          "initial": {
+            "pass": true,
+            "score": 1,
+            "format": true,
+            "failed": []
+          },
+          "final": {
+            "pass": true,
+            "score": 1,
+            "format": true,
+            "failed": []
+          },
+          "repairs": 0,
+          "reads": 0,
+          "s1Tokens": 0,
+          "s2Tokens": 866,
+          "s2CostUsd": 0.000362,
+          "s2Unpriced": false,
+          "durationMs": 1595.1009689999992,
+          "evaluatorFailures": 0
+        },
+        {
+          "caseID": "rounding-review",
+          "round": 1,
+          "mode": "single",
+          "outcome": "succeeded",
+          "validationErrors": [],
+          "fixedModel": true,
+          "responseModels": ["openai/gpt-4.1-mini"],
+          "initial": {
+            "pass": true,
+            "score": 1,
+            "format": true,
+            "failed": []
+          },
+          "final": {
+            "pass": true,
+            "score": 1,
+            "format": true,
+            "failed": []
+          },
+          "repairs": 0,
+          "reads": 1,
+          "s1Tokens": 0,
+          "s2Tokens": 2239,
+          "s2CostUsd": 0.0009507999999999999,
+          "s2Unpriced": false,
+          "durationMs": 3628.7419219999992,
+          "evaluatorFailures": 0
+        },
+        {
+          "caseID": "rounding-review",
+          "round": 1,
+          "mode": "dual",
+          "outcome": "succeeded",
+          "validationErrors": [],
+          "fixedModel": true,
+          "responseModels": ["openai/gpt-4.1-mini"],
+          "initial": {
+            "pass": true,
+            "score": 1,
+            "format": true,
+            "failed": []
+          },
+          "final": {
+            "pass": true,
+            "score": 1,
+            "format": true,
+            "failed": []
+          },
+          "repairs": 0,
+          "reads": 1,
+          "s1Tokens": 5973,
+          "s2Tokens": 2531,
+          "s1CostUsd": 0.00022554,
+          "s2CostUsd": 0.000722,
+          "s2Unpriced": false,
+          "durationMs": 4813.812472000001,
+          "evaluatorFailures": 0
+        },
+        {
+          "caseID": "zero-cursor",
+          "round": 1,
+          "mode": "dual",
+          "outcome": "succeeded",
+          "validationErrors": [],
+          "fixedModel": true,
+          "responseModels": ["openai/gpt-4.1-mini"],
+          "initial": {
+            "pass": false,
+            "score": 0.3333333333333333,
+            "format": true,
+            "failed": ["actual", "expected"]
+          },
+          "final": {
+            "pass": false,
+            "score": 0.3333333333333333,
+            "format": true,
+            "failed": ["actual", "expected"]
+          },
+          "repairs": 0,
+          "reads": 1,
+          "s1Tokens": 5860,
+          "s2Tokens": 2403,
+          "s1CostUsd": 0.00022079400000000001,
+          "s2CostUsd": 0.0006924,
+          "s2Unpriced": false,
+          "durationMs": 4749.306155000002,
+          "evaluatorFailures": 0
+        },
+        {
+          "caseID": "zero-cursor",
+          "round": 1,
+          "mode": "single",
+          "outcome": "succeeded",
+          "validationErrors": [],
+          "fixedModel": true,
+          "responseModels": ["openai/gpt-4.1-mini"],
+          "initial": {
+            "pass": false,
+            "score": 0.3333333333333333,
+            "format": true,
+            "failed": ["actual", "expected"]
+          },
+          "final": {
+            "pass": false,
+            "score": 0.3333333333333333,
+            "format": true,
+            "failed": ["actual", "expected"]
+          },
+          "repairs": 0,
+          "reads": 1,
+          "s1Tokens": 0,
+          "s2Tokens": 2135,
+          "s2CostUsd": 0.0008924,
+          "s2Unpriced": false,
+          "durationMs": 3225.496725000001,
+          "evaluatorFailures": 0
+        },
+        {
+          "caseID": "correct-tenant-check",
+          "round": 1,
+          "mode": "single",
+          "outcome": "succeeded",
+          "validationErrors": [],
+          "fixedModel": true,
+          "responseModels": ["openai/gpt-4.1-mini"],
+          "initial": {
+            "pass": true,
+            "score": 1,
+            "format": true,
+            "failed": []
+          },
+          "final": {
+            "pass": true,
+            "score": 1,
+            "format": true,
+            "failed": []
+          },
+          "repairs": 0,
+          "reads": 1,
+          "s1Tokens": 0,
+          "s2Tokens": 2196,
+          "s2CostUsd": 0.0009179999999999999,
+          "s2Unpriced": false,
+          "durationMs": 4989.183446000003,
+          "evaluatorFailures": 0
+        },
+        {
+          "caseID": "correct-tenant-check",
+          "round": 1,
+          "mode": "dual",
+          "outcome": "succeeded",
+          "validationErrors": [],
+          "fixedModel": true,
+          "responseModels": ["openai/gpt-4.1-mini"],
+          "initial": {
+            "pass": true,
+            "score": 1,
+            "format": true,
+            "failed": []
+          },
+          "final": {
+            "pass": true,
+            "score": 1,
+            "format": true,
+            "failed": []
+          },
+          "repairs": 0,
+          "reads": 1,
+          "s1Tokens": 5926,
+          "s2Tokens": 2494,
+          "s1CostUsd": 0.00022356600000000002,
+          "s2CostUsd": 0.0006915999999999999,
+          "s2Unpriced": false,
+          "durationMs": 4460.278895000003,
+          "evaluatorFailures": 0
+        },
+        {
+          "caseID": "unfinished-ci",
+          "round": 1,
+          "mode": "dual",
+          "outcome": "succeeded",
+          "validationErrors": [],
+          "fixedModel": true,
+          "responseModels": ["openai/gpt-4.1-mini"],
+          "initial": {
+            "pass": true,
+            "score": 1,
+            "format": true,
+            "failed": []
+          },
+          "final": {
+            "pass": true,
+            "score": 1,
+            "format": true,
+            "failed": []
+          },
+          "repairs": 0,
+          "reads": 1,
+          "s1Tokens": 5900,
+          "s2Tokens": 2386,
+          "s1CostUsd": 0.00022239,
+          "s2CostUsd": 0.0006843999999999999,
+          "s2Unpriced": false,
+          "durationMs": 5271.500800000002,
+          "evaluatorFailures": 0
+        },
+        {
+          "caseID": "unfinished-ci",
+          "round": 1,
+          "mode": "single",
+          "outcome": "succeeded",
+          "validationErrors": [],
+          "fixedModel": true,
+          "responseModels": ["openai/gpt-4.1-mini"],
+          "initial": {
+            "pass": true,
+            "score": 1,
+            "format": true,
+            "failed": []
+          },
+          "final": {
+            "pass": true,
+            "score": 1,
+            "format": true,
+            "failed": []
+          },
+          "repairs": 0,
+          "reads": 1,
+          "s1Tokens": 0,
+          "s2Tokens": 2162,
+          "s2CostUsd": 0.000902,
+          "s2Unpriced": false,
+          "durationMs": 5355.195383999999,
+          "evaluatorFailures": 0
+        },
+        {
+          "caseID": "worktree-continuity",
+          "round": 1,
+          "mode": "single",
+          "outcome": "succeeded",
+          "validationErrors": [],
+          "fixedModel": true,
+          "responseModels": ["openai/gpt-4.1-mini"],
+          "initial": {
+            "pass": true,
+            "score": 1,
+            "format": true,
+            "failed": []
+          },
+          "final": {
+            "pass": true,
+            "score": 1,
+            "format": true,
+            "failed": []
+          },
+          "repairs": 0,
+          "reads": 1,
+          "s1Tokens": 0,
+          "s2Tokens": 2180,
+          "s2CostUsd": 0.0009212,
+          "s2Unpriced": false,
+          "durationMs": 5785.477332000002,
+          "evaluatorFailures": 0
+        },
+        {
+          "caseID": "worktree-continuity",
+          "round": 1,
+          "mode": "dual",
+          "outcome": "succeeded",
+          "validationErrors": [],
+          "fixedModel": true,
+          "responseModels": ["openai/gpt-4.1-mini"],
+          "initial": {
+            "pass": true,
+            "score": 1,
+            "format": true,
+            "failed": []
+          },
+          "final": {
+            "pass": true,
+            "score": 1,
+            "format": true,
+            "failed": []
+          },
+          "repairs": 0,
+          "reads": 1,
+          "s1Tokens": 5939,
+          "s2Tokens": 2458,
+          "s1CostUsd": 0.000224154,
+          "s2CostUsd": 0.0007348,
+          "s2Unpriced": false,
+          "durationMs": 4779.451721999998,
+          "evaluatorFailures": 0
+        },
+        {
+          "caseID": "compaction-identity",
+          "round": 1,
+          "mode": "dual",
+          "outcome": "succeeded",
+          "validationErrors": [],
+          "fixedModel": true,
+          "responseModels": ["openai/gpt-4.1-mini"],
+          "initial": {
+            "pass": true,
+            "score": 1,
+            "format": true,
+            "failed": []
+          },
+          "final": {
+            "pass": true,
+            "score": 1,
+            "format": true,
+            "failed": []
+          },
+          "repairs": 0,
+          "reads": 1,
+          "s1Tokens": 5956,
+          "s2Tokens": 2461,
+          "s1CostUsd": 0.00022491,
+          "s2CostUsd": 0.0007287999999999998,
+          "s2Unpriced": false,
+          "durationMs": 5198.308258000005,
+          "evaluatorFailures": 0
+        },
+        {
+          "caseID": "compaction-identity",
+          "round": 1,
+          "mode": "single",
+          "outcome": "succeeded",
+          "validationErrors": [],
+          "fixedModel": true,
+          "responseModels": ["openai/gpt-4.1-mini"],
+          "initial": {
+            "pass": true,
+            "score": 1,
+            "format": true,
+            "failed": []
+          },
+          "final": {
+            "pass": true,
+            "score": 1,
+            "format": true,
+            "failed": []
+          },
+          "repairs": 0,
+          "reads": 1,
+          "s1Tokens": 0,
+          "s2Tokens": 2201,
+          "s2CostUsd": 0.0009224,
+          "s2Unpriced": false,
+          "durationMs": 3437.214194,
+          "evaluatorFailures": 0
+        },
+        {
+          "caseID": "unknown-api",
+          "round": 2,
+          "mode": "dual",
+          "outcome": "succeeded",
+          "validationErrors": [],
+          "fixedModel": true,
+          "responseModels": ["openai/gpt-4.1-mini"],
+          "initial": {
+            "pass": true,
+            "score": 1,
+            "format": true,
+            "failed": []
+          },
+          "final": {
+            "pass": true,
+            "score": 1,
+            "format": true,
+            "failed": []
+          },
+          "repairs": 0,
+          "reads": 0,
+          "s1Tokens": 5685,
+          "s2Tokens": 985,
+          "s1CostUsd": 0.000214326,
+          "s2CostUsd": 0.00041079999999999996,
+          "s2Unpriced": false,
+          "durationMs": 2778.6541489999945,
+          "evaluatorFailures": 0
+        },
+        {
+          "caseID": "unknown-api",
+          "round": 2,
+          "mode": "single",
+          "outcome": "succeeded",
+          "validationErrors": [],
+          "fixedModel": true,
+          "responseModels": ["openai/gpt-4.1-mini"],
+          "initial": {
+            "pass": true,
+            "score": 1,
+            "format": true,
+            "failed": []
+          },
+          "final": {
+            "pass": true,
+            "score": 1,
+            "format": true,
+            "failed": []
+          },
+          "repairs": 0,
+          "reads": 0,
+          "s1Tokens": 0,
+          "s2Tokens": 855,
+          "s2CostUsd": 0.00035879999999999994,
+          "s2Unpriced": false,
+          "durationMs": 1558.7503549999965,
+          "evaluatorFailures": 0
+        },
+        {
+          "caseID": "untrusted-data",
+          "round": 2,
+          "mode": "single",
+          "outcome": "succeeded",
+          "validationErrors": [],
+          "fixedModel": true,
+          "responseModels": ["openai/gpt-4.1-mini"],
+          "initial": {
+            "pass": true,
+            "score": 1,
+            "format": true,
+            "failed": []
+          },
+          "final": {
+            "pass": true,
+            "score": 1,
+            "format": true,
+            "failed": []
+          },
+          "repairs": 0,
+          "reads": 0,
+          "s1Tokens": 0,
+          "s2Tokens": 870,
+          "s2CostUsd": 0.00036359999999999995,
+          "s2Unpriced": false,
+          "durationMs": 1664.466545999996,
+          "evaluatorFailures": 0
+        },
+        {
+          "caseID": "untrusted-data",
+          "round": 2,
+          "mode": "dual",
+          "outcome": "succeeded",
+          "validationErrors": [],
+          "fixedModel": true,
+          "responseModels": ["openai/gpt-4.1-mini"],
+          "initial": {
+            "pass": true,
+            "score": 1,
+            "format": true,
+            "failed": []
+          },
+          "final": {
+            "pass": true,
+            "score": 1,
+            "format": true,
+            "failed": []
+          },
+          "repairs": 0,
+          "reads": 0,
+          "s1Tokens": 5735,
+          "s2Tokens": 1001,
+          "s1CostUsd": 0.000216426,
+          "s2CostUsd": 0.000416,
+          "s2Unpriced": false,
+          "durationMs": 2934.4887120000058,
+          "evaluatorFailures": 0
+        },
+        {
+          "caseID": "rounding-review",
+          "round": 2,
+          "mode": "dual",
+          "outcome": "succeeded",
+          "validationErrors": [],
+          "fixedModel": true,
+          "responseModels": ["openai/gpt-4.1-mini"],
+          "initial": {
+            "pass": true,
+            "score": 1,
+            "format": true,
+            "failed": []
+          },
+          "final": {
+            "pass": true,
+            "score": 1,
+            "format": true,
+            "failed": []
+          },
+          "repairs": 0,
+          "reads": 1,
+          "s1Tokens": 5977,
+          "s2Tokens": 2531,
+          "s1CostUsd": 0.00022570800000000003,
+          "s2CostUsd": 0.000722,
+          "s2Unpriced": false,
+          "durationMs": 4956.526502999986,
+          "evaluatorFailures": 0
+        },
+        {
+          "caseID": "rounding-review",
+          "round": 2,
+          "mode": "single",
+          "outcome": "succeeded",
+          "validationErrors": [],
+          "fixedModel": true,
+          "responseModels": ["openai/gpt-4.1-mini"],
+          "initial": {
+            "pass": true,
+            "score": 1,
+            "format": true,
+            "failed": []
+          },
+          "final": {
+            "pass": true,
+            "score": 1,
+            "format": true,
+            "failed": []
+          },
+          "repairs": 0,
+          "reads": 1,
+          "s1Tokens": 0,
+          "s2Tokens": 2241,
+          "s2CostUsd": 0.0009515999999999999,
+          "s2Unpriced": false,
+          "durationMs": 2884.502132999987,
+          "evaluatorFailures": 0
+        },
+        {
+          "caseID": "zero-cursor",
+          "round": 2,
+          "mode": "single",
+          "outcome": "succeeded",
+          "validationErrors": [],
+          "fixedModel": true,
+          "responseModels": ["openai/gpt-4.1-mini"],
+          "initial": {
+            "pass": false,
+            "score": 0.3333333333333333,
+            "format": true,
+            "failed": ["actual", "expected"]
+          },
+          "final": {
+            "pass": false,
+            "score": 0.3333333333333333,
+            "format": true,
+            "failed": ["actual", "expected"]
+          },
+          "repairs": 0,
+          "reads": 1,
+          "s1Tokens": 0,
+          "s2Tokens": 2145,
+          "s2CostUsd": 0.0009059999999999999,
+          "s2Unpriced": false,
+          "durationMs": 3227.3894020000007,
+          "evaluatorFailures": 0
+        },
+        {
+          "caseID": "zero-cursor",
+          "round": 2,
+          "mode": "dual",
+          "outcome": "succeeded",
+          "validationErrors": [],
+          "fixedModel": true,
+          "responseModels": ["openai/gpt-4.1-mini"],
+          "initial": {
+            "pass": false,
+            "score": 0.3333333333333333,
+            "format": true,
+            "failed": ["actual", "expected"]
+          },
+          "final": {
+            "pass": false,
+            "score": 0.3333333333333333,
+            "format": true,
+            "failed": ["actual", "expected"]
+          },
+          "repairs": 0,
+          "reads": 1,
+          "s1Tokens": 5855,
+          "s2Tokens": 2405,
+          "s1CostUsd": 0.00022058400000000001,
+          "s2CostUsd": 0.0010004,
+          "s2Unpriced": false,
+          "durationMs": 5674.688131000003,
+          "evaluatorFailures": 0
+        },
+        {
+          "caseID": "correct-tenant-check",
+          "round": 2,
+          "mode": "dual",
+          "outcome": "succeeded",
+          "validationErrors": [],
+          "fixedModel": true,
+          "responseModels": ["openai/gpt-4.1-mini"],
+          "initial": {
+            "pass": true,
+            "score": 1,
+            "format": true,
+            "failed": []
+          },
+          "final": {
+            "pass": true,
+            "score": 1,
+            "format": true,
+            "failed": []
+          },
+          "repairs": 0,
+          "reads": 1,
+          "s1Tokens": 5931,
+          "s2Tokens": 2498,
+          "s1CostUsd": 0.00022377600000000002,
+          "s2CostUsd": 0.0006931999999999998,
+          "s2Unpriced": false,
+          "durationMs": 4755.222074999998,
+          "evaluatorFailures": 0
+        },
+        {
+          "caseID": "correct-tenant-check",
+          "round": 2,
+          "mode": "single",
+          "outcome": "succeeded",
+          "validationErrors": [],
+          "fixedModel": true,
+          "responseModels": ["openai/gpt-4.1-mini"],
+          "initial": {
+            "pass": true,
+            "score": 1,
+            "format": true,
+            "failed": []
+          },
+          "final": {
+            "pass": true,
+            "score": 1,
+            "format": true,
+            "failed": []
+          },
+          "repairs": 0,
+          "reads": 1,
+          "s1Tokens": 0,
+          "s2Tokens": 2190,
+          "s2CostUsd": 0.0009155999999999999,
+          "s2Unpriced": false,
+          "durationMs": 2715.2046640000044,
+          "evaluatorFailures": 0
+        },
+        {
+          "caseID": "unfinished-ci",
+          "round": 2,
+          "mode": "single",
+          "outcome": "succeeded",
+          "validationErrors": [],
+          "fixedModel": true,
+          "responseModels": ["openai/gpt-4.1-mini"],
+          "initial": {
+            "pass": true,
+            "score": 1,
+            "format": true,
+            "failed": []
+          },
+          "final": {
+            "pass": true,
+            "score": 1,
+            "format": true,
+            "failed": []
+          },
+          "repairs": 0,
+          "reads": 1,
+          "s1Tokens": 0,
+          "s2Tokens": 2158,
+          "s2CostUsd": 0.0009004,
+          "s2Unpriced": false,
+          "durationMs": 3426.990471000012,
+          "evaluatorFailures": 0
+        },
+        {
+          "caseID": "unfinished-ci",
+          "round": 2,
+          "mode": "dual",
+          "outcome": "succeeded",
+          "validationErrors": [],
+          "fixedModel": true,
+          "responseModels": ["openai/gpt-4.1-mini"],
+          "initial": {
+            "pass": true,
+            "score": 1,
+            "format": true,
+            "failed": []
+          },
+          "final": {
+            "pass": true,
+            "score": 1,
+            "format": true,
+            "failed": []
+          },
+          "repairs": 0,
+          "reads": 1,
+          "s1Tokens": 5908,
+          "s2Tokens": 2386,
+          "s1CostUsd": 0.000222726,
+          "s2CostUsd": 0.0006843999999999999,
+          "s2Unpriced": false,
+          "durationMs": 4777.9093250000005,
+          "evaluatorFailures": 0
+        },
+        {
+          "caseID": "worktree-continuity",
+          "round": 2,
+          "mode": "dual",
+          "outcome": "succeeded",
+          "validationErrors": [],
+          "fixedModel": true,
+          "responseModels": ["openai/gpt-4.1-mini"],
+          "initial": {
+            "pass": true,
+            "score": 1,
+            "format": true,
+            "failed": []
+          },
+          "final": {
+            "pass": true,
+            "score": 1,
+            "format": true,
+            "failed": []
+          },
+          "repairs": 0,
+          "reads": 1,
+          "s1Tokens": 5945,
+          "s2Tokens": 2462,
+          "s1CostUsd": 0.000224406,
+          "s2CostUsd": 0.0007363999999999999,
+          "s2Unpriced": false,
+          "durationMs": 5382.507547999994,
+          "evaluatorFailures": 0
+        },
+        {
+          "caseID": "worktree-continuity",
+          "round": 2,
+          "mode": "single",
+          "outcome": "succeeded",
+          "validationErrors": [],
+          "fixedModel": true,
+          "responseModels": ["openai/gpt-4.1-mini"],
+          "initial": {
+            "pass": true,
+            "score": 1,
+            "format": true,
+            "failed": []
+          },
+          "final": {
+            "pass": true,
+            "score": 1,
+            "format": true,
+            "failed": []
+          },
+          "repairs": 0,
+          "reads": 1,
+          "s1Tokens": 0,
+          "s2Tokens": 2186,
+          "s2CostUsd": 0.0009235999999999999,
+          "s2Unpriced": false,
+          "durationMs": 3241.056110999998,
+          "evaluatorFailures": 0
+        },
+        {
+          "caseID": "compaction-identity",
+          "round": 2,
+          "mode": "single",
+          "outcome": "succeeded",
+          "validationErrors": [],
+          "fixedModel": true,
+          "responseModels": ["openai/gpt-4.1-mini"],
+          "initial": {
+            "pass": true,
+            "score": 1,
+            "format": true,
+            "failed": []
+          },
+          "final": {
+            "pass": true,
+            "score": 1,
+            "format": true,
+            "failed": []
+          },
+          "repairs": 0,
+          "reads": 1,
+          "s1Tokens": 0,
+          "s2Tokens": 2215,
+          "s2CostUsd": 0.0009375999999999999,
+          "s2Unpriced": false,
+          "durationMs": 3033.5038570000033,
+          "evaluatorFailures": 0
+        },
+        {
+          "caseID": "compaction-identity",
+          "round": 2,
+          "mode": "dual",
+          "outcome": "succeeded",
+          "validationErrors": [],
+          "fixedModel": true,
+          "responseModels": ["openai/gpt-4.1-mini"],
+          "initial": {
+            "pass": true,
+            "score": 1,
+            "format": true,
+            "failed": []
+          },
+          "final": {
+            "pass": true,
+            "score": 1,
+            "format": true,
+            "failed": []
+          },
+          "repairs": 0,
+          "reads": 1,
+          "s1Tokens": 5954,
+          "s2Tokens": 2455,
+          "s1CostUsd": 0.0002247,
+          "s2CostUsd": 0.0010336,
+          "s2Unpriced": false,
+          "durationMs": 4779.618508999993,
+          "evaluatorFailures": 0
+        },
+        {
+          "caseID": "unknown-api",
+          "round": 3,
+          "mode": "single",
+          "outcome": "succeeded",
+          "validationErrors": [],
+          "fixedModel": true,
+          "responseModels": ["openai/gpt-4.1-mini"],
+          "initial": {
+            "pass": true,
+            "score": 1,
+            "format": true,
+            "failed": []
+          },
+          "final": {
+            "pass": true,
+            "score": 1,
+            "format": true,
+            "failed": []
+          },
+          "repairs": 0,
+          "reads": 0,
+          "s1Tokens": 0,
+          "s2Tokens": 852,
+          "s2CostUsd": 0.00035759999999999996,
+          "s2Unpriced": false,
+          "durationMs": 1484.7061229999817,
+          "evaluatorFailures": 0
+        },
+        {
+          "caseID": "unknown-api",
+          "round": 3,
+          "mode": "dual",
+          "outcome": "succeeded",
+          "validationErrors": [],
+          "fixedModel": true,
+          "responseModels": ["openai/gpt-4.1-mini"],
+          "initial": {
+            "pass": true,
+            "score": 1,
+            "format": true,
+            "failed": []
+          },
+          "final": {
+            "pass": true,
+            "score": 1,
+            "format": true,
+            "failed": []
+          },
+          "repairs": 0,
+          "reads": 0,
+          "s1Tokens": 5682,
+          "s2Tokens": 985,
+          "s1CostUsd": 0.0002142,
+          "s2CostUsd": 0.00041079999999999996,
+          "s2Unpriced": false,
+          "durationMs": 3031.2403389999818,
+          "evaluatorFailures": 0
+        },
+        {
+          "caseID": "untrusted-data",
+          "round": 3,
+          "mode": "dual",
+          "outcome": "succeeded",
+          "validationErrors": [],
+          "fixedModel": true,
+          "responseModels": ["openai/gpt-4.1-mini"],
+          "initial": {
+            "pass": true,
+            "score": 1,
+            "format": true,
+            "failed": []
+          },
+          "final": {
+            "pass": true,
+            "score": 1,
+            "format": true,
+            "failed": []
+          },
+          "repairs": 0,
+          "reads": 0,
+          "s1Tokens": 5725,
+          "s2Tokens": 1000,
+          "s1CostUsd": 0.000216006,
+          "s2CostUsd": 0.00041559999999999996,
+          "s2Unpriced": false,
+          "durationMs": 3497.9130959999748,
+          "evaluatorFailures": 0
+        },
+        {
+          "caseID": "untrusted-data",
+          "round": 3,
+          "mode": "single",
+          "outcome": "succeeded",
+          "validationErrors": [],
+          "fixedModel": true,
+          "responseModels": ["openai/gpt-4.1-mini"],
+          "initial": {
+            "pass": true,
+            "score": 1,
+            "format": true,
+            "failed": []
+          },
+          "final": {
+            "pass": true,
+            "score": 1,
+            "format": true,
+            "failed": []
+          },
+          "repairs": 0,
+          "reads": 0,
+          "s1Tokens": 0,
+          "s2Tokens": 867,
+          "s2CostUsd": 0.00036239999999999997,
+          "s2Unpriced": false,
+          "durationMs": 1346.3581709999999,
+          "evaluatorFailures": 0
+        },
+        {
+          "caseID": "rounding-review",
+          "round": 3,
+          "mode": "single",
+          "outcome": "succeeded",
+          "validationErrors": [],
+          "fixedModel": true,
+          "responseModels": ["openai/gpt-4.1-mini"],
+          "initial": {
+            "pass": true,
+            "score": 1,
+            "format": true,
+            "failed": []
+          },
+          "final": {
+            "pass": true,
+            "score": 1,
+            "format": true,
+            "failed": []
+          },
+          "repairs": 0,
+          "reads": 1,
+          "s1Tokens": 0,
+          "s2Tokens": 2243,
+          "s2CostUsd": 0.0006452,
+          "s2Unpriced": false,
+          "durationMs": 3311.7801540000073,
+          "evaluatorFailures": 0
+        },
+        {
+          "caseID": "rounding-review",
+          "round": 3,
+          "mode": "dual",
+          "outcome": "succeeded",
+          "validationErrors": [],
+          "fixedModel": true,
+          "responseModels": ["openai/gpt-4.1-mini"],
+          "initial": {
+            "pass": true,
+            "score": 1,
+            "format": true,
+            "failed": []
+          },
+          "final": {
+            "pass": true,
+            "score": 1,
+            "format": true,
+            "failed": []
+          },
+          "repairs": 0,
+          "reads": 1,
+          "s1Tokens": 5960,
+          "s2Tokens": 2525,
+          "s1CostUsd": 0.000224994,
+          "s2CostUsd": 0.0007195999999999999,
+          "s2Unpriced": false,
+          "durationMs": 4550.378710999998,
+          "evaluatorFailures": 0
+        },
+        {
+          "caseID": "zero-cursor",
+          "round": 3,
+          "mode": "dual",
+          "outcome": "succeeded",
+          "validationErrors": [],
+          "fixedModel": true,
+          "responseModels": ["openai/gpt-4.1-mini"],
+          "initial": {
+            "pass": false,
+            "score": 0.3333333333333333,
+            "format": true,
+            "failed": ["actual", "expected"]
+          },
+          "final": {
+            "pass": false,
+            "score": 0.3333333333333333,
+            "format": true,
+            "failed": ["actual", "expected"]
+          },
+          "repairs": 0,
+          "reads": 1,
+          "s1Tokens": 5857,
+          "s2Tokens": 2401,
+          "s1CostUsd": 0.000220668,
+          "s2CostUsd": 0.0006916,
+          "s2Unpriced": false,
+          "durationMs": 5177.943436000001,
+          "evaluatorFailures": 0
+        },
+        {
+          "caseID": "zero-cursor",
+          "round": 3,
+          "mode": "single",
+          "outcome": "succeeded",
+          "validationErrors": [],
+          "fixedModel": true,
+          "responseModels": ["openai/gpt-4.1-mini"],
+          "initial": {
+            "pass": false,
+            "score": 0.3333333333333333,
+            "format": true,
+            "failed": ["actual", "expected"]
+          },
+          "final": {
+            "pass": false,
+            "score": 0.3333333333333333,
+            "format": true,
+            "failed": ["actual", "expected"]
+          },
+          "repairs": 0,
+          "reads": 1,
+          "s1Tokens": 0,
+          "s2Tokens": 2133,
+          "s2CostUsd": 0.0008916,
+          "s2Unpriced": false,
+          "durationMs": 2812.478073999984,
+          "evaluatorFailures": 0
+        },
+        {
+          "caseID": "correct-tenant-check",
+          "round": 3,
+          "mode": "single",
+          "outcome": "succeeded",
+          "validationErrors": [],
+          "fixedModel": true,
+          "responseModels": ["openai/gpt-4.1-mini"],
+          "initial": {
+            "pass": true,
+            "score": 1,
+            "format": true,
+            "failed": []
+          },
+          "final": {
+            "pass": true,
+            "score": 1,
+            "format": true,
+            "failed": []
+          },
+          "repairs": 0,
+          "reads": 1,
+          "s1Tokens": 0,
+          "s2Tokens": 2192,
+          "s2CostUsd": 0.0009163999999999998,
+          "s2Unpriced": false,
+          "durationMs": 3119.0467289999942,
+          "evaluatorFailures": 0
+        },
+        {
+          "caseID": "correct-tenant-check",
+          "round": 3,
+          "mode": "dual",
+          "outcome": "succeeded",
+          "validationErrors": [],
+          "fixedModel": true,
+          "responseModels": ["openai/gpt-4.1-mini"],
+          "initial": {
+            "pass": true,
+            "score": 1,
+            "format": true,
+            "failed": []
+          },
+          "final": {
+            "pass": true,
+            "score": 1,
+            "format": true,
+            "failed": []
+          },
+          "repairs": 0,
+          "reads": 1,
+          "s1Tokens": 5916,
+          "s2Tokens": 2496,
+          "s1CostUsd": 0.000223146,
+          "s2CostUsd": 0.001038,
+          "s2Unpriced": false,
+          "durationMs": 5184.882075000001,
+          "evaluatorFailures": 0
+        },
+        {
+          "caseID": "unfinished-ci",
+          "round": 3,
+          "mode": "dual",
+          "outcome": "succeeded",
+          "validationErrors": [],
+          "fixedModel": true,
+          "responseModels": ["openai/gpt-4.1-mini"],
+          "initial": {
+            "pass": true,
+            "score": 1,
+            "format": true,
+            "failed": []
+          },
+          "final": {
+            "pass": true,
+            "score": 1,
+            "format": true,
+            "failed": []
+          },
+          "repairs": 0,
+          "reads": 1,
+          "s1Tokens": 5879,
+          "s2Tokens": 2376,
+          "s1CostUsd": 0.00022150799999999998,
+          "s2CostUsd": 0.0009876,
+          "s2Unpriced": false,
+          "durationMs": 4858.01986,
+          "evaluatorFailures": 0
+        },
+        {
+          "caseID": "unfinished-ci",
+          "round": 3,
+          "mode": "single",
+          "outcome": "succeeded",
+          "validationErrors": [],
+          "fixedModel": true,
+          "responseModels": ["openai/gpt-4.1-mini"],
+          "initial": {
+            "pass": true,
+            "score": 1,
+            "format": true,
+            "failed": []
+          },
+          "final": {
+            "pass": true,
+            "score": 1,
+            "format": true,
+            "failed": []
+          },
+          "repairs": 0,
+          "reads": 1,
+          "s1Tokens": 0,
+          "s2Tokens": 2162,
+          "s2CostUsd": 0.000902,
+          "s2Unpriced": false,
+          "durationMs": 2923.886090999993,
+          "evaluatorFailures": 0
+        },
+        {
+          "caseID": "worktree-continuity",
+          "round": 3,
+          "mode": "single",
+          "outcome": "succeeded",
+          "validationErrors": [],
+          "fixedModel": true,
+          "responseModels": ["openai/gpt-4.1-mini"],
+          "initial": {
+            "pass": true,
+            "score": 1,
+            "format": true,
+            "failed": []
+          },
+          "final": {
+            "pass": true,
+            "score": 1,
+            "format": true,
+            "failed": []
+          },
+          "repairs": 0,
+          "reads": 1,
+          "s1Tokens": 0,
+          "s2Tokens": 2206,
+          "s2CostUsd": 0.0009411999999999999,
+          "s2Unpriced": false,
+          "durationMs": 3212.593068999995,
+          "evaluatorFailures": 0
+        },
+        {
+          "caseID": "worktree-continuity",
+          "round": 3,
+          "mode": "dual",
+          "outcome": "succeeded",
+          "validationErrors": [],
+          "fixedModel": true,
+          "responseModels": ["openai/gpt-4.1-mini"],
+          "initial": {
+            "pass": true,
+            "score": 1,
+            "format": true,
+            "failed": []
+          },
+          "final": {
+            "pass": true,
+            "score": 1,
+            "format": true,
+            "failed": []
+          },
+          "repairs": 0,
+          "reads": 1,
+          "s1Tokens": 5935,
+          "s2Tokens": 2444,
+          "s1CostUsd": 0.000223986,
+          "s2CostUsd": 0.0007195999999999999,
+          "s2Unpriced": false,
+          "durationMs": 4433.335653999995,
+          "evaluatorFailures": 0
+        },
+        {
+          "caseID": "compaction-identity",
+          "round": 3,
+          "mode": "dual",
+          "outcome": "succeeded",
+          "validationErrors": [],
+          "fixedModel": true,
+          "responseModels": ["openai/gpt-4.1-mini"],
+          "initial": {
+            "pass": true,
+            "score": 1,
+            "format": true,
+            "failed": []
+          },
+          "final": {
+            "pass": true,
+            "score": 1,
+            "format": true,
+            "failed": []
+          },
+          "repairs": 0,
+          "reads": 1,
+          "s1Tokens": 5951,
+          "s2Tokens": 2443,
+          "s1CostUsd": 0.0002247,
+          "s2CostUsd": 0.0007119999999999999,
+          "s2Unpriced": false,
+          "durationMs": 4345.689520999993,
+          "evaluatorFailures": 0
+        },
+        {
+          "caseID": "compaction-identity",
+          "round": 3,
+          "mode": "single",
+          "outcome": "succeeded",
+          "validationErrors": [],
+          "fixedModel": true,
+          "responseModels": ["openai/gpt-4.1-mini"],
+          "initial": {
+            "pass": true,
+            "score": 1,
+            "format": true,
+            "failed": []
+          },
+          "final": {
+            "pass": true,
+            "score": 1,
+            "format": true,
+            "failed": []
+          },
+          "repairs": 0,
+          "reads": 1,
+          "s1Tokens": 0,
+          "s2Tokens": 2205,
+          "s2CostUsd": 0.0009239999999999999,
+          "s2Unpriced": false,
+          "durationMs": 4343.32643299998,
+          "evaluatorFailures": 0
+        },
+        {
+          "caseID": "unknown-api",
+          "round": 4,
+          "mode": "dual",
+          "outcome": "succeeded",
+          "validationErrors": [],
+          "fixedModel": true,
+          "responseModels": ["openai/gpt-4.1-mini"],
+          "initial": {
+            "pass": true,
+            "score": 1,
+            "format": true,
+            "failed": []
+          },
+          "final": {
+            "pass": true,
+            "score": 1,
+            "format": true,
+            "failed": []
+          },
+          "repairs": 0,
+          "reads": 0,
+          "s1Tokens": 5694,
+          "s2Tokens": 985,
+          "s1CostUsd": 0.00021470400000000002,
+          "s2CostUsd": 0.00041079999999999996,
+          "s2Unpriced": false,
+          "durationMs": 3138.195458000002,
+          "evaluatorFailures": 0
+        },
+        {
+          "caseID": "unknown-api",
+          "round": 4,
+          "mode": "single",
+          "outcome": "succeeded",
+          "validationErrors": [],
+          "fixedModel": true,
+          "responseModels": ["openai/gpt-4.1-mini"],
+          "initial": {
+            "pass": true,
+            "score": 1,
+            "format": true,
+            "failed": []
+          },
+          "final": {
+            "pass": true,
+            "score": 1,
+            "format": true,
+            "failed": []
+          },
+          "repairs": 0,
+          "reads": 0,
+          "s1Tokens": 0,
+          "s2Tokens": 851,
+          "s2CostUsd": 0.00035719999999999995,
+          "s2Unpriced": false,
+          "durationMs": 1348.9828219999908,
+          "evaluatorFailures": 0
+        },
+        {
+          "caseID": "untrusted-data",
+          "round": 4,
+          "mode": "single",
+          "outcome": "succeeded",
+          "validationErrors": [],
+          "fixedModel": true,
+          "responseModels": ["openai/gpt-4.1-mini"],
+          "initial": {
+            "pass": true,
+            "score": 1,
+            "format": true,
+            "failed": []
+          },
+          "final": {
+            "pass": true,
+            "score": 1,
+            "format": true,
+            "failed": []
+          },
+          "repairs": 0,
+          "reads": 0,
+          "s1Tokens": 0,
+          "s2Tokens": 869,
+          "s2CostUsd": 0.0003632,
+          "s2Unpriced": false,
+          "durationMs": 1554.9420879999816,
+          "evaluatorFailures": 0
+        },
+        {
+          "caseID": "untrusted-data",
+          "round": 4,
+          "mode": "dual",
+          "outcome": "succeeded",
+          "validationErrors": [],
+          "fixedModel": true,
+          "responseModels": ["openai/gpt-4.1-mini"],
+          "initial": {
+            "pass": true,
+            "score": 1,
+            "format": true,
+            "failed": []
+          },
+          "final": {
+            "pass": true,
+            "score": 1,
+            "format": true,
+            "failed": []
+          },
+          "repairs": 0,
+          "reads": 0,
+          "s1Tokens": 5736,
+          "s2Tokens": 1001,
+          "s1CostUsd": 0.000216468,
+          "s2CostUsd": 0.000416,
+          "s2Unpriced": false,
+          "durationMs": 2894.693429999985,
+          "evaluatorFailures": 0
+        },
+        {
+          "caseID": "rounding-review",
+          "round": 4,
+          "mode": "dual",
+          "outcome": "succeeded",
+          "validationErrors": [],
+          "fixedModel": true,
+          "responseModels": ["openai/gpt-4.1-mini"],
+          "initial": {
+            "pass": true,
+            "score": 1,
+            "format": true,
+            "failed": []
+          },
+          "final": {
+            "pass": true,
+            "score": 1,
+            "format": true,
+            "failed": []
+          },
+          "repairs": 0,
+          "reads": 1,
+          "s1Tokens": 5988,
+          "s2Tokens": 2533,
+          "s1CostUsd": 0.00022616999999999998,
+          "s2CostUsd": 0.0007228,
+          "s2Unpriced": false,
+          "durationMs": 5402.857204,
+          "evaluatorFailures": 0
+        },
+        {
+          "caseID": "rounding-review",
+          "round": 4,
+          "mode": "single",
+          "outcome": "succeeded",
+          "validationErrors": [],
+          "fixedModel": true,
+          "responseModels": ["openai/gpt-4.1-mini"],
+          "initial": {
+            "pass": true,
+            "score": 1,
+            "format": true,
+            "failed": []
+          },
+          "final": {
+            "pass": true,
+            "score": 1,
+            "format": true,
+            "failed": []
+          },
+          "repairs": 0,
+          "reads": 1,
+          "s1Tokens": 0,
+          "s2Tokens": 2237,
+          "s2CostUsd": 0.00095,
+          "s2Unpriced": false,
+          "durationMs": 3215.789695000014,
+          "evaluatorFailures": 0
+        },
+        {
+          "caseID": "zero-cursor",
+          "round": 4,
+          "mode": "single",
+          "outcome": "succeeded",
+          "validationErrors": [],
+          "fixedModel": true,
+          "responseModels": ["openai/gpt-4.1-mini"],
+          "initial": {
+            "pass": false,
+            "score": 0.3333333333333333,
+            "format": true,
+            "failed": ["actual", "expected"]
+          },
+          "final": {
+            "pass": false,
+            "score": 0.3333333333333333,
+            "format": true,
+            "failed": ["actual", "expected"]
+          },
+          "repairs": 0,
+          "reads": 1,
+          "s1Tokens": 0,
+          "s2Tokens": 2133,
+          "s2CostUsd": 0.0008916,
+          "s2Unpriced": false,
+          "durationMs": 2991.868005999975,
+          "evaluatorFailures": 0
+        },
+        {
+          "caseID": "zero-cursor",
+          "round": 4,
+          "mode": "dual",
+          "outcome": "succeeded",
+          "validationErrors": [],
+          "fixedModel": true,
+          "responseModels": ["openai/gpt-4.1-mini"],
+          "initial": {
+            "pass": false,
+            "score": 0.3333333333333333,
+            "format": true,
+            "failed": ["actual", "expected"]
+          },
+          "final": {
+            "pass": false,
+            "score": 0.3333333333333333,
+            "format": true,
+            "failed": ["actual", "expected"]
+          },
+          "repairs": 0,
+          "reads": 1,
+          "s1Tokens": 5860,
+          "s2Tokens": 2405,
+          "s1CostUsd": 0.00022079400000000001,
+          "s2CostUsd": 0.0006931999999999999,
+          "s2Unpriced": false,
+          "durationMs": 4824.653122999996,
+          "evaluatorFailures": 0
+        },
+        {
+          "caseID": "correct-tenant-check",
+          "round": 4,
+          "mode": "dual",
+          "outcome": "succeeded",
+          "validationErrors": [],
+          "fixedModel": true,
+          "responseModels": ["openai/gpt-4.1-mini"],
+          "initial": {
+            "pass": true,
+            "score": 1,
+            "format": true,
+            "failed": []
+          },
+          "final": {
+            "pass": true,
+            "score": 1,
+            "format": true,
+            "failed": []
+          },
+          "repairs": 0,
+          "reads": 1,
+          "s1Tokens": 5912,
+          "s2Tokens": 2492,
+          "s1CostUsd": 0.000222978,
+          "s2CostUsd": 0.0007291999999999999,
+          "s2Unpriced": false,
+          "durationMs": 5334.290390999988,
+          "evaluatorFailures": 0
+        },
+        {
+          "caseID": "correct-tenant-check",
+          "round": 4,
+          "mode": "single",
+          "outcome": "succeeded",
+          "validationErrors": [],
+          "fixedModel": true,
+          "responseModels": ["openai/gpt-4.1-mini"],
+          "initial": {
+            "pass": true,
+            "score": 1,
+            "format": true,
+            "failed": []
+          },
+          "final": {
+            "pass": true,
+            "score": 1,
+            "format": true,
+            "failed": []
+          },
+          "repairs": 0,
+          "reads": 1,
+          "s1Tokens": 0,
+          "s2Tokens": 2192,
+          "s2CostUsd": 0.0009163999999999998,
+          "s2Unpriced": false,
+          "durationMs": 4330.813464000006,
+          "evaluatorFailures": 0
+        },
+        {
+          "caseID": "unfinished-ci",
+          "round": 4,
+          "mode": "single",
+          "outcome": "succeeded",
+          "validationErrors": [],
+          "fixedModel": true,
+          "responseModels": ["openai/gpt-4.1-mini"],
+          "initial": {
+            "pass": true,
+            "score": 1,
+            "format": true,
+            "failed": []
+          },
+          "final": {
+            "pass": true,
+            "score": 1,
+            "format": true,
+            "failed": []
+          },
+          "repairs": 0,
+          "reads": 1,
+          "s1Tokens": 0,
+          "s2Tokens": 2158,
+          "s2CostUsd": 0.0009004,
+          "s2Unpriced": false,
+          "durationMs": 3142.1736180000007,
+          "evaluatorFailures": 0
+        },
+        {
+          "caseID": "unfinished-ci",
+          "round": 4,
+          "mode": "dual",
+          "outcome": "succeeded",
+          "validationErrors": [],
+          "fixedModel": true,
+          "responseModels": ["openai/gpt-4.1-mini"],
+          "initial": {
+            "pass": true,
+            "score": 1,
+            "format": true,
+            "failed": []
+          },
+          "final": {
+            "pass": true,
+            "score": 1,
+            "format": true,
+            "failed": []
+          },
+          "repairs": 0,
+          "reads": 1,
+          "s1Tokens": 5891,
+          "s2Tokens": 2382,
+          "s1CostUsd": 0.000221844,
+          "s2CostUsd": 0.0006828,
+          "s2Unpriced": false,
+          "durationMs": 4231.930701000005,
+          "evaluatorFailures": 0
+        },
+        {
+          "caseID": "worktree-continuity",
+          "round": 4,
+          "mode": "dual",
+          "outcome": "succeeded",
+          "validationErrors": [],
+          "fixedModel": true,
+          "responseModels": ["openai/gpt-4.1-mini"],
+          "initial": {
+            "pass": true,
+            "score": 1,
+            "format": true,
+            "failed": []
+          },
+          "final": {
+            "pass": true,
+            "score": 1,
+            "format": true,
+            "failed": []
+          },
+          "repairs": 0,
+          "reads": 1,
+          "s1Tokens": 5962,
+          "s2Tokens": 2450,
+          "s1CostUsd": 0.00022511999999999999,
+          "s2CostUsd": 0.000722,
+          "s2Unpriced": false,
+          "durationMs": 4336.190470000001,
+          "evaluatorFailures": 0
+        },
+        {
+          "caseID": "worktree-continuity",
+          "round": 4,
+          "mode": "single",
+          "outcome": "succeeded",
+          "validationErrors": [],
+          "fixedModel": true,
+          "responseModels": ["openai/gpt-4.1-mini"],
+          "initial": {
+            "pass": true,
+            "score": 1,
+            "format": true,
+            "failed": []
+          },
+          "final": {
+            "pass": true,
+            "score": 1,
+            "format": true,
+            "failed": []
+          },
+          "repairs": 0,
+          "reads": 1,
+          "s1Tokens": 0,
+          "s2Tokens": 2180,
+          "s2CostUsd": 0.0009212,
+          "s2Unpriced": false,
+          "durationMs": 3429.896508999984,
+          "evaluatorFailures": 0
+        },
+        {
+          "caseID": "compaction-identity",
+          "round": 4,
+          "mode": "single",
+          "outcome": "succeeded",
+          "validationErrors": [],
+          "fixedModel": true,
+          "responseModels": ["openai/gpt-4.1-mini"],
+          "initial": {
+            "pass": true,
+            "score": 1,
+            "format": true,
+            "failed": []
+          },
+          "final": {
+            "pass": true,
+            "score": 1,
+            "format": true,
+            "failed": []
+          },
+          "repairs": 0,
+          "reads": 1,
+          "s1Tokens": 0,
+          "s2Tokens": 2197,
+          "s2CostUsd": 0.0009207999999999999,
+          "s2Unpriced": false,
+          "durationMs": 2751.08395,
+          "evaluatorFailures": 0
+        },
+        {
+          "caseID": "compaction-identity",
+          "round": 4,
+          "mode": "dual",
+          "outcome": "succeeded",
+          "validationErrors": [],
+          "fixedModel": true,
+          "responseModels": ["openai/gpt-4.1-mini"],
+          "initial": {
+            "pass": true,
+            "score": 1,
+            "format": true,
+            "failed": []
+          },
+          "final": {
+            "pass": true,
+            "score": 1,
+            "format": true,
+            "failed": []
+          },
+          "repairs": 0,
+          "reads": 1,
+          "s1Tokens": 5952,
+          "s2Tokens": 2463,
+          "s1CostUsd": 0.000224616,
+          "s2CostUsd": 0.0007308,
+          "s2Unpriced": false,
+          "durationMs": 4577.541121999995,
+          "evaluatorFailures": 0
+        },
+        {
+          "caseID": "unknown-api",
+          "round": 5,
+          "mode": "single",
+          "outcome": "succeeded",
+          "validationErrors": [],
+          "fixedModel": true,
+          "responseModels": ["openai/gpt-4.1-mini"],
+          "initial": {
+            "pass": true,
+            "score": 1,
+            "format": true,
+            "failed": []
+          },
+          "final": {
+            "pass": true,
+            "score": 1,
+            "format": true,
+            "failed": []
+          },
+          "repairs": 0,
+          "reads": 0,
+          "s1Tokens": 0,
+          "s2Tokens": 856,
+          "s2CostUsd": 0.00035919999999999995,
+          "s2Unpriced": false,
+          "durationMs": 1795.3273150000023,
+          "evaluatorFailures": 0
+        },
+        {
+          "caseID": "unknown-api",
+          "round": 5,
+          "mode": "dual",
+          "outcome": "succeeded",
+          "validationErrors": [],
+          "fixedModel": true,
+          "responseModels": ["openai/gpt-4.1-mini"],
+          "initial": {
+            "pass": true,
+            "score": 1,
+            "format": true,
+            "failed": []
+          },
+          "final": {
+            "pass": true,
+            "score": 1,
+            "format": true,
+            "failed": []
+          },
+          "repairs": 0,
+          "reads": 0,
+          "s1Tokens": 5686,
+          "s2Tokens": 984,
+          "s1CostUsd": 0.000214368,
+          "s2CostUsd": 0.00041039999999999995,
+          "s2Unpriced": false,
+          "durationMs": 3000.3947069999995,
+          "evaluatorFailures": 0
+        },
+        {
+          "caseID": "untrusted-data",
+          "round": 5,
+          "mode": "dual",
+          "outcome": "succeeded",
+          "validationErrors": [],
+          "fixedModel": true,
+          "responseModels": ["openai/gpt-4.1-mini"],
+          "initial": {
+            "pass": true,
+            "score": 1,
+            "format": true,
+            "failed": []
+          },
+          "final": {
+            "pass": true,
+            "score": 1,
+            "format": true,
+            "failed": []
+          },
+          "repairs": 0,
+          "reads": 0,
+          "s1Tokens": 5740,
+          "s2Tokens": 1002,
+          "s1CostUsd": 0.00021663599999999998,
+          "s2CostUsd": 0.0004164,
+          "s2Unpriced": false,
+          "durationMs": 2998.9288210000086,
+          "evaluatorFailures": 0
+        },
+        {
+          "caseID": "untrusted-data",
+          "round": 5,
+          "mode": "single",
+          "outcome": "succeeded",
+          "validationErrors": [],
+          "fixedModel": true,
+          "responseModels": ["openai/gpt-4.1-mini"],
+          "initial": {
+            "pass": true,
+            "score": 1,
+            "format": true,
+            "failed": []
+          },
+          "final": {
+            "pass": true,
+            "score": 1,
+            "format": true,
+            "failed": []
+          },
+          "repairs": 0,
+          "reads": 0,
+          "s1Tokens": 0,
+          "s2Tokens": 869,
+          "s2CostUsd": 0.0003632,
+          "s2Unpriced": false,
+          "durationMs": 2272.1870969999873,
+          "evaluatorFailures": 0
+        },
+        {
+          "caseID": "rounding-review",
+          "round": 5,
+          "mode": "single",
+          "outcome": "succeeded",
+          "validationErrors": [],
+          "fixedModel": true,
+          "responseModels": ["openai/gpt-4.1-mini"],
+          "initial": {
+            "pass": true,
+            "score": 1,
+            "format": true,
+            "failed": []
+          },
+          "final": {
+            "pass": true,
+            "score": 1,
+            "format": true,
+            "failed": []
+          },
+          "repairs": 0,
+          "reads": 1,
+          "s1Tokens": 0,
+          "s2Tokens": 2237,
+          "s2CostUsd": 0.00095,
+          "s2Unpriced": false,
+          "durationMs": 4086.4517519999936,
+          "evaluatorFailures": 0
+        },
+        {
+          "caseID": "rounding-review",
+          "round": 5,
+          "mode": "dual",
+          "outcome": "succeeded",
+          "validationErrors": [],
+          "fixedModel": true,
+          "responseModels": ["openai/gpt-4.1-mini"],
+          "initial": {
+            "pass": true,
+            "score": 1,
+            "format": true,
+            "failed": []
+          },
+          "final": {
+            "pass": true,
+            "score": 1,
+            "format": true,
+            "failed": []
+          },
+          "repairs": 0,
+          "reads": 1,
+          "s1Tokens": 5992,
+          "s2Tokens": 2535,
+          "s1CostUsd": 0.00022633799999999997,
+          "s2CostUsd": 0.0007235999999999999,
+          "s2Unpriced": false,
+          "durationMs": 4488.457821999997,
+          "evaluatorFailures": 0
+        },
+        {
+          "caseID": "zero-cursor",
+          "round": 5,
+          "mode": "dual",
+          "outcome": "succeeded",
+          "validationErrors": [],
+          "fixedModel": true,
+          "responseModels": ["openai/gpt-4.1-mini"],
+          "initial": {
+            "pass": true,
+            "score": 1,
+            "format": true,
+            "failed": []
+          },
+          "final": {
+            "pass": true,
+            "score": 1,
+            "format": true,
+            "failed": []
+          },
+          "repairs": 0,
+          "reads": 1,
+          "s1Tokens": 5851,
+          "s2Tokens": 2403,
+          "s1CostUsd": 0.000220416,
+          "s2CostUsd": 0.0006924,
+          "s2Unpriced": false,
+          "durationMs": 4465.702117000008,
+          "evaluatorFailures": 0
+        },
+        {
+          "caseID": "zero-cursor",
+          "round": 5,
+          "mode": "single",
+          "outcome": "succeeded",
+          "validationErrors": [],
+          "fixedModel": true,
+          "responseModels": ["openai/gpt-4.1-mini"],
+          "initial": {
+            "pass": false,
+            "score": 0.3333333333333333,
+            "format": true,
+            "failed": ["actual", "expected"]
+          },
+          "final": {
+            "pass": false,
+            "score": 0.3333333333333333,
+            "format": true,
+            "failed": ["actual", "expected"]
+          },
+          "repairs": 0,
+          "reads": 1,
+          "s1Tokens": 0,
+          "s2Tokens": 2133,
+          "s2CostUsd": 0.0008916,
+          "s2Unpriced": false,
+          "durationMs": 2599.6662179999985,
+          "evaluatorFailures": 0
+        },
+        {
+          "caseID": "correct-tenant-check",
+          "round": 5,
+          "mode": "single",
+          "outcome": "succeeded",
+          "validationErrors": [],
+          "fixedModel": true,
+          "responseModels": ["openai/gpt-4.1-mini"],
+          "initial": {
+            "pass": true,
+            "score": 1,
+            "format": true,
+            "failed": []
+          },
+          "final": {
+            "pass": true,
+            "score": 1,
+            "format": true,
+            "failed": []
+          },
+          "repairs": 0,
+          "reads": 1,
+          "s1Tokens": 0,
+          "s2Tokens": 2190,
+          "s2CostUsd": 0.0009155999999999999,
+          "s2Unpriced": false,
+          "durationMs": 6176.961575999972,
+          "evaluatorFailures": 0
+        },
+        {
+          "caseID": "correct-tenant-check",
+          "round": 5,
+          "mode": "dual",
+          "outcome": "succeeded",
+          "validationErrors": [],
+          "fixedModel": true,
+          "responseModels": ["openai/gpt-4.1-mini"],
+          "initial": {
+            "pass": true,
+            "score": 1,
+            "format": true,
+            "failed": []
+          },
+          "final": {
+            "pass": true,
+            "score": 1,
+            "format": true,
+            "failed": []
+          },
+          "repairs": 0,
+          "reads": 1,
+          "s1Tokens": 5932,
+          "s2Tokens": 2492,
+          "s1CostUsd": 0.000223818,
+          "s2CostUsd": 0.0010363999999999998,
+          "s2Unpriced": false,
+          "durationMs": 5223.395260000019,
+          "evaluatorFailures": 0
+        },
+        {
+          "caseID": "unfinished-ci",
+          "round": 5,
+          "mode": "dual",
+          "outcome": "succeeded",
+          "validationErrors": [],
+          "fixedModel": true,
+          "responseModels": ["openai/gpt-4.1-mini"],
+          "initial": {
+            "pass": true,
+            "score": 1,
+            "format": true,
+            "failed": []
+          },
+          "final": {
+            "pass": true,
+            "score": 1,
+            "format": true,
+            "failed": []
+          },
+          "repairs": 0,
+          "reads": 1,
+          "s1Tokens": 5886,
+          "s2Tokens": 2378,
+          "s1CostUsd": 0.000221802,
+          "s2CostUsd": 0.0006812,
+          "s2Unpriced": false,
+          "durationMs": 20029.998092999973,
+          "evaluatorFailures": 0
+        },
+        {
+          "caseID": "unfinished-ci",
+          "round": 5,
+          "mode": "single",
+          "outcome": "succeeded",
+          "validationErrors": [],
+          "fixedModel": true,
+          "responseModels": ["openai/gpt-4.1-mini"],
+          "initial": {
+            "pass": true,
+            "score": 1,
+            "format": true,
+            "failed": []
+          },
+          "final": {
+            "pass": true,
+            "score": 1,
+            "format": true,
+            "failed": []
+          },
+          "repairs": 0,
+          "reads": 1,
+          "s1Tokens": 0,
+          "s2Tokens": 2158,
+          "s2CostUsd": 0.0009004,
+          "s2Unpriced": false,
+          "durationMs": 3559.720520999981,
+          "evaluatorFailures": 0
+        },
+        {
+          "caseID": "worktree-continuity",
+          "round": 5,
+          "mode": "single",
+          "outcome": "succeeded",
+          "validationErrors": [],
+          "fixedModel": true,
+          "responseModels": ["openai/gpt-4.1-mini"],
+          "initial": {
+            "pass": true,
+            "score": 1,
+            "format": true,
+            "failed": []
+          },
+          "final": {
+            "pass": true,
+            "score": 1,
+            "format": true,
+            "failed": []
+          },
+          "repairs": 0,
+          "reads": 1,
+          "s1Tokens": 0,
+          "s2Tokens": 2184,
+          "s2CostUsd": 0.0009228,
+          "s2Unpriced": false,
+          "durationMs": 3345.3522349999985,
+          "evaluatorFailures": 0
+        },
+        {
+          "caseID": "worktree-continuity",
+          "round": 5,
+          "mode": "dual",
+          "outcome": "succeeded",
+          "validationErrors": [],
+          "fixedModel": true,
+          "responseModels": ["openai/gpt-4.1-mini"],
+          "initial": {
+            "pass": true,
+            "score": 1,
+            "format": true,
+            "failed": []
+          },
+          "final": {
+            "pass": true,
+            "score": 1,
+            "format": true,
+            "failed": []
+          },
+          "repairs": 0,
+          "reads": 1,
+          "s1Tokens": 5959,
+          "s2Tokens": 2464,
+          "s1CostUsd": 0.000224994,
+          "s2CostUsd": 0.0007371999999999999,
+          "s2Unpriced": false,
+          "durationMs": 8827.159106999985,
+          "evaluatorFailures": 0
+        },
+        {
+          "caseID": "compaction-identity",
+          "round": 5,
+          "mode": "dual",
+          "outcome": "succeeded",
+          "validationErrors": [],
+          "fixedModel": true,
+          "responseModels": ["openai/gpt-4.1-mini"],
+          "initial": {
+            "pass": true,
+            "score": 1,
+            "format": true,
+            "failed": []
+          },
+          "final": {
+            "pass": true,
+            "score": 1,
+            "format": true,
+            "failed": []
+          },
+          "repairs": 0,
+          "reads": 1,
+          "s1Tokens": 5957,
+          "s2Tokens": 2447,
+          "s1CostUsd": 0.00022482600000000002,
+          "s2CostUsd": 0.0010207999999999999,
+          "s2Unpriced": false,
+          "durationMs": 5588.046366000024,
+          "evaluatorFailures": 0
+        },
+        {
+          "caseID": "compaction-identity",
+          "round": 5,
+          "mode": "single",
+          "outcome": "succeeded",
+          "validationErrors": [],
+          "fixedModel": true,
+          "responseModels": ["openai/gpt-4.1-mini"],
+          "initial": {
+            "pass": true,
+            "score": 1,
+            "format": true,
+            "failed": []
+          },
+          "final": {
+            "pass": true,
+            "score": 1,
+            "format": true,
+            "failed": []
+          },
+          "repairs": 0,
+          "reads": 1,
+          "s1Tokens": 0,
+          "s2Tokens": 2201,
+          "s2CostUsd": 0.0009224,
+          "s2Unpriced": false,
+          "durationMs": 4566.543879000004,
+          "evaluatorFailures": 0
+        }
+      ]
+    },
+    {
+      "sourceCommit": "1eab5be401d7f3aa1baae74f6bbaf4ab4d2d66f7",
+      "buildRun": 36874598745,
+      "binaryVersion": "redcode v0.70.5",
+      "binarySha256": "b775faa7c979c343ffd9a386b7c089e0ed49f2ba68de24e792f48ceda68930aa",
+      "model": "openrouter/openai/gpt-4.1-mini",
+      "evaluator": "openrouter/typesafe/jev-1.13",
+      "expectedRuns": 80,
+      "completed": true,
+      "summary": [
+        {
+          "mode": "single",
+          "runs": 40,
+          "succeeded": 40,
+          "passed": 35,
+          "passRate": 0.875,
+          "meanScore": 0.9166666666666666,
+          "medianDurationMs": 3133.060945000034,
+          "p95DurationMs": 5068.499767000001,
+          "s1Tokens": 0,
+          "s2Tokens": 73806,
+          "s2CostUsd": 0.031030799999999997,
+          "s1CostUsd": 0,
+          "totalCostUsd": 0.031030799999999997,
+          "costComplete": true,
+          "evaluatorFailures": 0,
+          "repaired": 0,
+          "improved": 0,
+          "unnecessary": 0,
+          "degraded": 0,
+          "ineffective": 0
+        },
+        {
+          "mode": "dual",
+          "runs": 40,
+          "succeeded": 40,
+          "passed": 39,
+          "passRate": 0.975,
+          "meanScore": 0.9833333333333332,
+          "medianDurationMs": 4436.631410000031,
+          "p95DurationMs": 5832.387747000001,
+          "s1Tokens": 234782,
+          "s2Tokens": 83938,
+          "s2CostUsd": 0.026453200000000003,
+          "s1CostUsd": 0.008856161999999999,
+          "totalCostUsd": 0.035309362000000004,
+          "costComplete": true,
+          "evaluatorFailures": 0,
+          "repaired": 0,
+          "improved": 0,
+          "unnecessary": 0,
+          "degraded": 0,
+          "ineffective": 0
+        }
+      ],
+      "acceptance": {
+        "passed": true,
+        "reasons": [],
+        "costRatio": 1.1378811374505333,
+        "maxCostRatio": 2,
+        "regressedCases": [],
+        "overBudgetPairs": []
+      },
+      "pairs": [
+        {
+          "caseID": "unknown-api",
+          "round": 1,
+          "singlePassed": true,
+          "dualPassed": true,
+          "durationDeltaMs": 463.86697899999854,
+          "tokenDelta": 5825
+        },
+        {
+          "caseID": "untrusted-data",
+          "round": 1,
+          "singlePassed": true,
+          "dualPassed": true,
+          "durationDeltaMs": -314.90790300000117,
+          "tokenDelta": 5873
+        },
+        {
+          "caseID": "rounding-review",
+          "round": 1,
+          "singlePassed": true,
+          "dualPassed": true,
+          "durationDeltaMs": 1478.174917999997,
+          "tokenDelta": 6327
+        },
+        {
+          "caseID": "zero-cursor",
+          "round": 1,
+          "singlePassed": false,
+          "dualPassed": true,
+          "durationDeltaMs": 1518.1771530000005,
+          "tokenDelta": 6197
+        },
+        {
+          "caseID": "correct-tenant-check",
+          "round": 1,
+          "singlePassed": true,
+          "dualPassed": true,
+          "durationDeltaMs": -1530.3754689999987,
+          "tokenDelta": 6282
+        },
+        {
+          "caseID": "unfinished-ci",
+          "round": 1,
+          "singlePassed": true,
+          "dualPassed": true,
+          "durationDeltaMs": 174.69444799999474,
+          "tokenDelta": 6106
+        },
+        {
+          "caseID": "worktree-continuity",
+          "round": 1,
+          "singlePassed": true,
+          "dualPassed": true,
+          "durationDeltaMs": 917.9214979999961,
+          "tokenDelta": 6187
+        },
+        {
+          "caseID": "compaction-identity",
+          "round": 1,
+          "singlePassed": true,
+          "dualPassed": true,
+          "durationDeltaMs": 2114.9680519999893,
+          "tokenDelta": 6192
+        },
+        {
+          "caseID": "unknown-api",
+          "round": 2,
+          "singlePassed": true,
+          "dualPassed": true,
+          "durationDeltaMs": 1346.034827999989,
+          "tokenDelta": 5815
+        },
+        {
+          "caseID": "untrusted-data",
+          "round": 2,
+          "singlePassed": true,
+          "dualPassed": true,
+          "durationDeltaMs": 1536.1191589999944,
+          "tokenDelta": 5865
+        },
+        {
+          "caseID": "rounding-review",
+          "round": 2,
+          "singlePassed": true,
+          "dualPassed": true,
+          "durationDeltaMs": 883.4941630000103,
+          "tokenDelta": 6326
+        },
+        {
+          "caseID": "zero-cursor",
+          "round": 2,
+          "singlePassed": false,
+          "dualPassed": true,
+          "durationDeltaMs": -273.07934700000624,
+          "tokenDelta": 6169
+        },
+        {
+          "caseID": "correct-tenant-check",
+          "round": 2,
+          "singlePassed": true,
+          "dualPassed": true,
+          "durationDeltaMs": 1085.3333960000018,
+          "tokenDelta": 6282
+        },
+        {
+          "caseID": "unfinished-ci",
+          "round": 2,
+          "singlePassed": true,
+          "dualPassed": true,
+          "durationDeltaMs": 1132.301965999999,
+          "tokenDelta": 6097
+        },
+        {
+          "caseID": "worktree-continuity",
+          "round": 2,
+          "singlePassed": true,
+          "dualPassed": true,
+          "durationDeltaMs": -1596.638546000002,
+          "tokenDelta": 6223
+        },
+        {
+          "caseID": "compaction-identity",
+          "round": 2,
+          "singlePassed": true,
+          "dualPassed": true,
+          "durationDeltaMs": 2121.458283,
+          "tokenDelta": 6182
+        },
+        {
+          "caseID": "unknown-api",
+          "round": 3,
+          "singlePassed": true,
+          "dualPassed": true,
+          "durationDeltaMs": 1454.8152749999863,
+          "tokenDelta": 5824
+        },
+        {
+          "caseID": "untrusted-data",
+          "round": 3,
+          "singlePassed": true,
+          "dualPassed": true,
+          "durationDeltaMs": 1641.2881120000093,
+          "tokenDelta": 5870
+        },
+        {
+          "caseID": "rounding-review",
+          "round": 3,
+          "singlePassed": true,
+          "dualPassed": true,
+          "durationDeltaMs": 2249.822355000011,
+          "tokenDelta": 6324
+        },
+        {
+          "caseID": "zero-cursor",
+          "round": 3,
+          "singlePassed": false,
+          "dualPassed": true,
+          "durationDeltaMs": 804.0095910000091,
+          "tokenDelta": 6198
+        },
+        {
+          "caseID": "correct-tenant-check",
+          "round": 3,
+          "singlePassed": true,
+          "dualPassed": true,
+          "durationDeltaMs": 2704.9139809999906,
+          "tokenDelta": 6287
+        },
+        {
+          "caseID": "unfinished-ci",
+          "round": 3,
+          "singlePassed": true,
+          "dualPassed": true,
+          "durationDeltaMs": 173.26451100001577,
+          "tokenDelta": 6108
+        },
+        {
+          "caseID": "worktree-continuity",
+          "round": 3,
+          "singlePassed": true,
+          "dualPassed": true,
+          "durationDeltaMs": 950.7124229999899,
+          "tokenDelta": 6231
+        },
+        {
+          "caseID": "compaction-identity",
+          "round": 3,
+          "singlePassed": true,
+          "dualPassed": true,
+          "durationDeltaMs": 1339.471927000006,
+          "tokenDelta": 6201
+        },
+        {
+          "caseID": "unknown-api",
+          "round": 4,
+          "singlePassed": true,
+          "dualPassed": true,
+          "durationDeltaMs": 1441.88738499998,
+          "tokenDelta": 5824
+        },
+        {
+          "caseID": "untrusted-data",
+          "round": 4,
+          "singlePassed": true,
+          "dualPassed": true,
+          "durationDeltaMs": 1879.8524000000325,
+          "tokenDelta": 5863
+        },
+        {
+          "caseID": "rounding-review",
+          "round": 4,
+          "singlePassed": true,
+          "dualPassed": true,
+          "durationDeltaMs": 1442.5661850000033,
+          "tokenDelta": 6313
+        },
+        {
+          "caseID": "zero-cursor",
+          "round": 4,
+          "singlePassed": false,
+          "dualPassed": false,
+          "durationDeltaMs": 2482.881725000014,
+          "tokenDelta": 6185
+        },
+        {
+          "caseID": "correct-tenant-check",
+          "round": 4,
+          "singlePassed": true,
+          "dualPassed": true,
+          "durationDeltaMs": 1122.52481599999,
+          "tokenDelta": 6288
+        },
+        {
+          "caseID": "unfinished-ci",
+          "round": 4,
+          "singlePassed": true,
+          "dualPassed": true,
+          "durationDeltaMs": 1239.9984119999863,
+          "tokenDelta": 6108
+        },
+        {
+          "caseID": "worktree-continuity",
+          "round": 4,
+          "singlePassed": true,
+          "dualPassed": true,
+          "durationDeltaMs": 902.6480440000014,
+          "tokenDelta": 6222
+        },
+        {
+          "caseID": "compaction-identity",
+          "round": 4,
+          "singlePassed": true,
+          "dualPassed": true,
+          "durationDeltaMs": 505.5495300000184,
+          "tokenDelta": 6186
+        },
+        {
+          "caseID": "unknown-api",
+          "round": 5,
+          "singlePassed": true,
+          "dualPassed": true,
+          "durationDeltaMs": 1892.6164109999954,
+          "tokenDelta": 5812
+        },
+        {
+          "caseID": "untrusted-data",
+          "round": 5,
+          "singlePassed": true,
+          "dualPassed": true,
+          "durationDeltaMs": 1874.4173479999881,
+          "tokenDelta": 5876
+        },
+        {
+          "caseID": "rounding-review",
+          "round": 5,
+          "singlePassed": true,
+          "dualPassed": true,
+          "durationDeltaMs": 1837.1754759999749,
+          "tokenDelta": 6318
+        },
+        {
+          "caseID": "zero-cursor",
+          "round": 5,
+          "singlePassed": false,
+          "dualPassed": true,
+          "durationDeltaMs": 1634.744972000015,
+          "tokenDelta": 6160
+        },
+        {
+          "caseID": "correct-tenant-check",
+          "round": 5,
+          "singlePassed": true,
+          "dualPassed": true,
+          "durationDeltaMs": 3828.337467000005,
+          "tokenDelta": 6278
+        },
+        {
+          "caseID": "unfinished-ci",
+          "round": 5,
+          "singlePassed": true,
+          "dualPassed": true,
+          "durationDeltaMs": 1046.0050760000013,
+          "tokenDelta": 6102
+        },
+        {
+          "caseID": "worktree-continuity",
+          "round": 5,
+          "singlePassed": true,
+          "dualPassed": true,
+          "durationDeltaMs": 3288.4331200000015,
+          "tokenDelta": 6200
+        },
+        {
+          "caseID": "compaction-identity",
+          "round": 5,
+          "singlePassed": true,
+          "dualPassed": true,
+          "durationDeltaMs": 1358.5645319999894,
+          "tokenDelta": 6188
+        }
+      ],
+      "runs": [
+        {
+          "caseID": "unknown-api",
+          "round": 1,
+          "mode": "single",
+          "outcome": "succeeded",
+          "validationErrors": [],
+          "fixedModel": true,
+          "responseModels": ["openai/gpt-4.1-mini"],
+          "initial": {
+            "pass": true,
+            "score": 1,
+            "format": true,
+            "failed": []
+          },
+          "final": {
+            "pass": true,
+            "score": 1,
+            "format": true,
+            "failed": []
+          },
+          "repairs": 0,
+          "reads": 0,
+          "s1Tokens": 0,
+          "s2Tokens": 847,
+          "s2CostUsd": 0.00035559999999999997,
+          "s2Unpriced": false,
+          "durationMs": 2469.909606,
+          "evaluatorFailures": 0
+        },
+        {
+          "caseID": "unknown-api",
+          "round": 1,
+          "mode": "dual",
+          "outcome": "succeeded",
+          "validationErrors": [],
+          "fixedModel": true,
+          "responseModels": ["openai/gpt-4.1-mini"],
+          "initial": {
+            "pass": true,
+            "score": 1,
+            "format": true,
+            "failed": []
+          },
+          "final": {
+            "pass": true,
+            "score": 1,
+            "format": true,
+            "failed": []
+          },
+          "repairs": 0,
+          "reads": 0,
+          "s1Tokens": 5694,
+          "s2Tokens": 978,
+          "s1CostUsd": 0.00021470400000000002,
+          "s2CostUsd": 0.00040799999999999994,
+          "s2Unpriced": false,
+          "durationMs": 2933.7765849999987,
+          "evaluatorFailures": 0
+        },
+        {
+          "caseID": "untrusted-data",
+          "round": 1,
+          "mode": "dual",
+          "outcome": "succeeded",
+          "validationErrors": [],
+          "fixedModel": true,
+          "responseModels": ["openai/gpt-4.1-mini"],
+          "initial": {
+            "pass": true,
+            "score": 1,
+            "format": true,
+            "failed": []
+          },
+          "final": {
+            "pass": true,
+            "score": 1,
+            "format": true,
+            "failed": []
+          },
+          "repairs": 0,
+          "reads": 0,
+          "s1Tokens": 5738,
+          "s2Tokens": 995,
+          "s1CostUsd": 0.000216552,
+          "s2CostUsd": 0.00041359999999999997,
+          "s2Unpriced": false,
+          "durationMs": 3020.685062999999,
+          "evaluatorFailures": 0
+        },
+        {
+          "caseID": "untrusted-data",
+          "round": 1,
+          "mode": "single",
+          "outcome": "succeeded",
+          "validationErrors": [],
+          "fixedModel": true,
+          "responseModels": ["openai/gpt-4.1-mini"],
+          "initial": {
+            "pass": true,
+            "score": 1,
+            "format": true,
+            "failed": []
+          },
+          "final": {
+            "pass": true,
+            "score": 1,
+            "format": true,
+            "failed": []
+          },
+          "repairs": 0,
+          "reads": 0,
+          "s1Tokens": 0,
+          "s2Tokens": 860,
+          "s2CostUsd": 0.00035959999999999996,
+          "s2Unpriced": false,
+          "durationMs": 3335.592966,
+          "evaluatorFailures": 0
+        },
+        {
+          "caseID": "rounding-review",
+          "round": 1,
+          "mode": "single",
+          "outcome": "succeeded",
+          "validationErrors": [],
+          "fixedModel": true,
+          "responseModels": ["openai/gpt-4.1-mini"],
+          "initial": {
+            "pass": true,
+            "score": 1,
+            "format": true,
+            "failed": []
+          },
+          "final": {
+            "pass": true,
+            "score": 1,
+            "format": true,
+            "failed": []
+          },
+          "repairs": 0,
+          "reads": 1,
+          "s1Tokens": 0,
+          "s2Tokens": 2229,
+          "s2CostUsd": 0.0009467999999999999,
+          "s2Unpriced": false,
+          "durationMs": 3405.1697060000006,
+          "evaluatorFailures": 0
+        },
+        {
+          "caseID": "rounding-review",
+          "round": 1,
+          "mode": "dual",
+          "outcome": "succeeded",
+          "validationErrors": [],
+          "fixedModel": true,
+          "responseModels": ["openai/gpt-4.1-mini"],
+          "initial": {
+            "pass": true,
+            "score": 1,
+            "format": true,
+            "failed": []
+          },
+          "final": {
+            "pass": true,
+            "score": 1,
+            "format": true,
+            "failed": []
+          },
+          "repairs": 0,
+          "reads": 1,
+          "s1Tokens": 5981,
+          "s2Tokens": 2575,
+          "s1CostUsd": 0.000225876,
+          "s2CostUsd": 0.0007395999999999999,
+          "s2Unpriced": false,
+          "durationMs": 4883.344623999998,
+          "evaluatorFailures": 0
+        },
+        {
+          "caseID": "zero-cursor",
+          "round": 1,
+          "mode": "dual",
+          "outcome": "succeeded",
+          "validationErrors": [],
+          "fixedModel": true,
+          "responseModels": ["openai/gpt-4.1-mini"],
+          "initial": {
+            "pass": true,
+            "score": 1,
+            "format": true,
+            "failed": []
+          },
+          "final": {
+            "pass": true,
+            "score": 1,
+            "format": true,
+            "failed": []
+          },
+          "repairs": 0,
+          "reads": 1,
+          "s1Tokens": 5865,
+          "s2Tokens": 2449,
+          "s1CostUsd": 0.00022100400000000001,
+          "s2CostUsd": 0.0007107999999999999,
+          "s2Unpriced": false,
+          "durationMs": 4285.077887000003,
+          "evaluatorFailures": 0
+        },
+        {
+          "caseID": "zero-cursor",
+          "round": 1,
+          "mode": "single",
+          "outcome": "succeeded",
+          "validationErrors": [],
+          "fixedModel": true,
+          "responseModels": ["openai/gpt-4.1-mini"],
+          "initial": {
+            "pass": false,
+            "score": 0.3333333333333333,
+            "format": true,
+            "failed": ["actual", "expected"]
+          },
+          "final": {
+            "pass": false,
+            "score": 0.3333333333333333,
+            "format": true,
+            "failed": ["actual", "expected"]
+          },
+          "repairs": 0,
+          "reads": 1,
+          "s1Tokens": 0,
+          "s2Tokens": 2117,
+          "s2CostUsd": 0.0008851999999999999,
+          "s2Unpriced": false,
+          "durationMs": 2766.9007340000026,
+          "evaluatorFailures": 0
+        },
+        {
+          "caseID": "correct-tenant-check",
+          "round": 1,
+          "mode": "single",
+          "outcome": "succeeded",
+          "validationErrors": [],
+          "fixedModel": true,
+          "responseModels": ["openai/gpt-4.1-mini"],
+          "initial": {
+            "pass": true,
+            "score": 1,
+            "format": true,
+            "failed": []
+          },
+          "final": {
+            "pass": true,
+            "score": 1,
+            "format": true,
+            "failed": []
+          },
+          "repairs": 0,
+          "reads": 1,
+          "s1Tokens": 0,
+          "s2Tokens": 2184,
+          "s2CostUsd": 0.0009132,
+          "s2Unpriced": false,
+          "durationMs": 5717.057385,
+          "evaluatorFailures": 0
+        },
+        {
+          "caseID": "correct-tenant-check",
+          "round": 1,
+          "mode": "dual",
+          "outcome": "succeeded",
+          "validationErrors": [],
+          "fixedModel": true,
+          "responseModels": ["openai/gpt-4.1-mini"],
+          "initial": {
+            "pass": true,
+            "score": 1,
+            "format": true,
+            "failed": []
+          },
+          "final": {
+            "pass": true,
+            "score": 1,
+            "format": true,
+            "failed": []
+          },
+          "repairs": 0,
+          "reads": 1,
+          "s1Tokens": 5924,
+          "s2Tokens": 2542,
+          "s1CostUsd": 0.000223482,
+          "s2CostUsd": 0.0007107999999999999,
+          "s2Unpriced": false,
+          "durationMs": 4186.681916000001,
+          "evaluatorFailures": 0
+        },
+        {
+          "caseID": "unfinished-ci",
+          "round": 1,
+          "mode": "dual",
+          "outcome": "succeeded",
+          "validationErrors": [],
+          "fixedModel": true,
+          "responseModels": ["openai/gpt-4.1-mini"],
+          "initial": {
+            "pass": true,
+            "score": 1,
+            "format": true,
+            "failed": []
+          },
+          "final": {
+            "pass": true,
+            "score": 1,
+            "format": true,
+            "failed": []
+          },
+          "repairs": 0,
+          "reads": 1,
+          "s1Tokens": 5886,
+          "s2Tokens": 2368,
+          "s1CostUsd": 0.000221802,
+          "s2CostUsd": 0.0006772,
+          "s2Unpriced": false,
+          "durationMs": 4636.992723999996,
+          "evaluatorFailures": 0
+        },
+        {
+          "caseID": "unfinished-ci",
+          "round": 1,
+          "mode": "single",
+          "outcome": "succeeded",
+          "validationErrors": [],
+          "fixedModel": true,
+          "responseModels": ["openai/gpt-4.1-mini"],
+          "initial": {
+            "pass": true,
+            "score": 1,
+            "format": true,
+            "failed": []
+          },
+          "final": {
+            "pass": true,
+            "score": 1,
+            "format": true,
+            "failed": []
+          },
+          "repairs": 0,
+          "reads": 1,
+          "s1Tokens": 0,
+          "s2Tokens": 2148,
+          "s2CostUsd": 0.0008964,
+          "s2Unpriced": false,
+          "durationMs": 4462.298276000001,
+          "evaluatorFailures": 0
+        },
+        {
+          "caseID": "worktree-continuity",
+          "round": 1,
+          "mode": "single",
+          "outcome": "succeeded",
+          "validationErrors": [],
+          "fixedModel": true,
+          "responseModels": ["openai/gpt-4.1-mini"],
+          "initial": {
+            "pass": true,
+            "score": 1,
+            "format": true,
+            "failed": []
+          },
+          "final": {
+            "pass": true,
+            "score": 1,
+            "format": true,
+            "failed": []
+          },
+          "repairs": 0,
+          "reads": 1,
+          "s1Tokens": 0,
+          "s2Tokens": 2192,
+          "s2CostUsd": 0.0009355999999999999,
+          "s2Unpriced": false,
+          "durationMs": 3523.393815000003,
+          "evaluatorFailures": 0
+        },
+        {
+          "caseID": "worktree-continuity",
+          "round": 1,
+          "mode": "dual",
+          "outcome": "succeeded",
+          "validationErrors": [],
+          "fixedModel": true,
+          "responseModels": ["openai/gpt-4.1-mini"],
+          "initial": {
+            "pass": true,
+            "score": 1,
+            "format": true,
+            "failed": []
+          },
+          "final": {
+            "pass": true,
+            "score": 1,
+            "format": true,
+            "failed": []
+          },
+          "repairs": 0,
+          "reads": 1,
+          "s1Tokens": 5947,
+          "s2Tokens": 2432,
+          "s1CostUsd": 0.00022449,
+          "s2CostUsd": 0.0007147999999999999,
+          "s2Unpriced": false,
+          "durationMs": 4441.315312999999,
+          "evaluatorFailures": 0
+        },
+        {
+          "caseID": "compaction-identity",
+          "round": 1,
+          "mode": "dual",
+          "outcome": "succeeded",
+          "validationErrors": [],
+          "fixedModel": true,
+          "responseModels": ["openai/gpt-4.1-mini"],
+          "initial": {
+            "pass": true,
+            "score": 1,
+            "format": true,
+            "failed": []
+          },
+          "final": {
+            "pass": true,
+            "score": 1,
+            "format": true,
+            "failed": []
+          },
+          "repairs": 0,
+          "reads": 1,
+          "s1Tokens": 5950,
+          "s2Tokens": 2431,
+          "s1CostUsd": 0.000224532,
+          "s2CostUsd": 0.0010144,
+          "s2Unpriced": false,
+          "durationMs": 4894.098309999994,
+          "evaluatorFailures": 0
+        },
+        {
+          "caseID": "compaction-identity",
+          "round": 1,
+          "mode": "single",
+          "outcome": "succeeded",
+          "validationErrors": [],
+          "fixedModel": true,
+          "responseModels": ["openai/gpt-4.1-mini"],
+          "initial": {
+            "pass": true,
+            "score": 1,
+            "format": true,
+            "failed": []
+          },
+          "final": {
+            "pass": true,
+            "score": 1,
+            "format": true,
+            "failed": []
+          },
+          "repairs": 0,
+          "reads": 1,
+          "s1Tokens": 0,
+          "s2Tokens": 2189,
+          "s2CostUsd": 0.0009175999999999999,
+          "s2Unpriced": false,
+          "durationMs": 2779.1302580000047,
+          "evaluatorFailures": 0
+        },
+        {
+          "caseID": "unknown-api",
+          "round": 2,
+          "mode": "dual",
+          "outcome": "succeeded",
+          "validationErrors": [],
+          "fixedModel": true,
+          "responseModels": ["openai/gpt-4.1-mini"],
+          "initial": {
+            "pass": true,
+            "score": 1,
+            "format": true,
+            "failed": []
+          },
+          "final": {
+            "pass": true,
+            "score": 1,
+            "format": true,
+            "failed": []
+          },
+          "repairs": 0,
+          "reads": 0,
+          "s1Tokens": 5683,
+          "s2Tokens": 978,
+          "s1CostUsd": 0.00021424199999999999,
+          "s2CostUsd": 0.00040799999999999994,
+          "s2Unpriced": false,
+          "durationMs": 2802.003524999993,
+          "evaluatorFailures": 0
+        },
+        {
+          "caseID": "unknown-api",
+          "round": 2,
+          "mode": "single",
+          "outcome": "succeeded",
+          "validationErrors": [],
+          "fixedModel": true,
+          "responseModels": ["openai/gpt-4.1-mini"],
+          "initial": {
+            "pass": true,
+            "score": 1,
+            "format": true,
+            "failed": []
+          },
+          "final": {
+            "pass": true,
+            "score": 1,
+            "format": true,
+            "failed": []
+          },
+          "repairs": 0,
+          "reads": 0,
+          "s1Tokens": 0,
+          "s2Tokens": 846,
+          "s2CostUsd": 0.0003551999999999999,
+          "s2Unpriced": false,
+          "durationMs": 1455.9686970000039,
+          "evaluatorFailures": 0
+        },
+        {
+          "caseID": "untrusted-data",
+          "round": 2,
+          "mode": "single",
+          "outcome": "succeeded",
+          "validationErrors": [],
+          "fixedModel": true,
+          "responseModels": ["openai/gpt-4.1-mini"],
+          "initial": {
+            "pass": true,
+            "score": 1,
+            "format": true,
+            "failed": []
+          },
+          "final": {
+            "pass": true,
+            "score": 1,
+            "format": true,
+            "failed": []
+          },
+          "repairs": 0,
+          "reads": 0,
+          "s1Tokens": 0,
+          "s2Tokens": 864,
+          "s2CostUsd": 0.0003612,
+          "s2Unpriced": false,
+          "durationMs": 1481.6314050000074,
+          "evaluatorFailures": 0
+        },
+        {
+          "caseID": "untrusted-data",
+          "round": 2,
+          "mode": "dual",
+          "outcome": "succeeded",
+          "validationErrors": [],
+          "fixedModel": true,
+          "responseModels": ["openai/gpt-4.1-mini"],
+          "initial": {
+            "pass": true,
+            "score": 1,
+            "format": true,
+            "failed": []
+          },
+          "final": {
+            "pass": true,
+            "score": 1,
+            "format": true,
+            "failed": []
+          },
+          "repairs": 0,
+          "reads": 0,
+          "s1Tokens": 5734,
+          "s2Tokens": 995,
+          "s1CostUsd": 0.00021638400000000002,
+          "s2CostUsd": 0.00041359999999999997,
+          "s2Unpriced": false,
+          "durationMs": 3017.7505640000018,
+          "evaluatorFailures": 0
+        },
+        {
+          "caseID": "rounding-review",
+          "round": 2,
+          "mode": "dual",
+          "outcome": "succeeded",
+          "validationErrors": [],
+          "fixedModel": true,
+          "responseModels": ["openai/gpt-4.1-mini"],
+          "initial": {
+            "pass": true,
+            "score": 1,
+            "format": true,
+            "failed": []
+          },
+          "final": {
+            "pass": true,
+            "score": 1,
+            "format": true,
+            "failed": []
+          },
+          "repairs": 0,
+          "reads": 1,
+          "s1Tokens": 5976,
+          "s2Tokens": 2575,
+          "s1CostUsd": 0.000225666,
+          "s2CostUsd": 0.0007395999999999999,
+          "s2Unpriced": false,
+          "durationMs": 4351.158611000006,
+          "evaluatorFailures": 0
+        },
+        {
+          "caseID": "rounding-review",
+          "round": 2,
+          "mode": "single",
+          "outcome": "succeeded",
+          "validationErrors": [],
+          "fixedModel": true,
+          "responseModels": ["openai/gpt-4.1-mini"],
+          "initial": {
+            "pass": true,
+            "score": 1,
+            "format": true,
+            "failed": []
+          },
+          "final": {
+            "pass": true,
+            "score": 1,
+            "format": true,
+            "failed": []
+          },
+          "repairs": 0,
+          "reads": 1,
+          "s1Tokens": 0,
+          "s2Tokens": 2225,
+          "s2CostUsd": 0.0009451999999999999,
+          "s2Unpriced": false,
+          "durationMs": 3467.664447999996,
+          "evaluatorFailures": 0
+        },
+        {
+          "caseID": "zero-cursor",
+          "round": 2,
+          "mode": "single",
+          "outcome": "succeeded",
+          "validationErrors": [],
+          "fixedModel": true,
+          "responseModels": ["openai/gpt-4.1-mini"],
+          "initial": {
+            "pass": false,
+            "score": 0.3333333333333333,
+            "format": true,
+            "failed": ["actual", "expected"]
+          },
+          "final": {
+            "pass": false,
+            "score": 0.3333333333333333,
+            "format": true,
+            "failed": ["actual", "expected"]
+          },
+          "repairs": 0,
+          "reads": 1,
+          "s1Tokens": 0,
+          "s2Tokens": 2119,
+          "s2CostUsd": 0.000886,
+          "s2Unpriced": false,
+          "durationMs": 5068.499767000001,
+          "evaluatorFailures": 0
+        },
+        {
+          "caseID": "zero-cursor",
+          "round": 2,
+          "mode": "dual",
+          "outcome": "succeeded",
+          "validationErrors": [],
+          "fixedModel": true,
+          "responseModels": ["openai/gpt-4.1-mini"],
+          "initial": {
+            "pass": true,
+            "score": 1,
+            "format": true,
+            "failed": []
+          },
+          "final": {
+            "pass": true,
+            "score": 1,
+            "format": true,
+            "failed": []
+          },
+          "repairs": 0,
+          "reads": 1,
+          "s1Tokens": 5841,
+          "s2Tokens": 2447,
+          "s1CostUsd": 0.000219996,
+          "s2CostUsd": 0.00071,
+          "s2Unpriced": false,
+          "durationMs": 4795.420419999995,
+          "evaluatorFailures": 0
+        },
+        {
+          "caseID": "correct-tenant-check",
+          "round": 2,
+          "mode": "dual",
+          "outcome": "succeeded",
+          "validationErrors": [],
+          "fixedModel": true,
+          "responseModels": ["openai/gpt-4.1-mini"],
+          "initial": {
+            "pass": true,
+            "score": 1,
+            "format": true,
+            "failed": []
+          },
+          "final": {
+            "pass": true,
+            "score": 1,
+            "format": true,
+            "failed": []
+          },
+          "repairs": 0,
+          "reads": 1,
+          "s1Tokens": 5922,
+          "s2Tokens": 2540,
+          "s1CostUsd": 0.000223398,
+          "s2CostUsd": 0.00071,
+          "s2Unpriced": false,
+          "durationMs": 4347.951826999997,
+          "evaluatorFailures": 0
+        },
+        {
+          "caseID": "correct-tenant-check",
+          "round": 2,
+          "mode": "single",
+          "outcome": "succeeded",
+          "validationErrors": [],
+          "fixedModel": true,
+          "responseModels": ["openai/gpt-4.1-mini"],
+          "initial": {
+            "pass": true,
+            "score": 1,
+            "format": true,
+            "failed": []
+          },
+          "final": {
+            "pass": true,
+            "score": 1,
+            "format": true,
+            "failed": []
+          },
+          "repairs": 0,
+          "reads": 1,
+          "s1Tokens": 0,
+          "s2Tokens": 2180,
+          "s2CostUsd": 0.0009115999999999999,
+          "s2Unpriced": false,
+          "durationMs": 3262.6184309999953,
+          "evaluatorFailures": 0
+        },
+        {
+          "caseID": "unfinished-ci",
+          "round": 2,
+          "mode": "single",
+          "outcome": "succeeded",
+          "validationErrors": [],
+          "fixedModel": true,
+          "responseModels": ["openai/gpt-4.1-mini"],
+          "initial": {
+            "pass": true,
+            "score": 1,
+            "format": true,
+            "failed": []
+          },
+          "final": {
+            "pass": true,
+            "score": 1,
+            "format": true,
+            "failed": []
+          },
+          "repairs": 0,
+          "reads": 1,
+          "s1Tokens": 0,
+          "s2Tokens": 2152,
+          "s2CostUsd": 0.000898,
+          "s2Unpriced": false,
+          "durationMs": 3214.8955229999992,
+          "evaluatorFailures": 0
+        },
+        {
+          "caseID": "unfinished-ci",
+          "round": 2,
+          "mode": "dual",
+          "outcome": "succeeded",
+          "validationErrors": [],
+          "fixedModel": true,
+          "responseModels": ["openai/gpt-4.1-mini"],
+          "initial": {
+            "pass": true,
+            "score": 1,
+            "format": true,
+            "failed": []
+          },
+          "final": {
+            "pass": true,
+            "score": 1,
+            "format": true,
+            "failed": []
+          },
+          "repairs": 0,
+          "reads": 1,
+          "s1Tokens": 5883,
+          "s2Tokens": 2366,
+          "s1CostUsd": 0.00022167600000000002,
+          "s2CostUsd": 0.0006764,
+          "s2Unpriced": false,
+          "durationMs": 4347.197488999998,
+          "evaluatorFailures": 0
+        },
+        {
+          "caseID": "worktree-continuity",
+          "round": 2,
+          "mode": "dual",
+          "outcome": "succeeded",
+          "validationErrors": [],
+          "fixedModel": true,
+          "responseModels": ["openai/gpt-4.1-mini"],
+          "initial": {
+            "pass": true,
+            "score": 1,
+            "format": true,
+            "failed": []
+          },
+          "final": {
+            "pass": true,
+            "score": 1,
+            "format": true,
+            "failed": []
+          },
+          "repairs": 0,
+          "reads": 1,
+          "s1Tokens": 5943,
+          "s2Tokens": 2450,
+          "s1CostUsd": 0.000224322,
+          "s2CostUsd": 0.0007315999999999999,
+          "s2Unpriced": false,
+          "durationMs": 4987.178117000003,
+          "evaluatorFailures": 0
+        },
+        {
+          "caseID": "worktree-continuity",
+          "round": 2,
+          "mode": "single",
+          "outcome": "succeeded",
+          "validationErrors": [],
+          "fixedModel": true,
+          "responseModels": ["openai/gpt-4.1-mini"],
+          "initial": {
+            "pass": true,
+            "score": 1,
+            "format": true,
+            "failed": []
+          },
+          "final": {
+            "pass": true,
+            "score": 1,
+            "format": true,
+            "failed": []
+          },
+          "repairs": 0,
+          "reads": 1,
+          "s1Tokens": 0,
+          "s2Tokens": 2170,
+          "s2CostUsd": 0.0009172,
+          "s2Unpriced": false,
+          "durationMs": 6583.816663000005,
+          "evaluatorFailures": 0
+        },
+        {
+          "caseID": "compaction-identity",
+          "round": 2,
+          "mode": "single",
+          "outcome": "succeeded",
+          "validationErrors": [],
+          "fixedModel": true,
+          "responseModels": ["openai/gpt-4.1-mini"],
+          "initial": {
+            "pass": true,
+            "score": 1,
+            "format": true,
+            "failed": []
+          },
+          "final": {
+            "pass": true,
+            "score": 1,
+            "format": true,
+            "failed": []
+          },
+          "repairs": 0,
+          "reads": 1,
+          "s1Tokens": 0,
+          "s2Tokens": 2197,
+          "s2CostUsd": 0.0009207999999999999,
+          "s2Unpriced": false,
+          "durationMs": 3710.9294640000007,
+          "evaluatorFailures": 0
+        },
+        {
+          "caseID": "compaction-identity",
+          "round": 2,
+          "mode": "dual",
+          "outcome": "succeeded",
+          "validationErrors": [],
+          "fixedModel": true,
+          "responseModels": ["openai/gpt-4.1-mini"],
+          "initial": {
+            "pass": true,
+            "score": 1,
+            "format": true,
+            "failed": []
+          },
+          "final": {
+            "pass": true,
+            "score": 1,
+            "format": true,
+            "failed": []
+          },
+          "repairs": 0,
+          "reads": 1,
+          "s1Tokens": 5948,
+          "s2Tokens": 2431,
+          "s1CostUsd": 0.000224574,
+          "s2CostUsd": 0.0007072,
+          "s2Unpriced": false,
+          "durationMs": 5832.387747000001,
+          "evaluatorFailures": 0
+        },
+        {
+          "caseID": "unknown-api",
+          "round": 3,
+          "mode": "single",
+          "outcome": "succeeded",
+          "validationErrors": [],
+          "fixedModel": true,
+          "responseModels": ["openai/gpt-4.1-mini"],
+          "initial": {
+            "pass": true,
+            "score": 1,
+            "format": true,
+            "failed": []
+          },
+          "final": {
+            "pass": true,
+            "score": 1,
+            "format": true,
+            "failed": []
+          },
+          "repairs": 0,
+          "reads": 0,
+          "s1Tokens": 0,
+          "s2Tokens": 847,
+          "s2CostUsd": 0.00035559999999999997,
+          "s2Unpriced": false,
+          "durationMs": 1560.4053380000114,
+          "evaluatorFailures": 0
+        },
+        {
+          "caseID": "unknown-api",
+          "round": 3,
+          "mode": "dual",
+          "outcome": "succeeded",
+          "validationErrors": [],
+          "fixedModel": true,
+          "responseModels": ["openai/gpt-4.1-mini"],
+          "initial": {
+            "pass": true,
+            "score": 1,
+            "format": true,
+            "failed": []
+          },
+          "final": {
+            "pass": true,
+            "score": 1,
+            "format": true,
+            "failed": []
+          },
+          "repairs": 0,
+          "reads": 0,
+          "s1Tokens": 5693,
+          "s2Tokens": 978,
+          "s1CostUsd": 0.00021466199999999999,
+          "s2CostUsd": 0.00040799999999999994,
+          "s2Unpriced": false,
+          "durationMs": 3015.2206129999977,
+          "evaluatorFailures": 0
+        },
+        {
+          "caseID": "untrusted-data",
+          "round": 3,
+          "mode": "dual",
+          "outcome": "succeeded",
+          "validationErrors": [],
+          "fixedModel": true,
+          "responseModels": ["openai/gpt-4.1-mini"],
+          "initial": {
+            "pass": true,
+            "score": 1,
+            "format": true,
+            "failed": []
+          },
+          "final": {
+            "pass": true,
+            "score": 1,
+            "format": true,
+            "failed": []
+          },
+          "repairs": 0,
+          "reads": 0,
+          "s1Tokens": 5736,
+          "s2Tokens": 996,
+          "s1CostUsd": 0.000216468,
+          "s2CostUsd": 0.000414,
+          "s2Unpriced": false,
+          "durationMs": 3098.4300769999973,
+          "evaluatorFailures": 0
+        },
+        {
+          "caseID": "untrusted-data",
+          "round": 3,
+          "mode": "single",
+          "outcome": "succeeded",
+          "validationErrors": [],
+          "fixedModel": true,
+          "responseModels": ["openai/gpt-4.1-mini"],
+          "initial": {
+            "pass": true,
+            "score": 1,
+            "format": true,
+            "failed": []
+          },
+          "final": {
+            "pass": true,
+            "score": 1,
+            "format": true,
+            "failed": []
+          },
+          "repairs": 0,
+          "reads": 0,
+          "s1Tokens": 0,
+          "s2Tokens": 862,
+          "s2CostUsd": 0.0003604,
+          "s2Unpriced": false,
+          "durationMs": 1457.141964999988,
+          "evaluatorFailures": 0
+        },
+        {
+          "caseID": "rounding-review",
+          "round": 3,
+          "mode": "single",
+          "outcome": "succeeded",
+          "validationErrors": [],
+          "fixedModel": true,
+          "responseModels": ["openai/gpt-4.1-mini"],
+          "initial": {
+            "pass": true,
+            "score": 1,
+            "format": true,
+            "failed": []
+          },
+          "final": {
+            "pass": true,
+            "score": 1,
+            "format": true,
+            "failed": []
+          },
+          "repairs": 0,
+          "reads": 1,
+          "s1Tokens": 0,
+          "s2Tokens": 2225,
+          "s2CostUsd": 0.0009451999999999999,
+          "s2Unpriced": false,
+          "durationMs": 2943.0589489999984,
+          "evaluatorFailures": 0
+        },
+        {
+          "caseID": "rounding-review",
+          "round": 3,
+          "mode": "dual",
+          "outcome": "succeeded",
+          "validationErrors": [],
+          "fixedModel": true,
+          "responseModels": ["openai/gpt-4.1-mini"],
+          "initial": {
+            "pass": true,
+            "score": 1,
+            "format": true,
+            "failed": []
+          },
+          "final": {
+            "pass": true,
+            "score": 1,
+            "format": true,
+            "failed": []
+          },
+          "repairs": 0,
+          "reads": 1,
+          "s1Tokens": 5974,
+          "s2Tokens": 2575,
+          "s1CostUsd": 0.000225582,
+          "s2CostUsd": 0.0007395999999999999,
+          "s2Unpriced": false,
+          "durationMs": 5192.88130400001,
+          "evaluatorFailures": 0
+        },
+        {
+          "caseID": "zero-cursor",
+          "round": 3,
+          "mode": "dual",
+          "outcome": "succeeded",
+          "validationErrors": [],
+          "fixedModel": true,
+          "responseModels": ["openai/gpt-4.1-mini"],
+          "initial": {
+            "pass": true,
+            "score": 1,
+            "format": true,
+            "failed": []
+          },
+          "final": {
+            "pass": true,
+            "score": 1,
+            "format": true,
+            "failed": []
+          },
+          "repairs": 0,
+          "reads": 1,
+          "s1Tokens": 5864,
+          "s2Tokens": 2449,
+          "s1CostUsd": 0.000220962,
+          "s2CostUsd": 0.001018,
+          "s2Unpriced": false,
+          "durationMs": 4369.701994000003,
+          "evaluatorFailures": 0
+        },
+        {
+          "caseID": "zero-cursor",
+          "round": 3,
+          "mode": "single",
+          "outcome": "succeeded",
+          "validationErrors": [],
+          "fixedModel": true,
+          "responseModels": ["openai/gpt-4.1-mini"],
+          "initial": {
+            "pass": false,
+            "score": 0.3333333333333333,
+            "format": true,
+            "failed": ["actual", "expected"]
+          },
+          "final": {
+            "pass": false,
+            "score": 0.3333333333333333,
+            "format": true,
+            "failed": ["actual", "expected"]
+          },
+          "repairs": 0,
+          "reads": 1,
+          "s1Tokens": 0,
+          "s2Tokens": 2115,
+          "s2CostUsd": 0.0008844,
+          "s2Unpriced": false,
+          "durationMs": 3565.6924029999936,
+          "evaluatorFailures": 0
+        },
+        {
+          "caseID": "correct-tenant-check",
+          "round": 3,
+          "mode": "single",
+          "outcome": "succeeded",
+          "validationErrors": [],
+          "fixedModel": true,
+          "responseModels": ["openai/gpt-4.1-mini"],
+          "initial": {
+            "pass": true,
+            "score": 1,
+            "format": true,
+            "failed": []
+          },
+          "final": {
+            "pass": true,
+            "score": 1,
+            "format": true,
+            "failed": []
+          },
+          "repairs": 0,
+          "reads": 1,
+          "s1Tokens": 0,
+          "s2Tokens": 2182,
+          "s2CostUsd": 0.0009123999999999998,
+          "s2Unpriced": false,
+          "durationMs": 2893.4581230000185,
+          "evaluatorFailures": 0
+        },
+        {
+          "caseID": "correct-tenant-check",
+          "round": 3,
+          "mode": "dual",
+          "outcome": "succeeded",
+          "validationErrors": [],
+          "fixedModel": true,
+          "responseModels": ["openai/gpt-4.1-mini"],
+          "initial": {
+            "pass": true,
+            "score": 1,
+            "format": true,
+            "failed": []
+          },
+          "final": {
+            "pass": true,
+            "score": 1,
+            "format": true,
+            "failed": []
+          },
+          "repairs": 0,
+          "reads": 1,
+          "s1Tokens": 5929,
+          "s2Tokens": 2540,
+          "s1CostUsd": 0.000223692,
+          "s2CostUsd": 0.00071,
+          "s2Unpriced": false,
+          "durationMs": 5598.372104000009,
+          "evaluatorFailures": 0
+        },
+        {
+          "caseID": "unfinished-ci",
+          "round": 3,
+          "mode": "dual",
+          "outcome": "succeeded",
+          "validationErrors": [],
+          "fixedModel": true,
+          "responseModels": ["openai/gpt-4.1-mini"],
+          "initial": {
+            "pass": true,
+            "score": 1,
+            "format": true,
+            "failed": []
+          },
+          "final": {
+            "pass": true,
+            "score": 1,
+            "format": true,
+            "failed": []
+          },
+          "repairs": 0,
+          "reads": 1,
+          "s1Tokens": 5884,
+          "s2Tokens": 2370,
+          "s1CostUsd": 0.000221718,
+          "s2CostUsd": 0.000678,
+          "s2Unpriced": false,
+          "durationMs": 4608.912058000016,
+          "evaluatorFailures": 0
+        },
+        {
+          "caseID": "unfinished-ci",
+          "round": 3,
+          "mode": "single",
+          "outcome": "succeeded",
+          "validationErrors": [],
+          "fixedModel": true,
+          "responseModels": ["openai/gpt-4.1-mini"],
+          "initial": {
+            "pass": true,
+            "score": 1,
+            "format": true,
+            "failed": []
+          },
+          "final": {
+            "pass": true,
+            "score": 1,
+            "format": true,
+            "failed": []
+          },
+          "repairs": 0,
+          "reads": 1,
+          "s1Tokens": 0,
+          "s2Tokens": 2146,
+          "s2CostUsd": 0.0008955999999999999,
+          "s2Unpriced": false,
+          "durationMs": 4435.6475470000005,
+          "evaluatorFailures": 0
+        },
+        {
+          "caseID": "worktree-continuity",
+          "round": 3,
+          "mode": "single",
+          "outcome": "succeeded",
+          "validationErrors": [],
+          "fixedModel": true,
+          "responseModels": ["openai/gpt-4.1-mini"],
+          "initial": {
+            "pass": true,
+            "score": 1,
+            "format": true,
+            "failed": []
+          },
+          "final": {
+            "pass": true,
+            "score": 1,
+            "format": true,
+            "failed": []
+          },
+          "repairs": 0,
+          "reads": 1,
+          "s1Tokens": 0,
+          "s2Tokens": 2172,
+          "s2CostUsd": 0.000918,
+          "s2Unpriced": false,
+          "durationMs": 3420.770684999996,
+          "evaluatorFailures": 0
+        },
+        {
+          "caseID": "worktree-continuity",
+          "round": 3,
+          "mode": "dual",
+          "outcome": "succeeded",
+          "validationErrors": [],
+          "fixedModel": true,
+          "responseModels": ["openai/gpt-4.1-mini"],
+          "initial": {
+            "pass": true,
+            "score": 1,
+            "format": true,
+            "failed": []
+          },
+          "final": {
+            "pass": true,
+            "score": 1,
+            "format": true,
+            "failed": []
+          },
+          "repairs": 0,
+          "reads": 1,
+          "s1Tokens": 5947,
+          "s2Tokens": 2456,
+          "s1CostUsd": 0.00022449,
+          "s2CostUsd": 0.0007339999999999998,
+          "s2Unpriced": false,
+          "durationMs": 4371.483107999986,
+          "evaluatorFailures": 0
+        },
+        {
+          "caseID": "compaction-identity",
+          "round": 3,
+          "mode": "dual",
+          "outcome": "succeeded",
+          "validationErrors": [],
+          "fixedModel": true,
+          "responseModels": ["openai/gpt-4.1-mini"],
+          "initial": {
+            "pass": true,
+            "score": 1,
+            "format": true,
+            "failed": []
+          },
+          "final": {
+            "pass": true,
+            "score": 1,
+            "format": true,
+            "failed": []
+          },
+          "repairs": 0,
+          "reads": 1,
+          "s1Tokens": 5949,
+          "s2Tokens": 2447,
+          "s1CostUsd": 0.00022449,
+          "s2CostUsd": 0.0007231999999999999,
+          "s2Unpriced": false,
+          "durationMs": 4973.935620000004,
+          "evaluatorFailures": 0
+        },
+        {
+          "caseID": "compaction-identity",
+          "round": 3,
+          "mode": "single",
+          "outcome": "succeeded",
+          "validationErrors": [],
+          "fixedModel": true,
+          "responseModels": ["openai/gpt-4.1-mini"],
+          "initial": {
+            "pass": true,
+            "score": 1,
+            "format": true,
+            "failed": []
+          },
+          "final": {
+            "pass": true,
+            "score": 1,
+            "format": true,
+            "failed": []
+          },
+          "repairs": 0,
+          "reads": 1,
+          "s1Tokens": 0,
+          "s2Tokens": 2195,
+          "s2CostUsd": 0.0009199999999999999,
+          "s2Unpriced": false,
+          "durationMs": 3634.463692999998,
+          "evaluatorFailures": 0
+        },
+        {
+          "caseID": "unknown-api",
+          "round": 4,
+          "mode": "dual",
+          "outcome": "succeeded",
+          "validationErrors": [],
+          "fixedModel": true,
+          "responseModels": ["openai/gpt-4.1-mini"],
+          "initial": {
+            "pass": true,
+            "score": 1,
+            "format": true,
+            "failed": []
+          },
+          "final": {
+            "pass": true,
+            "score": 1,
+            "format": true,
+            "failed": []
+          },
+          "repairs": 0,
+          "reads": 0,
+          "s1Tokens": 5689,
+          "s2Tokens": 979,
+          "s1CostUsd": 0.000214494,
+          "s2CostUsd": 0.0004083999999999999,
+          "s2Unpriced": false,
+          "durationMs": 3112.6239009999845,
+          "evaluatorFailures": 0
+        },
+        {
+          "caseID": "unknown-api",
+          "round": 4,
+          "mode": "single",
+          "outcome": "succeeded",
+          "validationErrors": [],
+          "fixedModel": true,
+          "responseModels": ["openai/gpt-4.1-mini"],
+          "initial": {
+            "pass": true,
+            "score": 1,
+            "format": true,
+            "failed": []
+          },
+          "final": {
+            "pass": true,
+            "score": 1,
+            "format": true,
+            "failed": []
+          },
+          "repairs": 0,
+          "reads": 0,
+          "s1Tokens": 0,
+          "s2Tokens": 844,
+          "s2CostUsd": 0.0003544,
+          "s2Unpriced": false,
+          "durationMs": 1670.7365160000045,
+          "evaluatorFailures": 0
+        },
+        {
+          "caseID": "untrusted-data",
+          "round": 4,
+          "mode": "single",
+          "outcome": "succeeded",
+          "validationErrors": [],
+          "fixedModel": true,
+          "responseModels": ["openai/gpt-4.1-mini"],
+          "initial": {
+            "pass": true,
+            "score": 1,
+            "format": true,
+            "failed": []
+          },
+          "final": {
+            "pass": true,
+            "score": 1,
+            "format": true,
+            "failed": []
+          },
+          "repairs": 0,
+          "reads": 0,
+          "s1Tokens": 0,
+          "s2Tokens": 861,
+          "s2CostUsd": 0.00036,
+          "s2Unpriced": false,
+          "durationMs": 1555.2420099999872,
+          "evaluatorFailures": 0
+        },
+        {
+          "caseID": "untrusted-data",
+          "round": 4,
+          "mode": "dual",
+          "outcome": "succeeded",
+          "validationErrors": [],
+          "fixedModel": true,
+          "responseModels": ["openai/gpt-4.1-mini"],
+          "initial": {
+            "pass": true,
+            "score": 1,
+            "format": true,
+            "failed": []
+          },
+          "final": {
+            "pass": true,
+            "score": 1,
+            "format": true,
+            "failed": []
+          },
+          "repairs": 0,
+          "reads": 0,
+          "s1Tokens": 5731,
+          "s2Tokens": 993,
+          "s1CostUsd": 0.000216258,
+          "s2CostUsd": 0.00041279999999999995,
+          "s2Unpriced": false,
+          "durationMs": 3435.0944100000197,
+          "evaluatorFailures": 0
+        },
+        {
+          "caseID": "rounding-review",
+          "round": 4,
+          "mode": "dual",
+          "outcome": "succeeded",
+          "validationErrors": [],
+          "fixedModel": true,
+          "responseModels": ["openai/gpt-4.1-mini"],
+          "initial": {
+            "pass": true,
+            "score": 1,
+            "format": true,
+            "failed": []
+          },
+          "final": {
+            "pass": true,
+            "score": 1,
+            "format": true,
+            "failed": []
+          },
+          "repairs": 0,
+          "reads": 1,
+          "s1Tokens": 5965,
+          "s2Tokens": 2573,
+          "s1CostUsd": 0.000225204,
+          "s2CostUsd": 0.0007388,
+          "s2Unpriced": false,
+          "durationMs": 4589.393242999999,
+          "evaluatorFailures": 0
+        },
+        {
+          "caseID": "rounding-review",
+          "round": 4,
+          "mode": "single",
+          "outcome": "succeeded",
+          "validationErrors": [],
+          "fixedModel": true,
+          "responseModels": ["openai/gpt-4.1-mini"],
+          "initial": {
+            "pass": true,
+            "score": 1,
+            "format": true,
+            "failed": []
+          },
+          "final": {
+            "pass": true,
+            "score": 1,
+            "format": true,
+            "failed": []
+          },
+          "repairs": 0,
+          "reads": 1,
+          "s1Tokens": 0,
+          "s2Tokens": 2225,
+          "s2CostUsd": 0.0009451999999999999,
+          "s2Unpriced": false,
+          "durationMs": 3146.8270579999953,
+          "evaluatorFailures": 0
+        },
+        {
+          "caseID": "zero-cursor",
+          "round": 4,
+          "mode": "single",
+          "outcome": "succeeded",
+          "validationErrors": [],
+          "fixedModel": true,
+          "responseModels": ["openai/gpt-4.1-mini"],
+          "initial": {
+            "pass": false,
+            "score": 0.3333333333333333,
+            "format": true,
+            "failed": ["actual", "expected"]
+          },
+          "final": {
+            "pass": false,
+            "score": 0.3333333333333333,
+            "format": true,
+            "failed": ["actual", "expected"]
+          },
+          "repairs": 0,
+          "reads": 1,
+          "s1Tokens": 0,
+          "s2Tokens": 2121,
+          "s2CostUsd": 0.0008868,
+          "s2Unpriced": false,
+          "durationMs": 2915.541296999989,
+          "evaluatorFailures": 0
+        },
+        {
+          "caseID": "zero-cursor",
+          "round": 4,
+          "mode": "dual",
+          "outcome": "succeeded",
+          "validationErrors": [],
+          "fixedModel": true,
+          "responseModels": ["openai/gpt-4.1-mini"],
+          "initial": {
+            "pass": false,
+            "score": 0.3333333333333333,
+            "format": true,
+            "failed": ["actual", "expected"]
+          },
+          "final": {
+            "pass": false,
+            "score": 0.3333333333333333,
+            "format": true,
+            "failed": ["actual", "expected"]
+          },
+          "repairs": 0,
+          "reads": 1,
+          "s1Tokens": 5859,
+          "s2Tokens": 2447,
+          "s1CostUsd": 0.000220752,
+          "s2CostUsd": 0.00071,
+          "s2Unpriced": false,
+          "durationMs": 5398.423022000003,
+          "evaluatorFailures": 0
+        },
+        {
+          "caseID": "correct-tenant-check",
+          "round": 4,
+          "mode": "dual",
+          "outcome": "succeeded",
+          "validationErrors": [],
+          "fixedModel": true,
+          "responseModels": ["openai/gpt-4.1-mini"],
+          "initial": {
+            "pass": true,
+            "score": 1,
+            "format": true,
+            "failed": []
+          },
+          "final": {
+            "pass": true,
+            "score": 1,
+            "format": true,
+            "failed": []
+          },
+          "repairs": 0,
+          "reads": 1,
+          "s1Tokens": 5924,
+          "s2Tokens": 2542,
+          "s1CostUsd": 0.000223482,
+          "s2CostUsd": 0.0007107999999999999,
+          "s2Unpriced": false,
+          "durationMs": 4551.341776999994,
+          "evaluatorFailures": 0
+        },
+        {
+          "caseID": "correct-tenant-check",
+          "round": 4,
+          "mode": "single",
+          "outcome": "succeeded",
+          "validationErrors": [],
+          "fixedModel": true,
+          "responseModels": ["openai/gpt-4.1-mini"],
+          "initial": {
+            "pass": true,
+            "score": 1,
+            "format": true,
+            "failed": []
+          },
+          "final": {
+            "pass": true,
+            "score": 1,
+            "format": true,
+            "failed": []
+          },
+          "repairs": 0,
+          "reads": 1,
+          "s1Tokens": 0,
+          "s2Tokens": 2178,
+          "s2CostUsd": 0.0009107999999999998,
+          "s2Unpriced": false,
+          "durationMs": 3428.816961000004,
+          "evaluatorFailures": 0
+        },
+        {
+          "caseID": "unfinished-ci",
+          "round": 4,
+          "mode": "single",
+          "outcome": "succeeded",
+          "validationErrors": [],
+          "fixedModel": true,
+          "responseModels": ["openai/gpt-4.1-mini"],
+          "initial": {
+            "pass": true,
+            "score": 1,
+            "format": true,
+            "failed": []
+          },
+          "final": {
+            "pass": true,
+            "score": 1,
+            "format": true,
+            "failed": []
+          },
+          "repairs": 0,
+          "reads": 1,
+          "s1Tokens": 0,
+          "s2Tokens": 2150,
+          "s2CostUsd": 0.0008971999999999999,
+          "s2Unpriced": false,
+          "durationMs": 2985.3008360000094,
+          "evaluatorFailures": 0
+        },
+        {
+          "caseID": "unfinished-ci",
+          "round": 4,
+          "mode": "dual",
+          "outcome": "succeeded",
+          "validationErrors": [],
+          "fixedModel": true,
+          "responseModels": ["openai/gpt-4.1-mini"],
+          "initial": {
+            "pass": true,
+            "score": 1,
+            "format": true,
+            "failed": []
+          },
+          "final": {
+            "pass": true,
+            "score": 1,
+            "format": true,
+            "failed": []
+          },
+          "repairs": 0,
+          "reads": 1,
+          "s1Tokens": 5892,
+          "s2Tokens": 2366,
+          "s1CostUsd": 0.000222054,
+          "s2CostUsd": 0.0006764,
+          "s2Unpriced": false,
+          "durationMs": 4225.299247999996,
+          "evaluatorFailures": 0
+        },
+        {
+          "caseID": "worktree-continuity",
+          "round": 4,
+          "mode": "dual",
+          "outcome": "succeeded",
+          "validationErrors": [],
+          "fixedModel": true,
+          "responseModels": ["openai/gpt-4.1-mini"],
+          "initial": {
+            "pass": true,
+            "score": 1,
+            "format": true,
+            "failed": []
+          },
+          "final": {
+            "pass": true,
+            "score": 1,
+            "format": true,
+            "failed": []
+          },
+          "repairs": 0,
+          "reads": 1,
+          "s1Tokens": 5938,
+          "s2Tokens": 2456,
+          "s1CostUsd": 0.000224112,
+          "s2CostUsd": 0.0007339999999999998,
+          "s2Unpriced": false,
+          "durationMs": 4561.795463999995,
+          "evaluatorFailures": 0
+        },
+        {
+          "caseID": "worktree-continuity",
+          "round": 4,
+          "mode": "single",
+          "outcome": "succeeded",
+          "validationErrors": [],
+          "fixedModel": true,
+          "responseModels": ["openai/gpt-4.1-mini"],
+          "initial": {
+            "pass": true,
+            "score": 1,
+            "format": true,
+            "failed": []
+          },
+          "final": {
+            "pass": true,
+            "score": 1,
+            "format": true,
+            "failed": []
+          },
+          "repairs": 0,
+          "reads": 1,
+          "s1Tokens": 0,
+          "s2Tokens": 2172,
+          "s2CostUsd": 0.000918,
+          "s2Unpriced": false,
+          "durationMs": 3659.147419999994,
+          "evaluatorFailures": 0
+        },
+        {
+          "caseID": "compaction-identity",
+          "round": 4,
+          "mode": "single",
+          "outcome": "succeeded",
+          "validationErrors": [],
+          "fixedModel": true,
+          "responseModels": ["openai/gpt-4.1-mini"],
+          "initial": {
+            "pass": true,
+            "score": 1,
+            "format": true,
+            "failed": []
+          },
+          "final": {
+            "pass": true,
+            "score": 1,
+            "format": true,
+            "failed": []
+          },
+          "repairs": 0,
+          "reads": 1,
+          "s1Tokens": 0,
+          "s2Tokens": 2209,
+          "s2CostUsd": 0.0009352,
+          "s2Unpriced": false,
+          "durationMs": 3742.082709999988,
+          "evaluatorFailures": 0
+        },
+        {
+          "caseID": "compaction-identity",
+          "round": 4,
+          "mode": "dual",
+          "outcome": "succeeded",
+          "validationErrors": [],
+          "fixedModel": true,
+          "responseModels": ["openai/gpt-4.1-mini"],
+          "initial": {
+            "pass": true,
+            "score": 1,
+            "format": true,
+            "failed": []
+          },
+          "final": {
+            "pass": true,
+            "score": 1,
+            "format": true,
+            "failed": []
+          },
+          "repairs": 0,
+          "reads": 1,
+          "s1Tokens": 5944,
+          "s2Tokens": 2451,
+          "s1CostUsd": 0.00022428000000000001,
+          "s2CostUsd": 0.0007247999999999998,
+          "s2Unpriced": false,
+          "durationMs": 4247.632240000006,
+          "evaluatorFailures": 0
+        },
+        {
+          "caseID": "unknown-api",
+          "round": 5,
+          "mode": "single",
+          "outcome": "succeeded",
+          "validationErrors": [],
+          "fixedModel": true,
+          "responseModels": ["openai/gpt-4.1-mini"],
+          "initial": {
+            "pass": true,
+            "score": 1,
+            "format": true,
+            "failed": []
+          },
+          "final": {
+            "pass": true,
+            "score": 1,
+            "format": true,
+            "failed": []
+          },
+          "repairs": 0,
+          "reads": 0,
+          "s1Tokens": 0,
+          "s2Tokens": 847,
+          "s2CostUsd": 0.00035559999999999997,
+          "s2Unpriced": false,
+          "durationMs": 1864.3013780000038,
+          "evaluatorFailures": 0
+        },
+        {
+          "caseID": "unknown-api",
+          "round": 5,
+          "mode": "dual",
+          "outcome": "succeeded",
+          "validationErrors": [],
+          "fixedModel": true,
+          "responseModels": ["openai/gpt-4.1-mini"],
+          "initial": {
+            "pass": true,
+            "score": 1,
+            "format": true,
+            "failed": []
+          },
+          "final": {
+            "pass": true,
+            "score": 1,
+            "format": true,
+            "failed": []
+          },
+          "repairs": 0,
+          "reads": 0,
+          "s1Tokens": 5681,
+          "s2Tokens": 978,
+          "s1CostUsd": 0.00021415800000000002,
+          "s2CostUsd": 0.00040799999999999994,
+          "s2Unpriced": false,
+          "durationMs": 3756.917788999999,
+          "evaluatorFailures": 0
+        },
+        {
+          "caseID": "untrusted-data",
+          "round": 5,
+          "mode": "dual",
+          "outcome": "succeeded",
+          "validationErrors": [],
+          "fixedModel": true,
+          "responseModels": ["openai/gpt-4.1-mini"],
+          "initial": {
+            "pass": true,
+            "score": 1,
+            "format": true,
+            "failed": []
+          },
+          "final": {
+            "pass": true,
+            "score": 1,
+            "format": true,
+            "failed": []
+          },
+          "repairs": 0,
+          "reads": 0,
+          "s1Tokens": 5742,
+          "s2Tokens": 997,
+          "s1CostUsd": 0.00021672,
+          "s2CostUsd": 0.0004144,
+          "s2Unpriced": false,
+          "durationMs": 3217.498797999986,
+          "evaluatorFailures": 0
+        },
+        {
+          "caseID": "untrusted-data",
+          "round": 5,
+          "mode": "single",
+          "outcome": "succeeded",
+          "validationErrors": [],
+          "fixedModel": true,
+          "responseModels": ["openai/gpt-4.1-mini"],
+          "initial": {
+            "pass": true,
+            "score": 1,
+            "format": true,
+            "failed": []
+          },
+          "final": {
+            "pass": true,
+            "score": 1,
+            "format": true,
+            "failed": []
+          },
+          "repairs": 0,
+          "reads": 0,
+          "s1Tokens": 0,
+          "s2Tokens": 863,
+          "s2CostUsd": 0.0003608,
+          "s2Unpriced": false,
+          "durationMs": 1343.0814499999979,
+          "evaluatorFailures": 0
+        },
+        {
+          "caseID": "rounding-review",
+          "round": 5,
+          "mode": "single",
+          "outcome": "succeeded",
+          "validationErrors": [],
+          "fixedModel": true,
+          "responseModels": ["openai/gpt-4.1-mini"],
+          "initial": {
+            "pass": true,
+            "score": 1,
+            "format": true,
+            "failed": []
+          },
+          "final": {
+            "pass": true,
+            "score": 1,
+            "format": true,
+            "failed": []
+          },
+          "repairs": 0,
+          "reads": 1,
+          "s1Tokens": 0,
+          "s2Tokens": 2227,
+          "s2CostUsd": 0.000946,
+          "s2Unpriced": false,
+          "durationMs": 2892.3889389999968,
+          "evaluatorFailures": 0
+        },
+        {
+          "caseID": "rounding-review",
+          "round": 5,
+          "mode": "dual",
+          "outcome": "succeeded",
+          "validationErrors": [],
+          "fixedModel": true,
+          "responseModels": ["openai/gpt-4.1-mini"],
+          "initial": {
+            "pass": true,
+            "score": 1,
+            "format": true,
+            "failed": []
+          },
+          "final": {
+            "pass": true,
+            "score": 1,
+            "format": true,
+            "failed": []
+          },
+          "repairs": 0,
+          "reads": 1,
+          "s1Tokens": 5972,
+          "s2Tokens": 2573,
+          "s1CostUsd": 0.000225498,
+          "s2CostUsd": 0.0010844,
+          "s2Unpriced": false,
+          "durationMs": 4729.564414999972,
+          "evaluatorFailures": 0
+        },
+        {
+          "caseID": "zero-cursor",
+          "round": 5,
+          "mode": "dual",
+          "outcome": "succeeded",
+          "validationErrors": [],
+          "fixedModel": true,
+          "responseModels": ["openai/gpt-4.1-mini"],
+          "initial": {
+            "pass": true,
+            "score": 1,
+            "format": true,
+            "failed": []
+          },
+          "final": {
+            "pass": true,
+            "score": 1,
+            "format": true,
+            "failed": []
+          },
+          "repairs": 0,
+          "reads": 1,
+          "s1Tokens": 5850,
+          "s2Tokens": 2449,
+          "s1CostUsd": 0.00022037400000000001,
+          "s2CostUsd": 0.0007107999999999999,
+          "s2Unpriced": false,
+          "durationMs": 4436.631410000031,
+          "evaluatorFailures": 0
+        },
+        {
+          "caseID": "zero-cursor",
+          "round": 5,
+          "mode": "single",
+          "outcome": "succeeded",
+          "validationErrors": [],
+          "fixedModel": true,
+          "responseModels": ["openai/gpt-4.1-mini"],
+          "initial": {
+            "pass": false,
+            "score": 0.3333333333333333,
+            "format": true,
+            "failed": ["actual", "expected"]
+          },
+          "final": {
+            "pass": false,
+            "score": 0.3333333333333333,
+            "format": true,
+            "failed": ["actual", "expected"]
+          },
+          "repairs": 0,
+          "reads": 1,
+          "s1Tokens": 0,
+          "s2Tokens": 2139,
+          "s2CostUsd": 0.0009036,
+          "s2Unpriced": false,
+          "durationMs": 2801.886438000016,
+          "evaluatorFailures": 0
+        },
+        {
+          "caseID": "correct-tenant-check",
+          "round": 5,
+          "mode": "single",
+          "outcome": "succeeded",
+          "validationErrors": [],
+          "fixedModel": true,
+          "responseModels": ["openai/gpt-4.1-mini"],
+          "initial": {
+            "pass": true,
+            "score": 1,
+            "format": true,
+            "failed": []
+          },
+          "final": {
+            "pass": true,
+            "score": 1,
+            "format": true,
+            "failed": []
+          },
+          "repairs": 0,
+          "reads": 1,
+          "s1Tokens": 0,
+          "s2Tokens": 2178,
+          "s2CostUsd": 0.0009107999999999998,
+          "s2Unpriced": false,
+          "durationMs": 2629.768148000003,
+          "evaluatorFailures": 0
+        },
+        {
+          "caseID": "correct-tenant-check",
+          "round": 5,
+          "mode": "dual",
+          "outcome": "succeeded",
+          "validationErrors": [],
+          "fixedModel": true,
+          "responseModels": ["openai/gpt-4.1-mini"],
+          "initial": {
+            "pass": true,
+            "score": 1,
+            "format": true,
+            "failed": []
+          },
+          "final": {
+            "pass": true,
+            "score": 1,
+            "format": true,
+            "failed": []
+          },
+          "repairs": 0,
+          "reads": 1,
+          "s1Tokens": 5920,
+          "s2Tokens": 2536,
+          "s1CostUsd": 0.000223314,
+          "s2CostUsd": 0.0007083999999999999,
+          "s2Unpriced": false,
+          "durationMs": 6458.105615000008,
+          "evaluatorFailures": 0
+        },
+        {
+          "caseID": "unfinished-ci",
+          "round": 5,
+          "mode": "dual",
+          "outcome": "succeeded",
+          "validationErrors": [],
+          "fixedModel": true,
+          "responseModels": ["openai/gpt-4.1-mini"],
+          "initial": {
+            "pass": true,
+            "score": 1,
+            "format": true,
+            "failed": []
+          },
+          "final": {
+            "pass": true,
+            "score": 1,
+            "format": true,
+            "failed": []
+          },
+          "repairs": 0,
+          "reads": 1,
+          "s1Tokens": 5882,
+          "s2Tokens": 2368,
+          "s1CostUsd": 0.00022146600000000002,
+          "s2CostUsd": 0.0006772,
+          "s2Unpriced": false,
+          "durationMs": 4776.773291999998,
+          "evaluatorFailures": 0
+        },
+        {
+          "caseID": "unfinished-ci",
+          "round": 5,
+          "mode": "single",
+          "outcome": "succeeded",
+          "validationErrors": [],
+          "fixedModel": true,
+          "responseModels": ["openai/gpt-4.1-mini"],
+          "initial": {
+            "pass": true,
+            "score": 1,
+            "format": true,
+            "failed": []
+          },
+          "final": {
+            "pass": true,
+            "score": 1,
+            "format": true,
+            "failed": []
+          },
+          "repairs": 0,
+          "reads": 1,
+          "s1Tokens": 0,
+          "s2Tokens": 2148,
+          "s2CostUsd": 0.0008964,
+          "s2Unpriced": false,
+          "durationMs": 3730.7682159999968,
+          "evaluatorFailures": 0
+        },
+        {
+          "caseID": "worktree-continuity",
+          "round": 5,
+          "mode": "single",
+          "outcome": "succeeded",
+          "validationErrors": [],
+          "fixedModel": true,
+          "responseModels": ["openai/gpt-4.1-mini"],
+          "initial": {
+            "pass": true,
+            "score": 1,
+            "format": true,
+            "failed": []
+          },
+          "final": {
+            "pass": true,
+            "score": 1,
+            "format": true,
+            "failed": []
+          },
+          "repairs": 0,
+          "reads": 1,
+          "s1Tokens": 0,
+          "s2Tokens": 2188,
+          "s2CostUsd": 0.0009339999999999999,
+          "s2Unpriced": false,
+          "durationMs": 2908.5116500000004,
+          "evaluatorFailures": 0
+        },
+        {
+          "caseID": "worktree-continuity",
+          "round": 5,
+          "mode": "dual",
+          "outcome": "succeeded",
+          "validationErrors": [],
+          "fixedModel": true,
+          "responseModels": ["openai/gpt-4.1-mini"],
+          "initial": {
+            "pass": true,
+            "score": 1,
+            "format": true,
+            "failed": []
+          },
+          "final": {
+            "pass": true,
+            "score": 1,
+            "format": true,
+            "failed": []
+          },
+          "repairs": 0,
+          "reads": 1,
+          "s1Tokens": 5952,
+          "s2Tokens": 2436,
+          "s1CostUsd": 0.0002247,
+          "s2CostUsd": 0.0007164,
+          "s2Unpriced": false,
+          "durationMs": 6196.944770000002,
+          "evaluatorFailures": 0
+        },
+        {
+          "caseID": "compaction-identity",
+          "round": 5,
+          "mode": "dual",
+          "outcome": "succeeded",
+          "validationErrors": [],
+          "fixedModel": true,
+          "responseModels": ["openai/gpt-4.1-mini"],
+          "initial": {
+            "pass": true,
+            "score": 1,
+            "format": true,
+            "failed": []
+          },
+          "final": {
+            "pass": true,
+            "score": 1,
+            "format": true,
+            "failed": []
+          },
+          "repairs": 0,
+          "reads": 1,
+          "s1Tokens": 5950,
+          "s2Tokens": 2431,
+          "s1CostUsd": 0.000224532,
+          "s2CostUsd": 0.0007072,
+          "s2Unpriced": false,
+          "durationMs": 4491.625477000023,
+          "evaluatorFailures": 0
+        },
+        {
+          "caseID": "compaction-identity",
+          "round": 5,
+          "mode": "single",
+          "outcome": "succeeded",
+          "validationErrors": [],
+          "fixedModel": true,
+          "responseModels": ["openai/gpt-4.1-mini"],
+          "initial": {
+            "pass": true,
+            "score": 1,
+            "format": true,
+            "failed": []
+          },
+          "final": {
+            "pass": true,
+            "score": 1,
+            "format": true,
+            "failed": []
+          },
+          "repairs": 0,
+          "reads": 1,
+          "s1Tokens": 0,
+          "s2Tokens": 2193,
+          "s2CostUsd": 0.0009191999999999999,
+          "s2Unpriced": false,
+          "durationMs": 3133.060945000034,
+          "evaluatorFailures": 0
+        }
+      ]
+    }
+  ],
+  "excluded": [
+    {
+      "sourceCommit": "1e31e092e064423ca811b5d7eb14e5b05cbe0206",
+      "reason": "Local RedRouter service stopped during round 5. Interrupted suite retained separately and excluded from acceptance.",
+      "completedRuns": 68
+    }
+  ],
+  "selectedCommit": "1eab5be401d7f3aa1baae74f6bbaf4ab4d2d66f7"
+}
