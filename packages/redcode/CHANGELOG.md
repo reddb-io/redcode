@@ -1,5 +1,12 @@
 # @reddb-io/redcode
 
+## 0.70.3
+
+### Patch Changes
+
+- Include System One evaluation tokens in session and goal budgets, including evaluations from descendant sessions. Show evaluator usage with unknown pricing instead of reporting it as fully priced.
+- Preserve reported S1 token usage when answers fail semantic validation or a later evaluation batch fails. Session and goal budgets include that usage while incomplete evaluations remain unavailable.
+
 ## 0.70.2
 
 ### Patch Changes
