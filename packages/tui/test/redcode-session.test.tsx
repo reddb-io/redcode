@@ -24,6 +24,7 @@ for (const scenario of [
       fetch: async (url, request) => {
         if (url.pathname === "/api/session" && request.method === "POST")
           created.push(((await request.clone().json()) as { id: string }).id)
+        return undefined
       },
     })
     await setup.ready
