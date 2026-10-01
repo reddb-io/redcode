@@ -1,5 +1,23 @@
 # @reddb-io/redcode
 
+## 0.70.1
+
+### Patch Changes
+
+- Keep MCP and Monitor lists inside bounded scroll areas, including expanded tools and evidence, and give sidebar MCPs their own scrollbar.
+- Make setup select a saved connection and then its model for S2 and S1. Remove manual S1 model entry and skipped selections, expose named evaluator accounts, and read RedRouter generation and decision capability catalogs while retaining legacy discovery. Keep connected routers selectable while their initial catalogs load and hide the previous account's model catalog while switching connections.
+- Interrupt repeated edits with identical replacement text after one recovery warning, including calls that change file paths. Keep Design loop protection active when a session has inherited Build permissions. Explain how Design previews resolve dependencies and prevent misleading shell or symlink recovery instructions.
+- Accept structured design-system metadata, keep Design, Plan and Build in the same session worktree including temporary worktrees, resolve hoisted project dependencies without manual symlinks, show a persistent prototype review link, and separate Design tasks from Build tasks with an approved-plan handoff.
+- Keep the connection selected in S2 setup and sessions when another account becomes active. Router models resolve from that connection's persisted catalog and endpoint; missing credentials or models produce an explicit error instead of switching accounts. Native compaction checkpoints cannot be reused across saved connections.
+
+  Upgrade older persisted router catalogs before exposing their models, so saved selections remain resolvable when the router is temporarily unavailable during an update.
+
+  Show HTTP status, duration and response bytes on OpenAI-compatible discovery errors, record router catalog diagnostics, and distinguish a successful catalog check from a generation test. Expand mandatory CI contracts for model selection, session persistence, goal recovery, monitors and MCP authentication/lifecycle.
+
+- Use port 35555 by default for the Redcode background service while preserving explicitly configured ports.
+- Show upstream HTTP status, complete response time and received body bytes when testing remote model APIs. Check saved Router credentials against their actual catalog, report empty catalogs as failures with model counts, show persistent results after authentication and S1/S2 setup probes, and support rerunning checks from the account menu or `redcode auth check`.
+- The stop-loss spend clock excludes time spent executing tools, counting overlapping tools once, so long builds and tests do not cause a time-spend warning on their own. The wait budget for an external job still uses wall time. Releases now require the vault coverage check and the smoke against the shipped binary to pass, and CI runs the restored harness, provider and Design regression suites.
+
 ## 0.70.0
 
 ### Minor Changes
