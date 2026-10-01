@@ -5,6 +5,9 @@ import { TestLLM } from "@opencode/ai/testing"
 import { AISDK } from "@opencode/core/aisdk"
 import { Generate } from "@opencode/core/generate"
 import { Integration } from "@opencode/core/integration"
+import { Credential } from "@opencode/core/credential"
+import { KV } from "@opencode/core/kv"
+import { ModelsDev } from "@opencode/core/models-dev"
 import { ModelResolver } from "@opencode/core/model-resolver"
 import { ID, Info, Model, Ref } from "@opencode/core/model"
 import { Provider } from "@opencode/core/provider"
@@ -59,7 +62,20 @@ const aisdk = Layer.mock(AISDK.Service, {
 })
 const client = TestLLM.testLayer({ fallback: TestLLM.text("OK", "generate") })
 
-const resolver = ModelResolver.layer.pipe(Layer.provide(Layer.mergeAll(providers, models, integrations, npm, aisdk)))
+const resolver = ModelResolver.layer.pipe(
+  Layer.provide(
+    Layer.mergeAll(
+      providers,
+      models,
+      integrations,
+      npm,
+      aisdk,
+      Layer.mock(Credential.Service, {}),
+      Layer.mock(KV.Service, {}),
+      Layer.mock(ModelsDev.Service, {}),
+    ),
+  ),
+)
 const it = testEffect(Generate.layer.pipe(Layer.provide(Layer.merge(resolver, client))))
 const resolverIt = testEffect(resolver)
 

@@ -22,7 +22,7 @@ test("model references preserve saved access and remain compatible with unbound 
   const decode = Schema.decodeUnknownSync(Model.Ref)
   const encode = Schema.encodeSync(Model.Ref)
   expect(encode(decode({ providerID: "openai", id: "chat" }))).toEqual({ providerID: "openai", id: "chat" })
-  const selected = { providerID: "openai", id: "chat", connection: { type: "credential", id: "cred_saved" } }
+  const selected = { providerID: "openai", id: "chat", connection: { type: "credential" as const, id: "cred_saved" } }
   expect(encode(decode(selected))).toEqual(selected)
 })
 
