@@ -47,6 +47,9 @@ for (const scenario of [
       config: { animations: false, tabs: { mode: "off" }, keybinds: { "session.sidebar.toggle": "f6" } },
       fetch: (url) => {
         if (url.pathname === `/api/session/${session.id}`) return json({ data: session })
+        if (url.pathname === `/api/session/${session.id}/message`) return json({ data: [], cursor: {} })
+        if (["inbox", "permission", "todo"].some((name) => url.pathname === `/api/session/${session.id}/${name}`))
+          return json({ data: [] })
         if (url.pathname === "/api/experimental/intelligence") {
           statuses.push(url.pathname)
           return json({
