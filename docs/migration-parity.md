@@ -95,9 +95,20 @@ A green result for these cases does not close the missing rows above.
 
 New model selections preserve a credential ID or environment-variable identity in `Model.Ref.connection`. Legacy references without that field remain readable and use the integration's active access. S2 setup and session selections carry the identity through the TUI, durable session events, projection and resolution. A removed or expired selected connection fails explicitly rather than borrowing the active account. RedRouter and 9Router selections read the persisted catalog belonging to the selected endpoint and key, including models absent from the active account's catalog.
 
+Older persisted raw catalogs are normalized before publishing their models, including when a refresh fails. CI covers connecting after an empty startup, persisting all chunks of a 205-model catalog, disposing and recreating the router adapter with the same durable storage while the router returns HTTP 503, and upgrading a raw-only catalog without a successful network request. These are adapter lifecycle contracts, not a full fresh-install journey.
+
 Native compaction provenance includes a digest of the selected access identity. A checkpoint from another account is incompatible even when model and endpoint match; text summaries retain their existing behavior. Goals recovered from another process pause and require explicit resume. Monitor results respect that pause and newer user instructions.
 
 The required CI selection includes model resolution, session creation/persistence, monitor origin and MCP lifecycle, OAuth and instructions. Credentialed end-to-end journeys and comparative single/dual reasoning evaluations still require separate validation. Catalog tests report catalog availability explicitly; `/setup` tests the selected generation and decision roles.
+
+Authenticated catalog probes against the installed local RedRouter on 2026-09-30 returned:
+
+| Route | HTTP status | Duration | Response bytes | Models |
+| --- | --- | --- | --- | --- |
+| `/v1/models?capabilities=chat` | 200 | 622 ms | 480,011 | 934 |
+| `/v1/models?capabilities=decision` | 200 | 260 ms | 380 | 1 |
+
+The decision entry was `openrouter/typesafe/jev-1.13`, with `type: "systemone"`, `capabilities.decision: true` and advertised `systemone`/`decisions` endpoints. The unfiltered and legacy decision catalogs also returned HTTP 200. This snapshot verifies authenticated remote discovery; it does not verify generation, decision execution or a freshly installed Redcode client.
 
 ## Completion gate
 

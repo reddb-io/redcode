@@ -237,6 +237,23 @@ function routerPlugin(options: {
         } satisfies Inspection
       })
 
+      const cacheResolved = Effect.fn("RouterProvider.cacheResolved")(function* (cacheKey: string) {
+        const resolved = loaded.models.flatMap((item) => routerModel(item, providerID, loaded.names, features()))
+        const chunks = Array.from({ length: Math.ceil(resolved.length / 100) }, (_, index) =>
+          resolved.slice(index * 100, (index + 1) * 100),
+        )
+        yield* Effect.forEach(
+          chunks,
+          (chunk, index) =>
+            kv.set(
+              `${cacheKey}:resolved:${index}`,
+              Schema.decodeSync(Schema.fromJsonString(Schema.Json))(JSON.stringify(chunk)),
+            ),
+          { discard: true },
+        )
+        yield* kv.set(`${cacheKey}:resolved:count`, chunks.length)
+      })
+
       const refresh = Effect.fn("RouterProvider.refresh")(function* () {
         const connection = yield* resolve()
         const mcpBefore = mcpServer()
@@ -267,6 +284,8 @@ function routerPlugin(options: {
           if (decoded.every((chunk) => chunk !== undefined)) {
             loaded.models = decoded.flatMap((chunk) => chunk ?? [])
             loaded.digest = Hash.sha256(JSON.stringify(loaded.models))
+            // Upgrade existing catalogs before exposing them, including when the router is offline.
+            if ((yield* kv.get(`${cacheKey}:resolved:count`)) === undefined) yield* cacheResolved(cacheKey)
           }
         }
         yield* ctx.provider.reload()
@@ -334,20 +353,7 @@ function routerPlugin(options: {
         loaded.digest = digest
         yield* ctx.provider.reload()
         if (mcpServer() !== mcpInspected) yield* ctx.mcp.reload()
-        const resolved = loaded.models.flatMap((item) => routerModel(item, providerID, loaded.names, features()))
-        const resolvedChunks = Array.from({ length: Math.ceil(resolved.length / 100) }, (_, index) =>
-          resolved.slice(index * 100, (index + 1) * 100),
-        )
-        yield* Effect.forEach(
-          resolvedChunks,
-          (chunk, index) =>
-            kv.set(
-              `${cacheKey}:resolved:${index}`,
-              Schema.decodeSync(Schema.fromJsonString(Schema.Json))(JSON.stringify(chunk)),
-            ),
-          { discard: true },
-        )
-        yield* kv.set(`${cacheKey}:resolved:count`, resolvedChunks.length)
+        yield* cacheResolved(cacheKey)
         if (!changed) return
         const chunks = Array.from({ length: Math.ceil(loaded.models.length / 100) }, (_, index) =>
           loaded.models.slice(index * 100, (index + 1) * 100),
