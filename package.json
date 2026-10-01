@@ -12,6 +12,7 @@
     "dev:vite": "bun run --cwd packages/cli --conditions=browser dev/vite.ts",
     "dev:vite:live": "sh -c 'OPENCODE_TUI_CHANNEL=dev OPENCODE_PASSWORD=\"$(opencode service get password)\" exec bun run dev:vite \"$@\" --server \"$(opencode service status)\"' --",
     "dev:web": "bun --cwd packages/app dev",
+    "eval:reasoning": "bun run --cwd packages/core script/reasoning-eval/run.ts",
     "bench:devex": "bun run --cwd packages/app test:bench:devex",
     "lint": "oxlint",
     "lint:effect-patterns": "ast-grep scan -c script/ast-grep/sgconfig.yml packages/util/src packages/core/src packages/server/src packages/protocol/src packages/cli/src",

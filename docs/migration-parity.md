@@ -178,7 +178,7 @@ observed usage persists and contributes to Session and Goal budgets. Unknown
 usage from transport failures or schema-invalid responses is not estimated.
 Loopback HTTP/database regressions exercise both gate and classification
 failures, partial compaction batches, fresh retries, and successful cache reuse.
-These corrections are on `main`, pending the next patch release after 0.70.2.
+These corrections shipped in Redcode 0.70.3; see its verification below.
 
 ## Redcode 0.70.2 release verification (2026-09-30)
 
@@ -203,7 +203,7 @@ the process executable belongs to the mise 0.70.2 installation.
 The evaluator-budget correction at `5f9f824ff3` is subsequent work on `main`,
 with Linux/Windows contracts and full lint/typecheck passing in
 [CI](https://github.com/reddb-io/redcode/actions/runs/36806522678). Its Changeset
-is pending the next patch release; it is not part of the 0.70.2 tag.
+shipped in 0.70.3; it is not part of the 0.70.2 tag.
 
 ## Completion gate
 
@@ -212,3 +212,23 @@ Track missing behavior explicitly, validate the restored user journeys, and run
 the existing checks and tests in CI against the actual restoration commit before
 publishing through the existing `redcode` workflow. Do not describe all previous
 features as preserved until the comparison and behavioral validation support it.
+
+## Redcode 0.70.3 release verification (2026-09-30)
+
+The [release workflow](https://github.com/reddb-io/redcode/actions/runs/36813475701)
+completed successfully. Both `v0.70.3` and `design-v0.70.3` resolve to
+`9f95a7fa1992788238b014749f4c517c97e7290c`, with 13 and 15 release assets.
+The main npm package and all twelve platform packages became available after
+registry propagation. An isolated exact-version npm installation succeeded.
+Its Linux binary and the GitHub archive's binary have identical SHA256:
+`f89472508796759f9c7ed2ad7abd126edebc4c6841394dc7c4c89835a0234033`.
+
+The mise-managed 0.70.3 service responded at `http://127.0.0.1:35555`.
+An isolated installation discovered 934 chat models and one decision model,
+retained catalog and connection selections after restarting, and passed live
+S2 and S1 probes. Single mode consumed 399 S2 tokens with no S1 evaluations;
+dual mode accounted for 648 S2 and 5,483 S1 tokens, totaling 6,131 budget tokens.
+These probes establish runtime and accounting behavior, not comparative quality.
+
+For the fixed-model comparison procedure and its limits, see
+[reasoning evaluation](reasoning-evaluation.md).

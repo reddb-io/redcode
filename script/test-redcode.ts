@@ -32,6 +32,7 @@ const suites = {
     "test/intelligence/evaluation.test.ts",
     "test/intelligence/goal-command.test.ts",
     "test/intelligence/response.test.ts",
+    "test/intelligence/reasoning-eval.test.ts",
     "test/intelligence/subagent-review.test.ts",
     "test/models.test.ts",
     "test/model-resolver.test.ts",
