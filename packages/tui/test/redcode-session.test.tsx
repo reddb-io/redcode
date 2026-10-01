@@ -21,6 +21,7 @@ test("a resumed session submits its saved connection even when the active accoun
     time: { created: 1, updated: 1 },
   }
   const submissions: { model: ModelRef }[] = []
+  const prompts: { id: string; text: string }[] = []
   await using setup = await createAppFixture({
     state: state.path,
     args: { sessionID: session.id },
@@ -31,6 +32,20 @@ test("a resumed session submits its saved connection even when the active accoun
       if (request.method === "POST" && url.pathname === `/api/session/${session.id}/model`) {
         submissions.push((await request.clone().json()) as { model: ModelRef })
         return new Response(null, { status: 204 })
+      }
+      if (request.method === "POST" && url.pathname === `/api/session/${session.id}/prompt`) {
+        const input = (await request.json()) as { id: string; text: string }
+        prompts.push(input)
+        return json({
+          data: {
+            id: input.id,
+            sessionID: session.id,
+            type: "user",
+            time: { created: 2 },
+            payload: { text: input.text },
+            delivery: "steer",
+          },
+        })
       }
       if (
         ["message", "inbox", "permission", "todo"].some((name) => url.pathname === `/api/session/${session.id}/${name}`)
@@ -61,8 +76,11 @@ test("a resumed session submits its saved connection even when the active accoun
   await setup.waitForFrame((frame) => frame.includes("saved-model") && frame.includes("saved connection"))
   await setup.mockInput.typeText("Continue with the saved account")
   setup.mockInput.pressEnter()
-  await setup.waitForFrame(() => submissions.length > 0)
+  await setup.waitForFrame(() => prompts.length > 0)
+  expect(submissions).toHaveLength(1)
   expect(submissions[0]?.model).toMatchObject(session.model)
+  expect(prompts).toHaveLength(1)
+  expect(prompts[0]?.text).toBe("Continue with the saved account")
 })
 
 test("a resumed prototype keeps its review address visible without launching another browser", async () => {
