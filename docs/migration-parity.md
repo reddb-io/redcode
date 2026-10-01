@@ -73,7 +73,7 @@ implemented paths from identified gaps; it is not a full-parity declaration.
 | Persisted tasks, blockers and recent completed work               | `SessionTodoStore` → `session.todo.list` → generated clients → `SidebarTodo`                                     | Restored; no second task store                                                                                                                                                                                                                                                                                                                                                                          |
 | Goal dialog and old `/goal-*` controls                            | Existing V2 Goal service, plus compatibility commands dispatching to the same controller                         | Restored, including step, cost and token budgets measured from Goal start                                                                                                                                                                                                                                                                                                                               |
 | `/pending` prompt management                                      | V2 durable inbox list, delivery update and cancellation APIs                                                     | Restored for queued and steering prompts, including empty state, send-now, discard and discard-all                                                                                                                                                                                                                                                                                                      |
-| S1/S2 and JEV                                                     | `core/intelligence`, `/setup`, `/intelligence`, evaluation history and footer; separate S2 transformations model | Saved S2 roles can be reused; setup chooses connection then model and saves the connection identity. Names and router origins are visible without changing selected model IDs. Real provider evaluation journey and non-compaction transformation parity remain unverified                                                                                                                              |
+| S1/S2 and JEV                                                     | `core/intelligence`, `/setup`, `/intelligence`, evaluation history and footer; separate S2 transformations model | Saved S2 roles can be reused; setup chooses connection then model and saves the connection identity. Names and router origins are visible without changing selected model IDs. Fresh connection discovery, S2 generation, S1 decision probing and restart persistence verified with a CI-built candidate; comparative dual reasoning and non-compaction transformation parity remain unverified                                                                                                                              |
 | Design workflow                                                   | `core/design`, server Design handlers, `/design`, `/design-open`, `/design-review`                               | Implemented; browser feedback/approval/handoff journey still needs end-to-end parity verification                                                                                                                                                                                                                                                                                                       |
 | Question mode                                                     | `core/plugin/question.ts` and read-only permissions                                                              | Implemented; preserve no-code-change contract and Build → Plan → Design → Question cycle                                                                                                                                                                                                                                                                                                                |
 | Voice dictation                                                   | `tui/src/context/voice-input` and composer integration                                                           | Existing CI contract; real dictation client still needs verification                                                                                                                                                                                                                                                                                                                                    |
@@ -109,6 +109,39 @@ Authenticated catalog probes against the installed local RedRouter on 2026-09-30
 | `/v1/models?capabilities=decision` | 200 | 260 ms | 380 | 1 |
 
 The decision entry was `openrouter/typesafe/jev-1.13`, with `type: "systemone"`, `capabilities.decision: true` and advertised `systemone`/`decisions` endpoints. The unfiltered and legacy decision catalogs also returned HTTP 200. This snapshot verifies authenticated remote discovery; it does not verify generation, decision execution or a freshly installed Redcode client.
+
+## Fresh connection runtime verification (2026-09-30)
+
+An isolated home and Git project running the CI-built 0.70.2 candidate from
+`c7945ac961` connected to the installed RedRouter with an explicit endpoint and
+stored credential. The catalog populated with 934 generative models and one
+System One model. Production API probes returned:
+
+| Selected role | Model | Remote route | HTTP status | Duration | Response bytes |
+| --- | --- | --- | --- | --- | --- |
+| S2 | `auto/best-fast` | `/v1/chat/completions` | 200 | 8,069 ms | 61,299 |
+| S1 | `openrouter/typesafe/jev-1.13` | `/v1/systemone` | 200 | 660 ms | 222 |
+
+S2 returned `OK`; S1 passed the decision probe. After restarting the isolated
+managed service, its port remained 35555, the catalog contained the same 934
+models, and the reasoning settings plus the created Session retained their
+selected credential IDs. The check waited for Location plugin activation before
+reading the restarted catalog. Session creation adds the default variant; the
+persistence assertion compares the selected model and connection independently
+of that default.
+
+The 0.70.1 artifact reproduced a setup defect: generation checks ignored the
+client's `location[directory]` query and resolved the selected connection against
+the base configuration instead of the project. The candidate uses the same
+request Location resolver as other project endpoints and waits for plugin
+activation. The server regression is now required by `script/test-redcode.ts`
+and passed on Linux and Windows in CI.
+
+This validates discovery, one-shot generation, decision probing and durable
+selection through the production APIs; it does not establish full interactive
+TUI onboarding or comparative single/dual reasoning behavior. The candidate
+verification does not imply publication: the 0.70.1 publication is pending npm
+maintainer approval for its staged Windows ARM64 package.
 
 ## Completion gate
 
