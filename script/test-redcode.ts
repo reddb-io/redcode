@@ -102,6 +102,7 @@ const suites = {
     "test/redcode-theme.test.ts",
     "test/feature-plugins/sidebar-context.test.tsx",
     "test/feature-plugins/sidebar-footer.test.tsx",
+    "test/feature-plugins/prompt-footer.test.tsx",
     "test/voice-input.test.ts",
     "test/system-model.test.ts",
   ],
