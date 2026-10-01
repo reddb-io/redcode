@@ -1,5 +1,13 @@
 # @reddb-io/redcode
 
+## 0.70.4
+
+### Patch Changes
+
+- Allow signed Design review links to reach their session-scoped ticket authentication instead of prompting the browser for the service password. Invalid or expired tickets remain rejected, and review cookies do not grant service API or Design permission access.
+- Add a reproducible single-versus-dual reasoning evaluation with independent fixture grading, pinned upstream model validation, S1/S2 token accounting, and HTTP latency and byte diagnostics. Document the first complete 0.70.3 sample and its limits.
+- Show MCP and monitor actions once in the activity drawer footer, with clickable action labels and muted hotkeys. Keep the footer on one line and scroll it horizontally in narrow panels instead of growing the drawer or wrapping shortcuts.
+
 ## 0.70.3
 
 ### Patch Changes
