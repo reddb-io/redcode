@@ -85,6 +85,7 @@ const loopback = Bun.serve({
   },
 })
 
+const designFixture = { id: "", root: "" }
 const provider = FakeProvider.start({
   vault: {
     calls: [
@@ -132,6 +133,19 @@ const provider = FakeProvider.start({
       },
     ],
     text: "SMOKE-FINAL design",
+  },
+  "design-feedback": {
+    calls: [
+      {
+        name: "write",
+        input: () => ({
+          path: path.join(designFixture.root, "index.html"),
+          content: `<!doctype html><html><body><h1>${DESIGN_TEXT}-UPDATED</h1></body></html>\n`,
+        }),
+      },
+      { name: "design_preview", input: () => ({ id: designFixture.id, name: "Feedback applied" }) },
+    ],
+    text: "SMOKE-FINAL design-feedback",
   },
 })
 
@@ -399,6 +413,10 @@ async function checkDesign() {
   if (field(state, "status") !== "completed")
     throw new Error(`design_preview did not complete: ${JSON.stringify(state)}`)
   const review = match(String(field(state, "output")), /^Review: (\S+)$/m, "review link")
+  const created = events.find((event) => event.type === "tool_use" && field(event.part, "tool") === "design_document")
+  const document = String(field(field(created?.part, "state"), "output"))
+  designFixture.id = match(document, /\b(design_[a-zA-Z0-9_-]+)/, "design ID")
+  designFixture.root = match(document, /^Root: (.+)$/m, "design root")
   // Playwright lives with @opencode/core, which renders designs with the same headless Chromium.
   const { chromium }: { chromium: BrowserType } = await import(
     Bun.resolveSync("playwright-core", path.join(import.meta.dir, "..", "..", "packages", "core"))
@@ -428,7 +446,7 @@ async function renderReview(browser: Browser, review: string) {
       `The review link served ${JSON.stringify(await page.title())} instead of the Design review page\n${errors.slice(0, 5).join("\n")}`,
     )
   const deadline = Date.now() + 30_000
-  const rendered = async () => {
+  const rendered = async (expected = DESIGN_TEXT) => {
     const texts = await Promise.all(
       page.frames().map((frame) =>
         frame
@@ -437,11 +455,81 @@ async function renderReview(browser: Browser, review: string) {
           .catch(() => ""),
       ),
     )
-    return texts.some((text) => text.includes(DESIGN_TEXT))
+    return texts.some((text) => text.includes(expected))
   }
   while (!(await rendered()) && Date.now() < deadline) await Bun.sleep(250)
   await page.screenshot({ path: path.join(artifacts, "design-review.png"), fullPage: true })
-  if (await rendered()) return
+  if (await rendered()) {
+    const feedback = "smoke:design-feedback SMOKE-DESIGN-FEEDBACK-RETRY"
+    const requests: string[] = []
+    await page.route("**/design/session/*/*/feedback", async (route) => {
+      requests.push(route.request().postData() ?? "")
+      if (requests.length === 1) {
+        await route.fulfill({
+          status: 500,
+          contentType: "application/json",
+          body: JSON.stringify({ code: "unavailable", message: "Simulated feedback outage" }),
+        })
+        return
+      }
+      await route.continue()
+    })
+    await page.locator("#note").fill(feedback)
+    await page.locator("#send").click()
+    await page.waitForFunction(() =>
+      document
+        .querySelector("#review")
+        ?.shadowRoot?.querySelector("#feedback-status")
+        ?.textContent?.includes("HTTP 500"),
+    )
+    // The exact failed envelope and its error survive a reload, then reach the real service on retry.
+    await page.reload({ waitUntil: "networkidle" })
+    await page.waitForFunction(() =>
+      document
+        .querySelector("#review")
+        ?.shadowRoot?.querySelector("#feedback-status")
+        ?.textContent?.includes("HTTP 500"),
+    )
+    if ((await page.locator("#note").inputValue()) !== feedback) throw new Error("Reload lost the feedback draft")
+    const started = performance.now()
+    const sent = page.waitForResponse(
+      (response) => response.request().method() === "POST" && response.url().endsWith("/feedback"),
+    )
+    await page.locator("#send").click()
+    const response = await sent
+    const body = await response.text()
+    const receipt = {
+      status: response.status(),
+      ms: Math.round(performance.now() - started),
+      bytes: new TextEncoder().encode(body).length,
+    }
+    console.log(`     Design feedback retry: ${JSON.stringify(receipt)}`)
+    if (!response.ok()) throw new Error(`Feedback retry failed: ${JSON.stringify(receipt)} ${body}`)
+    if (requests.length !== 2 || requests[0] !== requests[1])
+      throw new Error("Retry changed the saved feedback envelope")
+    await page.waitForFunction(
+      () =>
+        document.querySelector("#review")?.shadowRoot?.querySelector("#feedback-status")?.textContent ===
+        "Feedback received",
+    )
+    if ((await page.locator("#note").inputValue()) !== "")
+      throw new Error("Successful feedback did not clear the draft")
+    // A 200 receipt alone is insufficient: the resumed agent must receive the feedback in its model input.
+    const deadline = Date.now() + 30_000
+    while (!provider.requests.some((request) => request.prompts.some((prompt) => prompt.includes(feedback)))) {
+      if (Date.now() >= deadline) throw new Error("Accepted Design feedback never reached the agent's model request")
+      await Bun.sleep(250)
+    }
+    await page.locator("#feed").getByText("SMOKE-FINAL design-feedback", { exact: true }).waitFor()
+    const published = Date.now() + 30_000
+    while (!(await rendered(`${DESIGN_TEXT}-UPDATED`))) {
+      if (Date.now() >= published) throw new Error("The agent's new revision never updated the Design preview")
+      await Bun.sleep(250)
+    }
+    await Bun.write(path.join(artifacts, "design-feedback.json"), JSON.stringify(receipt, null, 2))
+    await page.screenshot({ path: path.join(artifacts, "design-feedback.png"), fullPage: true })
+    return
+  }
   const frames = page.frames().map((frame) => frame.url())
   const html = (await page.content()).slice(0, 1_500)
   await Bun.write(path.join(artifacts, "design-review.html"), await page.content())
