@@ -138,7 +138,7 @@ test("a resumed prototype keeps its review address visible without launching ano
     },
   })
   await setup.ready
-  await setup.waitForFrame((frame) => frame.includes(`Prototype review: ${review}`))
+  await setup.waitForFrame((frame) => frame.includes(`» Preview: ${review}`))
   const count = requests.length
   for (let index = 0; index < 3; index++) await setup.renderOnce()
   expect(requests.length).toBe(count)

@@ -232,6 +232,10 @@ function makeRoutes<AuthError, AuthServices>(
             PluginUpdate.Service,
             Project.Service,
             WellKnown.Service,
+            // Browser feedback and approval resolve these process-global capabilities at request time.
+            Session.Service,
+            SessionExecution.Service,
+            SessionGoal.Service,
           )(context),
         ),
         ServerInfo.layer(serviceURLs, Context.get(context, Global.Service).tmp, options.app, options.database),

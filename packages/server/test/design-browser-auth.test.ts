@@ -1,5 +1,6 @@
 import { expect } from "bun:test"
-import { Effect } from "effect"
+import { Design } from "@opencode/schema/design"
+import { Effect, Schema } from "effect"
 import { tmpdir } from "../../core/test/fixture/tmpdir"
 import { it } from "../../core/test/lib/effect"
 import { DesignAccess } from "../src/design-access"
@@ -16,7 +17,11 @@ it.live("signed Design pages exchange tickets for scoped cookies without a Basic
     const created = yield* request("/api/session", {
       method: "POST",
       headers,
-      body: JSON.stringify({ id: sessionID, location: { directory: directory.path } }),
+      body: JSON.stringify({
+        id: sessionID,
+        location: { directory: directory.path },
+        permissions: [{ action: "read", resource: "*", effect: "allow" }],
+      }),
     })
     expect(created.status).toBe(200)
     yield* Effect.promise(() => created.arrayBuffer())
@@ -33,6 +38,70 @@ it.live("signed Design pages exchange tickets for scoped cookies without a Basic
     const reopened = yield* request(`/design/session/${sessionID}/review`, { headers: { cookie } })
     expect(reopened.status).toBe(200)
     yield* Effect.promise(() => reopened.arrayBuffer())
+
+    // Exercise mutations through the browser's scoped cookie, not the trusted Basic-auth API.
+    const browserHeaders = { cookie, "content-type": "application/json" }
+    const documentResponse = yield* request(`/design/session/${sessionID}`, {
+      method: "POST",
+      headers: browserHeaders,
+      body: JSON.stringify({ name: "Variants", journey: "new", engine: "html", kind: "screen" }),
+    })
+    expect(documentResponse.status).toBe(200)
+    const document = yield* Effect.promise(() => documentResponse.json()).pipe(
+      Effect.flatMap(Schema.decodeUnknownEffect(Design.Info)),
+    )
+    yield* Effect.promise(() =>
+      Bun.write(
+        `${document.root}/${document.entry}`,
+        '<main><section data-design-variant="compact">Compact</section><section data-design-variant="wide">Wide</section></main>',
+      ),
+    )
+    const revisionResponse = yield* request(`/design/session/${sessionID}/${document.id}/revision`, {
+      method: "POST",
+      headers: browserHeaders,
+      body: JSON.stringify({ name: "Two variants" }),
+    })
+    expect(revisionResponse.status).toBe(200)
+    const revision = yield* Effect.promise(() => revisionResponse.json()).pipe(
+      Effect.flatMap(Schema.decodeUnknownEffect(Design.Revision)),
+    )
+    // Approval also resolves Session, execution and goals before validating its revision.
+    const invalidApproval = yield* request(`/design/session/${sessionID}/${document.id}/approve`, {
+      method: "POST",
+      headers: browserHeaders,
+      body: JSON.stringify({ revision: "missing-revision" }),
+    })
+    expect(invalidApproval.status).toBe(409)
+    yield* Effect.promise(() => invalidApproval.arrayBuffer())
+    const feedback = {
+      id: "msg_design_delete_variant",
+      revision: revision.id,
+      action: { kind: "delete", variants: ["compact"], labels: ["Compact"] },
+      text: "",
+      items: [],
+      assets: [],
+      snapshot: "",
+      delivery: "queue",
+      end: false,
+    }
+    yield* Effect.forEach([0, 1], () =>
+      Effect.gen(function* () {
+        const response = yield* request(`/design/session/${sessionID}/${document.id}/feedback`, {
+          method: "POST",
+          headers: browserHeaders,
+          body: JSON.stringify(feedback),
+        })
+        expect(response.status).toBe(200)
+        expect(yield* Effect.promise(() => response.json())).toEqual({ id: feedback.id, status: "admitted" })
+      }),
+    )
+    const conflictingFeedback = yield* request(`/design/session/${sessionID}/${document.id}/feedback`, {
+      method: "POST",
+      headers: browserHeaders,
+      body: JSON.stringify({ ...feedback, action: { ...feedback.action, variants: ["wide"] } }),
+    })
+    expect(conflictingFeedback.status).toBe(409)
+    yield* Effect.promise(() => conflictingFeedback.arrayBuffer())
 
     yield* Effect.forEach(
       [

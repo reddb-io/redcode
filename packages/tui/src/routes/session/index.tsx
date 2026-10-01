@@ -1881,12 +1881,13 @@ export function Session(props: {
                   <text
                     id="session-design-review-link"
                     paddingLeft={1}
-                    fg={theme.text.action.primary.base}
+                    fg={theme.text.muted}
                     wrapMode="none"
                     truncate
                     onMouseUp={() => void reviewDesign(true)}
                   >
-                    Prototype review: {url()}
+                    {"» "}
+                    <span style={{ fg: local.agent.color("design") }}>Preview:</span> {url()}
                   </text>
                 )}
               </Show>
