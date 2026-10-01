@@ -1,5 +1,11 @@
 # @reddb-io/redcode
 
+## 0.70.6
+
+### Patch Changes
+
+- Emit individual Design conversation events over SSE so the browser receives agent replies, execution activity and published revisions, including after reconnecting.
+
 ## 0.70.5
 
 ### Patch Changes
