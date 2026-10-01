@@ -186,6 +186,5 @@ export function follow(sessions: Pick<Session.Interface, "log">, sessionID: Sess
         return [next, entries.filter((entry) => entry.seq > after)] as const
       },
     ),
-    Stream.flatMap((entries) => Stream.fromIterable(entries)),
   )
 }
