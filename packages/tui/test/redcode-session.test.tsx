@@ -658,7 +658,7 @@ test.each([80, 160])("large MCP catalogs and tools scroll inside their panels at
   if (!(scroll instanceof ScrollBoxRenderable)) throw new Error("Missing MCP drawer scroll")
   expect(scroll.height).toBe(5)
   const bottom = scroll.y + scroll.height
-  const actions = setup.renderer.root.findDescendantById("composer-actions")
+  const actions = scroll.parent?.findDescendantById("composer-actions")
   if (!(actions instanceof ScrollBoxRenderable)) throw new Error("Missing MCP actions")
   expect(actions.height).toBe(1)
   expect(setup.captureCharFrame().match(/disconnect/g)).toHaveLength(1)
@@ -682,7 +682,10 @@ test.each([80, 160])("large MCP catalogs and tools scroll inside their panels at
   }
   actions.scrollTo({ x: actions.scrollWidth, y: 0 })
   await setup.renderOnce()
-  expect(setup.captureCharFrame()).toContain("reload config")
+  expect(
+    setup.captureCharFrame(),
+    `Action overflow: width=${actions.width}, content=${actions.content.width}, viewport=${actions.viewport.width}, left=${actions.scrollLeft}, translate=${actions.content.translateX}`,
+  ).toContain("reload config")
   expect(actions.height).toBe(1)
   actions.scrollTo({ x: 0, y: 0 })
   setup.mockInput.pressEnter()
