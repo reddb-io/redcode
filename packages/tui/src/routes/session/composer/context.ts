@@ -1,8 +1,10 @@
 import { createContext, useContext } from "solid-js"
 
 export interface ComposerHint {
+  id?: string
   label: string
   shortcut: string
+  onSelect?: () => void
 }
 
 export interface ComposerTab {

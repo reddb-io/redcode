@@ -200,16 +200,29 @@ export function MonitorsTab(props: { monitors: SessionMonitors }) {
         ...(current()
           ? [
               {
+                id: `monitor-evidence-${current()!.id}`,
                 label: expanded() === current()?.id ? "hide evidence" : "evidence",
                 shortcut: shortcuts.get("composer.monitor.evidence") ?? "",
+                onSelect: () => toggle(current()!),
               },
             ]
           : []),
         ...(current()?.status === "running"
-          ? [{ label: "stop", shortcut: shortcuts.get("composer.monitor.cancel") ?? "" }]
+          ? [
+              {
+                id: `monitor-stop-${current()!.id}`,
+                label: "stop",
+                shortcut: shortcuts.get("composer.monitor.cancel") ?? "",
+                onSelect: () => cancel(current()!),
+              },
+            ]
           : []),
         { label: "scroll", shortcut: "pgup/pgdn" },
-        { label: "refresh", shortcut: shortcuts.get("composer.monitor.refresh") ?? "" },
+        {
+          label: "refresh",
+          shortcut: shortcuts.get("composer.monitor.refresh") ?? "",
+          onSelect: props.monitors.refresh,
+        },
       ],
     })
     onCleanup(cleanup)
@@ -261,11 +274,13 @@ export function MonitorsTab(props: { monitors: SessionMonitors }) {
       <Show
         when={monitors().length > 0}
         fallback={
-          <text fg={props.monitors.error() ? theme.text.feedback.error.base : theme.text.muted}>
-            {props.monitors.error()
-              ? ` Could not load monitors: ${props.monitors.error()}`
-              : " No monitors in this session"}
-          </text>
+          <box height={5}>
+            <text fg={props.monitors.error() ? theme.text.feedback.error.base : theme.text.muted}>
+              {props.monitors.error()
+                ? ` Could not load monitors: ${props.monitors.error()}`
+                : " No monitors in this session"}
+            </text>
+          </box>
         }
       >
         <scrollbox
@@ -330,30 +345,6 @@ export function MonitorsTab(props: { monitors: SessionMonitors }) {
             }}
           </For>
         </scrollbox>
-      </Show>
-      <Show when={current()}>
-        {(info) => (
-          <box flexDirection="row" gap={2} paddingLeft={1}>
-            <text
-              id={`monitor-evidence-${info().id}`}
-              fg={theme.text.action.primary.base}
-              attributes={TextAttributes.UNDERLINE}
-              onMouseUp={() => toggle(info())}
-            >
-              {expanded() === info().id ? "hide evidence" : "evidence"}
-            </text>
-            <Show when={info().status === "running"}>
-              <text
-                id={`monitor-stop-${info().id}`}
-                fg={theme.text.action.destructive.base}
-                attributes={TextAttributes.UNDERLINE}
-                onMouseUp={() => cancel(info())}
-              >
-                stop
-              </text>
-            </Show>
-          </box>
-        )}
       </Show>
     </Show>
   )

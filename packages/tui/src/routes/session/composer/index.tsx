@@ -12,6 +12,7 @@ import { SystemTab } from "./system-tab"
 import { TerminalsTab } from "./terminals-tab"
 import { useConfig } from "../../../config"
 import { ComposerContext, type ComposerTab } from "./context"
+import { ComposerFooter } from "./footer"
 import { Slot } from "../../../plugin/render"
 
 export { useComposerTab, type ComposerHint } from "./context"
@@ -36,7 +37,10 @@ export function Composer(props: ComposerProps) {
 
   const tabList = createMemo(() => Object.values(store.tabs))
   const activeTab = createMemo(() => tabList().find((t) => t.id === store.active))
-  const footerHints = createMemo(() => activeTab()?.hints?.() ?? [])
+  const footerHints = createMemo(() => [
+    ...(activeTab()?.hints?.() ?? []),
+    ...(tabList().length > 1 ? [{ label: "tabs", shortcut: "←/→" }] : []),
+  ])
 
   // Set active tab when opened
   createEffect(() => {
@@ -143,26 +147,7 @@ export function Composer(props: ComposerProps) {
               <TerminalsTab sessionID={props.sessionID} visibleTerminalID={props.visibleTerminalID} />
             </Show>
             <SystemTab />
-            <box flexDirection="row" gap={2} paddingLeft={1} flexShrink={0}>
-              <For each={footerHints()}>
-                {(hint) => (
-                  <text>
-                    <span style={{ fg: theme.text.base }}>
-                      <b>{hint.label}</b>{" "}
-                    </span>
-                    <span style={{ fg: theme.text.muted }}>{hint.shortcut}</span>
-                  </text>
-                )}
-              </For>
-              <Show when={tabList().length > 1}>
-                <text>
-                  <span style={{ fg: theme.text.base }}>
-                    <b>tabs</b>{" "}
-                  </span>
-                  <span style={{ fg: theme.text.muted }}>←/→</span>
-                </text>
-              </Show>
-            </box>
+            <ComposerFooter hints={footerHints()} />
           </box>
         </box>
       </box>

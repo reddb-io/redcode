@@ -213,20 +213,44 @@ export function McpsTab(props: { sessionID: string }) {
       id: "mcps",
       label: "MCPs",
       hints: () => [
-        { label: "add", shortcut: shortcuts.get("composer.mcp.add") ?? "" },
+        { label: "add", shortcut: shortcuts.get("composer.mcp.add") ?? "", onSelect: add },
         ...(current()
           ? [
-              { label: "tools", shortcut: shortcuts.get("composer.mcp.tools") ?? "" },
               {
+                label: "tools",
+                shortcut: shortcuts.get("composer.mcp.tools") ?? "",
+                onSelect: () => setExpanded(expanded() === current()?.name ? undefined : current()?.name),
+              },
+              {
+                id: `composer-mcp-controls-${current()!.name}`,
                 label: current()?.status.status === "connected" ? "disconnect" : "connect",
                 shortcut: shortcuts.get("composer.mcp.toggle") ?? "",
+                onSelect: () =>
+                  current()!.status.status === "connected" ? operate(current()!, "disconnect") : connect(current()!),
               },
-              { label: "turn off", shortcut: shortcuts.get("composer.mcp.remove") ?? "" },
-              { label: "reconnect all", shortcut: shortcuts.get("composer.mcp.restart") ?? "" },
+              {
+                label: "turn off",
+                shortcut: shortcuts.get("composer.mcp.remove") ?? "",
+                onSelect: () => unload(current()!),
+              },
+              { label: "reconnect all", shortcut: shortcuts.get("composer.mcp.restart") ?? "", onSelect: restart },
+              ...(current()?.status.status === "failed"
+                ? [
+                    {
+                      label: "details",
+                      shortcut: "",
+                      onSelect: () => dialog.replace(() => <DialogMcp initialServer={current()!.name} details />),
+                    },
+                  ]
+                : []),
             ]
           : []),
         { label: "scroll", shortcut: "pgup/pgdn" },
-        { label: "reload config", shortcut: shortcuts.get("composer.mcp.reload") ?? "" },
+        {
+          label: "reload config",
+          shortcut: shortcuts.get("composer.mcp.reload") ?? "",
+          onSelect: () => operateAll("reload"),
+        },
       ],
     })
     onCleanup(cleanup)
@@ -314,13 +338,6 @@ export function McpsTab(props: { sessionID: string }) {
         fallback={
           <box height={5} paddingLeft={1}>
             <text fg={theme.text.muted}>No MCP servers</text>
-            <text
-              fg={theme.text.action.primary.base}
-              attributes={TextAttributes.UNDERLINE}
-              onMouseUp={() => operateAll("reload")}
-            >
-              reload config
-            </text>
           </box>
         }
       >
@@ -407,50 +424,6 @@ export function McpsTab(props: { sessionID: string }) {
             )}
           </For>
         </scrollbox>
-      </Show>
-      <Show when={current()}>
-        {(server) => (
-          <box id={`composer-mcp-controls-${server().name}`} flexDirection="row" gap={2} paddingLeft={1}>
-            <text fg={theme.text.action.primary.base} attributes={TextAttributes.UNDERLINE} onMouseUp={add}>
-              add
-            </text>
-            <text
-              fg={theme.text.action.primary.base}
-              attributes={TextAttributes.UNDERLINE}
-              onMouseUp={() =>
-                server().status.status === "connected" ? operate(server(), "disconnect") : connect(server())
-              }
-            >
-              {server().status.status === "connected" ? "disconnect" : "connect"}
-            </text>
-            <text
-              fg={theme.text.action.destructive.base}
-              attributes={TextAttributes.UNDERLINE}
-              onMouseUp={() => unload(server())}
-            >
-              turn off
-            </text>
-            <text fg={theme.text.action.primary.base} attributes={TextAttributes.UNDERLINE} onMouseUp={restart}>
-              reconnect all
-            </text>
-            <text
-              fg={theme.text.action.primary.base}
-              attributes={TextAttributes.UNDERLINE}
-              onMouseUp={() => operateAll("reload")}
-            >
-              reload config
-            </text>
-            <Show when={server().status.status === "failed"}>
-              <text
-                fg={theme.text.muted}
-                attributes={TextAttributes.UNDERLINE}
-                onMouseUp={() => dialog.replace(() => <DialogMcp initialServer={server().name} details />)}
-              >
-                details
-              </text>
-            </Show>
-          </box>
-        )}
       </Show>
     </Show>
   )

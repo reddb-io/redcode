@@ -2,7 +2,7 @@ import type { Plugin } from "@opencode/plugin/tui"
 import type { MonitorPublicInfo } from "@opencode/client"
 import { useTerminalDimensions } from "@opentui/solid"
 import { TextAttributes } from "@opentui/core"
-import { createSignal, For, onCleanup, Show } from "solid-js"
+import { createSignal, onCleanup, Show } from "solid-js"
 import { ComposerContext, type ComposerTab } from "../../../routes/session/composer/context"
 import {
   createSessionMonitors,
@@ -10,6 +10,7 @@ import {
   MonitorsTab,
   type MonitorApi,
 } from "../../../routes/session/composer/monitors-tab"
+import { ComposerFooter } from "../../../routes/session/composer/footer"
 import { runningMonitors } from "../../../routes/session/composer/monitors-model"
 import type { Story } from "./index"
 import { StoryFooter } from "./footer"
@@ -257,18 +258,7 @@ function MonitorsTabStory(props: { context: Plugin.Context }) {
               {tab()?.label ?? ""}
             </text>
             <MonitorsTab monitors={monitors} />
-            <box flexDirection="row" gap={2} paddingLeft={1}>
-              <For each={tab()?.hints?.() ?? []}>
-                {(hint) => (
-                  <text>
-                    <span style={{ fg: theme.text.base }}>
-                      <b>{hint.label}</b>{" "}
-                    </span>
-                    <span style={{ fg: theme.text.muted }}>{hint.shortcut}</span>
-                  </text>
-                )}
-              </For>
-            </box>
+            <ComposerFooter hints={tab()?.hints?.() ?? []} />
           </box>
         </Show>
       </ComposerContext.Provider>

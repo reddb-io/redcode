@@ -658,6 +658,10 @@ test.each([80, 160])("large MCP catalogs and tools scroll inside their panels at
   if (!(scroll instanceof ScrollBoxRenderable)) throw new Error("Missing MCP drawer scroll")
   expect(scroll.height).toBe(5)
   const bottom = scroll.y + scroll.height
+  const actions = setup.renderer.root.findDescendantById("composer-actions")
+  if (!(actions instanceof ScrollBoxRenderable)) throw new Error("Missing MCP actions")
+  expect(actions.height).toBe(1)
+  expect(setup.captureCharFrame().match(/disconnect/g)).toHaveLength(1)
   setup.mockInput.pressEnter()
   await setup.waitForFrame((frame) => frame.includes("tool-0"))
   expect(scroll.height).toBe(5)
@@ -671,7 +675,16 @@ test.each([80, 160])("large MCP catalogs and tools scroll inside their panels at
     .catch((cause: unknown) => {
       throw new Error(`Paging MCP tools: height=${scroll.height}, top=${scroll.scrollTop}`, { cause })
     })
+  if (actions.scrollWidth > actions.width) {
+    await setup.mockMouse.scroll(actions.x + 1, actions.y, "down")
+    await setup.renderOnce()
+    expect(actions.scrollLeft).toBeGreaterThan(0)
+  }
+  actions.scrollTo({ x: actions.scrollWidth, y: 0 })
+  await setup.renderOnce()
   expect(setup.captureCharFrame()).toContain("reload config")
+  expect(actions.height).toBe(1)
+  actions.scrollTo({ x: 0, y: 0 })
   setup.mockInput.pressEnter()
   for (let index = 0; index < 39; index++) {
     setup.mockInput.pressKey("ARROW_DOWN")

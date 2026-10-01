@@ -11,7 +11,8 @@ import { Keymap } from "../../../src/context/keymap"
 import { LocationProvider } from "../../../src/context/location"
 import { RouteProvider } from "../../../src/context/route"
 import { ThemeProvider } from "../../../src/context/theme"
-import { ComposerContext } from "../../../src/routes/session/composer/context"
+import { ComposerContext, type ComposerTab } from "../../../src/routes/session/composer/context"
+import { ComposerFooter } from "../../../src/routes/session/composer/footer"
 import {
   createSessionMonitors,
   MonitorsIndicator,
@@ -57,6 +58,7 @@ async function renderMonitors(initial: MonitorPublicInfo[]) {
   let toast!: ReturnType<typeof useToast>
   let dispatch!: ReturnType<typeof Keymap.use>["dispatch"]
   const [open, setOpen] = createSignal(true)
+  const [tab, setTab] = createSignal<ComposerTab>()
   const events = createEventStream()
   const calls = createFetch((url) => {
     if (url.pathname !== "/api/session/parent") return undefined
@@ -87,10 +89,18 @@ async function renderMonitors(initial: MonitorPublicInfo[]) {
     return (
       <box>
         <ComposerContext.Provider
-          value={{ register: () => () => {}, active: (id) => open() && id === "monitors", close: () => setOpen(false) }}
+          value={{
+            register: (value) => {
+              setTab(value)
+              return () => setTab(undefined)
+            },
+            active: (id) => open() && id === "monitors",
+            close: () => setOpen(false),
+          }}
         >
           <text>Monitors</text>
           <MonitorsTab monitors={monitors} />
+          <ComposerFooter hints={tab()?.hints?.() ?? []} />
         </ComposerContext.Provider>
         <MonitorsIndicator monitors={monitors} onOpen={() => setOpen(true)} />
       </box>
@@ -185,11 +195,14 @@ test("the Monitors tab expands evidence and stops a running monitor through the 
   try {
     expect(view.app.captureCharFrame()).toContain("2 checks · Still compiling")
     expect(view.app.captureCharFrame()).not.toContain("Build started")
-    view.dispatch("composer.monitor.evidence")
+    const evidence = view.app.renderer.root.findDescendantById("monitor-evidence-live")!
+    expect(view.app.captureCharFrame().match(/evidence/g)).toHaveLength(1)
+    await view.app.mockMouse.click(evidence.x, evidence.y)
     await view.app.renderOnce()
     expect(view.app.captureCharFrame()).toContain("Build started")
 
-    view.dispatch("composer.monitor.cancel")
+    const stop = view.app.renderer.root.findDescendantById("monitor-stop-live")!
+    await view.app.mockMouse.click(stop.x, stop.y)
     await view.app.renderOnce()
     expect(view.app.captureCharFrame()).toContain("Stop observing watch-build?")
     view.app.mockInput.pressEnter()
@@ -232,6 +245,7 @@ test("many monitors and expanded evidence stay in the drawer scroll without movi
     if (!(scroll instanceof ScrollBoxRenderable)) throw new Error("Missing monitor scroll")
     const controls = view.app.renderer.root.findDescendantById("monitor-stop-monitor-0")!
     const controlsY = controls.y
+    expect(view.app.renderer.root.findDescendantById("composer-actions")?.height).toBe(1)
     expect(scroll.height).toBe(5)
     expect(scroll.scrollHeight).toBeGreaterThan(scroll.height)
     view.dispatch("composer.monitor.evidence")
