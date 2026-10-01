@@ -71,7 +71,10 @@ const make = Effect.gen(function* () {
       const batches = Object.entries(input.questions).reduce<Record<string, Intelligence.Question>[]>(
         (result, [questionID, question]) => {
           const last = result.at(-1)!
-          if (Object.keys(last).length && JSON.stringify({ state: item, questions: { ...last, [questionID]: question } }).length > 80_000) {
+          if (
+            Object.keys(last).length &&
+            JSON.stringify({ state: item, questions: { ...last, [questionID]: question } }).length > 80_000
+          ) {
             result.push({ [questionID]: question })
             return result
           }
@@ -82,12 +85,17 @@ const make = Effect.gen(function* () {
       )
       return batches.map((questions) => ({ state: item, questions, sourceIndex }))
     })
+    const usage = { input_tokens: 0, output_tokens: 0 }
     const response =
       !selected.evaluator ||
       !Object.keys(input.questions).length ||
       !requests.length ||
       requests.some((item) => JSON.stringify({ state: item.state, questions: item.questions }).length > 80_000)
-        ? Effect.fail(new IntelligenceEvaluation.Error({ message: "Evaluation sources exceed budget or configuration is incomplete" }))
+        ? Effect.fail(
+            new IntelligenceEvaluation.Error({
+              message: "Evaluation sources exceed budget or configuration is incomplete",
+            }),
+          )
         : Effect.forEach(
             requests,
             (item) =>
@@ -99,6 +107,13 @@ const make = Effect.gen(function* () {
                 })
                 .pipe(
                   Effect.flatMap(Schema.decodeUnknownEffect(Intelligence.Response)),
+                  // A decoded response consumed tokens even if its answers or a later batch fail.
+                  Effect.tap((answer) =>
+                    Effect.sync(() => {
+                      usage.input_tokens += answer.usage.input_tokens
+                      usage.output_tokens += answer.usage.output_tokens
+                    }),
+                  ),
                   Effect.flatMap((answer) =>
                     Effect.try({
                       try: () => ({
@@ -116,10 +131,10 @@ const make = Effect.gen(function* () {
           ).pipe(
             Effect.map((results) => ({
               decision: results.some((item) => item.decision === "needs_revision")
-                ? "needs_revision" as const
+                ? ("needs_revision" as const)
                 : results.some((item) => item.decision === "inconclusive")
-                  ? "inconclusive" as const
-                  : "accepted" as const,
+                  ? ("inconclusive" as const)
+                  : ("accepted" as const),
               issues: [...new Set(results.flatMap((item) => item.issues))],
               response: {
                 model: results[0]!.response.model,
@@ -131,20 +146,15 @@ const make = Effect.gen(function* () {
                     ]),
                   ),
                 ),
-                usage: results.reduce(
-                  (total, item) => ({
-                    input_tokens: total.input_tokens + item.response.usage.input_tokens,
-                    output_tokens: total.output_tokens + item.response.usage.output_tokens,
-                  }),
-                  { input_tokens: 0, output_tokens: 0 },
-                ),
               },
             })),
           )
-    const evaluated = yield* response.pipe(Effect.match({
-      onFailure: (left) => ({ _tag: "Left" as const, left }),
-      onSuccess: (right) => ({ _tag: "Right" as const, right }),
-    }))
+    const evaluated = yield* response.pipe(
+      Effect.match({
+        onFailure: (left) => ({ _tag: "Left" as const, left }),
+        onSuccess: (right) => ({ _tag: "Right" as const, right }),
+      }),
+    )
     const record: Intelligence.Evaluation = {
       id,
       fingerprint,
@@ -175,20 +185,17 @@ const make = Effect.gen(function* () {
           : [
               `Evaluation unavailable: ${evaluated.left instanceof IntelligenceEvaluation.Error ? evaluated.left.message : "Invalid System One response"}. Previous state preserved.`,
             ],
-      usage:
-        evaluated._tag === "Right"
-          ? evaluated.right.response.usage
-          : { input_tokens: 0, output_tokens: 0 },
+      usage,
     }
     const artifact = `redcode.intelligence.evaluation.${id}`
-    const evidence = yield* Schema.decodeUnknownEffect(
-      Schema.fromJsonString(Schema.Json),
-    )(JSON.stringify({
-      evaluation: record,
-      sources: input.sources,
-      ...candidate,
-      questions: input.questions,
-    })).pipe(Effect.mapError(() => new IntelligenceEvaluation.Error({ message: "Invalid System One evidence" })))
+    const evidence = yield* Schema.decodeUnknownEffect(Schema.fromJsonString(Schema.Json))(
+      JSON.stringify({
+        evaluation: record,
+        sources: input.sources,
+        ...candidate,
+        questions: input.questions,
+      }),
+    ).pipe(Effect.mapError(() => new IntelligenceEvaluation.Error({ message: "Invalid System One evidence" })))
     const answers = Object.entries(record.answers).map(([questionID, answer]) => ({
       evaluation_id: record.id,
       question_id: questionID,
@@ -235,7 +242,9 @@ const make = Effect.gen(function* () {
           if (answers.length) yield* tx.insert(IntelligenceAnswerTable).values(answers)
         }),
       )
-      .pipe(Effect.mapError(() => new IntelligenceEvaluation.Error({ message: "Unable to persist System One evaluation" })))
+      .pipe(
+        Effect.mapError(() => new IntelligenceEvaluation.Error({ message: "Unable to persist System One evaluation" })),
+      )
     if (record.decision === "accepted" || record.decision === "needs_revision") cache.set(fingerprint, record)
     return record
   })
@@ -271,7 +280,12 @@ const make = Effect.gen(function* () {
       ? yield* db
           .select()
           .from(IntelligenceAnswerTable)
-          .where(inArray(IntelligenceAnswerTable.evaluation_id, rows.map((row) => row.id)))
+          .where(
+            inArray(
+              IntelligenceAnswerTable.evaluation_id,
+              rows.map((row) => row.id),
+            ),
+          )
           .all()
           .pipe(Effect.orDie)
       : []
@@ -291,7 +305,9 @@ const make = Effect.gen(function* () {
         ...(row.evaluator ? { evaluator: row.evaluator } : {}),
         issues: row.issues,
         answers: Object.fromEntries(
-          related.filter((answer) => answer.evaluation_id === row.id).map((answer) => [answer.question_id, answerFromRow(answer)]),
+          related
+            .filter((answer) => answer.evaluation_id === row.id)
+            .map((answer) => [answer.question_id, answerFromRow(answer)]),
         ),
         created: row.time_created,
         duration: row.duration,
@@ -332,7 +348,8 @@ const make = Effect.gen(function* () {
           configured,
           evaluator: configured
             ? { ...option.evaluator, model: current.model }
-            : router?.evaluator && router.evaluator.credentialID === option.evaluator.credentialID &&
+            : router?.evaluator &&
+                router.evaluator.credentialID === option.evaluator.credentialID &&
                 option.evaluator.transport === "red-router"
               ? { ...option.evaluator, model: router.evaluator.model }
               : option.evaluator,
