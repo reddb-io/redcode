@@ -16,11 +16,18 @@ test("prompt footer separates simultaneous subagent, shell, and usage status", a
       text: {
         base: color,
         muted: subdued,
+        action: { primary: { base: color } },
       },
     },
     keymap: {
       shortcuts: (id: string) =>
-        id === "session.child.first" ? ["ctrl+j"] : id === "command.palette.show" ? ["ctrl+p"] : [],
+        id === "session.child.first"
+          ? ["ctrl+j"]
+          : id === "command.palette.show"
+            ? ["ctrl+p"]
+            : id === "session.new"
+              ? ["ctrl+x n"]
+              : [],
       dispatch: (id: string) => dispatched.push(id),
     },
     data: {
@@ -42,7 +49,7 @@ test("prompt footer separates simultaneous subagent, shell, and usage status", a
   const app = await testRender(
     () => <PromptFooter context={context} sessionID="session" mode="normal" showDetails={true} />,
     {
-      width: 80,
+      width: 120,
       height: 2,
     },
   )
@@ -51,6 +58,7 @@ test("prompt footer separates simultaneous subagent, shell, and usage status", a
     await app.renderOnce()
     expect(app.captureCharFrame()).toContain("ctrl+j 1 subagent · 1 shell · $1.00")
     expect(app.captureCharFrame()).toContain("ctrl+p commands")
+    expect(app.captureCharFrame()).toContain("New session ctrl+x n")
 
     await app.mockMouse.moveTo(2, 0)
     const live = app.renderer.root.getChildren()[0]?.getChildren()[0]?.getChildren()[0]
@@ -72,6 +80,7 @@ test("prompt footer can hide details", async () => {
       text: {
         base: color,
         muted: color,
+        action: { primary: { base: color } },
       },
     },
     keymap: {
@@ -109,16 +118,11 @@ test("prompt footer can hide details", async () => {
   const app = await testRender(
     () => (
       <box width="100%" flexDirection="row" justifyContent="space-between" gap={2}>
-        <PromptFooter
-          context={context}
-          sessionID={sessionID()}
-          mode="normal"
-          showDetails={showDetails()}
-        />
+        <PromptFooter context={context} sessionID={sessionID()} mode="normal" showDetails={showDetails()} />
       </box>
     ),
     {
-      width: 80,
+      width: 120,
       height: 1,
     },
   )
@@ -127,6 +131,7 @@ test("prompt footer can hide details", async () => {
     await app.renderOnce()
     expect(app.captureCharFrame()).toContain("1.0K (10%) · $1.00")
     expect(app.captureCharFrame()).toContain("ctrl+p commands")
+    expect(app.captureCharFrame()).toContain("New session /new")
 
     setShowDetails(false)
     await app.renderOnce()
@@ -134,6 +139,7 @@ test("prompt footer can hide details", async () => {
     expect(frame).not.toContain("1.0K (10%)")
     expect(frame).not.toContain("$1.00")
     expect(frame).not.toContain("ctrl+p commands")
+    expect(frame).not.toContain("New session")
 
     setSessionID(undefined)
     await app.renderOnce()

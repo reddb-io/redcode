@@ -7,6 +7,48 @@ import type { ModelRef } from "@opencode/client"
 
 const location = { directory, project: { id: "project", directory, canonical: directory } }
 
+for (const scenario of [
+  { width: 44, tabs: "off", keybinds: {}, shortcut: "ctrl+x n", key: "n", leader: "x" },
+  { width: 80, tabs: "auto", keybinds: { leader: "ctrl+g" }, shortcut: "ctrl+g n", key: "n", leader: "g" },
+  { width: 160, tabs: "off", keybinds: { "session.new": "f4" }, shortcut: "f4", key: "F4", leader: undefined },
+  { width: 80, tabs: "off", keybinds: { "session.new": "none" }, shortcut: "/new", key: undefined, leader: undefined },
+] as const) {
+  test(`New session is discoverable and creates sessions at ${scenario.width} columns with ${scenario.shortcut}`, async () => {
+    await using state = await tmpdir()
+    const created: string[] = []
+    await using setup = await createAppFixture({
+      state: state.path,
+      width: scenario.width,
+      height: 30,
+      config: { animations: false, tabs: { mode: scenario.tabs }, keybinds: scenario.keybinds },
+      fetch: async (url, request) => {
+        if (url.pathname === "/api/session" && request.method === "POST")
+          created.push(((await request.clone().json()) as { id: string }).id)
+      },
+    })
+    await setup.ready
+    await setup.waitForFrame((frame) => frame.includes(`New session ${scenario.shortcut}`))
+    const action = setup.renderer.root.findDescendantById("prompt-new-session")!
+    expect(action.height).toBe(1)
+    expect(action.x + action.width).toBeLessThanOrEqual(scenario.width)
+    const before = created.length
+    await setup.mockMouse.click(action.x + 2, action.y)
+    await setup.waitForFrame(
+      (frame) => created.length === before + 1 && frame.includes(`New session ${scenario.shortcut}`),
+    )
+    if (scenario.leader) setup.mockInput.pressKey(scenario.leader, { ctrl: true })
+    if (scenario.key) setup.mockInput.pressKey(scenario.key)
+    if (!scenario.key) {
+      await setup.mockInput.typeText("/new")
+      setup.mockInput.pressEnter()
+    }
+    await setup.waitForFrame(
+      (frame) => created.length === before + 2 && frame.includes(`New session ${scenario.shortcut}`),
+    )
+    expect(new Set(created).size).toBe(created.length)
+  })
+}
+
 test("a resumed session submits its saved connection even when the active account lists another model", async () => {
   await using state = await tmpdir()
   const session = {

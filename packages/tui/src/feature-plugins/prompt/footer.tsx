@@ -48,11 +48,11 @@ export function PromptFooter(props: {
   })
   const live = createMemo(() => Boolean(subagents() || shells()))
   const shortcut = (id: string) => props.context.keymap.shortcuts(id)[0]
+  const newSession = () => shortcut("session.new") || "/new"
   const layout = createMemo(() => {
     const command = shortcut("command.palette.show")
-    if (status().length === 0) return { usage: false, shortcuts: dimensions().width >= 44 }
     return promptFooterLayout({
-      width: Math.max(0, dimensions().width - 8),
+      width: Math.max(0, dimensions().width - 8 - stringWidth(`New session ${newSession()}`) - 2),
       usage: status(),
       shortcuts: command ? [`${command} commands`] : [],
     })
@@ -92,12 +92,25 @@ export function PromptFooter(props: {
               </Show>
             </box>
           </Match>
-          <Match when={props.showDetails && layout().shortcuts}>
+          <Match when={props.showDetails && layout().shortcuts && dimensions().width >= 120}>
             <text fg={props.context.theme.text.base} flexShrink={0}>
               {shortcut("agent.cycle")} <span style={{ fg: props.context.theme.text.muted }}>agents</span>
             </text>
           </Match>
         </Switch>
+        <Show when={props.showDetails && dimensions().width >= 44}>
+          <text
+            id="prompt-new-session"
+            wrapMode="none"
+            flexShrink={0}
+            onMouseUp={() => props.context.keymap.dispatch("session.new")}
+          >
+            <span style={{ fg: props.context.theme.text.action.primary.base }}>
+              <b>New session</b>
+            </span>{" "}
+            <span style={{ fg: props.context.theme.text.muted }}>{newSession()}</span>
+          </text>
+        </Show>
         <Show when={props.showDetails && layout().shortcuts}>
           <text fg={props.context.theme.text.base} wrapMode="none" flexShrink={0}>
             {shortcut("command.palette.show")} <span style={{ fg: props.context.theme.text.muted }}>commands</span>
