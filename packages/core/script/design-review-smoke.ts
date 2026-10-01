@@ -98,6 +98,10 @@ const server = Bun.serve({
       await state.hold?.promise
       return Response.json([state.document])
     }
+    if (route === `${endpoint}/${design.id}/approve` && request.method === "POST") {
+      state.document = { ...state.document, approvedRevision: state.document.revision, ended: true }
+      return Response.json({ agent: "plan" })
+    }
     if (route === `${endpoint}/${design.id}/revision`) return Response.json(state.revisions)
     if (route.endsWith("/preview")) return new Response(html, { headers: { "content-type": "text/html" } })
     if (route.endsWith("/status")) return Response.json({ stage: "ready" })
@@ -241,6 +245,25 @@ try {
   const closedRequests = state.calls.length
   await page.clock.runFor(15000)
   assert.equal(state.calls.length, closedRequests, "Closed Design reviews must stop polling")
+  const closedPreviewFrames = await page.locator("iframe").count()
+  const closedPollingRequests = state.calls.length - closedRequests
+  // Approval in the browser follows the same retirement path and completes its action cleanly.
+  state.document = { ...state.document, approvedRevision: null, ended: false }
+  await page.reload()
+  await page.waitForFunction(() => {
+    const root = document.querySelector("#review")!.shadowRoot!
+    return !root.querySelector<HTMLButtonElement>("#approve")?.disabled && root.querySelector("iframe")
+  })
+  await page.locator("#approve").click()
+  await page.locator("#confirm-approve").click()
+  await page.waitForFunction(() => {
+    const root = document.querySelector("#review")!.shadowRoot!
+    return !root.querySelector("iframe") && root.textContent?.includes("Design approved")
+  })
+  const approvedRequests = state.calls.length
+  await page.clock.runFor(15000)
+  assert.equal(state.calls.length, approvedRequests, "Browser approval must stop polling")
+  assert.deepEqual(errors, [])
   console.log(
     JSON.stringify({
       jobs: jobs.length,
@@ -253,8 +276,9 @@ try {
       interactionMs,
       browserErrors: errors.length,
       automaticPublications: 0,
-      closedPreviewFrames: await page.locator("iframe").count(),
-      closedPollingRequests: state.calls.length - closedRequests,
+      closedPreviewFrames,
+      closedPollingRequests,
+      browserApprovalPollingRequests: state.calls.length - approvedRequests,
     }),
   )
 } finally {

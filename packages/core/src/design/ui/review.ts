@@ -282,7 +282,7 @@ export function mountReview(host: HTMLElement, options: ReviewOptions) {
       state.loading = true
       try {
         await task()
-        if (!quiet && element("status").dataset.copy === "busy") status(copy.done, "done", "success")
+        if (!state.stopped && !quiet && element("status").dataset.copy === "busy") status(copy.done, "done", "success")
       } catch (error) {
         if (!state.stopped) status(error instanceof Error ? error.message : copy.failure, undefined, "error")
       } finally {
@@ -3396,6 +3396,7 @@ details{border-top:1px solid var(--edge);padding:14px 0}summary{cursor:pointer;f
     save()
     clearInterval(ticker)
     clearTimeout(loading.reveal)
+    clearTimeout(state.idleCheck)
     scheme.removeEventListener("change", syncScheme)
     schemeObserver.disconnect()
     fitting.disconnect()
