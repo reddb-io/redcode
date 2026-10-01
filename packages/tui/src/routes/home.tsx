@@ -9,6 +9,7 @@ import { useClient } from "../context/client"
 import { useTheme } from "../context/theme"
 import { Keymap } from "../context/keymap"
 import { useToast } from "../ui/toast"
+import { useLog } from "../context/log"
 
 // Home is a transition to a durable blank session, never a welcome/composer screen.
 export function Home(props: { pending?: boolean; prompt?: PromptInfo }) {
@@ -20,6 +21,7 @@ export function Home(props: { pending?: boolean; prompt?: PromptInfo }) {
   const editor = useEditorContext()
   const theme = useTheme()
   const toast = useToast()
+  const log = useLog({ component: "home" })
   const [failed, setFailed] = createSignal(false)
   let started = false
   let disposed = false
@@ -41,8 +43,10 @@ export function Home(props: { pending?: boolean; prompt?: PromptInfo }) {
       agent: agent?.id,
       model: model ? { providerID: model.providerID, id: model.modelID, variant: model.variant } : undefined,
     })
+    log.debug("Opening new session", { sessionID: created.id })
     void created.request
       .then(() => {
+        log.debug("New session opened", { sessionID: created.id, disposed })
         if (disposed) return
         editor.clearSelection()
         route.navigate({ type: "session", sessionID: created.id, prompt })

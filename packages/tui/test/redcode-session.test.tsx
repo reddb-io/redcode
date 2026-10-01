@@ -23,11 +23,16 @@ for (const scenario of [
   test(`New session is discoverable and creates sessions at ${scenario.width} columns with ${scenario.shortcut}`, async () => {
     await using state = await tmpdir()
     const created: string[] = []
+    const logs: string[] = []
     await using setup = await createAppFixture({
       state: state.path,
       width: scenario.width,
       height: 30,
       config: { animations: false, tabs: { mode: scenario.tabs }, keybinds: scenario.keybinds },
+      log: (_level, message, tags) => {
+        if (tags.component === "home" || message === "New session requested")
+          logs.push(JSON.stringify({ message, ...tags }))
+      },
       fetch: async (url, request) => {
         if (url.pathname === "/api/session" && request.method === "POST")
           created.push(((await request.clone().json()) as { id: string }).id)
@@ -64,7 +69,7 @@ for (const scenario of [
     await setup
       .waitForFrame((frame) => created.length === before + 2 && frame.includes(`New session ${scenario.shortcut}`))
       .catch((cause: unknown) => {
-        throw new Error(`Shortcut: before=${before}, created=${created.join(",")}`, { cause })
+        throw new Error(`Shortcut: before=${before}, created=${created.join(",")}, logs=${logs.join(";")}`, { cause })
       })
     expect(new Set(created).size).toBe(created.length)
   })

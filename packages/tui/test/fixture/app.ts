@@ -14,6 +14,7 @@ export async function createAppFixture(
     config?: Config.Info
     args?: TuiInput["args"]
     fetch?: FetchHandler
+    log?: TuiInput["log"]
   } = {},
 ) {
   const { run } = await import("../../src/app")
@@ -45,7 +46,7 @@ export async function createAppFixture(
       packages: { prepare: async () => ({ directory: "" }) },
       terminalHandoff: async () => ({ renderer: setup.renderer, mode: "dark", complete: ready.resolve }),
       args: input.args ?? {},
-      log: () => {},
+      log: input.log ?? (() => {}),
     }).pipe(
       Effect.provide(input.state ? Global.layerWith({ state: input.state }) : AppNodeBuilder.build(Global.node)),
       Effect.provide(FileSystem.layerNoop({})),
