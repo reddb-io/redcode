@@ -18,6 +18,8 @@ export const REVIEW_KEY = "responseReview"
 export const REPAIRS = 1
 
 export const QUESTIONS: Record<string, Intelligence.Question> = IntelligenceEvaluation.questions({
+  correctness:
+    "Does candidate contain a factual or logical error contradicted by the request or available evidence? Compare actual behavior with intended behavior and check the requested result. Missing evidence alone does not establish an error.",
   omission: "Does candidate fail to answer an applicable user request or question in sources?",
   // Only claims of performed or verified work: a greeting or a statement of readiness is not one.
   unsupported:
@@ -34,6 +36,7 @@ export const QUESTIONS: Record<string, Intelligence.Question> = IntelligenceEval
 
 /** Plain-language reasons for the question ids, shown to the user instead of the raw key. */
 export const REASONS: Record<string, string> = {
+  correctness: "gave an incorrect result",
   omission: "missed part of the request",
   unsupported: "claimed work it could not prove",
   tool_evidence: "relied on a failed or unrelated result",
@@ -47,7 +50,7 @@ export const reason = (id: string) => REASONS[id] ?? "did not pass review"
 /**
  * The checks that apply to an answer. Tool evidence needs tool results and a premature finish
  * needs tasks or an active goal; asking either without them only invites a false positive. A
- * reliably routed plain answer with none of that evidence can only be checked for a refusal.
+ * plain answer still needs correctness and request coverage checks.
  */
 export function questionsFor(input: {
   readonly tools: boolean
@@ -55,7 +58,6 @@ export function questionsFor(input: {
   readonly goal: boolean
   readonly route?: string
 }) {
-  if (!input.tools && !input.tasks && !input.goal && input.route === "answer") return { refusal: QUESTIONS.refusal }
   return Object.fromEntries(
     Object.entries(QUESTIONS).filter(
       ([id]) => (id !== "tool_evidence" || input.tools) && (id !== "premature" || input.tasks || input.goal),

@@ -13,6 +13,7 @@ export interface Run {
   s2Tokens: number
   s2CostUsd: number
   s2Unpriced: boolean
+  s1CostUsd?: number
   evaluatorFailures: number
 }
 
@@ -61,7 +62,10 @@ export function summarize(runs: ReadonlyArray<Run>) {
       s1Tokens: group.reduce((sum, run) => sum + run.s1Tokens, 0),
       s2Tokens: group.reduce((sum, run) => sum + run.s2Tokens, 0),
       s2CostUsd: group.reduce((sum, run) => sum + run.s2CostUsd, 0),
-      costComplete: mode === "single" && group.every((run) => !run.s2Unpriced),
+      s1CostUsd: group.reduce((sum, run) => sum + (run.s1CostUsd ?? 0), 0),
+      totalCostUsd: group.reduce((sum, run) => sum + run.s2CostUsd + (run.s1CostUsd ?? 0), 0),
+      costComplete:
+        group.length > 0 && group.every((run) => !run.s2Unpriced && (mode === "single" || run.s1CostUsd !== undefined)),
       evaluatorFailures: group.reduce((sum, run) => sum + run.evaluatorFailures, 0),
       repaired: repaired.length,
       improved: repaired.filter((run) => !run.initial.pass && run.final.pass).length,
@@ -70,6 +74,61 @@ export function summarize(runs: ReadonlyArray<Run>) {
       ineffective: repaired.filter((run) => !run.initial.pass && !run.final.pass).length,
     }
   })
+}
+
+/** Improvement and the 2x monetary ceiling are acceptance criteria, not token comparisons. */
+export function acceptance(runs: ReadonlyArray<Run>, expectedRuns: number) {
+  const [single, dual] = summarize(runs)
+  const complete =
+    runs.length === expectedRuns &&
+    expectedRuns > 0 &&
+    single!.runs === dual!.runs &&
+    pairs(runs).length === single!.runs &&
+    runs.every((run) => run.outcome === "succeeded")
+  const costKnown = single!.costComplete && dual!.costComplete
+  const ratio = !costKnown
+    ? undefined
+    : single!.totalCostUsd > 0
+      ? dual!.totalCostUsd / single!.totalCostUsd
+      : dual!.totalCostUsd === 0
+        ? 1
+        : undefined
+  const overBudgetPairs = runs
+    .filter((run) => run.mode === "single" && !run.s2Unpriced)
+    .flatMap((single) => {
+      const dual = runs.find((run) => run.mode === "dual" && run.caseID === single.caseID && run.round === single.round)
+      return dual &&
+        !dual.s2Unpriced &&
+        dual.s1CostUsd !== undefined &&
+        dual.s2CostUsd + dual.s1CostUsd > 2 * single.s2CostUsd
+        ? [{ caseID: single.caseID, round: single.round }]
+        : []
+    })
+  const regressedCases = [...new Set(runs.map((run) => run.caseID))].filter((id) => {
+    const count = (mode: Run["mode"]) =>
+      runs.filter((run) => run.caseID === id && run.mode === mode && run.outcome === "succeeded" && run.final.pass)
+        .length
+    return count("dual") < count("single")
+  })
+  const reasons = [
+    ...(!complete ? ["incomplete_or_invalid_suite"] : []),
+    ...(dual!.passed <= single!.passed ? ["no_accuracy_improvement"] : []),
+    ...(regressedCases.length ? ["case_accuracy_regression"] : []),
+    ...(dual!.degraded ? ["repair_degraded_correct_answer"] : []),
+    ...(!costKnown
+      ? ["unknown_total_cost"]
+      : ratio === undefined || ratio > 2 || overBudgetPairs.length
+        ? ["cost_above_2x"]
+        : []),
+  ]
+  return {
+    passed: reasons.length === 0,
+    reasons,
+    costRatio: ratio ?? null,
+    maxCostRatio: 2,
+    regressedCases,
+    overBudgetPairs,
+  }
 }
 
 export function pairs(runs: ReadonlyArray<Run>) {
@@ -91,19 +150,20 @@ export function pairs(runs: ReadonlyArray<Run>) {
     })
 }
 
-export function markdown(runs: ReadonlyArray<Run>, model: string, evaluator: string) {
+export function markdown(runs: ReadonlyArray<Run>, model: string, evaluator: string, expectedRuns = runs.length) {
   const summary = summarize(runs)
+  const gate = acceptance(runs, expectedRuns)
   return [
     "# Single versus dual reasoning",
     "",
     `S2: \`${model}\`. S1: \`${evaluator}\`.`,
     "Fresh sessions, identical task fixtures and S2 selection, alternating pair order. Grades use deterministic fixture facts, independently of S1 verdicts.",
     "",
-    "| Mode | Passes | Mean score | Median ms | P95 ms | S2 tokens | S1 tokens | Reported S2 USD | Repairs | Improved | Unnecessary | Degraded |",
+    "| Mode | Passes | Mean score | Median ms | P95 ms | S2 tokens | S1 tokens | Total USD | Repairs | Improved | Unnecessary | Degraded |",
     "| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |",
     ...summary.map(
       (group) =>
-        `| ${group.mode} | ${group.passed}/${group.runs} | ${group.meanScore.toFixed(3)} | ${Math.round(group.medianDurationMs)} | ${Math.round(group.p95DurationMs)} | ${group.s2Tokens} | ${group.s1Tokens} | ${group.s2CostUsd.toFixed(6)}${group.costComplete ? "" : " (incomplete)"} | ${group.repaired} | ${group.improved} | ${group.unnecessary} | ${group.degraded} |`,
+        `| ${group.mode} | ${group.passed}/${group.runs} | ${group.meanScore.toFixed(3)} | ${Math.round(group.medianDurationMs)} | ${Math.round(group.p95DurationMs)} | ${group.s2Tokens} | ${group.s1Tokens} | ${group.totalCostUsd.toFixed(6)}${group.costComplete ? "" : " (incomplete)"} | ${group.repaired} | ${group.improved} | ${group.unnecessary} | ${group.degraded} |`,
     ),
     "",
     "| Case | Round | Single pass | Dual pass | Dual latency delta ms | Dual token delta |",
@@ -113,7 +173,9 @@ export function markdown(runs: ReadonlyArray<Run>, model: string, evaluator: str
         `| ${pair.caseID} | ${pair.round} | ${pair.singlePassed} | ${pair.dualPassed} | ${Math.round(pair.durationDeltaMs)} | ${pair.tokenDelta} |`,
     ),
     "",
-    "This is a small diagnostic sample of read-only coding and workflow tasks, not a production coding benchmark or a statistically established quality gain. Unnecessary repairs mean the original and final answers both passed this suite's oracle; the oracle does not cover every aspect of writing quality. Failed or timed-out executions remain in the denominator. S1 prices are unavailable, so reported USD is not the total dual-mode cost. Polling adds up to approximately 100 ms of completion-detection delay.",
+    `Acceptance: **${gate.passed ? "passed" : "failed"}**. Requires more dual passes, no case-level accuracy regression, no degraded repair, and known total cost at most 2x single. Cost ratio: ${gate.costRatio === null ? "unknown" : gate.costRatio.toFixed(3) + "x"}. Reasons: ${gate.reasons.join(", ") || "none"}.`,
+    "",
+    "This is a small diagnostic sample of read-only tasks, not proof of production coding effectiveness. Costs use reported upstream charges when available and explicitly supplied price estimates otherwise; they are not a billing invoice. Missing prices remain unknown and fail the cost gate. Failed and timed-out runs stay in the denominator. Polling adds up to approximately 100 ms of completion-detection delay.",
     "",
   ].join("\n")
 }

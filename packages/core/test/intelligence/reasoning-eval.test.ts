@@ -1,6 +1,6 @@
 import { expect, test } from "bun:test"
-import { pairs, score, summarize, type Run } from "../../script/reasoning-eval/report"
-import { observedModels, proxy, type RequestMetric } from "../../script/reasoning-eval/transport"
+import { acceptance, pairs, score, summarize, type Run } from "../../script/reasoning-eval/report"
+import { observedCost, observedModels, proxy, type RequestMetric } from "../../script/reasoning-eval/transport"
 
 const passed = score('{"ok":true}', { ok: true })
 const failed = score('{"ok":false}', { ok: true })
@@ -77,6 +77,41 @@ test("extracts upstream models from JSON and SSE, excluding keepalives and malfo
       ': ping\ndata: {"model":"keepalive"}\ndata: {"model":"pinned"}\ndata: invalid\ndata: {"model":"pinned"}\ndata: [DONE]\n',
     ),
   ).toEqual(["pinned"])
+})
+
+test("requires strict improvement and complete monetary costs at or below twice single", () => {
+  const runs = [
+    run({ final: failed, s2CostUsd: 1, s2Unpriced: false }),
+    run({ mode: "dual", s2CostUsd: 1.5, s1CostUsd: 0.5, s2Unpriced: false }),
+  ]
+  expect(acceptance(runs, 2)).toMatchObject({ passed: true, costRatio: 2 })
+  expect(acceptance([runs[0]!, { ...runs[1]!, s1CostUsd: 0.501 }], 2).reasons).toContain("cost_above_2x")
+  expect(acceptance([runs[0]!, { ...runs[1]!, s1CostUsd: undefined }], 2).reasons).toContain("unknown_total_cost")
+  expect(acceptance(runs, 4).reasons).toContain("incomplete_or_invalid_suite")
+  expect(acceptance([{ ...runs[0]!, final: passed }, runs[1]!], 2).reasons).toContain("no_accuracy_improvement")
+})
+
+test("rejects a case regression even when aggregate accuracy improves", () => {
+  const runs = [
+    run({ s2CostUsd: 1, s2Unpriced: false }),
+    run({ mode: "dual", final: failed, s2CostUsd: 1, s1CostUsd: 0, s2Unpriced: false }),
+    ...["a", "b"].flatMap((caseID) => [
+      run({ caseID, final: failed, s2CostUsd: 1, s2Unpriced: false }),
+      run({ caseID, mode: "dual", s2CostUsd: 1, s1CostUsd: 0, s2Unpriced: false }),
+    ]),
+  ]
+  expect(acceptance(runs, 6)).toMatchObject({ passed: false, regressedCases: ["control"] })
+})
+
+test("reads cumulative reported costs once and preserves unknown and zero costs", () => {
+  expect(observedCost('{"usage":{"cost":0}}')).toBe(0)
+  expect(observedCost('{"usage":{"input_tokens":10}}')).toBeUndefined()
+  expect(observedCost('{"usage":{"cost":-1}}')).toBeUndefined()
+  expect(
+    observedCost(
+      'data: {"usage":{"cost":0.1}}\ndata: {"usage":{"cost":0.2}}\ndata: {"model":"keepalive","usage":{"cost":99}}\ndata: [DONE]\n',
+    ),
+  ).toBe(0.2)
 })
 
 test("recording proxy preserves error status and streams complete response metrics without credentials", async () => {

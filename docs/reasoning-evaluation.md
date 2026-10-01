@@ -48,16 +48,38 @@ The output does retain model responses and fixture content, so it should still
 be reviewed before sharing.
 
 Token totals include S1 usage even when an evaluation is inconclusive or
-unavailable. Reported monetary cost comes from the runtime's S2 catalog pricing.
-Missing S2 prices and all S1 prices remain unknown; a reported zero does not
-establish that a run was free. No total dual-mode price is claimed.
+unavailable. The proxy also retains upstream `usage.cost` when reported, including
+zero. Streaming costs are cumulative, so only the final reported value counts.
+Missing costs remain unknown rather than being treated as free.
+
+Use `--pricing /path/to/pricing.json` when the router omits S2 charges. Rates are
+USD per million tokens and must match the pinned model IDs:
+
+```json
+{
+  "model": "openrouter/openai/gpt-4.1-mini",
+  "evaluator": "openrouter/typesafe/jev-1.13",
+  "source": "URL or billing source and verification date",
+  "s2": { "input": 0.4, "output": 1.6, "cacheRead": 0.1, "cacheWrite": 0.4 }
+}
+```
+
+An optional `s1: { "input": number, "output": number }` provides an estimate only
+when S1 charges are unavailable. Reported upstream charges take precedence.
+Estimates are distinct from a billing invoice, and missing prices fail acceptance.
+`--gate` returns a failing exit code unless the complete, valid paired suite has
+more dual passes, no case-level accuracy regression, no degraded repair, and
+known total S1+S2 cost within 2x single both overall and for every matched pair.
+This is a benchmark acceptance gate, not a runtime spending guarantee against
+an unknowable counterfactual single execution.
 
 Repairs are classified as improved, unnecessary, degraded or ineffective by
 comparing the original and final independent grades. Here “unnecessary” only
 means both answers satisfy these fixture checks. It does not establish that
 all aspects of a rewrite were unnecessary. Absence of repair is also not proof
-of correctness: tool-free answer classification narrows response review to
-refusal checks, and inconclusive gates do not establish an issue.
+of correctness. Plain answers retain correctness and request-coverage checks;
+inconclusive gates do not establish an issue. S1 selects an arithmetic,
+code-behavior or evidence check before S2 answers; S2 performs that check.
 
 Use these results to decide what to investigate next. A stronger follow-up
 needs harder coding tasks, actual edits and execution, broader models, more

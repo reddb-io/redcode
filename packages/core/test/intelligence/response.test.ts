@@ -26,7 +26,7 @@ describe("IntelligenceResponse", () => {
   test("asks only the checks the available evidence can answer", () => {
     expect(
       Object.keys(IntelligenceResponse.questionsFor({ tools: false, tasks: false, goal: false, route: "answer" })),
-    ).toEqual(["refusal"])
+    ).toEqual(expect.arrayContaining(["correctness", "omission", "refusal"]))
     const plain = Object.keys(IntelligenceResponse.questionsFor({ tools: false, tasks: false, goal: false }))
     expect(plain).not.toContain("tool_evidence")
     expect(plain).not.toContain("premature")

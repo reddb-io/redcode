@@ -4,7 +4,7 @@ import { createHash } from "node:crypto"
 import { Intelligence } from "@opencode/schema/intelligence"
 import { Effect, Schema } from "effect"
 
-export const POLICY = "semantic-v3-experimental"
+export const POLICY = "semantic-v4-experimental"
 export const UNVERIFIED = "not verified (single reasoning)"
 export const defaults: Intelligence.Settings = { enabled: false, onboarding: "pending" }
 

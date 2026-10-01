@@ -98,6 +98,7 @@ describe("IntelligenceClassification", () => {
     expect(Object.keys(input.questions)).toEqual(
       expect.arrayContaining([
         "work_route",
+        "verification_focus",
         "must_clarify",
         "design_target",
         "design_platform",
@@ -142,7 +143,9 @@ describe("IntelligenceClassification", () => {
     expect(IntelligenceClassification.restricted(noul(0.55))).toBe("unknown")
     expect(IntelligenceClassification.restricted(noul(0.4))).toBe("unknown")
     expect(
-      IntelligenceClassification.restricted(record("inconclusive", { restricted_content: { type: "noul", noul: 0.8 } })),
+      IntelligenceClassification.restricted(
+        record("inconclusive", { restricted_content: { type: "noul", noul: 0.8 } }),
+      ),
     ).toBe("flagged")
     expect(IntelligenceClassification.restricted(record("unavailable", {}))).toBe("unknown")
     expect(IntelligenceClassification.restricted(record("accepted", {}))).toBe("unknown")
@@ -252,6 +255,46 @@ describe("IntelligenceClassification", () => {
       feedback: "rejects",
     })
     expect(IntelligenceClassification.assessment(record("unavailable", {}))).toBeUndefined()
+  })
+
+  test("selects independent checks without guessing from low-confidence classification", () => {
+    const labels = ["arithmetic", "code", "evidence", "none"]
+    expect(
+      IntelligenceClassification.verification(
+        record("accepted", {
+          verification_focus: choice("arithmetic", 0.9, labels),
+        }),
+      ),
+    ).toContain("rounded components")
+    expect(
+      IntelligenceClassification.verification(
+        record("accepted", {
+          verification_focus: choice("code", 0.9, labels),
+        }),
+      ),
+    ).toContain("actual and expected")
+    expect(
+      IntelligenceClassification.verification(
+        record("inconclusive", {
+          verification_focus: choice("code", 0.4, labels),
+        }),
+      ),
+    ).toBeUndefined()
+    expect(
+      IntelligenceClassification.context(
+        record("inconclusive", {
+          work_route: choice("local_change", 0.9, ["answer", "local_change"]),
+          verification_focus: choice("arithmetic", 0.4, labels),
+        }),
+      ),
+    ).not.toContain("verification_focus: arithmetic")
+    expect(
+      IntelligenceClassification.verification(
+        record("unavailable", {
+          verification_focus: choice("code", 0.99, labels),
+        }),
+      ),
+    ).toBeUndefined()
   })
 
   test("guides a RedRouter with a valid hint and turns its decision off when System One chose a skill", () => {

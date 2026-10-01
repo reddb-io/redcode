@@ -8,7 +8,7 @@ import { SessionMessage } from "@opencode/schema/session-message"
 import { Model } from "@opencode/schema/model"
 import { Schema } from "effect"
 import { cases } from "./cases"
-import { markdown, pairs, score, summarize, type Run } from "./report"
+import { acceptance, markdown, pairs, score, summarize, type Run } from "./report"
 import { proxy, type RequestMetric } from "./transport"
 
 const args = parseArgs({
@@ -22,6 +22,8 @@ const args = parseArgs({
     rounds: { type: "string", default: "2" },
     output: { type: "string" },
     cases: { type: "string" },
+    pricing: { type: "string" },
+    gate: { type: "boolean", default: false },
   },
 }).values
 if (!args.model || !args["response-model"] || !args["key-file"] || !args.output)
@@ -38,6 +40,22 @@ const binary = Bun.which(args.binary!) ?? path.resolve(args.binary!)
 const output = path.resolve(args.output)
 const key = (await Bun.file(args["key-file"]).text()).trim()
 if (!key) throw new Error("Empty API key file")
+const Rate = Schema.Finite.check(Schema.isGreaterThanOrEqualTo(0))
+const prices = args.pricing
+  ? Schema.decodeUnknownSync(
+      Schema.fromJsonString(
+        Schema.Struct({
+          model: Schema.String,
+          evaluator: Schema.String,
+          source: Schema.String,
+          s2: Schema.Struct({ input: Rate, output: Rate, cacheRead: Rate, cacheWrite: Rate }),
+          s1: Schema.optional(Schema.Struct({ input: Rate, output: Rate })),
+        }),
+      ),
+    )(await Bun.file(args.pricing).text())
+  : undefined
+if (prices && (prices.model !== args.model || prices.evaluator !== args.evaluator))
+  throw new Error("Pricing must match the exact pinned S1 and S2 models")
 const root = await mkdtemp(path.join(os.tmpdir(), "redcode-reasoning-eval-"))
 const home = path.join(root, "home")
 const setup = path.join(root, "setup")
@@ -200,7 +218,8 @@ try {
         expectedRuns: selected.length * rounds * 2,
         cases: selected,
         prices: selectedModel.cost,
-        note: "S1 prices unavailable; S2 prices are catalog estimates, not a billing invoice.",
+        priceOverride: prices ?? null,
+        note: "Upstream reported charges take precedence over explicit USD-per-million-token estimates. Unknown total cost fails acceptance.",
       },
       null,
       2,
@@ -277,6 +296,31 @@ try {
           .flatMap((message) => message.content ?? [])
           .filter((part) => part.type === "tool" && part.name === "read" && part.state.status === "completed").length
         const requests = upstream.filter((request) => request.run === current.run && request.model === args.model)
+        const s1Requests = upstream.filter((request) => request.run === current.run && request.model === args.evaluator)
+        const s1CostUsd =
+          s1Requests.length && s1Requests.every((request) => request.complete && request.costUsd !== undefined)
+            ? s1Requests.reduce((sum, request) => sum + request.costUsd!, 0)
+            : prices?.s1
+              ? evaluations.reduce(
+                  (sum, evaluation) =>
+                    sum +
+                    evaluation.usage.input_tokens * prices.s1!.input +
+                    evaluation.usage.output_tokens * prices.s1!.output,
+                  0,
+                ) / 1_000_000
+              : undefined
+        const s2CostUsd =
+          requests.length && requests.every((request) => request.complete && request.costUsd !== undefined)
+            ? requests.reduce((sum, request) => sum + request.costUsd!, 0)
+            : prices
+              ? (completed.data.tokens.input * prices.s2.input +
+                  (completed.data.tokens.output + completed.data.tokens.reasoning) * prices.s2.output +
+                  completed.data.tokens.cache.read * prices.s2.cacheRead +
+                  completed.data.tokens.cache.write * prices.s2.cacheWrite) /
+                1_000_000
+              : selectedModel.cost.length
+                ? completed.data.cost
+                : undefined
         const responseModels = [...new Set(requests.flatMap((request) => request.responseModels))]
         const validationErrors = [
           ...(budget.data.spent.tokens !== s1Tokens + s2Tokens ? ["budget_accounting"] : []),
@@ -318,8 +362,9 @@ try {
           reads,
           s1Tokens,
           s2Tokens,
-          s2CostUsd: completed.data.cost,
-          s2Unpriced: !selectedModel.cost.length,
+          s2CostUsd: s2CostUsd ?? 0,
+          s2Unpriced: s2CostUsd === undefined,
+          ...(s1CostUsd === undefined ? {} : { s1CostUsd }),
           evaluatorFailures: evaluations.filter((evaluation) => evaluation.decision === "unavailable").length,
           fixedModel: assistants.every((message) => message.model?.id === args.model),
           evaluations,
@@ -344,6 +389,7 @@ try {
               expectedRuns: selected.length * rounds * 2,
               completed: results.length === selected.length * rounds * 2,
               summary: summarize(results),
+              acceptance: acceptance(results, selected.length * rounds * 2),
               pairs: pairs(results),
               runs: results,
               requests: metrics,
@@ -353,7 +399,10 @@ try {
             2,
           ),
         )
-        await Bun.write(path.join(output, "report.md"), markdown(results, args.model, args.evaluator!))
+        await Bun.write(
+          path.join(output, "report.md"),
+          markdown(results, args.model, args.evaluator!, selected.length * rounds * 2),
+        )
         console.log(
           JSON.stringify({
             run: current.run,
@@ -373,6 +422,7 @@ try {
     }
   }
   console.log(JSON.stringify({ output, summary: summarize(results) }))
+  if (args.gate && !acceptance(results, selected.length * rounds * 2).passed) process.exitCode = 1
 } finally {
   try {
     if (service.started) await cli("service", "stop")
