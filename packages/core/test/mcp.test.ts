@@ -57,7 +57,7 @@ import { Image } from "@opencode/core/image"
 import { advance, drain } from "./lib/clock"
 import { testEffect } from "./lib/effect"
 import { imagePassthrough } from "./lib/image"
-import { location } from "./fixture/location"
+import { location, tempLocationLayer } from "./fixture/location"
 import { tmpdirScoped } from "./fixture/tmpdir"
 import { hostEnvironmentLayer, recordingEnvironmentLayer } from "./fixture/environment"
 import {
@@ -494,6 +494,7 @@ const permissions = Layer.mock(Permission.Service, {
 const events = Layer.mock(Bus.Service, { subscribe: () => Stream.never })
 const it = testEffect(
   AppNodeBuilder.build(LayerNode.group([Tool.node, McpTool.node]), [
+    Location.node.replace(tempLocationLayer),
     Mcp.node.replace(mcp),
     Permission.node.replace(permissions),
     Bus.node.replace(events),
@@ -1513,7 +1514,7 @@ it.live("discovers and reads MCP resources through Code Mode", () =>
         'const resource = await tools.opencode.read_mcp_resource({ server: "resources", uri: "docs://readme" }); return resource.contents[0].text',
       )
       const bounded = yield* ToolOutput.Service.use((output) => output.truncate(large)).pipe(
-        Effect.provide(AppNodeBuilder.build(ToolOutput.node)),
+        Effect.provide(AppNodeBuilder.build(ToolOutput.node, [Location.node.replace(tempLocationLayer)])),
       )
       expect(bounded.metadata?.truncated).toBe(true)
       expect(bounded.content[0]).toMatchObject({ type: "text" })
@@ -2259,6 +2260,7 @@ testEffect(Layer.empty).live("isolates invalid MCP tools and preserves plugin tr
       Effect.provide(
         Layer.fresh(
           AppNodeBuilder.build(LayerNode.group([Tool.node, McpTool.node, Bus.node]), [
+            Location.node.replace(tempLocationLayer),
             Mcp.node.replace(
               Layer.mock(Mcp.Service, {
                 tools: () => Ref.get(catalog),
@@ -2301,6 +2303,7 @@ testEffect(Layer.empty).effect("coalesces queued MCP tool notifications after in
   }).pipe(
     Effect.provide(
       AppNodeBuilder.build(LayerNode.group([Tool.node, McpTool.node, Bus.node]), [
+        Location.node.replace(tempLocationLayer),
         Mcp.node.replace(
           Layer.mock(Mcp.Service, {
             tools: () =>
