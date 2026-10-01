@@ -115,9 +115,7 @@ export const start = Effect.fn("ServerProcess.start")(function* <E, R>(
           Effect.provide(Layer.succeedContext(context)),
           Effect.catchCause((cause) => Effect.logError("Session restart continuity failed", { cause })),
         ),
-      ).pipe(
-        Effect.provideService(Scope.Scope, applicationScope),
-      )
+      ).pipe(Effect.provideService(Scope.Scope, applicationScope))
     }
     yield* Ref.set(application, Option.some(Context.get(context, HttpRouter.HttpRouter).asHttpEffect()))
     yield* status.ready
@@ -132,17 +130,19 @@ export const start = Effect.fn("ServerProcess.start")(function* <E, R>(
   }).pipe(
     Effect.catchCause((cause) => {
       if (!lifecycle || Cause.hasInterruptsOnly(cause)) return Effect.failCause(cause)
-      return status.fail({ message: Status.reason(cause), log }).pipe(
-        Effect.andThen(
-          Scope.close(applicationScope, Exit.failCause(cause)).pipe(
-            Effect.catchCause((cleanupCause) =>
-              Effect.logError("failed to clean up background service boot", { cause: cleanupCause }),
+      return status
+        .fail({ message: Status.reason(cause), log })
+        .pipe(
+          Effect.andThen(
+            Scope.close(applicationScope, Exit.failCause(cause)).pipe(
+              Effect.catchCause((cleanupCause) =>
+                Effect.logError("failed to clean up background service boot", { cause: cleanupCause }),
+              ),
             ),
           ),
-        ),
-        Effect.andThen(Effect.logError("background service boot failed", { cause })),
-        Effect.andThen(Effect.never),
-      )
+          Effect.andThen(Effect.logError("background service boot failed", { cause })),
+          Effect.andThen(Effect.never),
+        )
     }),
   )
   if (!lifecycle) return yield* boot
@@ -211,7 +211,12 @@ function dispatch(
     }
     if (
       !isPairingConnectURL(url) &&
-      (!ready || (!hasPtyConnectTicketURL(url) && !hasPersistentPtyConnectTicketURL(url))) &&
+      // Ready Design routes authenticate their own session-scoped ticket or cookie.
+      // Challenging here prevents a freshly opened signed review from reaching that check.
+      (!ready ||
+        (!hasPtyConnectTicketURL(url) &&
+          !hasPersistentPtyConnectTicketURL(url) &&
+          !url.pathname.startsWith("/design/session/"))) &&
       !(yield* authorizedRequest(request, auth))
     )
       return unauthorizedResponse(request)

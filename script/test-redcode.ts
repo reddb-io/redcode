@@ -80,6 +80,7 @@ const suites = {
     "test/design-access.test.ts",
     "test/design-presence.test.ts",
     "test/design-ticket.test.ts",
+    "test/design-browser-auth.test.ts",
     "test/session-diff.test.ts",
     "test/system-info.test.ts",
   ],

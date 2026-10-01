@@ -12,6 +12,7 @@ export function ComposerFooter(props: { hints: ComposerHint[] }) {
       props.hints.reduce((sum, hint) => sum + stringWidth(`${hint.label} ${hint.shortcut}`), 0) +
       Math.max(0, props.hints.length - 1) * 2,
   )
+  // Solid applies props after construction, so override the scrollbox's initial 100% content cap.
   let scroll: ScrollBoxRenderable | undefined
   return (
     <scrollbox
@@ -31,7 +32,7 @@ export function ComposerFooter(props: { hints: ComposerHint[] }) {
       scrollY={false}
       horizontalScrollbarOptions={{ visible: false }}
       verticalScrollbarOptions={{ visible: false }}
-      contentOptions={{ flexDirection: "row", gap: 2, paddingLeft: 1, width: width() }}
+      contentOptions={{ flexDirection: "row", gap: 2, paddingLeft: 1, width: width(), maxWidth: width() }}
     >
       <For each={props.hints}>
         {(hint) => (
