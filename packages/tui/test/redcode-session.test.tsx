@@ -471,9 +471,10 @@ test("/monitors opens the Monitors drawer to inspect evidence and stop observati
   setup.mockInput.pressKey("d", { ctrl: true })
   await setup.waitForFrame((frame) => frame.includes("Stop observing watch-build?"))
   setup.mockInput.pressEnter()
-  await setup.waitForFrame(
-    (frame) => cancelled.length === 1 && frame.includes("cancelled") && frame.includes("not delivered"),
-  )
+  await setup.waitForFrame((frame) => cancelled.length === 1 && frame.includes("No active monitors in this session"))
+  expect(setup.renderer.root.findDescendantById("monitor-stop-monitor_fixture")).toBeUndefined()
+  expect(setup.captureCharFrame()).not.toContain("Build started")
+  expect(setup.captureCharFrame()).not.toContain("1 monitor")
   expect(cancelled[0]).toMatch(/^\/api\/session\/ses[^/]+\/monitor\/monitor_fixture\/cancel$/)
 })
 
