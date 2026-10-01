@@ -9,7 +9,14 @@ const location = { directory, project: { id: "project", directory, canonical: di
 
 for (const scenario of [
   { width: 44, tabs: "off", keybinds: {}, shortcut: "ctrl+x n", key: "n", leader: "x" },
-  { width: 80, tabs: "auto", keybinds: { leader: "ctrl+g" }, shortcut: "ctrl+g n", key: "n", leader: "g" },
+  {
+    width: 80,
+    tabs: "auto",
+    keybinds: { leader: "ctrl+g", "session.first": "home,alt+home" },
+    shortcut: "ctrl+g n",
+    key: "n",
+    leader: "g",
+  },
   { width: 160, tabs: "off", keybinds: { "session.new": "f4" }, shortcut: "f4", key: "F4", leader: undefined },
   { width: 80, tabs: "off", keybinds: { "session.new": "none" }, shortcut: "/new", key: undefined, leader: undefined },
 ] as const) {
