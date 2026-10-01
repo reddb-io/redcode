@@ -454,7 +454,7 @@
     },
     "packages/redcode": {
       "name": "@reddb-io/redcode",
-      "version": "0.70.1",
+      "version": "0.70.2",
       "bin": {
         "redcode": "./bin/redcode",
         "redcode-rpc-sidecar": "./bin/redcode-rpc-sidecar",
