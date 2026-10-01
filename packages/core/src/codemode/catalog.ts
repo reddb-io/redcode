@@ -42,6 +42,7 @@ export const Summary = Schema.Struct({
 export type Summary = typeof Summary.Type
 
 export type Options = {
+  readonly preferred?: ReadonlyArray<string>
   readonly budget?: number
 }
 
@@ -92,7 +93,15 @@ export function summarize(inventory: Inventory, options: Options = {}): Summary 
       }
     })
 
-  const active = new Set(namespaces)
+  const active = new Set(
+    namespaces.toSorted((left, right) => {
+      const preference = (name: string) => {
+        const at = options.preferred?.indexOf(name) ?? -1
+        return at < 0 ? Infinity : at
+      }
+      return preference(left.name) - preference(right.name) || left.name.localeCompare(right.name)
+    }),
+  )
   // TODO: Bound namespace discovery once large namespace inventories and descriptions can no longer stay inline.
   let remaining =
     budget -

@@ -72,7 +72,7 @@ const layer = Layer.effect(
         ...settings,
         ...(principalUses ? { principal: undefined } : {}),
         ...(evaluatorUses ? { evaluator: undefined } : {}),
-        ...((principalUses || evaluatorUses) && settings.reasoning === "dual" ? { enabled: false } : {}),
+        ...((principalUses || evaluatorUses) && settings.reasoning !== "single" ? { enabled: false } : {}),
       }
       const learned = (yield* limits.list()).filter((entry) => entry.providerID === providerID)
       const result = {

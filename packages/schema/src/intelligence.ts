@@ -26,8 +26,10 @@ export const Evaluator = Schema.Struct({
 }).annotate({ identifier: "Intelligence.Evaluator" })
 export interface Evaluator extends Schema.Schema.Type<typeof Evaluator> {}
 
-/** `single` runs S2 only; `dual` adds the S1 evaluator to every semantic gate. */
-export const Reasoning = Schema.Literals(["single", "dual"]).annotate({ identifier: "Intelligence.Reasoning" })
+/** `observe` records S1 recommendations while S2 follows the single-reasoning path. */
+export const Reasoning = Schema.Literals(["single", "dual", "observe"]).annotate({
+  identifier: "Intelligence.Reasoning",
+})
 export type Reasoning = typeof Reasoning.Type
 
 export const Settings = Schema.Struct({
@@ -85,9 +87,12 @@ export const Response = Schema.Struct({
   usage: Schema.Struct({
     input_tokens: Schema.Int.check(Schema.isGreaterThanOrEqualTo(0)),
     output_tokens: Schema.Int.check(Schema.isGreaterThanOrEqualTo(0)),
+    /** Reported USD charge, including an explicitly free response. */
+    cost: Schema.Finite.check(Schema.isGreaterThanOrEqualTo(0)).pipe(optional),
   }),
 }).annotate({ identifier: "Intelligence.Response" })
 export const Operation = Schema.Literals([
+  "context_curation",
   "prompt_classification",
   "response_quality",
   "tool_usage",
@@ -124,6 +129,7 @@ export const Evaluation = Schema.Struct({
   subjectID: Schema.String.pipe(optional),
   candidateID: Schema.String.pipe(optional),
   attempt: Schema.Int.check(Schema.isGreaterThanOrEqualTo(0)).pipe(optional),
+  mode: Reasoning.pipe(optional),
   policy: Schema.String,
   decision: Decision,
   model: Schema.String,
@@ -136,7 +142,14 @@ export const Evaluation = Schema.Struct({
     baseURL: Text,
     model: Text,
   }).pipe(optional),
-  usage: Schema.Struct({ input_tokens: Schema.Int, output_tokens: Schema.Int }),
+  usage: Schema.Struct({
+    input_tokens: Schema.Int,
+    output_tokens: Schema.Int,
+    /** Sum of known USD charges; absent when no charge was reported. */
+    cost: Schema.Finite.check(Schema.isGreaterThanOrEqualTo(0)).pipe(optional),
+    /** Some dispatched work has unknown pricing, even if other batches reported a charge. */
+    unpriced: Schema.Int.check(Schema.isGreaterThanOrEqualTo(0)).pipe(optional),
+  }),
 }).annotate({ identifier: "Intelligence.Evaluation" })
 export interface Evaluation extends Schema.Schema.Type<typeof Evaluation> {}
 export interface Status extends Schema.Schema.Type<typeof Status> {}
@@ -164,10 +177,11 @@ export interface EvaluatorOption extends Schema.Schema.Type<typeof EvaluatorOpti
 export const Status = Schema.Struct({
   settings: Settings,
   environment: Schema.String,
+  observations: Schema.Struct({ pending: Schema.Int }).pipe(optional),
   evaluators: Schema.Array(EvaluatorOption),
   effective: Schema.Struct({
     reasoning: Reasoning,
-    source: Schema.Literals(["flag", "config", "default"]),
+    source: Schema.Literals(["session", "flag", "config", "default"]),
   }),
   router: DetectedRouter.pipe(optional),
 }).annotate({
@@ -190,3 +204,38 @@ export const Check = Schema.Struct({
 }).annotate({
   identifier: "Intelligence.Check",
 })
+
+export const SessionMode = Schema.Struct({ reasoning: Schema.NullOr(Reasoning) }).annotate({
+  identifier: "Intelligence.SessionMode",
+})
+export type SessionMode = typeof SessionMode.Type
+
+const ArtifactFields = {
+  id: Text,
+  sessionID: Schema.String,
+  subjectID: Text,
+  policy: Text,
+  created: Schema.Finite,
+}
+export const Curation = Schema.Struct({
+  ...ArtifactFields,
+  type: Schema.Literal("curation"),
+  omitted: Schema.Array(Schema.Struct({ messageID: Text, hash: Text, evaluationID: Text })),
+}).annotate({ identifier: "Intelligence.Curation" })
+export type Curation = typeof Curation.Type
+export const LearningCandidate = Schema.Struct({
+  ...ArtifactFields,
+  type: Schema.Literal("learning"),
+  status: Schema.Literals(["proposed", "approved", "rejected"]),
+  evaluations: Schema.Array(Text).check(Schema.isMinLength(2)),
+  proposal: Text,
+  reason: Schema.String.pipe(optional),
+}).annotate({ identifier: "Intelligence.LearningCandidate" })
+export type LearningCandidate = typeof LearningCandidate.Type
+export const Artifact = Schema.Union([Curation, LearningCandidate]).annotate({ identifier: "Intelligence.Artifact" })
+export type Artifact = typeof Artifact.Type
+export const LearningReview = Schema.Struct({
+  status: Schema.Literals(["approved", "rejected"]),
+  reason: Schema.String.pipe(optional),
+}).annotate({ identifier: "Intelligence.LearningReview" })
+export type LearningReview = typeof LearningReview.Type

@@ -1,8 +1,8 @@
 {
   "version": "7",
   "dialect": "sqlite",
-  "id": "9df71790-3079-43fa-b5c1-dd8d0bb29c09",
-  "prevIds": ["e0038461-f3cc-4091-89c4-1b62b488f1ef"],
+  "id": "65ec02f0-6dc2-44e9-b21b-f7c91c5105b3",
+  "prevIds": ["ab157a8b-9489-4ffa-b1ab-cbbf3d296efc"],
   "ddl": [
     {
       "name": "redcode_session_context_epoch",
@@ -1500,6 +1500,16 @@
     },
     {
       "type": "text",
+      "notNull": false,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "mode",
+      "entityType": "columns",
+      "table": "intelligence_evaluation"
+    },
+    {
+      "type": "text",
       "notNull": true,
       "autoincrement": false,
       "default": null,
@@ -1565,6 +1575,26 @@
       "default": null,
       "generated": null,
       "name": "output_tokens",
+      "entityType": "columns",
+      "table": "intelligence_evaluation"
+    },
+    {
+      "type": "real",
+      "notNull": false,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "cost",
+      "entityType": "columns",
+      "table": "intelligence_evaluation"
+    },
+    {
+      "type": "integer",
+      "notNull": false,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "unpriced_cost",
       "entityType": "columns",
       "table": "intelligence_evaluation"
     },

@@ -6,6 +6,8 @@ import { asc, eq } from "drizzle-orm"
 import { Context, DateTime, Effect, Layer } from "effect"
 import { makeGlobalNode } from "@opencode/util/effect/app-node"
 import { Database } from "../database/database.js"
+import { IntelligenceEvaluation } from "../intelligence/evaluation.js"
+import { SessionMessage } from "./message.js"
 import { SessionHistory } from "./history.js"
 import { SessionInbox } from "./inbox.js"
 import { SessionSchema } from "./schema.js"
@@ -36,6 +38,7 @@ export type Result = {
   abandoned: boolean
   /** The failure text of an errored result; empty otherwise. */
   error: string
+  exit?: number
   input: unknown
   summary: string
 }
@@ -45,7 +48,16 @@ export const hash = (value: unknown) =>
   createHash("sha256")
     .update(JSON.stringify(value) ?? "null")
     .digest("hex")
-const edits = new Set(["write", "edit", "patch", "apply_patch", "multiedit", "design_edit", "design_generate", "design_asset"])
+const edits = new Set([
+  "write",
+  "edit",
+  "patch",
+  "apply_patch",
+  "multiedit",
+  "design_edit",
+  "design_generate",
+  "design_asset",
+])
 /**
  * Results that check work rather than change it: shell commands (successful only on exit 0) and the
  * design tools that render or export the current revision. Only these are ever selected as evidence
@@ -362,6 +374,103 @@ export function command(input: unknown, limit = 120) {
   return text.length > limit ? `${text.slice(0, limit)}…` : text
 }
 
+/** Derive evidence from the ordered projection, including results outside the compacted model window. */
+export function project(messages: ReadonlyArray<SessionMessage.Info>, directory?: string): Result[] {
+  return messages.flatMap((message) =>
+    message.type === "assistant"
+      ? message.content.flatMap((part) => {
+          if (part.type !== "tool") return []
+          const settled = part.state.status === "completed" || part.state.status === "error"
+          const abandoned =
+            !settled &&
+            (message.time.completed !== undefined || message.finish !== undefined || message.error !== undefined)
+          const input = part.state.input
+          const metadata = part.state.status === "completed" ? (part.state.metadata ?? {}) : {}
+          return [
+            {
+              callID: part.id,
+              messageID: message.id,
+              tool: part.name,
+              hash:
+                typeof part.providerState?.__redcodeV1EvidenceHash === "string"
+                  ? part.providerState.__redcodeV1EvidenceHash
+                  : hash(part.state),
+              completed: DateTime.toEpochMillis(part.time.completed ?? part.time.ran ?? part.time.created),
+              ...(typeof metadata.exit === "number"
+                ? { exit: metadata.exit }
+                : typeof metadata.exitCode === "number"
+                  ? { exit: metadata.exitCode }
+                  : {}),
+              successful: part.state.status === "completed" && success(part.name, metadata),
+              errored: part.state.status === "error" || abandoned,
+              kind: kind(part.name),
+              paths: paths(part.name, input, directory),
+              settled: settled || abandoned,
+              abandoned,
+              error: part.state.status === "error" ? errorText(part.state.error) : "",
+              input,
+              summary: JSON.stringify({
+                input,
+                status: part.state.status,
+                error: part.state.status === "error" ? errorText(part.state.error) : undefined,
+                output:
+                  part.state.status === "completed"
+                    ? part.state.content.filter((item) => item.type === "text")
+                    : undefined,
+              }),
+            },
+          ]
+        })
+      : [],
+  )
+}
+
+/** Keep result status, origin and freshness separate from its bounded text. */
+export function evidence(results: ReadonlyArray<Result>, limit = 16) {
+  const usable = results.filter((result) => result.kind !== "bookkeeping")
+  return {
+    total: usable.length,
+    omitted: Math.max(0, usable.length - limit),
+    calls: usable.slice(-limit).map((result) => {
+      const at = results.indexOf(result)
+      const invalidated =
+        result.kind === "edit"
+          ? []
+          : results
+              .filter(
+                (edit) =>
+                  edit.kind === "edit" &&
+                  overlaps(edit.paths, result.paths) &&
+                  ((!edit.settled && !edit.abandoned) ||
+                    (edit.successful &&
+                      (edit.completed > result.completed ||
+                        (edit.completed === result.completed && results.indexOf(edit) > at)))),
+              )
+              .map((edit) => edit.callID)
+      return {
+        callID: result.callID,
+        messageID: result.messageID,
+        tool: result.tool,
+        hash: result.hash,
+        kind: result.kind,
+        paths: result.paths,
+        completed: result.completed,
+        successful: result.successful,
+        settled: result.settled,
+        abandoned: result.abandoned,
+        error: result.error,
+        exit: result.exit,
+        fresh: result.successful && result.settled && invalidated.length === 0,
+        invalidatedBy: invalidated,
+        detail: IntelligenceEvaluation.evidence(result.summary, {
+          reference: `${result.messageID}/${result.callID}`,
+          limit: 2_000,
+        }),
+      }
+    }),
+  }
+}
+
 const make = Effect.gen(function* () {
   const { db } = yield* Database.Service
 
@@ -398,47 +507,7 @@ const make = Effect.gen(function* () {
       ),
       ...pending,
     ]
-    const results: Result[] = messages.flatMap((message) =>
-      message.type === "assistant"
-        ? message.content.flatMap((part) => {
-            if (part.type !== "tool") return []
-            const settled = part.state.status === "completed" || part.state.status === "error"
-            const abandoned =
-              !settled &&
-              (message.time.completed !== undefined || message.finish !== undefined || message.error !== undefined)
-            const input = part.state.input
-            const metadata = part.state.status === "completed" ? (part.state.metadata ?? {}) : {}
-            return [
-              {
-                callID: part.id,
-                messageID: message.id,
-                tool: part.name,
-                hash:
-                  typeof part.providerState?.__redcodeV1EvidenceHash === "string"
-                    ? part.providerState.__redcodeV1EvidenceHash
-                    : hash(part.state),
-                completed: DateTime.toEpochMillis(part.time.completed ?? part.time.ran ?? part.time.created),
-                successful: part.state.status === "completed" && success(part.name, metadata),
-                errored: part.state.status === "error" || abandoned,
-                kind: kind(part.name),
-                paths: paths(part.name, input, directory),
-                settled: settled || abandoned,
-                abandoned,
-                error: part.state.status === "error" ? errorText(part.state.error) : "",
-                input,
-                summary: JSON.stringify({
-                  input,
-                  status: part.state.status,
-                  output:
-                    part.state.status === "completed"
-                      ? part.state.content.filter((item) => item.type === "text")
-                      : undefined,
-                }),
-              },
-            ]
-          })
-        : [],
-    )
+    const results = project(messages, directory)
     return { requests, results }
   })
 

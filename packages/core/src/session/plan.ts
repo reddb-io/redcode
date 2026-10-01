@@ -130,7 +130,7 @@ export function verdict(
   record: Intelligence.Evaluation | undefined,
   history: ReadonlyArray<Intelligence.Evaluation> = [],
 ) {
-  if (IntelligenceEvaluation.mode(settings) === "single")
+  if (IntelligenceEvaluation.mode(settings) !== "dual")
     return "System One plan review: not enabled (single reasoning)."
   if (!record) return "System One plan review: unavailable; approval remains your decision."
   if (record.decision === "unavailable")

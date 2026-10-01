@@ -729,7 +729,7 @@ const make = Effect.gen(function* () {
     }
     if (statuses?.length && recorder === "agent") {
       const settings = yield* intelligence
-        .read()
+        .read(sessionID)
         .pipe(Effect.mapError((error) => new Design.Error({ code: "unavailable", message: error.message })))
       yield* IntelligenceEvaluation.requireConfigured(settings).pipe(
         Effect.mapError((error) => new Design.Error({ code: "unavailable", message: error.message })),

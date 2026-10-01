@@ -24,6 +24,7 @@ const args = parseArgs({
     cases: { type: "string" },
     pricing: { type: "string" },
     gate: { type: "boolean", default: false },
+    modes: { type: "string", default: "single,dual" },
   },
 }).values
 if (!args.model || !args["response-model"] || !args["key-file"] || !args.output)
@@ -31,6 +32,10 @@ if (!args.model || !args["response-model"] || !args["key-file"] || !args.output)
     "Usage: bun run script/reasoning-eval/run.ts --model <fixed-router-model> --response-model <actual-upstream-model> --key-file <private-file> --output <directory> [--rounds 2]",
   )
 if (args.model.startsWith("auto/")) throw new Error("Use a pinned model, not an automatic router combo")
+const modes = Schema.decodeUnknownSync(Schema.Array(Intelligence.Reasoning))(args.modes!.split(","))
+if (new Set(modes).size !== modes.length || !modes.length) throw new Error("Select unique reasoning modes")
+if (args.gate && (!modes.includes("single") || !modes.includes("dual")))
+  throw new Error("The accuracy gate requires both single and dual")
 const rounds = Number(args.rounds)
 if (!Number.isInteger(rounds) || rounds < 1 || rounds > 10) throw new Error("Rounds must be between 1 and 10")
 const selected = args.cases ? cases.filter((item) => args.cases!.split(",").includes(item.id)) : cases
@@ -236,7 +241,7 @@ try {
   )
   for (const round of Array.from({ length: rounds }, (_, index) => index + 1)) {
     for (const [index, item] of selected.entries()) {
-      for (const mode of (round + index) % 2 ? (["single", "dual"] as const) : (["dual", "single"] as const)) {
+      for (const mode of (round + index) % 2 ? modes : modes.toReversed()) {
         current.run = `${item.id}-${round}-${mode}`
         const directory = path.join(root, item.id)
         await api("/api/experimental/intelligence", Json, "PUT", { settings: { ...settings, reasoning: mode } })
@@ -278,13 +283,15 @@ try {
             if (
               mode === "single" ||
               completed.data.outcome !== "succeeded" ||
-              values.some((value) => value.operation === "prompt_classification") ||
+              (values.some((value) => value.operation === "prompt_classification") &&
+                (mode !== "observe" || values.some((value) => value.operation === "response_quality"))) ||
               performance.now() > evaluationDeadline
             )
               return values
             await Bun.sleep(100)
           }
         })()
+        const observationWaitMs = mode === "observe" ? performance.now() - started - durationMs : 0
         const budget = await api(`/api/session/${session.data.id}/budget`, Budget)
         const assistants = messages.data.filter((message) => message.type === "assistant")
         const finals = assistants
@@ -332,7 +339,7 @@ try {
         const validationErrors = [
           ...(budget.data.spent.tokens !== s1Tokens + s2Tokens ? ["budget_accounting"] : []),
           ...(mode === "single" && evaluations.length ? ["unexpected_s1"] : []),
-          ...(mode === "dual" &&
+          ...(mode !== "single" &&
           completed.data.outcome === "succeeded" &&
           !evaluations.some((evaluation) => evaluation.operation === "prompt_classification")
             ? ["missing_classification"]
@@ -358,6 +365,7 @@ try {
           validationErrors,
           responseModels,
           durationMs,
+          observationWaitMs,
           sessionID: session.data.id,
           initialText: finals[0] ?? "",
           finalText: finals.at(-1) ?? "",

@@ -13,7 +13,28 @@ type Experiment = {
 // In-flight features anyone can opt into. Each entry is temporary: an
 // experiment either graduates (delete the entry, make the behavior
 // unconditional) or dies (delete the entry and the branch it gated).
-export const experiments: Experiment[] = []
+export const experiments: Experiment[] = [
+  {
+    id: "reasoning_verification",
+    title: "S2 verification",
+    description: "One bounded verification Step for confident S1 issues; read-only tools",
+  },
+  {
+    id: "reasoning_tool_selection",
+    title: "S1 tool selection",
+    description: "Rank the partial Code Mode catalog; preserve full discovery",
+  },
+  {
+    id: "reasoning_context_curation",
+    title: "S1 context curation",
+    description: "Omit dispensable old blocks with an inspectable manifest; retain original history",
+  },
+  {
+    id: "reasoning_learning",
+    title: "Learning candidates",
+    description: "Propose successful corrections for review; never install memory or skills",
+  },
+]
 
 export function DialogExperiments() {
   const config = useConfig()

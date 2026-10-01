@@ -563,7 +563,7 @@ export const layer = Layer.effect(
     const summaryContext = Effect.fnUntraced(function* (
       context: SessionContext.Loaded,
     ): Effect.fn.Return<SessionContext.Loaded, Failure> {
-      const settings = yield* Effect.result(intelligence.read())
+      const settings = yield* Effect.result(intelligence.read(context.session.id))
       if (Result.isFailure(settings))
         return yield* Effect.fail<Failure>({
           error: {

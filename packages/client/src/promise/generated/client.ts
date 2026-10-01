@@ -372,8 +372,17 @@ import type {
   RedskilledWorkerSteerOutput,
   RedskilledWorkerSteerStatusInput,
   RedskilledWorkerSteerStatusOutput,
+  ServerIntelligenceArtifactsInput,
+  ServerIntelligenceArtifactsOutput,
+  ServerIntelligenceReviewLearningInput,
+  ServerIntelligenceReviewLearningOutput,
+  ServerIntelligenceSessionModeInput,
+  ServerIntelligenceSessionModeOutput,
+  ServerIntelligenceEvidenceInput,
+  ServerIntelligenceEvidenceOutput,
   ServerIntelligenceHistoryInput,
   ServerIntelligenceHistoryOutput,
+  ServerIntelligenceStatusInput,
   ServerIntelligenceStatusOutput,
   ServerIntelligenceSaveInput,
   ServerIntelligenceSaveOutput,
@@ -3047,6 +3056,55 @@ export function make(options: ClientOptions) {
       },
     },
     "server.intelligence": {
+      artifacts: (input: ServerIntelligenceArtifactsInput, requestOptions?: RequestOptions) =>
+        request<ServerIntelligenceArtifactsOutput>(
+          {
+            method: "GET",
+            path: `/api/experimental/intelligence/artifacts`,
+            query: { sessionID: input["sessionID"] },
+            successStatus: 200,
+            declaredStatuses: [400, 401],
+            empty: false,
+          },
+          requestOptions,
+        ),
+      reviewLearning: (input: ServerIntelligenceReviewLearningInput, requestOptions?: RequestOptions) =>
+        request<ServerIntelligenceReviewLearningOutput>(
+          {
+            method: "PUT",
+            path: `/api/experimental/intelligence/learning/${encodeURIComponent(input.id)}`,
+            query: { sessionID: input["sessionID"] },
+            body: { status: input["status"], reason: input["reason"] },
+            successStatus: 200,
+            declaredStatuses: [400, 401],
+            empty: false,
+          },
+          requestOptions,
+        ),
+      sessionMode: (input: ServerIntelligenceSessionModeInput, requestOptions?: RequestOptions) =>
+        request<ServerIntelligenceSessionModeOutput>(
+          {
+            method: "PUT",
+            path: `/api/experimental/intelligence/session/${encodeURIComponent(input.sessionID)}`,
+            body: { reasoning: input["reasoning"] },
+            successStatus: 200,
+            declaredStatuses: [400, 401],
+            empty: false,
+          },
+          requestOptions,
+        ),
+      evidence: (input: ServerIntelligenceEvidenceInput, requestOptions?: RequestOptions) =>
+        request<ServerIntelligenceEvidenceOutput>(
+          {
+            method: "GET",
+            path: `/api/experimental/intelligence/evidence/${encodeURIComponent(input.id)}`,
+            query: { sessionID: input["sessionID"] },
+            successStatus: 200,
+            declaredStatuses: [400, 401],
+            empty: false,
+          },
+          requestOptions,
+        ),
       history: (input: ServerIntelligenceHistoryInput, requestOptions?: RequestOptions) =>
         request<ServerIntelligenceHistoryOutput>(
           {
@@ -3059,11 +3117,12 @@ export function make(options: ClientOptions) {
           },
           requestOptions,
         ),
-      status: (requestOptions?: RequestOptions) =>
+      status: (input?: ServerIntelligenceStatusInput, requestOptions?: RequestOptions) =>
         request<ServerIntelligenceStatusOutput>(
           {
             method: "GET",
             path: `/api/experimental/intelligence`,
+            query: { sessionID: input?.["sessionID"] },
             successStatus: 200,
             declaredStatuses: [400, 401],
             empty: false,

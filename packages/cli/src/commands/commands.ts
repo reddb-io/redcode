@@ -60,7 +60,7 @@ const WorktreeParams = {
 }
 
 const reasoningFlag = (description: string) =>
-  Flag.choice("reasoning", ["single", "dual"]).pipe(Flag.withDescription(description), Flag.optional)
+  Flag.choice("reasoning", ["single", "dual", "observe"]).pipe(Flag.withDescription(description), Flag.optional)
 
 const ReasoningParams = {
   reasoning: reasoningFlag(

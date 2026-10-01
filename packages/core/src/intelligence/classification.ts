@@ -1,5 +1,6 @@
 export * as IntelligenceClassification from "./classification.js"
 
+import { SessionMessage } from "@opencode/schema/session-message"
 import { Intelligence } from "@opencode/schema/intelligence"
 import { Redact } from "@opencode/util/redact"
 import { DesignTargetCriteria } from "../design/target-criteria.js"
@@ -228,7 +229,10 @@ export const questions: Record<string, Intelligence.Question> = Object.fromEntri
 )
 
 /** The classification questions plus a skill recommendation over the permitted skills. */
-export function questionsFor(skills: ReadonlyArray<{ readonly name: string; readonly description: string }>) {
+export function questionsFor(
+  skills: ReadonlyArray<{ readonly name: string; readonly description: string }>,
+  namespaces: ReadonlyArray<{ readonly name: string; readonly description: string }> = [],
+) {
   // Each group stays bounded so one very large description cannot hide the others; clipping stays explicit.
   const groups = skills.reduce<Array<Array<readonly [string, string]>>>((result, skill) => {
     const criterion = [
@@ -248,6 +252,19 @@ export function questionsFor(skills: ReadonlyArray<{ readonly name: string; read
   }, [])
   return {
     ...questions,
+    ...(namespaces.length
+      ? {
+          tool_namespace: {
+            type: "choice" as const,
+            instructions:
+              "Which available tool namespace is most relevant to the current request and continuation? Choose none if none helps. This changes listings only; all discovery and permissions remain intact.",
+            criteria: {
+              ...Object.fromEntries(namespaces.slice(0, 40).map((item) => [item.name, item.description])),
+              none: "No namespace materially helps",
+            },
+          },
+        }
+      : {}),
     ...Object.fromEntries(
       groups.map((group, index) => [
         `recommended_skill${index === 0 ? "" : `_${index}`}`,
@@ -273,6 +290,25 @@ export type HistoryEntry =
   | { readonly role: "user" | "synthetic"; readonly text: string }
   | { readonly role: "assistant"; readonly text: string; readonly tools: ReadonlyArray<string> }
 
+/** Checkpoints and chronological instruction updates resolve continuation references too. */
+export function historyEntry(message: SessionMessage.Info): HistoryEntry[] {
+  if (message.type === "user") return [{ role: "user", text: message.text }]
+  if (message.type === "synthetic" || message.type === "system") return [{ role: "synthetic", text: message.text }]
+  if (message.type === "compaction" && message.status === "completed")
+    return [{ role: "synthetic", text: message.summary }]
+  if (message.type !== "assistant") return []
+  return [
+    {
+      role: "assistant",
+      text: message.content
+        .filter((part) => part.type === "text")
+        .map((part) => part.text)
+        .join("\n"),
+      tools: message.content.flatMap((part) => (part.type === "tool" ? [part.name] : [])),
+    },
+  ]
+}
+
 /**
  * The `prompt_classification` evaluation of a user request, keyed by the request's message ID. Every text S1 reads
  * goes through `scrub`, the project's vault scrubber, and then pattern redaction, before it is clipped, so a known
@@ -287,8 +323,14 @@ export function evaluation(input: {
   }
   readonly history: ReadonlyArray<HistoryEntry>
   readonly omitted: number
-  readonly session: { readonly mode: string; readonly goal: string; readonly plan: string }
+  readonly session: {
+    readonly mode: string
+    readonly goal: string
+    readonly plan: string
+    readonly continuation?: unknown
+  }
   readonly skills: ReadonlyArray<{ readonly name: string; readonly description: string }>
+  readonly namespaces?: ReadonlyArray<{ readonly name: string; readonly description: string }>
   readonly scrub: (text: string) => string
 }): EvaluationInput {
   const clean = (text: string) => Redact.redact(input.scrub(text))
@@ -302,6 +344,10 @@ export function evaluation(input: {
       files: input.request.files?.map((file) => ({ name: file.name, mime: file.mime, contentReviewed: false })) ?? [],
       session: {
         mode: input.session.mode,
+        continuation: IntelligenceEvaluation.evidence(clean(JSON.stringify(input.session.continuation ?? null)), {
+          reference: "continuation",
+          limit: 8_000,
+        }),
         goal: IntelligenceEvaluation.evidence(clean(input.session.goal), { reference: "goal", limit: 4_000 }),
         plan: IntelligenceEvaluation.evidence(clean(input.session.plan), { reference: "plan", limit: 6_000 }),
       },
@@ -316,7 +362,7 @@ export function evaluation(input: {
         { reference: `${input.sessionID}/before/${input.request.id}`, limit: 12_000 },
       ),
     },
-    questions: questionsFor(input.skills),
+    questions: questionsFor(input.skills, input.namespaces),
   }
 }
 
@@ -337,7 +383,10 @@ export const CLEAN_LEAD = 0.25
  * missing, unavailable or sits between the bars. Unknown is never clean.
  */
 export function restricted(evaluation: Intelligence.Evaluation | undefined, id = "restricted_content") {
-  const answer = evaluation && evaluation.decision !== "unavailable" ? evaluation.answers[id] : undefined
+  const answer =
+    evaluation && evaluation.mode !== "observe" && evaluation.decision !== "unavailable"
+      ? evaluation.answers[id]
+      : undefined
   if (answer?.type !== "noul" || !Number.isFinite(answer.noul)) return "unknown" as const
   const lead = answer.noul - (1 - answer.noul)
   if (lead >= RESTRICTED_LEAD) return "flagged" as const
@@ -380,13 +429,19 @@ export function checkpointEvaluation(input: {
 
 /** A reliable choice answer, or undefined. */
 function choice(evaluation: Intelligence.Evaluation | undefined, id: string) {
-  const answer = evaluation && evaluation.decision !== "unavailable" ? evaluation.answers[id] : undefined
+  const answer =
+    evaluation && evaluation.mode !== "observe" && evaluation.decision !== "unavailable"
+      ? evaluation.answers[id]
+      : undefined
   return answer?.type === "choice" && answer.confidence >= CONFIDENCE ? answer.choice : undefined
 }
 
 /** A reliable score answer scaled to 0..1 by its legend, or undefined. */
 function unit(evaluation: Intelligence.Evaluation | undefined, id: string) {
-  const answer = evaluation && evaluation.decision !== "unavailable" ? evaluation.answers[id] : undefined
+  const answer =
+    evaluation && evaluation.mode !== "observe" && evaluation.decision !== "unavailable"
+      ? evaluation.answers[id]
+      : undefined
   if (answer?.type !== "score" || answer.confidence < CONFIDENCE || !Number.isFinite(answer.score)) return undefined
   const top = Object.keys(answer.legend).length - 1
   if (top < 1) return undefined
@@ -394,11 +449,16 @@ function unit(evaluation: Intelligence.Evaluation | undefined, id: string) {
 }
 
 /** The work route of a classification when System One gave it reliably, or undefined. */
+export const toolNamespace = (evaluation: Intelligence.Evaluation | undefined) => {
+  const namespace = choice(evaluation, "tool_namespace")
+  return namespace === "none" ? undefined : namespace
+}
+
 export const workRoute = (evaluation: Intelligence.Evaluation | undefined) => choice(evaluation, "work_route")
 
 /** The skills System One reliably recommends, most confident first, at most three. */
 export function recommendations(evaluation: Intelligence.Evaluation | undefined) {
-  if (!evaluation || evaluation.decision === "unavailable") return []
+  if (!evaluation || evaluation.mode === "observe" || evaluation.decision === "unavailable") return []
   return Object.entries(evaluation.answers)
     .flatMap(([id, answer]) => {
       if (
@@ -434,7 +494,7 @@ export function skillContext(evaluation: Intelligence.Evaluation | undefined) {
  * left out, so a consumer falls back to what the session already has.
  */
 export function assessment(evaluation: Intelligence.Evaluation | undefined) {
-  if (!evaluation || evaluation.decision === "unavailable") return undefined
+  if (!evaluation || evaluation.mode === "observe" || evaluation.decision === "unavailable") return undefined
   const clarify = evaluation.answers.must_clarify
   return {
     complexity: unit(evaluation, "complexity"),
@@ -482,7 +542,7 @@ export function routerGuidance(evaluation: Intelligence.Evaluation | undefined):
 /** The classification as the agent reads it; undefined when there is none to report. */
 export function context(evaluation: Intelligence.Evaluation | undefined) {
   if (!evaluation) return undefined
-  if (evaluation.decision === "unavailable")
+  if (evaluation.mode === "observe" || evaluation.decision === "unavailable")
     return `System One prompt classification unavailable (${evaluation.id}). Use the original user request and conversation; no classification has been verified.`
   const answers = evaluation.answers
   const route = workRoute(evaluation)

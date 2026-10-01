@@ -12,7 +12,7 @@ type SelectedModel = ModelInfo & { connection?: NonNullable<IntelligenceSettings
 export async function configureReasoning(
   context: Plugin.Context,
   saved: (settings: IntelligenceSettings) => void,
-  resume?: { reasoning: "single" | "dual"; principal?: IntelligenceSettings["principal"] },
+  resume?: { reasoning: "single" | "dual" | "observe"; principal?: IntelligenceSettings["principal"] },
 ) {
   const api = context.client["server.intelligence"]
   const status = await api.status()
@@ -42,6 +42,11 @@ export async function configureReasoning(
       title: `Reasoning mode${status.effective.source === "flag" ? " · overridden by REDCODE_REASONING" : ""}`,
       current: status.effective.reasoning,
       options: [
+        {
+          value: "observe" as const,
+          title: "Observe · S2 generates, S1 records",
+          description: "Measure S1 without changing the response or tool selection",
+        },
         { value: "single" as const, title: "Single · S2 generates", description: "S1 evaluation is off" },
         {
           value: "dual" as const,
@@ -68,8 +73,8 @@ export async function configureReasoning(
     }))
   if (!selected) return
   const principal = JSON.stringify([selected.providerID, selected.id, selected.connection])
-  const evaluator = reasoning === "dual" ? await chooseEvaluator(context, status) : undefined
-  if (reasoning === "dual" && !evaluator) return
+  const evaluator = reasoning !== "single" ? await chooseEvaluator(context, status) : undefined
+  if (reasoning !== "single" && !evaluator) return
   const available = (await context.client.model.list({ location })).data
   const currentFastModel = available.find(
     (model) =>
@@ -115,7 +120,7 @@ export async function configureReasoning(
   const model = { providerID: selected.providerID, id: selected.id, connection: selected.connection }
   const confirmed = await context.ui.dialog.confirm({
     title: "Test and save reasoning roles",
-    message: `Mode: ${reasoning === "dual" ? "Dual" : "Single"}\nS2 principal: ${modelLabel(selected, providers)}\nS2 transformations: ${transformation ? modelLabel(transformation, providers) : "reuse principal"}\nS1 evaluator: ${evaluator ? `${evaluator.evaluator.transport}/${evaluator.evaluator.model}` : "off"}${evaluator ? "\nSources and candidates will be sent to S1." : ""}\nThe selected connections will be checked before saving.${status.effective.source === "flag" ? `\nREDCODE_REASONING=${status.environment} overrides the saved mode.` : ""}`,
+    message: `Mode: ${reasoning === "observe" ? "Observe" : reasoning === "dual" ? "Dual" : "Single"}\nS2 principal: ${modelLabel(selected, providers)}\nS2 transformations: ${transformation ? modelLabel(transformation, providers) : "reuse principal"}\nS1 evaluator: ${evaluator ? `${evaluator.evaluator.transport}/${evaluator.evaluator.model}` : "off"}${evaluator ? "\nSources and candidates will be sent to S1." : ""}\nThe selected connections will be checked before saving.${status.effective.source === "flag" ? `\nREDCODE_REASONING=${status.environment} overrides the saved mode.` : ""}`,
   })
   if (!confirmed) return
   const checked = await checkConnections(context, [

@@ -799,18 +799,30 @@ export type LSPDiagnostic = {
 
 export type FormatterStatus = { name: string; extensions: Array<string>; enabled: boolean }
 
-export type IntelligenceAnswer =
-  | { type: "noul"; noul: number }
-  | { type: "choice"; choice: string; probabilities: { [x: string]: number }; confidence: number }
-  | {
-      type: "score"
-      score: number
-      legend: { [x: string]: JsonValue }
-      probabilities: { [x: string]: number }
-      confidence: number
-    }
+export type IntelligenceCuration = {
+  id: string
+  sessionID: string
+  subjectID: string
+  policy: string
+  created: number
+  type: "curation"
+  omitted: Array<{ messageID: string; hash: string; evaluationID: string }>
+}
 
-export type IntelligenceReasoning = "single" | "dual"
+export type IntelligenceLearningCandidate = {
+  id: string
+  sessionID: string
+  subjectID: string
+  policy: string
+  created: number
+  type: "learning"
+  status: "proposed" | "approved" | "rejected"
+  evaluations: Array<string>
+  proposal: string
+  reason?: string
+}
+
+export type IntelligenceReasoning = "single" | "dual" | "observe"
 
 export type IntelligenceEvaluator = {
   transport:
@@ -826,6 +838,17 @@ export type IntelligenceEvaluator = {
   model: string
   credentialID?: string
 }
+
+export type IntelligenceAnswer =
+  | { type: "noul"; noul: number }
+  | { type: "choice"; choice: string; probabilities: { [x: string]: number }; confidence: number }
+  | {
+      type: "score"
+      score: number
+      legend: { [x: string]: JsonValue }
+      probabilities: { [x: string]: number }
+      confidence: number
+    }
 
 export type RouterKind = "red-router" | "9router" | "none"
 
@@ -2269,11 +2292,14 @@ export type ConfigSession = { budget?: ConfigSessionBudget }
 
 export type HookStatus = { trust: HookTrust; definitions: Array<HookDefinition> }
 
+export type IntelligenceArtifact = IntelligenceCuration | IntelligenceLearningCandidate
+
 export type IntelligenceEvaluation = {
   id: string
   fingerprint: string
   sessionID: string
   operation:
+    | "context_curation"
     | "prompt_classification"
     | "response_quality"
     | "tool_usage"
@@ -2296,6 +2322,7 @@ export type IntelligenceEvaluation = {
   subjectID?: string
   candidateID?: string
   attempt?: number
+  mode?: IntelligenceReasoning
   policy: string
   decision: "accepted" | "needs_revision" | "inconclusive" | "unavailable"
   model: string
@@ -2316,7 +2343,7 @@ export type IntelligenceEvaluation = {
     baseURL: string
     model: string
   }
-  usage: { input_tokens: number; output_tokens: number }
+  usage: { input_tokens: number; output_tokens: number; cost?: number; unpriced?: number }
 }
 
 export type IntelligenceEvaluatorOption = { name: string; configured: boolean; evaluator: IntelligenceEvaluator }
@@ -2994,6 +3021,10 @@ export type ConfigEntry =
           }
         }
         experimental?: {
+          reasoning_verification?: boolean
+          reasoning_tool_selection?: boolean
+          reasoning_context_curation?: boolean
+          reasoning_learning?: boolean
           portable_shell_scanner?: boolean
           subagent_depth?: number
           subagent_limits?: { concurrent?: number; per_request?: number }
@@ -3106,8 +3137,9 @@ export type SessionMessageCompaction =
 export type IntelligenceStatus = {
   settings: IntelligenceSettings
   environment: string
+  observations?: { pending: number }
   evaluators: Array<IntelligenceEvaluatorOption>
-  effective: { reasoning: IntelligenceReasoning; source: "flag" | "config" | "default" }
+  effective: { reasoning: IntelligenceReasoning; source: "session" | "flag" | "config" | "default" }
   router?: IntelligenceDetectedRouter
 }
 
@@ -10319,6 +10351,33 @@ export type RedskilledWorkerSteerStatusOutput = {
   data: { worker: string; status: "none" | "pending" | "consumed"; iteration?: number }
 }
 
+export type ServerIntelligenceArtifactsInput = { readonly sessionID: { readonly sessionID: string }["sessionID"] }
+
+export type ServerIntelligenceArtifactsOutput = Array<IntelligenceArtifact>
+
+export type ServerIntelligenceReviewLearningInput = {
+  readonly id: { readonly id: string }["id"]
+  readonly sessionID: { readonly sessionID: string }["sessionID"]
+  readonly status: { readonly status: "approved" | "rejected"; readonly reason?: string }["status"]
+  readonly reason?: { readonly status: "approved" | "rejected"; readonly reason?: string }["reason"]
+}
+
+export type ServerIntelligenceReviewLearningOutput = IntelligenceArtifact
+
+export type ServerIntelligenceSessionModeInput = {
+  readonly sessionID: { readonly sessionID: string }["sessionID"]
+  readonly reasoning: { readonly reasoning: ("single" | "dual" | "observe") | null }["reasoning"]
+}
+
+export type ServerIntelligenceSessionModeOutput = IntelligenceSettings
+
+export type ServerIntelligenceEvidenceInput = {
+  readonly id: { readonly id: string }["id"]
+  readonly sessionID: { readonly sessionID: string }["sessionID"]
+}
+
+export type ServerIntelligenceEvidenceOutput = JsonValue
+
 export type ServerIntelligenceHistoryInput = {
   readonly sessionID: { readonly sessionID: string; readonly limit?: number | undefined }["sessionID"]
   readonly limit?: { readonly sessionID: string; readonly limit?: number | undefined }["limit"]
@@ -10326,13 +10385,17 @@ export type ServerIntelligenceHistoryInput = {
 
 export type ServerIntelligenceHistoryOutput = Array<IntelligenceEvaluation>
 
+export type ServerIntelligenceStatusInput = {
+  readonly sessionID?: { readonly sessionID?: string | undefined }["sessionID"]
+}
+
 export type ServerIntelligenceStatusOutput = IntelligenceStatus
 
 export type ServerIntelligenceSaveInput = {
   readonly settings: {
     readonly settings: {
       readonly enabled: boolean
-      readonly reasoning?: "single" | "dual"
+      readonly reasoning?: "single" | "dual" | "observe"
       readonly onboarding: "pending" | "deferred" | "completed"
       readonly principal?: {
         readonly id: string
@@ -10370,7 +10433,7 @@ export type ServerIntelligenceSaveInput = {
   readonly apiKey?: {
     readonly settings: {
       readonly enabled: boolean
-      readonly reasoning?: "single" | "dual"
+      readonly reasoning?: "single" | "dual" | "observe"
       readonly onboarding: "pending" | "deferred" | "completed"
       readonly principal?: {
         readonly id: string

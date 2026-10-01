@@ -4,8 +4,10 @@ import { createHash } from "node:crypto"
 import { Intelligence } from "@opencode/schema/intelligence"
 import { Effect, Schema } from "effect"
 
-export const POLICY = "semantic-v4-experimental"
+export const POLICY = "semantic-v5-evidence"
 export const UNVERIFIED = "not verified (single reasoning)"
+export type ScopedSettings = Intelligence.Settings & { readonly sessionReasoning?: Intelligence.Reasoning }
+
 export const defaults: Intelligence.Settings = { enabled: false, onboarding: "pending" }
 
 export class Error extends Schema.TaggedError<Error>()("IntelligenceError", {
@@ -17,12 +19,14 @@ export function evaluatorPreset(
   transport: Intelligence.Evaluator["transport"] = "opencode-zen",
 ): Intelligence.Evaluator {
   if (transport === "opencode-zen") return { transport, baseURL: "https://opencode.ai/zen/v1", model: "jev-1.13-free" }
-  if (transport === "openrouter") return { transport, baseURL: "https://openrouter.ai/api/alpha", model: "typesafe/jev-1.13" }
+  if (transport === "openrouter")
+    return { transport, baseURL: "https://openrouter.ai/api/alpha", model: "typesafe/jev-1.13" }
   if (transport === "typesafe") return { transport, baseURL: "https://api.typesafe.ai/v1", model: "jev-1.13.0" }
   if (transport === "red-router") return { transport, baseURL: "http://127.0.0.1:25050/v1", model: "jev-1.13.0" }
   if (transport === "cloudflare-ai-gateway")
     return { transport, baseURL: "https://api.cloudflare.com/client/v4", model: "typesafe/jev" }
-  if (transport === "vercel") return { transport, baseURL: "https://ai-gateway.vercel.sh/v4/ai", model: "typesafe-ai/jev" }
+  if (transport === "vercel")
+    return { transport, baseURL: "https://ai-gateway.vercel.sh/v4/ai", model: "typesafe-ai/jev" }
   if (transport === "vivgrid") return { transport, baseURL: "https://api.vivgrid.com/v1", model: "jev" }
   return { transport, baseURL: "https://nano-gpt.com/api/v1", model: "typesafe/jev-latest" }
 }
@@ -54,21 +58,23 @@ export function fingerprint(value: unknown) {
 
 /** The selected reasoning role is explicit even when the evaluator is disabled. */
 export function reasoning(
-  settings: Intelligence.Settings,
+  settings: ScopedSettings,
   override?: Intelligence.Reasoning,
 ): Intelligence.Status["effective"] {
   if (override) return { reasoning: override, source: "flag" }
+  if (settings.sessionReasoning) return { reasoning: settings.sessionReasoning, source: "session" }
   const environment = process.env.REDCODE_REASONING?.toLowerCase()
-  if (environment === "single" || environment === "dual") return { reasoning: environment, source: "flag" }
+  if (environment === "single" || environment === "dual" || environment === "observe")
+    return { reasoning: environment, source: "flag" }
   if (settings.reasoning) return { reasoning: settings.reasoning, source: "config" }
   if (settings.enabled && settings.evaluator) return { reasoning: "dual", source: "config" }
   return { reasoning: "single", source: "default" }
 }
 
-export const mode = (settings: Intelligence.Settings, override?: Intelligence.Reasoning) =>
+export const mode = (settings: ScopedSettings, override?: Intelligence.Reasoning) =>
   reasoning(settings, override).reasoning
 
-export function isReady(settings: Intelligence.Settings, override?: Intelligence.Reasoning) {
+export function isReady(settings: ScopedSettings, override?: Intelligence.Reasoning) {
   return (
     mode(settings, override) === "single" ||
     Boolean(
@@ -81,7 +87,10 @@ export function isReady(settings: Intelligence.Settings, override?: Intelligence
   )
 }
 
-export function requireConfigured(settings: Intelligence.Settings, override?: Intelligence.Reasoning): Effect.Effect<void, Error> {
+export function requireConfigured(
+  settings: ScopedSettings,
+  override?: Intelligence.Reasoning,
+): Effect.Effect<void, Error> {
   if (isReady(settings, override)) return Effect.void
   return Effect.fail(
     new Error({ message: "Configure and test System One and System Two before enabling dual reasoning" }),
@@ -123,7 +132,9 @@ function validateAnswers(questions: Record<string, Intelligence.Question>, respo
     const probabilities = Object.entries(answer.probabilities)
     if (
       !probabilities.length ||
-      probabilities.some(([label, value]) => !labels.includes(label) || !Number.isFinite(value) || value < 0 || value > 1) ||
+      probabilities.some(
+        ([label, value]) => !labels.includes(label) || !Number.isFinite(value) || value < 0 || value > 1,
+      ) ||
       Math.abs(probabilities.reduce((total, [, value]) => total + value, 0) - 1) > 0.02 ||
       (answer.type === "choice" && (!labels.includes(answer.choice) || !(answer.probabilities[answer.choice]! > 0))) ||
       (answer.type === "score" && (answer.score < 0 || answer.score > labels.length - 1))
@@ -161,28 +172,31 @@ export function decide(
     if (answer.type !== "noul") return "accepted" as const
     if (answer.noul > clear) issues.push(id)
     return answer.noul >= REVISION
-      ? "needs_revision" as const
+      ? ("needs_revision" as const)
       : answer.noul > clear
-        ? "inconclusive" as const
-        : "accepted" as const
+        ? ("inconclusive" as const)
+        : ("accepted" as const)
   })
   return {
     decision: states.includes("needs_revision")
-      ? "needs_revision" as const
+      ? ("needs_revision" as const)
       : states.includes("inconclusive")
-        ? "inconclusive" as const
-        : "accepted" as const,
+        ? ("inconclusive" as const)
+        : ("accepted" as const),
     issues,
   }
 }
 
-export function validateClassification(questions: Record<string, Intelligence.Question>, response: Intelligence.Response) {
+export function validateClassification(
+  questions: Record<string, Intelligence.Question>,
+  response: Intelligence.Response,
+) {
   validateAnswers(questions, response)
   const issues = Object.keys(questions).filter((id) => {
     const answer = response.answers[id]!
     return answer.type !== "noul" && answer.confidence < 0.6
   })
-  return { decision: issues.length ? "inconclusive" as const : "accepted" as const, issues }
+  return { decision: issues.length ? ("inconclusive" as const) : ("accepted" as const), issues }
 }
 
 export function questions(checks: Record<string, string>): Record<string, Intelligence.Question> {
@@ -220,8 +234,9 @@ export function requireAccepted(record: Intelligence.Evaluation | undefined): Ef
   )
 }
 
-export function advise(settings: Intelligence.Settings, record: Intelligence.Evaluation | undefined) {
-  if (mode(settings) === "single" || record?.decision === "accepted") return Effect.succeed(undefined as string | undefined)
+export function advise(settings: ScopedSettings, record: Intelligence.Evaluation | undefined) {
+  if (mode(settings) !== "dual" || record?.decision === "accepted")
+    return Effect.succeed(undefined as string | undefined)
   if (record?.decision === "needs_revision") return requireAccepted(record).pipe(Effect.as(undefined))
   if (record?.decision === "inconclusive")
     return Effect.succeed(
@@ -232,21 +247,30 @@ export function advise(settings: Intelligence.Settings, record: Intelligence.Eva
   )
 }
 
-export function approved(settings: Intelligence.Settings, record: Intelligence.Evaluation | undefined) {
-  if (mode(settings) === "single" || record?.decision === "accepted") return undefined
+export function approved(settings: ScopedSettings, record: Intelligence.Evaluation | undefined) {
+  if (mode(settings) !== "dual" || record?.decision === "accepted") return undefined
   if (record?.decision === "needs_revision" || record?.decision === "inconclusive")
     return `Unverified: System One review ${record.decision} (${record.id}) on ${issueSummary(record)}. The user-approved update was applied.`
   return `Unverified: System One review unavailable${record ? ` (${record.id}): ${issueSummary(record)}` : ""}. The user-approved update was applied without review.`
 }
 
-export function requireReview(settings: Intelligence.Settings, record: Intelligence.Evaluation | undefined): Effect.Effect<void, Error> {
-  return mode(settings) === "single" ? Effect.void : requireAccepted(record)
+export function requireReview(
+  settings: ScopedSettings,
+  record: Intelligence.Evaluation | undefined,
+): Effect.Effect<void, Error> {
+  return mode(settings) !== "dual" ? Effect.void : requireAccepted(record)
 }
 
 export function promptPriority(evaluation: Intelligence.Evaluation | undefined) {
   const impact = evaluation?.answers.impact
   const time = evaluation?.answers.time_pressure
-  if (!evaluation || evaluation.decision === "unavailable" || impact?.type !== "score" || time?.type !== "choice")
+  if (
+    !evaluation ||
+    evaluation.mode === "observe" ||
+    evaluation.decision === "unavailable" ||
+    impact?.type !== "score" ||
+    time?.type !== "choice"
+  )
     return undefined
   const reliableImpact = impact.confidence >= 0.6 ? impact.score : undefined
   const reliableTime =

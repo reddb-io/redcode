@@ -1,5 +1,6 @@
 export * as IntelligenceResponse from "./response.js"
 
+import { Redact } from "@opencode/util/redact"
 import { Intelligence } from "@opencode/schema/intelligence"
 import type { EvaluationInput } from "../intelligence.js"
 import { IntelligenceEvaluation } from "./evaluation.js"
@@ -75,7 +76,12 @@ export function evaluation(input: {
   readonly tasks: ReadonlyArray<unknown>
   readonly goal: unknown
   readonly route?: string
+  readonly scrub?: (text: string) => string
 }): EvaluationInput {
+  const clean = (value: unknown) => {
+    const text = typeof value === "string" ? value : (JSON.stringify(value) ?? "null")
+    return Redact.redact(input.scrub ? input.scrub(text) : text)
+  }
   return {
     sessionID: input.sessionID,
     operation: "response_quality",
@@ -84,12 +90,29 @@ export function evaluation(input: {
     candidateID: input.candidate.id,
     attempt: input.attempt,
     sources: {
-      request: IntelligenceEvaluation.evidence(input.request.text, { reference: input.request.id, limit: 6_000 }),
-      tasks: IntelligenceEvaluation.evidence(input.tasks, { reference: `${input.sessionID}/tasks`, limit: 3_000 }),
-      goal: IntelligenceEvaluation.evidence(input.goal ?? null, { reference: `${input.sessionID}/goal`, limit: 2_000 }),
-      tools: IntelligenceEvaluation.evidence(input.tools, { reference: `${input.sessionID}/tools`, limit: 8_000 }),
+      request: IntelligenceEvaluation.evidence(clean(input.request.text), {
+        reference: input.request.id,
+        limit: 6_000,
+      }),
+      tasks: IntelligenceEvaluation.evidence(clean(input.tasks), {
+        reference: `${input.sessionID}/tasks`,
+        limit: 3_000,
+      }),
+      goal: IntelligenceEvaluation.evidence(clean(input.goal ?? null), {
+        reference: `${input.sessionID}/goal`,
+        limit: 2_000,
+      }),
+      freshness:
+        "Only successful, settled, fresh checks support verification. An edit invalidates earlier overlapping checks. Truncated text is not complete evidence; retrieve by durable IDs.",
+      tools: IntelligenceEvaluation.evidence(clean(input.tools), {
+        reference: `${input.sessionID}/tools`,
+        limit: 36_000,
+      }),
     },
-    candidate: IntelligenceEvaluation.evidence(input.candidate.text, { reference: input.candidate.id, limit: 6_000 }),
+    candidate: IntelligenceEvaluation.evidence(clean(input.candidate.text), {
+      reference: input.candidate.id,
+      limit: 6_000,
+    }),
     questions: questionsFor({
       tools: input.tools.total > 0,
       tasks: input.tasks.length > 0,
@@ -106,7 +129,7 @@ export function evaluation(input: {
  */
 export function verdict(evaluation: Intelligence.Evaluation | undefined, repaired: ReadonlyArray<string>) {
   const established =
-    !evaluation || evaluation.decision === "unavailable"
+    !evaluation || evaluation.mode === "observe" || evaluation.decision === "unavailable"
       ? []
       : evaluation.issues.filter((id) => {
           const answer = evaluation.answers[id]

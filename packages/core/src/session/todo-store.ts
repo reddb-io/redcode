@@ -68,7 +68,7 @@ const make = Effect.gen(function* () {
       Effect.mapError((error) => new SessionTodo.Error({ message: `Invalid task update: ${error.message}` })),
     )
     if (!incoming.length) return { todos: yield* get(input.sessionID), notes: [] }
-    const settings = yield* intelligence.read().pipe(
+    const settings = yield* intelligence.read(input.sessionID).pipe(
       Effect.tap((settings) =>
         input.origin?.type === "plan" ? Effect.void : IntelligenceEvaluation.requireConfigured(settings),
       ),
@@ -485,7 +485,7 @@ const make = Effect.gen(function* () {
     })
     yield* settle(yield* get(input.sessionID))
     if (input.origin?.type !== "plan")
-      yield* intelligence.read().pipe(
+      yield* intelligence.read(input.sessionID).pipe(
         Effect.flatMap(IntelligenceEvaluation.requireConfigured),
         Effect.mapError((error) => new SessionTodo.Error({ message: error.message })),
       )

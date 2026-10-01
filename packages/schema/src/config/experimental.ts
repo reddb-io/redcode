@@ -5,6 +5,21 @@ import { NonNegativeInt, PositiveInt, optional } from "../schema.js"
 import { ConfigPolicy } from "./policy.js"
 
 export class Info extends Schema.Class<Info>("ConfigExperimental.Info")({
+  reasoning_verification: Schema.Boolean.pipe(optional).annotate({
+    description: "Allow at most one bounded S2 verification Step after a confident S1 response issue. Off by default.",
+  }),
+  reasoning_tool_selection: Schema.Boolean.pipe(optional).annotate({
+    description:
+      "Rank the existing partial Code Mode catalog using S1 namespace recommendations. Full search remains available. Off by default.",
+  }),
+  reasoning_context_curation: Schema.Boolean.pipe(optional).annotate({
+    description:
+      "Omit dispensable old read-only assistant blocks from the model request with an inspectable manifest. Original history remains intact. Off by default.",
+  }),
+  reasoning_learning: Schema.Boolean.pipe(optional).annotate({
+    description:
+      "Propose evidence-backed learning candidates after a successful correction. Never installs memories or skills. Off by default.",
+  }),
   portable_shell_scanner: Schema.Boolean.pipe(optional).annotate({
     description: "Enable the experimental portable shell permission scanner. Defaults to false.",
   }),

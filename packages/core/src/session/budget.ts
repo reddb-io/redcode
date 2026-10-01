@@ -100,7 +100,7 @@ const make = Effect.gen(function* () {
   const bus = yield* Bus.Service
   const guards = yield* SessionGuardLog.Service
 
-  // S1 evaluations report tokens without pricing, so their cost remains explicitly unknown.
+  // Older S1 rows have no pricing. Keep them unknown while summing newly reported charges.
   const totals = Effect.fn("SessionBudget.totals")(function* (sessionID: SessionSchema.ID) {
     const rows = yield* database.db
       .all<SessionBudget.Totals>(
@@ -124,9 +124,11 @@ const make = Effect.gen(function* () {
           JOIN descendants ON descendants.id = ${SessionTable.id}
           UNION ALL
           SELECT
-            0 AS cost,
+            coalesce(${IntelligenceEvaluationTable.cost}, 0) AS cost,
             ${IntelligenceEvaluationTable.input_tokens} + ${IntelligenceEvaluationTable.output_tokens} AS tokens,
-            CASE WHEN ${IntelligenceEvaluationTable.input_tokens} + ${IntelligenceEvaluationTable.output_tokens} > 0
+            CASE WHEN ${IntelligenceEvaluationTable.unpriced_cost} > 0 THEN 1
+              WHEN ${IntelligenceEvaluationTable.cost} IS NULL AND
+                ${IntelligenceEvaluationTable.input_tokens} + ${IntelligenceEvaluationTable.output_tokens} > 0
               THEN 1 ELSE 0 END AS unpriced
           FROM ${IntelligenceEvaluationTable}
           JOIN descendants ON descendants.id = ${IntelligenceEvaluationTable.session_id}

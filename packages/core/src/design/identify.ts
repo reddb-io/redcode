@@ -224,7 +224,7 @@ export const identify = <E, R>(input: {
         return identified
       })
 
-    if (input.mode === "single" && input.answer) return yield* save(fromAnswer(input.answer))
+    if (input.mode !== "dual" && input.answer) return yield* save(fromAnswer(input.answer))
     // A background warm-up and a design created meanwhile share one identification, so one S1 call:
     // the first registers itself before it reads the cache, the second waits for its result.
     const flight = `${key}\0${fingerprint}`
@@ -240,7 +240,7 @@ export const identify = <E, R>(input: {
           ...heuristic(scanned, pack, "no stylesheet with tokens, token file, component directory or Storybook found"),
           verified: true,
         }
-      if (input.mode === "single")
+      if (input.mode !== "dual")
         return heuristic(
           scanned,
           pack,

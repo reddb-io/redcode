@@ -5785,12 +5785,118 @@ export interface RedskilledApi<E = never> {
   }
 }
 
+export type ServerIntelligenceArtifactsInput = { readonly sessionID: Session.ID }
+export type ServerIntelligenceArtifactsOutput = ReadonlyArray<
+  | {
+      readonly id: string
+      readonly sessionID: string
+      readonly subjectID: string
+      readonly policy: string
+      readonly created: number
+      readonly type: "curation"
+      readonly omitted: ReadonlyArray<{
+        readonly messageID: string
+        readonly hash: string
+        readonly evaluationID: string
+      }>
+    }
+  | {
+      readonly id: string
+      readonly sessionID: string
+      readonly subjectID: string
+      readonly policy: string
+      readonly created: number
+      readonly type: "learning"
+      readonly status: "proposed" | "approved" | "rejected"
+      readonly evaluations: ReadonlyArray<string>
+      readonly proposal: string
+      readonly reason?: string | undefined
+    }
+>
+export type ServerIntelligenceArtifactsOperation<E = never> = (
+  input: ServerIntelligenceArtifactsInput,
+) => Effect.Effect<ServerIntelligenceArtifactsOutput, E>
+
+export type ServerIntelligenceReviewLearningInput = {
+  readonly id: string
+  readonly sessionID: Session.ID
+  readonly status: "approved" | "rejected"
+  readonly reason?: string | undefined
+}
+export type ServerIntelligenceReviewLearningOutput =
+  | {
+      readonly id: string
+      readonly sessionID: string
+      readonly subjectID: string
+      readonly policy: string
+      readonly created: number
+      readonly type: "curation"
+      readonly omitted: ReadonlyArray<{
+        readonly messageID: string
+        readonly hash: string
+        readonly evaluationID: string
+      }>
+    }
+  | {
+      readonly id: string
+      readonly sessionID: string
+      readonly subjectID: string
+      readonly policy: string
+      readonly created: number
+      readonly type: "learning"
+      readonly status: "proposed" | "approved" | "rejected"
+      readonly evaluations: ReadonlyArray<string>
+      readonly proposal: string
+      readonly reason?: string | undefined
+    }
+export type ServerIntelligenceReviewLearningOperation<E = never> = (
+  input: ServerIntelligenceReviewLearningInput,
+) => Effect.Effect<ServerIntelligenceReviewLearningOutput, E>
+
+export type ServerIntelligenceSessionModeInput = {
+  readonly sessionID: Session.ID
+  readonly reasoning: ("single" | "dual" | "observe") | null
+}
+export type ServerIntelligenceSessionModeOutput = {
+  readonly enabled: boolean
+  readonly reasoning?: ("single" | "dual" | "observe") | undefined
+  readonly onboarding: "pending" | "deferred" | "completed"
+  readonly principal?: Model.Ref | undefined
+  readonly fast?: Model.Ref | undefined
+  readonly evaluator?:
+    | {
+        readonly transport:
+          | "opencode-zen"
+          | "openrouter"
+          | "typesafe"
+          | "red-router"
+          | "cloudflare-ai-gateway"
+          | "vercel"
+          | "vivgrid"
+          | "nano-gpt"
+        readonly baseURL: string
+        readonly model: string
+        readonly credentialID?: Credential.ID | undefined
+      }
+    | undefined
+}
+export type ServerIntelligenceSessionModeOperation<E = never> = (
+  input: ServerIntelligenceSessionModeInput,
+) => Effect.Effect<ServerIntelligenceSessionModeOutput, E>
+
+export type ServerIntelligenceEvidenceInput = { readonly id: string; readonly sessionID: Session.ID }
+export type ServerIntelligenceEvidenceOutput = Schema.Json
+export type ServerIntelligenceEvidenceOperation<E = never> = (
+  input: ServerIntelligenceEvidenceInput,
+) => Effect.Effect<ServerIntelligenceEvidenceOutput, E>
+
 export type ServerIntelligenceHistoryInput = { readonly sessionID: Session.ID; readonly limit?: number | undefined }
 export type ServerIntelligenceHistoryOutput = ReadonlyArray<{
   readonly id: string
   readonly fingerprint: string
   readonly sessionID: string
   readonly operation:
+    | "context_curation"
     | "prompt_classification"
     | "response_quality"
     | "tool_usage"
@@ -5813,6 +5919,7 @@ export type ServerIntelligenceHistoryOutput = ReadonlyArray<{
   readonly subjectID?: string | undefined
   readonly candidateID?: string | undefined
   readonly attempt?: number | undefined
+  readonly mode?: ("single" | "dual" | "observe") | undefined
   readonly policy: string
   readonly decision: "accepted" | "needs_revision" | "inconclusive" | "unavailable"
   readonly model: string
@@ -5851,16 +5958,22 @@ export type ServerIntelligenceHistoryOutput = ReadonlyArray<{
         readonly model: string
       }
     | undefined
-  readonly usage: { readonly input_tokens: number; readonly output_tokens: number }
+  readonly usage: {
+    readonly input_tokens: number
+    readonly output_tokens: number
+    readonly cost?: number | undefined
+    readonly unpriced?: number | undefined
+  }
 }>
 export type ServerIntelligenceHistoryOperation<E = never> = (
   input: ServerIntelligenceHistoryInput,
 ) => Effect.Effect<ServerIntelligenceHistoryOutput, E>
 
+export type ServerIntelligenceStatusInput = { readonly sessionID?: Session.ID | undefined }
 export type ServerIntelligenceStatusOutput = {
   readonly settings: {
     readonly enabled: boolean
-    readonly reasoning?: ("single" | "dual") | undefined
+    readonly reasoning?: ("single" | "dual" | "observe") | undefined
     readonly onboarding: "pending" | "deferred" | "completed"
     readonly principal?: Model.Ref | undefined
     readonly fast?: Model.Ref | undefined
@@ -5882,6 +5995,7 @@ export type ServerIntelligenceStatusOutput = {
       | undefined
   }
   readonly environment: string
+  readonly observations?: { readonly pending: number } | undefined
   readonly evaluators: ReadonlyArray<{
     readonly name: string
     readonly configured: boolean
@@ -5900,7 +6014,10 @@ export type ServerIntelligenceStatusOutput = {
       readonly credentialID?: Credential.ID | undefined
     }
   }>
-  readonly effective: { readonly reasoning: "single" | "dual"; readonly source: "flag" | "config" | "default" }
+  readonly effective: {
+    readonly reasoning: "single" | "dual" | "observe"
+    readonly source: "session" | "flag" | "config" | "default"
+  }
   readonly router?:
     | {
         readonly providerID: string
@@ -5986,12 +6103,14 @@ export type ServerIntelligenceStatusOutput = {
       }
     | undefined
 }
-export type ServerIntelligenceStatusOperation<E = never> = () => Effect.Effect<ServerIntelligenceStatusOutput, E>
+export type ServerIntelligenceStatusOperation<E = never> = (
+  input?: ServerIntelligenceStatusInput,
+) => Effect.Effect<ServerIntelligenceStatusOutput, E>
 
 export type ServerIntelligenceSaveInput = {
   readonly settings: {
     readonly enabled: boolean
-    readonly reasoning?: ("single" | "dual") | undefined
+    readonly reasoning?: ("single" | "dual" | "observe") | undefined
     readonly onboarding: "pending" | "deferred" | "completed"
     readonly principal?: Model.Ref | undefined
     readonly fast?: Model.Ref | undefined
@@ -6016,7 +6135,7 @@ export type ServerIntelligenceSaveInput = {
 }
 export type ServerIntelligenceSaveOutput = {
   readonly enabled: boolean
-  readonly reasoning?: ("single" | "dual") | undefined
+  readonly reasoning?: ("single" | "dual" | "observe") | undefined
   readonly onboarding: "pending" | "deferred" | "completed"
   readonly principal?: Model.Ref | undefined
   readonly fast?: Model.Ref | undefined
@@ -6103,6 +6222,10 @@ export type ServerIntelligenceProbeOperation<E = never> = (
 ) => Effect.Effect<ServerIntelligenceProbeOutput, E>
 
 export interface ServerIntelligenceApi<E = never> {
+  readonly artifacts: ServerIntelligenceArtifactsOperation<E>
+  readonly reviewLearning: ServerIntelligenceReviewLearningOperation<E>
+  readonly sessionMode: ServerIntelligenceSessionModeOperation<E>
+  readonly evidence: ServerIntelligenceEvidenceOperation<E>
   readonly history: ServerIntelligenceHistoryOperation<E>
   readonly status: ServerIntelligenceStatusOperation<E>
   readonly save: ServerIntelligenceSaveOperation<E>

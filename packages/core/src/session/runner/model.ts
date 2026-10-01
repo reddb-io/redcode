@@ -89,7 +89,7 @@ const layer = Layer.effect(
     const intelligence = yield* Intelligence.Service
     return Service.of({
       resolve: Effect.fn("SessionRunnerModel.resolve")(function* (session, available) {
-        const settings = yield* intelligence.read()
+        const settings = yield* intelligence.read(session.id)
         yield* IntelligenceEvaluation.requireConfigured(settings)
         const selected =
           settings.enabled && !session.model && settings.principal ? { ...session, model: settings.principal } : session

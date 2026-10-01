@@ -1,5 +1,8 @@
 export * as SessionContext from "./context.js"
 
+import { Intelligence } from "../intelligence.js"
+import { IntelligenceEvaluation } from "../intelligence/evaluation.js"
+import { IntelligenceClassification } from "../intelligence/classification.js"
 import { Model } from "../model.js"
 import { Config } from "../config.js"
 import { Permission } from "../permission.js"
@@ -81,6 +84,7 @@ export class Service extends Context.Service<Service, Interface>()("@opencode/Se
 const layer = Layer.effect(
   Service,
   Effect.gen(function* () {
+    const intelligence = yield* Intelligence.Service
     const agents = yield* Agent.Service
     const config = yield* Config.Service
     const builtins = yield* InstructionBuiltIns.Service
@@ -144,6 +148,19 @@ const layer = Layer.effect(
       const permissions = Permission.forAgent(agent.info, session.permissions)
       const codeMode = CodeModeTool.gate(Config.latestExperimental(yield* config.entries(), "code_mode"))
       const tools = yield* registry.snapshot(permissions, { codeMode })
+      const settings = yield* intelligence.read(sessionID)
+      const user = (yield* store.messages({ sessionID, type: "user", limit: 1 }))[0]
+      const classified =
+        user &&
+        IntelligenceEvaluation.mode(settings) === "dual" &&
+        Config.latestExperimental(yield* config.entries(), "reasoning_tool_selection") === true
+          ? (yield* intelligence.history(sessionID, {
+              operation: "prompt_classification",
+              subjectID: user.id,
+              limit: 1,
+            }))[0]
+          : undefined
+      const preferred = IntelligenceClassification.toolNamespace(classified)
       const legacy = yield* RedcodeLegacyInstructions.load(db, sessionID)
       if (legacy?.phase === "baseline")
         return { session, agent: { ...agent, info: agent.info }, instructions: legacy.instructions, tools }
@@ -164,7 +181,7 @@ const layer = Layer.effect(
         instructions: Instructions.combine([
           legacy?.instructions ?? Instructions.empty,
           loaded.builtins,
-          CodeModeInstructions.make(tools.codeModeCatalog),
+          CodeModeInstructions.make(tools.codeModeCatalog, preferred ? { preferred: [preferred] } : undefined),
           loaded.discovery,
           loaded.skills,
           loaded.references,
@@ -211,6 +228,7 @@ export const node = makeLocationNode({
   service: Service,
   layer,
   deps: [
+    Intelligence.node,
     Agent.node,
     Config.node,
     Model.node,

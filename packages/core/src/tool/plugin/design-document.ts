@@ -70,7 +70,7 @@ export const Plugin = {
     ) {
       const configured = yield* designs.configured(context.sessionID)
       const stale = yield* Effect.promise(() => DesignProposal.stale(location.directory, configured).catch(() => false))
-      const mode = IntelligenceEvaluation.mode(yield* intelligence.read())
+      const mode = IntelligenceEvaluation.mode(yield* intelligence.read(context.sessionID))
       return {
         directory: location.directory,
         application,
@@ -132,7 +132,7 @@ export const Plugin = {
                   source,
                 })
                 if (input.action === "create") {
-                  const mode = IntelligenceEvaluation.mode(yield* intelligence.read())
+                  const mode = IntelligenceEvaluation.mode(yield* intelligence.read(context.sessionID))
                   const memory = path.join(global.state, DesignTarget.STATE)
                   const created = yield* DesignProposal.around(
                     yield* proposal(context, input.input.application, input.system, true),

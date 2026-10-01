@@ -74,7 +74,7 @@ export const Plugin = {
               if (problem) return yield* new ToolFailure({ message: problem })
               const originalRequests = (yield* facts.load(context.sessionID)).requests
               const requests = originalRequests.filter((request) => !request.pending)
-              const settings = yield* intelligence.read()
+              const settings = yield* intelligence.read(context.sessionID)
               const evaluation = yield* intelligence
                 .evaluate({
                   sessionID: context.sessionID,

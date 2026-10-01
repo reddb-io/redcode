@@ -36,6 +36,7 @@ import { SessionBudget } from "../budget.js"
 import { SessionGuardLog } from "../guard-log.js"
 import { SessionPlan } from "../plan.js"
 import { SessionGoalCompletion } from "../goal-completion.js"
+import { SessionTaskFacts } from "../task-facts.js"
 import { SessionTodo } from "../todo.js"
 import { SessionTodoStore } from "../todo-store.js"
 import { HookRuntime } from "../../hook.js"
@@ -57,8 +58,14 @@ import { LoopGuard } from "../loop-guard.js"
 import { SessionStall } from "../stall.js"
 import { SessionStopLoss } from "../stop-loss.js"
 import { Intelligence } from "../../intelligence.js"
+import { CodeModeCatalog } from "../../codemode/catalog.js"
 import { IntelligenceClassification } from "../../intelligence/classification.js"
 import { IntelligenceEvaluation } from "../../intelligence/evaluation.js"
+import { Tool } from "../../tool.js"
+import { IntelligenceArtifacts } from "../../intelligence/artifacts.js"
+import { IntelligenceLearning } from "../../intelligence/learning.js"
+import { SessionContextCuration } from "../context-curation.js"
+import { IntelligenceVerification } from "../../intelligence/verification.js"
 import { IntelligenceResponse } from "../../intelligence/response.js"
 import { Job } from "../../job.js"
 import { Skill } from "../../skill.js"
@@ -108,7 +115,9 @@ const layer = Layer.effect(
     const goals = yield* SessionGoal.Service
     const budgets = yield* SessionBudget.Service
     const guards = yield* SessionGuardLog.Service
+    const artifacts = yield* IntelligenceArtifacts.Service
     const intelligence = yield* Intelligence.Service
+    const facts = yield* SessionTaskFacts.Service
     const plans = yield* SessionPlan.Service
     const monitors = yield* MonitorRuntime.Service
     const inbox = yield* SessionInbox.Service
@@ -118,19 +127,22 @@ const layer = Layer.effect(
     const location = yield* Location.Service
     const global = yield* Global.Service
     const vault = yield* Vault.Service
+    const registry = yield* Tool.Service
     const steps = yield* SessionStep.make
     // Title generation starts once input is visible and must not delay model execution.
     const titles = yield* FiberMap.make<SessionSchema.ID, void, never>()
     // Prompt classifications outlive the Step that started them, so a slow one still lands in history.
     const classifications = yield* FiberMap.make<SessionMessage.ID>()
+    const observedClassifications = new Set<SessionMessage.ID>()
     // Design-system warm-ups run beside the Step; `warmed` holds the user message each Session last warmed for.
     const warmups = yield* FiberMap.make<SessionSchema.ID, void, never>()
     const warmed = new Map<SessionSchema.ID, SessionMessage.ID>()
     // Whether System One takes part; an unreadable configuration reads as single reasoning, never a failed prompt.
-    const dual = intelligence.read().pipe(
-      Effect.map((settings) => settings.enabled && IntelligenceEvaluation.mode(settings) === "dual"),
-      Effect.orElseSucceed(() => false),
-    )
+    const dual = (sessionID: string) =>
+      intelligence.read(sessionID).pipe(
+        Effect.map((settings) => settings.enabled && IntelligenceEvaluation.mode(settings) === "dual"),
+        Effect.orElseSucceed(() => false),
+      )
 
     const drain = Effect.fn("SessionRunner.drain")(function* (input: Parameters<Interface["drain"]>[0]) {
       const sessionID = input.sessionID
@@ -283,7 +295,11 @@ const layer = Layer.effect(
         const configuredBudget = SessionBudget.configured(Config.latest(yield* config.entries(), "session")?.budget)
         if (!(yield* budgets.admit(sessionID, configuredBudget))) return DrainResult.Complete()
         // Classified before the goal accounts the Step, so an interruption while waiting spends nothing.
-        const classification = yield* classify(next.context)
+        const verification = IntelligenceVerification.state(
+          (yield* store.messages({ sessionID, order: "desc", limit: RECENT })).toReversed(),
+        )
+        if (verification && !verification.pending) return DrainResult.Complete()
+        const classification = verification?.pending ? undefined : yield* classify(next.context)
         // What System One made of the request steers a RedRouter's requests for this Step; without a
         // classification the previous request's guidance is forgotten, never carried over.
         ProviderRouter.guide(sessionID, IntelligenceClassification.routerGuidance(classification))
@@ -321,9 +337,10 @@ const layer = Layer.effect(
           }),
         )
         if (Exit.isFailure(result)) return yield* Effect.failCause(result.cause)
-        continuing = result.value
+        continuing = verification?.pending ? false : result.value
         if (
           continuing &&
+          !verification?.pending &&
           !guardStopped &&
           next.context.agent.id !== "question" &&
           !(yield* SessionInbox.nextPromotable(db, sessionID, "steer")) &&
@@ -338,6 +355,7 @@ const layer = Layer.effect(
         }
         if (
           !continuing &&
+          !verification?.pending &&
           !guardStopped &&
           // A Design reply can hand a preview to the reviewer while approval tasks remain pending.
           !["question", "design"].includes(next.context.agent.id) &&
@@ -376,11 +394,13 @@ const layer = Layer.effect(
           !(yield* monitors.list(sessionID)).some(Monitor.parks)
         ) {
           const started = yield* startReview(next.context, review)
-          const pursued = yield* pursueGoal(next.context, goalLoop).pipe(
-            // A goal changed by the user while it was judged is theirs to resume.
-            Effect.catchTag("SessionGoal.Error", () => Effect.succeed({ memory: goalLoop, continued: false })),
-            Effect.onError(() => (started ? Fiber.interrupt(started) : Effect.void)),
-          )
+          const pursued = verification?.pending
+            ? { memory: goalLoop, continued: false }
+            : yield* pursueGoal(next.context, goalLoop).pipe(
+                // A goal changed by the user while it was judged is theirs to resume.
+                Effect.catchTag("SessionGoal.Error", () => Effect.succeed({ memory: goalLoop, continued: false })),
+                Effect.onError(() => (started ? Fiber.interrupt(started) : Effect.void)),
+              )
           goalLoop = pursued.memory
           if (pursued.continued && started) yield* Fiber.interrupt(started)
           if (!pursued.continued) {
@@ -430,7 +450,7 @@ const layer = Layer.effect(
         now: yield* Clock.currentTimeMillis,
         started: turn.started,
       })
-      const settings = yield* intelligence.read()
+      const settings = yield* intelligence.read(sessionID)
       const asked = settings.enabled && IntelligenceEvaluation.mode(settings) === "dual"
       const remembered = memory === SessionStopLoss.FRESH ? (SessionStopLoss.recover(messages) ?? memory) : memory
       const current = SessionStopLoss.current(remembered, step, trajectory.idle)
@@ -520,11 +540,14 @@ const layer = Layer.effect(
       const sessionID = loaded.session.id
       const index = loaded.messages.findLastIndex((message) => message.type === "user")
       const user = loaded.messages[index]
-      if (user?.type !== "user" || !(yield* dual)) return undefined
+      const settings = yield* intelligence.read(sessionID)
+      const mode = IntelligenceEvaluation.mode(settings)
+      if (user?.type !== "user" || !settings.enabled || mode === "single") return undefined
+      if (mode === "observe" && observedClassifications.has(user.id)) return undefined
       const stored = (yield* intelligence
         .history(sessionID, { operation: "prompt_classification", subjectID: user.id, limit: 1 })
         .pipe(Effect.orElseSucceed(() => [])))[0]
-      if (stored) return stored
+      if (stored && stored.mode === mode) return mode === "observe" ? undefined : stored
       // A classification still running from an earlier Step is not awaited again.
       if (yield* FiberMap.has(classifications, user.id)) return undefined
       const preceding = loaded.messages.slice(0, index)
@@ -532,12 +555,35 @@ const layer = Layer.effect(
         sessionID,
         scrub: yield* vault.scrubber(loaded.session.projectID),
         request: { id: user.id, text: user.text, files: user.files },
-        history: preceding.slice(-IntelligenceClassification.HISTORY).flatMap(historyEntry),
+        history: preceding.slice(-IntelligenceClassification.HISTORY).flatMap(IntelligenceClassification.historyEntry),
         omitted: Math.max(0, preceding.length - IntelligenceClassification.HISTORY),
+        namespaces:
+          loaded.tools.codeModeCatalog &&
+          Config.latestExperimental(yield* config.entries(), "reasoning_tool_selection") === true
+            ? CodeModeCatalog.summarize(loaded.tools.codeModeCatalog, { budget: 0 }).namespaces.map((namespace) => ({
+                name: namespace.name,
+                description: namespace.description ?? `${namespace.name}: ${namespace.count} tools`,
+              }))
+            : undefined,
         session: {
           mode: loaded.agent.id,
           goal: SessionGoal.guidance(yield* goals.get(sessionID)),
           plan: SessionPlan.guidance(yield* plans.list(sessionID)),
+          continuation: {
+            location: loaded.session.location,
+            pending: (yield* SessionInbox.list(db, sessionID))
+              .filter((item) => item.type === "user")
+              .map((item) => ({ id: item.id, delivery: item.delivery, text: item.payload.text })),
+            tasks: SessionTodo.forAgent(yield* todos.get(sessionID), loaded.agent.id),
+            originalRequest: [
+              ...(yield* store.messages({ sessionID, type: "user", order: "asc", limit: 1 })),
+              ...(yield* store.messages({ sessionID, type: "user", limit: 2 })),
+            ].map((message) => (message.type === "user" ? { id: message.id, text: message.text } : null)),
+            priorDecision: (yield* intelligence.history(sessionID, {
+              operation: "prompt_classification",
+              limit: 2,
+            })).find((entry) => entry.subjectID !== user.id && entry.mode !== "observe")?.answers,
+          },
         },
         skills: Skill.available(
           yield* skills.list(),
@@ -564,6 +610,10 @@ const layer = Layer.effect(
           ),
         ),
       )
+      if (mode === "observe") {
+        observedClassifications.add(user.id)
+        return undefined
+      }
       const settled = yield* Fiber.await(fiber).pipe(Effect.timeoutOption(CLASSIFICATION_WAIT))
       return Option.isSome(settled) && Exit.isSuccess(settled.value) ? settled.value.value : undefined
     })
@@ -590,7 +640,7 @@ const layer = Layer.effect(
       const sessionID = loaded.session.id
       const user = loaded.messages.findLast((message) => message.type === "user")
       if (!user || warmed.get(sessionID) === user.id) return
-      if (!DesignIdentify.wanted({ agent: loaded.agent.id, route }) || !(yield* dual)) return
+      if (!DesignIdentify.wanted({ agent: loaded.agent.id, route }) || !(yield* dual(sessionID))) return
       warmed.set(sessionID, user.id)
       yield* FiberMap.run(
         warmups,
@@ -664,7 +714,7 @@ const layer = Layer.effect(
       const response = exchange.findLast((message) => message.type === "assistant")
       const text = response?.type === "assistant" ? responseText(response) : ""
       const judged =
-        response && text && (yield* dual)
+        response && text && (yield* dual(sessionID))
           ? SessionGoal.verdict(
               yield* intelligence
                 .evaluate(
@@ -751,7 +801,9 @@ const layer = Layer.effect(
       memory: ResponseReview,
     ) {
       const sessionID = loaded.session.id
-      if (loaded.session.parentID || !(yield* dual)) return { type: "none" as const, memory }
+      const settings = yield* intelligence.read(sessionID)
+      if (loaded.session.parentID || !settings.enabled || IntelligenceEvaluation.mode(settings) === "single")
+        return { type: "none" as const, memory }
       const recent = (yield* store.messages({ sessionID, order: "desc", limit: RECENT })).toReversed()
       const index = recent.findLastIndex((message) => message.type === "user")
       const user = recent[index]
@@ -760,7 +812,16 @@ const layer = Layer.effect(
       const work = recent.slice(index + 1)
       const candidate = work.findLast((message) => message.type === "assistant")
       const text = candidate?.type === "assistant" ? responseText(candidate) : ""
-      if (!candidate || !text) return { type: "none" as const, memory: current }
+      if (!candidate || !text) {
+        if (current.attempts > 0)
+          yield* noteReview(sessionID, {
+            status: "unavailable",
+            detail:
+              "The bounded verification produced no replacement answer; inspect its tool evidence before proceeding",
+            revised: false,
+          })
+        return { type: "none" as const, memory: current }
+      }
       // A revision that changes nothing material settles nothing: the repaired issues stand.
       if (current.text !== undefined && IntelligenceResponse.same(current.text, text))
         return { type: "unchanged" as const, current }
@@ -789,10 +850,8 @@ const layer = Layer.effect(
             request: { id: plan.user.id, text: plan.user.text },
             candidate: { id: plan.candidate.id, text: plan.text },
             attempt: plan.current.attempts,
-            tools: SessionStopLoss.digest(
-              plan.work.flatMap((message) => (message.type === "assistant" ? SessionStopLoss.parts(message) : [])),
-              { directory: loaded.session.location.directory },
-            ),
+            tools: SessionTaskFacts.evidence((yield* facts.load(sessionID)).results),
+            scrub: yield* vault.scrubber(loaded.session.projectID),
             tasks: SessionTodo.forAgent(yield* todos.get(sessionID), loaded.agent.id).map((task) => ({
               content: task.content,
               status: task.status,
@@ -847,15 +906,46 @@ const layer = Layer.effect(
       }
       const { user, candidate, text } = plan
       const evaluation = started ? yield* Fiber.join(started) : yield* evaluateReview(loaded, plan)
+      if (IntelligenceEvaluation.mode(yield* intelligence.read(sessionID)) === "observe")
+        return { memory: settled, repair: false }
       const verdict = IntelligenceResponse.verdict(evaluation, current.issues)
+      if (
+        revised &&
+        evaluation?.decision === "accepted" &&
+        Config.latestExperimental(yield* config.entries(), "reasoning_learning") === true
+      ) {
+        const prior = (yield* intelligence.history(sessionID, {
+          operation: "response_quality",
+          subjectID: user.id,
+          limit: 10,
+        })).find(
+          (entry) =>
+            entry.id !== evaluation.id && entry.candidateID !== evaluation.candidateID && entry.mode !== "observe",
+        )
+        const learning = IntelligenceLearning.candidate(prior, evaluation)
+        const evidence = SessionTaskFacts.evidence((yield* facts.load(sessionID)).results)
+        if (learning && evidence.calls.some((call) => call.kind === "verification" && call.fresh))
+          yield* artifacts
+            .save(learning)
+            .pipe(Effect.catchCause((cause) => Effect.logWarning("Learning proposal unavailable", { cause })))
+      }
       if (verdict.repair.length && current.attempts < IntelligenceResponse.REPAIRS) {
         // New input admitted while System One reviewed supersedes the repair.
         if (yield* SessionInbox.has(db, sessionID, "input")) return { memory: settled, repair: false }
         yield* bus.publish(SessionEvent.Synthetic, {
           sessionID,
-          text: IntelligenceResponse.repairPrompt(verdict.repair),
+          text:
+            Config.latestExperimental(yield* config.entries(), "reasoning_verification") === true
+              ? IntelligenceVerification.prompt(
+                  verdict.repair,
+                  SessionTaskFacts.evidence((yield* facts.load(sessionID)).results),
+                )
+              : IntelligenceResponse.repairPrompt(verdict.repair),
           description: `Revising the response after S1 review: ${verdict.repair.map(IntelligenceResponse.reason).join("; ")}`,
           metadata: {
+            ...(Config.latestExperimental(yield* config.entries(), "reasoning_verification") === true
+              ? { [IntelligenceVerification.KEY]: { userID: user.id, candidateID: candidate.id } }
+              : {}),
             [IntelligenceResponse.REPAIR_KEY]: {
               issues: verdict.repair,
               confidence: IntelligenceResponse.confidence(evaluation, verdict.repair),
@@ -959,6 +1049,10 @@ const layer = Layer.effect(
       stopGuard: () => void,
     ) {
       const sessionID = first.session.id
+      const verifying =
+        IntelligenceVerification.state(
+          (yield* store.messages({ sessionID, order: "desc", limit: RECENT })).toReversed(),
+        )?.pending === true
       let assistantMessageID = SessionMessage.ID.create()
       const retry = yield* SessionRunnerRetry.make(bus, sessionID)
       let initial: SessionContext.Loaded | undefined = first
@@ -997,12 +1091,55 @@ const layer = Layer.effect(
             subject: loaded.agent.id,
             detail: `Tools disabled at agent step ${step} of ${limit}`,
           })
+        const tools = verifying
+          ? IntelligenceVerification.restrict(
+              yield* registry.snapshot(Permission.forAgent(loaded.agent.info, loaded.session.permissions), {
+                codeMode: false,
+              }),
+            )
+          : loaded.tools
+        const curation =
+          !verifying &&
+          loaded.model.compaction?.type !== "native" &&
+          Config.latestExperimental(yield* config.entries(), "reasoning_context_curation") === true &&
+          (yield* dual(sessionID)) &&
+          SessionContextCuration.candidates(loaded.messages).length > 0
+            ? yield* intelligence
+                .evaluate(
+                  SessionContextCuration.evaluation(
+                    sessionID,
+                    loaded.messages,
+                    JSON.stringify({
+                      initial: loaded.initial,
+                      goal: yield* goals.get(sessionID),
+                      plans: yield* plans.list(sessionID),
+                      tasks: yield* todos.get(sessionID),
+                    }),
+                    yield* vault.scrubber(loaded.session.projectID),
+                  ),
+                )
+                .pipe(Effect.orElseSucceed(() => undefined))
+            : undefined
+        const curated =
+          (yield* dual(sessionID)) && !(yield* SessionInbox.has(db, sessionID, "steer"))
+            ? SessionContextCuration.apply(loaded.messages, curation)
+            : { messages: loaded.messages, omitted: [] }
+        if (curated.omitted.length && curation)
+          yield* artifacts.save({
+            type: "curation",
+            id: curation.id,
+            sessionID,
+            subjectID: curation.subjectID ?? sessionID,
+            policy: curation.policy,
+            created: curation.created,
+            omitted: curated.omitted,
+          })
         const transcript = SessionModelRequest.baseTranscript({
           agent: loaded.agent.info,
           model: loaded.model,
-          tools: loaded.tools,
+          tools,
           initial: loaded.initial,
-          messages: loaded.messages,
+          messages: curated.messages,
           prune: loaded.prune,
         })
         // A subagent works toward its parent's live goal without owning, spending or completing it.
@@ -1012,23 +1149,43 @@ const layer = Layer.effect(
           inherited ? SessionGoal.inherit(inherited) : "",
           SessionPlan.guidance(yield* plans.list(sessionID)),
           advice,
+          curated.omitted.length
+            ? `Context curation omitted ${curated.omitted.length} old read-only assistant blocks. Originals remain available through session_history with these message IDs: ${curated.omitted.map((item) => item.messageID).join(", ")}. Inspect the manifest ${curation?.id} through /intelligence. Never infer that omitted work was verified.`
+            : "",
         ]
           .filter(Boolean)
           .join("\n\n")
-        const prepared = yield* context.request.primary({
-          session: loaded.session,
-          agent: loaded.agent.id,
-          model: loaded.model,
-          tools: loaded.tools,
-          system: guidance ? [...transcript.system, SystemPart.make(guidance)] : transcript.system,
-          messages: stepLimitReached
-            ? [...transcript.messages, Message.assistant(MAX_STEPS_PROMPT)]
-            : transcript.messages,
-          // Keep tool definitions on the final Step to preserve the provider's cached prefix.
-          toolChoice: stepLimitReached ? "none" : undefined,
-          webSocket: "session",
-          inputTokens: SessionCompaction.estimatePrompt(loaded),
-        })
+        const prepared = yield* context.request
+          .primary({
+            session: loaded.session,
+            agent: loaded.agent.id,
+            model: loaded.model,
+            tools,
+            system: guidance ? [...transcript.system, SystemPart.make(guidance)] : transcript.system,
+            messages: stepLimitReached
+              ? [...transcript.messages, Message.assistant(MAX_STEPS_PROMPT)]
+              : transcript.messages,
+            // Keep tool definitions on the final Step to preserve the provider's cached prefix.
+            toolChoice: stepLimitReached ? "none" : undefined,
+            webSocket: "session",
+            inputTokens: SessionCompaction.estimatePrompt(loaded),
+          })
+          .pipe(
+            Effect.map((prepared) =>
+              verifying
+                ? {
+                    ...prepared,
+                    request: {
+                      ...prepared.request,
+                      generation: {
+                        ...prepared.request.generation,
+                        maxTokens: Math.min(2_048, prepared.request.generation?.maxTokens ?? 2_048),
+                      },
+                    },
+                  }
+                : prepared,
+            ),
+          )
         const output = prepared.request.generation?.maxTokens ?? loaded.model.limit.output
         const declared = { context: loaded.model.limit.context, input: loaded.model.limit.input }
         const observed = yield* limits.get(loaded.model.ref.providerID, loaded.model.ref.id, declared)
@@ -1197,19 +1354,6 @@ function responseText(message: SessionMessage.Assistant) {
     .trim()
 }
 
-/** One message of the history a prompt classification reads; the classification redacts and bounds its text. */
-function historyEntry(message: SessionMessage.Info): IntelligenceClassification.HistoryEntry[] {
-  if (message.type === "user" || message.type === "synthetic") return [{ role: message.type, text: message.text }]
-  if (message.type !== "assistant") return []
-  return [
-    {
-      role: "assistant",
-      text: responseText(message),
-      tools: message.content.flatMap((part) => (part.type === "tool" ? [part.name] : [])),
-    },
-  ]
-}
-
 export const node = makeLocationNode({
   service: Service,
   layer,
@@ -1225,7 +1369,9 @@ export const node = makeLocationNode({
     Plugin.node,
     Permission.node,
     Config.node,
+    IntelligenceArtifacts.node,
     Intelligence.node,
+    SessionTaskFacts.node,
     SessionTitle.node,
     SessionTodoStore.node,
     SessionGoal.node,

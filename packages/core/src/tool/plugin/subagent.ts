@@ -156,10 +156,11 @@ export const Plugin = {
     const background = new Map<string, Set<string>>()
     const running = new Map<string, Semaphore.Semaphore>()
 
-    const single = intelligence.read().pipe(
-      Effect.orElseSucceed(() => IntelligenceEvaluation.defaults),
-      Effect.map((settings) => IntelligenceEvaluation.mode(settings) === "single"),
-    )
+    const single = (sessionID: string) =>
+      intelligence.read(sessionID).pipe(
+        Effect.orElseSucceed(() => IntelligenceEvaluation.defaults),
+        Effect.map((settings) => IntelligenceEvaluation.mode(settings) !== "dual"),
+      )
 
     const resolveModel = Effect.fn("SubagentTool.resolveModel")(function* (input: string) {
       const ref = yield* Effect.try({
@@ -206,7 +207,7 @@ export const Plugin = {
         writeCapable: input.writeCapable,
       }
       const findings = IntelligenceSubagentReview.briefStructure(brief)
-      const skip = (yield* single) || findings.some((finding) => finding.blocking)
+      const skip = (yield* single(input.parentID)) || findings.some((finding) => finding.blocking)
       const subjectID = `${input.request.id}:${input.agent.id}`
       const rejected = skip
         ? []
@@ -232,7 +233,7 @@ export const Plugin = {
             .pipe(Effect.orElseSucceed(() => undefined))
       const verdict = IntelligenceSubagentReview.briefVerdict({
         findings,
-        single: yield* single,
+        single: yield* single(input.parentID),
         evaluation,
         rejectedBefore: rejected.length > 0,
       })
@@ -263,7 +264,10 @@ export const Plugin = {
     /** Keeps the verdict and the checkpoints in the child's brief, read fresh right before the write. */
     const record = Effect.fn("SubagentTool.record")(function* (
       childID: SessionSchema.ID,
-      update: { readonly result?: SubagentReview.Result; readonly checkpoints: ReadonlyArray<SubagentReview.Checkpoint> },
+      update: {
+        readonly result?: SubagentReview.Result
+        readonly checkpoints: ReadonlyArray<SubagentReview.Checkpoint>
+      },
     ) {
       const child = yield* sessions.get(childID)
       const brief = SubagentReview.read(child.metadata)
@@ -297,7 +301,7 @@ export const Plugin = {
           directory: input.child.location.directory,
         },
       )
-      const reasoning = yield* single
+      const reasoning = yield* single(input.parentID)
       if (reasoning || findings.some((finding) => finding.blocking))
         return IntelligenceSubagentReview.judge({ findings, single: reasoning, repaired: input.repaired })
       const evaluation = yield* intelligence
@@ -482,7 +486,9 @@ export const Plugin = {
               const token = `${context.messageID}:${context.id}`
               const taken = joining ? undefined : admit(slots, parent.id, token, cap)
               if (taken !== undefined)
-                return yield* new ToolFailure({ message: refusal(isBackground ? "background" : "concurrent", taken, cap) })
+                return yield* new ToolFailure({
+                  message: refusal(isBackground ? "background" : "concurrent", taken, cap),
+                })
               const free = Effect.sync(() => {
                 release(slots, parent.id, token)
                 if (!foreground.has(parent.id)) running.delete(parent.id)

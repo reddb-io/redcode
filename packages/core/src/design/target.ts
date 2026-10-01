@@ -247,7 +247,7 @@ export function choose<DetectError, DetectEnv, AskError, AskEnv>(input: {
       : input.remembered
         ? "the last target chosen in this project"
         : "the default"
-    if (input.mode === "single")
+    if (input.mode !== "dual")
       return outcome(requested, "agent", `${origin} (single reasoning; no S1 call)`, false, false)
     const evaluation = input.classified ? undefined : yield* input.detect.pipe(Effect.orElseSucceed(() => undefined))
     const detected = input.classified ?? detection(evaluation)

@@ -6,7 +6,7 @@ import { Effect, Option } from "effect"
  * mode, so outside `serve` the flag requires `--standalone` instead of silently doing nothing.
  */
 export function applyReasoningFlag(
-  input: { readonly reasoning: Option.Option<"single" | "dual">; readonly standalone: boolean },
+  input: { readonly reasoning: Option.Option<"single" | "dual" | "observe">; readonly standalone: boolean },
   env: Record<string, string | undefined> = process.env,
 ) {
   const reasoning = Option.getOrUndefined(input.reasoning)

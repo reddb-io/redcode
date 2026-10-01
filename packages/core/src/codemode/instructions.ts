@@ -126,8 +126,8 @@ ${render(current)}`
 const key = Instructions.Key.make("core/codemode")
 const codec = Schema.toCodecJson(CodeModeCatalog.Summary)
 
-export const make = (inventory?: CodeModeCatalog.Inventory): Instructions.List => {
-  const catalog = inventory === undefined ? Instructions.removed : CodeModeCatalog.summarize(inventory)
+export const make = (inventory?: CodeModeCatalog.Inventory, options?: CodeModeCatalog.Options): Instructions.List => {
+  const catalog = inventory === undefined ? Instructions.removed : CodeModeCatalog.summarize(inventory, options)
   return Instructions.make({
     key,
     codec,

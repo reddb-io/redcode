@@ -4,7 +4,7 @@ import { randomUUID } from "node:crypto"
 import { Intelligence } from "@opencode/schema/intelligence"
 import { makeGlobalNode } from "@opencode/util/effect/app-node"
 import { and, desc, eq, inArray } from "drizzle-orm"
-import { Context, Effect, Layer, Schema } from "effect"
+import { Context, Effect, FiberMap, Layer, Option, Schema } from "effect"
 import { Database } from "./database/database.js"
 import { KVTable } from "./kv/sql.js"
 import { IntelligenceEvaluation } from "./intelligence/evaluation.js"
@@ -12,6 +12,9 @@ import { IntelligenceSettings } from "./intelligence/settings.js"
 import { IntelligenceTransport } from "./intelligence/transport.js"
 import { IntelligenceRouter } from "./intelligence/router.js"
 import { IntelligenceAnswerTable, IntelligenceEvaluationTable } from "./intelligence/sql.js"
+import { Bus } from "./bus.js"
+import { SessionEvent } from "./session/event.js"
+import { SessionTable } from "./session/sql.js"
 import { SessionSchema } from "./session/schema.js"
 
 export interface EvaluationInput {
@@ -30,18 +33,53 @@ const make = Effect.gen(function* () {
   const db = (yield* Database.Service).db
   const settings = yield* IntelligenceSettings.Service
   const transport = yield* IntelligenceTransport.Service
-  const cache = new Map<string, Intelligence.Evaluation>()
+  const bus = yield* Bus.Service
+  const observations = yield* FiberMap.make<string>()
 
-  const evaluate = Effect.fn("Intelligence.evaluate")(function* (input: EvaluationInput) {
+  const read = Effect.fn("Intelligence.read")(function* (sessionID?: string) {
     const selected = yield* settings.read()
+    if (!sessionID) return selected
+    const session = yield* db
+      .select({ metadata: SessionTable.metadata })
+      .from(SessionTable)
+      .where(eq(SessionTable.id, SessionSchema.ID.make(sessionID)))
+      .get()
+      .pipe(Effect.orDie)
+    const override = Schema.decodeUnknownOption(Intelligence.Reasoning)(session?.metadata?.reasoning)
+    return Option.isSome(override) ? { ...selected, sessionReasoning: override.value } : selected
+  })
+
+  const sessionMode = Effect.fn("Intelligence.sessionMode")(function* (
+    sessionID: string,
+    change: Intelligence.SessionMode,
+  ) {
+    const id = SessionSchema.ID.make(sessionID)
+    const session = yield* db
+      .select({ metadata: SessionTable.metadata })
+      .from(SessionTable)
+      .where(eq(SessionTable.id, id))
+      .get()
+      .pipe(Effect.orDie)
+    if (!session) return yield* new IntelligenceEvaluation.Error({ message: "Session not found" })
+    yield* IntelligenceEvaluation.requireConfigured(yield* settings.read(), change.reasoning ?? undefined)
+    const metadata = { ...session.metadata }
+    if (change.reasoning === null) delete metadata.reasoning
+    if (change.reasoning !== null) metadata.reasoning = change.reasoning
+    yield* bus.publish(SessionEvent.MetadataUpdated, { sessionID: id, metadata })
+    return yield* read(sessionID)
+  })
+
+  const recordEvaluation = Effect.fn("Intelligence.recordEvaluation")(function* (
+    input: EvaluationInput,
+    snapshot?: Intelligence.Settings,
+  ) {
+    const selected = snapshot ?? (yield* read(input.sessionID))
     if (!selected.enabled || IntelligenceEvaluation.mode(selected) === "single") return undefined
     const fingerprint = IntelligenceEvaluation.fingerprint({
       ...input,
       evaluator: selected.evaluator,
       policy: IntelligenceEvaluation.POLICY,
     })
-    const cached = cache.get(fingerprint)
-    if (cached) return cached
     const id = randomUUID()
     const created = Date.now()
     const candidate = input.candidate === undefined ? {} : { candidate: input.candidate }
@@ -86,6 +124,7 @@ const make = Effect.gen(function* () {
       return batches.map((questions) => ({ state: item, questions, sourceIndex }))
     })
     const usage = { input_tokens: 0, output_tokens: 0 }
+    const charges = { cost: 0, priced: 0, unknown: 0 }
     const response =
       !selected.evaluator ||
       !Object.keys(input.questions).length ||
@@ -106,12 +145,31 @@ const make = Effect.gen(function* () {
                   questions: item.questions,
                 })
                 .pipe(
-                  Effect.flatMap(Schema.decodeUnknownEffect(Intelligence.Response)),
+                  Effect.tapError(() =>
+                    Effect.sync(() => {
+                      charges.unknown++
+                    }),
+                  ),
+                  Effect.flatMap((value) =>
+                    Schema.decodeUnknownEffect(Intelligence.Response)(value).pipe(
+                      Effect.tapError(() =>
+                        Effect.sync(() => {
+                          charges.unknown++
+                        }),
+                      ),
+                    ),
+                  ),
                   // A decoded response consumed tokens even if its answers or a later batch fail.
                   Effect.tap((answer) =>
                     Effect.sync(() => {
                       usage.input_tokens += answer.usage.input_tokens
                       usage.output_tokens += answer.usage.output_tokens
+                      if (answer.usage.cost === undefined) {
+                        charges.unknown++
+                        return
+                      }
+                      charges.priced++
+                      charges.cost += answer.usage.cost
                     }),
                   ),
                   Effect.flatMap((answer) =>
@@ -164,6 +222,7 @@ const make = Effect.gen(function* () {
       ...(input.subjectID ? { subjectID: input.subjectID } : {}),
       ...(input.candidateID ? { candidateID: input.candidateID } : {}),
       attempt: input.attempt ?? 0,
+      mode: IntelligenceEvaluation.mode(selected),
       policy: IntelligenceEvaluation.POLICY,
       created,
       duration: Date.now() - created,
@@ -185,7 +244,13 @@ const make = Effect.gen(function* () {
           : [
               `Evaluation unavailable: ${evaluated.left instanceof IntelligenceEvaluation.Error ? evaluated.left.message : "Invalid System One response"}. Previous state preserved.`,
             ],
-      usage,
+      usage: {
+        ...usage,
+        ...(charges.priced ? { cost: charges.cost } : {}),
+        ...(charges.unknown && (charges.priced || usage.input_tokens + usage.output_tokens === 0)
+          ? { unpriced: 1 }
+          : {}),
+      },
     }
     const artifact = `redcode.intelligence.evaluation.${id}`
     const evidence = yield* Schema.decodeUnknownEffect(Schema.fromJsonString(Schema.Json))(
@@ -226,6 +291,7 @@ const make = Effect.gen(function* () {
             candidate_id: record.candidateID,
             attempt: record.attempt ?? 0,
             fingerprint: record.fingerprint,
+            mode: record.mode,
             policy: record.policy,
             decision: record.decision,
             model: record.model,
@@ -233,6 +299,8 @@ const make = Effect.gen(function* () {
             issues: [...record.issues],
             input_tokens: record.usage.input_tokens,
             output_tokens: record.usage.output_tokens,
+            cost: record.usage.cost,
+            unpriced_cost: record.usage.unpriced,
             duration: record.duration,
             artifact,
             source_hash: IntelligenceEvaluation.fingerprint(input.sources),
@@ -245,8 +313,23 @@ const make = Effect.gen(function* () {
       .pipe(
         Effect.mapError(() => new IntelligenceEvaluation.Error({ message: "Unable to persist System One evaluation" })),
       )
-    if (record.decision === "accepted" || record.decision === "needs_revision") cache.set(fingerprint, record)
     return record
+  })
+
+  // Observations outlive their caller, return no verdict and never enter a semantic gate.
+  const evaluate = Effect.fn("Intelligence.evaluate")(function* (input: EvaluationInput) {
+    const selected = yield* read(input.sessionID)
+    if (!selected.enabled || IntelligenceEvaluation.mode(selected) === "single") return undefined
+    if (IntelligenceEvaluation.mode(selected) !== "observe") return yield* recordEvaluation(input)
+    yield* FiberMap.run(
+      observations,
+      IntelligenceEvaluation.fingerprint(input),
+      recordEvaluation(input, { ...selected, reasoning: "observe" }).pipe(
+        Effect.catchCause((cause) => Effect.logWarning("S1 observation failed", { cause })),
+      ),
+      { onlyIfMissing: true },
+    )
+    return undefined
   })
 
   const history = Effect.fn("Intelligence.history")(function* (
@@ -299,6 +382,7 @@ const make = Effect.gen(function* () {
         ...(row.subject_id ? { subjectID: row.subject_id } : {}),
         ...(row.candidate_id ? { candidateID: row.candidate_id } : {}),
         attempt: row.attempt,
+        ...(row.mode ? { mode: row.mode } : {}),
         policy: row.policy,
         decision: row.decision,
         model: row.model,
@@ -311,15 +395,46 @@ const make = Effect.gen(function* () {
         ),
         created: row.time_created,
         duration: row.duration,
-        usage: { input_tokens: row.input_tokens, output_tokens: row.output_tokens },
+        usage: {
+          input_tokens: row.input_tokens,
+          output_tokens: row.output_tokens,
+          ...(row.cost === null ? {} : { cost: row.cost }),
+          ...(row.unpriced_cost === null ? {} : { unpriced: row.unpriced_cost }),
+        },
       }).pipe(
         Effect.mapError(() => new IntelligenceEvaluation.Error({ message: "Invalid persisted evaluation history" })),
       ),
     )
   })
 
-  const status = Effect.fn("Intelligence.status")(function* () {
-    const selected = yield* settings.read()
+  const evidence = Effect.fn("Intelligence.evidence")(function* (sessionID: string, id: string) {
+    const evaluation = yield* db
+      .select({ artifact: IntelligenceEvaluationTable.artifact })
+      .from(IntelligenceEvaluationTable)
+      .where(
+        and(
+          eq(IntelligenceEvaluationTable.id, id),
+          eq(IntelligenceEvaluationTable.session_id, SessionSchema.ID.make(sessionID)),
+        ),
+      )
+      .get()
+      .pipe(Effect.orDie)
+    if (!evaluation?.artifact)
+      return yield* new IntelligenceEvaluation.Error({ message: "Evaluation not found in this Session" })
+    const artifact = yield* db
+      .select()
+      .from(KVTable)
+      .where(eq(KVTable.key, evaluation.artifact))
+      .get()
+      .pipe(Effect.orDie)
+    if (!artifact) return yield* new IntelligenceEvaluation.Error({ message: "Evaluation evidence unavailable" })
+    return yield* Schema.decodeUnknownEffect(Schema.Json)(artifact.value).pipe(
+      Effect.mapError(() => new IntelligenceEvaluation.Error({ message: "Invalid evaluation evidence" })),
+    )
+  })
+
+  const status = Effect.fn("Intelligence.status")(function* (sessionID?: string) {
+    const selected = yield* read(sessionID)
     const connection = yield* transport.connection("red-router")
     const router = yield* IntelligenceRouter.detect(connection)
     const transports = [
@@ -334,6 +449,7 @@ const make = Effect.gen(function* () {
     ] as const
     return {
       settings: selected,
+      observations: { pending: yield* FiberMap.size(observations) },
       environment: process.env.REDCODE_REASONING ?? "",
       effective: IntelligenceEvaluation.reasoning(selected),
       ...(router ? { router } : {}),
@@ -359,7 +475,9 @@ const make = Effect.gen(function* () {
   })
 
   return {
-    read: settings.read,
+    read,
+    sessionMode,
+    evidence,
     save: settings.save,
     status,
     request: transport.request,
@@ -374,7 +492,7 @@ export class Service extends Context.Service<Service, Effect.Success<typeof make
 export const node = makeGlobalNode({
   service: Service,
   layer: Layer.effect(Service, make),
-  deps: [Database.node, IntelligenceSettings.node, IntelligenceTransport.node],
+  deps: [Database.node, IntelligenceSettings.node, IntelligenceTransport.node, Bus.node],
 })
 
 function answerFromRow(row: typeof IntelligenceAnswerTable.$inferSelect): Intelligence.Answer {

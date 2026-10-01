@@ -28,6 +28,10 @@ const suites = {
     "test/intelligence/red-router-endpoint.test.ts",
     "test/intelligence/transport.test.ts",
     "test/intelligence/usage.test.ts",
+    "test/intelligence/controls.test.ts",
+    "test/intelligence/artifacts.test.ts",
+    "test/intelligence/evidence-campaign.test.ts",
+    "test/codemode/catalog.test.ts",
     "test/intelligence/classification.test.ts",
     "test/intelligence/evaluation.test.ts",
     "test/intelligence/goal-command.test.ts",
@@ -66,6 +70,7 @@ const suites = {
   ],
   cli: [
     "test/config.test.ts",
+    "test/reasoning-flag.test.ts",
     "test/debug-guards-report.test.ts",
     "test/import-boundaries.test.ts",
     "test/server-connection.test.ts",

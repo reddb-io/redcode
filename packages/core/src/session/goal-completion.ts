@@ -68,9 +68,14 @@ const make = Effect.gen(function* () {
   })
 
   const propose = Effect.fn("SessionGoalCompletion.propose")(function* (input: Candidate) {
-    yield* intelligence.read().pipe(Effect.flatMap(IntelligenceEvaluation.requireConfigured))
+    yield* intelligence.read(input.goal.sessionID).pipe(Effect.flatMap(IntelligenceEvaluation.requireConfigured))
     const current = yield* goals.get(input.goal.sessionID)
-    if (!current || current.id !== input.goal.id || current.revision !== input.goal.revision || current.status !== "active")
+    if (
+      !current ||
+      current.id !== input.goal.id ||
+      current.revision !== input.goal.revision ||
+      current.status !== "active"
+    )
       return yield* new SessionGoal.Error({ message: "Goal changed during verification; inspect it again" })
     if (yield* SessionInbox.has(db, input.goal.sessionID, "steer"))
       return yield* new SessionGoal.Error({ message: "New steering is pending; address it first" })
@@ -94,13 +99,13 @@ const make = Effect.gen(function* () {
     if (evidence.some((item, index) => item.hash !== candidate.evidence[index]?.hash))
       return yield* new SessionGoal.Error({ message: "Evidence changed before tool effects settled" })
     yield* check(sessionID)
-    const settings = yield* intelligence.read()
+    const settings = yield* intelligence.read(sessionID)
     yield* IntelligenceEvaluation.requireConfigured(settings)
     return yield* goals.save(candidate.goal, {
       ...candidate.goal,
       status: "done",
       reason:
-        IntelligenceEvaluation.mode(settings) === "single"
+        IntelligenceEvaluation.mode(settings) !== "dual"
           ? `Executed checks and recorded evidence passed; criteria ${IntelligenceEvaluation.UNVERIFIED}`
           : "Every criterion verified against recorded evidence after tool effects settled",
       evidence: evidence.map((item) => ({ path: item.path, hash: item.hash, bytes: item.bytes })),
@@ -117,5 +122,13 @@ export class Service extends Context.Service<Service, Effect.Success<typeof make
 export const node = makeLocationNode({
   service: Service,
   layer: Layer.effect(Service, make),
-  deps: [SessionGoal.node, SessionTodoStore.node, MonitorRuntime.node, FileAccess.node, Intelligence.node, DesignStore.node, Database.node],
+  deps: [
+    SessionGoal.node,
+    SessionTodoStore.node,
+    MonitorRuntime.node,
+    FileAccess.node,
+    Intelligence.node,
+    DesignStore.node,
+    Database.node,
+  ],
 })

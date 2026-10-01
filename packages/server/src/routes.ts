@@ -24,6 +24,7 @@ import { SessionBudget } from "@opencode/core/session/budget"
 import { SessionGuardLog } from "@opencode/core/session/guard-log"
 import { SessionTaskFacts } from "@opencode/core/session/task-facts"
 import { SessionTodoStore } from "@opencode/core/session/todo-store"
+import { IntelligenceArtifacts } from "@opencode/core/intelligence/artifacts"
 import { Intelligence } from "@opencode/core/intelligence"
 import { DesignAppConnection } from "@opencode/core/design/app-connection"
 import { DesignHost } from "@opencode/core/design/host"
@@ -87,6 +88,7 @@ const applicationServiceNodes = [
   SessionTaskFacts.node,
   SessionTodoStore.node,
   Intelligence.node,
+  IntelligenceArtifacts.node,
   DesignAppConnection.node,
   Instance.node,
   SessionTransfer.node,

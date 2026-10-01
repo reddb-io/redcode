@@ -14,6 +14,7 @@ import { SettingsRow } from "@/settings/row"
 import { showToast } from "@/shell/notifications/toast"
 
 const sourceLabels = {
+  session: "settings.models.reasoning.source.session",
   flag: "settings.models.reasoning.source.flag",
   config: "settings.models.reasoning.source.config",
   default: "settings.models.reasoning.source.default",
@@ -34,7 +35,7 @@ const failureReasons = {
 } as const
 
 type Draft = {
-  reasoning?: "single" | "dual"
+  reasoning?: "single" | "dual" | "observe"
   principal?: string
   // An empty key reuses the principal for bounded transformations.
   fast?: string
@@ -121,7 +122,7 @@ export function SettingsReasoningRoles() {
     const selected = principal(value)
     if (!selected || draft.checking) return
     const transformation = fast(value).ref
-    const dual = reasoning(value) === "dual"
+    const dual = reasoning(value) !== "single"
     const chosen = evaluator(value)
     const s1 =
       dual && chosen && evaluatorModel(value).trim()
@@ -222,12 +223,16 @@ export function SettingsReasoningRoles() {
             >
               <Select
                 data-action="settings-reasoning-mode"
-                options={["single" as const, "dual" as const]}
+                options={["single" as const, "dual" as const, "observe" as const]}
                 current={reasoning(value())}
                 value={(mode) => mode}
                 label={(mode) =>
                   language.t(
-                    mode === "dual" ? "settings.models.reasoning.mode.dual" : "settings.models.reasoning.mode.single",
+                    mode === "observe"
+                      ? "settings.models.reasoning.mode.observe"
+                      : mode === "dual"
+                        ? "settings.models.reasoning.mode.dual"
+                        : "settings.models.reasoning.mode.single",
                   )
                 }
                 placement="bottom-end"
@@ -266,7 +271,7 @@ export function SettingsReasoningRoles() {
                 onSelect={(option) => option && setDraft({ fast: option.key, failure: undefined })}
               />
             </SettingsRow>
-            <Show when={reasoning(value()) === "dual"}>
+            <Show when={reasoning(value()) !== "single"}>
               <SettingsRow
                 title={language.t("settings.models.reasoning.evaluator")}
                 description={language.t("settings.models.reasoning.evaluator.description")}

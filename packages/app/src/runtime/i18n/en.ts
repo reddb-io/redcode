@@ -1558,6 +1558,8 @@ export const dict = {
   "settings.models.reasoning.title": "Reasoning roles",
   "settings.models.reasoning.mode": "Reasoning mode",
   "settings.models.reasoning.mode.single": "Single (S2 only)",
+  "settings.models.reasoning.mode.observe": "Observe: S1 records without intervening",
+  "settings.models.reasoning.source.session": "Session override",
   "settings.models.reasoning.mode.dual": "Dual (S1 reviews S2)",
   "settings.models.reasoning.source.flag": "Set by an environment flag",
   "settings.models.reasoning.source.config": "Set in configuration",

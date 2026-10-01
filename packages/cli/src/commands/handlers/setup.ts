@@ -19,7 +19,7 @@ export default Runtime.handler(Commands.commands.setup, (input) =>
   Effect.gen(function* () {
     yield* requireInteractive("System One and System Two setup requires an interactive terminal")
     const client = yield* createClient({ server: Option.getOrUndefined(input.server), standalone: input.standalone })
-    const status = yield* request((signal) => client["server.intelligence"].status({ signal }))
+    const status = yield* request((signal) => client["server.intelligence"].status({}, { signal }))
     const models = (yield* request((signal) => client.model.list({ location }, { signal }))).data
       .filter(
         (model) =>
@@ -29,13 +29,14 @@ export default Runtime.handler(Commands.commands.setup, (input) =>
     const providers = (yield* request((signal) => client.provider.list({ location }, { signal }))).data
 
     intro("Configure reasoning roles")
-    const reasoning = yield* prompt<"single" | "dual">(() =>
+    const reasoning = yield* prompt<"single" | "dual" | "observe">(() =>
       select({
         message: "Reasoning mode",
         initialValue: status.effective.reasoning,
         options: [
           { value: "single", label: "Single: S2 generates; S1 is off" },
           { value: "dual", label: "Dual: S2 generates; S1 evaluates" },
+          { value: "observe", label: "Observe: S2 generates; S1 records without intervening" },
         ],
       }),
     )
@@ -48,7 +49,7 @@ export default Runtime.handler(Commands.commands.setup, (input) =>
       recommended: status.router?.recommended?.default?.id,
       router: status.router?.providerID,
     })
-    const evaluator = reasoning === "dual" ? yield* configureEvaluator(client, status) : undefined
+    const evaluator = reasoning !== "single" ? yield* configureEvaluator(client, status) : undefined
     const available = (yield* request((signal) => client.model.list({ location }, { signal }))).data
     const currentFast = available.find(
       (model) =>

@@ -50,6 +50,32 @@ export default Plugin.define({
               run: setup,
             },
             {
+              id: "intelligence.sessionMode",
+              title: "Set reasoning for this session",
+              group: "Session",
+              palette: true,
+              slash: { name: "reasoning" },
+              enabled: () => context.ui.router.current().type === "session",
+              run: async () => {
+                const route = context.ui.router.current()
+                if (route.type !== "session") return
+                const choice = await context.ui.dialog.select({
+                  title: "Session reasoning",
+                  options: [
+                    { value: "default" as const, title: "Use service default" },
+                    { value: "single" as const, title: "Single · S2 only" },
+                    { value: "observe" as const, title: "Observe · S1 records without intervening" },
+                    { value: "dual" as const, title: "Dual · S1 evaluates S2" },
+                  ],
+                })
+                if (!choice) return
+                await context.client["server.intelligence"]
+                  .sessionMode({ sessionID: route.sessionID, reasoning: choice === "default" ? null : choice })
+                  .then(() => refetch())
+                  .catch((error) => context.ui.toast.show({ variant: "error", message: errorMessage(error) }))
+              },
+            },
+            {
               id: "intelligence.status",
               title: "S1 / S2 models and evaluations",
               group: "Provider",
@@ -149,8 +175,14 @@ function SatisfactionIndicator(props: { context: Plugin.Context; sessionID?: str
         .history({ sessionID: input.sessionID, limit: 100 }, { signal: abort.signal })
         .catch(() => undefined)
       if (!evaluations) return undefined
+      const effective =
+        props.context.data.session.get(input.sessionID)?.metadata?.reasoning ?? props.status?.effective.reasoning
+      if (effective !== "dual") return undefined
       // Too few prompts read to show anything: the guard log would not change that, so it is not asked for.
-      if (evaluations.filter((item) => item.operation === "prompt_classification").length < Satisfaction.MINIMUM)
+      if (
+        evaluations.filter((item) => item.operation === "prompt_classification" && item.mode !== "observe").length <
+        Satisfaction.MINIMUM
+      )
         return { evaluations, trips: [] }
       // What the work showed: turns the harness ended and work that resumed after a hint, since the oldest prompt read.
       const since = Math.min(Infinity, ...evaluations.map((evaluation) => evaluation.created))
@@ -228,10 +260,15 @@ function IntelligenceIndicator(props: {
         { signal: abort.signal },
       ),
   )
+  const [scoped] = createResource(
+    () => props.sessionID,
+    (sessionID) => props.context.client["server.intelligence"].status({ sessionID }, { signal: abort.signal }),
+  )
+  const mode = () => scoped()?.effective.reasoning ?? props.status?.effective.reasoning
   const pending = () => props.status?.settings.onboarding !== "completed"
   // What the session's latest evaluation says, in words that do not read as an outage unless S1 truly was unreachable.
   const outcome = () => {
-    if (props.status?.effective.reasoning !== "dual") return undefined
+    if (mode() !== "dual") return undefined
     if (history.error) return "unavailable" as const
     const decision = history()?.[0]?.decision
     if (decision === "unavailable" || decision === "inconclusive" || decision === "needs_revision") return decision
@@ -241,6 +278,7 @@ function IntelligenceIndicator(props: {
     if (props.error) return "S1/S2 offline"
     if (!props.status) return ""
     if (pending()) return "S1/S2 setup"
+    if (mode() === "observe") return "S1 observing"
     const value = outcome()
     if (value === "unavailable") return "S1 unavailable"
     if (value === "inconclusive") return "S1 unsure"

@@ -374,8 +374,17 @@ import type {
   RedskilledWorkerSteerOutput,
   RedskilledWorkerSteerStatusInput,
   RedskilledWorkerSteerStatusOutput,
+  ServerIntelligenceArtifactsInput,
+  ServerIntelligenceArtifactsOutput,
+  ServerIntelligenceReviewLearningInput,
+  ServerIntelligenceReviewLearningOutput,
+  ServerIntelligenceSessionModeInput,
+  ServerIntelligenceSessionModeOutput,
+  ServerIntelligenceEvidenceInput,
+  ServerIntelligenceEvidenceOutput,
   ServerIntelligenceHistoryInput,
   ServerIntelligenceHistoryOutput,
+  ServerIntelligenceStatusInput,
   ServerIntelligenceStatusOutput,
   ServerIntelligenceSaveInput,
   ServerIntelligenceSaveOutput,
@@ -2219,6 +2228,39 @@ const adaptGroupRedskilled = (raw: RawClient["server.redskilled"]) => ({
   },
 })
 
+const EndpointServerIntelligenceArtifacts =
+  (raw: RawClient["server.intelligence"]) => (input: ServerIntelligenceArtifactsInput) =>
+    preserveEffect<ServerIntelligenceArtifactsOutput>()(
+      raw["intelligence.artifacts"]({ query: { sessionID: input["sessionID"] } }).pipe(Effect.mapError(mapClientError)),
+    )
+
+const EndpointServerIntelligenceReviewLearning =
+  (raw: RawClient["server.intelligence"]) => (input: ServerIntelligenceReviewLearningInput) =>
+    preserveEffect<ServerIntelligenceReviewLearningOutput>()(
+      raw["intelligence.reviewLearning"]({
+        params: { id: input["id"] },
+        query: { sessionID: input["sessionID"] },
+        payload: { status: input["status"], reason: input["reason"] },
+      }).pipe(Effect.mapError(mapClientError)),
+    )
+
+const EndpointServerIntelligenceSessionMode =
+  (raw: RawClient["server.intelligence"]) => (input: ServerIntelligenceSessionModeInput) =>
+    preserveEffect<ServerIntelligenceSessionModeOutput>()(
+      raw["intelligence.sessionMode"]({
+        params: { sessionID: input["sessionID"] },
+        payload: { reasoning: input["reasoning"] },
+      }).pipe(Effect.mapError(mapClientError)),
+    )
+
+const EndpointServerIntelligenceEvidence =
+  (raw: RawClient["server.intelligence"]) => (input: ServerIntelligenceEvidenceInput) =>
+    preserveEffect<ServerIntelligenceEvidenceOutput>()(
+      raw["intelligence.evidence"]({ params: { id: input["id"] }, query: { sessionID: input["sessionID"] } }).pipe(
+        Effect.mapError(mapClientError),
+      ),
+    )
+
 const EndpointServerIntelligenceHistory =
   (raw: RawClient["server.intelligence"]) => (input: ServerIntelligenceHistoryInput) =>
     preserveEffect<ServerIntelligenceHistoryOutput>()(
@@ -2227,8 +2269,11 @@ const EndpointServerIntelligenceHistory =
       ),
     )
 
-const EndpointServerIntelligenceStatus = (raw: RawClient["server.intelligence"]) => () =>
-  preserveEffect<ServerIntelligenceStatusOutput>()(raw["intelligence.status"]({}).pipe(Effect.mapError(mapClientError)))
+const EndpointServerIntelligenceStatus =
+  (raw: RawClient["server.intelligence"]) => (input?: ServerIntelligenceStatusInput) =>
+    preserveEffect<ServerIntelligenceStatusOutput>()(
+      raw["intelligence.status"]({ query: { sessionID: input?.["sessionID"] } }).pipe(Effect.mapError(mapClientError)),
+    )
 
 const EndpointServerIntelligenceSave =
   (raw: RawClient["server.intelligence"]) => (input: ServerIntelligenceSaveInput) =>
@@ -2255,6 +2300,10 @@ const EndpointServerIntelligenceProbe =
     )
 
 const adaptGroupServerIntelligence = (raw: RawClient["server.intelligence"]) => ({
+  artifacts: EndpointServerIntelligenceArtifacts(raw),
+  reviewLearning: EndpointServerIntelligenceReviewLearning(raw),
+  sessionMode: EndpointServerIntelligenceSessionMode(raw),
+  evidence: EndpointServerIntelligenceEvidence(raw),
   history: EndpointServerIntelligenceHistory(raw),
   status: EndpointServerIntelligenceStatus(raw),
   save: EndpointServerIntelligenceSave(raw),

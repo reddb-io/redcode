@@ -73,7 +73,7 @@ export const Plugin = {
               const goal = yield* goals.get(context.sessionID)
               if (!goal || goal.status !== "active")
                 return yield* new ToolFailure({ message: "No active goal to complete" })
-              const settings = yield* intelligence.read()
+              const settings = yield* intelligence.read(context.sessionID)
               yield* IntelligenceEvaluation.requireConfigured(settings)
               yield* completion.check(context.sessionID)
               const evidence = yield* Effect.forEach([...new Set(input.evidence)], (file) =>
@@ -83,10 +83,11 @@ export const Plugin = {
               for (const command of goal.gates) {
                 yield* allow("shell", context, [command])
                 const result = yield* processes.run(
-                  ChildProcess.make(process.platform === "win32" ? "cmd.exe" : "/bin/sh", [
-                    process.platform === "win32" ? "/c" : "-c",
-                    command,
-                  ], { cwd: location.directory }),
+                  ChildProcess.make(
+                    process.platform === "win32" ? "cmd.exe" : "/bin/sh",
+                    [process.platform === "win32" ? "/c" : "-c", command],
+                    { cwd: location.directory },
+                  ),
                   { timeout: "60 seconds", maxOutputBytes: 16_000, maxErrorBytes: 16_000 },
                 )
                 checks.push({
@@ -101,39 +102,41 @@ export const Plugin = {
                   })
               }
               const review = yield* Effect.uninterruptibleMask((restore) =>
-                restore(intelligence.evaluate({
-                  sessionID: context.sessionID,
-                  operation: "goal_completion",
-                  subjectID: goal.id,
-                  sources: {
-                    objective: goal.objective,
-                    scope: goal.stopAfter,
-                    criteria: goal.criteria,
-                    checks: checks.map((item) => ({
-                      ...item,
-                      output: IntelligenceEvaluation.evidence(item.output, { reference: item.command, limit: 4_000 }),
-                    })),
-                    evidence: evidence.map((item) => ({
-                      ...item,
-                      content: IntelligenceEvaluation.evidence(item.content, {
-                        reference: item.path,
-                        limit: Math.floor(36_000 / evidence.length),
-                      }),
-                    })),
-                  },
-                  candidate: { claim: input.explanation, status: "done" },
-                  questions: IntelligenceEvaluation.questions({
-                    objective:
-                      "Does the candidate claim completion without observed evidence proving the objective? A source file or unexecuted test is not proof of runtime behavior.",
-                    incomplete: "Does the claim depend on missing or truncated evidence?",
-                    ...Object.fromEntries(
-                      goal.criteria.map((criterion, index) => [
-                        `criterion_${index}`,
-                        `Is this required criterion unsupported by the recorded artifacts and executed checks: ${criterion}`,
-                      ]),
-                    ),
+                restore(
+                  intelligence.evaluate({
+                    sessionID: context.sessionID,
+                    operation: "goal_completion",
+                    subjectID: goal.id,
+                    sources: {
+                      objective: goal.objective,
+                      scope: goal.stopAfter,
+                      criteria: goal.criteria,
+                      checks: checks.map((item) => ({
+                        ...item,
+                        output: IntelligenceEvaluation.evidence(item.output, { reference: item.command, limit: 4_000 }),
+                      })),
+                      evidence: evidence.map((item) => ({
+                        ...item,
+                        content: IntelligenceEvaluation.evidence(item.content, {
+                          reference: item.path,
+                          limit: Math.floor(36_000 / evidence.length),
+                        }),
+                      })),
+                    },
+                    candidate: { claim: input.explanation, status: "done" },
+                    questions: IntelligenceEvaluation.questions({
+                      objective:
+                        "Does the candidate claim completion without observed evidence proving the objective? A source file or unexecuted test is not proof of runtime behavior.",
+                      incomplete: "Does the claim depend on missing or truncated evidence?",
+                      ...Object.fromEntries(
+                        goal.criteria.map((criterion, index) => [
+                          `criterion_${index}`,
+                          `Is this required criterion unsupported by the recorded artifacts and executed checks: ${criterion}`,
+                        ]),
+                      ),
+                    }),
                   }),
-                })).pipe(
+                ).pipe(
                   Effect.tap((record) =>
                     record
                       ? goals.recordReview(goal, {
@@ -149,9 +152,9 @@ export const Plugin = {
               )
               if (current.some((item, index) => item.hash !== evidence[index]?.hash))
                 return yield* new ToolFailure({ message: "Evidence changed during verification" })
-              yield* IntelligenceEvaluation.requireConfigured(yield* intelligence.read())
+              yield* IntelligenceEvaluation.requireConfigured(yield* intelligence.read(context.sessionID))
               yield* completion.check(context.sessionID)
-              const passed = IntelligenceEvaluation.mode(settings) === "single" || review?.decision === "accepted"
+              const passed = IntelligenceEvaluation.mode(settings) !== "dual" || review?.decision === "accepted"
               const result = passed
                 ? yield* completion.propose({ goal, context, evidence: current, checks })
                 : yield* goals.save(goal, {

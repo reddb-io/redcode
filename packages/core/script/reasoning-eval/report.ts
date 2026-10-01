@@ -3,9 +3,10 @@ import { Option, Schema } from "effect"
 export interface Run {
   caseID: string
   round: number
-  mode: "single" | "dual"
+  mode: "single" | "dual" | "observe"
   outcome: string
   durationMs: number
+  observationWaitMs?: number
   initial: ReturnType<typeof score>
   final: ReturnType<typeof score>
   repairs: number
@@ -40,7 +41,7 @@ export function score(text: string, expected: Readonly<Record<string, Schema.Jso
 }
 
 export function summarize(runs: ReadonlyArray<Run>) {
-  return (["single", "dual"] as const).map((mode) => {
+  return (["single", "dual", "observe"] as const).map((mode) => {
     const group = runs.filter((run) => run.mode === mode)
     const successful = group.filter((run) => run.outcome === "succeeded")
     const repaired = group.filter((run) => run.repairs > 0)
@@ -77,7 +78,8 @@ export function summarize(runs: ReadonlyArray<Run>) {
 }
 
 /** Improvement and the 2x monetary ceiling are acceptance criteria, not token comparisons. */
-export function acceptance(runs: ReadonlyArray<Run>, expectedRuns: number) {
+export function acceptance(input: ReadonlyArray<Run>, expectedRuns: number) {
+  const runs = input.filter((run) => run.mode !== "observe")
   const [single, dual] = summarize(runs)
   const complete =
     runs.length === expectedRuns &&
