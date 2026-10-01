@@ -31,6 +31,11 @@ small diagnostic sample, not evidence of production coding effectiveness.
 Generation uses the installed runtime's defaults rather than forcing a sampling
 temperature. Reruns can differ.
 
+Each case keeps one read-only fixture Location across modes and rounds. Every
+execution still gets a fresh Session. This bounds the number of loaded Locations
+so their accumulation does not distort later latency measurements; the agent
+cannot modify these shared fixture files.
+
 For each run the output retains the initial and final grades, repairs,
 completed reads, S1 evaluations, S1/S2 token counts and Session budget. A run is
 invalid if required fixture reads fail, S1 runs in single mode, dual gates are

@@ -225,13 +225,20 @@ try {
       2,
     ),
   )
+  // Fixtures are read-only. Reuse one Location per case so later rounds do not measure
+  // the accumulated cost of loading a new Location for every fresh Session.
+  await Promise.all(
+    selected.map(async (item) => {
+      const directory = path.join(root, item.id)
+      await mkdir(directory)
+      await Promise.all(Object.entries(item.files).map(([name, text]) => Bun.write(path.join(directory, name), text)))
+    }),
+  )
   for (const round of Array.from({ length: rounds }, (_, index) => index + 1)) {
     for (const [index, item] of selected.entries()) {
       for (const mode of (round + index) % 2 ? (["single", "dual"] as const) : (["dual", "single"] as const)) {
         current.run = `${item.id}-${round}-${mode}`
-        const directory = path.join(root, current.run)
-        await mkdir(directory)
-        await Promise.all(Object.entries(item.files).map(([name, text]) => Bun.write(path.join(directory, name), text)))
+        const directory = path.join(root, item.id)
         await api("/api/experimental/intelligence", Json, "PUT", { settings: { ...settings, reasoning: mode } })
         const session = await api("/api/session", Session, "POST", {
           title: current.run,
