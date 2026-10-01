@@ -48,6 +48,7 @@ const suites = {
     "test/session-create.test.ts",
     "test/session-diff.test.ts",
     "test/session-goal-judge.test.ts",
+    "test/session-budget.test.ts",
     "test/session-instructions.test.ts",
     "test/session-model-request-hooks.test.ts",
     "test/session-model-suggestion.test.ts",

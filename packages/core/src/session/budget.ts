@@ -8,6 +8,7 @@ import { sql } from "drizzle-orm"
 import { Context, Effect, Layer } from "effect"
 import { Bus } from "../bus.js"
 import { Database } from "../database/database.js"
+import { IntelligenceEvaluationTable } from "../intelligence/sql.js"
 import { SessionEvent } from "./event.js"
 import { SessionGuardLog } from "./guard-log.js"
 import { SessionSchema } from "./schema.js"
@@ -99,9 +100,10 @@ const make = Effect.gen(function* () {
   const bus = yield* Bus.Service
   const guards = yield* SessionGuardLog.Service
 
+  // S1 evaluations report tokens without pricing, so their cost remains explicitly unknown.
   const totals = Effect.fn("SessionBudget.totals")(function* (sessionID: SessionSchema.ID) {
     const rows = yield* database.db
-      .all<{ cost: number; tokens: number }>(
+      .all<SessionBudget.Totals>(
         sql`
         WITH RECURSIVE descendants(id) AS (
           SELECT ${sessionID}
@@ -109,22 +111,35 @@ const make = Effect.gen(function* () {
           SELECT ${SessionTable.id}
           FROM ${SessionTable}
           JOIN descendants parent ON ${SessionTable.parent_id} = parent.id
-        )
-        SELECT
-          coalesce(sum(${SessionTable.cost}), 0) AS cost,
-          coalesce(sum(
+        ), spend AS (
+          SELECT
+            ${SessionTable.cost} AS cost,
             ${SessionTable.tokens_input} +
             ${SessionTable.tokens_output} +
             ${SessionTable.tokens_reasoning} +
             ${SessionTable.tokens_cache_read} +
-            ${SessionTable.tokens_cache_write}
-          ), 0) AS tokens
-        FROM ${SessionTable}
-        JOIN descendants ON descendants.id = ${SessionTable.id}
+            ${SessionTable.tokens_cache_write} AS tokens,
+            0 AS unpriced
+          FROM ${SessionTable}
+          JOIN descendants ON descendants.id = ${SessionTable.id}
+          UNION ALL
+          SELECT
+            0 AS cost,
+            ${IntelligenceEvaluationTable.input_tokens} + ${IntelligenceEvaluationTable.output_tokens} AS tokens,
+            CASE WHEN ${IntelligenceEvaluationTable.input_tokens} + ${IntelligenceEvaluationTable.output_tokens} > 0
+              THEN 1 ELSE 0 END AS unpriced
+          FROM ${IntelligenceEvaluationTable}
+          JOIN descendants ON descendants.id = ${IntelligenceEvaluationTable.session_id}
+        )
+        SELECT
+          coalesce(sum(cost), 0) AS cost,
+          coalesce(sum(tokens), 0) AS tokens,
+          coalesce(sum(unpriced), 0) AS unpriced
+        FROM spend
       `,
       )
       .pipe(Effect.orDie)
-    return { cost: rows[0]?.cost ?? 0, tokens: rows[0]?.tokens ?? 0, unpriced: 0 }
+    return rows[0] ?? ZERO
   })
 
   const view = Effect.fn("SessionBudget.view")(function* (sessionID: SessionSchema.ID) {

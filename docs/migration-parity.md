@@ -73,7 +73,7 @@ implemented paths from identified gaps; it is not a full-parity declaration.
 | Persisted tasks, blockers and recent completed work               | `SessionTodoStore` → `session.todo.list` → generated clients → `SidebarTodo`                                     | Restored; no second task store                                                                                                                                                                                                                                                                                                                                                                          |
 | Goal dialog and old `/goal-*` controls                            | Existing V2 Goal service, plus compatibility commands dispatching to the same controller                         | Restored, including step, cost and token budgets measured from Goal start                                                                                                                                                                                                                                                                                                                               |
 | `/pending` prompt management                                      | V2 durable inbox list, delivery update and cancellation APIs                                                     | Restored for queued and steering prompts, including empty state, send-now, discard and discard-all                                                                                                                                                                                                                                                                                                      |
-| S1/S2 and JEV                                                     | `core/intelligence`, `/setup`, `/intelligence`, evaluation history and footer; separate S2 transformations model | Saved S2 roles can be reused; setup chooses connection then model and saves the connection identity. Names and router origins are visible without changing selected model IDs. Fresh connection discovery, S2 generation, S1 decision probing and restart persistence verified with a CI-built candidate; comparative dual reasoning and non-compaction transformation parity remain unverified                                                                                                                              |
+| S1/S2 and JEV                                                     | `core/intelligence`, `/setup`, `/intelligence`, evaluation history and footer; separate S2 transformations model | Saved S2 roles can be reused; setup chooses connection then model and saves the connection identity. Names and router origins are visible without changing selected model IDs. Fresh connection discovery, S2 generation, S1 decision probing and restart persistence verified with a CI-built candidate; comparative dual reasoning and non-compaction transformation parity remain unverified         |
 | Design workflow                                                   | `core/design`, server Design handlers, `/design`, `/design-open`, `/design-review`                               | Implemented; browser feedback/approval/handoff journey still needs end-to-end parity verification                                                                                                                                                                                                                                                                                                       |
 | Question mode                                                     | `core/plugin/question.ts` and read-only permissions                                                              | Implemented; preserve no-code-change contract and Build → Plan → Design → Question cycle                                                                                                                                                                                                                                                                                                                |
 | Voice dictation                                                   | `tui/src/context/voice-input` and composer integration                                                           | Existing CI contract; real dictation client still needs verification                                                                                                                                                                                                                                                                                                                                    |
@@ -103,10 +103,10 @@ The required CI selection includes model resolution, session creation/persistenc
 
 Authenticated catalog probes against the installed local RedRouter on 2026-09-30 returned:
 
-| Route | HTTP status | Duration | Response bytes | Models |
-| --- | --- | --- | --- | --- |
-| `/v1/models?capabilities=chat` | 200 | 622 ms | 480,011 | 934 |
-| `/v1/models?capabilities=decision` | 200 | 260 ms | 380 | 1 |
+| Route                              | HTTP status | Duration | Response bytes | Models |
+| ---------------------------------- | ----------- | -------- | -------------- | ------ |
+| `/v1/models?capabilities=chat`     | 200         | 622 ms   | 480,011        | 934    |
+| `/v1/models?capabilities=decision` | 200         | 260 ms   | 380            | 1      |
 
 The decision entry was `openrouter/typesafe/jev-1.13`, with `type: "systemone"`, `capabilities.decision: true` and advertised `systemone`/`decisions` endpoints. The unfiltered and legacy decision catalogs also returned HTTP 200. This snapshot verifies authenticated remote discovery; it does not verify generation, decision execution or a freshly installed Redcode client.
 
@@ -117,10 +117,10 @@ An isolated home and Git project running the CI-built 0.70.2 candidate from
 stored credential. The catalog populated with 934 generative models and one
 System One model. Production API probes returned:
 
-| Selected role | Model | Remote route | HTTP status | Duration | Response bytes |
-| --- | --- | --- | --- | --- | --- |
-| S2 | `auto/best-fast` | `/v1/chat/completions` | 200 | 8,069 ms | 61,299 |
-| S1 | `openrouter/typesafe/jev-1.13` | `/v1/systemone` | 200 | 660 ms | 222 |
+| Selected role | Model                          | Remote route           | HTTP status | Duration | Response bytes |
+| ------------- | ------------------------------ | ---------------------- | ----------- | -------- | -------------- |
+| S2            | `auto/best-fast`               | `/v1/chat/completions` | 200         | 8,069 ms | 61,299         |
+| S1            | `openrouter/typesafe/jev-1.13` | `/v1/systemone`        | 200         | 660 ms   | 222            |
 
 S2 returned `OK`; S1 passed the decision probe. After restarting the isolated
 managed service, its port remained 35555, the catalog contained the same 934
@@ -142,6 +142,34 @@ selection through the production APIs; it does not establish full interactive
 TUI onboarding or comparative single/dual reasoning behavior. The candidate
 verification does not imply publication: the 0.70.1 publication is pending npm
 maintainer approval for its staged Windows ARM64 package.
+
+## Single and dual Session runtime verification (2026-09-30)
+
+Two isolated Build Sessions used the same saved RedRouter connection and
+`auto/best-fast`, with tool permissions denied, for a small arithmetic request.
+Both reached `outcome: "succeeded"` and returned `4`.
+
+| Mode   | End-to-end duration | S2 input / output tokens | Persisted S1 evaluations                  |
+| ------ | ------------------- | ------------------------ | ----------------------------------------- |
+| Single | 6,098 ms            | 378 / 5                  | None                                      |
+| Dual   | 5,093 ms            | 628 / 5                  | Prompt classification and response review |
+
+The dual classification was inconclusive for `change_kind` and `design_target`;
+the advisory classifier preserved that result rather than blocking the request.
+The response review was accepted with no issues. Together, the S1 calls reported
+5,018 input tokens and 467 output tokens. This small sample verifies that the
+Session runner invokes and persists S1 in dual mode and omits it in single mode;
+it is not a speed or quality benchmark, since automatic routing can select
+different upstream models.
+
+The live evidence exposed missing S1 budget accounting: the Session's projected
+S2 token counters held 633 tokens, while the S1 evaluation rows held another
+5,485. Session and Goal budget totals now fold those existing evaluation rows,
+including descendant Sessions, without creating duplicate usage events or
+changing model-visible steps. Evaluation records have no monetary price, so
+budget totals mark their usage as unpriced rather than assuming it is free.
+The required database regression covers descendant isolation, repeated reads,
+Goal baseline subtraction, unknown pricing, and parent budget enforcement.
 
 ## Completion gate
 
