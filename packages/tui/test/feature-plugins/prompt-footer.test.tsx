@@ -47,7 +47,11 @@ test("prompt footer separates simultaneous subagent, shell, and usage status", a
     },
   } as unknown as Context
   const app = await testRender(
-    () => <PromptFooter context={context} sessionID="session" mode="normal" showDetails={true} />,
+    () => (
+      <box width="100%" flexDirection="row" gap={2}>
+        <PromptFooter context={context} sessionID="session" mode="normal" showDetails={true} />
+      </box>
+    ),
     {
       width: 120,
       height: 2,
@@ -61,7 +65,7 @@ test("prompt footer separates simultaneous subagent, shell, and usage status", a
     expect(app.captureCharFrame()).toContain("New session ctrl+x n")
 
     await app.mockMouse.moveTo(2, 0)
-    const live = app.renderer.root.getChildren()[0]?.getChildren()[0]?.getChildren()[0]
+    const live = app.renderer.root.getChildren()[0]?.getChildren()[0]?.getChildren()[0]?.getChildren()[0]
     expect(live).toBeInstanceOf(TextRenderable)
     expect((live as TextRenderable).fg.toInts()).toEqual(color.toInts())
 
