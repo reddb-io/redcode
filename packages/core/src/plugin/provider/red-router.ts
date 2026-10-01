@@ -320,8 +320,12 @@ function routerPlugin(options: {
         loaded.catalogVersion =
           fetched.headers.get(ProviderRouter.Header.catalogVersion)?.trim() || loaded.catalogVersion
         const digest = Hash.sha256(JSON.stringify(models))
-        yield* kv.set(`${cacheKey}:features`, [...inspection.features])
-        if (digest === loaded.digest && JSON.stringify(inspection) === JSON.stringify(loaded.inspection)) return
+        if (
+          digest === loaded.digest &&
+          JSON.stringify(inspection) === JSON.stringify(loaded.inspection) &&
+          (yield* kv.get(`${cacheKey}:resolved:count`)) !== undefined
+        )
+          return
         const mcpInspected = mcpServer()
         loaded.inspection = inspection
         const changed = digest !== loaded.digest
@@ -330,6 +334,20 @@ function routerPlugin(options: {
         loaded.digest = digest
         yield* ctx.provider.reload()
         if (mcpServer() !== mcpInspected) yield* ctx.mcp.reload()
+        const resolved = loaded.models.flatMap((item) => routerModel(item, providerID, loaded.names, features()))
+        const resolvedChunks = Array.from({ length: Math.ceil(resolved.length / 100) }, (_, index) =>
+          resolved.slice(index * 100, (index + 1) * 100),
+        )
+        yield* Effect.forEach(
+          resolvedChunks,
+          (chunk, index) =>
+            kv.set(
+              `${cacheKey}:resolved:${index}`,
+              Schema.decodeSync(Schema.fromJsonString(Schema.Json))(JSON.stringify(chunk)),
+            ),
+          { discard: true },
+        )
+        yield* kv.set(`${cacheKey}:resolved:count`, resolvedChunks.length)
         if (!changed) return
         const chunks = Array.from({ length: Math.ceil(loaded.models.length / 100) }, (_, index) =>
           loaded.models.slice(index * 100, (index + 1) * 100),
@@ -505,7 +523,6 @@ export const connectionModel = Effect.fn("RouterProvider.connectionModel")(funct
 ) {
   const credentials = yield* Credential.Service
   const kv = yield* KV.Service
-  const modelsDev = yield* ModelsDev.Service
   const credential = connection.type === "credential" ? yield* credentials.get(connection.id) : undefined
   const baseURL =
     providerID === "red-router"
@@ -514,24 +531,17 @@ export const connectionModel = Effect.fn("RouterProvider.connectionModel")(funct
   if (!baseURL) return
   const key = value.type === "key" ? value.key : value.access
   const cacheKey = `${providerID}:models:${Hash.sha256(`${baseURL}\n${key}`)}`
-  const count = yield* kv.get(`${cacheKey}:count`)
+  const count = yield* kv.get(`${cacheKey}:resolved:count`)
   if (typeof count !== "number" || !Number.isSafeInteger(count) || count <= 0 || count >= 10_000) return
   const chunks = yield* Effect.forEach(
     Array.from({ length: count }, (_, index) => index),
-    (index) => kv.get(`${cacheKey}:${index}`),
+    (index) => kv.get(`${cacheKey}:resolved:${index}`),
   )
   const decoded = chunks.map((chunk) =>
-    Option.getOrUndefined(Schema.decodeUnknownOption(Schema.Array(catalogModel))(chunk)),
+    Option.getOrUndefined(Schema.decodeUnknownOption(Schema.Array(Model.Info))(chunk)),
   )
   if (decoded.some((chunk) => chunk === undefined)) return
-  const names = catalogNames(yield* modelsDev.get())
-  const features =
-    Option.getOrUndefined(
-      Schema.decodeUnknownOption(Schema.Array(Router.Feature))(yield* kv.get(`${cacheKey}:features`)),
-    ) ?? []
-  const model = decoded
-    .flatMap((chunk) => (chunk ?? []).flatMap((item) => routerModel(item, providerID, names, new Set(features))))
-    .find((model) => model.id === modelID)
+  const model = decoded.flatMap((chunk) => chunk ?? []).find((model) => model.id === modelID)
   return model ? { ...model, settings: { ...model.settings, baseURL } } : undefined
 })
 

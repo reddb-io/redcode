@@ -3,7 +3,7 @@ export * as ModelResolver from "./model-resolver.js"
 import { makeLocationNode } from "@opencode/util/effect/app-node"
 import { LanguageModel, ProviderConfigurationError } from "@opencode/ai"
 import { Auth } from "@opencode/ai/route"
-import { Context, Effect, Layer, Schema, Struct } from "effect"
+import { Context, Effect, Layer, Option, Schema, Struct } from "effect"
 import { AISDK } from "./aisdk.js"
 import { Credential } from "./credential.js"
 import { Integration } from "./integration.js"
@@ -13,7 +13,6 @@ import type { RuntimeInfo } from "./model.js"
 import { Npm } from "@opencode/util/npm"
 import { Provider } from "./provider.js"
 import { KV } from "./kv.js"
-import { ModelsDev } from "./models-dev.js"
 
 export class VariantUnavailableError extends Schema.TaggedError<VariantUnavailableError>()(
   "SessionRunnerModel.VariantUnavailableError",
@@ -360,12 +359,16 @@ export const hasPackage = (model: Info) => Boolean(model.package)
 /** Bind the access used by the displayed catalog without changing the integration's active account. */
 export const bind = Effect.fn("ModelResolver.bind")(function* (model: Ref) {
   if (model.connection) return model
-  const providers = yield* Provider.Service
-  const integrations = yield* Integration.Service
-  const definition = (yield* providers.snapshot()).records.get(model.providerID)
+  // Embedded admission-only graphs have no provider registry and retain legacy unbound references.
+  const providers = yield* Effect.serviceOption(Provider.Service)
+  const integrations = yield* Effect.serviceOption(Integration.Service)
+  if (Option.isNone(providers) || Option.isNone(integrations)) return model
+  const definition = (yield* providers.value.snapshot()).records.get(model.providerID)
   const connection =
     definition?.sourceConnection ??
-    (yield* integrations.connection.active(definition?.provider.integrationID ?? Integration.ID.make(model.providerID)))
+    (yield* integrations.value.connection.active(
+      definition?.provider.integrationID ?? Integration.ID.make(model.providerID),
+    ))
   return connection
     ? Ref.make({
         ...model,
@@ -385,7 +388,6 @@ export const layer = Layer.effect(
     const aisdk = yield* AISDK.Service
     const credentials = yield* Credential.Service
     const kv = yield* KV.Service
-    const modelsDev = yield* ModelsDev.Service
     const load = Effect.fn("ModelResolver.resolveModel")(function* (
       selected: Info,
       variant?: VariantID,
@@ -423,7 +425,6 @@ export const layer = Layer.effect(
               return yield* connectionModel(selected.providerID, selected.id, connection, credential).pipe(
                 Effect.provideService(Credential.Service, credentials),
                 Effect.provideService(KV.Service, kv),
-                Effect.provideService(ModelsDev.Service, modelsDev),
               )
             })
           : selected
@@ -548,5 +549,5 @@ function usesAPIKeyAuth(packageName: string | undefined) {
 export const node = makeLocationNode({
   service: Service,
   layer,
-  deps: [Provider.node, Model.node, Integration.node, Credential.node, KV.node, ModelsDev.node, Npm.node, AISDK.node],
+  deps: [Provider.node, Model.node, Integration.node, Credential.node, KV.node, Npm.node, AISDK.node],
 })

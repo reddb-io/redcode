@@ -3,8 +3,67 @@ import { expect, test } from "bun:test"
 import { createAppFixture } from "./fixture/app"
 import { tmpdir } from "./fixture/fixture"
 import { directory, json, worktree } from "./fixture/tui-client"
+import type { ModelRef } from "@opencode/client"
 
 const location = { directory, project: { id: "project", directory, canonical: directory } }
+
+test("a resumed session submits its saved connection even when the active account lists another model", async () => {
+  await using state = await tmpdir()
+  const session = {
+    id: "ses_saved_connection",
+    projectID: "project",
+    title: "Saved access",
+    agent: "build",
+    location: { directory },
+    model: { providerID: "provider", id: "saved-model", connection: { type: "credential", id: "cred_saved" } },
+    cost: 0,
+    tokens: { input: 0, output: 0, reasoning: 0, cache: { read: 0, write: 0 } },
+    time: { created: 1, updated: 1 },
+  }
+  const submissions: { model: ModelRef }[] = []
+  await using setup = await createAppFixture({
+    state: state.path,
+    args: { sessionID: session.id },
+    width: 120,
+    config: { animations: false, tabs: { mode: "off" }, session: { sidebar: "hide" } },
+    fetch: async (url, request) => {
+      if (url.pathname === `/api/session/${session.id}`) return json({ data: session })
+      if (request.method === "POST" && url.pathname === `/api/session/${session.id}/model`) {
+        submissions.push((await request.clone().json()) as { model: ModelRef })
+        return new Response(null, { status: 204 })
+      }
+      if (
+        ["message", "inbox", "permission", "todo"].some((name) => url.pathname === `/api/session/${session.id}/${name}`)
+      )
+        return json({ data: [] })
+      if (url.pathname === "/api/agent")
+        return json({ location, data: [{ id: "build", mode: "primary", hidden: false, permissions: [] }] })
+      if (url.pathname === "/api/model")
+        return json({
+          location,
+          data: [
+            {
+              id: "active-model",
+              providerID: "provider",
+              name: "Active account model",
+              enabled: true,
+              capabilities: { output: ["text"] },
+              variants: [],
+              time: { released: 0 },
+              cost: [],
+            },
+          ],
+        })
+      if (url.pathname === "/api/provider") return json({ location, data: [{ id: "provider", name: "Provider" }] })
+    },
+  })
+  await setup.ready
+  await setup.waitForFrame((frame) => frame.includes("saved-model") && frame.includes("saved connection"))
+  await setup.mockInput.typeText("Continue with the saved account")
+  setup.mockInput.pressEnter()
+  await setup.waitForFrame(() => submissions.length > 0)
+  expect(submissions[0]?.model).toMatchObject(session.model)
+})
 
 test("a resumed prototype keeps its review address visible without launching another browser", async () => {
   await using state = await tmpdir()

@@ -344,8 +344,7 @@ export const discover = Effect.fn("OpenAICompatible.discover")(function* (endpoi
       )
       return { status: result.status, ok: result.ok, body: result.ok ? await result.text() : "" }
     },
-    catch: (cause) =>
-      failure(`Could not reach the model catalog: ${cause instanceof Error ? cause.message : String(cause)}`),
+    catch: (cause) => failure(`Could not reach ${url}: ${cause instanceof Error ? cause.message : String(cause)}`),
   })
   if (response.status === 401 || response.status === 403)
     return yield* Effect.fail(failure(`The endpoint rejected the API key (HTTP ${response.status})`))

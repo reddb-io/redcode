@@ -240,7 +240,7 @@ export const { use: useLocal, provider: LocalProvider } = createSimpleContext({
         return preferredSelection(model)
       })
 
-      const currentModel = createMemo(() => {
+      const currentModel = createMemo<ModelPreferenceModel | undefined>(() => {
         const selection = currentSelection()
         if (!selection) return
         return { providerID: selection.providerID, modelID: selection.modelID, connection: selection.connection }
@@ -467,7 +467,7 @@ export const { use: useLocal, provider: LocalProvider } = createSimpleContext({
           const info = models()?.find((item) => item.providerID === value.providerID && item.id === value.modelID)
           return {
             provider: provider?.name ?? value.providerID,
-            model: info?.name ?? `${value.modelID} (unavailable)`,
+            model: info?.name ?? `${value.modelID} (${value.connection ? "saved connection" : "unavailable"})`,
             reasoning: (info?.variants?.length ?? 0) !== 0,
           }
         }),
