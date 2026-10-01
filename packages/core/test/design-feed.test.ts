@@ -124,7 +124,7 @@ describe("DesignFeed.history", () => {
         summary: "Updated screen",
       },
       { seq: 0, at, type: "published", design: designID, revision: "rev_history", name: "Updated screen" },
-      { seq: 0, at, type: "reply", id: `${assistantMessageID}:1`, text: "Feedback applied" },
+      { seq: 0, at, type: "reply", id: `${assistantMessageID}:0`, text: "Feedback applied" },
     ])
     expect(snapshot.state.users.get(user.id)).toEqual({ text: user.text, notes: 0 })
   })

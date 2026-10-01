@@ -195,7 +195,15 @@ export function history(messages: readonly SessionMessage.Info[], inbox: readonl
           return text
             ? {
                 ...result,
-                entries: [...result.entries, { ...base, type: "reply" as const, id: `${message.id}:${ordinal}`, text }],
+                entries: [
+                  ...result.entries,
+                  {
+                    ...base,
+                    type: "reply" as const,
+                    id: `${message.id}:${message.content.slice(0, ordinal).filter((part) => part.type === "text").length}`,
+                    text,
+                  },
+                ],
               }
             : result
         }
