@@ -12,6 +12,28 @@ and checks the connections before saving. Cancelling setup leaves saved settings
 unchanged. A blank S1 API key reuses credentials when the selected connection supports it.
 Sources and candidates are sent to the selected evaluator in dual mode.
 
+## Session satisfaction in S2 prompts
+
+Dual mode adds a `<session-satisfaction>` system block to each logical Step's S2
+request, including retries and rebuilt requests. It folds the last 100 persisted
+evaluations with the same satisfaction calculation as the TUI: recent confident
+`user_feedback` and `frustration` classifications plus guard stops and recoveries.
+Observe evaluations are excluded. There is no extra model call or stored score.
+
+The integer score runs from **0 (low satisfaction) to 5 (high satisfaction)**.
+Fewer than three reliable classifications produces a null score and unknown stage
+and trend. The block includes the reliable sample count, stage, stops and recoveries.
+Trend compares the current reading to the reading before the newest reliable sample,
+including only interventions at or before that preceding sample for the comparison;
+a change greater than 0.1 on the internal -1 to 1 scale is improving or worsening.
+Smaller changes are stable; without a preceding valid reading, trend is unknown.
+
+Low or worsening satisfaction asks S2 to revisit corrections and tool evidence,
+change a failed approach and verify results. Mood is advisory evidence, not a verdict
+on correctness or authorization to change goals, permissions, model, effort or budget.
+Single and Observe omit this guidance. If collection fails, execution continues
+without the block and logs the failure. Its effect on quality still needs evaluation.
+
 `/intelligence` shows the current TUI model separately from the saved global S2
 model, the effective reasoning mode and its source, and recent session evaluations.
 Select an evaluation to inspect its answers and issues. The S1 footer indicator

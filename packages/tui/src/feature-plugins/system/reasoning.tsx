@@ -182,14 +182,11 @@ function SatisfactionIndicator(props: { context: Plugin.Context; sessionID?: str
     async (input) => {
       const evaluations = await props.context.client["server.intelligence"]
         .history({ sessionID: input.sessionID, limit: 100 }, { signal: abort.signal })
+        .then((items) => items.filter((item) => item.operation === "prompt_classification" && item.mode !== "observe"))
         .catch(() => undefined)
       if (!evaluations) return undefined
       // Too few prompts read to show anything: the guard log would not change that, so it is not asked for.
-      if (
-        evaluations.filter((item) => item.operation === "prompt_classification" && item.mode !== "observe").length <
-        Satisfaction.MINIMUM
-      )
-        return { evaluations, trips: [] }
+      if (Satisfaction.progress(evaluations).usable < Satisfaction.MINIMUM) return { evaluations, trips: [] }
       // What the work showed: turns the harness ended and work that resumed after a hint, since the oldest prompt read.
       const since = Math.min(Infinity, ...evaluations.map((evaluation) => evaluation.created))
       const report = await props.context.client.debug

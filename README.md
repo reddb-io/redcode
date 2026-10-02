@@ -148,6 +148,12 @@ to inspect the current models, the effective mode and recent evaluations. An una
 or rejected evaluation is shown as such, never as an approval. See [reasoning roles](docs/system-one.md).
 `/setup` remains an alias for `/dual`; `/reasoning` changes the mode for the current session.
 
+In dual mode, the **mood** indicator and S2 prompts use accumulated session feedback:
+**0/5 means low satisfaction; 5/5 means high satisfaction**. The prompt also includes
+the trend and reliable sample count, helping S2 revisit corrections and verify its work.
+Fewer than three reliable classifications means unknown. This reuses existing S1 results
+without another model call; its quality impact has not yet been measured.
+
 In our best recorded diagnostic experiment, dual passed **39/40 cases (97.5%)** against
 single's **35/40 (87.5%)**, a gain of **10 percentage points**. Estimated total S1+S2 cost
 increased **13.8%**; median latency increased from **3.13s to 4.44s (42% slower)**.

@@ -47,6 +47,29 @@ for (const scenario of [
       duration: 1,
       usage: { input_tokens: 0, output_tokens: 0 },
     }))
+    // Observe-only reactions must neither establish a reading nor change a Dual reading.
+    evaluations.push(
+      ...Array.from(
+        { length: 3 },
+        (_, index): IntelligenceEvaluation => ({
+          id: `observe_${index}`,
+          fingerprint: `observe_${index}`,
+          sessionID: session.id,
+          operation: "prompt_classification",
+          mode: "observe",
+          policy: "fixture",
+          decision: "accepted",
+          model: "fixture",
+          answers: {
+            user_feedback: { type: "choice", choice: "rejects", probabilities: { rejects: 1 }, confidence: 1 },
+          },
+          issues: [],
+          created: index + 100,
+          duration: 1,
+          usage: { input_tokens: 0, output_tokens: 0 },
+        }),
+      ),
+    )
     const statuses: string[] = []
     await using setup = await createAppFixture({
       state: state.path,

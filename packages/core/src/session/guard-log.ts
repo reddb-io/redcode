@@ -2,7 +2,7 @@ export * as SessionGuardLog from "./guard-log.js"
 
 import { makeGlobalNode } from "@opencode/util/effect/app-node"
 import { SessionGuard } from "@opencode/schema/session-guard"
-import { desc, gte } from "drizzle-orm"
+import { and, desc, eq, gte } from "drizzle-orm"
 import { Context, Effect, Layer } from "effect"
 import { Database } from "../database/database.js"
 import { Bus } from "../bus.js"
@@ -56,11 +56,20 @@ const make = Effect.gen(function* () {
       .pipe(Effect.catchCause((cause) => Effect.logWarning("Could not publish guard intervention", { cause })))
   })
 
-  const recent = Effect.fn("SessionGuardLog.recent")(function* (input?: { since?: number; limit?: number }) {
+  const recent = Effect.fn("SessionGuardLog.recent")(function* (input?: {
+    sessionID?: SessionSchema.ID
+    since?: number
+    limit?: number
+  }) {
     const rows = yield* db
       .select()
       .from(SessionGuardTripTable)
-      .where(input?.since === undefined ? undefined : gte(SessionGuardTripTable.time_created, input.since))
+      .where(
+        and(
+          input?.sessionID === undefined ? undefined : eq(SessionGuardTripTable.session_id, input.sessionID),
+          input?.since === undefined ? undefined : gte(SessionGuardTripTable.time_created, input.since),
+        ),
+      )
       .orderBy(desc(SessionGuardTripTable.time_created))
       .limit(input?.limit ?? 100)
       .all()
@@ -102,4 +111,8 @@ const make = Effect.gen(function* () {
 })
 
 export class Service extends Context.Service<Service, Effect.Success<typeof make>>()("@opencode/SessionGuardLog") {}
-export const node = makeGlobalNode({ service: Service, layer: Layer.effect(Service, make), deps: [Database.node, Bus.node] })
+export const node = makeGlobalNode({
+  service: Service,
+  layer: Layer.effect(Service, make),
+  deps: [Database.node, Bus.node],
+})

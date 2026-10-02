@@ -60,6 +60,7 @@ import { SessionStopLoss } from "../stop-loss.js"
 import { Intelligence } from "../../intelligence.js"
 import { CodeModeCatalog } from "../../codemode/catalog.js"
 import { IntelligenceClassification } from "../../intelligence/classification.js"
+import { IntelligenceSatisfaction } from "../../intelligence/satisfaction.js"
 import { IntelligenceEvaluation } from "../../intelligence/evaluation.js"
 import { Tool } from "../../tool.js"
 import { IntelligenceArtifacts } from "../../intelligence/artifacts.js"
@@ -143,6 +144,17 @@ const layer = Layer.effect(
         Effect.map((settings) => settings.enabled && IntelligenceEvaluation.mode(settings) === "dual"),
         Effect.orElseSucceed(() => false),
       )
+
+    const satisfaction = Effect.fn("SessionRunner.satisfaction")(function* (sessionID: SessionSchema.ID) {
+      if (!(yield* dual(sessionID))) return ""
+      const evaluations = yield* intelligence.history(sessionID, { limit: 100 })
+      const trips = yield* guards.recent({
+        sessionID,
+        since: Math.min(Date.now(), ...evaluations.map((evaluation) => evaluation.created)),
+        limit: 200,
+      })
+      return IntelligenceSatisfaction.context(evaluations, trips)
+    })
 
     // Verification admission is a durable fact, independent of the model window or recent-message limit.
     const verificationState = Effect.fn("SessionRunner.verificationState")(function* (sessionID: SessionSchema.ID) {
@@ -331,6 +343,13 @@ const layer = Layer.effect(
         const advice = [
           IntelligenceClassification.context(classification),
           IntelligenceClassification.skillContext(classification),
+          yield* satisfaction(sessionID).pipe(
+            Effect.catchCause((cause) =>
+              Effect.logWarning("Session satisfaction unavailable", { sessionID, cause: Cause.pretty(cause) }).pipe(
+                Effect.as(""),
+              ),
+            ),
+          ),
         ]
           .filter(Boolean)
           .join("\n\n")

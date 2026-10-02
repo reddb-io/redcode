@@ -44,7 +44,9 @@ import { SessionEvent } from "@opencode/core/session/event"
 import { SessionCompaction } from "@opencode/core/session/compaction"
 import { SessionInbox } from "@opencode/core/session/inbox"
 import { SessionGoal } from "@opencode/core/session/goal"
-import { SessionGoalTable } from "@opencode/core/session/redcode.sql"
+import { SessionGoalTable, SessionGuardTripTable } from "@opencode/core/session/redcode.sql"
+import { IntelligenceAnswerTable, IntelligenceEvaluationTable } from "@opencode/core/intelligence/sql"
+import { KVTable } from "@opencode/core/kv/sql"
 import { SessionMessage } from "@opencode/core/session/message"
 import { SessionModelTransport } from "@opencode/core/session/model-transport"
 import { SessionProviderContext } from "@opencode/core/session/provider-context"
@@ -1429,6 +1431,84 @@ describe("SessionRunnerLLM", () => {
     expect(s.requests).toHaveLength(1)
     expect(yield* s.messages).toMatchObject([{ id: message.id, type: "user", text: "Run automatically" }])
   })
+
+  for (const mode of ["dual", "single", "observe"] as const) {
+    scenario(`sends accumulated satisfaction only to dual S2 requests (${mode} session override)`, function* (s) {
+      yield* s.db
+        .insert(KVTable)
+        .values({
+          key: "redcode.intelligence.settings",
+          value: { enabled: true, reasoning: "dual", onboarding: "completed" },
+        })
+        .run()
+      yield* s.db
+        .update(SessionTable)
+        .set({ metadata: { reasoning: mode } })
+        .where(eq(SessionTable.id, sessionID))
+        .run()
+      yield* insertSession(otherSessionID)
+      const user = yield* s.admit("Continue the corrected approach")
+      const rows = [sessionID, otherSessionID].flatMap((id) =>
+        [1, 2, 3].map((time) => ({
+          id: `eval_${id}_${time}`,
+          session_id: id,
+          operation: "prompt_classification",
+          evaluation_kind: "classification",
+          subject_id: time === 3 ? user.id : `msg_previous_${time}`,
+          fingerprint: `hash_${id}_${time}`,
+          mode,
+          policy: "fixture",
+          decision: "accepted",
+          model: "fixture",
+          issues: [],
+          input_tokens: 0,
+          output_tokens: 0,
+          duration: 0,
+          source_hash: "fixture",
+          candidate_hash: "fixture",
+          time_created: time,
+        })),
+      )
+      yield* s.db.insert(IntelligenceEvaluationTable).values(rows).run()
+      yield* s.db
+        .insert(IntelligenceAnswerTable)
+        .values(
+          rows.map((row) => ({
+            evaluation_id: row.id,
+            question_id: "user_feedback",
+            type: "choice",
+            choice: row.session_id === sessionID ? "agrees" : "rejects",
+            confidence: 1,
+            probabilities: { [row.session_id === sessionID ? "agrees" : "rejects"]: 1 },
+          })),
+        )
+        .run()
+      // Other sessions must not consume the guard query's limit before filtering.
+      yield* s.db
+        .insert(SessionGuardTripTable)
+        .values(
+          Array.from({ length: 202 }, (_, index) => ({
+            id: `guard_${index}`,
+            session_id: index === 0 ? sessionID : otherSessionID,
+            guard: "loop",
+            action: "stop",
+            detail: "fixture",
+            time_created: index + 4,
+            time_updated: index + 4,
+          })),
+        )
+        .run()
+      yield* s.llm.push(TestLLM.text("Verified correction", "satisfaction-result"))
+      yield* s.resume
+      const system = s.requests[0]!.system.map((part) => part.text).join("\n")
+      expect(system.includes("<session-satisfaction>")).toBe(mode === "dual")
+      if (mode !== "dual") return
+      expect(system).toContain('"score":5')
+      expect(system).toContain('"samples":3')
+      expect(system).toContain('"stops":1')
+      expect(userTexts(s.requests[0])).toContain("Continue the corrected approach")
+    })
+  }
 
   scenario("runs a follow-up when synthetic input arrives during an active continuation", function* (s) {
     const secondStarted = yield* Deferred.make<void>()
