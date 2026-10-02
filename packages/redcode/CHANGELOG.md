@@ -1,5 +1,13 @@
 # @reddb-io/redcode
 
+## 0.71.4
+
+### Patch Changes
+
+- Track accumulated friction with the agent's work instead of averaging sentiment or satisfaction. Repeated corrections and unresolved failures raise the Context thermometer from 0 to 5; neutral continuation preserves it and confirmed improvement cools it gradually. Display a single vertical bar filling upward beside Context without a label or numeric score. Reuse existing S1 telemetry to guide S2 toward a more specific correction, verification, or focused clarification without extra model calls.
+- Show connected integrations before popular providers in /connect and CLI login, keep active connections first in account and reasoning pickers, and make adding another connection explicit. Preserve the selected S2 credentials in CLI setup and keep different OpenAI-compatible endpoints on the same host from overwriting existing provider connections.
+- Stop a provider stream when a raw GLM-style call to an available tool leaks into ordinary response text. Report a non-retryable format error instead of allowing the malformed argument body to keep streaming. Preserve native tool calls, reasoning telemetry, and fenced examples.
+
 ## 0.71.3
 
 ### Patch Changes
