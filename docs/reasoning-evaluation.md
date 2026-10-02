@@ -4,7 +4,9 @@ The harness has two suites. `diagnostic` preserves the original eight read-only
 cases below. `coding` uses twelve dependency-free TypeScript repair projects,
 with six calibration families and six distinct reserved families. These are
 executable coding fixtures, not a benchmark of full application development.
-The coding campaign has not yet been run against real models.
+The [local coding study from 2026-10-02](evaluations/reasoning-coding-2026-10-02.md)
+records real-model calibration, interrupted attempts and the separately evaluated
+reserved split. It does not establish a general coding accuracy gain.
 
 ## Coding campaigns
 

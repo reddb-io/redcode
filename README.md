@@ -154,7 +154,16 @@ the trend and reliable sample count, helping S2 revisit corrections and verify i
 Fewer than three reliable classifications means unknown. This reuses existing S1 results
 without another model call; its quality impact has not yet been measured.
 
-In our best recorded diagnostic experiment, dual passed **39/40 cases (97.5%)** against
+Our [local coding calibration](docs/evaluations/reasoning-coding-2026-10-02.md) with
+Mimo V2.6 Pro and JEV-1.13 found **12/12 passes in both modes**, with **34.3% more
+dual cost** and median latency of **81.66s versus 49.52s**. Two matched costs
+exceeded 2x. The verification experiment stopped on a five-minute execution
+timeout and has incomplete cost evidence. Reserved-case collection stopped at
+11/24 executions on another five-minute timeout, with another matched cost
+above 2x. Collection is closed; neither a coding accuracy gain nor compliance
+with the per-case cost ceiling was demonstrated.
+
+In an earlier read-only diagnostic experiment, dual passed **39/40 cases (97.5%)** against
 single's **35/40 (87.5%)**, a gain of **10 percentage points**. Estimated total S1+S2 cost
 increased **13.8%**; median latency increased from **3.13s to 4.44s (42% slower)**.
 All matched pairs stayed below 2x estimated cost, with no observed paired regression.
@@ -168,8 +177,8 @@ evaluation gate; runtime budgets cannot guarantee a ratio against an unobserved 
 The [coding evaluation harness](docs/reasoning-evaluation.md) adds twelve repair projects
 with actual source edits, test execution and independent behavioral checks. It compares
 pinned S1/S2 pairs on separate calibration and held-out families, rejecting incomplete
-evidence and unknown costs. Real-model coding results are still pending; the diagnostic
-gain above does not establish coding improvement.
+evidence and unknown costs. Coding calibration and reserved-case results remain separate;
+the earlier diagnostic gain does not establish coding improvement.
 
 ### Goal
 
