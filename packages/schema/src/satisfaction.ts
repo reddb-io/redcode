@@ -4,39 +4,24 @@ import type { Answer } from "./intelligence.js"
 import { STOP_LOSS_PROGRESSED } from "./session-guard.js"
 
 /**
- * How the user is taking the session, read from what System One already classifies for every prompt: how the user's
- * message judges the agent's previous work (`user_feedback`) and how frustrated they are (`frustration`). No extra
- * model call is made and nothing is stored: the score is folded from the session's classifications each time.
- *
- * It is mostly the user's reaction: a session can go well with a user who never says so, which reads as steady. What
- * the work itself shows moves it a little: turns the harness had to stop, and work that picked up again after a hint.
- * It never reads a message's words itself, so it holds for every language.
+ * Accumulated friction with the agent's work, not a classification of the user's emotions. Existing S1 feedback
+ * and frustration evidence heats the session; confirmed improvement cools it. Neutral continuations preserve the
+ * reading. No extra model call or durable score: the same chronological fold serves the TUI and S2 prompts.
  */
 
 /** The least confidence at which an answer counts, the same bar the classification's other consumers use. */
 export const CONFIDENCE = 0.6
 
-/** How much less each earlier prompt weighs than the next one: the mood follows the latest turns. */
-export const DECAY = 0.6
-
 /** Prompts needed before a stage is shown; one reaction is not a trend. */
 export const MINIMUM = 3
 
-/** The user's reaction to the previous work, as a value from -1 (rejected) to 1 (approved). */
-const FEEDBACK: Readonly<Record<string, number>> = { agrees: 1, neutral: 0, corrects: -0.4, rejects: -1 }
+/** Corrections and failed work accumulate faster than confirmed improvement cools the session. */
+const FEEDBACK: Readonly<Record<string, number>> = { agrees: -0.15, neutral: 0, corrects: 0.2, rejects: 0.35 }
+const FRUSTRATION = 0.4
 
-/** The weight of frustration against the reaction to the work. */
-const FRUSTRATION = 0.8
-
-/** The prompts whose time a stop or a recovery must fall after to count: the recent turns, not the whole session. */
-export const WINDOW = 5
-
-/** What a turn the harness had to end costs, and what work resuming after a hint earns back. */
-const STOP = -0.2
-const RECOVERED = 0.1
-
-/** The most the work can move the mood down or up, so it never outweighs what the user said. */
-const WORK_LIMITS = { min: -0.4, max: 0.2 }
+/** Failure stops heat less than direct feedback; verified recovery cools by a smaller amount. */
+const STOP = 0.1
+const RECOVERED = -0.05
 
 /** The guards whose `stop` means the work did not get where the user asked. */
 const STOPPING_GUARDS: ReadonlySet<string> = new Set(["stop_loss", "goal", "loop", "steps", "stall"])
@@ -49,12 +34,12 @@ export interface Trip {
   readonly at: number
 }
 
-/** The five stages, from the worst to the best. */
-export const STAGES = ["frustrated", "rough", "steady", "good", "great"] as const
+/** Temperature stages, without attributing an emotional state to the user. */
+export const STAGES = ["cool", "warming", "warm", "hot", "critical"] as const
 export type Stage = (typeof STAGES)[number]
 
-/** One block glyph per stage, growing with satisfaction, for a footer that has room for one character. */
-export const GLYPHS = ["▁", "▂", "▄", "▆", "█"] as const
+/** A one-column vertical thermometer: empty, then five levels filling from bottom to top. */
+export const GLYPHS = ["▯", "▁", "▂", "▄", "▆", "█"] as const
 
 /** The evaluation fields this reads; `Intelligence.Evaluation` satisfies it. */
 export interface Evaluation {
@@ -64,7 +49,7 @@ export interface Evaluation {
   readonly answers: Readonly<Record<string, Answer>>
 }
 
-/** One prompt's value from -1 to 1, or undefined when System One gave neither signal reliably. */
+/** One prompt's temperature change, or undefined when neither signal is reliable. */
 export function sample(evaluation: Evaluation) {
   if (evaluation.operation !== "prompt_classification" || evaluation.decision === "unavailable") return undefined
   const feedback = evaluation.answers.user_feedback
@@ -72,7 +57,10 @@ export function sample(evaluation: Evaluation) {
     feedback?.type === "choice" && feedback.confidence >= CONFIDENCE ? FEEDBACK[feedback.choice] : undefined
   const frustration = unit(evaluation.answers.frustration)
   if (reaction === undefined && frustration === undefined) return undefined
-  return Math.min(1, Math.max(-1, (reaction ?? 0) - FRUSTRATION * (frustration ?? 0)))
+  // Approval while an issue still causes friction must not cancel that evidence.
+  return frustration !== undefined && frustration > 0
+    ? Math.max(reaction ?? 0, FRUSTRATION * frustration)
+    : (reaction ?? 0)
 }
 
 /** A reliable score answer scaled to 0..1 by its legend, or undefined. */
@@ -82,13 +70,13 @@ function unit(answer: Answer | undefined) {
   return top < 1 ? undefined : Math.min(1, Math.max(0, answer.score / top))
 }
 
-/** The stage for a mood from -1 to 1. */
-export function stage(mood: number): Stage {
-  if (mood >= 0.5) return "great"
-  if (mood >= 0.15) return "good"
-  if (mood > -0.15) return "steady"
-  if (mood > -0.5) return "rough"
-  return "frustrated"
+/** The stage for accumulated friction from 0 to 1. */
+export function stage(temperature: number): Stage {
+  if (temperature >= 0.8) return "critical"
+  if (temperature >= 0.6) return "hot"
+  if (temperature >= 0.4) return "warm"
+  if (temperature > 0) return "warming"
+  return "cool"
 }
 
 /**
@@ -103,19 +91,17 @@ export function progress(evaluations: ReadonlyArray<Evaluation>) {
   return { classified: classified.length, usable, needed: MINIMUM }
 }
 
-/** How the recent work moved the mood: stops the harness made cost it, work resuming after a hint earns some back. */
+/** Failure and recovery evidence inside the retained classification history. */
 export function work(trips: ReadonlyArray<Trip>, since: number) {
   const recent = trips.filter((trip) => trip.at >= since)
   const stops = recent.filter((trip) => trip.action === "stop" && STOPPING_GUARDS.has(trip.guard)).length
   const recovered = recent.filter((trip) => trip.subject === STOP_LOSS_PROGRESSED).length
-  const moved = Math.min(WORK_LIMITS.max, Math.max(WORK_LIMITS.min, stops * STOP + recovered * RECOVERED))
-  return { stops, recovered, moved }
+  return { stops, recovered }
 }
 
 /**
- * The session's satisfaction from its evaluations, in any order, and from the guard log's trips when given: the
- * weighted mood of its prompts with the latest weighing most, moved by what the recent work showed, and its stage;
- * undefined until {@link MINIMUM} prompts were read.
+ * Fold temperature changes in chronological order. Neutral or unavailable feedback never cools accumulated
+ * friction. Undefined until {@link MINIMUM} prompts were reliably read; the result remains advisory evidence.
  */
 export function read(evaluations: ReadonlyArray<Evaluation>, trips: ReadonlyArray<Trip> = []) {
   const rated = evaluations
@@ -125,13 +111,25 @@ export function read(evaluations: ReadonlyArray<Evaluation>, trips: ReadonlyArra
       return value === undefined ? [] : [{ value, created: evaluation.created }]
     })
   if (rated.length < MINIMUM) return undefined
-  const weights = rated.map((_, index) => DECAY ** (rated.length - 1 - index))
-  const reaction =
-    rated.reduce((total, item, index) => total + item.value * weights[index]!, 0) / weights.reduce((a, b) => a + b, 0)
-  const recent = work(trips, rated[Math.max(0, rated.length - WINDOW)]!.created)
-  const mood = Math.min(1, Math.max(-1, reaction + recent.moved))
-  return { mood, stage: stage(mood), samples: rated.length, stops: recent.stops, recovered: recent.recovered }
+  const recent = trips.filter((trip) => trip.at >= rated[0]!.created)
+  const temperature = [
+    ...rated,
+    ...recent.flatMap((trip) => {
+      if (trip.action === "stop" && STOPPING_GUARDS.has(trip.guard)) return [{ value: STOP, created: trip.at }]
+      if (trip.subject === STOP_LOSS_PROGRESSED) return [{ value: RECOVERED, created: trip.at }]
+      return []
+    }),
+  ]
+    .toSorted((left, right) => left.created - right.created)
+    .reduce((value, item) => Math.min(1, Math.max(0, value + item.value)), 0)
+  return {
+    temperature,
+    score: Math.round(temperature * 5),
+    stage: stage(temperature),
+    samples: rated.length,
+    ...work(recent, rated[0]!.created),
+  }
 }
 
-/** The glyph of a stage. */
-export const glyph = (value: Stage) => GLYPHS[STAGES.indexOf(value)]!
+/** The glyph of a measured integer temperature from 0 to 5. */
+export const glyph = (score: number) => GLYPHS[score]!

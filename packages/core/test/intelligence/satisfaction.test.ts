@@ -13,7 +13,7 @@ const rating = (created: number, choice: string, confidence = 1) =>
     },
   })
 
-test("insufficient reliable feedback is unknown, never zero satisfaction", () => {
+test("insufficient reliable feedback is unknown, never zero friction", () => {
   const context = IntelligenceSatisfaction.context([
     rating(1, "rejects"),
     rating(2, "rejects"),
@@ -28,25 +28,27 @@ test("insufficient reliable feedback is unknown, never zero satisfaction", () =>
   expect(context).toContain("do not infer frustration from missing data")
 })
 
-test("satisfaction uses the indicator's 0 to 5 direction and excludes Observe history", () => {
-  expect(IntelligenceSatisfaction.context([1, 2, 3].map((time) => rating(time, "rejects")))).toContain('"score":0')
+test("temperature grows with accumulated failures and excludes Observe history", () => {
+  expect(IntelligenceSatisfaction.context([1, 2, 3].map((time) => rating(time, "rejects")))).toContain('"score":5')
   const context = IntelligenceSatisfaction.context([
     ...[1, 2, 3].map((time) => rating(time, "agrees")),
     { ...rating(4, "rejects"), mode: "observe" },
   ])
-  expect(context).toContain('"score":5')
+  expect(context).toContain('"score":0')
   expect(context).toContain('"samples":3')
-  expect(context).toContain('"stage":"great"')
+  expect(context).toContain('"stage":"cool"')
   expect(context).toContain("does not change the objective, permissions, mode, model, effort or budget")
 })
 
-test("trend follows the latest reliable reaction in chronological order", () => {
+test("temperature trend follows new friction and confirmed improvement in chronological order", () => {
   const stable = [1, 2, 3].map((time) => rating(time, "neutral"))
   expect(IntelligenceSatisfaction.context([...stable, rating(4, "rejects")].toReversed())).toContain(
-    '"trend":"worsening"',
+    '"trend":"heating"',
   )
-  expect(IntelligenceSatisfaction.context([...stable, rating(4, "agrees")])).toContain('"trend":"improving"')
+  const failed = [1, 2, 3].map((time) => rating(time, "rejects"))
+  expect(IntelligenceSatisfaction.context([...failed, rating(4, "agrees")])).toContain('"trend":"cooling"')
   expect(IntelligenceSatisfaction.context([...stable, rating(4, "neutral")])).toContain('"trend":"stable"')
+  expect(IntelligenceSatisfaction.context([...failed, rating(4, "neutral")])).toContain('"score":5')
 })
 
 test("guard evidence changes the same reading without changing the stored history", () => {
@@ -59,6 +61,6 @@ test("guard evidence changes the same reading without changing the stored histor
   ])
   expect(context).toContain('"stops":1')
   expect(context).toContain('"recovered":1')
-  expect(context).toContain('"score":2')
+  expect(context).toContain('"score":0')
   expect(JSON.stringify(ratings)).toBe(original)
 })

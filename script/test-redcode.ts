@@ -134,6 +134,7 @@ const suites = {
     "test/system-model.test.ts",
   ],
   schema: [
+    "test/satisfaction.test.ts",
     "test/config.test.ts",
     "test/model.test.ts",
     "test/router-offers.test.ts",

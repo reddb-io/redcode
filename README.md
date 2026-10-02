@@ -151,14 +151,18 @@ or rejected evaluation is shown as such, never as an approval. See [reasoning ro
 S1 prompt classification runs **in parallel with S2**, including gathering its sources.
 When it finishes, persisted advice steers subsequent Steps for the same user request.
 A newer user correction takes priority; an old assessment cannot steer that new request.
-Late feedback still contributes to session satisfaction without restarting completed work.
+Late feedback still contributes to the session's frustration thermometer without restarting completed work.
 Final response review and mandatory approval checks keep their existing policies.
 This removes the classifier's initial wait. The [published 0.71.3 study](docs/evaluations/reasoning-0.71.3-2026-10-02.md)
 has not demonstrated a coding accuracy or speed gain.
 
-In dual mode, the **mood** indicator and S2 prompts use accumulated session feedback:
-**0/5 means low satisfaction; 5/5 means high satisfaction**. The prompt also includes
-the trend and reliable sample count, helping S2 revisit corrections and verify its work.
+In dual mode, the vertical thermometer beside Context and S2 prompts track accumulated
+friction with the agent's work: **0/5 means no accumulated friction; 5/5 means critical
+friction**. Its single-column bar fills upward (`▯ ▁ ▂ ▄ ▆ █`) as repeated corrections,
+rejected results and unresolved failures accumulate. Neutral messages such as "ok, continue" preserve the temperature; confirmed
+improvement cools it gradually. It tracks the history of unmet expectations rather than
+classifying the user's emotions. High or rising temperature asks S2 to revisit the failed
+attempts, change its approach, verify the correction and clarify an ambiguous outcome.
 Fewer than three reliable classifications means unknown. This reuses existing S1 results
 without another model call; its quality impact has not yet been measured.
 

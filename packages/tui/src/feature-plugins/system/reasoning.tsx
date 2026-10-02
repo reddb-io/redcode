@@ -96,7 +96,7 @@ export default Plugin.define({
             },
             {
               id: "satisfaction.toggle",
-              title: "Show or hide the satisfaction indicator",
+              title: "Show or hide the frustration thermometer",
               group: "Provider",
               palette: true,
               slash: { name: "satisfaction" },
@@ -107,7 +107,7 @@ export default Plugin.define({
                 }).then(() =>
                   context.ui.toast.show({
                     variant: "info",
-                    message: view.hidden ? "Satisfaction indicator hidden." : "Satisfaction indicator shown.",
+                    message: view.hidden ? "Frustration thermometer hidden." : "Frustration thermometer shown.",
                   }),
                 )
               },
@@ -170,8 +170,8 @@ export default Plugin.define({
 })
 
 /**
- * How the user is taking the session: five half-blocks on a 0..5 scale, read from what
- * System One classifies for each prompt. Dual reasoning shows progress until enough prompts were read.
+ * Accumulated session friction: one vertical block filling upward as unresolved failures accumulate.
+ * Dual reasoning shows an unknown reading until enough reliable prompts were classified.
  */
 function SatisfactionIndicator(props: { context: Plugin.Context; sessionID?: string; status?: IntelligenceStatus }) {
   const abort = new AbortController()
@@ -194,7 +194,7 @@ function SatisfactionIndicator(props: { context: Plugin.Context; sessionID?: str
       if (!evaluations) return undefined
       // Too few prompts read to show anything: the guard log would not change that, so it is not asked for.
       if (Satisfaction.progress(evaluations).usable < Satisfaction.MINIMUM) return { evaluations, trips: [] }
-      // What the work showed: turns the harness ended and work that resumed after a hint, since the oldest prompt read.
+      // Failure and verified recovery evidence since the oldest retained classification.
       const since = Math.min(Infinity, ...evaluations.map((evaluation) => evaluation.created))
       const report = await props.context.client.debug
         .guards({ since: Number.isFinite(since) ? since : 0, limit: 200 }, { signal: abort.signal })
@@ -204,53 +204,39 @@ function SatisfactionIndicator(props: { context: Plugin.Context; sessionID?: str
   )
   const reading = () =>
     enabled() && history() ? Satisfaction.read(history()?.evaluations ?? [], history()?.trips ?? []) : undefined
-  const level = () => {
-    const value = reading()
-    return value ? Math.round((value.mood + 1) * 2.5) : undefined
-  }
   const tone = (stage: Satisfaction.Stage) => {
     const feedback = props.context.theme.text.feedback
-    if (stage === "frustrated") return feedback.error.base
-    if (stage === "rough") return feedback.warning.base
-    if (stage === "great") return feedback.success.base
-    if (stage === "good") return feedback.info.base
+    if (stage === "critical") return feedback.error.base
+    if (stage === "hot" || stage === "warm") return feedback.warning.base
     return props.context.theme.text.base
   }
-  // Unknown satisfaction is distinct from a measured zero.
-  const waiting = () => {
-    if (!enabled() || reading()) return undefined
-    if (!history()) return history.loading ? "mood …" : "mood unavailable"
-    return "mood ▄▄▄▄▄ ?/5"
-  }
+  // Missing evidence is distinct from a measured cool session.
   return (
     <Show
       when={reading()}
       fallback={
-        <Show when={waiting()}>
-          {(value) => (
-            <text
-              id="session-satisfaction-indicator"
-              fg={props.context.theme.text.muted}
-              wrapMode="none"
-              flexShrink={0}
-              onMouseUp={() => props.context.keymap.dispatch("intelligence.status")}
-            >
-              {value()}
-            </text>
-          )}
+        <Show when={enabled()}>
+          <text
+            id="session-satisfaction-indicator"
+            fg={props.context.theme.text.muted}
+            wrapMode="none"
+            flexShrink={0}
+            onMouseUp={() => props.context.keymap.dispatch("intelligence.status")}
+          >
+            ?
+          </text>
         </Show>
       }
     >
       {(value) => (
         <text
           id="session-satisfaction-indicator"
-          fg={props.context.theme.text.muted}
+          fg={tone(value().stage)}
           wrapMode="none"
           flexShrink={0}
           onMouseUp={() => props.context.keymap.dispatch("intelligence.status")}
         >
-          mood <span style={{ fg: tone(value().stage) }}>{"▄".repeat(level() ?? 0)}</span>
-          <span style={{ fg: props.context.theme.text.muted }}>{"▄".repeat(5 - (level() ?? 0))}</span> {level()}/5
+          {Satisfaction.glyph(value().score)}
         </text>
       )}
     </Show>

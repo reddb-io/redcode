@@ -161,12 +161,16 @@ const definitions: Record<string, Intelligence.Question> = {
   },
   frustration: {
     type: "score",
-    instructions: "How frustrated is the user in sources? Judge tone separately from urgency.",
+    instructions: {
+      question: "How much friction with the agent's work is evidenced by the current request and sources.history?",
+      focus:
+        "Use unresolved failures, repeated corrections, repeated unmet requests and explicit loss of patience with the agent. Do not classify general sentiment, personality, emotion, profanity or urgency. A complaint about an external problem is not evidence the agent failed; a calm repeated correction can be strong evidence. Rate current friction; the harness accumulates these observations across iterations.",
+    },
     criteria: [
-      "Calm or purely factual",
-      "Mild concern or impatience",
-      "Clear frustration, repeated failure or strong dissatisfaction",
-      "Angry, abusive, threatening to leave or at the end of patience",
+      "No current evidence of friction with the agent's work",
+      "A minor unmet expectation or explicit impatience with the agent's progress",
+      "The agent's result still fails the request, or the user repeats a correction after an attempted fix",
+      "Several attempts have failed or the user explicitly has no patience left with this unresolved work",
     ],
   },
   user_feedback: {
@@ -174,12 +178,12 @@ const definitions: Record<string, Intelligence.Question> = {
     instructions: {
       question: "How does the current user message judge the agent's previous work in sources.history?",
       focus:
-        "Classify only the reaction to the agent's latest answer or work. A new request that does not judge that work is neutral, and so is a first message.",
+        "Classify only evidence about the agent's work. A new request and a first message are neutral. 'Ok', 'go' or 'continue' authorizes continuation but does not confirm a fix or successful result; classify it as neutral unless it explicitly confirms improvement.",
     },
     criteria: {
-      agrees: "Approves, accepts or confirms the previous answer or work and lets it continue",
+      agrees: "Explicitly confirms the previous result is correct, works, or resolved the reported problem",
       corrects:
-        "Points out a specific mistake in the previous answer or work, or adjusts it while keeping its direction",
+        "Points out a specific mistake or unmet existing requirement in the previous answer or work; a newly introduced requirement or preference alone is neutral",
       rejects: "Rejects the previous answer or work, says it failed, or says it went the wrong way",
       neutral: "Does not judge the previous work, or there is none",
     },
@@ -581,7 +585,7 @@ export function context(evaluation: Intelligence.Evaluation | undefined) {
           "The request likely states restricted content in prose, such as a secret or personal data: do not repeat, quote or store it unless the user explicitly asks.",
         ]
       : []),
-    "Only reliable signals are shown. Use the original request and context for unresolved details. Feedback corrects or rejects previous work; frustration only adapts communication. Permissions and modes come from the conversation and deterministic safeguards.",
+    "Only reliable signals are shown. Use the original request and context for unresolved details. Feedback corrects or rejects previous work; frustration is evidence of friction with the agent, not a sentiment label. Accumulated friction calls for reviewing unmet requirements, changing a failed approach and verifying the correction. Permissions and modes come from the conversation and deterministic safeguards.",
     "</user-request-assessment>",
   ].join("\n")
 }

@@ -90,31 +90,54 @@ review, goal checks and mandatory approval policies retain their existing behavi
 This removes a known wait from execution. It does not yet establish lower end-to-end
 latency, better accuracy or compliance with the measured 2x cost criterion.
 
-## Session satisfaction in S2 prompts
+## Accumulated session friction in S2 prompts
 
-Dual mode adds a `<session-satisfaction>` system block to each logical Step's S2
-request, including retries and rebuilt requests. It folds the last 100 persisted
-evaluations with the same satisfaction calculation as the TUI: recent confident
-`user_feedback` and `frustration` classifications plus guard stops and recoveries.
+Dual mode adds a `<session-frustration>` system block to each logical Step's S2
+request, including retries and rebuilt requests. The Context thermometer and S2 use
+the same chronological fold of the last 100 persisted evaluations: confident
+`user_feedback` and `frustration` observations plus guard stops and verified recoveries.
 Observe evaluations are excluded. There is no extra model call or stored score.
 
+This measures accumulated friction with the agent's work, not general sentiment,
+personality or emotion. S1 reads the request with recent conversation history to
+identify unmet expectations, repeated corrections and failed attempts. Profanity,
+urgency or a complaint about an external system alone does not establish agent failure.
+A calm repeated correction can be stronger evidence than an emotional new request.
+
+Corrections add 0.2, rejection adds 0.35, and explicit friction contributes up to 0.4
+per reliable prompt, using the stronger failure signal instead of counting it twice.
+Explicit confirmation that the result works subtracts 0.15 when no current friction
+is reported. Neutral messages, including "ok", "go" and "continue", hold the reading;
+missing or unreliable observations contribute nothing. Guard stops add 0.1 and
+verified recovery subtracts 0.05. Clamp each observation to the internal 0 to 1 range,
+so past approval cannot compensate for a later failure. These are heuristic weights,
+not empirically calibrated measures of patience or correctness.
+
+The integer score runs from **0 (no accumulated friction) to 5 (critical friction)**.
+The TUI displays a single vertical bar (`▯ ▁ ▂ ▄ ▆ █`) filling upward as friction rises,
+without a label or numeric score. Fewer than
+three reliable classifications produces an unknown score, stage and trend (`?` in the TUI). The block
+includes the reliable sample count, stage, stops and recoveries. Trend compares the
+current reading to the reading before the newest reliable sample, including only
+interventions at or before that preceding sample. A change greater than 0.05 on the
+internal scale is heating or cooling; smaller changes are stable. Without a preceding
+valid reading, trend is unknown. The retained history bounds this reading; it is not
+an unlimited lifetime frustration ledger.
+
 Background classifications contribute once persisted, including results that arrive
-after completion or are superseded for steering. The TUI continues using the same
-telemetry and scale. A pending classification contributes no invented sample.
+after completion or are superseded for steering. A pending classification contributes
+no invented sample. High or heating temperature asks S2 to review the sequence of
+failed attempts, identify the unmet requirement, change the failed approach and verify
+results. If the desired outcome remains ambiguous after reading the conversation,
+ask one focused clarification while continuing independent work. Do not ask the user
+to repeat an already clear requirement. Apologies and claimed completion do not
+count as recovery.
 
-The integer score runs from **0 (low satisfaction) to 5 (high satisfaction)**.
-Fewer than three reliable classifications produces a null score and unknown stage
-and trend. The block includes the reliable sample count, stage, stops and recoveries.
-Trend compares the current reading to the reading before the newest reliable sample,
-including only interventions at or before that preceding sample for the comparison;
-a change greater than 0.1 on the internal -1 to 1 scale is improving or worsening.
-Smaller changes are stable; without a preceding valid reading, trend is unknown.
-
-Low or worsening satisfaction asks S2 to revisit corrections and tool evidence,
-change a failed approach and verify results. Mood is advisory evidence, not a verdict
-on correctness or authorization to change goals, permissions, model, effort or budget.
-Single and Observe omit this guidance. If collection fails, execution continues
-without the block and logs the failure. Its effect on quality still needs evaluation.
+The thermometer is advisory evidence. It does not authorize changes to goals,
+permissions, mode, model, effort or budget. Single and Observe omit this guidance.
+If collection fails, execution continues without the block and logs the failure.
+Its effect on quality still needs evaluation. `/satisfaction` remains the visibility
+control for compatibility with existing settings.
 
 `/intelligence` shows the current TUI model separately from the saved global S2
 model, the effective reasoning mode and its source, and recent session evaluations.

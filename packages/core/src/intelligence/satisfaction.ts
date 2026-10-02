@@ -19,16 +19,16 @@ export function context(
   const trend =
     !current || !previous
       ? "unknown"
-      : current.mood - previous.mood > 0.1
-        ? "improving"
-        : current.mood - previous.mood < -0.1
-          ? "worsening"
+      : current.temperature - previous.temperature > 0.05
+        ? "heating"
+        : current.temperature - previous.temperature < -0.05
+          ? "cooling"
           : "stable"
   return [
-    "<session-satisfaction>",
+    "<session-frustration>",
     JSON.stringify({
-      score: current ? Math.round((current.mood + 1) * 2.5) : null,
-      scale: "0=low satisfaction, 5=high satisfaction; null=insufficient reliable evidence",
+      score: current?.score ?? null,
+      scale: "0=no accumulated friction, 5=critical accumulated friction; null=insufficient reliable evidence",
       stage: current?.stage ?? "unknown",
       trend,
       samples: rated.length,
@@ -36,9 +36,9 @@ export function context(
       stops: current?.stops ?? 0,
       recovered: current?.recovered ?? 0,
     }),
-    "This is an estimate from user feedback, frustration and recent guard interventions, not proof that the work is correct or incorrect. Unknown means no reliable conclusion; do not infer frustration from missing data.",
-    "When satisfaction is low or worsening, revisit the user's corrections and tool evidence, identify what failed in the previous approach, adjust the work and verify the result. Keep progress messages concise and concrete; do not substitute apologies or agreement for corrective work.",
+    "This thermometer tracks accumulated friction with the agent's work across iterations, not sentiment or the user's personality or emotions. Corrections, rejected work and unresolved failures heat it; confirmed improvement cools it. Neutral continuation does not erase earlier failures. Unknown means no reliable conclusion; do not infer frustration from missing data.",
+    "When temperature is high or heating, review the sequence of user corrections and failed attempts. Identify the unmet requirement, stop repeating the failed approach, make a more specific evidence-backed correction and verify the result. If the desired outcome remains ambiguous after reviewing the conversation, ask one focused clarification and continue independent work. Do not ask the user to repeat a requirement that is already clear. Keep progress concise and concrete; apologies, agreement and claimed completion are not recovery evidence.",
     "This advisory does not change the objective, permissions, mode, model, effort or budget. Explicit session instructions and deterministic safeguards still govern execution.",
-    "</session-satisfaction>",
+    "</session-frustration>",
   ].join("\n")
 }

@@ -1661,7 +1661,7 @@ describe("SessionRunnerLLM", () => {
     expect(system).toContain(classification.id)
     expect(system).toContain(user.id)
     expect(system).toContain("work_route: investigation")
-    expect(system).toContain("<session-satisfaction>")
+    expect(system).toContain("<session-frustration>")
     expect(system).toContain('"samples":1')
     expect(fixture.requests.filter((request) => request.classification)).toHaveLength(1)
     yield* s.llm.push(TestLLM.text("Resumed", "finished"))
@@ -1731,7 +1731,7 @@ describe("SessionRunnerLLM", () => {
     for (const request of s.requests) {
       const system = request.system.map((part) => part.text).join("\n")
       expect(system).not.toContain("<system-one-steering>")
-      expect(system).not.toContain("<session-satisfaction>")
+      expect(system).not.toContain("<session-frustration>")
     }
     expect(fixture.requests.filter((request) => request.classification)).toHaveLength(1)
   })
@@ -1805,7 +1805,7 @@ describe("SessionRunnerLLM", () => {
       yield* s.llm.push(TestLLM.text("Verified correction", "satisfaction-result"))
       yield* s.resume
       const system = s.requests[0]!.system.map((part) => part.text).join("\n")
-      expect(system.includes("<session-satisfaction>")).toBe(mode === "dual")
+      expect(system.includes("<session-frustration>")).toBe(mode === "dual")
       if (mode !== "dual") return
       expect(system).toContain('"score":5')
       expect(system).toContain('"samples":3')
