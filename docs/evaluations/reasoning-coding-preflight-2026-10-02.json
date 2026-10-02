@@ -1,0 +1,66 @@
+{
+  "measuredAt": "2026-10-02T11:44:11.601Z",
+  "status": "blocked_before_inference",
+  "paidInferenceRequests": 0,
+  "routerVersion": "0.57.7",
+  "installedRedcodeVersion": "0.71.2",
+  "configuredKey": {
+    "found": true,
+    "active": true,
+    "revoked": false,
+    "expired": false,
+    "modelAccessMode": "all",
+    "allowedModels": [],
+    "blockedModels": [],
+    "allowedConnections": [],
+    "catalogScope": "all"
+  },
+  "activeProviderConnections": 6,
+  "requests": [
+    {
+      "route": "/v1/models",
+      "status": 200,
+      "latencyMs": 34,
+      "bytes": 27,
+      "models": 0
+    },
+    {
+      "route": "/v1/models/systemone",
+      "status": 200,
+      "latencyMs": 7,
+      "bytes": 50,
+      "models": 0
+    },
+    {
+      "route": "/v1/models?capabilities=decision",
+      "status": 200,
+      "latencyMs": 50,
+      "bytes": 27,
+      "models": 0
+    },
+    {
+      "route": "/v1/models?capabilities=chat",
+      "status": 200,
+      "latencyMs": 23,
+      "bytes": 27,
+      "models": 0
+    }
+  ],
+  "calibration": {
+    "plannedExecutions": 96,
+    "completedExecutions": 0,
+    "pairs": 2,
+    "rounds": 2,
+    "cases": 6,
+    "experiments": ["baseline", "verification"]
+  },
+  "heldOut": {
+    "plannedExecutionsAfterSelection": 48,
+    "completedExecutions": 0,
+    "cases": 6
+  },
+  "blockers": ["router_catalog_empty", "absolute_campaign_budget_pending"],
+  "qualityVerdict": null,
+  "costRatio": null,
+  "cacheOwner": "RedRouter"
+}

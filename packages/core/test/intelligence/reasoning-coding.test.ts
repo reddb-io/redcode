@@ -1,7 +1,7 @@
 import { expect, test } from "bun:test"
 import { mkdir, rm, utimes } from "node:fs/promises"
 import path from "node:path"
-import { Effect } from "effect"
+import { Effect, Layer } from "effect"
 import { AppNodeBuilder } from "@opencode/core/effect/app-node-builder"
 import { Location } from "@opencode/core/location"
 import { AbsolutePath } from "@opencode/core/schema"
@@ -50,9 +50,16 @@ test("grades the actual pre-repair Snapshot tree independently without changing 
   await prepare(fixture, directory, metadata)
   const before = await snapshot(directory)
   expect(Object.keys(before)).toContain(".git")
+  const location = await Effect.runPromise(
+    Location.Service.pipe(
+      Effect.provide(
+        AppNodeBuilder.build(Location.boundNode(Location.Ref.make({ directory: AbsolutePath.make(directory) }))),
+      ),
+      Effect.scoped,
+    ),
+  )
   await Effect.runPromise(
     Effect.gen(function* () {
-      const location = yield* Location.Service
       const capture = yield* Snapshot.Service
       // This candidate differs from both the buggy seed and the successful repair.
       yield* Effect.promise(() =>
@@ -104,7 +111,7 @@ test("grades the actual pre-repair Snapshot tree independently without changing 
       Effect.scoped,
       Effect.provide(
         AppNodeBuilder.build(Snapshot.node, [
-          Location.node.replace(Location.boundNode(Location.Ref.make({ directory: AbsolutePath.make(directory) }))),
+          Location.node.replace(Layer.succeed(Location.Service, location)),
           Global.node.replace(Global.layerWith({ data, config: path.join(home, "config") })),
         ]),
       ),
