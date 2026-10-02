@@ -147,6 +147,17 @@ TypeSafe/JEV questions, so a claim is checked before you trust it. **Single** re
 to inspect the current models, the effective mode and recent evaluations. An unavailable, inconclusive
 or rejected evaluation is shown as such, never as an approval. See [reasoning roles](docs/system-one.md).
 
+In our best recorded diagnostic experiment, dual passed **39/40 cases (97.5%)** against
+single's **35/40 (87.5%)**, a gain of **10 percentage points**. Estimated total S1+S2 cost
+increased **13.8%**; median latency increased from **3.13s to 4.44s (42% slower)**.
+All matched pairs stayed below 2x estimated cost, with no observed paired regression.
+This small read-only sample used GPT-4.1 mini with JEV-1.13 and an experimental verification
+candidate. It does not establish general coding gains or validate every later change.
+See the [results and limitations](docs/evaluations/reasoning-accuracy-2026-10-01.md),
+the [earlier unfavorable baseline](docs/evaluations/reasoning-0.70.3.md), and the
+[current evaluation plan](docs/plans/dual-reasoning-evidence.md). The 2x criterion is an
+evaluation gate; runtime budgets cannot guarantee a ratio against an unobserved single run.
+
 ### Goal
 
 <img src="docs/features/goal.svg" alt="Goal" width="100%" />
