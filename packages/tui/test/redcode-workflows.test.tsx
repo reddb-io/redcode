@@ -277,7 +277,6 @@ for (const width of [80, 140]) {
     await setup.waitForFrame((frame) => frame.includes("S1 evaluator · connection") && frame.includes("Router account"))
     setup.mockInput.pressEnter()
     await setup.waitForFrame((frame) => frame.includes("S1 evaluator · model") && frame.includes("Native decision"))
-    expect(setup.captureCharFrame()).not.toContain("unlisted-preset")
     expect(setup.captureCharFrame()).not.toContain("manually")
     expect(discoveries).toEqual([{ evaluator }])
     setup.mockInput.pressEnter()

@@ -167,8 +167,9 @@ export async function configureReasoning(
             run: () =>
               api.probe(evaluator, { signal: AbortSignal.timeout(30_000) }).then((check) => {
                 if (check.endpoint) evaluator.evaluator = { ...evaluator.evaluator, endpoint: check.endpoint }
-                if (!check.ok) throw Object.assign(new Error(check.message), { requests: check.requests })
-                return check.requests ?? []
+                if (!check.ok)
+                  throw Object.assign(new Error(check.message), { requests: ConnectionCheck.requestsFrom(check) })
+                return ConnectionCheck.requestsFrom(check)
               }),
           },
         ]
