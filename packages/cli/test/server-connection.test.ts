@@ -92,7 +92,7 @@ test.each([
       fixture.track(replacement.pid)
       await existing.exited
       expect(replacement.pid).not.toBe(existing.pid)
-      expect(existing.exitCode).not.toBe(null)
+      expect(existing.exitCode !== null || existing.signalCode !== null).toBe(true)
       const response = await fetch(new URL("/api/info", endpoint.url))
       expect(response.status).toBe(200)
       expect(await response.json()).toMatchObject({ pid: replacement.pid, version: "test" })

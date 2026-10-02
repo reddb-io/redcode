@@ -25,7 +25,7 @@ const it = testEffect(ModelResolver.layer.pipe(Layer.provideMerge(PluginTestLaye
 const waitForCatalog = Effect.fn(function* (count: number) {
   const models = yield* Model.Service
   const observed = { count: 0 }
-  yield* models.available().pipe(
+  const fiber = yield* models.available().pipe(
     Effect.tap((catalog) =>
       Effect.sync(() => {
         observed.count = catalog.filter((model) => model.providerID === "red-router").length
@@ -35,6 +35,7 @@ const waitForCatalog = Effect.fn(function* (count: number) {
     Effect.forkScoped,
   )
   yield* advance(() => observed.count === count)
+  yield* Fiber.interrupt(fiber)
   yield* drain
   return (yield* models.available()).filter((model) => model.providerID === "red-router")
 })
