@@ -1,6 +1,7 @@
 import type { IntelligenceEvaluator, IntelligenceSettings, ModelInfo, ProviderInfo } from "@opencode/client"
 import type { Plugin } from "@opencode/plugin/tui"
 import { firstConnectionFailure, type ConnectionFailure } from "@opencode/util/connection-failure"
+import { IntegrationOrder } from "@opencode/util/integration-order"
 import { DialogIntegration } from "./dialog-integration"
 import { errorMessage } from "../util/error"
 import { Router } from "@opencode/schema/router"
@@ -221,7 +222,7 @@ async function chooseModel(
   )
   const location = context.location ?? context.data.location.default()
   const integrations = (await context.client.integration.list({ location })).data
-  const connections = integrations.flatMap((integration) => {
+  const connections = integrations.toSorted(IntegrationOrder.compare).flatMap((integration) => {
     const providers = input.providers.filter((provider) => (provider.integrationID ?? provider.id) === integration.id)
     const routes = providers.length
       ? providers.map((provider) => ({ id: provider.id, name: provider.name, provider }))
@@ -234,7 +235,7 @@ async function chooseModel(
         .map((connection, index) => ({ ...route, connection, active: index === 0 })),
     )
   })
-  const selectable = connections
+  const selectable = connections.toSorted((a, b) => Number(b.active) - Number(a.active))
   const reuse = input.models.find(
     (model) => model.providerID === input.reuse?.providerID && model.id === input.reuse.id,
   )
@@ -293,7 +294,7 @@ async function chooseModel(
           .join(" · "),
         category: "Connections",
       })),
-      { value: -1, title: "Connect another provider…", category: "Connections" },
+      { value: -1, title: "Add connection…", category: "Actions" },
     ],
   })
   if (selected === undefined) return
@@ -441,7 +442,10 @@ async function chooseEvaluator(
   status: Awaited<ReturnType<Plugin.Context["client"]["server.intelligence"]["status"]>>,
   retry?: number,
 ): Promise<{ evaluator: IntelligenceEvaluator; apiKey: undefined } | undefined> {
-  const options = status.evaluators
+  const options = IntegrationOrder.evaluators(
+    status.evaluators,
+    (await context.client.integration.list({ location: context.location ?? context.data.location.default() })).data,
+  )
   if (!options.length) {
     context.ui.toast.show({
       variant: "warning",

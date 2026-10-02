@@ -21,12 +21,12 @@ test("groups the CLI choices like /connect while keeping stable login IDs", () =
       integration({ id: "unused", name: "Unused", methods: [{ type: "env", names: ["UNUSED_KEY"] }] }),
     ]),
   ).toEqual([
+    { value: "opencode-go", label: "OpenCode Go", category: "Connected", connected: true },
     { value: "red-router", label: "RedRouter", category: "Popular", connected: false },
-    { value: "github", label: "GitHub", category: "MCP", connected: false },
-    { value: "linear", label: "Linear", category: "MCP", connected: false },
-    { value: "opencode-go", label: "OpenCode Go", category: "Popular", connected: true },
     { value: "opencode", label: "OpenCode Console", category: "Popular", connected: false },
     { value: "openai", label: "OpenAI", category: "Popular", connected: false },
+    { value: "github", label: "GitHub", category: "MCP", connected: false },
+    { value: "linear", label: "Linear", category: "MCP", connected: false },
     { value: "mistral", label: "Mistral", category: "Services", connected: false },
   ])
 })

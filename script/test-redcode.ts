@@ -60,6 +60,7 @@ const suites = {
     "test/mcp-import-boundary.test.ts",
     "test/remote-check.test.ts",
     "test/integration-check.test.ts",
+    "test/integration.test.ts",
     "test/plugin/provider-red-router.test.ts",
     "test/plugin/models-dev.test.ts",
     "test/plugin/provider-openai-compatible.test.ts",
@@ -90,6 +91,7 @@ const suites = {
     "test/worktree.test.ts",
   ],
   cli: [
+    "test/auth-login-choices.test.ts",
     "test/config.test.ts",
     "test/reasoning-flag.test.ts",
     "test/debug-guards-report.test.ts",
@@ -113,6 +115,8 @@ const suites = {
   ],
   client: ["test/service.test.ts", "test/promise-service.test.ts"],
   tui: [
+    "test/cli/cmd/tui/integration-options.test.ts",
+    "test/cli/tui/dialog-integration.test.tsx",
     "test/config-v2.test.tsx",
     "test/session-group-navigation.test.tsx",
     "test/redcode-workflows.test.tsx",

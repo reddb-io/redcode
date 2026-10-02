@@ -6,6 +6,7 @@ import { Runtime } from "../../../framework/runtime"
 import { selectIntegration, type IntegrationChoice } from "../../../ui/integration-picker"
 import { handlePromptErrors, openUrl, prompt, requireInteractive } from "../../../ui/prompt"
 import { checkConnection } from "./check"
+import { IntegrationOrder } from "@opencode/util/integration-order"
 import { answerForm, secret } from "./form"
 import {
   createClient,
@@ -17,16 +18,6 @@ import {
   resolveMethod,
   type ConnectMethod,
 } from "./shared"
-
-const integrationPriority = new Map([
-  ["red-router", 0],
-  ["opencode-go", 1],
-  ["opencode", 2],
-  ["openai", 3],
-  ["github-copilot", 4],
-  ["anthropic", 5],
-  ["google", 6],
-])
 
 export default Runtime.handler(
   Commands.commands.auth.commands.login,
@@ -95,24 +86,11 @@ const findIntegration = Effect.fn("cli.auth.login.integration")(function* (clien
 export function loginChoices(integrations: IntegrationInfo[]): IntegrationChoice[] {
   return integrations
     .filter((integration) => connectMethods(integration).length > 0)
-    .toSorted(
-      (a, b) =>
-        Number(b.id === "red-router") - Number(a.id === "red-router") ||
-        Number(b.metadata?.source === "mcp") - Number(a.metadata?.source === "mcp") ||
-        (integrationPriority.get(a.id) ?? integrationPriority.size) -
-          (integrationPriority.get(b.id) ?? integrationPriority.size) ||
-        a.name.localeCompare(b.name) ||
-        a.id.localeCompare(b.id),
-    )
+    .toSorted(IntegrationOrder.compare)
     .map((integration) => ({
       value: integration.id,
       label: integration.name,
-      category:
-        integration.metadata?.source === "mcp"
-          ? "MCP"
-          : integrationPriority.has(integration.id)
-            ? "Popular"
-            : "Services",
+      category: IntegrationOrder.category(integration),
       connected: integration.connections.length > 0,
     }))
 }

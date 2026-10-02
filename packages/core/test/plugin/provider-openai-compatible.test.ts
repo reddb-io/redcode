@@ -1,5 +1,13 @@
 import { afterAll, describe, expect, test } from "bun:test"
-import { Effect } from "effect"
+import { Effect, Schema } from "effect"
+import { Config } from "@opencode/core/config"
+import { Credential } from "@opencode/core/credential"
+import { Integration } from "@opencode/core/integration"
+import { Plugin } from "@opencode/core/plugin"
+import { PluginHost } from "@opencode/core/plugin/host"
+import { Document, Info } from "@opencode/schema/config"
+import { testEffect } from "../lib/effect"
+import { PluginTestLayer } from "./fixture"
 import { catalogLimits, knownLimit } from "@opencode/core/plugin/provider/catalog-limits"
 import {
   deriveProviderID,
@@ -9,6 +17,7 @@ import {
   parseEndpoint,
   parseHeaders,
   providerConfig,
+  OpenAICompatiblePlugin,
 } from "@opencode/core/plugin/provider/openai-compatible"
 
 const largeCatalog = Array.from({ length: 2505 }, (_, index) => ({
@@ -40,6 +49,65 @@ const server = Bun.serve({
   },
 })
 afterAll(() => server.stop(true))
+
+const it = testEffect(PluginTestLayer)
+
+it.effect("adds independent endpoints on the same host and multiple credentials for an existing endpoint", () =>
+  Effect.gen(function* () {
+    const config = yield* Config.Service
+    const integrations = yield* Integration.Service
+    const credentials = yield* Credential.Service
+    const plugin = yield* Plugin.Service
+    const host = yield* PluginHost.make(plugin)
+    const saved: Record<string, Record<string, unknown>> = {}
+    yield* OpenAICompatiblePlugin.effect(host).pipe(
+      Effect.provideService(Config.Service, {
+        ...config,
+        entries: () =>
+          Effect.sync(() => [
+            new Document({
+              type: "document",
+              info: Schema.decodeUnknownSync(Info)({ providers: saved }),
+            }),
+          ]),
+        saveProvider: (id, provider) =>
+          Effect.sync(() => {
+            saved[id] = provider
+            return "test-config.json"
+          }),
+      }),
+    )
+    const connect = (baseURL: string, providerID?: string) =>
+      integrations.connection.key({
+        integrationID: Integration.ID.make("openai-compatible"),
+        key: "sk-good",
+        answer: { baseURL, ...(providerID ? { advanced: true, providerID, api: "chat" } : {}) },
+      })
+    const firstURL = `${server.url.origin}/v1`
+    const secondURL = `${server.url.origin}/large`
+    const firstID = deriveProviderID(firstURL)
+    yield* connect(firstURL)
+    const firstConfig = structuredClone(saved[firstID])
+    const first = (yield* credentials.list(Integration.ID.make(firstID)))[0]
+    yield* connect(secondURL)
+    expect(saved[firstID]).toEqual(firstConfig)
+    expect(saved[`${firstID}-2`]).toMatchObject({ settings: { baseURL: secondURL } })
+    expect((yield* credentials.list(Integration.ID.make(firstID))).map((item) => item.id)).toEqual([first.id])
+
+    yield* connect(`${firstURL}/`)
+    const accounts = yield* credentials.list(Integration.ID.make(firstID))
+    expect(accounts).toHaveLength(2)
+    expect(accounts.find((item) => item.id === first.id)?.value).toEqual(first.value)
+    expect(Object.keys(saved)).toEqual([firstID, `${firstID}-2`])
+
+    const rejected = yield* connect(secondURL, firstID).pipe(Effect.flip)
+    expect(rejected.cause).toMatchObject({
+      message: `${firstID} already uses another endpoint; choose another provider ID`,
+    })
+    expect(saved[firstID]).toEqual(firstConfig)
+    expect(yield* credentials.list(Integration.ID.make(firstID))).toHaveLength(2)
+  }),
+)
 
 const endpoint = (answer: Record<string, string | number>) => {
   const parsed = parseEndpoint({ providerID: "local", ...answer })

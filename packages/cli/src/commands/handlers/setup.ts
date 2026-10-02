@@ -1,6 +1,7 @@
 import { autocomplete, intro, log, outro, select } from "@clack/prompts"
 import {
   type IntelligenceEvaluator,
+  type IntelligenceSettings,
   type IntelligenceStatus,
   type ModelInfo,
   type OpenCodeClient,
@@ -14,6 +15,7 @@ import { Commands } from "../commands"
 import { Runtime } from "../../framework/runtime"
 import { handlePromptErrors, prompt, requireInteractive } from "../../ui/prompt"
 import { createClient, loadIntegrations, location, request } from "./auth/shared"
+import { IntegrationOrder } from "@opencode/util/integration-order"
 
 export default Runtime.handler(Commands.commands.setup, (input) =>
   Effect.gen(function* () {
@@ -73,14 +75,13 @@ export default Runtime.handler(Commands.commands.setup, (input) =>
         ? yield* chooseModel({
             client,
             models: available,
-            principalProvider: principal.providerID,
             providers,
             role: "S2 transformations",
           })
         : fastChoice === "keep"
-          ? currentFast
+          ? currentFast && { ...currentFast, connection: status.settings.fast?.connection }
           : undefined
-    const model = { providerID: principal.providerID, id: principal.id }
+    const model = { providerID: principal.providerID, id: principal.id, connection: principal.connection }
     log.info(`S2 principal: ${principal.name} (${principal.providerID}/${principal.id})`)
     log.info(`S2 transformations: ${fast ? `${fast.name} (${fast.providerID}/${fast.id})` : "reuse principal"}`)
     log.info(`S1 evaluator: ${evaluator ? `${evaluator.evaluator.transport}/${evaluator.evaluator.model}` : "off"}`)
@@ -96,13 +97,18 @@ export default Runtime.handler(Commands.commands.setup, (input) =>
         Effect.sync(() => log.error(ConnectionCheck.describe(ConnectionCheck.requestsFrom(error)))),
       ),
     )
-    if (fast && (fast.providerID !== principal.providerID || fast.id !== principal.id)) {
+    if (
+      fast &&
+      (fast.providerID !== principal.providerID ||
+        fast.id !== principal.id ||
+        JSON.stringify(fast.connection) !== JSON.stringify(principal.connection))
+    ) {
       log.info("Checking the System Two transformations connection...")
       yield* request((signal) =>
         client.generate.text(
           {
             prompt: "Reply with OK.",
-            model: { providerID: fast.providerID, id: fast.id },
+            model: { providerID: fast.providerID, id: fast.id, connection: fast.connection },
             location,
             check: true,
           },
@@ -137,8 +143,11 @@ export default Runtime.handler(Commands.commands.setup, (input) =>
             onboarding: "completed",
             principal: model,
             fast:
-              fast && (fast.providerID !== principal.providerID || fast.id !== principal.id)
-                ? { providerID: fast.providerID, id: fast.id }
+              fast &&
+              (fast.providerID !== principal.providerID ||
+                fast.id !== principal.id ||
+                JSON.stringify(fast.connection) !== JSON.stringify(principal.connection))
+                ? { providerID: fast.providerID, id: fast.id, connection: fast.connection }
                 : undefined,
             ...(evaluator ? { evaluator: evaluator.evaluator } : {}),
           },
@@ -162,8 +171,7 @@ const chooseModel = Effect.fn("cli.setup.model")(function* (input: {
   models: ModelInfo[]
   providers: ProviderInfo[]
   role: string
-  principalProvider?: string
-  current?: { providerID: string; id: string }
+  current?: IntelligenceSettings["principal"]
   recommended?: string
   router?: string
 }) {
@@ -171,7 +179,7 @@ const chooseModel = Effect.fn("cli.setup.model")(function* (input: {
     (model) => model.providerID === input.current?.providerID && model.id === input.current?.id,
   )
   const integrations = yield* loadIntegrations(input.client)
-  const connections = integrations.flatMap((integration) => {
+  const connections = integrations.toSorted(IntegrationOrder.compare).flatMap((integration) => {
     const providers = input.providers.filter((provider) => (provider.integrationID ?? provider.id) === integration.id)
     const routes = providers.length
       ? providers.map((provider) => ({ id: provider.id, name: provider.name }))
@@ -184,7 +192,7 @@ const chooseModel = Effect.fn("cli.setup.model")(function* (input: {
         .map((connection, index) => ({ ...route, connection, active: index === 0 })),
     )
   })
-  const selectable = connections.filter((item) => item.id !== input.principalProvider || item.active)
+  const selectable = connections.toSorted((a, b) => Number(b.active) - Number(a.active))
   if (!selectable.length) return yield* Effect.fail(new Error("Connect a generative service before setup"))
   const index = Number(
     yield* prompt<string>(() =>
@@ -194,7 +202,18 @@ const chooseModel = Effect.fn("cli.setup.model")(function* (input: {
         initialValue: String(
           Math.max(
             0,
-            selectable.findIndex((item) => item.id === (current?.providerID ?? input.router) && item.active),
+            selectable.findIndex(
+              (item) =>
+                item.id === (input.current?.providerID ?? input.router) &&
+                (input.current?.connection
+                  ? item.connection.type === input.current.connection.type &&
+                    (item.connection.type === "credential" && input.current.connection.type === "credential"
+                      ? item.connection.id === input.current.connection.id
+                      : item.connection.type === "env" &&
+                        input.current.connection.type === "env" &&
+                        item.connection.name === input.current.connection.name)
+                  : item.active),
+            ),
           ),
         ),
         options: selectable.map((item, index) => ({
@@ -260,7 +279,13 @@ const chooseModel = Effect.fn("cli.setup.model")(function* (input: {
   )
   const model = models.find((model) => model.id === selected)
   if (!model) return yield* Effect.fail(new Error(`Model unavailable: ${provider}/${selected}`))
-  return model
+  return {
+    ...model,
+    connection:
+      connection.connection.type === "credential"
+        ? { type: "credential" as const, id: connection.connection.id }
+        : { type: "env" as const, name: connection.connection.name },
+  }
 })
 
 const configureEvaluator: (
@@ -269,7 +294,7 @@ const configureEvaluator: (
   retry?: number,
 ) => Effect.Effect<{ evaluator: IntelligenceEvaluator; key: undefined }, unknown> = Effect.fn("cli.setup.evaluator")(
   function* (client: OpenCodeClient, status: IntelligenceStatus, retry?: number) {
-    const options = status.evaluators
+    const options = IntegrationOrder.evaluators(status.evaluators, yield* loadIntegrations(client))
     if (!options.length)
       return yield* Effect.fail(
         new Error("No S1 connection available. Run `redcode auth login` to connect a service that supports decisions."),

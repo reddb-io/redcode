@@ -273,6 +273,12 @@ models for compatible S1 adapters. Canonical model identity stays separate from 
 provider ID, and specialized models stay out of S2. A RedRouter connection always uses its own
 key-scoped catalog; remote discovery caching belongs to the router.
 
+You can save multiple connections for RedRouter or any other provider. Run `/connect`, choose the
+provider, then **Add connection…** to add another key or account. RedRouter connections can point
+to different URLs. Connected providers appear first, followed by popular providers; each provider's
+active connection comes first in its saved connections. Rename connections to distinguish machines
+or accounts. `/dual` also lists active connections first and retains the connection selected for S2.
+
 ### Monitors
 
 <img src="docs/features/monitors.svg" alt="Monitors" width="100%" />

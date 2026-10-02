@@ -1,5 +1,6 @@
 import { describe, expect, test } from "bun:test"
 import type { IntegrationInfo } from "@opencode/client"
+import { IntegrationOrder } from "@opencode/util/integration-order"
 import {
   connectionSummary,
   connectMethods,
@@ -14,6 +15,30 @@ const integration = (value: Partial<IntegrationInfo> & Pick<IntegrationInfo, "id
 })
 
 describe("integrationOptions", () => {
+  test("keeps connected services together before popular providers, including environment connections", () => {
+    const sorted = integrationOptions([
+      integration({ id: "red-router", name: "RedRouter" }),
+      integration({ id: "openai", name: "OpenAI" }),
+      integration({ id: "local", name: "Local", connections: [{ type: "env", name: "LOCAL_KEY" }] }),
+      integration({
+        id: "mistral",
+        name: "Mistral",
+        connections: [
+          { type: "credential", id: "cred_one", label: "Work", method: "key" },
+          { type: "credential", id: "cred_two", label: "Personal", method: "key" },
+        ],
+      }),
+      integration({
+        id: "github",
+        name: "GitHub",
+        metadata: { source: "mcp" },
+        connections: [{ type: "credential", id: "cred_github", label: "GitHub", method: "oauth" }],
+      }),
+    ])
+    expect(sorted.map((item) => item.id)).toEqual(["github", "local", "mistral", "red-router", "openai"])
+    expect(sorted.map(IntegrationOrder.category)).toEqual(["Connected", "Connected", "Connected", "Popular", "Popular"])
+  })
+
   test("keeps popular integrations first and sorts the rest alphabetically", () => {
     expect(
       integrationOptions([
@@ -39,7 +64,7 @@ describe("integrationOptions", () => {
     ).toEqual(["red-router", "google", "openai-compatible", "mistral"])
   })
 
-  test("keeps MCP integrations above popular integrations without relying on their IDs", () => {
+  test("lists popular providers before disconnected MCP integrations", () => {
     expect(
       integrationOptions([
         integration({ id: "openai", name: "OpenAI" }),
@@ -49,8 +74,37 @@ describe("integrationOptions", () => {
         integration({ id: "opencode", name: "OpenCode Zen" }),
         integration({ id: "opencode-go", name: "OpenCode Go" }),
       ]).map((item) => item.id),
-    ).toEqual(["red-router", "github", "linear", "opencode-go", "opencode", "openai"])
+    ).toEqual(["red-router", "opencode-go", "opencode", "openai", "github", "linear"])
   })
+})
+
+test("S1 shows active connections before an inactive configured evaluator without changing its identity", () => {
+  const options = [
+    {
+      name: "Personal",
+      configured: true,
+      evaluator: { transport: "red-router", baseURL: "https://personal/v1", credentialID: "cred_personal" },
+    },
+    {
+      name: "Work",
+      configured: false,
+      evaluator: { transport: "red-router", baseURL: "https://work/v1", credentialID: "cred_work" },
+    },
+    { name: "Env", configured: false, evaluator: { transport: "openai", baseURL: "https://api.openai.com/v1" } },
+  ]
+  expect(
+    IntegrationOrder.evaluators(options, [
+      integration({
+        id: "red-router",
+        name: "RedRouter",
+        connections: [
+          { type: "credential", id: "cred_work", label: "Work", method: "key" },
+          { type: "credential", id: "cred_personal", label: "Personal", method: "key" },
+        ],
+      }),
+    ]),
+  ).toEqual([options[1], options[2], options[0]])
+  expect(options[0].evaluator.credentialID).toBe("cred_personal")
 })
 
 describe("connectMethods", () => {

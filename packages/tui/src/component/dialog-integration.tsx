@@ -14,6 +14,7 @@ import type {
 import { ConnectionCheck } from "@opencode/schema/connection-check"
 import { ProviderRemoval } from "@opencode/schema/provider-removal"
 import { openUrl } from "@opencode/util/open"
+import { IntegrationOrder } from "@opencode/util/integration-order"
 import { createEffect, createMemo, createSignal, onCleanup, onMount, Show } from "solid-js"
 import { useClipboard } from "../context/clipboard"
 import { useData } from "../context/data"
@@ -31,18 +32,6 @@ import { errorMessage } from "../util/error"
 import { integrationKeyRole } from "../util/model-presentation"
 import { formLabel, formToggleMultiselect, formValidateValue, type FormAnswerField } from "../util/form"
 
-const INTEGRATION_PRIORITY: Record<string, number> = {
-  "red-router": 0,
-  "9router": 1,
-  "opencode-go": 1,
-  opencode: 2,
-  openai: 3,
-  "github-copilot": 4,
-  anthropic: 5,
-  google: 6,
-  "openai-compatible": 7,
-}
-
 type ConnectMethod = Exclude<IntegrationInfo["methods"][number], { type: "env" }>
 type IntegrationAttempt = IntegrationOauthConnectOutput["data"]
 type CommandAttempt = IntegrationCommandConnectOutput["data"]
@@ -53,14 +42,7 @@ const OPEN = Symbol("open")
 const SUBMIT = Symbol("submit")
 
 export function integrationOptions(list: IntegrationInfo[]) {
-  return list.toSorted(
-    (a, b) =>
-      Number(b.id === "red-router") - Number(a.id === "red-router") ||
-      Number(b.metadata?.source === "mcp") - Number(a.metadata?.source === "mcp") ||
-      (INTEGRATION_PRIORITY[a.id] ?? 99) - (INTEGRATION_PRIORITY[b.id] ?? 99) ||
-      a.name.localeCompare(b.name) ||
-      a.id.localeCompare(b.id),
-  )
+  return list.toSorted(IntegrationOrder.compare)
 }
 
 export function connectMethods(integration: IntegrationInfo): ConnectMethod[] {
@@ -113,9 +95,6 @@ export function DialogIntegration(
     return integrations().map((integration) => {
       const methods = connectMethods(integration)
       const credentials = credentialConnections(integration)
-      let category = "Services"
-      if (integration.id in INTEGRATION_PRIORITY) category = "Popular"
-      if (integration.metadata?.source === "mcp") category = "MCP"
       // A RedRouter connection says what its key may do: an admin key also manages keys over MCP.
       const role = integrationKeyRole(data.location.provider.list(location) ?? [], integration.id)
       return {
@@ -124,7 +103,7 @@ export function DialogIntegration(
         description:
           [methods.length === 0 ? "Environment only" : undefined, role].filter(Boolean).join(" · ") || undefined,
         footer: connectionSummary(integration) || undefined,
-        category,
+        category: IntegrationOrder.category(integration),
         disabled: methods.length === 0 && credentials.length === 0,
         gutter:
           integration.connections.length > 0 ? () => <text fg={theme.text.feedback.success.base}>✓</text> : undefined,
@@ -178,33 +157,29 @@ function manageConnections(
     const theme = useTheme().surface("dialog")
     const shortcuts = Keymap.useShortcuts()
     const [deleting, setDeleting] = createSignal<string>()
-    const [selected, setSelected] = createSignal(methods.length ? "add" : credentialConnections(integration)[0]?.id)
+    const [selected, setSelected] = createSignal(credentialConnections(integration)[0]?.id ?? "add")
     const current = createMemo(() =>
       data.location.integration.list(location)?.find((item) => item.id === integration.id),
     )
+    const connections = createMemo(() => credentialConnections(current() ?? integration))
 
     return (
       <DialogSelect
         title={integration.name}
-        current={credentialConnections(current() ?? integration)[0]?.id}
-        focusCurrent={false}
+        current={connections()[0]?.id}
         preserveSelection
         onMove={(option) => {
           setSelected(option.value)
           setDeleting(undefined)
         }}
         options={[
-          ...(methods.length
-            ? [
-                {
-                  title: "Add account",
-                  value: "add",
-                  onSelect: () => selectMethod(current() ?? integration, methods, location, dialog, onConnected),
-                },
-              ]
-            : []),
-          ...credentialConnections(current() ?? integration)
-            .toSorted((a, b) => a.label.localeCompare(b.label) || a.id.localeCompare(b.id))
+          ...connections()
+            .toSorted(
+              (a, b) =>
+                Number(b.id === connections()[0]?.id) - Number(a.id === connections()[0]?.id) ||
+                a.label.localeCompare(b.label) ||
+                a.id.localeCompare(b.id),
+            )
             .map((connection) => {
               const confirming = deleting() === connection.id
               return {
@@ -214,24 +189,36 @@ function manageConnections(
                 value: connection.id,
                 // The saved router connection describes the active account's key.
                 description:
-                  credentialConnections(current() ?? integration)[0]?.id === connection.id
+                  connections()[0]?.id === connection.id
                     ? integrationKeyRole(data.location.provider.list(location) ?? [], integration.id)
                     : undefined,
-                category: "Connected accounts",
+                category: "Saved connections",
                 bg: confirming ? theme.background.action.destructive.focused : undefined,
                 fg: confirming ? theme.text.action.destructive.focused : undefined,
                 onSelect: () => {
-                  if (credentialConnections(current() ?? integration)[0]?.id === connection.id) return
+                  if (connections()[0]?.id === connection.id) return
                   void client.api.credential.activate({ credentialID: connection.id }).catch(toast.error)
                 },
               }
             }),
+          ...(methods.length
+            ? [
+                {
+                  title: "Add connection…",
+                  value: "add",
+                  description: `Connect another account or endpoint for ${integration.name}`,
+                  category: "Actions",
+                  onSelect: () => selectMethod(current() ?? integration, methods, location, dialog, onConnected),
+                },
+              ]
+            : []),
           ...(integration.metadata?.source === "mcp"
             ? []
             : [
                 {
                   title: "Test remote API",
                   value: "check",
+                  category: "Actions",
                   description: "Check the active account: HTTP status, response time, received bytes and catalog",
                   onSelect: () => void checkRemoteApi(client, dialog, integration.id, location),
                 },
@@ -239,6 +226,7 @@ function manageConnections(
           {
             title: "Remove provider…",
             value: "remove",
+            category: "Actions",
             description: "Preview everything saved for this provider, then remove it",
             onSelect: () => removeProvider(current() ?? integration, location, dialog, client, toast),
           },
@@ -253,11 +241,9 @@ function manageConnections(
             onTrigger: (option) => {
               dialog.replace(() => (
                 <DialogPrompt
-                  title="Rename account"
-                  placeholder="Account name"
-                  value={
-                    credentialConnections(current() ?? integration).find((item) => item.id === option.value)?.label
-                  }
+                  title="Rename connection"
+                  placeholder="Connection name"
+                  value={connections().find((item) => item.id === option.value)?.label}
                   onConfirm={(value) => {
                     const label = value.trim()
                     if (!label) return

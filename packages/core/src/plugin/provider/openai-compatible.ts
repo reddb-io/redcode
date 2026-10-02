@@ -84,19 +84,21 @@ export const OpenAICompatiblePlugin = define({
     const providers = yield* Provider.Service
     const config = yield* Config.Service
 
-    const freeProviderID = Effect.fn("OpenAICompatible.freeProviderID")(function* (base: string) {
+    const freeProviderID = Effect.fn("OpenAICompatible.freeProviderID")(function* (base: string, baseURL: string) {
+      const entries = yield* config.entries()
       const taken = Effect.fnUntraced(function* (id: string) {
         const existing = yield* providers.get(Provider.ID.make(id))
-        const saved = (yield* config.entries()).some(
-          (entry) => entry.type === "document" && typeof entry.info.providers?.[id]?.settings?.baseURL === "string",
-        )
-        return existing !== undefined && !saved
+        const saved = entries.flatMap((entry) => {
+          const url = entry.type === "document" ? entry.info.providers?.[id]?.settings?.baseURL : undefined
+          return typeof url === "string" ? [url] : []
+        })
+        return saved.length ? saved.some((url) => normalizeBaseURL(url) !== baseURL) : existing !== undefined
       })
       for (let attempt = 1; attempt < 50; attempt++) {
         const id = attempt === 1 ? base : `${base.slice(0, 60)}-${attempt}`
         if (!(yield* taken(id))) return id
       }
-      return base
+      return yield* Effect.fail(new Error("No free provider ID available; customize the connection to choose one"))
     })
 
     const prepare = Effect.fn("OpenAICompatible.prepare")(function* (input: {
@@ -107,17 +109,23 @@ export const OpenAICompatiblePlugin = define({
       if (typeof parsed === "string") return yield* Effect.fail(new Error(parsed))
       // A provider ID the user did not choose is derived from the host, so it yields to one that is already taken.
       const chosen = text(input.answer.providerID) !== ""
-      const endpoint = chosen ? parsed : { ...parsed, providerID: yield* freeProviderID(parsed.providerID) }
+      const endpoint = chosen
+        ? parsed
+        : { ...parsed, providerID: yield* freeProviderID(parsed.providerID, parsed.baseURL) }
       if (!API_KEY.test(input.key))
         return yield* Effect.fail(new Error("The API key must be one word of printable characters"))
       const existing = yield* providers.get(Provider.ID.make(endpoint.providerID))
-      const saved = (yield* config.entries()).some(
-        (entry) =>
-          entry.type === "document" &&
-          typeof entry.info.providers?.[endpoint.providerID]?.settings?.baseURL === "string",
-      )
-      // An endpoint saved with its own base URL is replaced on reconnect; a catalog or plugin provider keeps its ID.
-      if (existing && !saved)
+      const saved = (yield* config.entries()).flatMap((entry) => {
+        const url =
+          entry.type === "document" ? entry.info.providers?.[endpoint.providerID]?.settings?.baseURL : undefined
+        return typeof url === "string" ? [url] : []
+      })
+      // Additional credentials may reuse an endpoint, but must never redirect its existing connections.
+      if (saved.some((url) => normalizeBaseURL(url) !== endpoint.baseURL))
+        return yield* Effect.fail(
+          new Error(`${endpoint.providerID} already uses another endpoint; choose another provider ID`),
+        )
+      if (existing && !saved.length)
         return yield* Effect.fail(
           new Error(`${endpoint.providerID} is already a provider (${existing.name}); choose another provider ID`),
         )
