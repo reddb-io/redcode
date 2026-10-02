@@ -682,6 +682,7 @@ const classificationFixture = Effect.fnUntraced(function* (mode: "dual" | "obser
       },
     },
   })
+  yield* intelligence.sessionMode(sessionID, { reasoning: mode })
   return {
     ...fixture,
     intelligence,
