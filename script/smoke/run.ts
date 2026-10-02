@@ -225,6 +225,14 @@ async function checkService() {
   const info: unknown = await response.json()
   if (args.version && field(info, "version") !== args.version)
     throw new Error(`The service reports version ${String(field(info, "version"))}`)
+  const restarted = await redcode(["restart"], { timeout: 60_000 })
+  if (restarted.stdout.trim() !== service.url) throw new Error("restart did not keep the configured service URL")
+  const replacement = await api("/api/info")
+  if (field(replacement, "pid") === field(info, "pid")) throw new Error("restart did not replace the server process")
+  await redcode(["service", "restart"], { timeout: 60_000 })
+  const second = await api("/api/info")
+  if (field(second, "pid") === field(replacement, "pid"))
+    throw new Error("service restart did not replace the server process")
 }
 
 async function checkSidecar() {

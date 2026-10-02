@@ -1,15 +1,17 @@
 import { expect, test } from "bun:test"
 import { LLM } from "@opencode/ai"
 import { Credential } from "@opencode/core/credential"
+import { Bus } from "@opencode/core/bus"
 import { Integration } from "@opencode/core/integration"
 import { KV } from "@opencode/core/kv"
 import { Model } from "@opencode/core/model"
 import { ModelResolver } from "@opencode/core/model-resolver"
 import { Plugin } from "@opencode/core/plugin"
 import { PluginHost } from "@opencode/core/plugin/host"
-import { RedRouterPlugin } from "@opencode/core/plugin/provider/red-router"
+import { connectionModel, RedRouterPlugin } from "@opencode/core/plugin/provider/red-router"
 import { Provider } from "@opencode/core/provider"
-import { Effect, Layer, Schedule, Schema } from "effect"
+import { Effect, Fiber, Layer, Schedule, Schema, Stream } from "effect"
+import { TestClock } from "effect/testing"
 import { Hash } from "@opencode/util/hash"
 import { Headers } from "effect/unstable/http"
 import { PluginTestLayer } from "./plugin/fixture"
@@ -35,6 +37,18 @@ const waitForCatalog = Effect.fn(function* (count: number) {
   yield* advance(() => observed.count === count)
   yield* drain
   return (yield* models.available()).filter((model) => model.providerID === "red-router")
+})
+
+const waitForStoredCatalog = Effect.fn(function* (key: string, count: number) {
+  const kv = yield* KV.Service
+  const stored = { count: 0 }
+  const fiber = yield* kv.get(`${key}:count`).pipe(
+    Effect.tap((value) => Effect.sync(() => (stored.count = typeof value === "number" ? value : 0))),
+    Effect.repeat(Schedule.spaced("1 millis")),
+    Effect.forkScoped,
+  )
+  yield* advance(() => stored.count === count)
+  yield* Fiber.interrupt(fiber)
 })
 
 test("model references preserve saved access and remain compatible with unbound references", () => {
@@ -159,11 +173,11 @@ it.effect("router selections keep their endpoint, catalog and limits when the ac
   ),
 )
 
-it.effect("a cold connection persists every catalog chunk and reopens while its router is unavailable", () =>
+it.effect("a 2505-model connection persists every chunk and reopens while its router is unavailable", () =>
   withEnv({ RED_ROUTER_API_KEY: undefined, RED_ROUTER_BASE_URL: undefined }, () =>
     Effect.gen(function* () {
       const state = { offline: false, failures: 0 }
-      const catalog = Array.from({ length: 205 }, (_, index) => ({
+      const catalog = Array.from({ length: 2505 }, (_, index) => ({
         id: Model.ID.make(`router/model-${index}`),
         context_length: 32_000,
       }))
@@ -209,10 +223,11 @@ it.effect("a cold connection persists every catalog chunk and reopens while its 
           expect(new Set((yield* waitForCatalog(catalog.length)).map((model) => model.id))).toEqual(
             new Set(catalog.map((model) => model.id)),
           )
-          expect(yield* kv.get(`${cacheKey}:count`)).toBe(3)
-          expect(yield* kv.get(`${cacheKey}:resolved:count`)).toBe(3)
+          yield* waitForStoredCatalog(cacheKey, 26)
+          expect(yield* kv.get(`${cacheKey}:count`)).toBe(26)
+          expect(yield* kv.get(`${cacheKey}:resolved:count`)).toBe(26)
           return yield* ModelResolver.bind(
-            Model.Ref.make({ providerID: Provider.ID.make("red-router"), id: Model.ID.make("router/model-204") }),
+            Model.Ref.make({ providerID: Provider.ID.make("red-router"), id: Model.ID.make("router/model-2504") }),
           )
         }),
       )
@@ -229,6 +244,106 @@ it.effect("a cold connection persists every catalog chunk and reopens while its 
       expect(resolved.limit.context).toBe(32_000)
       expect(resolved.model.route.endpoint.baseURL).toBe(baseURL)
       expect((yield* authorization(resolved)).authorization).toBe("Bearer saved-key")
+    }),
+  ),
+)
+
+it.effect("resolves a saved model without reading unrelated catalog chunks", () =>
+  Effect.gen(function* () {
+    const credentials = yield* Credential.Service
+    const kv = yield* KV.Service
+    const providerID = Provider.ID.make("red-router")
+    const credential = yield* credentials.create({
+      integrationID: Integration.ID.make(providerID),
+      value: { type: "key", key: "saved-key", configuration: { baseURL: "https://router.invalid/v1" } },
+    })
+    const cacheKey = `red-router:models:${Hash.sha256("https://router.invalid/v1\nsaved-key")}`
+    const selected = Model.Info.default(providerID, Model.ID.make("first-model"))
+    yield* kv.set(`${cacheKey}:resolved:count`, 26)
+    yield* kv.set(`${cacheKey}:resolved:0`, [Schema.encodeSync(Schema.toCodecJson(Model.Info))(selected)])
+    const reads: string[] = []
+    const resolved = yield* connectionModel(
+      providerID,
+      selected.id,
+      { type: "credential", id: credential.id, label: credential.label, method: "key" },
+      credential.value,
+    ).pipe(
+      Effect.provideService(
+        KV.Service,
+        KV.Service.of({
+          ...kv,
+          get: (key) => {
+            reads.push(key)
+            return kv.get(key)
+          },
+        }),
+      ),
+    )
+    expect(resolved?.id).toBe(selected.id)
+    expect(reads).toEqual([`${cacheKey}:resolved:count`, `${cacheKey}:resolved:0`])
+  }),
+)
+
+it.effect("an unchanged large router catalog does not rebuild definitions or invalidate clients", () =>
+  withEnv({ RED_ROUTER_API_KEY: undefined, RED_ROUTER_BASE_URL: undefined }, () =>
+    Effect.gen(function* () {
+      const state = { requests: 0, updates: 0 }
+      const catalog = Array.from({ length: 2505 }, (_, index) => ({ id: `router/model-${index}` }))
+      const server = yield* Effect.acquireRelease(
+        Effect.sync(() =>
+          Bun.serve({
+            hostname: "127.0.0.1",
+            port: 0,
+            fetch: (request) => {
+              if (new URL(request.url).pathname !== "/v1/models") return new Response(null, { status: 404 })
+              state.requests++
+              return Response.json({ data: catalog })
+            },
+          }),
+        ),
+        (server) => Effect.promise(() => server.stop(true)),
+      )
+      const credentials = yield* Credential.Service
+      const models = yield* Model.Service
+      const providers = yield* Provider.Service
+      const plugin = yield* Plugin.Service
+      const kv = yield* KV.Service
+      const bus = yield* Bus.Service
+      const reads: string[] = []
+      yield* credentials.create({
+        integrationID: Integration.ID.make("red-router"),
+        value: { type: "key", key: "saved-key", configuration: { baseURL: `${server.url.origin}/v1` } },
+      })
+      const host = yield* PluginHost.make(plugin)
+      yield* RedRouterPlugin.effect(host).pipe(
+        Effect.provideService(
+          KV.Service,
+          KV.Service.of({
+            ...kv,
+            get: (key) => {
+              reads.push(key)
+              return kv.get(key)
+            },
+          }),
+        ),
+      )
+      yield* waitForCatalog(catalog.length)
+      yield* waitForStoredCatalog(`red-router:models:${Hash.sha256(`${server.url.origin}/v1\nsaved-key`)}`, 26)
+      const before = yield* models.available()
+      const readsBefore = reads.filter((key) => /:models:.*:\d+$/.test(key)).length
+      yield* bus.subscribe(Provider.Event.Updated).pipe(
+        Stream.runForEach(() => Effect.sync(() => state.updates++)),
+        Effect.forkScoped({ startImmediately: true }),
+      )
+      yield* TestClock.adjust("5 minutes")
+      yield* advance(() => state.requests > 1)
+      yield* drain
+      expect(yield* models.available()).toBe(before)
+      expect(state.updates).toBe(0)
+      expect(reads.filter((key) => /:models:.*:\d+$/.test(key))).toHaveLength(readsBefore)
+      const definitions = (yield* providers.snapshot()).records.get(Provider.ID.make("red-router"))?.models
+      yield* providers.reload()
+      expect((yield* providers.snapshot()).records.get(Provider.ID.make("red-router"))?.models).toBe(definitions)
     }),
   ),
 )

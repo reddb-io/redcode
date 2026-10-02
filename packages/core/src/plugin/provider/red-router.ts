@@ -179,6 +179,26 @@ function routerPlugin(options: {
         inspection: Inspection
         catalogVersion?: string
       } = { models: [], names: catalogNames(yield* modelsDev.get()), inspection: { features: [] } }
+      let resolved:
+        | {
+            models: typeof loaded.models
+            names: typeof loaded.names
+            inspection: Inspection
+            value: readonly Model.Info[]
+          }
+        | undefined
+      const resolvedModels = () => {
+        if (
+          resolved?.models === loaded.models &&
+          resolved.names === loaded.names &&
+          resolved.inspection === loaded.inspection
+        )
+          return resolved.value
+        const enabled = features()
+        const value = loaded.models.flatMap((item) => routerModel(item, providerID, loaded.names, enabled))
+        resolved = { models: loaded.models, names: loaded.names, inspection: loaded.inspection, value }
+        return value
+      }
       // The registered MCP server, keyed by what it is reached with, so a change reloads MCP once.
       const mcpServer = () =>
         loaded.connection && loaded.inspection.router?.mcp
@@ -238,9 +258,9 @@ function routerPlugin(options: {
       })
 
       const cacheResolved = Effect.fn("RouterProvider.cacheResolved")(function* (cacheKey: string) {
-        const resolved = loaded.models.flatMap((item) => routerModel(item, providerID, loaded.names, features()))
-        const chunks = Array.from({ length: Math.ceil(resolved.length / 100) }, (_, index) =>
-          resolved.slice(index * 100, (index + 1) * 100),
+        const models = resolvedModels()
+        const chunks = Array.from({ length: Math.ceil(models.length / 100) }, (_, index) =>
+          models.slice(index * 100, (index + 1) * 100),
         )
         yield* Effect.forEach(
           chunks,
@@ -257,13 +277,19 @@ function routerPlugin(options: {
       const refresh = Effect.fn("RouterProvider.refresh")(function* () {
         const connection = yield* resolve()
         const mcpBefore = mcpServer()
-        if (loaded.connection?.baseURL !== connection?.baseURL || loaded.connection?.key !== connection?.key) {
+        const switched =
+          loaded.connection?.baseURL !== connection?.baseURL ||
+          loaded.connection?.key !== connection?.key ||
+          loaded.connection?.integrationID !== connection?.integrationID ||
+          loaded.connection?.credential?.id !== connection?.credential?.id
+        if (switched) {
           loaded.models = []
           loaded.digest = undefined
           loaded.inspection = { features: [] }
           loaded.catalogVersion = undefined
         }
         loaded.connection = connection
+        if (switched) yield* ctx.provider.reload()
         if (mcpServer() !== mcpBefore) yield* ctx.mcp.reload()
         if (!connection) {
           loaded.models = []
@@ -272,23 +298,25 @@ function routerPlugin(options: {
           return
         }
         const cacheKey = `${options.id}:models:${Hash.sha256(`${connection.baseURL}\n${connection.key}`)}`
-        const count = yield* kv.get(`${cacheKey}:count`)
-        if (typeof count === "number" && Number.isSafeInteger(count) && count > 0 && count < 10_000) {
-          const chunks = yield* Effect.forEach(
-            Array.from({ length: count }, (_, index) => index),
-            (index) => kv.get(`${cacheKey}:${index}`),
-          )
-          const decoded = chunks.map((chunk) =>
-            Option.getOrUndefined(Schema.decodeUnknownOption(Schema.Array(catalogModel))(chunk)),
-          )
-          if (decoded.every((chunk) => chunk !== undefined)) {
-            loaded.models = decoded.flatMap((chunk) => chunk ?? [])
-            loaded.digest = Hash.sha256(JSON.stringify(loaded.models))
-            // Upgrade existing catalogs before exposing them, including when the router is offline.
-            if ((yield* kv.get(`${cacheKey}:resolved:count`)) === undefined) yield* cacheResolved(cacheKey)
+        // Hydrate on cold start or account switch. Re-reading the same catalog on every poll
+        // rebuilt all definitions and notified clients even when the router returned no changes.
+        if (loaded.digest === undefined) {
+          const count = yield* kv.get(`${cacheKey}:count`)
+          if (typeof count === "number" && Number.isSafeInteger(count) && count > 0 && count < 10_000) {
+            const chunks = yield* Effect.forEach(
+              Array.from({ length: count }, (_, index) => index),
+              (index) =>
+                kv.get(`${cacheKey}:${index}`).pipe(Effect.map(Schema.decodeUnknownOption(Schema.Array(catalogModel)))),
+            )
+            if (chunks.every(Option.isSome)) {
+              loaded.models = chunks.flatMap(Option.toArray).flat()
+              loaded.digest = Hash.sha256(JSON.stringify(loaded.models))
+              // Upgrade existing catalogs before exposing them, including when the router is offline.
+              if ((yield* kv.get(`${cacheKey}:resolved:count`)) === undefined) yield* cacheResolved(cacheKey)
+              yield* ctx.provider.reload()
+            }
           }
         }
-        yield* ctx.provider.reload()
         const requests: ConnectionCheck.Request[] = []
         const fetched = yield* Effect.tryPromise({
           try: async (signal) => {
@@ -318,9 +346,9 @@ function routerPlugin(options: {
               `${cause instanceof Error ? cause.message : "Catalog request failed"}\n${ConnectionCheck.describe(requests)}`,
             ),
         })
-        yield* Effect.logInfo(`${options.name} catalog checked`, { requests })
         const response = yield* Schema.decodeUnknownEffect(catalog)(fetched.body)
         requests[requests.length - 1].models = response.data.length
+        yield* Effect.logInfo(`${options.name} catalog checked`, { requests })
         const current = yield* resolve()
         if (!current || current.baseURL !== connection.baseURL || current.key !== connection.key) return
         const flat = response.id_format === "flat"
@@ -403,7 +431,6 @@ function routerPlugin(options: {
       yield* ctx.provider.transform((providers) => {
         const connection = loaded.connection
         if (!connection) return
-        const enabled = features()
         providers.add({
           info: {
             id: providerID,
@@ -414,7 +441,7 @@ function routerPlugin(options: {
             settings: { baseURL: connection.baseURL, provider: providerID },
             ...(loaded.inspection.router ? { router: loaded.inspection.router } : {}),
           },
-          models: loaded.models.flatMap((item) => routerModel(item, providerID, loaded.names, enabled)),
+          models: resolvedModels(),
           sourceConnection: connection.credential
             ? {
                 type: "credential",
@@ -539,16 +566,14 @@ export const connectionModel = Effect.fn("RouterProvider.connectionModel")(funct
   const cacheKey = `${providerID}:models:${Hash.sha256(`${baseURL}\n${key}`)}`
   const count = yield* kv.get(`${cacheKey}:resolved:count`)
   if (typeof count !== "number" || !Number.isSafeInteger(count) || count <= 0 || count >= 10_000) return
-  const chunks = yield* Effect.forEach(
-    Array.from({ length: count }, (_, index) => index),
-    (index) => kv.get(`${cacheKey}:resolved:${index}`),
-  )
-  const decoded = chunks.map((chunk) =>
-    Option.getOrUndefined(Schema.decodeUnknownOption(Schema.Array(Model.Info))(chunk)),
-  )
-  if (decoded.some((chunk) => chunk === undefined)) return
-  const model = decoded.flatMap((chunk) => chunk ?? []).find((model) => model.id === modelID)
-  return model ? { ...model, settings: { ...model.settings, baseURL } } : undefined
+  // Resolving one saved selection must not retain a second decoded copy of the entire catalog.
+  const decode = Schema.decodeUnknownOption(Schema.Array(Model.Info))
+  for (let index = 0; index < count; index++) {
+    const chunk = decode(yield* kv.get(`${cacheKey}:resolved:${index}`))
+    if (Option.isNone(chunk)) continue
+    const model = chunk.value.find((model) => model.id === modelID)
+    if (model) return { ...model, settings: { ...model.settings, baseURL } }
+  }
 })
 
 /**

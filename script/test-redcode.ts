@@ -77,6 +77,7 @@ const suites = {
     "test/server-connection.test.ts",
   ],
   server: [
+    "test/model.test.ts",
     "test/generate.test.ts",
     "test/intelligence-history.test.ts",
     "test/legacy-rpc.test.ts",

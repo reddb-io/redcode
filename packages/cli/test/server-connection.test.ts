@@ -8,6 +8,7 @@ import os from "node:os"
 import path from "node:path"
 import { ServerConnection } from "../src/services/server-connection"
 import { ServiceConfig } from "../src/services/service-config"
+import { serviceFixture } from "../../client/test/fixture/service-fixture"
 
 test("resolution groups Effect-native lifecycle operations only for the managed service", async () => {
   const root = await fs.mkdtemp(path.join(os.tmpdir(), "opencode-server-resolution-"))
@@ -69,3 +70,59 @@ test("service options only require a matching version when requested", async () 
     await fs.rm(root, { recursive: true, force: true })
   }
 })
+
+test.each([
+  { mode: "shutdown-hanging", pty: "clear" as const },
+  { mode: "handoff-hanging", pty: "handoff" as const },
+  { mode: "blocked", pty: "clear" as const },
+])(
+  "restart recovers a $mode service through $pty",
+  async ({ mode, pty }) => {
+    await using fixture = await serviceFixture()
+    const existing = fixture.spawn(mode)
+    try {
+      await fixture.waitForFile()
+      const endpoint = await Effect.runPromise(
+        ServerConnection.restart({ file: fixture.registration, command: fixture.command("environment") }, pty).pipe(
+          Effect.provide(NodeFileSystem.layer),
+          Effect.timeout("15 seconds"),
+        ),
+      )
+      const replacement = await Bun.file(fixture.registration).json()
+      fixture.track(replacement.pid)
+      await existing.exited
+      expect(replacement.pid).not.toBe(existing.pid)
+      expect(existing.exitCode).not.toBe(null)
+      const response = await fetch(new URL("/api/info", endpoint.url))
+      expect(response.status).toBe(200)
+      expect(await response.json()).toMatchObject({ pid: replacement.pid, version: "test" })
+    } finally {
+      existing.kill("SIGKILL")
+      await existing.exited
+    }
+  },
+  20_000,
+)
+
+test("restart preserves terminal handoff when the server responds", async () => {
+  await using fixture = await serviceFixture()
+  const existing = fixture.spawn("handoff")
+  try {
+    await fixture.waitForFile()
+    await Effect.runPromise(
+      ServerConnection.restart({ file: fixture.registration, command: fixture.command("environment") }, "handoff").pipe(
+        Effect.provide(NodeFileSystem.layer),
+        Effect.timeout("15 seconds"),
+      ),
+    )
+    const replacement = await Bun.file(fixture.registration).json()
+    fixture.track(replacement.pid)
+    await existing.exited
+    expect(await Bun.file(fixture.registration + ".handoff").json()).toEqual(
+      await Bun.file(fixture.registration + ".prepared").json(),
+    )
+  } finally {
+    existing.kill("SIGKILL")
+    await existing.exited
+  }
+}, 20_000)

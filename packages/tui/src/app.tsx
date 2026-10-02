@@ -1437,7 +1437,10 @@ function App() {
               </Show>
               <Switch>
                 <Match when={route.data.type === "home"}>
-                  <Home pending={startupPending()} prompt={startupFresh() ? startupPrompt : undefined} />
+                  {/* Match render callbacks isolate mount-time reads from the route's reactive selection. */}
+                  {(_home) => (
+                    <Home pending={startupPending()} prompt={startupFresh() ? startupPrompt : undefined} />
+                  )}
                 </Match>
                 <Match when={route.data.type === "session"}>
                   <Show when={route.data.type === "session" ? route.data.sessionID : undefined} keyed>

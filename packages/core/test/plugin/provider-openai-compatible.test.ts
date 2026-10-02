@@ -11,6 +11,12 @@ import {
   providerConfig,
 } from "@opencode/core/plugin/provider/openai-compatible"
 
+const largeCatalog = Array.from({ length: 2505 }, (_, index) => ({
+  id: `model-${index}`,
+  context_length: 64_000,
+  max_completion_tokens: 4_000,
+}))
+
 const server = Bun.serve({
   port: 0,
   fetch(request) {
@@ -25,6 +31,7 @@ const server = Bun.serve({
         ],
       })
     if (url.pathname === "/plain/models") return new Response("not json")
+    if (url.pathname === "/large/models") return Response.json({ data: largeCatalog })
     if (url.pathname === "/rr/v1/capabilities") return Response.json({ product: "red-router" })
     if (url.pathname === "/old/v1/models/systemone")
       return Response.json({ data: [{ id: "jev-small" }, { id: "jev-large" }] })
@@ -139,6 +146,16 @@ describe("OpenAI-compatible discovery", () => {
   test("tests the key and lists the endpoint's models", async () => {
     const listed = await Effect.runPromise(discover(endpoint({ baseURL: `${base}/v1` }), "sk-good"))
     expect(listed.map((model) => model.id)).toEqual(["alpha", "beta"])
+  })
+
+  test("keeps all 2505 discovered models and manually added IDs in the saved provider", async () => {
+    const configured = endpoint({ baseURL: `${base}/large`, models: "model-0,manual-model" })
+    const listed = await Effect.runPromise(discover(configured, "sk-good"))
+    expect(listed).toHaveLength(2505)
+    const saved = providerConfig(configured, listed)
+    expect(Object.keys(saved.models)).toHaveLength(2506)
+    expect(saved.models["model-2504"]).toEqual({ name: "model-2504", limit: { context: 64_000, output: 4_000 } })
+    expect(saved.models["manual-model"]).toBeDefined()
   })
 
   test("reports a rejected key even when models were entered", async () => {

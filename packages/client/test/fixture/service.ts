@@ -51,6 +51,11 @@ const server = Bun.serve({
   port: 0,
   async fetch(request) {
     const pathname = new URL(request.url).pathname
+    if (
+      (pathname === "/api/experimental/persistent-pty/shutdown" && mode === "shutdown-hanging") ||
+      (pathname === "/api/experimental/persistent-pty/handoff" && mode === "handoff-hanging")
+    )
+      return new Promise<Response>(() => {})
     if (pathname === "/api/experimental/persistent-pty/handoff" && mode === "handoff") {
       if (request.method !== "POST" || request.headers.get("authorization") !== "Basic " + btoa("opencode:private"))
         return new Response(null, { status: 401 })
@@ -117,3 +122,7 @@ async function shutdown(signal?: NodeJS.Signals) {
 }
 process.on("SIGTERM", () => void shutdown("SIGTERM"))
 process.on("SIGINT", () => void shutdown("SIGINT"))
+// Simulate a server whose event loop cannot service HTTP or the SIGTERM handler.
+if (mode === "blocked") {
+  while (true) Math.sqrt(Date.now())
+}

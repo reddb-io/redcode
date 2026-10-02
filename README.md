@@ -66,10 +66,15 @@ method per machine.
 | `/budget`                   | Set an optional spend or token budget           |
 | `redcode vault set\|import` | Store a secret, or import a `.env` file         |
 | `redcode service`           | Control the background server                   |
+| `redcode restart`           | Restart the server when it is unresponsive      |
 | `redcode run`               | Run a prompt without the full TUI               |
 | `redcode serve`             | Run the HTTP server                             |
 | `redcode acp`               | Run the Agent Client Protocol integration       |
 | `redcode --help`            | List CLI commands                               |
+
+`redcode restart` also works as `redcode service restart`. Both restart the local background
+server and keep saved sessions. Inside the TUI, `/restart` tries to preserve running terminals;
+if the server cannot hand them off, it proceeds with process recovery.
 
 ## Features
 

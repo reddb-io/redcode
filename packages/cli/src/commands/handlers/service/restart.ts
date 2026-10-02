@@ -1,6 +1,5 @@
 import { EOL } from "os"
 import { Effect } from "effect"
-import { Service } from "@opencode/client/effect/service"
 import { Commands } from "../../commands"
 import { Runtime } from "../../../framework/runtime"
 import { ServiceConfig } from "../../../services/service-config"
@@ -10,10 +9,7 @@ export default Runtime.handler(
   Commands.commands.service.commands.restart,
   Effect.fn("cli.service.restart")(function* () {
     const options = yield* ServiceConfig.options()
-    // Keep this explicit: automatic service replacement must preserve terminals.
-    yield* ServerConnection.shutdownPersistentPty(options).pipe(Effect.ignore)
-    yield* Service.stop(options)
-    const transport = yield* Service.ensure(options)
+    const transport = yield* ServerConnection.restart(options)
     process.stdout.write(transport.url + EOL)
   }),
 )

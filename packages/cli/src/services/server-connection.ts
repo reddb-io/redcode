@@ -54,11 +54,7 @@ function managedService(options: EnsureOptions) {
   const reconnectOptions = { ...options, version: undefined }
   return {
     reconnect: () => Service.ensure(reconnectOptions),
-    restart: () =>
-      Effect.gen(function* () {
-        yield* Service.stop({ file: options.file, pty: "handoff" })
-        yield* Service.ensure(reconnectOptions)
-      }),
+    restart: () => restart(reconnectOptions, "handoff").pipe(Effect.asVoid),
   }
 }
 
@@ -68,7 +64,28 @@ export const shutdownPersistentPty = Effect.fn("cli.server-connection.shutdown-p
   const endpoint = yield* Service.discover({ ...options, version: undefined })
   if (!endpoint) return
   const client = OpenCode.make({ baseUrl: endpoint.url, headers: Service.headers(endpoint) })
-  yield* Effect.tryPromise(() => client.experimental.persistentPty.shutdown())
+  yield* Effect.tryPromise({
+    try: (signal) =>
+      client.experimental.persistentPty.shutdown({ signal: AbortSignal.any([signal, AbortSignal.timeout(2_000)]) }),
+    catch: (cause) => cause,
+  })
+})
+
+/** Explicit recovery must reach process termination even if the server cannot hand off terminals. */
+export const restart = Effect.fn("cli.server-connection.restart")(function* (
+  options: EnsureOptions,
+  pty: "handoff" | "clear" = "clear",
+) {
+  if (pty === "clear") yield* shutdownPersistentPty(options).pipe(Effect.ignore)
+  yield* Service.stop({ file: options.file, pty }).pipe(
+    Effect.catch((cause) => {
+      if (pty !== "handoff") return Effect.fail(cause)
+      return Effect.logWarning("Terminal handoff failed; restarting the unresponsive background server").pipe(
+        Effect.andThen(Service.stop({ file: options.file, pty: "clear" })),
+      )
+    }),
+  )
+  return yield* Service.ensure({ ...options, version: undefined })
 })
 
 const resolveManaged = Effect.fnUntraced(function* (options: EnsureOptions, mismatch: NonNullable<Args["mismatch"]>) {

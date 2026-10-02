@@ -34,7 +34,7 @@ const API_KEY = /^[\x21-\x7e]+$/
 // The key travels as a bearer token; a credential header typed here would land in plain configuration.
 const SECRET_HEADER = /^(authorization|proxy-authorization|x-api-key|api-key)$/i
 const MAX_HEADERS = 32
-const MAX_MODELS = 500
+const MAX_ENTERED_MODELS = 500
 /** Limits for a model the endpoint does not describe: a guess that keeps proactive compaction working. */
 const DEFAULT_CONTEXT = 128_000
 const DEFAULT_OUTPUT = 8_192
@@ -264,7 +264,7 @@ export function parseEndpoint(answer: Form.Answer): Endpoint | string {
         .filter(Boolean),
     ),
   ]
-  if (models.length > MAX_MODELS) return `Enter at most ${MAX_MODELS} model IDs`
+  if (models.length > MAX_ENTERED_MODELS) return `Enter at most ${MAX_ENTERED_MODELS} model IDs`
   const context = limit(answer.context)
   const output = limit(answer.output)
   return {
@@ -399,7 +399,7 @@ const isRecord = (value: unknown): value is Record<string, unknown> => typeof va
 /** The provider as written under `providers.<id>` in the global configuration. */
 export function providerConfig(endpoint: Endpoint, listed: ReadonlyArray<Listed>, catalog?: CatalogLimits) {
   const byID = new Map(listed.filter((model) => model.id.trim()).map((model) => [model.id, model]))
-  const ids = [...new Set([...byID.keys(), ...endpoint.models])].slice(0, MAX_MODELS)
+  const ids = [...new Set([...byID.keys(), ...endpoint.models])]
   return {
     name: endpoint.name,
     package: endpoint.responses ? RESPONSES_PACKAGE : CHAT_PACKAGE,

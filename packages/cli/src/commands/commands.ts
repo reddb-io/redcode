@@ -95,6 +95,7 @@ const Root = Spec.make(typeof OPENCODE_CLI_NAME === "string" ? OPENCODE_CLI_NAME
     model: Flag.string("model").pipe(Flag.withDescription("Model for a new session"), Flag.optional),
   },
   commands: [
+    Spec.make("restart", { description: "Restart the background server, including when it is unresponsive" }),
     Spec.make("upgrade", {
       description: `Upgrade ${name} to the latest or a specific version`,
       aliases: ["update"],
