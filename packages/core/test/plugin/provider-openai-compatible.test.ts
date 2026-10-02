@@ -1,5 +1,5 @@
 import { afterAll, describe, expect, test } from "bun:test"
-import { Effect, Schema } from "effect"
+import { Effect, Schema, Stream } from "effect"
 import { Config } from "@opencode/core/config"
 import { Credential } from "@opencode/core/credential"
 import { Integration } from "@opencode/core/integration"
@@ -54,7 +54,6 @@ const it = testEffect(PluginTestLayer)
 
 it.effect("adds independent endpoints on the same host and multiple credentials for an existing endpoint", () =>
   Effect.gen(function* () {
-    const config = yield* Config.Service
     const integrations = yield* Integration.Service
     const credentials = yield* Credential.Service
     const plugin = yield* Plugin.Service
@@ -62,7 +61,8 @@ it.effect("adds independent endpoints on the same host and multiple credentials 
     const saved: Record<string, Record<string, unknown>> = {}
     yield* OpenAICompatiblePlugin.effect(host).pipe(
       Effect.provideService(Config.Service, {
-        ...config,
+        compatibility: () => Effect.succeed({ claude: [], agents: [] }),
+        changes: () => Stream.empty,
         entries: () =>
           Effect.sync(() => [
             new Document({
