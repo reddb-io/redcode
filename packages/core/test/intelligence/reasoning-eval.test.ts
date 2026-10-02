@@ -45,6 +45,30 @@ test("grades exact facts independently of key order, retaining format and extra-
   expect(score('{"list":[2,1]}', { list: [1, 2] }).pass).toBe(false)
 })
 
+test("corpora cannot be mixed to manufacture matched accuracy or campaign acceptance", () => {
+  const runs = improvement({ corpus: "challenge" })
+  const group = {
+    corpus: "challenge",
+    pairID: "legacy",
+    experiment: "legacy",
+    split: "calibration" as const,
+    expectedRuns: 2,
+  }
+  expect(acceptance(runs, 2).passed).toBe(true)
+  const mixed = [runs[0]!, { ...runs[1]!, corpus: "original" }]
+  expect(pairs(mixed)).toHaveLength(0)
+  expect(acceptance(mixed, 2).reasons).toContain("incomplete_or_invalid_suite")
+  const identified = runs.map((run) => ({
+    ...run,
+    pairID: group.pairID,
+    experiment: group.experiment,
+    split: group.split,
+  }))
+  expect(campaign(identified, [group], 2).passed).toBe(true)
+  expect(campaign(identified, [{ ...group, corpus: "original" }], 2).passed).toBe(false)
+  expect(markdown(runs, "coder", "jev", 2, { corpus: "challenge" })).toContain("Coding corpus: `challenge`")
+})
+
 test("failures remain in the denominator and unknown prices remain incomplete", () => {
   const summary = summarize([run(), run({ outcome: "timeout" }), run({ outcome: "invalid" })])[0]
   expect(summary.passRate).toBe(1 / 3)

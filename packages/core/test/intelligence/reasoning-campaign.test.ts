@@ -35,6 +35,8 @@ test("legacy diagnostic selection keeps eight cases and rejects ambiguous or uns
   expect(plan({ pairs: [pair] }).timeoutMs).toBe(90_000)
   for (const input of [
     { suite: "unknown" },
+    { corpus: "challenge" },
+    { suite: "coding", corpus: "unknown" },
     { split: "held-out" },
     { experiments: "baseline,baseline" },
     { experiments: "learning" },
@@ -73,47 +75,84 @@ test("coding comparisons include scoped dual repair and an equally bounded singl
   expect(() => plan({ suite: "diagnostic", experiments: "code-repair", pairs: [pair] })).toThrow()
 })
 
-test("the real CLI can preview a coding campaign without credentials, service startup or inference", async () => {
-  const child = Bun.spawn(
-    [
-      process.execPath,
-      "script/reasoning-eval/run.ts",
-      "--suite",
-      "coding",
-      "--split",
-      "held-out",
-      "--model",
-      pair.model,
-      "--response-model",
-      pair.responseModel,
-      "--evaluator",
-      pair.evaluator,
-      "--binary",
-      "missing-binary",
-      "--router",
-      "http://127.0.0.1:1/v1",
-      "--dry-run",
-    ],
-    { cwd: process.cwd(), stdout: "pipe", stderr: "pipe" },
-  )
-  const [stdout, stderr, exit] = await Promise.all([
-    new Response(child.stdout).text(),
-    new Response(child.stderr).text(),
-    child.exited,
-  ])
-  expect({ exit, stderr }).toEqual({ exit: 0, stderr: "" })
-  const preview = Schema.decodeUnknownSync(
-    Schema.fromJsonString(
-      Schema.Struct({
-        suite: Schema.String,
-        split: Schema.String,
-        expectedRuns: Schema.Number,
-        cases: Schema.Array(Schema.Struct({ id: Schema.String })),
-      }),
-    ),
-  )(stdout)
-  expect(preview).toMatchObject({ suite: "coding", split: "held-out", expectedRuns: 24 })
-  expect(preview.cases).toHaveLength(6)
-  expect(stdout).not.toContain("oracle")
-  expect(stdout).not.toContain("reference")
+test("challenge calibration and reserved plans use only the selected new corpus", () => {
+  const calibration = plan({ suite: "coding", corpus: "challenge", split: "calibration", pairs: [pair] })
+  const reserved = plan({
+    suite: "coding",
+    corpus: "challenge",
+    split: "held-out",
+    experiments: "code-repair,self-review",
+    pairs: [pair],
+  })
+  expect(calibration).toMatchObject({ corpus: "challenge", expectedExecutions: 12 })
+  expect(calibration.selected).toHaveLength(3)
+  expect(reserved).toMatchObject({ corpus: "challenge", expectedExecutions: 24 })
+  expect(reserved.plans).toHaveLength(2)
+  expect(reserved.plans.every((group) => group.corpus === "challenge" && group.expectedRuns === 12)).toBe(true)
+  expect(() => plan({ suite: "coding", corpus: "challenge", cases: "half-open-overlap", pairs: [pair] })).toThrow()
+  expect(() => plan({ suite: "coding", cases: calibration.selected[0]!.id, pairs: [pair] })).toThrow()
+  expect(() =>
+    plan({
+      suite: "coding",
+      corpus: "challenge",
+      split: "calibration",
+      cases: reserved.selected[0]!.id,
+      pairs: [pair],
+    }),
+  ).toThrow()
 })
+
+for (const corpus of ["original", "challenge"] as const) {
+  test(`the real CLI can preview the ${corpus} coding corpus without credentials, service startup or inference`, async () => {
+    const child = Bun.spawn(
+      [
+        process.execPath,
+        "script/reasoning-eval/run.ts",
+        "--suite",
+        "coding",
+        "--corpus",
+        corpus,
+        "--split",
+        "held-out",
+        "--model",
+        pair.model,
+        "--response-model",
+        pair.responseModel,
+        "--evaluator",
+        pair.evaluator,
+        "--binary",
+        "missing-binary",
+        "--router",
+        "http://127.0.0.1:1/v1",
+        "--dry-run",
+      ],
+      { cwd: process.cwd(), stdout: "pipe", stderr: "pipe" },
+    )
+    const [stdout, stderr, exit] = await Promise.all([
+      new Response(child.stdout).text(),
+      new Response(child.stderr).text(),
+      child.exited,
+    ])
+    expect({ exit, stderr }).toEqual({ exit: 0, stderr: "" })
+    const preview = Schema.decodeUnknownSync(
+      Schema.fromJsonString(
+        Schema.Struct({
+          suite: Schema.String,
+          corpus: Schema.String,
+          split: Schema.String,
+          expectedRuns: Schema.Number,
+          cases: Schema.Array(Schema.Struct({ id: Schema.String })),
+        }),
+      ),
+    )(stdout)
+    expect(preview).toMatchObject({
+      suite: "coding",
+      corpus,
+      split: "held-out",
+      expectedRuns: corpus === "original" ? 24 : 12,
+    })
+    expect(preview.cases).toHaveLength(corpus === "original" ? 6 : 3)
+    expect(stdout).not.toContain("oracle")
+    expect(stdout).not.toContain("reference")
+  })
+}

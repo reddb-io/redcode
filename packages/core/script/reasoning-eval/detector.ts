@@ -2,35 +2,40 @@ import { Intelligence } from "@opencode/schema/intelligence"
 import { IntelligenceCodeRepair } from "../../src/intelligence/code-repair"
 import { IntelligenceEvaluation } from "../../src/intelligence/evaluation"
 import { codingCases } from "./coding-cases"
+import type { CodingCase } from "./coding-cases"
 
 /** Labels belong to grading only. The model sees the contract and candidate implementation. */
-export const detectorCases = codingCases.flatMap((item) =>
-  [false, true].map((expectedDefect) => {
-    const files = expectedDefect ? item.files : { ...item.files, ...item.reference }
-    const sources = item.editable.map((file) => ({ file, patch: files[file]! }))
-    return {
-      id: `${item.id}-${expectedDefect ? "defective" : "correct"}`,
-      family: item.family,
-      split: item.split,
-      expectedDefect,
-      fixture: { ...item, files },
-      request: {
-        model: "",
-        state: {
-          sources: {
-            request: item.prompt,
-            artifact: IntelligenceCodeRepair.artifact({
-              from: "fixed-input",
-              to: IntelligenceEvaluation.fingerprint(sources),
-              files: sources,
-            }),
+export function candidates(cases: readonly CodingCase[]) {
+  return cases.flatMap((item) =>
+    [false, true].map((expectedDefect) => {
+      const files = expectedDefect ? item.files : { ...item.files, ...item.reference }
+      const sources = item.editable.map((file) => ({ file, patch: files[file]! }))
+      return {
+        id: `${item.id}-${expectedDefect ? "defective" : "correct"}`,
+        family: item.family,
+        split: item.split,
+        expectedDefect,
+        fixture: { ...item, files },
+        request: {
+          model: "",
+          state: {
+            sources: {
+              request: item.prompt,
+              artifact: IntelligenceCodeRepair.artifact({
+                from: "fixed-input",
+                to: IntelligenceEvaluation.fingerprint(sources),
+                files: sources,
+              }),
+            },
           },
+          questions: IntelligenceCodeRepair.QUESTIONS,
         },
-        questions: IntelligenceCodeRepair.QUESTIONS,
-      },
-    }
-  }),
-)
+      }
+    }),
+  )
+}
+
+export const detectorCases = candidates(codingCases)
 
 export type Detection = {
   expectedDefect: boolean

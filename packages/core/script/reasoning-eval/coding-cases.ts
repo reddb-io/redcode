@@ -11,10 +11,10 @@ export type CodingCase = {
   readonly reference: Readonly<Record<string, string>>
 }
 
-const testFile = (imports: string, name: string, body: string) =>
+export const testFile = (imports: string, name: string, body: string) =>
   `import { expect, test } from "bun:test"\nimport { ${imports} } from "./src.ts"\n\ntest(${JSON.stringify(name)}, async () => {\n${body}\n})\n`
 
-function fixture(input: {
+export function fixture(input: {
   id: string
   family: string
   split: CodingCase["split"]

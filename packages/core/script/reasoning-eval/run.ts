@@ -32,6 +32,7 @@ const args = parseArgs({
     gate: { type: "boolean", default: false },
     modes: { type: "string", default: "single,dual" },
     suite: { type: "string", default: "diagnostic" },
+    corpus: { type: "string" },
     split: { type: "string", default: "all" },
     experiments: { type: "string", default: "baseline" },
     pairs: { type: "string" },
@@ -43,7 +44,7 @@ const args = parseArgs({
 }).values
 if (args.help) {
   console.log(
-    "Usage: bun run eval:reasoning --suite diagnostic|coding --pairs <pairs.json> --key-file <private-file> --output <directory> [--split calibration|held-out|all] [--experiments baseline,verification,code-repair,self-review] [--rounds 2] [--max-cost-usd <USD>] [--gate] [--dry-run]",
+    "Usage: bun run eval:reasoning --suite diagnostic|coding --pairs <pairs.json> --key-file <private-file> --output <directory> [--corpus original|challenge] [--split calibration|held-out|all] [--experiments baseline,verification,code-repair,self-review] [--rounds 2] [--max-cost-usd <USD>] [--gate] [--dry-run]",
   )
   process.exit(0)
 }
@@ -66,6 +67,7 @@ if (pricing && (pricing.model !== args.model || pricing.evaluator !== args.evalu
   throw new Error("Pricing must match the exact pinned S1 and S2 models")
 const planned = plan({
   suite: args.suite,
+  corpus: args.corpus,
   split: args.split,
   experiments: args.experiments,
   rounds: args.rounds,
@@ -91,6 +93,7 @@ const manifest = {
       ? { turn_steps: 24, stop_loss: { every: 4, cooldown: 2, idle_at: 3, tokens: 12_000, minutes: 2 } }
       : { turn_steps: 24 },
   suite: planned.suite,
+  corpus: planned.corpus,
   split: planned.split,
   rounds: planned.rounds,
   modes: planned.modes,
@@ -620,6 +623,7 @@ try {
             ]
             const result = {
               caseID: item.id,
+              corpus: planned.corpus,
               pairID: pair.id,
               experiment,
               split: "split" in item ? item.split : ("calibration" as const),
@@ -745,6 +749,7 @@ try {
               path.join(output, "report.md"),
               markdown(results, planned.pairs[0]!.model, planned.pairs[0]!.evaluator, planned.expectedComparisons, {
                 suite: planned.suite,
+                corpus: planned.corpus,
                 signature: manifest.fixtureSignature,
                 pairs: planned.pairs,
                 plans: planned.plans,

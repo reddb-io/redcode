@@ -1,8 +1,10 @@
 # Comparing single and dual reasoning
 
 The harness has two suites. `diagnostic` preserves the original eight read-only
-cases below. `coding` uses twelve dependency-free TypeScript repair projects,
-with six calibration families and six distinct reserved families. These are
+cases below. `coding` defaults to `--corpus original`: twelve dependency-free
+TypeScript repair projects with six calibration and six reserved families.
+`--corpus challenge` selects six new projects, split into three calibration and
+three reserved families. These are
 executable coding fixtures, not a benchmark of full application development.
 The [local coding study from 2026-10-02](evaluations/reasoning-coding-2026-10-02.md)
 records real-model calibration, interrupted attempts and the separately evaluated
@@ -43,7 +45,8 @@ After selecting the models and authorizing an absolute USD budget, execute with
 explicit budget. Run calibration first, freeze the chosen configuration, then
 evaluate it on `--split held-out`. Do not tune on reserved-case results and call
 the same cases independent validation. A full two-pair, two-round campaign has
-96 executions per experiment: 48 calibration and 48 reserved.
+96 executions per experiment on `original`: 48 calibration and 48 reserved.
+The same plan on `challenge` has 48 executions: 24 calibration and 24 reserved.
 
 ```sh
 bun run eval:reasoning --suite coding --pairs /path/to/pairs.json \
@@ -144,7 +147,9 @@ request, independent execution verifies its label. S1 receives the requested
 contract and candidate source, using the production code-review rubric; labels
 and hidden oracle checks never enter the request. This diagnoses the detector,
 not end-to-end dual performance. These already inspected families do not constitute
-a new untouched final validation set.
+a new untouched final validation set. `--corpus challenge` selects 12 fixed
+candidates (six per split), using the new families described below. The corpus
+and source signature are recorded; no paid collection has used these new cases.
 
 After a separate explicit budget authorization, use the connection's established
 native endpoint and pin its actual response model:
@@ -164,6 +169,52 @@ unknown; budget checks occur between requests and cannot certify an invoice
 ceiling. The report separates false alarms, missed defects and unavailable
 responses. Threshold diagnostics are calibration-only and do not alter the
 runtime's 0.75 repair threshold. The original US$5 collection remains closed.
+
+## New challenge corpus
+
+The challenge corpus adds interacting requirements beyond the original cases.
+Its difficulty relative to a particular model remains unmeasured. Families and
+splits are fixed in source before model calibration:
+
+| Split       | Family                    | Behavior checked independently                                                                      |
+| ----------- | ------------------------- | --------------------------------------------------------------------------------------------------- |
+| Calibration | Singleflight settlement   | Same-key Promise identity, independent keys, reuse after success or failure, synchronous errors     |
+| Calibration | Composite page cursor     | Stable tie order, exclusive tuple bounds, missing cursor records, complete pagination               |
+| Calibration | Three-way document merge  | Concurrent edits, deletions versus null, conflict reporting, own dictionary keys                    |
+| Reserved    | Bounded FIFO admission    | Concurrency limits, submission order, queue progress after synchronous and asynchronous failures    |
+| Reserved    | Quoted CSV records        | Escaped quotes, embedded delimiters, multiline fields, invalid parser states                        |
+| Reserved    | Specific route resolution | Literal/parameter/wildcard precedence, decode-once segment identity, empty wildcard, parameter keys |
+
+CI executes buggy seeds and correct references against hidden checks and runs
+the visible test commands. Deterministic deferred promises and microtask drains
+exercise asynchronous behavior without network requests or timer sleeps. These
+checks validate the harness, not S1/S2 accuracy. This remains a small collection
+of single-file repairs rather than representative full application work.
+
+Prepare the next calibration without credentials, a service or model calls:
+
+```sh
+bun run eval:reasoning:detector --corpus challenge --split calibration --dry-run
+bun run eval:reasoning --suite coding --corpus challenge --pairs /path/to/pairs.json \
+  --split calibration --experiments code-repair,self-review --rounds 2 --dry-run
+```
+
+Run detector calibration first after separately authorizing its budget; use the
+same `--corpus challenge` selector when adding its paid execution options. Then
+freeze the chosen models, variants, rubric, execution policy and source
+signatures before recovery evaluation. Compare both coding experiments on
+calibration, freeze the configuration, and run reserved cases once for final
+validation. If reserved results inform tuning, they become development material
+and require a new reserved set. Do not use reserved detector results to tune the
+configuration later evaluated on reserved recovery cases.
+
+Every execution and group includes its corpus. Different corpora cannot form a
+matched single/dual comparison or satisfy one another's campaign plans.
+Historical reports remain separate. Recovery is measured from the independently
+graded pre-repair candidate and final code: repaired, unnecessary, degraded,
+ineffective or unknown baseline. A code-repair admission or a successful test
+command alone does not establish recovery. The existing no-regression and
+known-cost-at-most-2x gates remain unchanged. Caching remains Router-owned.
 
 ## Read-only diagnostic suite
 

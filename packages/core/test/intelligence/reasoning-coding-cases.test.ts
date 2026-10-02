@@ -1,6 +1,7 @@
 import { describe, expect, test } from "bun:test"
 import path from "node:path"
 import { codingCases } from "../../script/reasoning-eval/coding-cases"
+import { challengeCases } from "../../script/reasoning-eval/challenge-cases"
 import { grade, prepare, snapshot, verify } from "../../script/reasoning-eval/coding"
 import { tmpdir } from "../fixture/tmpdir"
 
@@ -29,8 +30,27 @@ test("coding corpus fixes twelve disjoint families before calibration", () => {
   })
 })
 
+test("challenge families reserve a separate validation split without reusing the original corpus", () => {
+  expect(challengeCases).toHaveLength(6)
+  const original = new Set(codingCases.flatMap((item) => [item.id, item.family]))
+  const calibration = challengeCases.filter((item) => item.split === "calibration")
+  const reserved = challengeCases.filter((item) => item.split === "held-out")
+  expect(calibration).toHaveLength(3)
+  expect(reserved).toHaveLength(3)
+  expect(new Set(challengeCases.map((item) => item.id)).size).toBe(6)
+  expect(new Set(challengeCases.map((item) => item.family)).size).toBe(6)
+  expect(challengeCases.some((item) => original.has(item.id) || original.has(item.family))).toBe(false)
+  expect(reserved.some((item) => calibration.some((tuned) => tuned.family === item.family))).toBe(false)
+  for (const item of challengeCases) {
+    expect(new Set(item.checkIDs).size).toBe(item.checkIDs.length)
+    expect(item.checkIDs.length).toBeGreaterThanOrEqual(5)
+    expect(item.prompt).not.toContain(item.reference["src.ts"])
+    expect(Object.values(item.files)).not.toContain(item.oracle)
+  }
+})
+
 describe("independent coding oracles", () => {
-  for (const item of codingCases) {
+  for (const item of [...codingCases, ...challengeCases]) {
     test(`${item.split}: ${item.id} rejects baseline and accepts reference edits`, async () => {
       await using temporary = await tmpdir("redcode-coding-corpus-")
       const directory = path.join(temporary.path, "fixture")

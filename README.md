@@ -185,6 +185,9 @@ and permits one scoped correction with bounded Steps and existing test commands.
 The harness also measures S1 defect detection separately and compares dual with
 **single code self-review** under the same repair limits. These mechanisms have
 not yet demonstrated an accuracy gain; see the [evaluation procedure](docs/reasoning-evaluation.md).
+A separate `challenge` corpus adds six new families for calibration and reserved
+validation, including concurrency, conflict resolution and parser state. Its
+cases have not yet been measured with models; historical results remain separate.
 
 ### Goal
 

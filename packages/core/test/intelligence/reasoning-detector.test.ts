@@ -1,5 +1,6 @@
 import { expect, test } from "bun:test"
-import { detectorCases, summarizeDetection } from "../../script/reasoning-eval/detector"
+import { candidates, detectorCases, summarizeDetection } from "../../script/reasoning-eval/detector"
+import { challengeCases } from "../../script/reasoning-eval/challenge-cases"
 import path from "node:path"
 import { prepare, verify } from "../../script/reasoning-eval/coding"
 import { tmpdir } from "../fixture/tmpdir"
@@ -7,7 +8,7 @@ import { Schema } from "effect"
 
 test("fixed detector candidates separate labels and hidden oracles from model inputs", () => {
   expect(detectorCases).toHaveLength(24)
-  for (const item of detectorCases) {
+  for (const item of [...detectorCases, ...candidates(challengeCases)]) {
     expect(JSON.stringify(item.request)).not.toContain("expectedDefect")
     expect(JSON.stringify(item.request)).not.toContain("oracle")
     expect(Object.keys(item.request).sort()).toEqual(["model", "questions", "state"])
@@ -23,7 +24,7 @@ test("fixed detector candidates separate labels and hidden oracles from model in
 
 test("every fixed candidate label agrees with independent executed behavior", async () => {
   await using temporary = await tmpdir("redcode-detector-labels-")
-  for (const item of detectorCases) {
+  for (const item of [...detectorCases, ...candidates(challengeCases)]) {
     const directory = path.join(temporary.path, "candidate")
     await prepare(item.fixture, directory)
     const result = await verify(item.fixture, directory, path.join(temporary.path, "oracle"))
@@ -57,20 +58,31 @@ test("detector metrics distinguish false alarms, missed defects and unavailable 
   })
 })
 
-test("detector dry-run needs no credentials or model calls", async () => {
-  const child = Bun.spawn(
-    [process.execPath, "script/reasoning-eval/detector-run.ts", "--split", "held-out", "--dry-run"],
-    { stdout: "pipe", stderr: "pipe" },
-  )
-  const [stdout, stderr, exit] = await Promise.all([
-    new Response(child.stdout).text(),
-    new Response(child.stderr).text(),
-    child.exited,
-  ])
-  expect({ exit, stderr }).toEqual({ exit: 0, stderr: "" })
-  expect(stdout).toContain('"expectedRequests": 12')
-  expect(stdout).not.toContain("oracle")
-})
+for (const corpus of ["original", "challenge"] as const) {
+  test(`detector ${corpus} dry-run needs no credentials or model calls`, async () => {
+    const child = Bun.spawn(
+      [
+        process.execPath,
+        "script/reasoning-eval/detector-run.ts",
+        "--corpus",
+        corpus,
+        "--split",
+        "held-out",
+        "--dry-run",
+      ],
+      { stdout: "pipe", stderr: "pipe" },
+    )
+    const [stdout, stderr, exit] = await Promise.all([
+      new Response(child.stdout).text(),
+      new Response(child.stderr).text(),
+      child.exited,
+    ])
+    expect({ exit, stderr }).toEqual({ exit: 0, stderr: "" })
+    expect(stdout).toContain(`"corpus": "${corpus}"`)
+    expect(stdout).toContain(`"expectedRequests": ${corpus === "original" ? 12 : 6}`)
+    expect(stdout).not.toContain("oracle")
+  })
+}
 
 for (const billed of [true, false]) {
   test(`detector preserves HTTP metrics and stops after ${billed ? "its known budget is spent" : "an unknown charge"}`, async () => {

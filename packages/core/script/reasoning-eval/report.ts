@@ -3,6 +3,7 @@ import type { trace } from "./trace"
 
 export interface Run {
   caseID: string
+  corpus?: string
   round: number
   pairID?: string
   experiment?: string
@@ -30,6 +31,7 @@ export interface Run {
 }
 
 export interface CampaignPlan {
+  corpus?: string
   pairID: string
   experiment: string
   split: "calibration" | "held-out"
@@ -37,6 +39,7 @@ export interface CampaignPlan {
 }
 
 export interface ReportOptions {
+  corpus?: string
   suite?: "diagnostic" | "coding"
   signature?: string
   pairs?: readonly { id: string; model: string; responseModel: string; evaluator: string }[]
@@ -198,6 +201,7 @@ export function campaign(runs: ReadonlyArray<Run>, plans: readonly CampaignPlan[
   const groups = plans.map((plan) => {
     const group = runs.filter((run) => groupKey(run) === groupKey(plan))
     return {
+      ...(plan.corpus === undefined ? {} : { corpus: plan.corpus }),
       pairID: plan.pairID,
       experiment: plan.experiment,
       split: plan.split,
@@ -247,6 +251,9 @@ export function markdown(
         ]
       : [`S2: \`${model}\`. S1: \`${evaluator}\`.`]),
     ...(options.signature ? [`Fixture signature: \`${options.signature}\`.`] : []),
+    ...(options.corpus
+      ? [`Coding corpus: \`${options.corpus}\`. Results from different corpora cannot form a matched comparison.`]
+      : []),
     "Fresh sessions, identical task fixtures and S2 selection within each model pair, alternating single/dual order. Grades are independent of S1 verdicts.",
     coding
       ? "Coding fixtures record file changes, verification command counts and oracle duration separately. Read-only fixtures use exact deterministic facts."
@@ -327,14 +334,20 @@ export function markdown(
 
 function identity(run: Run) {
   return {
+    ...(run.corpus === undefined ? {} : { corpus: run.corpus }),
     ...(run.pairID === undefined ? {} : { pairID: run.pairID }),
     ...(run.experiment === undefined ? {} : { experiment: run.experiment }),
     ...(run.split === undefined ? {} : { split: run.split }),
   }
 }
 
-function groupKey(input: Pick<Run, "pairID" | "experiment" | "split">) {
-  return JSON.stringify([input.pairID ?? "legacy", input.experiment ?? "legacy", input.split ?? "legacy"])
+function groupKey(input: Pick<Run, "pairID" | "experiment" | "split" | "corpus">) {
+  return JSON.stringify([
+    input.pairID ?? "legacy",
+    input.experiment ?? "legacy",
+    input.split ?? "legacy",
+    input.corpus ?? "legacy",
+  ])
 }
 
 function matched(runs: ReadonlyArray<Run>) {

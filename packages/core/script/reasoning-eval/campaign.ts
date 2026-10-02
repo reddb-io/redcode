@@ -2,7 +2,7 @@ import { Schema } from "effect"
 import { Intelligence } from "@opencode/schema/intelligence"
 import { Model } from "@opencode/schema/model"
 import { cases } from "./cases"
-import { codingCases } from "./coding-cases"
+import { Corpus, codingCorpus } from "./corpus"
 
 const Rate = Schema.Finite.check(Schema.isGreaterThanOrEqualTo(0))
 export const Pricing = Schema.Struct({
@@ -38,6 +38,7 @@ export function switches(experiment: Experiment) {
 
 export function plan(input: {
   suite?: string
+  corpus?: string
   split?: string
   experiments?: string
   rounds?: string
@@ -48,6 +49,8 @@ export function plan(input: {
   pairs: readonly Pair[]
 }) {
   const suite = Schema.decodeUnknownSync(Schema.Literals(["diagnostic", "coding"]))(input.suite ?? "diagnostic")
+  const corpus = Schema.decodeUnknownSync(Corpus)(input.corpus ?? "original")
+  if (suite !== "coding" && input.corpus !== undefined) throw new Error("Corpora apply only to the coding suite")
   const split = Schema.decodeUnknownSync(Schema.Literals(["calibration", "held-out", "all"]))(input.split ?? "all")
   const modes = Schema.decodeUnknownSync(Schema.Array(Intelligence.Reasoning))(
     (input.modes ?? "single,dual").split(","),
@@ -74,7 +77,8 @@ export function plan(input: {
   if (!Number.isInteger(timeoutMs) || timeoutMs < 1 || timeoutMs > 600_000)
     throw new Error("Timeout must be between 1 and 600000 milliseconds")
   if (suite === "diagnostic" && split !== "all") throw new Error("Splits apply only to the coding suite")
-  const available = suite === "coding" ? codingCases.filter((item) => split === "all" || item.split === split) : cases
+  const available =
+    suite === "coding" ? codingCorpus(corpus).filter((item) => split === "all" || item.split === split) : cases
   const ids = input.cases?.split(",")
   const selected = available.filter((item) => !ids || ids.includes(item.id))
   if (!selected.length || (ids && selected.length !== new Set(ids).size))
@@ -85,12 +89,23 @@ export function plan(input: {
         const count = selected.filter((item) =>
           !("split" in item) ? split === "calibration" : item.split === split,
         ).length
-        return count ? [{ pairID: pair.id, experiment, split, expectedRuns: count * rounds * 2 }] : []
+        return count
+          ? [
+              {
+                pairID: pair.id,
+                experiment,
+                split,
+                ...(suite === "coding" ? { corpus } : {}),
+                expectedRuns: count * rounds * 2,
+              },
+            ]
+          : []
       }),
     ),
   )
   return {
     suite,
+    ...(suite === "coding" ? { corpus } : {}),
     split,
     modes,
     rounds,

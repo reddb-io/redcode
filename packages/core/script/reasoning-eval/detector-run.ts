@@ -8,13 +8,15 @@ import { IntelligenceCodeRepair } from "../../src/intelligence/code-repair"
 import { IntelligenceEvaluation } from "../../src/intelligence/evaluation"
 import { IntelligenceSettings } from "../../src/intelligence/settings"
 import { prepare, verify } from "./coding"
-import { detectorCases, summarizeDetection } from "./detector"
+import { candidates, summarizeDetection } from "./detector"
+import { Corpus, codingCorpus } from "./corpus"
 import type { Detection } from "./detector"
 
 const args = parseArgs({
   args: process.argv.slice(2),
   options: {
     split: { type: "string", default: "calibration" },
+    corpus: { type: "string", default: "original" },
     router: { type: "string" },
     endpoint: { type: "string", default: "systemone" },
     evaluator: { type: "string" },
@@ -26,8 +28,9 @@ const args = parseArgs({
   },
 }).values
 const split = Schema.decodeUnknownSync(Schema.Literals(["calibration", "held-out"]))(args.split)
+const corpus = Schema.decodeUnknownSync(Corpus)(args.corpus)
 const endpoint = Schema.decodeUnknownSync(Intelligence.DecisionEndpoint)(args.endpoint)
-const selected = detectorCases.filter((item) => item.split === split)
+const selected = candidates(codingCorpus(corpus)).filter((item) => item.split === split)
 const signature = IntelligenceEvaluation.fingerprint(
   selected.map((item) => ({
     id: item.id,
@@ -37,6 +40,7 @@ const signature = IntelligenceEvaluation.fingerprint(
   })),
 )
 const manifest = {
+  corpus,
   rubric: IntelligenceCodeRepair.RUBRIC,
   split,
   signature,
