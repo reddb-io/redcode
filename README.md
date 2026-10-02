@@ -165,6 +165,12 @@ the [earlier unfavorable baseline](docs/evaluations/reasoning-0.70.3.md), and th
 [current evaluation plan](docs/plans/dual-reasoning-evidence.md). The 2x criterion is an
 evaluation gate; runtime budgets cannot guarantee a ratio against an unobserved single run.
 
+The [coding evaluation harness](docs/reasoning-evaluation.md) adds twelve repair projects
+with actual source edits, test execution and independent behavioral checks. It compares
+pinned S1/S2 pairs on separate calibration and held-out families, rejecting incomplete
+evidence and unknown costs. Real-model coding results are still pending; the diagnostic
+gain above does not establish coding improvement.
+
 ### Goal
 
 <img src="docs/features/goal.svg" alt="Goal" width="100%" />

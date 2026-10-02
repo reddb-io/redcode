@@ -2,14 +2,18 @@ import path from "node:path"
 import os from "node:os"
 import { mkdir, mkdtemp, rm } from "node:fs/promises"
 import { parseArgs } from "node:util"
+import { applyEdits, modify } from "jsonc-parser"
 import { TokenUsage } from "@opencode/schema/token-usage"
 import { Intelligence } from "@opencode/schema/intelligence"
 import { SessionMessage } from "@opencode/schema/session-message"
 import { Model } from "@opencode/schema/model"
+import { Shell } from "@opencode/schema/shell"
 import { Schema } from "effect"
-import { cases } from "./cases"
-import { acceptance, markdown, pairs, score, summarize, type Run } from "./report"
+import { Pair, Pairs, Pricing, plan, switches } from "./campaign"
+import { prepare, snapshot, verify, grade } from "./coding"
+import { campaign, markdown, pairs, score, summarize, type Run } from "./report"
 import { proxy, type RequestMetric } from "./transport"
+import { cost, evaluatorEstimate } from "./accounting"
 
 const args = parseArgs({
   options: {
@@ -25,56 +29,126 @@ const args = parseArgs({
     pricing: { type: "string" },
     gate: { type: "boolean", default: false },
     modes: { type: "string", default: "single,dual" },
+    suite: { type: "string", default: "diagnostic" },
+    split: { type: "string", default: "all" },
+    experiments: { type: "string", default: "baseline" },
+    pairs: { type: "string" },
+    "timeout-ms": { type: "string" },
+    "max-cost-usd": { type: "string" },
+    "dry-run": { type: "boolean", default: false },
+    help: { type: "boolean", default: false },
   },
 }).values
-if (!args.model || !args["response-model"] || !args["key-file"] || !args.output)
-  throw new Error(
-    "Usage: bun run script/reasoning-eval/run.ts --model <fixed-router-model> --response-model <actual-upstream-model> --key-file <private-file> --output <directory> [--rounds 2]",
+if (args.help) {
+  console.log(
+    "Usage: bun run eval:reasoning --suite diagnostic|coding --pairs <pairs.json> --key-file <private-file> --output <directory> [--split calibration|held-out|all] [--experiments baseline,verification] [--rounds 2] [--max-cost-usd <USD>] [--gate] [--dry-run]",
   )
-if (args.model.startsWith("auto/")) throw new Error("Use a pinned model, not an automatic router combo")
-const modes = Schema.decodeUnknownSync(Schema.Array(Intelligence.Reasoning))(args.modes!.split(","))
-if (new Set(modes).size !== modes.length || !modes.length) throw new Error("Select unique reasoning modes")
-if (args.gate && (!modes.includes("single") || !modes.includes("dual")))
-  throw new Error("The accuracy gate requires both single and dual")
-const rounds = Number(args.rounds)
-if (!Number.isInteger(rounds) || rounds < 1 || rounds > 10) throw new Error("Rounds must be between 1 and 10")
-const selected = args.cases ? cases.filter((item) => args.cases!.split(",").includes(item.id)) : cases
-if (!selected.length || (args.cases && selected.length !== new Set(args.cases.split(",")).size))
-  throw new Error("Unknown or empty case selection")
-const binary = Bun.which(args.binary!) ?? path.resolve(args.binary!)
-const output = path.resolve(args.output)
-const key = (await Bun.file(args["key-file"]).text()).trim()
-if (!key) throw new Error("Empty API key file")
-const Rate = Schema.Finite.check(Schema.isGreaterThanOrEqualTo(0))
-const prices = args.pricing
+  process.exit(0)
+}
+if (!args.pairs && (!args.model || !args["response-model"]))
+  throw new Error("Select --pairs <file>, or --model <fixed-router-model> and --response-model <actual-upstream-model>")
+if (args.pairs && (args.model || args["response-model"] || args.pricing))
+  throw new Error("Pair manifests own model IDs and pricing; do not mix --pairs with single-pair options")
+const pricing = args.pricing
   ? Schema.decodeUnknownSync(
       Schema.fromJsonString(
         Schema.Struct({
           model: Schema.String,
           evaluator: Schema.String,
-          source: Schema.String,
-          s2: Schema.Struct({ input: Rate, output: Rate, cacheRead: Rate, cacheWrite: Rate }),
-          s1: Schema.optional(Schema.Struct({ input: Rate, output: Rate })),
+          ...Pricing.fields,
         }),
       ),
     )(await Bun.file(args.pricing).text())
   : undefined
-if (prices && (prices.model !== args.model || prices.evaluator !== args.evaluator))
+if (pricing && (pricing.model !== args.model || pricing.evaluator !== args.evaluator))
   throw new Error("Pricing must match the exact pinned S1 and S2 models")
+const planned = plan({
+  suite: args.suite,
+  split: args.split,
+  experiments: args.experiments,
+  rounds: args.rounds,
+  modes: args.modes,
+  cases: args.cases,
+  timeoutMs: args["timeout-ms"],
+  gate: args.gate,
+  pairs: args.pairs
+    ? Schema.decodeUnknownSync(Schema.fromJsonString(Pairs))(await Bun.file(args.pairs).text()).pairs
+    : [
+        Schema.decodeUnknownSync(Pair)({
+          id: "default",
+          model: args.model,
+          responseModel: args["response-model"],
+          evaluator: args.evaluator,
+          pricing,
+        }),
+      ],
+})
+const manifest = {
+  suite: planned.suite,
+  split: planned.split,
+  rounds: planned.rounds,
+  modes: planned.modes,
+  experiments: planned.experiments,
+  pairs: planned.pairs,
+  cases: planned.selected.map((item) => ({
+    id: item.id,
+    category: item.category,
+    ...("split" in item ? { family: item.family, split: item.split } : {}),
+  })),
+  expectedRuns: planned.expectedExecutions,
+  expectedComparisons: planned.expectedComparisons,
+  plans: planned.plans,
+  timeoutMs: planned.timeoutMs,
+  fixtureSignature: new Bun.CryptoHasher("sha256")
+    .update(
+      JSON.stringify(
+        planned.selected.map((item) => ({
+          id: item.id,
+          files: item.files,
+          prompt: item.prompt,
+          ...("editable" in item
+            ? { editable: item.editable, oracle: item.oracle, checkIDs: item.checkIDs }
+            : { expected: item.expected }),
+        })),
+      ),
+    )
+    .digest("hex"),
+}
+if (args["dry-run"]) {
+  console.log(JSON.stringify(manifest, null, 2))
+  process.exit(0)
+}
+if (!args["key-file"] || !args.output) throw new Error("Execution requires --key-file and --output")
+const maxCostUsd = args["max-cost-usd"] ? Number(args["max-cost-usd"]) : undefined
+if (maxCostUsd !== undefined && (!Number.isFinite(maxCostUsd) || maxCostUsd <= 0))
+  throw new Error("Cost limit must be positive USD")
+if (planned.suite === "coding" && maxCostUsd === undefined)
+  throw new Error("Coding campaigns require an explicit --max-cost-usd")
+const binary = Bun.which(args.binary!) ?? path.resolve(args.binary!)
+const output = path.resolve(args.output)
+const key = (await Bun.file(args["key-file"]).text()).trim()
+if (!key) throw new Error("Empty API key file")
 const root = await mkdtemp(path.join(os.tmpdir(), "redcode-reasoning-eval-"))
 const home = path.join(root, "home")
 const setup = path.join(root, "setup")
-await Promise.all([home, setup, output].map((directory) => mkdir(directory, { recursive: true })))
+const configDirectory = path.join(home, "config")
+await Promise.all([home, setup, output, configDirectory].map((directory) => mkdir(directory, { recursive: true })))
+const configFile = path.join(configDirectory, "opencode.jsonc")
+await Bun.write(configFile, JSON.stringify({ experimental: { ...switches("baseline"), turn_steps: 24 } }))
 const env = {
   PATH: process.env.PATH ?? "/usr/bin:/bin",
   HOME: home,
   USERPROFILE: home,
   REDCODE_TEST_HOME: home,
+  OPENCODE_CONFIG_DIR: configDirectory,
   XDG_CONFIG_HOME: path.join(home, ".config"),
   XDG_DATA_HOME: path.join(home, ".local/share"),
   XDG_STATE_HOME: path.join(home, ".local/state"),
   XDG_CACHE_HOME: path.join(home, ".cache"),
   TMPDIR: root,
+  TEMP: root,
+  TMP: root,
+  ...(process.env.SystemRoot ? { SystemRoot: process.env.SystemRoot } : {}),
   REDCODE_NO_BROWSER: "1",
   REDCODE_DISABLE_AUTOUPDATE: "1",
   REDCODE_DISABLE_LSP_DOWNLOAD: "1",
@@ -104,9 +178,13 @@ const results: Array<
     fixedModel: boolean
     validationErrors: string[]
     responseModels: string[]
+    evaluatorResponseModels: string[]
+    verification?: Awaited<ReturnType<typeof verify>>
+    fileChanges?: ReturnType<typeof grade>["changes"]
   }
 > = []
 const service = { url: "", password: "", started: false }
+const failure: { message?: string } = {}
 const Json = Schema.Json
 const Session = Schema.Struct({
   data: Schema.Struct({
@@ -173,6 +251,8 @@ try {
   service.started = true
   service.password = await cli("service", "get", "password")
   const version = await cli("--version")
+  const binaryHash = new Bun.CryptoHasher("sha256")
+  for await (const chunk of Bun.file(binary).stream()) binaryHash.update(chunk)
   const location = `?${new URLSearchParams({ "location[directory]": setup })}`
   await api(`/api/model/default${location}`, Json)
   await api(`/api/integration/red-router/connect/key${location}`, Json, "POST", {
@@ -184,7 +264,12 @@ try {
   const catalog = await (async () => {
     while (true) {
       const catalog = await api(`/api/model${location}`, Models)
-      if (catalog.data.some((model) => model.providerID === "red-router" && model.id === args.model)) return catalog
+      if (
+        planned.pairs.every((pair) =>
+          catalog.data.some((model) => model.providerID === "red-router" && model.id === pair.model),
+        )
+      )
+        return catalog
       if (performance.now() > deadline) throw new Error("Selected fixed S2 model was not discovered")
       await Bun.sleep(200)
     }
@@ -203,246 +288,430 @@ try {
     (connection) => connection.type === "credential" && connection.label === "Reasoning evaluation",
   )
   if (!credential) throw new Error("Isolated connection was not created")
-  const selectedModel = catalog.data.find((model) => model.providerID === "red-router" && model.id === args.model)!
-  if (selectedModel.flat || selectedModel.offers?.length || selectedModel.upstream?.category === "combo")
-    throw new Error("Choose a model pinned to one upstream, not a router policy")
-  const principal = { providerID: "red-router", id: args.model, connection: { type: "credential", id: credential.id } }
-  const evaluator = { transport: "red-router", baseURL, model: args.evaluator, credentialID: credential.id }
-  const settings = { enabled: true, onboarding: "completed", principal, evaluator }
-  await api("/api/experimental/intelligence/models", Intelligence.Models, "POST", { evaluator })
   await Bun.write(
     path.join(output, "configuration.json"),
     JSON.stringify(
       {
         version,
-        model: args.model,
-        responseModel: args["response-model"],
-        evaluator: args.evaluator,
+        binarySha256: binaryHash.digest("hex"),
+        ...manifest,
         router: args.router,
-        rounds,
-        expectedRuns: selected.length * rounds * 2,
-        cases: selected,
-        prices: selectedModel.cost,
-        priceOverride: prices ?? null,
+        maxCostUsd,
         note: "Upstream reported charges take precedence over explicit USD-per-million-token estimates. Unknown total cost fails acceptance.",
       },
       null,
       2,
     ),
   )
-  // Fixtures are read-only. Reuse one Location per case so later rounds do not measure
-  // the accumulated cost of loading a new Location for every fresh Session.
+  await Bun.write(
+    path.join(output, "report.json"),
+    JSON.stringify(
+      {
+        version,
+        ...manifest,
+        completed: false,
+        acceptance: campaign([], planned.plans, planned.expectedExecutions),
+        runs: [],
+      },
+      null,
+      2,
+    ),
+  )
+  // Bound loaded Locations while resetting each coding fixture before every fresh Session.
   await Promise.all(
-    selected.map(async (item) => {
+    planned.selected.map(async (item) => {
       const directory = path.join(root, item.id)
+      if ("editable" in item) return prepare(item, directory)
       await mkdir(directory)
       await Promise.all(Object.entries(item.files).map(([name, text]) => Bun.write(path.join(directory, name), text)))
     }),
   )
-  for (const round of Array.from({ length: rounds }, (_, index) => index + 1)) {
-    for (const [index, item] of selected.entries()) {
-      for (const mode of (round + index) % 2 ? modes : modes.toReversed()) {
-        current.run = `${item.id}-${round}-${mode}`
-        const directory = path.join(root, item.id)
-        await api("/api/experimental/intelligence", Json, "PUT", { settings: { ...settings, reasoning: mode } })
-        const session = await api("/api/session", Session, "POST", {
-          title: current.run,
-          agent: "build",
-          model: principal,
-          location: { directory },
-          permissions: [
-            { action: "*", resource: "*", effect: "deny" },
-            ...Object.keys(item.files).map((name) => ({ action: "read", resource: name, effect: "allow" })),
-          ],
-        })
-        const started = performance.now()
-        await api(`/api/session/${session.data.id}/prompt`, Json, "POST", {
-          text: `${item.prompt}\nReturn only the requested JSON object, with no Markdown or commentary. Work only in this fixture directory; the only permitted tool is read. Do not run commands, edit files, invoke skills or delegate.`,
-        })
-        const deadline = performance.now() + 90_000
-        const completed = await (async () => {
-          while (true) {
-            const value = await api(`/api/session/${session.data.id}`, Session)
-            if (value.data.outcome) return value
-            if (performance.now() > deadline) {
-              await api(`/api/session/${session.data.id}/interrupt`, Json, "POST", {})
-              return { data: { ...value.data, outcome: "timeout" } }
-            }
-            await Bun.sleep(100)
-          }
-        })()
-        const durationMs = performance.now() - started
-        const messages = await api(`/api/session/${session.data.id}/message`, Messages)
-        const evaluationDeadline = performance.now() + 10_000
-        const evaluations = await (async () => {
-          while (true) {
-            const values = await api(
-              `/api/experimental/intelligence/history?sessionID=${session.data.id}`,
-              Schema.Array(Intelligence.Evaluation),
-            )
+  for (const pair of planned.pairs) {
+    const prices = pair.pricing
+    const selectedModel = catalog.data.find((model) => model.providerID === "red-router" && model.id === pair.model)!
+    if (selectedModel.flat || selectedModel.offers?.length || selectedModel.upstream?.category === "combo")
+      throw new Error("Choose a model pinned to one upstream, not a router policy")
+    const principal = {
+      providerID: "red-router",
+      id: pair.model,
+      connection: { type: "credential", id: credential.id },
+    }
+    const evaluator = { transport: "red-router", baseURL, model: pair.evaluator, credentialID: credential.id }
+    const settings = { enabled: true, onboarding: "completed", principal, evaluator }
+    await api("/api/experimental/intelligence/models", Intelligence.Models, "POST", { evaluator })
+    for (const experiment of planned.experiments) {
+      const text = await Bun.file(configFile).text()
+      await Bun.write(
+        configFile,
+        applyEdits(text, modify(text, ["experimental"], { ...switches(experiment), turn_steps: 24 }, {})),
+      )
+      await api("/api/location/reload", Json, "POST")
+      for (const round of Array.from({ length: planned.rounds }, (_, index) => index + 1)) {
+        for (const [index, item] of planned.selected.entries()) {
+          for (const mode of (round + index) % 2 ? planned.modes : planned.modes.toReversed()) {
+            const knownCost = results.reduce((total, result) => total + result.s2CostUsd + (result.s1CostUsd ?? 0), 0)
             if (
-              mode === "single" ||
-              completed.data.outcome !== "succeeded" ||
-              (values.some((value) => value.operation === "prompt_classification") &&
-                (mode !== "observe" || values.some((value) => value.operation === "response_quality"))) ||
-              performance.now() > evaluationDeadline
+              maxCostUsd !== undefined &&
+              (knownCost >= maxCostUsd ||
+                results.some(
+                  (result) => result.s2Unpriced || (result.mode !== "single" && result.s1CostUsd === undefined),
+                ))
             )
-              return values
-            await Bun.sleep(100)
-          }
-        })()
-        const observationWaitMs = mode === "observe" ? performance.now() - started - durationMs : 0
-        const budget = await api(`/api/session/${session.data.id}/budget`, Budget)
-        const assistants = messages.data.filter((message) => message.type === "assistant")
-        const finals = assistants
-          .filter((message) => message.finish === "stop" || message.finish === "length")
-          .map(
-            (message) =>
-              message.content?.flatMap((part) => (part.type === "text" ? [part.text ?? ""] : [])).join("") ?? "",
-          )
-          .filter(Boolean)
-        const s2Tokens = TokenUsage.total(completed.data.tokens)
-        const s1Tokens = evaluations.reduce(
-          (sum, evaluation) => sum + evaluation.usage.input_tokens + evaluation.usage.output_tokens,
-          0,
-        )
-        const reads = assistants
-          .flatMap((message) => message.content ?? [])
-          .filter((part) => part.type === "tool" && part.name === "read" && part.state.status === "completed").length
-        const requests = upstream.filter((request) => request.run === current.run && request.model === args.model)
-        const s1Requests = upstream.filter((request) => request.run === current.run && request.model === args.evaluator)
-        const s1CostUsd =
-          s1Requests.length && s1Requests.every((request) => request.complete && request.costUsd !== undefined)
-            ? s1Requests.reduce((sum, request) => sum + request.costUsd!, 0)
-            : prices?.s1
-              ? evaluations.reduce(
-                  (sum, evaluation) =>
-                    sum +
-                    evaluation.usage.input_tokens * prices.s1!.input +
-                    evaluation.usage.output_tokens * prices.s1!.output,
-                  0,
-                ) / 1_000_000
-              : undefined
-        const s2CostUsd =
-          requests.length && requests.every((request) => request.complete && request.costUsd !== undefined)
-            ? requests.reduce((sum, request) => sum + request.costUsd!, 0)
-            : prices
-              ? (completed.data.tokens.input * prices.s2.input +
-                  (completed.data.tokens.output + completed.data.tokens.reasoning) * prices.s2.output +
-                  completed.data.tokens.cache.read * prices.s2.cacheRead +
-                  completed.data.tokens.cache.write * prices.s2.cacheWrite) /
-                1_000_000
-              : selectedModel.cost.length
-                ? completed.data.cost
+              throw new Error("Campaign stopped: cost limit reached or a completed run has unknown cost")
+            current.run = `${pair.id}-${experiment}-${item.id}-${round}-${mode}`
+            const directory = path.join(root, item.id)
+            if ("editable" in item) await prepare(item, directory)
+            const before = "editable" in item ? await snapshot(directory) : undefined
+            await api("/api/experimental/intelligence", Json, "PUT", { settings: { ...settings, reasoning: mode } })
+            const session = await api("/api/session", Session, "POST", {
+              title: current.run,
+              agent: "build",
+              model: principal,
+              location: { directory },
+              permissions: [
+                { action: "*", resource: "*", effect: "deny" },
+                ...Object.keys(item.files).map((name) => ({ action: "read", resource: name, effect: "allow" })),
+                ...("editable" in item
+                  ? [
+                      ...item.editable.map((name) => ({ action: "edit", resource: name, effect: "allow" })),
+                      { action: "shell", resource: "bun test", effect: "allow" },
+                      { action: "shell", resource: "bun run test", effect: "allow" },
+                    ]
+                  : []),
+              ],
+            })
+            if (maxCostUsd !== undefined)
+              await api(`/api/session/${session.data.id}/budget`, Json, "PATCH", { maxCostUsd: maxCostUsd - knownCost })
+            if ("editable" in item)
+              await api(`/api/session/${session.data.id}/environment`, Json, "PUT", { variables: env })
+            const started = performance.now()
+            await api(`/api/session/${session.data.id}/prompt`, Json, "POST", {
+              text:
+                "editable" in item
+                  ? `${item.prompt}\nWork only in this fixture directory. Edit only: ${item.editable.join(", ")}. Run bun test or bun run test in the foreground and inspect the result. Do not change tests or package metadata, install dependencies, use the network, invoke skills, delegate or start background processes. Report what changed and the actual verification result.`
+                  : `${item.prompt}\nReturn only the requested JSON object, with no Markdown or commentary. Work only in this fixture directory; the only permitted tool is read. Do not run commands, edit files, invoke skills or delegate.`,
+            })
+            const deadline = performance.now() + planned.timeoutMs
+            const outcome = await (async () => {
+              while (true) {
+                const value = await api(`/api/session/${session.data.id}`, Session)
+                if (value.data.outcome) return value.data.outcome
+                if (performance.now() > deadline) {
+                  await api(`/api/session/${session.data.id}/interrupt`, Json, "POST", {})
+                  return "timeout"
+                }
+                await Bun.sleep(100)
+              }
+            })()
+            const durationMs = performance.now() - started
+            // Interruption requests cancellation; wait for the owner to release the Session before inspecting files.
+            await api(`/api/experimental/session/${session.data.id}/wait`, Json, "POST")
+            const completed = await api(`/api/session/${session.data.id}`, Session)
+            const messages = await api(`/api/session/${session.data.id}/message`, Messages)
+            const evaluationDeadline = performance.now() + 10_000
+            const observed = await (async () => {
+              while (true) {
+                const values = await api(
+                  `/api/experimental/intelligence/history?sessionID=${session.data.id}`,
+                  Schema.Array(Intelligence.Evaluation),
+                )
+                const status = await api(
+                  `/api/experimental/intelligence?sessionID=${session.data.id}`,
+                  Intelligence.Status,
+                )
+                const settled = mode !== "observe" || status.observations?.pending === 0
+                if (
+                  (settled &&
+                    (mode === "single" ||
+                      outcome !== "succeeded" ||
+                      (values.some((value) => value.operation === "prompt_classification") &&
+                        values.some((value) => value.operation === "response_quality")))) ||
+                  performance.now() > evaluationDeadline
+                )
+                  return { evaluations: values, settled }
+                await Bun.sleep(100)
+              }
+            })()
+            const evaluations = observed.evaluations
+            const observationWaitMs = mode === "observe" ? performance.now() - started - durationMs : 0
+            const budget = await api(`/api/session/${session.data.id}/budget`, Budget)
+            const assistants = messages.data.filter((message) => message.type === "assistant")
+            const finals = assistants
+              .filter((message) => message.finish === "stop" || message.finish === "length")
+              .map(
+                (message) =>
+                  message.content?.flatMap((part) => (part.type === "text" ? [part.text ?? ""] : [])).join("") ?? "",
+              )
+              .filter(Boolean)
+            const s2Tokens = TokenUsage.total(completed.data.tokens)
+            const s1Tokens = evaluations.reduce(
+              (sum, evaluation) => sum + evaluation.usage.input_tokens + evaluation.usage.output_tokens,
+              0,
+            )
+            const reads = assistants
+              .flatMap((message) => message.content ?? [])
+              .filter(
+                (part) => part.type === "tool" && part.name === "read" && part.state.status === "completed",
+              ).length
+            const commands = assistants
+              .flatMap((message) => message.content ?? [])
+              .filter(
+                (part) =>
+                  part.type === "tool" &&
+                  part.name === "shell" &&
+                  part.state.status === "completed" &&
+                  (part.state.input.command === "bun test" || part.state.input.command === "bun run test") &&
+                  part.state.metadata?.exit === 0,
+              ).length
+            const shellLocation = `?${new URLSearchParams({ "location[directory]": directory })}`
+            const running =
+              "editable" in item
+                ? await api(`/api/shell${shellLocation}`, Schema.Struct({ data: Schema.Array(Shell.Info) }))
                 : undefined
-        const responseModels = [...new Set(requests.flatMap((request) => request.responseModels))]
-        const validationErrors = [
-          ...(budget.data.spent.tokens !== s1Tokens + s2Tokens ? ["budget_accounting"] : []),
-          ...(mode === "single" && evaluations.length ? ["unexpected_s1"] : []),
-          ...(mode !== "single" &&
-          completed.data.outcome === "succeeded" &&
-          !evaluations.some((evaluation) => evaluation.operation === "prompt_classification")
-            ? ["missing_classification"]
-            : []),
-          ...(mode === "dual" &&
-          completed.data.outcome === "succeeded" &&
-          !evaluations.some((evaluation) => evaluation.operation === "response_quality")
-            ? ["missing_response_review"]
-            : []),
-          ...(Object.keys(item.files).length && !reads ? ["fixture_not_read"] : []),
-          ...(!assistants.length || !assistants.every((message) => message.model?.id === args.model)
-            ? ["s2_selection_changed"]
-            : []),
-          ...(responseModels.length !== 1 || responseModels[0] !== args["response-model"]
-            ? ["upstream_model_changed"]
-            : []),
-        ]
-        const result = {
-          caseID: item.id,
-          round,
-          mode,
-          outcome: validationErrors.length ? "invalid" : (completed.data.outcome ?? "unknown"),
-          validationErrors,
-          responseModels,
-          durationMs,
-          observationWaitMs,
-          sessionID: session.data.id,
-          initialText: finals[0] ?? "",
-          finalText: finals.at(-1) ?? "",
-          initial: score(finals[0] ?? "", item.expected),
-          final: score(finals.at(-1) ?? "", item.expected),
-          repairs: messages.data.filter(
-            (message) => message.type === "synthetic" && message.metadata?.responseRepair !== undefined,
-          ).length,
-          reads,
-          s1Tokens,
-          s2Tokens,
-          s2CostUsd: s2CostUsd ?? 0,
-          s2Unpriced: s2CostUsd === undefined,
-          ...(s1CostUsd === undefined ? {} : { s1CostUsd }),
-          evaluatorFailures: evaluations.filter((evaluation) => evaluation.decision === "unavailable").length,
-          fixedModel: assistants.every((message) => message.model?.id === args.model),
-          evaluations,
-          budget,
+            const unsettledShell =
+              Boolean(running?.data.length) ||
+              assistants
+                .flatMap((message) => message.content ?? [])
+                .some(
+                  (part) =>
+                    part.type === "tool" &&
+                    part.name === "shell" &&
+                    part.state.status === "completed" &&
+                    (part.state.input.background === true ||
+                      part.state.metadata?.exit === undefined ||
+                      (part.state.input.command !== "bun test" && part.state.input.command !== "bun run test")),
+                )
+            for (const shell of running?.data ?? []) await api(`/api/shell/${shell.id}${shellLocation}`, Json, "DELETE")
+            const verification =
+              "editable" in item && !unsettledShell && observed.settled
+                ? await verify(item, directory, path.join(root, "oracles", current.run))
+                : undefined
+            const finalGrade =
+              "editable" in item
+                ? before && verification
+                  ? grade(item, before, await snapshot(directory), verification)
+                  : {
+                      pass: false,
+                      score: 0,
+                      format: false,
+                      failed: ["unsettled_execution"],
+                      changes: { added: [], modified: [], deleted: [] },
+                    }
+                : undefined
+            const repairs = messages.data.filter(
+              (message) => message.type === "synthetic" && message.metadata?.responseRepair !== undefined,
+            ).length
+            const requests = upstream.filter((request) => request.run === current.run && request.model === pair.model)
+            const s1Requests = upstream.filter(
+              (request) => request.run === current.run && request.model === pair.evaluator,
+            )
+            const s1CostUsd = cost(s1Requests, evaluatorEstimate(evaluations, prices?.s1))
+            const s2CostUsd = cost(
+              requests,
+              prices
+                ? (completed.data.tokens.input * prices.s2.input +
+                    (completed.data.tokens.output + completed.data.tokens.reasoning) * prices.s2.output +
+                    completed.data.tokens.cache.read * prices.s2.cacheRead +
+                    completed.data.tokens.cache.write * prices.s2.cacheWrite) /
+                    1_000_000
+                : undefined,
+            )
+            const responseModels = [...new Set(requests.flatMap((request) => request.responseModels))]
+            const evaluatorResponseModels = [...new Set(s1Requests.flatMap((request) => request.responseModels))]
+            const validationErrors = [
+              ...(!observed.settled ? ["unsettled_observation"] : []),
+              ...(unsettledShell ? ["unsettled_shell"] : []),
+              ...(budget.data.spent.tokens !== s1Tokens + s2Tokens ? ["budget_accounting"] : []),
+              ...(mode === "single" && evaluations.length ? ["unexpected_s1"] : []),
+              ...(mode !== "single" &&
+              outcome === "succeeded" &&
+              !evaluations.some((evaluation) => evaluation.operation === "prompt_classification")
+                ? ["missing_classification"]
+                : []),
+              ...(mode !== "single" &&
+              outcome === "succeeded" &&
+              !evaluations.some((evaluation) => evaluation.operation === "response_quality")
+                ? ["missing_response_review"]
+                : []),
+              ...(Object.keys(item.files).length && !reads ? ["fixture_not_read"] : []),
+              ...("editable" in item && !commands ? ["fixture_not_executed"] : []),
+              ...([...requests, ...s1Requests].some((request) => !request.complete)
+                ? ["incomplete_provider_response"]
+                : []),
+              ...(!assistants.length || !assistants.every((message) => message.model?.id === pair.model)
+                ? ["s2_selection_changed"]
+                : []),
+              ...(responseModels.length !== 1 || responseModels[0] !== pair.responseModel
+                ? ["upstream_model_changed"]
+                : []),
+              ...(evaluations.some(
+                (evaluation) =>
+                  !evaluation.evaluator ||
+                  evaluation.evaluator.model !== pair.evaluator ||
+                  evaluation.evaluator.transport !== "red-router" ||
+                  evaluation.evaluator.baseURL !== baseURL,
+              )
+                ? ["s1_selection_changed"]
+                : []),
+              ...(mode !== "single" &&
+              pair.evaluatorResponseModel &&
+              (evaluatorResponseModels.length !== 1 || evaluatorResponseModels[0] !== pair.evaluatorResponseModel)
+                ? ["evaluator_upstream_model_changed"]
+                : []),
+            ]
+            const result = {
+              caseID: item.id,
+              pairID: pair.id,
+              experiment,
+              split: "split" in item ? item.split : ("calibration" as const),
+              ...("family" in item ? { family: item.family } : {}),
+              taskKind: "editable" in item ? ("coding" as const) : ("read-only" as const),
+              round,
+              mode,
+              outcome: validationErrors.length ? "invalid" : outcome,
+              validationErrors,
+              responseModels,
+              evaluatorResponseModels,
+              durationMs,
+              observationWaitMs,
+              sessionID: session.data.id,
+              initialText: finals[0] ?? "",
+              finalText: finals.at(-1) ?? "",
+              initial: "expected" in item ? score(finals[0] ?? "", item.expected) : finalGrade!,
+              final: "expected" in item ? score(finals.at(-1) ?? "", item.expected) : finalGrade!,
+              repairs,
+              repairBaselineKnown: !("editable" in item) || repairs === 0,
+              ...(finalGrade && verification
+                ? {
+                    oracleMs: verification.process.durationMs,
+                    verification,
+                    fileChanges: finalGrade.changes,
+                    changes: [
+                      ...finalGrade.changes.added,
+                      ...finalGrade.changes.modified,
+                      ...finalGrade.changes.deleted,
+                    ],
+                  }
+                : {}),
+              commands,
+              reads,
+              s1Tokens,
+              s2Tokens,
+              s2CostUsd: s2CostUsd ?? 0,
+              s2Unpriced: s2CostUsd === undefined,
+              ...(s1CostUsd === undefined ? {} : { s1CostUsd }),
+              evaluatorFailures: evaluations.filter((evaluation) => evaluation.decision === "unavailable").length,
+              fixedModel: assistants.every((message) => message.model?.id === pair.model),
+              evaluations,
+              budget,
+            }
+            results.push(result)
+            await Bun.write(
+              path.join(output, `${current.run}.json`),
+              JSON.stringify(
+                {
+                  ...result,
+                  requests: upstream.filter((request) => request.run === current.run),
+                  messages: messages.data,
+                },
+                null,
+                2,
+              ),
+            )
+            await Bun.write(
+              path.join(output, "report.json"),
+              JSON.stringify(
+                {
+                  version,
+                  ...manifest,
+                  maxCostUsd,
+                  knownCostUsd: results.reduce(
+                    (total, result) => total + result.s2CostUsd + (result.s1CostUsd ?? 0),
+                    0,
+                  ),
+                  completed: results.length === planned.expectedExecutions,
+                  summary: summarize(results),
+                  acceptance: campaign(results, planned.plans, planned.expectedExecutions),
+                  pairs: pairs(results),
+                  runs: results,
+                  requests: metrics,
+                  upstreamRequests: upstream,
+                },
+                null,
+                2,
+              ),
+            )
+            await Bun.write(
+              path.join(output, "report.md"),
+              markdown(results, planned.pairs[0]!.model, planned.pairs[0]!.evaluator, planned.expectedComparisons, {
+                suite: planned.suite,
+                signature: manifest.fixtureSignature,
+                pairs: planned.pairs,
+                plans: planned.plans,
+                expectedExecutions: planned.expectedExecutions,
+              }),
+            )
+            console.log(
+              JSON.stringify({
+                run: current.run,
+                outcome: result.outcome,
+                passed: result.final.pass,
+                failed: result.final.failed,
+                durationMs: Math.round(durationMs),
+                s1Tokens,
+                s2Tokens,
+                repairs: result.repairs,
+                reads: result.reads,
+                fixedModel: result.fixedModel,
+                validationErrors,
+              }),
+            )
+            if (unsettledShell || outcome === "timeout")
+              throw new Error("Campaign stopped: timed out or background work cannot be safely reused")
+            if (mode === "observe" && result.outcome !== "succeeded")
+              throw new Error("Campaign stopped: observation did not settle before the collection deadline")
+          }
         }
-        results.push(result)
-        await Bun.write(
-          path.join(output, `${current.run}.json`),
-          JSON.stringify(
-            { ...result, requests: upstream.filter((request) => request.run === current.run), messages: messages.data },
-            null,
-            2,
-          ),
-        )
-        await Bun.write(
-          path.join(output, "report.json"),
-          JSON.stringify(
-            {
-              version,
-              model: args.model,
-              evaluator: args.evaluator,
-              expectedRuns: selected.length * rounds * 2,
-              completed: results.length === selected.length * rounds * 2,
-              summary: summarize(results),
-              acceptance: acceptance(results, selected.length * rounds * 2),
-              pairs: pairs(results),
-              runs: results,
-              requests: metrics,
-              upstreamRequests: upstream,
-            },
-            null,
-            2,
-          ),
-        )
-        await Bun.write(
-          path.join(output, "report.md"),
-          markdown(results, args.model, args.evaluator!, selected.length * rounds * 2),
-        )
-        console.log(
-          JSON.stringify({
-            run: current.run,
-            outcome: result.outcome,
-            passed: result.final.pass,
-            failed: result.final.failed,
-            durationMs: Math.round(durationMs),
-            s1Tokens,
-            s2Tokens,
-            repairs: result.repairs,
-            reads: result.reads,
-            fixedModel: result.fixedModel,
-            validationErrors,
-          }),
-        )
       }
     }
   }
   console.log(JSON.stringify({ output, summary: summarize(results) }))
-  if (args.gate && !acceptance(results, selected.length * rounds * 2).passed) process.exitCode = 1
+  if (
+    maxCostUsd !== undefined &&
+    results.reduce((total, result) => total + result.s2CostUsd + (result.s1CostUsd ?? 0), 0) > maxCostUsd
+  )
+    process.exitCode = 1
+  if (args.gate && !campaign(results, planned.plans, planned.expectedExecutions).passed) process.exitCode = 1
+} catch (error) {
+  failure.message = (error instanceof Error ? error.message : String(error)).replaceAll(key, "[redacted]")
+  throw error
 } finally {
   try {
-    if (service.started) await cli("service", "stop")
+    if (service.started) {
+      await cli("service", "stop")
+      service.started = false
+    }
   } finally {
-    router.stop(true)
-    await rm(root, { recursive: true, force: true })
+    try {
+      await Bun.write(
+        path.join(output, "campaign-state.json"),
+        JSON.stringify(
+          {
+            currentRun: current.run,
+            completed: !failure.message && results.length === planned.expectedExecutions,
+            error: failure.message ?? (service.started ? "Isolated service did not stop" : undefined),
+            ...(service.started ? { retainedDirectory: root } : {}),
+            runs: results,
+            requests: metrics,
+            upstreamRequests: upstream,
+          },
+          null,
+          2,
+        ),
+      )
+    } finally {
+      router.stop(true)
+      if (!service.started) await rm(root, { recursive: true, force: true })
+    }
   }
 }

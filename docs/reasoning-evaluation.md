@@ -1,5 +1,108 @@
 # Comparing single and dual reasoning
 
+The harness has two suites. `diagnostic` preserves the original eight read-only
+cases below. `coding` uses twelve dependency-free TypeScript repair projects,
+with six calibration families and six distinct reserved families. These are
+executable coding fixtures, not a benchmark of full application development.
+The coding campaign has not yet been run against real models.
+
+## Coding campaigns
+
+Create a private pair manifest using the exact selectable Router IDs and expected
+upstream response IDs. The names below are placeholders, not configured models:
+
+```json
+{
+  "pairs": [
+    { "id": "coder-a", "model": "provider/model-a", "responseModel": "model-a", "evaluator": "typesafe/jev" },
+    { "id": "coder-b", "model": "provider/model-b", "responseModel": "model-b", "evaluator": "typesafe/jev" }
+  ]
+}
+```
+
+Each pair may contain `pricing: { source, s2: { input, output, cacheRead,
+cacheWrite }, s1?: { input, output } }`, with verified USD rates per million
+tokens. Reported upstream charges take precedence. Estimating requires complete
+token usage from every successful request; absent usage or prices remain unknown.
+Catalog prices alone do not certify complete billing rates. `evaluatorResponseModel`
+may additionally pin the S1 upstream response ID; every run records the selected
+S1 model, its actual response IDs and its evaluation identities.
+
+Preview the execution count, fixed splits and model selections without a key,
+starting a service or calling a provider:
+
+```sh
+bun run eval:reasoning --suite coding --pairs /path/to/pairs.json \
+  --split calibration --experiments baseline,verification --rounds 2 --dry-run
+```
+
+After selecting the models and authorizing an absolute USD budget, execute with
+`--key-file`, `--output` and `--max-cost-usd`. Coding executions require that
+explicit budget. Run calibration first, freeze the chosen configuration, then
+evaluate it on `--split held-out`. Do not tune on reserved-case results and call
+the same cases independent validation. A full two-pair, two-round campaign has
+96 executions per experiment: 48 calibration and 48 reserved.
+
+```sh
+bun run eval:reasoning --suite coding --pairs /path/to/pairs.json \
+  --split calibration --experiments baseline --rounds 2 \
+  --key-file /path/to/private-key-file --max-cost-usd "$BUDGET_USD" \
+  --output /tmp/redcode-coding-results --gate
+```
+
+`baseline` and `verification` explicitly select the existing verification
+switch. Curation, learning and tool selection stay disabled. Curation needs a
+separate multi-prompt campaign: these fresh Sessions have no older exchanges to
+curate, so enabling that flag here would repeat the baseline.
+Evaluating namespace selection needs a separate Code Mode campaign that retains
+nested-command completion evidence; enabling it with the current direct tool
+interface would have no effect. `--modes single,dual,observe` collects
+observation separately; observation never enters
+the acceptance pairs. Acceptance is evaluated for every model pair, experiment
+and split: more dual passes, no case regression or degraded repair, complete
+known total cost at most 2x single, including every matched pair. An aggregate
+gain cannot hide a failing group. Failed, invalid and timed-out executions remain
+failures, and a partially executed campaign cannot pass.
+
+Every coding execution gets a fresh Session and a byte-restored fixture. One
+Location per case bounds Location accumulation. The agent can read the fixture,
+edit only its declared source files and run `bun test` or `bun run test`. Tests
+and package metadata are protected by permissions and checked for changes.
+No dependencies need installation. The command must complete successfully in
+the projected tool evidence; a claimed command or `bun test --help` does not
+count. Temporary homes and permissions isolate normal configuration and Session
+state; shell execution is not an operating-system sandbox.
+
+The original independent oracle runs outside the agent directory after the
+Session settles. It evaluates behavior, not response prose, with a ten-second
+timeout and a bounded output parser. Passing also requires a real permitted
+source edit and no changed protected files or extra files. The report must include
+the case's exact check IDs and the oracle's completion receipt; candidate logs or
+an early successful process exit cannot replace those checks. CI executes every
+buggy seed and reference against the oracle and runs each visible test command
+without paid inference. It validates the evaluator, not model accuracy.
+The oracle verifies runtime behavior; it does not check compatibility of
+TypeScript exports that exist only as types.
+
+Artifacts record the compiled binary SHA-256, fixture signature, file-change
+identities, oracle checks, exit code, latency, output byte counts, model identity,
+tokens and costs. Oracle latency is separate from S2 completion latency.
+Automatic coding repairs whose original filesystem candidate was not captured
+are marked `unknownBaseline`, excluded from repair improvement categories and
+fail the repair gate. The buggy seed is never passed off as that candidate.
+
+The absolute budget is checked between executions and passed to the Session's
+existing budget controls. Provider accounting can arrive after an individual
+call, so this is not a guaranteed invoice ceiling. Unknown completed-run costs
+stop a budgeted campaign. Timeouts and background shell work stop the campaign
+before reusing the fixture. Unsettled observations stop collection instead of
+being reported as complete or attributed to the next execution. Remote caching
+and its freshness remain Router responsibilities. `campaign-state.json` retains
+request status, timing, bytes and collected results even if an execution fails
+before grading; it does not invent a grade for interrupted work.
+
+## Read-only diagnostic suite
+
 Run the same read-only tasks in fresh sessions with one fixed S2 model. Dual mode
 adds the configured S1 classifier and response gate; single mode omits them.
 The grading oracle uses deterministic fixture facts and does not use S1 verdicts.
