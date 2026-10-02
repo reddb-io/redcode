@@ -116,7 +116,12 @@ describe("public event manifest", () => {
       expect(definition.durability).toBe("ephemeral")
       expect(EventManifest.Durable.has(definition.type)).toBe(false)
     }
-    expect(Monitor.Event.Definitions).toEqual([Monitor.Event.Started, Monitor.Event.Finished, Monitor.Event.Expired])
+    expect(Monitor.Event.Definitions).toEqual([
+      Monitor.Event.Started,
+      Monitor.Event.Progress,
+      Monitor.Event.Finished,
+      Monitor.Event.Expired,
+    ])
     expect(Router.Event.Definitions).toEqual([Router.Event.CatalogUpdated])
   })
 

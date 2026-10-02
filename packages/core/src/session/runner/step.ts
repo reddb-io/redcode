@@ -37,6 +37,7 @@ import { SessionMessage } from "../message.js"
 import { SessionModelRequest } from "../model-request.js"
 import { SessionSchema } from "../schema.js"
 import { ProviderFailure } from "../provider-failure.js"
+import { ReasoningObserver } from "../reasoning-observer.js"
 import { toSessionError } from "../to-session-error.js"
 import { SessionUsage } from "../usage.js"
 import { SessionRunnerModel } from "./model.js"
@@ -98,6 +99,13 @@ export const make = Effect.gen(function* () {
   const attempt = Effect.fn("SessionStep.attempt")(function* (input: Input) {
     // A router report left by an attempt that ended before its step did must not price this one.
     ProviderRouter.take(input.sessionID)
+    const reasoning = ReasoningObserver.make()
+    yield* Effect.addFinalizer(() =>
+      Effect.suspend(() => {
+        const observation = reasoning.finish().observation
+        return observation ? Effect.logInfo("reasoning repetition observed", observation) : Effect.void
+      }).pipe(Effect.catchCause(() => Effect.void)),
+    )
     const startSnapshot = yield* snapshots.capture()
     const publisher = createLLMEventPublisher(bus, {
       onText: (text) =>
@@ -149,6 +157,7 @@ export const make = Effect.gen(function* () {
           progress: (update) =>
             Effect.sync(() => {
               lastEventAt = Date.now()
+              reasoning.progress()
             }).pipe(Effect.andThen(publisher.progress(call.id, update))),
         })
       const ms = ToolDeadline.deadlineMs({ tool: call.name, configured: input.toolTimeout })
@@ -181,6 +190,7 @@ export const make = Effect.gen(function* () {
       Stream.runForEach((event) =>
         Effect.gen(function* () {
           lastEventAt = yield* Clock.currentTimeMillis
+          reasoning.observe(event)
           if (overflowFailure || publisher.hasProviderError()) return
           if (
             LLMEvent.is.providerError(event) &&
@@ -206,6 +216,7 @@ export const make = Effect.gen(function* () {
                   Effect.sync(() => {
                     activeTools--
                     lastEventAt = Date.now()
+                    reasoning.progress()
                   }),
                 ),
               ),

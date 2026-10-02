@@ -32,8 +32,8 @@ export type SessionMonitors = ReturnType<typeof createSessionMonitors>
 
 /**
  * The list is read once per Session, again whenever the server announces that one of its monitors started,
- * finished or expired, and when the Monitors tab opens. Attempts and evidence change without an event, so
- * only while the tab is on screen and a monitor still runs is it re-read on a light timer.
+ * finished or expired, and when the Monitors tab opens. Progress updates the existing row without a read;
+ * a light timer reconciles while the tab is on screen and a monitor still runs.
  */
 export function createSessionMonitors(props: { sessionID: () => string; onOpen: () => void; api?: MonitorApi }) {
   const client = useClient()
@@ -60,9 +60,17 @@ export function createSessionMonitors(props: { sessionID: () => string; onOpen: 
       .then(
         (list) => {
           if (sessionID !== props.sessionID()) return
+          const previous = new Map(store.list.map((info) => [info.id, info]))
+          const next = list.map((info) => {
+            const current = previous.get(info.id)
+            if (!current || info.status !== "running") return info
+            // A read started before progress or cancellation must not revive a row or roll its evidence back.
+            // Attempts are monotonic; wall-clock timestamps can tie or move backwards.
+            return current.status !== "running" || current.attempts > info.attempts ? current : info
+          })
           if (!store.visible)
-            finishedMonitors(store.list, list).forEach((info) => toast.show({ ...finishToast(info), duration: 3_000 }))
-          setStore("list", reconcile(list, { key: "id" }))
+            finishedMonitors(store.list, next).forEach((info) => toast.show({ ...finishToast(info), duration: 3_000 }))
+          setStore("list", reconcile(next, { key: "id" }))
           setStore({ error: undefined, now: Date.now() })
         },
         (error: unknown) => setStore("error", errorMessage(error)),
@@ -90,6 +98,18 @@ export function createSessionMonitors(props: { sessionID: () => string; onOpen: 
   onCleanup(client.event.on("monitor.started", changed))
   onCleanup(client.event.on("monitor.finished", changed))
   onCleanup(client.event.on("monitor.expired", changed))
+  onCleanup(
+    client.event.on("monitor.progress", (event) => {
+      if (event.data.sessionID !== props.sessionID()) return
+      const current = store.list.find((info) => info.id === event.data.monitorID)
+      if (!current || current.status !== "running" || event.data.attempts <= current.attempts) return
+      setStore("list", (info) => info.id === current.id, {
+        updated: event.data.updated,
+        attempts: event.data.attempts,
+        evidence: event.data.evidence,
+      })
+    }),
+  )
 
   return {
     list: () => store.list,

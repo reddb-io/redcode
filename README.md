@@ -236,9 +236,11 @@ key-scoped catalog; remote discovery caching belongs to the router.
 
 <img src="docs/features/monitors.svg" alt="Monitors" width="100%" />
 
-When the agent starts something that should keep running, such as a dev server, a build or a poll, it
-starts a monitor instead of sleeping in a loop. `/monitors` lists them in one tab with their state, and the
-session is woken when one finishes or expires.
+The agent uses monitors to wait for an HTTP endpoint, a file change or a process state.
+`/monitors` shows active observations and their latest check in the existing rows. Progress
+updates are bounded and coalesced; only completion can wake the session, respecting newer
+instructions and paused goals. Completed monitors leave the drawer. Long commands use the
+background shell, with their own output and completion notifications.
 
 ### Workers
 

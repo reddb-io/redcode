@@ -86,7 +86,21 @@ import { SessionSystemPrompt } from "@opencode/core/session/system-prompt"
 import { ID, Model } from "@opencode/core/model"
 import { Location } from "@opencode/core/location"
 import { Provider } from "@opencode/core/provider"
-import { Cause, Context, DateTime, Deferred, Effect, Exit, Fiber, Layer, Queue, Schema, Scope, Stream } from "effect"
+import {
+  Cause,
+  Context,
+  DateTime,
+  Deferred,
+  Effect,
+  Exit,
+  Fiber,
+  Layer,
+  Logger,
+  Queue,
+  Schema,
+  Scope,
+  Stream,
+} from "effect"
 import { TestClock } from "effect/testing"
 import { asc, desc, eq, sql } from "drizzle-orm"
 import { testEffect } from "./lib/effect"
@@ -96,6 +110,7 @@ import { Expected } from "./lib/session-message"
 import { permissionLayer } from "./lib/permission"
 import { agentHost, modelHost, host, noProviders } from "./plugin/host"
 import { CodeModeInstructions } from "@opencode/core/codemode/instructions"
+import { repeatedLines } from "./fixture/reasoning-observation"
 
 const emptyCodeMode = `\n\n${CodeModeInstructions.render({ total: 0, shown: 0, namespaces: [] })}`
 const checkpoint = (objective: string) =>
@@ -638,6 +653,19 @@ const scenario = (
       return yield* body(s)
     }),
   )
+
+const reasoningObservations = () => {
+  const messages: unknown[] = []
+  return {
+    messages,
+    layer: Logger.layer([
+      Logger.map(Logger.formatStructured, (entry) => {
+        if (Array.isArray(entry.message) && entry.message[0] === "reasoning repetition observed")
+          messages.push(entry.message)
+      }),
+    ]),
+  }
+}
 
 // Nominal retry gaps: exponential from 2s capped at 10s, for 20 retries.
 const RETRY_GAPS = [2_000, 4_000, 8_000, ...Array<number>(17).fill(10_000)]
@@ -4200,6 +4228,143 @@ describe("SessionRunnerLLM", () => {
         providerMetadata: { openai: { reasoningField: "reasoning", reasoningDetails: details } },
       },
     ])
+  })
+
+  scenario("passively observes repetition while preserving signed reasoning and productive output", function* (s) {
+    yield* s.admit("Observe signed reasoning")
+    const text = repeatedLines(24)
+    const details = [{ type: "reasoning.text", text, signature: "signed-original", index: 0 }]
+    const events = [
+      LLMEvent.reasoningStart({ id: "signed-repeat" }),
+      LLMEvent.reasoningDelta({ id: "signed-repeat", text }),
+      LLMEvent.textStart({ id: "productive" }),
+      LLMEvent.textDelta({ id: "productive", text: "The original useful answer remains available." }),
+      LLMEvent.reasoningEnd({
+        id: "signed-repeat",
+        text,
+        providerMetadata: { openai: { reasoningField: "reasoning", reasoningDetails: details } },
+      }),
+      LLMEvent.textEnd({ id: "productive" }),
+      LLMEvent.reasoningStart({ id: "second-repeat" }),
+      LLMEvent.reasoningDelta({ id: "second-repeat", text: "reconsider ".repeat(100) }),
+      LLMEvent.reasoningEnd({ id: "second-repeat" }),
+    ]
+    events.forEach((event) => Object.freeze(event))
+    yield* s.llm.push(TestLLM.stop(...events))
+    const observations = reasoningObservations()
+    const runner = yield* SessionRunner.Service
+    yield* runner.drain({ sessionID, force: true }).pipe(Effect.provide(observations.layer))
+
+    expect(observations.messages).toEqual([
+      [
+        "reasoning repetition observed",
+        {
+          version: "1",
+          kind: "consecutive",
+          characters: repeatedLines(12).length,
+          segments: 12,
+          period: 1,
+          repeats: 12,
+        },
+      ],
+    ])
+    expect(s.requests).toHaveLength(1)
+    expect(requireAssistant(yield* s.context)).toMatchObject({
+      finish: "stop",
+      content: [
+        { type: "reasoning", text, state: { reasoningField: "reasoning", reasoningDetails: details } },
+        { type: "text", text: "The original useful answer remains available." },
+        { type: "reasoning", text: "reconsider ".repeat(100) },
+      ],
+    })
+    expect(yield* recordedEventTypes(sessionID)).not.toContain("session.guard.tripped.1")
+    yield* replaySessionProjection(sessionID)
+    yield* s.admit("Continue using the original provider signature")
+    yield* s.llm.push([])
+    yield* runner.drain({ sessionID, force: true }).pipe(Effect.provide(observations.layer))
+    expect(observations.messages).toHaveLength(1)
+    expect(s.requests[1]?.messages[1]?.content).toContainEqual({
+      type: "reasoning",
+      text,
+      providerMetadata: { openai: { reasoningField: "reasoning", reasoningDetails: details } },
+    })
+  })
+
+  scenario("logs passive repetition at a failed attempt end without changing its error", function* (s) {
+    yield* s.admit("Fail after repeated reasoning")
+    const text = repeatedLines(12).trimEnd()
+    const failure = invalidRequest()
+    yield* s.llm.push(
+      TestLLM.failAfter(
+        failure,
+        LLMEvent.reasoningStart({ id: "failed-repeat" }),
+        LLMEvent.reasoningDelta({ id: "failed-repeat", text }),
+      ),
+    )
+    const observations = reasoningObservations()
+    const runner = yield* SessionRunner.Service
+    expect(yield* runner.drain({ sessionID, force: true }).pipe(Effect.provide(observations.layer), Effect.flip)).toBe(
+      failure,
+    )
+    expect(observations.messages).toHaveLength(1)
+    expect(s.requests).toHaveLength(1)
+    expect(requireAssistant(yield* s.context)).toMatchObject({
+      finish: "error",
+      error: { type: "provider.invalid-request", message: "Invalid request" },
+      content: [{ type: "reasoning", text }],
+    })
+    expect(yield* recordedEventTypes(sessionID)).not.toContain("session.guard.tripped.1")
+  })
+
+  scenario("logs passive repetition only when an interrupted attempt finalizes", function* (s) {
+    yield* s.admit("Interrupt after repeated reasoning")
+    const text = repeatedLines(12).trimEnd()
+    const streamed = yield* Deferred.make<void>()
+    yield* s.llm.push(
+      Stream.concat(
+        Stream.fromIterable([
+          LLMEvent.reasoningStart({ id: "interrupted-repeat" }),
+          LLMEvent.reasoningDelta({ id: "interrupted-repeat", text }),
+        ]),
+        Stream.fromEffect(Deferred.succeed(streamed, undefined)).pipe(Stream.flatMap(() => Stream.never)),
+      ),
+    )
+    const observations = reasoningObservations()
+    const runner = yield* SessionRunner.Service
+    const run = yield* runner
+      .drain({ sessionID, force: true })
+      .pipe(Effect.provide(observations.layer), Effect.forkChild)
+    yield* Deferred.await(streamed)
+    expect(observations.messages).toEqual([])
+    const exit = yield* Fiber.interrupt(run)
+    expect(Exit.isFailure(exit) && Cause.hasInterruptsOnly(exit.cause)).toBe(true)
+    expect(observations.messages).toHaveLength(1)
+    expect(s.requests).toHaveLength(1)
+    expect(requireAssistant(yield* s.context)).toMatchObject({
+      finish: "error",
+      error: { type: "aborted", message: "Step interrupted" },
+      content: [{ type: "reasoning", text }],
+    })
+    expect(yield* recordedEventTypes(sessionID)).not.toContain("session.guard.tripped.1")
+  })
+
+  scenario("does not join passive repetition evidence across physical attempts", function* (s) {
+    const observations = reasoningObservations()
+    const runner = yield* SessionRunner.Service
+    for (const prompt of ["First partial repetition", "A separate follow-up"]) {
+      yield* s.admit(prompt)
+      yield* s.llm.push(
+        TestLLM.stop(
+          LLMEvent.reasoningStart({ id: "reused-block-id" }),
+          LLMEvent.reasoningDelta({ id: "reused-block-id", text: repeatedLines(6) }),
+          LLMEvent.reasoningEnd({ id: "reused-block-id" }),
+        ),
+      )
+      yield* runner.drain({ sessionID, force: true }).pipe(Effect.provide(observations.layer))
+    }
+    expect(s.requests).toHaveLength(2)
+    expect(observations.messages).toEqual([])
+    expect(yield* recordedEventTypes(sessionID)).not.toContain("session.guard.tripped.1")
   })
 
   scenario("restores durable text provider metadata in the next request", function* (s) {

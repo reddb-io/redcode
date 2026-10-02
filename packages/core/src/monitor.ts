@@ -1,7 +1,7 @@
 export * as MonitorRuntime from "./monitor.js"
 
 import { and, eq, sql } from "drizzle-orm"
-import { Cause, Clock, Context, DateTime, Effect, Layer, Scope, Semaphore } from "effect"
+import { Cause, Clock, Context, DateTime, Effect, Fiber, Layer, Scope, Semaphore } from "effect"
 import { Monitor } from "@opencode/schema/monitor"
 import { makeGlobalNode } from "@opencode/util/effect/app-node"
 import { Bus } from "./bus.js"
@@ -277,23 +277,25 @@ export const make = Effect.gen(function* () {
       .pipe(Effect.orElseSucceed(() => []))
     const goal = yield* goals.get(info.sessionID).pipe(Effect.orElseSucceed(() => null))
     const decided = origin({ info, messages, ...(goal ? { goal: goal.status } : {}) })
-    return yield* sessions.synthetic({
-      id: SessionMessage.ID.make(`msg_${info.id}`),
-      sessionID: info.sessionID,
-      text: resultText(info, decided.notes),
-      metadata: { source: "monitor", monitorID: info.id, state: info.status },
-      resume: decided.wake,
-    }).pipe(
-      Effect.matchCauseEffect({
-        onSuccess: () => record({ ...info, delivery: "delivered" }),
-        onFailure: (cause) =>
-          record({
-            ...info,
-            delivery: "failed",
-            error: `${info.error ?? ""} Completion delivery failed: ${Cause.pretty(cause).slice(0, 500)}`.trim(),
-          }),
-      }),
-    )
+    return yield* sessions
+      .synthetic({
+        id: SessionMessage.ID.make(`msg_${info.id}`),
+        sessionID: info.sessionID,
+        text: resultText(info, decided.notes),
+        metadata: { source: "monitor", monitorID: info.id, state: info.status },
+        resume: decided.wake,
+      })
+      .pipe(
+        Effect.matchCauseEffect({
+          onSuccess: () => record({ ...info, delivery: "delivered" }),
+          onFailure: (cause) =>
+            record({
+              ...info,
+              delivery: "failed",
+              error: `${info.error ?? ""} Completion delivery failed: ${Cause.pretty(cause).slice(0, 500)}`.trim(),
+            }),
+        }),
+      )
   })
 
   const recover = Effect.fn("Monitor.recover")(function* (found: typeof MonitorTable.$inferSelect) {
@@ -451,86 +453,118 @@ export const make = Effect.gen(function* () {
             let timeouts = 0
             /** This monitor's own regex worker, so a stuck pattern here never delays another monitor. */
             const matcher = SafeRegex.create()
-            const run = Effect.gen(function* () {
-              const initial = Monitor.initialDelay(input.options, jitter.random)
-              if (initial > 0) yield* Effect.sleep(initial)
-              while (true) {
-                const observed = yield* input.run(track)
-                const regex = yield* regexOutcomes(matcher, input.options, observed)
-                timeouts = regex.timedOut ? timeouts + 1 : 0
-                const evidence: Monitor.Evidence =
-                  regex.errors.length > 0 ? { ...observed, error: regex.errors.join("; ") } : observed
-                const now = yield* Clock.currentTimeMillis
-                const decided =
-                  timeouts >= REGEX_TIMEOUT_LIMIT
-                    ? {
-                        status: "failed" as const,
-                        matched: `the regular expression timed out ${timeouts} times in a row`,
-                      }
-                    : Monitor.verdict(input.options, evidence, baseline, regex.outcomes)
-                if (baseline === undefined && !evidence.probe) baseline = Monitor.normalizeOutput(evidence.output)
-                current = {
-                  ...current,
-                  updated: now,
-                  attempts: current.attempts + 1,
-                  evidence: decided ? { ...evidence, matched: decided.matched } : evidence,
-                  status: decided
-                    ? decided.status
-                    : input.options.mode === "once"
-                      ? evidence.timedOut
-                        ? "timed_out"
-                        : "failed"
-                      : "running",
-                }
-                yield* save(current)
-                if (current.status !== "running") {
-                  yield* Effect.logInfo("monitor.settled", {
-                    sessionID: input.sessionID,
-                    monitorID: current.id,
-                    status: current.status,
-                    attempts: current.attempts,
-                    ms: now - initialInfo.created,
-                  })
-                  return
-                }
-                const delay = Monitor.nextDelay(
-                  input.options,
-                  (yield* Clock.currentTimeMillis) - initialInfo.created,
-                  jitter.random,
-                  input.attemptTimeoutMs,
-                )
-                // No attempt fits before the deadline: wait for it, so the monitor times out as before.
-                if (delay === undefined) return yield* Effect.never
-                yield* Effect.sleep(delay)
-              }
-            }).pipe(
-              Effect.timeoutOption(Monitor.deadline(input.options)),
-              Effect.flatMap((result) =>
-                result._tag === "None"
-                  ? Effect.sync(() => {
-                      current = { ...current, status: "timed_out" }
-                    })
-                  : Effect.void,
-              ),
-              Effect.onExit((exit) =>
-                Effect.gen(function* () {
-                  if (exit._tag === "Failure")
+            const run = Effect.scoped(
+              Effect.gen(function* () {
+                // Progress samples the latest committed attempt. It never queues logs, writes another
+                // row, or admits a synthetic message; terminal evidence remains the complete observation.
+                let snapshot: Monitor.Info | undefined
+                let published = 0
+                const progress = yield* Effect.gen(function* () {
+                  while (true) {
+                    yield* Effect.sleep(Monitor.PROGRESS_INTERVAL_MS)
+                    const saved = snapshot
+                    if (!saved?.evidence || current.status !== "running" || saved.attempts === published) continue
+                    published = saved.attempts
+                    yield* bus
+                      .publish(Monitor.Event.Progress, {
+                        sessionID: saved.sessionID,
+                        monitorID: saved.id,
+                        updated: saved.updated,
+                        attempts: saved.attempts,
+                        evidence: saved.evidence,
+                      })
+                      .pipe(
+                        Effect.catchCauseIf(
+                          (cause) => !Cause.hasInterrupts(cause),
+                          () => Effect.logWarning("monitor progress listener failed", { monitorID: saved.id }),
+                        ),
+                      )
+                  }
+                }).pipe(Effect.forkScoped)
+                yield* Effect.gen(function* () {
+                  const initial = Monitor.initialDelay(input.options, jitter.random)
+                  if (initial > 0) yield* Effect.sleep(initial)
+                  while (true) {
+                    const observed = yield* input.run(track)
+                    const regex = yield* regexOutcomes(matcher, input.options, observed)
+                    timeouts = regex.timedOut ? timeouts + 1 : 0
+                    const evidence: Monitor.Evidence =
+                      regex.errors.length > 0 ? { ...observed, error: regex.errors.join("; ") } : observed
+                    const now = yield* Clock.currentTimeMillis
+                    const decided =
+                      timeouts >= REGEX_TIMEOUT_LIMIT
+                        ? {
+                            status: "failed" as const,
+                            matched: `the regular expression timed out ${timeouts} times in a row`,
+                          }
+                        : Monitor.verdict(input.options, evidence, baseline, regex.outcomes)
+                    if (baseline === undefined && !evidence.probe) baseline = Monitor.normalizeOutput(evidence.output)
                     current = {
                       ...current,
-                      status: Cause.hasInterruptsOnly(exit.cause) ? "cancelled" : "failed",
-                      delivery: Cause.hasInterruptsOnly(exit.cause) ? "suppressed" : "pending",
-                      error: Cause.pretty(exit.cause).slice(0, 4_000),
+                      updated: now,
+                      attempts: current.attempts + 1,
+                      evidence: decided ? { ...evidence, matched: decided.matched } : evidence,
+                      status: decided
+                        ? decided.status
+                        : input.options.mode === "once"
+                          ? evidence.timedOut
+                            ? "timed_out"
+                            : "failed"
+                          : "running",
                     }
-                  matcher.close()
-                  input.cleanup?.()
-                  current = { ...current, updated: yield* Clock.currentTimeMillis }
-                  yield* save(current)
-                  // A cancelled monitor is never handed over, so its record is final here.
-                  if (current.status === "cancelled") yield* announce(current)
-                }),
-              ),
-              Effect.as("Monitor finished"),
-            )
+                    yield* save(current)
+                    if (current.status === "running") snapshot = Monitor.bounded(current)
+                    if (current.status !== "running") {
+                      yield* Effect.logInfo("monitor.settled", {
+                        sessionID: input.sessionID,
+                        monitorID: current.id,
+                        status: current.status,
+                        attempts: current.attempts,
+                        ms: now - initialInfo.created,
+                      })
+                      return
+                    }
+                    const delay = Monitor.nextDelay(
+                      input.options,
+                      (yield* Clock.currentTimeMillis) - initialInfo.created,
+                      jitter.random,
+                      input.attemptTimeoutMs,
+                    )
+                    // No attempt fits before the deadline: wait for it, so the monitor times out as before.
+                    if (delay === undefined) return yield* Effect.never
+                    yield* Effect.sleep(delay)
+                  }
+                }).pipe(
+                  Effect.timeoutOption(Monitor.deadline(input.options)),
+                  Effect.flatMap((result) =>
+                    result._tag === "None"
+                      ? Effect.sync(() => {
+                          current = { ...current, status: "timed_out" }
+                        })
+                      : Effect.void,
+                  ),
+                  Effect.onExit((exit) =>
+                    Effect.gen(function* () {
+                      // Stop the volatile publisher before the final save and completion announcement.
+                      yield* Fiber.interrupt(progress)
+                      if (exit._tag === "Failure")
+                        current = {
+                          ...current,
+                          status: Cause.hasInterruptsOnly(exit.cause) ? "cancelled" : "failed",
+                          delivery: Cause.hasInterruptsOnly(exit.cause) ? "suppressed" : "pending",
+                          error: Cause.pretty(exit.cause).slice(0, 4_000),
+                        }
+                      matcher.close()
+                      input.cleanup?.()
+                      current = { ...current, updated: yield* Clock.currentTimeMillis }
+                      yield* save(current)
+                      // A cancelled monitor is never handed over, so its record is final here.
+                      if (current.status === "cancelled") yield* announce(current)
+                    }),
+                  ),
+                )
+              }),
+            ).pipe(Effect.as("Monitor finished"))
             yield* jobs.start({
               id: initial.id,
               type: "monitor",

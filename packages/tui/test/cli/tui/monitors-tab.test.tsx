@@ -2,7 +2,7 @@
 import { ScrollBoxRenderable } from "@opentui/core"
 import { testRender } from "@opentui/solid"
 import { expect, test } from "bun:test"
-import type { MonitorPublicInfo } from "@opencode/client"
+import type { MonitorPublicInfo, OpenCodeEvent } from "@opencode/client"
 import { createEffect, createSignal, onCleanup } from "solid-js"
 import { ConfigProvider } from "../../../src/config"
 import { ClientProvider } from "../../../src/context/client"
@@ -40,11 +40,36 @@ function monitor(input: Partial<MonitorPublicInfo> & Pick<MonitorPublicInfo, "id
   }
 }
 
-async function renderMonitors(initial: MonitorPublicInfo[]) {
-  const store = { list: initial }
+function progress(info: Pick<MonitorPublicInfo, "id" | "attempts" | "updated">, output: string, sessionID = "parent") {
+  return {
+    id: `evt_monitor_progress_${sessionID}_${info.id}_${info.attempts}_${output.length}`,
+    created: Date.now(),
+    type: "monitor.progress",
+    data: {
+      sessionID,
+      monitorID: info.id,
+      attempts: info.attempts,
+      updated: info.updated,
+      evidence: { exit: null, output, truncated: false },
+    },
+  } satisfies OpenCodeEvent
+}
+
+async function renderMonitors(initial: MonitorPublicInfo[], width = 100) {
+  const store = {
+    list: initial,
+    reads: 0,
+    delay: undefined as ((list: MonitorPublicInfo[]) => Promise<MonitorPublicInfo[]>) | undefined,
+  }
   const cancelled: string[] = []
   const api: MonitorApi = {
-    list: async () => structuredClone(store.list),
+    list: () => {
+      store.reads += 1
+      const list = structuredClone(store.list)
+      const delay = store.delay
+      store.delay = undefined
+      return delay ? delay(list) : Promise.resolve(list)
+    },
     cancel: async (input) => {
       cancelled.push(input.monitorID)
       store.list = store.list.map(
@@ -131,7 +156,7 @@ async function renderMonitors(initial: MonitorPublicInfo[]) {
         </ConfigProvider>
       </TestTuiContexts>
     ),
-    { width: 100, height: 24, kittyKeyboard: true },
+    { width, height: 24, kittyKeyboard: true },
   )
   await wait(() => monitors?.list().length === initial.length)
   await app.renderOnce()
@@ -140,10 +165,24 @@ async function renderMonitors(initial: MonitorPublicInfo[]) {
     cancelled,
     store,
     monitors: () => monitors,
+    info: (id: string) => monitors.list().find((info) => info.id === id),
     toast: () => toast.currentToast,
     dispatch: (command: string) => dispatch(command),
     setOpen,
     emit: events.emit,
+    /** Capture one list response before an event or cancellation, then release it after that update. */
+    deferRead: () => {
+      const ready = Promise.withResolvers<() => Promise<MonitorPublicInfo[]>>()
+      store.delay = (list) => {
+        const pending = Promise.withResolvers<MonitorPublicInfo[]>()
+        ready.resolve(() => {
+          pending.resolve(list)
+          return pending.promise
+        })
+        return pending.promise
+      }
+      return ready.promise
+    },
     /** Re-reads until the shared list matches, since a read already in flight skips a new one. */
     settle: async (predicate: (list: readonly MonitorPublicInfo[]) => boolean) => {
       await wait(() => {
@@ -323,6 +362,162 @@ test("a monitor event re-reads the list without polling while the Monitors tab i
     )
     await view.app.renderOnce()
     expect(view.toast()).toMatchObject({ variant: "success", message: "Monitor succeeded: watch-build" })
+  } finally {
+    view.app.renderer.destroy()
+  }
+})
+
+test.each([50, 120])("progress uses the existing bounded drawer at %i columns", async (width) => {
+  const view = await renderMonitors([monitor({ id: "health", command: "watch-health", updated: 100 })], width)
+  try {
+    view.setOpen(false)
+    await view.app.renderOnce()
+    const reads = view.store.reads
+    view.emit(
+      progress(
+        { id: "health", attempts: 2, updated: 50 },
+        `${Array.from({ length: 60 }, (_, index) => `checkpoint-${index}`).join("\n")}\n\u001b[31mWaiting for readiness\u001b[0m\u0000`,
+      ),
+    )
+    await wait(() => view.monitors().list()[0]?.attempts === 2)
+    expect(view.store.reads).toBe(reads)
+    expect(view.toast()).toBeNull()
+
+    // Opening also fetches the older fixture snapshot; the event's newer attempt must survive that read.
+    view.setOpen(true)
+    await view.app.renderOnce()
+    const scroll = view.app.renderer.root.findDescendantById("composer-monitors-scroll")
+    if (!(scroll instanceof ScrollBoxRenderable)) throw new Error("Missing monitor scroll")
+    const actions = view.app.renderer.root.findDescendantById("composer-actions")!
+    const actionsY = actions.y
+    expect(scroll.height).toBe(5)
+    expect(scroll.getChildren()[0]?.height).toBe(2)
+    expect(actions.height).toBe(1)
+    expect(view.app.captureCharFrame()).toContain("2 checks · Waiting for readiness")
+    expect(view.app.captureCharFrame()).not.toContain("\u001b")
+    expect(view.app.captureCharFrame()).not.toContain("\u0000")
+    expect(view.app.captureCharFrame().match(/refresh/g)).toHaveLength(1)
+
+    view.dispatch("composer.monitor.evidence")
+    await view.app.renderOnce()
+    scroll.scrollTo(scroll.scrollHeight)
+    await view.app.renderOnce()
+    expect(view.app.captureCharFrame()).toContain("Waiting for readiness")
+    expect(scroll.height).toBe(5)
+    expect(actions.height).toBe(1)
+    expect(actions.y).toBe(actionsY)
+  } finally {
+    view.app.renderer.destroy()
+  }
+})
+
+test("progress ignores other sessions, absent or terminal monitors and older or duplicate attempts", async () => {
+  const view = await renderMonitors([
+    monitor({ id: "live", command: "watch-health", attempts: 3, updated: 30 }),
+    monitor({ id: "done", command: "settled-health", status: "failed", attempts: 2 }),
+    monitor({ id: "sentinel", command: "watch-sentinel" }),
+  ])
+  try {
+    view.setOpen(false)
+    await view.app.renderOnce()
+    const reads = view.store.reads
+    view.emit(progress({ id: "live", attempts: 9, updated: 90 }, "other session", "other"))
+    view.emit(progress({ id: "absent", attempts: 9, updated: 90 }, "unknown monitor"))
+    view.emit(progress({ id: "done", attempts: 9, updated: 90 }, "terminal monitor"))
+    view.emit(progress({ id: "live", attempts: 3, updated: 90 }, "duplicate attempt"))
+    view.emit(progress({ id: "live", attempts: 2, updated: 90 }, "older attempt"))
+    view.emit(progress({ id: "sentinel", attempts: 2, updated: 90 }, "events received"))
+    await wait(() => view.info("sentinel")?.attempts === 2)
+    expect(view.monitors().list()).toHaveLength(3)
+    expect(view.info("live")).toMatchObject({ attempts: 3, updated: 30 })
+    expect(view.info("live")?.evidence).toBeUndefined()
+    expect(view.info("done")).toMatchObject({ status: "failed", attempts: 2 })
+    view.emit(progress({ id: "live", attempts: 4, updated: 20 }, "newest attempt"))
+    await wait(() => view.info("live")?.attempts === 4)
+    expect(view.info("live")).toMatchObject({
+      updated: 20,
+      evidence: { output: "newest attempt" },
+    })
+    expect(view.info("done")).toMatchObject({ status: "failed", attempts: 2 })
+    expect(view.store.reads).toBe(reads)
+    expect(view.toast()).toBeNull()
+  } finally {
+    view.app.renderer.destroy()
+  }
+})
+
+test("an older in-flight read preserves progress and terminal results win even with equal timestamps", async () => {
+  const view = await renderMonitors([
+    monitor({ id: "live", command: "watch-health", updated: 100 }),
+    monitor({ id: "sentinel", command: "watch-sentinel", updated: 100 }),
+  ])
+  try {
+    view.setOpen(false)
+    await view.app.renderOnce()
+    const pending = view.deferRead()
+    view.monitors().refresh()
+    const release = await pending
+    view.emit(progress({ id: "live", attempts: 2, updated: 50 }, "new evidence"))
+    await wait(() => view.info("live")?.attempts === 2)
+    await release()
+    await view.app.renderOnce()
+    expect(view.info("live")).toMatchObject({
+      attempts: 2,
+      updated: 50,
+      evidence: { output: "new evidence" },
+    })
+
+    view.store.list = view.store.list.map(
+      (info): MonitorPublicInfo =>
+        info.id === "live"
+          ? {
+              ...info,
+              status: "succeeded",
+              attempts: 2,
+              updated: 50,
+              evidence: { exit: 0, output: "final evidence", truncated: false },
+            }
+          : info,
+    )
+    view.emit({
+      id: "evt_monitor_progress_finished",
+      created: Date.now(),
+      type: "monitor.finished",
+      data: { sessionID: "parent", monitorID: "live", command: "watch-health", status: "succeeded" },
+    })
+    await wait(() => view.info("live")?.status === "succeeded")
+    expect(view.toast()).toMatchObject({ variant: "success", message: "Monitor succeeded: watch-health" })
+    view.emit(progress({ id: "live", attempts: 3, updated: 60 }, "late progress"))
+    view.emit(progress({ id: "sentinel", attempts: 2, updated: 60 }, "still live"))
+    await wait(() => view.info("sentinel")?.attempts === 2)
+    expect(view.info("live")).toMatchObject({
+      status: "succeeded",
+      evidence: { output: "final evidence" },
+    })
+    view.setOpen(true)
+    await view.app.renderOnce()
+    expect(view.app.captureCharFrame()).not.toContain("watch-health")
+  } finally {
+    view.app.renderer.destroy()
+  }
+})
+
+test("a read captured before cancellation cannot revive the stopped monitor", async () => {
+  const view = await renderMonitors([monitor({ id: "live", command: "watch-health" })])
+  try {
+    view.setOpen(false)
+    await view.app.renderOnce()
+    const pending = view.deferRead()
+    view.monitors().refresh()
+    const release = await pending
+    await view.monitors().cancel(view.monitors().list()[0]!)
+    await release()
+    await view.app.renderOnce()
+    expect(view.monitors().list()[0]?.status).toBe("cancelled")
+    expect(view.toast()?.message).toBe("Stopped monitoring watch-health")
+    view.setOpen(true)
+    await view.app.renderOnce()
+    expect(view.app.captureCharFrame()).toContain("No active monitors in this session")
   } finally {
     view.app.renderer.destroy()
   }

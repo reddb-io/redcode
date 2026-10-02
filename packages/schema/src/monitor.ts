@@ -261,6 +261,8 @@ export const DEFAULT_INTERVAL_MS = 10_000
 export const DEFAULT_DEADLINE_MS = 3_600_000
 /** Evidence kept per monitor in anything a model or a screen reads: the tail of the output. */
 export const EVIDENCE_CHARS = 8_000
+/** Latest saved observation shown to clients at most once per interval, without waking the Session. */
+export const PROGRESS_INTERVAL_MS = 2_000
 /** Evidence kept across a whole monitor list. */
 export const LIST_CHARS = 32_000
 /**
@@ -474,12 +476,22 @@ export function printable(text: string) {
 
 /**
  * Monitor lifecycle events: a monitor started, settled with its final status once its result was
- * handed over (or withheld), or expired because its runtime died past the deadline. Clients such as
- * the TUI Monitors tab re-read the Session's monitors on them instead of polling.
+ * handed over (or withheld), or expired because its runtime died past the deadline. Progress is a
+ * bounded, volatile snapshot of a saved running attempt; it never admits work to the Session.
  */
 const Started = ephemeral({
   type: "monitor.started",
   schema: { sessionID: SessionID, monitorID: Schema.String, command: Schema.String },
+})
+const Progress = ephemeral({
+  type: "monitor.progress",
+  schema: {
+    sessionID: SessionID,
+    monitorID: Schema.String,
+    updated: Schema.Finite,
+    attempts: Schema.Int,
+    evidence: Evidence,
+  },
 })
 const Finished = ephemeral({
   type: "monitor.finished",
@@ -489,4 +501,10 @@ const Expired = ephemeral({
   type: "monitor.expired",
   schema: { sessionID: SessionID, monitorID: Schema.String, command: Schema.String },
 })
-export const Event = { Started, Finished, Expired, Definitions: inventory(Started, Finished, Expired) }
+export const Event = {
+  Started,
+  Progress,
+  Finished,
+  Expired,
+  Definitions: inventory(Started, Progress, Finished, Expired),
+}

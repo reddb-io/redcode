@@ -1,5 +1,6 @@
 import type { Plugin } from "@opencode/plugin/tui"
 import type { MonitorPublicInfo } from "@opencode/client"
+import { Monitor } from "@opencode/schema/monitor"
 import { useTerminalDimensions } from "@opentui/solid"
 import { TextAttributes } from "@opentui/core"
 import { createSignal, onCleanup, Show } from "solid-js"
@@ -40,6 +41,7 @@ const KINDS: Kind[] = [
     output: Array.from({ length: 40 }, (_, index) => `[${index + 1}/40] bundling chunk-${index}.js`).join("\n"),
   },
 ]
+const OUTPUTS = ["plain", "noisy", "ansi"] as const
 
 function fixture(index: number, input: Partial<MonitorPublicInfo> = {}): MonitorPublicInfo {
   const kind = KINDS[index % KINDS.length]
@@ -104,6 +106,7 @@ function MonitorsTabStory(props: { context: Plugin.Context }) {
   const [visible, setVisible] = createSignal(true)
   const [failing, setFailing] = createSignal(false)
   const [next, setNext] = createSignal(10)
+  const [output, setOutput] = createSignal(0)
   const [tab, setTab] = createSignal<ComposerTab>()
   const [message, setMessage] = createSignal("n starts a monitor; s/x/t settle the oldest running one")
 
@@ -139,6 +142,42 @@ function MonitorsTabStory(props: { context: Plugin.Context }) {
     const index = next()
     setNext(index + 1)
     update([...items(), fixture(index)], `started ${KINDS[index % KINDS.length].command}`)
+  }
+
+  const progress = () => {
+    const target = items()
+      .filter((info) => info.status === "running")
+      .toSorted((a, b) => b.created - a.created)[0]
+    if (!target) {
+      setMessage("no running monitor; press n to start one")
+      return
+    }
+    const attempts = target.attempts + 1
+    const result = `Check ${attempts}: waiting for readiness`
+    update(
+      items().map((info) =>
+        info.id !== target.id
+          ? info
+          : {
+              ...info,
+              attempts,
+              updated: Date.now(),
+              evidence: {
+                exit: null,
+                output:
+                  OUTPUTS[output()] === "noisy"
+                    ? `${Array.from({ length: 600 }, (_, index) => `probe output line ${index}`).join("\n")}\n${result}`.slice(
+                        -Monitor.EVIDENCE_CHARS,
+                      )
+                    : OUTPUTS[output()] === "ansi"
+                      ? `\u001b[31m${result}\u001b[0m\u0000`
+                      : result,
+                truncated: OUTPUTS[output()] === "noisy",
+              },
+            },
+      ),
+      `${OUTPUTS[output()]} progress in the existing summary; enter expands its bounded evidence`,
+    )
   }
 
   const settle = (status: "succeeded" | "failed" | "timed_out") => {
@@ -181,6 +220,7 @@ function MonitorsTabStory(props: { context: Plugin.Context }) {
     setFailing(false)
     setVisible(true)
     setNext(10)
+    setOutput(0)
     update(showcase(), "reset to the showcase fixture")
   }
 
@@ -195,6 +235,16 @@ function MonitorsTabStory(props: { context: Plugin.Context }) {
         run: () => props.context.ui.router.navigate({ type: "plugin", name: "storybook" }),
       },
       { bind: "n", title: "Start a monitor", group: "Storybook", run: start },
+      { bind: "p", title: "Advance running probe evidence", group: "Storybook", run: progress },
+      {
+        bind: "b",
+        title: "Cycle progress output style",
+        group: "Storybook",
+        run: () => {
+          setOutput((value) => (value + 1) % OUTPUTS.length)
+          setMessage(`${OUTPUTS[output()]} progress; press p to update the newest running monitor`)
+        },
+      },
       { bind: "s", title: "Oldest running monitor succeeds", group: "Storybook", run: () => settle("succeeded") },
       { bind: "x", title: "Oldest running monitor fails", group: "Storybook", run: () => settle("failed") },
       { bind: "t", title: "Oldest running monitor times out", group: "Storybook", run: () => settle("timed_out") },
@@ -276,6 +326,7 @@ function MonitorsTabStory(props: { context: Plugin.Context }) {
           `${runningMonitors(items())} running`,
           `${items().length} total`,
           failing() ? "reads failing" : "reads ok",
+          `${OUTPUTS[output()]} progress`,
         ]}
         message={message()}
         controls={[
@@ -284,6 +335,8 @@ function MonitorsTabStory(props: { context: Plugin.Context }) {
           { shortcut: "ctrl+d", label: "stop" },
           { shortcut: "r", label: "refresh" },
           { shortcut: "n", label: "start" },
+          { shortcut: "p", label: "progress" },
+          { shortcut: "b", label: "plain/noisy/ANSI" },
           { shortcut: "s/x/t", label: "succeed/fail/time out" },
           { shortcut: "v", label: "show/hide tab" },
           { shortcut: "e", label: "read failure" },

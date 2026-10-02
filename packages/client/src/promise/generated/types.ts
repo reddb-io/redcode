@@ -2510,6 +2510,15 @@ export type MonitorPublicInfo = {
   interruptedBy?: string | undefined
 }
 
+export type MonitorProgress = {
+  id: string
+  created: number
+  metadata?: { [x: string]: any }
+  type: "monitor.progress"
+  location?: LocationRef
+  data: { sessionID: string; monitorID: string; updated: number; attempts: number; evidence: MonitorEvidence }
+}
+
 export type DesignFeedbackItem = {
   target: string
   text: string
@@ -3472,6 +3481,7 @@ export type V2Event =
   | FormCancelled
   | WebsearchUpdated
   | MonitorStarted
+  | MonitorProgress
   | MonitorFinished
   | MonitorExpired
   | SessionStatusUpdated

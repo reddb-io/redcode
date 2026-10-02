@@ -146,6 +146,9 @@ jobs:
       - name: Verify committed model catalog
         working-directory: packages/core
         run: bun run update-models-snapshot --check
+      - name: Evaluate passive reasoning repetition detection
+        working-directory: packages/core
+        run: bun run script/reasoning-observation-eval.ts --check
       - name: Verify generated client
         working-directory: packages/client
         run: bun run check:generated
