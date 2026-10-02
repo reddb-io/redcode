@@ -8,9 +8,10 @@ import { Intelligence } from "@opencode/schema/intelligence"
 import { SessionMessage } from "@opencode/schema/session-message"
 import { Model } from "@opencode/schema/model"
 import { Shell } from "@opencode/schema/shell"
-import { Schema } from "effect"
+import { Option, Schema } from "effect"
 import { Pair, Pairs, Pricing, plan, switches } from "./campaign"
 import { prepare, snapshot, verify, grade } from "./coding"
+import { recover } from "./coding-snapshots"
 import { campaign, markdown, pairs, score, summarize, type Run } from "./report"
 import { proxy, type RequestMetric } from "./transport"
 import { cost, evaluatorEstimate } from "./accounting"
@@ -189,6 +190,7 @@ const Json = Schema.Json
 const Session = Schema.Struct({
   data: Schema.Struct({
     id: Schema.String,
+    projectID: Schema.String,
     outcome: Schema.optional(Schema.NullOr(Schema.String)),
     tokens: TokenUsage.Info,
     cost: Schema.Number,
@@ -321,7 +323,7 @@ try {
   await Promise.all(
     planned.selected.map(async (item) => {
       const directory = path.join(root, item.id)
-      if ("editable" in item) return prepare(item, directory)
+      if ("editable" in item) return prepare(item, directory, path.join(root, "repositories", item.id))
       await mkdir(directory)
       await Promise.all(Object.entries(item.files).map(([name, text]) => Bun.write(path.join(directory, name), text)))
     }),
@@ -360,7 +362,7 @@ try {
               throw new Error("Campaign stopped: cost limit reached or a completed run has unknown cost")
             current.run = `${pair.id}-${experiment}-${item.id}-${round}-${mode}`
             const directory = path.join(root, item.id)
-            if ("editable" in item) await prepare(item, directory)
+            if ("editable" in item) await prepare(item, directory, path.join(root, "repositories", item.id))
             const before = "editable" in item ? await snapshot(directory) : undefined
             await api("/api/experimental/intelligence", Json, "PUT", { settings: { ...settings, reasoning: mode } })
             const session = await api("/api/session", Session, "POST", {
@@ -498,9 +500,41 @@ try {
                       changes: { added: [], modified: [], deleted: [] },
                     }
                 : undefined
-            const repairs = messages.data.filter(
+            const repairMessages = messages.data.filter(
               (message) => message.type === "synthetic" && message.metadata?.responseRepair !== undefined,
-            ).length
+            )
+            const repairs = repairMessages.length
+            const firstRepair = repairMessages[0]
+            const repairID = firstRepair?.type === "synthetic" ? firstRepair.metadata?.responseRepair : undefined
+            const evaluationID = Schema.decodeUnknownOption(Schema.Struct({ evaluationID: Schema.String }))(repairID)
+            const candidateID = Option.isSome(evaluationID)
+              ? evaluations.find((evaluation) => evaluation.id === evaluationID.value.evaluationID)?.candidateID
+              : undefined
+            const candidate = messages.data.find((message) => message.id === candidateID)
+            const tree = candidate?.type === "assistant" ? candidate.snapshot?.end : undefined
+            const recovered =
+              "editable" in item && repairs > 0 && tree && observed.settled && !unsettledShell
+                ? await recover({
+                    home,
+                    directory,
+                    projectID: session.data.projectID,
+                    tree,
+                    metadata: path.join(root, "repositories", item.id),
+                    destination: path.join(root, "candidates", current.run),
+                  })
+                : undefined
+            const initialVerification =
+              recovered?.known && "editable" in item
+                ? await verify(
+                    item,
+                    path.join(root, "candidates", current.run),
+                    path.join(root, "oracles", `${current.run}-initial`),
+                  )
+                : undefined
+            const initialGrade =
+              initialVerification && before && "editable" in item
+                ? grade(item, before, await snapshot(path.join(root, "candidates", current.run)), initialVerification)
+                : undefined
             const requests = upstream.filter((request) => request.run === current.run && request.model === pair.model)
             const s1Requests = upstream.filter(
               (request) => request.run === current.run && request.model === pair.evaluator,
@@ -577,10 +611,27 @@ try {
               sessionID: session.data.id,
               initialText: finals[0] ?? "",
               finalText: finals.at(-1) ?? "",
-              initial: "expected" in item ? score(finals[0] ?? "", item.expected) : finalGrade!,
+              initial: "expected" in item ? score(finals[0] ?? "", item.expected) : (initialGrade ?? finalGrade!),
               final: "expected" in item ? score(finals.at(-1) ?? "", item.expected) : finalGrade!,
               repairs,
-              repairBaselineKnown: !("editable" in item) || repairs === 0,
+              repairBaselineKnown: !("editable" in item) || repairs === 0 || initialGrade !== undefined,
+              ...(repairs && "editable" in item
+                ? {
+                    repairBaseline: {
+                      candidateID,
+                      snapshot: tree,
+                      known: initialGrade !== undefined,
+                      reason:
+                        recovered && !recovered.known
+                          ? recovered.reason
+                          : initialGrade
+                            ? undefined
+                            : "candidate_snapshot_missing",
+                      verification: initialVerification,
+                      grade: initialGrade,
+                    },
+                  }
+                : {}),
               ...(finalGrade && verification
                 ? {
                     oracleMs: verification.process.durationMs,

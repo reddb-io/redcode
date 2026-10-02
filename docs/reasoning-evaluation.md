@@ -87,9 +87,15 @@ TypeScript exports that exist only as types.
 Artifacts record the compiled binary SHA-256, fixture signature, file-change
 identities, oracle checks, exit code, latency, output byte counts, model identity,
 tokens and costs. Oracle latency is separate from S2 completion latency.
-Automatic coding repairs whose original filesystem candidate was not captured
-are marked `unknownBaseline`, excluded from repair improvement categories and
-fail the repair gate. The buggy seed is never passed off as that candidate.
+Coding fixtures use isolated Git repositories with metadata outside their
+resettable directories. For automatic repairs, the harness resolves the first
+repair's evaluation to its candidate message and reconstructs that Step's
+existing end snapshot in a separate directory. The independent oracle grades
+that exact candidate and the final code; neither reconstruction nor grading
+changes the final fixture. Artifacts retain the candidate ID, snapshot ID,
+initial oracle metrics and grade. Missing candidate snapshots are marked
+`unknownBaseline`, excluded from repair improvement categories and fail the
+repair gate. The buggy seed is never passed off as that candidate.
 
 The absolute budget is checked between executions and passed to the Session's
 existing budget controls. Provider accounting can arrive after an individual

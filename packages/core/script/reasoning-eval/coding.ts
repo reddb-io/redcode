@@ -2,6 +2,7 @@ import { lstat, mkdir, readlink, realpath, rm } from "node:fs/promises"
 import path from "node:path"
 import { Option, Schema } from "effect"
 import type { CodingCase } from "./coding-cases"
+import { repository } from "./coding-snapshots"
 
 export const TIMEOUT_MS = 10_000
 export const OUTPUT_LIMIT_BYTES = 1_048_576
@@ -29,7 +30,7 @@ export type Verification = {
 }
 
 /** Reset an owned benchmark fixture between executions; never seed the oracle or reference solution. */
-export async function prepare(item: CodingCase, directory: string): Promise<void> {
+export async function prepare(item: CodingCase, directory: string, metadata?: string): Promise<void> {
   const paths = [...Object.keys(item.files), ...item.editable, ...Object.keys(item.reference)]
   const invalid = paths.find(
     (file) =>
@@ -47,6 +48,7 @@ export async function prepare(item: CodingCase, directory: string): Promise<void
       await Bun.write(path.join(directory, file), content)
     }),
   )
+  if (metadata) await repository(directory, metadata)
 }
 
 /** Content identities include new and deleted paths; do not follow a candidate's symlink out of the fixture. */

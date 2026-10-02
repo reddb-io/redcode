@@ -1,8 +1,15 @@
 import { expect, test } from "bun:test"
 import { mkdir, rm, utimes } from "node:fs/promises"
 import path from "node:path"
+import { Effect } from "effect"
+import { AppNodeBuilder } from "@opencode/core/effect/app-node-builder"
+import { Location } from "@opencode/core/location"
+import { AbsolutePath } from "@opencode/core/schema"
+import { Snapshot } from "@opencode/core/snapshot"
+import { Global } from "@opencode/util/global"
 import type { CodingCase } from "../../script/reasoning-eval/coding-cases"
 import { grade, prepare, snapshot, verify } from "../../script/reasoning-eval/coding"
+import { recover } from "../../script/reasoning-eval/coding-snapshots"
 import { tmpdir } from "../fixture/tmpdir"
 
 const fixture: CodingCase = {
@@ -32,6 +39,78 @@ console.error("oracle diagnostic")
       "export const total = (price: number, count: number, rate: number) => price * count + Math.round(price * count * rate)\n",
   },
 }
+
+test("grades the actual pre-repair Snapshot tree independently without changing the final candidate", async () => {
+  await using tmp = await tmpdir("reasoning-coding-snapshot-")
+  const directory = path.join(tmp.path, "candidate")
+  const metadata = path.join(tmp.path, "repository")
+  const home = path.join(tmp.path, "home")
+  const data = path.join(home, ".red", "code", "data")
+  const destination = path.join(tmp.path, "recovered")
+  await prepare(fixture, directory, metadata)
+  const before = await snapshot(directory)
+  expect(Object.keys(before)).toContain(".git")
+  await Effect.runPromise(
+    Effect.gen(function* () {
+      const location = yield* Location.Service
+      const capture = yield* Snapshot.Service
+      // This candidate differs from both the buggy seed and the successful repair.
+      yield* Effect.promise(() =>
+        Bun.write(
+          path.join(directory, "src/total.ts"),
+          "export const total = (price: number, count: number, rate: number) => price * count + Math.ceil(price * count * rate)\n",
+        ),
+      )
+      const candidateBytes = yield* Effect.promise(() => snapshot(directory))
+      const tree = yield* capture.capture()
+      expect(tree).toBeDefined()
+      if (!tree) throw new Error("Snapshot tree unavailable")
+      yield* Effect.promise(() => Bun.write(path.join(directory, "src/total.ts"), fixture.reference["src/total.ts"]!))
+      yield* capture.capture()
+      const finalBytes = yield* Effect.promise(() => snapshot(directory))
+      const recovered = yield* Effect.promise(() =>
+        recover({
+          home,
+          directory,
+          metadata,
+          destination,
+          projectID: location.project.id,
+          tree,
+        }),
+      )
+      expect(recovered).toEqual({ known: true, tree })
+      expect(yield* Effect.promise(() => snapshot(destination))).toEqual(candidateBytes)
+      expect(yield* Effect.promise(() => snapshot(directory))).toEqual(finalBytes)
+      const initial = yield* Effect.promise(() => verify(fixture, destination, path.join(tmp.path, "oracle-initial")))
+      const final = yield* Effect.promise(() => verify(fixture, directory, path.join(tmp.path, "oracle-final")))
+      expect(grade(fixture, before, candidateBytes, initial)).toMatchObject({ pass: false, failed: ["rounded-tax"] })
+      expect(grade(fixture, before, finalBytes, final)).toMatchObject({ pass: true, failed: [] })
+      yield* Effect.promise(() => prepare(fixture, directory, metadata))
+      expect(yield* Effect.promise(() => snapshot(directory))).toEqual(before)
+      expect(yield* capture.capture()).toBeDefined()
+      expect(
+        yield* Effect.promise(() =>
+          recover({
+            home,
+            directory,
+            metadata,
+            destination: path.join(tmp.path, "missing"),
+            projectID: location.project.id,
+            tree: "0".repeat(40),
+          }),
+        ),
+      ).toEqual({ known: false, reason: "snapshot_unavailable" })
+    }).pipe(
+      Effect.scoped,
+      Effect.provide(
+        AppNodeBuilder.build(Snapshot.node, [
+          Location.node.replace(Location.boundNode(Location.Ref.make({ directory: AbsolutePath.make(directory) }))),
+          Global.node.replace(Global.layerWith({ data, config: path.join(home, "config") })),
+        ]),
+      ),
+    ),
+  )
+})
 
 test("executes an independent oracle against the baseline and reference edit with process metrics", async () => {
   await using tmp = await tmpdir("reasoning-coding-")
