@@ -10,6 +10,13 @@ The [local coding study from 2026-10-02](evaluations/reasoning-coding-2026-10-02
 records real-model calibration, interrupted attempts and the separately evaluated
 reserved split. It does not establish a general coding accuracy gain.
 
+The [published 0.71.3 collection](evaluations/reasoning-0.71.3-2026-10-02.md)
+evaluates the asynchronous classifier with the challenge calibration cases.
+Both baseline modes passed 6/6, but dual was slower and cost 29.5% more.
+The fixed-candidate detector separated all six calibration labels at the existing
+threshold. Experimental repair did not qualify, and an interrupted unpriced
+response stopped collection before any reserved cases were dispatched.
+
 ## Coding campaigns
 
 Create a private pair manifest using the exact selectable Router IDs and expected
@@ -149,7 +156,8 @@ and hidden oracle checks never enter the request. This diagnoses the detector,
 not end-to-end dual performance. These already inspected families do not constitute
 a new untouched final validation set. `--corpus challenge` selects 12 fixed
 candidates (six per split), using the new families described below. The corpus
-and source signature are recorded; no paid collection has used these new cases.
+and source signature are recorded. The published 0.71.3 study has now evaluated
+challenge calibration; its reserved detector and coding cases remain unused.
 
 After a separate explicit budget authorization, use the connection's established
 native endpoint and pin its actual response model:
@@ -229,7 +237,9 @@ measures execution completion. Late S1 tokens and cost still belong to that run.
 An unsettled classification invalidates the run and stops the campaign so pending
 requests cannot be attributed to the next run. Observe retains its separate pending
 evaluation check. Historical measurements predate this change and cannot demonstrate
-its impact; new paid collection requires a new allocation.
+its impact. The published 0.71.3 calibration now measures the new runtime separately;
+it has not shown a coding accuracy or speed gain. Its unknown interrupted-request
+charge stopped further paid collection before reserved cases.
 
 ```sh
 bun run eval:reasoning \

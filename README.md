@@ -153,7 +153,8 @@ When it finishes, persisted advice steers subsequent Steps for the same user req
 A newer user correction takes priority; an old assessment cannot steer that new request.
 Late feedback still contributes to session satisfaction without restarting completed work.
 Final response review and mandatory approval checks keep their existing policies.
-This removes the classifier's initial wait; speed and accuracy gains still need measurement.
+This removes the classifier's initial wait. The [published 0.71.3 study](docs/evaluations/reasoning-0.71.3-2026-10-02.md)
+has not demonstrated a coding accuracy or speed gain.
 
 In dual mode, the **mood** indicator and S2 prompts use accumulated session feedback:
 **0/5 means low satisfaction; 5/5 means high satisfaction**. The prompt also includes
@@ -161,7 +162,16 @@ the trend and reliable sample count, helping S2 revisit corrections and verify i
 Fewer than three reliable classifications means unknown. This reuses existing S1 results
 without another model call; its quality impact has not yet been measured.
 
-Our [local coding calibration](docs/evaluations/reasoning-coding-2026-10-02.md) with
+The latest **published 0.71.3** calibration used three new coding families, with two
+repetitions: **6/6 valid passes in both modes**, **29.5% more dual cost** and
+**59.6% more aggregate execution time**. All six matched baseline costs stayed
+below 2x. The separate S1 detector distinguished three defective candidates from
+three correct ones; this does not establish agent improvement. The repair
+experiment exceeded 2x cost, and one self-review comparison has an interrupted,
+unpriced response. Reserved cases were not dispatched. See the
+[measurements, HTTP receipts and limitations](docs/evaluations/reasoning-0.71.3-2026-10-02.md).
+
+An earlier [local coding calibration](docs/evaluations/reasoning-coding-2026-10-02.md), using an unpublished CI binary with
 Mimo V2.6 Pro and JEV-1.13 found **12/12 passes in both modes**, with **34.3% more
 dual cost** and median latency of **81.66s versus 49.52s**. Two matched costs
 exceeded 2x. The verification experiment stopped on a five-minute execution
