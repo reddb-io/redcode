@@ -5,7 +5,7 @@ import { AIError, Message, ProviderErrorEvent, SystemPart } from "@opencode/ai"
 import { Monitor } from "@opencode/schema/monitor"
 import { Global } from "@opencode/util/global"
 import { and, desc, eq, sql } from "drizzle-orm"
-import { Cause, Clock, Duration, Effect, Exit, Fiber, FiberMap, Layer, Option, Schema } from "effect"
+import { Cause, Clock, Effect, Exit, Fiber, FiberMap, Layer, Option, Schema } from "effect"
 import { Database } from "../../database/database.js"
 import { DesignIdentify } from "../../design/identify.js"
 import { DesignProposal } from "../../design/proposal.js"
@@ -78,8 +78,6 @@ import { MAX_STEPS_PROMPT, stepLimit } from "./max-steps.js"
 
 const CONTINUE_AFTER_INCOMPLETE_STREAM =
   "The previous response was interrupted. Continue from where you left off without repeating completed content."
-/** How long the first Step of a prompt waits for its classification; a slower one lands in history for later Steps. */
-const CLASSIFICATION_WAIT = Duration.seconds(5)
 /** Messages read back when judging a goal or reviewing a final response. */
 const RECENT = 60
 
@@ -356,7 +354,7 @@ const layer = Layer.effect(
         if (next._tag !== "Ready") return next
         const configuredBudget = SessionBudget.configured(Config.latest(yield* config.entries(), "session")?.budget)
         if (!(yield* budgets.admit(sessionID, configuredBudget))) return DrainResult.Complete()
-        // Classified before the goal accounts the Step, so an interruption while waiting spends nothing.
+        // Classification runs beside S2; only already persisted guidance can enter this Step.
         const verification = yield* verificationState(sessionID)
         if (verification && !verification.pending) return DrainResult.Complete()
         const codeRepair = yield* codeRepairState(sessionID)
@@ -369,8 +367,7 @@ const layer = Layer.effect(
         const goalID = yield* goals.beginStep(sessionID)
         if (goalID === false) return DrainResult.Complete()
         const advice = [
-          IntelligenceClassification.context(classification),
-          IntelligenceClassification.skillContext(classification),
+          IntelligenceClassification.steer(classification),
           yield* satisfaction(sessionID).pipe(
             Effect.catchCause((cause) =>
               Effect.logWarning("Session satisfaction unavailable", { sessionID, cause: Cause.pretty(cause) }).pipe(
@@ -609,7 +606,8 @@ const layer = Layer.effect(
 
     /**
      * Classifies the latest user request with System One once, from a bounded view of the session.
-     * Advisory only: it never blocks the prompt, and a slow answer is persisted for later Steps.
+     * Advisory only: sources and inference run in the background. Persisted guidance enters later
+     * Steps for the same user request, without waking execution or resetting the Step allowance.
      */
     const classify = Effect.fn("SessionRunner.classify")(function* (loaded: SessionContext.Loaded) {
       const sessionID = loaded.session.id
@@ -626,71 +624,76 @@ const layer = Layer.effect(
       // A classification still running from an earlier Step is not awaited again.
       if (yield* FiberMap.has(classifications, user.id)) return undefined
       const preceding = index < 0 ? loaded.messages : loaded.messages.slice(0, index)
-      const request = IntelligenceClassification.evaluation({
-        sessionID,
-        scrub: yield* vault.scrubber(loaded.session.projectID),
-        request: { id: user.id, text: user.text, files: user.files },
-        history: preceding.slice(-IntelligenceClassification.HISTORY).flatMap(IntelligenceClassification.historyEntry),
-        omitted: Math.max(0, preceding.length - IntelligenceClassification.HISTORY),
-        namespaces:
-          loaded.tools.codeModeCatalog &&
-          Config.latestExperimental(yield* config.entries(), "reasoning_tool_selection") === true
-            ? CodeModeCatalog.summarize(loaded.tools.codeModeCatalog, { budget: 0 }).namespaces.map((namespace) => ({
-                name: namespace.name,
-                description: namespace.description ?? `${namespace.name}: ${namespace.count} tools`,
-              }))
-            : undefined,
-        session: {
-          mode: loaded.agent.id,
-          goal: SessionGoal.guidance(yield* goals.get(sessionID)),
-          plan: SessionPlan.guidance(yield* plans.list(sessionID)),
-          continuation: {
-            location: loaded.session.location,
-            pending: (yield* SessionInbox.list(db, sessionID))
-              .filter((item) => item.type === "user")
-              .map((item) => ({ id: item.id, delivery: item.delivery, text: item.payload.text })),
-            tasks: SessionTodo.forAgent(yield* todos.get(sessionID), loaded.agent.id),
-            originalRequest: [
-              ...(yield* store.messages({ sessionID, type: "user", order: "asc", limit: 1 })),
-              ...(yield* store.messages({ sessionID, type: "user", limit: 2 })),
-            ].map((message) => (message.type === "user" ? { id: message.id, text: message.text } : null)),
-            priorDecision: (yield* intelligence.history(sessionID, {
-              operation: "prompt_classification",
-              limit: 2,
-            })).find((entry) => entry.subjectID !== user.id && entry.mode !== "observe")?.answers,
-          },
-        },
-        skills: Skill.available(
-          yield* skills.list(),
-          Permission.forAgent(loaded.agent.info, loaded.session.permissions),
-        )
-          .flatMap((skill) =>
-            skill.description === undefined || skill.autoinvoke === false
-              ? []
-              : [{ name: skill.name, description: skill.description }],
-          )
-          .toSorted((left, right) => left.name.localeCompare(right.name)),
-      })
-      // A message S1 reads as carrying restricted content is marked once its answer lands, however late; the marker
-      // only keeps it out of derived text and shows a notice, and nothing waits for it.
-      const fiber = yield* FiberMap.run(
+      yield* FiberMap.run(
         classifications,
         user.id,
-        intelligence.evaluate(request).pipe(
-          Effect.orElseSucceed(() => undefined),
-          Effect.tap((evaluation) =>
-            IntelligenceClassification.restricted(evaluation) === "flagged"
-              ? markRestricted(sessionID, user.id)
-              : Effect.void,
-          ),
+        Effect.gen(function* () {
+          const request = IntelligenceClassification.evaluation({
+            sessionID,
+            scrub: yield* vault.scrubber(loaded.session.projectID),
+            request: { id: user.id, text: user.text, files: user.files },
+            history: preceding
+              .slice(-IntelligenceClassification.HISTORY)
+              .flatMap(IntelligenceClassification.historyEntry),
+            omitted: Math.max(0, preceding.length - IntelligenceClassification.HISTORY),
+            namespaces:
+              loaded.tools.codeModeCatalog &&
+              Config.latestExperimental(yield* config.entries(), "reasoning_tool_selection") === true
+                ? CodeModeCatalog.summarize(loaded.tools.codeModeCatalog, { budget: 0 }).namespaces.map(
+                    (namespace) => ({
+                      name: namespace.name,
+                      description: namespace.description ?? `${namespace.name}: ${namespace.count} tools`,
+                    }),
+                  )
+                : undefined,
+            session: {
+              mode: loaded.agent.id,
+              goal: SessionGoal.guidance(yield* goals.get(sessionID)),
+              plan: SessionPlan.guidance(yield* plans.list(sessionID)),
+              continuation: {
+                location: loaded.session.location,
+                pending: (yield* SessionInbox.list(db, sessionID))
+                  .filter((item) => item.type === "user")
+                  .map((item) => ({ id: item.id, delivery: item.delivery, text: item.payload.text })),
+                tasks: SessionTodo.forAgent(yield* todos.get(sessionID), loaded.agent.id),
+                originalRequest: [
+                  ...(yield* store.messages({ sessionID, type: "user", order: "asc", limit: 1 })),
+                  ...(yield* store.messages({ sessionID, type: "user", limit: 2 })),
+                ].map((message) => (message.type === "user" ? { id: message.id, text: message.text } : null)),
+                priorDecision: (yield* intelligence.history(sessionID, {
+                  operation: "prompt_classification",
+                  limit: 2,
+                })).find((entry) => entry.subjectID !== user.id && entry.mode !== "observe")?.answers,
+              },
+            },
+            skills: Skill.available(
+              yield* skills.list(),
+              Permission.forAgent(loaded.agent.info, loaded.session.permissions),
+            )
+              .flatMap((skill) =>
+                skill.description === undefined || skill.autoinvoke === false
+                  ? []
+                  : [{ name: skill.name, description: skill.description }],
+              )
+              .toSorted((left, right) => left.name.localeCompare(right.name)),
+          })
+          // A message S1 reads as carrying restricted content is marked once its answer lands, however late; the marker
+          // only keeps it out of derived text and shows a notice, and nothing waits for it.
+          yield* intelligence.evaluate(request).pipe(
+            Effect.orElseSucceed(() => undefined),
+            Effect.tap((evaluation) =>
+              IntelligenceClassification.restricted(evaluation) === "flagged"
+                ? markRestricted(sessionID, user.id)
+                : Effect.void,
+            ),
+          )
+        }).pipe(
+          Effect.catchCause((cause) => Effect.logWarning("Prompt classification unavailable", { sessionID, cause })),
         ),
+        { onlyIfMissing: true },
       )
-      if (mode === "observe") {
-        observedClassifications.add(user.id)
-        return undefined
-      }
-      const settled = yield* Fiber.await(fiber).pipe(Effect.timeoutOption(CLASSIFICATION_WAIT))
-      return Option.isSome(settled) && Exit.isSuccess(settled.value) ? settled.value.value : undefined
+      if (mode === "observe") observedClassifications.add(user.id)
+      return undefined
     })
 
     const markRestricted = Effect.fn("SessionRunner.markRestricted")(function* (

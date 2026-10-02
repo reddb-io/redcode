@@ -1,5 +1,7 @@
 import { expect, test } from "bun:test"
 import { acceptance, campaign, markdown, pairs, score, summarize, type Run } from "../../script/reasoning-eval/report"
+import { evaluationsSettled } from "../../script/reasoning-eval/trace"
+import { evaluation } from "./fixtures"
 import {
   observedCost,
   observedModels,
@@ -75,6 +77,24 @@ test("failures remain in the denominator and unknown prices remain incomplete", 
   expect(summary.meanScore).toBe(1 / 3)
   expect(summary.costComplete).toBe(false)
   expect(summary.s2Tokens).toBe(300)
+})
+
+test("completed S2 cannot imply settled asynchronous S1 billing", () => {
+  expect(evaluationsSettled("single", [], undefined)).toBe(true)
+  expect(evaluationsSettled("dual", [evaluation({ operation: "response_quality" })], 0)).toBe(false)
+  expect(evaluationsSettled("dual", [evaluation({ operation: "prompt_classification" })], undefined)).toBe(true)
+  expect(
+    evaluationsSettled(
+      "dual",
+      [evaluation({ operation: "prompt_classification", decision: "unavailable" })],
+      undefined,
+    ),
+  ).toBe(true)
+  expect(evaluationsSettled("observe", [], 1)).toBe(false)
+  expect(evaluationsSettled("observe", [], 0)).toBe(true)
+  const runs = improvement({ advisoryWaitMs: 450 })
+  expect(summarize(runs)[1]).toMatchObject({ medianDurationMs: 100, medianAdvisoryWaitMs: 450 })
+  expect(markdown(runs, "coder", "jev", 2)).toContain("Median post-completion S1 collection ms")
 })
 
 test("separates improved, unnecessary, degraded and ineffective repairs", () => {

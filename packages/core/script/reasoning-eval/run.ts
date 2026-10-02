@@ -15,7 +15,7 @@ import { recover } from "./coding-snapshots"
 import { campaign, markdown, pairs, score, summarize, type Run } from "./report"
 import { proxy, type RequestMetric } from "./transport"
 import { cost, evaluatorEstimate } from "./accounting"
-import { trace } from "./trace"
+import { trace, evaluationsSettled } from "./trace"
 
 const args = parseArgs({
   options: {
@@ -425,6 +425,7 @@ try {
             await api(`/api/experimental/session/${session.data.id}/wait`, Json, "POST")
             const completed = await api(`/api/session/${session.data.id}`, Session)
             const messages = await api(`/api/session/${session.data.id}/message`, Messages)
+            const evaluationStarted = performance.now()
             const evaluationDeadline = performance.now() + 10_000
             const observed = await (async () => {
               while (true) {
@@ -436,7 +437,7 @@ try {
                   `/api/experimental/intelligence?sessionID=${session.data.id}`,
                   Intelligence.Status,
                 )
-                const settled = mode !== "observe" || status.observations?.pending === 0
+                const settled = evaluationsSettled(mode, values, status.observations?.pending)
                 if (
                   (settled &&
                     (mode === "single" ||
@@ -450,6 +451,7 @@ try {
               }
             })()
             const evaluations = observed.evaluations
+            const advisoryWaitMs = mode === "dual" ? performance.now() - evaluationStarted : 0
             const observationWaitMs = mode === "observe" ? performance.now() - started - durationMs : 0
             const budget = await api(`/api/session/${session.data.id}/budget`, Budget)
             const chronological = messages.data.toSorted(
@@ -578,7 +580,7 @@ try {
             const responseModels = [...new Set(requests.flatMap((request) => request.responseModels))]
             const evaluatorResponseModels = [...new Set(s1Requests.flatMap((request) => request.responseModels))]
             const validationErrors = [
-              ...(!observed.settled ? ["unsettled_observation"] : []),
+              ...(!observed.settled ? [mode === "observe" ? "unsettled_observation" : "unsettled_classification"] : []),
               ...(unsettledShell ? ["unsettled_shell"] : []),
               ...(budget.data.spent.tokens !== s1Tokens + s2Tokens ? ["budget_accounting"] : []),
               ...(mode === "single" && evaluations.length ? ["unexpected_s1"] : []),
@@ -649,6 +651,7 @@ try {
               responseVariants: [...new Set(assistants.map((message) => message.model?.variant ?? null))],
               durationMs,
               observationWaitMs,
+              advisoryWaitMs,
               sessionID: session.data.id,
               initialText: finals[0] ?? "",
               finalText: finals.at(-1) ?? "",
@@ -775,6 +778,10 @@ try {
               throw new Error("Campaign stopped: timed out or background work cannot be safely reused")
             if (mode === "observe" && result.outcome !== "succeeded")
               throw new Error("Campaign stopped: observation did not settle before the collection deadline")
+            if (!observed.settled)
+              throw new Error(
+                "Campaign stopped: asynchronous evaluations did not settle before the collection deadline",
+              )
           }
         }
       }

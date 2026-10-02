@@ -14,6 +14,7 @@ export interface Run {
   outcome: string
   durationMs: number
   observationWaitMs?: number
+  advisoryWaitMs?: number
   initial: ReturnType<typeof score>
   final: ReturnType<typeof score>
   repairs: number
@@ -89,6 +90,10 @@ export function summarize(runs: ReadonlyArray<Run>) {
       p95DurationMs: percentile(
         group.map((run) => run.durationMs),
         0.95,
+      ),
+      medianAdvisoryWaitMs: percentile(
+        group.map((run) => run.advisoryWaitMs ?? 0),
+        0.5,
       ),
       oracleRuns: group.filter((run) => run.oracleMs !== undefined).length,
       medianOracleMs: percentile(
@@ -266,6 +271,16 @@ export function markdown(
         `| ${group.mode} | ${group.reviews} | ${group.suspectedCodeDefects} | ${group.codeRepairAdmissions} | ${group.postRepairTestCalls} |`,
     ),
     "",
+    ...(runs.some((run) => run.advisoryWaitMs !== undefined)
+      ? [
+          "| Mode | Median post-completion S1 collection ms |",
+          "| --- | --- |",
+          ...summary.map((group) => `| ${group.mode} | ${Math.round(group.medianAdvisoryWaitMs)} |`),
+          "",
+          "S1 collection after Session completion is reported separately from S2 completion latency; it still contributes tokens and cost.",
+          "",
+        ]
+      : []),
     ...(grouped
       ? [
           "Aggregate figures below are descriptive; acceptance is evaluated independently for every planned model pair, experiment and split.",

@@ -586,6 +586,21 @@ export function context(evaluation: Intelligence.Evaluation | undefined) {
   ].join("\n")
 }
 
+/** Persisted classification steers the next request; it never interrupts a Physical Attempt. */
+export function steer(evaluation: Intelligence.Evaluation | undefined) {
+  if (!evaluation || evaluation.mode === "observe" || evaluation.decision === "unavailable") return undefined
+  const advice = [context(evaluation), skillContext(evaluation)].filter(Boolean)
+  if (!advice.length) return undefined
+  return [
+    "<system-one-steering>",
+    `Asynchronous S1 assessment ${evaluation.id} for user request ${evaluation.subjectID ?? "unknown"}.`,
+    "Apply relevant guidance to your next action. Check it against the user's request and work already completed; do not repeat completed work or discard valid results just because this assessment arrived later.",
+    ...advice,
+    "This advisory grants no permissions, changes no goal and adds no execution allowance. The latest user corrections and deterministic safeguards take priority.",
+    "</system-one-steering>",
+  ].join("\n")
+}
+
 /** S1 selects a check; S2 performs it. Jev cannot establish arithmetic correctness itself. */
 export function verification(evaluation: Intelligence.Evaluation | undefined) {
   const focus = choice(evaluation, "verification_focus")

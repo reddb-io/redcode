@@ -231,6 +231,16 @@ describe("IntelligenceClassification", () => {
     expect(context).toContain("ask the user before dependent work")
   })
 
+  test("asynchronous steering is advisory and excludes unavailable or observed decisions", () => {
+    const evaluation = record("accepted", { work_route: choice("investigation", 0.9, ["answer", "investigation"]) })
+    expect(IntelligenceClassification.steer(evaluation)).toContain("<system-one-steering>")
+    expect(IntelligenceClassification.steer(evaluation)).toContain("do not repeat completed work")
+    expect(IntelligenceClassification.steer(evaluation)).toContain("adds no execution allowance")
+    expect(IntelligenceClassification.steer(undefined)).toBeUndefined()
+    expect(IntelligenceClassification.steer(record("unavailable", {}))).toBeUndefined()
+    expect(IntelligenceClassification.steer({ ...evaluation, mode: "observe" })).toBeUndefined()
+  })
+
   test("exposes only reliable signals for effort selection", () => {
     const evaluation = record("accepted", {
       complexity: {

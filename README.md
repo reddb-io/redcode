@@ -148,6 +148,13 @@ to inspect the current models, the effective mode and recent evaluations. An una
 or rejected evaluation is shown as such, never as an approval. See [reasoning roles](docs/system-one.md).
 `/setup` remains an alias for `/dual`; `/reasoning` changes the mode for the current session.
 
+S1 prompt classification runs **in parallel with S2**, including gathering its sources.
+When it finishes, persisted advice steers subsequent Steps for the same user request.
+A newer user correction takes priority; an old assessment cannot steer that new request.
+Late feedback still contributes to session satisfaction without restarting completed work.
+Final response review and mandatory approval checks keep their existing policies.
+This removes the classifier's initial wait; speed and accuracy gains still need measurement.
+
 In dual mode, the **mood** indicator and S2 prompts use accumulated session feedback:
 **0/5 means low satisfaction; 5/5 means high satisfaction**. The prompt also includes
 the trend and reliable sample count, helping S2 revisit corrections and verify its work.

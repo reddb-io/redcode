@@ -58,6 +58,7 @@ import { SessionRunner } from "@opencode/core/session/runner/index"
 import { SessionRunnerLLM } from "@opencode/core/session/runner/llm"
 import { IntelligenceVerification } from "@opencode/core/intelligence/verification"
 import { IntelligenceCodeRepair } from "@opencode/core/intelligence/code-repair"
+import { Intelligence } from "@opencode/core/intelligence"
 import { SessionTaskFacts } from "@opencode/core/session/task-facts"
 import { SessionRunnerModel } from "@opencode/core/session/runner/model"
 import { SessionUsage } from "@opencode/core/session/usage"
@@ -113,6 +114,7 @@ import { permissionLayer } from "./lib/permission"
 import { agentHost, modelHost, host, noProviders } from "./plugin/host"
 import { CodeModeInstructions } from "@opencode/core/codemode/instructions"
 import { repeatedLines } from "./fixture/reasoning-observation"
+import { intelligenceServer } from "./fixture/intelligence-server"
 
 const emptyCodeMode = `\n\n${CodeModeInstructions.render({ total: 0, shown: 0, namespaces: [] })}`
 const checkpoint = (objective: string) =>
@@ -655,6 +657,47 @@ const scenario = (
       return yield* body(s)
     }),
   )
+
+const classificationFixture = Effect.fnUntraced(function* (mode: "dual" | "observe" = "dual") {
+  const intelligence = yield* Intelligence.Service
+  const fixture = yield* Effect.acquireRelease(Effect.sync(intelligenceServer), (fixture) =>
+    Effect.sync(() => {
+      fixture.release()
+      fixture.server.stop(true)
+    }),
+  )
+  yield* intelligence.save({
+    apiKey: "fixture-intelligence-key",
+    settings: {
+      enabled: true,
+      reasoning: mode,
+      onboarding: "completed",
+      principal: { providerID: Provider.ID.make("fake"), id: Model.ID.make("fake-model") },
+      evaluator: {
+        transport: "red-router",
+        baseURL: `${fixture.server.url}v1`,
+        model: "fixture-jev",
+        endpoint: "decisions",
+      },
+    },
+  })
+  return {
+    ...fixture,
+    intelligence,
+    classified: Effect.fnUntraced(function* (subjectID: string) {
+      for (let attempt = 0; attempt < 400; attempt++) {
+        const record = (yield* intelligence.history(sessionID, {
+          operation: "prompt_classification",
+          subjectID,
+          limit: 1,
+        }))[0]
+        if (record) return record
+        yield* Effect.promise(() => Bun.sleep(5))
+      }
+      throw new Error("Classification was not persisted")
+    }),
+  }
+})
 
 const reasoningObservations = () => {
   const messages: unknown[] = []
@@ -1548,6 +1591,107 @@ describe("SessionRunnerLLM", () => {
 
     expect(s.requests).toHaveLength(1)
     expect(yield* s.messages).toMatchObject([{ id: message.id, type: "user", text: "Run automatically" }])
+  })
+
+  scenario("starts S2 while S1 is held and steers only the next Step with persisted satisfaction", function* (s) {
+    const fixture = yield* classificationFixture()
+    const barrier = yield* s.blockTools()
+    yield* s.llm.push(
+      TestLLM.tool("inspect", "echo", { text: "inspect evidence" }),
+      TestLLM.text("Checked", "finished"),
+    )
+    const user = yield* s.admit("Inspect the evidence before deciding")
+    const run = yield* s.resume.pipe(Effect.forkChild)
+    yield* barrier.started
+    yield* Effect.promise(() => fixture.started)
+    expect(s.requests).toHaveLength(1)
+    expect(s.requests[0]?.system.map((part) => part.text).join("\n")).not.toContain("<system-one-steering>")
+    expect(
+      yield* fixture.intelligence.history(sessionID, { operation: "prompt_classification", subjectID: user.id }),
+    ).toEqual([])
+    fixture.release()
+    const classification = yield* fixture.classified(user.id)
+    expect(classification.answers).toMatchObject({ user_feedback: { choice: "corrects" }, frustration: { score: 3 } })
+    yield* barrier.release
+    yield* Fiber.join(run)
+    expect(s.requests).toHaveLength(2)
+    const system = s.requests[1]?.system.map((part) => part.text).join("\n") ?? ""
+    expect(system).toContain("<system-one-steering>")
+    expect(system).toContain(classification.id)
+    expect(system).toContain(user.id)
+    expect(system).toContain("work_route: investigation")
+    expect(system).toContain("<session-satisfaction>")
+    expect(system).toContain('"samples":1')
+    expect(fixture.requests.filter((request) => request.classification)).toHaveLength(1)
+    yield* s.resume
+    expect(s.requests).toHaveLength(2)
+    expect(fixture.requests.filter((request) => request.classification)).toHaveLength(1)
+  })
+
+  scenario("retains a superseded S1 result for telemetry without steering the new user request", function* (s) {
+    const fixture = yield* classificationFixture()
+    const barrier = yield* s.blockTools()
+    yield* s.llm.push(
+      TestLLM.tool("inspect-old", "echo", { text: "old evidence" }),
+      TestLLM.text("New direction", "finished"),
+    )
+    const first = yield* s.admit("Inspect the old direction")
+    const run = yield* s.resume.pipe(Effect.forkChild)
+    yield* barrier.started
+    yield* Effect.promise(() => fixture.started)
+    const next = yield* s.admit("Correction: follow this new direction instead")
+    fixture.release()
+    const classification = yield* fixture.classified(first.id)
+    yield* barrier.release
+    yield* Fiber.join(run)
+    expect(s.requests).toHaveLength(2)
+    const system = s.requests[1]?.system.map((part) => part.text).join("\n") ?? ""
+    expect(system).not.toContain(`Asynchronous S1 assessment ${classification.id}`)
+    expect(userTexts(s.requests[1])).toContain(next.text)
+    expect(
+      (yield* fixture.intelligence.history(sessionID, { operation: "prompt_classification", subjectID: first.id }))[0]
+        ?.answers.user_feedback,
+    ).toMatchObject({ choice: "corrects" })
+  })
+
+  scenario("late S1 classification persists after completion without waking another S2 Step", function* (s) {
+    const fixture = yield* classificationFixture()
+    yield* s.llm.push(TestLLM.text("Completed", "finished"))
+    const user = yield* s.runPrompt("Answer the current question")
+    yield* Effect.promise(() => fixture.started)
+    expect(s.requests).toHaveLength(1)
+    expect(
+      yield* fixture.intelligence.history(sessionID, { operation: "prompt_classification", subjectID: user.id }),
+    ).toEqual([])
+    fixture.release()
+    const classification = yield* fixture.classified(user.id)
+    expect(classification.mode).toBe("dual")
+    expect(classification.answers.user_feedback).toMatchObject({ choice: "corrects" })
+    yield* s.session.wait(sessionID)
+    expect(s.requests).toHaveLength(1)
+    expect(yield* s.inbox).toEqual([])
+  })
+
+  scenario("observation stays asynchronous and never steers S2 or supplies satisfaction", function* (s) {
+    const fixture = yield* classificationFixture("observe")
+    const barrier = yield* s.blockTools()
+    yield* s.llm.push(TestLLM.tool("inspect", "echo", { text: "evidence" }), TestLLM.text("Completed", "finished"))
+    const user = yield* s.admit("Inspect the evidence")
+    const run = yield* s.resume.pipe(Effect.forkChild)
+    yield* barrier.started
+    yield* Effect.promise(() => fixture.started)
+    fixture.release()
+    const classification = yield* fixture.classified(user.id)
+    expect(classification.mode).toBe("observe")
+    yield* barrier.release
+    yield* Fiber.join(run)
+    expect(s.requests).toHaveLength(2)
+    for (const request of s.requests) {
+      const system = request.system.map((part) => part.text).join("\n")
+      expect(system).not.toContain("<system-one-steering>")
+      expect(system).not.toContain("<session-satisfaction>")
+    }
+    expect(fixture.requests.filter((request) => request.classification)).toHaveLength(1)
   })
 
   for (const mode of ["dual", "single", "observe"] as const) {

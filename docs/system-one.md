@@ -65,6 +65,31 @@ identify its cause, and switching the router's public aliases cannot repair a fa
 in its upstream adapter. Live upstream credentials and forwarding still require a
 separate end-to-end check.
 
+## Asynchronous prompt classification
+
+Prompt classification gathers its sources and evaluates them in the background,
+alongside S2. The first logical Step no longer waits up to five seconds for S1.
+At subsequent Step boundaries, the runner reads the persisted classification for
+the latest delivered user message and the effective reasoning mode. In dual mode,
+reliable guidance enters a `<system-one-steering>` system block and can inform
+Router request guidance. It never changes a Physical Attempt already streaming.
+
+The advisory identifies its evaluation and user message. S2 checks it against the
+current request and completed work rather than repeating or discarding valid work.
+A newer delivered user message supersedes the old classification for steering.
+The old evaluation remains in history, including its feedback and frustration
+signals. Classification does not enqueue a synthetic prompt, wake idle execution,
+reset the agent's Step allowance or grant permissions.
+
+A result that arrives after Session completion still persists while the Location
+runtime remains alive, without starting another S2 Step. Shutdown may interrupt
+unfinished advisory work. Single mode does not classify; Observe records results
+asynchronously without injecting steering or satisfaction into S2. Final response
+review, goal checks and mandatory approval policies retain their existing behavior.
+
+This removes a known wait from execution. It does not yet establish lower end-to-end
+latency, better accuracy or compliance with the measured 2x cost criterion.
+
 ## Session satisfaction in S2 prompts
 
 Dual mode adds a `<session-satisfaction>` system block to each logical Step's S2
@@ -72,6 +97,10 @@ request, including retries and rebuilt requests. It folds the last 100 persisted
 evaluations with the same satisfaction calculation as the TUI: recent confident
 `user_feedback` and `frustration` classifications plus guard stops and recoveries.
 Observe evaluations are excluded. There is no extra model call or stored score.
+
+Background classifications contribute once persisted, including results that arrive
+after completion or are superseded for steering. The TUI continues using the same
+telemetry and scale. A pending classification contributes no invented sample.
 
 The integer score runs from **0 (low satisfaction) to 5 (high satisfaction)**.
 Fewer than three reliable classifications produces a null score and unknown stage

@@ -222,6 +222,15 @@ Run the same read-only tasks in fresh sessions with one fixed S2 model. Dual mod
 adds the configured S1 classifier and response gate; single mode omits them.
 The grading oracle uses deterministic fixture facts and does not use S1 verdicts.
 
+Prompt classification now runs beside S2. The harness waits up to ten seconds after
+Session completion to collect its persisted evaluation before starting another run.
+`advisoryWaitMs` reports this collection wait separately from `durationMs`, which
+measures execution completion. Late S1 tokens and cost still belong to that run.
+An unsettled classification invalidates the run and stops the campaign so pending
+requests cannot be attributed to the next run. Observe retains its separate pending
+evaluation check. Historical measurements predate this change and cannot demonstrate
+its impact; new paid collection requires a new allocation.
+
 ```sh
 bun run eval:reasoning \
   --binary /path/to/redcode \

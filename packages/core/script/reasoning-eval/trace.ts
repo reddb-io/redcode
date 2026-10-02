@@ -4,6 +4,17 @@ import { IntelligenceCodeRepair } from "../../src/intelligence/code-repair"
 import { IntelligenceResponse } from "../../src/intelligence/response"
 import { SessionTaskFacts } from "../../src/session/task-facts"
 
+/** A fresh benchmark Session has one classifier; its record also accounts for failed evaluations. */
+export function evaluationsSettled(
+  mode: Intelligence.Reasoning,
+  evaluations: ReadonlyArray<Intelligence.Evaluation>,
+  pendingObservations: number | undefined,
+) {
+  if (mode === "single") return true
+  if (mode === "observe") return pendingObservations === 0
+  return evaluations.some((evaluation) => evaluation.operation === "prompt_classification")
+}
+
 export function trace(
   messages: ReadonlyArray<SessionMessage.Info>,
   evaluations: ReadonlyArray<Intelligence.Evaluation>,
