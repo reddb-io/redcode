@@ -192,6 +192,10 @@ export function Session(props: {
   }
   const route = useRouteData("session")
   const sessionID = route.sessionID
+  let disposed = false
+  onCleanup(() => {
+    disposed = true
+  })
   const { navigate } = useRoute()
   const data = useData()
   const local = useLocal()
@@ -482,15 +486,16 @@ export function Session(props: {
   )
 
   createEffect(() => {
-    if (client.connection.status() !== "connected") return
+    if (route.type !== "session" || route.sessionID !== sessionID || client.connection.status() !== "connected")
+      return
     setSynced(false)
-    const sessionID = route.sessionID
     void (async () => {
       await Promise.all([
         data.session.sync(sessionID, { children: true }),
         data.session.permission.sync(sessionID).catch(() => undefined),
         data.session.form.sync(sessionID).catch(() => undefined),
       ])
+      if (disposed || route.type !== "session" || route.sessionID !== sessionID) return
       const info = data.session.get(sessionID)
       if (!info) {
         toast.show({
@@ -504,7 +509,7 @@ export function Session(props: {
       editor.reconnect(info.location.directory)
       setSynced(true)
     })().catch((error) => {
-      if (route.sessionID !== sessionID) return
+      if (disposed || route.type !== "session" || route.sessionID !== sessionID) return
       toast.show({
         message: errorMessage(error),
         variant: "error",

@@ -79,7 +79,7 @@ import { createPaneResize } from "./ui/pane-resize"
 import { PaneResizeHandle } from "./ui/pane-resize-handle"
 import { ThemeErrorToast } from "./component/theme-error-toast"
 import { createThemeSource, ThemeProvider, useTheme, useThemes } from "./context/theme"
-import { Home } from "./routes/home"
+import { createHomeSession, Home } from "./routes/home"
 import { PromptHistoryProvider } from "./prompt/history"
 import { FrecencyProvider } from "./prompt/frecency"
 import { PromptStashProvider } from "./prompt/stash"
@@ -735,6 +735,11 @@ function App() {
       setStartupPending(false)
       setStartupFresh(false)
     }
+  })
+
+  const home = createHomeSession({
+    pending: () => startupPending() || !plugins.ready(),
+    prompt: () => (startupFresh() ? startupPrompt : undefined),
   })
 
   const connected = useConnected()
@@ -1437,10 +1442,7 @@ function App() {
               </Show>
               <Switch>
                 <Match when={route.data.type === "home"}>
-                  {/* Match render callbacks isolate mount-time reads from the route's reactive selection. */}
-                  {(_home) => (
-                    <Home pending={startupPending()} prompt={startupFresh() ? startupPrompt : undefined} />
-                  )}
+                  <Home failed={home.failed()} onRetry={home.open} />
                 </Match>
                 <Match when={route.data.type === "session"}>
                   <Show when={route.data.type === "session" ? route.data.sessionID : undefined} keyed>
