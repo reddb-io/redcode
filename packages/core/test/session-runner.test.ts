@@ -1634,7 +1634,7 @@ describe("SessionRunnerLLM", () => {
     expect(yield* s.messages).toMatchObject([{ id: message.id, type: "user", text: "Run automatically" }])
   })
 
-  scenario("starts S2 while S1 is held and steers only the next Step with persisted satisfaction", function* (s) {
+  scenario("starts S2 while S1 is held and steers only the next Step with persisted friction telemetry", function* (s) {
     const fixture = yield* classificationFixture()
     const barrier = yield* s.blockTools()
     yield* s.llm.push(
@@ -1737,7 +1737,7 @@ describe("SessionRunnerLLM", () => {
   })
 
   for (const mode of ["dual", "single", "observe"] as const) {
-    scenario(`sends accumulated satisfaction only to dual S2 requests (${mode} session override)`, function* (s) {
+    scenario(`sends accumulated friction only to dual S2 requests (${mode} session override)`, function* (s) {
       yield* s.db
         .insert(KVTable)
         .values({
@@ -1807,7 +1807,8 @@ describe("SessionRunnerLLM", () => {
       const system = s.requests[0]!.system.map((part) => part.text).join("\n")
       expect(system.includes("<session-frustration>")).toBe(mode === "dual")
       if (mode !== "dual") return
-      expect(system).toContain('"score":5')
+      // Earlier confirmations keep the session cool; the later loop stop adds one unit on the 0..5 scale.
+      expect(system).toContain('"score":1')
       expect(system).toContain('"samples":3')
       expect(system).toContain('"stops":1')
       expect(userTexts(s.requests[0])).toContain("Continue the corrected approach")
