@@ -38,6 +38,7 @@ import { SessionModelRequest } from "../model-request.js"
 import { SessionSchema } from "../schema.js"
 import { ProviderFailure } from "../provider-failure.js"
 import { ReasoningObserver } from "../reasoning-observer.js"
+import { SessionOutputGuard } from "../output-guard.js"
 import { toSessionError } from "../to-session-error.js"
 import { SessionUsage } from "../usage.js"
 import { SessionRunnerModel } from "./model.js"
@@ -100,6 +101,7 @@ export const make = Effect.gen(function* () {
     // A router report left by an attempt that ended before its step did must not price this one.
     ProviderRouter.take(input.sessionID)
     const reasoning = ReasoningObserver.make()
+    const outputGuard = SessionOutputGuard.make(input.prepared.request.tools.map((tool) => tool.name))
     yield* Effect.addFinalizer(() =>
       Effect.suspend(() => {
         const observation = reasoning.finish().observation
@@ -192,6 +194,11 @@ export const make = Effect.gen(function* () {
           lastEventAt = yield* Clock.currentTimeMillis
           reasoning.observe(event)
           if (overflowFailure || publisher.hasProviderError()) return
+          const malformed = outputGuard.observe(event)
+          if (malformed)
+            return yield* new AIError({
+              reason: new InvalidProviderOutputError({ message: SessionOutputGuard.message(malformed) }),
+            })
           if (
             LLMEvent.is.providerError(event) &&
             isContextOverflowFailure(event) &&

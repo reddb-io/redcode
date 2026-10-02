@@ -1035,6 +1035,45 @@ function* verifyPartialFlushOnFailure(s: Scenario, kind: FragmentKind) {
   expect(s.requests).toHaveLength(1)
 }
 
+scenario(
+  "stops leaked GLM tool markup without executing it, retrying it or consuming its argument body",
+  function* (s) {
+    yield* s.admit("Create a prototype")
+    yield* s.llm.push(
+      TestLLM.stop(
+        LLMEvent.textStart({ id: "raw-tool" }),
+        LLMEvent.textDelta({ id: "raw-tool", text: "<tool_call>echo" }),
+        LLMEvent.textDelta({ id: "raw-tool", text: "<arg_key>text</arg_key><arg_value>" }),
+        LLMEvent.textDelta({ id: "raw-tool", text: "uncontrolled argument body ".repeat(10_000) }),
+        LLMEvent.textEnd({ id: "raw-tool" }),
+      ),
+    )
+    expect(yield* s.resume.pipe(Effect.flip)).toMatchObject({ reason: { _tag: "InvalidProviderOutput" } })
+    expect(s.requests).toHaveLength(1)
+    expect(yield* s.context).toMatchObject([
+      Expected.user("Create a prototype"),
+      Expected.assistant(
+        {
+          finish: "error",
+          error: { type: "provider.invalid-output", message: expect.stringContaining("raw tool-call markup") },
+        },
+        [{ type: "text", text: "<tool_call>echo" }],
+      ),
+    ])
+    yield* replaySessionProjection(sessionID)
+    expect(requireAssistant(yield* s.context).content).toEqual([{ type: "text", text: "<tool_call>echo" }])
+
+    yield* s.admit("Continue with a valid response")
+    yield* s.llm.push(TestLLM.text("Recovered", "valid-response"))
+    yield* s.resume
+    expect(s.requests).toHaveLength(2)
+    expect((yield* s.context).findLast((message) => message.type === "assistant")).toMatchObject({
+      finish: "stop",
+      content: [{ type: "text", text: "Recovered" }],
+    })
+  },
+)
+
 function* verifyPartialFlushOnInterruption(s: Scenario, kind: FragmentKind) {
   const prompt = `Interrupt after ${kind}`
   const fixture = fragmentFixture(kind, fragmentID(kind, "interrupted"), ["Partial"])
