@@ -141,6 +141,7 @@ const shellPluginSupervisor = makeLocationNode({
     Config.node,
     Environment.node,
     FileAccess.node,
+    Location.node,
     Permission.node,
     Session.node,
     Job.node,

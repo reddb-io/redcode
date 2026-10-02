@@ -15,7 +15,7 @@ describe("provider-reported request cost", () => {
   test.each([0, 0.125])("prefers reported USD %s while preserving token accounting", (cost) => {
     const usage = new Usage({ nonCachedInputTokens: 1_000, outputTokens: 100, reasoningTokens: 40, cost })
     expect(SessionUsage.record(usage, costs)).toEqual({
-      cost,
+      cost: Money.USD.make(cost),
       tokens: { input: 1_000, output: 60, reasoning: 40, cache: { read: 0, write: 0 } },
     })
   })

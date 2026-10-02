@@ -84,6 +84,8 @@ type ResourceTemplatePage = {
   nextCursor?: string
 }
 
+const decodeRequestMethod = Schema.decodeUnknownSync(Schema.Struct({ method: Schema.optionalKey(Schema.String) }))
+
 function resourceServer(
   input: {
     /** Serve 2026-07-28 only through createMcpHandler; the default is a sessionful legacy transport. */
@@ -1119,7 +1121,7 @@ for (const status of [429, 503]) {
       const server = yield* resourceServer({
         respond: async (request) => {
           if (request.method !== "POST") return
-          const body: { method?: string } = await request.clone().json()
+          const body = decodeRequestMethod(await request.clone().json())
           if (body.method !== "initialize") return
           attempts += 1
           return attempts <= 2 ? new Response(null, { status }) : undefined
@@ -1176,7 +1178,7 @@ for (const method of ["tools/list", "prompts/list", "resources/list", "resources
       const server = yield* resourceServer({
         respond: async (request) => {
           if (request.method !== "POST") return
-          const body: { method?: string } = await request.clone().json()
+          const body = decodeRequestMethod(await request.clone().json())
           if (body.method !== method) return
           attempts += 1
           return attempts <= 2 ? new Response(null, { status: 503 }) : undefined
@@ -1207,7 +1209,7 @@ testEffect(Layer.empty).live("keeps catalog retries within one timeout budget", 
     const server = yield* resourceServer({
       respond: async (request) => {
         if (request.method !== "POST") return
-        const body: { method?: string } = await request.clone().json()
+        const body = decodeRequestMethod(await request.clone().json())
         if (body.method !== "tools/list") return
         attempts += 1
         if (attempts === 2) await Effect.runPromise(Deferred.await(release))
@@ -1238,7 +1240,7 @@ for (const status of [401, 403, 501]) {
       const server = yield* resourceServer({
         respond: async (request) => {
           if (request.method !== "POST") return
-          const body: { method?: string } = await request.clone().json()
+          const body = decodeRequestMethod(await request.clone().json())
           if (body.method !== "tools/list") return
           attempts += 1
           return new Response(null, { status })
@@ -1261,7 +1263,7 @@ testEffect(Layer.empty).live("does not retry a transient remote MCP tool executi
     const server = yield* resourceServer({
       respond: async (request) => {
         if (request.method !== "POST") return
-        const body: { method?: string } = await request.clone().json()
+        const body = decodeRequestMethod(await request.clone().json())
         if (body.method !== "tools/call") return
         attempts += 1
         return new Response(null, { status: 503 })
@@ -1286,6 +1288,7 @@ for (const modern of [false, true]) {
         modern,
         respond: (request) => {
           if (request.method === "DELETE") terminated.push(request.headers.get("mcp-session-id"))
+          return undefined
         },
       })
       yield* Effect.scoped(
@@ -1346,6 +1349,7 @@ testEffect(Layer.empty).live("skips terminating an already expired legacy remote
     const server = yield* resourceServer({
       respond: (request) => {
         if (request.method === "DELETE") terminated += 1
+        return undefined
       },
     })
     yield* Effect.scoped(

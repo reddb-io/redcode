@@ -179,7 +179,11 @@ const make = Effect.gen(function* () {
     if (["openrouter", "cloudflare-ai-gateway", "vercel"].includes(input.evaluator.transport)) {
       // These transports do not expose a key-scoped decision list. The catalog supplies
       // compatible offerings; the selected connection must still pass its inference check.
-      const models = (yield* ModelsDev.bundled).flatMap((provider) =>
+      const models = (yield* ModelsDev.bundled.pipe(
+        Effect.mapError(
+          () => new IntelligenceEvaluation.Error({ message: "Invalid bundled System One model catalog" }),
+        ),
+      )).flatMap((provider) =>
         providerIntegrations(input.evaluator.transport).includes(provider.info.id)
           ? provider.models
               .filter(
