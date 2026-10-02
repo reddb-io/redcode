@@ -245,8 +245,8 @@ function SatisfactionIndicator(props: { context: Plugin.Context; sessionID?: str
           flexShrink={0}
           onMouseUp={() => props.context.keymap.dispatch("intelligence.status")}
         >
-          mood <span fg={tone(value().stage)}>{"▄".repeat(level() ?? 0)}</span>
-          <span fg={props.context.theme.text.muted}>{"▄".repeat(5 - (level() ?? 0))}</span> {level()}/5
+          mood <span style={{ fg: tone(value().stage) }}>{"▄".repeat(level() ?? 0)}</span>
+          <span style={{ fg: props.context.theme.text.muted }}>{"▄".repeat(5 - (level() ?? 0))}</span> {level()}/5
         </text>
       )}
     </Show>
