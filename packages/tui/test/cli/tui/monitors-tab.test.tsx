@@ -1,5 +1,5 @@
 /** @jsxImportSource @opentui/solid */
-import { ScrollBoxRenderable } from "@opentui/core"
+import { ScrollBoxRenderable, TextRenderable } from "@opentui/core"
 import { testRender } from "@opentui/solid"
 import { expect, test } from "bun:test"
 import type { MonitorPublicInfo, OpenCodeEvent } from "@opencode/client"
@@ -388,7 +388,8 @@ test.each([50, 120])("progress uses the existing bounded drawer at %i columns", 
     await view.app.renderOnce()
     const scroll = view.app.renderer.root.findDescendantById("composer-monitors-scroll")
     if (!(scroll instanceof ScrollBoxRenderable)) throw new Error("Missing monitor scroll")
-    const actions = view.app.renderer.root.findDescendantById("composer-actions")!
+    const actions = view.app.renderer.root.findDescendantById("composer-actions")
+    if (!(actions instanceof ScrollBoxRenderable)) throw new Error("Missing monitor actions")
     const actionsY = actions.y
     expect(scroll.height).toBe(5)
     expect(scroll.getChildren()[0]?.height).toBe(2)
@@ -396,7 +397,17 @@ test.each([50, 120])("progress uses the existing bounded drawer at %i columns", 
     expect(view.app.captureCharFrame()).toContain("2 checks · Waiting for readiness")
     expect(view.app.captureCharFrame()).not.toContain("\u001b")
     expect(view.app.captureCharFrame()).not.toContain("\u0000")
+    const labels = actions.getChildren().filter((node): node is TextRenderable => node instanceof TextRenderable)
+    expect(labels.map((node) => node.plainText.split(" ")[0])).toEqual(["evidence", "stop", "scroll", "refresh"])
+    // Narrow terminals scroll the single action row horizontally; reveal refresh before counting its visible label.
+    actions.scrollTo({ x: actions.scrollWidth, y: 0 })
+    await view.app.renderOnce()
     expect(view.app.captureCharFrame().match(/refresh/g)).toHaveLength(1)
+    const refresh = labels.find((node) => node.plainText.startsWith("refresh "))!
+    expect(refresh.y).toBe(actionsY)
+    expect(refresh.height).toBe(1)
+    expect(refresh.x).toBeGreaterThanOrEqual(actions.x)
+    expect(refresh.x + refresh.width).toBeLessThanOrEqual(actions.x + actions.width)
 
     view.dispatch("composer.monitor.evidence")
     await view.app.renderOnce()
