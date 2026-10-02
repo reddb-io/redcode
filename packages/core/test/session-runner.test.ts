@@ -1625,8 +1625,9 @@ describe("SessionRunnerLLM", () => {
     expect(system).toContain("<session-satisfaction>")
     expect(system).toContain('"samples":1')
     expect(fixture.requests.filter((request) => request.classification)).toHaveLength(1)
+    yield* s.llm.push(TestLLM.text("Resumed", "finished"))
     yield* s.resume
-    expect(s.requests).toHaveLength(2)
+    expect(s.requests).toHaveLength(3)
     expect(fixture.requests.filter((request) => request.classification)).toHaveLength(1)
   })
 
