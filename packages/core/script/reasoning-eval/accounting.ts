@@ -1,5 +1,5 @@
 import { Intelligence } from "@opencode/schema/intelligence"
-import { RequestMetric } from "./transport"
+import type { RequestMetric } from "./transport"
 
 /** Missing or partial charges stay unknown unless a complete successful run has explicit pricing. */
 export function cost(requests: readonly RequestMetric[], estimate?: number): number | undefined {

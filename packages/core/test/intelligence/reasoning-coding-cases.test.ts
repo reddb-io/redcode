@@ -45,7 +45,7 @@ describe("independent coding oracles", () => {
       expect(baseline.pass).toBe(false)
       expect(baseline.checks.some((check) => !check.pass)).toBe(true)
       expect(baseline.checks.find((check) => check.id === "module-load")?.pass).toBe(true)
-      expect(baseline.checks.map((check) => check.id)).toEqual(item.checkIDs)
+      expect(baseline.checks.map((check) => check.id)).toEqual([...item.checkIDs])
       expect(grade(item, before, before, baseline).failed).toContain("no_edit")
       expect(await snapshot(directory)).toEqual(before)
 
@@ -58,7 +58,7 @@ describe("independent coding oracles", () => {
       expect(reference.process.timedOut).toBe(false)
       expect(reference.format).toBe(true)
       expect(reference.checks.every((check) => check.pass)).toBe(true)
-      expect(reference.checks.map((check) => check.id)).toEqual(item.checkIDs)
+      expect(reference.checks.map((check) => check.id)).toEqual([...item.checkIDs])
       expect(grade(item, before, after, reference)).toEqual({
         pass: true,
         score: 1,

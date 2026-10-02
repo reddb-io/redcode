@@ -120,25 +120,25 @@ for (const tampering of ["modify-test", "delete-test", "new-file", "node-modules
   })
 }
 
-test("runs outside the candidate with only the fixture and PATH environment", async () => {
+test("runs outside the candidate with an explicitly isolated home environment", async () => {
   await using tmp = await tmpdir("reasoning-coding-env-")
   const directory = path.join(tmp.path, "candidate")
   await prepare(fixture, directory)
   const result = await verify(
     {
       ...fixture,
-      checkIDs: ["outside", "no-user-home", "path"],
+      checkIDs: ["outside", "isolated-home", "path"],
       oracle: `import path from "node:path"
 console.log(JSON.stringify({checks:[
   {id:"outside",pass:path.resolve(process.cwd()) !== path.resolve(process.env.REDCODE_EVAL_FIXTURE)},
-  {id:"no-user-home",pass:process.env.HOME === undefined && process.env.USERPROFILE === undefined},
+  {id:"isolated-home",pass:path.resolve(process.env.HOME) === process.cwd() && path.resolve(process.env.USERPROFILE) === process.cwd()},
   {id:"path",pass:typeof process.env.PATH === "string"},
 ]}))`,
     },
     directory,
     path.join(tmp.path, "hidden"),
   )
-  expect(result.pass).toBe(true)
+  expect(result).toMatchObject({ pass: true, failed: [] })
 })
 
 test("a successful oracle without an editable change still fails the final grade", async () => {
@@ -258,7 +258,7 @@ export function total(price: number, count: number, rate: number) {
   )
   const verification = await verify(fixture, directory, path.join(tmp.path, "hidden"))
   expect(verification).toMatchObject({ pass: true, score: 1, format: true, failed: [] })
-  expect(verification.checks.map((check) => check.id)).toEqual(fixture.checkIDs)
+  expect(verification.checks.map((check) => check.id)).toEqual([...fixture.checkIDs])
   expect(verification.process.stdoutBytes).toBeGreaterThan(Buffer.byteLength("candidate loaded\n"))
   expect(grade(fixture, before, await snapshot(directory), verification).pass).toBe(true)
 })

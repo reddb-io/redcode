@@ -1,7 +1,7 @@
 import { expect, test } from "bun:test"
 import { Intelligence } from "@opencode/schema/intelligence"
 import { cost, evaluatorEstimate } from "../../script/reasoning-eval/accounting"
-import { RequestMetric } from "../../script/reasoning-eval/transport"
+import type { RequestMetric } from "../../script/reasoning-eval/transport"
 
 function request(input: Partial<RequestMetric> = {}): RequestMetric {
   return {

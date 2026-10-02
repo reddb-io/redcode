@@ -94,7 +94,7 @@ export async function verify(
   const started = performance.now()
   const child = Bun.spawn([process.execPath, oracle], {
     cwd: oracles,
-    env: { PATH: process.env.PATH ?? "", REDCODE_EVAL_FIXTURE: fixture },
+    env: { PATH: process.env.PATH ?? "", HOME: oracles, USERPROFILE: oracles, REDCODE_EVAL_FIXTURE: fixture },
     stdin: "ignore",
     stdout: "pipe",
     stderr: "pipe",
