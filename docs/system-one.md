@@ -12,6 +12,34 @@ and checks the connections before saving. Cancelling setup leaves saved settings
 unchanged. A blank S1 API key reuses credentials when the selected connection supports it.
 Sources and candidates are sent to the selected evaluator in dual mode.
 
+The S2 connection picker offers **Use current connection and model** when the
+session's selected model and connection are still available. Choosing another
+connection continues to its model list. S1 always comes from its connection's catalog.
+Connection-test Retry resumes with the failed role; a successful S2 probe is retained.
+
+For RedRouter, the selected S1 model's `supported_endpoints` or the router's
+`systemone.endpoint` identifies `systemone` or `decisions`. Setup tests that endpoint
+and saves it with the evaluator, so subsequent evaluations use one route. Without
+endpoint metadata, setup tries `systemone`, and only a 404 or 405 permits trying
+`decisions`. Authentication, invalid-request and upstream failures do not trigger
+alias switching. HTTP status, response bytes and latency remain visible.
+An empty filtered model list also checks models advertised in `/v1/capabilities`.
+Routed JEV versions are recognized without a fixed list of version numbers.
+
+### RedRouter integration note
+
+`/v1/systemone` and `/v1/decisions` currently share the same RedRouter handler;
+switching between them cannot fix an upstream 502. The sibling router source and
+the installed 0.57.2 package configure the OpenRouter System One adapter with
+`https://openrouter.ai/api/v1/systemone`, while Redcode's direct OpenRouter adapter
+uses `/api/v1/decisions`. The router team should verify and correct that upstream
+target, test forwarding through both public aliases with a real eligible connection,
+and keep its scoped model catalog consistent with `systemone.models` and the
+advertised canonical endpoint. Listing a model establishes discoverability, not
+working credentials or a successful evaluation. This code finding is not a confirmed
+diagnosis of the screenshot's 502; its remote response and serving version still
+need verification.
+
 ## Session satisfaction in S2 prompts
 
 Dual mode adds a `<session-satisfaction>` system block to each logical Step's S2

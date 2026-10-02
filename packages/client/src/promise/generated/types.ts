@@ -824,20 +824,7 @@ export type IntelligenceLearningCandidate = {
 
 export type IntelligenceReasoning = "single" | "dual" | "observe"
 
-export type IntelligenceEvaluator = {
-  transport:
-    | "opencode-zen"
-    | "openrouter"
-    | "typesafe"
-    | "red-router"
-    | "cloudflare-ai-gateway"
-    | "vercel"
-    | "vivgrid"
-    | "nano-gpt"
-  baseURL: string
-  model: string
-  credentialID?: string
-}
+export type IntelligenceDecisionEndpoint = "systemone" | "decisions"
 
 export type IntelligenceAnswer =
   | { type: "noul"; noul: number }
@@ -877,7 +864,15 @@ export type RouterRecommendation = {
   reason: string
 }
 
-export type IntelligenceModels = { models: Array<{ id: string; name: string }>; manual: boolean }
+export type ConnectionCheckRequest1 = {
+  url: string
+  method: string
+  status?: number | null
+  durationMs: number | "Infinity" | "-Infinity" | "NaN"
+  bytes: number
+  models?: number | null
+  failure?: "timeout" | "network" | "body" | null
+}
 
 export type SessionMessageLocationSwitched = {
   id: string
@@ -2072,8 +2067,6 @@ export type GenerateTextResponse = { data: { text: string; requests?: Array<Conn
 
 export type ConnectionCheckReport = { ok: boolean; message: string; requests: Array<ConnectionCheckRequest> }
 
-export type IntelligenceCheck = { ok: boolean; message: string; requests?: Array<ConnectionCheckRequest> | undefined }
-
 export type RouterConnection = {
   kind: "red-router" | "9router"
   instanceID?: string
@@ -2294,6 +2287,27 @@ export type HookStatus = { trust: HookTrust; definitions: Array<HookDefinition> 
 
 export type IntelligenceArtifact = IntelligenceCuration | IntelligenceLearningCandidate
 
+export type IntelligenceEvaluator = {
+  transport:
+    | "opencode-zen"
+    | "openrouter"
+    | "typesafe"
+    | "red-router"
+    | "cloudflare-ai-gateway"
+    | "vercel"
+    | "vivgrid"
+    | "nano-gpt"
+  baseURL: string
+  model: string
+  credentialID?: string
+  endpoint?: IntelligenceDecisionEndpoint
+}
+
+export type IntelligenceModels = {
+  models: Array<{ id: string; name: string; endpoint?: IntelligenceDecisionEndpoint }>
+  manual: boolean
+}
+
 export type IntelligenceEvaluation = {
   id: string
   fingerprint: string
@@ -2346,8 +2360,6 @@ export type IntelligenceEvaluation = {
   usage: { input_tokens: number; output_tokens: number; cost?: number; unpriced?: number }
 }
 
-export type IntelligenceEvaluatorOption = { name: string; configured: boolean; evaluator: IntelligenceEvaluator }
-
 export type RouterDetection = {
   kind: RouterKind
   version?: string
@@ -2363,6 +2375,13 @@ export type RouterRecommendations = {
   review?: RouterRecommendation
   systemone?: RouterRecommendation
   vision?: RouterRecommendation
+}
+
+export type IntelligenceCheck = {
+  ok: boolean
+  message: string
+  endpoint?: IntelligenceDecisionEndpoint
+  requests?: Array<ConnectionCheckRequest1> | null
 }
 
 export type SessionInboxMove = {
@@ -2633,6 +2652,8 @@ export type ReferenceInfo = {
   hidden?: boolean
   source: ReferenceSource
 }
+
+export type IntelligenceEvaluatorOption = { name: string; configured: boolean; evaluator: IntelligenceEvaluator }
 
 export type IntelligenceDetectedRouter = {
   providerID: string
@@ -10426,6 +10447,7 @@ export type ServerIntelligenceSaveInput = {
         readonly baseURL: string
         readonly model: string
         readonly credentialID?: string
+        readonly endpoint?: "systemone" | "decisions"
       }
     }
     readonly apiKey?: string
@@ -10464,6 +10486,7 @@ export type ServerIntelligenceSaveInput = {
         readonly baseURL: string
         readonly model: string
         readonly credentialID?: string
+        readonly endpoint?: "systemone" | "decisions"
       }
     }
     readonly apiKey?: string
@@ -10487,6 +10510,7 @@ export type ServerIntelligenceDiscoverInput = {
       readonly baseURL: string
       readonly model: string
       readonly credentialID?: string
+      readonly endpoint?: "systemone" | "decisions"
     }
     readonly apiKey?: string
   }["evaluator"]
@@ -10504,6 +10528,7 @@ export type ServerIntelligenceDiscoverInput = {
       readonly baseURL: string
       readonly model: string
       readonly credentialID?: string
+      readonly endpoint?: "systemone" | "decisions"
     }
     readonly apiKey?: string
   }["apiKey"]
@@ -10526,6 +10551,7 @@ export type ServerIntelligenceProbeInput = {
       readonly baseURL: string
       readonly model: string
       readonly credentialID?: string
+      readonly endpoint?: "systemone" | "decisions"
     }
     readonly apiKey?: string
   }["evaluator"]
@@ -10543,6 +10569,7 @@ export type ServerIntelligenceProbeInput = {
       readonly baseURL: string
       readonly model: string
       readonly credentialID?: string
+      readonly endpoint?: "systemone" | "decisions"
     }
     readonly apiKey?: string
   }["apiKey"]

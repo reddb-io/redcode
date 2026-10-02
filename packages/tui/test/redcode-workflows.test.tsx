@@ -148,10 +148,13 @@ test("/hooks requires confirmation before trusting or importing project commands
 })
 
 for (const width of [80, 140]) {
-  test(`/dual always chooses a connection then a catalog model for S2 and S1 at ${width} columns`, async () => {
+  test(`/dual selects or reuses S2 and retries only S1 at ${width} columns`, async () => {
     await using state = await tmpdir()
     const location = { directory, project: { id: "project", directory, canonical: directory } }
     const discoveries: unknown[] = []
+    const probes: unknown[] = []
+    const generated: unknown[] = []
+    const saves: unknown[] = []
     const evaluator = {
       transport: "red-router",
       baseURL: "http://router.local/v1",
@@ -191,6 +194,11 @@ for (const width of [80, 140]) {
               },
             ],
           })
+        if (url.pathname === "/api/experimental/intelligence" && request.method === "PUT") {
+          const body = await request.json()
+          saves.push(body)
+          return json(body.settings)
+        }
         if (url.pathname === "/api/experimental/intelligence")
           return json({
             settings: {
@@ -206,7 +214,44 @@ for (const width of [80, 140]) {
           })
         if (url.pathname === "/api/experimental/intelligence/models") {
           discoveries.push(await request.json())
-          return json({ models: [{ id: "native-decision", name: "Native decision" }], manual: false })
+          return json({
+            models: [{ id: "native-decision", name: "Native decision", endpoint: "decisions" }],
+            manual: false,
+          })
+        }
+        if (url.pathname === "/api/experimental/generate") {
+          generated.push(await request.json())
+          return json({
+            data: {
+              text: "OK",
+              requests: [
+                {
+                  url: "http://router.local/v1/chat/completions",
+                  method: "POST",
+                  status: 200,
+                  durationMs: 10,
+                  bytes: 100,
+                },
+              ],
+            },
+          })
+        }
+        if (url.pathname === "/api/experimental/intelligence/probe") {
+          probes.push(await request.json())
+          return json({
+            ok: probes.length > 1,
+            endpoint: "decisions",
+            message: probes.length > 1 ? "Connection checked" : "System One HTTP 502",
+            requests: [
+              {
+                url: "http://router.local/v1/decisions",
+                method: "POST",
+                status: probes.length > 1 ? 200 : 502,
+                durationMs: 10,
+                bytes: 98,
+              },
+            ],
+          })
         }
       },
     })
@@ -219,9 +264,13 @@ for (const width of [80, 140]) {
     await setup.waitForFrame((frame) => frame.includes("S2 principal · connection") && frame.includes("Work account"))
     expect(setup.captureCharFrame()).not.toContain("Keep Generator")
     expect(setup.captureCharFrame()).not.toContain("Continue with current")
+    expect(setup.captureCharFrame()).toContain("Use current connection and model")
+    if (width === 80) setup.mockInput.pressArrow("down")
     setup.mockInput.pressEnter()
-    await setup.waitForFrame((frame) => frame.includes("S2 principal · model") && frame.includes("Generator"))
-    setup.mockInput.pressEnter()
+    if (width === 80) {
+      await setup.waitForFrame((frame) => frame.includes("S2 principal · model") && frame.includes("Generator"))
+      setup.mockInput.pressEnter()
+    }
     await setup.waitForFrame((frame) => frame.includes("S1 evaluator · connection") && frame.includes("Router account"))
     setup.mockInput.pressEnter()
     await setup.waitForFrame((frame) => frame.includes("S1 evaluator · model") && frame.includes("Native decision"))
@@ -234,7 +283,28 @@ for (const width of [80, 140]) {
     await setup.waitForFrame(
       (frame) => frame.includes("Test and save reasoning roles") && frame.includes("native-decision"),
     )
-    setup.mockInput.pressEscape()
+    setup.mockInput.pressEnter()
+    await setup.waitForFrame((frame) => frame.includes("S1 evaluator connection failed") && frame.includes("HTTP 502"))
+    setup.mockInput.pressEnter()
+    await setup.waitForFrame((frame) => frame.includes("Connection test results"))
+    setup.mockInput.pressEnter()
+    await setup.waitForFrame(() => saves.length === 1)
+    expect(generated).toHaveLength(1)
+    expect(probes).toHaveLength(2)
+    expect(probes).toEqual([
+      { evaluator: { ...evaluator, model: "native-decision", endpoint: "decisions" } },
+      { evaluator: { ...evaluator, model: "native-decision", endpoint: "decisions" } },
+    ])
+    expect(saves[0]).toMatchObject({
+      settings: {
+        principal: {
+          providerID: "provider",
+          id: "generator",
+          connection: { type: "credential", id: "cred_generator" },
+        },
+        evaluator: { ...evaluator, model: "native-decision", endpoint: "decisions" },
+      },
+    })
   })
 }
 
@@ -364,6 +434,7 @@ test("an empty S1 catalog offers refresh and another connection instead of model
   await setup.waitForFrame((frame) => frame.includes("Reasoning mode"))
   setup.mockInput.pressEnter()
   await setup.waitForFrame((frame) => frame.includes("S2 principal · connection"))
+  if (setup.captureCharFrame().includes("Use current connection and model")) setup.mockInput.pressArrow("down")
   setup.mockInput.pressEnter()
   await setup.waitForFrame((frame) => frame.includes("S2 principal · model"))
   setup.mockInput.pressEnter()

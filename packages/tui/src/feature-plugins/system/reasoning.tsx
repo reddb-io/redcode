@@ -22,19 +22,26 @@ export default Plugin.define({
         const setup = () => {
           if (busy()) return
           setBusy(true)
-          void configureReasoning(context, (settings) => {
-            void local.model.refreshDefault()
-            if (settings.principal)
-              local.model.set(
-                {
-                  providerID: settings.principal.providerID,
-                  modelID: settings.principal.id,
-                  connection: settings.principal.connection,
-                },
-                { recent: true },
-              )
-            void refetch()
-          })
+          const current = local.model.current()
+          void configureReasoning(
+            context,
+            (settings) => {
+              void local.model.refreshDefault()
+              if (settings.principal)
+                local.model.set(
+                  {
+                    providerID: settings.principal.providerID,
+                    modelID: settings.principal.id,
+                    connection: settings.principal.connection,
+                  },
+                  { recent: true },
+                )
+              void refetch()
+            },
+            current
+              ? { current: { providerID: current.providerID, id: current.modelID, connection: current.connection } }
+              : undefined,
+          )
             .catch((error) => context.ui.toast.show({ variant: "error", message: errorMessage(error), duration: 7000 }))
             .finally(() => setBusy(false))
         }

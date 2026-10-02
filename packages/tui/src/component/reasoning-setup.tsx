@@ -12,7 +12,11 @@ type SelectedModel = ModelInfo & { connection?: NonNullable<IntelligenceSettings
 export async function configureReasoning(
   context: Plugin.Context,
   saved: (settings: IntelligenceSettings) => void,
-  resume?: { reasoning: "single" | "dual" | "observe"; principal?: IntelligenceSettings["principal"] },
+  resume?: {
+    reasoning?: "single" | "dual" | "observe"
+    principal?: IntelligenceSettings["principal"]
+    current?: IntelligenceSettings["principal"]
+  },
 ) {
   const api = context.client["server.intelligence"]
   const status = await api.status()
@@ -67,9 +71,10 @@ export async function configureReasoning(
       models,
       providers,
       current: status.settings.principal,
+      reuse: resume?.current,
       recommended: status.router?.recommended?.default?.id,
       router: status.router?.providerID,
-      onConnect: () => configureReasoning(context, saved, { reasoning }),
+      onConnect: () => configureReasoning(context, saved, { reasoning, current: resume?.current }),
     }))
   if (!selected) return
   const principal = JSON.stringify([selected.providerID, selected.id, selected.connection])
@@ -161,6 +166,7 @@ export async function configureReasoning(
             role: `S1 evaluator ${evaluator.evaluator.transport}/${evaluator.evaluator.model}`,
             run: () =>
               api.probe(evaluator, { signal: AbortSignal.timeout(30_000) }).then((check) => {
+                if (check.endpoint) evaluator.evaluator = { ...evaluator.evaluator, endpoint: check.endpoint }
                 if (!check.ok) throw Object.assign(new Error(check.message), { requests: check.requests })
                 return check.requests ?? []
               }),
@@ -199,6 +205,7 @@ async function chooseModel(
     models: ModelInfo[]
     providers: ProviderInfo[]
     current?: IntelligenceSettings["principal"]
+    reuse?: IntelligenceSettings["principal"]
     recommended?: string
     router?: string
     onConnect: () => Promise<void>
@@ -223,24 +230,52 @@ async function chooseModel(
     )
   })
   const selectable = connections
+  const reuse = input.models.find(
+    (model) => model.providerID === input.reuse?.providerID && model.id === input.reuse.id,
+  )
+  const reuseConnection = reuse
+    ? selectable.find(
+        (item) =>
+          item.id === reuse.providerID &&
+          (input.reuse?.connection
+            ? item.connection.type === input.reuse.connection.type &&
+              (item.connection.type === "credential" && input.reuse.connection.type === "credential"
+                ? item.connection.id === input.reuse.connection.id
+                : item.connection.type === "env" &&
+                  input.reuse.connection.type === "env" &&
+                  item.connection.name === input.reuse.connection.name)
+            : item.active),
+      )
+    : undefined
   const selected = await context.ui.dialog.select({
     title: `${input.role} · connection`,
-    current: Math.max(
-      0,
-      selectable.findIndex(
-        (item) =>
-          item.id === (current?.providerID ?? input.router) &&
-          (input.current?.connection
-            ? item.connection.type === input.current.connection.type &&
-              (item.connection.type === "credential" && input.current.connection.type === "credential"
-                ? item.connection.id === input.current.connection.id
-                : item.connection.type === "env" &&
-                  input.current.connection.type === "env" &&
-                  item.connection.name === input.current.connection.name)
-            : item.active),
-      ),
-    ),
+    current: reuseConnection
+      ? -2
+      : Math.max(
+          0,
+          selectable.findIndex(
+            (item) =>
+              item.id === (current?.providerID ?? input.router) &&
+              (input.current?.connection
+                ? item.connection.type === input.current.connection.type &&
+                  (item.connection.type === "credential" && input.current.connection.type === "credential"
+                    ? item.connection.id === input.current.connection.id
+                    : item.connection.type === "env" &&
+                      input.current.connection.type === "env" &&
+                      item.connection.name === input.current.connection.name)
+                : item.active),
+          ),
+        ),
     options: [
+      ...(reuse && reuseConnection
+        ? [
+            {
+              value: -2,
+              title: "Use current connection and model",
+              description: `${modelLabel(reuse, input.providers)} · ${reuseConnection.connection.type === "credential" ? reuseConnection.connection.label : reuseConnection.connection.name}`,
+            },
+          ]
+        : []),
       ...selectable.map((item, index) => ({
         value: index,
         title: item.connection.type === "credential" ? item.connection.label : item.connection.name,
@@ -257,6 +292,15 @@ async function chooseModel(
     ],
   })
   if (selected === undefined) return
+  if (selected === -2 && reuse && reuseConnection)
+    return {
+      ...reuse,
+      connection:
+        input.reuse?.connection ??
+        (reuseConnection.connection.type === "credential"
+          ? { type: "credential", id: reuseConnection.connection.id }
+          : { type: "env", name: reuseConnection.connection.name }),
+    }
   if (selected === -1) {
     context.ui.dialog.show(() => (
       <DialogIntegration
@@ -448,18 +492,26 @@ async function chooseEvaluator(
       })),
   })
   if (!model) return
-  return { evaluator: { ...chosen.evaluator, model }, apiKey: undefined }
+  return {
+    evaluator: {
+      ...chosen.evaluator,
+      model,
+      endpoint: discovered.models.find((item) => item.id === model)?.endpoint ?? chosen.evaluator.endpoint,
+    },
+    apiKey: undefined,
+  }
 }
 
-// Checks each role in order; a failure names the role and the reason and offers Retry, which reruns every check.
+// Retry resumes at the failed role; successful checks do not make another paid probe.
 async function checkConnections(
   context: Plugin.Context,
   checks: { role: string; run: () => Promise<readonly ConnectionCheck.Request[]> }[],
+  completed: string[] = [],
+  start = 0,
 ): Promise<boolean> {
   context.ui.toast.show({ variant: "info", message: "Checking reasoning connections…" })
-  const completed: string[] = []
   const failed = await firstConnectionFailure(
-    checks.map((check) => ({
+    checks.slice(start).map((check) => ({
       role: check.role,
       run: () =>
         check
@@ -484,12 +536,17 @@ async function checkConnections(
       })) === true
     )
   const retry = await context.ui.dialog.confirm({
-    title: `${failed.role} failed`,
-    message: `${completed.length ? `${completed.join("\n\n")}\n\n` : ""}${failureReason(failed.failure)}${failed.failure.detail ? `\n${failed.failure.detail}` : ""}\nYour saved roles are unchanged.`,
+    title: `${failed.role.startsWith("S1") ? "S1 evaluator" : failed.role.startsWith("S2 principal") ? "S2 principal" : "S2 transformations"} connection failed`,
+    message: `${completed.length ? `${completed.join("\n\n")}\n\n` : ""}${failed.role}\n${failureReason(failed.failure)}${failed.failure.detail ? `\n${failed.failure.detail}` : ""}\nYour saved roles are unchanged.`,
     label: { confirm: "Retry", cancel: "Cancel" },
   })
   if (!retry) return false
-  return checkConnections(context, checks)
+  return checkConnections(
+    context,
+    checks,
+    completed,
+    checks.findIndex((check) => check.role === failed.role),
+  )
 }
 
 function failureReason(failure: ConnectionFailure) {

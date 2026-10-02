@@ -125,6 +125,7 @@ export default Runtime.handler(Commands.commands.setup, (input) =>
       )
       log.info(ConnectionCheck.describe(check.requests ?? []))
       if (!check.ok) return yield* Effect.fail(new Error(check.message))
+      if (check.endpoint) evaluator.evaluator = { ...evaluator.evaluator, endpoint: check.endpoint }
     }
     const saved = yield* request((signal) =>
       client["server.intelligence"].save(
@@ -324,6 +325,13 @@ const configureEvaluator: (
       }),
     )
     log.info("Sources and candidates will be sent to the selected System One evaluator")
-    return { evaluator: { ...evaluator, model }, key: undefined }
+    return {
+      evaluator: {
+        ...evaluator,
+        model,
+        endpoint: discovered.models.find((item) => item.id === model)?.endpoint ?? evaluator.endpoint,
+      },
+      key: undefined,
+    }
   },
 )

@@ -119,12 +119,14 @@ const make = Effect.gen(function* () {
     const vercel = evaluator.transport === "vercel" && body !== undefined
     const openrouter = evaluator.transport === "openrouter" && body !== undefined
     const cloudflare = evaluator.transport === "cloudflare-ai-gateway" && body !== undefined
+    const endpoint =
+      evaluator.transport === "red-router" && suffix === "systemone" ? (evaluator.endpoint ?? suffix) : suffix
     return yield* Effect.tryPromise({
       try: async (signal) => {
         const response = await RemoteCheck.request(
           cloudflare
             ? `${url.href.replace(/\/$/, "")}/accounts/${accountID}/ai/run`
-            : `${url.href.replace(/\/$/, "")}/${vercel ? "evaluation-model" : openrouter ? "decisions" : suffix}`,
+            : `${url.href.replace(/\/$/, "")}/${vercel ? "evaluation-model" : openrouter ? "decisions" : endpoint}`,
           {
             method: body === undefined ? "GET" : "POST",
             redirect: "error",
@@ -217,33 +219,68 @@ const make = Effect.gen(function* () {
     )(dedicated.response).pipe(
       Effect.mapError(() => new IntelligenceEvaluation.Error({ message: "Invalid System One model catalog" })),
     )
-    if (router)
+    if (router) {
+      const models = (catalog.data ?? [])
+        .filter(
+          (model) =>
+            dedicated.dedicated ||
+            model.capabilities?.decision === true ||
+            model.type === "systemone" ||
+            model.type === "decision" ||
+            model.supported_endpoints?.some((endpoint) => /(^|\/)(systemone|decisions)$/.test(endpoint)) ||
+            IntelligenceEvaluation.isJev(model.id),
+        )
+        .filter((model, index, models) => models.findIndex((item) => item.id === model.id) === index)
+        .map((model) => {
+          const route = Router.route(model.id)
+          return {
+            id: model.id,
+            ...(model.supported_endpoints?.some((endpoint) => /(^|\/)decisions$/.test(endpoint))
+              ? { endpoint: "decisions" as const }
+              : model.supported_endpoints?.some((endpoint) => /(^|\/)systemone$/.test(endpoint))
+                ? { endpoint: "systemone" as const }
+                : input.evaluator.endpoint
+                  ? { endpoint: input.evaluator.endpoint }
+                  : {}),
+            name: Router.routeName({
+              routers: ["RedRouter", ...route.hops.map(Router.hopName)],
+              upstream: (typeof model.provider === "string" ? model.provider : model.provider?.name) ?? route.provider,
+              model: model.name ?? route.model,
+            }),
+          }
+        })
+      if (models.length) return { models, manual: false }
+      // A router may advertise decision models through capabilities while its filtered catalog is empty.
+      const capabilities = yield* request(input.evaluator, "capabilities", undefined, input.apiKey, requests).pipe(
+        Effect.catch((error) =>
+          [404, 405].includes(error.status ?? 0) ? Effect.succeed(undefined) : Effect.fail(error),
+        ),
+      )
+      const advertised = yield* Schema.decodeUnknownEffect(
+        Schema.Struct({
+          systemone: Schema.optional(
+            Schema.Struct({
+              models: Schema.Array(Schema.String),
+              endpoint: Schema.optional(Schema.String),
+            }),
+          ),
+        }),
+      )(capabilities ?? {}).pipe(
+        Effect.mapError(() => new IntelligenceEvaluation.Error({ message: "Invalid System One capabilities" })),
+      )
       return {
-        models: (catalog.data ?? [])
-          .filter(
-            (model) =>
-              dedicated.dedicated ||
-              model.capabilities?.decision === true ||
-              model.type === "systemone" ||
-              model.type === "decision" ||
-              model.supported_endpoints?.some((endpoint) => /(^|\/)(systemone|decisions)$/.test(endpoint)) ||
-              IntelligenceEvaluation.isJev(model.id),
-          )
-          .filter((model, index, models) => models.findIndex((item) => item.id === model.id) === index)
-          .map((model) => {
-            const route = Router.route(model.id)
-            return {
-              id: model.id,
-              name: Router.routeName({
-                routers: ["RedRouter", ...route.hops.map(Router.hopName)],
-                upstream:
-                  (typeof model.provider === "string" ? model.provider : model.provider?.name) ?? route.provider,
-                model: model.name ?? route.model,
-              }),
-            }
-          }),
+        models: (advertised.systemone?.models ?? []).map((id) => ({
+          id,
+          name: id,
+          ...(advertised.systemone?.endpoint === "/v1/decisions"
+            ? { endpoint: "decisions" as const }
+            : advertised.systemone?.endpoint === "/v1/systemone"
+              ? { endpoint: "systemone" as const }
+              : {}),
+        })),
         manual: false,
       }
+    }
     return {
       models: [
         ...(catalog.data ?? []).map((model) => ({
@@ -275,18 +312,27 @@ const make = Effect.gen(function* () {
           requests,
         }
     }
-    const result = yield* request(
-      input.evaluator,
-      "systemone",
-      {
-        model: input.evaluator.model,
-        state: "The sky is blue.",
-        questions: { check: { type: "noul", instructions: "Does the text explicitly say the sky is blue?" } },
-      },
-      input.apiKey,
-      requests,
-    ).pipe(
-      Effect.flatMap(Schema.decodeUnknownEffect(Intelligence.Response)),
+    const body = {
+      model: input.evaluator.model,
+      state: "The sky is blue.",
+      questions: { check: { type: "noul", instructions: "Does the text explicitly say the sky is blue?" } },
+    }
+    const result = yield* request(input.evaluator, "systemone", body, input.apiKey, requests).pipe(
+      Effect.map((response) => ({ response, endpoint: input.evaluator.endpoint ?? ("systemone" as const) })),
+      Effect.catch((error) =>
+        input.evaluator.transport === "red-router" &&
+        !input.evaluator.endpoint &&
+        [404, 405].includes(error.status ?? 0)
+          ? request({ ...input.evaluator, endpoint: "decisions" }, "systemone", body, input.apiKey, requests).pipe(
+              Effect.map((response) => ({ response, endpoint: "decisions" as const })),
+            )
+          : Effect.fail(error),
+      ),
+      Effect.flatMap((value) =>
+        Schema.decodeUnknownEffect(Intelligence.Response)(value.response).pipe(
+          Effect.map((response) => ({ response, endpoint: value.endpoint })),
+        ),
+      ),
       Effect.match({
         onFailure: (left) => ({ _tag: "Left" as const, left }),
         onSuccess: (right) => ({ _tag: "Right" as const, right }),
@@ -296,16 +342,31 @@ const make = Effect.gen(function* () {
       return {
         ok: false,
         message: result.left instanceof Error ? result.left.message : "Invalid System One response",
+        ...(input.evaluator.transport === "red-router" &&
+        requests.at(-1)?.status &&
+        ![404, 405].includes(requests.at(-1)!.status!)
+          ? { endpoint: requests.at(-1)!.url.endsWith("/decisions") ? ("decisions" as const) : ("systemone" as const) }
+          : {}),
         requests,
       }
     return {
-      ok: result.right.answers.check?.type === "noul",
-      message: result.right.answers.check?.type === "noul" ? "Connection checked" : "Invalid System One response",
+      ok: result.right.response.answers.check?.type === "noul",
+      message:
+        result.right.response.answers.check?.type === "noul" ? "Connection checked" : "Invalid System One response",
+      ...(input.evaluator.transport === "red-router" ? { endpoint: result.right.endpoint } : {}),
       requests,
     }
   })
 
-  return { request, discover, probe, connection, options }
+  return {
+    request,
+    discover: (input: Intelligence.Probe, requests?: ConnectionCheck.Request[]) =>
+      discover(input, requests).pipe(Effect.map((catalog): Intelligence.Models => catalog)),
+    probe: (input: Intelligence.Probe) =>
+      probe(input).pipe(Effect.map((check): Intelligence.Check & { requests: ConnectionCheck.Request[] } => check)),
+    connection,
+    options,
+  }
 })
 
 export class Service extends Context.Service<Service, Effect.Success<typeof make>>()(

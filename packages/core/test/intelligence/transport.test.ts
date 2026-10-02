@@ -33,6 +33,102 @@ const connect = (baseURL: string, label: string, key: string) =>
   })
 
 describe("connection-scoped System One discovery", () => {
+  it.live("retains a model's advertised decisions endpoint for probe and execution", () =>
+    Effect.gen(function* () {
+      const calls: string[] = []
+      const server = yield* serve((request) => {
+        const url = new URL(request.url)
+        calls.push(`${request.method} ${url.pathname}${url.search}`)
+        if (request.method === "GET")
+          return Response.json({
+            data: [
+              {
+                id: "router/relay/typesafe/jev-2.0",
+                name: "JEV 2",
+                supported_endpoints: ["/v1/decisions"],
+              },
+            ],
+          })
+        expect(url.pathname).toBe("/v1/decisions")
+        return Response.json({
+          model: "jev-2.0",
+          answers: { check: { type: "noul", noul: 1 } },
+          usage: { input_tokens: 2, output_tokens: 1 },
+        })
+      })
+      yield* connect(`${server.url.href}v1`, "Router", "selected")
+      const transport = yield* IntelligenceTransport.Service
+      const evaluator = (yield* transport.options("red-router"))[0].evaluator
+      const catalog = yield* transport.discover({ evaluator })
+      const selected = { ...evaluator, model: catalog.models[0]!.id, endpoint: catalog.models[0]!.endpoint }
+      const checked = yield* transport.probe({ evaluator: selected })
+      expect(checked).toMatchObject({ ok: true, endpoint: "decisions" })
+      yield* transport.request({ ...selected, endpoint: checked.endpoint }, "systemone", {
+        model: selected.model,
+        state: "fixture",
+        questions: {},
+      })
+      expect(calls).toEqual(["GET /v1/models?capabilities=decision", "POST /v1/decisions", "POST /v1/decisions"])
+    }),
+  )
+
+  it.live("negotiates a missing legacy route only in setup and retains the successful endpoint", () =>
+    Effect.gen(function* () {
+      const calls: string[] = []
+      const server = yield* serve((request) => {
+        const route = new URL(request.url).pathname
+        calls.push(route)
+        if (route === "/v1/systemone") return new Response(null, { status: 404 })
+        return Response.json({
+          model: "jev",
+          answers: { check: { type: "noul", noul: 1 } },
+          usage: { input_tokens: 0, output_tokens: 1 },
+        })
+      })
+      yield* connect(`${server.url.href}v1`, "Router", "selected")
+      const transport = yield* IntelligenceTransport.Service
+      const evaluator = (yield* transport.options("red-router"))[0].evaluator
+      const result = yield* transport.probe({ evaluator })
+      expect(result).toMatchObject({ ok: true, endpoint: "decisions" })
+      expect(result.requests.map((request) => request.status)).toEqual([404, 200])
+      yield* transport.probe({ evaluator: { ...evaluator, endpoint: result.endpoint } })
+      expect(calls).toEqual(["/v1/systemone", "/v1/decisions", "/v1/decisions"])
+    }),
+  )
+
+  for (const status of [401, 403, 400, 502]) {
+    it.live(`does not treat HTTP ${status} as a missing decision endpoint`, () =>
+      Effect.gen(function* () {
+        const calls: string[] = []
+        const server = yield* serve((request) => {
+          calls.push(new URL(request.url).pathname)
+          return new Response("Failed", { status })
+        })
+        yield* connect(`${server.url.href}v1`, "Router", "selected")
+        const transport = yield* IntelligenceTransport.Service
+        const result = yield* transport.probe({ evaluator: (yield* transport.options("red-router"))[0].evaluator })
+        expect(result.ok).toBe(false)
+        expect(result.requests[0]).toMatchObject({ status, bytes: 6 })
+        expect(calls).toEqual(["/v1/systemone"])
+      }),
+    )
+  }
+
+  it.live("discovers S1 from capabilities when the filtered catalog is empty", () =>
+    Effect.gen(function* () {
+      const server = yield* serve((request) =>
+        new URL(request.url).pathname === "/v1/capabilities"
+          ? Response.json({ systemone: { endpoint: "/v1/decisions", models: ["typesafe/jev-3.0"] } })
+          : Response.json({ data: [] }),
+      )
+      yield* connect(`${server.url.href}v1`, "Router", "selected")
+      const transport = yield* IntelligenceTransport.Service
+      expect(yield* transport.discover({ evaluator: (yield* transport.options("red-router"))[0].evaluator })).toEqual({
+        models: [{ id: "typesafe/jev-3.0", name: "typesafe/jev-3.0", endpoint: "decisions" }],
+        manual: false,
+      })
+    }),
+  )
   it.live("a System One probe reports upstream status, response bytes and latency", () =>
     Effect.gen(function* () {
       const body = JSON.stringify({

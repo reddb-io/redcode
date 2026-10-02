@@ -464,11 +464,11 @@ const make = Effect.gen(function* () {
           ...option,
           configured,
           evaluator: configured
-            ? { ...option.evaluator, model: current.model }
+            ? { ...option.evaluator, model: current.model, endpoint: current.endpoint }
             : router?.evaluator &&
                 router.evaluator.credentialID === option.evaluator.credentialID &&
                 option.evaluator.transport === "red-router"
-              ? { ...option.evaluator, model: router.evaluator.model }
+              ? { ...option.evaluator, model: router.evaluator.model, endpoint: router.evaluator.endpoint }
               : option.evaluator,
         }
       }),

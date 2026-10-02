@@ -47,7 +47,10 @@ const jevIDs = new Set([
 export function isJev(id: string) {
   const lower = id.toLowerCase()
   const segments = lower.split("/")
-  return [lower, segments.at(-1), segments.slice(-2).join("/")].some((item) => item !== undefined && jevIDs.has(item))
+  return (
+    /^jev(?:$|[-.])/.test(segments.at(-1) ?? "") ||
+    [lower, segments.at(-1), segments.slice(-2).join("/")].some((item) => item !== undefined && jevIDs.has(item))
+  )
 }
 
 export function fingerprint(value: unknown) {

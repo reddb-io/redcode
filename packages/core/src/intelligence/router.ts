@@ -75,7 +75,7 @@ export const detect = Effect.fn("IntelligenceRouter.detect")(function* (connecti
     vision: Option.getOrUndefined(decodeRecommendation(recommendations.vision)),
   }
   const model = detection.systemOne?.available
-    ? detection.systemOne.models.find((id) => id === recommended.systemone?.id) ?? detection.systemOne.models[0]
+    ? (detection.systemOne.models.find((id) => id === recommended.systemone?.id) ?? detection.systemOne.models[0])
     : undefined
   const result = {
     providerID: connection?.integrationID ?? "red-router",
@@ -88,6 +88,11 @@ export const detect = Effect.fn("IntelligenceRouter.detect")(function* (connecti
             transport: "red-router" as const,
             baseURL: base,
             model,
+            ...(record(document.systemone).endpoint === "/v1/decisions"
+              ? { endpoint: "decisions" as const }
+              : record(document.systemone).endpoint === "/v1/systemone"
+                ? { endpoint: "systemone" as const }
+                : {}),
             ...(connection ? { credentialID: connection.id } : {}),
           },
         }

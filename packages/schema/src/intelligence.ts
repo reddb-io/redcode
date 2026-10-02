@@ -9,6 +9,10 @@ import { optional } from "./schema.js"
 
 const Text = Schema.String.check(Schema.isMinLength(1))
 const Probability = Schema.Finite.check(Schema.isBetween({ minimum: 0, maximum: 1 }))
+export const DecisionEndpoint = Schema.Literals(["systemone", "decisions"]).annotate({
+  identifier: "Intelligence.DecisionEndpoint",
+})
+export type DecisionEndpoint = typeof DecisionEndpoint.Type
 export const Evaluator = Schema.Struct({
   transport: Schema.Literals([
     "opencode-zen",
@@ -23,6 +27,7 @@ export const Evaluator = Schema.Struct({
   baseURL: Text,
   model: Text,
   credentialID: Credential.ID.pipe(optional),
+  endpoint: DecisionEndpoint.pipe(optional),
 }).annotate({ identifier: "Intelligence.Evaluator" })
 export interface Evaluator extends Schema.Schema.Type<typeof Evaluator> {}
 
@@ -189,7 +194,7 @@ export const Status = Schema.Struct({
 })
 export interface Models extends Schema.Schema.Type<typeof Models> {}
 export const Models = Schema.Struct({
-  models: Schema.Array(Schema.Struct({ id: Text, name: Text })),
+  models: Schema.Array(Schema.Struct({ id: Text, name: Text, endpoint: DecisionEndpoint.pipe(optional) })),
   manual: Schema.Boolean,
 }).annotate({ identifier: "Intelligence.Models" })
 export interface Probe extends Schema.Schema.Type<typeof Probe> {}
@@ -200,6 +205,7 @@ export interface Check extends Schema.Schema.Type<typeof Check> {}
 export const Check = Schema.Struct({
   ok: Schema.Boolean,
   message: Schema.String,
+  endpoint: DecisionEndpoint.pipe(optional),
   requests: Schema.optional(Schema.Array(ConnectionCheck.Request)),
 }).annotate({
   identifier: "Intelligence.Check",

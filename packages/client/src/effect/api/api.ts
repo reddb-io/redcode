@@ -5877,6 +5877,7 @@ export type ServerIntelligenceSessionModeOutput = {
         readonly baseURL: string
         readonly model: string
         readonly credentialID?: Credential.ID | undefined
+        readonly endpoint?: ("systemone" | "decisions") | undefined
       }
     | undefined
 }
@@ -5991,6 +5992,7 @@ export type ServerIntelligenceStatusOutput = {
           readonly baseURL: string
           readonly model: string
           readonly credentialID?: Credential.ID | undefined
+          readonly endpoint?: ("systemone" | "decisions") | undefined
         }
       | undefined
   }
@@ -6012,6 +6014,7 @@ export type ServerIntelligenceStatusOutput = {
       readonly baseURL: string
       readonly model: string
       readonly credentialID?: Credential.ID | undefined
+      readonly endpoint?: ("systemone" | "decisions") | undefined
     }
   }>
   readonly effective: {
@@ -6062,6 +6065,7 @@ export type ServerIntelligenceStatusOutput = {
               readonly baseURL: string
               readonly model: string
               readonly credentialID?: Credential.ID | undefined
+              readonly endpoint?: ("systemone" | "decisions") | undefined
             }
           | undefined
         readonly recommended?:
@@ -6128,6 +6132,7 @@ export type ServerIntelligenceSaveInput = {
           readonly baseURL: string
           readonly model: string
           readonly credentialID?: Credential.ID | undefined
+          readonly endpoint?: ("systemone" | "decisions") | undefined
         }
       | undefined
   }
@@ -6153,6 +6158,7 @@ export type ServerIntelligenceSaveOutput = {
         readonly baseURL: string
         readonly model: string
         readonly credentialID?: Credential.ID | undefined
+        readonly endpoint?: ("systemone" | "decisions") | undefined
       }
     | undefined
 }
@@ -6174,11 +6180,16 @@ export type ServerIntelligenceDiscoverInput = {
     readonly baseURL: string
     readonly model: string
     readonly credentialID?: Credential.ID | undefined
+    readonly endpoint?: ("systemone" | "decisions") | undefined
   }
   readonly apiKey?: string | undefined
 }
 export type ServerIntelligenceDiscoverOutput = {
-  readonly models: ReadonlyArray<{ readonly id: string; readonly name: string }>
+  readonly models: ReadonlyArray<{
+    readonly id: string
+    readonly name: string
+    readonly endpoint?: ("systemone" | "decisions") | undefined
+  }>
   readonly manual: boolean
 }
 export type ServerIntelligenceDiscoverOperation<E = never> = (
@@ -6199,12 +6210,14 @@ export type ServerIntelligenceProbeInput = {
     readonly baseURL: string
     readonly model: string
     readonly credentialID?: Credential.ID | undefined
+    readonly endpoint?: ("systemone" | "decisions") | undefined
   }
   readonly apiKey?: string | undefined
 }
 export type ServerIntelligenceProbeOutput = {
   readonly ok: boolean
   readonly message: string
+  readonly endpoint?: ("systemone" | "decisions") | undefined
   readonly requests?:
     | ReadonlyArray<{
         readonly url: string
