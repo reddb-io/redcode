@@ -1,5 +1,4 @@
 import path from "node:path"
-import { devNull } from "node:os"
 import { mkdir, realpath, rm } from "node:fs/promises"
 import { Hash } from "@opencode/util/hash"
 
@@ -90,7 +89,7 @@ async function git(metadata: string, argv: string[], index?: string) {
       USERPROFILE: path.dirname(metadata),
       ...(process.env.SystemRoot ? { SystemRoot: process.env.SystemRoot } : {}),
       GIT_CONFIG_NOSYSTEM: "1",
-      GIT_CONFIG_GLOBAL: devNull,
+      GIT_CONFIG_GLOBAL: path.join(path.dirname(metadata), ".evaluation.gitconfig"),
       GIT_TERMINAL_PROMPT: "0",
       ...(index ? { GIT_INDEX_FILE: index } : {}),
     },
