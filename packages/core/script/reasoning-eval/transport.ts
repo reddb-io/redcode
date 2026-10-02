@@ -90,6 +90,8 @@ export function proxy(baseURL: string, current: { run: string }, metrics: Reques
   return Bun.serve({
     hostname: "127.0.0.1",
     port: 0,
+    // The campaign's Session deadline bounds inference; quiet streaming gaps must not truncate billing evidence.
+    idleTimeout: 0,
     async fetch(request) {
       const started = performance.now()
       const body = request.method === "GET" ? undefined : await request.text()

@@ -464,3 +464,51 @@ test("recording proxy distinguishes HTTP 200 complete, absent and partial token 
     upstream.stop(true)
   }
 })
+
+test(
+  "recording proxy preserves final usage after a streaming gap longer than Bun's default idle timeout",
+  async () => {
+    const body = [
+      'data: {"model":"pinned"}\n\n',
+      'data: {"model":"pinned","usage":{"prompt_tokens":10,"completion_tokens":5,"cost":0.25}}\n\ndata: [DONE]\n\n',
+    ]
+    const upstream = Bun.serve({
+      hostname: "127.0.0.1",
+      port: 0,
+      idleTimeout: 0,
+      fetch: () =>
+        new Response(
+          new ReadableStream({
+            async start(controller) {
+              controller.enqueue(new TextEncoder().encode(body[0]))
+              await Bun.sleep(11_000)
+              controller.enqueue(new TextEncoder().encode(body[1]))
+              controller.close()
+            },
+          }),
+          { headers: { "content-type": "text/event-stream" } },
+        ),
+    })
+    const metrics: RequestMetric[] = []
+    const recorder = proxy(upstream.url.href, { run: "quiet-stream" }, metrics)
+    try {
+      const response = await fetch(new URL("v1/chat/completions", recorder.url))
+      expect(response.status).toBe(200)
+      expect(await response.text()).toBe(body.join(""))
+      expect(metrics).toHaveLength(1)
+      expect(metrics[0]).toMatchObject({
+        status: 200,
+        bytes: Buffer.byteLength(body.join("")),
+        complete: true,
+        responseModels: ["pinned"],
+        usageKnown: true,
+        costUsd: 0.25,
+      })
+      expect(metrics[0].durationMs).toBeGreaterThanOrEqual(11_000)
+    } finally {
+      recorder.stop(true)
+      upstream.stop(true)
+    }
+  },
+  25_000,
+)

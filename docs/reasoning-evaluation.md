@@ -161,6 +161,9 @@ time to headers, time to the first response chunk, full-response latency, byte
 count, stream completion and returned model IDs. It excludes router keepalive
 sentinels and never records authorization headers or request bodies. API calls
 to the isolated service also record status, full-response latency and bytes.
+The recording proxy disables Bun's default ten-second idle timeout so quiet
+streaming gaps do not truncate final usage or billing evidence. The campaign's
+Session deadline still bounds each execution.
 The output does retain model responses and fixture content, so it should still
 be reviewed before sharing.
 
