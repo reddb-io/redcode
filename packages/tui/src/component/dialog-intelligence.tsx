@@ -61,7 +61,7 @@ export function DialogIntelligence(props: { context: Plugin.Context; setup: () =
     <DialogSelect
       title="S1 / S2 · Models and evaluations"
       options={[
-        { value: "setup", title: "Configure reasoning roles", description: "/setup" },
+        { value: "setup", title: "Configure dual reasoning (S1 / S2)", description: "/dual" },
         ...(artifacts.error ? [] : (artifacts() ?? [])).map((artifact) => ({
           value: `artifact:${artifact.id}`,
           title:

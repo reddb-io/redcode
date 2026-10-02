@@ -8,7 +8,7 @@ The router owns all inference/response caching. Redcode retains durable evaluati
 - `dual`: S1 classifies and reviews through the existing semantic gates.
 - `observe`: S2 uses the single path. S1 runs asynchronously and records recommendations, latency, tokens, reported USD charges and unknown charges. Observation records cannot guide routing, skills, tools, response repair, completion gates or context selection. Service shutdown can interrupt unfinished observations; they are advisory work, not durable Session execution claims.
 
-Configure globally with `/setup`, `REDCODE_REASONING=observe` or `--standalone --reasoning observe`. `/reasoning` sets a durable per-session override; choosing the service default removes it. Overrides follow the Session's existing metadata inheritance and movement rules.
+Configure globally with `/dual` (`/setup` remains an alias), `REDCODE_REASONING=observe` or `--standalone --reasoning observe`. `/reasoning` sets a durable per-session override; choosing the service default removes it. Overrides follow the Session's existing metadata inheritance and movement rules.
 
 Classification includes goal, plan, tasks, pending input, original recent requests, previous decision and location, even for short continuation messages. Response reviews read projected tool facts beyond compaction. Status, IDs, exit codes, paths, errors, clipping and edit invalidations remain separate from bounded evidence text. Truncated evidence is visibly incomplete and retrievable by durable message/tool IDs.
 

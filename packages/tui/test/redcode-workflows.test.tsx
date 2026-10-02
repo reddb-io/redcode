@@ -148,7 +148,7 @@ test("/hooks requires confirmation before trusting or importing project commands
 })
 
 for (const width of [80, 140]) {
-  test(`setup always chooses a connection then a catalog model for S2 and S1 at ${width} columns`, async () => {
+  test(`/dual always chooses a connection then a catalog model for S2 and S1 at ${width} columns`, async () => {
     await using state = await tmpdir()
     const location = { directory, project: { id: "project", directory, canonical: directory } }
     const discoveries: unknown[] = []
@@ -212,7 +212,7 @@ for (const width of [80, 140]) {
     })
     await setup.ready
     await setup.waitForFrame(() => Boolean(setup.renderer.root.findDescendantById("session-pane")))
-    await setup.mockInput.typeText("/setup")
+    await setup.mockInput.typeText("/dual")
     setup.mockInput.pressEnter()
     await setup.waitForFrame((frame) => frame.includes("Reasoning mode"))
     setup.mockInput.pressEnter()

@@ -43,10 +43,10 @@ export default Plugin.define({
           commands: [
             {
               id: "intelligence.setup",
-              title: "Configure S1 / S2",
+              title: "Configure dual reasoning (S1 / S2)",
               group: "Provider",
               palette: true,
-              slash: { name: "setup" },
+              slash: { name: "dual", aliases: ["setup"] },
               run: setup,
             },
             {

@@ -53,7 +53,7 @@ method per machine.
 | `redcode`                   | Open the terminal UI                            |
 | `redcode --yolo`            | Open with automatic permission approval         |
 | `redcode --tmp`             | Work in a throwaway worktree                    |
-| `redcode setup` or `/setup` | Configure and check S2 and optional S1          |
+| `redcode setup` or `/dual`  | Configure and check S2 and optional S1          |
 | `/intelligence`             | Inspect selected models and session evaluations |
 | `/design`                   | Switch to Design mode                           |
 | `/design-open`              | Resume a Design conversation                    |
@@ -143,9 +143,10 @@ Manage secrets with `/vault`, `redcode vault set NAME` (masked prompt, or a pipe
 
 **S2** generates responses and does the agent work. **S1** evaluates candidates with typed
 TypeSafe/JEV questions, so a claim is checked before you trust it. **Single** reasoning uses S2 alone;
-**dual** adds S1. Run `/setup` (or `redcode setup`) to pick and check the models, and `/intelligence`
+**dual** adds S1. Run `/dual` (or `redcode setup`) to pick and check the models, and `/intelligence`
 to inspect the current models, the effective mode and recent evaluations. An unavailable, inconclusive
 or rejected evaluation is shown as such, never as an approval. See [reasoning roles](docs/system-one.md).
+`/setup` remains an alias for `/dual`; `/reasoning` changes the mode for the current session.
 
 In our best recorded diagnostic experiment, dual passed **39/40 cases (97.5%)** against
 single's **35/40 (87.5%)**, a gain of **10 percentage points**. Estimated total S1+S2 cost

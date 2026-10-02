@@ -1,7 +1,7 @@
 # S1 and S2 reasoning roles
 
-Use `/connect` to connect a provider, then `/setup` inside the TUI or `redcode setup`
-from the shell. Configuration belongs to the connected server.
+Use `/connect` to connect a provider, then `/dual` inside the TUI or `redcode setup`
+from the shell. `/setup` remains a compatibility alias. Configuration belongs to the connected server.
 
 - **S2 / System Two** generates responses and performs agent work.
 - **S1 / System One** evaluates candidates using typed TypeSafe/JEV questions.

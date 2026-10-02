@@ -395,7 +395,7 @@ async function chooseEvaluator(
   if (!options.length) {
     context.ui.toast.show({
       variant: "warning",
-      message: "No S1 connection available. Connect a service that supports decisions, then run /setup again.",
+      message: "No S1 connection available. Connect a service that supports decisions, then run /dual again.",
     })
     return
   }
