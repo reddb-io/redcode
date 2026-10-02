@@ -8,7 +8,7 @@ import { Intelligence } from "@opencode/schema/intelligence"
 import { SessionMessage } from "@opencode/schema/session-message"
 import { Model } from "@opencode/schema/model"
 import { Shell } from "@opencode/schema/shell"
-import { Option, Schema } from "effect"
+import { DateTime, Option, Schema } from "effect"
 import { Pair, Pairs, Pricing, plan, switches } from "./campaign"
 import { prepare, snapshot, verify, grade } from "./coding"
 import { recover } from "./coding-snapshots"
@@ -135,7 +135,11 @@ const setup = path.join(root, "setup")
 const configDirectory = path.join(home, "config")
 await Promise.all([home, setup, output, configDirectory].map((directory) => mkdir(directory, { recursive: true })))
 const configFile = path.join(configDirectory, "opencode.jsonc")
-await Bun.write(configFile, JSON.stringify({ experimental: { ...switches("baseline"), turn_steps: 24 } }))
+// Benchmark repositories already own their fixture placement; automatic worktrees would move edits away from the oracle.
+await Bun.write(
+  configFile,
+  JSON.stringify({ worktree: { auto: false }, experimental: { ...switches("baseline"), turn_steps: 24 } }),
+)
 const env = {
   PATH: process.env.PATH ?? "/usr/bin:/bin",
   HOME: home,
@@ -437,7 +441,12 @@ try {
             const evaluations = observed.evaluations
             const observationWaitMs = mode === "observe" ? performance.now() - started - durationMs : 0
             const budget = await api(`/api/session/${session.data.id}/budget`, Budget)
-            const assistants = messages.data.filter((message) => message.type === "assistant")
+            const chronological = messages.data.toSorted(
+              (left, right) =>
+                DateTime.toEpochMillis(left.time.created) - DateTime.toEpochMillis(right.time.created) ||
+                left.id.localeCompare(right.id),
+            )
+            const assistants = chronological.filter((message) => message.type === "assistant")
             const finals = assistants
               .filter((message) => message.finish === "stop" || message.finish === "length")
               .map(
@@ -500,7 +509,7 @@ try {
                       changes: { added: [], modified: [], deleted: [] },
                     }
                 : undefined
-            const repairMessages = messages.data.filter(
+            const repairMessages = chronological.filter(
               (message) => message.type === "synthetic" && message.metadata?.responseRepair !== undefined,
             )
             const repairs = repairMessages.length

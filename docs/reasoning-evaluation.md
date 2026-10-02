@@ -72,6 +72,9 @@ No dependencies need installation. The command must complete successfully in
 the projected tool evidence; a claimed command or `bun test --help` does not
 count. Temporary homes and permissions isolate normal configuration and Session
 state; shell execution is not an operating-system sandbox.
+Automatic worktree creation is disabled only in the isolated benchmark service:
+its fixtures already have an owned placement, and the oracle must inspect the
+same directory the agent edits. Snapshots remain enabled in those repositories.
 
 The original independent oracle runs outside the agent directory after the
 Session settles. It evaluates behavior, not response prose, with a ten-second
