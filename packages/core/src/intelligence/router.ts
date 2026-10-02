@@ -77,7 +77,7 @@ export const detect = Effect.fn("IntelligenceRouter.detect")(function* (connecti
   const model = detection.systemOne?.available
     ? (detection.systemOne.models.find((id) => id === recommended.systemone?.id) ?? detection.systemOne.models[0])
     : undefined
-  const result = {
+  const result: Intelligence.DetectedRouter = {
     providerID: connection?.integrationID ?? "red-router",
     baseURL: base,
     detection,
@@ -97,7 +97,7 @@ export const detect = Effect.fn("IntelligenceRouter.detect")(function* (connecti
           },
         }
       : {}),
-  } satisfies Intelligence.DetectedRouter
+  }
   cache.set(cacheKey, { expires: Date.now() + 5 * 60_000, value: result })
   return result
 })

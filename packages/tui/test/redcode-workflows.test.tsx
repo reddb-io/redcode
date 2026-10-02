@@ -165,6 +165,8 @@ for (const width of [80, 140]) {
       state: state.path,
       width,
       fetch: async (url, request) => {
+        if (url.pathname === "/api/agent")
+          return json({ location, data: [{ id: "build", mode: "primary", hidden: false, permissions: [] }] })
         if (url.pathname === "/api/model")
           return json({
             location,
@@ -257,6 +259,7 @@ for (const width of [80, 140]) {
     })
     await setup.ready
     await setup.waitForFrame(() => Boolean(setup.renderer.root.findDescendantById("session-pane")))
+    await setup.waitForFrame((frame) => frame.includes("Generator"))
     await setup.mockInput.typeText("/dual")
     setup.mockInput.pressEnter()
     await setup.waitForFrame((frame) => frame.includes("Reasoning mode"))
