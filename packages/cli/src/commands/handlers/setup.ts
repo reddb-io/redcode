@@ -123,7 +123,7 @@ export default Runtime.handler(Commands.commands.setup, (input) =>
           { signal },
         ),
       )
-      log.info(ConnectionCheck.describe(check.requests ?? []))
+      log.info(ConnectionCheck.describe(ConnectionCheck.requestsFrom(check)))
       if (!check.ok) return yield* Effect.fail(new Error(check.message))
       if (check.endpoint) evaluator.evaluator = { ...evaluator.evaluator, endpoint: check.endpoint }
     }
