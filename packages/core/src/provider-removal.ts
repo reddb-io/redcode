@@ -9,7 +9,6 @@ import { ConfigProviderRemove } from "./config/provider-remove.js"
 import { Credential } from "./credential.js"
 import { Integration } from "./integration.js"
 import { IntelligenceSettings } from "./intelligence/settings.js"
-import { IntelligenceRouter } from "./intelligence/router.js"
 import { ModelLimit } from "./model-limit.js"
 import { modelLimitNode } from "#model-limit-node"
 
@@ -101,7 +100,6 @@ const layer = Layer.effect(
         if (principalUses || evaluatorUses) yield* intelligence.save({ settings: next })
         yield* Effect.forEach(learned, (entry) => limits.forget(entry.providerID, entry.modelID), { discard: true })
       }))
-      IntelligenceRouter.clearCache()
       return result
     })
 

@@ -440,7 +440,7 @@ describe("current RedRouter decision contract", () => {
               },
             ],
           })
-        expect((await request.json()).model).toBe(id)
+        expect(await request.json()).toMatchObject({ model: id })
         return Response.json({
           model: id,
           answers: { check: { type: "noul", noul: 1 } },

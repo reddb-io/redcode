@@ -297,7 +297,7 @@ export function isJevEvaluator(id: string) {
 }
 
 /** Normalize the decision endpoint announced by a router, preserving its chosen alias. */
-export function systemOneEndpoint(value: string | undefined) {
+export function systemOneEndpoint(value: string | undefined): "systemone" | "decisions" | undefined {
   const endpoint = value?.replace(/^\/?(?:v1\/)?/, "")
   return endpoint === "systemone" || endpoint === "decisions" ? endpoint : undefined
 }
