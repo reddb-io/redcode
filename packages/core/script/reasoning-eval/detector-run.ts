@@ -134,7 +134,7 @@ try {
     if (!response.ok || Option.isNone(decoded)) throw new Error(`Detector HTTP ${response.status} or invalid response`)
     row.costUsd = decoded.value.usage.cost
     row.model = decoded.value.model
-    IntelligenceEvaluation.validateAnswers(item.request.questions, decoded.value)
+    IntelligenceEvaluation.decide(item.request.questions, decoded.value, "response_quality")
     if (row.model !== args["response-model"]) throw new Error("Detector response model changed")
     row.answers = decoded.value.answers
     row.valid = true

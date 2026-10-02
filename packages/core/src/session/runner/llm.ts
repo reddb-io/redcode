@@ -131,6 +131,7 @@ const layer = Layer.effect(
     const global = yield* Global.Service
     const vault = yield* Vault.Service
     const registry = yield* Tool.Service
+    const snapshot = yield* Snapshot.Service
     const steps = yield* SessionStep.make
     // Title generation starts once input is visible and must not delay model execution.
     const titles = yield* FiberMap.make<SessionSchema.ID, void, never>()
@@ -946,7 +947,6 @@ const layer = Layer.effect(
       const first = history.find((message) => message.type === "assistant" && message.snapshot?.start)
       const from = first?.type === "assistant" ? first.snapshot?.start : undefined
       const to = plan.candidate.type === "assistant" ? plan.candidate.snapshot?.end : undefined
-      const snapshot = yield* Snapshot.Service
       const scrub = yield* vault.scrubber(loaded.session.projectID)
       const files =
         scope && from && to
@@ -986,7 +986,7 @@ const layer = Layer.effect(
       return {
         evaluation,
         scope: artifact ? scope : undefined,
-        checked: scope ? IntelligenceCodeRepair.verified(projected, scope) : undefined,
+        checked: artifact && scope ? IntelligenceCodeRepair.verified(projected, scope) : undefined,
       }
     })
 

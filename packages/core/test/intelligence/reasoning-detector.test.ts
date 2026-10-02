@@ -10,7 +10,9 @@ test("fixed detector candidates separate labels and hidden oracles from model in
   for (const item of detectorCases) {
     expect(JSON.stringify(item.request)).not.toContain("expectedDefect")
     expect(JSON.stringify(item.request)).not.toContain("oracle")
-    expect(JSON.stringify(item.request)).not.toContain("reference")
+    expect(Object.keys(item.request).sort()).toEqual(["model", "questions", "state"])
+    expect(Object.keys(item.request.state)).toEqual(["sources"])
+    expect(Object.keys(item.request.state.sources).sort()).toEqual(["artifact", "request"])
     expect(item.request.state.sources.artifact.files).toHaveLength(1)
   }
   const calibration = new Set(detectorCases.filter((item) => item.split === "calibration").map((item) => item.family))
@@ -28,7 +30,7 @@ test("every fixed candidate label agrees with independent executed behavior", as
     expect(result.process.exit).toBe(0)
     expect(result.format).toBe(true)
     expect(result.pass).toBe(!item.expectedDefect)
-    expect(item.request.state.sources.artifact.files[0]?.patch).toBe(item.fixture.files["src.ts"])
+    expect(item.request.state.sources.artifact.files[0]?.patch.content).toBe(item.fixture.files["src.ts"])
   }
 }, 30_000)
 
