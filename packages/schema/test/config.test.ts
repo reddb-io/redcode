@@ -15,23 +15,35 @@ describe("Config.Entry", () => {
   test("round-trips hook timeouts and rejects values JSON cannot preserve", () => {
     const decode = Schema.decodeUnknownSync(Config.Info)
     const config = (timeout: number | undefined) => ({
-      hooks: { SessionStart: [{ hooks: [{ type: "command", command: "echo ready", timeout }] }] },
+      hooks: {
+        SessionStart: [
+          { hooks: [{ type: "command", command: "echo ready", ...(timeout === undefined ? {} : { timeout }) }] },
+        ],
+      },
     })
     for (const timeout of [undefined, 0, 0.5, 600]) {
       const encoded = Schema.encodeSync(Config.Info)(decode(config(timeout)))
       expect(decode(JSON.parse(JSON.stringify(encoded)))).toEqual(decode(config(timeout)))
     }
+    const omitted = Schema.encodeSync(Config.Info)(
+      new Config.Info({
+        hooks: { SessionStart: [{ hooks: [{ type: "command", command: "echo ready", timeout: undefined }] }] },
+      }),
+    )
+    expect(omitted.hooks?.SessionStart?.[0]?.hooks[0]).not.toHaveProperty("timeout")
     for (const timeout of [Infinity, -Infinity, NaN]) {
       expect(() => decode(config(timeout))).toThrow()
     }
   })
 
-  test("accepts directory-only worktree config and omits it when absent", () => {
+  test("accepts optional worktree directory and automatic settings and omits an absent config", () => {
     const decode = Schema.decodeUnknownSync(Config.Info)
     const input = { worktree: { directory: "../worktrees" } }
     expect(Schema.encodeSync(Config.Info)(decode(input))).toEqual(input)
     expect(Schema.encodeSync(Config.Info)(new Config.Info({ worktree: undefined }))).not.toHaveProperty("worktree")
-    expect(() => decode({ worktree: {} })).toThrow()
+    for (const worktree of [{}, { auto: false }, { location: "tmp", tmpdir: "/tmp/redcode" }]) {
+      expect(Schema.encodeSync(Config.Info)(decode({ worktree }))).toEqual({ worktree })
+    }
     expect(() => decode({ worktree: { directory: " " } })).toThrow()
     expect(() => decode({ worktree: { directory: false } })).toThrow()
   })
