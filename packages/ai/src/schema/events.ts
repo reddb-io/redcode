@@ -72,6 +72,8 @@ export class Usage extends Schema.Class<Usage>("AI.Usage")({
   cacheWriteInputTokens: Schema.optional(Schema.Number),
   reasoningTokens: Schema.optional(Schema.Number),
   totalTokens: Schema.optional(Schema.Number),
+  /** Provider-reported USD cost for this physical request; zero is authoritative. */
+  cost: Schema.optional(Schema.Number),
   providerMetadata: Schema.optional(ProviderMetadata),
 }) {
   /**
@@ -264,6 +266,10 @@ export type ToolError = Schema.Schema.Type<typeof ToolError>
 export const FinishReasonDetails = Schema.Struct({
   normalized: FinishReason,
   raw: Schema.optional(Schema.String),
+  /** The provider's policy area for a content-filter finish, such as `cyber`. */
+  category: Schema.optional(Schema.String),
+  /** The provider's human-readable reason for a content-filter finish. */
+  explanation: Schema.optional(Schema.String),
 }).annotate({ identifier: "LLM.FinishReasonDetails" })
 export type FinishReasonDetails = Schema.Schema.Type<typeof FinishReasonDetails>
 

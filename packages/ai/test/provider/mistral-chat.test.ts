@@ -215,13 +215,11 @@ describe("Mistral Chat", () => {
           ],
         }),
       )
-      expect(prepared.body.messages).toEqual([
-        {
-          role: "assistant",
-          content: "",
-          tool_calls: [{ id: "Ab12Cd34E", type: "function", function: { name: "lookup", arguments: "{}" } }],
-        },
-      ])
+      expect(prepared.body.messages[0]).toEqual({
+        role: "assistant",
+        content: "",
+        tool_calls: [{ id: "Ab12Cd34E", type: "function", function: { name: "lookup", arguments: "{}" } }],
+      })
     }),
   )
 

@@ -83,6 +83,26 @@ function withConfigEnv<A, E, R>(env: Record<string, string>, effect: () => Effec
 }
 
 describe("ModelResolver", () => {
+  it.effect("carries provider timeouts into native HTTP defaults without sending them in the body", () =>
+    Effect.gen(function* () {
+      for (const timeouts of [
+        { headerTimeout: 1_000, chunkTimeout: 2_000, timeout: 3_000 },
+        { headerTimeout: false, chunkTimeout: false, timeout: false },
+      ]) {
+        const resolved = yield* ModelResolver.fromCatalogModel(
+          model(Provider.aisdk("@ai-sdk/openai-compatible"), {
+            settings: { baseURL: "https://provider.example/v1", apiKey: "fixture", ...timeouts },
+          }),
+        )
+        expect(resolved.defaults?.http).toMatchObject(timeouts)
+        const prepared = yield* compileRequest(LLM.request({ model: resolved, prompt: "Hello" }))
+        expect(prepared.body).not.toHaveProperty("headerTimeout")
+        expect(prepared.body).not.toHaveProperty("chunkTimeout")
+        expect(prepared.body).not.toHaveProperty("timeout")
+      }
+    }),
+  )
+
   it.effect("constructs native Azure requests with deployment IDs and projected resource URLs", () =>
     Effect.gen(function* () {
       const responses = yield* ModelResolver.fromCatalogModel(

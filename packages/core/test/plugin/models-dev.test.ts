@@ -124,6 +124,35 @@ const richSnapshot = (name = "Acme") => {
 }
 
 describe("ModelsDevPlugin", () => {
+  isolated.effect("keeps specialized models out of the generative provider catalog", () =>
+    Effect.gen(function* () {
+      const fixture = richSnapshot()
+      const snapshot = [
+        {
+          ...fixture.snapshot[0],
+          models: [
+            ...fixture.snapshot[0].models,
+            {
+              ...fixture.snapshot[0].models[0],
+              id: Model.ID.make("decision-alias"),
+              type: "decision",
+              canonicalModelID: Model.ID.make("typesafe/jev-latest"),
+            },
+          ],
+        },
+      ]
+      const first = yield* owner
+      yield* ModelsDevPlugin.effect(first.host).pipe(
+        Effect.provideService(ModelsDev.Service, { get: () => Effect.succeed(snapshot), refresh: () => Effect.void }),
+        Effect.provideContext(first.context),
+      )
+      yield* activate(first.providers)
+      const definitions = required((yield* first.providers.snapshot()).records.get(fixture.providerID)).models
+      expect(definitions.has(fixture.modelID)).toBe(true)
+      expect(definitions.has(Model.ID.make("decision-alias"))).toBe(false)
+    }),
+  )
+
   isolated.effect("shares definitions between Locations while provider and model edits own their copies", () =>
     Effect.gen(function* () {
       const { providerID, modelID, snapshot } = richSnapshot()
@@ -1026,7 +1055,10 @@ describe("ModelsDevPlugin", () => {
       })
 
       const anthropicEffortModel = yield* modelState.get(Provider.ID.anthropic, Model.ID.make("claude-opus-4.7"))
-      expect(anthropicEffortModel?.reasoningVariantIDs).toEqual([Model.VariantID.make("none"), Model.VariantID.make("low")])
+      expect(anthropicEffortModel?.reasoningVariantIDs).toEqual([
+        Model.VariantID.make("none"),
+        Model.VariantID.make("low"),
+      ])
       expect(anthropicEffortModel?.variants).toEqual([
         { id: Model.VariantID.make("none"), settings: { thinking: { type: "disabled" } } },
         {

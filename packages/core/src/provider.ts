@@ -1,11 +1,11 @@
 export * as Provider from "./provider.js"
 export { AISDK_PREFIX, isAISDK, aisdk, packageName } from "./provider-package.js"
 
-import { Context, Effect, Layer, Schema, Stream, Struct } from "effect"
+import { Context, Effect, Layer, Option, Schema, Stream, Struct } from "effect"
 import { Provider } from "@opencode/schema/provider"
 import { Model } from "@opencode/schema/model"
 import { makeLocationNode } from "@opencode/util/effect/app-node"
-import type { ProviderPackageDefinition } from "@opencode/ai"
+import { DEFAULT_HTTP_TIMEOUT_MS, HttpTimeout, type ProviderPackageDefinition } from "@opencode/ai"
 import { isRecord } from "@opencode/ai/utils/record"
 import { Npm } from "@opencode/util/npm"
 import type { DeepMutable } from "./schema.js"
@@ -80,7 +80,10 @@ const builtins = new Map<string, () => Promise<unknown>>([
   ["@opencode/ai/providers/openai/chat", () => import("@opencode/ai/providers/openai/chat")],
   ["@opencode/ai/providers/openai/responses", () => import("@opencode/ai/providers/openai/responses")],
   ["@opencode/ai/providers/openai-compatible", () => import("@opencode/ai/providers/openai-compatible")],
-  ["@opencode/ai/providers/openai-compatible-responses", () => import("@opencode/ai/providers/openai-compatible-responses")],
+  [
+    "@opencode/ai/providers/openai-compatible-responses",
+    () => import("@opencode/ai/providers/openai-compatible-responses"),
+  ],
   ["@opencode/ai/providers/openrouter", () => import("@opencode/ai/providers/openrouter")],
   ["@opencode/ai/providers/togetherai", () => import("@opencode/ai/providers/togetherai")],
   ["@opencode/ai/providers/xai", () => import("@opencode/ai/providers/xai")],
@@ -123,8 +126,8 @@ export const loadPackage = Effect.fn("Provider.loadPackage")(function* (input: s
 })
 
 /** opencode settings consumed in Core; native packages never receive them. */
-const CORE_KEYS = ["chunkTimeout", "compaction", "fetch", "timeout", "transport"] as const
-const PROVIDER_ONLY_KEYS = ["chunkTimeout", "timeout", "transport"] as const
+const CORE_KEYS = ["chunkTimeout", "compaction", "fetch", "headerTimeout", "timeout", "transport"] as const
+const PROVIDER_ONLY_KEYS = ["chunkTimeout", "headerTimeout", "timeout", "transport"] as const
 
 export function nativeSettings(settings: Settings): Settings {
   return Struct.omit(settings, CORE_KEYS)
@@ -132,6 +135,22 @@ export function nativeSettings(settings: Settings): Settings {
 
 export function modelSettings(settings: Settings | undefined) {
   return settings && Struct.omit(settings, PROVIDER_ONLY_KEYS)
+}
+
+const decodeTimeout = Schema.decodeUnknownOption(HttpTimeout)
+
+/** Milliseconds for a configured limit; false disables it and invalid values are omitted. */
+export function timeout(value: unknown) {
+  return Option.getOrUndefined(decodeTimeout(value))
+}
+
+/** Header and chunk limits default to five minutes; the whole request remains unbounded. */
+export function timeouts(settings: Readonly<Record<string, unknown>>) {
+  return {
+    timeout: timeout(settings.timeout),
+    headerTimeout: timeout(settings.headerTimeout) ?? DEFAULT_HTTP_TIMEOUT_MS,
+    chunkTimeout: timeout(settings.chunkTimeout) ?? DEFAULT_HTTP_TIMEOUT_MS,
+  }
 }
 
 export function mergeOverlay(

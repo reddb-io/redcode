@@ -8,6 +8,8 @@ export interface Interface {
   readonly execute: (
     request: HttpClientRequest.HttpClientRequest,
     middleware?: HttpMiddleware,
+    /** Leave status classification to a transport that applies its own body-read policy. */
+    options?: { readonly rawResponse?: boolean },
   ) => Effect.Effect<HttpClientResponse.HttpClientResponse, AIError>
 }
 

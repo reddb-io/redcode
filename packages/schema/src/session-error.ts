@@ -8,6 +8,7 @@ export const Error = Schema.Struct({
   type: Schema.String,
   message: Schema.String,
   status: Schema.Int.check(Schema.isBetween({ minimum: 100, maximum: 599 })).pipe(optional),
+  response: Schema.Struct({ body: Schema.String }).pipe(optional),
   /** The provider a failed model request went to, so a wrong host, key or model can be told apart. */
   provider: Schema.String.pipe(optional),
   /** The model a failed model request asked for. */

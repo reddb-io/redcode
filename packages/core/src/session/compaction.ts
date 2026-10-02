@@ -47,7 +47,7 @@ import { SessionRunnerRetry } from "./runner/retry.js"
 import { SessionStore } from "./store.js"
 import { toLLMMessages } from "./runner/to-llm-message.js"
 import { SessionToolOutputPrune } from "./tool-output-prune.js"
-import { toSessionError } from "./to-session-error.js"
+import { contentFilterError, toSessionError } from "./to-session-error.js"
 import { SessionUsage } from "./usage.js"
 import { VaultRestricted } from "../vault/restricted.js"
 
@@ -1143,10 +1143,7 @@ export const layer = Layer.effect(
                   ? Effect.succeed(streamed)
                   : unusable({ type: "compaction.failed", message: "Compaction produced no summary" })
               case "content-filter":
-                return unusable({
-                  type: "provider.content-filter",
-                  message: "Compaction summary was blocked by the provider",
-                })
+                return unusable(contentFilterError("Compaction summary was blocked by the provider", event.reason))
               default:
                 return Effect.succeed(streamed)
             }

@@ -12,6 +12,20 @@ import { AbsolutePath } from "../src/schema.js"
 import { WebSearch } from "../src/websearch.js"
 
 describe("Config.Entry", () => {
+  test("round-trips provider header, chunk and whole-request timeout settings including false", () => {
+    const decode = Schema.decodeUnknownSync(Config.Info)
+    for (const settings of [
+      { headerTimeout: 1_000, chunkTimeout: 2_000, timeout: 3_000 },
+      { headerTimeout: false, chunkTimeout: false, timeout: false },
+    ]) {
+      const input = { providers: { custom: { settings } } }
+      expect(Schema.encodeSync(Config.Info)(decode(input))).toEqual(input)
+    }
+    for (const key of ["headerTimeout", "chunkTimeout", "timeout"]) {
+      expect(() => decode({ providers: { custom: { settings: { [key]: Infinity } } } })).toThrow()
+    }
+  })
+
   test("round-trips hook timeouts and rejects values JSON cannot preserve", () => {
     const decode = Schema.decodeUnknownSync(Config.Info)
     const config = (timeout: number | undefined) => ({

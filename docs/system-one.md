@@ -47,6 +47,16 @@ cache and key-scoped invalidation belong to RedRouter. Listing a model establish
 catalog access, not working credentials or a successful evaluation. Setup must still
 test the selected route before saving a working evaluator.
 
+The bundled models.dev provider catalog includes specialized entries through
+`api.json?type=all`. Their `type` and `canonical_model_id` are retained separately
+from executable provider IDs. Specialized entries are excluded from S2. For
+OpenRouter, Cloudflare AI Gateway and Vercel, S1 discovery uses compatible JEV
+decision offerings from the matching provider, with the adapter preset as a
+fallback. Other classifiers need a compatible typed-question adapter before they
+can be offered as S1. Catalog availability still requires a successful connection
+probe. RedRouter always uses its selected key's remote catalog and capabilities;
+the public snapshot never fills an empty Router list.
+
 Router diagnostic codes appear alongside HTTP status for missing endpoints, refused
 credentials, unavailable models or connections, transport failures and invalid typed
 answers. Upstream error text is not reflected in those messages. A 502 alone does not

@@ -8,6 +8,7 @@ import { Deferred, Effect, Schema, Scope } from "effect"
 import { Config } from "../../config.js"
 import { Environment } from "../../environment/index.js"
 import { Job } from "../../job.js"
+import { Location } from "../../location.js"
 import { FileAccess } from "../../file-access.js"
 import { Permission } from "../../permission.js"
 import { NonNegativeInt } from "../../schema.js"
@@ -133,6 +134,7 @@ export const Plugin = {
     const environment = yield* Environment.Service
     const access = yield* FileAccess.Service
     const shell = yield* Shell.Service
+    const location = yield* Location.Service
     const shellSelect = yield* ShellSelect.Service
     const compatibleShell = shellSelect.resolve({ priority: "compat" })
     const permission = yield* Permission.Service
@@ -369,6 +371,7 @@ export const Plugin = {
                 type: name,
                 title: info.command,
                 metadata: { sessionID: context.sessionID, shellID: info.id },
+                location: Location.Ref.make({ directory: location.directory, workspaceID: location.workspaceID }),
                 recovery: {
                   kind: "shell",
                   sessionID: context.sessionID,

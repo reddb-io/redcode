@@ -101,10 +101,12 @@ const providerMessage = (status: number, body: string | void) => {
   )
 }
 
-const statusError = (response: HttpClientResponse.HttpClientResponse) =>
+export const statusError = (response: HttpClientResponse.HttpClientResponse, body?: Effect.Effect<string, AIError>) =>
   Effect.gen(function* () {
     if (response.status < 400) return response
-    const result = yield* response.text.pipe(Effect.result)
+    // Streaming transports supply a timed body. A read timeout must retain its
+    // transport reason and HTTP context rather than become a generic status error.
+    const result = body ? { _tag: "Success" as const, success: yield* body } : yield* response.text.pipe(Effect.result)
     return yield* httpFailure({
       message: providerMessage(response.status, result._tag === "Success" ? result.success : undefined),
       url: response.request.url,
@@ -232,12 +234,12 @@ export const layer: Layer.Layer<Service, never, HttpClient.HttpClient> = Layer.e
   Service,
   Effect.gen(function* () {
     const http = yield* HttpClient.HttpClient
-    const executeOnce = (request: HttpClientRequest.HttpClientRequest, middleware?: HttpMiddleware) =>
+    const executeOnce: Interface["execute"] = (request, middleware, options) =>
       Effect.gen(function* () {
         if (!middleware)
           return yield* http.execute(request).pipe(
             Effect.mapError((error) => httpError({ error, request, operation: "request" })),
-            Effect.flatMap(statusError),
+            Effect.flatMap((response) => (options?.rawResponse ? Effect.succeed(response) : statusError(response))),
           )
 
         const response = yield* middleware(request, (input) =>
@@ -245,7 +247,7 @@ export const layer: Layer.Layer<Service, never, HttpClient.HttpClient> = Layer.e
             .execute(input)
             .pipe(Effect.mapError((cause) => (cause instanceof Error ? cause : new Error(String(cause))))),
         ).pipe(Effect.mapError((error) => httpError({ error, request, operation: "request" })))
-        return yield* statusError(response)
+        return yield* options?.rawResponse ? Effect.succeed(response) : statusError(response)
       })
     return Service.of({
       execute: executeOnce,
@@ -262,10 +264,11 @@ export const middleware = (fn: HttpMiddleware, executor: Layer.Layer<Service> = 
     Effect.gen(function* () {
       const inner = yield* Service
       return Service.of({
-        execute: (request, next) =>
+        execute: (request, next, options) =>
           inner.execute(
             request,
             next === undefined ? fn : (input, handler) => fn(input, (forwarded) => next(forwarded, handler)),
+            options,
           ),
       })
     }),

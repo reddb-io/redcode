@@ -227,6 +227,11 @@ RedRouter is a provider that fronts many models behind one key. Redcode understa
 `auto` variant lets the router choose, pinned offers fix a model to a specific provider, model
 suggestions surface what your key can reach, and the router's MCP tools are registered for you.
 
+Redcode bundles a verified [models.dev](https://models.dev) provider catalog, including decision
+models for compatible S1 adapters. Canonical model identity stays separate from the executable
+provider ID, and specialized models stay out of S2. A RedRouter connection always uses its own
+key-scoped catalog; remote discovery caching belongs to the router.
+
 ### Monitors
 
 <img src="docs/features/monitors.svg" alt="Monitors" width="100%" />

@@ -143,6 +143,9 @@ jobs:
           bun run release:status
       - name: Lint and typecheck
         run: bun run check
+      - name: Verify committed model catalog
+        working-directory: packages/core
+        run: bun run update-models-snapshot --check
       - name: Verify generated client
         working-directory: packages/client
         run: bun run check:generated

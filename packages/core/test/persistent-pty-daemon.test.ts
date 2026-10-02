@@ -170,6 +170,64 @@ it.live("rejects incompatible daemons without replacing or killing them", () =>
   }),
 )
 
+it.live("continues server startup when an inherited PTY registration is missing or expired", () =>
+  Effect.gen(function* () {
+    const directory = yield* temporaryDirectory()
+    for (const expiresAt of [Date.now() + 60_000, Date.now() - 1]) {
+      const daemon = yield* makeDaemonTransport(directory, undefined, {
+        directory,
+        instanceID: "test",
+        ticket: "ticket",
+        expiresAt,
+      })
+      expect(yield* daemon.handoff).toBeNull()
+      expect(yield* daemon.requestIfRunning({ op: "list" })).toBeUndefined()
+    }
+  }),
+)
+
+it.live("abandons a changed inherited daemon without claiming or shutting it down", () =>
+  Effect.gen(function* () {
+    const directory = yield* temporaryDirectory()
+    const socketPath = path.join(directory, "daemon.sock")
+    const operations: unknown[] = []
+    yield* listen(socketPath, (_socket, request) => {
+      operations.push(request.op)
+      if (request.op === "ping") return pong
+      return { type: "ok" }
+    })
+    yield* Effect.promise(() => writeRegistration(directory, socketPath))
+    const daemon = yield* makeDaemonTransport(directory, undefined, {
+      directory,
+      instanceID: "old-instance",
+      ticket: "ticket",
+      expiresAt: Date.now() + 60_000,
+    })
+    expect(yield* daemon.handoff).toBeNull()
+    expect(yield* daemon.requestIfRunning({ op: "list" })).toBeUndefined()
+    expect(operations).toEqual(["ping"])
+  }),
+)
+
+it.live("continues to use a successfully inherited PTY daemon", () =>
+  Effect.gen(function* () {
+    const directory = yield* temporaryDirectory()
+    const socketPath = path.join(directory, "daemon.sock")
+    yield* listen(socketPath, (_socket, request) => {
+      if (request.op === "ping") return pong
+      return { type: "terminals", terminals: [] }
+    })
+    yield* Effect.promise(() => writeRegistration(directory, socketPath))
+    const daemon = yield* makeDaemonTransport(directory, undefined, {
+      directory,
+      instanceID: "test",
+      ticket: "ticket",
+      expiresAt: Date.now() + 60_000,
+    })
+    expect(yield* daemon.requestIfRunning({ op: "list" })).toEqual({ type: "terminals", terminals: [] })
+  }),
+)
+
 function temporaryDirectory() {
   return Effect.acquireRelease(
     Effect.promise(() => mkdtemp(path.join(os.tmpdir(), "opencode-pty-test-"))),

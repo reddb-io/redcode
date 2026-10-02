@@ -3836,6 +3836,8 @@ describe("OpenAI Responses route", () => {
           name: "lookup",
           arguments: '{"query":"news"}',
         },
+        { type: "function_call_output", call_id: "call_1", output: "Tool result missing" },
+        { type: "function_call_output", call_id: "call_2", output: "Tool result missing" },
       ])
     }),
   )
@@ -4130,15 +4132,13 @@ describe("OpenAI Responses route", () => {
       ])
 
       const prepared = yield* compileRequest(LLM.request({ model, messages: [response.message] }))
-      expect(prepared.body.input).toEqual([
-        {
-          type: "function_call",
-          id: "fc_item_1",
-          call_id: "call_1",
-          name: "lookup",
-          arguments: '{"query":"weather"}',
-        },
-      ])
+      expect(prepared.body.input[0]).toEqual({
+        type: "function_call",
+        id: "fc_item_1",
+        call_id: "call_1",
+        name: "lookup",
+        arguments: '{"query":"weather"}',
+      })
     }),
   )
 

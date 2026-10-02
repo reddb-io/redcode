@@ -5,15 +5,70 @@ import { credentialMatches, IntelligenceTransport } from "@opencode/core/intelli
 import { IntelligenceEvaluation } from "@opencode/core/intelligence/evaluation"
 import { IntelligenceRouter } from "@opencode/core/intelligence/router"
 import { Integration } from "@opencode/schema/integration"
+import { Model } from "@opencode/schema/model"
+import { Provider } from "@opencode/schema/provider"
+import { ModelsDev } from "@opencode/core/models-dev"
 import { Global } from "@opencode/util/global"
 import { LayerNode } from "@opencode/util/effect/layer-node"
-import { Effect } from "effect"
+import { Effect, Layer } from "effect"
 import { tempGlobalLayer } from "../fixture/global"
 import { testEffect } from "../lib/effect"
 
 const it = testEffect(
   LayerNode.compile(LayerNode.group([Intelligence.node, IntelligenceTransport.node, Credential.node]), {
-    replacements: [Global.node.replace(tempGlobalLayer)],
+    replacements: [
+      Global.node.replace(tempGlobalLayer),
+      ModelsDev.node.replace(ModelsDev.configured({ fetch: false })),
+    ],
+  }),
+)
+
+const decisions = testEffect(
+  LayerNode.compile(IntelligenceTransport.node, {
+    replacements: [
+      Global.node.replace(tempGlobalLayer),
+      ModelsDev.node.replace(
+        Layer.succeed(
+          ModelsDev.Service,
+          ModelsDev.Service.of({
+            get: () =>
+              Effect.succeed([
+                {
+                  info: {
+                    id: Provider.ID.make("vercel"),
+                    name: "Vercel",
+                    activation: "auto",
+                    package: "@opencode/ai/providers/vercel",
+                  },
+                  environment: [],
+                  models: [
+                    {
+                      ...Model.Info.default(Provider.ID.make("vercel"), Model.ID.make("decision-alias")),
+                      name: "JEV",
+                      type: "decision",
+                      canonicalModelID: Model.ID.make("typesafe/jev-latest"),
+                    },
+                    {
+                      ...Model.Info.default(Provider.ID.make("vercel"), Model.ID.make("liquid/classifier")),
+                      type: "decision",
+                    },
+                    {
+                      ...Model.Info.default(Provider.ID.make("vercel"), Model.ID.make("jev-chat-alias")),
+                      canonicalModelID: Model.ID.make("typesafe/jev-latest"),
+                    },
+                    {
+                      ...Model.Info.default(Provider.ID.make("vercel"), Model.ID.make("jev-old")),
+                      type: "decision",
+                      status: "deprecated",
+                    },
+                  ],
+                },
+              ]),
+            refresh: () => Effect.void,
+          }),
+        ),
+      ),
+    ],
   }),
 )
 
@@ -34,6 +89,55 @@ const connect = (baseURL: string, label: string, key: string) =>
   })
 
 describe("connection-scoped System One discovery", () => {
+  decisions.live("uses compatible canonical decision aliases only from the selected provider", () =>
+    Effect.gen(function* () {
+      const transport = yield* IntelligenceTransport.Service
+      expect(yield* transport.discover({ evaluator: IntelligenceEvaluation.evaluatorPreset("vercel") })).toEqual({
+        models: [{ id: "decision-alias", name: "JEV" }],
+        manual: false,
+      })
+      expect(yield* transport.discover({ evaluator: IntelligenceEvaluation.evaluatorPreset("openrouter") })).toEqual({
+        models: [{ id: "typesafe/jev-1.13", name: "typesafe/jev-1.13" }],
+        manual: false,
+      })
+    }),
+  )
+
+  decisions.live("never substitutes the static catalog for an empty Router connection", () =>
+    Effect.gen(function* () {
+      const requests: string[] = []
+      const server = yield* serve((request) => {
+        requests.push(new URL(request.url).pathname + new URL(request.url).search)
+        return Response.json({ data: [] })
+      })
+      yield* connect(`${server.url.href}v1`, "Router", "selected")
+      const transport = yield* IntelligenceTransport.Service
+      expect(yield* transport.discover({ evaluator: (yield* transport.options("red-router"))[0].evaluator })).toEqual({
+        models: [],
+        manual: false,
+      })
+      expect(requests).toEqual(["/v1/models?capabilities=decision", "/v1/capabilities"])
+    }),
+  )
+
+  it.live("recognizes canonical remote aliases without reclassifying chat models", () =>
+    Effect.gen(function* () {
+      const server = yield* serve(() =>
+        Response.json({
+          data: [
+            { id: "decision-alias", canonical_model_id: "typesafe/jev-latest" },
+            { id: "typesafe/jev-1.13", type: "chat", canonical_model_id: "typesafe/jev-latest" },
+            { id: "typesafe/jev-router", type: "chat" },
+          ],
+        }),
+      )
+      yield* connect(`${server.url.href}v1`, "Router", "selected")
+      const transport = yield* IntelligenceTransport.Service
+      const catalog = yield* transport.discover({ evaluator: (yield* transport.options("red-router"))[0].evaluator })
+      expect(catalog.models.map((model) => model.id)).toEqual(["decision-alias"])
+    }),
+  )
+
   it.live("retains a model's advertised decisions endpoint for probe and execution", () =>
     Effect.gen(function* () {
       const calls: string[] = []

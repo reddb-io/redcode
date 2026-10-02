@@ -2905,6 +2905,7 @@ export type SessionLogOutput =
               readonly type: string
               readonly message: string
               readonly status?: number | undefined
+              readonly response?: { readonly body: string } | undefined
               readonly provider?: string | undefined
               readonly model?: string | undefined
               readonly url?: string | undefined
@@ -3104,6 +3105,7 @@ export type SessionLogOutput =
               readonly type: string
               readonly message: string
               readonly status?: number | undefined
+              readonly response?: { readonly body: string } | undefined
               readonly provider?: string | undefined
               readonly model?: string | undefined
               readonly url?: string | undefined
@@ -3321,6 +3323,7 @@ export type SessionLogOutput =
               readonly type: string
               readonly message: string
               readonly status?: number | undefined
+              readonly response?: { readonly body: string } | undefined
               readonly provider?: string | undefined
               readonly model?: string | undefined
               readonly url?: string | undefined
@@ -3373,6 +3376,7 @@ export type SessionLogOutput =
               readonly type: string
               readonly message: string
               readonly status?: number | undefined
+              readonly response?: { readonly body: string } | undefined
               readonly provider?: string | undefined
               readonly model?: string | undefined
               readonly url?: string | undefined
@@ -3462,6 +3466,7 @@ export type SessionLogOutput =
               readonly type: string
               readonly message: string
               readonly status?: number | undefined
+              readonly response?: { readonly body: string } | undefined
               readonly provider?: string | undefined
               readonly model?: string | undefined
               readonly url?: string | undefined

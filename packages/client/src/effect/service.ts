@@ -157,11 +157,16 @@ export const ensure = Effect.fn("service.ensure")(function* (options: EnsureOpti
 /** Stop the registered local service. */
 export const stop = Effect.fn("service.stop")(function* (options: StopOptions = {}) {
   const info = yield* read(options.file)
-  if (options.pty === "handoff" && info !== undefined)
-    yield* Effect.tryPromise(() =>
-      PtyHandoff.prepare(options.file ?? fallback(), info, defaultEnsureTiming.requestTimeout),
-    )
-  else yield* Effect.tryPromise(() => PtyHandoff.clear(options.file ?? fallback()))
+  // Terminal preservation is best-effort; preparation must not block an authorized restart.
+  yield* Effect.tryPromise(() =>
+    options.pty === "handoff" && info !== undefined
+      ? PtyHandoff.prepare(options.file ?? fallback(), info, defaultEnsureTiming.requestTimeout)
+      : PtyHandoff.clear(options.file ?? fallback()),
+  ).pipe(
+    Effect.catch(() =>
+      Effect.logWarning("Persistent terminal handoff could not be prepared; continuing service replacement"),
+    ),
+  )
   if (info !== undefined) yield* terminate(info, options, defaultEnsureTiming)
 })
 

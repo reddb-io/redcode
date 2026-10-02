@@ -1260,6 +1260,71 @@ describe("Session.create", () => {
 })
 
 describe("SessionTransfer", () => {
+  it.effect("withholds provider response bodies from sanitized exports without changing raw exports", () =>
+    Effect.gen(function* () {
+      const session = yield* Session.Service
+      const transfer = yield* SessionTransfer.Service
+      const template = yield* session.create({ location })
+      const sessionID = Session.ID.create()
+      const assistantID = SessionMessage.ID.create()
+      const compactionID = SessionMessage.ID.create()
+      const error = {
+        type: "provider.auth",
+        message: "Invalid key",
+        response: { body: '{"error":"private provider response","api_key":"private-token"}' },
+      }
+      yield* transfer.import({
+        location,
+        data: {
+          info: { ...template, id: sessionID },
+          messages: [
+            {
+              id: assistantID,
+              type: "assistant",
+              agent: Agent.ID.make("build"),
+              model: Model.Ref.make({ id: Model.ID.make("model"), providerID: Provider.ID.make("provider") }),
+              error,
+              retry: { attempt: 1, at: DateTime.makeUnsafe(2), error },
+              content: [
+                {
+                  type: "tool",
+                  id: "call_failed",
+                  name: "lookup",
+                  state: { status: "error", input: {}, error },
+                  time: { created: DateTime.makeUnsafe(1), completed: DateTime.makeUnsafe(2) },
+                },
+              ],
+              time: { created: DateTime.makeUnsafe(1), completed: DateTime.makeUnsafe(3) },
+            },
+            {
+              id: compactionID,
+              type: "compaction",
+              status: "failed",
+              reason: "manual",
+              error,
+              time: { created: DateTime.makeUnsafe(4) },
+            },
+          ],
+        },
+      })
+
+      expect((yield* transfer.export({ sessionID, sanitize: true })).messages).toMatchObject([
+        {
+          error: { ...error, response: { body: `[redacted:provider-response:${assistantID}]` } },
+          retry: { error: { ...error, response: { body: `[redacted:provider-response:${assistantID}]` } } },
+          content: [
+            { state: { error: { ...error, response: { body: `[redacted:provider-response:${assistantID}]` } } } },
+          ],
+        },
+        { error: { ...error, response: { body: `[redacted:provider-response:${compactionID}]` } } },
+      ])
+      expect((yield* transfer.export({ sessionID })).messages).toMatchObject([
+        { error, retry: { error }, content: [{ state: { error } }] },
+        { error },
+      ])
+    }),
+  )
+
   it.effect("exports only settled projected messages", () =>
     Effect.gen(function* () {
       const session = yield* Session.Service

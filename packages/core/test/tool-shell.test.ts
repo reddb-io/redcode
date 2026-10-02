@@ -1742,6 +1742,10 @@ describe("ShellTool", () => {
             const settled = yield* Fiber.join(waiting)
             const shellID = typeof settled.metadata?.shellID === "string" ? settled.metadata.shellID : undefined
             expect(backgrounded).toMatchObject([{ id: shellID, type: "shell" }])
+            const location = yield* Location.Service
+            expect(yield* jobs.runningBackgroundShellLocations).toEqual([
+              Location.Ref.make({ directory: location.directory, workspaceID: location.workspaceID }),
+            ])
             expect(settled.metadata).toMatchObject({ truncated: false })
             expect(shellID).toStartWith("sh_")
 

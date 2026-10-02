@@ -56,6 +56,14 @@ const server = Bun.serve({
       (pathname === "/api/experimental/persistent-pty/handoff" && mode === "handoff-hanging")
     )
       return new Promise<Response>(() => {})
+    if (pathname === "/api/experimental/persistent-pty/handoff" && mode === "handoff-broken")
+      return new Response(null, { status: 503 })
+    if (pathname === "/api/experimental/persistent-pty/handoff" && mode === "handoff-expired")
+      return Response.json({ handoff: { ...handoff, expiresAt: Date.now() - 1 } })
+    if (pathname === "/api/experimental/persistent-pty/shutdown") {
+      await writeFile(registration + ".pty-shutdown", "")
+      return Response.json({})
+    }
     if (pathname === "/api/experimental/persistent-pty/handoff" && mode === "handoff") {
       if (request.method !== "POST" || request.headers.get("authorization") !== "Basic " + btoa("opencode:private"))
         return new Response(null, { status: 401 })

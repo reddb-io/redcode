@@ -21,6 +21,7 @@ import { Provider } from "@opencode/core/provider"
 import { AbsolutePath, RelativePath } from "@opencode/core/schema"
 import { Snapshot } from "@opencode/core/snapshot"
 import { createLLMEventPublisher } from "@opencode/core/session/runner/publish-llm-event"
+import { SessionUsage } from "@opencode/core/session/usage"
 import { LayerNode } from "@opencode/util/effect/layer-node"
 import { it, testEffect } from "./lib/effect"
 import { TestClock } from "effect/testing"
@@ -589,6 +590,20 @@ test("step finish records settlement without publishing step ended", async () =>
   expect(publisher.record().finish).toMatchObject({ finish: "stop" })
 })
 
+test("provider-reported billing survives step settlement", async () => {
+  const publisher = capture("openrouter").publisher
+  await Effect.runPromise(
+    publisher.publish(
+      LLMEvent.stepFinish({
+        index: 0,
+        reason: { normalized: "stop" },
+        usage: { nonCachedInputTokens: 100, cost: 0.125 },
+      }),
+    ),
+  )
+  expect(publisher.record().finish?.usage).toMatchObject({ cost: 0.125, nonCachedInputTokens: 100 })
+})
+
 test("content-filter finish retains failure evidence until step closeout", async () => {
   const { published, publisher } = capture()
   await Effect.runPromise(publisher.publish(LLMEvent.stepStart({ index: 0 })))
@@ -619,13 +634,13 @@ test("content-filter finish retains failure evidence until step closeout", async
     providerState: {
       stopDetails: { type: "refusal", category: "safety", explanation: "Blocked" },
     },
-    tokens: { input: 8, output: 2, reasoning: 1 },
+    usage: { nonCachedInputTokens: 8, outputTokens: 3, reasoningTokens: 1 },
   })
   if (!settlement) throw new Error("Expected content-filter settlement")
   await Effect.runPromise(
     publisher.publishStepFailure({
       cost: Money.USD.make(1.25),
-      tokens: settlement.tokens,
+      tokens: SessionUsage.tokens(settlement.usage),
       snapshot: Snapshot.ID.make("tree-end"),
       files: [RelativePath.make("src/changed.ts")],
     }),
@@ -665,5 +680,31 @@ test("content-filter finish preserves partial streamed text and never ends the s
   expect(published.find((event) => event.type === "session.text.ended.1")?.data).toMatchObject({ text: "Partial" })
   expect(published.find((event) => event.type === "session.step.failed.1")?.data).toMatchObject({
     error: { type: "provider.content-filter" },
+  })
+})
+
+test("content-filter failure explains the refusal when the provider gives a reason", async () => {
+  const { published, publisher } = capture()
+  await Effect.runPromise(publisher.publish(LLMEvent.stepStart({ index: 0 })))
+  await Effect.runPromise(
+    publisher.publish(
+      LLMEvent.stepFinish({
+        index: 0,
+        reason: {
+          normalized: "content-filter",
+          raw: "refusal",
+          category: "cyber",
+          explanation: "This request was declined because it could enable cyber harm.",
+        },
+      }),
+    ),
+  )
+  await Effect.runPromise(publisher.publishStepFailure())
+
+  expect(published.at(-1)?.data).toMatchObject({
+    error: {
+      type: "provider.content-filter",
+      message: "Provider blocked the response (cyber): This request was declined because it could enable cyber harm.",
+    },
   })
 })

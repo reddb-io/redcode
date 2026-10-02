@@ -1,7 +1,7 @@
 export * as ModelResolver from "./model-resolver.js"
 
 import { makeLocationNode } from "@opencode/util/effect/app-node"
-import { LanguageModel, ProviderConfigurationError } from "@opencode/ai"
+import { HttpOptions, LanguageModel, mergeHttpOptions, ProviderConfigurationError } from "@opencode/ai"
 import { Auth } from "@opencode/ai/route"
 import { Context, Effect, Layer, Option, Schema, Struct } from "effect"
 import { AISDK } from "./aisdk.js"
@@ -124,8 +124,8 @@ export interface Resolved {
   readonly compaction?: Provider.Compaction
   /** Provider transport policy; omitted means HTTP. */
   readonly transport?: Provider.Transport
-  /** Milliseconds without streamed data before a WebSocket exchange fails. */
-  readonly chunkTimeout?: number
+  /** Milliseconds without streamed data before a WebSocket exchange fails; false disables it. */
+  readonly chunkTimeout?: number | false
 }
 
 export interface Interface {
@@ -243,6 +243,10 @@ const resolveCatalogModel = Effect.fn("ModelResolver.resolveCatalogModel")(funct
         compatibility: resolved.compatibility
           ? Object.assign({}, runtime.compatibility, resolved.compatibility)
           : runtime.compatibility,
+        defaults: {
+          ...runtime.defaults,
+          http: mergeHttpOptions(runtime.defaults?.http, new HttpOptions(Provider.timeouts(configured))),
+        },
       })
     },
     catch: (cause) =>
@@ -475,7 +479,7 @@ export const layer = Layer.effect(
         limit: catalog.limit,
         compaction: runtimeInfo.settings?.compaction,
         transport: provider?.settings?.transport,
-        chunkTimeout: provider?.settings?.chunkTimeout,
+        chunkTimeout: Provider.timeout(provider?.settings?.chunkTimeout),
       }
     })
     return Service.of({

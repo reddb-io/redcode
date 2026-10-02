@@ -39,7 +39,13 @@ export type Recorded = { readonly tokens: TokenUsage.Info; readonly cost: Money.
 
 export const record = (usage: Usage | undefined, costs: Model.Info["cost"]): Recorded => {
   const normalized = tokens(usage)
-  return { tokens: normalized, cost: calculateCost(costs, normalized) }
+  return {
+    tokens: normalized,
+    cost:
+      usage?.cost !== undefined && Number.isFinite(usage.cost) && usage.cost >= 0
+        ? Money.USD.make(usage.cost)
+        : calculateCost(costs, normalized),
+  }
 }
 
 export const add = (a: Recorded, b: Recorded): Recorded => ({

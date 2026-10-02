@@ -366,8 +366,9 @@ export const make = Effect.gen(function* () {
         }
 
         const record = publisher.record()
-        if (input.goalID && record.finish)
-          yield* goals.recordUsage(input.sessionID, input.goalID, TokenUsage.total(record.finish.tokens))
+        const recordedUsage = record.finish ? SessionUsage.record(record.finish.usage, input.model.cost) : undefined
+        if (input.goalID && recordedUsage)
+          yield* goals.recordUsage(input.sessionID, input.goalID, TokenUsage.total(recordedUsage.tokens))
         if (record.finish || record.failure) {
           const snapshot = yield* snapshots.capture()
           const files =
@@ -380,13 +381,10 @@ export const make = Effect.gen(function* () {
               : undefined
           // RedRouter prices its own responses and names the model that served them.
           const routed = ProviderRouter.take(input.sessionID)
-          const usage = record.finish
+          const usage = recordedUsage
             ? {
-                cost:
-                  routed?.costUSD === undefined
-                    ? SessionUsage.calculateCost(input.model.cost, record.finish.tokens)
-                    : Money.USD.make(routed.costUSD),
-                tokens: record.finish.tokens,
+                ...recordedUsage,
+                ...(routed?.costUSD === undefined ? {} : { cost: Money.USD.make(routed.costUSD) }),
               }
             : undefined
           if (record.failure) yield* publisher.publishStepFailure({ ...usage, snapshot, files })
@@ -410,13 +408,14 @@ export const make = Effect.gen(function* () {
         if (
           Exit.isSuccess(stream) &&
           record.finish &&
+          recordedUsage &&
           !record.failure &&
           !record.providerFailed &&
           !toolFailure &&
           !llmError
         ) {
           const accepted =
-            record.finish.tokens.input + record.finish.tokens.cache.read + record.finish.tokens.cache.write
+            recordedUsage.tokens.input + recordedUsage.tokens.cache.read + recordedUsage.tokens.cache.write
           if (accepted > 0) yield* input.accepted(accepted)
           const completion = yield* goalCompletion.settle(input.sessionID).pipe(Effect.exit)
           if (Exit.isFailure(completion)) {

@@ -1,6 +1,7 @@
 export * as SessionTransfer from "./transfer.js"
 
 import { SessionTransfer } from "@opencode/schema/session-transfer"
+import type { SessionError } from "@opencode/schema/session-error"
 import { Tool } from "@opencode/schema/tool"
 import { Skill } from "@opencode/schema/skill"
 import { eq } from "drizzle-orm"
@@ -265,6 +266,8 @@ function sanitizeMessage(message: SessionMessage.Info): SessionMessage.Info {
     return {
       ...message,
       metadata: meta,
+      error: message.error === undefined ? undefined : sanitizeError(message.id, message.error),
+      retry: message.retry ? { ...message.retry, error: sanitizeError(message.id, message.retry.error) } : undefined,
       content: message.content.map((content) => {
         if (content.type === "text")
           return {
@@ -293,6 +296,7 @@ function sanitizeMessage(message: SessionMessage.Info): SessionMessage.Info {
       return {
         ...message,
         metadata: meta,
+        error: sanitizeError(message.id, message.error),
       }
     return {
       ...message,
@@ -305,6 +309,11 @@ function sanitizeMessage(message: SessionMessage.Info): SessionMessage.Info {
     }
   }
   return { ...message, metadata: meta }
+}
+
+function sanitizeError(id: string, error: SessionError.Error): SessionError.Error {
+  if (error.response === undefined) return error
+  return { ...error, response: { body: redact("provider-response", id, error.response.body) } }
 }
 
 function sanitizeToolState(id: string, state: SessionMessage.ToolState): SessionMessage.ToolState {
@@ -321,6 +330,7 @@ function sanitizeToolState(id: string, state: SessionMessage.ToolState): Session
     }
   return {
     ...state,
+    error: sanitizeError(id, state.error),
     input: { redacted: `tool-input:${id}` },
     content: state.content ? map(state.content, (item) => sanitizeToolContent(id, item)) : undefined,
     metadata: meta,

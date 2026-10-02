@@ -2,7 +2,7 @@ import { spawn } from "node:child_process"
 import { readFile } from "node:fs/promises"
 import net from "node:net"
 import path from "node:path"
-import { Data, Duration, Effect, Schema, Semaphore } from "effect"
+import { Cause, Data, Duration, Effect, Schema, Semaphore } from "effect"
 import type { Handoff } from "@opencode/schema/persistent-pty"
 
 const ProtocolVersion = 7
@@ -156,11 +156,12 @@ export interface DaemonTransport {
 }
 
 export const makeDaemonTransport = Effect.fn("PersistentPty.makeDaemonTransport")(function* (
-  directory: string,
+  initialDirectory: string,
   binary: () => Promise<string> = () => Promise.resolve(process.env.OPENCODE_PTY_BIN || "opencode-pty"),
   inherited?: Handoff,
 ) {
   const startup = Semaphore.makeUnsafe(1)
+  let directory = initialDirectory
   let registration: Registration | undefined
   let owner: Awaited<ReturnType<typeof openOwner>> | undefined
   let closed = false
@@ -371,14 +372,32 @@ export const makeDaemonTransport = Effect.fn("PersistentPty.makeDaemonTransport"
     return yield* attempt.pipe(Effect.catch((error) => (error.kind === "registration" ? attempt : Effect.fail(error))))
   })
 
-  // A replacement must own its inherited daemon before the server becomes ready.
+  // Adopt terminals before readiness when possible. A stale handoff must not
+  // prevent the replacement server from starting.
   if (inherited) {
-    if (inherited.expiresAt <= Date.now())
-      return yield* Effect.fail(new DaemonError({ kind: "registration", message: "PTY restart handoff expired" }))
-    const current = yield* discover()
-    if (current.instance_id !== inherited.instanceID)
-      return yield* Effect.fail(new DaemonError({ kind: "registration", message: "PTY restart daemon changed" }))
-    yield* claim(current, inherited.ticket)
+    yield* Effect.gen(function* () {
+      if (inherited.expiresAt <= Date.now())
+        return yield* Effect.fail(new DaemonError({ kind: "registration", message: "PTY restart handoff expired" }))
+      const current = yield* discover()
+      if (current.instance_id !== inherited.instanceID)
+        return yield* Effect.fail(new DaemonError({ kind: "registration", message: "PTY restart daemon changed" }))
+      yield* claim(current, inherited.ticket)
+    }).pipe(
+      Effect.catchCause((cause) =>
+        Effect.gen(function* () {
+          if (Cause.hasInterruptsOnly(cause)) return yield* Effect.failCause(cause)
+          yield* Effect.logWarning("Discarding PTY restart handoff; persistent terminals will start fresh", {
+            cause: Cause.pretty(cause),
+          })
+          owner?.socket.destroy()
+          owner = undefined
+          registration = undefined
+          // Leave an unrelated or unreachable daemon alone and start in a fresh
+          // sibling directory when a new terminal is requested.
+          directory = path.join(path.dirname(initialDirectory), crypto.randomUUID())
+        }),
+      ),
+    )
   }
 
   return { request, requestIfRunning, shutdown, handoff, subscribe } satisfies DaemonTransport

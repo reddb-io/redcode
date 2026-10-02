@@ -31,6 +31,8 @@ type Modality = "text" | "audio" | "image" | "video" | "pdf"
 
 type SourceModel = {
   readonly id: string
+  readonly type?: string
+  readonly canonical_model_id?: string
   readonly name: string
   readonly family?: string
   readonly release_date: string
@@ -233,6 +235,8 @@ function modelInfo(
     id,
     modelID: Model.ID.make(model.id),
     providerID,
+    ...(model.type === undefined ? {} : { type: model.type }),
+    ...(model.canonical_model_id === undefined ? {} : { canonicalModelID: Model.ID.make(model.canonical_model_id) }),
     name: input.name ?? model.name,
     compatibility: Model.compatibility(model.interleaved),
     family: model.family ? Model.Family.make(model.family) : undefined,
@@ -294,7 +298,10 @@ const Cache = Schema.Struct({
 const CACHE_KEY = "models-dev:catalog"
 const STATE_KEY = "models-dev:sources"
 /** Public catalogs, tried after `REDCODE_MODELS_URL` and the `models.sources` configuration. */
-export const DEFAULT_SOURCES = ["https://models.opencode.ai/api.json", "https://models.dev/api.json"] as const
+export const DEFAULT_SOURCES = [
+  "https://models.opencode.ai/api.json?type=all",
+  "https://models.dev/api.json?type=all",
+] as const
 
 /** Catalog URLs in the order they are tried: a URL without a `.json` path gets `/api.json`, duplicates go. */
 export function sources(configured: readonly (string | undefined)[]) {
@@ -302,6 +309,12 @@ export function sources(configured: readonly (string | undefined)[]) {
     const url = value?.trim() ? URL.parse(value.trim()) : null
     if (!url) return []
     if (!url.pathname.endsWith(".json")) url.pathname = `${url.pathname.replace(/\/+$/, "")}/api.json`
+    if (
+      ["models.opencode.ai", "models.dev"].includes(url.hostname) &&
+      url.pathname === "/api.json" &&
+      !url.searchParams.has("type")
+    )
+      url.searchParams.set("type", "all")
     return [url.toString()]
   })
   return [...new Set(urls)]
@@ -385,7 +398,7 @@ type Outcome =
   | { readonly ok: true; readonly text: string }
   | { readonly ok: false; readonly blocked: boolean; readonly reason: string }
 
-// Bundled snapshot of https://models.opencode.ai/api.json, committed at
+// Bundled full provider catalog from models.dev, committed with its SHA-256 at
 // packages/core/src/models-dev/snapshot.txt and refreshed via
 // `bun run script/update-models-snapshot.ts`. Decoded and normalized once per
 // isolate: the snapshot is a multi-MB module-level constant and one isolate can
@@ -459,10 +472,11 @@ export const layer = (options?: Options) =>
                 : res.text.pipe(
                     Effect.flatMap((text) =>
                       decodeCatalog(text).pipe(
-                        Effect.map((catalog): Outcome =>
-                          Object.keys(catalog).length > 0
-                            ? { ok: true, text }
-                            : { ok: false, blocked: true, reason: "response is not a models catalog" },
+                        Effect.map(
+                          (catalog): Outcome =>
+                            Object.keys(catalog).length > 0
+                              ? { ok: true, text }
+                              : { ok: false, blocked: true, reason: "response is not a models catalog" },
                         ),
                         // A 200 that is not a catalog is a captive portal or a proxy block page.
                         Effect.orElseSucceed(

@@ -728,8 +728,39 @@ test("reports a local MCP server as failed when the location has no execution pl
         status: "failed",
         error: expect.stringContaining("location has no execution plane"),
       })
+      const error = yield* service.callTool({ server: "resources", name: "echo" }).pipe(Effect.flip)
+      expect(error.message).toContain('MCP server "resources" is not connected')
+      expect(error.message).toContain("location has no execution plane")
+      expect(error.message).toContain("Reconnect it from /mcps")
     }).pipe(Effect.provide(resourceMcpLayer(config, undefined, undefined, { environment }))),
   )
+})
+
+test("reports a failed stdio initialization with exit code and bounded stderr, without respawning", async () => {
+  const spawns: Array<ChildProcess.Command> = []
+  const error = await Effect.runPromise(
+    Effect.scoped(
+      McpClient.connect(
+        "failed-local",
+        new ConfigMCP.Local({
+          type: "local",
+          command: [
+            process.execPath,
+            "-e",
+            'process.stderr.write("discarded-prefix " + "x".repeat(1500) + " missing MCP configuration"); process.exit(23)',
+          ],
+        }),
+        import.meta.dir,
+      ).pipe(Effect.flip),
+    ).pipe(Effect.provide(recordingEnvironmentLayer(spawns))),
+  )
+
+  expect(error).toBeInstanceOf(McpClient.ConnectError)
+  expect(error.message).toContain("exited with code 23")
+  expect(error.message).toContain("missing MCP configuration")
+  expect(error.message).not.toContain("discarded-prefix")
+  expect(error.message.length).toBeLessThan(1_200)
+  expect(spawns).toHaveLength(1)
 })
 
 test("rejects sends before the stdio transport is started", async () => {
@@ -1048,7 +1079,7 @@ for (const entry of [
   { name: "second 400", status: 400, query: "", codemode: undefined, attempts: 2 },
   { name: "401", status: 401, query: "", codemode: undefined, attempts: 1 },
   { name: "403", status: 403, query: "", codemode: undefined, attempts: 1 },
-  { name: "500", status: 500, query: "", codemode: undefined, attempts: 1 },
+  { name: "501", status: 501, query: "", codemode: undefined, attempts: 1 },
   { name: "user codemode=true", status: 404, query: "?codemode=true", codemode: undefined, attempts: 1 },
   { name: "user codemode=false", status: 404, query: "?codemode=false", codemode: undefined, attempts: 1 },
   { name: "empty user codemode", status: 404, query: "?codemode=", codemode: undefined, attempts: 1 },
@@ -1072,6 +1103,7 @@ for (const entry of [
       const error = yield* connect("resources", config, import.meta.dir).pipe(Effect.flip)
 
       expect(error).toBeInstanceOf(McpClient.ConnectError)
+      expect(error.message).toContain(`HTTP ${entry.status}`)
       expect(server.state.initializations).toBe(entry.attempts)
       expect(server.state.urls).toHaveLength(entry.attempts)
       if (entry.query || entry.codemode === false) expect(server.state.urls).toEqual([config.url])
@@ -1079,6 +1111,257 @@ for (const entry of [
     }),
   )
 }
+
+for (const status of [429, 503]) {
+  testEffect(Layer.empty).live(`recovers after two transient remote MCP initialization failures: HTTP ${status}`, () =>
+    Effect.gen(function* () {
+      let attempts = 0
+      const server = yield* resourceServer({
+        respond: async (request) => {
+          if (request.method !== "POST") return
+          const body: { method?: string } = await request.clone().json()
+          if (body.method !== "initialize") return
+          attempts += 1
+          return attempts <= 2 ? new Response(null, { status }) : undefined
+        },
+      })
+      const connection = yield* connect(
+        "resources",
+        new ConfigMCP.Remote({ type: "remote", url: server.url, oauth: false }),
+        import.meta.dir,
+      )
+      expect(server.state.initializations).toBe(3)
+      expect((yield* connection.tools()).map((tool) => tool.name)).toEqual(["echo"])
+    }),
+  )
+}
+
+testEffect(Layer.empty).live("limits transient remote MCP initialization to three attempts", () =>
+  Effect.gen(function* () {
+    const server = yield* resourceServer({ respond: () => new Response(null, { status: 503 }) })
+    const error = yield* connect(
+      "resources",
+      new ConfigMCP.Remote({ type: "remote", url: server.url, oauth: false }),
+      import.meta.dir,
+    ).pipe(Effect.flip)
+
+    expect(server.state.initializations).toBe(3)
+    expect(error.message).toContain("HTTP 503")
+  }),
+)
+
+testEffect(Layer.empty).live("does not schedule a remote MCP retry after its startup deadline", () =>
+  Effect.gen(function* () {
+    const server = yield* resourceServer({ respond: () => new Response(null, { status: 503 }) })
+    const error = yield* connect(
+      "resources",
+      new ConfigMCP.Remote({
+        type: "remote",
+        url: server.url,
+        oauth: false,
+        timeout: new ConfigMCP.Timeout({ startup: 200 }),
+      }),
+      import.meta.dir,
+    ).pipe(Effect.flip)
+
+    expect(server.state.initializations).toBe(1)
+    expect(error).toBeInstanceOf(McpClient.ConnectError)
+  }),
+)
+
+for (const method of ["tools/list", "prompts/list", "resources/list", "resources/templates/list"]) {
+  testEffect(Layer.empty).live(`retries transient remote MCP catalog requests: ${method}`, () =>
+    Effect.gen(function* () {
+      let attempts = 0
+      const server = yield* resourceServer({
+        respond: async (request) => {
+          if (request.method !== "POST") return
+          const body: { method?: string } = await request.clone().json()
+          if (body.method !== method) return
+          attempts += 1
+          return attempts <= 2 ? new Response(null, { status: 503 }) : undefined
+        },
+      })
+      const connection = yield* connect(
+        "resources",
+        new ConfigMCP.Remote({ type: "remote", url: server.url, oauth: false }),
+        import.meta.dir,
+      )
+      yield* method === "tools/list"
+        ? connection.tools()
+        : method === "prompts/list"
+          ? connection.prompts()
+          : method === "resources/list"
+            ? connection.resources()
+            : connection.resourceTemplates()
+      expect(attempts).toBe(3)
+      expect(server.state.initializations).toBe(1)
+    }),
+  )
+}
+
+testEffect(Layer.empty).live("keeps catalog retries within one timeout budget", () =>
+  Effect.gen(function* () {
+    let attempts = 0
+    const release = yield* Deferred.make<void>()
+    const server = yield* resourceServer({
+      respond: async (request) => {
+        if (request.method !== "POST") return
+        const body: { method?: string } = await request.clone().json()
+        if (body.method !== "tools/list") return
+        attempts += 1
+        if (attempts === 2) await Effect.runPromise(Deferred.await(release))
+        return new Response(null, { status: 503 })
+      },
+    })
+    yield* Effect.addFinalizer(() => Deferred.succeed(release, undefined))
+    const connection = yield* connect(
+      "resources",
+      new ConfigMCP.Remote({
+        type: "remote",
+        url: server.url,
+        oauth: false,
+        timeout: new ConfigMCP.Timeout({ catalog: 1_000 }),
+      }),
+      import.meta.dir,
+    )
+    const error = yield* connection.tools().pipe(Effect.flip)
+    expect(attempts).toBe(2)
+    expect(error.message).toContain("Request timed out after 1000ms while list MCP tools")
+  }),
+)
+
+for (const status of [401, 403, 501]) {
+  testEffect(Layer.empty).live(`does not retry a permanent or authentication MCP catalog error: HTTP ${status}`, () =>
+    Effect.gen(function* () {
+      let attempts = 0
+      const server = yield* resourceServer({
+        respond: async (request) => {
+          if (request.method !== "POST") return
+          const body: { method?: string } = await request.clone().json()
+          if (body.method !== "tools/list") return
+          attempts += 1
+          return new Response(null, { status })
+        },
+      })
+      const connection = yield* connect(
+        "resources",
+        new ConfigMCP.Remote({ type: "remote", url: server.url, oauth: false }),
+        import.meta.dir,
+      )
+      yield* connection.tools().pipe(Effect.flip)
+      expect(attempts).toBe(1)
+    }),
+  )
+}
+
+testEffect(Layer.empty).live("does not retry a transient remote MCP tool execution error", () =>
+  Effect.gen(function* () {
+    let attempts = 0
+    const server = yield* resourceServer({
+      respond: async (request) => {
+        if (request.method !== "POST") return
+        const body: { method?: string } = await request.clone().json()
+        if (body.method !== "tools/call") return
+        attempts += 1
+        return new Response(null, { status: 503 })
+      },
+    })
+    const connection = yield* connect(
+      "resources",
+      new ConfigMCP.Remote({ type: "remote", url: server.url, oauth: false }),
+      import.meta.dir,
+    )
+    const error = yield* connection.callTool({ name: "echo" }).pipe(Effect.flip)
+    expect(attempts).toBe(1)
+    expect(error.message).toContain("HTTP 503")
+  }),
+)
+
+for (const modern of [false, true]) {
+  testEffect(Layer.empty).live(`terminates only legacy remote MCP sessions on scope close: modern=${modern}`, () =>
+    Effect.gen(function* () {
+      const terminated: Array<string | null> = []
+      const server = yield* resourceServer({
+        modern,
+        respond: (request) => {
+          if (request.method === "DELETE") terminated.push(request.headers.get("mcp-session-id"))
+        },
+      })
+      yield* Effect.scoped(
+        connect(
+          "resources",
+          new ConfigMCP.Remote({
+            type: "remote",
+            url: server.url,
+            oauth: false,
+            protocol: modern ? "auto" : undefined,
+          }),
+          import.meta.dir,
+        ),
+      )
+      expect(terminated).toEqual(modern ? [] : server.state.sessions)
+      if (!modern) expect(terminated).toHaveLength(1)
+    }),
+  )
+}
+
+testEffect(Layer.empty).live("bounds legacy MCP session termination and still closes the connection", () =>
+  Effect.gen(function* () {
+    let terminated = 0
+    let closed = false
+    const release = yield* Deferred.make<void>()
+    const server = yield* resourceServer({
+      respond: async (request) => {
+        if (request.method !== "DELETE") return
+        terminated += 1
+        await Effect.runPromise(Deferred.await(release))
+        return new Response(null, { status: 204 })
+      },
+    })
+    yield* Effect.addFinalizer(() => Deferred.succeed(release, undefined))
+    yield* Effect.scoped(
+      connect(
+        "resources",
+        new ConfigMCP.Remote({ type: "remote", url: server.url, oauth: false }),
+        import.meta.dir,
+      ).pipe(
+        Effect.tap((connection) =>
+          Effect.sync(() =>
+            connection.onClose(() => {
+              closed = true
+            }),
+          ),
+        ),
+      ),
+    ).pipe(Effect.timeout("3 seconds"))
+    expect(terminated).toBe(1)
+    expect(closed).toBe(true)
+  }),
+)
+
+testEffect(Layer.empty).live("skips terminating an already expired legacy remote MCP session", () =>
+  Effect.gen(function* () {
+    let terminated = 0
+    const server = yield* resourceServer({
+      respond: (request) => {
+        if (request.method === "DELETE") terminated += 1
+      },
+    })
+    yield* Effect.scoped(
+      Effect.gen(function* () {
+        const connection = yield* connect(
+          "resources",
+          new ConfigMCP.Remote({ type: "remote", url: server.url, oauth: false }),
+          import.meta.dir,
+        )
+        yield* Effect.promise(server.restart)
+        expect(yield* connection.tools().pipe(Effect.flip)).toBeInstanceOf(McpClient.SessionExpiredError)
+      }),
+    )
+    expect(terminated).toBe(0)
+  }),
+)
 
 for (const status of [400, 404]) {
   testEffect(Layer.empty).live(`does not strip codemode for an MCP ${status} after initialization`, () =>

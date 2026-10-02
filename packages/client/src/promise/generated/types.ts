@@ -155,6 +155,7 @@ export type SessionStructuredError = {
   type: string
   message: string
   status?: number
+  response?: { body: string }
   provider?: string
   model?: string
   url?: string
@@ -912,14 +913,16 @@ export type ConfigModelSettings = { compaction?: ProviderCompaction } & { [x: st
 
 export type ProviderSettings = {
   timeout?: number | false
-  chunkTimeout?: number
+  headerTimeout?: number | false
+  chunkTimeout?: number | false
   compaction?: ProviderCompaction
   transport?: ProviderTransport
 } & { [x: string]: any }
 
 export type ConfigProviderSettings = {
   timeout?: number | false
-  chunkTimeout?: number
+  headerTimeout?: number | false
+  chunkTimeout?: number | false
   compaction?: ProviderCompaction
   transport?: ProviderTransport
 } & { [x: string]: JsonValue | null }
@@ -2751,6 +2754,8 @@ export type ModelInfo = {
   modelID: string
   providerID: string
   canonical?: string
+  canonicalModelID?: string
+  type?: string
   family?: string
   name: string
   upstream?: RouterUpstream
@@ -4316,6 +4321,7 @@ export type SessionImportInput = {
                         readonly type: string
                         readonly message: string
                         readonly status?: number
+                        readonly response?: { readonly body: string }
                         readonly provider?: string
                         readonly model?: string
                         readonly url?: string
@@ -4360,6 +4366,7 @@ export type SessionImportInput = {
             readonly type: string
             readonly message: string
             readonly status?: number
+            readonly response?: { readonly body: string }
             readonly provider?: string
             readonly model?: string
             readonly url?: string
@@ -4371,6 +4378,7 @@ export type SessionImportInput = {
               readonly type: string
               readonly message: string
               readonly status?: number
+              readonly response?: { readonly body: string }
               readonly provider?: string
               readonly model?: string
               readonly url?: string
@@ -4438,6 +4446,7 @@ export type SessionImportInput = {
                 readonly type: string
                 readonly message: string
                 readonly status?: number
+                readonly response?: { readonly body: string }
                 readonly provider?: string
                 readonly model?: string
                 readonly url?: string
@@ -4703,6 +4712,7 @@ export type SessionImportInput = {
                         readonly type: string
                         readonly message: string
                         readonly status?: number
+                        readonly response?: { readonly body: string }
                         readonly provider?: string
                         readonly model?: string
                         readonly url?: string
@@ -4747,6 +4757,7 @@ export type SessionImportInput = {
             readonly type: string
             readonly message: string
             readonly status?: number
+            readonly response?: { readonly body: string }
             readonly provider?: string
             readonly model?: string
             readonly url?: string
@@ -4758,6 +4769,7 @@ export type SessionImportInput = {
               readonly type: string
               readonly message: string
               readonly status?: number
+              readonly response?: { readonly body: string }
               readonly provider?: string
               readonly model?: string
               readonly url?: string
@@ -4825,6 +4837,7 @@ export type SessionImportInput = {
                 readonly type: string
                 readonly message: string
                 readonly status?: number
+                readonly response?: { readonly body: string }
                 readonly provider?: string
                 readonly model?: string
                 readonly url?: string
@@ -5090,6 +5103,7 @@ export type SessionImportInput = {
                         readonly type: string
                         readonly message: string
                         readonly status?: number
+                        readonly response?: { readonly body: string }
                         readonly provider?: string
                         readonly model?: string
                         readonly url?: string
@@ -5134,6 +5148,7 @@ export type SessionImportInput = {
             readonly type: string
             readonly message: string
             readonly status?: number
+            readonly response?: { readonly body: string }
             readonly provider?: string
             readonly model?: string
             readonly url?: string
@@ -5145,6 +5160,7 @@ export type SessionImportInput = {
               readonly type: string
               readonly message: string
               readonly status?: number
+              readonly response?: { readonly body: string }
               readonly provider?: string
               readonly model?: string
               readonly url?: string
@@ -5212,6 +5228,7 @@ export type SessionImportInput = {
                 readonly type: string
                 readonly message: string
                 readonly status?: number
+                readonly response?: { readonly body: string }
                 readonly provider?: string
                 readonly model?: string
                 readonly url?: string

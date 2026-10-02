@@ -14,7 +14,7 @@ type Sidecar = {
 export async function prepare(file: string, info: Info, timeout: number) {
   const existing = await read(file)
   if (existing !== undefined && existing.expiresAt > Date.now() && same(existing.source, info)) return
-  const { ClientError, OpenCode } = await import("./promise/index.js")
+  const { OpenCode } = await import("./promise/index.js")
   const client = OpenCode.make({
     baseUrl: info.url,
     headers:
@@ -22,30 +22,17 @@ export async function prepare(file: string, info: Info, timeout: number) {
         ? undefined
         : { authorization: "Basic " + Buffer.from(`opencode:${info.password}`).toString("base64") },
   })
-  const missing = (error: unknown) =>
-    error instanceof ClientError &&
-    error.reason === "UnexpectedStatus" &&
-    typeof error.cause === "object" &&
-    error.cause !== null &&
-    "status" in error.cause &&
-    error.cause.status === 404
   const result = await client.experimental.persistentPty.handoff({ signal: AbortSignal.timeout(timeout) }).then(
     (value) => ({ value }),
-    (cause: unknown) => ({ cause }),
+    () => undefined,
   )
-  if ("cause" in result) {
+  if (result === undefined) {
     // Another caller may already have prepared and stopped this server.
     const concurrent = await read(file)
     if (concurrent !== undefined && concurrent.expiresAt > Date.now() && same(concurrent.source, info)) return
-    if (!missing(result.cause))
-      throw new Error("Failed to prepare persistent terminals for service replacement", { cause: result.cause })
-    console.warn("Background service cannot hand off persistent terminals; shutting them down before replacement")
-    await client.experimental.persistentPty
-      .shutdown({ signal: AbortSignal.timeout(timeout) })
-      .catch((cause: unknown) => {
-        if (missing(cause)) return
-        throw new Error("Failed to shut down persistent terminals before service replacement", { cause })
-      })
+    console.warn("Persistent terminal handoff is unavailable; replacing the background service without a ticket")
+    // Do not shut down a daemon we could not adopt. Its existing owner controls its
+    // lifetime; a replacement can start new terminals independently.
     await publish(file, info, null)
     return
   }

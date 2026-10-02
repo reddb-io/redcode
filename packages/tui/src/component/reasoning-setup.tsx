@@ -22,7 +22,13 @@ export async function configureReasoning(
   const status = await api.status()
   const location = context.location ?? context.data.location.default()
   const models = (await context.client.model.list({ location })).data
-    .filter((model) => model.enabled && model.capabilities.output.includes("text") && !Router.isJevEvaluator(model.id))
+    .filter(
+      (model) =>
+        model.enabled &&
+        model.type === undefined &&
+        model.capabilities.output.includes("text") &&
+        !Router.isJevEvaluator(model.id),
+    )
     .toSorted((a, b) => a.providerID.localeCompare(b.providerID) || a.name.localeCompare(b.name))
   const providers = context.data.location.provider.list(location) ?? []
   const integrations = (await context.client.integration.list({ location })).data
@@ -333,6 +339,7 @@ async function chooseModel(
       (model) =>
         model.providerID === provider &&
         model.enabled &&
+        model.type === undefined &&
         model.capabilities.output.includes("text") &&
         !Router.isJevEvaluator(model.id),
     )

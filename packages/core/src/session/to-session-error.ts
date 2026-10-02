@@ -1,4 +1,4 @@
-import { AIError, ToolFailure } from "@opencode/ai"
+import { AIError, ToolFailure, type FinishReasonDetails } from "@opencode/ai"
 import { Tool } from "@opencode/schema/tool"
 import { SessionError } from "@opencode/schema/session-error"
 import { Permission } from "../permission.js"
@@ -72,6 +72,15 @@ export function toSessionError(cause: unknown, route?: Route): SessionError.Erro
   return { type: "unknown", message: cause instanceof Error ? cause.message : String(cause) }
 }
 
+export function contentFilterError(summary: string, reason: FinishReasonDetails): SessionError.Error {
+  return {
+    type: "provider.content-filter",
+    message: [reason.category === undefined ? summary : `${summary} (${reason.category})`, reason.explanation]
+      .filter(Boolean)
+      .join(": "),
+  }
+}
+
 function providerError(type: string, reason: AIError["reason"], route: Route | undefined): SessionError.Error {
   const status = reason.http?.status
   // Only a transport failure names its URL: elsewhere the host answered, so the URL is not the diagnosis.
@@ -80,6 +89,7 @@ function providerError(type: string, reason: AIError["reason"], route: Route | u
     type,
     message: reason.message,
     ...(status === undefined ? {} : { status }),
+    ...(reason.body === undefined ? {} : { response: { body: reason.body } }),
     ...(route === undefined ? {} : { provider: route.provider, model: route.model }),
     ...(url === undefined ? {} : { url: ProviderFailure.redactURL(url) }),
   }

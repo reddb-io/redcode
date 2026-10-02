@@ -4,6 +4,8 @@ import path from "node:path"
 import { pathToFileURL } from "node:url"
 import {
   Client,
+  SdkError,
+  SdkErrorCode,
   SdkHttpError,
   StreamableHTTPClientTransport,
   UnauthorizedError,
@@ -24,7 +26,7 @@ import {
   type Transport,
   type VersionNegotiationOptions,
 } from "@modelcontextprotocol/client"
-import { Cause, Effect, Exit, Schema } from "effect"
+import { Cause, Clock, Duration, Effect, Exit, Schedule, Schema } from "effect"
 import { ConfigMCP } from "@opencode/schema/config/mcp"
 import type { Session } from "@opencode/schema/session"
 import { McpStdio } from "./stdio.js"
@@ -32,7 +34,41 @@ import { McpStdio } from "./stdio.js"
 const DEFAULT_STARTUP_TIMEOUT = 30_000
 const DEFAULT_CATALOG_TIMEOUT = 30_000
 const DEFAULT_EXECUTION_TIMEOUT = 12 * 60 * 60 * 1_000 // 12 hours
+const TERMINATE_TIMEOUT = 1_000
 const toError = (error: unknown) => (error instanceof Error ? error : new Error(String(error)))
+
+// Bun exposes network codes directly; Node's fetch carries them on the cause.
+const errorCode = (error: Error) => {
+  if (error instanceof SdkError) return undefined
+  if ("code" in error && typeof error.code === "string") return error.code
+  const cause = error.cause
+  return cause instanceof Error && "code" in cause && typeof cause.code === "string" ? cause.code : undefined
+}
+
+// HTTP statuses and network error codes live on error properties and are lost once flattened to a message.
+const describe = (error: unknown) => {
+  if (!(error instanceof Error)) return String(error)
+  const detail = error instanceof SdkHttpError ? `HTTP ${error.status}` : errorCode(error)
+  return detail && !error.message.includes(detail) ? `${error.message} (${detail})` : error.message
+}
+
+// Retry only failures that can recover while the same server is starting or overloaded.
+const isTransient = (error: unknown) =>
+  error instanceof SdkHttpError
+    ? error.status === 408 ||
+      error.status === 429 ||
+      (error.status >= 500 && error.status < 600 && error.status !== 501)
+    : error instanceof Error &&
+      [
+        "ECONNREFUSED",
+        "ECONNRESET",
+        "ETIMEDOUT",
+        "EAI_AGAIN",
+        "ENETUNREACH",
+        "EHOSTUNREACH",
+        "UND_ERR_CONNECT_TIMEOUT",
+        "UND_ERR_SOCKET",
+      ].includes(errorCode(error) ?? "")
 
 export type { GetPromptResult, Prompt, ReadResourceResult, Resource, Tool }
 export type ResourceTemplate = ResourceTemplateType
@@ -109,7 +145,7 @@ export interface Connection {
     readonly args?: Record<string, unknown>
     readonly sessionID?: Session.ID
   }) => Effect.Effect<CallToolResult, Error>
-  readonly onClose: (callback: () => void) => void
+  readonly onClose: (callback: (reason: string) => void) => void
   readonly onSessionExpired: (callback: () => void) => void
   readonly onToolsChanged: (callback: () => void) => void
   readonly onPromptsChanged: (callback: () => void) => void
@@ -139,7 +175,38 @@ export const connect = Effect.fnUntraced(function* (
     onChanged: () => changed[key](),
   })
 
+  // The SDK fails pending requests with a bare "Connection closed"; the transport error before it says why.
+  let lastError: string | undefined
+  const explain = (error: unknown) =>
+    error instanceof SdkError && error.code === SdkErrorCode.ConnectionClosed && lastError
+      ? `${describe(error)}: ${lastError}`
+      : describe(error)
+
+  // Each operation shares one timeout across all attempts, including backoff and transport cleanup.
+  const retrying = <A, E>(what: string, effect: Effect.Effect<A, E>, timeout: number) =>
+    Effect.gen(function* () {
+      const deadline = (yield* Clock.currentTimeMillis) + timeout
+      return yield* Effect.retry(
+        effect,
+        Schedule.max([Schedule.exponential("250 millis", 4), Schedule.recurs(2)]).pipe(
+          Schedule.setInputType<E>(),
+          Schedule.while(({ input, now, duration }) =>
+            !isTransient(input) || now + Duration.toMillis(duration) >= deadline
+              ? Effect.succeed(false)
+              : Effect.logWarning(`retrying ${what}`, { server, error: describe(input) }).pipe(Effect.as(true)),
+          ),
+        ),
+      )
+    }).pipe(
+      Effect.timeoutOrElse({
+        duration: timeout,
+        orElse: () => Effect.fail(new Error(`Request timed out after ${timeout}ms while ${what}`)),
+      }),
+    )
+
   const initialize = Effect.fnUntraced(function* (transport: Transport) {
+    lastError = undefined
+    const runFork = Effect.runForkWith(yield* Effect.context())
     const client = new Client(clientInfo, {
       capabilities: {
         ...(elicitation ? { elicitation: { form: { applyDefaults: true }, url: {} } } : {}),
@@ -154,6 +221,12 @@ export const connect = Effect.fnUntraced(function* (
         resources: listChanged("resources"),
       },
     })
+    // Background work such as the standalone SSE stream reports failures only here; aborts come from close.
+    client.onerror = (error) => {
+      if (error.name === "AbortError") return
+      lastError = describe(error)
+      runFork(Effect.logWarning("mcp transport error", { server, error: lastError }))
+    }
     client.setRequestHandler("roots/list", () => ({ roots: [{ uri: pathToFileURL(directory).href }] }))
     if (elicitation) {
       client.setRequestHandler("elicitation/create", (request, ctx) =>
@@ -180,13 +253,13 @@ export const connect = Effect.fnUntraced(function* (
     reported: false,
   }
   const failure = (error: unknown) => {
-    if (!(error instanceof SdkHttpError) || session.transport?.sessionId === undefined) return toError(error)
+    if (!(error instanceof SdkHttpError) || session.transport?.sessionId === undefined) return new Error(explain(error))
     const expired =
       error.status === 404 ||
       (error.status === 400 &&
         typeof error.data.text === "string" &&
         error.data.text.includes("Bad Request: Server not initialized"))
-    if (!expired) return toError(error)
+    if (!expired) return new Error(explain(error))
     if (!session.reported) {
       session.reported = true
       session.expired?.()
@@ -218,50 +291,86 @@ export const connect = Effect.fnUntraced(function* (
     const url = new URL(config.url)
     const addedCodemode = config.codemode !== false && !url.searchParams.has("codemode")
     if (addedCodemode) url.searchParams.set("codemode", "false")
-    const open = (url: URL) => {
+    const open = Effect.fnUntraced(function* (url: URL) {
       session.transport = new StreamableHTTPClientTransport(url, {
         requestInit: config.headers ? { headers: config.headers } : undefined,
         authProvider,
         fetch,
       })
-      return initialize(session.transport)
-    }
+      return yield* initialize(session.transport)
+    })
 
-    return yield* open(url).pipe(
-      Effect.catch((error) => {
-        if (!addedCodemode || !(error instanceof SdkHttpError) || (error.status !== 400 && error.status !== 404))
-          return Effect.fail(error)
-        // Servers that reject unknown query params get one retry at the configured URL.
-        return open(new URL(config.url))
-      }),
+    return yield* retrying(
+      "connect MCP server",
+      open(url).pipe(
+        Effect.catch((error) => {
+          if (!addedCodemode || !(error instanceof SdkHttpError) || (error.status !== 400 && error.status !== 404))
+            return Effect.fail(error)
+          // Servers that reject unknown query params get one retry at the configured URL.
+          return open(new URL(config.url))
+        }),
+      ),
+      config.timeout?.startup ?? DEFAULT_STARTUP_TIMEOUT,
     )
   }).pipe(Effect.exit)
   if (Exit.isSuccess(exit)) {
     const client = exit.value
-    yield* Effect.addFinalizer(() => Effect.promise(() => client.close()).pipe(Effect.ignore))
+    yield* Effect.addFinalizer(() =>
+      Effect.gen(function* () {
+        // Close only aborts streams; the legacy session lives on until the server expires it unless
+        // terminated explicitly. Terminate first: close aborts the signal the DELETE shares.
+        const transport = session.transport
+        // Termination failures are logged below; onerror would report them a second time.
+        client.onerror = undefined
+        if (transport?.sessionId !== undefined && !session.reported)
+          yield* Effect.tryPromise({ try: () => transport.terminateSession(), catch: toError }).pipe(
+            Effect.timeoutOrElse({
+              duration: TERMINATE_TIMEOUT,
+              orElse: () => Effect.fail(new Error(`Timed out after ${TERMINATE_TIMEOUT}ms`)),
+            }),
+            Effect.tapError((error) =>
+              Effect.logWarning("failed to terminate MCP session", { server, error: error.message }),
+            ),
+            Effect.ignore,
+          )
+        yield* Effect.tryPromise(() => client.close()).pipe(Effect.ignore)
+      }),
+    )
     const catalog = { timeout: config.timeout?.catalog ?? DEFAULT_CATALOG_TIMEOUT }
     const execution = config.timeout?.execution ?? DEFAULT_EXECUTION_TIMEOUT
     const request = <A>(what: string, run: (signal: AbortSignal) => Promise<A>) =>
       Effect.tryPromise({ try: run, catch: failure }).pipe(
         Effect.tapError((error) => Effect.logWarning(`failed to ${what}`, { server, error: error.message })),
       )
+    // Only remote, read-only catalog requests are retried; execution remains single-attempt.
+    const list = <A>(what: string, run: (signal: AbortSignal) => Promise<A>) => {
+      const effect = Effect.tryPromise({ try: run, catch: (error) => error })
+      return (config.type === "remote" ? retrying(what, effect, catalog.timeout) : effect).pipe(
+        Effect.mapError(failure),
+        Effect.tapError((error) => Effect.logWarning(`failed to ${what}`, { server, error: error.message })),
+      )
+    }
 
     return {
       modern: client.getProtocolEra() === "modern",
       instructions: client.getInstructions()?.trim() || undefined,
       identity: client.getServerVersion()?.name,
       tools: () =>
-        request("list MCP tools", () => client.listTools(undefined, catalog)).pipe(Effect.map((r) => r.tools)),
+        list("list MCP tools", (signal) => client.listTools(undefined, { ...catalog, signal })).pipe(
+          Effect.map((r) => r.tools),
+        ),
       prompts: () =>
-        request("list MCP prompts", () => client.listPrompts(undefined, catalog)).pipe(Effect.map((r) => r.prompts)),
+        list("list MCP prompts", (signal) => client.listPrompts(undefined, { ...catalog, signal })).pipe(
+          Effect.map((r) => r.prompts),
+        ),
       resources: () =>
-        request("list MCP resources", () => client.listResources(undefined, catalog)).pipe(
+        list("list MCP resources", (signal) => client.listResources(undefined, { ...catalog, signal })).pipe(
           Effect.map((r) => r.resources),
         ),
       resourceTemplates: () =>
-        request("list MCP resource templates", () => client.listResourceTemplates(undefined, catalog)).pipe(
-          Effect.map((r) => r.resourceTemplates),
-        ),
+        list("list MCP resource templates", (signal) =>
+          client.listResourceTemplates(undefined, { ...catalog, signal }),
+        ).pipe(Effect.map((r) => r.resourceTemplates)),
       readResource: (input) => {
         if (!client.getServerCapabilities()?.resources) return Effect.succeed(undefined)
         return request("read MCP resource", (signal) =>
@@ -285,7 +394,7 @@ export const connect = Effect.fnUntraced(function* (
           ),
         ).pipe(Effect.map(toCallToolResult)),
       onClose: (callback) => {
-        client.onclose = callback
+        client.onclose = () => callback(lastError ? `Connection closed: ${lastError}` : "Connection closed")
       },
       onSessionExpired: (callback) => {
         session.expired = callback
@@ -309,7 +418,7 @@ export const connect = Effect.fnUntraced(function* (
       server,
       message: `${error.message}; the server supports ${error.supported.join(", ")}. Set "protocol" for this server to one of those or to "legacy".`,
     })
-  return yield* new ConnectError({ server, message: error instanceof Error ? error.message : String(error) })
+  return yield* new ConnectError({ server, message: explain(error) })
 })
 
 // Absent config is legacy: the SDK sends the plain initialize handshake with no discover probe.

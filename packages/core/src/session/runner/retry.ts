@@ -82,10 +82,14 @@ const schedule = Schedule.max([
   }),
 )
 
+// Each timeout already spent minutes waiting; do not use the general twenty-retry allowance.
+const MAX_TIMEOUT_RETRIES = 3
+
 export const policy = (sessionID: SessionSchema.ID) =>
   Effect.gen(function* () {
     const step = yield* Schedule.toStep(schedule)
     let attempt = 1
+    let timeouts = 0
     return (input: Input) =>
       Effect.gen(function* () {
         const now = yield* Clock.currentTimeMillis
@@ -115,6 +119,18 @@ export const policy = (sessionID: SessionSchema.ID) =>
         if (!next) return stop
         const [, duration] = next
         attempt++
+        if (
+          input.cause.reason._tag === "Timeout" ||
+          (input.cause.reason._tag === "Transport" &&
+            [
+              "Timeout",
+              "ETIMEDOUT",
+              "UND_ERR_CONNECT_TIMEOUT",
+              "UND_ERR_HEADERS_TIMEOUT",
+              "UND_ERR_BODY_TIMEOUT",
+            ].includes(input.cause.reason.code ?? ""))
+        )
+          timeouts++
         const delay = Math.ceil(Duration.toMillis(duration))
         const event: PluginHooks.Domains["session"]["retry"] = {
           sessionID,
@@ -123,7 +139,10 @@ export const policy = (sessionID: SessionSchema.ID) =>
           error: input.error,
           attempt,
           // A far reset or a missing account is proposed as a stop; a hook may still choose to retry.
-          decision: input.retry && !far && !unconnected ? { retry: true, delay } : { retry: false },
+          decision:
+            input.retry && !far && !unconnected && timeouts <= MAX_TIMEOUT_RETRIES
+              ? { retry: true, delay }
+              : { retry: false },
         }
         yield* input.hook(event)
         if (!event.decision.retry) return stop

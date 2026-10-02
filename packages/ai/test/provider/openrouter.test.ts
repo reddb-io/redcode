@@ -9,6 +9,28 @@ import { fixedResponse } from "../lib/http.js"
 import { sseEvents } from "../lib/sse.js"
 
 describe("OpenRouter", () => {
+  it.effect("retains provider-reported cost from a streamed Chat response", () =>
+    Effect.gen(function* () {
+      const response = yield* LLMClient.generate(
+        LLM.request({
+          model: OpenRouter.configure({ apiKey: "test-key" }).model("openai/gpt-4o-mini"),
+          prompt: "Hello",
+        }),
+      ).pipe(
+        Effect.provide(
+          fixedResponse(
+            sseEvents({
+              choices: [{ delta: { content: "Hello" }, finish_reason: "stop" }],
+              usage: { prompt_tokens: 100, completion_tokens: 10, cost: 0.125 },
+            }),
+          ),
+        ),
+      )
+      expect(response.usage?.cost).toBe(0.125)
+      expect(response.usage?.nonCachedInputTokens).toBe(100)
+    }),
+  )
+
   it.effect("prepares OpenRouter models through the OpenAI-compatible Chat route", () =>
     Effect.gen(function* () {
       const model = OpenRouter.configure({ apiKey: "test-key" }).model("openai/gpt-4o-mini")

@@ -56,6 +56,16 @@ describe("Model.Compatibility", () => {
 })
 
 describe("Model.Info", () => {
+  test("keeps canonical identity separate from the executable provider id", () => {
+    const model = Model.Info.default(Provider.ID.make("vercel"), Model.ID.make("typesafe-ai/jev"))
+    const decision = { ...model, type: "decision", canonicalModelID: Model.ID.make("typesafe/jev-latest") }
+    const decoded = Schema.decodeUnknownSync(Model.Info)(Schema.encodeSync(Model.Info)(decision))
+    expect(decoded.id).toBe("typesafe-ai/jev")
+    expect(decoded.canonicalModelID).toBe("typesafe/jev-latest")
+    expect(decoded.type).toBe("decision")
+    expect(Schema.encodeSync(Model.Info)(model)).not.toHaveProperty("canonicalModelID")
+  })
+
   test("preserves routed catalog names without replacing the requested model ID", () => {
     const model = Model.Info.default(Provider.ID.make("red-router"), Model.ID.make("oc/gpt-6-astra"))
     const routed = {

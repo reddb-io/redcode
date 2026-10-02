@@ -12,6 +12,7 @@ import { SessionSchema } from "../schema.js"
 import { SessionError } from "@opencode/schema/session-error"
 import { Money } from "@opencode/schema/money"
 import { SessionUsage } from "../usage.js"
+import { contentFilterError } from "../to-session-error.js"
 import type { Tool } from "../../tool.js"
 
 type Input = {
@@ -40,7 +41,7 @@ export interface StepRecord {
     readonly finish: Extract<LLMEvent, { type: "step-finish" }>["reason"]["normalized"]
     readonly rawFinish?: string
     readonly providerState?: SessionMessage.ProviderState
-    readonly tokens: ReturnType<typeof SessionUsage.tokens>
+    readonly usage: Extract<LLMEvent, { type: "step-finish" }>["usage"]
   }
   readonly needsContinuation: boolean
 }
@@ -541,11 +542,11 @@ export const createLLMEventPublisher = (bus: Pick<Bus.Interface, "publish">, inp
           finish: event.reason.normalized,
           rawFinish: event.reason.raw,
           providerState: providerState(event.providerMetadata),
-          tokens: SessionUsage.tokens(event.usage),
+          usage: event.usage,
         }
         if (event.reason.normalized === "content-filter") {
           providerFailed = true
-          yield* failAssistant({ type: "provider.content-filter", message: "Provider blocked the response" })
+          yield* failAssistant(contentFilterError("Provider blocked the response", event.reason))
           return
         }
         return

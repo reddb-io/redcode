@@ -11,9 +11,11 @@ import { IntelligenceSettings } from "./settings.js"
 import { redRouterEndpoint } from "./red-router-endpoint.js"
 import { ConnectionCheck } from "@opencode/schema/connection-check"
 import { RemoteCheck } from "../remote-check.js"
+import { ModelsDev } from "../models-dev.js"
 
 const make = Effect.gen(function* () {
   const credentials = yield* Credential.Service
+  const modelsDev = yield* ModelsDev.Service
 
   const connections = Effect.fn("IntelligenceTransport.connections")(function* (
     transport: Intelligence.Evaluator["transport"],
@@ -175,8 +177,26 @@ const make = Effect.gen(function* () {
     input: Intelligence.Probe,
     requests?: ConnectionCheck.Request[],
   ) {
-    if (["openrouter", "cloudflare-ai-gateway", "vercel"].includes(input.evaluator.transport))
-      return { models: [{ id: input.evaluator.model, name: input.evaluator.model }], manual: false }
+    if (["openrouter", "cloudflare-ai-gateway", "vercel"].includes(input.evaluator.transport)) {
+      // These transports do not expose a key-scoped decision list. The catalog supplies
+      // compatible offerings; the selected connection must still pass its inference check.
+      const models = (yield* modelsDev.get()).flatMap((provider) =>
+        providerIntegrations(input.evaluator.transport).includes(provider.info.id)
+          ? provider.models
+              .filter(
+                (model) =>
+                  model.type === "decision" &&
+                  model.status !== "deprecated" &&
+                  IntelligenceEvaluation.isJev(model.canonicalModelID ?? model.id),
+              )
+              .map((model) => ({ id: model.id, name: model.name }))
+          : [],
+      )
+      return {
+        models: models.length ? models : [{ id: input.evaluator.model, name: input.evaluator.model }],
+        manual: false,
+      }
+    }
     const router = input.evaluator.transport === "red-router"
     // Prefer the capability-filtered OpenAI catalog; older routers still expose a dedicated list.
     const dedicated = router
@@ -206,6 +226,7 @@ const make = Effect.gen(function* () {
               id: Schema.String,
               name: Schema.optional(Schema.String),
               type: Schema.optional(Schema.String),
+              canonical_model_id: Schema.optional(Schema.String),
               capabilities: Schema.optional(Schema.Struct({ decision: Schema.optional(Schema.Boolean) })),
               supported_endpoints: Schema.optional(Schema.Array(Schema.String)),
               provider: Schema.optional(
@@ -235,7 +256,7 @@ const make = Effect.gen(function* () {
             model.type === "systemone" ||
             model.type === "decision" ||
             model.supported_endpoints?.some((endpoint) => /(^|\/)(systemone|decisions)$/.test(endpoint)) ||
-            IntelligenceEvaluation.isJev(model.id),
+            (model.type === undefined && IntelligenceEvaluation.isJev(model.canonical_model_id ?? model.id)),
         )
         .filter((model, index, models) => models.findIndex((item) => item.id === model.id) === index)
         .map((model) => {
@@ -284,15 +305,19 @@ const make = Effect.gen(function* () {
     }
     return {
       models: [
-        ...(catalog.data ?? []).map((model) => ({
-          id: model.id,
-          name:
-            [typeof model.provider === "string" ? model.provider : model.provider?.name, model.name]
-              .filter(Boolean)
-              .join(" · ") || model.id,
-        })),
-        ...(catalog.models ?? []).map((model) => ({ id: model.name, name: model.name })),
-      ].filter((model) => IntelligenceEvaluation.isJev(model.id)),
+        ...(catalog.data ?? [])
+          .filter((model) => IntelligenceEvaluation.isJev(model.canonical_model_id ?? model.id))
+          .map((model) => ({
+            id: model.id,
+            name:
+              [typeof model.provider === "string" ? model.provider : model.provider?.name, model.name]
+                .filter(Boolean)
+                .join(" · ") || model.id,
+          })),
+        ...(catalog.models ?? [])
+          .filter((model) => IntelligenceEvaluation.isJev(model.name))
+          .map((model) => ({ id: model.name, name: model.name })),
+      ],
       manual: false,
     }
   })
@@ -377,7 +402,7 @@ export class Service extends Context.Service<Service, Effect.Success<typeof make
 export const node = makeGlobalNode({
   service: Service,
   layer: Layer.effect(Service, make),
-  deps: [Credential.node],
+  deps: [Credential.node, ModelsDev.node],
 })
 
 function credentialValue(value: Credential.Value | undefined) {

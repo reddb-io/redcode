@@ -99,6 +99,7 @@ function snapshots(data: readonly ModelsDev.Snapshot[]) {
       ...provider,
       models: provider.models.filter(
         (model) =>
+          model.type === undefined &&
           model.status !== "deprecated" &&
           !(
             provider.info.id === Provider.ID.amazonBedrock &&

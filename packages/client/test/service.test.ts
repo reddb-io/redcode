@@ -169,6 +169,21 @@ test("evicts an unresponsive registered service before starting its replacement"
   expect(await status(endpoint.url)).toMatchObject({ version: "test", pid: replacement.pid })
 })
 
+for (const mode of ["handoff-broken", "handoff-expired"] as const) {
+  test(`continues replacement without shutting down terminals when ${mode}`, async () => {
+    await using fixture = await serviceFixture()
+    const registration = fixture.registration
+    const existing = fixture.spawn(mode)
+    await fixture.waitForFile()
+
+    await run(Service.stop({ file: registration, pty: "handoff" }))
+    await existing.exited
+    expect(await Bun.file(registration + ".signal").text()).toBe("SIGTERM")
+    expect(await Bun.file(registration).exists()).toBe(false)
+    expect(await Bun.file(registration + ".pty-shutdown").exists()).toBe(false)
+  })
+}
+
 test("signals an unresponsive registered service process", async () => {
   await using fixture = await serviceFixture()
   const registration = fixture.registration

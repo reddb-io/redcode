@@ -1,6 +1,13 @@
 import { describe, expect } from "bun:test"
 import { Effect, Fiber } from "effect"
-import { AIError, HttpContext, QuotaExceededError, RateLimitError } from "@opencode/ai"
+import {
+  AIError,
+  HttpContext,
+  ProviderInternalError,
+  QuotaExceededError,
+  RateLimitError,
+  TransportError,
+} from "@opencode/ai"
 import { Bus } from "@opencode/core/bus"
 import { Database } from "@opencode/core/database/database"
 import { AppNodeBuilder } from "@opencode/core/effect/app-node-builder"
@@ -115,6 +122,26 @@ describe("SessionRunnerRetry.exhausted", () => {
 })
 
 describe("SessionRunnerRetry.policy", () => {
+  it.effect("limits transport timeout retries while retaining the general transient allowance", () =>
+    Effect.gen(function* () {
+      const timedOut = new AIError({
+        reason: new TransportError({
+          message: "Timed out",
+          transport: "http",
+          operation: "request",
+          code: "Timeout",
+        }),
+      })
+      const timeoutPolicy = yield* SessionRunnerRetry.policy(id)
+      const limited = yield* Effect.forEach(Array.from({ length: 4 }), () => timeoutPolicy(input(timedOut)))
+      expect(limited.map((decision) => decision.retry)).toEqual([true, true, true, false])
+      const transientPolicy = yield* SessionRunnerRetry.policy(id)
+      const transient = new AIError({ reason: new ProviderInternalError({ message: "internal" }) })
+      const general = yield* Effect.forEach(Array.from({ length: 10 }), () => transientPolicy(input(transient)))
+      expect(general.every((decision) => decision.retry)).toBe(true)
+    }),
+  )
+
   it.effect("ends the turn with a quota message instead of waiting out a far reset", () =>
     Effect.gen(function* () {
       const decide = yield* SessionRunnerRetry.policy(id)

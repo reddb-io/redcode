@@ -19,6 +19,7 @@ import {
   FinishReason,
   LLMEvent,
   AIError,
+  HttpContext,
   LanguageModel,
   ProviderID,
   ProviderMetadata,
@@ -62,17 +63,20 @@ export interface LanguageEvent {
   language?: LanguageModelV3
 }
 
-function wrapSSE(res: Response, ms: number, ctl: AbortController) {
+function wrapResponse(res: Response, ms: number, ctl: AbortController, url: string) {
   if (typeof ms !== "number" || ms <= 0) return res
   if (!res.body) return res
-  if (!res.headers.get("content-type")?.includes("text/event-stream")) return res
+  const sse = res.headers.get("content-type")?.includes("text/event-stream") === true
+  if (!sse && res.status < 400) return res
 
   const reader = res.body.getReader()
   const decoder = new TextDecoder()
   let deadline: number | undefined
-  const parser = makeParser((event) => {
-    if (event._tag === "Event") deadline = Date.now() + ms
-  })
+  const parser = sse
+    ? makeParser((event) => {
+        if (event._tag === "Event") deadline = Date.now() + ms
+      })
+    : undefined
   const body = new ReadableStream<Uint8Array>({
     async pull(ctrl) {
       const expires = deadline ?? Date.now() + ms
@@ -80,7 +84,22 @@ function wrapSSE(res: Response, ms: number, ctl: AbortController) {
       const part = await new Promise<Awaited<ReturnType<typeof reader.read>>>((resolve, reject) => {
         const remaining = Math.max(0, expires - Date.now())
         const id = setTimeout(() => {
-          const err = new Error("SSE read timed out")
+          const err = sse
+            ? new Error("SSE read timed out")
+            : new AIError({
+                reason: new TransportError({
+                  message: "HTTP error body timed out",
+                  transport: "http",
+                  operation: "read",
+                  code: "Timeout",
+                  url: res.url || url,
+                  http: new HttpContext({
+                    url: res.url || url,
+                    status: res.status,
+                    headers: Object.fromEntries(res.headers),
+                  }),
+                }),
+              })
           ctl.abort(err)
           void reader.cancel(err)
           reject(err)
@@ -103,7 +122,8 @@ function wrapSSE(res: Response, ms: number, ctl: AbortController) {
         return
       }
 
-      parser.feed(decoder.decode(part.value, { stream: true }))
+      if (parser) parser.feed(decoder.decode(part.value, { stream: true }))
+      if (!sse) deadline = Date.now() + ms
       ctrl.enqueue(part.value)
     },
     async cancel(reason) {
@@ -129,23 +149,29 @@ function prepareOptions(model: RuntimeInfo, pkg: string) {
   }
 
   const customFetch = options.fetch
-  const chunkTimeout = options.chunkTimeout
+  const timeouts = Provider.timeouts(options)
+  delete options.headerTimeout
   delete options.chunkTimeout
   delete options.compaction
   delete options.transport
   options.fetch = async (input: Parameters<typeof fetch>[0], init?: RequestInit) => {
     const opts = { ...(init ?? {}) }
-    const signals = [
-      opts.signal,
-      typeof chunkTimeout === "number" && chunkTimeout > 0 ? new AbortController() : undefined,
-      options.timeout !== undefined && options.timeout !== null && options.timeout !== false
-        ? AbortSignal.timeout(options.timeout)
-        : undefined,
-    ].filter((item): item is AbortSignal | AbortController => item !== undefined && item !== null)
-    const chunkAbortCtl = signals.find((item): item is AbortController => item instanceof AbortController)
-    const abortSignals = signals.map((item) => (item instanceof AbortController ? item.signal : item))
-    if (abortSignals.length === 1) opts.signal = abortSignals[0]
-    if (abortSignals.length > 1) opts.signal = AbortSignal.any(abortSignals)
+    // A plain AbortSignal.timeout would keep running into the body stream, so the header limit uses
+    // a timer that is cleared once headers arrive. The whole-request limit is meant to span the body.
+    const headers = new AbortController()
+    const headerTimer =
+      timeouts.headerTimeout === false
+        ? undefined
+        : setTimeout(() => headers.abort(new Error(HEADER_TIMEOUT_MESSAGE)), timeouts.headerTimeout)
+    const chunks = new AbortController()
+    opts.signal = AbortSignal.any(
+      [
+        opts.signal,
+        headers.signal,
+        chunks.signal,
+        timeouts.timeout ? AbortSignal.timeout(timeouts.timeout) : undefined,
+      ].filter((item): item is AbortSignal => item !== undefined && item !== null),
+    )
 
     if (typeof opts.body === "string" && model.body !== undefined) {
       const decoded = Option.getOrUndefined(decodeJson(opts.body))
@@ -156,11 +182,13 @@ function prepareOptions(model: RuntimeInfo, pkg: string) {
 
     const send: Fetch = typeof customFetch === "function" ? customFetch : fetch
     const middleware = httpMiddleware.getStore()
-    const res = middleware
-      ? await throughMiddleware(middleware, send, input, { ...opts, timeout: false })
-      : await send(input, { ...opts, timeout: false })
-    if (!chunkAbortCtl || typeof chunkTimeout !== "number") return res
-    return wrapSSE(res, chunkTimeout, chunkAbortCtl)
+    const res = await (
+      middleware
+        ? throughMiddleware(middleware, send, input, { ...opts, timeout: false })
+        : send(input, { ...opts, timeout: false })
+    ).finally(() => clearTimeout(headerTimer))
+    if (timeouts.chunkTimeout === false) return res
+    return wrapResponse(res, timeouts.chunkTimeout, chunks, input instanceof Request ? input.url : String(input))
   }
 
   return options
@@ -215,6 +243,8 @@ function throughMiddleware(
     { signal: init.signal ?? undefined },
   )
 }
+
+const HEADER_TIMEOUT_MESSAGE = "Response headers timed out"
 
 export class InitError extends Schema.TaggedError<InitError>()("AISDK.InitError", {
   providerID: Provider.ID,
@@ -449,8 +479,7 @@ function legacyProviderDefaults(packageName: string, providerID: string, modelID
     packageName === "@ai-sdk/amazon-bedrock/mantle"
   ) {
     const id = modelID.toLowerCase()
-    if (packageName === "@ai-sdk/azure" && id.includes("gpt-5.5"))
-      return { store: false, reasoningSummary: "auto" }
+    if (packageName === "@ai-sdk/azure" && id.includes("gpt-5.5")) return { store: false, reasoningSummary: "auto" }
     const reasoning = id.includes("gpt-5") && !id.includes("gpt-5-chat") && !id.includes("gpt-5-pro")
     return {
       store: false,
@@ -511,9 +540,17 @@ function requestSettings(settings: Readonly<Record<string, unknown>> | undefined
   const result = Object.fromEntries(
     Object.entries(settings).filter(
       ([key]) =>
-        !["apiKey", "authToken", "baseURL", "chunkTimeout", "compaction", "fetch", "timeout", "transport"].includes(
-          key,
-        ),
+        ![
+          "apiKey",
+          "authToken",
+          "baseURL",
+          "chunkTimeout",
+          "compaction",
+          "fetch",
+          "headerTimeout",
+          "timeout",
+          "transport",
+        ].includes(key),
     ),
   )
   return Object.keys(result).length === 0 ? undefined : result
@@ -1054,7 +1091,7 @@ const errorValue = (error: unknown) => (ProviderShared.isRecord(error) ? error.v
 
 // Runtime-generated network failure shapes. The codes mirror the AI SDK's own
 // Bun network error list in handleFetchError; the messages are undici's fetch
-// TypeError and stream termination strings plus our SSE chunk timeout error.
+// TypeError and stream termination strings plus our header and chunk timeout errors.
 // Unrecognized shapes still retry via the UnknownProvider default; this match
 // only adds transport semantics (continuation eligibility, display).
 const NETWORK_ERROR_CODES = new Set([
@@ -1066,12 +1103,13 @@ const NETWORK_ERROR_CODES = new Set([
   "ConnectionClosed",
   "FailedToOpenSocket",
 ])
+const TIMEOUT_ERROR_MESSAGES = new Set(["sse read timed out", HEADER_TIMEOUT_MESSAGE.toLowerCase()])
 const NETWORK_ERROR_MESSAGES = new Set([
   "fetch failed",
   "failed to fetch",
   "terminated",
   "other side closed",
-  "sse read timed out",
+  ...TIMEOUT_ERROR_MESSAGES,
 ])
 
 const NativeErrorShape = Schema.Struct({
@@ -1091,12 +1129,21 @@ function networkFailure(error: unknown, depth = 0): { message: string; code?: st
   if (cause) return cause
   if (shape.code !== undefined && (NETWORK_ERROR_CODES.has(shape.code) || shape.code.startsWith("UND_ERR")))
     return { message: shape.message, code: shape.code }
-  if (NETWORK_ERROR_MESSAGES.has(shape.message.trim().toLowerCase()))
-    return { message: shape.message, code: shape.code }
+  const message = shape.message.trim().toLowerCase()
+  if (NETWORK_ERROR_MESSAGES.has(message))
+    return { message: shape.message, code: shape.code ?? (TIMEOUT_ERROR_MESSAGES.has(message) ? "Timeout" : undefined) }
   return undefined
 }
 
 function apiCallError(error: APICallError) {
+  // The SDK wraps failures while reading an HTTP error body in APICallError.
+  // Retain the read-stage timeout emitted by our response wrapper.
+  if (
+    error.cause instanceof AIError &&
+    error.cause.reason._tag === "Transport" &&
+    error.cause.reason.code === "Timeout"
+  )
+    return error.cause
   const failure = RequestExecutor.httpFailure({
     message: providerErrorMessage(error),
     url: error.url,

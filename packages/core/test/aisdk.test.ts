@@ -554,9 +554,10 @@ it.effect("keeps V1 Baseten and OpenCode thinking defaults on compatible SDK rou
           })
           const request = yield* compileRequest(LLM.request({ model: resolved, prompt: "Hello" }))
           if (id === "other-model") expect(request.body.providerOptions?.opencode).toBeUndefined()
-          else expect(request.body.providerOptions?.opencode).toMatchObject({
-            chat_template_args: { enable_thinking: true },
-          })
+          else
+            expect(request.body.providerOptions?.opencode).toMatchObject({
+              chat_template_args: { enable_thinking: true },
+            })
         }),
       { discard: true },
     )
@@ -796,11 +797,19 @@ it.effect("normalizes file data across AI SDK prompt parts", () =>
           Message.user([
             { type: "media", media: Media.bytes(bytes, "image/png"), filename: "bytes.png" },
             { type: "media", media: Media.base64("AAAA", "image/png"), filename: "base64.png" },
-            { type: "media", media: Media.fromDataUrl("data:image/png;charset=utf-8;base64,AQID"), filename: "inline.png" },
+            {
+              type: "media",
+              media: Media.fromDataUrl("data:image/png;charset=utf-8;base64,AQID"),
+              filename: "inline.png",
+            },
             { type: "media", media: Media.url("https://example.com/image.png", { mediaType: "image/png" }) },
             { type: "media", media: Media.base64("s3://bucket/image.png", "image/png") },
           ]),
-          Message.assistant({ type: "media", media: Media.url("http://example.com/document.pdf", { mediaType: "application/pdf" }), filename: "document.pdf" }),
+          Message.assistant({
+            type: "media",
+            media: Media.url("http://example.com/document.pdf", { mediaType: "application/pdf" }),
+            filename: "document.pdf",
+          }),
           Message.tool({
             id: "call_1",
             name: "screenshot",
@@ -929,7 +938,7 @@ const chatChunk = (text: string) =>
     choices: [{ index: 0, delta: { content: text }, finish_reason: "stop" }],
   })}\n\ndata: [DONE]\n\n`
 
-const compatibleModel = Effect.fn(function* (customFetch: typeof fetch) {
+const compatibleModel = Effect.fn(function* (customFetch: typeof fetch, settings: Provider.Settings = {}) {
   const aisdk = yield* AISDK.Service
   yield* aisdk.hook.sdk((event) => {
     event.sdk = createOpenAICompatible({
@@ -939,9 +948,86 @@ const compatibleModel = Effect.fn(function* (customFetch: typeof fetch) {
     })
   })
   return yield* aisdk.model(
-    model("@ai-sdk/openai-compatible", { apiKey: "test", baseURL: "https://example.test/v1", fetch: customFetch }),
+    model("@ai-sdk/openai-compatible", {
+      apiKey: "test",
+      baseURL: "https://example.test/v1",
+      fetch: customFetch,
+      ...settings,
+    }),
   )
 })
+
+for (const middleware of [false, true]) {
+  it.effect(`bounds a stalled AI SDK JSON error body and preserves HTTP diagnostics: middleware=${middleware}`, () =>
+    Effect.gen(function* () {
+      const encoder = new TextEncoder()
+      const resolved = yield* compatibleModel(
+        Object.assign(
+          async () =>
+            new Response(
+              new ReadableStream<Uint8Array>({
+                start(controller) {
+                  controller.enqueue(encoder.encode('{"error":{"message":"'))
+                },
+              }),
+              { status: 500, headers: { "content-type": "application/json", "x-request-id": "stalled-sdk" } },
+            ),
+          { preconnect: fetch.preconnect },
+        ),
+        { headerTimeout: false, chunkTimeout: 25 },
+      )
+      const error = yield* LLMClient.generate(
+        LLM.request({ model: resolved, prompt: "Hello" }),
+        middleware ? { http: (request, handler) => handler(request) } : undefined,
+      ).pipe(Effect.provide(client), Effect.flip)
+
+      expect(error.reason).toMatchObject({
+        _tag: "Transport",
+        operation: "read",
+        code: "Timeout",
+        message: "HTTP error body timed out",
+      })
+      expect(error.reason.http).toMatchObject({ status: 500, headers: { "x-request-id": "stalled-sdk" } })
+      expect(SessionRunnerRetry.isRetryable(error)).toBeTrue()
+    }),
+  )
+}
+
+it.effect("honors disabled AI SDK error-body timeouts without changing complete body classification", () =>
+  Effect.gen(function* () {
+    const encoder = new TextEncoder()
+    const responseBody = '{"error":{"message":"Service unavailable"}}'
+    const resolved = yield* compatibleModel(
+      Object.assign(
+        async () =>
+          new Response(
+            new ReadableStream<Uint8Array>({
+              start(controller) {
+                controller.enqueue(encoder.encode(responseBody.slice(0, 10)))
+              },
+              async pull(controller) {
+                await new Promise((resolve) => setTimeout(resolve, 75))
+                controller.enqueue(encoder.encode(responseBody.slice(10)))
+                controller.close()
+              },
+            }),
+            { status: 500, headers: { "content-type": "application/json" } },
+          ),
+        { preconnect: fetch.preconnect },
+      ),
+      { headerTimeout: 25, chunkTimeout: false, timeout: false },
+    )
+    const error = yield* LLMClient.generate(LLM.request({ model: resolved, prompt: "Hello" })).pipe(
+      Effect.provide(client),
+      Effect.flip,
+    )
+
+    expect(error.reason._tag).toBe("UnknownProvider")
+    expect(error.message).toBe("Service unavailable")
+    expect(error.reason.http?.status).toBe(500)
+    expect(error.reason.body).toBe(responseBody)
+  }),
+)
 
 it.effect("routes AI SDK requests and responses through HTTP hook middleware", () =>
   Effect.gen(function* () {
@@ -983,12 +1069,7 @@ it.effect("routes AI SDK requests and responses through HTTP hook middleware", (
     expect(sent[0]?.headers.get("x-hook")).toBe("applied")
     expect(sent[0]?.headers.get("authorization")).toBe("Bearer test")
     expect(JSON.parse(sent[0]?.body ?? "")).toMatchObject({ model: "api-model" })
-    expect(seen).toEqual([
-      "POST https://example.test/v1/chat/completions",
-      sent[0]?.body,
-      sent[0]?.body,
-      "status 200",
-    ])
+    expect(seen).toEqual(["POST https://example.test/v1/chat/completions", sent[0]?.body, sent[0]?.body, "status 200"])
     expect(response.events.filter(LLMEvent.is.textDelta).map((event) => event.text)).toEqual(["rewritten"])
   }),
 )
@@ -1011,6 +1092,46 @@ it.effect("sends AI SDK requests directly when no HTTP hook middleware is attach
     expect(bodies).toHaveLength(1)
     expect(typeof bodies[0]).toBe("string")
     expect(response.events.filter(LLMEvent.is.textDelta).map((event) => event.text)).toEqual(["upstream"])
+  }),
+)
+
+it.effect("fails with a retryable transport error when response headers time out", () =>
+  Effect.gen(function* () {
+    const aisdk = yield* AISDK.Service
+    const customFetch = Object.assign(
+      (_input: Parameters<typeof fetch>[0], init?: RequestInit) =>
+        new Promise<Response>((_, reject) => {
+          init?.signal?.addEventListener("abort", () => reject(init.signal?.reason), { once: true })
+        }),
+      { preconnect: fetch.preconnect },
+    )
+    yield* aisdk.hook.sdk((event) => {
+      event.sdk = createOpenAICompatible({
+        ...event.options,
+        name: String(event.options.name),
+        baseURL: String(event.options.baseURL),
+      })
+    })
+    const resolved = yield* aisdk.model(
+      model("@ai-sdk/openai-compatible", {
+        apiKey: "test",
+        baseURL: "https://example.test/v1",
+        headerTimeout: 25,
+        fetch: customFetch,
+      }),
+    )
+    const error = yield* LLMClient.generate(LLM.request({ model: resolved, prompt: "Hello" })).pipe(
+      Effect.provide(client),
+      Effect.flip,
+    )
+
+    expect(error.reason).toMatchObject({
+      _tag: "Transport",
+      operation: "request",
+      message: "Response headers timed out",
+      code: "Timeout",
+    })
+    expect(SessionRunnerRetry.isRetryable(error)).toBeTrue()
   }),
 )
 

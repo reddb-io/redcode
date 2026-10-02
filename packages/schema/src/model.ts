@@ -133,6 +133,12 @@ export const Info = Schema.Struct({
   modelID: ID,
   providerID: Provider.ID,
   canonical: Provider.ID.pipe(optional),
+  canonicalModelID: ID.pipe(optional).annotate({
+    description: "The underlying lab/model identity; the provider model id remains the executable route.",
+  }),
+  type: Schema.String.pipe(optional).annotate({
+    description: "Specialized model behavior, such as decision. Absent for generative models.",
+  }),
   family: Family.pipe(optional),
   name: Schema.String,
   upstream: Router.Upstream.pipe(optional),

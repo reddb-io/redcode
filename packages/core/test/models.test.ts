@@ -221,6 +221,36 @@ const initialState: MockState = {
 }
 
 describe("ModelsDev Service", () => {
+  it.live("retains decision roles and canonical identity without changing executable aliases", () =>
+    Effect.gen(function* () {
+      const cache = makeCache()
+      writeCache(cache, {
+        acme: {
+          ...fixture.acme,
+          models: {
+            alias: {
+              ...fixture.acme.models["acme-1"],
+              id: "alias",
+              type: "decision",
+              canonical_model_id: "typesafe/jev-latest",
+            },
+          },
+        },
+      })
+      const state = yield* Ref.make(initialState)
+      const result = yield* provided(
+        state,
+        cache,
+        ModelsDev.Service.use((service) => service.get()),
+      )
+      expect(result[0].models[0]).toMatchObject({
+        id: "alias",
+        type: "decision",
+        canonicalModelID: "typesafe/jev-latest",
+      })
+    }),
+  )
+
   it.live("get() returns normalized snapshots from KV when a cache entry exists", () =>
     Effect.gen(function* () {
       const cache = makeCache()
@@ -345,7 +375,7 @@ describe("ModelsDev Service", () => {
       yield* ModelsDev.Service.use((service) => service.get()).pipe(
         Effect.provide(buildLayer(state, cache, { url: "", fetch: true, snapshot: false })),
       )
-      expect((yield* Ref.get(state)).calls[0]?.url).toBe("https://models.opencode.ai/api.json")
+      expect((yield* Ref.get(state)).calls[0]?.url).toBe("https://models.opencode.ai/api.json?type=all")
     }),
   )
 
@@ -556,14 +586,13 @@ describe("ModelsDev Service", () => {
 
 describe("ModelsDev catalog sources", () => {
   test("orders REDCODE_MODELS_URL, configured sources and the public catalogs without duplicates", () => {
-    expect(ModelsDev.sources(["https://mirror.example", " ", undefined, "https://mirror.example/", "not a url"])).toEqual([
-      "https://mirror.example/api.json",
-      ...ModelsDev.DEFAULT_SOURCES,
-    ])
+    expect(
+      ModelsDev.sources(["https://mirror.example", " ", undefined, "https://mirror.example/", "not a url"]),
+    ).toEqual(["https://mirror.example/api.json", ...ModelsDev.DEFAULT_SOURCES])
     expect(ModelsDev.sources(["https://cdn.example/catalog.json", "https://models.dev"])).toEqual([
       "https://cdn.example/catalog.json",
-      "https://models.dev/api.json",
-      "https://models.opencode.ai/api.json",
+      "https://models.dev/api.json?type=all",
+      "https://models.opencode.ai/api.json?type=all",
     ])
   })
 
@@ -574,9 +603,9 @@ describe("ModelsDev catalog sources", () => {
 
   test("recognizes proxy and TLS failures without reading stack frames", () => {
     expect(ModelsDev.classifyError(new Error("unable to verify the first certificate")).blocked).toBe(true)
-    expect(ModelsDev.classifyError({ message: "connect failed", cause: { code: "ERR_TLS_CERT_ALTNAME_INVALID" } }).blocked).toBe(
-      true,
-    )
+    expect(
+      ModelsDev.classifyError({ message: "connect failed", cause: { code: "ERR_TLS_CERT_ALTNAME_INVALID" } }).blocked,
+    ).toBe(true)
     const reset = Object.assign(new Error("socket hang up"), { stack: "at tls-socket.js:1" })
     expect(ModelsDev.classifyError(reset)).toEqual({ blocked: false, reason: "socket hang up" })
   })
@@ -587,7 +616,10 @@ describe("ModelsDev catalog sources", () => {
     expect(ModelsDev.decodeState("{", now)).toEqual({ sources: {} })
     expect(
       ModelsDev.decodeState(
-        JSON.stringify({ source: "a", sources: { b: { failures: 2, blockedUntil: now + 99 * 3_600_000, reason: "HTTP 403" } } }),
+        JSON.stringify({
+          source: "a",
+          sources: { b: { failures: 2, blockedUntil: now + 99 * 3_600_000, reason: "HTTP 403" } },
+        }),
         now,
       ),
     ).toEqual({ source: "a", sources: { b: { failures: 2, blockedUntil: now + 24 * 3_600_000, reason: "HTTP 403" } } })
@@ -618,9 +650,9 @@ describe("ModelsDev catalog sources", () => {
       )
       const result = yield* ModelsDev.Service.use((service) => service.get()).pipe(Effect.provide(layer))
       expect(result).toEqual(fixture2Snapshot)
-      expect(calls).toEqual(["https://blocked.example/api.json", "https://models.opencode.ai/api.json"])
+      expect(calls).toEqual(["https://blocked.example/api.json", "https://models.opencode.ai/api.json?type=all"])
       const state = ModelsDev.decodeState(cache.values.get("models-dev:sources"))
-      expect(state.source).toBe("https://models.opencode.ai/api.json")
+      expect(state.source).toBe("https://models.opencode.ai/api.json?type=all")
       expect(state.sources["https://blocked.example/api.json"]).toMatchObject({ failures: 1, reason: "HTTP 403" })
     }),
   )
