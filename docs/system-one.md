@@ -50,9 +50,10 @@ test the selected route before saving a working evaluator.
 The bundled models.dev provider catalog includes specialized entries through
 `api.json?type=all`. Their `type` and `canonical_model_id` are retained separately
 from executable provider IDs. Specialized entries are excluded from S2. For
-OpenRouter, Cloudflare AI Gateway and Vercel, S1 discovery uses compatible JEV
-decision offerings from the matching provider, with the adapter preset as a
-fallback. Other classifiers need a compatible typed-question adapter before they
+OpenRouter, Cloudflare AI Gateway and Vercel, S1 discovery lazily reads compatible
+JEV decision offerings from the matching provider in the bundled snapshot, with
+the adapter preset as a fallback. This does not start a remote catalog refresh.
+Other classifiers need a compatible typed-question adapter before they
 can be offered as S1. Catalog availability still requires a successful connection
 probe. RedRouter always uses its selected key's remote catalog and capabilities;
 the public snapshot never fills an empty Router list.

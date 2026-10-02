@@ -15,7 +15,6 @@ import { ModelsDev } from "../models-dev.js"
 
 const make = Effect.gen(function* () {
   const credentials = yield* Credential.Service
-  const modelsDev = yield* ModelsDev.Service
 
   const connections = Effect.fn("IntelligenceTransport.connections")(function* (
     transport: Intelligence.Evaluator["transport"],
@@ -180,7 +179,7 @@ const make = Effect.gen(function* () {
     if (["openrouter", "cloudflare-ai-gateway", "vercel"].includes(input.evaluator.transport)) {
       // These transports do not expose a key-scoped decision list. The catalog supplies
       // compatible offerings; the selected connection must still pass its inference check.
-      const models = (yield* modelsDev.get()).flatMap((provider) =>
+      const models = (yield* ModelsDev.bundled).flatMap((provider) =>
         providerIntegrations(input.evaluator.transport).includes(provider.info.id)
           ? provider.models
               .filter(
@@ -402,7 +401,7 @@ export class Service extends Context.Service<Service, Effect.Success<typeof make
 export const node = makeGlobalNode({
   service: Service,
   layer: Layer.effect(Service, make),
-  deps: [Credential.node, ModelsDev.node],
+  deps: [Credential.node],
 })
 
 function credentialValue(value: Credential.Value | undefined) {

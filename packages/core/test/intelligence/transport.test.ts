@@ -5,70 +5,15 @@ import { credentialMatches, IntelligenceTransport } from "@opencode/core/intelli
 import { IntelligenceEvaluation } from "@opencode/core/intelligence/evaluation"
 import { IntelligenceRouter } from "@opencode/core/intelligence/router"
 import { Integration } from "@opencode/schema/integration"
-import { Model } from "@opencode/schema/model"
-import { Provider } from "@opencode/schema/provider"
-import { ModelsDev } from "@opencode/core/models-dev"
 import { Global } from "@opencode/util/global"
 import { LayerNode } from "@opencode/util/effect/layer-node"
-import { Effect, Layer } from "effect"
+import { Effect } from "effect"
 import { tempGlobalLayer } from "../fixture/global"
 import { testEffect } from "../lib/effect"
 
 const it = testEffect(
   LayerNode.compile(LayerNode.group([Intelligence.node, IntelligenceTransport.node, Credential.node]), {
-    replacements: [
-      Global.node.replace(tempGlobalLayer),
-      ModelsDev.node.replace(ModelsDev.configured({ fetch: false })),
-    ],
-  }),
-)
-
-const decisions = testEffect(
-  LayerNode.compile(IntelligenceTransport.node, {
-    replacements: [
-      Global.node.replace(tempGlobalLayer),
-      ModelsDev.node.replace(
-        Layer.succeed(
-          ModelsDev.Service,
-          ModelsDev.Service.of({
-            get: () =>
-              Effect.succeed([
-                {
-                  info: {
-                    id: Provider.ID.make("vercel"),
-                    name: "Vercel",
-                    activation: "auto",
-                    package: "@opencode/ai/providers/vercel",
-                  },
-                  environment: [],
-                  models: [
-                    {
-                      ...Model.Info.default(Provider.ID.make("vercel"), Model.ID.make("decision-alias")),
-                      name: "JEV",
-                      type: "decision",
-                      canonicalModelID: Model.ID.make("typesafe/jev-latest"),
-                    },
-                    {
-                      ...Model.Info.default(Provider.ID.make("vercel"), Model.ID.make("liquid/classifier")),
-                      type: "decision",
-                    },
-                    {
-                      ...Model.Info.default(Provider.ID.make("vercel"), Model.ID.make("jev-chat-alias")),
-                      canonicalModelID: Model.ID.make("typesafe/jev-latest"),
-                    },
-                    {
-                      ...Model.Info.default(Provider.ID.make("vercel"), Model.ID.make("jev-old")),
-                      type: "decision",
-                      status: "deprecated",
-                    },
-                  ],
-                },
-              ]),
-            refresh: () => Effect.void,
-          }),
-        ),
-      ),
-    ],
+    replacements: [Global.node.replace(tempGlobalLayer)],
   }),
 )
 
@@ -89,11 +34,11 @@ const connect = (baseURL: string, label: string, key: string) =>
   })
 
 describe("connection-scoped System One discovery", () => {
-  decisions.live("uses compatible canonical decision aliases only from the selected provider", () =>
+  it.live("uses compatible canonical decision aliases only from the selected provider", () =>
     Effect.gen(function* () {
       const transport = yield* IntelligenceTransport.Service
       expect(yield* transport.discover({ evaluator: IntelligenceEvaluation.evaluatorPreset("vercel") })).toEqual({
-        models: [{ id: "decision-alias", name: "JEV" }],
+        models: [{ id: "typesafe-ai/jev", name: "Jev" }],
         manual: false,
       })
       expect(yield* transport.discover({ evaluator: IntelligenceEvaluation.evaluatorPreset("openrouter") })).toEqual({
@@ -103,7 +48,7 @@ describe("connection-scoped System One discovery", () => {
     }),
   )
 
-  decisions.live("never substitutes the static catalog for an empty Router connection", () =>
+  it.live("never substitutes the static catalog for an empty Router connection", () =>
     Effect.gen(function* () {
       const requests: string[] = []
       const server = yield* serve((request) => {

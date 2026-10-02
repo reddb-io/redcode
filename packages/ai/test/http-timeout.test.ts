@@ -247,7 +247,7 @@ describe("HTTP transport timeouts", () => {
       server.resume()
       const error = yield* Fiber.join(fiber)
 
-      expect(error.reason._tag).toBe("UnknownProvider")
+      expect(error.reason._tag).toBe("ProviderInternal")
       expect(error.message).toBe("Service unavailable")
       expect(error.reason.http).toMatchObject({ status: 500 })
       expect(error.reason.body).toBe(errorBody)

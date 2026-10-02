@@ -17,7 +17,7 @@ describe("Config.Entry", () => {
     for (const settings of [
       { headerTimeout: 1_000, chunkTimeout: 2_000, timeout: 3_000 },
       { headerTimeout: false, chunkTimeout: false, timeout: false },
-    ]) {
+    ] as const) {
       const input = { providers: { custom: { settings } } }
       expect(Schema.encodeSync(Config.Info)(decode(input))).toEqual(input)
     }

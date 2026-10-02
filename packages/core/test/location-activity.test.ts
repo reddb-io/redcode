@@ -8,6 +8,7 @@ import { makeGlobalNode } from "@opencode/util/effect/app-node"
 import { Bus } from "@opencode/core/bus"
 import { Database } from "@opencode/core/database/database"
 import { Form } from "@opencode/core/form"
+import { HookRuntime } from "@opencode/core/hook"
 import { Job } from "@opencode/core/job"
 import { Location } from "@opencode/core/location"
 import { LocationActivity } from "@opencode/core/location-activity"
@@ -42,6 +43,7 @@ function waiting(sessionID: Session.ID, forms: Form.Interface, permissions: Perm
 // Keep real execution ownership, location caching, forms, and eviction. Permission
 // ownership is per location like forms, but the real service also needs agents, saved
 // rules, and plugin hooks, so this fixture keeps only its pending-request behavior.
+// Successful execution also runs Stop hooks; this Location has no configured hooks.
 const locations = Layer.effect(
   LocationServiceMap.Service,
   Effect.gen(function* () {
@@ -76,7 +78,7 @@ const locations = Layer.effect(
           ),
         ).pipe(
           Layer.provideMerge(
-            Layer.merge(
+            Layer.mergeAll(
               Form.layer,
               Layer.mock(Permission.Service, {
                 close: Effect.void,
@@ -104,6 +106,7 @@ const locations = Layer.effect(
                   }),
                 list: () => Effect.sync(() => Array.from(pending.values(), (item) => item.request)),
               }),
+              Layer.mock(HookRuntime.Service, { run: () => Effect.succeed({ continue: true }) }),
             ),
           ),
           Layer.provide(Layer.succeed(Bus.Service, bus)),

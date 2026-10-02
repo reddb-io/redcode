@@ -16,12 +16,11 @@ import { Global } from "@opencode/util/global"
 import { eq } from "drizzle-orm"
 import { Effect } from "effect"
 import { tempGlobalLayer } from "../fixture/global"
-import { offlineModels } from "../fixture/models"
 import { testEffect } from "../lib/effect"
 
 const it = testEffect(
   LayerNode.compile(LayerNode.group([Intelligence.node, Credential.node, Database.node, SessionBudget.node]), {
-    replacements: [Global.node.replace(tempGlobalLayer), offlineModels],
+    replacements: [Global.node.replace(tempGlobalLayer)],
   }),
 )
 

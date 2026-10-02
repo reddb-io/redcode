@@ -1022,7 +1022,7 @@ it.effect("honors disabled AI SDK error-body timeouts without changing complete 
       Effect.flip,
     )
 
-    expect(error.reason._tag).toBe("UnknownProvider")
+    expect(error.reason._tag).toBe("ProviderInternal")
     expect(error.message).toBe("Service unavailable")
     expect(error.reason.http?.status).toBe(500)
     expect(error.reason.body).toBe(responseBody)

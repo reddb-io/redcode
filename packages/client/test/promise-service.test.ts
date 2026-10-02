@@ -3,6 +3,9 @@ import { Service, type EnsureReason } from "../src/promise/service"
 import { serviceFixture } from "./fixture/service-fixture"
 import { accelerate } from "./fixture/service-timing"
 
+// Windows process.kill terminates the process without running POSIX signal handlers.
+const windows = process.platform === "win32"
+
 const ensure = accelerate(Service.ensure)
 
 test("discovers a registered service", async () => {
@@ -166,7 +169,7 @@ test("evicts an unresponsive registered service before starting its replacement"
   fixture.track(replacement.pid)
 
   expect((await Bun.file(registration + ".requests").text()).trim().split("\n")).toHaveLength(3)
-  expect(await existing.exited).toBe(0)
+  expect(await existing.exited).toBe(windows ? 1 : 0)
   expect(replacement.pid).not.toBe(original.pid)
   expect(endpoint.url).toBe(replacement.url)
 })
@@ -179,8 +182,8 @@ for (const mode of ["handoff-broken", "handoff-expired"] as const) {
     await fixture.waitForFile()
 
     await Service.stop({ file: registration, pty: "handoff" })
-    await existing.exited
-    expect(await Bun.file(registration + ".signal").text()).toBe("SIGTERM")
+    expect(await existing.exited).toBe(windows ? 1 : 0)
+    if (!windows) expect(await Bun.file(registration + ".signal").text()).toBe("SIGTERM")
     expect(await Bun.file(registration).exists()).toBe(false)
     expect(await Bun.file(registration + ".pty-shutdown").exists()).toBe(false)
   })
@@ -189,11 +192,12 @@ for (const mode of ["handoff-broken", "handoff-expired"] as const) {
 test("signals the registered service process", async () => {
   await using fixture = await serviceFixture()
   const registration = fixture.registration
-  fixture.spawn("graceful")
+  const existing = fixture.spawn("graceful")
   await fixture.waitForFile()
 
   await Service.stop({ file: registration })
 
-  expect(await Bun.file(registration + ".signal").text()).toBe("SIGTERM")
+  expect(await existing.exited).toBe(windows ? 1 : 0)
+  if (!windows) expect(await Bun.file(registration + ".signal").text()).toBe("SIGTERM")
   expect(await Bun.file(registration).exists()).toBe(false)
 })

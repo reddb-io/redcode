@@ -24,7 +24,7 @@ describe("provider-reported request cost", () => {
     "estimates from catalog for invalid or absent cost %s",
     (cost) => {
       expect(SessionUsage.record(new Usage({ nonCachedInputTokens: 1_000, outputTokens: 100, cost }), costs).cost).toBe(
-        0.0028,
+        Money.USD.make(0.0028),
       )
     },
   )

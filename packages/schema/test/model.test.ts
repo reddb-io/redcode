@@ -60,8 +60,8 @@ describe("Model.Info", () => {
     const model = Model.Info.default(Provider.ID.make("vercel"), Model.ID.make("typesafe-ai/jev"))
     const decision = { ...model, type: "decision", canonicalModelID: Model.ID.make("typesafe/jev-latest") }
     const decoded = Schema.decodeUnknownSync(Model.Info)(Schema.encodeSync(Model.Info)(decision))
-    expect(decoded.id).toBe("typesafe-ai/jev")
-    expect(decoded.canonicalModelID).toBe("typesafe/jev-latest")
+    expect(decoded.id).toBe(Model.ID.make("typesafe-ai/jev"))
+    expect(decoded.canonicalModelID).toBe(Model.ID.make("typesafe/jev-latest"))
     expect(decoded.type).toBe("decision")
     expect(Schema.encodeSync(Model.Info)(model)).not.toHaveProperty("canonicalModelID")
   })
