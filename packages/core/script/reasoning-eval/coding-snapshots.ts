@@ -11,6 +11,8 @@ export async function repository(directory: string, metadata: string) {
     if (result.exit) throw new Error(`Fixture Git initialization failed: ${result.stderr}`)
   }
   const pointer = `gitdir: ${metadata.replaceAll("\\", "/")}\n`
+  // Git marks this pointer hidden on Windows; replace it before Bun opens it for writing.
+  await rm(path.join(directory, ".git"), { force: true })
   await Bun.write(path.join(directory, ".git"), pointer)
   if (initialized) return
   const added = await git(metadata, ["--git-dir", metadata, "--work-tree", directory, "add", "--all"])
