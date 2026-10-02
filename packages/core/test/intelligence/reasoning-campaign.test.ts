@@ -65,6 +65,14 @@ test("decodes pinned model manifests and activates one experiment at a time", ()
   }
 })
 
+test("coding comparisons include scoped dual repair and an equally bounded single self-review control", () => {
+  const result = plan({ suite: "coding", split: "held-out", experiments: "code-repair,self-review", pairs: [pair] })
+  expect(result.expectedExecutions).toBe(48)
+  expect(switches("code-repair")).toMatchObject({ reasoning_code_repair: true, reasoning_self_review: false })
+  expect(switches("self-review")).toMatchObject({ reasoning_code_repair: true, reasoning_self_review: true })
+  expect(() => plan({ suite: "diagnostic", experiments: "code-repair", pairs: [pair] })).toThrow()
+})
+
 test("the real CLI can preview a coding campaign without credentials, service startup or inference", async () => {
   const child = Bun.spawn(
     [

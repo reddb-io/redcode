@@ -67,6 +67,8 @@ import { IntelligenceArtifacts } from "../../intelligence/artifacts.js"
 import { IntelligenceLearning } from "../../intelligence/learning.js"
 import { SessionContextCuration } from "../context-curation.js"
 import { IntelligenceVerification } from "../../intelligence/verification.js"
+import { IntelligenceCodeRepair } from "../../intelligence/code-repair.js"
+import { RelativePath } from "../../schema.js"
 import { IntelligenceResponse } from "../../intelligence/response.js"
 import { Job } from "../../job.js"
 import { Skill } from "../../skill.js"
@@ -178,6 +180,29 @@ const layer = Layer.effect(
         limit: 1,
       })
       return IntelligenceVerification.state([user, marker, ...after])
+    })
+
+    const codeRepairState = Effect.fn("SessionRunner.codeRepairState")(function* (sessionID: SessionSchema.ID) {
+      const user = (yield* store.messages({ sessionID, type: "user", limit: 1 }))[0]
+      if (!user) return undefined
+      const markers = yield* store.messages({
+        sessionID,
+        type: "synthetic",
+        order: "asc",
+        cursor: { id: user.id, direction: "next" },
+      })
+      const marker = markers.findLast(
+        (message) => message.type === "synthetic" && message.metadata?.[IntelligenceCodeRepair.KEY] !== undefined,
+      )
+      if (!marker) return undefined
+      const after = yield* store.messages({
+        sessionID,
+        type: "assistant",
+        order: "asc",
+        cursor: { id: marker.id, direction: "next" },
+        limit: IntelligenceCodeRepair.MAX_STEPS,
+      })
+      return IntelligenceCodeRepair.state([user, marker, ...after])
     })
 
     const drain = Effect.fn("SessionRunner.drain")(function* (input: Parameters<Interface["drain"]>[0]) {
@@ -333,7 +358,9 @@ const layer = Layer.effect(
         // Classified before the goal accounts the Step, so an interruption while waiting spends nothing.
         const verification = yield* verificationState(sessionID)
         if (verification && !verification.pending) return DrainResult.Complete()
-        const classification = verification?.pending ? undefined : yield* classify(next.context)
+        const codeRepair = yield* codeRepairState(sessionID)
+        if (codeRepair && !codeRepair.pending) return DrainResult.Complete()
+        const classification = verification?.pending || codeRepair?.pending ? undefined : yield* classify(next.context)
         // What System One made of the request steers a RedRouter's requests for this Step; without a
         // classification the previous request's guidance is forgotten, never carried over.
         ProviderRouter.guide(sessionID, IntelligenceClassification.routerGuidance(classification))
@@ -378,7 +405,11 @@ const layer = Layer.effect(
           }),
         )
         if (Exit.isFailure(result)) return yield* Effect.failCause(result.cause)
-        continuing = verification?.pending ? false : result.value
+        continuing = verification?.pending
+          ? false
+          : codeRepair?.pending
+            ? codeRepair.remaining > 1 && result.value
+            : result.value
         if (
           continuing &&
           !verification?.pending &&
@@ -397,6 +428,7 @@ const layer = Layer.effect(
         if (
           !continuing &&
           !verification?.pending &&
+          !codeRepair?.pending &&
           !guardStopped &&
           // A Design reply can hand a preview to the reviewer while approval tasks remain pending.
           !["question", "design"].includes(next.context.agent.id) &&
@@ -435,13 +467,14 @@ const layer = Layer.effect(
           !(yield* monitors.list(sessionID)).some(Monitor.parks)
         ) {
           const started = yield* startReview(next.context, review)
-          const pursued = verification?.pending
-            ? { memory: goalLoop, continued: false }
-            : yield* pursueGoal(next.context, goalLoop).pipe(
-                // A goal changed by the user while it was judged is theirs to resume.
-                Effect.catchTag("SessionGoal.Error", () => Effect.succeed({ memory: goalLoop, continued: false })),
-                Effect.onError(() => (started ? Fiber.interrupt(started) : Effect.void)),
-              )
+          const pursued =
+            verification?.pending || codeRepair?.pending
+              ? { memory: goalLoop, continued: false }
+              : yield* pursueGoal(next.context, goalLoop).pipe(
+                  // A goal changed by the user while it was judged is theirs to resume.
+                  Effect.catchTag("SessionGoal.Error", () => Effect.succeed({ memory: goalLoop, continued: false })),
+                  Effect.onError(() => (started ? Fiber.interrupt(started) : Effect.void)),
+                )
           goalLoop = pursued.memory
           if (pursued.continued && started) yield* Fiber.interrupt(started)
           if (!pursued.continued) {
@@ -843,7 +876,14 @@ const layer = Layer.effect(
     ) {
       const sessionID = loaded.session.id
       const settings = yield* intelligence.read(sessionID)
-      if (loaded.session.parentID || !settings.enabled || IntelligenceEvaluation.mode(settings) === "single")
+      const selfReview =
+        loaded.agent.id === "build" &&
+        Config.latestExperimental(yield* config.entries(), "reasoning_self_review") === true
+      if (
+        loaded.session.parentID ||
+        !settings.enabled ||
+        (IntelligenceEvaluation.mode(settings) === "single" && !selfReview)
+      )
         return { type: "none" as const, memory }
       const recent = (yield* store.messages({ sessionID, order: "desc", limit: RECENT })).toReversed()
       const index = recent.findLastIndex((message) => message.type === "user")
@@ -864,7 +904,11 @@ const layer = Layer.effect(
         return { type: "none" as const, memory: current }
       }
       // A revision that changes nothing material settles nothing: the repaired issues stand.
-      if (current.text !== undefined && IntelligenceResponse.same(current.text, text))
+      if (
+        current.text !== undefined &&
+        IntelligenceResponse.same(current.text, text) &&
+        !(yield* codeRepairState(sessionID))
+      )
         return { type: "unchanged" as const, current }
       return { type: "review" as const, current, user, work, candidate, text }
     })
@@ -884,15 +928,51 @@ const layer = Layer.effect(
       const classification = (yield* intelligence
         .history(sessionID, { operation: "prompt_classification", subjectID: plan.user.id, limit: 1 })
         .pipe(Effect.orElseSucceed(() => [])))[0]
-      return yield* intelligence
+      const projected = (yield* facts.load(sessionID)).results
+      const entries = yield* config.entries()
+      const codeEnabled =
+        loaded.agent.id === "build" &&
+        (Config.latestExperimental(entries, "reasoning_code_repair") === true ||
+          Config.latestExperimental(entries, "reasoning_self_review") === true)
+      const history = codeEnabled
+        ? yield* store.messages({ sessionID, order: "asc", cursor: { id: plan.user.id, direction: "next" } })
+        : []
+      const scope = codeEnabled
+        ? IntelligenceCodeRepair.scope(
+            projected.filter((result) => history.some((message) => message.id === result.messageID)),
+            loaded.session.location.directory,
+          )
+        : undefined
+      const first = history.find((message) => message.type === "assistant" && message.snapshot?.start)
+      const from = first?.type === "assistant" ? first.snapshot?.start : undefined
+      const to = plan.candidate.type === "assistant" ? plan.candidate.snapshot?.end : undefined
+      const snapshot = yield* Snapshot.Service
+      const scrub = yield* vault.scrubber(loaded.session.projectID)
+      const files =
+        scope && from && to
+          ? yield* snapshot
+              .diff({
+                from,
+                to,
+                context: 10,
+                paths: scope.paths.map((file) =>
+                  RelativePath.make(path.relative(location.project.directory, file).replaceAll("\\", "/")),
+                ),
+              })
+              .pipe(Effect.orElseSucceed(() => undefined))
+          : undefined
+      const artifact =
+        files?.length && from && to ? IntelligenceCodeRepair.artifact({ from, to, files, scrub }) : undefined
+      const evaluation = yield* intelligence
         .evaluate(
           IntelligenceResponse.evaluation({
             sessionID,
             request: { id: plan.user.id, text: plan.user.text },
             candidate: { id: plan.candidate.id, text: plan.text },
             attempt: plan.current.attempts,
-            tools: SessionTaskFacts.evidence((yield* facts.load(sessionID)).results),
-            scrub: yield* vault.scrubber(loaded.session.projectID),
+            tools: SessionTaskFacts.evidence(projected),
+            scrub,
+            artifact,
             tasks: SessionTodo.forAgent(yield* todos.get(sessionID), loaded.agent.id).map((task) => ({
               content: task.content,
               status: task.status,
@@ -903,6 +983,11 @@ const layer = Layer.effect(
           }),
         )
         .pipe(Effect.orElseSucceed(() => undefined))
+      return {
+        evaluation,
+        scope: artifact ? scope : undefined,
+        checked: scope ? IntelligenceCodeRepair.verified(projected, scope) : undefined,
+      }
     })
 
     /**
@@ -946,10 +1031,15 @@ const layer = Layer.effect(
         return { memory: settled, repair: false }
       }
       const { user, candidate, text } = plan
-      const evaluation = started ? yield* Fiber.join(started) : yield* evaluateReview(loaded, plan)
-      if (IntelligenceEvaluation.mode(yield* intelligence.read(sessionID)) === "observe")
-        return { memory: settled, repair: false }
+      const inspected = started ? yield* Fiber.join(started) : yield* evaluateReview(loaded, plan)
+      const evaluation = inspected.evaluation
+      const mode = IntelligenceEvaluation.mode(yield* intelligence.read(sessionID))
+      if (mode === "observe") return { memory: settled, repair: false }
       const verdict = IntelligenceResponse.verdict(evaluation, current.issues)
+      const selfReview =
+        mode === "single" &&
+        Config.latestExperimental(yield* config.entries(), "reasoning_self_review") === true &&
+        inspected.scope !== undefined
       if (
         revised &&
         evaluation?.decision === "accepted" &&
@@ -970,24 +1060,35 @@ const layer = Layer.effect(
             .save(learning)
             .pipe(Effect.catchCause((cause) => Effect.logWarning("Learning proposal unavailable", { cause })))
       }
-      if (verdict.repair.length && current.attempts < IntelligenceResponse.REPAIRS) {
+      if (
+        (verdict.repair.length || selfReview) &&
+        current.attempts < IntelligenceResponse.REPAIRS &&
+        !(yield* codeRepairState(sessionID))
+      ) {
         // New input admitted while System One reviewed supersedes the repair.
         if (yield* SessionInbox.has(db, sessionID, "input")) return { memory: settled, repair: false }
+        const codeIssues = selfReview ? ["self_review"] : IntelligenceCodeRepair.issues(evaluation)
+        const scope = codeIssues.length ? inspected.scope : undefined
         yield* bus.publish(SessionEvent.Synthetic, {
           sessionID,
-          text:
-            Config.latestExperimental(yield* config.entries(), "reasoning_verification") === true
+          text: scope
+            ? IntelligenceCodeRepair.prompt(codeIssues, scope)
+            : Config.latestExperimental(yield* config.entries(), "reasoning_verification") === true
               ? IntelligenceVerification.prompt(
                   verdict.repair,
                   SessionTaskFacts.evidence((yield* facts.load(sessionID)).results),
                 )
               : IntelligenceResponse.repairPrompt(verdict.repair),
-          description: `Revising the response after S1 review: ${verdict.repair.map(IntelligenceResponse.reason).join("; ")}`,
+          description: selfReview
+            ? "Independently reviewing the implementation with S2"
+            : `Revising the response after S1 review: ${verdict.repair.map(IntelligenceResponse.reason).join("; ")}`,
           metadata: {
-            ...(Config.latestExperimental(yield* config.entries(), "reasoning_verification") === true
+            ...(scope ? { [IntelligenceCodeRepair.KEY]: { userID: user.id, scope } } : {}),
+            ...(!scope && Config.latestExperimental(yield* config.entries(), "reasoning_verification") === true
               ? { [IntelligenceVerification.KEY]: { userID: user.id, candidateID: candidate.id } }
               : {}),
             [IntelligenceResponse.REPAIR_KEY]: {
+              candidateID: candidate.id,
               issues: verdict.repair,
               confidence: IntelligenceResponse.confidence(evaluation, verdict.repair),
               ...(evaluation ? { evaluationID: evaluation.id } : {}),
@@ -1004,6 +1105,7 @@ const layer = Layer.effect(
           repair: true,
         }
       }
+      if (mode === "single") return { memory: settled, repair: false }
       if (!evaluation || evaluation.decision === "unavailable")
         yield* noteReview(sessionID, {
           status: "unavailable",
@@ -1019,8 +1121,26 @@ const layer = Layer.effect(
           confidence: IntelligenceResponse.confidence(evaluation, verdict.unresolved),
           revised,
         })
-      if (evaluation && evaluation.decision !== "unavailable" && !verdict.unresolved.length && revised)
+      const codeRepair = yield* codeRepairState(sessionID)
+      if (revised && codeRepair && !inspected.checked)
+        yield* noteReview(sessionID, {
+          status: "unavailable",
+          detail: "Code review ended without a fresh successful allowed test after the latest edit",
+          revised,
+        })
+      if (
+        evaluation?.decision === "accepted" &&
+        !verdict.unresolved.length &&
+        revised &&
+        (!codeRepair || inspected.checked)
+      )
         yield* noteReview(sessionID, { status: "revised", issues: current.issues })
+      if (evaluation?.decision === "inconclusive" && !verdict.unresolved.length && revised)
+        yield* noteReview(sessionID, {
+          status: "unavailable",
+          detail: "The revised candidate has no established issue, but S1 review remains inconclusive",
+          revised,
+        })
       return { memory: settled, repair: false }
     })
 
@@ -1091,6 +1211,7 @@ const layer = Layer.effect(
     ) {
       const sessionID = first.session.id
       const verifying = (yield* verificationState(sessionID))?.pending === true
+      const codeRepair = yield* codeRepairState(sessionID)
       let assistantMessageID = SessionMessage.ID.create()
       const retry = yield* SessionRunnerRetry.make(bus, sessionID)
       let initial: SessionContext.Loaded | undefined = first
@@ -1129,15 +1250,24 @@ const layer = Layer.effect(
             subject: loaded.agent.id,
             detail: `Tools disabled at agent step ${step} of ${limit}`,
           })
-        const tools = verifying
-          ? IntelligenceVerification.restrict(
+        const tools = codeRepair?.pending
+          ? IntelligenceCodeRepair.restrict(
               yield* registry.snapshot(Permission.forAgent(loaded.agent.info, loaded.session.permissions), {
                 codeMode: false,
               }),
+              codeRepair.scope,
+              codeRepair.remaining === 1,
             )
-          : loaded.tools
+          : verifying
+            ? IntelligenceVerification.restrict(
+                yield* registry.snapshot(Permission.forAgent(loaded.agent.info, loaded.session.permissions), {
+                  codeMode: false,
+                }),
+              )
+            : loaded.tools
         const curation =
           !verifying &&
+          !codeRepair?.pending &&
           loaded.model.compaction?.type !== "native" &&
           Config.latestExperimental(yield* config.entries(), "reasoning_context_curation") === true &&
           (yield* dual(sessionID)) &&
@@ -1199,6 +1329,9 @@ const layer = Layer.effect(
           inherited ? SessionGoal.inherit(inherited) : "",
           SessionPlan.guidance(yield* plans.list(sessionID)),
           advice,
+          codeRepair?.pending
+            ? `Code review allowance: ${codeRepair.remaining} Steps remain. ${codeRepair.remaining === 1 ? "This is the final Step: report actual changes, tests and any unresolved defect; tools are disabled." : "Check the suspected defect, make a focused correction only if confirmed, and run the allowed test after editing."}`
+            : "",
           curated.omitted.length
             ? `Context curation omitted ${curated.omitted.length} old read-only assistant blocks. Originals remain available through session_history with these message IDs: ${curated.omitted.map((item) => item.messageID).join(", ")}. Inspect the manifest ${curation?.id} through /intelligence. Never infer that omitted work was verified.`
             : "",
@@ -1222,14 +1355,17 @@ const layer = Layer.effect(
           })
           .pipe(
             Effect.map((prepared) =>
-              verifying
+              verifying || codeRepair?.pending
                 ? {
                     ...prepared,
                     request: {
                       ...prepared.request,
                       generation: {
                         ...prepared.request.generation,
-                        maxTokens: Math.min(2_048, prepared.request.generation?.maxTokens ?? 2_048),
+                        maxTokens: Math.min(
+                          IntelligenceCodeRepair.MAX_TOKENS,
+                          prepared.request.generation?.maxTokens ?? IntelligenceCodeRepair.MAX_TOKENS,
+                        ),
                       },
                     },
                   }

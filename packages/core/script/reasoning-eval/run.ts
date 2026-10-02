@@ -15,6 +15,7 @@ import { recover } from "./coding-snapshots"
 import { campaign, markdown, pairs, score, summarize, type Run } from "./report"
 import { proxy, type RequestMetric } from "./transport"
 import { cost, evaluatorEstimate } from "./accounting"
+import { trace } from "./trace"
 
 const args = parseArgs({
   options: {
@@ -42,7 +43,7 @@ const args = parseArgs({
 }).values
 if (args.help) {
   console.log(
-    "Usage: bun run eval:reasoning --suite diagnostic|coding --pairs <pairs.json> --key-file <private-file> --output <directory> [--split calibration|held-out|all] [--experiments baseline,verification] [--rounds 2] [--max-cost-usd <USD>] [--gate] [--dry-run]",
+    "Usage: bun run eval:reasoning --suite diagnostic|coding --pairs <pairs.json> --key-file <private-file> --output <directory> [--split calibration|held-out|all] [--experiments baseline,verification,code-repair,self-review] [--rounds 2] [--max-cost-usd <USD>] [--gate] [--dry-run]",
   )
   process.exit(0)
 }
@@ -85,6 +86,10 @@ const planned = plan({
       ],
 })
 const manifest = {
+  executionPolicy:
+    planned.suite === "coding"
+      ? { turn_steps: 24, stop_loss: { every: 4, cooldown: 2, idle_at: 3, tokens: 12_000, minutes: 2 } }
+      : { turn_steps: 24 },
   suite: planned.suite,
   split: planned.split,
   rounds: planned.rounds,
@@ -335,11 +340,14 @@ try {
   for (const pair of planned.pairs) {
     const prices = pair.pricing
     const selectedModel = catalog.data.find((model) => model.providerID === "red-router" && model.id === pair.model)!
+    if (pair.variant && !selectedModel.variants.some((variant) => variant.id === pair.variant))
+      throw new Error("Selected reasoning variant is unavailable for the pinned S2")
     if (selectedModel.flat || selectedModel.offers?.length || selectedModel.upstream?.category === "combo")
       throw new Error("Choose a model pinned to one upstream, not a router policy")
     const principal = {
       providerID: "red-router",
       id: pair.model,
+      ...(pair.variant ? { variant: pair.variant } : {}),
       connection: { type: "credential", id: credential.id },
     }
     const evaluator = { transport: "red-router", baseURL, model: pair.evaluator, credentialID: credential.id }
@@ -349,7 +357,7 @@ try {
       const text = await Bun.file(configFile).text()
       await Bun.write(
         configFile,
-        applyEdits(text, modify(text, ["experimental"], { ...switches(experiment), turn_steps: 24 }, {})),
+        applyEdits(text, modify(text, ["experimental"], { ...switches(experiment), ...manifest.executionPolicy }, {})),
       )
       await api("/api/location/reload", Json, "POST")
       for (const round of Array.from({ length: planned.rounds }, (_, index) => index + 1)) {
@@ -516,9 +524,14 @@ try {
             const firstRepair = repairMessages[0]
             const repairID = firstRepair?.type === "synthetic" ? firstRepair.metadata?.responseRepair : undefined
             const evaluationID = Schema.decodeUnknownOption(Schema.Struct({ evaluationID: Schema.String }))(repairID)
-            const candidateID = Option.isSome(evaluationID)
-              ? evaluations.find((evaluation) => evaluation.id === evaluationID.value.evaluationID)?.candidateID
-              : undefined
+            const recordedCandidate = Schema.decodeUnknownOption(Schema.Struct({ candidateID: Schema.String }))(
+              repairID,
+            )
+            const candidateID = Option.isSome(recordedCandidate)
+              ? recordedCandidate.value.candidateID
+              : Option.isSome(evaluationID)
+                ? evaluations.find((evaluation) => evaluation.id === evaluationID.value.evaluationID)?.candidateID
+                : undefined
             const candidate = messages.data.find((message) => message.id === candidateID)
             const tree = candidate?.type === "assistant" ? candidate.snapshot?.end : undefined
             const recovered =
@@ -584,6 +597,9 @@ try {
               ...(!assistants.length || !assistants.every((message) => message.model?.id === pair.model)
                 ? ["s2_selection_changed"]
                 : []),
+              ...(pair.variant && assistants.some((message) => message.model?.variant !== pair.variant)
+                ? ["s2_variant_changed"]
+                : []),
               ...(responseModels.length !== 1 || responseModels[0] !== pair.responseModel
                 ? ["upstream_model_changed"]
                 : []),
@@ -612,9 +628,21 @@ try {
               round,
               mode,
               outcome: validationErrors.length ? "invalid" : outcome,
+              executionOutcome: outcome,
+              failureKind:
+                outcome === "timeout"
+                  ? "execution_timeout"
+                  : validationErrors.length
+                    ? "contract_or_accounting"
+                    : outcome !== "succeeded"
+                      ? "execution_failure"
+                      : !finalGrade?.pass && "editable" in item
+                        ? "behavior_failure"
+                        : null,
               validationErrors,
               responseModels,
               evaluatorResponseModels,
+              responseVariants: [...new Set(assistants.map((message) => message.model?.variant ?? null))],
               durationMs,
               observationWaitMs,
               sessionID: session.data.id,
@@ -663,6 +691,18 @@ try {
               evaluatorFailures: evaluations.filter((evaluation) => evaluation.decision === "unavailable").length,
               fixedModel: assistants.every((message) => message.model?.id === pair.model),
               evaluations,
+              funnel: trace(chronological, evaluations, directory),
+              reviewEvidence: await Promise.all(
+                evaluations
+                  .filter((evaluation) => evaluation.operation === "response_quality")
+                  .map(async (evaluation) => ({
+                    id: evaluation.id,
+                    evidence: await api(
+                      `/api/experimental/intelligence/evidence/${evaluation.id}?${new URLSearchParams({ sessionID: session.data.id })}`,
+                      Json,
+                    ),
+                  })),
+              ),
               budget,
             }
             results.push(result)

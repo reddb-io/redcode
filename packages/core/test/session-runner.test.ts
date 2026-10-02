@@ -57,6 +57,8 @@ import { SessionRunCoordinator } from "@opencode/core/session/run-coordinator"
 import { SessionRunner } from "@opencode/core/session/runner/index"
 import { SessionRunnerLLM } from "@opencode/core/session/runner/llm"
 import { IntelligenceVerification } from "@opencode/core/intelligence/verification"
+import { IntelligenceCodeRepair } from "@opencode/core/intelligence/code-repair"
+import { SessionTaskFacts } from "@opencode/core/session/task-facts"
 import { SessionRunnerModel } from "@opencode/core/session/runner/model"
 import { SessionUsage } from "@opencode/core/session/usage"
 import { PluginSupervisor } from "@opencode/core/plugin/supervisor"
@@ -1448,6 +1450,94 @@ describe("SessionRunnerLLM", () => {
     yield* s.resume
     expect(s.requests).toHaveLength(2)
   })
+
+  scenario(
+    "scoped code repair executes edits and tests with four bounded Steps and a tool-free final Step",
+    function* (s) {
+      const registry = yield* Tool.Service
+      const executions: string[] = []
+      yield* transformTools(
+        registry,
+        {
+          edit: {
+            name: "edit",
+            description: "Repair fixture",
+            input: Schema.Struct({ path: Schema.String }),
+            output: Schema.Struct({ ok: Schema.Boolean }),
+            execute: (input) =>
+              Effect.sync(() => {
+                executions.push(`edit:${input.path}`)
+                return { output: { ok: true } }
+              }),
+          },
+          shell: {
+            name: "shell",
+            description: "Check fixture",
+            input: Schema.Struct({ command: Schema.String }),
+            output: Schema.Struct({ ok: Schema.Boolean }),
+            execute: (input) =>
+              Effect.sync(() => {
+                executions.push(input.command)
+                return { output: { ok: true } }
+              }),
+          },
+          read: {
+            name: "read",
+            description: "Inspect fixture",
+            input: Schema.Struct({ path: Schema.String }),
+            output: Schema.Struct({ ok: Schema.Boolean }),
+            execute: (input) =>
+              Effect.sync(() => {
+                executions.push(`read:${input.path}`)
+                return { output: { ok: true } }
+              }),
+          },
+        },
+        { codemode: false },
+      )
+      yield* s.llm.push(TestLLM.text("Initial implementation", "initial"))
+      const user = yield* s.runPrompt("Fix src.ts")
+      yield* s.bus.publish(SessionEvent.Synthetic, {
+        sessionID,
+        text: "Check and repair this implementation",
+        metadata: {
+          [IntelligenceCodeRepair.KEY]: {
+            userID: user.id,
+            scope: {
+              directory: projectDirectory,
+              paths: SessionTaskFacts.paths("edit", { path: "src.ts" }, projectDirectory),
+              commands: [{ command: "bun run test", workdir: projectDirectory }],
+            },
+          },
+        },
+      })
+      yield* s.llm.push(
+        TestLLM.tool("code-edit", "edit", { path: "src.ts" }),
+        TestLLM.tool("code-test", "shell", { command: "bun run test" }),
+        TestLLM.tool("code-read", "read", { path: "src.ts" }),
+        TestLLM.text("Repaired and tested", "final"),
+      )
+      yield* s.resume
+      expect(executions).toEqual(["edit:src.ts", "bun run test", "read:src.ts"])
+      expect(s.requests).toHaveLength(5)
+      expect(
+        s.requests
+          .slice(1)
+          .every(
+            (request) =>
+              request.generation?.maxTokens !== undefined &&
+              request.generation.maxTokens <= IntelligenceCodeRepair.MAX_TOKENS,
+          ),
+      ).toBe(true)
+      expect(s.requests[4]?.tools).toEqual([])
+      yield* s.resume
+      expect(s.requests).toHaveLength(5)
+      yield* s.llm.push(TestLLM.text("New request", "next"))
+      yield* s.runPrompt("Continue with another task")
+      expect(s.requests).toHaveLength(6)
+      expect(s.requests[5]?.tools.some((tool) => tool.name === "echo")).toBe(true)
+    },
+  )
 
   scenario("starts a real runner step after default prompt recording", function* (s) {
     const message = yield* s.session.prompt({

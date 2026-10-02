@@ -1,5 +1,6 @@
 import { Schema } from "effect"
 import { Intelligence } from "@opencode/schema/intelligence"
+import { Model } from "@opencode/schema/model"
 import { cases } from "./cases"
 import { codingCases } from "./coding-cases"
 
@@ -15,16 +16,19 @@ export const Pair = Schema.Struct({
   responseModel: Schema.NonEmptyString,
   evaluator: Schema.NonEmptyString,
   evaluatorResponseModel: Schema.optional(Schema.NonEmptyString),
+  variant: Schema.optional(Model.VariantID),
   pricing: Schema.optional(Pricing),
 })
 export type Pair = typeof Pair.Type
 export const Pairs = Schema.Struct({ pairs: Schema.Array(Pair) })
 
-export const experiments = ["baseline", "verification"] as const
+export const experiments = ["baseline", "verification", "code-repair", "self-review"] as const
 export type Experiment = (typeof experiments)[number]
 
 export function switches(experiment: Experiment) {
   return {
+    reasoning_code_repair: experiment === "code-repair" || experiment === "self-review",
+    reasoning_self_review: experiment === "self-review",
     reasoning_verification: experiment === "verification",
     reasoning_tool_selection: false,
     reasoning_context_curation: false,
@@ -54,6 +58,8 @@ export function plan(input: {
   if (!modes.length || new Set(modes).size !== modes.length) throw new Error("Select unique reasoning modes")
   if (!selectedExperiments.length || new Set(selectedExperiments).size !== selectedExperiments.length)
     throw new Error("Select unique experiments")
+  if (suite !== "coding" && selectedExperiments.some((name) => name === "code-repair" || name === "self-review"))
+    throw new Error("Code repair and self-review require the coding suite")
   if (input.gate && (!modes.includes("single") || !modes.includes("dual")))
     throw new Error("The accuracy gate requires both single and dual")
   if (!input.pairs.length || new Set(input.pairs.map((pair) => pair.id)).size !== input.pairs.length)

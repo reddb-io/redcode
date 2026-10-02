@@ -31,6 +31,8 @@ const suites = {
     "test/intelligence/transport.test.ts",
     "test/intelligence/usage.test.ts",
     "test/intelligence/controls.test.ts",
+    "test/intelligence/code-repair.test.ts",
+    "test/intelligence/reasoning-detector.test.ts",
     "test/intelligence/artifacts.test.ts",
     "test/intelligence/evidence-campaign.test.ts",
     "test/codemode/catalog.test.ts",

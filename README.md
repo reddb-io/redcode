@@ -180,6 +180,12 @@ pinned S1/S2 pairs on separate calibration and held-out families, rejecting inco
 evidence and unknown costs. Coding calibration and reserved-case results remain separate;
 the earlier diagnostic gain does not establish coding improvement.
 
+The opt-in **S1 code review and repair** experiment reviews actual candidate code
+and permits one scoped correction with bounded Steps and existing test commands.
+The harness also measures S1 defect detection separately and compares dual with
+**single code self-review** under the same repair limits. These mechanisms have
+not yet demonstrated an accuracy gain; see the [evaluation procedure](docs/reasoning-evaluation.md).
+
 ### Goal
 
 <img src="docs/features/goal.svg" alt="Goal" width="100%" />

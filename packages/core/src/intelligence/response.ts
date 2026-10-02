@@ -4,6 +4,7 @@ import { Redact } from "@opencode/util/redact"
 import { Intelligence } from "@opencode/schema/intelligence"
 import type { EvaluationInput } from "../intelligence.js"
 import { IntelligenceEvaluation } from "./evaluation.js"
+import { IntelligenceCodeRepair } from "./code-repair.js"
 
 /**
  * System One review of the agent's final response. S1 validates the answer against the request
@@ -37,6 +38,8 @@ export const QUESTIONS: Record<string, Intelligence.Question> = IntelligenceEval
 
 /** Plain-language reasons for the question ids, shown to the user instead of the raw key. */
 export const REASONS: Record<string, string> = {
+  code_behavior: "implemented behavior that contradicts the request",
+  code_contract: "broke a requested code contract",
   correctness: "gave an incorrect result",
   omission: "missed part of the request",
   unsupported: "claimed work it could not prove",
@@ -76,6 +79,7 @@ export function evaluation(input: {
   readonly tasks: ReadonlyArray<unknown>
   readonly goal: unknown
   readonly route?: string
+  readonly artifact?: ReturnType<typeof IntelligenceCodeRepair.artifact>
   readonly scrub?: (text: string) => string
 }): EvaluationInput {
   const clean = (value: unknown) => {
@@ -108,17 +112,21 @@ export function evaluation(input: {
         reference: `${input.sessionID}/tools`,
         limit: 36_000,
       }),
+      ...(input.artifact ? { artifact: input.artifact } : {}),
     },
     candidate: IntelligenceEvaluation.evidence(clean(input.candidate.text), {
       reference: input.candidate.id,
       limit: 6_000,
     }),
-    questions: questionsFor({
-      tools: input.tools.total > 0,
-      tasks: input.tasks.length > 0,
-      goal: input.goal !== undefined && input.goal !== null,
-      route: input.route,
-    }),
+    questions: {
+      ...questionsFor({
+        tools: input.tools.total > 0,
+        tasks: input.tasks.length > 0,
+        goal: input.goal !== undefined && input.goal !== null,
+        route: input.route,
+      }),
+      ...(input.artifact?.files.length ? IntelligenceCodeRepair.QUESTIONS : {}),
+    },
   }
 }
 

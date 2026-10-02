@@ -579,6 +579,8 @@ function normalizeExperimental(
         if (value !== undefined) result.model_suggestions = value
       }
       for (const key of [
+        "reasoning_code_repair",
+        "reasoning_self_review",
         "reasoning_verification",
         "reasoning_tool_selection",
         "reasoning_context_curation",

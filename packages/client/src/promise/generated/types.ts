@@ -3056,6 +3056,8 @@ export type ConfigEntry =
           }
         }
         experimental?: {
+          reasoning_self_review?: boolean
+          reasoning_code_repair?: boolean
           reasoning_verification?: boolean
           reasoning_tool_selection?: boolean
           reasoning_context_curation?: boolean

@@ -1,4 +1,5 @@
 import { Option, Schema } from "effect"
+import type { trace } from "./trace"
 
 export interface Run {
   caseID: string
@@ -25,6 +26,7 @@ export interface Run {
   oracleMs?: number
   changes?: readonly string[]
   commands?: number
+  funnel?: ReturnType<typeof trace>
 }
 
 export interface CampaignPlan {
@@ -100,6 +102,10 @@ export function summarize(runs: ReadonlyArray<Run>) {
       costComplete:
         group.length > 0 && group.every((run) => !run.s2Unpriced && (mode === "single" || run.s1CostUsd !== undefined)),
       evaluatorFailures: group.reduce((sum, run) => sum + run.evaluatorFailures, 0),
+      reviews: group.reduce((sum, run) => sum + (run.funnel?.reviews ?? 0), 0),
+      suspectedCodeDefects: group.reduce((sum, run) => sum + (run.funnel?.suspectedCodeDefects ?? 0), 0),
+      codeRepairAdmissions: group.reduce((sum, run) => sum + (run.funnel?.codeRepairAdmissions ?? 0), 0),
+      postRepairTestCalls: group.reduce((sum, run) => sum + (run.funnel?.postRepairTestCalls ?? 0), 0),
       repaired: repaired.length,
       unknownBaseline: repaired.length - classified.length,
       improved: classified.filter((run) => !run.initial.pass && run.final.pass).length,
@@ -245,6 +251,13 @@ export function markdown(
     coding
       ? "Coding fixtures record file changes, verification command counts and oracle duration separately. Read-only fixtures use exact deterministic facts."
       : "Read-only fixtures use exact deterministic facts.",
+    "",
+    "| Mode | S1 reviews | Suspected code defects | Code repair admissions | Post-repair test calls |",
+    "| --- | --- | --- | --- | --- |",
+    ...summary.map(
+      (group) =>
+        `| ${group.mode} | ${group.reviews} | ${group.suspectedCodeDefects} | ${group.codeRepairAdmissions} | ${group.postRepairTestCalls} |`,
+    ),
     "",
     ...(grouped
       ? [

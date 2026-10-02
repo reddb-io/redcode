@@ -15,6 +15,16 @@ type Experiment = {
 // unconditional) or dies (delete the entry and the branch it gated).
 export const experiments: Experiment[] = [
   {
+    id: "reasoning_self_review",
+    title: "Single code self-review",
+    description: "Evaluation control: one bounded code review by S2 alone",
+  },
+  {
+    id: "reasoning_code_repair",
+    title: "S1 code review and repair",
+    description: "Review actual code; one scoped repair with bounded Steps and existing test commands",
+  },
+  {
     id: "reasoning_verification",
     title: "S2 verification",
     description: "One bounded verification Step for confident S1 issues; read-only tools",

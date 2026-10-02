@@ -53,7 +53,13 @@ bun run eval:reasoning --suite coding --pairs /path/to/pairs.json \
 ```
 
 `baseline` and `verification` explicitly select the existing verification
-switch. Curation, learning and tool selection stay disabled. Curation needs a
+switch. `code-repair` enables review of candidate code snapshots and a scoped
+repair for established S1 code issues. `self-review` adds a single-mode S2
+self-review as a control against that same dual repair. Both use at most four
+repair Steps with 2,048 output tokens per Step, existing permissions, previously
+edited files and previously used foreground test commands. The final repair
+Step has no tools. An uncertain S1 score alone never authorizes a code repair.
+Curation, learning and tool selection stay disabled. Curation needs a
 separate multi-prompt campaign: these fresh Sessions have no older exchanges to
 curate, so enabling that flag here would repeat the baseline.
 Evaluating namespace selection needs a separate Code Mode campaign that retains
@@ -92,6 +98,18 @@ TypeScript exports that exist only as types.
 Artifacts record the compiled binary SHA-256, fixture signature, file-change
 identities, oracle checks, exit code, latency, output byte counts, model identity,
 tokens and costs. Oracle latency is separate from S2 completion latency.
+Artifacts also retain the original execution outcome separately from validation
+errors, the exact response-review evidence, and a funnel of reviews, suspected
+code defects, repair admissions, candidate attempts, subsequent test calls and
+fresh successful checks. Confirmed recovery comes from the before/after oracle
+grades; a suspicion or successful command alone is not a confirmed correction.
+
+Pair manifests may pin `variant` to an advertised reasoning variant. Both modes
+use that same variant, and changed selections invalidate the run. Coding campaigns
+use a recorded focused stop-loss profile in both modes: checkpoints every four
+Steps, a two-Step cooldown, a three-Step idle signal, 12,000 new-work tokens and
+two minutes without progress. This changes the harness policy from the original
+2026-10-02 collection and must not be pooled with those historical results.
 Coding fixtures use isolated Git repositories with metadata outside their
 resettable directories. For automatic repairs, the harness resolves the first
 repair's evaluation to its candidate message and reconstructs that Step's
@@ -111,6 +129,41 @@ being reported as complete or attributed to the next execution. Remote caching
 and its freshness remain Router responsibilities. `campaign-state.json` retains
 request status, timing, bytes and collected results even if an execution fails
 before grading; it does not invent a grade for interrupted work.
+
+## Fixed-candidate S1 detector
+
+Preview without credentials or inference:
+
+```sh
+bun run eval:reasoning:detector --split calibration --dry-run
+```
+
+The detector has 24 fixed candidates: a correct reference and a defective seed
+for each of the existing twelve coding families. Before each dispatched S1
+request, independent execution verifies its label. S1 receives the requested
+contract and candidate source, using the production code-review rubric; labels
+and hidden oracle checks never enter the request. This diagnoses the detector,
+not end-to-end dual performance. These already inspected families do not constitute
+a new untouched final validation set.
+
+After a separate explicit budget authorization, use the connection's established
+native endpoint and pin its actual response model:
+
+```sh
+bun run eval:reasoning:detector --split calibration \
+  --router http://127.0.0.1:25050/v1 --endpoint decisions \
+  --evaluator provider/decision-model --response-model actual-decision-model \
+  --key-file /path/to/private-key-file --max-cost-usd "$DETECTOR_BUDGET_USD" \
+  --output /tmp/redcode-detector.json
+```
+
+The runner makes no S2 calls and does not guess between native endpoints.
+It records status, latency, response bytes, actual model, probabilities and
+reported S1 charge per request. Any unknown charge stops collection and remains
+unknown; budget checks occur between requests and cannot certify an invoice
+ceiling. The report separates false alarms, missed defects and unavailable
+responses. Threshold diagnostics are calibration-only and do not alter the
+runtime's 0.75 repair threshold. The original US$5 collection remains closed.
 
 ## Read-only diagnostic suite
 

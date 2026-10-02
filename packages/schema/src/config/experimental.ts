@@ -5,6 +5,14 @@ import { NonNegativeInt, PositiveInt, optional } from "../schema.js"
 import { ConfigPolicy } from "./policy.js"
 
 export class Info extends Schema.Class<Info>("ConfigExperimental.Info")({
+  reasoning_self_review: Schema.Boolean.pipe(optional).annotate({
+    description:
+      "Give single reasoning one bounded code self-review using the same scoped repair limits. Evaluation control, off by default.",
+  }),
+  reasoning_code_repair: Schema.Boolean.pipe(optional).annotate({
+    description:
+      "Review candidate code snapshots and allow one scoped repair of at most four Steps with existing permissions and test commands. Off by default.",
+  }),
   reasoning_verification: Schema.Boolean.pipe(optional).annotate({
     description: "Allow at most one bounded S2 verification Step after a confident S1 response issue. Off by default.",
   }),
