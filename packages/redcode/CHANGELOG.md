@@ -1,5 +1,15 @@
 # @reddb-io/redcode
 
+## 0.71.1
+
+### Patch Changes
+
+- Use `/dual` as the primary TUI command for configuring S2 and S1, with clearer command-palette and evaluation-panel labels. Keep `/setup` as a compatibility alias and point connection guidance and documentation to `/dual`.
+- Keep complete OpenAI-compatible catalogs above 500 models. Reuse resolved router definitions, avoid rebuilding unchanged catalogs on every refresh, and restore saved model selections one catalog chunk at a time without retaining a second copy of the full catalog.
+- Show a clickable New session action beside the prompt with the configured keyboard shortcut in muted text. Keep it discoverable with session tabs hidden, show /new when its keyboard binding is disabled, and ignore repeated new-session commands while a session is already opening. Keep session creation independent of transient screen remounts and ignore stale synchronization results after navigation.
+- Show session satisfaction as five half-blocks with a 0/5 to 5/5 rating, right-aligned beside Context. Distinguish insufficient evidence with ?/5 and preserve the evaluation-panel click and visibility controls.
+- Add `redcode restart` as a shortcut for `redcode service restart`. Bound terminal shutdown requests so explicit restart and stop can reach process termination when the server is unresponsive, and let the TUI restart recover when terminal handoff fails.
+
 ## 0.71.0
 
 ### Minor Changes
