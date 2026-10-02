@@ -1,5 +1,12 @@
 # @reddb-io/redcode
 
+## 0.71.2
+
+### Patch Changes
+
+- Offer the current connection and model in Dual setup, preserve the discovered and tested RedRouter decision endpoint, and retry only failed connection checks. Discover advertised decision models even when the filtered model catalog is empty and recognize routed JEV model versions.
+- Include accumulated session satisfaction in dual-reasoning S2 prompts, with a 0–5 score, trend and evidence count. Reuse persisted S1 evaluations without additional model calls, distinguish insufficient evidence, and exclude Observe samples from both the prompt and mood indicator.
+
 ## 0.71.1
 
 ### Patch Changes
