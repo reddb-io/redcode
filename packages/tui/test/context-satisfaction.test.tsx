@@ -5,10 +5,12 @@ import { tmpdir } from "./fixture/fixture"
 import { directory, json } from "./fixture/tui-client"
 
 for (const scenario of [
-  { width: 80, mode: "dual", override: undefined, samples: 0, label: "mood 0/3" },
-  { width: 160, mode: "dual", override: undefined, samples: 3, label: "█ great" },
-  { width: 160, mode: "single", override: "dual", samples: 3, label: "█ great" },
-  { width: 80, mode: "dual", override: "single", samples: 3, label: undefined },
+  { width: 80, mode: "dual", override: undefined, samples: 0, feedback: "agrees", label: "mood ▄▄▄▄▄ ?/5" },
+  { width: 160, mode: "dual", override: undefined, samples: 3, feedback: "agrees", label: "mood ▄▄▄▄▄ 5/5" },
+  { width: 80, mode: "dual", override: undefined, samples: 3, feedback: "rejects", label: "mood ▄▄▄▄▄ 0/5" },
+  { width: 80, mode: "dual", override: undefined, samples: 3, feedback: "neutral", label: "mood ▄▄▄▄▄ 3/5" },
+  { width: 160, mode: "single", override: "dual", samples: 3, feedback: "agrees", label: "mood ▄▄▄▄▄ 5/5" },
+  { width: 80, mode: "dual", override: "single", samples: 3, feedback: "agrees", label: undefined },
 ] as const) {
   test(`Context aligns satisfaction to the right at ${scenario.width} columns with ${scenario.override ?? scenario.mode} reasoning`, async () => {
     await using state = await tmpdir()
@@ -32,7 +34,14 @@ for (const scenario of [
       policy: "fixture",
       decision: "accepted",
       model: "fixture",
-      answers: { user_feedback: { type: "choice", choice: "agrees", probabilities: { agrees: 1 }, confidence: 1 } },
+      answers: {
+        user_feedback: {
+          type: "choice",
+          choice: scenario.feedback,
+          probabilities: { [scenario.feedback]: 1 },
+          confidence: 1,
+        },
+      },
       issues: [],
       created: index + 1,
       duration: 1,

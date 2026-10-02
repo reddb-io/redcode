@@ -163,7 +163,7 @@ export default Plugin.define({
 })
 
 /**
- * How the user is taking the session: one block glyph that grows with satisfaction and its stage, read from what
+ * How the user is taking the session: five half-blocks on a 0..5 scale, read from what
  * System One classifies for each prompt. Dual reasoning shows progress until enough prompts were read.
  */
 function SatisfactionIndicator(props: { context: Plugin.Context; sessionID?: string; status?: IntelligenceStatus }) {
@@ -200,20 +200,23 @@ function SatisfactionIndicator(props: { context: Plugin.Context; sessionID?: str
   )
   const reading = () =>
     enabled() && history() ? Satisfaction.read(history()?.evaluations ?? [], history()?.trips ?? []) : undefined
+  const level = () => {
+    const value = reading()
+    return value ? Math.round((value.mood + 1) * 2.5) : undefined
+  }
   const tone = (stage: Satisfaction.Stage) => {
     const feedback = props.context.theme.text.feedback
     if (stage === "frustrated") return feedback.error.base
     if (stage === "rough") return feedback.warning.base
     if (stage === "great") return feedback.success.base
     if (stage === "good") return feedback.info.base
-    return props.context.theme.text.muted
+    return props.context.theme.text.base
   }
-  // Until enough prompts were read, a quiet count says the indicator exists and what it waits for.
+  // Unknown satisfaction is distinct from a measured zero.
   const waiting = () => {
     if (!enabled() || reading()) return undefined
     if (!history()) return history.loading ? "mood …" : "mood unavailable"
-    const { usable, needed } = Satisfaction.progress(history()?.evaluations ?? [])
-    return `mood ${usable}/${needed}`
+    return "mood ▄▄▄▄▄ ?/5"
   }
   return (
     <Show
@@ -237,12 +240,13 @@ function SatisfactionIndicator(props: { context: Plugin.Context; sessionID?: str
       {(value) => (
         <text
           id="session-satisfaction-indicator"
-          fg={tone(value().stage)}
+          fg={props.context.theme.text.muted}
           wrapMode="none"
           flexShrink={0}
           onMouseUp={() => props.context.keymap.dispatch("intelligence.status")}
         >
-          {`${Satisfaction.glyph(value().stage)} ${value().stage}`}
+          mood <span fg={tone(value().stage)}>{"▄".repeat(level() ?? 0)}</span>
+          <span fg={props.context.theme.text.muted}>{"▄".repeat(5 - (level() ?? 0))}</span> {level()}/5
         </text>
       )}
     </Show>
