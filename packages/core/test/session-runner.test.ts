@@ -541,6 +541,7 @@ const layer = Layer.unwrap(
         SessionCompaction.node,
         LayerNodePlatform.llmClient,
         SessionRunnerLLM.node,
+        Intelligence.node,
         SessionGoal.node,
         SessionExecution.node,
         Session.node,
@@ -1639,7 +1640,7 @@ describe("SessionRunnerLLM", () => {
     const run = yield* s.resume.pipe(Effect.forkChild)
     yield* barrier.started
     yield* Effect.promise(() => fixture.started)
-    const next = yield* s.admit("Correction: follow this new direction instead")
+    yield* s.admit("Correction: follow this new direction instead")
     fixture.release()
     const classification = yield* fixture.classified(first.id)
     yield* barrier.release
@@ -1647,7 +1648,7 @@ describe("SessionRunnerLLM", () => {
     expect(s.requests).toHaveLength(2)
     const system = s.requests[1]?.system.map((part) => part.text).join("\n") ?? ""
     expect(system).not.toContain(`Asynchronous S1 assessment ${classification.id}`)
-    expect(userTexts(s.requests[1])).toContain(next.text)
+    expect(userTexts(s.requests[1])).toContain("Correction: follow this new direction instead")
     expect(
       (yield* fixture.intelligence.history(sessionID, { operation: "prompt_classification", subjectID: first.id }))[0]
         ?.answers.user_feedback,
