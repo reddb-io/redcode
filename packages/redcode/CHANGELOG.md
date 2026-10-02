@@ -1,5 +1,29 @@
 # @reddb-io/redcode
 
+## 0.71.3
+
+### Patch Changes
+
+- Keep coding benchmark edits and test execution in their owned fixture directories while retaining Step snapshots for independent repair grading. Order message evidence chronologically before comparing initial and final answers and selecting the first repair candidate.
+- Extend reasoning evaluation with executable coding fixtures, independent checks, isolated single/dual comparisons across model pairs and experiments, and explicit cost and evidence completeness gates.
+- Preserve provider-reported request cost, including zero, while retaining RedRouter's billing headers. Bundle a verified full models.dev catalog with decision models and canonical identities, exclude specialized models from S2, and use compatible decision offerings when selecting S1 without substituting a static catalog for a Router connection.
+- Measure automatic coding repairs against the actual pre-repair Step snapshot, preserving independent initial and final oracle evidence without modifying the final candidate.
+- Align the dual-reasoning OpenRouter runtime with the SDK's typed `/api/v1/systemone` endpoint while preserving saved alpha Decisions configurations and the selected connection's URL and credential. Follow the RedRouter catalog's canonical endpoint, refresh discovery without a stale client cache, retain safe S1 diagnostic codes, and keep Jev Router available as a generative S2 model. Recognize canonical `red/` router chains without rewriting routed model IDs.
+- Document locally measured single versus dual coding results, independent behavioral evidence, cost and latency limits, and interrupted attempts without presenting the earlier read-only accuracy gain as coding effectiveness.
+- Update native monitor progress in place with bounded, coalesced events while preserving terminal delivery and recovery. Observe reasoning repetition with bounded per-attempt state and content-free diagnostics without altering provider output or interrupting generation.
+- Repair incomplete tool histories before sending requests and keep system and reasoning-effort updates after pending tool results. This prevents interrupted tool calls or instruction updates from producing invalid provider requests.
+- Run S1 prompt classification alongside S2 without its initial wait. Apply persisted advice at subsequent Steps for the same user request, preserving user satisfaction telemetry even when feedback arrives late. Superseded advice cannot steer a newer request, and late results do not restart completed Sessions. Report post-completion S1 collection separately in the evaluation harness while retaining its tokens and cost. Performance and accuracy gains remain unmeasured.
+- Preserve provider response bodies in session errors, show the provider's explanation when a response or compaction is blocked, and recognize Together/TGI context overflows so existing compaction recovery can handle them.
+
+  Sanitized session exports withhold provider response bodies while retaining the original diagnostics locally.
+
+- Bound provider header and stream inactivity waits to five minutes by default, respect customized or disabled limits, and reduce timeout retries. Preserve Gemini thought signatures when replaying parallel tool calls through OpenAI-compatible providers.
+- Add a separately selected challenge corpus to reasoning evaluations, with six new coding families and fixed calibration and reserved splits. Record corpus identities in detector and recovery artifacts and reject comparisons across corpora. Keep historical results separate; model accuracy gains remain unmeasured.
+- Preserve complete coding benchmark streams across quiet gaps longer than ten seconds, retaining final usage and cost evidence under the existing campaign execution deadline.
+- Add opt-in S1 review of actual code snapshots with one scoped repair capped at four Steps, using existing permissions and foreground test commands. Add an equally bounded single self-review control, fixed-candidate detector evaluation, pinned reasoning variants and repair-funnel evidence. Inconclusive revised responses are no longer described as approved. Accuracy improvement remains unproven until a complete independent model evaluation passes.
+- Keep pending questions and permission requests alive during inactivity cleanup, preserve the original Location of running background shells after a session moves, and let the server restart when a persistent terminal handoff has expired or become unavailable.
+- Improve MCP reliability with bounded retries for transient remote connection and catalog failures, actionable HTTP and process-exit diagnostics, and graceful legacy session termination. Authentication failures, local process startup, and tool execution are not retried by the transient recovery policy.
+
 ## 0.71.2
 
 ### Patch Changes
