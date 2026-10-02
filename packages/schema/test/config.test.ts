@@ -41,7 +41,7 @@ describe("Config.Entry", () => {
     const input = { worktree: { directory: "../worktrees" } }
     expect(Schema.encodeSync(Config.Info)(decode(input))).toEqual(input)
     expect(Schema.encodeSync(Config.Info)(new Config.Info({ worktree: undefined }))).not.toHaveProperty("worktree")
-    for (const worktree of [{}, { auto: false }, { location: "tmp", tmpdir: "/tmp/redcode" }]) {
+    for (const worktree of [{}, { auto: false }, { location: "tmp" as const, tmpdir: "/tmp/redcode" }]) {
       expect(Schema.encodeSync(Config.Info)(decode({ worktree }))).toEqual({ worktree })
     }
     expect(() => decode({ worktree: { directory: " " } })).toThrow()
