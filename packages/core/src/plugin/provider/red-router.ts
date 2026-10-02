@@ -108,6 +108,7 @@ const catalogModel = Schema.Struct({
   ),
   capabilities: Schema.optional(
     Schema.Struct({
+      decision: Schema.optional(Schema.Boolean),
       tool_calling: Schema.optional(Schema.Boolean),
       reasoning: Schema.optional(Schema.Boolean),
       supportsThinking: Schema.optional(Schema.Boolean),
@@ -235,7 +236,7 @@ function routerPlugin(options: {
       })
 
       /**
-       * What a RedRouter says about itself (its capabilities, cached by the detector) and about the key:
+       * What a RedRouter says about itself (its current capabilities) and about the key:
        * its role and MCP server, from the model list's response headers or else `GET /key`. Never fails.
        */
       const inspect = Effect.fn("RouterProvider.inspect")(function* (connection: Connection, headers: Headers) {
@@ -611,7 +612,7 @@ export function routerModel(
   names: ReturnType<typeof catalogNames>,
   features: ReadonlySet<Router.Feature> = new Set(),
 ): Model.Info[] {
-  if (!item.id || IntelligenceEvaluation.isJev(item.id)) return []
+  if (!item.id || IntelligenceEvaluation.isJev(item.id) || item.capabilities?.decision === true) return []
   if (item.type !== undefined && !["chat", "llm", "text"].includes(item.type)) return []
   if (item.api_format !== undefined && !["chat-completions", "responses", "openai-responses"].includes(item.api_format))
     return []

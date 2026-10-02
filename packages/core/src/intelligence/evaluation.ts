@@ -2,6 +2,7 @@ export * as IntelligenceEvaluation from "./evaluation.js"
 
 import { createHash } from "node:crypto"
 import { Intelligence } from "@opencode/schema/intelligence"
+import { Router } from "@opencode/schema/router"
 import { Effect, Schema } from "effect"
 
 export const POLICY = "semantic-v5-evidence"
@@ -20,7 +21,7 @@ export function evaluatorPreset(
 ): Intelligence.Evaluator {
   if (transport === "opencode-zen") return { transport, baseURL: "https://opencode.ai/zen/v1", model: "jev-1.13-free" }
   if (transport === "openrouter")
-    return { transport, baseURL: "https://openrouter.ai/api/alpha", model: "typesafe/jev-1.13" }
+    return { transport, baseURL: "https://openrouter.ai/api/v1", model: "typesafe/jev-1.13" }
   if (transport === "typesafe") return { transport, baseURL: "https://api.typesafe.ai/v1", model: "jev-1.13.0" }
   if (transport === "red-router") return { transport, baseURL: "http://127.0.0.1:25050/v1", model: "jev-1.13.0" }
   if (transport === "cloudflare-ai-gateway")
@@ -31,27 +32,7 @@ export function evaluatorPreset(
   return { transport, baseURL: "https://nano-gpt.com/api/v1", model: "typesafe/jev-latest" }
 }
 
-const jevIDs = new Set([
-  "jev",
-  "jev-latest",
-  "jev-preview",
-  "jev-1.13",
-  "jev-1.13-free",
-  "jev-1.13.0",
-  "typesafe/jev",
-  "typesafe/jev-latest",
-  "typesafe/jev-1.13",
-  "typesafe-ai/jev",
-])
-
-export function isJev(id: string) {
-  const lower = id.toLowerCase()
-  const segments = lower.split("/")
-  return (
-    /^jev(?:$|[-.])/.test(segments.at(-1) ?? "") ||
-    [lower, segments.at(-1), segments.slice(-2).join("/")].some((item) => item !== undefined && jevIDs.has(item))
-  )
-}
+export const isJev = Router.isJevEvaluator
 
 export function fingerprint(value: unknown) {
   return createHash("sha256")

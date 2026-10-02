@@ -72,3 +72,38 @@ describe("offerRoute", () => {
     )
   })
 })
+
+describe("routed model roles", () => {
+  test("recognizes chained JEV versions without classifying Jev Router as S1", () => {
+    for (const id of [
+      "jev",
+      "jev-1.13-free",
+      "typesafe/jev-latest",
+      "red/red/openrouter/typesafe/jev-2.0",
+      "TYPESAFE/JEV-1.13",
+    ])
+      expect(Router.isJevEvaluator(id)).toBe(true)
+    for (const id of [
+      "typesafe/jev-router",
+      "red/openrouter/typesafe/jev-router-v2",
+      "red/openrouter/typesafe/jev-router.1",
+      "gpt-6",
+      "my-jev-model",
+    ])
+      expect(Router.isJevEvaluator(id)).toBe(false)
+  })
+
+  test("reads canonical red hops alongside older red-router prefixes without changing routed IDs", () => {
+    expect(Router.route("red/red/openrouter/typesafe/jev-1.13")).toEqual({
+      hops: ["red", "red"],
+      provider: "openrouter",
+      model: "typesafe/jev-1.13",
+    })
+    expect(Router.route("red-router/red/openrouter/typesafe/jev-1.13")).toEqual({
+      hops: ["red-router", "red"],
+      provider: "openrouter",
+      model: "typesafe/jev-1.13",
+    })
+    expect(Router.hopName("red")).toBe("RedRouter")
+  })
+})

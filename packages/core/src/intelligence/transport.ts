@@ -4,7 +4,7 @@ import { Intelligence } from "@opencode/schema/intelligence"
 import { Integration } from "@opencode/schema/integration"
 import { Router } from "@opencode/schema/router"
 import { makeGlobalNode } from "@opencode/util/effect/app-node"
-import { Context, Effect, Layer, Schedule, Schema } from "effect"
+import { Context, Effect, Layer, Option, Schedule, Schema } from "effect"
 import { Credential } from "../credential.js"
 import { IntelligenceEvaluation } from "./evaluation.js"
 import { IntelligenceSettings } from "./settings.js"
@@ -84,12 +84,12 @@ const make = Effect.gen(function* () {
     const explicit = !apiKey && evaluator.credentialID ? yield* credentials.get(evaluator.credentialID) : undefined
     if (!apiKey && evaluator.credentialID && !explicit)
       return yield* new IntelligenceEvaluation.Error({ message: "System One credential was removed; reconnect it" })
-    if (explicit && !belongs(evaluator, explicit))
+    if (explicit && !credentialMatches(evaluator, explicit))
       return yield* new IntelligenceEvaluation.Error({
         message: "Stored System One credential does not belong to this transport and API origin",
       })
     const current = explicit ?? (yield* connection(evaluator.transport))
-    const stored = current && belongs(evaluator, current) ? current : undefined
+    const stored = current && credentialMatches(evaluator, current) ? current : undefined
     if (!apiKey && evaluator.credentialID && !stored)
       return yield* new IntelligenceEvaluation.Error({ message: "System One credential was removed; reconnect it" })
     const officialZen =
@@ -117,16 +117,20 @@ const make = Effect.gen(function* () {
         message: "Cloudflare Account ID is required; connect Cloudflare AI Gateway first",
       })
     const vercel = evaluator.transport === "vercel" && body !== undefined
-    const openrouter = evaluator.transport === "openrouter" && body !== undefined
     const cloudflare = evaluator.transport === "cloudflare-ai-gateway" && body !== undefined
     const endpoint =
-      evaluator.transport === "red-router" && suffix === "systemone" ? (evaluator.endpoint ?? suffix) : suffix
+      suffix === "systemone"
+        ? (evaluator.endpoint ??
+          (evaluator.transport === "openrouter" && url.pathname.replace(/\/$/, "").endsWith("/api/alpha")
+            ? "decisions"
+            : suffix))
+        : suffix
     return yield* Effect.tryPromise({
       try: async (signal) => {
         const response = await RemoteCheck.request(
           cloudflare
             ? `${url.href.replace(/\/$/, "")}/accounts/${accountID}/ai/run`
-            : `${url.href.replace(/\/$/, "")}/${vercel ? "evaluation-model" : openrouter ? "decisions" : endpoint}`,
+            : `${url.href.replace(/\/$/, "")}/${vercel ? "evaluation-model" : endpoint}`,
           {
             method: body === undefined ? "GET" : "POST",
             redirect: "error",
@@ -143,11 +147,14 @@ const make = Effect.gen(function* () {
           },
           requests,
         )
-        if (!response.ok)
+        if (!response.ok) {
+          const diagnostic = Option.getOrUndefined(decodeDiagnostic(await response.text()))
+          const code = diagnostic?.error.code
           throw new IntelligenceEvaluation.Error({
-            message: `System One HTTP ${response.status}`,
+            message: `System One HTTP ${response.status}${code ? ` · ${SYSTEM_ONE_ERRORS[code]} (${code})` : ""}`,
             status: response.status,
           })
+        }
         const result: unknown = await response.json()
         return vercel ? vercelResponse(evaluator.model, body, result) : result
       },
@@ -233,15 +240,12 @@ const make = Effect.gen(function* () {
         .filter((model, index, models) => models.findIndex((item) => item.id === model.id) === index)
         .map((model) => {
           const route = Router.route(model.id)
+          const endpoint =
+            model.supported_endpoints?.map(Router.systemOneEndpoint).find((endpoint) => endpoint !== undefined) ??
+            input.evaluator.endpoint
           return {
             id: model.id,
-            ...(model.supported_endpoints?.some((endpoint) => /(^|\/)decisions$/.test(endpoint))
-              ? { endpoint: "decisions" as const }
-              : model.supported_endpoints?.some((endpoint) => /(^|\/)systemone$/.test(endpoint))
-                ? { endpoint: "systemone" as const }
-                : input.evaluator.endpoint
-                  ? { endpoint: input.evaluator.endpoint }
-                  : {}),
+            ...(endpoint ? { endpoint } : {}),
             name: Router.routeName({
               routers: ["RedRouter", ...route.hops.map(Router.hopName)],
               upstream: (typeof model.provider === "string" ? model.provider : model.provider?.name) ?? route.provider,
@@ -268,15 +272,12 @@ const make = Effect.gen(function* () {
       )(capabilities ?? {}).pipe(
         Effect.mapError(() => new IntelligenceEvaluation.Error({ message: "Invalid System One capabilities" })),
       )
+      const endpoint = Router.systemOneEndpoint(advertised.systemone?.endpoint)
       return {
         models: (advertised.systemone?.models ?? []).map((id) => ({
           id,
           name: id,
-          ...(advertised.systemone?.endpoint === "/v1/decisions"
-            ? { endpoint: "decisions" as const }
-            : advertised.systemone?.endpoint === "/v1/systemone"
-              ? { endpoint: "systemone" as const }
-              : {}),
+          ...(endpoint ? { endpoint } : {}),
         })),
         manual: false,
       }
@@ -331,6 +332,7 @@ const make = Effect.gen(function* () {
       Effect.flatMap((value) =>
         Schema.decodeUnknownEffect(Intelligence.Response)(value.response).pipe(
           Effect.map((response) => ({ response, endpoint: value.endpoint })),
+          Effect.mapError(() => new IntelligenceEvaluation.Error({ message: "Invalid System One typed response" })),
         ),
       ),
       Effect.match({
@@ -383,7 +385,7 @@ function credentialValue(value: Credential.Value | undefined) {
   if (value?.type === "oauth" && value.expires > Date.now()) return value.access
 }
 
-function belongs(evaluator: Intelligence.Evaluator, credential: Credential.Info) {
+export function credentialMatches(evaluator: Intelligence.Evaluator, credential: Credential.Info) {
   const metadata = credential.value.metadata
   if (credential.integrationID === Integration.ID.make(`intelligence:${evaluator.transport}`))
     return (
@@ -395,7 +397,13 @@ function belongs(evaluator: Intelligence.Evaluator, credential: Credential.Info)
     (providerIntegrations(evaluator.transport).some((id) => credential.integrationID === Integration.ID.make(id)) ||
       (evaluator.transport === "red-router" && metadata?.router === "red-router")) &&
     baseURL !== undefined &&
-    sameEndpoint(baseURL, evaluator.baseURL)
+    IntelligenceSettings.validURL(baseURL) &&
+    (sameEndpoint(baseURL, evaluator.baseURL) ||
+      // Older setup stored the official alpha API even for a normal OpenRouter connection.
+      (evaluator.transport === "openrouter" &&
+        [baseURL, evaluator.baseURL].every((value) =>
+          ["https://openrouter.ai/api/alpha", "https://openrouter.ai/api/v1"].includes(value.replace(/\/$/, "")),
+        )))
   )
 }
 
@@ -404,7 +412,10 @@ function evaluatorEndpoint(transport: Intelligence.Evaluator["transport"], crede
     return stringMetadata(credential.value.metadata, "intelligenceBaseURL")
   if (transport === "red-router") return redRouterEndpoint(credential)
   return (
-    stringMetadata(credential.value.metadata, "baseURL") ?? IntelligenceEvaluation.evaluatorPreset(transport).baseURL
+    (credential.value.type === "key" && typeof credential.value.configuration?.baseURL === "string"
+      ? credential.value.configuration.baseURL
+      : stringMetadata(credential.value.metadata, "baseURL")) ??
+    IntelligenceEvaluation.evaluatorPreset(transport).baseURL
   )
 }
 
@@ -512,3 +523,25 @@ function distributionConfidence(probabilities: Record<string, unknown>) {
   const entropy = -values.reduce((total, value) => total + value * Math.log(value), 0)
   return Math.max(0, Math.min(1, 1 - entropy / Math.log(values.length)))
 }
+
+const SYSTEM_ONE_ERRORS = {
+  systemone_credential_required: "Upstream credential required",
+  systemone_credential_rejected: "Upstream credential or permission rejected",
+  systemone_endpoint_not_found: "Upstream decision endpoint is missing",
+  systemone_resource_not_found: "Upstream resource is missing; endpoint or model is unspecified",
+  systemone_model_unavailable: "Upstream decision model is unavailable",
+  systemone_transport_failure: "Router could not reach the upstream",
+  systemone_invalid_response: "Upstream returned invalid typed answers",
+  systemone_upstream_http_error: "Upstream returned an HTTP error",
+  systemone_connection_unavailable: "Router has no eligible S1 connection",
+} as const
+
+const decodeDiagnostic = Schema.decodeUnknownOption(
+  Schema.fromJsonString(
+    Schema.Struct({
+      error: Schema.Struct({
+        code: Schema.Literals(Object.keys(SYSTEM_ONE_ERRORS) as Array<keyof typeof SYSTEM_ONE_ERRORS>),
+      }),
+    }),
+  ),
+)

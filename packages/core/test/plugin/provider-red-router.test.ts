@@ -29,6 +29,23 @@ const addPlugin = Effect.fn(function* () {
 })
 
 describe("RedRouterPlugin", () => {
+  test("keeps Jev Router in S2 and excludes typed decision evaluators", () => {
+    const names = { providers: new Map<string, string>(), models: new Map<string, string>(), limits: new Map() }
+    const map = (item: Parameters<typeof routerModel>[0]) => routerModel(item, Provider.ID.make("red-router"), names)
+    expect(
+      map({
+        id: "red/red/openrouter/typesafe/jev-router",
+        type: "chat",
+        supported_endpoints: ["/v1/chat/completions"],
+      }),
+    ).toMatchObject([
+      { id: "red/red/openrouter/typesafe/jev-router", package: "@opencode/ai/providers/openai-compatible" },
+    ])
+    expect(map({ id: "red/openrouter/typesafe/jev-1.13" })).toEqual([])
+    expect(map({ id: "decision-only", capabilities: { decision: true } })).toEqual([])
+    expect(map({ id: "native-s1", type: "systemone" })).toEqual([])
+  })
+
   test("counts the models a catalog refresh added and removed", () => {
     const ids = (...values: string[]) => values.map((id) => ({ id }))
     expect(catalogChanges(ids("a", "b", "c"), ids("b", "c", "d", "e"))).toEqual({ added: 2, removed: 1, renamed: 0 })

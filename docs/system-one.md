@@ -26,19 +26,33 @@ alias switching. HTTP status, response bytes and latency remain visible.
 An empty filtered model list also checks models advertised in `/v1/capabilities`.
 Routed JEV versions are recognized without a fixed list of version numbers.
 
-### RedRouter integration note
+### OpenRouter and RedRouter endpoints
 
-`/v1/systemone` and `/v1/decisions` currently share the same RedRouter handler;
-switching between them cannot fix an upstream 502. The sibling router source and
-the installed 0.57.2 package configure the OpenRouter System One adapter with
-`https://openrouter.ai/api/v1/systemone`, while Redcode's direct OpenRouter adapter
-uses `/api/v1/decisions`. The router team should verify and correct that upstream
-target, test forwarding through both public aliases with a real eligible connection,
-and keep its scoped model catalog consistent with `systemone.models` and the
-advertised canonical endpoint. Listing a model establishes discoverability, not
-working credentials or a successful evaluation. This code finding is not a confirmed
-diagnosis of the screenshot's 502; its remote response and serving version still
-need verification.
+The native OpenRouter evaluator defaults to `https://openrouter.ai/api/v1/systemone`,
+using the typed `model`, `state` and `questions` payload. The AI SDK already uses
+this route; the `/dual` runtime now follows the same default. A selected connection's
+configured base URL takes precedence over older connection metadata. Saved official
+`https://openrouter.ai/api/alpha` evaluators remain supported through `/decisions`;
+that alpha operation is distinct from the versioned `/api/v1/systemone` route.
+
+RedRouter's `/v1/systemone` and `/v1/decisions` share its System One handler.
+Discovery keeps the first recognized entry in a model's `supported_endpoints` and
+accepts both endpoint names and `/v1/` paths from `systemone.endpoint`. Full routed
+IDs, including `red/red/openrouter/typesafe/jev-1.13`, are sent unchanged to the router.
+Versioned JEV evaluators belong to S1; `typesafe/jev-router` is a generative chat model
+and remains eligible for S2.
+
+Redcode reads discovery again for each detection or model-list request. Any discovery
+cache and key-scoped invalidation belong to RedRouter. Listing a model establishes
+catalog access, not working credentials or a successful evaluation. Setup must still
+test the selected route before saving a working evaluator.
+
+Router diagnostic codes appear alongside HTTP status for missing endpoints, refused
+credentials, unavailable models or connections, transport failures and invalid typed
+answers. Upstream error text is not reflected in those messages. A 502 alone does not
+identify its cause, and switching the router's public aliases cannot repair a failure
+in its upstream adapter. Live upstream credentials and forwarding still require a
+separate end-to-end check.
 
 ## Session satisfaction in S2 prompts
 

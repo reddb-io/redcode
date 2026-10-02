@@ -1,6 +1,5 @@
 export * as IntelligenceRouter from "./router.js"
 
-import { createHash } from "node:crypto"
 import { Effect, Option, Schema } from "effect"
 import { Intelligence } from "@opencode/schema/intelligence"
 import { Router } from "@opencode/schema/router"
@@ -8,12 +7,6 @@ import { Credential } from "../credential.js"
 import { redRouterEndpoint } from "./red-router-endpoint.js"
 
 const decodeRecommendation = Schema.decodeUnknownOption(Router.Recommendation)
-const cache = new Map<string, { expires: number; value: Intelligence.DetectedRouter | undefined }>()
-
-export function clearCache() {
-  cache.clear()
-}
-
 export const detect = Effect.fn("IntelligenceRouter.detect")(function* (connection: Credential.Info | undefined) {
   const key =
     connection?.value.type === "key"
@@ -24,9 +17,6 @@ export const detect = Effect.fn("IntelligenceRouter.detect")(function* (connecti
   if (!key) return
   const base = redRouterEndpoint(connection)
   if (!base) return
-  const cacheKey = `${base}\n${createHash("sha256").update(key).digest("hex")}`
-  const cached = cache.get(cacheKey)
-  if (cached && cached.expires > Date.now()) return cached.value
   const signal = AbortSignal.timeout(3_000)
   const get = (route: string) =>
     fetch(`${base}/${route}`, {
@@ -50,7 +40,7 @@ export const detect = Effect.fn("IntelligenceRouter.detect")(function* (connecti
                   return typeof id === "string" ? [id] : []
                 })
               : []
-            return models.length && models.every((id) => /\bjev\b/i.test(id))
+            return models.length && models.every(Router.isJevEvaluator)
               ? {
                   kind: "red-router" as const,
                   features: ["systemone" as const],
@@ -60,10 +50,8 @@ export const detect = Effect.fn("IntelligenceRouter.detect")(function* (connecti
               : undefined
           }),
         )
-  if (!detection) {
-    cache.set(cacheKey, { expires: Date.now() + 5 * 60_000, value: undefined })
-    return
-  }
+  // Discovery freshness and key-scoped caching belong to the Router.
+  if (!detection) return
   const catalog: Record<string, unknown> = detection.features.includes("recommendations")
     ? record(yield* Effect.promise(() => get("catalog")))
     : {}
@@ -77,6 +65,9 @@ export const detect = Effect.fn("IntelligenceRouter.detect")(function* (connecti
   const model = detection.systemOne?.available
     ? (detection.systemOne.models.find((id) => id === recommended.systemone?.id) ?? detection.systemOne.models[0])
     : undefined
+  const endpoint = Router.systemOneEndpoint(
+    typeof record(document.systemone).endpoint === "string" ? String(record(document.systemone).endpoint) : undefined,
+  )
   const result: Intelligence.DetectedRouter = {
     providerID: connection?.integrationID ?? "red-router",
     baseURL: base,
@@ -88,17 +79,12 @@ export const detect = Effect.fn("IntelligenceRouter.detect")(function* (connecti
             transport: "red-router" as const,
             baseURL: base,
             model,
-            ...(record(document.systemone).endpoint === "/v1/decisions"
-              ? { endpoint: "decisions" as const }
-              : record(document.systemone).endpoint === "/v1/systemone"
-                ? { endpoint: "systemone" as const }
-                : {}),
+            ...(endpoint ? { endpoint } : {}),
             ...(connection ? { credentialID: connection.id } : {}),
           },
         }
       : {}),
   }
-  cache.set(cacheKey, { expires: Date.now() + 5 * 60_000, value: result })
   return result
 })
 

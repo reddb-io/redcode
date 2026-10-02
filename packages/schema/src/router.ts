@@ -180,7 +180,7 @@ export const CatalogUpdated = ephemeral({
 export const Event = { CatalogUpdated, Definitions: inventory(CatalogUpdated) }
 
 /** Model id segments a router serves another router's models under, with the name each is shown by. */
-const HOPS: Record<string, string> = { "red-router": "RedRouter", "9router": "9Router" }
+const HOPS: Record<string, string> = { red: "RedRouter", "red-router": "RedRouter", "9router": "9Router" }
 
 /** The display name of a router hop segment, e.g. `RedRouter` for `red-router`. */
 export function hopName(slug: string) {
@@ -286,7 +286,18 @@ export function offerRoute(offer: Pick<Offer, "provider" | "via">) {
  */
 export function routeName(input: { routers: ReadonlyArray<string>; upstream?: string; model: string }) {
   const chain = input.routers.join(HOP_SEPARATOR)
-  const path =
-    chain && input.upstream ? `${chain}${HOP_SEPARATOR}${input.upstream}` : chain || input.upstream
+  const path = chain && input.upstream ? `${chain}${HOP_SEPARATOR}${input.upstream}` : chain || input.upstream
   return path ? `${path} · ${input.model}` : input.model
+}
+
+/** JEV evaluators use the typed S1 protocol; Jev Router is a generative chat router. */
+export function isJevEvaluator(id: string) {
+  const model = id.toLowerCase().split("/").at(-1) ?? ""
+  return /^jev(?:$|[-.])/.test(model) && !/^jev-router(?:$|[-.])/.test(model)
+}
+
+/** Normalize the decision endpoint announced by a router, preserving its chosen alias. */
+export function systemOneEndpoint(value: string | undefined) {
+  const endpoint = value?.replace(/^\/?(?:v1\/)?/, "")
+  return endpoint === "systemone" || endpoint === "decisions" ? endpoint : undefined
 }

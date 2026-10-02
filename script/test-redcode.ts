@@ -108,7 +108,7 @@ const suites = {
     "test/voice-input.test.ts",
     "test/system-model.test.ts",
   ],
-  schema: ["test/config.test.ts"],
+  schema: ["test/config.test.ts", "test/router-offers.test.ts"],
   util: ["src/design-review.test.ts"],
   redcode: ["test/script/publish-registry.test.ts"],
   "rpc-sidecar": ["test/sidecar.test.ts"],
