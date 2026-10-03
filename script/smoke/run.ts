@@ -469,7 +469,8 @@ async function renderReview(browser: Browser, review: string) {
   page.on("response", (response) => {
     if (response.status() >= 400) errors.push(`HTTP ${response.status()}: ${response.url()}`)
   })
-  const response = await page.goto(review, { waitUntil: "networkidle", timeout: 60_000 })
+  // The owning server keeps the conversation feed open. Wait for the shell, then its actual preview below.
+  const response = await page.goto(review, { waitUntil: "domcontentloaded", timeout: 60_000 })
   if (!response?.ok()) throw new Error(`The review link answered HTTP ${response?.status()}`)
   // A web UI in front of the server once answered Design routes with its own index page, which looks blank here.
   if ((await page.locator("#review").count()) === 0)
@@ -514,7 +515,7 @@ async function renderReview(browser: Browser, review: string) {
         ?.textContent?.includes("HTTP 500"),
     )
     // The exact failed envelope and its error survive a reload, then reach the real service on retry.
-    await page.reload({ waitUntil: "networkidle" })
+    await page.reload({ waitUntil: "domcontentloaded" })
     await page.waitForFunction(() =>
       document
         .querySelector("#review")
