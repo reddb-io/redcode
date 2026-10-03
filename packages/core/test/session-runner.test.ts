@@ -51,6 +51,8 @@ import { SessionMessage } from "@opencode/core/session/message"
 import { SessionModelTransport } from "@opencode/core/session/model-transport"
 import { SessionProviderContext } from "@opencode/core/session/provider-context"
 import { Money } from "@opencode/schema/money"
+import { Monitor } from "@opencode/schema/monitor"
+import { MonitorRuntime } from "@opencode/core/monitor"
 import { SessionProjector } from "@opencode/core/session/projector"
 import { SessionExecution } from "@opencode/core/session/execution"
 import { SessionRunCoordinator } from "@opencode/core/session/run-coordinator"
@@ -4783,6 +4785,67 @@ describe("SessionRunnerLLM", () => {
     expect(s.executions).toHaveLength(5)
     expect(yield* tools.maxActive).toBe(5)
     expect(s.requests).toHaveLength(2)
+  })
+
+  scenario("parks tool-driven continuation until a native job monitor delivers its terminal evidence", function* (s) {
+    const monitors = yield* MonitorRuntime.Service
+    const tools = yield* Tool.Service
+    const execution = yield* SessionExecution.Service
+    const completed = { value: false }
+    const finished = yield* Deferred.make<void>()
+    yield* s.bus.listen((event) =>
+      Schema.is(Monitor.Event.Finished)(event) && event.data.sessionID === sessionID
+        ? Deferred.succeed(finished, undefined).pipe(Effect.asVoid)
+        : Effect.void,
+    )
+    yield* transformTools(
+      tools,
+      {
+        wait_design: {
+          name: "wait_design",
+          description: "Wait for the Design renderer",
+          input: Schema.Struct({}),
+          output: Schema.String,
+          execute: (_input, context) =>
+            Effect.gen(function* () {
+              const monitor = yield* monitors.start({
+                sessionID: context.sessionID,
+                command: "Design verify: job_profile",
+                workdir: projectDirectory,
+                options: {
+                  mode: "poll",
+                  wait_ms: 0,
+                  interval_ms: 1000,
+                  deadline_ms: 60000,
+                  jitter: false,
+                  success_contains: "Rendered profile verified",
+                },
+                run: () =>
+                  Effect.sync(() => ({
+                    exit: 0,
+                    truncated: false,
+                    output: completed.value ? "Rendered profile verified" : "Still running",
+                  })),
+              })
+              return { output: monitor.id, content: "Awaiting the native job monitor" }
+            }),
+        },
+      },
+      { codemode: false },
+    )
+    yield* s.admit("Verify the profile before finishing")
+    yield* s.llm.push(TestLLM.tool("verify_profile", "wait_design", {}), TestLLM.text("Profile verified"))
+    yield* s.resume
+    expect(s.requests).toHaveLength(1)
+    expect((yield* monitors.list(sessionID)).some(Monitor.parks)).toBe(true)
+    expect(yield* s.inbox).toEqual([])
+    completed.value = true
+    yield* TestClock.adjust("1 second")
+    yield* Deferred.await(finished)
+    yield* execution.awaitIdle(sessionID)
+    expect(s.requests).toHaveLength(2)
+    expect(JSON.stringify(s.requests[1]?.messages)).toContain("Rendered profile verified")
+    expect((yield* monitors.list(sessionID)).some(Monitor.parks)).toBe(false)
   })
 
   scenario("settles repeated provider-local tool call IDs against their owning assistant messages", function* (s) {

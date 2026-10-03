@@ -6,6 +6,102 @@ import { it } from "../../core/test/lib/effect"
 import { DesignAccess } from "../src/design-access"
 import { startServer } from "./fixture/server"
 
+it.live("Design entry creates a new session in a loaded project and keeps session-scoped tasks separate", () =>
+  Effect.gen(function* () {
+    const directory = yield* Effect.acquireDisposable(Effect.promise(() => tmpdir()))
+    const server = yield* startServer(directory.path)
+    const headers = { ...server.headers, "content-type": "application/json" }
+    const request = (pathname: string, input?: unknown, authenticated = true) =>
+      Effect.promise(() =>
+        fetch(new URL(pathname, server.base), {
+          headers: authenticated ? headers : { "content-type": "application/json" },
+          method: input === undefined ? "GET" : "POST",
+          body: input === undefined ? undefined : JSON.stringify(input),
+        }),
+      )
+    const anonymous = yield* request("/design", undefined, false)
+    expect(anonymous.status).toBe(200)
+    expect(anonymous.headers.get("www-authenticate")).toBeNull()
+    expect(yield* Effect.promise(() => anonymous.text())).toContain("redcode pair")
+    const refused = yield* request("/design/new", { source: "ses_entry_source" }, false)
+    expect(refused.status).toBe(401)
+    yield* Effect.promise(() => refused.arrayBuffer())
+    const source = yield* request("/api/session", {
+      id: "ses_entry_source",
+      title: "Profile project",
+      location: { directory: directory.path },
+    })
+    expect(source.status).toBe(200)
+    yield* Effect.promise(() => source.arrayBuffer())
+    const entry = yield* request("/design")
+    expect(entry.status).toBe(200)
+    expect(yield* Effect.promise(() => entry.text())).toContain("Profile project")
+    const launched = yield* request("/design/new", { source: "ses_entry_source" })
+    expect(launched.status).toBe(200)
+    const result = yield* Effect.promise(() => launched.json()).pipe(
+      Effect.flatMap(Schema.decodeUnknownEffect(Schema.Struct({ sessionID: Schema.String, url: Schema.String }))),
+    )
+    expect(result.sessionID).not.toBe("ses_entry_source")
+    expect(new URL(result.url).port).toBe(new URL(server.base).port)
+    const session = yield* request(`/api/session/${result.sessionID}`)
+    expect(yield* Effect.promise(() => session.json())).toMatchObject({
+      data: { agent: "design", location: { directory: directory.path } },
+    })
+    const review = yield* Effect.promise(() => fetch(result.url))
+    expect(review.status).toBe(200)
+    expect(review.redirected).toBe(false)
+    const cookie = (review.headers.get("set-cookie") ?? "").split(";")[0]
+    yield* Effect.promise(() => review.arrayBuffer())
+    const todos = yield* Effect.promise(() =>
+      fetch(new URL(`/design/session/${result.sessionID}/todo`, server.base), { headers: { cookie } }),
+    )
+    expect(todos.status).toBe(200)
+    expect(yield* Effect.promise(() => todos.json())).toEqual([])
+    const share = yield* Effect.promise(() =>
+      fetch(new URL(`/design/session/${result.sessionID}/share`, server.base), { headers: { cookie } }),
+    )
+    expect(yield* Effect.promise(() => share.json())).toEqual({})
+    const wrong = yield* Effect.promise(() =>
+      fetch(new URL("/design/session/ses_entry_source/todo", server.base), { headers: { cookie } }),
+    )
+    expect(wrong.status).toBe(401)
+    yield* Effect.promise(() => wrong.arrayBuffer())
+  }),
+)
+
+it.live("LAN review links stay on the owning server and grant annotations without general credentials", () =>
+  Effect.gen(function* () {
+    const directory = yield* Effect.acquireDisposable(Effect.promise(() => tmpdir()))
+    const server = yield* startServer(directory.path, "0.0.0.0")
+    const headers = { ...server.headers, "content-type": "application/json" }
+    const created = yield* Effect.promise(() =>
+      fetch(new URL("/api/session", server.base), {
+        method: "POST",
+        headers,
+        body: JSON.stringify({ id: "ses_lan_design", agent: "design", location: { directory: directory.path } }),
+      }),
+    )
+    expect(created.status).toBe(200)
+    yield* Effect.promise(() => created.arrayBuffer())
+    const link = yield* Effect.promise(() =>
+      fetch(new URL("/design/session/ses_lan_design/link", server.base), { headers }),
+    )
+    const links = yield* Effect.promise(() => link.json()).pipe(
+      Effect.flatMap(Schema.decodeUnknownEffect(Schema.Struct({ url: Schema.String, network: Schema.String }))),
+    )
+    expect(new URL(links.network).port).toBe(new URL(server.base).port)
+    expect(new URL(links.network).hostname).not.toBe("127.0.0.1")
+    // Reach the LAN grant through loopback too: the grant is for this Session, not a server password.
+    const local = new URL(links.network)
+    local.hostname = "127.0.0.1"
+    const review = yield* Effect.promise(() => fetch(local, { redirect: "manual" }))
+    expect(review.status).toBe(200)
+    expect(review.headers.get("location")).toBeNull()
+    expect(review.headers.get("www-authenticate")).toBeNull()
+    yield* Effect.promise(() => review.arrayBuffer())
+  }),
+)
+
 it.live("approval into Plan retires preview routes while keeping the immutable approval readable", () =>
   Effect.gen(function* () {
     const directory = yield* Effect.acquireDisposable(Effect.promise(() => tmpdir()))

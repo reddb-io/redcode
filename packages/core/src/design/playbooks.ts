@@ -1,4 +1,3 @@
-
 export * as DesignPlaybooks from "./playbooks.js"
 
 import type { Design } from "@opencode/schema/design"
@@ -68,7 +67,7 @@ export const PLAYBOOKS: readonly Playbook[] = [
     ],
     structure: [
       "Start from the main user task and real content. Make the primary action and information hierarchy clear.",
-      'Feedback round: collect every note of the round (one or more <design-review> messages before your next revision), fix them all, publish one revision with design_preview, run one verify for the round with design_export {revision, format:"verify"} and poll design_jobs, open the before/after captures it names, then record each note with design_document update notes (resolved with the verify job as evidence; partial, unresolved or accepted with a reason). Reply with a short summary of resolved, partial, unresolved and accepted notes with their evidence, and ask before another round.',
+      'Feedback round: collect every note of the round (one or more <design-review> messages before your next revision), fix them all, publish one revision with design_preview, run one verify for the round with design_export {revision, format:"verify"} and wait for its native monitor to complete, open the before/after captures it names, then record each note with design_document update notes (resolved with the verify job as evidence; partial, unresolved or accepted with a reason). Reply with a short summary of resolved, partial, unresolved and accepted notes with their evidence, and ask before another round.',
     ],
     design_rules: [
       "Use semantic controls, visible keyboard focus, readable contrast and responsive layout.",
@@ -370,7 +369,7 @@ export const PLAYBOOKS: readonly Playbook[] = [
     review_notes: [
       "The review shows one slide at a time on its 1920×1080 canvas with a thumbnail strip and a counter; ←/→, Space, Page Up/Down, Home and End move between slides. A review note belongs to the slide it was taken on, and Reveal opens that slide first.",
       "Present opens the deck in a presentation window (F for full screen); P there, or the presenter view's Audience window button, opens the other view. The presenter view shows the current slide, the next one, the speaker notes and the elapsed time, and every window of the deck follows the same slide.",
-      'Export with design_export input {revision, format: "pdf"}: one 1920×1080 page per slide without notes; poll design_jobs for the file. Format html exports a standalone deck that keeps keyboard navigation. Run format audit before handing off and fix every slide-overflow finding.',
+      'Export with design_export input {revision, format: "pdf"}: one 1920×1080 page per slide without notes; wait for its native monitor to return the file. Format html exports a standalone deck that keeps keyboard navigation. Run format audit before handing off and fix every slide-overflow finding.',
     ],
   },
 ]

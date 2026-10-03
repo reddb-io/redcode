@@ -73,5 +73,5 @@ export function check(
       .map((viewport) => `${viewport.width}px`)
     return widths.length ? [`${name} (${widths.join(", ")})`] : []
   }).join(", ")
-  return `Revision ${revision} has no completed layout audit at ${names}. Run design_export {"revision":"${revision}","format":"audit"}, poll design_jobs until it completes, then approve.`
+  return `Revision ${revision} has no completed layout audit at ${names}. Run design_export {"revision":"${revision}","format":"audit"}, wait for its native monitor to complete, then approve.`
 }

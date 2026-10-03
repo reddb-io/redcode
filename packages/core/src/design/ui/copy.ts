@@ -16,6 +16,14 @@ export const reviewCopy = {
 
   details: "Details",
   conversation: "Conversation",
+  tasks: "Design tasks",
+  tasksEmpty: "No Design tasks recorded yet.",
+  tasksUnavailable: "Design tasks could not be updated. Refresh to retry.",
+  share: "Share on local network",
+  dismiss: "Close",
+  shareUnavailable:
+    "Local network sharing is off. Run redcode service set hostname 0.0.0.0 and redcode service restart, then reopen this review.",
+  shareLink: "Send this link to a colleague on the same network:",
   stateWorking: "Agent working…",
   stateIdle: "Idle",
   statePublished: "New revision published",

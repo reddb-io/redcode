@@ -8,7 +8,9 @@ import { DesignQuality } from "../../design/quality.js"
 import { DesignRounds } from "../../design/rounds.js"
 import { DesignRenderer } from "../../design/renderer.js"
 import { DesignStore } from "../../design/store.js"
+import { MonitorRuntime } from "../../monitor.js"
 import { Permission } from "../../permission.js"
+import { Session } from "../../session.js"
 
 export const Plugin = {
   id: "redcode.tool.design-render",
@@ -16,13 +18,15 @@ export const Plugin = {
     const designs = yield* DesignStore.Service
     const renderer = yield* DesignRenderer.Service
     const permission = yield* Permission.Service
+    const monitors = yield* MonitorRuntime.Service
+    const sessions = yield* Session.Service
     yield* ctx.tool
       .transform((editor) => {
         editor.add({
           name: "design_export",
           options: { codemode: false },
           description:
-            "Start a local HTML or PDF export, rendered audit, implementation comparison, SVG to GIF export, or feedback round verification. Poll design_jobs for the result and evidence.",
+            "Start a local HTML or PDF export, rendered audit, implementation comparison, SVG to GIF export, or feedback round verification. A native monitor waits for completion and resumes this Session with the result and evidence; do not repeatedly poll design_jobs.",
           input: Schema.Struct({ id: Design.ID, input: Design.Render }),
           output: Design.Job,
           execute: (input, context) =>
@@ -35,12 +39,64 @@ export const Plugin = {
                 agent: context.agent,
                 source: { type: "tool", messageID: context.messageID, id: context.id },
               })
-              yield* designs.get(context.sessionID, input.id)
+              const document = yield* designs.get(context.sessionID, input.id)
               const output = yield* renderer.start(context.sessionID, input.id, input.input)
+              if (output.status !== "queued" && output.status !== "running")
+                return {
+                  output,
+                  content: DesignQuality.report([output], document.revision, document.notes ?? []),
+                  metadata: { designID: input.id, jobID: output.id, jobStatus: output.status },
+                }
+              const messages = yield* sessions.context(context.sessionID)
+              const recentInput = messages.findLast(
+                (message) => message.type === "user" || message.type === "synthetic",
+              )
+              const monitor = yield* monitors.start({
+                sessionID: context.sessionID,
+                originMessageID: messages.findLast((message) => message.type === "user")?.id,
+                autonomous: recentInput?.type === "synthetic",
+                command: `Design ${input.input.format}: ${output.id} revision=${input.input.revision}`,
+                workdir: document.root,
+                options: {
+                  mode: "poll",
+                  wait_ms: 1000,
+                  interval_ms: 2000,
+                  // Verification allows up to 30 minutes; leave time for its terminal record.
+                  deadline_ms: 1860000,
+                  success_contains: `[${output.id}:completed]`,
+                  failure_contains: `[${output.id}:failed]`,
+                },
+                run: () =>
+                  Effect.gen(function* () {
+                    const jobs = yield* renderer.jobs(context.sessionID, input.id)
+                    const job = jobs.find((item) => item.id === output.id)
+                    if (!job)
+                      return {
+                        exit: 0,
+                        truncated: false,
+                        output: `[${output.id}:failed]\nDesign job not found; inspect it before retrying.`,
+                      }
+                    const current = yield* designs.get(context.sessionID, input.id)
+                    const status =
+                      job.status === "queued" || job.status === "running"
+                        ? "pending"
+                        : job.status === "completed"
+                          ? "completed"
+                          : "failed"
+                    return {
+                      exit: 0,
+                      truncated: false,
+                      output: `[${output.id}:${status}]\n${DesignQuality.report([job], job.input.revision, current.notes ?? [])}${current.revision !== job.input.revision ? `\nThis job verified an older revision; current revision is ${current.revision}.` : ""}${status === "completed" ? "\nRead design_jobs once for the completed tool evidence, inspect the captures and update the corresponding Design tasks and note outcomes before replying." : ""}`,
+                    }
+                  }),
+              })
               return {
                 output,
-                content: `Job ${output.id}: ${output.status}. Use design_jobs to read progress.`,
-                metadata: { designID: input.id, jobID: output.id },
+                content:
+                  monitor.status === "running"
+                    ? `Job ${output.id}: ${output.status}. Monitor ${monitor.id} is waiting for completion and will resume this Session with the rendered evidence. Do not poll design_jobs or promise future verification; wait for the monitor result before recording note outcomes.`
+                    : (monitor.evidence?.output ?? `Job ${output.id}: monitor ${monitor.status}.`),
+                metadata: { designID: input.id, jobID: output.id, jobStatus: output.status, monitorID: monitor.id },
               }
             }).pipe(Effect.mapError((error) => new ToolFailure({ message: error.message, error }))),
         })
@@ -76,21 +132,26 @@ export const Plugin = {
                 metadata: {
                   designID: input.id,
                   cancel: input.cancel,
+                  verifiedCurrent:
+                    !input.cancel &&
+                    jobs.some((job) => job.status === "completed" && job.input.revision === document.revision),
                   verified: jobs.flatMap((job) =>
                     job.status === "completed" && job.verify
-                      ? [{
-                          design: job.designID,
-                          revision: job.verify.revision,
-                          round: job.verify.round,
-                          job: job.id,
-                          notes: job.verify.notes.map((note) => ({
-                            feedback: note.feedback,
-                            index: note.index,
-                            label: note.label,
-                            verdict: DesignRounds.verdict(note),
-                            reason: note.reason,
-                          })),
-                        }]
+                      ? [
+                          {
+                            design: job.designID,
+                            revision: job.verify.revision,
+                            round: job.verify.round,
+                            job: job.id,
+                            notes: job.verify.notes.map((note) => ({
+                              feedback: note.feedback,
+                              index: note.index,
+                              label: note.label,
+                              verdict: DesignRounds.verdict(note),
+                              reason: note.reason,
+                            })),
+                          },
+                        ]
                       : [],
                   ),
                 },

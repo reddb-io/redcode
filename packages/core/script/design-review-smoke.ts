@@ -73,6 +73,16 @@ const state = {
   document: design,
   revisions,
   jobs,
+  todos: [
+    {
+      id: "todo_profile",
+      phase: "design",
+      title: "Refine profile",
+      content: "Refine profile and verify",
+      status: "in_progress",
+      priority: "high",
+    },
+  ],
   calls: [] as string[],
   feed: undefined as ReadableStreamDefaultController<Uint8Array> | undefined,
   hold: undefined as ReturnType<typeof Promise.withResolvers<void>> | undefined,
@@ -94,6 +104,9 @@ const server = Bun.serve({
         }),
         { headers: { "content-type": "text/event-stream" } },
       )
+    if (route === `${endpoint}/todo`) return Response.json(state.todos)
+    if (route === `${endpoint}/share`)
+      return Response.json({ url: "http://192.168.1.10:35555/design/session/ses_browser/review?ticket=fixture" })
     if (route === endpoint) {
       await state.hold?.promise
       return Response.json([state.document])
@@ -103,7 +116,13 @@ const server = Bun.serve({
       return Response.json({ agent: "plan" })
     }
     if (route === `${endpoint}/${design.id}/revision`) return Response.json(state.revisions)
-    if (route.endsWith("/preview")) return new Response(html, { headers: { "content-type": "text/html" } })
+    if (route.endsWith("/preview"))
+      return new Response(
+        html.replace("Clicks: 0", route.includes("/rev_deferred/") ? "Updated profile" : "Clicks: 0"),
+        {
+          headers: { "content-type": "text/html" },
+        },
+      )
     if (route.endsWith("/status")) return Response.json({ stage: "ready" })
     if (route.endsWith("/job")) return Response.json(state.jobs)
     if (route.endsWith("/asset") || route.endsWith("/feedback")) return Response.json([])
@@ -224,10 +243,43 @@ try {
   const interactionMs = Math.round(performance.now() - start)
   assert.equal(await preview.locator("#counter").textContent(), "Clicks: 1")
   assert.ok(interactionMs < 2000, `Prototype click took ${interactionMs}ms`)
+
+  // Publishing while the iframe has focus defers the reload; the next idle poll must still follow latest.
+  state.document = { ...state.document, revision: "rev_deferred", updated: 3 }
+  state.revisions = [{ ...revisions[0]!, id: "rev_deferred" }, ...state.revisions]
+  state.todos = [{ ...state.todos[0]!, status: "completed" }]
+  const deferred = page.waitForResponse((response) => response.url().endsWith("/job"))
+  await page.clock.runFor(5000)
+  await deferred
+  await page.waitForFunction(() => {
+    const select = document.querySelector("#review")!.shadowRoot!.querySelector<HTMLSelectElement>("#revisions")!
+    return select.options.length === 4 && select.value === "rev_new" && !select.disabled
+  })
+  assert.equal(await preview.locator("#counter").textContent(), "Clicks: 1")
+  await page.evaluate(() => {
+    const root = document.querySelector("#review")!.shadowRoot!
+    root.querySelector<HTMLIFrameElement>("#preview")!.blur()
+  })
+  await page.clock.runFor(5000)
+  await page.waitForFunction(() => {
+    const select = document.querySelector("#review")!.shadowRoot!.querySelector<HTMLSelectElement>("#revisions")!
+    return select.value === "rev_deferred" && !select.disabled
+  })
+  await preview.locator("#counter").filter({ hasText: "Updated profile" }).waitFor()
+  assert.equal(await preview.locator("#counter").textContent(), "Updated profile")
+  const deferredPreviewUpdated = true
+  assert.equal(await page.locator('[data-task="todo_profile"]').getAttribute("data-status"), "completed")
+  await page.locator("#more").click()
+  await page.locator("#share").click()
+  await page.waitForFunction(
+    () => !!document.querySelector("#review")?.shadowRoot?.querySelector("dialog[open] input[readonly]"),
+  )
+  assert.match(await page.locator("dialog[open] input[readonly]").inputValue(), /192\.168\.1\.10:35555/)
+  await page.locator("dialog[open] button").click()
   assert.deepEqual(errors, [])
   assert.equal(state.calls.filter((call) => call.startsWith("POST ")).length, 0)
   // A CLI approval moves the live session to Plan; the open browser clears its prototype and feed.
-  state.document = { ...state.document, approvedRevision: "rev_new", ended: true }
+  state.document = { ...state.document, approvedRevision: "rev_deferred", ended: true }
   state.feed.enqueue(
     new TextEncoder().encode(
       `data: ${JSON.stringify({
@@ -273,6 +325,7 @@ try {
       idlePreviewReloads,
       idlePickerMutations,
       idleJobMutations,
+      deferredPreviewUpdated,
       interactionMs,
       browserErrors: errors.length,
       automaticPublications: 0,

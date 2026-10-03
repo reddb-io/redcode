@@ -3,6 +3,20 @@ import { SessionTaskFacts } from "@opencode/core/session/task-facts"
 import { IntelligenceClassification } from "@opencode/core/intelligence/classification"
 import { tool } from "./fixtures"
 
+test("Design task proof requires a completed export or completed current-revision job inspection", () => {
+  const results = SessionTaskFacts.project([
+    ...["queued", "running", "failed", "completed"].map((jobStatus) =>
+      tool(`msg_${jobStatus}`, "design_export", { id: "design_profile" }, { metadata: { jobStatus } }),
+    ),
+    tool("msg_jobs_running", "design_jobs", { id: "design_profile" }, { metadata: { verifiedCurrent: false } }),
+    tool("msg_jobs_completed", "design_jobs", { id: "design_profile" }, { metadata: { verifiedCurrent: true } }),
+  ])
+  expect(results.map((result) => result.successful)).toEqual([false, false, false, true, false, true])
+  expect(results.every((result) => result.kind === "verification" && result.paths[0] === "design:design_profile")).toBe(
+    true,
+  )
+})
+
 // Split by family before thresholds are changed. No model calls or paid inference run here.
 const edits = [
   {

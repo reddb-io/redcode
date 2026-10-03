@@ -151,7 +151,7 @@ export function gate(
       : `${REFUSED} ${update.status} for ${name} needs a reason saying what stays open and why; the reviewer reads it.`
   if (!update.evidence)
     return refuse(
-      `${update.status} for ${name} needs evidence: run one verify for the round on the current revision (design_export format verify, poll design_jobs) and cite it as {"evidence":{"job":"<verify job id>"}}.`,
+      `${update.status} for ${name} needs evidence: run one verify for the round on the current revision (design_export format verify, wait for its native monitor to complete) and cite it as {"evidence":{"job":"<verify job id>"}}.`,
     )
   const job = jobs.find((item) => item.id === update.evidence!.job)
   if (!job || job.input.format !== "verify" || job.status !== "completed" || !job.verify)
@@ -204,7 +204,8 @@ export function describeJobs(jobs: ReadonlyArray<Design.Job>, limit = 5) {
     .filter((job) => job.input.format === "verify")
     .toSorted((a, b) => (b.finished ?? b.created) - (a.finished ?? a.created))
     .slice(0, limit)
-  if (!recent.length) return "Verify jobs: none. Start one with design_export format verify and poll design_jobs."
+  if (!recent.length)
+    return "Verify jobs: none. Start one with design_export format verify and wait for its native monitor to complete."
   return `Recent verify jobs (newest first): ${recent
     .map((job) => {
       const found =

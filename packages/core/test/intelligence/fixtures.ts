@@ -14,7 +14,14 @@ export const tool = (
   id: string,
   name: string,
   input: unknown,
-  options: { exit?: number; completed?: number; error?: string; pending?: boolean; output?: string } = {},
+  options: {
+    exit?: number
+    completed?: number
+    error?: string
+    pending?: boolean
+    output?: string
+    metadata?: Record<string, string | boolean>
+  } = {},
 ) =>
   Schema.decodeUnknownSync(SessionMessage.Assistant)({
     type: "assistant",
@@ -34,7 +41,7 @@ export const tool = (
             : {
                 status: "completed",
                 input,
-                metadata: { ...(options.exit === undefined ? {} : { exit: options.exit }) },
+                metadata: { ...options.metadata, ...(options.exit === undefined ? {} : { exit: options.exit }) },
                 content: [{ type: "text", text: options.output ?? "OK" }],
               },
         time: { created: 0, completed: options.completed ?? 1 },

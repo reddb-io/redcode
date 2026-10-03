@@ -63,14 +63,21 @@ const edits = new Set([
  * design tools that render or export the current revision. Only these are ever selected as evidence
  * on the model's behalf, and they never invalidate earlier evidence.
  */
-const verifications = new Set(["bash", "shell", "design_preview", "design_export"])
+const verifications = new Set(["bash", "shell", "design_preview", "design_export", "design_jobs"])
 const bookkeeping = new Set(["todowrite", "todoread", "plan_exit", "goal_status", "goal_complete"])
 export const kind = (tool: string): Kind =>
   edits.has(tool) ? "edit" : verifications.has(tool) ? "verification" : bookkeeping.has(tool) ? "bookkeeping" : "other"
 
 /** Scope of a design tool's result: the design it edited, previewed or exported, not a file. */
 export const DESIGN = "design:"
-const designs = new Set(["design_edit", "design_generate", "design_asset", "design_preview", "design_export"])
+const designs = new Set([
+  "design_edit",
+  "design_generate",
+  "design_asset",
+  "design_preview",
+  "design_export",
+  "design_jobs",
+])
 const scoped = (entries: ReadonlyArray<string>) =>
   entries.length > 0 && entries.every((entry) => entry.startsWith(DESIGN))
 
@@ -547,6 +554,8 @@ function errorText(error: unknown) {
 function success(tool: string, data: Record<string, unknown>) {
   if (bookkeeping.has(tool) || data.error || data.isError || data.timeout) return false
   if (tool === "bash" || tool === "shell") return data.exit === 0 || data.exitCode === 0
+  if (tool === "design_export" && data.jobStatus !== undefined) return data.jobStatus === "completed"
+  if (tool === "design_jobs") return data.verifiedCurrent === true
   return true
 }
 

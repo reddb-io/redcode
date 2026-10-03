@@ -407,7 +407,7 @@ const layer = Layer.effect(
           ? false
           : codeRepair?.pending
             ? codeRepair.remaining > 1 && result.value
-            : result.value
+            : result.value && !(yield* monitors.list(sessionID)).some(Monitor.parks)
         if (
           continuing &&
           !verification?.pending &&

@@ -74,7 +74,7 @@ describe("DesignGate.check", () => {
   test("names the classes and widths still missing and how to audit them", () => {
     const refusal = DesignGate.check(web, [audit("rev_2", [390])], undefined, undefined)
     expect(refusal).toBe(
-      'Revision rev_2 has no completed layout audit at compact (768px), desktop (1440px). Run design_export {"revision":"rev_2","format":"audit"}, poll design_jobs until it completes, then approve.',
+      'Revision rev_2 has no completed layout audit at compact (768px), desktop (1440px). Run design_export {"revision":"rev_2","format":"audit"}, wait for its native monitor to complete, then approve.',
     )
   })
 

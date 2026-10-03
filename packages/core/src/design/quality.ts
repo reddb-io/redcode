@@ -461,7 +461,7 @@ export function report(
             "Follow the quality playbook: inspect → fix → publish → re-audit. Complete the structure/use pass and the craft/regression pass before the first formal handoff. Stop after two correction cycles, on no progress, or on a user interruption; disclose unresolved and unverified items. Human approval remains required.",
           ]
         : [
-            `No completed audit for current revision ${revision ?? "unpublished"}. Publish if needed, then call design_export with input={revision,format:"audit"}; poll design_jobs. Older audits do not verify current edits.`,
+            `No completed audit for current revision ${revision ?? "unpublished"}. Publish if needed, then call design_export with input={revision,format:"audit"}; wait for its native monitor to complete. Older audits do not verify current edits.`,
           ]),
   ].join("\n")
 }

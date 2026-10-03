@@ -264,6 +264,25 @@ product in this mode, only the prototype, so nothing you say changes code until 
 
 Prototypes live in `.redcode/designs/<name>/`. `redcode serve --hostname 0.0.0.0` lets you review from a phone.
 
+Open `http://localhost:35555/design` to create a Design session from a project
+loaded in Redcode or resume an existing one. The browser connects once through
+`redcode pair`; shared review links are scoped to their Design session.
+The review shows the same persisted Design tasks as the CLI.
+
+To let colleagues on your local network annotate the same prototype:
+
+```sh
+redcode service set hostname 0.0.0.0
+redcode service restart
+```
+
+The port remains `35555`. In the review menu, select **Share on local network**
+and send the generated link to your colleague. It uses your machine's LAN
+address and stays on the owning server while the separate Design app renders
+jobs. To return to local access, set hostname to `127.0.0.1` and restart.
+The shared link grants review access for that session; it does not grant general
+server access.
+
 ### RedRouter
 
 <img src="docs/features/router.svg" alt="RedRouter" width="100%" />

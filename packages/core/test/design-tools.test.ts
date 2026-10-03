@@ -1,12 +1,14 @@
 import { describe, expect } from "bun:test"
 import { Effect, Layer, type Types } from "effect"
 import { Design } from "@opencode/schema/design"
+import { Monitor } from "@opencode/schema/monitor"
 import { Agent } from "@opencode/core/agent"
 import { AppNodeBuilder } from "@opencode/core/effect/app-node-builder"
 import { DesignRenderer } from "@opencode/core/design/renderer"
 import { DesignStore } from "@opencode/core/design/store"
 import { Image } from "@opencode/core/image"
 import { Location } from "@opencode/core/location"
+import { MonitorRuntime } from "@opencode/core/monitor"
 import { Permission } from "@opencode/core/permission"
 import { DesignPlugin } from "@opencode/core/plugin/design"
 import { Session } from "@opencode/core/session"
@@ -65,12 +67,16 @@ const queued: Design.Job = {
 const assertions: Permission.AssertInput[] = []
 const reads: Array<typeof DesignReadTool.Input.Type> = []
 const started: Design.Render[] = []
+const monitored: MonitorRuntime.Start[] = []
+const jobs: Design.Job[] = []
 
 const reset = () =>
   Effect.sync(() => {
     assertions.length = 0
     reads.length = 0
     started.length = 0
+    monitored.length = 0
+    jobs.splice(0, jobs.length, queued)
   })
 
 const store = Layer.mock(DesignStore.Service, {
@@ -93,7 +99,26 @@ const renderer = Layer.mock(DesignRenderer.Service, {
       started.push(input)
       return { ...queued, designID: id, input }
     }),
-  jobs: () => Effect.succeed([queued]),
+  jobs: () => Effect.succeed(jobs),
+})
+
+const monitors = Layer.mock(MonitorRuntime.Service, {
+  start: (input) =>
+    Effect.sync(() => {
+      monitored.push(input)
+      return {
+        id: "monitor_design",
+        sessionID: input.sessionID,
+        command: input.command,
+        workdir: input.workdir,
+        options: input.options,
+        status: "running" as const,
+        created: 1,
+        updated: 1,
+        attempts: 0,
+        delivery: "pending" as const,
+      }
+    }),
 })
 
 const designToolsNode = makeLocationNode({
@@ -105,7 +130,7 @@ const designToolsNode = makeLocationNode({
       yield* registerToolPlugin(DesignPlaybookTool.Plugin)
     }),
   ),
-  deps: [Tool.node, Permission.node, DesignStore.node, DesignRenderer.node],
+  deps: [Tool.node, Permission.node, DesignStore.node, DesignRenderer.node, MonitorRuntime.node, Session.node],
 })
 
 const tools = testEffect(
@@ -115,6 +140,8 @@ const tools = testEffect(
     Image.node.replace(imagePassthrough),
     DesignStore.node.replace(store),
     DesignRenderer.node.replace(renderer),
+    MonitorRuntime.node.replace(monitors),
+    Session.node.replace(Layer.mock(Session.Service, { context: () => Effect.succeed([]) })),
   ]),
 )
 
@@ -187,6 +214,12 @@ describe("Design tools", () => {
 
       expect(exported).toMatchObject({ status: "completed", metadata: { designID, jobID: "job_export" } })
       expect(started).toEqual([{ revision: "rev_one", format: "html" }])
+      expect(monitored).toHaveLength(1)
+      expect(monitored[0]).toMatchObject({
+        sessionID,
+        workdir: stored.root,
+        options: { mode: "poll", success_contains: "[job_export:completed]", failure_contains: "[job_export:failed]" },
+      })
       expect(assertions.map((item) => [item.action, item.resources])).toEqual([["design_export", [designID]]])
 
       const missing = yield* executeTool(
@@ -195,6 +228,76 @@ describe("Design tools", () => {
       )
       expect(missing.status).toBe("error")
       expect(started).toHaveLength(1)
+    }),
+  )
+
+  tools.effect("waits for the exact job and returns verification evidence when it completes", () =>
+    Effect.gen(function* () {
+      yield* reset()
+      const registry = yield* Tool.Service
+      const result = yield* executeTool(
+        registry,
+        call("design_export", { id: designID, input: { revision: "rev_one", format: "verify", round: 1 } }),
+      )
+      expect(result).toMatchObject({ status: "completed", metadata: { monitorID: "monitor_design" } })
+      const monitor = monitored[0]!
+      const pending = yield* monitor.run(() => Effect.void)
+      expect(Monitor.verdict(monitor.options, pending, undefined)).toBeUndefined()
+      // An unrelated completed job must not release the Session's wait.
+      jobs.push({ ...queued, id: "job_other", status: "completed" })
+      expect(Monitor.verdict(monitor.options, yield* monitor.run(() => Effect.void), undefined)).toBeUndefined()
+      jobs[0] = {
+        ...queued,
+        input: { revision: "rev_one", format: "verify", round: 1 },
+        status: "completed",
+        progress: 1,
+        verify: {
+          revision: "rev_one",
+          round: 1,
+          width: 1024,
+          findings: [],
+          notes: [
+            {
+              feedback: "msg_feedback",
+              index: 0,
+              label: "Profile",
+              found: true,
+              blocking: false,
+              before: "/capture/before.png",
+              after: "/capture/after.png",
+              findings: [],
+              scenarios: [],
+              reason: "Updated profile found",
+            },
+          ],
+        },
+      }
+      const completed = yield* monitor.run(() => Effect.void)
+      expect(Monitor.verdict(monitor.options, completed, undefined)?.status).toBe("succeeded")
+      expect(completed.output).toContain("Updated profile found")
+      expect(completed.output).toContain("/capture/after.png")
+      expect(completed.output).toContain('"job":"job_export"')
+    }),
+  )
+
+  tools.effect("settles failed, cancelled, interrupted and missing jobs instead of polling forever", () =>
+    Effect.gen(function* () {
+      yield* reset()
+      const registry = yield* Tool.Service
+      yield* executeTool(
+        registry,
+        call("design_export", { id: designID, input: { revision: "rev_one", format: "audit" } }),
+      )
+      const monitor = monitored[0]!
+      for (const status of ["failed", "cancelled", "interrupted"] as const) {
+        jobs[0] = { ...queued, status, error: "Renderer stopped" }
+        const evidence = yield* monitor.run(() => Effect.void)
+        expect(Monitor.verdict(monitor.options, evidence, undefined)?.status).toBe("failed")
+        expect(evidence.output).toContain(status)
+        expect(evidence.output).toContain("Renderer stopped")
+      }
+      jobs.length = 0
+      expect(Monitor.verdict(monitor.options, yield* monitor.run(() => Effect.void), undefined)?.status).toBe("failed")
     }),
   )
 

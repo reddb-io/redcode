@@ -232,7 +232,12 @@ async function start(input: EnsureInput) {
           throw new Error(`The design app exited with code ${child.exitCode} before it registered; see ${files.log}`)
         const info = await registration(files.registration)
         const answer = info && info.pid === child.pid ? await health(info.url, secret) : undefined
-        if (info && answer?.protocol === PROTOCOL && answer.database === info.database && info.database === input.database)
+        if (
+          info &&
+          answer?.protocol === PROTOCOL &&
+          answer.database === info.database &&
+          info.database === input.database
+        )
           return { url: info.url, token: secret }
         await sleep(100)
       }
@@ -258,7 +263,8 @@ async function reusable(file: string, secret: string, version?: string, database
     (database === undefined || info.database === database) &&
     (!exact || answer.version === exact) &&
     (!minimum || Bun.semver.order(answer.version, minimum) >= 0)
-  ) return info
+  )
+    return info
   // A different protocol or database cannot serve this redcode process.
   await stop(info.url, secret)
   return undefined
@@ -345,9 +351,7 @@ export async function link(connection: Connection, sessionID: string, route = "/
     headers: {
       authorization: `Bearer ${connection.token}`,
       [HOST_HEADER]: connection.host.url,
-      ...(connection.host.authorization
-        ? { [HOST_AUTHORIZATION_HEADER]: connection.host.authorization }
-        : {}),
+      ...(connection.host.authorization ? { [HOST_AUTHORIZATION_HEADER]: connection.host.authorization } : {}),
     },
     signal: AbortSignal.timeout(10_000),
   })
@@ -355,6 +359,17 @@ export async function link(connection: Connection, sessionID: string, route = "/
   const url = new URL(`/design/session/${encodeURIComponent(sessionID)}${route}`, connection.url)
   url.searchParams.set("ticket", ticket(connection.token, sessionID))
   return url.toString()
+}
+
+/** The public review stays on the owning Redcode server, including when rendering uses the app. */
+export async function review(connection: Connection, sessionID: string) {
+  await link(connection, sessionID)
+  const response = await fetch(new URL(`/design/session/${encodeURIComponent(sessionID)}/link`, connection.host!.url), {
+    headers: connection.host!.authorization ? { authorization: connection.host!.authorization } : {},
+    signal: AbortSignal.timeout(10_000),
+  })
+  if (!response.ok) throw new Error(`Redcode did not return the Design review link (${response.status})`)
+  return Schema.decodeUnknownSync(Schema.Struct({ url: Schema.String }))(await response.json()).url
 }
 
 /** The renderer's private HTTP calls to the app; browser tickets never authorize these. */
@@ -377,9 +392,7 @@ export async function call<A>(
   })
   const payload: unknown = await response.json().catch(() => undefined)
   if (!response.ok) {
-    const failure = Option.getOrUndefined(
-      Schema.decodeUnknownOption(Failure)(payload),
-    )
+    const failure = Option.getOrUndefined(Schema.decodeUnknownOption(Failure)(payload))
     throw new Design.Error(
       failure ?? { code: "unavailable", message: `The design app answered HTTP ${response.status}` },
     )
@@ -398,6 +411,9 @@ export async function vendor(connection: Connection, name: string) {
     headers: { authorization: `Bearer ${connection.token}` },
   })
   if (!response.ok)
-    throw new Design.Error({ code: "unavailable", message: `The Design app did not serve ${name}: HTTP ${response.status}` })
+    throw new Design.Error({
+      code: "unavailable",
+      message: `The Design app did not serve ${name}: HTTP ${response.status}`,
+    })
   return response.text()
 }

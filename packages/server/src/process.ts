@@ -216,6 +216,7 @@ function dispatch(
       (!ready ||
         (!hasPtyConnectTicketURL(url) &&
           !hasPersistentPtyConnectTicketURL(url) &&
+          !["/design", "/design/", "/design/new"].includes(url.pathname) &&
           !url.pathname.startsWith("/design/session/"))) &&
       !(yield* authorizedRequest(request, auth))
     )

@@ -27,7 +27,11 @@ export const Input = Schema.Struct({
   Schema.decodeTo(
     Schema.Union([
       Schema.Struct({ id: Design.ID, name: Schema.String }),
-      Schema.Struct({ path: Schema.String, name: Schema.optional(Schema.String), reopen: Schema.optional(Schema.Boolean) }),
+      Schema.Struct({
+        path: Schema.String,
+        name: Schema.optional(Schema.String),
+        reopen: Schema.optional(Schema.Boolean),
+      }),
     ]),
   ),
 )
@@ -42,13 +46,12 @@ export const Plugin = {
     const location = yield* Location.Service
 
     const source = (context: Tool.Context) => ({ type: "tool" as const, messageID: context.messageID, id: context.id })
-    const read = (context: Tool.Context): DesignBuild.Read => (file, signal) =>
-      Effect.runPromise(access.authorizeRead(file, context), { signal }).then(() => undefined)
+    const read =
+      (context: Tool.Context): DesignBuild.Read =>
+      (file, signal) =>
+        Effect.runPromise(access.authorizeRead(file, context), { signal }).then(() => undefined)
 
-    const standing = Effect.fn("DesignPreviewTool.standing")(function* (
-      document: Design.Info,
-      context: Tool.Context,
-    ) {
+    const standing = Effect.fn("DesignPreviewTool.standing")(function* (document: Design.Info, context: Tool.Context) {
       const files = yield* Effect.promise(() => DesignBuild.grant(document))
       if (!files.length) return
       const targets = yield* Effect.forEach(files, (file) =>
@@ -67,9 +70,7 @@ export const Plugin = {
         context,
         metadata,
       )
-      const resources = targets.map((item) =>
-        item.directory ? `${item.target.resource}/*` : item.target.resource,
-      )
+      const resources = targets.map((item) => (item.directory ? `${item.target.resource}/*` : item.target.resource))
       yield* permission.assert({
         action: "read",
         resources,
@@ -81,10 +82,7 @@ export const Plugin = {
       })
     })
 
-    const tooling = Effect.fn("DesignPreviewTool.tooling")(function* (
-      document: Design.Info,
-      context: Tool.Context,
-    ) {
+    const tooling = Effect.fn("DesignPreviewTool.tooling")(function* (document: Design.Info, context: Tool.Context) {
       const files = yield* Effect.promise(() => DesignBuild.tooling(document))
       if (!files.length) return false
       const resources = yield* Effect.forEach(files, (file) =>
@@ -150,27 +148,29 @@ export const Plugin = {
                   source: source(context),
                 })
               const configured = yield* designs.configured(context.sessionID)
-              const app = "path" in input && DesignAppMode.process(configured)
-                ? yield* Effect.tryPromise(() => apps.connect(configured?.app?.version))
-                : undefined
-              const document = "path" in input
-                ? yield* DesignLegacy.importPrototype({
-                    sessionID: context.sessionID,
-                    directory: location.directory,
-                    path: input.path,
-                    name: input.name,
-                    reopen: input.reopen,
-                    read: (file) => Effect.runPromise(access.authorizeRead(file, context)).then(() => undefined),
-                    vendor: async (asset) => {
-                      if (app) {
-                        const { DesignApp } = await import("../../design/app.js")
-                        return DesignApp.vendor(app, asset)
-                      }
-                      const { DesignVendor } = await import("../../design/vendor.js")
-                      return DesignVendor.FILES[asset].body
-                    },
-                  }).pipe(Effect.provideService(DesignStore.Service, designs))
-                : yield* designs.get(context.sessionID, input.id)
+              const app =
+                "path" in input && DesignAppMode.process(configured)
+                  ? yield* Effect.tryPromise(() => apps.connect(configured?.app?.version))
+                  : undefined
+              const document =
+                "path" in input
+                  ? yield* DesignLegacy.importPrototype({
+                      sessionID: context.sessionID,
+                      directory: location.directory,
+                      path: input.path,
+                      name: input.name,
+                      reopen: input.reopen,
+                      read: (file) => Effect.runPromise(access.authorizeRead(file, context)).then(() => undefined),
+                      vendor: async (asset) => {
+                        if (app) {
+                          const { DesignApp } = await import("../../design/app.js")
+                          return DesignApp.vendor(app, asset)
+                        }
+                        const { DesignVendor } = await import("../../design/vendor.js")
+                        return DesignVendor.FILES[asset].body
+                      },
+                    }).pipe(Effect.provideService(DesignStore.Service, designs))
+                  : yield* designs.get(context.sessionID, input.id)
               if (document.ended) {
                 const content = `The user ended this review. Reopen only on an explicit request. Design: ${document.id}`
                 return { output: content, content, metadata: { designID: document.id } }
@@ -189,11 +189,13 @@ export const Plugin = {
               const link = DesignAppMode.process(configured)
                 ? yield* Effect.tryPromise(async () => {
                     const { DesignApp } = await import("../../design/app.js")
-                    return DesignApp.link(app ?? await apps.connect(configured?.app?.version), context.sessionID)
-                  }).pipe(Effect.match({
-                    onFailure: (error) => `Review link unavailable: ${String(error)}`,
-                    onSuccess: (url) => `Review: ${url}`,
-                  }))
+                    return DesignApp.review(app ?? (await apps.connect(configured?.app?.version)), context.sessionID)
+                  }).pipe(
+                    Effect.match({
+                      onFailure: (error) => `Review link unavailable: ${String(error)}`,
+                      onSuccess: (url) => `Review: ${url}`,
+                    }),
+                  )
                 : undefined
               return {
                 output: revision,
