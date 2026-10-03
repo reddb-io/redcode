@@ -2836,7 +2836,7 @@ details{border-top:1px solid var(--edge);padding:14px 0}summary{cursor:pointer;f
     link.setAttribute("aria-label", copy.share)
     link.onclick = () => link.select()
     const close = document.createElement("button")
-    close.textContent = copy.dismiss
+    close.textContent = copy.shareClose
     close.onclick = () => dialog.close()
     dialog.append(text, link, close)
     dialog.onclose = () => dialog.remove()

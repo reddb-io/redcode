@@ -545,6 +545,7 @@ const layer = Layer.unwrap(
         SessionRunnerLLM.node,
         Intelligence.node,
         SessionGoal.node,
+        MonitorRuntime.node,
         SessionExecution.node,
         Session.node,
       ]),
@@ -4834,7 +4835,10 @@ describe("SessionRunnerLLM", () => {
       { codemode: false },
     )
     yield* s.admit("Verify the profile before finishing")
-    yield* s.llm.push(TestLLM.tool("verify_profile", "wait_design", {}), TestLLM.text("Profile verified"))
+    yield* s.llm.push(
+      TestLLM.tool("verify_profile", "wait_design", {}),
+      TestLLM.text("Profile verified", "verified_reply"),
+    )
     yield* s.resume
     expect(s.requests).toHaveLength(1)
     expect((yield* monitors.list(sessionID)).some(Monitor.parks)).toBe(true)

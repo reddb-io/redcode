@@ -141,7 +141,16 @@ const tools = testEffect(
     DesignStore.node.replace(store),
     DesignRenderer.node.replace(renderer),
     MonitorRuntime.node.replace(monitors),
-    Session.node.replace(Layer.mock(Session.Service, { context: () => Effect.succeed([]) })),
+    Session.node.replace(
+      Layer.mock(Session.Service, {
+        context: () => Effect.succeed([]),
+        revert: {
+          stage: () => Effect.die("unused revert.stage"),
+          clear: () => Effect.die("unused revert.clear"),
+          commit: () => Effect.die("unused revert.commit"),
+        },
+      }),
+    ),
   ]),
 )
 
