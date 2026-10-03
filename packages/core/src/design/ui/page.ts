@@ -46,5 +46,6 @@ export async function preview(revision: Design.Revision, directory: string) {
     revision.document.engine === "html" ? revision.document.entry : "index.html",
   )
   const controls = JSON.stringify(revision.document.controls ?? []).replaceAll("<", "\\u003c")
-  return `<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; img-src data: blob:; font-src data:; connect-src 'none'; base-uri 'none'; form-action 'none'">${revision.document.target === "presentation" ? `<script>(${slides.toString()})(${deck.toString()})</script>` : ""}<script>(${screens.toString()})()</script>${html}<script>(${params.toString()})(${controls});(${annotations.toString()})();${captureRuntime.replaceAll("</script", "<\\/script")};(${capture.toString()})(window.domtoimage.toCanvas,${JSON.stringify(revision.id)});</script>`
+  return `<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; img-src data: blob:; font-src data:; connect-src 'none'; base-uri 'none'; form-action 'none'">${revision.document.target === "presentation" ? `<script>(${slides.toString()})(${deck.toString()})</script>` : ""}<script>(${screens.toString()})()</script>${html}<script>(${params.toString()})(${controls});(${annotations.toString()})();${captureRuntime.replaceAll("</script", "<\\/script")}
+;(${capture.toString()})(window.domtoimage.toCanvas,${JSON.stringify(revision.id)});</script>`
 }
