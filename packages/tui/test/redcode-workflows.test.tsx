@@ -1,4 +1,5 @@
 import { expect, test } from "bun:test"
+import { InputRenderable, TextareaRenderable } from "@opentui/core"
 import { createAppFixture } from "./fixture/app"
 import { tmpdir } from "./fixture/fixture"
 import { directory, json } from "./fixture/tui-client"
@@ -573,8 +574,7 @@ test("/connect switches between saved OpenRouter and RedRouter connections throu
   await setup.waitForFrame(
     (frame) => frame.includes("OpenRouter fixture model") && frame.includes("RedRouter fixture model"),
   )
-  await setup.mockInput.typeText("OpenRouter fixture model")
-  await setup.waitForFrame((frame) => !frame.includes("RedRouter fixture model"))
+  await setup.waitFor(() => setup.renderer.currentFocusedEditor instanceof InputRenderable)
   setup.mockInput.pressEnter()
   await setup.waitForFrame(
     (frame) => frame.includes("OpenRouter fixture model") && !frame.includes("RedRouter fixture model"),
@@ -582,19 +582,23 @@ test("/connect switches between saved OpenRouter and RedRouter connections throu
 
   for (const name of ["RedRouter", "OpenRouter"]) {
     const other = name === "RedRouter" ? "OpenRouter" : "RedRouter"
+    await setup.waitFor(() => setup.renderer.currentFocusedEditor instanceof TextareaRenderable)
     await setup.mockInput.typeText("/connect")
     setup.mockInput.pressEnter()
     await setup.waitForFrame((frame) => frame.includes("Connect an integration"))
+    await setup.waitFor(() => setup.renderer.currentFocusedEditor instanceof InputRenderable)
     await setup.mockInput.typeText(name)
     await setup.waitForFrame(
       (frame) => frame.includes(`${name} Standard key`) && !frame.includes(`${other} Standard key`),
     )
     setup.mockInput.pressEnter()
     await setup.waitForFrame((frame) => frame.includes("Saved connections") && frame.includes(`${name} Standard key`))
+    await setup.waitFor(() => setup.renderer.currentFocusedEditor instanceof InputRenderable)
     setup.mockInput.pressEnter()
     await setup.waitForFrame((frame) => frame.includes(`${name} fixture model`) && !frame.includes("Saved connections"))
     // The other provider's current model stays in the prompt until a new model is chosen.
     expect(setup.captureCharFrame().split(`${other} fixture model`)).toHaveLength(2)
+    await setup.waitFor(() => setup.renderer.currentFocusedEditor instanceof InputRenderable)
     setup.mockInput.pressEnter()
     await setup.waitForFrame(
       (frame) => frame.includes(`${name} fixture model`) && !frame.includes(`${other} fixture model`),

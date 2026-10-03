@@ -183,7 +183,7 @@ test("failed catalog refresh does not continue with stale models", async () => {
   try {
     fixture.app.mockInput.pressEnter()
     await fixture.app.waitForFrame(
-      (frame) => frame.includes("UnexpectedStatus: 503") && !frame.includes("Opening Personal…"),
+      (frame) => frame.includes("Catalog unavailable") && !frame.includes("Opening Personal…"),
     )
     expect(fixture.connected).toEqual([])
     expect(fixture.app.captureCharFrame()).toContain("Saved connections")
