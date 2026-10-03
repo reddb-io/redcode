@@ -12,7 +12,7 @@ import { Keymap } from "../../../src/context/keymap"
 import { LocationProvider, useLocation } from "../../../src/context/location"
 import { ThemeProvider } from "../../../src/context/theme"
 import { DialogProvider, useDialog } from "../../../src/ui/dialog"
-import { ToastProvider } from "../../../src/ui/toast"
+import { Toast, ToastProvider } from "../../../src/ui/toast"
 import { emptyThemeSource } from "../../fixture/fixture"
 import { createApi, createEventStream, createFetch, json } from "../../fixture/tui-client"
 import { TestTuiContexts } from "../../fixture/tui-environment"
@@ -144,7 +144,7 @@ test("activates a saved connection and waits for its refreshed model catalog bef
     await fixture.app.waitFor(() => fixture.reads.model > 0)
     expect(fixture.connected).toEqual([])
     expect(fixture.requests).toEqual([{ method: "POST", path: "/api/credential/cred_work/activate" }])
-    expect(fixture.app.captureCharFrame()).toContain("Opening Work…")
+    await fixture.app.waitForFrame((frame) => frame.includes("Opening Work…"))
     fixture.app.mockInput.pressEnter()
     expect(fixture.requests).toHaveLength(1)
 
@@ -485,6 +485,7 @@ async function renderIntegration(
                       <DialogProvider>
                         <Probe />
                       </DialogProvider>
+                      <Toast />
                     </ThemeProvider>
                   </LocationProvider>
                 </DataProvider>

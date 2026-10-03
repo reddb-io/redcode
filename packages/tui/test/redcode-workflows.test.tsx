@@ -574,21 +574,25 @@ test("/connect switches between saved OpenRouter and RedRouter connections throu
     (frame) => frame.includes("OpenRouter fixture model") && frame.includes("RedRouter fixture model"),
   )
   await setup.mockInput.typeText("OpenRouter fixture model")
+  await setup.waitForFrame((frame) => !frame.includes("RedRouter fixture model"))
   setup.mockInput.pressEnter()
   await setup.waitForFrame(
     (frame) => frame.includes("OpenRouter fixture model") && !frame.includes("RedRouter fixture model"),
   )
 
   for (const name of ["RedRouter", "OpenRouter"]) {
+    const other = name === "RedRouter" ? "OpenRouter" : "RedRouter"
     await setup.mockInput.typeText("/connect")
     setup.mockInput.pressEnter()
     await setup.waitForFrame((frame) => frame.includes("Connect an integration"))
     await setup.mockInput.typeText(name)
+    await setup.waitForFrame(
+      (frame) => frame.includes(`${name} Standard key`) && !frame.includes(`${other} Standard key`),
+    )
     setup.mockInput.pressEnter()
     await setup.waitForFrame((frame) => frame.includes("Saved connections") && frame.includes(`${name} Standard key`))
     setup.mockInput.pressEnter()
     await setup.waitForFrame((frame) => frame.includes(`${name} fixture model`) && !frame.includes("Saved connections"))
-    const other = name === "RedRouter" ? "OpenRouter" : "RedRouter"
     // The other provider's current model stays in the prompt until a new model is chosen.
     expect(setup.captureCharFrame().split(`${other} fixture model`)).toHaveLength(2)
     setup.mockInput.pressEnter()
