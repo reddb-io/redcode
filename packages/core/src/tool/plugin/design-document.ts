@@ -8,6 +8,7 @@ import { Global } from "@opencode/util/global"
 import { Effect, Ref, Schema } from "effect"
 import { DesignDetection } from "../../design/detection.js"
 import { DesignBuild } from "../../design/build.js"
+import { DesignChecklist } from "../../design/checklist.js"
 import { DesignDocumentTool } from "../../design/document-tool.js"
 import { DesignIdentify } from "../../design/identify.js"
 import { DesignProposal } from "../../design/proposal.js"
@@ -225,7 +226,7 @@ export const Plugin = {
                   : output
                       .map(
                         (document, index) =>
-                          `Design ${document.id}: ${document.name}\n${DesignTarget.describe(document)}\nRoot: ${document.root}\nDependencies: ${dependencies[index]}\nEngine: ${document.engine}\nEntry: ${document.entry}\nCurrent revision: ${document.revision ?? "unpublished"}\n${Design.describeSystem(document.designSystem)}\n${input.action === "list" ? `Design system: ${DesignSystem.summary(document) || "none detected"}` : DesignSystem.describe(document)}\nParams: ${JSON.stringify({ controls: document.controls ?? [], presets: document.presets ?? [] })}\nQuestions: ${document.questions.join("; ")}\nFeedback rounds: ${DesignRounds.summary(document)}${document.manifest ? `\n${document.manifest}` : ""}`,
+                          `Design ${document.id}: ${document.name}\n${DesignTarget.describe(document)}\nRoot: ${document.root}\nDependencies: ${dependencies[index]}\nEngine: ${document.engine}\nEntry: ${document.entry}\nCurrent revision: ${document.revision ?? "unpublished"}\n${Design.describeSystem(document.designSystem)}\n${input.action === "list" ? `Design system: ${DesignSystem.summary(document) || "none detected"}` : DesignSystem.describe(document)}\nRecorded project data:\n${DesignChecklist.context(document) || "Brief not recorded"}\nEnd-of-round review: design_playbook {designID:"${document.id}",checklist:true}. Use id="component" for an isolated component.\nParams: ${JSON.stringify({ controls: document.controls ?? [], presets: document.presets ?? [] })}\nQuestions: ${document.questions.join("; ")}\nFeedback rounds: ${DesignRounds.summary(document)}${document.manifest ? `\n${document.manifest}` : ""}`,
                       )
                       .join("\n\n")
               return { output, content, metadata: { action: input.action, ...(yield* Ref.get(display)) } }

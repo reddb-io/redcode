@@ -41,6 +41,7 @@ export const Plugin = {
               })
               const document = yield* designs.get(context.sessionID, input.id)
               const output = yield* renderer.start(context.sessionID, input.id, input.input)
+              const reviewing = input.input.format === "audit" || input.input.format === "verify"
               if (output.status !== "queued" && output.status !== "running")
                 return {
                   output,
@@ -55,7 +56,7 @@ export const Plugin = {
                 sessionID: context.sessionID,
                 originMessageID: messages.findLast((message) => message.type === "user")?.id,
                 autonomous: recentInput?.type === "synthetic",
-                command: `Design ${input.input.format}: ${output.id} revision=${input.input.revision}`,
+                command: `${reviewing ? "Applying anti-slop" : "Design"} ${input.input.format}: ${output.id} revision=${input.input.revision}`,
                 workdir: document.root,
                 options: {
                   mode: "poll",
@@ -94,7 +95,7 @@ export const Plugin = {
                 output,
                 content:
                   monitor.status === "running"
-                    ? `Job ${output.id}: ${output.status}. Monitor ${monitor.id} is waiting for completion and will resume this Session with the rendered evidence. Do not poll design_jobs or promise future verification; wait for the monitor result before recording note outcomes.`
+                    ? `${reviewing ? "Applying anti-slop. " : ""}Job ${output.id}: ${output.status}. Monitor ${monitor.id} is waiting for completion and will resume this Session with the rendered evidence. Do not poll design_jobs or promise future verification; wait for the monitor result before recording note outcomes.`
                     : (monitor.evidence?.output ?? `Job ${output.id}: monitor ${monitor.status}.`),
                 metadata: { designID: input.id, jobID: output.id, jobStatus: output.status, monitorID: monitor.id },
               }

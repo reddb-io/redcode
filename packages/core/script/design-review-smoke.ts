@@ -193,6 +193,31 @@ try {
   )
   assert.equal(await preview.locator("#counter").textContent(), "Clicks: 1")
 
+  // The end-of-round review is visible only for a live job on the latest revision.
+  const refreshJobs = async () => {
+    const response = page.waitForResponse((response) => response.url().endsWith("/job"))
+    await page.clock.runFor(5000)
+    await response
+    await page.evaluate(() => new Promise<void>((resolve) => requestAnimationFrame(() => resolve())))
+  }
+  const reviewing = { ...jobs[0]!, id: "job_live_review", status: "running" as const, progress: 0.5, audit: undefined }
+  state.jobs = [...jobs, reviewing]
+  await refreshJobs()
+  assert.equal(await page.locator("#agent-state").textContent(), "Applying anti-slop…")
+  assert.ok((await page.locator("#jobs").textContent())?.includes("Applying anti-slop… (audit) · running · 50%"))
+  state.jobs = [...jobs, { ...reviewing, status: "completed", progress: 1 }]
+  await refreshJobs()
+  assert.equal(await page.locator("#agent-state").textContent(), "Idle")
+  state.jobs = [...jobs, { ...reviewing, input: { ...reviewing.input, revision: "rev_older" } }]
+  await refreshJobs()
+  assert.equal(await page.locator("#agent-state").textContent(), "Idle")
+  state.jobs = [...jobs, { ...reviewing, status: "failed", error: "Renderer stopped" }]
+  await refreshJobs()
+  assert.equal(await page.locator("#agent-state").textContent(), "Idle")
+  assert.equal(state.calls.filter((call) => call.endsWith("/preview")).length, previewRequests)
+  assert.equal(await preview.locator("#counter").textContent(), "Clicks: 1")
+  state.jobs = jobs
+
   // A single SSE chunk delivers many publication notifications while the first GET is stalled.
   state.hold = Promise.withResolvers<void>()
   const beforeBurst = requests("")

@@ -1,6 +1,7 @@
-import { describe, expect } from "bun:test"
+import { describe, expect, test } from "bun:test"
 import { Effect, Layer, type Types } from "effect"
 import { Design } from "@opencode/schema/design"
+import { DesignChecklist } from "@opencode/core/design/checklist"
 import { Monitor } from "@opencode/schema/monitor"
 import { Agent } from "@opencode/core/agent"
 import { AppNodeBuilder } from "@opencode/core/effect/app-node-builder"
@@ -39,11 +40,17 @@ const stored: Design.Info = {
   root: "/project/.red/code/design/design_tools/work",
   application: "/project",
   entry: "index.html",
-  brief: { objective: "", audience: "", content: "", constraints: "", references: [] },
-  decisions: [],
+  brief: {
+    objective: "Review subscription",
+    audience: "Account owners",
+    content: "Verified email and card",
+    constraints: "Keep existing tokens",
+    references: ["docs/profile.md"],
+  },
+  decisions: [{ id: "direction", text: "Keep the compact account layout" }],
   questions: [],
   scenarios: [],
-  designSystem: "",
+  designSystem: { framework: "react", tokens: "src/tokens.css" },
   sources: [],
   tweaks: {},
   revision: "rev_one",
@@ -83,7 +90,7 @@ const store = Layer.mock(DesignStore.Service, {
   storage: "/design/store",
   blobs: "/design/blobs",
   get: (_session, id) =>
-    id === designID
+    _session === sessionID && id === designID
       ? Effect.succeed(stored)
       : Effect.fail(new Design.Error({ code: "not-found", message: "Design not found in this session" })),
   readApproval: (_session, input) =>
@@ -250,6 +257,7 @@ describe("Design tools", () => {
       )
       expect(result).toMatchObject({ status: "completed", metadata: { monitorID: "monitor_design" } })
       const monitor = monitored[0]!
+      expect(monitor.command).toStartWith("Applying anti-slop verify:")
       const pending = yield* monitor.run(() => Effect.void)
       expect(Monitor.verdict(monitor.options, pending, undefined)).toBeUndefined()
       // An unrelated completed job must not release the Session's wait.
@@ -339,6 +347,74 @@ describe("Design tools", () => {
       ])
     }),
   )
+
+  tools.effect("reads only the contextual checklist without starting work or exposing another Session", () =>
+    Effect.gen(function* () {
+      yield* reset()
+      const registry = yield* Tool.Service
+      const result = yield* executeTool(registry, call("design_playbook", { designID, checklist: true }))
+      expect(result).toMatchObject({ status: "completed", metadata: { designID, checklist: true } })
+      if (result.status !== "completed") throw new Error("Checklist failed")
+      const text = String(result.output)
+      for (const recorded of [
+        "End-of-round checklist: screen",
+        "Review subscription",
+        "Account owners",
+        "Verified email and card",
+        "Keep existing tokens",
+        "docs/profile.md",
+        "Keep the compact account layout",
+        "src/tokens.css",
+        "rev_one",
+      ])
+        expect(text).toContain(recorded)
+      expect(text).not.toContain("# Playbook:")
+      expect(text).toContain("do not edit, republish or start another correction cycle")
+      expect(started).toEqual([])
+      expect(monitored).toEqual([])
+      expect(assertions[0]?.resources).toEqual([designID])
+      const missing = yield* executeTool(registry, call("design_playbook", { checklist: true }))
+      expect(missing.status).toBe("error")
+      const foreign = yield* executeTool(registry, {
+        ...call("design_playbook", { designID, checklist: true }),
+        sessionID: Session.ID.make("ses_another_design"),
+      })
+      expect(foreign.status).toBe("error")
+    }),
+  )
+
+  tools.effect("selects a component checklist explicitly and keeps full guidance available", () =>
+    Effect.gen(function* () {
+      yield* reset()
+      const registry = yield* Tool.Service
+      const result = yield* executeTool(
+        registry,
+        call("design_playbook", { id: "component", designID, checklist: true }),
+      )
+      expect(result).toMatchObject({ status: "completed" })
+      if (result.status !== "completed") throw new Error("Checklist failed")
+      expect(String(result.output)).toContain("End-of-round checklist: component")
+      expect(String(result.output)).toContain("disabled, loading, error and long-content")
+      const guidance = yield* executeTool(registry, call("design_playbook", { id: "component" }))
+      expect(guidance).toMatchObject({ status: "completed", metadata: { playbook: "component" } })
+    }),
+  )
+})
+
+describe("Design checklist scope", () => {
+  test("uses journey checks for mobile flows and narrative checks for presentations and older decks", () => {
+    const flow = DesignChecklist.render({ ...stored, kind: "flow", target: "app", platform: "ios" })
+    expect(flow).toContain("End-of-round checklist: flow")
+    expect(flow).toContain("transitions, validation, completion, back navigation")
+    expect(flow).toContain("touch targets, safe areas")
+    const slides = DesignChecklist.render({ ...stored, target: "presentation" })
+    expect(slides).toContain("End-of-round checklist: slides")
+    expect(slides).toContain("speaker notes and presentation navigation")
+    expect(slides).not.toContain("loading, empty, error, populated")
+    expect(DesignChecklist.render({ ...stored, kind: "deck", target: undefined })).toContain(
+      "End-of-round checklist: slides",
+    )
+  })
 })
 
 describe("Design agent permissions", () => {

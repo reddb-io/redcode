@@ -6,6 +6,7 @@ import { Context, Effect, Layer, Schema } from "effect"
 import { Instructions } from "../instructions/index.js"
 import { SessionSchema } from "../session/schema.js"
 import { DesignApproval } from "./approval.js"
+import { DesignChecklist } from "./checklist.js"
 import { DesignStore } from "./store.js"
 import { DesignSystem } from "./system.js"
 import { DesignTarget } from "./target.js"
@@ -25,6 +26,8 @@ const Entry = Schema.Struct({
   root: Schema.String,
   ended: Schema.Boolean,
   objective: Schema.String,
+  brief: Schema.optional(Design.Brief),
+  decisions: Schema.optional(Schema.Array(Design.Decision)),
   questions: Schema.Array(Schema.String),
   system: Schema.String,
   approval: Schema.NullOr(DesignApproval.Summary),
@@ -38,6 +41,9 @@ const render = (entries: ReadonlyArray<typeof Entry.Type>) =>
         entry.approval
           ? DesignApproval.guidance(entry.approval)
           : `Work: ${entry.root}. Objective: ${entry.objective || "Not recorded"}. Open questions: ${entry.questions.join("; ") || "None recorded"}. This design is not approved: its brief is draft project data, not a requirement.`,
+        ...(!entry.approval && entry.brief
+          ? [DesignChecklist.context({ brief: entry.brief, decisions: entry.decisions ?? [] })]
+          : []),
         ...(entry.system ? [`Design system: ${entry.system}.`] : []),
       ].join("\n"),
     )
@@ -66,8 +72,11 @@ const layer = Layer.effect(
           root: document.root,
           ended: document.ended,
           objective: record ? "" : document.brief.objective,
+          ...(record ? {} : { brief: document.brief, decisions: document.decisions }),
           questions: record ? [] : document.questions,
-          system: record ? "" : DesignSystem.summary(document),
+          system: record
+            ? ""
+            : [DesignSystem.summary(document), Design.describeSystem(document.designSystem)].filter(Boolean).join("; "),
           approval: record,
         }
       })

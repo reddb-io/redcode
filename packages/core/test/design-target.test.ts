@@ -61,7 +61,7 @@ describe("DesignTarget", () => {
   test("routes each target to its playbooks", () => {
     expect(DesignPlaybooks.forTarget(undefined)).toEqual(["screen", "flow", "quality"])
     expect(DesignPlaybooks.forTarget("app")).toEqual(["mobile-app", "quality"])
-    expect(DesignPlaybooks.forTarget("presentation")).toEqual(["slides"])
+    expect(DesignPlaybooks.forTarget("presentation")).toEqual(["slides", "quality"])
     const targets = ["web", "app", "presentation"] as const
     expect(targets.flatMap((target) => DesignPlaybooks.forTarget(target)).every((id) => DesignPlaybooks.find(id))).toBe(
       true,

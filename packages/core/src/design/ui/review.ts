@@ -92,6 +92,7 @@ export function mountReview(host: HTMLElement, options: ReviewOptions) {
     revisionInfo: undefined as Design.Revision | undefined,
     revisions: [] as Design.Revision[],
     audits: [] as Design.Job[],
+    reviewing: false,
     notes: [] as Design.Feedback["items"][number][],
     params: {} as Design.ParamValues,
     component: "",
@@ -1566,9 +1567,15 @@ details{border-top:1px solid var(--edge);padding:14px 0}summary{cursor:pointer;f
   const pill = (key: "stateWorking" | "stateIdle" | "statePublished" | "feedUnavailable") => {
     const node = element("agent-state")
     node.dataset.state =
-      key === "stateWorking" ? "working" : key === "stateIdle" ? "idle" : key === "statePublished" ? "published" : "off"
-    node.dataset.copy = key
-    node.textContent = copy[key]
+      key === "feedUnavailable"
+        ? "off"
+        : state.reviewing || key === "stateWorking"
+          ? "working"
+          : key === "stateIdle"
+            ? "idle"
+            : "published"
+    node.dataset.copy = state.reviewing && key !== "feedUnavailable" ? "stateReviewing" : key
+    node.textContent = copy[state.reviewing && key !== "feedUnavailable" ? "stateReviewing" : key]
   }
   const entryKey = (event: Design.FeedEvent) =>
     event.type === "published"
@@ -1989,6 +1996,16 @@ details{border-top:1px solid var(--edge);padding:14px 0}summary{cursor:pointer;f
       .join("")
     if (assets.some((asset) => asset.id === previous)) input("svg").value = previous
     const jobs = await api<Design.Job[]>(`/${current.id}/job`)
+    const reviewing = jobs.some(
+      (job) =>
+        job.input.revision === current.revision &&
+        (job.input.format === "audit" || job.input.format === "verify") &&
+        (job.status === "queued" || job.status === "running"),
+    )
+    if (state.reviewing !== reviewing) {
+      state.reviewing = reviewing
+      pill(state.agent === "working" ? "stateWorking" : "stateIdle")
+    }
     state.audits = jobs.filter((job) => job.input.revision === state.revision && job.audit)
     let summary = root.querySelector<HTMLElement>("[data-review-evidence]")
     if (!summary) {
@@ -2004,7 +2021,13 @@ details{border-top:1px solid var(--edge);padding:14px 0}summary{cursor:pointer;f
       if (previous?.signature === signature) return previous.row
       const row = document.createElement("div")
       row.className = "note"
-      row.textContent = `${job.input.format} · ${job.status} · ${Math.round(job.progress * 100)}%${job.error ? ` · ${job.error}` : ""}`
+      const reviewing = job.input.format === "audit" || job.input.format === "verify"
+      const label = reviewing
+        ? job.status === "queued" || job.status === "running"
+          ? copy.stateReviewing
+          : copy.qualityReview
+        : job.input.format
+      row.textContent = `${label}${reviewing ? ` (${job.input.format})` : ""} · ${job.status} · ${Math.round(job.progress * 100)}%${job.error ? ` · ${job.error}` : ""}`
       if (job.audit) {
         const details = document.createElement("details")
         const summary = document.createElement("summary")

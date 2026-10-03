@@ -8,9 +8,7 @@ import { injectScreens } from "../src/design/renderer-local"
 import { tmpdir } from "./fixture/tmpdir"
 
 const problems = (body: string) =>
-  DesignQuality.screenProblems(
-    parseHTML(`<!doctype html><html><body>${body}</body></html>`).document as never,
-  )
+  DesignQuality.screenProblems(parseHTML(`<!doctype html><html><body>${body}</body></html>`).document as never)
 
 const designID = Design.ID.make("design_quality")
 
@@ -159,7 +157,8 @@ describe("DesignQuality.report", () => {
     )
     expect(report).toContain("390px page initial (full page): /exports/job_audit/390.png")
     expect(report).toContain("Previous audit job_previous (rev_before): 2 findings.")
-    expect(report).toContain("Stop after two correction cycles")
+    expect(report).toContain("End-of-round review")
+    expect(report).toContain("Do not edit, republish or start another correction cycle")
   })
 
   test("asks for a fresh audit when only an older revision was audited", () => {

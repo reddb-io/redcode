@@ -226,8 +226,8 @@ export function render(input: Design.Feedback, context: Context) {
       input.end
         ? "The user ended this review. Finish from these notes; do not reopen it without an explicit request."
         : notes.length
-          ? `Feedback round${context.round !== undefined ? ` ${context.round}` : ""}: fix everything in this round, publish one revision with design_preview, run one verify for the round (design_export {"revision":"<that revision>","format":"verify"${context.round !== undefined ? `,"round":${context.round}` : ""}}, then design_jobs), then record each note's status (design_document update notes: [{"feedback":"${input.id}","index":<n>,"status":"resolved|partial|unresolved|accepted","reason":"...","evidence":{"job":"<verify job>"}}]; evidence only for resolved and partial, a reason for the rest). Reply with what is resolved, partial, unresolved or accepted and why, and ask before starting another round.`
-          : "Publish a new revision with design_preview and reply with a short summary of what changed.",
+          ? `Feedback round${context.round !== undefined ? ` ${context.round}` : ""}: fix everything in this round, publish one revision with design_preview, run one verify for the round (design_export {"revision":"<that revision>","format":"verify"${context.round !== undefined ? `,"round":${context.round}` : ""}}, wait for its native monitor, then read design_jobs once), then record each note's status (design_document update notes: [{"feedback":"${input.id}","index":<n>,"status":"resolved|partial|unresolved|accepted","reason":"...","evidence":{"job":"<verify job>"}}]; evidence only for resolved and partial, a reason for the rest). Run the artifact end-of-round checklist against the published revision, record findings without another correction cycle, then reply with what is resolved, partial, unresolved or accepted and why. Wait for the next requested round.`
+          : "Publish one revision with design_preview, run the end-of-round checklist once and reply with a short checked/pending/unverified summary. Do not start an automatic correction cycle.",
       unkeyed
         ? "Some notes name elements without a data-design-id; when you edit such an element, give it a stable kebab-case data-design-id so later notes can name it directly."
         : "",
@@ -311,10 +311,15 @@ export const admit = Effect.fn("DesignFeedback.admit")(function* (
           metadata: { source: "design.feedback", designID: id, feedbackID: input.id },
           resume: false,
         })
-        .pipe(Effect.mapError((error) => new Design.Error({
-          code: "conflict",
-          message: error instanceof Error ? error.message : String(error),
-        })))
+        .pipe(
+          Effect.mapError(
+            (error) =>
+              new Design.Error({
+                code: "conflict",
+                message: error instanceof Error ? error.message : String(error),
+              }),
+          ),
+        )
       if (
         admitted.type !== "user" ||
         admitted.payload.metadata?.source !== "design.feedback" ||

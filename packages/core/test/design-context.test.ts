@@ -197,4 +197,68 @@ describe("DesignContext", () => {
       }),
     ),
   )
+
+  it.effect("retains the draft brief and direction after compaction without updates for publication alone", () =>
+    provided(
+      Effect.gen(function* () {
+        const document = {
+          ...draft,
+          brief: {
+            objective: "Faster triage",
+            audience: "Operators",
+            content: "Queue and owner",
+            constraints: "Keep dense layout",
+            references: ["docs/triage.md"],
+          },
+          decisions: [{ id: "direction", text: "Use the existing split view" }],
+          designSystem: { tokens: "src/theme.css", framework: "solid" },
+        }
+        yield* reset([document])
+        const context = yield* DesignContext.Service
+        const initial = yield* readInitial(context.load(sessionID))
+        for (const detail of [
+          "Operators",
+          "Queue and owner",
+          "Keep dense layout",
+          "docs/triage.md",
+          "Use the existing split view",
+          "src/theme.css",
+        ])
+          expect(initial.text).toContain(detail)
+        expect(Instructions.renderInitial(context.load(sessionID), initial.values)).toBe(initial.text)
+        yield* reset([{ ...document, revision: "rev_next", updated: 2 }])
+        expect((yield* readUpdate(context.load(sessionID), initial)).changed).toBe(false)
+        yield* reset([{ ...document, decisions: [{ id: "direction", text: "Use the confirmed compact table" }] }])
+        const changed = yield* readUpdate(context.load(sessionID), initial)
+        expect(changed.changed).toBe(true)
+        expect(changed.text).toContain("Use the confirmed compact table")
+        expect(changed.text).not.toContain("Use the existing split view")
+      }),
+    ),
+  )
+
+  it.effect("renders an older admitted draft without the new optional brief fields", () =>
+    provided(
+      Effect.gen(function* () {
+        const context = yield* DesignContext.Service
+        const rendered = Instructions.renderInitial(context.load(sessionID), {
+          "design/session": [
+            {
+              id: draft.id,
+              name: draft.name,
+              target: "iOS app",
+              root: draft.root,
+              ended: false,
+              objective: "Faster triage",
+              questions: [],
+              system: "",
+              approval: null,
+            },
+          ],
+        })
+        expect(rendered).toContain("Objective: Faster triage")
+        expect(rendered).toContain("This design is not approved")
+      }),
+    ),
+  )
 })

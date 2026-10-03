@@ -258,6 +258,11 @@ product in this mode, only the prototype, so nothing you say changes code until 
 - **Whiteboard.** Mermaid diagrams open in an Excalidraw whiteboard; your edits go back as a note and a PNG.
 - **Your design system.** The agent reads `DESIGN.md` (or `.red/DESIGN.md`) and reuses the project's real
   components. Set `design.system` in `redcode.json` to point at it.
+- **End-of-round review.** “Applying anti-slop” identifies a review of the published revision using a
+  checklist for components, screens, flows or slides. It reuses the recorded brief, direction and
+  design system, checks rendered evidence, and reports checked, pending and unverified items.
+  Findings become pending Design tasks for the next requested round; review never starts an
+  automatic edit/publish loop or approves the prototype for you.
 - **Finish.** `design_exit` writes the plan from the decisions and open questions recorded in `design.json`.
 
 <img src="docs/features/design-review.svg" alt="The review page: the prototype with numbered annotation pins, and the conversation panel with the queued notes and Send to Agent" width="100%" />

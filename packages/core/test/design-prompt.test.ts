@@ -43,7 +43,9 @@ describe("Design prompt", () => {
       "kebab-case data-design-id",
       "Notes arrive in rounds",
       "design_export format verify with round set to the round's number",
-      "Limit automatic correction to two cycles",
+      "Review once at the end of each round",
+      "Announce “Applying anti-slop” only while this review is running",
+      "do not edit, republish or repeatedly audit",
     ])
       expect(DesignPrompt.instructions).toContain(phrase)
   })

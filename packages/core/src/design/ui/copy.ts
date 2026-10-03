@@ -25,6 +25,8 @@ export const reviewCopy = {
     "Local network sharing is off. Run redcode service set hostname 0.0.0.0 and redcode service restart, then reopen this review.",
   shareLink: "Send this link to a colleague on the same network:",
   stateWorking: "Agent working…",
+  stateReviewing: "Applying anti-slop…",
+  qualityReview: "Anti-slop review",
   stateIdle: "Idle",
   statePublished: "New revision published",
   feedEmpty: "Replies from the agent appear here.",
