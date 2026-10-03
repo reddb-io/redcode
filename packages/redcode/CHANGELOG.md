@@ -1,5 +1,11 @@
 # @reddb-io/redcode
 
+## 0.72.0
+
+### Minor Changes
+
+- Review Design once at the end of each round with artifact-specific checklists that reuse the recorded brief, direction and design system. Show Applying anti-slop during audit and verification jobs, preserve draft context after resume and compaction, and report findings as pending work without an automatic edit/publish loop.
+
 ## 0.71.6
 
 ### Patch Changes
