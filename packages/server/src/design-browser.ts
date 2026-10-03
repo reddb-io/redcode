@@ -1,7 +1,7 @@
 export * as DesignBrowser from "./design-browser"
 
 import { Design } from "@opencode/schema/design"
-import type { Agent } from "@opencode/schema/agent"
+import { Agent } from "@opencode/schema/agent"
 import type { Location } from "@opencode/schema/location"
 import { TuiEvent } from "@opencode/schema/tui-event"
 import { App } from "@opencode/core/app"
@@ -315,7 +315,7 @@ export const routes = (hosts: () => ReadonlyArray<string>, network: () => string
         if (!source) return failure(409, "The selected project is no longer loaded; refresh Design and choose it again")
         const session = yield* sessions.create({
           location: source.location,
-          agent: "design",
+          agent: Agent.ID.make("design"),
           model: source.model,
           title: `Design · ${source.title ?? source.location.directory}`,
         })
@@ -325,7 +325,6 @@ export const routes = (hosts: () => ReadonlyArray<string>, network: () => string
         })
       }).pipe(Effect.catchCause((cause) => Effect.succeed(errorResponse(Cause.squash(cause)))))
       yield* router.add("*", "/design", launch)
-      yield* router.add("*", "/design/", launch)
       yield* router.add("*", "/design/new", launch)
     }),
   )
