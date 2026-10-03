@@ -71,6 +71,13 @@ describe("DesignGate.check", () => {
     ).toBeUndefined()
   })
 
+  test("a scoped variant audit does not count as whole-revision coverage", () => {
+    const scoped = audit("rev_2", [390, 768, 1440])
+    expect(
+      DesignGate.check(web, [{ ...scoped, input: { ...scoped.input, variant: "stone" } }], undefined, undefined),
+    ).toContain("mobile (390px)")
+  })
+
   test("names the classes and widths still missing and how to audit them", () => {
     const refusal = DesignGate.check(web, [audit("rev_2", [390])], undefined, undefined)
     expect(refusal).toBe(

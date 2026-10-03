@@ -325,6 +325,7 @@ export type DesignNoteEvidence = { job: string; revision?: string; capture?: str
 export type DesignRender = {
   revision: string
   format: "html" | "gif" | "audit" | "compare" | "verify" | "pdf"
+  variant?: string
   round?: number
   implementation?: string
   candidate?: string
@@ -379,6 +380,8 @@ export type DesignVariantOperation = {
   order?: Array<string>
   text?: string
 }
+
+export type DesignVariant = { id: string; name: string }
 
 export type DesignAsset = {
   id: string
@@ -3135,6 +3138,7 @@ export type DesignNote = {
 
 export type DesignFeedback = {
   action?: DesignVariantOperation
+  review?: DesignVariant
   params?: DesignParamContext
   id: string
   revision: string

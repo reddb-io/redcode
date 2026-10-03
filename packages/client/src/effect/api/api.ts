@@ -1308,6 +1308,7 @@ export type SessionDesignJobsOutput = ReadonlyArray<{
   readonly input: {
     readonly revision: string
     readonly format: "html" | "gif" | "audit" | "compare" | "verify" | "pdf"
+    readonly variant?: string | undefined
     readonly round?: number | undefined
     readonly implementation?: string | undefined
     readonly candidate?: string | undefined
@@ -2177,6 +2178,7 @@ export type SessionDesignFeedbackOutput = ReadonlyArray<{
         readonly text?: string | undefined
       }
     | undefined
+  readonly review?: { readonly id: string; readonly name: string } | undefined
   readonly params?:
     | {
         readonly values: { readonly [x: string]: { readonly [x: string]: string | number | boolean } }

@@ -932,12 +932,21 @@ const make = Effect.gen(function* () {
       return yield* new Design.Error({ code: "invalid", message: "Invalid feedback identifier" })
     if (
       !input.action &&
+      !input.review &&
       !input.text.trim() &&
       !input.items.length &&
       !input.whiteboards?.length &&
       !input.assets.length
     )
       return yield* new Design.Error({ code: "invalid", message: "Write a note before sending feedback" })
+    if (
+      input.review &&
+      (input.action || input.items.length || input.assets.length || input.whiteboards?.length || input.end)
+    )
+      return yield* new Design.Error({
+        code: "invalid",
+        message: "An anti-slop request reviews one variant without changes, attachments or approval",
+      })
     const operationProblem = input.action && Design.variantOperationProblem(input.action)
     if (operationProblem) return yield* new Design.Error({ code: "invalid", message: operationProblem })
     if (input.snapshot.length > 30_000)
@@ -973,10 +982,12 @@ const make = Effect.gen(function* () {
     if (document.ended) return yield* new Design.Error({ code: "conflict", message: "This review has ended" })
     const pending = input.end ? DesignRounds.blocking(document) : undefined
     if (pending) return yield* new Design.Error({ code: "conflict", message: `The review cannot end yet. ${pending}` })
-    if (input.action && document.revision !== input.revision)
+    if ((input.action || input.review) && document.revision !== input.revision)
       return yield* new Design.Error({
         code: "conflict",
-        message: "Reload the latest revision before changing variants",
+        message: input.review
+          ? "Reload the latest revision before requesting anti-slop"
+          : "Reload the latest revision before changing variants",
       })
     yield* revision(sessionID, id, input.revision)
     yield* Effect.forEach(input.assets, (assetID) => asset(sessionID, id, assetID))

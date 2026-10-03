@@ -432,6 +432,8 @@ export function variantOperationProblem(operation: VariantOperation): string | u
 export const Feedback = Schema.Struct({
   /** A requested change to the variants themselves; the agent carries it out and publishes a revision. */
   action: VariantOperation.pipe(optional),
+  /** A single review of this variant, without authorizing edits or publication. Guidance is in text. */
+  review: Variant.pipe(optional),
   params: ParamContext.pipe(optional),
   id: SessionMessage.ID,
   revision: Schema.String,
@@ -552,6 +554,8 @@ export const Render = Schema.Struct({
   revision: Schema.String,
   /** pdf prints a presentation's slides, one 1920×1080 page each, without speaker notes. */
   format: Schema.Literals(["html", "gif", "audit", "compare", "verify", "pdf"]),
+  /** With format audit: inspect only this variant; omitted audits every direction. */
+  variant: VariantID.pipe(optional),
   /** With format verify: the feedback round whose notes are verified against `revision`; the latest round by default. */
   round: Schema.Int.check(Schema.isGreaterThanOrEqualTo(1)).pipe(optional),
   implementation: Schema.String.pipe(optional),

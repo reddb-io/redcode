@@ -174,10 +174,13 @@ const server = Bun.serve({
   },
 })
 const browser = await chromium.launch({ headless: true })
+const page = await browser.newPage({ viewport: { width: 1440, height: 900 } })
 try {
-  const page = await browser.newPage({ viewport: { width: 1440, height: 900 } })
   const errors: string[] = []
-  page.on("pageerror", (error) => errors.push(error.message))
+  page.on("pageerror", (error) => {
+    errors.push(error.message)
+    console.error("Design browser error", error.message)
+  })
   await page.clock.install()
   await page.goto(`http://127.0.0.1:${server.port}`)
   await page.waitForFunction(() => {
@@ -370,6 +373,29 @@ try {
   assert.equal(state.feedback.length, 1)
   assert.deepEqual(state.feedback[0]!.assets, [])
   assert.equal(state.captures.length, 0, "Feedback rounds must not capture screenshots")
+  await page.locator("#note").fill("My unsent notes must survive anti-slop")
+  const beforeReview = state.calls.filter((call) => call.endsWith("/preview")).length
+  await page.locator("#variant-actions").click()
+  await page.locator("#run-anti-slop").click()
+  await page.locator("#anti-slop-text").fill("Focus on accessibility and empty states")
+  await page.locator("#confirm-anti-slop").click()
+  await page.waitForFunction(
+    () => !document.querySelector("#review")!.shadowRoot!.querySelector("#anti-slop-dialog")?.hasAttribute("open"),
+  )
+  assert.equal(state.feedback.at(-1)?.review?.id, "one")
+  assert.equal(state.feedback.at(-1)?.revision, "rev_retry")
+  assert.equal(state.feedback.at(-1)?.text, "Focus on accessibility and empty states")
+  assert.equal(await page.locator("#note").inputValue(), "My unsent notes must survive anti-slop")
+  assert.equal(state.calls.filter((call) => call.endsWith("/preview")).length, beforeReview)
+  assert.equal(state.captures.length, 0)
+  await page.locator("#variant-actions").click()
+  await page.locator("#run-anti-slop").click()
+  await page.locator("#confirm-anti-slop").click()
+  await page.waitForFunction(
+    () => !document.querySelector("#review")!.shadowRoot!.querySelector("#anti-slop-dialog")?.hasAttribute("open"),
+  )
+  assert.equal(state.feedback.at(-1)?.review?.id, "one")
+  assert.equal(state.feedback.at(-1)?.text, "")
   // A CLI approval moves the live session to Plan; the open browser clears its prototype and feed.
   state.document = { ...state.document, approvedRevision: "rev_retry", ended: true }
   state.feed.enqueue(
@@ -480,6 +506,21 @@ try {
       revisionListRetry: true,
     }),
   )
+} catch (error) {
+  console.error(
+    "Design smoke failed",
+    state.calls.slice(-25),
+    await page.evaluate(() => {
+      const root = document.querySelector("#review")?.shadowRoot
+      return {
+        status: root?.querySelector("#status")?.textContent,
+        jobs: root?.querySelector("#jobs")?.children.length,
+        picker: root?.querySelector<HTMLSelectElement>("#revisions")?.value,
+        preview: root?.querySelector("#preview-error")?.textContent,
+      }
+    }),
+  )
+  throw error
 } finally {
   await browser.close()
   await server.stop(true)

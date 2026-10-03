@@ -27,6 +27,11 @@ export const reviewCopy = {
   stateWorking: "Agent working…",
   stateReviewing: "Applying anti-slop…",
   qualityReview: "Anti-slop review",
+  runAntiSlop: "Run anti-slop",
+  antiSlopFocus: "What should the review focus on? (optional)",
+  antiSlopScope:
+    "Review this variant once. Findings return in the conversation; this does not edit, publish or approve it.",
+  antiSlopRequested: "Anti-slop requested. Follow the review in the conversation.",
   stateIdle: "Idle",
   statePublished: "New revision published",
   feedEmpty: "Replies from the agent appear here.",

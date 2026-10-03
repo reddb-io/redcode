@@ -21,6 +21,26 @@ const base = {
 }
 
 describe("DesignFeedback.render", () => {
+  test("an explicit anti-slop request reviews the chosen variant once with optional guidance", () => {
+    const text = DesignFeedback.render(
+      {
+        ...base,
+        review: { id: "stone", name: "Stone" },
+        text: "Focus on forms and empty states",
+        params: { values: {}, variant: "stone", screen: "profile" },
+      },
+      context,
+    )
+    expect(text).toContain("Focus on forms and empty states")
+    expect(text).toContain('variant="stone"')
+    expect(text).toContain('design_export {"revision":"rev_1","format":"audit","variant":"stone"}')
+    expect(text).toContain("Do not edit prototype files, publish another revision, approve the design")
+    expect(text).not.toContain("Publish one revision with design_preview")
+    expect(DesignNotice.feedback(text)?.text).toBe("Focus on forms and empty states")
+    const optional = DesignFeedback.render({ ...base, review: { id: "stone", name: "Stone" } }, context)
+    expect(optional).toContain("Run anti-slop once for variant Stone (stone)")
+  })
+
   test("the footer states the round rule with the message's note ids, and only when the message has notes", () => {
     const withNotes = DesignFeedback.render(
       {

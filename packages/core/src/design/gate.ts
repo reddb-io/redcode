@@ -61,7 +61,13 @@ export function check(
   const required = viewports(document, config, configured)
   const audited = new Set(
     jobs
-      .filter((job) => job.status === "completed" && job.input.format === "audit" && job.audit?.revision === revision)
+      .filter(
+        (job) =>
+          job.status === "completed" &&
+          job.input.format === "audit" &&
+          !job.input.variant &&
+          job.audit?.revision === revision,
+      )
       .flatMap((job) => job.audit?.widths ?? [])
       .map(classOf),
   )

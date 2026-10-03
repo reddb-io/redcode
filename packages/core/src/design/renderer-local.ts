@@ -940,7 +940,12 @@ export const make = Effect.gen(function* () {
             findings.push("Variant roots must have unique, valid data-design-variant IDs.")
           if (yield* io(() => page.locator("[data-design-variant] [data-design-variant]").count()))
             findings.push("Variant roots are nested; separate them before claiming each direction was inspected.")
-          if (valid.length > 6)
+          if (job.input.variant && !valid.includes(job.input.variant))
+            return yield* new Design.Error({
+              code: "invalid",
+              message: `Variant ${job.input.variant} is missing from revision ${revision.id}`,
+            })
+          if (!job.input.variant && valid.length > 6)
             findings.push("Only the first six variants were inspected. Review the remaining directions separately.")
           const { AxeBuilder } = yield* io((signal) => DesignRuntime.load("@axe-core/playwright", signal))
           const reset = (variant: string | undefined) =>
@@ -1039,7 +1044,11 @@ export const make = Effect.gen(function* () {
           for (const [index, viewport] of sizes.entries()) {
             const width = viewport.width
             yield* emulate(viewport)
-            for (const variant of valid.length ? valid.slice(0, 6) : [undefined]) {
+            for (const variant of job.input.variant
+              ? [job.input.variant]
+              : valid.length
+                ? valid.slice(0, 6)
+                : [undefined]) {
               if (captures.length >= 36) continue
               yield* reset(variant)
               if (index === 0 && screensMarked) {
@@ -1196,8 +1205,14 @@ export const make = Effect.gen(function* () {
     })
   }, lock.withPermits(1))
 
-  const start = Effect.fn("DesignRenderer.start")(function* (sessionID: Design.Info["sessionID"], id: Design.ID, input: Design.Render) {
+  const start = Effect.fn("DesignRenderer.start")(function* (
+    sessionID: Design.Info["sessionID"],
+    id: Design.ID,
+    input: Design.Render,
+  ) {
     const revision = yield* store.revision(sessionID, id, input.revision)
+    if (input.variant && input.format !== "audit")
+      return yield* new Design.Error({ code: "invalid", message: "A variant filter is supported only for audits" })
     if (input.format === "pdf" && revision.document.target !== "presentation")
       return yield* new Design.Error({
         code: "invalid",
@@ -1219,7 +1234,9 @@ export const make = Effect.gen(function* () {
       budget = Math.min(1800, 90 + 50 * DesignRounds.notes(document, round).length)
     }
     const candidate =
-      input.format === "compare" ? yield* store.implementation(sessionID, id, input.implementation ?? "dist") : undefined
+      input.format === "compare"
+        ? yield* store.implementation(sessionID, id, input.implementation ?? "dist")
+        : undefined
     if (candidate && candidate.parent !== input.revision)
       return yield* new Design.Error({ code: "conflict", message: "Compare against the approved revision" })
     const job: Design.Job = {
@@ -1275,7 +1292,11 @@ export const make = Effect.gen(function* () {
     return job
   })
 
-  const cancel = Effect.fn("DesignRenderer.cancel")(function* (sessionID: Design.Info["sessionID"], id: Design.ID, jobID: string) {
+  const cancel = Effect.fn("DesignRenderer.cancel")(function* (
+    sessionID: Design.Info["sessionID"],
+    id: Design.ID,
+    jobID: string,
+  ) {
     const job = (yield* store.jobs(sessionID, id)).find((job) => job.id === jobID)
     if (!job) return yield* new Design.Error({ code: "not-found", message: "Render job not found" })
     const fiber = active.get(jobID)

@@ -55,7 +55,7 @@ function unscreened(context: Design.ParamContext): Design.ParamContext {
 /** Legacy browsers mirrored the selected variant as a pseudo-note; it is metadata, not a note. */
 function variantOf(input: Design.Feedback) {
   const marker = input.items.map((item) => VARIANT_MARKER.exec(item.target)?.[1]).find(Boolean)
-  const value = input.params?.variant ?? marker ?? null
+  const value = input.review?.id ?? input.params?.variant ?? marker ?? null
   if (!value || !VARIANT_ID.test(value)) return null
   return value
 }
@@ -144,7 +144,7 @@ export function render(input: Design.Feedback, context: Context) {
   }))
   const claimed = new Set<number>()
   const preview = flatten(input.params)
-  const text = clean(input.text)
+  const text = clean(input.text || (input.review ? `Run anti-slop for ${input.review.name} (${input.review.id})` : ""))
   const open = DesignNotice.open({
     id: context.id,
     revision: attribute(input.revision),
@@ -223,11 +223,13 @@ export function render(input: Design.Feedback, context: Context) {
       : "",
     [
       `## ${DesignNotice.SECTION.next}`,
-      input.end
-        ? "The user ended this review. Finish from these notes; do not reopen it without an explicit request."
-        : notes.length
-          ? `Feedback round${context.round !== undefined ? ` ${context.round}` : ""}: fix everything in this round, publish one revision with design_preview, run one verify for the round (design_export {"revision":"<that revision>","format":"verify"${context.round !== undefined ? `,"round":${context.round}` : ""}}, wait for its native monitor, then read design_jobs once), then record each note's status (design_document update notes: [{"feedback":"${input.id}","index":<n>,"status":"resolved|partial|unresolved|accepted","reason":"...","evidence":{"job":"<verify job>"}}]; evidence only for resolved and partial, a reason for the rest). Run the artifact end-of-round checklist against the published revision, record findings without another correction cycle, then reply with what is resolved, partial, unresolved or accepted and why. Wait for the next requested round.`
-          : "Publish one revision with design_preview, run the end-of-round checklist once and reply with a short checked/pending/unverified summary. Do not start an automatic correction cycle.",
+      input.review
+        ? `Run anti-slop once for variant ${inline(input.review.name)} (${input.review.id}) in the existing published revision ${attribute(input.revision)}. Call design_playbook with checklist:true for this design, then use the artifact-specific end-of-round checklist, the recorded brief, direction and design system, plus the user's optional focus above. Inspect the selected variant's rendered evidence with design_export {"revision":"${attribute(input.revision)}","format":"audit","variant":"${input.review.id}"}; wait for its native monitor, then read design_jobs once. Report checked, pending and unverified findings with evidence in the conversation. Record pending Design tasks when needed. Do not edit prototype files, publish another revision, approve the design, or start a correction/re-audit loop. Wait for the user's next request.`
+        : input.end
+          ? "The user ended this review. Finish from these notes; do not reopen it without an explicit request."
+          : notes.length
+            ? `Feedback round${context.round !== undefined ? ` ${context.round}` : ""}: fix everything in this round, publish one revision with design_preview, run one verify for the round (design_export {"revision":"<that revision>","format":"verify"${context.round !== undefined ? `,"round":${context.round}` : ""}}, wait for its native monitor, then read design_jobs once), then record each note's status (design_document update notes: [{"feedback":"${input.id}","index":<n>,"status":"resolved|partial|unresolved|accepted","reason":"...","evidence":{"job":"<verify job>"}}]; evidence only for resolved and partial, a reason for the rest). Run the artifact end-of-round checklist against the published revision, record findings without another correction cycle, then reply with what is resolved, partial, unresolved or accepted and why. Wait for the next requested round.`
+            : "Publish one revision with design_preview, run the end-of-round checklist once and reply with a short checked/pending/unverified summary. Do not start an automatic correction cycle.",
       unkeyed
         ? "Some notes name elements without a data-design-id; when you edit such an element, give it a stable kebab-case data-design-id so later notes can name it directly."
         : "",
@@ -259,7 +261,7 @@ export function notice(input: Design.Feedback, context: Context): Design.Feedbac
     revision: input.revision,
     variant: variantOf(input),
     ended: input.end,
-    text: input.text.trim(),
+    text: input.text.trim() || (input.review ? `Run anti-slop for ${input.review.name} (${input.review.id})` : ""),
     notes: notesOf(input).map((item) => ({ label: noteLabel(item), text: item.text.trim() })),
     attachments: [...context.attachments],
     snapshot: input.snapshot.trim().length > 0,
