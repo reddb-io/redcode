@@ -1,5 +1,13 @@
 # @reddb-io/redcode
 
+## 0.71.6
+
+### Patch Changes
+
+- Keep Design previews following the latest revision after an update is deferred during interaction. Wait for export, audit and feedback verification jobs through native Session monitors, delivering terminal results and rendered evidence without repeated model polling. Align the built-in quality playbook with this native wait and resume flow.
+- Keep public Design links on the owning server, including LAN sharing, while render jobs run in the separate Design app. Add a /design entry for loaded projects, session-backed Design tasks in the review and a session-scoped LAN sharing link. Queued exports no longer count as completed task verification.
+- Add a fixed-candidate recovery evaluation comparing S2 self-review, generic S1 review and S1 guidance tied to explicit user requirements. Grade real edits and fresh tests independently, allow correct candidates to remain unchanged, and require complete paired cost evidence within 2x before accepting an improvement. This harness does not change the live dual policy or establish a measured quality gain.
+
 ## 0.71.5
 
 ### Patch Changes
