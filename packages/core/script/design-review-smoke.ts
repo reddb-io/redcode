@@ -511,7 +511,11 @@ try {
       assert.equal(state.captures.length, 1)
     }
     if (mode === "capture-failure")
-      assert.ok((await page.locator("#review").textContent())?.includes("screenshot unavailable"))
+      assert.ok(
+        (await page.locator("#review").evaluate((node) => node.shadowRoot?.textContent))?.includes(
+          "screenshot unavailable",
+        ),
+      )
   }
   assert.deepEqual(errors, [])
   console.log(
