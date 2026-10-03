@@ -14,6 +14,7 @@
     "dev:web": "bun --cwd packages/app dev",
     "eval:reasoning": "bun run --cwd packages/core script/reasoning-eval/run.ts",
     "eval:reasoning:detector": "bun run --cwd packages/core script/reasoning-eval/detector-run.ts",
+    "eval:reasoning:recovery": "bun run --cwd packages/core script/reasoning-eval/recovery-run.ts",
     "bench:devex": "bun run --cwd packages/app test:bench:devex",
     "lint": "oxlint",
     "lint:effect-patterns": "ast-grep scan -c script/ast-grep/sgconfig.yml packages/util/src packages/core/src packages/server/src packages/protocol/src packages/cli/src",

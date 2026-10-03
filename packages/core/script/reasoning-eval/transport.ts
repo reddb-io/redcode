@@ -1,6 +1,12 @@
 import { Option, Schema } from "effect"
 
-const Model = Schema.Struct({ model: Schema.optional(Schema.String) })
+const Model = Schema.Struct({
+  model: Schema.optional(Schema.String),
+  max_tokens: Schema.optional(Schema.Number),
+  max_completion_tokens: Schema.optional(Schema.Number),
+  max_output_tokens: Schema.optional(Schema.Number),
+  tool_choice: Schema.optional(Schema.Unknown),
+})
 const Cost = Schema.Struct({
   cost: Schema.optional(Schema.Finite.check(Schema.isGreaterThanOrEqualTo(0))),
 })
@@ -33,6 +39,8 @@ export interface RequestMetric {
   responseModels: string[]
   costUsd?: number
   usageKnown?: boolean
+  maxOutputTokens?: number
+  toolChoice?: "none"
 }
 
 /** Streaming usage is cumulative: use the last reported cost, never add frames together. */
@@ -101,6 +109,13 @@ export function proxy(baseURL: string, current: { run: string }, metrics: Reques
         path: new URL(request.url).pathname + new URL(request.url).search,
         method: request.method,
         ...(Option.isSome(decoded) && decoded.value.model ? { model: decoded.value.model } : {}),
+        ...(Option.isSome(decoded)
+          ? {
+              maxOutputTokens:
+                decoded.value.max_completion_tokens ?? decoded.value.max_output_tokens ?? decoded.value.max_tokens,
+              ...(decoded.value.tool_choice === "none" ? { toolChoice: "none" as const } : {}),
+            }
+          : {}),
         status: 0,
         headersMs: null,
         firstByteMs: null,

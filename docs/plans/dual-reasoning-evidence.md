@@ -43,3 +43,71 @@ Implementation does not certify a gain. The [published 0.71.3 collection](../eva
 The offline preparation now includes `--corpus challenge`: six new families fixed before model tuning, with three calibration projects (singleflight settlement, composite cursors, three-way merges) and three reserved projects (bounded FIFO admission, quoted CSV, route precedence). The original corpus remains the default. Both coding and detector runners record corpus identities and signatures; report grouping refuses cross-corpus comparisons. CI executes broken seeds, correct references and visible tests without inference. These are new evaluation inputs, not evidence of harder model outcomes or improved accuracy. Calibrate the detector and recovery on the calibration split, freeze the configuration, then evaluate reserved cases without tuning on their results. Reserved detector inspection must not become tuning input for a recovery validation on those same families.
 
 Promotion requires more dual passes, no case regression or degraded repair, complete known S1+S2 charges at or below 2× single both in aggregate and per matched pair, and reported latency. Unknown prices fail the monetary gate. Runtime uses absolute Session budgets; an unknowable production single-mode counterfactual is not presented as a guaranteed 2× ceiling. The narrow earlier 35/40 versus 39/40 result is not evidence of general coding accuracy.
+
+## Next experiment: recovery from the same candidate
+
+Preparation only, as of 2026-10-03: no new provider requests, paid collection or
+runtime policy change. The dedicated `eval:reasoning:recovery` runner now implements
+the fixed-candidate comparison below, with an offline dry-run and CI regression
+fixtures. It has not collected a credentialed campaign. Detector accuracy and
+recovery accuracy remain different measurements.
+
+The current detector supplies complete candidate source through the artifact
+builder. Runtime review instead supplies snapshot diffs with ten context lines,
+at most four files and 3,500 characters per file. Its repair prompt identifies
+`code_behavior` or `code_contract`, leaving S2 to find the concrete violated
+requirement. These differences are hypotheses to test, not established causes of
+the measured overhead. A new candidate must not be promoted by changing the
+confidence threshold until a favorable result appears.
+
+1. **Close accounting first.** Reconcile the incomplete response in the published
+   collection by provider/request identity. Keep its charge unknown if no receipt
+   establishes it. The previous studies remain closed and retain their original
+   outcomes; a new collection needs an explicit allocation and frozen manifest.
+2. **Add a fixed-candidate recovery runner.** Reuse the six challenge calibration
+   candidates already used by the detector: three defective seeds and three
+   correct references. Restore byte-identical source in fresh Sessions for every
+   arm and verify labels independently before dispatch. These are inspected
+   calibration inputs, not new reserved evidence or agent-generated failures.
+   Do not inject a fabricated edit, test result, assistant message or S1 verdict
+   into production history merely to open its existing repair gate.
+3. **Compare three arms on identical input.** Use S2-only review, S1 review with
+   the current two generic code questions, and an experimental S1 review that
+   scores separately identified requirements from the public request. Derive
+   requirement text without labels, reference solutions or hidden checks. Feed
+   only established requirement IDs and their original text to S2; S1 does not
+   generate a correction. The two S1 arms initially receive the same bounded
+   complete-source artifact to isolate guidance specificity. Any later diff
+   comparison is a separate experiment with its own manifest.
+4. **Bound and grade the recovery.** All arms receive the same permissions,
+   at most four S2 Steps of 2,048 output tokens, a tool-free final Step and a
+   300-second execution deadline. Defective candidates require an allowed edit,
+   a fresh successful visible test and independent final behavior checks.
+   Correct candidates can pass unchanged: the coding suite's unconditional
+   `no_edit` rejection must not be reused for preservation controls. Record
+   correct-to-incorrect degradation and unnecessary changes separately. Never
+   expose independent oracle failures to the agent as guidance.
+5. **Run a small calibration before expanding.** Six candidates across three
+   arms give eighteen executions for one fixed model pair and one round. A
+   no-repair S1 decision still counts in recovery accuracy; it cannot silently
+   drop a defective candidate from the denominator. Retain classifications,
+   admission, edits, fresh tests, before/after hashes, independent grades,
+   complete S1+S2 charges and HTTP receipts. Report successful preservation,
+   recovered defects, missed defects, false alarms, invalid runs and latency
+   separately. The comparison includes the S1 calls that select whether to
+   invoke S2, rather than reporting only admitted repair costs.
+
+Freeze model identities, requirement rubric, threshold, artifact format, limits
+and scoring before dispatch. Qualifying recovery must beat S2-only review on
+defective candidates, preserve correct candidates, and satisfy the existing
+known-cost 2× gates against each matched S2-only run and in aggregate. Only then
+freeze a choice and evaluate unused reserved families without tuning on them.
+A recovery result on seeded defects does not itself establish a general coding
+or speed improvement; repeat an end-to-end coding comparison before enabling
+the candidate by default.
+
+The live accumulated-friction telemetry remains intact. Keep its prompt content
+identical across matched recovery arms when supplied, using the same pre-existing
+session evidence, and account for any telemetry collection calls separately.
+Do not add sentiment analysis or extra calls to create the thermometer. Inference
+and response caching remain entirely Router-owned.

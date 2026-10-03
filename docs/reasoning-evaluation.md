@@ -224,6 +224,50 @@ ineffective or unknown baseline. A code-repair admission or a successful test
 command alone does not establish recovery. The existing no-regression and
 known-cost-at-most-2x gates remain unchanged. Caching remains Router-owned.
 
+## Fixed-candidate recovery comparison
+
+The dedicated runner restores identical correct and defective candidates for
+three arms: S2-only review, S1 with the current generic code questions, and S1
+with individually identified requirements from the public contract. S1 supplies
+bounded hypotheses; S2 owns the correction. Cache remains Router-owned and no
+live accumulated-friction policy changes.
+
+```sh
+bun run eval:reasoning:recovery --dry-run
+```
+
+The default challenge calibration has six candidates and eighteen executions
+per round. No credentials, service or model calls are needed for planning.
+Actual collection requires a separately authorized allocation, one pinned pair
+whose manifest includes `evaluatorResponseModel`, and the already established
+native decision endpoint; this runner does not probe endpoints:
+
+```sh
+bun run eval:reasoning:recovery --pairs /path/to/pairs.json \
+  --router http://127.0.0.1:25050/v1 --endpoint systemone \
+  --key-file /private/router-key --max-cost-usd 5 \
+  --output /tmp/redcode-recovery --gate
+```
+
+Every admitted S2 runs the same isolated single-reasoning Session path with four
+Steps, 2,048 output tokens per Step and a tool-free final Step. The 300-second
+execution deadline includes S1 time. Independent grading accepts unchanged
+correct controls; recovery requires an allowed edit, fresh successful test and
+passing hidden behavior checks. A skipped defective candidate remains a miss.
+HTTP receipts record status, latency, bytes, output caps and tool choice without
+request bodies or credentials. Unknown charges stop dispatch. The monetary
+limit is checked between requests and cannot guarantee an invoice ceiling.
+If service shutdown fails, its temporary home is retained and named in the report.
+
+Promotion requires more recovered defects than S2-only, no degraded correct
+candidate or paired regression, and complete total charges at most 2x in both
+aggregate and each pair. All eighteen executions must be present. Use
+`--split held-out` only after freezing a calibration configuration, without
+tuning on reserved results. Seeded recovery is distinct from end-to-end coding
+accuracy or speed. This is executable preparation, not a new measured gain;
+the interrupted historical study still needs billing reconciliation before
+another paid collection.
+
 ## Read-only diagnostic suite
 
 Run the same read-only tasks in fresh sessions with one fixed S2 model. Dual mode
