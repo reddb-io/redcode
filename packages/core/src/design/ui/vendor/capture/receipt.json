@@ -1,8 +1,8 @@
 {
-  "package": "html2canvas-pro",
-  "version": "2.5.0",
-  "source": "https://registry.npmjs.org/html2canvas-pro/-/html2canvas-pro-2.5.0.tgz",
-  "integrity": "sha512-+xuLQWcYMGvbXtlIzVOLvNJEXqL/dY7Dbn2T4qYtJvqfPVtJ8BcNr1CrrUp/uCxne9DE/F+eZHsf1khb1dbMyg==",
-  "file": "dist/html2canvas-pro.min.js",
-  "sha256": "218839b4110808d587e0223e01d31e7a22dc0fd8b0653f0ccea68f0d9ca3b131"
+  "package": "dom-to-image-more",
+  "version": "3.11.0",
+  "source": "https://registry.npmjs.org/dom-to-image-more/-/dom-to-image-more-3.11.0.tgz",
+  "integrity": "sha512-qvT580MyiR4wh6q3zNj0fXt0ViDA1y4iCJRkDioy4Ema6N9EOrwdvXT/wuRHh20epPJPvq9xl5ea/y87nYnkug==",
+  "file": "dist/dom-to-image-more.min.js",
+  "sha256": "5c000dc0dc0e3acdae5ffb792c3d5854213619f20b8da0af2daa0a7a4ac93d21"
 }

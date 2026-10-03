@@ -97,6 +97,7 @@ const state = {
 const server = Bun.serve({
   hostname: "127.0.0.1",
   port: 0,
+  idleTimeout: 60,
   async fetch(request) {
     const route = new URL(request.url).pathname
     state.calls.push(`${request.method} ${route}`)
@@ -180,6 +181,15 @@ try {
   page.on("pageerror", (error) => {
     errors.push(error.message)
     console.error("Design browser error", error.message)
+  })
+  await page.addInitScript(() =>
+    window.addEventListener("message", (event) => {
+      if (event.data?.type === "design:capture-result" && event.data.error)
+        console.error("Capture failed", event.data.reason)
+    }),
+  )
+  page.on("console", (message) => {
+    if (message.type() === "error") console.error(message.text())
   })
   await page.clock.install()
   await page.goto(`http://127.0.0.1:${server.port}`)
@@ -429,8 +439,8 @@ try {
   await page.locator("#approve").click()
   state.failApproval = true
   await page.locator("#confirm-approve").click()
-  await page.waitForFunction(
-    () => document.querySelector("#review")!.shadowRoot!.querySelector("#status")!.textContent === "Retry approval",
+  await page.waitForFunction(() =>
+    document.querySelector("#review")!.shadowRoot!.querySelector("#status")!.textContent?.includes("Retry approval"),
   )
   assert.equal(state.captures.length, 1, "Approval captures the live preview exactly once")
   const source = JSON.parse(state.captures[0]!.source)
@@ -461,7 +471,7 @@ try {
   assert.equal(state.calls.length, approvedRequests, "Browser approval must stop polling")
   assert.deepEqual(errors, [])
   // Opt-out and failed rasterization both leave the explicit approval available.
-  for (const mode of ["opt-out", "capture-failure"]) {
+  for (const mode of ["opt-out", "capture-failure", "scrolled-capture"]) {
     state.document = { ...state.document, approvedRevision: null, ended: false }
     await page.evaluate(() => localStorage.clear())
     await page.reload()
@@ -475,12 +485,31 @@ try {
           throw new Error("Capture unavailable")
         }
       })
+    if (mode === "scrolled-capture")
+      await preview.locator("body").evaluate(() => {
+        document.body.style.height = "2000px"
+        document.querySelector<HTMLElement>("#capture-marker")!.style.background = "#00c000"
+        window.scrollTo(0, 200)
+      })
     await page.locator("#approve").click()
     if (mode === "opt-out") await page.locator("#approval-screenshot").uncheck()
     await page.locator("#confirm-approve").click()
     await page.waitForFunction(() => !document.querySelector("#review")!.shadowRoot!.querySelector("iframe"))
-    assert.equal(state.approvals.at(-1)!.screenshot, undefined)
-    assert.equal(state.captures.length, 1)
+    if (mode === "scrolled-capture") {
+      assert.ok(state.approvals.at(-1)!.screenshot)
+      const source = JSON.parse(state.captures.at(-1)!.source)
+      assert.equal(source.scrollY, 200)
+      const png = PNG.sync.read(Buffer.from(state.captures.at(-1)!.data, "base64"))
+      assert.deepEqual(
+        [...png.data.subarray((80 * png.width + 60) * 4, (80 * png.width + 60) * 4 + 3)],
+        [0, 192, 0],
+        "Viewport-fixed controls remain visible after scrolling",
+      )
+    }
+    if (mode !== "scrolled-capture") {
+      assert.equal(state.approvals.at(-1)!.screenshot, undefined)
+      assert.equal(state.captures.length, 1)
+    }
     if (mode === "capture-failure")
       assert.ok((await page.locator("#review").textContent())?.includes("screenshot unavailable"))
   }

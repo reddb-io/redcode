@@ -387,6 +387,7 @@ export function report(
       .filter(
         (job) =>
           job.id !== current.id &&
+          job.input.variant === current.input.variant &&
           job.status === "completed" &&
           job.audit &&
           (job.finished ?? job.created) < (current.finished ?? current.created),
@@ -430,7 +431,7 @@ export function report(
       ? []
       : current?.audit
         ? [
-            `Current audit: ${current.id}, revision ${revision}. Automated checks are evidence, not visual approval.`,
+            `Current audit: ${current.id}, revision ${revision}${current.input.variant ? `, variant ${current.input.variant} only` : ""}. Automated checks are evidence, not visual approval.`,
             `Exercised scenarios: ${current.audit.scenarios.length}. Findings: ${current.audit.findings.length}.`,
             ...current.audit.findings.slice(0, 30),
             ...(current.audit.findings.length > 30

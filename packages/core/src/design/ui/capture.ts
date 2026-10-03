@@ -5,12 +5,11 @@ export function capture(
     options: {
       width: number
       height: number
-      x: number
-      y: number
       scale: number
-      logging: boolean
-      allowTaint: boolean
-      onclone: (document: Document) => void
+      copyDefaultStyles: boolean
+      preserveScroll: boolean
+      adjustClonedNode: (original: Node, clone: Node, after: boolean) => void
+      onclone: (element: HTMLElement) => void
     },
   ) => Promise<HTMLCanvasElement>,
   revision: string,
@@ -34,38 +33,68 @@ export function capture(
       scrollX,
       scrollY,
     }
+    const fixed: { clone: HTMLElement; x: number; y: number }[] = []
+    const fail = (error: unknown) =>
+      parent.postMessage(
+        {
+          type: "design:capture-result",
+          request,
+          error: true,
+          reason: error instanceof Error ? error.message.slice(0, 240) : String(error).slice(0, 240),
+        },
+        "*",
+      )
     void Promise.resolve()
       .then(() =>
         rasterize(document.documentElement, {
           width: view.width,
           height: view.height,
-          x: view.scrollX,
-          y: view.scrollY,
           scale: Math.min(1, 1600 / Math.max(view.width, view.height)),
-          logging: false,
-          allowTaint: false,
-          onclone: (document) => {
+          // Copy computed styles directly: a default-style helper iframe cannot share the opaque sandbox origin.
+          copyDefaultStyles: false,
+          preserveScroll: true,
+          adjustClonedNode: (original, clone, after) => {
+            if (
+              after ||
+              !(original instanceof HTMLElement) ||
+              !(clone instanceof HTMLElement) ||
+              getComputedStyle(original).position !== "fixed" ||
+              original.offsetParent
+            )
+              return
+            const rect = original.getBoundingClientRect()
+            fixed.push({
+              clone,
+              x: rect.x + view.scrollX - document.body.offsetLeft,
+              y: rect.y + view.scrollY - document.body.offsetTop,
+            })
+          },
+          onclone: (element) => {
+            // Restoring root scroll gives the cloned body a transform; keep viewport-fixed controls in their visible positions.
+            for (const item of fixed) {
+              item.clone.style.left = `${item.x}px`
+              item.clone.style.top = `${item.y}px`
+              item.clone.style.right = "auto"
+              item.clone.style.bottom = "auto"
+            }
             // Preserve the review's existing rule: passwords, payment fields and file paths never leave the frame.
-            for (const field of document.querySelectorAll<HTMLInputElement | HTMLTextAreaElement>(
+            for (const field of element.querySelectorAll<HTMLInputElement | HTMLTextAreaElement>(
               "input[type=password],input[type=file],[autocomplete*='cc-']",
             )) {
               field.value = ""
               field.removeAttribute("value")
             }
-            for (const element of document.querySelectorAll("[data-design-highlight],[data-design-reveal]")) {
-              element.removeAttribute("data-design-highlight")
-              element.removeAttribute("data-design-reveal")
+            for (const node of element.querySelectorAll("[data-design-highlight],[data-design-reveal]")) {
+              node.removeAttribute("data-design-highlight")
+              node.removeAttribute("data-design-reveal")
             }
           },
         }),
       )
-      .then(
-        (canvas) => {
-          const data = canvas.toDataURL("image/png")
-          parent.postMessage({ type: "design:capture-result", request, ...view, data }, "*")
-        },
-        () => parent.postMessage({ type: "design:capture-result", request, error: true }, "*"),
-      )
-      .catch(() => parent.postMessage({ type: "design:capture-result", request, error: true }, "*"))
+      .then((canvas) => {
+        const data = canvas.toDataURL("image/png")
+        parent.postMessage({ type: "design:capture-result", request, ...view, data }, "*")
+      }, fail)
+      .catch(fail)
   })
 }
