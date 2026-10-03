@@ -50,7 +50,7 @@ const revisions = ["rev_latest", "rev_older"].map((id) =>
 await Bun.write(
   path.join(directory.path, "index.html"),
   `<!doctype html><html><body>
-  <main data-design-variant="one"><section data-design-screen="profile"><button id="counter">Clicks: 0</button><div id="capture-marker" style="position:fixed;left:40px;top:60px;width:80px;height:80px;background:#e00000"></div></section></main>
+  <main data-design-variant="one"><section data-design-screen="profile"><button id="counter">Clicks: 0</button><div id="capture-marker" style="position:fixed;left:40px;top:60px;width:80px;height:80px;background:#e00000"></div><textarea autocomplete="cc-name" style="position:fixed;left:200px;top:60px;width:200px;height:80px;border:0;background:#fff;color:#000;font:32px monospace">PRIVATE CARD NAME</textarea></section></main>
   <script>let count = 0; document.getElementById('counter').onclick = () => {
     document.getElementById('counter').textContent = 'Clicks: ' + (++count); document.getElementById('capture-marker').style.background = '#00c000';
   }; document.body.insertAdjacentHTML('beforeend', '<main data-design-variant="two"><section data-design-screen="settings">Settings</section></main>');</script>
@@ -455,6 +455,15 @@ try {
     [0, 192, 0],
     "The image must show the live green marker rather than its original red state",
   )
+  const privatePixels = Array.from({ length: 35 }, (_, row) =>
+    Array.from({ length: 130 }, (_, column) => {
+      const pixel = ((row + 70) * png.width + column + 225) * 4
+      return png.data[pixel] !== 255 || png.data[pixel + 1] !== 255 || png.data[pixel + 2] !== 255
+    }),
+  )
+    .flat()
+    .filter(Boolean).length
+  assert.equal(privatePixels, 0, "Payment input text must be blanked before rasterization")
   // Changed viewport state on retry cannot replace the approval's original reference.
   await preview.locator("#capture-marker").evaluate((node) => {
     ;(node as HTMLElement).style.background = "#0000ff"

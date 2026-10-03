@@ -77,12 +77,13 @@ export function capture(
               item.clone.style.right = "auto"
               item.clone.style.bottom = "auto"
             }
-            // Preserve the review's existing rule: passwords, payment fields and file paths never leave the frame.
+            // Suppress password, payment input and file field values in the detached clone.
             for (const field of element.querySelectorAll<HTMLInputElement | HTMLTextAreaElement>(
               "input[type=password],input[type=file],[autocomplete*='cc-']",
             )) {
               field.value = ""
               field.removeAttribute("value")
+              if (field instanceof HTMLTextAreaElement) field.textContent = ""
             }
             for (const node of element.querySelectorAll("[data-design-highlight],[data-design-reveal]")) {
               node.removeAttribute("data-design-highlight")
