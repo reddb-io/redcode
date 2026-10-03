@@ -157,6 +157,7 @@ function manageConnections(
     const theme = useTheme().surface("dialog")
     const shortcuts = Keymap.useShortcuts()
     const [deleting, setDeleting] = createSignal<string>()
+    const [opening, setOpening] = createSignal<string>()
     const [selected, setSelected] = createSignal(credentialConnections(integration)[0]?.id ?? "add")
     const current = createMemo(() =>
       data.location.integration.list(location)?.find((item) => item.id === integration.id),
@@ -183,9 +184,12 @@ function manageConnections(
             .map((connection) => {
               const confirming = deleting() === connection.id
               return {
-                title: confirming
-                  ? `Press ${shortcuts.get("dialog.integration.delete")} again to confirm`
-                  : connection.label,
+                title:
+                  opening() === connection.id
+                    ? `Opening ${connection.label}…`
+                    : confirming
+                      ? `Press ${shortcuts.get("dialog.integration.delete")} again to confirm`
+                      : connection.label,
                 value: connection.id,
                 // The saved router connection describes the active account's key.
                 description:
@@ -196,8 +200,26 @@ function manageConnections(
                 bg: confirming ? theme.background.action.destructive.focused : undefined,
                 fg: confirming ? theme.text.action.destructive.focused : undefined,
                 onSelect: () => {
-                  if (connections()[0]?.id === connection.id) return
-                  void client.api.credential.activate({ credentialID: connection.id }).catch(toast.error)
+                  if (opening()) return
+                  if (!onConnected && connections()[0]?.id === connection.id) return
+                  setOpening(connection.id)
+                  void (async () => {
+                    if (connections()[0]?.id !== connection.id)
+                      await client.api.credential.activate({ credentialID: connection.id })
+                    if (!onConnected) return
+                    // Credential activation and model selection are separate steps, even for an active account.
+                    data.location.integration.invalidate(location)
+                    data.location.model.invalidate(location)
+                    data.location.provider.invalidate(location)
+                    await Promise.all([
+                      data.location.integration.sync(location),
+                      data.location.model.sync(location),
+                      data.location.provider.sync(location),
+                    ])
+                    onConnected(providerID(data, location, integration.id) ?? integration.id)
+                  })()
+                    .catch(toast.error)
+                    .finally(() => setOpening(undefined))
                 },
               }
             }),

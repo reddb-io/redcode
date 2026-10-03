@@ -524,3 +524,78 @@ test("saving a Router key shows remote HTTP diagnostics and keeps an empty catal
   await waitForStep("retry report", (frame) => account.checks === 2 && frame.includes("Remote API test failed"))
   expect(account.saved).toBe(true)
 })
+
+test("/connect switches between saved OpenRouter and RedRouter connections through their model pickers", async () => {
+  await using state = await tmpdir()
+  const location = { directory, project: { id: "project", directory, canonical: directory } }
+  const writes: string[] = []
+  const providers = [
+    { id: "openrouter", integrationID: "openrouter", name: "OpenRouter" },
+    { id: "red-router-main", integrationID: "red-router", name: "RedRouter" },
+  ]
+  const models = providers.map((provider) => ({
+    id: `${provider.id}-model`,
+    providerID: provider.id,
+    name: `${provider.name} fixture model`,
+    enabled: true,
+    capabilities: { output: ["text"] },
+    variants: [],
+    time: { released: 0 },
+    cost: [],
+  }))
+  await using setup = await createAppFixture({
+    state: state.path,
+    fetch: (url, request) => {
+      if (request.method !== "GET") writes.push(url.pathname)
+      if (url.pathname === "/api/agent")
+        return json({ location, data: [{ id: "build", mode: "primary", hidden: false, permissions: [] }] })
+      if (url.pathname === "/api/model") return json({ location, data: models })
+      if (url.pathname === "/api/provider") return json({ location, data: providers })
+      if (url.pathname === "/api/integration")
+        return json({
+          location,
+          data: providers.map((provider) => ({
+            id: provider.integrationID,
+            name: provider.name,
+            methods: [{ type: "key", label: "Standard key" }],
+            connections: [
+              { type: "credential", id: `cred_${provider.id}`, method: "key", label: `${provider.name} Standard key` },
+            ],
+          })),
+        })
+    },
+  })
+  await setup.ready
+  await setup.waitForFrame(() => Boolean(setup.renderer.root.findDescendantById("session-pane")))
+
+  await setup.mockInput.typeText("/models")
+  setup.mockInput.pressEnter()
+  await setup.waitForFrame(
+    (frame) => frame.includes("OpenRouter fixture model") && frame.includes("RedRouter fixture model"),
+  )
+  await setup.mockInput.typeText("OpenRouter fixture model")
+  setup.mockInput.pressEnter()
+  await setup.waitForFrame(
+    (frame) => frame.includes("OpenRouter fixture model") && !frame.includes("RedRouter fixture model"),
+  )
+
+  for (const name of ["RedRouter", "OpenRouter"]) {
+    await setup.mockInput.typeText("/connect")
+    setup.mockInput.pressEnter()
+    await setup.waitForFrame((frame) => frame.includes("Connect an integration"))
+    await setup.mockInput.typeText(name)
+    setup.mockInput.pressEnter()
+    await setup.waitForFrame((frame) => frame.includes("Saved connections") && frame.includes(`${name} Standard key`))
+    setup.mockInput.pressEnter()
+    await setup.waitForFrame((frame) => frame.includes(`${name} fixture model`) && !frame.includes("Saved connections"))
+    const other = name === "RedRouter" ? "OpenRouter" : "RedRouter"
+    // The other provider's current model stays in the prompt until a new model is chosen.
+    expect(setup.captureCharFrame().split(`${other} fixture model`)).toHaveLength(2)
+    setup.mockInput.pressEnter()
+    await setup.waitForFrame(
+      (frame) => frame.includes(`${name} fixture model`) && !frame.includes(`${other} fixture model`),
+    )
+  }
+
+  expect(writes.filter((path) => path !== "/api/session" && !path.endsWith("/model"))).toEqual([])
+})
