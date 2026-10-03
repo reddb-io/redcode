@@ -68,6 +68,6 @@ export function render(document: Design.Info, selected = artifact(document)) {
     "- [ ] Review copy, imagery and repeated decorative patterns against the brief; identify targets and evidence, not blanket style bans.",
     "- [ ] Record passed, pending, unverified or not-applicable-with-reason outcomes against this revision and its completed jobs/captures.",
     "Run this review once after the round's requested edits and publication. Reuse completed evidence for this revision. A feedback verify covers notes; it does not replace a full layout audit.",
-    "Inspect and report; do not edit, republish or start another correction cycle from this checklist. Keep follow-up Design tasks pending for the next requested round. Human approval remains required.",
+    "For automatic end-of-round reviews, inspect and report; do not edit, republish or start another correction cycle from this checklist. Keep follow-up Design tasks pending for the next requested round. An explicit browser Run anti-slop request authorizes one correction pass after its initial audit: fix the named variant, publish once if changed and audit the new revision once to verify the fixes, then stop without another correction pass. Human approval remains required.",
   ].join("\n")
 }

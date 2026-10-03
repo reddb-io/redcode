@@ -387,6 +387,9 @@ try {
   const beforeReview = state.calls.filter((call) => call.endsWith("/preview")).length
   await page.locator("#variant-actions").click()
   await page.locator("#run-anti-slop").click()
+  assert.ok(
+    (await page.locator("#anti-slop-dialog").textContent())?.includes("fix the findings and publish the changes"),
+  )
   await page.locator("#anti-slop-text").fill("Focus on accessibility and empty states")
   await page.locator("#confirm-anti-slop").click()
   await page.waitForFunction(

@@ -21,7 +21,7 @@ const base = {
 }
 
 describe("DesignFeedback.render", () => {
-  test("an explicit anti-slop request reviews the chosen variant once with optional guidance", () => {
+  test("an explicit anti-slop request audits, fixes and verifies the chosen variant with optional guidance", () => {
     const text = DesignFeedback.render(
       {
         ...base,
@@ -34,11 +34,24 @@ describe("DesignFeedback.render", () => {
     expect(text).toContain("Focus on forms and empty states")
     expect(text).toContain('variant="stone"')
     expect(text).toContain('design_export {"revision":"rev_1","format":"audit","variant":"stone"}')
-    expect(text).toContain("Do not edit prototype files, publish another revision, approve the design")
-    expect(text).not.toContain("Publish one revision with design_preview")
+    expect(text).toContain("authorizes one correction pass after the initial audit")
+    expect(text).toContain("fix them in the selected variant's prototype source")
+    expect(text).toContain("publish one revision on the same design with design_preview")
+    expect(text).toContain('design_export {"revision":"<new revision>","format":"audit","variant":"stone"}')
+    expect(text).toContain("Update Design tasks using this evidence")
+    expect(text).toContain("If the initial audit finds nothing to fix")
+    expect(text).toContain("If an audit fails or is cancelled")
+    expect(text).toContain("do not start another correction pass")
+    expect(text).toContain("unrelated variants; do not modify product files")
+    expect(text).not.toContain("Do not edit prototype files")
+    expect(text.indexOf('"revision":"rev_1"')).toBeLessThan(
+      text.indexOf("fix them in the selected variant's prototype source"),
+    )
+    expect(text.indexOf("publish one revision")).toBeLessThan(text.indexOf('"revision":"<new revision>"'))
     expect(DesignNotice.feedback(text)?.text).toBe("Focus on forms and empty states")
     const optional = DesignFeedback.render({ ...base, review: { id: "stone", name: "Stone" } }, context)
     expect(optional).toContain("Run anti-slop once for variant Stone (stone)")
+    expect(optional).toContain("authorizes one correction pass after the initial audit")
   })
 
   test("the footer states the round rule with the message's note ids, and only when the message has notes", () => {

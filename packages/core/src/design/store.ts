@@ -945,7 +945,8 @@ const make = Effect.gen(function* () {
     )
       return yield* new Design.Error({
         code: "invalid",
-        message: "An anti-slop request reviews one variant without changes, attachments or approval",
+        message:
+          "An anti-slop request targets one variant and cannot include variant operations, notes, attachments or approval",
       })
     const operationProblem = input.action && Design.variantOperationProblem(input.action)
     if (operationProblem) return yield* new Design.Error({ code: "invalid", message: operationProblem })

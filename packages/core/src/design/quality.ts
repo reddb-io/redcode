@@ -459,7 +459,7 @@ export function report(
                   `Previous audit ${previous.id} (${previous.input.revision}): ${previous.audit.findings.length} findings. Compare the named fixes on equivalent variants, states and viewports; a count reduction alone does not prove resolution.`,
                 ]
               : []),
-            "End-of-round review: inspect structure/use and craft against the artifact checklist, record findings and pending Design tasks, then report and stop. Do not edit, republish or start another correction cycle from these findings. Disclose unresolved and unverified items. Human approval remains required.",
+            "End-of-round review: inspect structure/use and craft against the artifact checklist, record findings and pending Design tasks, then report and stop. For automatic end-of-round reviews: Do not edit, republish or start another correction cycle from these findings. An explicit browser Run anti-slop request authorizes one correction pass after its initial audit, one changed publication and one final audit to verify the named fixes; stop after that final audit without another correction pass. Disclose unresolved and unverified items. Human approval remains required.",
           ]
         : [
             `No completed audit for current revision ${revision ?? "unpublished"}. Publish if needed, then call design_export with input={revision,format:"audit"}; wait for its native monitor to complete. Older audits do not verify current edits.`,

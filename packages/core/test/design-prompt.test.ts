@@ -2,6 +2,7 @@ import { describe, expect, test } from "bun:test"
 import path from "node:path"
 import { Glob } from "bun"
 import { DesignPrompt } from "@opencode/core/design/prompt"
+import { DesignPlaybooks } from "@opencode/core/design/playbooks"
 
 // The Design tools the plugins register, read from their sources so the prompt cannot name a tool that no longer exists.
 const registered = async () => {
@@ -60,5 +61,29 @@ describe("Design prompt", () => {
       "sandboxed without same-origin access",
     ])
       expect(DesignPrompt.instructions).toContain(phrase)
+  })
+
+  test("manual anti-slop corrects once while automatic end-of-round review stays report-only", () => {
+    expect(DesignPrompt.instructions).toContain(
+      "This automatic end-of-round review does not start another development cycle",
+    )
+    const manual = DesignPrompt.instructions.split('A browser request to "Run anti-slop"')[1]!.split("\n\n")[0]!
+    for (const phrase of [
+      "authorizes one correction pass",
+      "optional focus",
+      "correct them in the existing prototype source and Session worktree",
+      "publish one revision on the same design with design_preview",
+      "one final variant-scoped audit of that new revision",
+      "If nothing needs correction, do not publish unchanged files",
+      "do not start another correction pass",
+      "overrides the report-only rule for automatic end-of-round reviews",
+    ])
+      expect(manual).toContain(phrase)
+    const playbook = DesignPlaybooks.render(DesignPlaybooks.find("quality")!)
+    expect(playbook).toContain("Automatic end-of-round reviews report findings without starting new edits")
+    expect(playbook).toContain(
+      "An explicit browser Run anti-slop request instead authorizes one bounded correction pass",
+    )
+    expect(playbook).toContain("The final audit never starts another correction pass")
   })
 })

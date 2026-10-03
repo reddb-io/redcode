@@ -432,7 +432,7 @@ export function variantOperationProblem(operation: VariantOperation): string | u
 export const Feedback = Schema.Struct({
   /** A requested change to the variants themselves; the agent carries it out and publishes a revision. */
   action: VariantOperation.pipe(optional),
-  /** A single review of this variant, without authorizing edits or publication. Guidance is in text. */
+  /** Audit this variant, correct findings once, then publish and verify changes. Guidance is in text. */
   review: Variant.pipe(optional),
   params: ParamContext.pipe(optional),
   id: SessionMessage.ID,

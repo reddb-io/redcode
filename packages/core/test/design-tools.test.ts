@@ -370,6 +370,8 @@ describe("Design tools", () => {
         expect(text).toContain(recorded)
       expect(text).not.toContain("# Playbook:")
       expect(text).toContain("do not edit, republish or start another correction cycle")
+      expect(text).toContain("For automatic end-of-round reviews")
+      expect(text).toContain("An explicit browser Run anti-slop request authorizes one correction pass")
       expect(started).toEqual([])
       expect(monitored).toEqual([])
       expect(assertions[0]?.resources).toEqual([designID])

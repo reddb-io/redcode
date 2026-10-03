@@ -259,9 +259,9 @@ product in this mode, only the prototype, so nothing you say changes code until 
 - **Whiteboard.** Mermaid diagrams open in an Excalidraw whiteboard; your edits go back as a note and a PNG.
 - **Your design system.** The agent reads `DESIGN.md` (or `.red/DESIGN.md`) and reuses the project's real
   components. Set `design.system` in `redcode.json` to point at it.
-- **Run anti-slop.** The variant menu starts one review of that direction, with an optional focus.
-  Findings return in the conversation; the request preserves unsent notes and does not authorize edits
-  or another publication.
+- **Run anti-slop.** The variant menu audits that direction, fixes the findings and publishes one new
+  revision, with an optional focus. One final audit verifies the corrections before the agent stops
+  for your review. Unsent notes and other variants are preserved; no changes means no new publication.
 - **End-of-round review.** “Applying anti-slop” identifies a review of the published revision using a
   checklist for components, screens, flows or slides. It reuses the recorded brief, direction and
   design system, checks rendered evidence, and reports checked, pending and unverified items.

@@ -159,6 +159,9 @@ describe("DesignQuality.report", () => {
     expect(report).toContain("Previous audit job_previous (rev_before): 2 findings.")
     expect(report).toContain("End-of-round review")
     expect(report).toContain("Do not edit, republish or start another correction cycle")
+    expect(report).toContain("For automatic end-of-round reviews")
+    expect(report).toContain("An explicit browser Run anti-slop request authorizes one correction pass")
+    expect(report).toContain("stop after that final audit without another correction pass")
   })
 
   test("asks for a fresh audit when only an older revision was audited", () => {

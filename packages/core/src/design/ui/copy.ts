@@ -28,10 +28,10 @@ export const reviewCopy = {
   stateReviewing: "Applying anti-slop…",
   qualityReview: "Anti-slop review",
   runAntiSlop: "Run anti-slop",
-  antiSlopFocus: "What should the review focus on? (optional)",
+  antiSlopFocus: "What should the review and fixes focus on? (optional)",
   antiSlopScope:
-    "Review this variant once. Findings return in the conversation; this does not edit, publish or approve it.",
-  antiSlopRequested: "Anti-slop requested. Follow the review in the conversation.",
+    "Audit this variant, fix the findings and publish the changes. Verify once, then stop for your review.",
+  antiSlopRequested: "Anti-slop requested. Follow the audit and fixes in the conversation.",
   stateIdle: "Idle",
   statePublished: "New revision published",
   feedEmpty: "Replies from the agent appear here.",
