@@ -6800,11 +6800,18 @@ export type SessionDesignApproveInput = {
   readonly revision: {
     readonly revision: string
     readonly variant?: { readonly id: string; readonly name: string }
+    readonly screenshot?: string
   }["revision"]
   readonly variant?: {
     readonly revision: string
     readonly variant?: { readonly id: string; readonly name: string }
+    readonly screenshot?: string
   }["variant"]
+  readonly screenshot?: {
+    readonly revision: string
+    readonly variant?: { readonly id: string; readonly name: string }
+    readonly screenshot?: string
+  }["screenshot"]
 }
 
 export type SessionDesignApproveOutput = {

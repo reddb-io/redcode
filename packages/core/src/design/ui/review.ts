@@ -61,7 +61,11 @@ export function mountReview(host: HTMLElement, options: ReviewOptions) {
   platformize()
   const transport = options.request ?? fetch
   const request = (url: string, init?: RequestInit) =>
-    transport(url, { ...init, signal: AbortSignal.any([controller.signal, AbortSignal.timeout(60000)]) })
+    transport(url, {
+      cache: "no-store",
+      ...init,
+      signal: AbortSignal.any([controller.signal, AbortSignal.timeout(60000)]),
+    })
   const root = host.attachShadow({ mode: "open" })
   host.dataset.theme = "application"
   host.dataset.density = "compact"
@@ -199,6 +203,8 @@ export function mountReview(host: HTMLElement, options: ReviewOptions) {
     agent: "" as "" | "working" | "idle",
     approving: undefined as Design.Approve | undefined,
     approval: undefined as Design.Approval | undefined,
+    captureFailed: false,
+    approvalScreenshot: undefined as { revision: string; variant: string; asset: string } | undefined,
     feed: [] as Design.FeedEvent[],
     scroll: { x: 0, y: 0 },
     peerScroll: { x: 0, y: 0 },
@@ -291,6 +297,7 @@ export function mountReview(host: HTMLElement, options: ReviewOptions) {
         if (!state.stopped) status(error instanceof Error ? error.message : copy.failure, undefined, "error")
       } finally {
         state.loading = false
+        if (polling.requested) queueMicrotask(poll)
         if (!quiet) {
           state.working = false
           trigger?.removeAttribute("aria-busy")
@@ -348,7 +355,7 @@ details{border-top:1px solid var(--edge);padding:14px 0}summary{cursor:pointer;f
     <div id="param-fields"></div></div>
     <div class="section"><label><span data-copy="paramName">${copy.paramName}</span><input id="param-name" required maxlength="100"></label>
     <button type="button" id="param-save" data-copy="paramSave">${copy.paramSave}</button>
-    <p class="muted" data-copy="paramPublish">${copy.paramPublish}</p></div></div></section></aside></main></section><dialog id="board-dialog" style="width:95vw;height:90vh;max-width:1400px"><button id="board-close"><span data-copy="close">${copy.close}</span></button><iframe id="board-frame" title="${copy.whiteboard}" data-copy-title="whiteboard" sandbox="allow-scripts" style="height:calc(100% - 50px);width:100%"></iframe></dialog><dialog id="approve-dialog" class="action-dialog" aria-labelledby="approve-heading"><h2 id="approve-heading" data-copy="confirm">${copy.confirm}</h2><p id="approval-revision"></p><p data-copy="approvalScope">${copy.approvalScope}</p><div id="approval-review" hidden><p class="muted" data-copy="approvalReviewNotes">${copy.approvalReviewNotes}</p><ul id="approval-review-list"></ul></div><div id="approval-open" hidden><p class="muted" data-copy="approvalOpenNotes">${copy.approvalOpenNotes}</p><ul id="approval-open-list"></ul></div><div class="row"><button id="cancel-approve" data-copy="cancel">${copy.cancel}</button><button id="record-approve" data-copy="approvalRecordAll" hidden>${copy.approvalRecordAll}</button><button id="confirm-approve" class="primary" data-copy="approveAction">${copy.approveAction}</button></div></dialog><dialog id="variant-dialog" class="action-dialog" aria-labelledby="variant-heading"><form id="variant-form"><h2 id="variant-heading" data-copy="addVariant">${copy.addVariant}</h2><p data-copy="variantHint">${copy.variantHint}</p><label><span data-copy="variantPrompt">${copy.variantPrompt}</span><textarea id="variant-prompt" required></textarea></label><div class="row"><button type="button" id="cancel-variant" data-copy="cancel">${copy.cancel}</button><button type="submit" id="request-variant" class="primary" data-copy="requestVariant">${copy.requestVariant}</button></div></form></dialog><dialog id="operation-dialog" class="action-dialog" aria-labelledby="operation-heading"><form id="operation-form"><h2 id="operation-heading"></h2><p id="operation-subject"></p><p id="operation-hint"></p><label id="operation-name-field"><span data-copy="renameLabel">${copy.renameLabel}</span><input id="operation-name" maxlength="100"></label><label id="operation-text-field"><span data-copy="operationGuidance">${copy.operationGuidance}</span><textarea id="operation-text" maxlength="2000"></textarea></label><div class="row"><button type="button" id="cancel-operation" data-copy="cancel">${copy.cancel}</button><button type="submit" id="confirm-operation" class="primary"></button></div></form></dialog><div id="status" role="status" aria-live="polite"></div>`
+    <p class="muted" data-copy="paramPublish">${copy.paramPublish}</p></div></div></section></aside></main></section><dialog id="board-dialog" style="width:95vw;height:90vh;max-width:1400px"><button id="board-close"><span data-copy="close">${copy.close}</span></button><iframe id="board-frame" title="${copy.whiteboard}" data-copy-title="whiteboard" sandbox="allow-scripts" style="height:calc(100% - 50px);width:100%"></iframe></dialog><dialog id="approve-dialog" class="action-dialog" aria-labelledby="approve-heading"><h2 id="approve-heading" data-copy="confirm">${copy.confirm}</h2><p id="approval-revision"></p><p data-copy="approvalScope">${copy.approvalScope}</p><label class="check"><input type="checkbox" id="approval-screenshot" checked><span data-copy="approvalScreenshot">${copy.approvalScreenshot}</span></label><div id="approval-review" hidden><p class="muted" data-copy="approvalReviewNotes">${copy.approvalReviewNotes}</p><ul id="approval-review-list"></ul></div><div id="approval-open" hidden><p class="muted" data-copy="approvalOpenNotes">${copy.approvalOpenNotes}</p><ul id="approval-open-list"></ul></div><div class="row"><button id="cancel-approve" data-copy="cancel">${copy.cancel}</button><button id="record-approve" data-copy="approvalRecordAll" hidden>${copy.approvalRecordAll}</button><button id="confirm-approve" class="primary" data-copy="approveAction">${copy.approveAction}</button></div></dialog><dialog id="variant-dialog" class="action-dialog" aria-labelledby="variant-heading"><form id="variant-form"><h2 id="variant-heading" data-copy="addVariant">${copy.addVariant}</h2><p data-copy="variantHint">${copy.variantHint}</p><label><span data-copy="variantPrompt">${copy.variantPrompt}</span><textarea id="variant-prompt" required></textarea></label><div class="row"><button type="button" id="cancel-variant" data-copy="cancel">${copy.cancel}</button><button type="submit" id="request-variant" class="primary" data-copy="requestVariant">${copy.requestVariant}</button></div></form></dialog><dialog id="operation-dialog" class="action-dialog" aria-labelledby="operation-heading"><form id="operation-form"><h2 id="operation-heading"></h2><p id="operation-subject"></p><p id="operation-hint"></p><label id="operation-name-field"><span data-copy="renameLabel">${copy.renameLabel}</span><input id="operation-name" maxlength="100"></label><label id="operation-text-field"><span data-copy="operationGuidance">${copy.operationGuidance}</span><textarea id="operation-text" maxlength="2000"></textarea></label><div class="row"><button type="button" id="cancel-operation" data-copy="cancel">${copy.cancel}</button><button type="submit" id="confirm-operation" class="primary"></button></div></form></dialog><div id="status" role="status" aria-live="polite"></div>`
 
   for (const id of ["approve-dialog", "variant-dialog", "operation-dialog"]) {
     const notice = document.createElement("p")
@@ -931,6 +938,7 @@ details{border-top:1px solid var(--edge);padding:14px 0}summary{cursor:pointer;f
           inbox: state.inbox,
           pending: state.pending,
           feedbackError: state.feedbackError,
+          approvalScreenshot: state.approvalScreenshot,
           boards: state.boards,
           board: state.board,
           variantPrompt: input("variant-prompt").value,
@@ -1424,6 +1432,7 @@ details{border-top:1px solid var(--edge);padding:14px 0}summary{cursor:pointer;f
     state.inbox = []
     state.pending = undefined
     state.feedbackError = ""
+    state.approvalScreenshot = undefined
     state.boards = []
     state.board = undefined
     state.variantPending = undefined
@@ -1443,6 +1452,7 @@ details{border-top:1px solid var(--edge);padding:14px 0}summary{cursor:pointer;f
         state.snapshot = stored.snapshot ?? ""
         state.card = restoreCard(stored.card)
         state.inbox = stored.inbox ?? []
+        state.approvalScreenshot = stored.approvalScreenshot
         state.pending = stored.pending
         state.feedbackError = typeof stored.feedbackError === "string" ? stored.feedbackError : ""
         state.boards = stored.boards ?? []
@@ -1670,8 +1680,10 @@ details{border-top:1px solid var(--edge);padding:14px 0}summary{cursor:pointer;f
     }
     if (bottom) list.scrollTop = list.scrollHeight
   }
-  const polling = { pending: false }
+  const polling = { pending: false, requested: false }
   const poll = () => {
+    if (state.stopped || polling.pending) return
+    polling.requested = true
     if (
       polling.pending ||
       state.loading ||
@@ -1683,8 +1695,10 @@ details{border-top:1px solid var(--edge);padding:14px 0}summary{cursor:pointer;f
       return
     // Feed events can arrive in one burst before the queued refresh begins.
     polling.pending = true
+    polling.requested = false
     void run(refresh, undefined, true).finally(() => {
       polling.pending = false
+      if (polling.requested) poll()
     })
   }
   /**
@@ -1751,7 +1765,11 @@ details{border-top:1px solid var(--edge);padding:14px 0}summary{cursor:pointer;f
     if (operation && event.design === state.design?.id && event.revision !== operation.feedback.revision)
       operation.published = event.revision
     pill("statePublished")
-    if (event.revision !== state.revision && event.revision !== state.design?.revision) poll()
+    if (
+      event.design === state.design?.id &&
+      (event.revision !== state.revision || !state.revisions.some((revision) => revision.id === event.revision))
+    )
+      poll()
   }
   const chooseRevision = async (revisionID: string, keep = false) => {
     const revision =
@@ -1932,7 +1950,12 @@ details{border-top:1px solid var(--edge);padding:14px 0}summary{cursor:pointer;f
     element("approve").hidden = current.ended
     element("reopen").hidden = !current.ended
     element<HTMLButtonElement>("send").disabled = current.ended && !state.pending
-    if (revisionChanged || !state.revisions.length)
+    // Retry a failed list fetch even after the document projection advanced to the new revision.
+    if (
+      revisionChanged ||
+      !state.revisions.length ||
+      (current.revision && !state.revisions.some((revision) => revision.id === current.revision))
+    )
       state.revisions = await api<Design.Revision[]>(`/${current.id}/revision`)
     const revisions = state.revisions
     picker(
@@ -1949,8 +1972,7 @@ details{border-top:1px solid var(--edge);padding:14px 0}summary{cursor:pointer;f
       current.revision !== state.revision &&
       !state.pending &&
       !document.hidden &&
-      !(root.activeElement instanceof HTMLSelectElement) &&
-      !(root.activeElement instanceof HTMLIFrameElement) &&
+      !state.card &&
       !root.querySelector("dialog[open]")
     if (current.revision && (initial || live) && state.failedPreview !== current.revision) {
       await chooseRevision(current.revision, live)
@@ -2313,6 +2335,7 @@ details{border-top:1px solid var(--edge);padding:14px 0}summary{cursor:pointer;f
     await chooseRevision(result.id)
   })
   click("approve", async () => {
+    state.captureFailed = false
     state.approving = {
       revision: state.revision,
       ...(state.variant ? { variant: state.variants.find((item) => item.id === state.variant) } : {}),
@@ -2339,8 +2362,107 @@ details{border-top:1px solid var(--edge);padding:14px 0}summary{cursor:pointer;f
     element<HTMLDialogElement>("approve-dialog").showModal()
     element("cancel-approve").focus()
   })
-  // The reviewer's second confirmation: the open notes are recorded as accepted by the reviewer, then
-  // the approval proceeds; the record keeps who closed them.
+  const captureApproval = async () => {
+    if (!state.approving) return
+    if (!input("approval-screenshot").checked) {
+      delete state.approving.screenshot
+      return
+    }
+    const approval = state.approving
+    if (
+      state.approvalScreenshot?.revision === approval.revision &&
+      state.approvalScreenshot.variant === (approval.variant?.id ?? "")
+    ) {
+      approval.screenshot = state.approvalScreenshot.asset
+      return
+    }
+    status(copy.capturing, "capturing")
+    const frame = element<HTMLIFrameElement>("preview").contentWindow
+    const captured = await new Promise<{
+      data: string
+      revision: string
+      variant: string
+      screen: string
+      width: number
+      height: number
+      scrollX: number
+      scrollY: number
+    }>((resolve, reject) => {
+      const request = crypto.randomUUID()
+      const finish = (error?: Error, view?: Parameters<typeof resolve>[0]) => {
+        clearTimeout(timer)
+        window.removeEventListener("message", receive)
+        controller.signal.removeEventListener("abort", abort)
+        if (error) reject(error)
+        if (view) resolve(view)
+      }
+      const abort = () => finish(new Error(copy.screenshotUnavailable))
+      const receive = (event: MessageEvent) => {
+        if (event.source !== frame || event.data?.type !== "design:capture-result" || event.data.request !== request)
+          return
+        const view = event.data
+        if (
+          view.error ||
+          view.revision !== approval.revision ||
+          (approval.variant && view.variant !== approval.variant.id) ||
+          typeof view.variant !== "string" ||
+          typeof view.screen !== "string" ||
+          typeof view.data !== "string" ||
+          !/^data:image\/png;base64,[A-Za-z0-9+/]+={0,2}$/.test(view.data) ||
+          view.data.length > 14 * 1024 * 1024 ||
+          ![view.width, view.height, view.scrollX, view.scrollY].every(Number.isFinite) ||
+          view.width <= 0 ||
+          view.height <= 0
+        )
+          return finish(new Error(copy.screenshotUnavailable))
+        finish(undefined, view)
+      }
+      const timer = setTimeout(abort, 8000)
+      window.addEventListener("message", receive)
+      controller.signal.addEventListener("abort", abort, { once: true })
+      frame?.postMessage({ type: "design:capture", request }, "*")
+    })
+    const asset = await api<Design.Asset>(`/${state.design!.id}/asset`, "POST", {
+      name: `screenshot1-${approval.revision}.png`,
+      mime: "image/png",
+      data: captured.data.slice("data:image/png;base64,".length),
+      source: JSON.stringify({
+        type: "design-approval-capture",
+        reference: "$screenshot1",
+        revision: captured.revision,
+        variant: captured.variant,
+        screen: captured.screen,
+        width: captured.width,
+        height: captured.height,
+        scrollX: captured.scrollX,
+        scrollY: captured.scrollY,
+      }),
+    })
+    state.approvalScreenshot = { revision: approval.revision, variant: approval.variant?.id ?? "", asset: asset.id }
+    approval.screenshot = asset.id
+    save()
+  }
+  const finishApproval = async () => {
+    if (!state.approving) return
+    state.captureFailed = false
+    await captureApproval().catch(() => {
+      state.captureFailed = true
+      status(copy.screenshotUnavailable, "screenshotUnavailable", "error")
+    })
+    const approval = await api<{ agent: string }>(`/${state.design!.id}/approve`, "POST", state.approving)
+    element<HTMLDialogElement>("approve-dialog").close()
+    if (approval.agent === "plan") {
+      closeReview()
+      return
+    }
+    await refresh()
+    status(
+      state.captureFailed ? copy.screenshotUnavailable : copy.approved,
+      state.captureFailed ? "screenshotUnavailable" : "approved",
+      "success",
+    )
+  }
+  // The reviewer explicitly accepts open notes before the same approval and Plan handoff.
   click("record-approve", async () => {
     if (!state.approving) return
     const open = openNotes()
@@ -2354,27 +2476,10 @@ details{border-top:1px solid var(--edge);padding:14px 0}summary{cursor:pointer;f
           reason: copy.approvalRecordAll,
         })),
       })
-    const approval = await api<{ agent: string }>(`/${state.design!.id}/approve`, "POST", state.approving)
-    element<HTMLDialogElement>("approve-dialog").close()
-    if (approval.agent === "plan") {
-      closeReview()
-      return
-    }
-    await refresh()
-    status(copy.approved, "approved", "success")
+    await finishApproval()
   })
   element("cancel-approve").onclick = () => element<HTMLDialogElement>("approve-dialog").close()
-  click("confirm-approve", async () => {
-    if (!state.approving) return
-    const approval = await api<{ agent: string }>(`/${state.design!.id}/approve`, "POST", state.approving)
-    element<HTMLDialogElement>("approve-dialog").close()
-    if (approval.agent === "plan") {
-      closeReview()
-      return
-    }
-    await refresh()
-    status(copy.approved, "approved", "success")
-  })
+  click("confirm-approve", finishApproval)
   click("reopen", async () => {
     await api(`/${state.design!.id}/reopen`, "POST")
     await refresh()
@@ -3490,7 +3595,7 @@ details{border-top:1px solid var(--edge);padding:14px 0}summary{cursor:pointer;f
     const styles = [...root.querySelectorAll("style")]
     dispose()
     const message = document.createElement("p")
-    message.textContent = copy.approved
+    message.textContent = state.captureFailed ? `${copy.approved} ${copy.screenshotUnavailable}` : copy.approved
     message.style.padding = "24px"
     root.append(...styles, message)
   }

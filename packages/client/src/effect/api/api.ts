@@ -1808,6 +1808,7 @@ export type SessionDesignApproveInput = {
   readonly designID: string & Brand.Brand<"Design.ID">
   readonly revision: string
   readonly variant?: { readonly id: string; readonly name: string } | undefined
+  readonly screenshot?: string | undefined
 }
 export type SessionDesignApproveOutput = {
   readonly plan: string

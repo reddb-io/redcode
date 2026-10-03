@@ -2,6 +2,7 @@ import { describe, expect, test } from "bun:test"
 import path from "node:path"
 import { mkdir, rm, symlink, writeFile } from "node:fs/promises"
 import { Effect, Layer, Schema } from "effect"
+import { PNG } from "pngjs"
 import { Design } from "@opencode/schema/design"
 import { Project } from "@opencode/schema/project"
 import { Session } from "@opencode/schema/session"
@@ -11,6 +12,7 @@ import { AppNodeBuilder } from "../src/effect/app-node-builder"
 import { Config } from "../src/config"
 import { Database } from "../src/database/database"
 import { DesignApproval } from "../src/design/approval"
+import { DesignCapture } from "../src/design/capture"
 import { DesignFiles } from "../src/design/files"
 import { DesignStore } from "../src/design/store"
 import { Intelligence } from "../src/intelligence"
@@ -288,6 +290,55 @@ describe("DesignStore revisions", () => {
 })
 
 describe("DesignStore approval", () => {
+  it.live("freezes the selected browser screenshot with approval and rejects a stale capture", () =>
+    Effect.gen(function* () {
+      yield* seed
+      const store = yield* DesignStore.Service
+      const created = yield* store.create(sessionID, checkout)
+      const revision = yield* store.publish(sessionID, created.id, "Approval")
+      const variant = { id: "stone", name: "Stone" }
+      const png = new PNG({ width: 1, height: 1 })
+      png.data.set([0, 192, 0, 255])
+      const data = PNG.sync.write(png).toString("base64")
+      const source = {
+        type: "design-approval-capture",
+        reference: "$screenshot1",
+        revision: revision.id,
+        variant: "stone",
+        screen: "profile",
+        width: 800,
+        height: 600,
+        scrollX: 0,
+        scrollY: 100,
+      }
+      const stale = yield* store.importAsset(sessionID, created.id, {
+        name: "stale.png",
+        mime: "image/png",
+        data,
+        source: JSON.stringify({ ...source, revision: "rev_old" }),
+      })
+      expect((yield* store.approve(sessionID, created.id, revision.id, variant, stale.id).pipe(Effect.flip)).code).toBe(
+        "invalid",
+      )
+      expect((yield* store.get(sessionID, created.id)).ended).toBe(false)
+      const screenshot = yield* store.importAsset(sessionID, created.id, {
+        name: "screenshot1.png",
+        mime: "image/png",
+        data,
+        source: JSON.stringify(source),
+      })
+      expect(() => DesignCapture.validate(screenshot, revision.id, { id: "other", name: "Other" })).toThrow()
+      const approved = yield* store.approve(sessionID, created.id, revision.id, variant, screenshot.id)
+      const record = yield* store.approval(sessionID, created.id)
+      expect(record.screenshot).toEqual(screenshot)
+      expect(yield* read(approved.plan)).toContain("$screenshot1 = image 1: screenshot1.png")
+      expect(yield* read(approved.plan)).toContain("screen profile; 800×600, scroll 0,100")
+      yield* store.approve(sessionID, created.id, revision.id, variant, stale.id)
+      expect((yield* store.approval(sessionID, created.id)).screenshot).toEqual(screenshot)
+      expect(Buffer.from(yield* store.readBlob(screenshot.hash)).toString("base64")).toBe(data)
+    }),
+  )
+
   it.live("approves the published revision once, freezes its package and ends the review", () =>
     Effect.gen(function* () {
       yield* seed

@@ -1,5 +1,7 @@
 import { expect } from "bun:test"
 import { Design } from "@opencode/schema/design"
+import { SessionInbox } from "@opencode/schema/session-inbox"
+import { SessionMessage } from "@opencode/schema/session-message"
 import { Effect, Schema } from "effect"
 import { tmpdir } from "../../core/test/fixture/tmpdir"
 import { it } from "../../core/test/lib/effect"
@@ -136,9 +138,49 @@ it.live("approval into Plan retires preview routes while keeping the immutable a
     const revision = yield* Effect.promise(() => published.json()).pipe(
       Effect.flatMap(Schema.decodeUnknownEffect(Design.Revision)),
     )
-    const approved = yield* request(`/design/session/${sessionID}/${document.id}/approve`, { revision: revision.id })
+    const imported = yield* request(`/design/session/${sessionID}/${document.id}/asset`, {
+      name: "screenshot1.png",
+      mime: "image/png",
+      data: "iVBORw0KGgoAAAANSUhEUgAAAAIAAAACCAYAAABytg0kAAAAEElEQVR4nGNgOMDwH4xhDAA6dAb9wA076gAAAABJRU5ErkJggg==",
+      source: JSON.stringify({
+        type: "design-approval-capture",
+        revision: revision.id,
+        reference: "$screenshot1",
+        variant: "",
+        screen: "profile",
+        width: 800,
+        height: 600,
+        scrollX: 0,
+        scrollY: 20,
+      }),
+    })
+    expect(imported.status).toBe(200)
+    const screenshot = yield* Effect.promise(() => imported.json()).pipe(
+      Effect.flatMap(Schema.decodeUnknownEffect(Design.Asset)),
+    )
+    const approvalInput = { revision: revision.id, screenshot: screenshot.id }
+    const approved = yield* request(`/design/session/${sessionID}/${document.id}/approve`, approvalInput)
     expect(approved.status).toBe(200)
     expect(yield* Effect.promise(() => approved.json())).toMatchObject({ agent: "plan", revision: revision.id })
+    const retried = yield* request(`/design/session/${sessionID}/${document.id}/approve`, approvalInput)
+    expect(retried.status).toBe(200)
+    yield* Effect.promise(() => retried.arrayBuffer())
+    // Execution may have delivered the input: read pending before visible so either durable state is covered.
+    const pendingResponse = yield* request(`/api/session/${sessionID}/inbox`)
+    const pending = yield* Effect.promise(() => pendingResponse.json()).pipe(
+      Effect.flatMap(Schema.decodeUnknownEffect(Schema.Struct({ data: Schema.Array(SessionInbox.Info) }))),
+    )
+    const visibleResponse = yield* request(`/api/session/${sessionID}/message`)
+    const visible = yield* Effect.promise(() => visibleResponse.json()).pipe(
+      Effect.flatMap(Schema.decodeUnknownEffect(Schema.Struct({ data: Schema.Array(SessionMessage.Info) }))),
+    )
+    const images = [
+      ...pending.data.flatMap((item) => (item.type === "user" ? [{ id: item.id, ...item.payload }] : [])),
+      ...visible.data.filter((message) => message.type === "user"),
+    ].filter((message) => message.metadata?.source === "design.approval.reference")
+    expect(new Set(images.map((message) => message.id)).size).toBe(1)
+    expect(images[0]?.text).toContain("$screenshot1 = image 1: screenshot1.png")
+    expect(images[0]?.files?.[0]).toMatchObject({ mime: "image/png", name: "screenshot1.png" })
     yield* Effect.forEach(
       ["link", "review", "feed", `${document.id}/present`, `${document.id}/revision/${revision.id}/preview`],
       (route) =>
@@ -154,7 +196,10 @@ it.live("approval into Plan retires preview routes while keeping the immutable a
     yield* Effect.promise(() => launch.arrayBuffer())
     const record = yield* request(`/design/session/${sessionID}/${document.id}/approval/${revision.id}`)
     expect(record.status).toBe(200)
-    expect(yield* Effect.promise(() => record.json())).toMatchObject({ revision: { id: revision.id } })
+    expect(yield* Effect.promise(() => record.json())).toMatchObject({
+      revision: { id: revision.id },
+      screenshot: { id: screenshot.id, hash: screenshot.hash },
+    })
     const other = yield* request("/api/session", {
       id: "ses_design_other",
       agent: "design",

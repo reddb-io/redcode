@@ -789,7 +789,7 @@ export function make(options: ClientOptions) {
             {
               method: "POST",
               path: `/api/experimental/session/${encodeURIComponent(input.sessionID)}/design/${encodeURIComponent(input.designID)}/approve`,
-              body: { revision: input["revision"], variant: input["variant"] },
+              body: { revision: input["revision"], variant: input["variant"], screenshot: input["screenshot"] },
               successStatus: 200,
               declaredStatuses: [400, 401, 404],
               empty: false,

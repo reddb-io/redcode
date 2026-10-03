@@ -366,6 +366,8 @@ export interface Variant extends Schema.Schema.Type<typeof Variant> {}
 export const Approve = Schema.Struct({
   revision: Schema.NonEmptyString,
   variant: Variant.pipe(optional),
+  /** Live preview reference captured only when the reviewer approves in the browser. */
+  screenshot: Schema.String.pipe(optional),
 }).annotate({ identifier: "Design.Approve" })
 export interface Approve extends Schema.Schema.Type<typeof Approve> {}
 
@@ -656,6 +658,7 @@ export const Approval = Schema.Struct({
   approvedAt: Schema.NullOr(Schema.Number),
   variant: Schema.NullOr(Variant),
   revision: Revision,
+  screenshot: Asset.pipe(optional),
   assets: Schema.Array(Asset),
   feedback: Schema.Array(Feedback),
   audits: Schema.Array(Schema.Struct({ id: Schema.String, result: Schema.NullOr(Schema.String), audit: Audit })),

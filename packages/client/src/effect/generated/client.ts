@@ -810,7 +810,7 @@ const EndpointSessionDesignApprove = (raw: RawClient["server.session"]) => (inpu
   preserveEffect<SessionDesignApproveOutput>()(
     raw["session.design.approve"]({
       params: { sessionID: input["sessionID"], designID: input["designID"] },
-      payload: { revision: input["revision"], variant: input["variant"] },
+      payload: { revision: input["revision"], variant: input["variant"], screenshot: input["screenshot"] },
     }).pipe(
       Effect.mapError(mapClientError),
       Effect.map((value) => value.data),

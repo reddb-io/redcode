@@ -13,6 +13,7 @@ import { SessionMessage } from "../session/message.js"
 import { SessionSchema } from "../session/schema.js"
 import { DesignApproval } from "./approval.js"
 import { DesignStore } from "./store.js"
+import { DesignCapture } from "./capture.js"
 
 /** Commit explicit approval and hand the same durable Session to Plan. */
 export const approve = Effect.fn("DesignHandoff.approve")(function* (
@@ -29,7 +30,7 @@ export const approve = Effect.fn("DesignHandoff.approve")(function* (
     Effect.gen(function* () {
       const before = yield* designs.get(sessionID, id)
       const session = yield* sessions.get(sessionID)
-      const approved = yield* designs.approve(sessionID, id, input.revision, input.variant)
+      const approved = yield* designs.approve(sessionID, id, input.revision, input.variant, input.screenshot)
       const record = yield* designs.approval(sessionID, id, input.revision)
       const goal = yield* goals.get(sessionID)
       if (goal?.status === "active" && goal.stopAfter === "design")
@@ -41,6 +42,37 @@ export const approve = Effect.fn("DesignHandoff.approve")(function* (
       const messageID = SessionMessage.ID.make(
         `msg_design_approval_${createHash("sha256").update(`${sessionID}:${id}:${input.revision}`).digest("hex").slice(0, 32)}`,
       )
+      if (record.screenshot) {
+        const reference = DesignCapture.validate(record.screenshot, record.revision.id, record.variant ?? undefined)
+        const bytes = yield* designs.readBlob(record.screenshot.hash)
+        const image = yield* sessions
+          .prompt({
+            sessionID,
+            id: SessionMessage.ID.make(`${messageID}_image`),
+            text: DesignCapture.describe(record.screenshot, reference),
+            files: [
+              {
+                uri: `data:${record.screenshot.mime};base64,${Buffer.from(bytes).toString("base64")}`,
+                name: record.screenshot.name,
+              },
+            ],
+            metadata: { source: "design.approval.reference", designID: id, revision: input.revision },
+            delivery: "steer",
+            resume: false,
+          })
+          .pipe(
+            Effect.mapError(
+              (error) =>
+                new Design.Error({ code: "conflict", message: error instanceof Error ? error.message : String(error) }),
+            ),
+          )
+        if (
+          image.payload.metadata?.source !== "design.approval.reference" ||
+          image.payload.metadata.designID !== id ||
+          image.payload.metadata.revision !== input.revision
+        )
+          return yield* new Design.Error({ code: "conflict", message: "Design reference message ID is already in use" })
+      }
       const admitted = yield* sessions.synthetic({
         sessionID,
         id: messageID,

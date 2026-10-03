@@ -251,8 +251,9 @@ product in this mode, only the prototype, so nothing you say changes code until 
 
 - **Targets.** Prototype for the `web`, for an `app`, or as `presentation` slides.
 - **Review in the browser.** Click an element, select text or a diagram node and leave a note. Nothing
-  reaches the agent until you press **Send to Agent**. The page reloads when the agent saves and keeps
-  your place.
+  reaches the agent until you press **Send to Agent**. New published revisions update the revision
+  picker and preview together, keeping your notes, selected screen and scroll position. Browsing an
+  older revision keeps that selection until you open the latest one.
 - **Layout audit.** After every load the browser looks for cut-off text, controls outside the viewport and
   sideways scrolling. You choose which findings to queue as fixes.
 - **Whiteboard.** Mermaid diagrams open in an Excalidraw whiteboard; your edits go back as a note and a PNG.
@@ -263,7 +264,13 @@ product in this mode, only the prototype, so nothing you say changes code until 
   design system, checks rendered evidence, and reports checked, pending and unverified items.
   Findings become pending Design tasks for the next requested round; review never starts an
   automatic edit/publish loop or approves the prototype for you.
-- **Finish.** `design_exit` writes the plan from the decisions and open questions recorded in `design.json`.
+- **Finish.** Approving in the browser captures the current preview as `$screenshot1` and attaches the
+  image to the same session for Plan, alongside the approved decisions. The reference records the
+  revision, variant, screen, viewport and scroll position, and retries reuse the original image.
+  You can uncheck the capture in the approval dialog; an unavailable capture does not block approval.
+  Ordinary feedback rounds do not capture screenshots. Browser capture renders the live DOM;
+  video, WebGL and some browser effects may not reproduce exactly.
+  `design_exit` writes the plan from the decisions and open questions recorded in `design.json`.
 
 <img src="docs/features/design-review.svg" alt="The review page: the prototype with numbered annotation pins, and the conversation panel with the queued notes and Send to Agent" width="100%" />
 

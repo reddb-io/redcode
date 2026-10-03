@@ -1,0 +1,8 @@
+{
+  "package": "html2canvas-pro",
+  "version": "2.5.0",
+  "source": "https://registry.npmjs.org/html2canvas-pro/-/html2canvas-pro-2.5.0.tgz",
+  "integrity": "sha512-+xuLQWcYMGvbXtlIzVOLvNJEXqL/dY7Dbn2T4qYtJvqfPVtJ8BcNr1CrrUp/uCxne9DE/F+eZHsf1khb1dbMyg==",
+  "file": "dist/html2canvas-pro.min.js",
+  "sha256": "218839b4110808d587e0223e01d31e7a22dc0fd8b0653f0ccea68f0d9ca3b131"
+}

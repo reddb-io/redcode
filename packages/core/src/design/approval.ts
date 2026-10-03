@@ -2,6 +2,7 @@ export * as DesignApproval from "./approval.js"
 
 import { Schema } from "effect"
 import { Design } from "@opencode/schema/design"
+import { DesignCapture } from "./capture.js"
 
 // Read historical packages without rewriting the evidence that was approved.
 export const Stored = Schema.Struct({
@@ -58,7 +59,17 @@ export function summary(record: Design.Approval): typeof Summary.Type {
     audience: document.brief.audience,
     constraints: document.brief.constraints,
     content: document.brief.content,
-    references: document.brief.references,
+    references: [
+      ...document.brief.references,
+      ...(record.screenshot
+        ? [
+            DesignCapture.describe(
+              record.screenshot,
+              DesignCapture.validate(record.screenshot, record.revision.id, record.variant ?? undefined),
+            ),
+          ]
+        : []),
+    ],
     designSystem: Design.describeSystem(document.designSystem),
     decisions: document.decisions.map((item) => item.text),
     scenarios: document.scenarios,

@@ -4,6 +4,8 @@ import type { Design } from "@opencode/schema/design"
 import { DesignExport } from "../export.js"
 import { appearance } from "./brand.gen.js"
 import { annotations } from "./annotations.js"
+import { capture } from "./capture.js"
+import captureRuntime from "./vendor/capture/runtime.txt" with { type: "text" }
 import { reviewCopy } from "./copy.js"
 import { designFeed } from "./feed.js"
 import { previewLoading } from "./loading.js"
@@ -21,10 +23,14 @@ export const CSP =
 
 /** The browser review keeps its conversation and controls in the trusted shell. */
 export function review(sessionID: string, endpoint: string, breakpoints?: readonly number[]) {
-  const options = JSON.stringify({ base: "", endpoint, sessionID, copy: reviewCopy, appearance, breakpoints }).replaceAll(
-    "<",
-    "\\u003c",
-  )
+  const options = JSON.stringify({
+    base: "",
+    endpoint,
+    sessionID,
+    copy: reviewCopy,
+    appearance,
+    breakpoints,
+  }).replaceAll("<", "\\u003c")
   return `<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Design · Redcode</title><link rel="icon" type="image/svg+xml" href="${appearance.favicon}"><style>html,body,#review{height:100%;margin:0}</style></head><body><div id="review"></div><script>(${mountReview.toString()})(document.getElementById("review"), Object.assign(${options}, { feed: ${designFeed.toString()}, viewports: ${viewports.toString()}, device: ${device.toString()}, stage: ${stage.toString()}, deck: ${deck.toString()}, loading: ${previewLoading.toString()} }))</script></body></html>`
 }
 
@@ -40,5 +46,5 @@ export async function preview(revision: Design.Revision, directory: string) {
     revision.document.engine === "html" ? revision.document.entry : "index.html",
   )
   const controls = JSON.stringify(revision.document.controls ?? []).replaceAll("<", "\\u003c")
-  return `<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; img-src data: blob:; font-src data:; connect-src 'none'; base-uri 'none'; form-action 'none'">${revision.document.target === "presentation" ? `<script>(${slides.toString()})(${deck.toString()})</script>` : ""}<script>(${screens.toString()})()</script>${html}<script>(${params.toString()})(${controls});(${annotations.toString()})()</script>`
+  return `<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; img-src data: blob:; font-src data:; connect-src 'none'; base-uri 'none'; form-action 'none'">${revision.document.target === "presentation" ? `<script>(${slides.toString()})(${deck.toString()})</script>` : ""}<script>(${screens.toString()})()</script>${html}<script>(${params.toString()})(${controls});(${annotations.toString()})();${captureRuntime.replaceAll("</script", "<\\/script")};(${capture.toString()})(window.html2canvas,${JSON.stringify(revision.id)});</script>`
 }

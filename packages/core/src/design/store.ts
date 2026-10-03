@@ -23,6 +23,7 @@ import { DesignGate } from "./gate.js"
 import { DesignSystem } from "./system.js"
 import { DesignBuild } from "./build.js"
 import { DesignAssets } from "./assets.js"
+import { DesignCapture } from "./capture.js"
 
 const make = Effect.gen(function* () {
   const db = (yield* Database.Service).db
@@ -824,6 +825,7 @@ const make = Effect.gen(function* () {
     id: Design.ID,
     revisionID: string,
     variant?: Design.Variant,
+    screenshotID?: string,
   ) {
     const document = yield* get(sessionID, id)
     if (document.revision !== revisionID)
@@ -843,6 +845,12 @@ const make = Effect.gen(function* () {
       catch: () => new Design.Error({ code: "unavailable", message: "Unable to read the Design approval package" }),
     })
     if (!exists) {
+      const screenshot = screenshotID ? yield* asset(sessionID, id, screenshotID) : undefined
+      if (screenshot)
+        yield* Effect.try({
+          try: () => DesignCapture.validate(screenshot, revisionID, variant),
+          catch: (error) => error as Design.Error,
+        })
       const { feedback, audits, media } = yield* evidence(sessionID, id, recorded)
       yield* Effect.tryPromise({
         try: () =>
@@ -854,6 +862,7 @@ const make = Effect.gen(function* () {
                 approvedAt: Date.now(),
                 variant: variant ?? null,
                 revision: recorded,
+                screenshot,
                 assets: media,
                 feedback,
                 audits,
