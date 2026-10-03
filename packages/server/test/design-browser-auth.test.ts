@@ -55,8 +55,7 @@ it.live("Design entry creates a new session in a loaded project and keeps sessio
     const todos = yield* Effect.promise(() =>
       fetch(new URL(`/design/session/${result.sessionID}/todo`, server.base), { headers: { cookie } }),
     )
-    expect(todos.status).toBe(200)
-    expect(yield* Effect.promise(() => todos.json())).toEqual([])
+    expect({ status: todos.status, body: yield* Effect.promise(() => todos.json()) }).toEqual({ status: 200, body: [] })
     const share = yield* Effect.promise(() =>
       fetch(new URL(`/design/session/${result.sessionID}/share`, server.base), { headers: { cookie } }),
     )

@@ -55,6 +55,7 @@ export const routes = (hosts: () => ReadonlyArray<string>, network: () => string
       const sessions = yield* Session.Service
       const execution = yield* SessionExecution.Service
       const goals = yield* SessionGoal.Service
+      const todos = yield* SessionTodoStore.Service
       const instances = yield* Instance.Service
       const auth = yield* ServerAuth.Config
       const app = yield* App.Metadata
@@ -255,6 +256,7 @@ export const routes = (hosts: () => ReadonlyArray<string>, network: () => string
         Effect.provideService(Session.Service, sessions),
         Effect.provideService(SessionExecution.Service, execution),
         Effect.provideService(SessionGoal.Service, goals),
+        Effect.provideService(SessionTodoStore.Service, todos),
         Effect.catchCause((cause) => Effect.succeed(errorResponse(Cause.squash(cause)))),
       )
 
