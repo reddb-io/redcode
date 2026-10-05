@@ -50,6 +50,7 @@ const revisions = ["rev_latest", "rev_older"].map((id) =>
 await Bun.write(
   path.join(directory.path, "index.html"),
   `<!doctype html><html><body>
+  <script>var module = { exports: {} }; var exports = module.exports;</script>
   <main data-design-variant="one"><section data-design-screen="profile"><button id="counter">Clicks: 0</button><div id="capture-marker" style="position:fixed;left:40px;top:60px;width:80px;height:80px;background:#e00000"></div><textarea autocomplete="cc-name" style="position:fixed;left:200px;top:60px;width:200px;height:80px;border:0;background:#fff;color:#000;font:32px monospace">PRIVATE CARD NAME</textarea></section></main>
   <script>let count = 0; document.getElementById('counter').onclick = () => {
     document.getElementById('counter').textContent = 'Clicks: ' + (++count); document.getElementById('capture-marker').style.background = '#00c000';
@@ -87,6 +88,8 @@ const state = {
   calls: [] as string[],
   failRevisions: false,
   failApproval: false,
+  failFeedback: false,
+  refused: undefined as string | undefined,
   assets: [] as Design.Asset[],
   captures: [] as Design.ImportAsset[],
   approvals: [] as Design.Approve[],
@@ -167,8 +170,15 @@ const server = Bun.serve({
     if (route.endsWith("/file"))
       return new Response(Buffer.from(state.captures[0]!.data, "base64"), { headers: { "content-type": "image/png" } })
     if (route.endsWith("/feedback")) {
-      if (request.method === "POST")
-        state.feedback.push(Schema.decodeUnknownSync(Design.Feedback)(await request.json()))
+      if (request.method !== "POST") return Response.json([])
+      const feedback = Schema.decodeUnknownSync(Design.Feedback)(await request.json())
+      // The server's answer to a review it will not store, such as one too long for one message.
+      if (state.failFeedback) {
+        state.failFeedback = false
+        state.refused = feedback.id
+        return Response.json({ message: "This review is too long to send as one message" }, { status: 400 })
+      }
+      state.feedback.push(feedback)
       return Response.json([])
     }
     return new Response("Unknown fixture route", { status: 404 })
@@ -376,11 +386,30 @@ try {
     const select = document.querySelector("#review")!.shadowRoot!.querySelector<HTMLSelectElement>("#revisions")!
     return select.options.length === 5 && select.value === "rev_retry"
   })
+  // A review the server refuses is released, not held for a retry: the draft stays editable and the
+  // next send is a new message.
+  state.failFeedback = true
+  await page.locator("#send").click()
+  await page.waitForFunction(() =>
+    document
+      .querySelector("#review")!
+      .shadowRoot!.querySelector("#status")!
+      .textContent?.includes("too long to send as one message"),
+  )
+  assert.equal(await page.locator("#send").getAttribute("data-copy"), "send")
+  assert.equal(await page.locator("#note").isEnabled(), true)
+  assert.equal(await page.locator("#note").inputValue(), "Keep my draft across the revision")
+  assert.equal(await page.locator("#feedback-status").isHidden(), true)
+  assert.equal(state.feedback.length, 0)
+  assert.ok(state.refused, "The refused review must have reached the server once")
+  await page.locator("#note").fill("Keep my draft, shortened to fit")
   await page.locator("#send").click()
   await page.waitForFunction(() =>
     document.querySelector("#review")!.shadowRoot!.querySelector("#feedback-status")!.textContent?.includes("received"),
   )
   assert.equal(state.feedback.length, 1)
+  assert.notEqual(state.feedback[0]!.id, state.refused)
+  assert.equal(state.feedback[0]!.text, "Keep my draft, shortened to fit")
   assert.deepEqual(state.feedback[0]!.assets, [])
   assert.equal(state.captures.length, 0, "Feedback rounds must not capture screenshots")
   await page.locator("#note").fill("My unsent notes must survive anti-slop")
@@ -482,8 +511,9 @@ try {
   await page.clock.runFor(15000)
   assert.equal(state.calls.length, approvedRequests, "Browser approval must stop polling")
   assert.deepEqual(errors, [])
-  // Opt-out and failed rasterization both leave the explicit approval available.
-  for (const mode of ["opt-out", "capture-failure", "scrolled-capture"]) {
+  // Opt-out and failed rasterization both leave the explicit approval available. A prototype that keeps
+  // thousands of hidden elements, or whose variant root has no box of its own, still yields its screenshot.
+  for (const mode of ["opt-out", "capture-failure", "scrolled-capture", "hidden-screens", "boxless-variant"]) {
     state.document = { ...state.document, approvedRevision: null, ended: false }
     await page.evaluate(() => localStorage.clear())
     await page.reload()
@@ -503,6 +533,17 @@ try {
         document.querySelector<HTMLElement>("#capture-marker")!.style.background = "#00c000"
         window.scrollTo(0, 200)
       })
+    if (mode === "hidden-screens")
+      await preview.locator("body").evaluate(() => {
+        document.body.insertAdjacentHTML(
+          "beforeend",
+          `<section hidden>${"<p><span>hidden</span><b>row</b></p>".repeat(3000)}</section>`,
+        )
+      })
+    if (mode === "boxless-variant")
+      await preview.locator("body").evaluate(() => {
+        document.querySelector<HTMLElement>('[data-design-variant="one"]')!.style.display = "contents"
+      })
     await page.locator("#approve").click()
     if (mode === "opt-out") await page.locator("#approval-screenshot").uncheck()
     await page.locator("#confirm-approve").click()
@@ -518,7 +559,11 @@ try {
         "Viewport-fixed controls remain visible after scrolling",
       )
     }
-    if (mode !== "scrolled-capture") {
+    if (mode === "hidden-screens" || mode === "boxless-variant") {
+      assert.ok(state.approvals.at(-1)!.screenshot, `${mode} must still attach the approval screenshot`)
+      assert.equal(JSON.parse(state.captures.at(-1)!.source).variant, "one")
+    }
+    if (mode === "opt-out" || mode === "capture-failure") {
       assert.equal(state.approvals.at(-1)!.screenshot, undefined)
       assert.equal(state.captures.length, 1)
     }

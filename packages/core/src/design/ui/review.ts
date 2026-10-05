@@ -204,6 +204,8 @@ export function mountReview(host: HTMLElement, options: ReviewOptions) {
     approving: undefined as Design.Approve | undefined,
     approval: undefined as Design.Approval | undefined,
     captureFailed: false,
+    /** Why the last approval capture failed, shown beside the notice so a failure can be diagnosed. */
+    captureReason: "",
     approvalScreenshot: undefined as { revision: string; variant: string; asset: string } | undefined,
     feed: [] as Design.FeedEvent[],
     scroll: { x: 0, y: 0 },
@@ -2339,6 +2341,7 @@ details{border-top:1px solid var(--edge);padding:14px 0}summary{cursor:pointer;f
   })
   click("approve", async () => {
     state.captureFailed = false
+    state.captureReason = ""
     state.approving = {
       revision: state.revision,
       ...(state.variant ? { variant: state.variants.find((item) => item.id === state.variant) } : {}),
@@ -2365,6 +2368,9 @@ details{border-top:1px solid var(--edge);padding:14px 0}summary{cursor:pointer;f
     element<HTMLDialogElement>("approve-dialog").showModal()
     element("cancel-approve").focus()
   })
+  /** The capture's technical reason follows the notice untranslated: it is for diagnosis, not for reading aloud. */
+  const captureNotice = () =>
+    state.captureReason ? `${copy.screenshotUnavailable} (${state.captureReason})` : copy.screenshotUnavailable
   const captureApproval = async () => {
     if (!state.approving) return
     if (!input("approval-screenshot").checked) {
@@ -2399,15 +2405,19 @@ details{border-top:1px solid var(--edge);padding:14px 0}summary{cursor:pointer;f
         if (error) reject(error)
         if (view) resolve(view)
       }
-      const abort = () => finish(new Error(copy.screenshotUnavailable))
+      const abort = () => finish(new Error("the review closed before the preview answered"))
       const receive = (event: MessageEvent) => {
         if (event.source !== frame || event.data?.type !== "design:capture-result" || event.data.request !== request)
           return
         const view = event.data
+        if (view.error)
+          return finish(
+            new Error(typeof view.reason === "string" && view.reason ? view.reason : "the preview could not be drawn"),
+          )
+        if (view.revision !== approval.revision) return finish(new Error("the preview shows another revision"))
+        if (approval.variant && view.variant !== approval.variant.id)
+          return finish(new Error("the preview shows another variant"))
         if (
-          view.error ||
-          view.revision !== approval.revision ||
-          (approval.variant && view.variant !== approval.variant.id) ||
           typeof view.variant !== "string" ||
           typeof view.screen !== "string" ||
           typeof view.data !== "string" ||
@@ -2417,10 +2427,11 @@ details{border-top:1px solid var(--edge);padding:14px 0}summary{cursor:pointer;f
           view.width <= 0 ||
           view.height <= 0
         )
-          return finish(new Error(copy.screenshotUnavailable))
+          return finish(new Error("the preview returned an image the review cannot use"))
         finish(undefined, view)
       }
-      const timer = setTimeout(abort, 8000)
+      // A large prototype on a busy machine needs several seconds; the dialog shows the capture in progress meanwhile.
+      const timer = setTimeout(() => finish(new Error("the preview did not answer within 20 seconds")), 20000)
       window.addEventListener("message", receive)
       controller.signal.addEventListener("abort", abort, { once: true })
       frame?.postMessage({ type: "design:capture", request }, "*")
@@ -2448,9 +2459,12 @@ details{border-top:1px solid var(--edge);padding:14px 0}summary{cursor:pointer;f
   const finishApproval = async () => {
     if (!state.approving) return
     state.captureFailed = false
-    await captureApproval().catch(() => {
+    state.captureReason = ""
+    await captureApproval().catch((error: unknown) => {
       state.captureFailed = true
-      status(copy.screenshotUnavailable, "screenshotUnavailable", "error")
+      state.captureReason = error instanceof Error ? error.message : String(error)
+      console.warn("Design approval capture failed:", state.captureReason)
+      status(captureNotice(), undefined, "error")
     })
     const approval = await api<{ agent: string }>(`/${state.design!.id}/approve`, "POST", state.approving)
     element<HTMLDialogElement>("approve-dialog").close()
@@ -2459,11 +2473,8 @@ details{border-top:1px solid var(--edge);padding:14px 0}summary{cursor:pointer;f
       return
     }
     await refresh()
-    status(
-      state.captureFailed ? copy.screenshotUnavailable : copy.approved,
-      state.captureFailed ? "screenshotUnavailable" : "approved",
-      "success",
-    )
+    if (state.captureFailed) return status(captureNotice(), undefined, "success")
+    status(copy.approved, "approved", "success")
   }
   // The reviewer explicitly accepts open notes before the same approval and Plan handoff.
   click("record-approve", async () => {
@@ -2527,6 +2538,15 @@ details{border-top:1px solid var(--edge);padding:14px 0}summary{cursor:pointer;f
         throw Object.assign(new Error(`${error instanceof Error ? error.message : copy.failure} ${copy.endRefused}`), {
           status: 409,
         })
+      }
+      // A refused review (too long, an oversized attachment) was never stored: release it so the notes can
+      // be edited and sent again, instead of retrying the same payload into the same refusal.
+      if ((error as { status?: number }).status === 400) {
+        state.pending = undefined
+        state.feedbackError = ""
+        save()
+        drawNotes()
+        controls()
       }
       throw error
     }
@@ -3638,7 +3658,7 @@ details{border-top:1px solid var(--edge);padding:14px 0}summary{cursor:pointer;f
     const styles = [...root.querySelectorAll("style")]
     dispose()
     const message = document.createElement("p")
-    message.textContent = state.captureFailed ? `${copy.approved} ${copy.screenshotUnavailable}` : copy.approved
+    message.textContent = state.captureFailed ? `${copy.approved} ${captureNotice()}` : copy.approved
     message.style.padding = "24px"
     root.append(...styles, message)
   }

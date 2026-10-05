@@ -350,7 +350,13 @@ export function reduceSessionRows(
         flushTurn(rows)
         return rows
       }
-      if (message.type === "synthetic" && !message.description?.trim()) return rows
+      // A Design approval carries no description: its card is rebuilt from the message itself.
+      if (
+        message.type === "synthetic" &&
+        !message.description?.trim() &&
+        message.metadata?.source !== "design.approval"
+      )
+        return rows
       if (message.type === "compaction" && message.status === "completed" && usage) usage.previousTurnCache = undefined
       rows.push({
         entry: { type: "message", messageID: message.id },
