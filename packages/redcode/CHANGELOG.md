@@ -1,5 +1,29 @@
 # @reddb-io/redcode
 
+## 0.72.3
+
+### Patch Changes
+
+- Compaction no longer loops when the conversation outgrows the context window the model is believed to have. A long exchange is summarized down to its newest steps instead of being carried whole in every checkpoint, which sent requests of two to four times the window with 1,024 output tokens and compacted again on the next step. When no checkpoint can fit the window, the turn ends with one message naming the history size, what would remain, the window in use and where it came from, and what to do. A compaction request rejected as too long now shrinks to the window's target rather than to 70% of its own size. The sidebar, prompt footer and mini footer show the window beside the context usage, for example `321.0K / 115.2K (279%)`.
+- Show the Design approval card in the terminal transcript. The approval handoff message carries no description, so the transcript dropped it with other internal messages and the approval, with its link back to the review, never appeared.
+- Capture the approval screenshot of real-sized Design prototypes. The capture cloned every element of the document, hidden screens and variants included, with every computed style, and gave up after 8 seconds, so a prototype with a few thousand elements always ended with "Preview screenshot unavailable". It now skips what is not rendered and writes only the styles that differ from the browser defaults, which produces the same image several times faster, and waits up to 20 seconds.
+
+  A variant root without a box of its own (`display: contents`, a shell of fixed-position children) is recognised as the variant on screen, and a prototype that defines `module` or `exports` globals no longer keeps the capture runtime from loading. When a capture still fails, the notice states the reason.
+
+- Record the outcomes of Design review notes one by one. One mistyped note id or one refused status used to void the whole `design_document` update, so every note of the round stayed open and approval stayed blocked. Each status is now judged on its own: the valid ones are recorded, and the result tells the agent how many were recorded, why each refused one was refused, and which notes still have no outcome, round by round, with the reviewer's words.
+
+  With dual reasoning, the System One review of those outcomes no longer receives every note and every job of the design. It is sent only the notes being recorded as resolved or partial, each with what the reviewer asked and what the cited verify saw of it, so it stops failing with "Semantic evaluation unavailable" once a design has a few rounds. A review that is unavailable or inconclusive records the status and reports it as unverified instead of leaving the note open; only a note the review contradicts is refused.
+
+  The verify report quotes each reviewer's note under what the verify saw of it, and the message that blocks approval names the `design_read` call that lists a round's notes with their text.
+
+- Show a Design review's round and the number of notes it was sent with on its transcript card, in the terminal and in the app. A review stored by an older version that cut the message short now says so on its card, for example "8 of 14 notes reached the agent", instead of listing the surviving notes as if they were the whole review.
+- Deliver every note of a Design review to the agent. A review message used to be cut at 8,000 characters, so a round of 14 notes reached the agent as 7 or 8 and the rest were silently lost. The message is no longer cut: a note on an element with its own data-design-id carries no redundant locators, a long message first shortens the page text captured with each note, then leaves out backup locators, and the words the reviewer wrote are never shortened.
+
+  The agent can read a round's notes with their status, or one note with every locator, through `design_read` section `notes`. A review too long for one message is refused with a request to send it in two parts instead of being truncated, and the review page releases a refused review so its notes can be edited and sent again. The review feed reports the number of notes that were sent, including for messages stored before this change.
+
+- Models on an OpenAI-compatible endpoint added through the connect wizard no longer get a 115,200-token window frozen into the global configuration when the endpoint does not report one. The wizard writes only the limits the endpoint reported or you entered; everything else is resolved from the models catalog every time the provider loads, so a model the catalog knows (glm-5.3-flash, mimo-v2.6-pro, ...) gets its real window and a configuration that an older version froze the guess into heals on load. The catalog lookup now tolerates the id shapes gateways use (case, leading vendor segments, `:free`/`:thinking`/`@region` suffixes, dots against dashes) without ever matching a bare family name.
+- A model selected through a saved RedRouter or 9Router connection no longer keeps a guessed context window. The connection's saved catalog now holds only the limits the router reported; a limit the router left out follows the current models catalog every time the model is loaded, so a catalog refresh reaches saved selections without waiting for the router's list to change, and a guess frozen by an earlier version heals on load. A limit set in configuration under `providers.<id>.models.<id>.limit` now also applies to a model resolved through a saved connection.
+
 ## 0.72.2
 
 ### Patch Changes
