@@ -46,6 +46,7 @@ export interface ReviewOptions {
     signal: AbortSignal,
     onEvent: (event: Design.FeedEvent) => void,
     onUnavailable: () => void,
+    onStatus: (status: "live" | "offline") => void,
   ) => void
 }
 
@@ -96,7 +97,8 @@ export function mountReview(host: HTMLElement, options: ReviewOptions) {
     revisionInfo: undefined as Design.Revision | undefined,
     revisions: [] as Design.Revision[],
     audits: [] as Design.Job[],
-    reviewing: false,
+    /** The design's jobs from the last poll: verify jobs tell how far a round got, running ones keep the agent busy. */
+    jobs: [] as Design.Job[],
     notes: [] as Design.Feedback["items"][number][],
     params: {} as Design.ParamValues,
     component: "",
@@ -216,6 +218,39 @@ export function mountReview(host: HTMLElement, options: ReviewOptions) {
     /** The revision and slides the thumbnail strip was built for; unchanged, its frames are kept. */
     strip: "",
   }
+  /**
+   * What the page knows about how current it is, apart from the capped feed rows. Every connect replays the
+   * conversation with sequence 0 and the times its messages were written, so only live events (sequence above 0),
+   * timed by their arrival, say anything about now.
+   */
+  const liveness = {
+    feed: (options.feed ? "connecting" : "none") as "none" | "connecting" | "live" | "offline" | "unavailable",
+    /** The last poll could not reach the server at all. */
+    unreachable: false,
+    /** The feed delivered conversation history, so `published` holds every revision the agent published. */
+    replayed: false,
+    /** When the last live event arrived. */
+    last: 0,
+    /** When the agent last went idle, and whether a live event said so (a connect only reports the state). */
+    idleSince: 0,
+    idleLive: false,
+    /** The tool a live event reported running. */
+    tool: undefined as { id: string; name: string; summary: string; since: number } | undefined,
+    /** Revisions the agent published or restored, as the feed reported them. */
+    published: new Set<string>(),
+    /** Messages to the agent still waiting in its inbox. */
+    inbox: new Set<string>(),
+    /** A live publish of this design that the design list does not show yet. */
+    announced: "",
+    /** The latest revision whose live reload failed, and why; the last good frame stays on screen. */
+    failed: "",
+    failure: "",
+    /** The revision being loaded. */
+    loading: "",
+    /** A newer revision replaced the one on screen after waiting; the line says when it was published. */
+    switched: undefined as { revision: string; created: number } | undefined,
+    switchedTimer: undefined as ReturnType<typeof setTimeout> | undefined,
+  }
   const geometry = options.stage()
   const loader = options.loading()
   const loading = {
@@ -321,29 +356,33 @@ export function mountReview(host: HTMLElement, options: ReviewOptions) {
     compare: icon(
       '<rect x="1.7" y="3.2" width="5.4" height="9.6" rx="1.3"/><rect x="8.9" y="3.2" width="5.4" height="9.6" rx="1.3"/>',
     ),
+    attach: icon(
+      '<path d="M12.6 7.3 8 11.9a2.6 2.6 0 0 1-3.7-3.7l5-5a1.7 1.7 0 0 1 2.4 2.4L6.9 10.4a.8.8 0 0 1-1.1-1.1L10 5.1"/>',
+    ),
   }
   root.innerHTML = `<style>${options.appearance?.css ?? ""}</style><style>
 :host(:focus){outline:none}:host{container-type:inline-size;display:flex;flex-direction:column;height:100%;min-height:0;overflow:hidden;color-scheme:light dark;--surface:var(--reddb-color-background);--panel:var(--reddb-color-elevation-raised-surface);--canvas:var(--reddb-color-elevation-sunken-surface);--ink:var(--reddb-color-foreground);--muted:var(--reddb-color-ink-muted);--edge:var(--reddb-color-elevation-base-border);--accent:var(--reddb-color-primary);--accent-ink:var(--reddb-color-on-primary);background:var(--surface);color:var(--ink);font:13px/1.5 var(--reddb-font-family-sans,system-ui)}
 *{box-sizing:border-box}[hidden]{display:none!important}button,input,select,textarea{font:inherit;color:inherit;background:var(--surface);border:1px solid var(--edge);border-radius:var(--reddb-radius-md);padding:var(--reddb-spatial-gap-md) var(--reddb-spatial-inset-sm);min-height:var(--reddb-spatial-control-height-md);min-width:0}button{cursor:pointer;line-height:18px;transition:background-color var(--reddb-duration-fast) ease,border-color var(--reddb-duration-fast) ease}button:hover{background:var(--panel);border-color:var(--muted)}button:active{background:var(--canvas)}button:focus-visible,input:focus-visible,select:focus-visible,textarea:focus-visible,summary:focus-visible{outline:2px solid var(--accent);outline-offset:3px}button:disabled{opacity:.45;cursor:default}.primary{background:var(--accent);border-color:var(--accent);color:var(--accent-ink);font-weight:600}.primary:hover{background:color-mix(in oklch,var(--accent) 88%,var(--ink));border-color:var(--accent)}
 header{display:flex;gap:8px;align-items:center;padding:10px 16px;border-bottom:1px solid var(--edge);flex:none;min-width:0}#toolbar{flex-wrap:wrap;gap:6px;padding:5px 12px;background:var(--panel)}#toolbar :is(button,select):not(.icon){padding-top:3px;padding-bottom:3px;min-height:28px}h1{font-size:13px;letter-spacing:-.02em;margin:0 6px 0 0;display:flex;align-items:center;gap:6px;white-space:nowrap}h1 img{width:18px;height:18px;display:block}h2{font-size:15px;letter-spacing:-.015em;margin:0 0 12px}#toolbar select{width:auto;max-width:220px;flex:0 1 200px;min-width:0}.tools{display:contents}.actions{display:flex;flex-wrap:wrap;justify-content:flex-end;align-items:center;gap:6px;flex:0 1 auto;min-width:0;margin-left:auto}.spacer{flex:1 1 0;min-width:8px}#toolbar #width{flex:0 0 auto;width:auto;max-width:130px}#restore{border-color:transparent;background:transparent;color:var(--muted)}#approve,#reopen,#newer,#restore{white-space:nowrap}#toolbar #annotate{display:inline-flex;align-items:center;gap:6px;flex:none;white-space:nowrap;padding-inline:8px 10px;color:var(--muted)}#annotate svg{display:block;flex:none}#annotate:hover{color:var(--ink)}#annotate[aria-pressed=true]{background:color-mix(in oklch,var(--accent) 16%,var(--surface));border-color:var(--accent);color:var(--ink);font-weight:600}.icon{width:28px;height:28px;min-height:28px;padding:0;display:inline-flex;align-items:center;justify-content:center;flex:none;background:transparent;color:var(--muted)}.icon:hover{color:var(--ink)}.icon svg{display:block}.menu-host{position:relative;flex:none;display:flex}#menu{position:absolute;right:0;top:calc(100% + 4px);z-index:5;min-width:200px;padding:4px;display:grid;background:var(--surface);color:var(--ink);border:1px solid var(--edge);border-radius:var(--reddb-radius-md);box-shadow:0 8px 28px color-mix(in oklch,var(--ink) 18%,transparent)}#toolbar #menu button{border:0;background:transparent;text-align:left;border-radius:4px;padding:6px 10px;min-height:0;white-space:nowrap}#toolbar #menu button:hover,#toolbar #menu button:focus-visible{background:var(--panel);outline-offset:-2px}
-#studio{flex:1;min-height:0;display:grid;grid-template-rows:auto minmax(0,1fr)}main{min-height:0;min-width:0;display:grid;grid-template-columns:minmax(0,1fr) 336px;overflow:hidden}.canvas{background:var(--canvas);overflow:auto;min-height:0;min-width:0;padding:24px}iframe{display:block;background:oklch(99% .002 220);border:0;height:100%;min-height:0;width:100%;margin:0 auto;box-shadow:0 0 0 1px var(--edge),0 6px 24px color-mix(in oklch,var(--ink) 7%,transparent)}aside{min-height:0;min-width:0;border-left:1px solid var(--edge);display:grid;grid-template-rows:auto minmax(0,1fr);overflow:hidden}.tabs{display:flex;padding:0 16px;border-bottom:1px solid var(--edge);gap:18px}.tabs button{border:0;border-radius:0;background:none;padding:13px 0;color:var(--muted);position:relative}.tabs button[aria-selected=true]{color:var(--ink);font-weight:600}.tabs button[aria-selected=true]::after{content:"";position:absolute;bottom:0;left:0;right:0;height:2px;background:var(--accent)}.panel{overflow:auto;min-height:0;padding:20px}.panel>p{margin:0 0 16px}.section{margin-top:24px;padding-top:18px;border-top:1px solid var(--edge)}label{display:grid;gap:6px;margin-bottom:14px;font-size:12px;font-weight:500}label input,label select,label textarea{font-size:13px;font-weight:400}textarea{min-height:96px;resize:vertical;width:100%;line-height:1.55}input:not([type=checkbox]),select{max-width:100%;width:100%}input[type=checkbox]{accent-color:var(--accent);margin:0}label.check{display:flex;align-items:center;gap:8px;font-weight:400}.row{display:flex;gap:8px;align-items:center}.row>*{flex:1;min-width:0}#note{min-height:116px}#send{width:100%;margin:14px 0 8px}#add{margin-bottom:14px}#attachment{font-size:11px;padding:6px;width:100%}#attachment::file-selector-button{font:inherit;border:0;border-radius:3px;padding:4px 7px;margin-right:8px;background:var(--panel);color:var(--ink);cursor:pointer}
-details{border-top:1px solid var(--edge);padding:14px 0}summary{cursor:pointer;font-weight:600;list-style-position:inside;color:var(--ink);margin-bottom:0}details[open]>summary{margin-bottom:14px}details:last-child{padding-bottom:0}.note{padding:10px 0;border-bottom:1px solid var(--edge);overflow-wrap:anywhere}.note button{float:right;padding:2px 7px;font-size:11px}.muted,small{font-size:12px;color:var(--muted);font-weight:400}small{display:block}#draft{margin-bottom:12px}#target{overflow-wrap:anywhere;background:var(--panel);font:11px/1.5 ui-monospace,monospace;padding:7px 9px;border-radius:4px;margin:12px 0}#target:empty{display:none}#notes:empty{display:none}#notes{margin-bottom:16px}#status{flex:none;min-height:28px;padding:5px 16px;border-top:1px solid var(--edge);font-size:11px;color:var(--muted)}#status:empty{display:none}#newer{color:var(--accent)}.asset{display:flex;gap:12px;align-items:center;padding:10px 0;border-bottom:1px solid var(--edge)}.asset img{width:48px;height:48px;object-fit:contain;background:var(--panel);border-radius:4px}#jobs .note{display:grid;gap:6px}pre{white-space:pre-wrap;overflow-wrap:anywhere;font-size:12px}#source-files{font-size:12px;overflow-wrap:anywhere}#html,#audit,#compare,#gif{margin-bottom:12px}#intake{flex:1;overflow:auto}form.intake{max-width:600px;margin:32px auto;padding:24px}form.intake h2{font-size:24px;margin-bottom:24px}#board-dialog{padding:12px;background:var(--surface);color:var(--ink);border:1px solid var(--edge);border-radius:10px}#board-dialog::backdrop{background:color-mix(in oklch,var(--canvas) 70%,transparent)}#board-close{margin-bottom:12px}#board-frame{box-shadow:none}.canvas:has(iframe[src="about:blank"])::before{content:attr(data-empty);display:block;color:var(--muted);text-align:center;padding:24px}
+#studio{flex:1;min-height:0;display:grid;grid-template-rows:auto minmax(0,1fr)}main{min-height:0;min-width:0;display:grid;grid-template-columns:minmax(0,1fr) 336px;overflow:hidden}.canvas{background:var(--canvas);overflow:auto;min-height:0;min-width:0;padding:24px}iframe{display:block;background:oklch(99% .002 220);border:0;height:100%;min-height:0;width:100%;margin:0 auto;box-shadow:0 0 0 1px var(--edge),0 6px 24px color-mix(in oklch,var(--ink) 7%,transparent)}aside{min-height:0;min-width:0;border-left:1px solid var(--edge);display:grid;grid-template-rows:auto minmax(0,1fr);overflow:hidden}.tabs{display:flex;padding:0 16px;border-bottom:1px solid var(--edge);gap:18px}.tabs button{border:0;border-radius:0;background:none;padding:13px 0;color:var(--muted);position:relative}.tabs button[aria-selected=true]{color:var(--ink);font-weight:600}.tabs button[aria-selected=true]::after{content:"";position:absolute;bottom:0;left:0;right:0;height:2px;background:var(--accent)}.panel{overflow:auto;min-height:0;padding:20px}.panel>p{margin:0 0 16px}.section{margin-top:24px;padding-top:18px;border-top:1px solid var(--edge)}label{display:grid;gap:6px;margin-bottom:14px;font-size:12px;font-weight:500}label input,label select,label textarea{font-size:13px;font-weight:400}textarea{min-height:96px;resize:vertical;width:100%;line-height:1.55}input:not([type=checkbox]),select{max-width:100%;width:100%}input[type=checkbox]{accent-color:var(--accent);margin:0}label.check{display:flex;align-items:center;gap:8px;font-weight:400}.row{display:flex;gap:8px;align-items:center}.row>*{flex:1;min-width:0}#add{margin-bottom:14px}#attachment{font-size:11px;padding:6px;width:100%}#attachment::file-selector-button{font:inherit;border:0;border-radius:3px;padding:4px 7px;margin-right:8px;background:var(--panel);color:var(--ink);cursor:pointer}
+details{border-top:1px solid var(--edge);padding:14px 0}summary{cursor:pointer;font-weight:600;list-style-position:inside;color:var(--ink);margin-bottom:0}details[open]>summary{margin-bottom:14px}details:last-child{padding-bottom:0}.note{padding:10px 0;border-bottom:1px solid var(--edge);overflow-wrap:anywhere}.note button{float:right;padding:2px 7px;font-size:11px}.muted,small{font-size:12px;color:var(--muted);font-weight:400}small{display:block}#target{overflow-wrap:anywhere;background:var(--panel);font:11px/1.5 ui-monospace,monospace;padding:7px 9px;border-radius:4px;margin:12px 0}#target:empty{display:none}#status{flex:none;min-height:28px;padding:5px 16px;border-top:1px solid var(--edge);font-size:11px;color:var(--muted)}#status:empty{display:none}.asset{display:flex;gap:12px;align-items:center;padding:10px 0;border-bottom:1px solid var(--edge)}.asset img{width:48px;height:48px;object-fit:contain;background:var(--panel);border-radius:4px}#jobs .note{display:grid;gap:6px}pre{white-space:pre-wrap;overflow-wrap:anywhere;font-size:12px}#source-files{font-size:12px;overflow-wrap:anywhere}#html,#audit,#compare,#gif{margin-bottom:12px}#intake{flex:1;overflow:auto}form.intake{max-width:600px;margin:32px auto;padding:24px}form.intake h2{font-size:24px;margin-bottom:24px}#board-dialog{padding:12px;background:var(--surface);color:var(--ink);border:1px solid var(--edge);border-radius:10px}#board-dialog::backdrop{background:color-mix(in oklch,var(--canvas) 70%,transparent)}#board-close{margin-bottom:12px}#board-frame{box-shadow:none}.canvas:has(iframe[src="about:blank"])::before{content:attr(data-empty);display:block;color:var(--muted);text-align:center;padding:24px}
 @container(max-width:860px){#toolbar{padding:4px 10px}#toolbar #annotate{width:28px;padding:0;justify-content:center}#annotate .label{display:none}h1{margin-right:2px}#toolbar select{flex:1 1 140px;max-width:200px}#restore{font-size:0;width:28px;height:28px;flex:none;padding:0}#restore::before{content:"↶";font-size:18px}main{grid-template-columns:minmax(0,1fr) 300px}.canvas{padding:16px}.panel{padding:16px}}
 @container(max-width:640px){:host{min-height:0}#toolbar select{flex:1 1 120px;max-width:none}#toolbar #width{flex:0 1 84px;max-width:84px}#approve,#reopen{font-size:12px;padding-left:8px;padding-right:8px}main{display:grid;grid-template-columns:1fr;grid-template-rows:minmax(180px,1fr) minmax(220px,.85fr)}.canvas{padding:12px}aside{border-left:0;border-top:1px solid var(--edge)}.tabs{gap:24px}.tabs button{padding:10px 0}.panel{padding:16px}form.intake{margin:0;padding:20px}}
 .variant-bar{display:flex;align-items:center;gap:6px;padding:0 12px;border-bottom:1px solid var(--edge);min-width:0;min-height:31px}.variant-bar .tabs{border:0;padding:0;flex:0 1 auto;min-width:0;overflow:auto;gap:14px}.variant-bar .tabs button{white-space:nowrap;padding:6px 0;font-size:12px}.variant-tab{display:inline-flex;align-items:center;gap:2px}.variant-bar .tabs .variant-close{white-space:nowrap;width:16px;height:16px;min-height:16px;padding:0;border:0;background:transparent;color:var(--muted);font-size:13px;line-height:1;flex:none;display:inline-flex;align-items:center;justify-content:center;opacity:0}.variant-tab:hover .variant-close,.variant-tab:focus-within .variant-close{opacity:1}.variant-bar .tabs .variant-close:hover{color:var(--ink);background:var(--panel)}@media(pointer:coarse){.variant-bar .tabs .variant-close{opacity:1}}#no-variants{white-space:nowrap;overflow:hidden;text-overflow:ellipsis;min-width:0}.variant-bar .icon{width:24px;height:24px;min-height:24px}.variant-bar .icon[aria-pressed=true]{background:var(--panel);border-color:var(--accent);color:var(--accent)}#variant-actions{display:inline-flex;align-items:center;gap:6px;width:auto;height:auto;min-height:24px;padding:2px 8px;flex:none;background:transparent;color:var(--muted)}#variant-actions:hover{color:var(--ink)}#variant-actions svg{display:block;flex:none}.screen-bar{display:flex;align-items:center;gap:10px;min-width:0;flex:none;font-size:12px;padding:0 0 6px}.screen-bar[hidden]{display:none}.screen-bar .tabs{border:0;padding:0;gap:12px;min-width:0;overflow:auto}.screen-bar .tabs button{white-space:nowrap;padding:4px 0;font-size:12px}.segment{display:inline-flex;gap:2px;flex:none}.canvas{display:flex;gap:20px;padding:16px}.preview-pane{display:flex;flex-direction:column;flex:1;min-width:0;min-height:0;height:100%}.viewport{flex:1;min-height:0;overflow:auto;padding:1px}.viewport iframe{height:100%;min-height:150px}.pane-label{height:38px;flex:none;font-size:12px;display:flex;align-items:center;gap:8px;margin:0;padding-bottom:6px}.pane-label select{width:auto;flex:1;padding:4px 8px}.canvas[data-comparing=true] .preview-pane{min-width:280px}.action-dialog{width:min(520px,calc(100vw - 32px));max-height:90vh;overflow:auto;padding:24px;background:var(--surface);color:var(--ink);border:1px solid var(--edge);border-radius:10px}.action-dialog::backdrop{background:#0008}.action-dialog p{overflow-wrap:anywhere}.action-dialog .row{justify-content:flex-end}.action-dialog .row>*{flex:0 1 auto}#status{font-size:13px;min-height:38px;padding:9px 16px;background:var(--panel);border-bottom:1px solid var(--edge);border-top:0;color:var(--ink)}#status[data-tone=error]{color:var(--reddb-color-feedback-danger-foreground)}#status[data-tone=success]{color:var(--reddb-color-feedback-success-foreground)}button[aria-busy=true]{opacity:1;cursor:progress}button[aria-busy=true]::before{content:"";display:inline-block;width:12px;height:12px;margin-right:7px;border:2px solid currentColor;border-right-color:transparent;border-radius:50%;vertical-align:-2px;animation:spin .8s linear infinite}@keyframes spin{to{transform:rotate(360deg)}}.preview-pane[aria-busy=true] .viewport{opacity:.5}@container(max-width:640px){.variant-bar{padding:0 10px}.canvas{padding:12px;gap:12px}.variant-bar .tabs .variant-close{opacity:1}#variant-actions{padding:0;width:28px;justify-content:center}#variant-actions .label{display:none}}
 @media(prefers-reduced-motion:reduce){button{transition:none}button[aria-busy=true]::before{animation:none}}
-#agent-state{font-size:11px;font-weight:600;padding:3px 9px;border-radius:999px;border:1px solid var(--edge);color:var(--muted);white-space:nowrap}#agent-state[data-state=idle]{display:none}#agent-state[data-state=working]{color:var(--accent);border-color:var(--accent)}#agent-state[data-state=working]::before{content:"";display:inline-block;width:8px;height:8px;margin-right:6px;border:2px solid currentColor;border-right-color:transparent;border-radius:50%;vertical-align:-1px;animation:spin .8s linear infinite}#agent-state[data-state=published]{color:var(--reddb-color-feedback-success-foreground);border-color:currentColor}#feed{display:grid;gap:8px;margin-bottom:16px;max-height:40vh;overflow:auto}#feed:not(:has(.entry)) #feed-empty{display:block}#feed-empty{margin:0}#feed:has(.entry) #feed-empty{display:none}.entry{padding:8px 10px;border-radius:var(--reddb-radius-md);background:var(--panel);white-space:pre-wrap;overflow-wrap:anywhere;font-size:12px;line-height:1.5}.entry[data-kind=user]{background:color-mix(in oklch,var(--accent) 10%,var(--panel))}.entry[data-kind=tool]{font:11px/1.5 ui-monospace,monospace;color:var(--muted);padding:4px 10px;background:transparent}.entry[data-kind=published]{color:var(--reddb-color-feedback-success-foreground);font-weight:600}.entry[data-kind=verified]{display:grid;gap:4px}.entry[data-kind=verified] strong{display:block}.verdict{display:grid;grid-template-columns:auto minmax(0,1fr);gap:0 8px}.verdict .glyph{font-weight:700}.verdict[data-verdict=pass] .glyph{color:var(--reddb-color-feedback-success-foreground)}.verdict[data-verdict=warn] .glyph{color:var(--accent)}.verdict[data-verdict=fail] .glyph{color:var(--reddb-color-feedback-danger-foreground)}.verdict small{display:inline}.entry a{color:var(--accent)}
-#rounds{margin-top:8px}#rounds summary{display:flex;align-items:center;gap:8px}#rounds-count{font-size:11px;font-weight:600;padding:1px 8px;border-radius:999px;background:var(--panel);border:1px solid var(--edge);color:var(--muted)}#rounds-count[data-open="true"]{color:var(--accent-ink);background:var(--accent);border-color:var(--accent)}.round-head{font-size:12px;color:var(--muted);margin:8px 0 2px}.round-note{display:grid;grid-template-columns:auto minmax(0,1fr);gap:2px 8px;padding:6px 0;border-bottom:1px solid var(--edge);font-size:12px;overflow-wrap:anywhere}.round-note .badge{font-size:10px;font-weight:600;text-transform:uppercase;letter-spacing:.04em;padding:1px 6px;border-radius:4px;border:1px solid var(--edge);color:var(--muted);align-self:start;margin-top:2px;white-space:nowrap}.round-note[data-status=resolved] .badge{color:var(--reddb-color-feedback-success-foreground);border-color:currentColor}.round-note[data-status=partial] .badge{color:var(--accent);border-color:currentColor}.round-note[data-status=unresolved] .badge{color:var(--reddb-color-feedback-danger-foreground);border-color:currentColor}.round-note .round-body{display:grid;gap:2px}.round-note .round-actions{display:flex;gap:6px;flex-wrap:wrap;margin-top:2px}.round-note .round-actions button{padding:2px 7px;font-size:11px}.round-note .round-reason{font-size:11px;color:var(--muted)}.round-record{display:flex;gap:6px;flex-wrap:wrap;align-items:center;width:100%}.round-record select,.round-record input{flex:1 1 120px;min-width:0;padding:2px 6px;font-size:11px;min-height:24px}.round-record button{padding:2px 7px;font-size:11px}#approval-review-list,#approval-open-list{margin:0 0 12px;padding-left:18px;font-size:12px;overflow-wrap:anywhere}
+#feed-empty{margin:0}.entry{padding:8px 10px;border-radius:var(--reddb-radius-md);background:var(--panel);white-space:pre-wrap;overflow-wrap:anywhere;font-size:12px;line-height:1.5}.entry[data-kind=user]{background:color-mix(in oklch,var(--accent) 10%,var(--panel))}.entry[data-kind=tool]{font:11px/1.5 ui-monospace,monospace;color:var(--muted);padding:4px 10px;background:transparent}.entry[data-kind=published]{color:var(--reddb-color-feedback-success-foreground);font-weight:600}.entry[data-kind=verified]{display:grid;gap:4px}.entry[data-kind=verified] strong{display:block}.verdict{display:grid;grid-template-columns:auto minmax(0,1fr);gap:0 8px}.verdict .glyph{font-weight:700}.verdict[data-verdict=pass] .glyph{color:var(--reddb-color-feedback-success-foreground)}.verdict[data-verdict=warn] .glyph{color:var(--accent)}.verdict[data-verdict=fail] .glyph{color:var(--reddb-color-feedback-danger-foreground)}.verdict small{display:inline}.entry a{color:var(--accent)}
+#approval-review-list,#approval-open-list{margin:0 0 12px;padding-left:18px;font-size:12px;overflow-wrap:anywhere}
 .viewport{position:relative}.device{display:contents}.device-chrome{display:none}.viewport[data-device]{overflow:hidden}.viewport[data-device] .device{display:block;position:absolute;left:0;top:0;transform-origin:0 0}.viewport[data-device] .device-chrome{display:block}.viewport[data-device] .device iframe{position:absolute;z-index:1;left:var(--device-bezel);top:var(--device-bezel);width:var(--device-width);height:var(--device-height);min-height:0;border-radius:var(--device-radius);box-shadow:none}#device-switch button{min-height:0;padding:3px 10px;font-size:12px}.viewport[data-device=slide] .device iframe{box-shadow:0 0 0 1px var(--edge)}.screen-bar[data-slides=true] .tabs{gap:8px;padding:2px}.thumb{position:relative;flex:none;width:160px;height:90px;overflow:hidden;border-radius:4px;background:var(--panel)}.thumb iframe{position:absolute;left:0;top:0;width:1920px;height:1080px;min-height:0;margin:0;border:0;transform:scale(.0833333);transform-origin:0 0;pointer-events:none;box-shadow:none}.screen-bar .tabs .thumb button{position:absolute;inset:0;display:flex;align-items:flex-end;justify-content:flex-start;padding:4px;border:0;border-radius:4px;background:transparent;box-shadow:inset 0 0 0 1px var(--edge);min-height:0;font-size:10px}.thumb button span{padding:0 5px;border-radius:3px;background:var(--surface);color:var(--ink);font-weight:600}.screen-bar .tabs .thumb button[aria-selected=true]{box-shadow:inset 0 0 0 2px var(--accent)}#slide-count{font-variant-numeric:tabular-nums;white-space:nowrap}#device-switch button[aria-pressed=true]{background:var(--panel);border-color:var(--accent);color:var(--accent)}#card{position:absolute;z-index:2;width:min(320px,100%);padding:10px 12px;background:var(--surface);color:var(--ink);border:1px solid var(--edge);border-radius:var(--reddb-radius-md);box-shadow:0 8px 28px color-mix(in oklch,var(--ink) 18%,transparent);display:grid;gap:8px}#card header{padding:0;border:0;gap:8px;font-size:12px;font-weight:600;overflow-wrap:anywhere}#card header span{flex:1;min-width:0}#card-close{flex:none;padding:0 6px;min-height:24px;font-size:14px;line-height:1}#card-text{min-height:64px;width:100%;resize:vertical}#card .row{justify-content:flex-end}#card .row>*{flex:0 1 auto}#card small{font-size:11px}#card.moved header{animation:card-moved .6s ease-out 2}@keyframes card-moved{50%{color:var(--accent)}}
 .note{display:flex;flex-wrap:wrap;gap:4px 8px;align-items:baseline}.note .note-label{font-weight:600;font-size:12px}.note .note-text{flex:1 1 100%;white-space:pre-wrap}.note button{float:none;margin-left:auto;padding:2px 7px;font-size:11px}.note button+button{margin-left:0}.note:hover{background:color-mix(in oklch,var(--panel) 60%,transparent)}
-.sends{display:flex;gap:8px;margin:14px 0 8px}.sends>*{flex:1;min-width:0}#send{width:auto;margin:0}#send-end{white-space:nowrap}#send-hint{margin-bottom:8px}
-#inbox{margin-top:8px}#inbox summary{display:flex;align-items:center;gap:8px}#inbox-count{font-size:11px;font-weight:600;padding:1px 8px;border-radius:999px;background:var(--panel);border:1px solid var(--edge);color:var(--muted)}#inbox-count[data-open="true"]{color:var(--accent-ink);background:var(--accent);border-color:var(--accent)}.finding{display:grid;grid-template-columns:auto minmax(0,1fr);gap:4px 8px;padding:8px 0;border-bottom:1px solid var(--edge);font-size:12px;overflow-wrap:anywhere}.finding input{margin-top:3px}.finding .finding-tag{font-size:10px;font-weight:600;text-transform:uppercase;letter-spacing:.04em;padding:1px 6px;border-radius:4px;border:1px solid var(--edge);color:var(--muted);align-self:start;margin-top:2px}.finding[data-severity=warn] .finding-tag{color:var(--reddb-color-feedback-danger-foreground);border-color:currentColor}.finding[data-status=resolved]{color:var(--muted)}.finding .finding-body{display:grid;gap:2px}.finding .finding-actions{display:flex;gap:6px;flex-wrap:wrap;margin-top:4px}.finding .finding-actions button{padding:2px 7px;font-size:11px}.finding .finding-status{font-size:11px;color:var(--muted)}#queue-fixes{margin-top:10px}#inbox-empty{margin:6px 0 0}
-#variant-menu{position:absolute;right:0;top:calc(100% + 4px);z-index:5;min-width:200px;padding:4px;display:grid;background:var(--surface);color:var(--ink);border:1px solid var(--edge);border-radius:var(--reddb-radius-md);box-shadow:0 8px 28px color-mix(in oklch,var(--ink) 18%,transparent)}#variant-menu button{border:0;background:transparent;text-align:left;border-radius:4px;padding:6px 10px;min-height:0;white-space:nowrap;font-size:12px}#variant-menu button:hover,#variant-menu button:focus-visible{background:var(--panel);outline-offset:-2px}.op-badge{margin-left:6px;font-size:10px;font-weight:600;line-height:16px;padding:0 6px;border-radius:999px;border:1px solid currentColor;color:var(--accent);white-space:nowrap}.variant-bar .tabs button[data-operation]{color:var(--accent)}#merge-bar{display:flex;align-items:center;gap:10px;min-width:0;overflow:auto;font-size:12px}#merge-options{display:flex;gap:10px}#merge-bar label{margin:0;display:flex;gap:6px;align-items:center;font-weight:400;white-space:nowrap}#merge-bar button{min-height:24px;padding:1px 8px;font-size:12px;white-space:nowrap}#operation-state{display:flex;flex-wrap:wrap;gap:8px;align-items:center;padding:8px 10px;margin:0 0 12px;border-radius:var(--reddb-radius-md);background:var(--panel);color:var(--reddb-color-feedback-danger-foreground);overflow-wrap:anywhere}#feedback-status{margin:8px 0;white-space:pre-wrap;overflow-wrap:anywhere}#feedback-status[data-tone=error]{color:var(--reddb-color-feedback-danger-foreground)}#feedback-status[data-tone=success]{color:var(--reddb-color-feedback-success-foreground)}#operation-state button{padding:2px 8px;font-size:12px;color:var(--ink)}.note .note-orphaned{font-size:10px;font-weight:600;padding:0 6px;border-radius:4px;border:1px solid currentColor;color:var(--reddb-color-feedback-danger-foreground)}#approval-reselect{color:var(--reddb-color-feedback-danger-foreground)}
+
+#inbox-count{font-size:11px;font-weight:600;padding:1px 8px;border-radius:999px;background:var(--panel);border:1px solid var(--edge);color:var(--muted)}#inbox-count[data-open="true"]{color:var(--accent-ink);background:var(--accent);border-color:var(--accent)}.finding{display:grid;grid-template-columns:auto minmax(0,1fr);gap:4px 8px;padding:8px 0;border-bottom:1px solid var(--edge);font-size:12px;overflow-wrap:anywhere}.finding input{margin-top:3px}.finding .finding-tag{font-size:10px;font-weight:600;text-transform:uppercase;letter-spacing:.04em;padding:1px 6px;border-radius:4px;border:1px solid var(--edge);color:var(--muted);align-self:start;margin-top:2px}.finding[data-severity=warn] .finding-tag{color:var(--reddb-color-feedback-danger-foreground);border-color:currentColor}.finding[data-status=resolved]{color:var(--muted)}.finding .finding-body{display:grid;gap:2px}.finding .finding-actions{display:flex;gap:6px;flex-wrap:wrap;margin-top:4px}.finding .finding-actions button{padding:2px 7px;font-size:11px}.finding .finding-status{font-size:11px;color:var(--muted)}#queue-fixes{margin-top:10px}#inbox-empty{margin:6px 0 0}
+#variant-menu{position:absolute;right:0;top:calc(100% + 4px);z-index:5;min-width:200px;padding:4px;display:grid;background:var(--surface);color:var(--ink);border:1px solid var(--edge);border-radius:var(--reddb-radius-md);box-shadow:0 8px 28px color-mix(in oklch,var(--ink) 18%,transparent)}#variant-menu button{border:0;background:transparent;text-align:left;border-radius:4px;padding:6px 10px;min-height:0;white-space:nowrap;font-size:12px}#variant-menu button:hover,#variant-menu button:focus-visible{background:var(--panel);outline-offset:-2px}.op-badge{margin-left:6px;font-size:10px;font-weight:600;line-height:16px;padding:0 6px;border-radius:999px;border:1px solid currentColor;color:var(--accent);white-space:nowrap}.variant-bar .tabs button[data-operation]{color:var(--accent)}#merge-bar{display:flex;align-items:center;gap:10px;min-width:0;overflow:auto;font-size:12px}#merge-options{display:flex;gap:10px}#merge-bar label{margin:0;display:flex;gap:6px;align-items:center;font-weight:400;white-space:nowrap}#merge-bar button{min-height:24px;padding:1px 8px;font-size:12px;white-space:nowrap}#operation-state{display:flex;flex-wrap:wrap;gap:8px;align-items:center;padding:8px 10px;margin:0 0 12px;border-radius:var(--reddb-radius-md);background:var(--panel);color:var(--reddb-color-feedback-danger-foreground);overflow-wrap:anywhere}#feedback-status[data-tone=error]{color:var(--reddb-color-feedback-danger-foreground)}#feedback-status[data-tone=success]{color:var(--reddb-color-feedback-success-foreground)}#operation-state button{padding:2px 8px;font-size:12px;color:var(--ink)}.note .note-orphaned{font-size:10px;font-weight:600;padding:0 6px;border-radius:4px;border:1px solid currentColor;color:var(--reddb-color-feedback-danger-foreground)}#approval-reselect{color:var(--reddb-color-feedback-danger-foreground)}
 .canvas{position:relative}.preview-state{position:absolute;inset:0;z-index:3;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:20px;padding:24px;background:var(--canvas);pointer-events:none;overflow:hidden}.preview-state button{pointer-events:auto}.canvas[data-phase=ready] .preview-state{display:none}.canvas:not([data-phase=ready]) .preview-pane{opacity:0}.canvas[data-phase=ready] .preview-pane{opacity:1;transition:opacity .24s ease-out}.skeleton{display:flex;flex-direction:column;align-items:center;gap:10px;width:min(100%,760px)}.sk-strip{display:none;gap:8px;align-self:stretch;overflow:hidden}.sk-strip i{flex:none;width:80px;aspect-ratio:16/9;border-radius:4px}.sk-frame{width:min(100%,calc(50vh * 4 / 3));aspect-ratio:4/3;border-radius:var(--reddb-radius-md);background:var(--surface);box-shadow:0 0 0 1px var(--edge);display:flex;flex-direction:column;gap:12px;padding:6%}.sk-frame i{display:block;height:10px;border-radius:4px}.sk-frame i:first-child{height:18px;width:45%}.sk-frame i:nth-child(2){width:80%}.sk-frame i:nth-child(3){width:62%}.sk-strip i,.sk-frame i{background:linear-gradient(90deg,var(--panel) 25%,color-mix(in oklch,var(--panel) 55%,var(--canvas)) 50%,var(--panel) 75%);background-size:300% 100%;animation:shimmer 1.6s ease-in-out infinite}@keyframes shimmer{from{background-position:100% 0}to{background-position:0 0}}.preview-state[data-target=presentation] .sk-strip{display:flex}.preview-state[data-target=presentation] .sk-frame{width:min(100%,calc(50vh * 16 / 9));aspect-ratio:16/9}.preview-state[data-target=app] .skeleton{width:auto}.preview-state[data-target=app] .sk-frame{width:auto;height:min(52vh,520px);aspect-ratio:9/19.5;border-radius:34px;box-shadow:0 0 0 8px var(--panel),0 0 0 9px var(--edge);padding:48px 18px}.preview-note{display:grid;justify-items:center;gap:4px;text-align:center;max-width:520px}#preview-stage{margin:0;font-weight:600}#preview-agent{margin:0}#preview-elapsed{font-variant-numeric:tabular-nums}#preview-elapsed:empty{display:none}#preview-error{margin:4px 0 0;white-space:pre-wrap;overflow-wrap:anywhere;color:var(--reddb-color-feedback-danger-foreground)}#preview-retry{margin-top:8px}.canvas[data-phase=error] .skeleton{display:none}.canvas[data-phase=empty] :is(.sk-strip,.sk-frame) i{animation:none}#no-variants{font-size:11px;opacity:.75}@media(prefers-reduced-motion:reduce){.canvas[data-phase=ready] .preview-pane{transition:none}.sk-strip i,.sk-frame i{animation:none}}
-    </style><header id="toolbar"><h1>${options.appearance ? `<img src="${options.appearance.favicon}" alt="RedDB">` : ""}<span data-copy="title">${copy.title}</span></h1><select id="designs" aria-label="${copy.alternatives}" data-copy-aria-label="alternatives"></select><div id="revision-tools" class="tools" hidden><select id="revisions" aria-label="${copy.history}" data-copy-aria-label="history"></select><button id="newer" hidden><span data-copy="latest">${copy.latest}</span></button><span id="agent-state" hidden data-state="idle" data-copy="stateIdle">${copy.stateIdle}</span></div><div class="actions"><div id="review-tools" class="tools" hidden><button type="button" id="annotate" aria-pressed="false" aria-label="${copy.annotate}" data-copy-aria-label="annotate" title="${copy.annotateShortcut}" data-copy-title="annotateShortcut">${icons.annotate}<span class="label" data-copy="annotateShort">${copy.annotateShort}</span></button><select id="width" aria-label="${copy.width}" data-copy-aria-label="width"><option value="100%" data-copy="full">${copy.full}</option><option value="390" data-copy="mobile">${copy.mobile}</option><option value="768" data-copy="tablet">${copy.tablet}</option><option value="1440" data-copy="desktop">${copy.desktop}</option></select><span class="segment" id="device-switch" role="group" aria-label="${copy.devicePlatform}" data-copy-aria-label="devicePlatform" hidden><button type="button" id="device-ios" aria-pressed="false"><span data-copy="platformIos">${copy.platformIos}</span></button><button type="button" id="device-android" aria-pressed="false"><span data-copy="platformAndroid">${copy.platformAndroid}</span></button></span><button id="restore" hidden title="${copy.restore}" data-copy-title="restore" aria-label="${copy.restore}" data-copy-aria-label="restore"><span data-copy="restore">${copy.restore}</span></button><button type="button" id="present" hidden><span data-copy="present">${copy.present}</span></button><button id="approve" class="primary"><span data-copy="approve">${copy.approve}</span></button><button id="reopen" hidden><span data-copy="reopen">${copy.reopen}</span></button></div><button type="button" id="refresh" class="icon" aria-label="${copy.refresh}" data-copy-aria-label="refresh" title="${copy.refresh}" data-copy-title="refresh">${icons.refresh}</button><div class="menu-host" id="menu-host"><button type="button" id="more" class="icon" aria-label="${copy.more}" data-copy-aria-label="more" title="${copy.more}" data-copy-title="more" aria-haspopup="menu" aria-expanded="false" aria-controls="menu">${icons.more}</button><div id="menu" role="menu" aria-label="${copy.more}" data-copy-aria-label="more" hidden><button type="button" role="menuitem" id="share"><span data-copy="share">${copy.share}</span></button><button type="button" role="menuitem" id="new"><span data-copy="create">${copy.create}</span></button><button type="button" role="menuitem" id="menu-refresh" data-for="refresh"><span data-copy="refresh">${copy.refresh}</span></button><button type="button" role="menuitem" id="menu-add-variant" data-for="add-variant"><span data-copy="addVariant">${copy.addVariant}</span></button><button type="button" role="menuitem" id="organize-variants"><span data-copy="organizeVariants">${copy.organizeVariants}</span></button></div></div></div></header>
+.visually-hidden{position:absolute;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap;border:0;min-height:0}#tab-review{white-space:nowrap}.tab-count{display:inline-block;margin-left:6px;min-width:18px;padding:0 6px;border-radius:999px;background:var(--accent);color:var(--accent-ink);font-size:11px;font-weight:600;line-height:16px;text-align:center;font-variant-numeric:tabular-nums}#panel-review{display:flex;flex-direction:column;padding:0;overflow:hidden;--ok:var(--reddb-color-feedback-success-foreground);--warn:var(--reddb-color-feedback-warning-foreground);--bad:var(--reddb-color-feedback-danger-foreground);--info:var(--reddb-color-feedback-info-foreground);--mono:var(--reddb-font-family-mono,ui-monospace,monospace)}.review-scroll{flex:1 1 auto;min-height:0;overflow:auto;padding:14px 16px 16px;display:flex;flex-direction:column}.review-scroll>:not([hidden])~*{margin-top:12px}.review-scroll>.fold+.fold{margin-top:0}.review-scroll>p{margin:0}#rounds{display:grid;gap:6px;min-width:0}.round-head{display:flex;flex-wrap:wrap;align-items:baseline;gap:4px 8px;min-width:0}.round-head h2{font-size:15px;margin:0;white-space:nowrap}.round-tally{font-size:12px;color:var(--muted);white-space:nowrap;font-variant-numeric:tabular-nums}#rounds-only{margin-left:auto;flex:none;min-height:0;padding:1px 10px;border-radius:999px;font-size:12px;line-height:18px;color:var(--muted);background:transparent}#rounds-only:hover{color:var(--ink)}#rounds-only[aria-pressed=true]{border-color:var(--ink);color:var(--ink);font-weight:600}.round-sub{margin:0;font-size:11px;color:var(--muted);display:flex;flex-wrap:wrap;gap:2px 10px;overflow-wrap:anywhere}.round-sub:empty{display:none}.round-sub a,.row-evidence,.round-left a{color:var(--accent)}.round-alert{margin:0;padding:6px 10px;border:1px solid var(--bad);border-radius:var(--reddb-radius-md);background:var(--reddb-color-feedback-danger-surface,transparent);font-size:12px;overflow-wrap:anywhere}.round-alert strong{color:var(--bad)}.round-message{margin:0;font-size:12px;color:var(--muted);white-space:pre-line;overflow-wrap:anywhere;max-height:4.5em;overflow:hidden}.round-message strong{color:var(--ink);font-weight:600}#rounds-list{display:grid;min-width:0}#rounds-list>.rows,#rounds-list>.round-left{margin-bottom:10px}.rows{list-style:none;margin:0;padding:0;border-top:1px solid var(--edge);min-width:0}.rows>li{border-bottom:1px solid var(--edge);min-width:0}#rounds[data-only=true] .rows[data-block=current]>li[data-left=false]{display:none}.row-toggle{width:100%;display:grid;grid-template-columns:14px 18px 44px minmax(0,1fr);gap:6px;align-items:start;padding:5px 2px;border:0;border-radius:0;background:transparent;text-align:left;min-height:29px;font-size:13px;line-height:18px;font-weight:400}.row-toggle:hover{background:color-mix(in oklch,var(--ink) 5%,transparent)}.row-toggle:active{background:color-mix(in oklch,var(--ink) 9%,transparent)}.row-toggle:focus-visible{outline-offset:-2px}.row-toggle .num{font:500 11px/18px var(--mono);color:var(--muted);text-align:right;font-variant-numeric:tabular-nums}.row-toggle .tag{font:10px/18px var(--mono);color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.row-text{min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.row-toggle[aria-expanded=true] .row-text{white-space:pre-wrap;overflow-wrap:anywhere}.rows>li[data-status=resolved] .row-text,.rows>li[data-status=accepted] .row-text{color:var(--muted)}.glyph{width:14px;height:14px;display:block;flex:none;color:var(--muted)}.row-toggle .glyph{margin-top:2px}.glyph[data-mark=addressed]{color:var(--info)}.glyph[data-mark=resolved]{color:var(--ok)}.glyph[data-mark=partial]{color:var(--warn)}.glyph[data-mark=unresolved]{color:var(--bad)}.glyph .tick{stroke:var(--surface)}.row-body{padding:0 2px 10px 46px;display:grid;gap:6px;font-size:12px;min-width:0;overflow-wrap:anywhere}.row-body p{margin:0}.row-where{display:-webkit-box;-webkit-box-orient:vertical;-webkit-line-clamp:2;overflow:hidden}.row-label{display:block;font:11px/1.45 var(--mono);color:var(--muted);overflow-wrap:anywhere}.row-claim b,.row-outcome b{font-size:11px;font-weight:600;margin-right:6px}.row-claim b{color:var(--info)}.row-outcome[data-status=resolved] b{color:var(--ok)}.row-outcome[data-status=partial] b{color:var(--warn)}.row-outcome[data-status=unresolved] b{color:var(--bad)}.row-outcome[data-status=accepted] b{color:var(--muted)}.row-note,.row-claim>[data-copy=notVerified]{color:var(--muted)}.row-actions{display:flex;gap:6px;flex-wrap:wrap}.row-actions button{min-height:0;padding:1px 8px;font-size:11px;line-height:18px}.row-record{display:grid;gap:6px;padding:8px;border:1px solid var(--edge);border-radius:var(--reddb-radius-md);background:var(--panel)}.row-record label{margin:0;font-size:11px}.row-record select,.row-record input{min-height:26px;padding:2px 6px;font-size:12px}.row-record .row-actions{justify-content:flex-end}.tally{display:inline-flex;align-items:center;gap:3px;font-variant-numeric:tabular-nums}.tally .glyph{width:12px;height:12px}.fold{border-top:1px solid var(--edge);padding:0;min-width:0}.review-scroll details.fold:last-of-type{padding-bottom:0}.fold>summary{display:flex;align-items:baseline;gap:8px;padding:6px 2px;font-size:12px;list-style:none;min-width:0;border-radius:2px}.fold>summary::-webkit-details-marker{display:none}.fold>summary::before{content:"";flex:none;align-self:center;width:5px;height:5px;margin:0 4px 0 3px;border:solid var(--muted);border-width:0 1.5px 1.5px 0;transform:rotate(-45deg)}.fold[open]>summary{margin-bottom:0}.fold[open]>summary::before{transform:rotate(45deg)}.fold>summary:focus-visible{outline-offset:-2px}.fold-side{margin-left:auto;display:inline-flex;align-items:center;gap:8px;color:var(--muted);font-weight:400;white-space:nowrap;font-variant-numeric:tabular-nums}.fold-body{padding:2px 2px 10px 16px}.fold>.rows{margin:0 0 6px 16px}.round-done>summary b,.round-group>summary b{font-weight:600}.round-subhead{margin:8px 0 4px;font-size:11px;color:var(--muted)}.round-left{display:grid;gap:4px}.round-line{margin:0;display:flex;gap:8px;align-items:baseline;font-size:12px}.round-line .fold-side{margin-left:auto}#design-tasks .note{padding:3px 0;border:0;font-size:12px;display:flex;gap:8px;align-items:baseline;flex-wrap:nowrap}#design-tasks .note span{min-width:0;flex:1}#design-tasks .note small{display:inline;flex:none;font-size:11px}#design-tasks .note[data-status=completed] span,#design-tasks .note[data-status=cancelled] span{color:var(--muted)}.reply{display:grid;gap:4px;padding:8px 10px;border:1px solid var(--edge);border-radius:var(--reddb-radius-md);background:var(--panel);font-size:12px;min-width:0}.reply small{font-size:11px}.reply-text{line-height:18px;max-height:54px;overflow:hidden;overflow-wrap:anywhere}.reply[data-expanded=true] .reply-text{max-height:50vh;overflow:auto}.reply-text p{margin:0;min-height:6px}.reply:not([data-expanded=true]) .reply-text p:empty{display:none}.reply-text code{font:11px var(--mono);padding:0 3px;border-radius:3px;background:var(--canvas)}.link{justify-self:start;min-height:0;padding:0;border:0;background:none;color:var(--accent);font-size:12px}.link:hover{background:none;text-decoration:underline}#feed{display:grid;gap:6px;max-height:40vh;overflow:auto}#feed:not(:has(.entry:not([hidden]))) #feed-empty{display:block}#feed-empty{margin:0}#feed:has(.entry:not([hidden])) #feed-empty{display:none}.entry[data-kind=tool][data-status=failed]{color:var(--bad)}.entry p{margin:0;min-height:6px}.entry code{font:11px var(--mono)}#inbox summary{display:flex;align-items:center;gap:8px}#inbox-count{margin-left:auto}.fold-body label{margin-bottom:8px}.composer{flex:none;display:grid;gap:8px;padding:10px 16px 12px;border-top:1px solid var(--edge);background:var(--surface);min-width:0}#note{min-height:52px;height:52px;resize:vertical;padding:6px 9px;font-size:13px;line-height:20px}.composer[data-open=true] #note{min-height:88px}.compose-bar{display:flex;gap:8px;align-items:center;min-width:0}.attach{position:relative;margin:0;display:inline-flex;align-items:center;justify-content:center;flex:none;width:30px;height:30px;border:1px solid var(--edge);border-radius:var(--reddb-radius-md);color:var(--muted);cursor:pointer}.attach:hover{color:var(--ink);border-color:var(--muted)}.attach:has(input:focus-visible){outline:2px solid var(--accent);outline-offset:3px}.attach:has(input:disabled){opacity:.45;cursor:default}.attach svg{display:block}.sends{display:flex;gap:8px;flex:1;min-width:0}.sends>*{min-width:0}#send{flex:1 1 auto;margin:0}#send-end{flex:0 1 auto;white-space:nowrap}.hints{font-size:11px;color:var(--muted)}#feedback-status{margin:0;font-size:12px;white-space:pre-wrap;overflow-wrap:anywhere}#notes{display:grid;max-height:min(30vh,180px);overflow:auto;margin:0;border-top:1px solid var(--edge)}#notes:empty{display:none}.draft{display:flex;flex-wrap:wrap;align-items:center;gap:2px 6px;padding:4px 0;border-bottom:1px solid var(--edge);font-size:12px;min-width:0}.draft:hover,.draft:focus-within{background:color-mix(in oklch,var(--panel) 60%,transparent)}.draft-tag{flex:none;max-width:84px;font:10px/18px var(--mono);color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.draft-text{flex:1 1 0;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.draft button{flex:none;min-height:0;padding:0 7px;font-size:11px;line-height:18px}.draft .note-orphaned{font-size:10px;font-weight:600;padding:0 6px;border-radius:4px;border:1px solid currentColor;color:var(--bad)}@container(max-width:860px){aside>.tabs{gap:14px}}@container(max-width:640px){.review-scroll{padding:12px}.composer{padding:8px 12px;gap:6px}.composer:not([data-open=true]){grid-template-columns:minmax(0,1fr) auto;align-items:center}.composer:not([data-open=true])>:is(#notes,#feedback-status){grid-column:1/-1}.composer:not([data-open=true]) #note{min-height:32px;height:32px;resize:none;overflow:hidden;padding-top:5px;padding-bottom:5px;line-height:20px}.composer:not([data-open=true]) :is(.hints,.attach,#send-end){display:none}#notes{max-height:72px}}
+:host{--ok:var(--reddb-color-feedback-success-foreground);--warn:var(--reddb-color-feedback-warning-foreground);--bad:var(--reddb-color-feedback-danger-foreground)}#toolbar .rev-chip{display:inline-flex;align-items:center;gap:6px;flex:none;padding:3px 9px;font-size:12px;font-weight:600;white-space:nowrap;color:var(--ink)}#toolbar .rev-chip:disabled{opacity:1}.rev-chip:not([data-action=true]){cursor:default}.rev-chip:not([data-action=true]):hover{background:var(--surface);border-color:var(--edge)}.rev-chip .dot{width:8px;height:8px;flex:none;border-radius:50%;background:var(--ok)}.rev-chip[data-chip=behind],.rev-chip[data-chip=offline]{border-color:var(--warn)}.rev-chip[data-chip=behind] .dot{background:transparent;border:2px solid var(--warn)}.rev-chip[data-chip=offline] .dot{background:var(--warn);border-radius:1px;height:2px;width:9px}.rev-chip[data-chip=updating] .dot{background:transparent;border:2px solid var(--accent);border-right-color:transparent;animation:spin .8s linear infinite}.rev-chip[data-chip=failed]{border-color:var(--bad);color:var(--bad)}.rev-chip[data-chip=failed] .dot{background:var(--bad);border-radius:1px}.stage{display:flex;flex-direction:column;min-width:0;min-height:0;background:var(--canvas)}.stage>.canvas{flex:1 1 auto}.revision-line{flex:none;margin:12px 16px 0;padding:5px 10px;display:flex;flex-wrap:wrap;align-items:center;gap:2px 8px;font-size:12px;line-height:18px;border:1px solid var(--edge);border-left-width:3px;border-radius:var(--reddb-radius-md);background:var(--surface);color:var(--ink);overflow-wrap:anywhere;min-width:0}.revision-line[data-tone=warn]{border-color:var(--warn)}.revision-line[data-tone=bad]{border-color:var(--bad)}.revision-line[data-tone=ok]{border-left-color:var(--ok)}.revision-line b{font-weight:600}.revision-line span{color:var(--muted)}.revision-line button{margin-left:auto;min-height:0;padding:1px 10px;font-size:12px;line-height:18px;font-weight:600}.round-progress{display:grid;gap:5px;min-width:0}.steps{display:grid;grid-template-columns:repeat(5,1fr);gap:3px}.steps i{height:4px;border-radius:2px;background:var(--edge)}.steps i[data-s=done]{background:color-mix(in oklch,var(--ink) 70%,var(--edge))}.steps i[data-s=now]{background:var(--accent)}.steps[data-tone=halt] i[data-s=now]{background:var(--warn)}.steps[data-tone=ready] i{background:var(--ok)}.round-stage{margin:0;font-size:12px;min-width:0;overflow-wrap:anywhere}#round-stage b{font-weight:600}#round-stage span{color:var(--muted)}.round-live{display:flex;align-items:center;gap:8px;min-width:0}.round-live>.live{flex:0 1 auto}#round-received{display:block;margin-left:auto;flex:none;font-size:11px;line-height:18px;font-variant-numeric:tabular-nums}.live{margin:0;display:flex;align-items:center;gap:7px;font-size:12px;color:var(--muted);min-width:0}.live .dot{width:7px;height:7px;flex:none;border-radius:50%;background:var(--muted)}.live[data-state=working] .dot{background:var(--accent);animation:pulse 1.6s ease-in-out infinite}.live[data-state=offline]{color:var(--warn)}.live[data-state=offline] .dot{background:var(--warn);border-radius:1px;height:2px;width:9px}.live>span{white-space:nowrap;overflow:hidden;text-overflow:ellipsis;min-width:0}.action-dialog [data-newer]{margin:0 0 12px;padding:6px 10px;border:1px solid var(--warn);border-radius:var(--reddb-radius-md);font-size:12px}@keyframes pulse{50%{opacity:.3}}@media(prefers-reduced-motion:reduce){.live .dot,.rev-chip .dot{animation:none}}@container(max-width:640px){.revision-line{margin:8px 12px 0}#toolbar :is(#designs,#revisions){flex:1 1 88px}}
+    </style><header id="toolbar"><h1>${options.appearance ? `<img src="${options.appearance.favicon}" alt="RedDB">` : ""}<span data-copy="title">${copy.title}</span></h1><select id="designs" aria-label="${copy.alternatives}" data-copy-aria-label="alternatives"></select><div id="revision-tools" class="tools" hidden><select id="revisions" aria-label="${copy.history}" data-copy-aria-label="history"></select><button type="button" id="newer" class="rev-chip" data-chip="latest" hidden><i class="dot" aria-hidden="true"></i><span id="newer-label"></span></button></div><div class="actions"><div id="review-tools" class="tools" hidden><button type="button" id="annotate" aria-pressed="false" aria-label="${copy.annotate}" data-copy-aria-label="annotate" title="${copy.annotateShortcut}" data-copy-title="annotateShortcut">${icons.annotate}<span class="label" data-copy="annotateShort">${copy.annotateShort}</span></button><select id="width" aria-label="${copy.width}" data-copy-aria-label="width"><option value="100%" data-copy="full">${copy.full}</option><option value="390" data-copy="mobile">${copy.mobile}</option><option value="768" data-copy="tablet">${copy.tablet}</option><option value="1440" data-copy="desktop">${copy.desktop}</option></select><span class="segment" id="device-switch" role="group" aria-label="${copy.devicePlatform}" data-copy-aria-label="devicePlatform" hidden><button type="button" id="device-ios" aria-pressed="false"><span data-copy="platformIos">${copy.platformIos}</span></button><button type="button" id="device-android" aria-pressed="false"><span data-copy="platformAndroid">${copy.platformAndroid}</span></button></span><button id="restore" hidden title="${copy.restore}" data-copy-title="restore" aria-label="${copy.restore}" data-copy-aria-label="restore"><span data-copy="restore">${copy.restore}</span></button><button type="button" id="present" hidden><span data-copy="present">${copy.present}</span></button><button id="approve" class="primary"><span data-copy="approve">${copy.approve}</span></button><button id="reopen" hidden><span data-copy="reopen">${copy.reopen}</span></button></div><button type="button" id="refresh" class="icon" aria-label="${copy.refresh}" data-copy-aria-label="refresh" title="${copy.refresh}" data-copy-title="refresh">${icons.refresh}</button><div class="menu-host" id="menu-host"><button type="button" id="more" class="icon" aria-label="${copy.more}" data-copy-aria-label="more" title="${copy.more}" data-copy-title="more" aria-haspopup="menu" aria-expanded="false" aria-controls="menu">${icons.more}</button><div id="menu" role="menu" aria-label="${copy.more}" data-copy-aria-label="more" hidden><button type="button" role="menuitem" id="share"><span data-copy="share">${copy.share}</span></button><button type="button" role="menuitem" id="new"><span data-copy="create">${copy.create}</span></button><button type="button" role="menuitem" id="menu-refresh" data-for="refresh"><span data-copy="refresh">${copy.refresh}</span></button><button type="button" role="menuitem" id="menu-add-variant" data-for="add-variant"><span data-copy="addVariant">${copy.addVariant}</span></button><button type="button" role="menuitem" id="organize-variants"><span data-copy="organizeVariants">${copy.organizeVariants}</span></button></div></div></div></header>
     <section id="intake" hidden><form class="intake" id="create"><h2><span data-copy="create">${copy.create}</span></h2><label><span data-copy="name">${copy.name}</span><input id="name" required></label><div class="row"><label><span data-copy="journey">${copy.journey}</span><select id="journey"><option value="new" data-copy="new">${copy.new}</option><option value="existing" data-copy="existing">${copy.existing}</option></select></label><label><span data-copy="engine">${copy.engine}</span><select id="engine"><option value="html">HTML</option><option value="react">React</option><option value="solid">Solid</option></select></label></div><div class="row"><label><span data-copy="designTarget">${copy.designTarget}</span><select id="design-target"><option value="web" data-copy="targetWeb">${copy.targetWeb}</option><option value="app" data-copy="targetApp">${copy.targetApp}</option><option value="presentation" data-copy="targetPresentation">${copy.targetPresentation}</option></select></label><label id="design-platform-field" hidden><span data-copy="designPlatform">${copy.designPlatform}</span><select id="design-platform"><option value="" data-copy="platformBoth">${copy.platformBoth}</option><option value="ios" data-copy="platformIos">${copy.platformIos}</option><option value="android" data-copy="platformAndroid">${copy.platformAndroid}</option></select></label></div><label><span data-copy="application">${copy.application}</span><input id="application" value="."></label><label><span data-copy="objective">${copy.objective}</span><textarea id="objective" required></textarea></label><label><span data-copy="audience">${copy.audience}</span><input id="audience"></label><label><span data-copy="constraints">${copy.constraints}</span><textarea id="constraints"></textarea></label><label><span data-copy="references">${copy.references}</span><textarea id="references"></textarea></label><button class="primary"><span data-copy="create">${copy.create}</span></button></form></section>
-    <section id="studio"><div class="variant-bar"><div id="variants" class="tabs" role="tablist" aria-label="${copy.variants}" data-copy-aria-label="variants"></div><span id="no-variants" class="muted" data-copy="noVariants">${copy.noVariants}</span><div id="merge-bar" role="group" aria-label="${copy.mergeSelection}" data-copy-aria-label="mergeSelection" hidden><span id="merge-options"></span><button type="button" id="merge-variants" class="primary"><span data-copy="mergeVariants">${copy.mergeVariants}</span></button><button type="button" id="cancel-merge"><span data-copy="cancel">${copy.cancel}</span></button></div><span id="operation-badge" class="op-badge" role="status" hidden></span><span class="spacer"></span><button type="button" id="add-variant" class="icon" aria-label="${copy.addVariant}" data-copy-aria-label="addVariant" title="${copy.addVariant}" data-copy-title="addVariant">${icons.add}</button><div class="menu-host" id="variant-menu-host"><button type="button" id="variant-actions" aria-label="${copy.variantActions}" data-copy-aria-label="variantActions" title="${copy.variantActions}" data-copy-title="variantActions" aria-haspopup="menu" aria-expanded="false" aria-controls="variant-menu" hidden>${icons.more}<span class="label" data-copy="variantActions">${copy.variantActions}</span></button><div id="variant-menu" role="menu" aria-label="${copy.variantActions}" data-copy-aria-label="variantActions" hidden><button type="button" role="menuitem" id="run-anti-slop"><span data-copy="runAntiSlop">${copy.runAntiSlop}</span></button><button type="button" role="menuitem" id="rename-variant"><span data-copy="renameVariant">${copy.renameVariant}</span></button><button type="button" role="menuitem" id="split-variant"><span data-copy="splitVariant">${copy.splitVariant}</span></button><button type="button" role="menuitem" id="delete-variant"><span data-copy="deleteVariant">${copy.deleteVariant}</span></button><button type="button" role="menuitem" id="move-left"><span data-copy="moveLeft">${copy.moveLeft}</span></button><button type="button" role="menuitem" id="move-right"><span data-copy="moveRight">${copy.moveRight}</span></button><button type="button" role="menuitem" id="select-merge"><span data-copy="selectMerge">${copy.selectMerge}</span></button><button type="button" role="menuitem" id="menu-newer" data-for="newer"><span data-copy="latest">${copy.latest}</span></button><button type="button" role="menuitem" id="menu-reopen" data-for="reopen"><span data-copy="reopen">${copy.reopen}</span></button></div></div><span class="segment"><button type="button" id="view-single" class="icon" aria-pressed="true" aria-label="${copy.single}" data-copy-aria-label="single" title="${copy.single}" data-copy-title="single">${icons.single}</button><button type="button" id="view-compare" class="icon" aria-pressed="false" aria-label="${copy.sideBySide}" data-copy-aria-label="sideBySide" title="${copy.sideBySide}" data-copy-title="sideBySide">${icons.compare}</button></span></div><main><div class="canvas" id="canvas" data-phase="loading"><div id="preview-state" class="preview-state" data-target="web"><div class="skeleton" aria-hidden="true"><div class="sk-strip"><i></i><i></i><i></i><i></i><i></i></div><div class="sk-frame"><i></i><i></i><i></i></div></div><div class="preview-note"><p id="preview-stage" role="status" aria-live="polite"></p><p id="preview-agent" class="muted" aria-live="polite" hidden></p><small id="preview-elapsed" class="muted" aria-hidden="true"></small><p id="preview-error" role="alert" hidden></p><button type="button" id="preview-retry" hidden><span data-copy="previewRetry">${copy.previewRetry}</span></button></div></div><section class="preview-pane" id="primary-pane" role="tabpanel"><div class="pane-label" id="primary-label" hidden></div><div id="screen-bar" class="screen-bar" hidden><span class="muted" id="screens-label" data-copy="screens">${copy.screens}</span><div id="screens" class="tabs" role="tablist" aria-label="${copy.screens}" data-copy-aria-label="screens"></div><span id="slide-count" class="muted" aria-live="polite" hidden></span></div><div class="viewport"><div class="device" id="preview-device"><div class="device-chrome"></div><iframe id="preview" title="${copy.review}" data-copy-title="review" sandbox="allow-scripts allow-forms" allow=""></iframe></div><div id="card" hidden role="dialog" aria-labelledby="card-label"><header><span id="card-label"></span><button type="button" id="card-close" aria-label="${copy.closeCard}" data-copy-aria-label="closeCard" title="${copy.closeCard}" data-copy-title="closeCard">×</button></header><textarea id="card-text" aria-label="${copy.cardNote}" data-copy-aria-label="cardNote"></textarea><small class="muted" data-copy="cardHint">${copy.cardHint}</small><div class="row"><button type="button" id="card-add" class="primary"><span data-copy="add">${copy.add}</span></button></div></div></div></section><section class="preview-pane" id="peer-pane" hidden><label class="pane-label"><span data-copy="compareVariant">${copy.compareVariant}</span><select id="peer-variant"></select></label><div class="viewport"><div class="device" id="peer-preview-device"><div class="device-chrome"></div><iframe id="peer-preview" title="${copy.compareVariant}" data-copy-title="compareVariant" sandbox="allow-scripts allow-forms" allow=""></iframe></div></div></section></div><aside><div class="tabs" role="tablist" aria-label="${copy.review}"><button type="button" role="tab" id="tab-review" aria-controls="panel-review" aria-selected="true" tabindex="0"><span data-copy="conversation">${copy.conversation}</span></button><button type="button" role="tab" id="tab-assets" aria-controls="panel-assets" aria-selected="false" tabindex="-1"><span data-copy="assets">${copy.assets}</span></button><button type="button" role="tab" id="tab-details" aria-controls="panel-details" aria-selected="false" tabindex="-1"><span data-copy="details">${copy.details}</span></button><button type="button" role="tab" id="tab-params" aria-controls="panel-params" aria-selected="false" tabindex="-1"><span data-copy="params">${copy.params}</span></button></div><section class="panel" role="tabpanel" id="panel-review" aria-labelledby="tab-review"><h2><span data-copy="conversation">${copy.conversation}</span></h2><p id="review-state" class="muted"></p><div id="operation-state" role="alert" hidden><span id="operation-error"></span><button type="button" id="retry-operation"><span data-copy="operationRetry">${copy.operationRetry}</span></button></div><p id="approval-reselect" data-copy="approvalReselect" hidden>${copy.approvalReselect}</p><details id="design-tasks-section"><summary><span data-copy="tasks">${copy.tasks}</span></summary><div id="design-tasks" aria-live="polite"></div></details><div id="feed" role="log" aria-live="polite" hidden><p id="feed-empty" class="muted" data-copy="feedEmpty">${copy.feedEmpty}</p></div><details id="rounds" open hidden><summary><span data-copy="rounds">${copy.rounds}</span><span id="rounds-count" data-open="false">0</span></summary><div id="rounds-list"></div></details><details id="approved-record" hidden><summary data-copy="approvalDetails">${copy.approvalDetails}</summary><pre id="approved-details"></pre></details><p class="muted"><span data-copy="inspect">${copy.inspect}</span></p><small id="target" hidden></small><div id="notes"></div><details id="inbox"><summary><span data-copy="findings">${copy.findings}</span><span id="inbox-count" data-open="false">0</span></summary><p id="inbox-empty" class="muted" data-copy="inboxEmpty">${copy.inboxEmpty}</p><div id="inbox-list"></div><button type="button" id="queue-fixes" hidden><span data-copy="queueFixes">${copy.queueFixes}</span></button></details><label><span data-copy="notes">${copy.notes}</span><textarea id="note"></textarea></label><label><span data-copy="attachment">${copy.attachment}</span><input id="attachment" type="file" accept="image/png,image/jpeg,image/webp,image/svg+xml,image/gif"></label><small id="draft"><span data-copy="draft">${copy.draft}</span></small><small id="send-hint" class="muted" data-copy="sendHint">${copy.sendHint}</small><small id="round-open" class="muted" data-copy="roundOpen" hidden>${copy.roundOpen}</small><p id="feedback-status" role="status" aria-live="polite" aria-atomic="true" hidden></p><div class="sends"><button id="send" class="primary"><span data-copy="send">${copy.send}</span></button><button id="send-end"><span data-copy="sendEnd">${copy.sendEnd}</span></button></div>
-    <details><summary><span data-copy="diagram">${copy.diagram}</span></summary><label><span data-copy="diagram">${copy.diagram}</span><textarea id="selection"></textarea></label><button type="button" id="whiteboard"><span data-copy="whiteboard">${copy.whiteboard}</span></button></details></section><section class="panel" role="tabpanel" id="panel-assets" aria-labelledby="tab-assets" hidden><details open><summary><span data-copy="assets">${copy.assets}</span></summary><div id="assets"></div></details><details open><summary><span data-copy="export">${copy.export}</span></summary><button id="html"><span data-copy="html">${copy.html}</span></button><button id="pdf" hidden><span data-copy="pdf">${copy.pdf}</span></button><button id="audit"><span data-copy="audit">${copy.audit}</span></button><label><span data-copy="implementation">${copy.implementation}</span><input id="implementation" value="dist"></label><button id="compare"><span data-copy="compare">${copy.compare}</span></button><label><span data-copy="source">${copy.source}</span><select id="svg"></select></label><div class="row"><label><span data-copy="duration">${copy.duration}</span><input id="duration" type="number" min="0.1" max="10" step="0.1" value="3"></label><label><span data-copy="fps">${copy.fps}</span><input id="fps" type="number" min="1" max="25" value="20"></label></div><label><span data-copy="size">${copy.size}</span><input id="size" type="number" min="16" max="1024" value="512"></label><label class="check"><input type="checkbox" id="transparent"><span data-copy="transparent">${copy.transparent}</span></label><button id="gif"><span data-copy="gif">${copy.gif}</span></button></details><details open><summary><span data-copy="jobs">${copy.jobs}</span></summary><div id="jobs"></div></details>
+    <section id="studio"><div class="variant-bar"><div id="variants" class="tabs" role="tablist" aria-label="${copy.variants}" data-copy-aria-label="variants"></div><span id="no-variants" class="muted" data-copy="noVariants">${copy.noVariants}</span><div id="merge-bar" role="group" aria-label="${copy.mergeSelection}" data-copy-aria-label="mergeSelection" hidden><span id="merge-options"></span><button type="button" id="merge-variants" class="primary"><span data-copy="mergeVariants">${copy.mergeVariants}</span></button><button type="button" id="cancel-merge"><span data-copy="cancel">${copy.cancel}</span></button></div><span id="operation-badge" class="op-badge" role="status" hidden></span><span class="spacer"></span><button type="button" id="add-variant" class="icon" aria-label="${copy.addVariant}" data-copy-aria-label="addVariant" title="${copy.addVariant}" data-copy-title="addVariant">${icons.add}</button><div class="menu-host" id="variant-menu-host"><button type="button" id="variant-actions" aria-label="${copy.variantActions}" data-copy-aria-label="variantActions" title="${copy.variantActions}" data-copy-title="variantActions" aria-haspopup="menu" aria-expanded="false" aria-controls="variant-menu" hidden>${icons.more}<span class="label" data-copy="variantActions">${copy.variantActions}</span></button><div id="variant-menu" role="menu" aria-label="${copy.variantActions}" data-copy-aria-label="variantActions" hidden><button type="button" role="menuitem" id="run-anti-slop"><span data-copy="runAntiSlop">${copy.runAntiSlop}</span></button><button type="button" role="menuitem" id="rename-variant"><span data-copy="renameVariant">${copy.renameVariant}</span></button><button type="button" role="menuitem" id="split-variant"><span data-copy="splitVariant">${copy.splitVariant}</span></button><button type="button" role="menuitem" id="delete-variant"><span data-copy="deleteVariant">${copy.deleteVariant}</span></button><button type="button" role="menuitem" id="move-left"><span data-copy="moveLeft">${copy.moveLeft}</span></button><button type="button" role="menuitem" id="move-right"><span data-copy="moveRight">${copy.moveRight}</span></button><button type="button" role="menuitem" id="select-merge"><span data-copy="selectMerge">${copy.selectMerge}</span></button><button type="button" role="menuitem" id="menu-newer" data-for="newer"><span data-copy="latest">${copy.latest}</span></button><button type="button" role="menuitem" id="menu-reopen" data-for="reopen"><span data-copy="reopen">${copy.reopen}</span></button></div></div><span class="segment"><button type="button" id="view-single" class="icon" aria-pressed="true" aria-label="${copy.single}" data-copy-aria-label="single" title="${copy.single}" data-copy-title="single">${icons.single}</button><button type="button" id="view-compare" class="icon" aria-pressed="false" aria-label="${copy.sideBySide}" data-copy-aria-label="sideBySide" title="${copy.sideBySide}" data-copy-title="sideBySide">${icons.compare}</button></span></div><main><div class="stage" id="stage"><p id="revision-line" class="revision-line" role="status" hidden></p><div class="canvas" id="canvas" data-phase="loading"><div id="preview-state" class="preview-state" data-target="web"><div class="skeleton" aria-hidden="true"><div class="sk-strip"><i></i><i></i><i></i><i></i><i></i></div><div class="sk-frame"><i></i><i></i><i></i></div></div><div class="preview-note"><p id="preview-stage" role="status" aria-live="polite"></p><p id="preview-agent" class="muted" aria-live="polite" hidden></p><small id="preview-elapsed" class="muted" aria-hidden="true"></small><p id="preview-error" role="alert" hidden></p><button type="button" id="preview-retry" hidden><span data-copy="previewRetry">${copy.previewRetry}</span></button></div></div><section class="preview-pane" id="primary-pane" role="tabpanel"><div class="pane-label" id="primary-label" hidden></div><div id="screen-bar" class="screen-bar" hidden><span class="muted" id="screens-label" data-copy="screens">${copy.screens}</span><div id="screens" class="tabs" role="tablist" aria-label="${copy.screens}" data-copy-aria-label="screens"></div><span id="slide-count" class="muted" aria-live="polite" hidden></span></div><div class="viewport"><div class="device" id="preview-device"><div class="device-chrome"></div><iframe id="preview" title="${copy.review}" data-copy-title="review" sandbox="allow-scripts allow-forms" allow=""></iframe></div><div id="card" hidden role="dialog" aria-labelledby="card-label"><header><span id="card-label"></span><button type="button" id="card-close" aria-label="${copy.closeCard}" data-copy-aria-label="closeCard" title="${copy.closeCard}" data-copy-title="closeCard">×</button></header><textarea id="card-text" aria-label="${copy.cardNote}" data-copy-aria-label="cardNote"></textarea><small class="muted" data-copy="cardHint">${copy.cardHint}</small><div class="row"><button type="button" id="card-add" class="primary"><span data-copy="add">${copy.add}</span></button></div></div></div></section><section class="preview-pane" id="peer-pane" hidden><label class="pane-label"><span data-copy="compareVariant">${copy.compareVariant}</span><select id="peer-variant"></select></label><div class="viewport"><div class="device" id="peer-preview-device"><div class="device-chrome"></div><iframe id="peer-preview" title="${copy.compareVariant}" data-copy-title="compareVariant" sandbox="allow-scripts allow-forms" allow=""></iframe></div></div></section></div></div><aside><div class="tabs" role="tablist" aria-label="${copy.review}"><button type="button" role="tab" id="tab-review" aria-controls="panel-review" aria-selected="true" tabindex="0"><span data-copy="feedback">${copy.feedback}</span><span id="rounds-count" class="tab-count" data-open="false" hidden>0</span></button><button type="button" role="tab" id="tab-assets" aria-controls="panel-assets" aria-selected="false" tabindex="-1"><span data-copy="assets">${copy.assets}</span></button><button type="button" role="tab" id="tab-details" aria-controls="panel-details" aria-selected="false" tabindex="-1"><span data-copy="details">${copy.details}</span></button><button type="button" role="tab" id="tab-params" aria-controls="panel-params" aria-selected="false" tabindex="-1"><span data-copy="params">${copy.params}</span></button></div><section class="panel" role="tabpanel" id="panel-review" aria-labelledby="tab-review"><div class="review-scroll" id="review-scroll"><p id="agent-state" class="live" hidden><i class="dot" aria-hidden="true"></i><span id="agent-text"></span></p><p id="review-state" class="muted"></p><div id="operation-state" role="alert" hidden><span id="operation-error"></span><button type="button" id="retry-operation"><span data-copy="operationRetry">${copy.operationRetry}</span></button></div><p id="approval-reselect" data-copy="approvalReselect" hidden>${copy.approvalReselect}</p><section id="rounds" aria-labelledby="round-title" data-only="false" hidden><div class="round-head"><h2 id="round-title"></h2><span id="round-tally" class="round-tally" aria-live="polite"></span><button type="button" id="rounds-only" class="chip" aria-pressed="false"><span data-copy="onlyLeft">${copy.onlyLeft}</span></button></div><div id="round-progress" class="round-progress"><div id="round-steps" class="steps" role="img"><i></i><i></i><i></i><i></i><i></i></div><p class="round-stage"><span id="round-stage" aria-live="polite"></span></p><div id="round-live" class="round-live"><small id="round-received"></small></div></div><p id="round-sub" class="round-sub"></p><p id="round-alert" class="round-alert" role="status" hidden></p><p id="round-message" class="round-message" dir="auto" hidden></p><div id="rounds-list"></div></section><details id="design-tasks-section" class="fold"><summary><span data-copy="tasks">${copy.tasks}</span><span id="tasks-count" class="fold-side"></span></summary><div id="design-tasks" class="fold-body" aria-live="polite"></div></details><div id="reply" class="reply" hidden><small id="reply-head"></small><div id="reply-text" class="reply-text" dir="auto"></div><button type="button" id="reply-more" class="link" aria-expanded="false" aria-controls="reply-text" hidden></button></div><details id="activity" class="fold" hidden><summary><span data-copy="activity">${copy.activity}</span><span id="activity-count" class="fold-side"></span></summary><div id="feed" class="fold-body" role="log" aria-live="polite" hidden><p id="feed-empty" class="muted" data-copy="feedEmpty">${copy.feedEmpty}</p></div></details><details id="approved-record" class="fold" hidden><summary data-copy="approvalDetails">${copy.approvalDetails}</summary><pre id="approved-details" class="fold-body"></pre></details><details id="inbox" class="fold"><summary><span data-copy="findings">${copy.findings}</span><span id="inbox-count" data-open="false">0</span></summary><div class="fold-body"><p id="inbox-empty" class="muted" data-copy="inboxEmpty">${copy.inboxEmpty}</p><div id="inbox-list"></div><button type="button" id="queue-fixes" hidden><span data-copy="queueFixes">${copy.queueFixes}</span></button></div></details><details class="fold"><summary><span data-copy="diagram">${copy.diagram}</span></summary><div class="fold-body"><label><span data-copy="diagram">${copy.diagram}</span><textarea id="selection"></textarea></label><button type="button" id="whiteboard"><span data-copy="whiteboard">${copy.whiteboard}</span></button></div></details><small id="target" hidden></small></div><div class="composer" id="composer"><div id="notes"></div><p id="feedback-status" role="status" aria-live="polite" aria-atomic="true" hidden></p><textarea id="note" rows="2" aria-label="${copy.notes}" data-copy-aria-label="notes" placeholder="${copy.messageHint}" data-copy-placeholder="messageHint"></textarea><div class="compose-bar"><label class="attach" title="${copy.attachment}" data-copy-title="attachment">${icons.attach}<input id="attachment" class="visually-hidden" type="file" accept="image/png,image/jpeg,image/webp,image/svg+xml,image/gif" aria-label="${copy.attachment}" data-copy-aria-label="attachment"></label><div class="sends"><button id="send" class="primary"><span data-copy="send">${copy.send}</span></button><button id="send-end"><span data-copy="sendEnd">${copy.sendEnd}</span></button></div></div><small class="hints"><span id="send-hint" data-copy="sendHint">${copy.sendHint}</span> · <span id="draft" data-copy="draft">${copy.draft}</span></small><small id="round-open" class="hints" data-copy="roundOpen" hidden>${copy.roundOpen}</small></div></section><section class="panel" role="tabpanel" id="panel-assets" aria-labelledby="tab-assets" hidden><details open><summary><span data-copy="assets">${copy.assets}</span></summary><div id="assets"></div></details><details open><summary><span data-copy="export">${copy.export}</span></summary><button id="html"><span data-copy="html">${copy.html}</span></button><button id="pdf" hidden><span data-copy="pdf">${copy.pdf}</span></button><button id="audit"><span data-copy="audit">${copy.audit}</span></button><label><span data-copy="implementation">${copy.implementation}</span><input id="implementation" value="dist"></label><button id="compare"><span data-copy="compare">${copy.compare}</span></button><label><span data-copy="source">${copy.source}</span><select id="svg"></select></label><div class="row"><label><span data-copy="duration">${copy.duration}</span><input id="duration" type="number" min="0.1" max="10" step="0.1" value="3"></label><label><span data-copy="fps">${copy.fps}</span><input id="fps" type="number" min="1" max="25" value="20"></label></div><label><span data-copy="size">${copy.size}</span><input id="size" type="number" min="16" max="1024" value="512"></label><label class="check"><input type="checkbox" id="transparent"><span data-copy="transparent">${copy.transparent}</span></label><button id="gif"><span data-copy="gif">${copy.gif}</span></button></details><details open><summary><span data-copy="jobs">${copy.jobs}</span></summary><div id="jobs"></div></details>
     </section><section class="panel" role="tabpanel" id="panel-details" aria-labelledby="tab-details" hidden>
     <details><summary><span data-copy="system">${copy.system}</span></summary><div id="source-files"></div><button id="refresh-system"><span data-copy="refreshSystem">${copy.refreshSystem}</span></button></details><details><summary><span data-copy="decisions">${copy.decisions}</span></summary><div id="decisions"></div><h2><span data-copy="questions">${copy.questions}</span></h2><div id="questions"></div><h2><span data-copy="scenarios">${copy.scenarios}</span></h2><div id="scenarios"></div></details>
     <details><summary><span data-copy="tweaks">${copy.tweaks}</span></summary><label><span data-copy="token">${copy.token}</span><input id="token" value="--accent"></label><label><span data-copy="value">${copy.value}</span><input id="value" value="#285b49"></label><button id="apply"><span data-copy="apply">${copy.apply}</span></button><button id="reset"><span data-copy="reset">${copy.reset}</span></button></details>
@@ -364,6 +403,13 @@ details{border-top:1px solid var(--edge);padding:14px 0}summary{cursor:pointer;f
     notice.dataset.actionStatus = ""
     notice.setAttribute("role", "status")
     notice.setAttribute("aria-live", "polite")
+    // An open dialog holds a newer revision back; this says so inside it, where the reader is looking.
+    const newer = document.createElement("p")
+    newer.dataset.newer = ""
+    newer.dataset.copy = "dialogNewer"
+    newer.textContent = copy.dialogNewer
+    newer.hidden = true
+    element(id).querySelector("h2")!.after(newer)
     element(id).append(notice)
   }
   const showStudio = (visible: boolean) => {
@@ -408,14 +454,16 @@ details{border-top:1px solid var(--edge);padding:14px 0}summary{cursor:pointer;f
         (!!state.design?.ended && !["html", "pdf", "audit", "gif", "compare"].includes(id))
     element<HTMLButtonElement>("param-save").disabled ||=
       !state.revision || !!state.failedPreview || state.revision !== state.design?.revision || !!state.design?.ended
+    // A revision the feed announced is newer than the one on screen even before the design list has it.
     element<HTMLButtonElement>("approve").disabled ||=
-      state.revision !== state.design?.revision || !!state.pendingOperation
+      state.revision !== state.design?.revision || !!state.pendingOperation || !!liveness.announced
     element<HTMLButtonElement>("confirm-approve").disabled ||=
       !state.revision ||
       !!state.failedPreview ||
       state.revision !== state.design?.revision ||
       !!state.design?.ended ||
-      !!state.pendingOperation
+      !!state.pendingOperation ||
+      !!liveness.announced
     // Variant operations change the latest revision only, one at a time, while the review is open.
     const blocked = operationBlocked()
     const index = state.variants.findIndex((item) => item.id === state.variant)
@@ -463,7 +511,11 @@ details{border-top:1px solid var(--edge);padding:14px 0}summary{cursor:pointer;f
     root.querySelectorAll<HTMLButtonElement>("[role=menu] [data-for]").forEach((item) => {
       const target = element<HTMLButtonElement>(item.dataset.for!)
       item.disabled = target.disabled
-      item.hidden = target.hidden || (target.closest<HTMLElement>("#studio")?.hidden ?? false)
+      item.hidden =
+        target.hidden ||
+        (target.closest<HTMLElement>("#studio")?.hidden ?? false) ||
+        // The revision chip is always on screen; its menu entry only while the chip has something to do.
+        (target.id === "newer" && target.dataset.action !== "true")
     })
   const selectVariant = (id: string) => {
     if (state.working || state.failedPreview) return
@@ -975,84 +1027,151 @@ details{border-top:1px solid var(--edge);padding:14px 0}summary{cursor:pointer;f
     for (const id of ["preview", "peer-preview"])
       element<HTMLIFrameElement>(id).contentWindow?.postMessage({ type: "design:highlight", target }, "*")
   }
-  const action = (name: "reveal" | "remove" | "dismiss", onclick: () => void) => {
+  const action = (name: keyof ReviewCopy, onclick: () => void, part?: string) => {
     const button = document.createElement("button")
     button.type = "button"
     button.dataset.copy = name
+    if (part) button.dataset.part = part
     button.textContent = copy[name]
     button.onclick = onclick
     return button
   }
+  /** Whether the preview can show a note's element; a note on the whole page or a diagram has none. */
+  const locatable = (target: string) =>
+    !["", "page", "diagram"].includes(target.replace(/^variant:[a-zA-Z0-9_-]{1,64} /, ""))
+  /** Reveals a listed note's element and remembers it, so a revision without that element can say so. */
+  const revealNote = (target: string, screen?: string) => {
+    feedbackView.revealing = target
+    reveal(target, true, screen)
+  }
+  /** Writes text only when it changed: an unchanged poll must not touch the panel (live regions re-announce writes). */
+  const write = (node: Element, value: string) => {
+    if (node.textContent !== value) node.textContent = value
+  }
+  /** Puts nodes in order under a parent, moving only misplaced ones, so unchanged rows keep focus and state. */
+  const place = (parent: Element, nodes: Node[]) => {
+    nodes.forEach((node, index) => {
+      if (parent.childNodes[index] !== node) parent.insertBefore(node, parent.childNodes[index] ?? null)
+    })
+    while (parent.childNodes.length > nodes.length) parent.lastChild!.remove()
+  }
+  /** A page served on a loopback address runs next to its terminal; any other host has no transcript beside it. */
+  const local =
+    /^(localhost|127(\.\d{1,3}){3}|\[::1\])$/.test(location.hostname) || location.hostname.endsWith(".localhost")
+  /** Feedback panel disclosures the reader opened or closed, kept per design; the tab and row expansion are not. */
+  const sectionsKey = () => `redcode:design:${endpoint}:${state.design?.id}:sections`
+  const sections = (): Record<string, unknown> => {
+    try {
+      const stored = JSON.parse(localStorage.getItem(sectionsKey()) ?? "{}")
+      return stored && typeof stored === "object" ? stored : {}
+    } catch {
+      return {}
+    }
+  }
+  const disclose = (node: HTMLDetailsElement, id: string, fallback: boolean) => {
+    const stored = sections()[id]
+    const open = typeof stored === "boolean" ? stored : fallback
+    // A disclosure the page opens or closes itself is not the reader's choice and is not stored.
+    if (node.open !== open) {
+      node.dataset.quiet = ""
+      node.open = open
+    }
+    node.ontoggle = () => {
+      if (node.dataset.quiet !== undefined) return void delete node.dataset.quiet
+      try {
+        localStorage.setItem(sectionsKey(), JSON.stringify({ ...sections(), [id]: node.open }))
+      } catch {
+        // Without storage the disclosure still works for this visit.
+      }
+    }
+  }
+  const draftRows = new Map<string, { signature: string; row: HTMLElement }>()
+  /** The notes queued for the next message, one line each; unchanged rows are kept across redraws. */
   const drawNotes = () => {
-    element("notes").replaceChildren(
-      ...state.notes.map((note, index) => {
-        const row = document.createElement("div")
-        row.className = "note"
-        const label = document.createElement("span")
-        label.className = "note-label"
-        // A deck's note names its slide, which Reveal opens before it finds the element.
-        const slide =
-          presenting() && note.params?.screen
-            ? (state.screens.find((item) => item.id === note.params?.screen)?.name ?? note.params.screen)
-            : ""
-        label.textContent = `${slide ? `${slide} · ` : ""}${note.label || note.target}`
-        const text = document.createElement("span")
-        text.className = "note-text"
-        text.textContent = note.text
-        // A note on a variant that is gone from the revision on screen says so and offers a new home.
-        const from = variantOf(note.target)
-        // Only once an operation has settled: a note moved during a provisional change could not be moved back.
-        const orphaned =
-          !state.pendingOperation &&
-          !!from &&
-          state.variants.length > 0 &&
-          !state.variants.some((item) => item.id === from)
-        const destination = orphaned
-          ? (state.variants.find((item) => item.id === state.retarget[from!]) ??
-            state.variants.find((item) => item.id === state.variant) ??
-            state.variants[0])
-          : undefined
-        const orphan: HTMLElement[] = []
-        if (orphaned && destination) {
-          row.dataset.orphaned = "true"
-          const mark = document.createElement("span")
-          mark.className = "note-orphaned"
-          mark.dataset.copy = "noteOrphaned"
-          mark.textContent = copy.noteOrphaned
-          const move = document.createElement("button")
-          move.type = "button"
-          move.dataset.copy = "retarget"
-          move.dataset.copySuffix = ` ${destination.name}`
-          move.textContent = `${copy.retarget} ${destination.name}`
-          move.addEventListener("click", () => {
-            if (state.pending) return
-            state.notes[index] = {
-              ...note,
-              target: note.target.replace(/^variant:[a-zA-Z0-9_-]{1,64} /, `variant:${destination.id} `),
-              ...(note.params ? { params: { ...note.params, variant: destination.id } } : {}),
-            }
-            save()
-            drawNotes()
-          })
-          orphan.push(mark, move)
-        }
-        row.append(
-          label,
-          ...orphan,
-          action("reveal", () => reveal(note.target, true, note.params?.screen)),
-          action("remove", () => {
-            if (state.pending) return
-            state.notes.splice(index, 1)
-            save()
-            drawNotes()
-          }),
-          text,
-        )
-        row.onmouseenter = () => highlight(note.target)
-        row.onmouseleave = () => highlight("")
-        return row
-      }),
-    )
+    const seen = new Map<string, number>()
+    const rows = state.notes.map((note, index) => {
+      const base = `${note.target}\n${note.text}`
+      const id = `${base}\n${seen.get(base) ?? 0}`
+      seen.set(base, (seen.get(base) ?? 0) + 1)
+      // A deck's note names its slide, which Reveal opens before it finds the element.
+      const slide =
+        presenting() && note.params?.screen
+          ? (state.screens.find((item) => item.id === note.params?.screen)?.name ?? note.params.screen)
+          : ""
+      // A note on a variant that is gone from the revision on screen says so and offers a new home.
+      const from = variantOf(note.target)
+      // Only once an operation has settled: a note moved during a provisional change could not be moved back.
+      const orphaned =
+        !state.pendingOperation &&
+        !!from &&
+        state.variants.length > 0 &&
+        !state.variants.some((item) => item.id === from)
+      const destination = orphaned
+        ? (state.variants.find((item) => item.id === state.retarget[from!]) ??
+          state.variants.find((item) => item.id === state.variant) ??
+          state.variants[0])
+        : undefined
+      const signature = JSON.stringify([note, index, slide, destination?.id ?? "", destination?.name ?? ""])
+      const previous = draftRows.get(id)
+      if (previous?.signature === signature) return previous.row
+      const row = document.createElement("div")
+      row.className = "draft"
+      row.dataset.draft = String(index)
+      const tag = document.createElement("span")
+      tag.className = "draft-tag"
+      tag.textContent = slide || note.tag || ""
+      tag.title = note.label || note.target
+      const text = document.createElement("span")
+      text.className = "draft-text"
+      text.dir = "auto"
+      text.textContent = note.text
+      text.title = note.text
+      row.append(tag, text)
+      if (locatable(note.target)) row.append(action("reveal", () => revealNote(note.target, note.params?.screen)))
+      row.append(
+        action("remove", () => {
+          if (state.pending) return
+          state.notes.splice(index, 1)
+          save()
+          drawNotes()
+        }),
+      )
+      if (destination) {
+        row.dataset.orphaned = "true"
+        const mark = document.createElement("span")
+        mark.className = "note-orphaned"
+        mark.dataset.copy = "noteOrphaned"
+        mark.textContent = copy.noteOrphaned
+        const move = document.createElement("button")
+        move.type = "button"
+        move.dataset.copy = "retarget"
+        move.dataset.copySuffix = ` ${destination.name}`
+        move.textContent = `${copy.retarget} ${destination.name}`
+        move.addEventListener("click", () => {
+          if (state.pending) return
+          state.notes[index] = {
+            ...note,
+            target: note.target.replace(/^variant:[a-zA-Z0-9_-]{1,64} /, `variant:${destination.id} `),
+            ...(note.params ? { params: { ...note.params, variant: destination.id } } : {}),
+          }
+          save()
+          drawNotes()
+        })
+        row.append(mark, move)
+      }
+      if (locatable(note.target)) {
+        row.addEventListener("mouseenter", () => highlight(note.target))
+        row.addEventListener("focusin", () => highlight(note.target))
+      }
+      row.addEventListener("mouseleave", () => highlight(""))
+      row.addEventListener("focusout", (event) => {
+        if (!row.contains(event.relatedTarget as Node | null)) highlight("")
+      })
+      draftRows.set(id, { signature, row })
+      return row
+    })
+    for (const [id, item] of draftRows) if (!rows.includes(item.row)) draftRows.delete(id)
+    place(element("notes"), rows)
     element<HTMLButtonElement>("send").textContent = state.pending ? copy.retry : copy.send
     element("send").dataset.copy = state.pending ? "retry" : "send"
     element("feedback-status").hidden = !state.pending
@@ -1068,160 +1187,1098 @@ details{border-top:1px solid var(--edge);padding:14px 0}summary{cursor:pointer;f
     element("round-open").hidden = !open || !!state.pending
     input("note").disabled = !!state.pending
   }
-  const statusCopy = (status: Design.NoteStatus) =>
-    (
-      ({
-        open: "statusOpen",
-        resolved: "statusResolved",
-        partial: "statusPartial",
-        unresolved: "statusUnresolved",
-        accepted: "statusAccepted",
-      }) as const
-    )[status]
-  /** Every review note with its recorded status, newest round first; unfinished notes can be queued again. */
-  const drawRounds = () => {
-    const rounds = [...(state.design?.rounds ?? [])].reverse()
-    const notes = state.design?.notes ?? []
-    element("rounds").hidden = !rounds.length
-    const open = notes.filter((note) => note.round === rounds[0]?.number && note.status === "open").length
-    element("rounds-count").textContent = String(open)
-    element("rounds-count").dataset.open = String(open > 0)
-    element("rounds-list").replaceChildren(
-      ...rounds.flatMap((round) => {
-        const head = document.createElement("p")
-        head.className = "round-head"
-        head.dataset.copy = "round"
-        head.dataset.copySuffix = ` ${round.number} · ${round.published ? `${copy.roundAnswered} ${round.published.slice(-8)}` : copy.roundAwaiting}`
-        head.textContent = `${copy.round}${head.dataset.copySuffix}`
-        return [
-          head,
-          ...notes
-            .filter((note) => note.round === round.number)
-            .map((note) => {
-              const row = document.createElement("div")
-              row.className = "round-note"
-              row.dataset.status = note.status
-              row.dataset.feedback = note.feedback
-              row.dataset.index = String(note.index)
-              const badge = document.createElement("span")
-              badge.className = "badge"
-              badge.dataset.copy = statusCopy(note.status)
-              badge.textContent = copy[statusCopy(note.status)]
-              const body = document.createElement("div")
-              body.className = "round-body"
-              const label = document.createElement("strong")
-              label.textContent = note.item.label || note.item.target
-              const text = document.createElement("span")
-              text.textContent = note.item.text
-              body.append(label, text)
-              // A re-sent note names the round it came from, so its outcomes read as one chain.
-              const origin = note.item.resent
-                ? notes.find(
-                    (item) => item.feedback === note.item.resent!.feedback && item.index === note.item.resent!.index,
-                  )
-                : undefined
-              if (origin) {
-                const chain = document.createElement("span")
-                chain.className = "round-reason"
-                chain.dataset.copy = "resentFrom"
-                chain.dataset.copySuffix = ` ${origin.round}`
-                chain.textContent = `${copy.resentFrom} ${origin.round}`
-                body.append(chain)
-              }
-              if (note.reason) {
-                const reason = document.createElement("span")
-                reason.className = "round-reason"
-                reason.textContent = note.reason
-                body.append(reason)
-              }
-              if (note.by === "reviewer") {
-                const who = document.createElement("span")
-                who.className = "round-reason"
-                who.dataset.copy = "byReviewer"
-                who.textContent = copy.byReviewer
-                body.append(who)
-              }
-              const actions = document.createElement("div")
-              actions.className = "round-actions"
-              actions.append(action("reveal", () => reveal(note.item.target, true, note.item.params?.screen)))
-              // The reviewer's escape hatch: an open note can be closed by hand, as accepted or unresolved
-              // with a reason, when the agent cannot verify it (no browser, a crashed renderer).
-              if (note.status === "open") {
-                const form = document.createElement("form")
-                form.className = "round-record"
-                const pick = document.createElement("select")
-                pick.setAttribute("aria-label", copy.recordAs)
-                for (const [value, key] of [
-                  ["accepted", "recordAccepted"],
-                  ["unresolved", "recordUnresolved"],
-                ] as const) {
-                  const option = document.createElement("option")
-                  option.value = value
-                  option.dataset.copy = key
-                  option.textContent = copy[key]
-                  pick.append(option)
-                }
-                const why = document.createElement("input")
-                why.type = "text"
-                why.maxLength = 500
-                why.placeholder = copy.recordReason
-                why.setAttribute("aria-label", `${copy.recordReason}: ${note.item.label || note.item.target}`)
-                const submit = document.createElement("button")
-                submit.type = "submit"
-                submit.dataset.copy = "record"
-                submit.textContent = copy.record
-                form.append(pick, why, submit)
-                form.onsubmit = (event) => {
-                  event.preventDefault()
-                  if (!why.value.trim()) {
-                    status(copy.recordReasonRequired, "recordReasonRequired", "error")
-                    return
-                  }
-                  void run(async () => {
-                    await api(`/${state.design!.id}`, "PATCH", {
-                      by: "reviewer",
-                      notes: [
-                        { feedback: note.feedback, index: note.index, status: pick.value, reason: why.value.trim() },
-                      ],
-                    })
-                    await refresh()
-                    status(copy.recorded, "recorded", "success")
-                  }, submit)
-                }
-                actions.append(form)
-              }
-              // A note the agent could not settle goes into the next round as it was, on the revision on screen.
-              // Only once a revision answered the round: before that the agent is still working on the note.
-              if ((note.status === "partial" || note.status === "unresolved") && round.published) {
-                const again = document.createElement("button")
-                again.type = "button"
-                again.dataset.copy = "resend"
-                again.textContent = copy.resend
-                again.onclick = () => {
-                  if (state.pending || !state.revision) return
-                  if (state.notes.some((item) => item.target === note.item.target && item.text === note.item.text))
-                    return
-                  state.notes.push({
-                    ...note.item,
-                    revision: state.revision,
-                    resent: { feedback: note.feedback, index: note.index },
-                  })
-                  save()
-                  drawNotes()
-                  status(copy.resendQueued, "resendQueued", "success")
-                }
-                actions.append(again)
-              }
-              body.append(actions)
-              row.append(badge, body)
-              row.onmouseenter = () => highlight(note.item.target)
-              row.onmouseleave = () => highlight("")
-              return row
-            }),
-        ]
+  type Mark = Design.NoteStatus | "addressed"
+  const markCopy = {
+    open: "statusOpen",
+    addressed: "statusAddressed",
+    resolved: "statusResolved",
+    partial: "statusPartial",
+    unresolved: "statusUnresolved",
+    accepted: "statusAccepted",
+  } as const
+  const statusCopy = (status: Design.NoteStatus) => markCopy[status]
+  /** The agent's "I changed this" is shown apart from open, but it is not an outcome: the note stays open. */
+  const markOf = (note: Design.Note): Mark => (note.status === "open" && note.addressed ? "addressed" : note.status)
+  const noteKey = (note: { feedback: string; index: number }) => `${note.feedback}#${note.index}`
+  /**
+   * A note is settled once it has a final outcome, or once a partial or unresolved outcome was sent again in a later
+   * note; otherwise it is left to act on. Judged from statuses alone: a published revision settles nothing.
+   */
+  const settledBy = (notes: readonly Design.Note[]) => {
+    const resent = new Set(notes.flatMap((note) => (note.item.resent ? [noteKey(note.item.resent)] : [])))
+    return {
+      resent,
+      settled: (note: Design.Note) =>
+        note.status === "resolved" ||
+        note.status === "accepted" ||
+        (note.status !== "open" && resent.has(noteKey(note))),
+    }
+  }
+  const svg = (name: string, attributes: Record<string, string | number>) => {
+    const node = document.createElementNS("http://www.w3.org/2000/svg", name)
+    for (const [key, value] of Object.entries(attributes)) node.setAttribute(key, String(value))
+    return node
+  }
+  /** One shape per status so it reads without its colour: ring, ring with a dot, tick, half, cross, dash. */
+  const glyph = (mark: Mark) => {
+    const node = svg("svg", {
+      viewBox: "0 0 14 14",
+      class: "glyph",
+      role: "img",
+      "data-mark": mark,
+      "aria-label": copy[markCopy[mark]],
+      "data-copy-aria-label": markCopy[mark],
+    })
+    const line = { fill: "none", stroke: "currentColor", "stroke-width": 1.5, "stroke-linecap": "round" }
+    node.append(
+      svg("circle", {
+        cx: 7,
+        cy: 7,
+        r: 5.5,
+        fill: mark === "resolved" ? "currentColor" : "none",
+        stroke: "currentColor",
+        "stroke-width": 1.5,
       }),
     )
+    if (mark === "addressed") node.append(svg("circle", { cx: 7, cy: 7, r: 2.5, fill: "currentColor" }))
+    if (mark === "partial") node.append(svg("path", { d: "M7 1.5a5.5 5.5 0 0 1 0 11z", fill: "currentColor" }))
+    if (mark === "unresolved") node.append(svg("path", { d: "M5 5l4 4M9 5l-4 4", ...line }))
+    if (mark === "accepted") node.append(svg("path", { d: "M4.5 7h5", ...line }))
+    if (mark === "resolved")
+      node.append(svg("path", { d: "M4.2 7.2l1.9 1.9 3.7-4", class: "tick", ...line, "stroke-width": 1.6 }))
+    return node
   }
+  /** Glyph counts for a round's summary line, final outcomes first. */
+  const tallies = (notes: readonly Design.Note[]) =>
+    (["resolved", "partial", "unresolved", "accepted", "addressed", "open"] as const).flatMap((mark) => {
+      const count = notes.filter((note) => markOf(note) === mark).length
+      if (!count) return []
+      const node = document.createElement("span")
+      node.className = "tally"
+      node.append(glyph(mark), String(count))
+      return [node]
+    })
+  const noteCount = (count: number) =>
+    count === 1 ? copy.noteCountOne : copy.noteCount.replace("{{count}}", String(count))
+  /**
+   * What the Feedback panel keeps outside the DOM: rows a status change rebuilds read their expansion and a
+   * half-typed reason from here, and rows and round blocks are reused while their signature holds.
+   */
+  const feedbackView = {
+    expanded: new Set<string>(),
+    closing: new Map<string, { status: string; reason: string }>(),
+    only: false,
+    hovered: "",
+    revealing: "",
+    rows: new Map<string, { signature: string; row: HTMLElement }>(),
+    blocks: new Map<string, { signature: string; node: HTMLElement; lists: Map<number, HTMLElement> }>(),
+  }
+  /** One note as a checklist row: a single toggle line, and below it the element, the agent's claim, the outcome and actions. */
+  const noteRow = (
+    note: Design.Note,
+    ordinal: number,
+    origin: Design.Note | undefined,
+    again: boolean,
+    left: boolean,
+  ) => {
+    const key = noteKey(note)
+    const id = `note-${hash(key)}`
+    const mark = markOf(note)
+    const target = note.item.target
+    const row = document.createElement("li")
+    row.dataset.note = key
+    row.dataset.status = mark
+    row.dataset.left = String(left)
+    const toggle = document.createElement("button")
+    toggle.type = "button"
+    toggle.className = "row-toggle"
+    toggle.dataset.part = "toggle"
+    toggle.setAttribute("aria-controls", id)
+    const number = document.createElement("span")
+    number.className = "num"
+    number.textContent = String(ordinal)
+    const tag = document.createElement("span")
+    tag.className = "tag"
+    tag.textContent = locatable(target) ? (note.item.tag ?? "") : ""
+    const words = document.createElement("span")
+    words.className = "row-text"
+    words.dir = "auto"
+    words.textContent = note.item.text
+    toggle.append(glyph(mark), number, tag, words)
+    const body = document.createElement("div")
+    body.className = "row-body"
+    body.id = id
+    const paragraph = (className: string, ...parts: (string | Node)[]) => {
+      const node = document.createElement("p")
+      node.className = className
+      node.append(...parts)
+      return node
+    }
+    const copied = (tag: string, name: keyof ReviewCopy, prefix = "", suffix = "") => {
+      const node = document.createElement(tag)
+      node.dataset.copy = name
+      if (prefix) node.dataset.copyPrefix = prefix
+      if (suffix) node.dataset.copySuffix = suffix
+      node.textContent = `${prefix}${copy[name]}${suffix}`
+      return node
+    }
+    // The element by what the reviewer saw: the selection, else the tag and its text. A form control's text is its
+    // typed value and an empty text says nothing, so those are named by the breadcrumb below instead.
+    const control = ["input", "select", "textarea"].includes(note.item.tag ?? "")
+    const where = note.item.selectedText
+      ? `“${cut(note.item.selectedText.replace(/\s+/g, " ").trim(), 200)}”`
+      : !control && note.item.elementText
+        ? `${note.item.tag ? `${note.item.tag} ` : ""}“${note.item.elementText}”`
+        : ""
+    if (where) {
+      const node = paragraph("row-where", where)
+      node.dir = "auto"
+      body.append(node)
+    }
+    const breadcrumb = document.createElement("code")
+    breadcrumb.className = "row-label"
+    breadcrumb.textContent = note.item.label || target
+    body.append(breadcrumb)
+    if (note.addressed) {
+      const summary = document.createElement("span")
+      summary.dir = "auto"
+      summary.textContent = note.addressed.summary
+      body.append(
+        paragraph(
+          "row-claim",
+          copied("b", "rowAgent"),
+          summary,
+          ...(note.status === "open" ? [copied("span", "notVerified", " · ")] : []),
+        ),
+      )
+    }
+    if (note.status === "open" && !note.addressed) body.append(paragraph("row-note", copied("span", "noteWaiting")))
+    if (note.status !== "open") {
+      const outcome = paragraph("row-outcome", copied("b", markCopy[note.status]))
+      outcome.dataset.status = note.status
+      if (note.reason) {
+        const reason = document.createElement("span")
+        reason.dir = "auto"
+        reason.textContent = note.reason
+        outcome.append(reason)
+      }
+      if (note.by === "reviewer") outcome.append(copied("span", "byReviewer", " · "))
+      body.append(outcome)
+    }
+    // A re-sent note names the round it came from, so its outcomes read as one chain.
+    if (origin) body.append(paragraph("row-note", copied("span", "resentFrom", "", ` ${origin.round}`)))
+    if (note.evidence?.job) {
+      const link = copied("a", "openReport") as HTMLAnchorElement
+      link.className = "row-evidence"
+      link.dataset.part = "evidence"
+      link.href = `${endpoint}/${encodeURIComponent(state.design!.id)}/job/${encodeURIComponent(note.evidence.job)}/file`
+      link.target = "_blank"
+      link.rel = "noopener"
+      body.append(paragraph("", link))
+    }
+    const actions = document.createElement("div")
+    actions.className = "row-actions"
+    if (locatable(target))
+      actions.append(action("reveal", () => revealNote(target, note.item.params?.screen), "reveal"))
+    // A note the agent could not settle goes into the next round as it was, on the revision on screen.
+    if (again)
+      actions.append(
+        action(
+          "resend",
+          () => {
+            if (state.pending || !state.revision) return
+            if (!state.notes.some((item) => item.target === target && item.text === note.item.text)) {
+              state.notes.push({
+                ...note.item,
+                revision: state.revision,
+                resent: { feedback: note.feedback, index: note.index },
+              })
+              save()
+              drawNotes()
+            }
+            status(copy.resendQueued, "resendQueued", "success")
+          },
+          "resend",
+        ),
+      )
+    body.append(actions)
+    // The reviewer's escape hatch: an open note can be closed by hand, as unresolved or accepted with a reason,
+    // when the agent cannot verify it (no browser, a crashed renderer).
+    const form = note.status === "open" ? document.createElement("form") : undefined
+    const close = form ? action("closeByHand", () => {}, "close") : undefined
+    const show = () => {
+      const expanded = feedbackView.expanded.has(key)
+      toggle.setAttribute("aria-expanded", String(expanded))
+      body.hidden = !expanded
+      if (!form || !close) return
+      form.hidden = !feedbackView.closing.has(key)
+      close.setAttribute("aria-expanded", String(!form.hidden))
+    }
+    if (form && close) {
+      form.className = "row-record"
+      form.id = `${id}-record`
+      close.setAttribute("aria-controls", form.id)
+      actions.append(close)
+      const pick = document.createElement("select")
+      pick.dataset.part = "record-status"
+      pick.setAttribute("aria-label", copy.recordAs)
+      for (const [value, name] of [
+        ["unresolved", "recordUnresolved"],
+        ["accepted", "recordAccepted"],
+      ] as const) {
+        const option = document.createElement("option")
+        option.value = value
+        option.dataset.copy = name
+        option.textContent = copy[name]
+        pick.append(option)
+      }
+      const why = document.createElement("input")
+      why.type = "text"
+      why.maxLength = 500
+      why.dataset.part = "reason"
+      why.placeholder = copy.recordReason
+      why.setAttribute("aria-label", `${copy.recordReason}: ${note.item.text}`)
+      const draft = feedbackView.closing.get(key)
+      if (draft) {
+        pick.value = draft.status
+        why.value = draft.reason
+      }
+      pick.onchange = () => {
+        const entry = feedbackView.closing.get(key)
+        if (entry) entry.status = pick.value
+      }
+      why.oninput = () => {
+        const entry = feedbackView.closing.get(key)
+        if (entry) entry.reason = why.value
+      }
+      const submit = document.createElement("button")
+      submit.type = "submit"
+      submit.className = "primary"
+      submit.dataset.copy = "record"
+      submit.dataset.part = "record"
+      submit.textContent = copy.record
+      const buttons = document.createElement("div")
+      buttons.className = "row-actions"
+      buttons.append(
+        action(
+          "cancel",
+          () => {
+            feedbackView.closing.delete(key)
+            show()
+            close.focus()
+          },
+          "cancel",
+        ),
+        submit,
+      )
+      form.append(pick, why, buttons)
+      body.append(form)
+      close.onclick = () => {
+        if (feedbackView.closing.has(key)) feedbackView.closing.delete(key)
+        else feedbackView.closing.set(key, { status: pick.value, reason: why.value })
+        show()
+        if (!form.hidden) pick.focus()
+      }
+      form.onsubmit = (event) => {
+        event.preventDefault()
+        const reason = why.value.trim()
+        if (!reason) {
+          status(copy.recordReasonRequired, "recordReasonRequired", "error")
+          why.focus()
+          return
+        }
+        void run(async () => {
+          await api(`/${state.design!.id}`, "PATCH", {
+            by: "reviewer",
+            notes: [{ feedback: note.feedback, index: note.index, status: pick.value, reason }],
+          })
+          feedbackView.closing.delete(key)
+          await refresh()
+          status(copy.recorded, "recorded", "success")
+        }, submit).then(() => {
+          if (feedbackView.closing.has(key)) return
+          element("rounds-list")
+            .querySelector<HTMLElement>(`[data-note="${CSS.escape(key)}"] [data-part=toggle]`)
+            ?.focus()
+        })
+      }
+    }
+    toggle.onclick = () => {
+      if (feedbackView.expanded.has(key)) feedbackView.expanded.delete(key)
+      else feedbackView.expanded.add(key)
+      show()
+    }
+    show()
+    // Pointing at a row or moving focus into it outlines its element in the preview.
+    if (locatable(target)) {
+      const on = () => {
+        feedbackView.hovered = key
+        highlight(target)
+      }
+      const off = () => {
+        if (feedbackView.hovered !== key) return
+        feedbackView.hovered = ""
+        highlight("")
+      }
+      row.addEventListener("mouseenter", on)
+      row.addEventListener("mouseleave", off)
+      row.addEventListener("focusin", on)
+      row.addEventListener("focusout", (event) => {
+        if (!row.contains(event.relatedTarget as Node | null)) off()
+      })
+    }
+    row.append(toggle, body)
+    return row
+  }
+  /**
+   * The Feedback panel's rounds: the newest as a checklist, older rounds with notes left to act on showing those
+   * notes, settled rounds as one summary line each, and settled rounds beyond the last three grouped. Rows and blocks
+   * are keyed so the 5 s poll leaves focus, expansion and a half-typed reason alone.
+   */
+  const drawRounds = () => {
+    const rounds = state.design?.rounds ?? []
+    const notes = state.design?.notes ?? []
+    const open = openNotes().length
+    write(element("rounds-count"), String(open))
+    element("rounds-count").hidden = !open
+    element("rounds-count").dataset.open = String(open > 0)
+    element("rounds").hidden = !rounds.length
+    const active = root.activeElement instanceof HTMLElement ? root.activeElement : undefined
+    const holder = active?.closest<HTMLElement>("#rounds-list [data-note]")
+    const { resent, settled } = settledBy(notes)
+    const rowKeys = new Set<string>()
+    const blockKeys = new Set<string>()
+    const ofRound = (round: Design.Round) => notes.filter((note) => note.round === round.number)
+    const rowsOf = (round: Design.Round, only: (note: Design.Note) => boolean = () => true) =>
+      ofRound(round).flatMap((note, position) => {
+        if (!only(note)) return []
+        const key = noteKey(note)
+        const origin = note.item.resent ? notes.find((item) => noteKey(item) === noteKey(note.item.resent!)) : undefined
+        const again =
+          (note.status === "partial" || note.status === "unresolved") && !!round.published && !resent.has(key)
+        const signature = JSON.stringify([note, position + 1, origin?.round ?? 0, again, settled(note)])
+        rowKeys.add(key)
+        const previous = feedbackView.rows.get(key)
+        if (previous?.signature === signature) return [previous.row]
+        const row = noteRow(note, position + 1, origin, again, !settled(note))
+        feedbackView.rows.set(key, { signature, row })
+        return [row]
+      })
+    const list = (name: string) => {
+      const node = document.createElement("ul")
+      node.className = "rows"
+      node.dataset.block = name
+      return node
+    }
+    const summary = (label: HTMLElement, side: (string | Node)[]) => {
+      const node = document.createElement("summary")
+      const aside = document.createElement("span")
+      aside.className = "fold-side"
+      aside.append(...side)
+      node.append(label, aside)
+      return node
+    }
+    const roundLabel = (tag: string, number: number) => {
+      const node = document.createElement(tag)
+      node.dataset.copy = "round"
+      node.dataset.copySuffix = ` ${number}`
+      node.textContent = `${copy.round} ${number}`
+      return node
+    }
+    const block = (
+      key: string,
+      signature: string,
+      build: () => { node: HTMLElement; lists: Map<number, HTMLElement> },
+      rows: [number, HTMLElement[]][],
+    ) => {
+      const previous = feedbackView.blocks.get(key)
+      const current = previous?.signature === signature ? previous : { signature, ...build() }
+      feedbackView.blocks.set(key, current)
+      blockKeys.add(key)
+      for (const [number, items] of rows) place(current.lists.get(number)!, items)
+      return current.node
+    }
+    const newest = [...rounds].reverse()
+    const grouped = newest.slice(3).filter((round) => ofRound(round).every(settled))
+    const blocks = newest.flatMap((round, position) => {
+      const own = ofRound(round)
+      const marks = own.map(markOf)
+      if (position === 0)
+        return [
+          block(
+            "current",
+            JSON.stringify([round.number]),
+            () => {
+              const node = list("current")
+              return { node, lists: new Map([[round.number, node]]) }
+            },
+            [[round.number, rowsOf(round)]],
+          ),
+        ]
+      const left = own.filter((note) => !settled(note)).length
+      if (left)
+        return [
+          block(
+            `left:${round.number}`,
+            JSON.stringify([round.number, left, own.length, marks]),
+            () => {
+              const node = document.createElement("div")
+              node.className = "round-left"
+              const line = document.createElement("p")
+              line.className = "round-line"
+              const side = document.createElement("span")
+              side.className = "fold-side"
+              side.append(
+                copy.leftOf.replace("{{left}}", String(left)).replace("{{count}}", String(own.length)),
+                ...tallies(own),
+              )
+              line.append(roundLabel("b", round.number), side)
+              const rows = list(`left:${round.number}`)
+              node.append(line, rows)
+              return { node, lists: new Map([[round.number, rows]]) }
+            },
+            [[round.number, rowsOf(round, (note) => !settled(note))]],
+          ),
+        ]
+      if (grouped.length > 1 && grouped.includes(round)) return []
+      return [
+        block(
+          `done:${round.number}`,
+          JSON.stringify([round.number, own.length, marks]),
+          () => {
+            const node = document.createElement("details")
+            node.className = "fold round-done"
+            node.dataset.round = String(round.number)
+            const rows = list(`done:${round.number}`)
+            node.append(summary(roundLabel("b", round.number), [noteCount(own.length), ...tallies(own)]), rows)
+            disclose(node, `round-${round.number}`, false)
+            return { node, lists: new Map([[round.number, rows]]) }
+          },
+          [[round.number, rowsOf(round)]],
+        ),
+      ]
+    })
+    if (grouped.length > 1) {
+      const numbers = grouped.map((round) => round.number)
+      const own = grouped.flatMap(ofRound)
+      // A range only when it has no gap; a round in between with notes left is listed on its own above.
+      const contiguous = numbers.every((number, index) => index === 0 || numbers[index - 1] === number + 1)
+      blocks.push(
+        block(
+          "group",
+          JSON.stringify([numbers, own.length, own.map(markOf)]),
+          () => {
+            const node = document.createElement("details")
+            node.className = "fold round-group"
+            const label = document.createElement("b")
+            label.textContent = contiguous
+              ? copy.roundRange.replace("{{first}}", String(numbers.at(-1))).replace("{{last}}", String(numbers[0]))
+              : copy.roundsEarlier.replace("{{count}}", String(numbers.length))
+            const content = document.createElement("div")
+            content.className = "fold-body"
+            const lists = new Map<number, HTMLElement>()
+            for (const round of grouped) {
+              const head = document.createElement("p")
+              head.className = "round-subhead"
+              head.append(roundLabel("span", round.number), ` · ${noteCount(ofRound(round).length)}`)
+              const rows = list(`group:${round.number}`)
+              lists.set(round.number, rows)
+              content.append(head, rows)
+            }
+            node.append(summary(label, [noteCount(own.length), ...tallies(own)]), content)
+            disclose(node, "group", false)
+            return { node, lists }
+          },
+          grouped.map((round) => [round.number, rowsOf(round)]),
+        ),
+      )
+    }
+    place(element("rounds-list"), blocks)
+    for (const key of feedbackView.blocks.keys()) if (!blockKeys.has(key)) feedbackView.blocks.delete(key)
+    for (const key of feedbackView.rows.keys()) {
+      if (rowKeys.has(key)) continue
+      feedbackView.rows.delete(key)
+      feedbackView.expanded.delete(key)
+      feedbackView.closing.delete(key)
+      // A row that leaves the list takes its highlight in the preview with it.
+      if (feedbackView.hovered !== key) continue
+      feedbackView.hovered = ""
+      highlight("")
+    }
+    // A rebuilt or moved row gets its focus back on the same control.
+    if (holder && active && root.activeElement !== active) {
+      const next = element("rounds-list").querySelector<HTMLElement>(
+        `[data-note="${CSS.escape(holder.dataset.note!)}"] [data-part="${active.dataset.part ?? "toggle"}"]`,
+      )
+      next?.focus({ preventScroll: true })
+      if (next instanceof HTMLInputElement) next.setSelectionRange(next.value.length, next.value.length)
+    }
+    drawConversation()
+  }
+  /** The newest round's heading: its number, how many notes are left, and the revision and verify report answering it. */
+  const drawHead = () => {
+    const round = state.design?.rounds?.at(-1)
+    if (!round) return
+    const all = state.design?.notes ?? []
+    const notes = all.filter((note) => note.round === round.number)
+    const { settled } = settledBy(all)
+    const left = notes.filter((note) => !settled(note)).length
+    const title = element("round-title")
+    title.dataset.copy = "round"
+    title.dataset.copySuffix = ` ${round.number}`
+    write(title, `${copy.round} ${round.number}`)
+    const rest = feedbackView.only
+      ? copy.hiddenCount.replace("{{count}}", String(notes.length - left))
+      : left
+        ? copy.leftCount.replace("{{count}}", String(left))
+        : copy.nothingLeft
+    write(element("round-tally"), `${noteCount(notes.length)} · ${rest}`)
+    if (element("rounds").dataset.only !== String(feedbackView.only)) {
+      element("rounds").dataset.only = String(feedbackView.only)
+      element("rounds-only").setAttribute("aria-pressed", String(feedbackView.only))
+    }
+    const verified = state.feed.findLast(
+      (event) => event.type === "verified" && event.design === state.design?.id && event.round === round.number,
+    )
+    const job =
+      verified?.type === "verified" ? verified.job : notes.findLast((note) => note.evidence?.job)?.evidence?.job
+    const sub = element("round-sub")
+    const signature = JSON.stringify([round.published ?? "", job ?? ""])
+    if (sub.dataset.signature === signature) return
+    sub.dataset.signature = signature
+    // Before an answer the progress line says where the round stands; this line names the answer and its captures.
+    if (!round.published) return sub.replaceChildren()
+    const answer = document.createElement("span")
+    answer.dataset.copy = "roundAnswered"
+    answer.dataset.copySuffix = ` …${round.published.slice(-8)}`
+    answer.textContent = `${copy.roundAnswered} …${round.published.slice(-8)}`
+    sub.replaceChildren(answer)
+    if (!job) return
+    const report = document.createElement("a")
+    report.href = `${endpoint}/${encodeURIComponent(state.design!.id)}/job/${encodeURIComponent(job)}/file`
+    report.target = "_blank"
+    report.rel = "noopener"
+    report.dataset.copy = "openReport"
+    report.textContent = copy.openReport
+    sub.append(report)
+  }
+  /** The agent's reply with its light markdown: **bold**, `code` and list lines as typed; never links or markup. */
+  const markdown = (text: string) =>
+    text.split("\n").map((line) => {
+      const paragraph = document.createElement("p")
+      for (const part of line.split(/(\*\*[^*\n]+\*\*|`[^`\n]+`)/)) {
+        if (!part) continue
+        const strong = /^\*\*[^*\n]+\*\*$/.test(part)
+        if (!strong && !/^`[^`\n]+`$/.test(part)) {
+          paragraph.append(part)
+          continue
+        }
+        const node = document.createElement(strong ? "strong" : "code")
+        node.textContent = strong ? part.slice(2, -2) : part.slice(1, -1)
+        paragraph.append(node)
+      }
+      return paragraph
+    })
+  const conversationView = { reply: "", message: "", alert: "" }
+  /** Offers "Show more" only when the clamped reply hides something. */
+  const fitReply = () => {
+    const expanded = element("reply").dataset.expanded === "true"
+    const more = element("reply-more")
+    more.hidden = !expanded && element("reply-text").scrollHeight <= element("reply-text").clientHeight + 1
+    more.dataset.copy = expanded ? "replyLess" : "replyMore"
+    write(more, expanded ? copy.replyLess : copy.replyMore)
+    more.setAttribute("aria-expanded", String(expanded))
+  }
+  const replyFit = new ResizeObserver(fitReply)
+  replyFit.observe(element("reply-text"))
+  element("reply-more").onclick = () => {
+    element("reply").dataset.expanded = String(element("reply").dataset.expanded !== "true")
+    fitReply()
+  }
+  /**
+   * The conversation as the panel shows it: the agent's last reply, this round's message, a refused status recording
+   * as an alert on the round, and Activity limited to the entries since the round's first message. Entries are
+   * scoped by position, not time: replayed entries carry their message's time and live ones the event's.
+   */
+  const drawConversation = () => {
+    if (!options.feed) return
+    const round = state.design?.rounds?.at(-1)
+    const keys = state.feed.map(entryKey)
+    const start = round ? keys.indexOf(`user:${round.feedback[0]}`) : -1
+    const earlier = new Set(keys.slice(0, Math.max(start, 0)))
+    element("feed")
+      .querySelectorAll<HTMLElement>(".entry")
+      .forEach((row) => {
+        const hide = earlier.has(row.dataset.key ?? "")
+        if (row.hidden !== hide) row.hidden = hide
+      })
+    const scoped = state.feed.slice(Math.max(start, 0))
+    const failed = scoped.filter((event) => event.type === "tool" && event.status === "failed").length
+    write(
+      element("activity-count"),
+      [
+        scoped.length === 1 ? copy.activityCountOne : copy.activityCount.replace("{{count}}", String(scoped.length)),
+        ...(failed ? [copy.activityFailed.replace("{{count}}", String(failed))] : []),
+      ].join(" · "),
+    )
+    drawHead()
+    const recording =
+      start >= 0
+        ? scoped.findLast(
+            (event) => event.type === "tool" && event.tool === "design_document" && event.status !== "running",
+          )
+        : undefined
+    const refused = recording?.type === "tool" && recording.status === "failed" ? recording.summary : ""
+    element("round-alert").hidden = !refused
+    if (conversationView.alert !== refused) {
+      conversationView.alert = refused
+      const head = document.createElement("strong")
+      head.dataset.copy = "statusRefused"
+      head.dataset.copySuffix = ":"
+      head.textContent = `${copy.statusRefused}:`
+      element("round-alert").replaceChildren(...(refused ? [head, ` ${refused}`] : []))
+    }
+    // The text typed beside the notes is the round's message, not a note.
+    const message = (round?.feedback ?? [])
+      .flatMap((id) =>
+        state.feed.flatMap((event) => (event.type === "user" && event.id === id && event.text ? [event.text] : [])),
+      )
+      .join("\n")
+    element("round-message").hidden = !message
+    if (conversationView.message !== message) {
+      conversationView.message = message
+      const who = document.createElement("strong")
+      who.dataset.copy = "you"
+      who.dataset.copySuffix = ": "
+      who.textContent = `${copy.you}: `
+      element("round-message").replaceChildren(...(message ? [who, message] : []))
+    }
+    const reply = state.feed.findLast((event) => event.type === "reply")
+    element("reply").hidden = !reply
+    const signature = reply?.type === "reply" ? JSON.stringify([reply.id, reply.at, reply.text]) : ""
+    if (conversationView.reply === signature || reply?.type !== "reply") return
+    if (JSON.parse(conversationView.reply || "[]")[0] !== reply.id) element("reply").dataset.expanded = "false"
+    conversationView.reply = signature
+    const head = element("reply-head")
+    head.dataset.copy = "agentReply"
+    head.dataset.copySuffix = ` · ${new Date(reply.at).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}`
+    head.textContent = `${copy.agentReply}${head.dataset.copySuffix}`
+    element("reply-text").replaceChildren(...markdown(reply.text))
+    fitReply()
+  }
+  element("rounds-only").onclick = () => {
+    feedbackView.only = !feedbackView.only
+    drawHead()
+  }
+  // The composer grows while its message is in use. Only focusing the message opens it, and only focus leaving the
+  // composer with the message empty closes it: growing on any focus inside would move a draft's Remove or the Send
+  // button out from under the pointer between press and release, and the click would be lost.
+  element("composer").addEventListener("focusin", (event) => {
+    if (event.target === input("note")) element("composer").dataset.open = "true"
+  })
+  element("composer").addEventListener("focusout", (event) => {
+    if (element("composer").contains(event.relatedTarget as Node | null)) return
+    element("composer").dataset.open = String(!!input("note").value.trim())
+  })
+  const fill = (template: string, values: Record<string, string | number>) =>
+    Object.entries(values).reduce((text, [name, value]) => text.replaceAll(`{{${name}}}`, String(value)), template)
+  const clock = (at: number) => new Date(at).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })
+  /** A duration as the reader says it: seconds, then whole minutes, then whole hours. */
+  const span = (ms: number) => {
+    const seconds = Math.max(0, Math.floor(ms / 1000))
+    if (seconds < 60) return fill(copy.timeSeconds, { count: seconds })
+    if (seconds < 3600) return fill(copy.timeMinutes, { count: Math.floor(seconds / 60) })
+    return fill(copy.timeHours, { count: Math.floor(seconds / 3600) })
+  }
+  /** The agent's state as far as a connected feed tells it. */
+  const agentState = () => (liveness.feed === "live" && state.agent ? state.agent : "unknown")
+  /** Revisions newer than the one on screen; a publish the feed announced counts before the list has it. */
+  const newerCount = () => {
+    const latest = state.design?.revision
+    if (!latest || !state.revision) return 0
+    const ids = state.revisions.map((revision) => revision.id)
+    const listed = latest === state.revision ? 0 : Math.max(ids.indexOf(state.revision) - ids.indexOf(latest), 1)
+    const announced =
+      !!liveness.announced &&
+      liveness.announced !== latest &&
+      liveness.announced !== state.revision &&
+      !ids.includes(liveness.announced)
+    return listed + (announced ? 1 : 0)
+  }
+  /** What holds a newer revision back from replacing the one on screen; the poll and the line above the preview share it. */
+  const blocker = () =>
+    state.pending
+      ? ("pending" as const)
+      : state.card?.text.trim()
+        ? ("card" as const)
+        : root.querySelector("dialog[open]")
+          ? ("dialog" as const)
+          : document.hidden
+            ? ("hidden" as const)
+            : ("" as const)
+  const roundStageCopy = {
+    received: "stageReceived",
+    fixing: "stageFixing",
+    stopped: "stageStopped",
+    published: "stagePublished",
+    unverified: "stageUnverified",
+    verifying: "stageVerifying",
+    verifyFailed: "stageVerifyFailed",
+    recording: "stageRecording",
+    missing: "stageMissing",
+    recorded: "stageRecorded",
+    ready: "stageReady",
+  } as const
+  const livenessView = { line: "", stage: "" }
+  /** The newest round's notes and its newest verify job, the facts its progress is derived from. */
+  const roundFacts = (round: Design.Round) => {
+    const design = state.design!
+    const notes = (design.notes ?? []).filter((note) => note.round === round.number)
+    const verify = state.jobs
+      .filter(
+        (job) =>
+          job.input.format === "verify" &&
+          // A verify without a round checks the latest one.
+          (job.input.round ?? job.verify?.round ?? round.number) === round.number,
+      )
+      .reduce<Design.Job | undefined>(
+        (newest, job) => (!newest || job.created >= newest.created ? job : newest),
+        undefined,
+      )
+    const progress = loader.progress({
+      published: !!round.published,
+      answered: !!round.published && (!options.feed || liveness.published.has(round.published)),
+      notes,
+      open: openNotes().length,
+      queued: round.feedback.some((id) => liveness.inbox.has(id)),
+      inbox: liveness.inbox.size > 0,
+      agent: agentState(),
+      idle: agentState() === "idle" ? Date.now() - liveness.idleSince : 0,
+      verify: verify && { status: verify.status, current: verify.input.revision === design.revision },
+      busy: state.jobs.some((job) => job.status === "queued" || job.status === "running"),
+      onLatest: !!state.revision && state.revision === design.revision && loading.view.phase === "ready",
+      connected: liveness.feed === "live",
+    })
+    return { notes, verify, progress }
+  }
+  /** The outcome counts a finished round reports: what the agent marked, not a promise that everything is fixed. */
+  const outcomes = (tally: ReturnType<typeof loader.progress>) =>
+    (
+      [
+        ["resolved", "countResolved"],
+        ["partial", "countPartial"],
+        ["unresolved", "countUnresolved"],
+        ["accepted", "countAccepted"],
+        ["closed", "countClosed"],
+      ] as const
+    )
+      .flatMap(([name, key]) => (tally[name] ? [fill(copy[key], { count: tally[name] })] : []))
+      .join(", ")
+  /**
+   * The round's progress under its heading: a five-step bar, the stage with its counts, when the round's first
+   * message was written, and the agent's live activity. Derived on every poll, feed event and clock tick.
+   */
+  const drawProgress = () => {
+    const design = state.design
+    const round = design && !design.ended ? design.rounds?.at(-1) : undefined
+    // The live line sits beside when the round was received, or atop the panel when there is no round.
+    const slot = round ? element("round-live") : element("review-scroll")
+    const agent = element("agent-state")
+    if (agent.parentElement !== slot) slot.prepend(agent)
+    drawAgent()
+    element("round-progress").hidden = !round
+    if (!round) return
+    const facts = roundFacts(round)
+    const progress = facts.progress
+    const label = copy[roundStageCopy[progress.stage]]
+    const steps = element("round-steps")
+    const tone = progress.stage === "ready" ? "ready" : progress.halted ? "halt" : ""
+    if (steps.dataset.tone !== tone) steps.dataset.tone = tone
+    steps.querySelectorAll("i").forEach((segment, index) => {
+      const mark = index < progress.step ? "done" : index === progress.step ? "now" : ""
+      if ((segment.dataset.s ?? "") !== mark) segment.dataset.s = mark
+    })
+    const aria = fill(copy.stepOf, { step: progress.step + 1, stage: label })
+    if (steps.getAttribute("aria-label") !== aria) steps.setAttribute("aria-label", aria)
+    const left = progress.total - progress.recorded
+    const detail = {
+      received: round.feedback.some((id) => liveness.inbox.has(id)) ? copy.detailQueued : copy.detailDelivered,
+      fixing: progress.addressed
+        ? fill(copy.detailAddressed, { done: progress.addressed, count: progress.total })
+        : copy.detailWorking,
+      stopped:
+        progress.total > progress.addressed
+          ? fill(copy.detailNotAddressed, { count: progress.total - progress.addressed })
+          : copy.detailUnpublished,
+      published: copy.detailNotVerified,
+      unverified: left ? fill(copy.detailWithout, { count: left }) : outcomes(progress),
+      verifying: copy.detailChecking,
+      verifyFailed: facts.verify?.error ?? fill(copy.detailWithout, { count: left }),
+      recording: fill(copy.detailRecorded, { done: progress.recorded, count: progress.total }),
+      missing: fill(copy.detailWithout, { count: left }),
+      recorded: outcomes(progress),
+      ready: outcomes(progress),
+    }[progress.stage]
+    const signature = JSON.stringify([label, detail])
+    if (livenessView.stage !== signature) {
+      livenessView.stage = signature
+      const name = document.createElement("b")
+      name.textContent = label
+      const rest = document.createElement("span")
+      rest.textContent = detail ? ` · ${detail}` : ""
+      element("round-stage").dataset.stage = progress.stage
+      element("round-stage").replaceChildren(name, rest)
+    }
+    // Replayed entries carry the time their message was written, which is what "received" means here.
+    const first = state.feed.find((event) => event.type === "user" && event.id === round.feedback[0])
+    write(element("round-received"), fill(copy.receivedAgo, { time: span(Date.now() - (first?.at ?? round.opened)) }))
+  }
+  /** The agent's live activity, from live events only; counters freeze while the feed is offline. */
+  const drawAgent = () => {
+    const node = element("agent-state")
+    const now = Date.now()
+    const design = state.design
+    const review = state.jobs.find(
+      (job) =>
+        job.input.revision === design?.revision &&
+        (job.input.format === "audit" || job.input.format === "verify") &&
+        (job.status === "queued" || job.status === "running"),
+    )
+    const agent = agentState()
+    const tool = liveness.tool
+    const [kind, text] =
+      liveness.feed === "none" || design?.ended
+        ? ["", ""]
+        : liveness.feed === "unavailable"
+          ? ["offline", copy.feedUnavailable]
+          : liveness.feed === "offline"
+            ? ["offline", copy.liveOffline]
+            : liveness.feed === "connecting"
+              ? ["", copy.liveConnecting]
+              : review
+                ? [
+                    "working",
+                    review.input.format === "audit"
+                      ? copy.stateReviewing
+                      : fill(copy.liveVerify, { time: span(now - (review.started ?? review.created)) }),
+                  ]
+                : agent === "working"
+                  ? [
+                      "working",
+                      tool
+                        ? [fill(copy.liveTool, { tool: tool.name }), span(now - tool.since), tool.summary]
+                            .filter(Boolean)
+                            .join(" · ")
+                        : liveness.last
+                          ? fill(copy.liveLast, { time: span(now - liveness.last) })
+                          : copy.liveWorking,
+                    ]
+                  : agent === "idle"
+                    ? [
+                        "idle",
+                        liveness.idleLive
+                          ? fill(copy.liveIdleSince, { time: clock(liveness.idleSince) })
+                          : copy.liveIdle,
+                      ]
+                    : ["", ""]
+    node.hidden = !text
+    if ((node.dataset.state ?? "") !== kind) node.dataset.state = kind
+    write(element("agent-text"), text)
+  }
+  /** The revision chip beside the picker: Latest, N behind, Updating…, Load failed or Offline. */
+  const drawChip = (kind: ReturnType<typeof loader.revision>["chip"], count: number) => {
+    const chip = element<HTMLButtonElement>("newer")
+    chip.hidden = !state.revision
+    const text = {
+      latest: copy.chipLatest,
+      behind: fill(copy.chipBehind, { count }),
+      updating: copy.chipUpdating,
+      failed: copy.chipFailed,
+      offline: copy.chipOffline,
+    }[kind]
+    const action = kind === "behind" || kind === "failed"
+    if (chip.dataset.chip !== kind) chip.dataset.chip = kind
+    if (chip.dataset.action !== String(action)) {
+      chip.dataset.action = String(action)
+      chip.tabIndex = action ? 0 : -1
+      syncMenu()
+    }
+    write(element("newer-label"), text)
+    const hint = kind === "offline" ? copy.chipOfflineHint : action ? copy.latest : ""
+    if (chip.title !== hint) chip.title = hint
+    const label = hint ? `${text}. ${hint}` : text
+    if (chip.getAttribute("aria-label") !== label) chip.setAttribute("aria-label", label)
+  }
+  /** The one line above the preview: facts about the revision on screen, and why a newer one has not replaced it. */
+  const drawLine = (kind: ReturnType<typeof loader.revision>["line"], latest: boolean) => {
+    const node = element("revision-line")
+    const design = state.design
+    const round = design?.rounds?.at(-1)
+    const created = (id: string | null | undefined) => state.revisions.find((revision) => revision.id === id)?.created
+    const shown = state.revisions.find((revision) => revision.id === state.revision)
+    const time = shown ? clock(shown.created) : ""
+    const when = !latest ? time : time ? fill(copy.lineLatest, { time }) : copy.chipLatest
+    const newest = created(design?.revision)
+    const progress = round ? roundFacts(round).progress : undefined
+    const before = () => {
+      if (!progress || !round) return ""
+      // Without a connected feed the page cannot tell what the agent is doing, so it says nothing about it.
+      if (agentState() === "unknown") return ""
+      if (progress.stage === "stopped")
+        return progress.total > progress.addressed
+          ? fill(copy.lineStopped, { notes: noteCount(progress.total - progress.addressed) })
+          : copy.lineStoppedAll
+      if (round.feedback.some((id) => liveness.inbox.has(id))) return copy.lineQueued
+      return fill(copy.lineWorking, { notes: noteCount(progress.total - progress.recorded) })
+    }
+    const [bold, why, tone, button] = (
+      {
+        "": ["", "", "", ""],
+        failed: [
+          fill(copy.lineFailed, { name: shown ? `${shown.name} · ${shown.id.slice(-8)}` : state.revision }),
+          liveness.failure,
+          "bad",
+          "failed",
+        ],
+        card: [copy.lineNewer, copy.lineCard, "warn", "card"],
+        pending: [copy.lineNewer, copy.linePending, "warn", "pending"],
+        older: [
+          fill(copy.lineOlder, { time }),
+          newest === undefined ? "" : fill(copy.lineOlderWhy, { time: clock(newest) }),
+          "",
+          "",
+        ],
+        answers: [
+          fill(copy.lineAnswers, { when, round: round?.number ?? "" }),
+          "",
+          latest && progress?.stage === "ready" ? "ok" : "",
+          "",
+        ],
+        after: [fill(copy.lineAfter, { when, round: round?.number ?? "" }), "", "", ""],
+        yours: [fill(copy.lineYours, { round: round?.number ?? "" }), copy.lineYoursWhy, "warn", ""],
+        unanswered: [fill(copy.lineUnanswered, { round: round?.number ?? "" }), copy.lineUnansweredWhy, "warn", ""],
+        before: [
+          fill(copy.lineBefore, { round: round?.number ?? "" }),
+          before(),
+          progress?.stage === "stopped" ? "warn" : "",
+          "",
+        ],
+      } as const
+    )[kind]
+    // A newer revision that replaced the one on screen after a wait says when it was published.
+    const switched =
+      liveness.switched?.revision === state.revision && kind !== "failed" && kind !== "card" && kind !== "pending"
+        ? fill(copy.lineSwitched, { time: span(Date.now() - liveness.switched.created) })
+        : ""
+    const lead = switched || bold
+    const rest = switched ? bold : why
+    const signature = JSON.stringify([lead, rest, tone, button])
+    node.hidden = !lead
+    if (livenessView.line === signature) return
+    livenessView.line = signature
+    node.dataset.tone = tone
+    node.dataset.kind = switched ? "switched" : kind
+    const strong = document.createElement("b")
+    strong.textContent = lead
+    const parts: Node[] = [strong]
+    if (rest) {
+      const muted = document.createElement("span")
+      muted.textContent = rest
+      parts.push(muted)
+    }
+    if (button === "failed") parts.push(action("lineFailedAction", () => void run(retryLatest), "retry-latest"))
+    if (button === "card")
+      parts.push(
+        action(
+          "lineCardAction",
+          () =>
+            void run(async () => {
+              // The note belongs to the revision it was written on; it goes into the queue, then the page moves on.
+              queueCard()
+              if (state.card) closeCard()
+              if (state.design?.revision) await chooseRevision(state.design.revision, true)
+            }),
+          "add-and-switch",
+        ),
+      )
+    if (button === "pending")
+      parts.push(action("linePendingAction", () => void run(() => send(false), element("send")), "retry-send"))
+    const focused = node.contains(root.activeElement) ? (root.activeElement as HTMLElement).dataset.part : undefined
+    node.replaceChildren(...parts)
+    if (focused) node.querySelector<HTMLElement>(`[data-part="${focused}"]`)?.focus()
+  }
+  /**
+   * Whether the page is current: the revision chip, the line above the preview, the round's progress and the notice
+   * inside an open dialog. Cheap enough for every feed event and the one-second clock; text is written only on change.
+   */
+  const drawLiveness = () => {
+    if (state.stopped) return
+    const design = state.design
+    const round = design && !design.ended ? design.rounds?.at(-1) : undefined
+    const count = newerCount()
+    const shown = state.revisions.find((revision) => revision.id === state.revision)
+    const view = loader.revision({
+      shown: state.revision ? { id: state.revision, created: shown?.created } : undefined,
+      newer: count,
+      following: state.followLatest && !state.choice,
+      blocker: blocker(),
+      loading: !!liveness.loading && liveness.loading === design?.revision,
+      failed: !!liveness.failed && liveness.failed === design?.revision && state.revision !== liveness.failed,
+      offline: liveness.feed === "offline" || liveness.unreachable,
+      round: round && {
+        number: round.number,
+        opened: round.opened,
+        revision: round.revision,
+        published: round.published,
+        answered: state.revisions.find((revision) => revision.id === round.published)?.created,
+      },
+      byAgent: options.feed && liveness.replayed ? liveness.published.has(state.revision) : undefined,
+    })
+    drawChip(state.failedPreview ? "failed" : view.chip, count)
+    drawLine(design?.ended ? "" : view.line, count === 0)
+    drawProgress()
+    root.querySelectorAll<HTMLElement>("dialog [data-newer]").forEach((notice) => {
+      notice.hidden = count === 0
+    })
+  }
+  /** Loads the latest revision again after its live reload failed, keeping the frame on screen until it arrives. */
+  const retryLatest = async () => {
+    const latest = state.design?.revision
+    if (!latest) return
+    liveness.failed = ""
+    if (state.failedPreview === latest || !state.revision) return chooseRevision(latest)
+    await chooseRevision(latest, state.followLatest, !state.followLatest)
+  }
+  // The chip acts only when it has something to do: show the latest revision, or load it again after a failure.
+  element("newer").onclick = () => {
+    if (element("newer").dataset.action !== "true") return
+    void run(async () => {
+      const latest = state.design?.revision
+      if (!latest) return
+      if (liveness.failed === latest || state.failedPreview === latest) return retryLatest()
+      // A note typed in the open card goes into the queue rather than being lost with the card.
+      queueCard()
+      if (state.card) closeCard()
+      await chooseRevision(latest, false, true)
+    }, element("newer"))
+  }
+  // One tab stop per note: the arrow keys, Home and End move between the rows' toggles.
+  element("rounds-list").addEventListener("keydown", (event) => {
+    if (!(event.target instanceof HTMLElement) || !event.target.matches(".row-toggle")) return
+    if (!["ArrowDown", "ArrowUp", "Home", "End"].includes(event.key)) return
+    const toggles = [...element("rounds-list").querySelectorAll<HTMLElement>(".row-toggle")].filter(
+      (toggle) => toggle.offsetParent !== null,
+    )
+    const index = toggles.indexOf(event.target)
+    const next =
+      event.key === "Home"
+        ? 0
+        : event.key === "End"
+          ? toggles.length - 1
+          : Math.min(Math.max(index + (event.key === "ArrowDown" ? 1 : -1), 0), toggles.length - 1)
+    event.preventDefault()
+    toggles[next]?.focus()
+  })
   const dismissed = (): string[] => {
     try {
       const stored = JSON.parse(localStorage.getItem(dismissedKey()) ?? "[]")
@@ -1426,6 +2483,85 @@ details{border-top:1px solid var(--edge);padding:14px 0}summary{cursor:pointer;f
       text: text("text"),
     }
   }
+  /** The parts of a draft that belong to the next message rather than to the revision on screen. */
+  const outgoing = () => ({
+    notes: [...state.notes],
+    text: input("note").value,
+    pending: state.pending,
+    feedbackError: state.feedbackError,
+    assets: [...state.assets],
+    snapshot: state.snapshot,
+    boards: [...state.boards],
+  })
+  const sameNote = (a: { target: string; text: string }, b: { target: string; text: string }) =>
+    a.target === b.target && a.text === b.text
+  /** Takes a draft carried from another revision into the one just restored, without doubling anything. */
+  const adopt = (carried: ReturnType<typeof outgoing>) => {
+    state.notes = [...state.notes, ...carried.notes.filter((note) => !state.notes.some((item) => sameNote(item, note)))]
+    const typed = input("note").value
+    input("note").value =
+      typed && carried.text && typed !== carried.text ? `${carried.text}\n${typed}` : carried.text || typed
+    if (carried.pending) {
+      state.pending = carried.pending
+      state.feedbackError = carried.feedbackError
+    }
+    state.assets = [...new Set([...state.assets, ...carried.assets])]
+    state.snapshot = carried.snapshot || state.snapshot
+    state.boards = [...state.boards, ...carried.boards]
+    save()
+    drawNotes()
+  }
+  const draftFields = ["notes", "text", "card", "pending", "feedbackError", "assets", "snapshot", "boards"]
+  /** Removes the message parts from a revision's stored draft once they moved to another revision. */
+  const release = (name: string) => {
+    try {
+      const stored = JSON.parse(localStorage.getItem(name) ?? "null")
+      if (!stored || typeof stored !== "object") return
+      for (const field of draftFields) delete stored[field]
+      localStorage.setItem(name, JSON.stringify(stored))
+    } catch {
+      // Without storage nothing was left behind to move.
+    }
+  }
+  /**
+   * Takes what was just sent off every other stored draft of the design: copies left by earlier live reloads would
+   * otherwise come back as unsent notes when the reader opens that revision, and be sent twice.
+   */
+  const sweep = (sent: Design.Feedback) => {
+    const prefix = `redcode:design:${endpoint}:${state.design?.id}:`
+    try {
+      for (const name of Object.keys(localStorage)) {
+        if (!name.startsWith(prefix) || name === key()) continue
+        const stored = JSON.parse(localStorage.getItem(name) ?? "null")
+        if (!stored || typeof stored !== "object" || Array.isArray(stored)) continue
+        const notes = Array.isArray(stored.notes)
+          ? stored.notes.filter(
+              (note: unknown) =>
+                !(
+                  note &&
+                  typeof note === "object" &&
+                  sent.items.some((item) => sameNote(item, note as { target: string; text: string }))
+                ),
+            )
+          : stored.notes
+        const pending = stored.pending?.id === sent.id
+        const text = !!sent.text && typeof stored.text === "string" && stored.text.trim() === sent.text
+        const dropped = Array.isArray(notes) && notes.length !== stored.notes.length
+        if (!dropped && !pending && !text) continue
+        localStorage.setItem(
+          name,
+          JSON.stringify({
+            ...stored,
+            notes,
+            ...(pending ? { pending: undefined, feedbackError: "" } : {}),
+            ...(text ? { text: "" } : {}),
+          }),
+        )
+      }
+    } catch {
+      // Without storage there are no other drafts to clear.
+    }
+  }
   const restoreDraft = () => {
     state.notes = []
     state.params = {}
@@ -1543,12 +2679,15 @@ details{border-top:1px solid var(--edge);padding:14px 0}summary{cursor:pointer;f
     element("no-variants").hidden = state.variants.length > 0 || view.phase !== "ready"
   }
   const loadingEvent = (event: LoadingEvent) => {
+    const phase = loading.view.phase
     loading.view = loader.reduce(loading.view, event)
     if (loading.view.phase !== "loading") {
       clearTimeout(loading.reveal)
       loading.reveal = undefined
     }
     drawLoading()
+    // "Ready for review" needs the revision on screen loaded, so a finished load can change the round's stage.
+    if (loading.view.phase !== phase) drawLiveness()
   }
   /** Shows the frame after a while even when its runtime never says it is ready. */
   const revealAfter = (ms: number) => {
@@ -1579,19 +2718,6 @@ details{border-top:1px solid var(--edge);padding:14px 0}summary{cursor:pointer;f
       clearTimeout(watch.timer)
     }
   }
-  const pill = (key: "stateWorking" | "stateIdle" | "statePublished" | "feedUnavailable") => {
-    const node = element("agent-state")
-    node.dataset.state =
-      key === "feedUnavailable"
-        ? "off"
-        : state.reviewing || key === "stateWorking"
-          ? "working"
-          : key === "stateIdle"
-            ? "idle"
-            : "published"
-    node.dataset.copy = state.reviewing && key !== "feedUnavailable" ? "stateReviewing" : key
-    node.textContent = copy[state.reviewing && key !== "feedUnavailable" ? "stateReviewing" : key]
-  }
   const entryKey = (event: Design.FeedEvent) =>
     event.type === "published"
       ? `published:${event.revision}`
@@ -1616,9 +2742,11 @@ details{border-top:1px solid var(--edge);padding:14px 0}summary{cursor:pointer;f
       notes.textContent = `${notes.dataset.copyPrefix}${event.notes === 1 ? copy.feedNote : copy.feedNotes}`
       row.append(who, event.text, ...(event.notes ? [notes] : []))
     }
-    if (event.type === "reply") row.textContent = event.text
-    if (event.type === "tool")
+    if (event.type === "reply") row.append(...markdown(event.text))
+    if (event.type === "tool") {
+      row.dataset.status = event.status
       row.textContent = `${event.tool} · ${event.status}${event.summary ? ` · ${event.summary}` : ""}`
+    }
     if (event.type === "published") {
       row.dataset.copy = "published"
       row.dataset.copySuffix = `: ${event.name}`
@@ -1674,7 +2802,9 @@ details{border-top:1px solid var(--edge);padding:14px 0}summary{cursor:pointer;f
       // A reconnect replays history: an entry that did not change keeps its row, so a reader's text
       // selection and scroll position survive the replay.
       const next = entry(event)
+      next.hidden = existing.hidden
       if (!existing.isEqualNode(next)) existing.replaceWith(next)
+      drawConversation()
       return
     }
     const bottom = list.scrollTop + list.clientHeight >= list.scrollHeight - 4
@@ -1684,6 +2814,7 @@ details{border-top:1px solid var(--edge);padding:14px 0}summary{cursor:pointer;f
       list.querySelector(".entry")?.remove()
     }
     if (bottom) list.scrollTop = list.scrollHeight
+    drawConversation()
   }
   const polling = { pending: false, requested: false }
   const poll = () => {
@@ -1701,7 +2832,23 @@ details{border-top:1px solid var(--edge);padding:14px 0}summary{cursor:pointer;f
     // Feed events can arrive in one burst before the queued refresh begins.
     polling.pending = true
     polling.requested = false
-    void run(refresh, undefined, true).finally(() => {
+    void run(
+      async () => {
+        // A poll that cannot reach the server at all (not one the server refused) means the page is offline.
+        await refresh().then(
+          () => {
+            liveness.unreachable = false
+          },
+          (error) => {
+            liveness.unreachable = (error as { status?: number }).status === undefined
+            drawLiveness()
+            throw error
+          },
+        )
+      },
+      undefined,
+      true,
+    ).finally(() => {
       polling.pending = false
       if (polling.requested) poll()
     })
@@ -1724,8 +2871,46 @@ details{border-top:1px solid var(--edge);padding:14px 0}summary{cursor:pointer;f
     check.idle = true
     if (check.unchanged) failOperation(copy.operationUnchanged)
   }
+  /** Keeps what the feed says about now, before the event updates the agent's state and the conversation. */
+  const track = (event: Design.FeedEvent) => {
+    const now = Date.now()
+    if (event.seq > 0) liveness.last = now
+    if (event.type !== "state" && event.type !== "agent") liveness.replayed = true
+    if (event.type === "state" && event.state === "idle") {
+      if (state.agent !== "idle") {
+        liveness.idleSince = now
+        liveness.idleLive = event.seq > 0
+      }
+      liveness.tool = undefined
+    }
+    if (event.type === "tool" && event.seq > 0) {
+      if (event.status === "running")
+        liveness.tool = { id: event.id, name: event.tool, summary: event.summary, since: now }
+      else if (liveness.tool?.id === event.id) liveness.tool = undefined
+    }
+    if (event.type === "user" && event.pending) liveness.inbox.add(event.id)
+    if (event.type === "user" && !event.pending) liveness.inbox.delete(event.id)
+    if (event.type !== "published") return
+    liveness.published.add(event.revision)
+    // Replayed publishes are history; only a live one announces a revision the page has not listed yet.
+    if (
+      event.seq > 0 &&
+      event.design === state.design?.id &&
+      event.revision !== state.revision &&
+      !state.revisions.some((revision) => revision.id === event.revision)
+    )
+      liveness.announced = event.revision
+  }
   const onFeed = (event: Design.FeedEvent) => {
     if (state.stopped) return
+    const announced = liveness.announced
+    track(event)
+    follow(event)
+    // Approval waits for the announced revision even while a dialog holds the poll back.
+    if (liveness.announced !== announced) controls()
+    drawLiveness()
+  }
+  const follow = (event: Design.FeedEvent) => {
     if (event.type === "state") loadingEvent({ type: "agent", state: event.state })
     // A reconnect replays old tool calls; only those made while the agent works are its live activity.
     if (event.type === "tool" && state.agent === "working")
@@ -1735,7 +2920,6 @@ details{border-top:1px solid var(--edge);padding:14px 0}summary{cursor:pointer;f
     // Agent states say nothing about an operation until a turn has taken its message up: an operation
     // sent while an earlier turn runs waits for that turn, or the next one, to deliver it.
     if (event.type === "state") {
-      pill(event.state === "working" ? "stateWorking" : "stateIdle")
       state.agent = event.state
       if (event.state === "working") {
         clearTimeout(state.idleCheck)
@@ -1769,27 +2953,43 @@ details{border-top:1px solid var(--edge);padding:14px 0}summary{cursor:pointer;f
     if (event.type !== "published") return
     if (operation && event.design === state.design?.id && event.revision !== operation.feedback.revision)
       operation.published = event.revision
-    pill("statePublished")
     if (
       event.design === state.design?.id &&
       (event.revision !== state.revision || !state.revisions.some((revision) => revision.id === event.revision))
     )
       poll()
   }
-  const chooseRevision = async (revisionID: string, keep = false) => {
+  /**
+   * Shows a revision. `keep` is a live reload of the latest revision over the one on screen: the frame, variants,
+   * screens and scroll stay until it arrives, and a failure leaves the last good frame up and says so. Both a live
+   * reload and `carry` (the reader asked for the latest revision) move the drafts along: the queued notes, the
+   * message and an unsent send leave the revision they were on, so it can never offer them again.
+   */
+  const chooseRevision = async (revisionID: string, keep = false, carry = false) => {
     const revision =
       state.revisions.find((item) => item.id === revisionID) ??
       (await api<Design.Revision[]>(`/${state.design!.id}/revision`)).find((item) => item.id === revisionID)
     if (!revision) return
     clearTimeout(loading.reveal)
     loadingEvent({ type: "load", revision: revisionID, at: Date.now(), quiet: keep })
+    liveness.loading = revisionID
+    drawLiveness()
     const stop = watchBuild(state.design!.id, revisionID)
     const response = await request(`${endpoint}/${state.design!.id}/revision/${revisionID}/preview`, {
       signal: controller.signal,
-    }).finally(stop)
+    }).finally(() => {
+      stop()
+      liveness.loading = ""
+    })
     if (!response.ok) {
       const body = await response.json().catch(() => undefined)
       const message = typeof body?.message === "string" ? body.message : `${copy.failure} (${response.status})`
+      if (keep && state.revision && state.revision !== revisionID) {
+        liveness.failed = revisionID
+        liveness.failure = message
+        drawLiveness()
+        return
+      }
       state.failedPreview = revisionID
       loadingEvent({ type: "failed", revision: revisionID, message })
       element("preview-error").textContent = `${revision.name}: ${message}`
@@ -1801,6 +3001,7 @@ details{border-top:1px solid var(--edge);padding:14px 0}summary{cursor:pointer;f
     }
     const html = await response.text()
     state.failedPreview = ""
+    if (liveness.failed === revisionID) liveness.failed = ""
     element("preview-error").hidden = true
     element("primary-pane").hidden = false
     // A newer latest revision replaces the provisional view; its variants decide whether it carried the change.
@@ -1818,6 +3019,8 @@ details{border-top:1px solid var(--edge);padding:14px 0}summary{cursor:pointer;f
         unchanged: false,
       }
     }
+    const from = state.revision && state.revision !== revisionID ? key() : ""
+    const carried = carry && !keep && from ? outgoing() : undefined
     if (state.revision) save()
     if (state.revision !== revisionID && !keep) {
       state.variant = ""
@@ -1825,9 +3028,12 @@ details{border-top:1px solid var(--edge);padding:14px 0}summary{cursor:pointer;f
     }
     state.revision = revisionID
     state.followLatest = revisionID === state.design?.revision
+    if (liveness.switched?.revision !== revisionID) liveness.switched = undefined
     // A live reload keeps the draft, the selected variants and the reader's scroll position.
     if (keep) save()
     if (!keep) restoreDraft()
+    if (carried) adopt(carried)
+    if (from && (keep || carried)) release(from)
     state.html = html
     if (!keep) state.variants = []
     // A live reload reopens the screens the reader was on; another revision starts on each first screen.
@@ -1844,9 +3050,8 @@ details{border-top:1px solid var(--edge);padding:14px 0}summary{cursor:pointer;f
     element<HTMLIFrameElement>("preview").srcdoc = html
     if (keep && state.comparing) element<HTMLIFrameElement>("peer-preview").srcdoc = html
     input("revisions").value = revisionID
-    element("newer").hidden = state.design?.revision === revisionID
     // Restoring only means something for a revision that is no longer the latest one.
-    element("restore").hidden = element("newer").hidden
+    element("restore").hidden = state.design?.revision === revisionID
     text("decisions", revision.document.decisions.map((item) => item.text).join("\n"))
     text("questions", revision.document.questions.join("\n"))
     text(
@@ -1857,6 +3062,7 @@ details{border-top:1px solid var(--edge);padding:14px 0}summary{cursor:pointer;f
     )
     drawSources(revision)
     drawParams()
+    drawLiveness()
   }
   const picker = (id: string, items: { id: string; name: string }[]) => {
     const select = element<HTMLSelectElement>(id)
@@ -1869,7 +3075,14 @@ details{border-top:1px solid var(--edge);padding:14px 0}summary{cursor:pointer;f
       return
     select.replaceChildren(...items.map((item) => new Option(item.name, item.id)))
   }
-  const taskView = { signature: "" }
+  const taskView = { signature: "", done: 0, total: 0 }
+  const drawTaskCount = () =>
+    write(
+      element("tasks-count"),
+      taskView.total
+        ? copy.tasksDone.replace("{{done}}", String(taskView.done)).replace("{{total}}", String(taskView.total))
+        : "",
+    )
   const jobRows = new Map<string, { signature: string; row: HTMLElement }>()
   const refresh = async (designID = state.design?.id) => {
     const documents = await api<Design.Info[]>()
@@ -1886,6 +3099,9 @@ details{border-top:1px solid var(--edge);padding:14px 0}summary{cursor:pointer;f
     if (changed) {
       // A pick from the design that was on screen means nothing for the one replacing it.
       state.choice = ""
+      liveness.announced = ""
+      liveness.failed = ""
+      liveness.switched = undefined
       state.followLatest = true
       state.failedPreview = ""
       element("preview-error").hidden = true
@@ -1904,6 +3120,11 @@ details{border-top:1px solid var(--edge);padding:14px 0}summary{cursor:pointer;f
       drawVariants()
     }
     state.design = current
+    if (changed) {
+      disclose(element<HTMLDetailsElement>("design-tasks-section"), "tasks", false)
+      // Without a terminal beside the page (a shared link, a session started in the browser) Activity is the transcript.
+      disclose(element<HTMLDetailsElement>("activity"), "activity", !local)
+    }
     if (current.ended && current.approvedRevision && state.mode && state.mode !== "design") {
       closeReview()
       return
@@ -1918,6 +3139,9 @@ details{border-top:1px solid var(--edge);padding:14px 0}summary{cursor:pointer;f
     const signature = todos === undefined ? "unavailable" : JSON.stringify(todos)
     if (signature !== taskView.signature || changed) {
       taskView.signature = signature
+      taskView.done = (todos ?? []).filter((todo) => todo.status === "completed").length
+      taskView.total = (todos ?? []).filter((todo) => todo.status !== "cancelled").length
+      drawTaskCount()
       element("design-tasks").replaceChildren()
       if (!todos || !todos.length) element("design-tasks").textContent = todos ? copy.tasksEmpty : copy.tasksUnavailable
       for (const todo of todos ?? []) {
@@ -1967,26 +3191,35 @@ details{border-top:1px solid var(--edge);padding:14px 0}summary{cursor:pointer;f
       "revisions",
       revisions.map((revision) => ({ id: revision.id, name: `${revision.name} · ${revision.id.slice(-8)}` })),
     )
+    if (state.revisions.some((revision) => revision.id === liveness.announced)) liveness.announced = ""
     const initial = changed || !state.revision
-    // A new revision replaces the one on screen only while the reader is on the latest one and
-    // nothing is in flight; while browsing history the button offers it instead.
-    const live =
-      !initial &&
-      !state.choice &&
-      onLatest &&
-      current.revision !== state.revision &&
-      !state.pending &&
-      !document.hidden &&
-      !state.card &&
-      !root.querySelector("dialog[open]")
-    if (current.revision && (initial || live) && state.failedPreview !== current.revision) {
+    const newer = !initial && !state.choice && onLatest && current.revision !== state.revision
+    // An empty note card holds nothing worth keeping, so it does not hold a newer revision back.
+    if (newer && state.card && !state.card.text.trim()) closeCard()
+    // A new revision replaces the one on screen only while the reader is on the latest one and nothing holds it
+    // back (see blocker); while browsing history the revision chip offers it instead.
+    const live = newer && !blocker()
+    if (
+      current.revision &&
+      (initial || live) &&
+      state.failedPreview !== current.revision &&
+      liveness.failed !== current.revision
+    ) {
+      const target = revisions.find((revision) => revision.id === current.revision)
       await chooseRevision(current.revision, live)
-      if (live) status(copy.published, "published", "success")
+      // A switch that waited (a hidden tab, a note or a send in the way) says how old the revision it shows is.
+      if (live && target && state.revision === target.id && Date.now() - target.created > 60000) {
+        liveness.switched = { revision: target.id, created: target.created }
+        clearTimeout(liveness.switchedTimer)
+        liveness.switchedTimer = setTimeout(() => {
+          liveness.switched = undefined
+          drawLiveness()
+        }, 30000)
+      }
     }
     // Rebuilding the options must not undo a pick that is still waiting for this refresh to finish.
     input("revisions").value = state.choice || state.failedPreview || state.revision
-    element("newer").hidden = current.revision === state.revision
-    element("restore").hidden = element("newer").hidden
+    element("restore").hidden = current.revision === state.revision
     drawSources(revisions.find((revision) => revision.id === state.revision))
     element<HTMLButtonElement>("param-save").disabled =
       state.working || state.design?.revision !== state.revision || !!state.design?.ended
@@ -2023,16 +3256,7 @@ details{border-top:1px solid var(--edge);padding:14px 0}summary{cursor:pointer;f
       .join("")
     if (assets.some((asset) => asset.id === previous)) input("svg").value = previous
     const jobs = await api<Design.Job[]>(`/${current.id}/job`)
-    const reviewing = jobs.some(
-      (job) =>
-        job.input.revision === current.revision &&
-        (job.input.format === "audit" || job.input.format === "verify") &&
-        (job.status === "queued" || job.status === "running"),
-    )
-    if (state.reviewing !== reviewing) {
-      state.reviewing = reviewing
-      pill(state.agent === "working" ? "stateWorking" : "stateIdle")
-    }
+    state.jobs = jobs
     state.audits = jobs.filter((job) => job.input.revision === state.revision && job.audit)
     let summary = root.querySelector<HTMLElement>("[data-review-evidence]")
     if (!summary) {
@@ -2111,6 +3335,7 @@ details{border-top:1px solid var(--edge);padding:14px 0}summary{cursor:pointer;f
     element("review-state").dataset.copy = message
     element("review-state").hidden = !current.ended && !!current.revision
     controls()
+    drawLiveness()
   }
   const click = (id: string, action: () => Promise<void>) => {
     element(id).onclick = () => void run(action, element(id))
@@ -2331,9 +3556,6 @@ details{border-top:1px solid var(--edge);padding:14px 0}summary{cursor:pointer;f
         : "100%"
     resize()
   }
-  click("newer", async () => {
-    if (state.design?.revision) await chooseRevision(state.design.revision)
-  })
   click("restore", async () => {
     const result = await api<Design.Revision>(`/${state.design!.id}/restore`, "POST", { revision: state.revision })
     await refresh()
@@ -2562,6 +3784,7 @@ details{border-top:1px solid var(--edge);padding:14px 0}summary{cursor:pointer;f
       })
     state.pending = undefined
     state.feedbackError = ""
+    sweep(sent)
     if (!sent.review) {
       state.notes = []
       state.assets = []
@@ -3472,6 +4695,11 @@ details{border-top:1px solid var(--edge);padding:14px 0}summary{cursor:pointer;f
       return
     }
     if (event.data?.type === "design:rect") {
+      // A note revealed from the panel whose element this revision no longer has says so.
+      if (feedbackView.revealing && event.data.target === feedbackView.revealing) {
+        feedbackView.revealing = ""
+        if (event.data.rect === null) status(copy.revealMissing, "revealMissing")
+      }
       if (!state.card || state.card.frame !== frame || state.card.target !== event.data.target) return
       const rect = box(event.data.rect)
       // The element is gone from this revision: the card has nothing to sit on.
@@ -3621,14 +4849,28 @@ details{border-top:1px solid var(--edge);padding:14px 0}summary{cursor:pointer;f
   // A reload deferred while the tab was hidden happens as soon as it is visible again.
   document.addEventListener("visibilitychange", poll)
   element("feed").hidden = !options.feed
-  element("agent-state").hidden = !options.feed
+  element("activity").hidden = !options.feed
   if (options.feed)
-    options.feed(`${endpoint}/feed`, transport, controller.signal, onFeed, () => {
-      if (!state.stopped) pill("feedUnavailable")
-    })
+    options.feed(
+      `${endpoint}/feed`,
+      transport,
+      controller.signal,
+      onFeed,
+      () => {
+        liveness.feed = "unavailable"
+        drawLiveness()
+      },
+      (status) => {
+        liveness.feed = status
+        drawLiveness()
+      },
+    )
   drawLoading()
+  drawLiveness()
+  // Elapsed times are read from the clock each second; nothing counts on its own.
   const ticker = setInterval(() => {
     if (loading.view.phase === "loading") drawLoading()
+    drawLiveness()
   }, 1000)
   void run(refresh)
   const dispose = () => {
@@ -3637,9 +4879,11 @@ details{border-top:1px solid var(--edge);padding:14px 0}summary{cursor:pointer;f
     clearInterval(ticker)
     clearTimeout(loading.reveal)
     clearTimeout(state.idleCheck)
+    clearTimeout(liveness.switchedTimer)
     scheme.removeEventListener("change", syncScheme)
     schemeObserver.disconnect()
     fitting.disconnect()
+    replyFit.disconnect()
     state.stopped = true
     controller.abort()
     thumbnails.forEach((url) => URL.revokeObjectURL(url))
@@ -3673,7 +4917,7 @@ details{border-top:1px solid var(--edge);padding:14px 0}summary{cursor:pointer;f
           copy[node.dataset.copy as keyof ReviewCopy] +
           (node.dataset.copySuffix ?? "")
       })
-      for (const attribute of ["aria-label", "title"]) {
+      for (const attribute of ["aria-label", "title", "placeholder"]) {
         root.querySelectorAll<HTMLElement>(`[data-copy-${attribute}]`).forEach((node) => {
           node.setAttribute(attribute, copy[node.getAttribute(`data-copy-${attribute}`) as keyof ReviewCopy])
         })
@@ -3681,6 +4925,21 @@ details{border-top:1px solid var(--edge);padding:14px 0}summary{cursor:pointer;f
       drawSources(state.revisionInfo)
       drawEvidence()
       drawLoading()
+      // Rows and lines with counts in their text are rebuilt in the new language.
+      feedbackView.rows.clear()
+      feedbackView.blocks.clear()
+      draftRows.clear()
+      conversationView.reply = ""
+      conversationView.message = ""
+      conversationView.alert = ""
+      livenessView.line = ""
+      livenessView.stage = ""
+      delete element("round-sub").dataset.signature
+      drawRounds()
+      drawNotes()
+      drawTaskCount()
+      fitReply()
+      drawLiveness()
     },
   })
 }

@@ -6,6 +6,10 @@ import type { Design } from "@opencode/schema/design"
  * no closures over module state. Reconnects from the last durable sequence with a 1 s to 10 s
  * backoff and stops when the signal aborts. A client-side rejection (any 4xx other than 408 and
  * 429) will not change by retrying, so it reports the feed as unavailable and stops.
+ *
+ * `onStatus` reports "live" once a connection answers and "offline" when it drops. The server writes
+ * a heartbeat every 15 s, so a connection that delivers no bytes for longer than `silence` is treated
+ * as dropped (a sleeping laptop or a proxy can leave a dead socket open) and replaced.
  */
 export function designFeed(
   url: string,
@@ -13,6 +17,8 @@ export function designFeed(
   signal: AbortSignal,
   onEvent: (event: Design.FeedEvent) => void,
   onUnavailable: () => void,
+  onStatus: (status: "live" | "offline") => void = () => {},
+  silence = 40000,
 ) {
   const state = { after: 0, delay: 1000, buffer: "" }
   const parse = (data: string): Design.FeedEvent | undefined => {
@@ -37,25 +43,39 @@ export function designFeed(
     onEvent(event)
   }
   const read = async () => {
-    const response = await request(`${url}${url.includes("?") ? "&" : "?"}after=${state.after}`, {
-      signal,
-      headers: { accept: "text/event-stream" },
-    })
-    if (response.status >= 400 && response.status < 500 && response.status !== 408 && response.status !== 429)
-      return false
-    if (!response.ok || !response.body) throw new Error(String(response.status))
-    const reader = response.body.getReader()
-    const decoder = new TextDecoder()
-    state.buffer = ""
-    while (!signal.aborted) {
-      const chunk = await reader.read()
-      if (chunk.done) return true
-      state.buffer += decoder.decode(chunk.value, { stream: true })
-      const blocks = state.buffer.split(/\r?\n\r?\n/)
-      state.buffer = blocks.pop() ?? ""
-      blocks.forEach(deliver)
+    const attempt = new AbortController()
+    const watchdog = { timer: setTimeout(() => attempt.abort(), silence) }
+    // Any bytes, the heartbeat comment included, prove the connection is alive.
+    const alive = () => {
+      clearTimeout(watchdog.timer)
+      watchdog.timer = setTimeout(() => attempt.abort(), silence)
     }
-    return true
+    try {
+      const response = await request(`${url}${url.includes("?") ? "&" : "?"}after=${state.after}`, {
+        signal: AbortSignal.any([signal, attempt.signal]),
+        headers: { accept: "text/event-stream" },
+      })
+      if (response.status >= 400 && response.status < 500 && response.status !== 408 && response.status !== 429)
+        return false
+      if (!response.ok || !response.body) throw new Error(String(response.status))
+      alive()
+      onStatus("live")
+      const reader = response.body.getReader()
+      const decoder = new TextDecoder()
+      state.buffer = ""
+      while (!signal.aborted) {
+        const chunk = await reader.read()
+        if (chunk.done) return true
+        alive()
+        state.buffer += decoder.decode(chunk.value, { stream: true })
+        const blocks = state.buffer.split(/\r?\n\r?\n/)
+        state.buffer = blocks.pop() ?? ""
+        blocks.forEach(deliver)
+      }
+      return true
+    } finally {
+      clearTimeout(watchdog.timer)
+    }
   }
   const wait = (ms: number) =>
     new Promise<void>((resolve) => {
@@ -78,6 +98,7 @@ export function designFeed(
         onUnavailable()
         return
       }
+      onStatus("offline")
       await wait(state.delay)
       state.delay = Math.min(state.delay * 2, 10000)
     }

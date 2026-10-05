@@ -95,8 +95,20 @@ const state = {
   approvals: [] as Design.Approve[],
   feedback: [] as Design.Feedback[],
   feed: undefined as ReadableStreamDefaultController<Uint8Array> | undefined,
+  /** The feed refuses connections, as a server that went away does. */
+  feedDown: false,
+  /** The server writes a heartbeat comment so the page's no-bytes watchdog sees a live connection. */
+  heartbeat: true,
   hold: undefined as ReturnType<typeof Promise.withResolvers<void>> | undefined,
 }
+const heartbeats = setInterval(() => {
+  if (!state.heartbeat) return
+  try {
+    state.feed?.enqueue(new TextEncoder().encode(": heartbeat\n\n"))
+  } catch {
+    // The page dropped this connection; the next one replaces it.
+  }
+}, 100)
 const server = Bun.serve({
   hostname: "127.0.0.1",
   port: 0,
@@ -106,7 +118,8 @@ const server = Bun.serve({
     state.calls.push(`${request.method} ${route}`)
     if (route === "/")
       return new Response(DesignPage.review("ses_browser", endpoint), { headers: { "content-type": "text/html" } })
-    if (route === `${endpoint}/feed`)
+    if (route === `${endpoint}/feed`) {
+      if (state.feedDown) return new Response("Unavailable", { status: 503 })
       return new Response(
         new ReadableStream({
           start(controller) {
@@ -115,6 +128,7 @@ const server = Bun.serve({
         }),
         { headers: { "content-type": "text/event-stream" } },
       )
+    }
     if (route === `${endpoint}/todo`) return Response.json(state.todos)
     if (route === `${endpoint}/share`)
       return Response.json({ url: "http://192.168.1.10:35555/design/session/ses_browser/review?ticket=fixture" })
@@ -260,6 +274,214 @@ try {
   )
   assert.equal(await preview.locator("#counter").textContent(), "Clicks: 1")
 
+  // The Feedback panel: the newest round is a checklist, a finished round is one line, the round's message and a
+  // refused status recording come from the feed, and an idle poll leaves rows, expansion and a typed reason alone.
+  const poll = async () => {
+    const response = page.waitForResponse((response) => response.url().endsWith("/job"))
+    await page.clock.runFor(5000)
+    await response
+    await page.evaluate(() => new Promise<void>((resolve) => requestAnimationFrame(() => resolve())))
+  }
+  const item = (index: number) => ({
+    target: `variant:one [data-design-id="item-${index}"]`,
+    text: `Note ${index} words`,
+    tag: "button",
+    elementText: `Button ${index}`,
+    label: `button "Button ${index}" in main`,
+  })
+  const note = (feedback: string, round: number, index: number, status: string, extra = {}) => ({
+    feedback,
+    index,
+    round,
+    item: item(round * 10 + index),
+    status,
+    updated: 1,
+    ...extra,
+  })
+  const reviewed = (notes: unknown[], published?: string) =>
+    Schema.decodeUnknownSync(Design.Info)({
+      ...design,
+      rounds: [
+        { number: 1, opened: 1, revision: "rev_older", feedback: ["msg_first"], published: "rev_latest" },
+        { number: 2, opened: 2, revision: "rev_latest", feedback: ["msg_second"], ...(published ? { published } : {}) },
+      ],
+      notes,
+    })
+  const settledRound = [note("msg_first", 1, 1, "resolved"), note("msg_first", 1, 2, "accepted", { reason: "Kept" })]
+  state.document = reviewed([
+    ...settledRound,
+    note("msg_second", 2, 1, "open", { addressed: { summary: "Moved the header", at: 2 } }),
+    note("msg_second", 2, 2, "open"),
+    note("msg_second", 2, 3, "open"),
+  ])
+  state.feed!.enqueue(
+    new TextEncoder().encode(
+      [
+        { type: "user", seq: 0, at: 1, id: "msg_second", text: "Tighten the header", notes: 3 },
+        {
+          type: "tool",
+          seq: 0,
+          at: 2,
+          id: "call_record",
+          tool: "design_document",
+          status: "failed",
+          summary: "Semantic evaluation unavailable",
+        },
+        { type: "reply", seq: 0, at: 3, id: "reply_second", text: "Done with **the header**, next `nav`." },
+      ]
+        .map((event) => `data: ${JSON.stringify(event)}\n\n`)
+        .join(""),
+    ),
+  )
+  await poll()
+  const panel = page.locator("#panel-review")
+  assert.match((await page.locator("#tab-review").textContent()) ?? "", /^Feedback3$/)
+  const rows = panel.locator('#rounds-list .rows[data-block="current"] > li')
+  assert.equal(await rows.count(), 3)
+  assert.equal(await rows.first().locator(".glyph").getAttribute("aria-label"), "Fixed, not verified yet")
+  assert.equal(await panel.locator("details.round-done").count(), 1)
+  assert.equal(await panel.locator("details.round-done").evaluate((node) => (node as HTMLDetailsElement).open), false)
+  assert.match((await panel.locator("details.round-done summary").textContent()) ?? "", /Round 1.*2 notes/)
+  assert.match((await page.locator("#round-alert").textContent()) ?? "", /^Status recording refused: Semantic/)
+  assert.match((await page.locator("#round-message").textContent()) ?? "", /Tighten the header/)
+  assert.equal(await rows.filter({ hasText: "Tighten the header" }).count(), 0, "The typed message is not a note")
+  assert.equal(await page.locator("#reply-text strong").textContent(), "the header")
+  assert.equal(await page.locator("#reply-text code").textContent(), "nav")
+  assert.equal(await page.locator("#activity").evaluate((node) => (node as HTMLDetailsElement).open), false)
+  const second = rows.nth(1)
+  await second.locator('[data-part="toggle"]').click()
+  assert.equal(await second.locator('[data-part="toggle"]').getAttribute("aria-expanded"), "true")
+  await second.locator('[data-part="close"]').click()
+  await second.locator('[data-part="reason"]').fill("Half typed")
+  await page.evaluate(() => {
+    const list = document.querySelector("#review")!.shadowRoot!.querySelector("#rounds-list")!
+    list.setAttribute("data-mutations", "0")
+    new MutationObserver((events) => {
+      list.setAttribute("data-mutations", String(Number(list.getAttribute("data-mutations")) + events.length))
+    }).observe(list, { childList: true, subtree: true })
+  })
+  await poll()
+  const idleRoundMutations = Number(await page.locator("#rounds-list").getAttribute("data-mutations"))
+  assert.equal(idleRoundMutations, 0)
+  // A status recorded on another note rebuilds that row only; the typed reason keeps its row and its focus.
+  state.document = reviewed([
+    ...settledRound,
+    note("msg_second", 2, 1, "resolved", { addressed: { summary: "Moved the header", at: 2 } }),
+    note("msg_second", 2, 2, "open"),
+    note("msg_second", 2, 3, "open"),
+  ])
+  await poll()
+  assert.equal(await rows.first().getAttribute("data-status"), "resolved")
+  assert.equal(await second.locator('[data-part="toggle"]').getAttribute("aria-expanded"), "true")
+  assert.equal(await second.locator('[data-part="reason"]').inputValue(), "Half typed")
+  assert.equal(
+    await page.evaluate(
+      () => (document.querySelector("#review")!.shadowRoot!.activeElement as HTMLElement | null)?.dataset.part,
+    ),
+    "reason",
+  )
+  assert.match((await page.locator("#tab-review").textContent()) ?? "", /^Feedback2$/)
+  await panel.locator("#rounds-only").click()
+  assert.equal(await rows.first().isVisible(), false)
+  assert.match((await page.locator("#round-tally").textContent()) ?? "", /1 hidden/)
+  await panel.locator("#rounds-only").click()
+
+  // The round's progress line: received, fixing, stopped, published, verifying and ready, derived from the
+  // document, the jobs and live feed events (sequence above 0); the revision chip and the line above the preview.
+  const live = (...events: object[]) =>
+    state.feed!.enqueue(new TextEncoder().encode(events.map((event) => `data: ${JSON.stringify(event)}\n\n`).join("")))
+  const shown = async (id: string, pattern: RegExp) => {
+    await page
+      .waitForFunction(
+        ([id, source]) =>
+          new RegExp(source).test(document.querySelector("#review")!.shadowRoot!.getElementById(id)?.textContent ?? ""),
+        [id, pattern.source] as const,
+        { timeout: 5000 },
+      )
+      .catch(() => undefined)
+    assert.match((await page.locator(`#${id}`).textContent()) ?? "", pattern)
+  }
+  live({ type: "state", seq: 60, at: 60, state: "working" })
+  live({ type: "user", seq: 61, at: 61, id: "msg_second", text: "Tighten the header", notes: 3, pending: true })
+  await shown("round-stage", /^Received · waiting for the agent/)
+  assert.equal(await page.locator("#round-steps").getAttribute("aria-label"), "Step 1 of 5: Received")
+  await shown("newer-label", /^Latest$/)
+  await shown("revision-line", /^This preview is from before round 2\.The agent has not taken the notes up yet\./)
+  live({ type: "user", seq: 62, at: 62, id: "msg_second", text: "Tighten the header", notes: 3 })
+  await shown("round-stage", /^Fixing · 1 of 3 addressed$/)
+  await shown("revision-line", /The agent is working on 2 notes\./)
+  live({ type: "tool", seq: 63, at: 63, id: "call_edit", tool: "edit", status: "running", summary: "index.html" })
+  await shown("agent-text", /^Running edit · 0 s · index\.html$/)
+  live({ type: "state", seq: 64, at: 64, state: "idle" })
+  await page.clock.runFor(3000)
+  await shown("round-stage", /^Stopped · 2 not addressed$/)
+  await shown("revision-line", /The agent stopped with 2 notes not addressed\./)
+  await shown("agent-text", /^Agent idle since /)
+  const answeredNotes = [
+    ...settledRound,
+    note("msg_second", 2, 1, "resolved", { addressed: { summary: "Moved the header", at: 2 } }),
+    note("msg_second", 2, 2, "open", { addressed: { summary: "Tightened the spacing", at: 3 } }),
+    note("msg_second", 2, 3, "open", { addressed: { summary: "Shortened the label", at: 3 } }),
+  ]
+  state.document = reviewed(answeredNotes, "rev_latest")
+  live(
+    { type: "state", seq: 65, at: 65, state: "working" },
+    { type: "published", seq: 66, at: 66, design: design.id, revision: "rev_latest", name: "rev_latest" },
+  )
+  await poll()
+  await shown("round-stage", /^Published · not verified yet$/)
+  await shown("revision-line", /^Latest, .+, answers round 2\.$/)
+  await shown("newer-label", /^Latest$/)
+  const verify = {
+    ...jobs[0]!,
+    id: "job_verify_round",
+    input: { revision: "rev_latest", format: "verify" as const, round: 2 },
+    status: "running" as const,
+    progress: 0.4,
+    audit: undefined,
+    created: 400,
+  }
+  state.jobs = [...jobs, verify]
+  await poll()
+  await shown("round-stage", /^Verifying/)
+  assert.equal(await page.locator("#round-steps").getAttribute("aria-label"), "Step 4 of 5: Verifying")
+  state.jobs = [...jobs, { ...verify, status: "completed", progress: 1 }]
+  state.document = reviewed(
+    [
+      ...settledRound,
+      note("msg_second", 2, 1, "resolved"),
+      note("msg_second", 2, 2, "resolved"),
+      note("msg_second", 2, 3, "unresolved", { reason: "Needs a copy decision", by: "reviewer" }),
+    ],
+    "rev_latest",
+  )
+  live({ type: "state", seq: 67, at: 67, state: "idle" })
+  await poll()
+  await shown("round-stage", /^Ready for review · 2 marked resolved, 1 closed by you$/)
+  assert.equal(await page.locator("#round-steps").getAttribute("aria-label"), "Step 5 of 5: Ready for review")
+  assert.equal(await page.locator("#revision-line").getAttribute("data-tone"), "ok")
+  const readyStage = await page.locator("#round-stage").textContent()
+  // A dropped feed is noticed by its silence, shown, and replaced; nothing claims the review is ready meanwhile.
+  state.heartbeat = false
+  state.feedDown = true
+  await page.clock.runFor(45000)
+  await shown("newer-label", /^Offline$/)
+  await shown("agent-text", /^Offline, retrying$/)
+  assert.doesNotMatch((await page.locator("#round-stage").textContent()) ?? "", /^Ready/)
+  state.feedDown = false
+  state.heartbeat = true
+  // The reconnect waits out its backoff; each attempt is a real request between steps of the fake clock.
+  for (let attempt = 0; attempt < 10 && (await page.locator("#newer-label").textContent()) !== "Latest"; attempt++) {
+    await page.clock.runFor(4000)
+    await page.waitForTimeout(250)
+  }
+  await shown("newer-label", /^Latest$/)
+  await shown("agent-text", /^Agent idle/)
+  state.jobs = jobs
+  state.document = design
+  await poll()
+  assert.equal(await page.locator("#rounds").isHidden(), true)
+
   // The end-of-round review is visible only for a live job on the latest revision.
   const refreshJobs = async () => {
     const response = page.waitForResponse((response) => response.url().endsWith("/job"))
@@ -274,13 +496,13 @@ try {
   assert.ok((await page.locator("#jobs").textContent())?.includes("Applying anti-slop… (audit) · running · 50%"))
   state.jobs = [...jobs, { ...reviewing, status: "completed", progress: 1 }]
   await refreshJobs()
-  assert.equal(await page.locator("#agent-state").textContent(), "Idle")
+  assert.match((await page.locator("#agent-state").textContent()) ?? "", /^Agent idle/)
   state.jobs = [...jobs, { ...reviewing, input: { ...reviewing.input, revision: "rev_older" } }]
   await refreshJobs()
-  assert.equal(await page.locator("#agent-state").textContent(), "Idle")
+  assert.match((await page.locator("#agent-state").textContent()) ?? "", /^Agent idle/)
   state.jobs = [...jobs, { ...reviewing, status: "failed", error: "Renderer stopped" }]
   await refreshJobs()
-  assert.equal(await page.locator("#agent-state").textContent(), "Idle")
+  assert.match((await page.locator("#agent-state").textContent()) ?? "", /^Agent idle/)
   assert.equal(state.calls.filter((call) => call.endsWith("/preview")).length, previewRequests)
   assert.equal(await preview.locator("#counter").textContent(), "Clicks: 1")
   state.jobs = jobs
@@ -326,6 +548,8 @@ try {
     const select = document.querySelector("#review")!.shadowRoot!.querySelector<HTMLSelectElement>("#revisions")!
     return select.options.length === 3 && select.value === "rev_older"
   })
+  await shown("newer-label", /^2 behind$/)
+  await shown("revision-line", /^An older revision, from /)
   await page.locator("#revisions").selectOption("rev_new")
   await page.waitForFunction(
     () => !document.querySelector("#review")!.shadowRoot!.querySelector<HTMLSelectElement>("#revisions")!.disabled,
@@ -362,6 +586,51 @@ try {
   )
   assert.match(await page.locator("dialog[open] input[readonly]").inputValue(), /192\.168\.1\.10:35555/)
   await page.locator("dialog[open] button").click()
+  // The live reload moved the typed message: the revision it left keeps no copy to offer again.
+  const draftOf = (revision: string) =>
+    page.evaluate(
+      (name) => JSON.parse(localStorage.getItem(name) ?? "{}"),
+      `redcode:design:${endpoint}:${design.id}:${revision}`,
+    )
+  assert.equal((await draftOf("rev_new")).text, undefined)
+  // A note being written holds a newer revision back; the line above the preview says why and offers the way on.
+  await preview.locator("body").evaluate(() =>
+    parent.postMessage(
+      {
+        type: "design:selection",
+        target: "variant:one #counter",
+        text: "Updated profile",
+        tag: "button",
+        elementText: "Updated profile",
+        label: 'button "Updated profile"',
+        rect: { x: 10, y: 10, width: 120, height: 24 },
+      },
+      "*",
+    ),
+  )
+  await page.locator("#card-text").fill("Make the counter bigger")
+  state.document = { ...state.document, revision: "rev_blocked", updated: 4 }
+  state.revisions = [{ ...revisions[0]!, id: "rev_blocked" }, ...state.revisions]
+  live({ type: "published", seq: 70, at: 70, design: design.id, revision: "rev_blocked", name: "Blocked" })
+  await shown("newer-label", /^1 behind$/)
+  await shown("revision-line", /^A newer revision is ready\.Your open note belongs to this one\.Add note and switch$/)
+  await page.clock.runFor(5000)
+  assert.equal(await page.locator("#revisions").inputValue(), "rev_deferred", "A note being written holds the switch")
+  await page.locator('#revision-line [data-part="add-and-switch"]').click()
+  await page.waitForFunction(() => {
+    const select = document.querySelector("#review")!.shadowRoot!.querySelector<HTMLSelectElement>("#revisions")!
+    return select.value === "rev_blocked" && !select.disabled
+  })
+  assert.equal(await page.locator("#notes .draft").count(), 1)
+  assert.equal(await page.locator("#notes .draft-text").textContent(), "Make the counter bigger")
+  assert.equal(await page.locator("#note").inputValue(), "Keep my draft across the revision")
+  assert.equal(await page.locator("#card").isHidden(), true)
+  await shown("newer-label", /^Latest$/)
+  assert.equal((await draftOf("rev_deferred")).text, undefined)
+  assert.equal((await draftOf("rev_deferred")).notes, undefined)
+  // The steps below send the typed message alone.
+  await page.locator('#notes .draft [data-copy="remove"]').click()
+  assert.equal(await page.locator("#notes .draft").count(), 0, "A draft's Remove must not move away mid-click")
   assert.deepEqual(errors, [])
   assert.equal(state.calls.filter((call) => call.startsWith("POST ")).length, 0)
   // A failed revision-list fetch must retry after the document already advanced.
@@ -384,7 +653,7 @@ try {
   await page.clock.runFor(5000)
   await page.waitForFunction(() => {
     const select = document.querySelector("#review")!.shadowRoot!.querySelector<HTMLSelectElement>("#revisions")!
-    return select.options.length === 5 && select.value === "rev_retry"
+    return select.options.length === 6 && select.value === "rev_retry"
   })
   // A review the server refuses is released, not held for a retry: the draft stays editable and the
   // next send is a new message.
@@ -584,6 +853,7 @@ try {
       idlePreviewReloads,
       idlePickerMutations,
       idleJobMutations,
+      idleRoundMutations,
       deferredPreviewUpdated,
       interactionMs,
       browserErrors: errors.length,
@@ -612,6 +882,7 @@ try {
   )
   throw error
 } finally {
+  clearInterval(heartbeats)
   await browser.close()
   await server.stop(true)
 }
