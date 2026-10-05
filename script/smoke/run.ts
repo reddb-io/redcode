@@ -552,7 +552,12 @@ async function renderReview(browser: Browser, review: string) {
       if (Date.now() >= deadline) throw new Error("Accepted Design feedback never reached the agent's model request")
       await Bun.sleep(250)
     }
+    await page.locator("#reply-text").getByText("SMOKE-FINAL design-feedback", { exact: true }).waitFor()
+    if ((await page.locator("#activity").getAttribute("open")) !== null)
+      throw new Error("The Design conversation history should stay collapsed until opened")
+    await page.locator("#activity > summary").click()
     await page.locator("#feed").getByText("SMOKE-FINAL design-feedback", { exact: true }).waitFor()
+    await page.locator("#activity > summary").click()
     const published = Date.now() + 30_000
     while (!(await rendered(`${DESIGN_TEXT}-UPDATED`))) {
       if (Date.now() >= published) throw new Error("The agent's new revision never updated the Design preview")
