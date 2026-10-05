@@ -410,7 +410,7 @@ test.each([80, 160])(
     )
     expect(setup.captureCharFrame()).not.toContain("▼ LSP")
     expect(setup.captureCharFrame()).not.toContain("▼ Modified Files")
-    expect(setup.captureCharFrame().indexOf("Modified Files")).toBeLessThan(setup.captureCharFrame().indexOf("LSP"))
+    expect(setup.captureCharFrame().indexOf("LSP")).toBeLessThan(setup.captureCharFrame().indexOf("Modified Files"))
     await setup.mockInput.typeText("/workers")
     setup.mockInput.pressEnter()
     await setup.waitForFrame(

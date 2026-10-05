@@ -1,3 +1,4 @@
+import type { DesignFeedbackItem, DesignInfo } from "@opencode/client"
 import { SessionTodo } from "@opencode/schema/session-todo"
 import { Plugin } from "@opencode/plugin/tui"
 import { useTerminalDimensions } from "@opentui/solid"
@@ -9,6 +10,9 @@ const CLOSED_WINDOW_MS = 15 * 60 * 1000
 // An expanded task shows its whole content; the request quote and the proof are only context for
 // it, and a request can run to thousands of characters, so they stop after about a dozen lines.
 const DETAIL_WIDTH = 480
+// The notes of a round the sidebar quotes; the rest are counted, and design_read lists them all.
+const ROUND_NOTES = 3
+const ELEMENT_WIDTH = 16
 
 export function SidebarTodo(props: { context: Plugin.Context; sessionID: string }) {
   const theme = props.context.theme
@@ -26,9 +30,20 @@ export function SidebarTodo(props: { context: Plugin.Context; sessionID: string 
         (error: unknown) => ({ data: [], error: errorMessage(error) }),
       ),
   )
+  // Review notes are the Design agent's checklist; they are polled with the tasks while the session is
+  // in Design or still has a design, so a session that never had one pays for a single request.
+  const [designs, designList] = createResource(
+    () => props.sessionID,
+    (sessionID) =>
+      props.context.client.session.design.list({ sessionID }).then(
+        (data) => ({ data, error: undefined }),
+        (error: unknown) => ({ data: [], error: errorMessage(error) }),
+      ),
+  )
   const timer = setInterval(() => {
     setClock(Date.now())
     if (!tasks.loading) void refetch()
+    if (!designs.loading && (agent() === "design" || designs()?.data.length)) void designList.refetch()
   }, 5_000)
   onCleanup(() => clearInterval(timer))
   const visible = createMemo(() =>
@@ -39,9 +54,11 @@ export function SidebarTodo(props: { context: Plugin.Context; sessionID: string 
     ),
   )
   const shown = createMemo(() => (all() ? visible() : visible().slice(0, Math.max(3, dimensions().height - 20))))
+  const rounds = createMemo(() => pendingRounds(designs()?.data ?? []))
+  const designError = () => (agent() === "design" ? designs()?.error : undefined)
 
   return (
-    <Show when={visible().length > 0 || tasks()?.error}>
+    <Show when={visible().length > 0 || tasks()?.error || rounds().length > 0 || designError()}>
       <box>
         <box flexDirection="row" gap={1} onMouseDown={() => visible().length > 2 && setOpen(!open())}>
           <Show when={visible().length > 2}>
@@ -56,6 +73,41 @@ export function SidebarTodo(props: { context: Plugin.Context; sessionID: string 
             Tasks unavailable: {tasks()?.error}
           </text>
         </Show>
+        <Show when={designError()}>
+          <text fg={theme.text.feedback.error.base} wrapMode="word">
+            Review notes unavailable: {designError()}
+          </text>
+        </Show>
+        <For each={rounds()}>
+          {(round) => (
+            <box>
+              {/* Wrapped, not cut: the counts are the point of the line and a sidebar row is ~37 cells. */}
+              <text wrapMode="word" fg={theme.text.muted}>
+                <span style={{ fg: theme.text.base, bold: true }}>
+                  {round.design ? `${round.design} · ` : ""}Round {round.number}
+                </span>{" "}
+                · {round.addressed}/{round.total} addressed · {round.recorded} recorded
+              </text>
+              <For each={round.left.slice(0, ROUND_NOTES)}>
+                {(note) => (
+                  <box flexDirection="row" gap={0}>
+                    <text flexShrink={0} wrapMode="none" fg={theme.text.muted}>
+                      [ ] {element(note.item)}:{" "}
+                    </text>
+                    <text flexGrow={1} flexShrink={1} minWidth={0} wrapMode="none" truncate fg={theme.text.base}>
+                      {flat(note.item.text) || "(no text)"}
+                    </text>
+                  </box>
+                )}
+              </For>
+              <Show when={round.left.length > ROUND_NOTES}>
+                <text paddingLeft={4} fg={theme.text.muted}>
+                  +{round.left.length - ROUND_NOTES} more without a mark
+                </text>
+              </Show>
+            </box>
+          )}
+        </For>
         <Show when={visible().length <= 2 || open()}>
           <For each={shown()}>
             {(item) => {
@@ -131,6 +183,45 @@ export function SidebarTodo(props: { context: Plugin.Context; sessionID: string 
     </Show>
   )
 }
+
+/**
+ * Every round of an open review that still has a note without an outcome, newest first, counted as the
+ * agent's own design_document results recite it: notes it marked addressed (an outcome keeps the mark),
+ * notes with an outcome, and the notes still without either, which are the work left.
+ */
+function pendingRounds(designs: ReadonlyArray<DesignInfo>) {
+  return designs
+    .filter((design) => !design.ended)
+    .flatMap((design) => {
+      const notes = design.notes ?? []
+      return [...new Set(notes.filter((note) => note.status === "open").map((note) => note.round))]
+        .toSorted((a, b) => b - a)
+        .map((number) => {
+          const round = notes.filter((note) => note.round === number)
+          return {
+            design: designs.length > 1 ? design.name : undefined,
+            number,
+            total: round.length,
+            addressed: round.filter((note) => note.addressed).length,
+            recorded: round.filter((note) => note.status !== "open").length,
+            left: round.filter((note) => note.status === "open" && !note.addressed),
+          }
+        })
+    })
+}
+
+/**
+ * The element a note is on, at most ELEMENT_WIDTH cells so the user's words keep most of a sidebar row:
+ * `button "Save"` from the captured tag and text, else the page's label or the selector.
+ */
+function element(item: DesignFeedbackItem) {
+  const text = flat(item.elementText ?? "")
+  if (item.tag && text)
+    return `${item.tag} "${Locale.truncateWidth(text, Math.max(6, ELEMENT_WIDTH - item.tag.length - 3))}"`
+  return Locale.truncateWidth(flat(item.label || item.target), ELEMENT_WIDTH)
+}
+
+const flat = (value: string) => value.replace(/\s+/g, " ").trim()
 
 export default Plugin.define({
   id: "redcode.sidebar.todo",
