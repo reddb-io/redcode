@@ -117,8 +117,10 @@ export const Plugin = {
               })
               // The TUI and web show the chip and the identification's headline in place of the call.
               const display = yield* Ref.make<Record<string, string>>({})
-              // What a notes update did to each status, reported ahead of the document it returns.
-              const noted = yield* Ref.make<DesignRounds.Outcome | undefined>(undefined)
+              // What an update did to each note status and addressed mark, reported ahead of the document.
+              const noted = yield* Ref.make<
+                { notes?: DesignRounds.Outcome; addressed?: DesignRounds.Ticked } | undefined
+              >(undefined)
               const output = yield* Effect.gen(function* () {
                 if (input.action === "list") return yield* designs.list(context.sessionID)
                 if (input.action === "detect")
@@ -215,7 +217,7 @@ export const Plugin = {
                   ]
                 }
                 const amended = yield* designs.amend(context.sessionID, input.id, input.input)
-                yield* Ref.set(noted, amended.notes)
+                if (amended.notes || amended.addressed) yield* Ref.set(noted, amended)
                 return [amended.document]
               })
               const outcome = yield* Ref.get(noted)

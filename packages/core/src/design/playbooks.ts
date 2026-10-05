@@ -80,7 +80,7 @@ export const PLAYBOOKS: readonly Playbook[] = [
     ],
     structure: [
       "Start from the main user task and real content. Make the primary action and information hierarchy clear.",
-      'Feedback round: collect every note of the round (one or more <design-review> messages before your next revision), fix them all, publish one revision with design_preview, run one verify for the round with design_export {revision, format:"verify"} and wait for its native monitor to complete, open the before/after captures it names, then record each note with design_document update notes (resolved with the verify job as evidence; partial, unresolved or accepted with a reason). Reply with a short summary of resolved, partial, unresolved and accepted notes with their evidence, and ask before another round.',
+      'Feedback round: the notes of the round (one or more <design-review> messages before your next revision) are its checklist. Fix each one and mark it with design_document update addressed (or record a note you will not change as unresolved or accepted with a reason), publish one revision with design_preview, run one verify for the round with design_export {revision, format:"verify", round} and wait for its native monitor to complete, open the before/after captures it names, then record each note with design_document update notes (resolved with the verify job as evidence; partial, unresolved or accepted with a reason). Reply with a short summary of resolved, partial, unresolved and accepted notes with their evidence, and ask before another round.',
     ],
     design_rules: [
       "Use semantic controls, visible keyboard focus, readable contrast and responsive layout.",

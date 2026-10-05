@@ -284,16 +284,22 @@ describe("DesignRounds", () => {
         [stale, verify],
       ).see,
     ).toEqual(["notes"])
-    // The blocker names the open notes and lifts once every note has an outcome.
-    expect(DesignRounds.blocking(answered)).toContain(
-      "Round 1 has 3 notes without a recorded outcome: msg_1 #1 (#title), msg_1 #2 (#gone), msg_1 #3 (#cta)",
+    // The blocker counts the open notes, says what to do and where to read them, then quotes them; it
+    // lifts once every note has an outcome.
+    expect(DesignRounds.blocking(answered)).toBe(
+      [
+        'Round 1 has 3 notes without a recorded outcome. Fix them, mark each with design_document update addressed, publish one revision, run one verify per round (design_export format verify with round set) and record each note with design_document update notes; unresolved or accepted with a reason are allowed. Every note of a round with its text: design_read {"section":"notes","round":1}.',
+        "Round 1: 0 of 3 addressed, 0 recorded. Still without an outcome:",
+        "msg_1 #1 [open] #title",
+        "Note: Bigger",
+        "msg_1 #2 [open] #gone",
+        "Note: Remove",
+        "msg_1 #3 [open] #cta",
+        "Note: Contrast",
+      ].join("\n"),
     )
-    // It ends on the call that lists that round's notes with their text.
-    expect(DesignRounds.blocking(answered)).toEndWith(
-      'unresolved or accepted with a reason are allowed. Every note of a round with its text: design_read {"section":"notes","round":1}.',
-    )
-    expect(DesignRounds.blocking({ ...answered, id: designID })).toEndWith(
-      'Every note of a round with its text: design_read {"id":"design_checkout","section":"notes","round":1}.',
+    expect(DesignRounds.blocking({ ...answered, id: designID })).toContain(
+      'Every note of a round with its text: design_read {"id":"design_checkout","section":"notes","round":1}.\n',
     )
     const recorded = DesignRounds.apply(
       answered,
@@ -315,18 +321,21 @@ describe("DesignRounds", () => {
       [],
     )
     if ("problem" in onlyLatest) throw new Error(onlyLatest.problem)
-    expect(DesignRounds.blocking({ ...later, notes: onlyLatest.notes })).toContain(
-      "Round 1 has 3 notes without a recorded outcome: msg_1 #1 (#title), msg_1 #2 (#gone), msg_1 #3 (#cta). Fix them",
+    expect(DesignRounds.blocking({ ...later, notes: onlyLatest.notes })).toStartWith(
+      "Round 1 has 3 notes without a recorded outcome. Fix them",
     )
-    const bothOpen = DesignRounds.blocking(later)
-    expect(bothOpen).toContain("Round 1 has 3 notes without a recorded outcome")
-    expect(bothOpen).toContain("; round 2 has 1 note without a recorded outcome: msg_2 #1 (#footer)")
+    const bothOpen = DesignRounds.blocking(later)!
+    expect(bothOpen).toStartWith(
+      "Round 1 has 3 notes without a recorded outcome; round 2 has 1 note without a recorded outcome. Fix them",
+    )
     // With more than one round pending, the round to read is left to the caller.
-    expect(bothOpen).toEndWith('design_read {"section":"notes","round":<round>}.')
+    expect(bothOpen).toContain('design_read {"section":"notes","round":<round>}.\n')
+    // The newest round is quoted first.
+    expect(bothOpen.indexOf("Round 2: 0 of 1 addressed")).toBeLessThan(bothOpen.indexOf("Round 1: 0 of 3 addressed"))
     expect(DesignRounds.open(later)).toHaveLength(4)
   })
 
-  test("the blocker names eight notes of a round and counts the rest", () => {
+  test("the blocker quotes thirty notes and counts the rest", () => {
     const many = DesignRounds.admit(
       { rounds: undefined, notes: undefined },
       message(
@@ -336,9 +345,20 @@ describe("DesignRounds", () => {
       ),
       100,
     )
-    expect(DesignRounds.blocking(many)).toStartWith(
-      `Round 1 has 14 notes without a recorded outcome: ${Array.from({ length: 8 }, (_, index) => `msg_1 #${index + 1} (#n${index + 1})`).join(", ")} and 6 more. Fix them`,
+    expect(DesignRounds.blocking(many)).toStartWith("Round 1 has 14 notes without a recorded outcome. Fix them")
+    const more = DesignRounds.admit(
+      { rounds: undefined, notes: undefined },
+      message(
+        "msg_1",
+        "rev_1",
+        Array.from({ length: 34 }, (_, index) => note(`#n${index + 1}`, `Note ${index + 1}`)),
+      ),
+      100,
     )
+    const lines = DesignRounds.blocking(more)!.split("\n")
+    expect(lines[1]).toBe("Round 1: 0 of 34 addressed, 0 recorded. Still without an outcome:")
+    expect(lines).toHaveLength(2 + 30 * 2 + 1)
+    expect(lines.at(-1)).toBe("and 4 more")
   })
 
   test("every status of an update is judged on its own, and what the refusals point at is listed once", () => {
@@ -460,5 +480,111 @@ describe("DesignRounds", () => {
     expect(DesignRounds.verdict({ found: true, blocking: false, findings: ["review · small-control"] })).toBe("warn")
     expect(DesignRounds.verdict({ found: true, blocking: true, findings: ["error · color-contrast"] })).toBe("fail")
     expect(DesignRounds.verdict({ found: false, blocking: true, findings: [] })).toBe("fail")
+  })
+})
+
+describe("DesignRounds checklist", () => {
+  const opened = (count: number, text = (index: number) => `Note ${index}`) =>
+    DesignRounds.admit(
+      { rounds: undefined, notes: undefined },
+      message(
+        "msg_1",
+        "rev_1",
+        Array.from({ length: count }, (_, index) => note(`#n${index + 1}`, text(index + 1))),
+      ),
+      100,
+    )
+  const feedback = SessionMessage.ID.make("msg_1")
+
+  test("a mark sets addressed on an open note and keeps its status; an outcome or an unknown note keeps it out", () => {
+    const recorded = DesignRounds.apply(
+      opened(3),
+      [{ feedback, index: 3, status: "accepted", reason: "Kept" }],
+      [],
+      200,
+    )
+    if ("problem" in recorded) throw new Error(recorded.problem)
+    const marked = DesignRounds.tick(
+      { rounds: opened(3).rounds, notes: recorded.notes },
+      [
+        { feedback, index: 1, summary: "Bigger" },
+        { feedback, index: 3, summary: "Changed anyway" },
+        { feedback: SessionMessage.ID.make("msg_9"), index: 1, summary: "Elsewhere" },
+        { feedback, index: 1, summary: "Bigger and bolder" },
+      ],
+      300,
+    )
+    expect(marked.notes.map((item) => [item.status, item.addressed])).toEqual([
+      // A second mark of the same note replaces the summary.
+      ["open", { summary: "Bigger and bolder", at: 300 }],
+      ["open", undefined],
+      ["accepted", undefined],
+    ])
+    expect(marked.ticked).toMatchObject({
+      applied: 2,
+      ignored: [
+        { feedback, index: 3, reason: "already recorded accepted; the outcome stands and the mark was ignored." },
+      ],
+      refused: [{ feedback: "msg_9", index: 1, reason: "Unknown note msg_9 #1." }],
+    })
+    expect(marked.ticked.context[0]).toStartWith("Known notes: msg_1 #1 (round 1, open)")
+    // Recording an outcome later keeps the mark; ending the round still waits for the outcome.
+    const after = DesignRounds.apply(
+      { notes: marked.notes, rounds: opened(3).rounds },
+      [{ feedback, index: 1, status: "unresolved", reason: "Not enough" }],
+      [],
+    )
+    if ("problem" in after) throw new Error(after.problem)
+    expect(after.notes[0]).toMatchObject({ status: "unresolved", addressed: { summary: "Bigger and bolder" } })
+    expect(DesignRounds.open({ notes: marked.notes, rounds: undefined })).toHaveLength(2)
+    expect(DesignRounds.blocking({ notes: marked.notes, rounds: opened(3).rounds })).toBeDefined()
+  })
+
+  test("only the open round's notes without a mark or an outcome keep a publish from answering it", () => {
+    expect(DesignRounds.unanswerable({ rounds: undefined, notes: undefined })).toBeUndefined()
+    const round = opened(35, (index) => `${"w".repeat(250)} ${index}`)
+    const refusal = DesignRounds.unanswerable(round)!
+    const lines = refusal.split("\n")
+    expect(lines[0]).toBe(
+      "Publish refused: this revision would answer feedback round 1, and 35 of its notes have neither an addressed mark nor an outcome:",
+    )
+    // Thirty notes are quoted, each clipped to 200 code points, then the rest are counted and the exits named.
+    expect(lines).toHaveLength(1 + 30 * 2 + 1 + 1)
+    expect(lines[2]).toBe(`Note: ${"w".repeat(200)}…`)
+    expect(lines.at(-2)).toBe("and 5 more")
+    expect(lines.at(-1)).toContain('design_document update {"addressed":[')
+    expect(lines.at(-1)).toContain('"status":"unresolved|accepted","reason":"<why>"')
+    // An answered round is not gated, even with notes still open: only the next answer is.
+    expect(DesignRounds.unanswerable(DesignRounds.published(round, "rev_2"))).toBeUndefined()
+    const marked = DesignRounds.tick(
+      round,
+      Array.from({ length: 35 }, (_, index) => ({ feedback, index: index + 1, summary: "Done" })),
+    )
+    expect(DesignRounds.unanswerable({ ...round, notes: marked.notes })).toBeUndefined()
+  })
+
+  test("the recitation says each round's progress and is empty once every note has an outcome", () => {
+    const round = opened(2)
+    const marked = DesignRounds.tick(round, [{ feedback, index: 2, summary: "Done" }], 200)
+    expect(DesignRounds.recite({ ...round, notes: marked.notes })).toBe(
+      [
+        "Round 1: 1 of 2 addressed, 0 recorded. Still without an outcome:",
+        "msg_1 #1 [open] #n1",
+        "Note: Note 1",
+        "msg_1 #2 [open, addressed] #n2",
+        "Note: Note 2",
+      ].join("\n"),
+    )
+    const settled = DesignRounds.apply(
+      round,
+      [
+        { feedback, index: 1, status: "accepted", reason: "Kept" },
+        { feedback, index: 2, status: "unresolved", reason: "Later" },
+      ],
+      [],
+    )
+    if ("problem" in settled) throw new Error(settled.problem)
+    expect(DesignRounds.recite({ ...round, notes: settled.notes })).toBe("")
+    expect(DesignRounds.recite({ rounds: undefined, notes: undefined })).toBe("")
   })
 })

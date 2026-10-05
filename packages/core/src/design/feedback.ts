@@ -278,7 +278,15 @@ export function render(input: Design.Feedback, context: Context) {
         : input.end
           ? "The user ended this review. Finish from these notes; do not reopen it without an explicit request."
           : notes.length
-            ? `Feedback round${context.round !== undefined ? ` ${context.round}` : ""}: fix everything in this round, publish one revision with design_preview, run one verify for the round (design_export {"revision":"<that revision>","format":"verify"${context.round !== undefined ? `,"round":${context.round}` : ""}}, wait for its native monitor, then read design_jobs once), then record each note's status (design_document update notes: [{"feedback":"${input.id}","index":<n>,"status":"resolved|partial|unresolved|accepted","reason":"...","evidence":{"job":"<verify job>"}}]; evidence for resolved and partial, a reason for partial, unresolved and accepted). Run the artifact end-of-round checklist against the published revision, record findings without another correction cycle, then reply with what is resolved, partial, unresolved or accepted and why. Wait for the next requested round.`
+            ? [
+                `Feedback round${context.round !== undefined ? ` ${context.round}` : ""}: its notes are your checklist, not Design tasks.`,
+                `1. Fix the notes in the prototype source. After each note or group, mark it: design_document update {"addressed":[{"feedback":"${input.id}","index":<n>,"summary":"<what you changed>"}]}.`,
+                `2. A note you will not change: record it instead with design_document update {"notes":[{"feedback":"${input.id}","index":<n>,"status":"unresolved|accepted","reason":"<why>"}]}.`,
+                "3. Publish one revision with design_preview; it is refused while a note of the round has neither a mark nor an outcome, and lists those notes.",
+                `4. Run one verify: design_export {"revision":"<that revision>","format":"verify"${context.round !== undefined ? `,"round":${context.round}` : ""}}, wait for its native monitor, then read design_jobs once.`,
+                `5. Record each note's outcome: design_document update {"notes":[{"feedback":"${input.id}","index":<n>,"status":"resolved|partial|unresolved|accepted","reason":"...","evidence":{"job":"<verify job>"}}]}; evidence for resolved and partial, a reason for partial, unresolved and accepted.`,
+                "6. Run the artifact end-of-round checklist against the published revision without another correction cycle, reply with what is resolved, partial, unresolved or accepted and why, and wait for the next round.",
+              ].join("\n")
             : "Publish one revision with design_preview, run the end-of-round checklist once and reply with a short checked/pending/unverified summary. Do not start an automatic correction cycle.",
       unkeyed
         ? "Some notes name elements without a data-design-id; when you edit such an element, give it a stable kebab-case data-design-id so later notes can name it directly."

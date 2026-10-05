@@ -2,31 +2,36 @@ export * as DesignDocumentTool from "./document-tool.js"
 
 import { Schema } from "effect"
 import { Design } from "@opencode/schema/design"
-import { DesignApproval } from "./approval.js"
 import { DesignIdentify } from "./identify.js"
 import { DesignRounds } from "./rounds.js"
 
 export const description =
-  'Create, inspect or update a design in this conversation. Always supply action. Use {"action":"list"} to inspect designs. To create, supply action="create" and input with name, journey (new/existing), engine (html/react/solid), and kind (screen/flow/comparison/deck); identify application for an existing project. Also supply target: web (responsive frontend), app (mobile app; add platform ios or android when the request names one) or presentation (slides), judged from what the user asked for; with dual reasoning the user confirms it, and update can change it later. Update requires id and input; reopen and refresh require id. {"action":"detect"} (optional input.application) only reads files inside the project and reports the design system it detects, with per-field confidence and evidence; it never asks the user and never writes anything. When design.system is not configured, create first identifies the design system of the project and asks the user whether to adopt it: with dual reasoning System One reads the evidence; with single reasoning call detect before create, read its evidence pack and pass your conclusion as system on create. Edit only the returned root. Persist briefing, decisions, scenarios and targets (existing product files the design changes). After a feedback round\'s verify, update notes: [{feedback, index, status, reason?, evidence: {job}}] records each review note as resolved, partial, unresolved or accepted, citing the verify job. Each status is recorded on its own: a refused one does not hold back the others, and the result says how many were recorded, why each refused one was refused, and which notes still have no outcome, by round.'
+  'Create, inspect or update a design in this conversation. Always supply action. Use {"action":"list"} to inspect designs. To create, supply action="create" and input with name, journey (new/existing), engine (html/react/solid), and kind (screen/flow/comparison/deck); identify application for an existing project. Also supply target: web (responsive frontend), app (mobile app; add platform ios or android when the request names one) or presentation (slides), judged from what the user asked for; with dual reasoning the user confirms it, and update can change it later. Update requires id and input; reopen and refresh require id. {"action":"detect"} (optional input.application) only reads files inside the project and reports the design system it detects, with per-field confidence and evidence; it never asks the user and never writes anything. When design.system is not configured, create first identifies the design system of the project and asks the user whether to adopt it: with dual reasoning System One reads the evidence; with single reasoning call detect before create, read its evidence pack and pass your conclusion as system on create. Edit only the returned root. Persist briefing, decisions, scenarios and targets (existing product files the design changes). A feedback round\'s notes are its checklist. After fixing a note (or a group of notes), mark each with update addressed: [{feedback, index, summary}], saying what you changed; a mark needs no evidence and records no outcome, and a note that already has an outcome ignores it. design_preview refuses to publish while the open round has a note with neither a mark nor an outcome. After the round\'s verify, update notes: [{feedback, index, status, reason?, evidence: {job}}] records each note as resolved, partial, unresolved or accepted, citing the verify job; unresolved and accepted need only a reason, so a note you will not change can be recorded before publishing. Each status and mark is recorded on its own: a refused one does not hold back the others, and the result says how many were recorded, why each refused one was refused, and which notes of each round still have no outcome.'
 
 /**
- * What an update did to the note statuses it carried, for the agent: how many were recorded, why each
- * refused one was refused, and the notes that still have no outcome, with the reviewer's words, so the
- * next step is on the page that reports the last one. Every round with such a note is listed, oldest
- * first: an update can record a round that a newer one has already followed.
+ * What an update did to the note statuses and addressed marks it carried, for the agent: how many were
+ * recorded, why each refused one was refused, then the status of every round that still has a note
+ * without an outcome, with the reviewer's words, so the next step is on the page that reports the last
+ * one. An update can record a round that a newer one has already followed, so every such round is told.
  */
-export function recorded(document: Pick<Design.Info, "rounds" | "notes">, outcome: DesignRounds.Outcome) {
+export function recorded(
+  document: Pick<Design.Info, "rounds" | "notes">,
+  result: { readonly notes?: DesignRounds.Outcome; readonly addressed?: DesignRounds.Ticked },
+) {
+  const outcome = result.notes
+  const recited = DesignRounds.recite(document)
   return [
-    `Notes: recorded ${outcome.recorded}${outcome.unverified.length ? ` (${outcome.unverified.length} unverified)` : ""}, refused ${outcome.refused.length}.`,
-    ...DesignRounds.refusals(outcome),
-    ...[...Map.groupBy(outcome.unverified, (item) => item.reason)].map(
-      ([reason, items]) => `Unverified (${items.length}): ${reason}. These are recorded and need nothing more.`,
-    ),
-    // Notes are kept in admission order, so the rounds come out ascending.
-    ...[...Map.groupBy(DesignRounds.open(document), (note) => note.round)].flatMap(([round, notes]) => [
-      `Still without an outcome in round ${round}:`,
-      DesignApproval.worklist(notes, { limit: 30, clip: 200 }),
-    ]),
+    ...(outcome
+      ? [
+          `Notes: recorded ${outcome.recorded}${outcome.unverified.length ? ` (${outcome.unverified.length} unverified)` : ""}, refused ${outcome.refused.length}.`,
+          ...DesignRounds.refusals(outcome),
+          ...[...Map.groupBy(outcome.unverified, (item) => item.reason)].map(
+            ([reason, items]) => `Unverified (${items.length}): ${reason}. These are recorded and need nothing more.`,
+          ),
+        ]
+      : []),
+    ...(result.addressed ? DesignRounds.marks(result.addressed) : []),
+    ...(recited ? [recited] : []),
   ].join("\n")
 }
 

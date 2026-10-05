@@ -206,12 +206,23 @@ const NoteRef = {
 export const NoteRecorder = Schema.Literals(["agent", "reviewer"])
 export type NoteRecorder = typeof NoteRecorder.Type
 
+/**
+ * The agent's own statement that it changed what a note asks for, made before the round's verify. It is not an
+ * outcome: the note stays `open` until a status is recorded, so approval and ending a review still wait for one.
+ */
+export const NoteAddressed = Schema.Struct({
+  summary: Schema.String.check(Schema.isMinLength(1), Schema.isMaxLength(300)),
+  at: Schema.Number,
+}).annotate({ identifier: "Design.NoteAddressed" })
+export interface NoteAddressed extends Schema.Schema.Type<typeof NoteAddressed> {}
+
 /** A review note with its durable status; `item` is the note as the browser sent it. */
 export const Note = Schema.Struct({
   ...NoteRef,
   round: Schema.Int,
   item: FeedbackItem,
   status: NoteStatus,
+  addressed: NoteAddressed.pipe(optional),
   reason: Schema.String.pipe(optional),
   evidence: NoteEvidence.pipe(optional),
   /** Absent on statuses recorded before recorders were tracked; those came from the agent. */
@@ -228,6 +239,13 @@ export const NoteUpdate = Schema.Struct({
   evidence: Schema.Struct({ job: Schema.String }).pipe(optional),
 }).annotate({ identifier: "Design.NoteUpdate" })
 export interface NoteUpdate extends Schema.Schema.Type<typeof NoteUpdate> {}
+
+/** The agent's claim that it addressed one note; see `NoteAddressed`. */
+export const NoteClaim = Schema.Struct({
+  ...NoteRef,
+  summary: Schema.String.check(Schema.isMinLength(1), Schema.isMaxLength(300)),
+}).annotate({ identifier: "Design.NoteClaim" })
+export interface NoteClaim extends Schema.Schema.Type<typeof NoteClaim> {}
 
 /**
  * A feedback round: the notes received, in one or more review messages, since the last revision the
@@ -270,6 +288,11 @@ export interface Create extends Schema.Schema.Type<typeof Create> {}
 
 export const Update = Schema.Struct({
   notes: Schema.Array(NoteUpdate).check(Schema.isMaxLength(100)).pipe(optional),
+  /**
+   * The agent's addressed marks: each names a note it changed and says what it did. A mark needs no
+   * evidence and records no outcome; a note that already has an outcome keeps it and ignores the mark.
+   */
+  addressed: Schema.Array(NoteClaim).check(Schema.isMaxLength(100)).pipe(optional),
   /**
    * Who records `notes`. The review page sends `reviewer`, which may only record `accepted` or
    * `unresolved` with a reason and needs no verify; the agent's tools never send it.

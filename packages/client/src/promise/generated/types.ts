@@ -320,6 +320,8 @@ export type DesignRound = {
   published?: string
 }
 
+export type DesignNoteAddressed = { summary: string; at: number | "Infinity" | "-Infinity" | "NaN" }
+
 export type DesignNoteEvidence = { job: string; revision?: string; capture?: string; findings?: Array<string> }
 
 export type DesignRender = {
@@ -3130,6 +3132,7 @@ export type DesignNote = {
   round: number
   item: DesignFeedbackItem
   status: "open" | "resolved" | "partial" | "unresolved" | "accepted"
+  addressed?: DesignNoteAddressed
   reason?: string
   evidence?: DesignNoteEvidence
   by?: "agent" | "reviewer"
@@ -5640,6 +5643,7 @@ export type SessionDesignUpdateInput = {
       readonly reason?: string
       readonly evidence?: { readonly job: string }
     }>
+    readonly addressed?: ReadonlyArray<{ readonly feedback: string; readonly index: number; readonly summary: string }>
     readonly by?: "reviewer"
     readonly controls?: ReadonlyArray<{
       readonly id: string
@@ -5709,6 +5713,84 @@ export type SessionDesignUpdateInput = {
     readonly entry?: string
     readonly tweaks?: { readonly [x: string]: string }
   }["notes"]
+  readonly addressed?: {
+    readonly notes?: ReadonlyArray<{
+      readonly feedback: string
+      readonly index: number
+      readonly status: "resolved" | "partial" | "unresolved" | "accepted"
+      readonly reason?: string
+      readonly evidence?: { readonly job: string }
+    }>
+    readonly addressed?: ReadonlyArray<{ readonly feedback: string; readonly index: number; readonly summary: string }>
+    readonly by?: "reviewer"
+    readonly controls?: ReadonlyArray<{
+      readonly id: string
+      readonly name: string
+      readonly selector: string
+      readonly variant?: string
+      readonly fields: ReadonlyArray<
+        | { readonly id: string; readonly name: string; readonly type: "text"; readonly default: string }
+        | { readonly id: string; readonly name: string; readonly type: "boolean"; readonly default: boolean }
+        | {
+            readonly id: string
+            readonly name: string
+            readonly type: "number"
+            readonly default: number
+            readonly min?: number
+            readonly max?: number
+          }
+        | {
+            readonly id: string
+            readonly name: string
+            readonly type: "select"
+            readonly default: string
+            readonly options: ReadonlyArray<string>
+          }
+      >
+    }>
+    readonly presets?: ReadonlyArray<{
+      readonly id: string
+      readonly name: string
+      readonly variant?: string
+      readonly values: { readonly [x: string]: { readonly [x: string]: string | number | boolean } }
+    }>
+    readonly name?: string
+    readonly target?: "web" | "app" | "presentation"
+    readonly platform?: "ios" | "android"
+    readonly brief?: {
+      readonly objective: string
+      readonly audience: string
+      readonly content: string
+      readonly constraints: string
+      readonly references: ReadonlyArray<string>
+    }
+    readonly decisions?: ReadonlyArray<{
+      readonly id: string
+      readonly text: string
+      readonly revision?: string
+      readonly feedback?: string
+    }>
+    readonly questions?: ReadonlyArray<string>
+    readonly scenarios?: ReadonlyArray<{
+      readonly params?: { readonly [x: string]: { readonly [x: string]: string | number | boolean } }
+      readonly id: string
+      readonly name: string
+      readonly variant?: string
+      readonly screen?: string
+      readonly selector: string
+      readonly state: "loading" | "empty" | "error" | "populated" | "edge"
+      readonly actions: ReadonlyArray<{
+        readonly selector: string
+        readonly action: "click" | "fill" | "press"
+        readonly value?: string
+      }>
+      readonly notApplicable?: string
+    }>
+    readonly targets?: ReadonlyArray<{ readonly path: string; readonly role: string }>
+    readonly designSystem?: string | { readonly [x: string]: JsonValue }
+    readonly entry?: string
+    readonly tweaks?: { readonly [x: string]: string }
+  }["addressed"]
   readonly by?: {
     readonly notes?: ReadonlyArray<{
       readonly feedback: string
@@ -5717,6 +5799,7 @@ export type SessionDesignUpdateInput = {
       readonly reason?: string
       readonly evidence?: { readonly job: string }
     }>
+    readonly addressed?: ReadonlyArray<{ readonly feedback: string; readonly index: number; readonly summary: string }>
     readonly by?: "reviewer"
     readonly controls?: ReadonlyArray<{
       readonly id: string
@@ -5794,6 +5877,7 @@ export type SessionDesignUpdateInput = {
       readonly reason?: string
       readonly evidence?: { readonly job: string }
     }>
+    readonly addressed?: ReadonlyArray<{ readonly feedback: string; readonly index: number; readonly summary: string }>
     readonly by?: "reviewer"
     readonly controls?: ReadonlyArray<{
       readonly id: string
@@ -5871,6 +5955,7 @@ export type SessionDesignUpdateInput = {
       readonly reason?: string
       readonly evidence?: { readonly job: string }
     }>
+    readonly addressed?: ReadonlyArray<{ readonly feedback: string; readonly index: number; readonly summary: string }>
     readonly by?: "reviewer"
     readonly controls?: ReadonlyArray<{
       readonly id: string
@@ -5948,6 +6033,7 @@ export type SessionDesignUpdateInput = {
       readonly reason?: string
       readonly evidence?: { readonly job: string }
     }>
+    readonly addressed?: ReadonlyArray<{ readonly feedback: string; readonly index: number; readonly summary: string }>
     readonly by?: "reviewer"
     readonly controls?: ReadonlyArray<{
       readonly id: string
@@ -6025,6 +6111,7 @@ export type SessionDesignUpdateInput = {
       readonly reason?: string
       readonly evidence?: { readonly job: string }
     }>
+    readonly addressed?: ReadonlyArray<{ readonly feedback: string; readonly index: number; readonly summary: string }>
     readonly by?: "reviewer"
     readonly controls?: ReadonlyArray<{
       readonly id: string
@@ -6102,6 +6189,7 @@ export type SessionDesignUpdateInput = {
       readonly reason?: string
       readonly evidence?: { readonly job: string }
     }>
+    readonly addressed?: ReadonlyArray<{ readonly feedback: string; readonly index: number; readonly summary: string }>
     readonly by?: "reviewer"
     readonly controls?: ReadonlyArray<{
       readonly id: string
@@ -6179,6 +6267,7 @@ export type SessionDesignUpdateInput = {
       readonly reason?: string
       readonly evidence?: { readonly job: string }
     }>
+    readonly addressed?: ReadonlyArray<{ readonly feedback: string; readonly index: number; readonly summary: string }>
     readonly by?: "reviewer"
     readonly controls?: ReadonlyArray<{
       readonly id: string
@@ -6256,6 +6345,7 @@ export type SessionDesignUpdateInput = {
       readonly reason?: string
       readonly evidence?: { readonly job: string }
     }>
+    readonly addressed?: ReadonlyArray<{ readonly feedback: string; readonly index: number; readonly summary: string }>
     readonly by?: "reviewer"
     readonly controls?: ReadonlyArray<{
       readonly id: string
@@ -6333,6 +6423,7 @@ export type SessionDesignUpdateInput = {
       readonly reason?: string
       readonly evidence?: { readonly job: string }
     }>
+    readonly addressed?: ReadonlyArray<{ readonly feedback: string; readonly index: number; readonly summary: string }>
     readonly by?: "reviewer"
     readonly controls?: ReadonlyArray<{
       readonly id: string
@@ -6410,6 +6501,7 @@ export type SessionDesignUpdateInput = {
       readonly reason?: string
       readonly evidence?: { readonly job: string }
     }>
+    readonly addressed?: ReadonlyArray<{ readonly feedback: string; readonly index: number; readonly summary: string }>
     readonly by?: "reviewer"
     readonly controls?: ReadonlyArray<{
       readonly id: string
@@ -6487,6 +6579,7 @@ export type SessionDesignUpdateInput = {
       readonly reason?: string
       readonly evidence?: { readonly job: string }
     }>
+    readonly addressed?: ReadonlyArray<{ readonly feedback: string; readonly index: number; readonly summary: string }>
     readonly by?: "reviewer"
     readonly controls?: ReadonlyArray<{
       readonly id: string
@@ -6564,6 +6657,7 @@ export type SessionDesignUpdateInput = {
       readonly reason?: string
       readonly evidence?: { readonly job: string }
     }>
+    readonly addressed?: ReadonlyArray<{ readonly feedback: string; readonly index: number; readonly summary: string }>
     readonly by?: "reviewer"
     readonly controls?: ReadonlyArray<{
       readonly id: string
@@ -6641,6 +6735,7 @@ export type SessionDesignUpdateInput = {
       readonly reason?: string
       readonly evidence?: { readonly job: string }
     }>
+    readonly addressed?: ReadonlyArray<{ readonly feedback: string; readonly index: number; readonly summary: string }>
     readonly by?: "reviewer"
     readonly controls?: ReadonlyArray<{
       readonly id: string
@@ -6718,6 +6813,7 @@ export type SessionDesignUpdateInput = {
       readonly reason?: string
       readonly evidence?: { readonly job: string }
     }>
+    readonly addressed?: ReadonlyArray<{ readonly feedback: string; readonly index: number; readonly summary: string }>
     readonly by?: "reviewer"
     readonly controls?: ReadonlyArray<{
       readonly id: string

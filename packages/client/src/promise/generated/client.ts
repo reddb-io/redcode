@@ -752,6 +752,7 @@ export function make(options: ClientOptions) {
               path: `/api/experimental/session/${encodeURIComponent(input.sessionID)}/design/${encodeURIComponent(input.designID)}`,
               body: {
                 notes: input["notes"],
+                addressed: input["addressed"],
                 by: input["by"],
                 controls: input["controls"],
                 presets: input["presets"],

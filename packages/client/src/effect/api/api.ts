@@ -939,6 +939,7 @@ export type SessionDesignListOutput = ReadonlyArray<{
           readonly resent?: { readonly feedback: string; readonly index: number } | undefined
         }
         readonly status: "open" | "resolved" | "partial" | "unresolved" | "accepted"
+        readonly addressed?: { readonly summary: string; readonly at: number } | undefined
         readonly reason?: string | undefined
         readonly evidence?:
           | {
@@ -1113,6 +1114,7 @@ export type SessionDesignCreateOutput = {
           readonly resent?: { readonly feedback: string; readonly index: number } | undefined
         }
         readonly status: "open" | "resolved" | "partial" | "unresolved" | "accepted"
+        readonly addressed?: { readonly summary: string; readonly at: number } | undefined
         readonly reason?: string | undefined
         readonly evidence?:
           | {
@@ -1280,6 +1282,7 @@ export type SessionDesignGetOutput = {
           readonly resent?: { readonly feedback: string; readonly index: number } | undefined
         }
         readonly status: "open" | "resolved" | "partial" | "unresolved" | "accepted"
+        readonly addressed?: { readonly summary: string; readonly at: number } | undefined
         readonly reason?: string | undefined
         readonly evidence?:
           | {
@@ -1394,6 +1397,9 @@ export type SessionDesignUpdateInput = {
         readonly reason?: string | undefined
         readonly evidence?: { readonly job: string } | undefined
       }>
+    | undefined
+  readonly addressed?:
+    | ReadonlyArray<{ readonly feedback: string; readonly index: number; readonly summary: string }>
     | undefined
   readonly by?: "reviewer" | undefined
   readonly controls?:
@@ -1619,6 +1625,7 @@ export type SessionDesignUpdateOutput = {
           readonly resent?: { readonly feedback: string; readonly index: number } | undefined
         }
         readonly status: "open" | "resolved" | "partial" | "unresolved" | "accepted"
+        readonly addressed?: { readonly summary: string; readonly at: number } | undefined
         readonly reason?: string | undefined
         readonly evidence?:
           | {
@@ -1786,6 +1793,7 @@ export type SessionDesignRefreshOutput = {
           readonly resent?: { readonly feedback: string; readonly index: number } | undefined
         }
         readonly status: "open" | "resolved" | "partial" | "unresolved" | "accepted"
+        readonly addressed?: { readonly summary: string; readonly at: number } | undefined
         readonly reason?: string | undefined
         readonly evidence?:
           | {
@@ -1970,6 +1978,7 @@ export type SessionDesignReopenOutput = {
           readonly resent?: { readonly feedback: string; readonly index: number } | undefined
         }
         readonly status: "open" | "resolved" | "partial" | "unresolved" | "accepted"
+        readonly addressed?: { readonly summary: string; readonly at: number } | undefined
         readonly reason?: string | undefined
         readonly evidence?:
           | {
@@ -2144,6 +2153,7 @@ export type SessionDesignRevisionsOutput = ReadonlyArray<{
             readonly resent?: { readonly feedback: string; readonly index: number } | undefined
           }
           readonly status: "open" | "resolved" | "partial" | "unresolved" | "accepted"
+          readonly addressed?: { readonly summary: string; readonly at: number } | undefined
           readonly reason?: string | undefined
           readonly evidence?:
             | {
@@ -2403,6 +2413,7 @@ export type SessionDesignRevisionOutput = {
             readonly resent?: { readonly feedback: string; readonly index: number } | undefined
           }
           readonly status: "open" | "resolved" | "partial" | "unresolved" | "accepted"
+          readonly addressed?: { readonly summary: string; readonly at: number } | undefined
           readonly reason?: string | undefined
           readonly evidence?:
             | {

@@ -1,13 +1,15 @@
 export * as DesignRounds from "./rounds.js"
 
 import { Design } from "@opencode/schema/design"
+import { DesignApproval } from "./approval.js"
 
 /**
  * Feedback rounds and note statuses, kept on the design document.
  *
  * A round is the set of notes received since the last revision the agent published after them:
  * review messages that arrive while no revision answered the previous notes join the open round;
- * the first publish after them closes it, and the next message opens the following round. Every
+ * the agent's first publish after them closes it (a revision published from the review page does
+ * not), and the next message opens the following round. Every
  * note is named by its feedback message and its 1-based number in that message, the numbering the
  * rendered `<design-review>` uses. Pure over the document, so both runtimes and the store share it.
  */
@@ -56,11 +58,84 @@ export function admit(document: Rounds, feedback: Design.Feedback, now = Date.no
   }
 }
 
-/** A published revision answers the open round: it closes to new notes and records that revision. */
+/**
+ * A revision the agent published answers the open round: it closes to new notes and records that
+ * revision. Revisions published from the review page never call this.
+ */
 export function published(document: Rounds, revision: string): Rounds {
   const last = latest(document)
   if (!last || last.published) return document
   return { ...document, rounds: [...(document.rounds ?? []).slice(0, -1), { ...last, published: revision }] }
+}
+
+/** How many notes one listing of notes quotes, and the code points of each note's text it keeps. */
+export const LISTED = { limit: 30, clip: 200 } as const
+
+/** Notes of the open round (the latest, not yet answered) with neither an addressed mark nor an outcome. */
+export function unaddressed(document: Rounds) {
+  const last = latest(document)
+  if (!last || last.published) return []
+  return notes(document, last.number).filter((note) => note.status === "open" && !note.addressed)
+}
+
+/**
+ * Why the agent may not publish now, or undefined when it may: a publish answers the open round, so
+ * every note of that round needs an addressed mark or an outcome first. Quotes those notes and names
+ * the two ways out.
+ */
+export function unanswerable(document: Rounds) {
+  const left = unaddressed(document)
+  if (!left.length) return undefined
+  return [
+    `Publish refused: this revision would answer feedback round ${latest(document)!.number}, and ${left.length} of its notes have neither an addressed mark nor an outcome:`,
+    DesignApproval.worklist(left, LISTED),
+    'Fix each of them, then mark it with design_document update {"addressed":[{"feedback":"<feedback>","index":<n>,"summary":"<what you changed>"}]}. For a note you will not change, record it instead: design_document update {"notes":[{"feedback":"<feedback>","index":<n>,"status":"unresolved|accepted","reason":"<why>"}]}. Then call design_preview again.',
+  ].join("\n")
+}
+
+/** What one update did to the addressed marks it carried; told to the agent, nothing here is stored. */
+export interface Ticked {
+  readonly applied: number
+  /** Marks on notes that already have an outcome: the outcome stands. */
+  readonly ignored: ReadonlyArray<Marked>
+  readonly refused: ReadonlyArray<Marked>
+  /** The lists the refusals point at, each once. */
+  readonly context: ReadonlyArray<string>
+}
+
+/**
+ * Apply addressed marks one by one: a mark names an existing note, sets `addressed` on it while it is
+ * open and keeps its status. A repeated mark replaces the summary. A note with an outcome ignores the
+ * mark, and an unknown note refuses only its own mark. No evidence is needed: a mark is the agent's
+ * statement, not an outcome.
+ */
+export function tick(document: Rounds, claims: ReadonlyArray<Design.NoteClaim>, now = Date.now()) {
+  const current = [...(document.notes ?? [])]
+  const fates = claims.map((claim): { claim: Design.NoteClaim; refused?: string; ignored?: string } => {
+    const name = `${claim.feedback} #${claim.index}`
+    const position = current.findIndex((note) => same(note, claim))
+    if (position < 0) return { claim, refused: `Unknown note ${name}.` }
+    const summary = claim.summary.trim()
+    if (!summary) return { claim, refused: `The addressed mark for ${name} needs a summary of what changed.` }
+    const note = current[position]
+    if (note.status !== "open")
+      return { claim, ignored: `already recorded ${note.status}; the outcome stands and the mark was ignored.` }
+    current[position] = { ...note, addressed: { summary, at: now }, updated: now }
+    return { claim }
+  })
+  const marked = (reason: (fate: (typeof fates)[number]) => string | undefined) =>
+    fates.flatMap((fate) => {
+      const text = reason(fate)
+      return text ? [{ feedback: fate.claim.feedback, index: fate.claim.index, reason: text }] : []
+    })
+  const refused = marked((fate) => fate.refused)
+  const ticked: Ticked = {
+    applied: fates.filter((fate) => !fate.refused && !fate.ignored).length,
+    ignored: marked((fate) => fate.ignored),
+    refused,
+    context: refused.some((item) => item.reason.startsWith("Unknown note")) ? [describeNotes(current)] : [],
+  }
+  return { notes: current, ticked }
 }
 
 const same = (note: { feedback: string; index: number }, other: { feedback: string; index: number }) =>
@@ -262,6 +337,16 @@ export interface Outcome {
   readonly context: ReadonlyArray<string>
 }
 
+/**
+ * What became of the addressed marks of one update: the counts, one line per ignored or refused mark,
+ * then the lists the refusals point at.
+ */
+export const marks = (ticked: Ticked) => [
+  `Addressed: marked ${ticked.applied}, ignored ${ticked.ignored.length}, refused ${ticked.refused.length}.`,
+  ...[...ticked.ignored, ...ticked.refused].map((item) => `${item.feedback} #${item.index}: ${item.reason}`),
+  ...ticked.context,
+]
+
 /** One line per refusal, then the lists they point at. */
 export const refusals = (outcome: Pick<Outcome, "refused" | "context">) => [
   ...outcome.refused.map((item) => `${item.feedback} #${item.index}: ${item.reason}`),
@@ -269,22 +354,48 @@ export const refusals = (outcome: Pick<Outcome, "refused" | "context">) => [
 ]
 
 /**
- * Why the review cannot end or be approved now: notes of any round still awaiting an outcome, up to
- * eight named per round, and the call that lists a round's notes with their text. Undefined when
- * every note has an outcome.
+ * Why the review cannot end or be approved now: how many notes of each round still await an outcome,
+ * what to do about them and the call that lists a round's notes, then the notes themselves (see
+ * `recite`). Undefined when every note has an outcome.
  */
 export function blocking(document: Rounds & Partial<Pick<Design.Info, "id">>) {
   const pending = open(document)
   if (!pending.length) return undefined
   const rounds = [...new Set(pending.map((note) => note.round))].toSorted((a, b) => a - b)
   const describe = (round: number, position: number) => {
-    const items = pending.filter((note) => note.round === round)
-    return `${position === 0 ? "Round" : "round"} ${round} has ${items.length} note${items.length === 1 ? "" : "s"} without a recorded outcome: ${items
-      .slice(0, 8)
-      .map((note) => `${note.feedback} #${note.index} (${label(note)})`)
-      .join(", ")}${items.length > 8 ? ` and ${items.length - 8} more` : ""}`
+    const count = pending.filter((note) => note.round === round).length
+    return `${position === 0 ? "Round" : "round"} ${round} has ${count} note${count === 1 ? "" : "s"} without a recorded outcome`
   }
-  return `${rounds.map(describe).join("; ")}. Fix them, publish one revision, run one verify per round (design_export format verify with round set) and record each note with design_document update notes; unresolved or accepted with a reason are allowed. Every note of a round with its text: design_read {${document.id ? `"id":"${document.id}",` : ""}"section":"notes","round":${rounds.length === 1 ? rounds[0] : "<round>"}}.`
+  return `${rounds.map(describe).join("; ")}. Fix them, mark each with design_document update addressed, publish one revision, run one verify per round (design_export format verify with round set) and record each note with design_document update notes; unresolved or accepted with a reason are allowed. Every note of a round with its text: design_read {${document.id ? `"id":"${document.id}",` : ""}"section":"notes","round":${rounds.length === 1 ? rounds[0] : "<round>"}}.\n${recite(document)}`
+}
+
+/**
+ * The status of every round that still has a note without an outcome, newest round first: how many of
+ * its notes the agent marked addressed and how many have an outcome, then the notes still without one
+ * with their text. At most `LISTED.limit` notes are quoted across all rounds, so the text stays bounded
+ * however many rounds are pending; the rest are counted. Empty when every note has an outcome.
+ */
+export function recite(document: Rounds) {
+  const pending = open(document)
+  const rounds = [...new Set(pending.map((note) => note.round))].toSorted((a, b) => b - a)
+  return rounds
+    .reduce(
+      (listing, round) => {
+        const all = notes(document, round)
+        const left = pending.filter((note) => note.round === round)
+        const shown = Math.min(listing.room, left.length)
+        return {
+          room: listing.room - shown,
+          lines: [
+            ...listing.lines,
+            `Round ${round}: ${all.filter((note) => note.addressed).length} of ${all.length} addressed, ${all.filter((note) => note.status !== "open").length} recorded. Still without an outcome:`,
+            DesignApproval.worklist(left, { limit: shown, clip: LISTED.clip }),
+          ],
+        }
+      },
+      { room: LISTED.limit as number, lines: [] as string[] },
+    )
+    .lines.join("\n")
 }
 
 /** The verify jobs of a design, newest first, as a refusal or report names them. */

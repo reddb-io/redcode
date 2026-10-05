@@ -53,6 +53,31 @@ describe("Design prompt", () => {
       expect(DesignPrompt.instructions).toContain(phrase)
   })
 
+  test("describes one ledger for review notes: mark, publish once, verify once, record", () => {
+    const prompt = DesignPrompt.instructions
+    for (const phrase of [
+      "browser review notes are never Design tasks",
+      "the round's notes are your checklist",
+      "mark it with design_document update addressed: [{feedback, index, summary}]",
+      "a mark is not an outcome and needs no evidence",
+      "Record a note you will not change as unresolved or accepted with a reason instead",
+      "design_preview refuses to publish while the open round has a note with neither a mark nor an outcome",
+      "List them with their marks and outcomes with design_read section notes",
+      "Publish and verify once per round, not once per note",
+    ])
+      expect(prompt).toContain(phrase)
+    // The contradictions it replaces: feedback never creates tasks, and outcomes are not recorded twice.
+    expect(prompt).not.toContain("Browser feedback creates new Design tasks")
+    expect(prompt).not.toContain("record the task and note outcomes")
+    // The mark comes before the publish, and the publish before the verify and the outcomes.
+    const rounds = prompt.slice(prompt.indexOf("Notes arrive in rounds"))
+    expect(rounds.indexOf("design_document update addressed")).toBeLessThan(rounds.indexOf("Then publish one revision"))
+    expect(rounds.indexOf("Then publish one revision")).toBeLessThan(rounds.indexOf("design_document update notes"))
+    const screen = DesignPlaybooks.render(DesignPlaybooks.find("screen")!)
+    expect(screen).toContain("are its checklist")
+    expect(screen).toContain("mark it with design_document update addressed")
+  })
+
   test("keeps the design-system contract and never overwrites product code", () => {
     for (const phrase of [
       "Design-system contract: read .red/DESIGN.md",

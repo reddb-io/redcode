@@ -250,16 +250,29 @@ const make = Effect.gen(function* () {
     )
   })
 
+  /**
+   * Publish the prototype as a revision. Only the agent's own publish (`answer`) answers the open
+   * feedback round, and it is refused, before anything is written, while that round has a note with
+   * neither an addressed mark nor an outcome. A revision published from the review page (a preset, a
+   * tweak, a restore) leaves the round open for the agent to answer.
+   */
   const publishDraft = Effect.fn("DesignStore.publish")(function* (
     sessionID: SessionSchema.ID,
     id: Design.ID,
     name: string,
     read?: DesignBuild.Read,
     tooling = false,
+    answer = false,
   ) {
     const current = yield* get(sessionID, id)
     if (current.ended)
       return yield* new Design.Error({ code: "conflict", message: "Reopen this design before publishing" })
+    const refused = answer ? DesignRounds.unanswerable(current) : undefined
+    if (refused) return yield* new Design.Error({ code: "conflict", message: refused })
+    // The agent's answer to an open round is always a new revision, even of files a page publish
+    // already snapshotted while the round was open.
+    const round = DesignRounds.latest(current)
+    const answering = answer && round !== undefined && !round.published
     const document: Design.Info =
       tooling || !current.system?.tailwind ? current : { ...current, system: { ...current.system, tailwind: false } }
     const files = yield* Effect.tryPromise({
@@ -278,9 +291,10 @@ const make = Effect.gen(function* () {
     // Compiled prototypes can depend on project files outside this snapshot. A new feedback round
     // still needs its own publication, even when the agent leaves the prototype unchanged.
     if (
+      !answering &&
       document.engine === "html" &&
       previous?.name === name &&
-      DesignRounds.latest(current)?.number === DesignRounds.latest(previous.document)?.number &&
+      round?.number === DesignRounds.latest(previous.document)?.number &&
       Object.entries(files).length ===
         Object.keys(previous.files).filter((file) => !file.startsWith(".compiled/")).length &&
       Object.entries(files).every(([file, hash]) => previous.files[file] === hash) &&
@@ -354,7 +368,7 @@ const make = Effect.gen(function* () {
             .set({
               data: {
                 ...current,
-                ...DesignRounds.published(current, recorded.id),
+                ...(answer ? DesignRounds.published(current, recorded.id) : {}),
                 revision: recorded.id,
                 updated: Date.now(),
               },
@@ -378,7 +392,8 @@ const make = Effect.gen(function* () {
     name: string,
     read?: DesignBuild.Read,
     tooling = false,
-  ) => publishDraft(sessionID, id, name, read, tooling).pipe(lock.withPermits(1))
+    answer = false,
+  ) => publishDraft(sessionID, id, name, read, tooling, answer).pipe(lock.withPermits(1))
 
   const readBlob = Effect.fn("DesignStore.readBlob")(function* (hash: string) {
     if (!/^[a-f0-9]{64}$/.test(hash))
@@ -831,9 +846,10 @@ const make = Effect.gen(function* () {
   })
 
   /**
-   * Apply an update and say what became of each note status it carried. Statuses are judged one by
-   * one, so a refused status never keeps the others from being recorded; the update fails only when
-   * it carried statuses and none could be recorded.
+   * Apply an update and say what became of each note status and addressed mark it carried. Each is
+   * judged on its own, so a refused one never keeps the others from being recorded; the update fails
+   * only when something was refused and no status or mark could be recorded. Marks apply before
+   * statuses, so a note marked and recorded by the same update keeps both.
    */
   const amend = Effect.fn("DesignStore.amend")(function* (
     sessionID: SessionSchema.ID,
@@ -863,9 +879,16 @@ const make = Effect.gen(function* () {
     const target = input.target ?? current.target ?? "web"
     if (input.platform && target !== "app")
       return yield* new Design.Error({ code: "invalid", message: "Only an app design takes a platform" })
-    const { notes: statuses, by, platform: _platform, ...fields } = input
+    const { notes: statuses, addressed: claims, by, platform: _platform, ...fields } = input
     const platform = target === "app" ? (input.platform ?? current.platform) : undefined
     const recorder = by ?? "agent"
+    if (claims?.length && recorder === "reviewer")
+      return yield* new Design.Error({
+        code: "invalid",
+        message: "Only the agent marks a note addressed; the reviewer records accepted or unresolved.",
+      })
+    const marked = claims?.length ? DesignRounds.tick(current, claims) : undefined
+    const base = marked ? { ...current, notes: marked.notes } : current
     const next = {
       ...current,
       ...fields,
@@ -879,13 +902,13 @@ const make = Effect.gen(function* () {
         error instanceof Design.Error ? error : new Design.Error({ code: "invalid", message: String(error) }),
     })
     const verifies = statuses?.length ? yield* jobs(sessionID, id) : []
-    const triaged = DesignRounds.triage(current, statuses ?? [], verifies, recorder)
+    const triaged = DesignRounds.triage(base, statuses ?? [], verifies, recorder)
     // The reviewer's own statuses are never reviewed, and only a claimed fix is something to review.
     const reviews =
       recorder === "agent"
         ? yield* reviewNotes(
             sessionID,
-            current,
+            base,
             triaged.checked.flatMap((item) =>
               item.refusal || !DesignRounds.isClaim(item.update) ? [] : [item.update],
             ),
@@ -899,13 +922,13 @@ const make = Effect.gen(function* () {
     const accepted = fates.filter((fate) => !fate.refusal)
     const recorded = accepted.length
       ? DesignRounds.apply(
-          current,
+          base,
           accepted.map((fate) => fate.update),
           verifies,
           Date.now(),
           recorder,
         )
-      : { notes: current.notes }
+      : { notes: base.notes }
     if ("problem" in recorded) return yield* new Design.Error({ code: "invalid", message: recorded.problem })
     const outcome: DesignRounds.Outcome = {
       recorded: accepted.length,
@@ -920,10 +943,19 @@ const make = Effect.gen(function* () {
         list === "jobs" ? DesignRounds.describeJobs(verifies) : DesignRounds.describeNotes(recorded.notes ?? []),
       ),
     }
-    if (statuses?.length && !accepted.length)
+    // The known notes are listed once, by the statuses when they name them too.
+    const ticked = marked && {
+      ...marked.ticked,
+      context: triaged.see.includes("notes") ? [] : marked.ticked.context,
+    }
+    if ((outcome.refused.length || ticked?.refused.length) && !accepted.length && !ticked?.applied)
       return yield* new Design.Error({
         code: "invalid",
-        message: ["No note status was recorded.", ...DesignRounds.refusals(outcome)].join("\n"),
+        message: [
+          claims?.length ? "No note status or addressed mark was recorded." : "No note status was recorded.",
+          ...DesignRounds.refusals(outcome),
+          ...(ticked ? DesignRounds.marks(ticked) : []),
+        ].join("\n"),
       })
     const { platform: _previous, ...data } = next
     const updated = {
@@ -944,7 +976,11 @@ const make = Effect.gen(function* () {
       )
       .run()
       .pipe(Effect.orDie)
-    return { document: updated, ...(statuses?.length ? { notes: outcome } : {}) }
+    return {
+      document: updated,
+      ...(statuses?.length ? { notes: outcome } : {}),
+      ...(ticked ? { addressed: ticked } : {}),
+    }
   }, lock.withPermits(1))
 
   /** {@link amend} for callers that only want the document: the review page and the protocol. */

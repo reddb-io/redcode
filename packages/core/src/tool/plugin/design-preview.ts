@@ -11,6 +11,7 @@ import { DesignAppConnection } from "../../design/app-connection.js"
 import { DesignAppMode } from "../../design/app-mode.js"
 import { DesignLegacy } from "../../design/legacy.js"
 import { DesignQuality } from "../../design/quality.js"
+import { DesignRounds } from "../../design/rounds.js"
 import { DesignStore } from "../../design/store.js"
 import { FileAccess } from "../../file-access.js"
 import { Permission } from "../../permission.js"
@@ -125,7 +126,7 @@ export const Plugin = {
           name,
           options: { codemode: false },
           description:
-            "Publish an immutable, reviewable Design revision after coherent edits. Use id and name for a current Design. For a pre-0.22 prototype, supply path to its directory instead; name and reopen are optional. Reuse the resulting Design ID for later revisions.",
+            "Publish an immutable, reviewable Design revision after coherent edits. Use id and name for a current Design. For a pre-0.22 prototype, supply path to its directory instead; name and reopen are optional. Reuse the resulting Design ID for later revisions. Publishing answers the open feedback round, so it is refused while a note of that round has neither an addressed mark nor an outcome (design_document update addressed or notes); the refusal lists those notes.",
           input: Input,
           output: Schema.Union([Design.Revision, Schema.String]),
           execute: (input, context) =>
@@ -176,13 +177,19 @@ export const Plugin = {
                 return { output: content, content, metadata: { designID: document.id } }
               }
               yield* standing(document, context)
+              // Publishing a design by id is the agent's answer to the open feedback round, refused while
+              // a note of that round has neither an addressed mark nor an outcome. Importing a pre-0.22
+              // prototype is a migration, not an answer, and leaves the round as it is.
               const revision = yield* designs.publish(
                 context.sessionID,
                 document.id,
                 input.name ?? document.name,
                 read(context),
                 yield* tooling(document, context),
+                !("path" in input),
               )
+              // What every round still waits for, so the next step (verify, then record) is in this result.
+              const recited = DesignRounds.recite(yield* designs.get(context.sessionID, document.id))
               const notice = yield* Effect.promise(() =>
                 DesignQuality.screenNotice(revision.document.root, revision.document.engine, revision.document.entry),
               )
@@ -199,7 +206,7 @@ export const Plugin = {
                 : undefined
               return {
                 output: revision,
-                content: `Published ${revision.id} for ${revision.designID}. The user can annotate this revision. Root: ${revision.document.root}${notice ?? ""}${link ? `\n${link}` : ""}`,
+                content: `Published ${revision.id} for ${revision.designID}. The user can annotate this revision. Root: ${revision.document.root}${notice ?? ""}${link ? `\n${link}` : ""}${recited ? `\n${recited}` : ""}`,
                 metadata: { designID: document.id, revision: revision.id },
               }
             }).pipe(Effect.mapError((error) => new ToolFailure({ message: error.message, error }))),
@@ -208,7 +215,7 @@ export const Plugin = {
           name: "design_history",
           options: { codemode: false },
           description:
-            "List a Design's immutable revisions, newest first, or restore an older one as a new revision on the same design. Approved revisions and their approval packages never change.",
+            "List a Design's immutable revisions, newest first, or restore an older one as a new revision on the same design. Approved revisions and their approval packages never change. A restore does not answer the open feedback round; publish with design_preview to answer it.",
           input: Schema.Struct({
             id: Design.ID,
             restore: Schema.optional(

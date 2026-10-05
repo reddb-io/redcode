@@ -7,6 +7,7 @@ import { Instructions } from "../instructions/index.js"
 import { SessionSchema } from "../session/schema.js"
 import { DesignApproval } from "./approval.js"
 import { DesignChecklist } from "./checklist.js"
+import { DesignRounds } from "./rounds.js"
 import { DesignStore } from "./store.js"
 import { DesignSystem } from "./system.js"
 import { DesignTarget } from "./target.js"
@@ -31,6 +32,14 @@ const Entry = Schema.Struct({
   questions: Schema.Array(Schema.String),
   system: Schema.String,
   approval: Schema.NullOr(DesignApproval.Summary),
+  /**
+   * The newest feedback round with a note still without an outcome, while the review is open. Only the
+   * round is kept, never a count, so the entry changes when that condition flips or moves to another
+   * round, not with every recorded note.
+   */
+  pending: Schema.optional(Schema.Int),
+  /** Whether `pending` is the latest round, which design_read lists by default. */
+  latest: Schema.optional(Schema.Boolean),
 })
 
 const render = (entries: ReadonlyArray<typeof Entry.Type>) =>
@@ -45,6 +54,11 @@ const render = (entries: ReadonlyArray<typeof Entry.Type>) =>
           ? [DesignChecklist.context({ brief: entry.brief, decisions: entry.decisions ?? [] })]
           : []),
         ...(entry.system ? [`Design system: ${entry.system}.`] : []),
+        ...(entry.pending === undefined
+          ? []
+          : [
+              `Round ${entry.pending} has notes without an outcome; list them with design_read {"id":"${entry.id}","section":"notes"${entry.latest ? "" : `,"round":${entry.pending}`}}`,
+            ]),
       ].join("\n"),
     )
     .join("\n\n")
@@ -65,6 +79,7 @@ const layer = Layer.effect(
         const record = document.approvedRevision
           ? DesignApproval.summary(yield* designs.approval(document.sessionID, document.id, document.approvedRevision))
           : null
+        const pending = document.ended ? undefined : DesignRounds.open(document).at(-1)?.round
         return {
           id: document.id,
           name: document.name,
@@ -78,6 +93,7 @@ const layer = Layer.effect(
             ? ""
             : [DesignSystem.summary(document), Design.describeSystem(document.designSystem)].filter(Boolean).join("; "),
           approval: record,
+          ...(pending === undefined ? {} : { pending, latest: pending === DesignRounds.latest(document)?.number }),
         }
       })
 

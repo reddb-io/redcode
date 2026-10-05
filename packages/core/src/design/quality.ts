@@ -5,6 +5,7 @@ export * as DesignQuality from "./quality.js"
 import { Design } from "@opencode/schema/design"
 import { DesignNotice } from "@opencode/schema/design-notice"
 import { DesignApproval } from "./approval.js"
+import { DesignRounds } from "./rounds.js"
 import { device, type Platform } from "./ui/devices.js"
 
 /**
@@ -377,9 +378,13 @@ export function report(
     "id" | "input" | "status" | "progress" | "result" | "error" | "created" | "finished" | "audit" | "verify"
   >[],
   revision: string | null,
-  /** The design's notes, so the report can quote each verified note and say which notes a verify did not see. */
-  notes: readonly Pick<Design.Note, "feedback" | "index" | "round" | "item">[] = [],
+  /**
+   * The design's notes, so the report can quote each verified note, say which notes a verify did not
+   * see, and end with what every round still waits for.
+   */
+  notes: readonly Design.Note[] = [],
 ) {
+  const recited = DesignRounds.recite({ notes })
   const current = jobs
     .filter((job) => job.input.revision === revision && job.status === "completed" && job.audit)
     .toSorted((a, b) => (b.finished ?? b.created) - (a.finished ?? a.created))[0]
@@ -474,5 +479,6 @@ export function report(
         : [
             `No completed audit for current revision ${revision ?? "unpublished"}. Publish if needed, then call design_export with input={revision,format:"audit"}; wait for its native monitor to complete. Older audits do not verify current edits.`,
           ]),
+    ...(recited ? [recited] : []),
   ].join("\n")
 }

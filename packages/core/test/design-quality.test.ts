@@ -201,8 +201,22 @@ describe("DesignQuality.report", () => {
     })
 
     const report = DesignQuality.report([verify], "rev_current", [
-      { feedback: "msg_first", index: 1, round: 1, item: { target: "#save", text: "Say what is saved" } },
-      { feedback: "msg_late", index: 2, round: 1, item: { target: "#cancel", text: "Arrived later" } },
+      {
+        feedback: "msg_first",
+        index: 1,
+        round: 1,
+        item: { target: "#save", text: "Say what is saved" },
+        status: "resolved",
+        updated: 1,
+      },
+      {
+        feedback: "msg_late",
+        index: 2,
+        round: 1,
+        item: { target: "#cancel", text: "Arrived later" },
+        status: "open",
+        updated: 1,
+      },
     ])
 
     expect(report).toContain("Current verify: job_verify, round 1, revision rev_current.")
@@ -240,11 +254,13 @@ describe("DesignQuality.report", () => {
     })
     // The longest note ends on an astral character that a cut by UTF-16 units would split.
     const long = `${"é".repeat(199)}😀 and the rest is cut`
-    const note = (index: number, text: string) => ({
+    const note = (index: number, text: string): Design.Note => ({
       feedback: "msg_round",
       index,
       round: 3,
       item: { target: `#note-${index}`, text },
+      status: "open",
+      updated: 1,
     })
 
     const lines = DesignQuality.report([verify], "rev_current", [
@@ -267,6 +283,22 @@ describe("DesignQuality.report", () => {
       "4. msg_round #4 footer: found; no findings",
     ])
     expect(lines[header + 9]).toStartWith("Record each note with design_document update")
+    // It ends on what the round still waits for, with the reviewer's words, so recording starts from this page.
+    const status = lines.indexOf("Round 3: 0 of 3 addressed, 0 recorded. Still without an outcome:")
+    expect(status).toBeGreaterThan(header + 9)
+    expect(lines.slice(status + 1)).toEqual([
+      "msg_round #1 [open] #note-1",
+      "Note: Rotate per secret, not per client",
+      "msg_round #2 [open] #note-2",
+      "Note: Align the three actions",
+      "    in every row",
+      "msg_round #3 [open] #note-3",
+      `Note: ${"é".repeat(199)}😀…`,
+    ])
+    // A design with nothing left adds nothing.
+    expect(DesignQuality.report([verify], "rev_current", [{ ...note(1, "Done"), status: "resolved" }])).not.toContain(
+      "Still without an outcome",
+    )
   })
 })
 

@@ -237,6 +237,61 @@ describe("DesignContext", () => {
     ),
   )
 
+  it.effect("names the round whose notes wait for an outcome, and changes only when that flips", () =>
+    provided(
+      Effect.gen(function* () {
+        const note = (index: number, status: Design.NoteStatus, round = 9): Design.Note => ({
+          feedback: `msg_round_${round}`,
+          index,
+          round,
+          item: { target: `#n${index}`, text: `Note ${index}` },
+          status,
+          updated: 1,
+        })
+        const round = (number: number, published?: string): Design.Round => ({
+          number,
+          opened: number,
+          revision: "rev_one",
+          feedback: [`msg_round_${number}`],
+          ...(published ? { published } : {}),
+        })
+        const line = `Round 9 has notes without an outcome; list them with design_read {"id":"${draft.id}","section":"notes"}`
+        const waiting = { ...draft, rounds: [round(9)], notes: [note(1, "open"), note(2, "open"), note(3, "open")] }
+        yield* reset([waiting])
+        const context = yield* DesignContext.Service
+        const initial = yield* readInitial(context.load(sessionID))
+        expect(initial.text).toContain(line)
+        expect(initial.text).not.toMatch(/\b3 notes\b/)
+
+        // Recording outcomes or marking notes one by one changes nothing until the last one is recorded.
+        const progressed = {
+          ...waiting,
+          notes: [note(1, "resolved"), { ...note(2, "open"), addressed: { summary: "Done", at: 2 } }, note(3, "open")],
+        }
+        yield* reset([progressed])
+        const partway = yield* readUpdate(context.load(sessionID), initial)
+        expect(partway.changed).toBe(false)
+        yield* reset([{ ...waiting, notes: [note(1, "resolved"), note(2, "accepted"), note(3, "unresolved")] }])
+        const settled = yield* readUpdate(context.load(sessionID), partway)
+        expect(settled.changed).toBe(true)
+        expect(settled.text).not.toContain("has notes without an outcome")
+
+        // An older round left open is named with its round; an ended review names none.
+        const older = {
+          ...waiting,
+          rounds: [round(9, "rev_two"), round(10)],
+          notes: [note(1, "open"), note(1, "accepted", 10)],
+        }
+        yield* reset([older])
+        expect((yield* readInitial(context.load(sessionID))).text).toContain(
+          `Round 9 has notes without an outcome; list them with design_read {"id":"${draft.id}","section":"notes","round":9}`,
+        )
+        yield* reset([{ ...older, ended: true }])
+        expect((yield* readInitial(context.load(sessionID))).text).not.toContain("has notes without an outcome")
+      }),
+    ),
+  )
+
   it.effect("renders an older admitted draft without the new optional brief fields", () =>
     provided(
       Effect.gen(function* () {

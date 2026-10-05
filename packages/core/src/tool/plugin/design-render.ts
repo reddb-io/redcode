@@ -87,7 +87,7 @@ export const Plugin = {
                     return {
                       exit: 0,
                       truncated: false,
-                      output: `[${output.id}:${status}]\n${DesignQuality.report([job], job.input.revision, current.notes ?? [])}${current.revision !== job.input.revision ? `\nThis job verified an older revision; current revision is ${current.revision}.` : ""}${status === "completed" ? "\nRead design_jobs once for the completed tool evidence, inspect the captures and update the corresponding Design tasks and note outcomes before replying." : ""}`,
+                      output: `[${output.id}:${status}]\n${DesignQuality.report([job], job.input.revision, current.notes ?? [])}${current.revision !== job.input.revision ? `\nThis job verified an older revision; current revision is ${current.revision}.` : ""}${status === "completed" ? "\nRead design_jobs once for the completed tool evidence, inspect the captures, then record each note's outcome with design_document update notes before replying." : ""}`,
                     }
                   }),
               })

@@ -777,6 +777,7 @@ const EndpointSessionDesignUpdate = (raw: RawClient["server.session"]) => (input
       params: { sessionID: input["sessionID"], designID: input["designID"] },
       payload: {
         notes: input["notes"],
+        addressed: input["addressed"],
         by: input["by"],
         controls: input["controls"],
         presets: input["presets"],

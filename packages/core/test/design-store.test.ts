@@ -296,10 +296,13 @@ describe("DesignStore revisions", () => {
       })
       yield* store.prepareFeedback(sessionID, created.id, feedback, () => "Review this")
       yield* store.acknowledge(sessionID, created.id, feedback)
-      const reviewed = yield* store.publish(sessionID, created.id, "Preview")
+      yield* store.amend(sessionID, created.id, {
+        addressed: [{ feedback: feedback.id, index: 1, summary: "Checked it" }],
+      })
+      const reviewed = yield* store.publish(sessionID, created.id, "Preview", undefined, false, true)
       expect(reviewed.id).not.toBe(edited.id)
       expect((yield* store.get(sessionID, created.id)).rounds?.at(-1)?.published).toBe(reviewed.id)
-      expect((yield* store.publish(sessionID, created.id, "Preview")).id).toBe(reviewed.id)
+      expect((yield* store.publish(sessionID, created.id, "Preview", undefined, false, true)).id).toBe(reviewed.id)
     }),
   )
 
@@ -574,7 +577,13 @@ describe("DesignStore review notes", () => {
 
       // The answering revision freezes the document while both notes are open; an outcome comes later.
       yield* write(path.join(created.root, created.entry), "<main>Answer</main>")
-      const second = yield* store.publish(sessionID, created.id, "Second")
+      yield* store.amend(sessionID, created.id, {
+        addressed: [
+          { feedback: one.id, index: 1, summary: "Price shown before the button" },
+          { feedback: one.id, index: 2, summary: "Title enlarged" },
+        ],
+      })
+      const second = yield* store.publish(sessionID, created.id, "Second", undefined, false, true)
       yield* store.update(sessionID, created.id, {
         by: "reviewer",
         notes: [{ feedback: one.id, index: 2, status: "accepted", reason: "The title stays as designed" }],
@@ -593,6 +602,8 @@ describe("DesignStore review notes", () => {
       )
       const earlier = yield* notes({ round: 1 })
       expect(earlier).toStartWith(`Round 1 (answered by ${second.id}): 2 notes (1 open, 1 accepted), each as`)
+      // An outcome supersedes the mark in the list; the full note still shows what the agent said.
+      expect(earlier).toContain("msg_round_one #1 [open, addressed] button")
       expect(earlier).toContain("msg_round_one #2 [accepted] #title\nNote: Bigger")
       expect(yield* notes({ feedback: one.id })).toStartWith(
         `Round 1 (answered by ${second.id}), feedback msg_round_one: 2 notes (1 open, 1 accepted), each as`,
@@ -617,6 +628,7 @@ describe("DesignStore review notes", () => {
           "Scenario: preset=full; checkout.items=2",
           `Revision: ${first.id}`,
           "Status: open",
+          "Addressed by the agent: Price shown before the button",
         ].join("\n"),
       )
       expect(yield* notes({ feedback: one.id, note: 2 })).toBe(
@@ -626,6 +638,7 @@ describe("DesignStore review notes", () => {
           "Note: Bigger",
           `Revision: ${first.id}`,
           "Status: accepted",
+          "Addressed by the agent: Title enlarged",
           "Reason: The title stays as designed",
         ].join("\n"),
       )
@@ -772,7 +785,14 @@ describe("DesignStore note statuses", () => {
       yield* store.prepareFeedback(sessionID, design.id, feedback, () => `Round ${number}`)
       yield* store.acknowledge(sessionID, design.id, feedback)
       yield* write(path.join(design.root, design.entry), `<main>Round ${number}</main>`)
-      const revision = yield* store.publish(sessionID, design.id, `Round ${number}`)
+      yield* store.amend(sessionID, design.id, {
+        addressed: Array.from({ length: count }, (_, index) => ({
+          feedback: feedback.id,
+          index: index + 1,
+          summary: `Rotates the secret of row ${pad(index + 1)}`,
+        })),
+      })
+      const revision = yield* store.publish(sessionID, design.id, `Round ${number}`, undefined, false, true)
       const job = `render_${tag}_verify_${pad(number)}`
       yield* store.putJob(sessionID, {
         ...settled(job, revision.id, "verify", number),
@@ -1130,6 +1150,216 @@ describe("DesignStore note statuses", () => {
       expect(recorded.notes?.refused.map((item) => item.index)).toEqual([30])
       const expected: Design.NoteStatus[] = [...Array.from({ length: 29 }, () => "resolved" as const), "open"]
       expect(statuses(recorded.document)).toEqual(expected)
+    }),
+  )
+})
+
+describe("DesignStore feedback checklist", () => {
+  /** One review message with `count` notes on the design's current revision, admitted into the open round. */
+  const admit = (design: Design.Info, id: string, count: number) =>
+    Effect.gen(function* () {
+      const store = yield* DesignStore.Service
+      const feedback = Schema.decodeUnknownSync(Design.Feedback)({
+        id,
+        revision: (yield* store.get(sessionID, design.id)).revision,
+        text: "",
+        items: Array.from({ length: count }, (_, index) => ({
+          target: `#note-${index + 1}`,
+          text: `Change ${index + 1}`,
+          label: `button "Note ${index + 1}"`,
+        })),
+        assets: [],
+        snapshot: "",
+        delivery: "steer",
+        end: false,
+      })
+      yield* store.prepareFeedback(sessionID, design.id, feedback, () => id)
+      yield* store.acknowledge(sessionID, design.id, feedback)
+      return feedback.id as string
+    })
+  const published = (design: Design.Info) =>
+    Effect.gen(function* () {
+      const store = yield* DesignStore.Service
+      return (yield* store.get(sessionID, design.id)).rounds?.at(-1)?.published
+    })
+
+  it.live("an addressed mark applies per note, keeps the status, and an outcome beats it", () =>
+    Effect.gen(function* () {
+      yield* seed
+      // Marks are never reviewed: even dual reasoning asks System One nothing about them.
+      yield* reasoning(dual)
+      const store = yield* DesignStore.Service
+      const design = yield* store.create(sessionID, checkout)
+      yield* store.publish(sessionID, design.id, "First")
+      const feedback = yield* admit(design, "msg_marks", 3)
+      const note = (document: Design.Info, index: number) => document.notes?.find((item) => item.index === index)
+
+      const first = yield* store.amend(sessionID, design.id, {
+        questions: ["Which label?"],
+        addressed: [
+          { feedback, index: 1, summary: "  Shortened the label  " },
+          { feedback: "msg_other", index: 1, summary: "Not a note of this design" },
+          { feedback, index: 2, summary: "   " },
+        ],
+      })
+      expect(first.addressed).toEqual({
+        applied: 1,
+        ignored: [],
+        refused: [
+          { feedback: "msg_other", index: 1, reason: "Unknown note msg_other #1." },
+          { feedback, index: 2, reason: `The addressed mark for ${feedback} #2 needs a summary of what changed.` },
+        ],
+        context: [
+          `Known notes: ${feedback} #1 (round 1, open), ${feedback} #2 (round 1, open), ${feedback} #3 (round 1, open).`,
+        ],
+      })
+      expect(note(first.document, 1)).toMatchObject({ status: "open", addressed: { summary: "Shortened the label" } })
+      expect(note(first.document, 2)?.addressed).toBeUndefined()
+      // The other fields of the update go in with the marks that applied, and no mark is a field of the design.
+      expect(first.document.questions).toEqual(["Which label?"])
+      expect("addressed" in first.document).toBe(false)
+      expect(yield* store.get(sessionID, design.id)).toEqual(first.document)
+
+      // A repeated mark replaces the summary; a status recorded later keeps the mark beside it.
+      const again = yield* store.amend(sessionID, design.id, {
+        addressed: [{ feedback, index: 1, summary: "Shortened and bolded the label" }],
+      })
+      expect(note(again.document, 1)?.addressed?.summary).toBe("Shortened and bolded the label")
+      const recorded = yield* store.amend(sessionID, design.id, {
+        notes: [
+          { feedback, index: 1, status: "unresolved", reason: "Still too long on phones" },
+          { feedback, index: 2, status: "accepted", reason: "The label stays" },
+        ],
+      })
+      expect(note(recorded.document, 1)).toMatchObject({
+        status: "unresolved",
+        addressed: { summary: "Shortened and bolded the label" },
+      })
+
+      // An outcome is stronger than a mark: the mark is ignored and said so, and the update still succeeds.
+      const late = yield* store.amend(sessionID, design.id, {
+        addressed: [{ feedback, index: 2, summary: "Changed it after all" }],
+      })
+      expect(late.addressed).toEqual({
+        applied: 0,
+        ignored: [
+          { feedback, index: 2, reason: "already recorded accepted; the outcome stands and the mark was ignored." },
+        ],
+        refused: [],
+        context: [],
+      })
+      expect(note(late.document, 2)).toMatchObject({ status: "accepted", reason: "The label stays" })
+      expect(note(late.document, 2)?.addressed).toBeUndefined()
+
+      // Nothing applied and something refused: the update fails and stores none of its fields.
+      const none = yield* store
+        .amend(sessionID, design.id, {
+          questions: ["Dropped"],
+          addressed: [{ feedback: "msg_other", index: 4, summary: "Nothing" }],
+        })
+        .pipe(Effect.flip)
+      expect(none.code).toBe("invalid")
+      expect(none.message).toStartWith(
+        "No note status or addressed mark was recorded.\nAddressed: marked 0, ignored 0, refused 1.\nmsg_other #4: Unknown note msg_other #4.\nKnown notes:",
+      )
+      expect((yield* store.get(sessionID, design.id)).questions).toEqual(["Which label?"])
+
+      // A mark is the agent's statement: the reviewer records outcomes instead.
+      const reviewer = yield* store
+        .update(sessionID, design.id, { by: "reviewer", addressed: [{ feedback, index: 3, summary: "By hand" }] })
+        .pipe(Effect.flip)
+      expect(reviewer.message).toBe(
+        "Only the agent marks a note addressed; the reviewer records accepted or unresolved.",
+      )
+      expect(systemOne.asked).toEqual([])
+    }),
+  )
+
+  it.live("the agent's publish is refused while a note of the open round is neither marked nor recorded", () =>
+    Effect.gen(function* () {
+      yield* seed
+      yield* reasoning(single)
+      const store = yield* DesignStore.Service
+      const design = yield* store.create(sessionID, checkout)
+      // The first publish of a design has no round to answer.
+      const first = yield* store.publish(sessionID, design.id, "First", undefined, false, true)
+      const feedback = yield* admit(design, "msg_gate", 3)
+      yield* write(path.join(design.root, design.entry), "<main>Fixed</main>")
+
+      const refused = yield* store.publish(sessionID, design.id, "Answer", undefined, false, true).pipe(Effect.flip)
+      expect(refused.code).toBe("conflict")
+      expect(refused.message).toBe(
+        [
+          "Publish refused: this revision would answer feedback round 1, and 3 of its notes have neither an addressed mark nor an outcome:",
+          `${feedback} #1 [open] button "Note 1"`,
+          "Note: Change 1",
+          `${feedback} #2 [open] button "Note 2"`,
+          "Note: Change 2",
+          `${feedback} #3 [open] button "Note 3"`,
+          "Note: Change 3",
+          'Fix each of them, then mark it with design_document update {"addressed":[{"feedback":"<feedback>","index":<n>,"summary":"<what you changed>"}]}. For a note you will not change, record it instead: design_document update {"notes":[{"feedback":"<feedback>","index":<n>,"status":"unresolved|accepted","reason":"<why>"}]}. Then call design_preview again.',
+        ].join("\n"),
+      )
+      // Refused before anything is written.
+      expect((yield* store.revisions(sessionID, design.id)).map((item) => item.id)).toEqual([first.id])
+      expect((yield* store.get(sessionID, design.id)).revision).toBe(first.id)
+      expect(yield* published(design)).toBeUndefined()
+
+      // Both exits work, and only the notes still without either are quoted.
+      yield* store.amend(sessionID, design.id, {
+        addressed: [{ feedback, index: 1, summary: "Changed 1" }],
+        notes: [{ feedback, index: 2, status: "unresolved", reason: "Needs a product decision" }],
+      })
+      const one = yield* store.publish(sessionID, design.id, "Answer", undefined, false, true).pipe(Effect.flip)
+      expect(one.message).toStartWith(
+        `Publish refused: this revision would answer feedback round 1, and 1 of its notes have neither an addressed mark nor an outcome:\n${feedback} #3 [open] button "Note 3"\nNote: Change 3\n`,
+      )
+      yield* store.amend(sessionID, design.id, { addressed: [{ feedback, index: 3, summary: "Changed 3" }] })
+      const answer = yield* store.publish(sessionID, design.id, "Answer", undefined, false, true)
+      expect(yield* published(design)).toBe(answer.id)
+
+      // With the round answered there is nothing to gate: an unchanged publish reuses the revision.
+      expect((yield* store.publish(sessionID, design.id, "Answer", undefined, false, true)).id).toBe(answer.id)
+      // A page publish is never gated, even while the next round waits.
+      yield* admit(design, "msg_gate_next", 1)
+      yield* write(path.join(design.root, design.entry), "<main>Tweaked on the page</main>")
+      const page = yield* store.publish(sessionID, design.id, "Tweak")
+      expect(page.id).not.toBe(answer.id)
+      expect(yield* published(design)).toBeUndefined()
+    }),
+  )
+
+  it.live("a page publish or restore leaves the open round open; the agent's publish answers it", () =>
+    Effect.gen(function* () {
+      yield* seed
+      yield* reasoning(single)
+      const store = yield* DesignStore.Service
+      const design = yield* store.create(sessionID, checkout)
+      const first = yield* store.publish(sessionID, design.id, "First")
+      const feedback = yield* admit(design, "msg_page", 2)
+
+      // A preset saved from the review page publishes the live files without answering the round.
+      yield* write(path.join(design.root, design.entry), "<main>Preset saved</main>")
+      const preset = yield* store.publish(sessionID, design.id, "Preset: Empty cart")
+      expect((yield* store.get(sessionID, design.id)).revision).toBe(preset.id)
+      expect(yield* published(design)).toBeUndefined()
+      const restored = yield* store.restore(sessionID, design.id, first.id)
+      expect(yield* published(design)).toBeUndefined()
+      // Notes sent now still join the same round.
+      yield* admit(design, "msg_page_more", 1)
+      expect((yield* store.get(sessionID, design.id)).rounds).toHaveLength(1)
+
+      // The agent answers with a revision of its own, even when its files equal the page's last publish.
+      yield* store.amend(sessionID, design.id, {
+        addressed: [
+          { feedback, index: 1, summary: "Done" },
+          { feedback, index: 2, summary: "Done" },
+          { feedback: "msg_page_more", index: 1, summary: "Done" },
+        ],
+      })
+      const answer = yield* store.publish(sessionID, design.id, restored.name, undefined, false, true)
+      expect(answer.id).not.toBe(restored.id)
+      expect(yield* published(design)).toBe(answer.id)
     }),
   )
 })
