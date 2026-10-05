@@ -1,15 +1,18 @@
 import { describe, expect } from "bun:test"
 import { Money } from "@opencode/schema/money"
 import { Document, Info, type Entry } from "@opencode/schema/config"
-import { Effect, Schema } from "effect"
+import { Effect, Schedule, Schema } from "effect"
+import { Bus } from "@opencode/core/bus"
 import { Config } from "@opencode/core/config"
 import { ConfigProviderPlugin } from "@opencode/core/config/plugin/provider"
 import { ConfigNormalize } from "@opencode/core/config/normalize"
 import { Integration } from "@opencode/core/integration"
 import { Model } from "@opencode/core/model"
 import { ModelResolver } from "@opencode/core/model-resolver"
+import { ModelsDev } from "@opencode/core/models-dev"
 import { Plugin } from "@opencode/core/plugin"
 import { PluginHost } from "@opencode/core/plugin/host"
+import { catalogLimits, knownLimit, undescribedLimit } from "@opencode/core/plugin/provider/catalog-limits"
 import { AzurePlugin } from "@opencode/core/plugin/provider/azure"
 import { OpenAIPlugin } from "@opencode/core/plugin/provider/openai"
 import { XAIPlugin } from "@opencode/core/plugin/provider/xai"
@@ -558,6 +561,148 @@ describe("ConfigProviderPlugin.Plugin", () => {
       const model = required(yield* models.get(providerID, modelID))
       expect(model.capabilities).toEqual({ tools: true, input: ["text", "image"], output: ["text"] })
       expect(model.limit).toEqual({ context: 200_000, output: 32_000 })
+    }),
+  )
+
+  it.effect("resolves a model only the configuration defines from the catalog by id, on every fold", () =>
+    Effect.gen(function* () {
+      const models = yield* Model.Service
+      const modelsDev = yield* ModelsDev.Service
+      const providerID = Provider.ID.make("custom")
+      const known = required(knownLimit(catalogLimits(yield* modelsDev.get()), "glm-5.3-flash"))
+      yield* addPlugin([
+        new Document({
+          type: "document",
+          info: decode({
+            providers: {
+              custom: {
+                package: "aisdk:@ai-sdk/openai-compatible",
+                models: {
+                  "glm-5.3-flash": {},
+                  "GLM-5.3-Flash:free": { limit: { output: 1_000 } },
+                  fast: { modelID: "zai-org/GLM-5.3-Flash" },
+                  chat: {},
+                },
+              },
+            },
+          }),
+        }),
+      ])
+      expect(required(yield* models.get(providerID, Model.ID.make("glm-5.3-flash"))).limit).toEqual(known)
+      // What the configuration declares wins over the catalog.
+      expect(required(yield* models.get(providerID, Model.ID.make("GLM-5.3-Flash:free"))).limit).toEqual({
+        context: known.context,
+        output: 1_000,
+      })
+      // An alias is looked up by the id the endpoint knows it by.
+      expect(required(yield* models.get(providerID, Model.ID.make("fast"))).limit.context).toBeGreaterThan(200_000)
+      // A model the catalog does not know keeps its defaults off a generic endpoint.
+      expect(required(yield* models.get(providerID, Model.ID.make("chat"))).limit).toEqual({
+        context: 200_000,
+        output: 32_000,
+      })
+    }),
+  )
+
+  it.effect("guesses the limits of a model on a generic endpoint that nothing describes and heals a frozen guess", () =>
+    Effect.gen(function* () {
+      const models = yield* Model.Service
+      const modelsDev = yield* ModelsDev.Service
+      const providerID = Provider.ID.make("api-example-com")
+      const known = required(knownLimit(catalogLimits(yield* modelsDev.get()), "glm-5.3-flash"))
+      const frozen = { context: undescribedLimit.context, output: undescribedLimit.output }
+      yield* addPlugin([
+        new Document({
+          type: "document",
+          info: decode({
+            providers: {
+              "api-example-com": {
+                package: "@opencode/ai/providers/openai-compatible",
+                settings: { baseURL: "https://api.example.com/v1", provider: "api-example-com" },
+                models: {
+                  nobody: {},
+                  reported: { limit: { context: 64_000, output: 4_000 } },
+                  "glm-5.3-flash": { limit: frozen },
+                  "mimo-v2.6-pro": { limit: { context: undescribedLimit.context, output: 4_000 } },
+                  stale: { limit: frozen },
+                  capped: { limit: { context: undescribedLimit.context, output: undescribedLimit.context } },
+                  wide: { limit: { context: 4_000 } },
+                },
+              },
+            },
+          }),
+        }),
+      ])
+      const limit = (id: string) =>
+        models.get(providerID, Model.ID.make(id)).pipe(Effect.map((model) => required(model).limit))
+      expect(yield* limit("nobody")).toEqual(frozen)
+      expect(yield* limit("reported")).toEqual({ context: 64_000, output: 4_000 })
+      // A guess an older version wrote is not a fact: the catalog now knows the model.
+      expect(yield* limit("glm-5.3-flash")).toEqual(known)
+      // The reported output beside a guessed context is kept.
+      expect((yield* limit("mimo-v2.6-pro")).output).toBe(4_000)
+      expect((yield* limit("mimo-v2.6-pro")).context).toBeGreaterThan(undescribedLimit.context)
+      // A model the catalog still does not know is guessed again, not frozen.
+      expect(yield* limit("stale")).toEqual(frozen)
+      expect(yield* limit("capped")).toEqual(frozen)
+      // The default output never exceeds a declared context.
+      expect(yield* limit("wide")).toEqual({ context: 4_000, output: 4_000 })
+    }),
+  )
+
+  it.effect("completes a declared limit across documents and follows the catalog when it learns a model", () =>
+    Effect.gen(function* () {
+      const models = yield* Model.Service
+      const bus = yield* Bus.Service
+      const plugin = yield* Plugin.Service
+      const host = yield* PluginHost.make(plugin)
+      const providerID = Provider.ID.make("local")
+      const bundled = yield* ModelsDev.bundled
+      const known = required(knownLimit(catalogLimits(bundled), "glm-5.3-flash"))
+      const catalog = { data: [] as readonly ModelsDev.Snapshot[] }
+      const entries = [
+        new Document({
+          type: "document",
+          info: decode({
+            providers: {
+              local: {
+                package: "@opencode/ai/providers/openai-compatible",
+                settings: { baseURL: "http://127.0.0.1:1234/v1" },
+                models: { "glm-5.3-flash": {}, partial: { limit: { context: 50_000 } } },
+              },
+            },
+          }),
+        }),
+        new Document({
+          type: "document",
+          info: decode({ providers: { local: { models: { partial: { limit: { output: 1_000 } }, later: {} } } } }),
+        }),
+      ]
+      yield* ConfigProviderPlugin.Plugin.effect(host).pipe(
+        Effect.provide(Config.testLayer(entries)),
+        Effect.provideService(
+          ModelsDev.Service,
+          ModelsDev.Service.of({ get: () => Effect.sync(() => catalog.data), refresh: () => Effect.void }),
+        ),
+      )
+      const limit = (id: string) =>
+        models.get(providerID, Model.ID.make(id)).pipe(Effect.map((model) => required(model).limit))
+      expect(yield* limit("partial")).toEqual({ context: 50_000, output: 1_000 })
+      expect(yield* limit("later")).toEqual({ context: undescribedLimit.context, output: undescribedLimit.output })
+      // Without a catalog the model is guessed; once the catalog learns it, the next fold uses the real window.
+      expect(yield* limit("glm-5.3-flash")).toEqual({
+        context: undescribedLimit.context,
+        output: undescribedLimit.output,
+      })
+      catalog.data = bundled
+      yield* bus.publish(ModelsDev.Event.Refreshed, {})
+      yield* limit("glm-5.3-flash").pipe(
+        Effect.filterOrFail((current) => current.context === known.context),
+        Effect.retry(Schedule.spaced("10 millis")),
+        Effect.timeout("5 seconds"),
+      )
+      expect(yield* limit("glm-5.3-flash")).toEqual(known)
+      expect(yield* limit("partial")).toEqual({ context: 50_000, output: 1_000 })
     }),
   )
 

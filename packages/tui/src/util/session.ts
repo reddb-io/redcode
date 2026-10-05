@@ -66,9 +66,14 @@ export function contextUsage(
     last.tokens.input + last.tokens.output + last.tokens.reasoning + last.tokens.cache.read + last.tokens.cache.write
   if (tokens <= 0) return
   const model = models?.find((model) => model.providerID === last.model.providerID && model.id === last.model.id)
+  // The window the percentage is of, so a reading over 100% can be told from the window the model is believed
+  // to have. The model entry carries no provenance, so whether that window was reported, cataloged or guessed is
+  // not known here.
+  const limit = model?.limit.context ? model.limit.context : undefined
   return {
     tokens,
-    percent: model?.limit.context ? Math.round((tokens / model.limit.context) * 100) : undefined,
+    limit,
+    percent: limit === undefined ? undefined : Math.round((tokens / limit) * 100),
   }
 }
 
@@ -97,7 +102,8 @@ export function retryStatus(input: {
     .join(" · ")
 }
 
-export function formatContextUsage(tokens: number, percent?: number) {
-  const value = Locale.number(tokens)
+/** `14.1K / 200.0K (7%)` once the window is known, `14.1K` until then. */
+export function formatContextUsage(tokens: number, percent?: number, limit?: number) {
+  const value = limit === undefined ? Locale.number(tokens) : `${Locale.number(tokens)} / ${Locale.number(limit)}`
   return percent === undefined ? value : `${value} (${percent}%)`
 }

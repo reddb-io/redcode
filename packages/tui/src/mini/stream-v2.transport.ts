@@ -1374,6 +1374,7 @@ export async function createSessionTransport(input: StreamInput): Promise<Sessio
             ? {
                 tokens: total,
                 percent: limit ? Math.round((total / limit) * 100) : undefined,
+                limit: limit || undefined,
                 cost: event.data.cost || undefined,
               }
             : undefined,

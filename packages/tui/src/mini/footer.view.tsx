@@ -213,7 +213,7 @@ export function RunFooterView(props: RunFooterViewProps) {
   const usage = createMemo(() => props.state().usage)
   const contextUsage = createMemo(() => {
     const current = usage()
-    return current && current.tokens > 0 ? formatContextUsage(current.tokens, current.percent) : ""
+    return current && current.tokens > 0 ? formatContextUsage(current.tokens, current.percent, current.limit) : ""
   })
   const cost = createMemo(() => (usage()?.cost ? money.format(usage()!.cost!) : ""))
   const takeover = createMemo(() => exiting() || (busy() && armed()) || !!props.state().notice.trim())

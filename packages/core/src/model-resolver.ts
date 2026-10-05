@@ -5,11 +5,13 @@ import { HttpOptions, LanguageModel, mergeHttpOptions, ProviderConfigurationErro
 import { Auth } from "@opencode/ai/route"
 import { Context, Effect, Layer, Option, Schema, Struct } from "effect"
 import { AISDK } from "./aisdk.js"
+import { Config } from "./config.js"
 import { Credential } from "./credential.js"
 import { Integration } from "./integration.js"
 import { IntegrationConnection } from "./integration/connection.js"
 import { Capabilities, ID, Info, Model, Ref, VariantID } from "./model.js"
 import type { RuntimeInfo } from "./model.js"
+import { ModelsDev } from "./models-dev.js"
 import { Npm } from "@opencode/util/npm"
 import { Provider } from "./provider.js"
 import { KV } from "./kv.js"
@@ -392,6 +394,22 @@ export const layer = Layer.effect(
     const aisdk = yield* AISDK.Service
     const credentials = yield* Credential.Service
     const kv = yield* KV.Service
+    const modelsDev = yield* ModelsDev.Service
+    // The node graph wires configuration in; a resolver built from the bare layer, as embedded graphs and
+    // tests do, has no configured limits to apply.
+    const config = Option.getOrUndefined(yield* Effect.serviceOption(Config.Service))
+    /** The limit the configuration declares for a model, later documents overriding earlier ones field by field. */
+    const configuredLimit = Effect.fn("ModelResolver.configuredLimit")(function* (
+      providerID: Provider.ID,
+      modelID: ID,
+    ) {
+      if (!config) return undefined
+      const limits = (yield* config.entries()).flatMap((entry) =>
+        entry.type === "document" ? (entry.info.providers?.[providerID]?.models?.[modelID]?.limit ?? []) : [],
+      )
+      if (!limits.length) return undefined
+      return limits.reduce<Partial<Info["limit"]>>((merged, limit) => ({ ...merged, ...limit }), {})
+    })
     const load = Effect.fn("ModelResolver.resolveModel")(function* (
       selected: Info,
       variant?: VariantID,
@@ -429,6 +447,7 @@ export const layer = Layer.effect(
               return yield* connectionModel(selected.providerID, selected.id, connection, credential).pipe(
                 Effect.provideService(Credential.Service, credentials),
                 Effect.provideService(KV.Service, kv),
+                Effect.provideService(ModelsDev.Service, modelsDev),
               )
             })
           : selected
@@ -443,9 +462,15 @@ export const layer = Layer.effect(
       const source = router
         ? (yield* providers.snapshot()).records.get(selected.providerID)?.sourceConnection
         : undefined
-      const catalog =
-        router && selected.package && IntegrationConnection.key(source) === IntegrationConnection.key(pinned)
-          ? { ...selected, settings: { ...selected.settings, baseURL: bound.settings?.baseURL } }
+      const live =
+        router && Boolean(selected.package) && IntegrationConnection.key(source) === IntegrationConnection.key(pinned)
+      // The live catalog already carries configured overrides. A saved connection's entry is materialized
+      // here, past the configuration plugin, so the configured limit is applied to it directly.
+      const configured = router && !live ? yield* configuredLimit(selected.providerID, selected.id) : undefined
+      const catalog = live
+        ? { ...selected, settings: { ...selected.settings, baseURL: bound.settings?.baseURL } }
+        : configured
+          ? { ...bound, limit: { ...bound.limit, ...configured } }
           : bound
       const selectedVariant = yield* withVariant(catalog, variant)
       const runtimeInfo: RuntimeInfo = {
@@ -553,5 +578,15 @@ function usesAPIKeyAuth(packageName: string | undefined) {
 export const node = makeLocationNode({
   service: Service,
   layer,
-  deps: [Provider.node, Model.node, Integration.node, Credential.node, KV.node, Npm.node, AISDK.node],
+  deps: [
+    Provider.node,
+    Model.node,
+    Integration.node,
+    Credential.node,
+    KV.node,
+    ModelsDev.node,
+    Config.node,
+    Npm.node,
+    AISDK.node,
+  ],
 })

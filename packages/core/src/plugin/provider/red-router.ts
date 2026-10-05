@@ -1,5 +1,5 @@
 import { define } from "@opencode/plugin/effect/plugin"
-import { Effect, Option, Schedule, Schema, Scope, Stream } from "effect"
+import { Effect, Option, Schedule, Schema, Scope, Stream, Struct } from "effect"
 import { Bus } from "../../bus.js"
 import { Credential } from "../../credential.js"
 import { IntelligenceEvaluation } from "../../intelligence/evaluation.js"
@@ -9,7 +9,6 @@ import { Integration } from "../../integration.js"
 import { IntegrationConnection } from "../../integration/connection.js"
 import { KV } from "../../kv.js"
 import { Model } from "../../model.js"
-import { ModelLimit } from "../../model-limit.js"
 import { ModelsDev } from "../../models-dev.js"
 import { Provider } from "../../provider.js"
 import { ProviderRouter } from "../../provider-router.js"
@@ -18,14 +17,23 @@ import { Money } from "@opencode/schema/money"
 import { Router } from "@opencode/schema/router"
 import { RemoteCheck } from "../../remote-check.js"
 import { ConnectionCheck } from "@opencode/schema/connection-check"
+import { catalogLimits, knownLimit, undescribedLimit } from "./catalog-limits.js"
 
 /**
- * Limits for a model that neither the router nor the models catalog describes. They are a guess, not
- * reported values: they keep proactive compaction working and stay small enough for most routed models.
- * The context is held back by the estimate reserve, since a guess is as likely too large as too small.
+ * What the saved catalog of a connection keeps per model. Format 1 stored catalog values and guesses as if the
+ * router had reported them; format 2 stores the router's own limits and names the fields it did not report, which
+ * are resolved from the current catalog whenever a saved selection is loaded.
  */
-const DEFAULT_CONTEXT = 128_000
-const DEFAULT_OUTPUT = 8_192
+const RESOLVED_FORMAT = 2
+const LIMIT_FIELDS = ["context", "output"] as const
+type LimitField = (typeof LIMIT_FIELDS)[number]
+/** The limits a router reported for a model; an absent field is one the router did not describe. */
+type Reported = { readonly context?: number; readonly input?: number; readonly output?: number }
+const cachedModel = Schema.Struct({
+  ...Model.Info.fields,
+  // Absent in catalogs saved in format 1, whose frozen guesses are recognized by value instead.
+  unreported: Schema.optional(Schema.Array(Schema.Literals(LIMIT_FIELDS))),
+})
 
 const limitValue = Schema.optional(Schema.NullOr(Schema.Number))
 
@@ -185,21 +193,29 @@ function routerPlugin(options: {
             models: typeof loaded.models
             names: typeof loaded.names
             inspection: Inspection
+            entries: readonly Entry[]
             value: readonly Model.Info[]
           }
         | undefined
-      const resolvedModels = () => {
+      const resolvedEntries = () => {
         if (
           resolved?.models === loaded.models &&
           resolved.names === loaded.names &&
           resolved.inspection === loaded.inspection
         )
-          return resolved.value
+          return resolved
         const enabled = features()
-        const value = loaded.models.flatMap((item) => routerModel(item, providerID, loaded.names, enabled))
-        resolved = { models: loaded.models, names: loaded.names, inspection: loaded.inspection, value }
-        return value
+        const entries = loaded.models.flatMap((item) => routerEntries(item, providerID, loaded.names, enabled))
+        resolved = {
+          models: loaded.models,
+          names: loaded.names,
+          inspection: loaded.inspection,
+          entries,
+          value: entries.map((entry) => entry.model),
+        }
+        return resolved
       }
+      const resolvedModels = () => resolvedEntries().value
       // The registered MCP server, keyed by what it is reached with, so a change reloads MCP once.
       const mcpServer = () =>
         loaded.connection && loaded.inspection.router?.mcp
@@ -258,8 +274,21 @@ function routerPlugin(options: {
         } satisfies Inspection
       })
 
+      /**
+       * Saves the connection's catalog for selections pinned to it. Only limits the router reported are saved
+       * as facts; a catalog value or a guess would go stale, so those fields are resolved again on load, where
+       * the output is also capped at the context resolved then.
+       */
       const cacheResolved = Effect.fn("RouterProvider.cacheResolved")(function* (cacheKey: string) {
-        const models = resolvedModels()
+        const models = resolvedEntries().entries.map((entry) => ({
+          ...entry.model,
+          limit: {
+            context: entry.reported.context ?? undescribedLimit.context,
+            ...(entry.reported.input === undefined ? {} : { input: entry.reported.input }),
+            output: entry.reported.output ?? undescribedLimit.output,
+          },
+          unreported: LIMIT_FIELDS.filter((field) => entry.reported[field] === undefined),
+        }))
         const chunks = Array.from({ length: Math.ceil(models.length / 100) }, (_, index) =>
           models.slice(index * 100, (index + 1) * 100),
         )
@@ -273,6 +302,7 @@ function routerPlugin(options: {
           { discard: true },
         )
         yield* kv.set(`${cacheKey}:resolved:count`, chunks.length)
+        yield* kv.set(`${cacheKey}:resolved:format`, RESOLVED_FORMAT)
       })
 
       const refresh = Effect.fn("RouterProvider.refresh")(function* () {
@@ -313,7 +343,7 @@ function routerPlugin(options: {
               loaded.models = chunks.flatMap(Option.toArray).flat()
               loaded.digest = Hash.sha256(JSON.stringify(loaded.models))
               // Upgrade existing catalogs before exposing them, including when the router is offline.
-              if ((yield* kv.get(`${cacheKey}:resolved:count`)) === undefined) yield* cacheResolved(cacheKey)
+              if ((yield* kv.get(`${cacheKey}:resolved:format`)) !== RESOLVED_FORMAT) yield* cacheResolved(cacheKey)
               yield* ctx.provider.reload()
             }
           }
@@ -371,7 +401,7 @@ function routerPlugin(options: {
         if (
           digest === loaded.digest &&
           JSON.stringify(inspection) === JSON.stringify(loaded.inspection) &&
-          (yield* kv.get(`${cacheKey}:resolved:count`)) !== undefined
+          (yield* kv.get(`${cacheKey}:resolved:format`)) === RESOLVED_FORMAT
         )
           return
         const mcpInspected = mcpServer()
@@ -548,7 +578,10 @@ function routerPlugin(options: {
   })
 }
 
-/** Resolve a router model from the catalog belonging to its saved access, never the active account's catalog. */
+/**
+ * Resolve a router model from the catalog belonging to its saved access, never the active account's catalog.
+ * Limits the router reported are served as saved; the rest are resolved from the current models catalog.
+ */
 export const connectionModel = Effect.fn("RouterProvider.connectionModel")(function* (
   providerID: Provider.ID,
   modelID: Model.ID,
@@ -557,6 +590,7 @@ export const connectionModel = Effect.fn("RouterProvider.connectionModel")(funct
 ) {
   const credentials = yield* Credential.Service
   const kv = yield* KV.Service
+  const modelsDev = yield* ModelsDev.Service
   const credential = connection.type === "credential" ? yield* credentials.get(connection.id) : undefined
   const baseURL =
     providerID === "red-router"
@@ -568,14 +602,42 @@ export const connectionModel = Effect.fn("RouterProvider.connectionModel")(funct
   const count = yield* kv.get(`${cacheKey}:resolved:count`)
   if (typeof count !== "number" || !Number.isSafeInteger(count) || count <= 0 || count >= 10_000) return
   // Resolving one saved selection must not retain a second decoded copy of the entire catalog.
-  const decode = Schema.decodeUnknownOption(Schema.Array(Model.Info))
+  const decode = Schema.decodeUnknownOption(Schema.Array(cachedModel))
   for (let index = 0; index < count; index++) {
     const chunk = decode(yield* kv.get(`${cacheKey}:resolved:${index}`))
     if (Option.isNone(chunk)) continue
-    const model = chunk.value.find((model) => model.id === modelID)
-    if (model) return { ...model, settings: { ...model.settings, baseURL } }
+    const cached = chunk.value.find((model) => model.id === modelID)
+    if (!cached) continue
+    const unreported = cached.unreported ?? frozenGuess(cached.limit)
+    // A pinned offer takes the catalog's knowledge of the flat model it pins, as the live catalog does.
+    const known = unreported.length
+      ? knownLimit(catalogLimits(yield* modelsDev.get()), cached.pinOf ?? cached.id)
+      : undefined
+    return {
+      ...Struct.omit(cached, ["unreported"]),
+      settings: { ...cached.settings, baseURL },
+      limit: limitFrom(savedReported(cached.limit, unreported), known),
+    }
   }
 })
+
+/** The limits a saved model's router reported: every saved field the catalog did not name as unreported. */
+function savedReported(limit: Model.Info["limit"], unreported: readonly LimitField[]): Reported {
+  return {
+    ...(unreported.includes("context") ? {} : { context: limit.context }),
+    ...(limit.input === undefined ? {} : { input: limit.input }),
+    ...(unreported.includes("output") ? {} : { output: limit.output }),
+  }
+}
+
+/**
+ * Which limits a catalog saved in format 1 never got from the router: it stored the guess as if reported, so a
+ * context equal to the guess was not known, and neither was the default output next to it.
+ */
+function frozenGuess(limit: Model.Info["limit"]): readonly LimitField[] {
+  if (limit.context !== undescribedLimit.context) return []
+  return limit.output === undescribedLimit.output ? ["context", "output"] : ["context"]
+}
 
 /**
  * How a router's model list moved between two reads, counted by model id. The router keeps no
@@ -612,6 +674,18 @@ export function routerModel(
   names: ReturnType<typeof catalogNames>,
   features: ReadonlySet<Router.Feature> = new Set(),
 ): Model.Info[] {
+  return routerEntries(item, providerID, names, features).map((entry) => entry.model)
+}
+
+/** A routed model with the limits its router reported, which are all the saved catalog keeps as facts. */
+type Entry = { readonly model: Model.Info; readonly reported: Reported }
+
+function routerEntries(
+  item: CatalogModel,
+  providerID: Provider.ID,
+  names: ReturnType<typeof catalogNames>,
+  features: ReadonlySet<Router.Feature>,
+): Entry[] {
   if (!item.id || IntelligenceEvaluation.isJev(item.id) || item.capabilities?.decision === true) return []
   if (item.type !== undefined && !["chat", "llm", "text"].includes(item.type)) return []
   if (item.api_format !== undefined && !["chat-completions", "responses", "openai-responses"].includes(item.api_format))
@@ -640,7 +714,9 @@ export function routerModel(
       endpoints.some((value) => /\/?responses$/.test(value)))
   const chat = endpoints.length === 0 || endpoints.some((value) => /chat|completions/.test(value))
   if (!responses && !chat) return []
-  const limit = routerLimit(item, parameters, names.limits)
+  const reported = reportedLimit(item, parameters)
+  const known = knownLimit(names.limits, item.id)
+  const limit = limitFrom(reported, known)
   const id = Model.ID.make(item.id)
   const input = parameters?.modalities?.input ?? item.input_modalities ?? ["text"]
   const levels =
@@ -701,11 +777,17 @@ export function routerModel(
   // Each offer that can be pinned is a model of its own under its pin id, so a pinned choice resolves,
   // labels and plans like any routed model: the offer's provider, routers and price, and its own limits
   // and thinking levels when the router listed them. An offer switched off for the flat id still pins.
-  const pinned = offers.flatMap((offer): Model.Info[] => {
+  const pinned = offers.flatMap((offer): Entry[] => {
     if (!offer.pinID) return []
     const pinID = Model.ID.make(offer.pinID)
     const member = members.find((candidate) => candidate.id === offer.id)?.parameters
-    const context = firstPositive([member?.context_length]) ?? limit.context
+    const memberContext = firstPositive([member?.context_length])
+    const memberOutput = firstPositive([member?.max_completion_tokens])
+    const pinnedReported = {
+      ...reported,
+      ...(memberContext === undefined ? {} : { context: memberContext }),
+      ...(memberOutput === undefined ? {} : { output: memberOutput }),
+    }
     const pinnedVariants =
       !member || member.thinking_levels === undefined
         ? variants
@@ -718,44 +800,46 @@ export function routerModel(
     const pinnedVia = hops(offer)
     return [
       {
-        ...Model.Info.default(providerID, pinID),
-        name,
-        upstream: offer.provider,
-        ...(pinnedVia ? { via: pinnedVia } : {}),
-        pinOf: id,
-        ...shared,
-        variants: pinnedVariants,
-        ...(pinnedVariants.length ? { reasoningVariantIDs: pinnedVariants.map((variant) => variant.id) } : {}),
-        cost: offer.price
-          ? [
-              {
-                input: Money.USDPerMillionTokens.make(offer.price.input ?? 0),
-                output: Money.USDPerMillionTokens.make(offer.price.output ?? 0),
-                cache: { read: Money.USDPerMillionTokens.zero, write: Money.USDPerMillionTokens.zero },
-              },
-            ]
-          : [],
-        limit: {
-          context,
-          ...(limit.input !== undefined && limit.input < context ? { input: limit.input } : {}),
-          output: Math.min(firstPositive([member?.max_completion_tokens]) ?? limit.output, context),
+        model: {
+          ...Model.Info.default(providerID, pinID),
+          name,
+          upstream: offer.provider,
+          ...(pinnedVia ? { via: pinnedVia } : {}),
+          pinOf: id,
+          ...shared,
+          variants: pinnedVariants,
+          ...(pinnedVariants.length ? { reasoningVariantIDs: pinnedVariants.map((variant) => variant.id) } : {}),
+          cost: offer.price
+            ? [
+                {
+                  input: Money.USDPerMillionTokens.make(offer.price.input ?? 0),
+                  output: Money.USDPerMillionTokens.make(offer.price.output ?? 0),
+                  cache: { read: Money.USDPerMillionTokens.zero, write: Money.USDPerMillionTokens.zero },
+                },
+              ]
+            : [],
+          limit: limitFrom(pinnedReported, known),
         },
+        reported: pinnedReported,
       },
     ]
   })
   return [
     {
-      ...Model.Info.default(providerID, id),
-      name,
-      ...(upstream ? { upstream } : {}),
-      ...(via ? { via } : {}),
-      ...(item.aliases?.length ? { aliases: item.aliases } : {}),
-      ...(item.flat ? { flat: true } : {}),
-      ...(offers.length ? { offers } : {}),
-      ...shared,
-      variants,
-      ...(variants.length ? { reasoningVariantIDs: variants.map((variant) => variant.id) } : {}),
-      limit,
+      model: {
+        ...Model.Info.default(providerID, id),
+        name,
+        ...(upstream ? { upstream } : {}),
+        ...(via ? { via } : {}),
+        ...(item.aliases?.length ? { aliases: item.aliases } : {}),
+        ...(item.flat ? { flat: true } : {}),
+        ...(offers.length ? { offers } : {}),
+        ...shared,
+        variants,
+        ...(variants.length ? { reasoningVariantIDs: variants.map((variant) => variant.id) } : {}),
+        limit,
+      },
+      reported,
     },
     ...pinned,
   ]
@@ -903,45 +987,43 @@ async function keyInfo(connection: Connection) {
 }
 
 /**
- * Router-reported limits win (RedRouter's `parameters` first, then the entry's own fields, then the serving
- * provider's `top_provider` limits), then the models catalog, then a guess held back by the estimate reserve.
+ * The limits the router reported: RedRouter's `parameters` first, then the entry's own fields, then the serving
+ * provider's `top_provider` limits.
  */
-function routerLimit(
-  item: CatalogModel,
-  parameters: typeof routerParameters.Type | undefined,
-  catalog: ReturnType<typeof catalogNames>["limits"],
-): Model.Info["limit"] {
-  const reported = {
-    context: firstPositive([
-      parameters?.context_length,
-      item.context_length,
-      item.max_context_length,
-      item.context_window,
-      item.max_input_tokens,
-      item.top_provider?.context_length,
-    ]),
-    output: firstPositive([
-      parameters?.max_completion_tokens,
-      item.max_output_tokens,
-      item.max_output_length,
-      item.max_completion_tokens,
-      item.top_provider?.max_completion_tokens,
-    ]),
-  }
-  // Routers prefix upstream ids (`cc/claude-...`), so leading segments are dropped until the catalog knows one.
-  const known =
-    reported.context !== undefined && reported.output !== undefined
-      ? undefined
-      : item.id
-          .split("/")
-          .map((_, start, parts) => catalog.get(parts.slice(start).join("/")))
-          .find((entry) => entry !== undefined)
-  const context = reported.context ?? known?.context ?? ModelLimit.conservative(DEFAULT_CONTEXT)
+function reportedLimit(item: CatalogModel, parameters: RouterParameters | undefined): Reported {
+  const context = firstPositive([
+    parameters?.context_length,
+    item.context_length,
+    item.max_context_length,
+    item.context_window,
+    item.max_input_tokens,
+    item.top_provider?.context_length,
+  ])
   const input = firstPositive([item.max_input_tokens])
+  const output = firstPositive([
+    parameters?.max_completion_tokens,
+    item.max_output_tokens,
+    item.max_output_length,
+    item.max_completion_tokens,
+    item.top_provider?.max_completion_tokens,
+  ])
+  return {
+    ...(context === undefined ? {} : { context }),
+    ...(input === undefined ? {} : { input }),
+    ...(output === undefined ? {} : { output }),
+  }
+}
+
+/** Router-reported limits win, then what the catalog knows, then a guess held back by the estimate reserve. */
+function limitFrom(
+  reported: Reported,
+  known: { readonly context: number; readonly output: number } | undefined,
+): Model.Info["limit"] {
+  const context = reported.context ?? known?.context ?? undescribedLimit.context
   return {
     context,
-    ...(input !== undefined && input < context ? { input } : {}),
-    output: Math.min(firstPositive([reported.output, known?.output]) ?? DEFAULT_OUTPUT, context),
+    ...(reported.input !== undefined && reported.input < context ? { input: reported.input } : {}),
+    output: Math.min(firstPositive([reported.output, known?.output]) ?? undescribedLimit.output, context),
   }
 }
 
@@ -956,13 +1038,6 @@ function catalogNames(catalog: readonly ModelsDev.Snapshot[]) {
   return {
     providers: new Map(catalog.map((item) => [String(item.info.id), item.info.name])),
     models: new Map(catalog.flatMap((item) => item.models.map((model) => [`${item.info.id}/${model.id}`, model.name]))),
-    // The first provider that lists a model id with a known context wins.
-    limits: new Map(
-      catalog
-        .flatMap((item) => item.models)
-        .filter((model) => model.limit.context > 0)
-        .map((model) => [String(model.id), { context: model.limit.context, output: model.limit.output }] as const)
-        .toReversed(),
-    ),
+    limits: catalogLimits(catalog),
   }
 }

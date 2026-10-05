@@ -27,6 +27,7 @@ import { Database } from "../database/database.js"
 import { llmClient } from "../effect/app-node-platform.js"
 import { ModelLimit } from "../model-limit.js"
 import { Model } from "../model.js"
+import { undescribedLimit } from "../plugin/provider/catalog-limits.js"
 import { Intelligence } from "../intelligence.js"
 import { IntelligenceClassification } from "../intelligence/classification.js"
 import { IntelligenceSettings } from "../intelligence/settings.js"
@@ -136,6 +137,8 @@ const SHRINK_STEPS = [0.7, 0.5, 0.35]
 const RESERVE_MIN = 16_000
 /** A common window size, assumed for the compaction request when the model's window is unknown. */
 const UNKNOWN_WINDOW = 200_000
+/** The most a summary is ever asked for, as `SessionModelRequest` sizes the compaction request's output. */
+const SUMMARY_OUTPUT_MAX = 32_000
 const TOOL_OUTPUT_MAX_CHARS = 1_250
 const IMAGE_TOKEN_ESTIMATE = 1_500
 const PDF_TOKEN_ESTIMATE = 2_000
@@ -179,6 +182,54 @@ export const elideMiddle = (text: string, budget: number) => {
   const side = Math.min(Math.max(0, Math.floor(budget * 2)), Math.floor(points.length / 2))
   const elided = Token.estimate(points.slice(side, points.length - side).join(""))
   return `${points.slice(0, side).join("")}\n[middle elided: ${elided} tokens]\n${side > 0 ? points.slice(-side).join("") : ""}`
+}
+
+/** Where the window in use came from, for the message a session that cannot be compacted ends with. */
+export type Fit = {
+  /** The context window in use, in tokens; 0 when unknown. */
+  readonly window: number
+  readonly source: string
+  /** The compaction threshold: the most a checkpoint may leave in the window. */
+  readonly cap: number
+  /** The fixed part of every request: system prompt, instructions and tool definitions. */
+  readonly overhead: number
+  /** Tokens the verbatim part may take under the threshold with the fixed part and the summary beside it. */
+  readonly room: number
+  /** The history as the check that triggered the compaction measured it. */
+  readonly size: number
+  readonly providerID: string
+  readonly modelID: string
+}
+
+/** The window an endpoint gets for a model it reports no limit for and the catalog does not list. */
+export const GUESSED_WINDOW = undescribedLimit.context
+
+/**
+ * The one message a session gets when no checkpoint can bring its history under the window in use: the numbers,
+ * where the window came from, and what to do about it. `remaining` is the least a checkpoint would leave.
+ */
+export const unfitMessage = (fit: Fit, remaining: number) =>
+  `Compaction cannot bring this conversation under the context window: ${fit.size.toLocaleString("en-US")} tokens of history, at least ${remaining.toLocaleString("en-US")} after compaction (the system prompt, instructions and tool definitions take ${fit.overhead.toLocaleString("en-US")}), against a window of ${fit.window.toLocaleString("en-US")} tokens (${fit.source}). Pick a model with a larger context window, or set providers.${fit.providerID}.models.${fit.modelID}.limit.context in the configuration if the provider allows more.`
+
+/**
+ * Names where the window in use came from. The resolved model carries no provenance, so what a provider reported and
+ * what the catalog knows are told apart only from a lesson, the configuration, or the guess an endpoint gets when
+ * neither it nor the catalog describes the model.
+ */
+export const windowSource = (input: {
+  readonly providerID: string
+  readonly modelID: string
+  readonly declared: { readonly context: number; readonly input?: number }
+  readonly learned?: number
+  readonly configured: boolean
+}) => {
+  const catalog = input.declared.input || input.declared.context
+  if (input.learned !== undefined && input.learned > 0 && (catalog <= 0 || input.learned < catalog))
+    return `learned from a refusal by ${input.providerID}`
+  if (input.declared.context === GUESSED_WINDOW && !input.declared.input)
+    return `a guess: ${input.providerID} reported no context size for ${input.modelID}, and the models catalog does not list it`
+  if (input.configured) return `set in the configuration for ${input.providerID}/${input.modelID}`
+  return `from the ${input.providerID} model list or the models catalog`
 }
 
 /** Under 5% of the threshold left: nothing else will free room, so the model is asked to finish cleanly. */
@@ -463,12 +514,47 @@ export const layer = Layer.effect(
       const limit =
         learned && learned > 0 ? { ...declared, input: catalog > 0 ? Math.min(catalog, learned) : learned } : declared
       const ceiling = calculateCeiling(limit, settings.buffer)
-      if (trigger.reason === "auto") {
-        const size = measure(context, observed)
-        if (!settings.auto || size === undefined || size < ceiling) {
-          yield* observe(context, settings, ceiling, size)
-          return { status: "skipped" }
-        }
+      // An unknown window never triggers auto compaction, but the compaction request still needs a size to aim for.
+      const cap = Number.isFinite(ceiling)
+        ? ceiling
+        : calculateCeiling({ ...limit, context: UNKNOWN_WINDOW }, settings.buffer)
+      const window = limit.input || limit.context
+      // The verbatim part gets what the effective share of the threshold leaves after the fixed part of every request
+      // and the most the summary may take: its output limit, within the reserve the threshold keeps free.
+      const base = transcript(context, [])
+      const overhead = estimateRequest({ system: base.system, tools: context.tools.definitions, messages: [] })
+      const summaryRoom = Math.min(
+        limit.output > 0 ? limit.output : SUMMARY_OUTPUT_MAX,
+        SUMMARY_OUTPUT_MAX,
+        (window > 0 ? window : UNKNOWN_WINDOW) - cap,
+        settings.summaryMaxTokens ?? Number.POSITIVE_INFINITY,
+      )
+      const room = Math.floor(cap * EFFECTIVE_SHARE) - overhead - summaryRoom
+      const measured = trigger.reason === "auto" ? measure(context, observed) : undefined
+      if (trigger.reason === "auto" && (!settings.auto || measured === undefined || measured < ceiling)) {
+        yield* observe(context, settings, ceiling, measured, room)
+        return { status: "skipped" }
+      }
+      const fit: Fit = {
+        window,
+        source: windowSource({
+          providerID: context.model.ref.providerID,
+          modelID: context.model.ref.id,
+          declared,
+          learned: learned || undefined,
+          configured: (yield* config.entries()).some(
+            (entry) =>
+              entry.type === "document" &&
+              entry.info.providers?.[context.model.ref.providerID]?.models?.[context.model.ref.id]?.limit !==
+                undefined,
+          ),
+        }),
+        cap,
+        overhead,
+        room,
+        size: measured ?? estimateContext(context, observed?.ratio),
+        providerID: context.model.ref.providerID,
+        modelID: context.model.ref.id,
       }
       // Only an automatic compaction may adopt a summary prepared in the background.
       if (trigger.reason !== "auto") yield* dropDraft(context.session.id)
@@ -485,16 +571,9 @@ export const layer = Layer.effect(
               "Automatic compaction paused after two ineffective checkpoints. Send a new message or run /compact.",
           },
         }
-      // An unknown window never triggers auto compaction, but the compaction request still needs a size to aim for.
-      const cap = Number.isFinite(ceiling)
-        ? ceiling
-        : calculateCeiling({ ...limit, context: UNKNOWN_WINDOW }, settings.buffer)
       const keep = tailBudget(cap, settings.keep)
       // The provider just rejected this context, so the estimate ran low; the first attempt already aims below it.
-      const budget =
-        trigger.reason === "overflow"
-          ? Math.min(cap, Math.floor(estimateContext(context, observed?.ratio) * SHRINK_STEPS[0]))
-          : cap
+      const budget = trigger.reason === "overflow" ? Math.min(cap, Math.floor(fit.size * SHRINK_STEPS[0])) : cap
 
       const decision = yield* hooks.run({
         event: "PreCompact",
@@ -517,6 +596,7 @@ export const layer = Layer.effect(
               keep,
               settings.keepTurns,
               requestBudget(cap, keep),
+              fit,
             )
       const deadline = AuxDeadline.deadlineMs(
         "compaction",
@@ -590,6 +670,7 @@ export const layer = Layer.effect(
       settings: Settings,
       ceiling: number,
       size: number | undefined,
+      room: number,
     ) {
       const sessionID = context.session.id
       const draft = drafts.get(sessionID)
@@ -612,7 +693,7 @@ export const layer = Layer.effect(
       if (!pressing && !preparing) return
       const held = !settings.auto || (yield* paused(sessionID))
       if (pressing && held) pressed.add(sessionID)
-      if (preparing && !held) yield* startDraft(context, settings, ceiling)
+      if (preparing && !held) yield* startDraft(context, settings, ceiling, room)
     })
 
     const paused = Effect.fnUntraced(function* (sessionID: SessionContext.Loaded["session"]["id"]) {
@@ -627,7 +708,12 @@ export const layer = Layer.effect(
      * `summarize` commits it, at a step boundary and while the history it covers is unchanged, so checkpoints keep a
      * single writer.
      */
-    const startDraft = Effect.fnUntraced(function* (context: SessionContext.Loaded, settings: Settings, ceiling: number) {
+    const startDraft = Effect.fnUntraced(function* (
+      context: SessionContext.Loaded,
+      settings: Settings,
+      ceiling: number,
+      room: number,
+    ) {
       const split = splitConversation(
         VaultRestricted.withholdMessages(
           SessionToolOutputPrune.apply(context.messages, context.prune, context.tools),
@@ -635,6 +721,8 @@ export const layer = Layer.effect(
         ),
         tailBudget(ceiling, settings.keep),
         settings.keepTurns,
+        undefined,
+        room,
       )
       if (!split || split.older.length === 0) return
       const deadline = AuxDeadline.deadlineMs(
@@ -728,6 +816,7 @@ export const layer = Layer.effect(
       keep: number,
       turns: number | undefined,
       preserve: number,
+      fit: Fit,
     ): Effect.fn.Return<Result, Failure> {
       const context = trigger.context
       // A restricted message reaches the summarizer, the anchors and the recent context only as its placeholder.
@@ -736,8 +825,14 @@ export const layer = Layer.effect(
         VaultRestricted.excluded(context.session.metadata),
       )
       const drafted = trigger.reason === "auto" ? yield* adopt(context, messages, keep, preserve) : undefined
-      const split = drafted?.split ?? splitConversation(messages, keep, turns, preserve)
+      const split = drafted?.split ?? splitConversation(messages, keep, turns, preserve, fit.room)
       if (!split) return yield* Effect.fail(NOTHING_TO_COMPACT)
+      // What stays verbatim already fills the window: no summary can help, so none is requested, nothing is committed,
+      // and the session ends its turn with the one message that says so.
+      const unfit = (remaining: number) =>
+        Effect.fail<Failure>({ error: { type: "compaction.unavailable", message: unfitMessage(fit, remaining) } })
+      const floor = fit.overhead + Token.estimate(split.recent)
+      if (fit.window > 0 && floor >= fit.cap) return yield* unfit(floor)
 
       const previous = previousCompaction(context.messages)
       const generated = drafted
@@ -773,6 +868,9 @@ export const layer = Layer.effect(
         return yield* Effect.fail<Failure>({
           error: { type: "compaction.failed", message: "Compaction summary did not reduce the conversation" },
         })
+      // The summary itself can push the checkpoint over the threshold; one that does would only trigger the next check.
+      const after = fit.overhead + Token.estimate(text) + Token.estimate(split.recent)
+      if (fit.window > 0 && !generated.hooked && after >= fit.cap) return yield* unfit(after)
       return { ...screened, text }
     })
 
@@ -998,7 +1096,9 @@ export const layer = Layer.effect(
           const step = SHRINK_STEPS[rejections]
           if (step === undefined) return yield* Effect.fail<Failure>({ error })
           rejected ??= estimateRequest(request)
-          target = Math.floor(rejected * step)
+          // A request sent whole because no exchange boundary could fit the target was over it already; its
+          // rejection unlocks eliding to that target, never a higher one.
+          target = Math.min(target, Math.floor(rejected * step))
           rejections++
           continue
         }
@@ -1348,12 +1448,17 @@ const transcript = (context: SessionContext.Loaded, messages: ReadonlyArray<Sess
 /**
  * `older` gets summarized; `recent` keeps the newest complete user exchanges within both configured limits.
  * Undefined when there is nothing to compact.
+ *
+ * The verbatim part extends past the token allowance to the start of the latest exchange, or to everything since
+ * the previous checkpoint, only while it leaves `room`: a long exchange a checkpoint carried whole could never be
+ * compacted under the window, so the newest messages within the allowance stay and the rest is summarized.
  */
 const splitConversation = (
   messages: ReadonlyArray<SessionMessage.Info>,
   keep: number,
   turns?: number,
   preserve = Number.POSITIVE_INFINITY,
+  room = Number.POSITIVE_INFINITY,
 ) => {
   const entries = messages.flatMap((message, index) => {
     const text = messageToText(message)
@@ -1365,8 +1470,13 @@ const splitConversation = (
   const users = entries.flatMap((entry, index) => (entry.message.type === "user" ? [index] : []))
   const byTurns =
     turns === undefined ? 0 : turns === 0 || !users.length ? entries.length : (users.at(-turns) ?? users[0] ?? 0)
-  const start = entries[Math.max(byBudget, byTurns)]?.index ?? messages.length
-  return { older: messages.slice(0, start), recent: recentOf(messages.slice(start), preserve) }
+  const split = (first: number) => {
+    const start = entries[Math.max(first, byTurns)]?.index ?? messages.length
+    return { older: messages.slice(0, start), recent: recentOf(messages.slice(start), preserve) }
+  }
+  const extended = split(byBudget.start)
+  if (byBudget.start >= byBudget.allowance || Token.estimate(extended.recent) <= room) return extended
+  return split(byBudget.allowance)
 }
 
 /**
@@ -1424,28 +1534,29 @@ const redactMessages = (messages: ReadonlyArray<Message>) =>
 const fingerprint = (context: SessionContext.Loaded, count: number) =>
   JSON.stringify([context.initial, context.messages.slice(0, count), VaultRestricted.read(context.session.metadata)])
 
+/** Where the verbatim part starts, and where it would start on the token allowance alone. */
 const recentStart = (
   entries: ReadonlyArray<{ readonly message: SessionMessage.Info; readonly text: string }>,
   keep: number,
   previous: SessionMessage.CompactionCompleted | undefined,
 ) => {
   // Drop the oldest entries until the rest fit the allowance, but always keep the newest one.
-  const dropped = Math.min(
+  const allowance = Math.min(
     oldestToDrop(entries, (entry) => Token.estimate(entry.text), keep),
     entries.length - 1,
   )
 
   // Start at a user message so an assistant's tool calls and results stay together.
-  const userBoundary = entries.findLastIndex((entry, index) => index <= dropped && entry.message.type === "user")
-  if (userBoundary > 0) return userBoundary
+  const userBoundary = entries.findLastIndex((entry, index) => index <= allowance && entry.message.type === "user")
+  if (userBoundary > 0) return { start: userBoundary, allowance }
 
   // Everything fits. Keep only the latest exchange so there is an older part left to summarize.
   const latestUser = entries.findLastIndex((entry) => entry.message.type === "user")
-  if (latestUser > 0) return latestUser
+  if (latestUser > 0) return { start: latestUser, allowance }
 
   // One exchange, nothing older. Summarize it all and keep nothing, unless a previous summary already
   // kept recent text, in which case keep everything and summarize only the summary before it.
-  return previous?.recent ? 0 : entries.length
+  return { start: previous?.recent ? 0 : entries.length, allowance }
 }
 
 const oldestToDrop = <T>(items: ReadonlyArray<T>, size: (item: T) => number, budget: number) => {

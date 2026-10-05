@@ -7,6 +7,7 @@ import { Model } from "@opencode/core/model"
 import { Plugin } from "@opencode/core/plugin"
 import { PluginHooks } from "@opencode/core/plugin/hooks"
 import { PluginHost } from "@opencode/core/plugin/host"
+import { catalogLimits } from "@opencode/core/plugin/provider/catalog-limits"
 import { catalogChanges, RedRouterPlugin, routerModel } from "@opencode/core/plugin/provider/red-router"
 import { Provider } from "@opencode/core/provider"
 import { ProviderRouter } from "@opencode/core/provider-router"
@@ -22,6 +23,19 @@ import { PluginTestLayer } from "./fixture"
 const it = testEffect(PluginTestLayer)
 const integrationID = Integration.ID.make("red-router")
 
+/** What the models catalog knows: these models under one catalog provider. */
+const known = (...models: Array<{ id: string; context: number; output: number }>) =>
+  catalogLimits([
+    {
+      info: { ...Provider.Info.empty(Provider.ID.make("catalog")), name: "Catalog" },
+      models: models.map((model) => ({
+        ...Model.Info.default(Provider.ID.make("catalog"), Model.ID.make(model.id)),
+        limit: { context: model.context, output: model.output },
+      })),
+      environment: [],
+    },
+  ])
+
 const addPlugin = Effect.fn(function* () {
   const plugin = yield* Plugin.Service
   const host = yield* PluginHost.make(plugin)
@@ -30,7 +44,7 @@ const addPlugin = Effect.fn(function* () {
 
 describe("RedRouterPlugin", () => {
   test("keeps Jev Router in S2 and excludes typed decision evaluators", () => {
-    const names = { providers: new Map<string, string>(), models: new Map<string, string>(), limits: new Map() }
+    const names = { providers: new Map<string, string>(), models: new Map<string, string>(), limits: known() }
     const map = (item: Parameters<typeof routerModel>[0]) => routerModel(item, Provider.ID.make("red-router"), names)
     expect(
       map({
@@ -77,7 +91,7 @@ describe("RedRouterPlugin", () => {
       {
         providers: new Map([["opencode", "OpenCode"]]),
         models: new Map([["opencode/gpt-6-astra", "GPT-6 Astra"]]),
-        limits: new Map(),
+        limits: known(),
       },
     )
 
@@ -102,7 +116,7 @@ describe("RedRouterPlugin", () => {
         capabilities: { reasoning: true, effort_tiers: ["low", "high"] },
       },
       Provider.ID.make("9router"),
-      { providers: new Map(), models: new Map(), limits: new Map() },
+      { providers: new Map(), models: new Map(), limits: known() },
     )
 
     expect(models[0]).toMatchObject({
@@ -117,7 +131,7 @@ describe("RedRouterPlugin", () => {
     const names = {
       providers: new Map<string, string>(),
       models: new Map<string, string>(),
-      limits: new Map([["claude-opus-5-5", { context: 1_000_000, output: 128_000 }]]),
+      limits: known({ id: "claude-opus-5-5", context: 1_000_000, output: 128_000 }),
     }
     const limit = (item: Parameters<typeof routerModel>[0]) =>
       routerModel(item, Provider.ID.make("9router"), names)[0]?.limit
@@ -166,13 +180,13 @@ describe("RedRouterPlugin", () => {
     const [model] = routerModel(
       { id: "combo/structured", parameters: { forced_tool_choice: false } },
       Provider.ID.make("red-router"),
-      { providers: new Map(), models: new Map(), limits: new Map() },
+      { providers: new Map(), models: new Map(), limits: known() },
     )
     expect(model?.compatibility).toEqual({ forcedToolChoice: false })
   })
 
   describe("reasoning variants", () => {
-    const names = { providers: new Map(), models: new Map(), limits: new Map() }
+    const names = { providers: new Map(), models: new Map(), limits: known() }
     const item = { id: "combo/coder", parameters: { reasoning: true, thinking_levels: ["low", "auto", "high"] } }
 
     test("puts auto first when the router's autopilot accepts it and there are levels to choose between", () => {
@@ -244,7 +258,7 @@ describe("RedRouterPlugin", () => {
         ],
       },
       Provider.ID.make("red-router"),
-      { providers: new Map([["amazon-bedrock", "Amazon Bedrock"]]), models: new Map(), limits: new Map() },
+      { providers: new Map([["amazon-bedrock", "Amazon Bedrock"]]), models: new Map(), limits: known() },
     )
 
     expect(flat?.offers).toEqual([
@@ -328,7 +342,7 @@ describe("RedRouterPlugin", () => {
         ],
       },
       Provider.ID.make("red-router"),
-      { providers: new Map(), models: new Map(), limits: new Map() },
+      { providers: new Map(), models: new Map(), limits: known() },
     )
     expect(combo).toMatchObject({
       limit: { context: 128_000, output: 16_000 },
@@ -349,7 +363,7 @@ describe("RedRouterPlugin", () => {
         member_parameters: [{ id: "x/fallback", parameters: { context_length: 32_000, forced_tool_choice: false } }],
       },
       Provider.ID.make("red-router"),
-      { providers: new Map(), models: new Map(), limits: new Map() },
+      { providers: new Map(), models: new Map(), limits: known() },
     )
     expect(combo?.limit.context).toBe(200_000)
     expect(combo?.compatibility).toEqual({ forcedToolChoice: false })

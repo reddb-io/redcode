@@ -5,7 +5,7 @@ import { testRender } from "@opentui/solid"
 import type { Context } from "@opencode/plugin/tui/context"
 import { SidebarContext } from "../../src/feature-plugins/sidebar/context"
 
-function context(options?: { cost?: number; tokens?: number }) {
+function context(options?: { cost?: number; tokens?: number; limit?: number }) {
   const color = RGBA.fromInts(200, 200, 200)
   return {
     theme: { text: { base: color, muted: color } },
@@ -38,7 +38,12 @@ function context(options?: { cost?: number; tokens?: number }) {
         },
       },
       location: {
-        model: { list: () => [] },
+        model: {
+          list: () =>
+            options?.limit
+              ? [{ providerID: "provider", id: "model", limit: { context: options.limit, output: 8_192 } }]
+              : [],
+        },
       },
     },
     client: {
@@ -87,6 +92,21 @@ test("sidebar shows available context usage", async () => {
     await app.renderOnce()
     expect(app.captureCharFrame()).toContain("Context")
     expect(app.captureCharFrame()).toContain("1,234 tokens")
+  } finally {
+    app.renderer.destroy()
+  }
+})
+
+test("sidebar shows the context window the usage is measured against", async () => {
+  const app = await testRender(
+    () => <SidebarContext context={context({ tokens: 321_000, limit: 115_200 })} sessionID="session" />,
+    { width: 42, height: 8 },
+  )
+
+  try {
+    await app.renderOnce()
+    expect(app.captureCharFrame()).toContain("321,000 / 115,200 tokens")
+    expect(app.captureCharFrame()).toContain("279% used")
   } finally {
     app.renderer.destroy()
   }

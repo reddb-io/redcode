@@ -59,7 +59,10 @@ export function SidebarContext(props: { context: Plugin.Context; sessionID: stri
       <text fg={theme.text.base}>
         <b>Context</b>
       </text>
-      <text fg={theme.text.muted}>{(state()?.tokens ?? 0).toLocaleString()} tokens</text>
+      <text fg={theme.text.muted}>
+        {(state()?.tokens ?? 0).toLocaleString()}
+        <Show when={state()?.limit}>{(limit) => <> / {limit().toLocaleString()}</>}</Show> tokens
+      </text>
       <text fg={theme.text.muted}>{state()?.percent ?? 0}% used</text>
       <text fg={theme.text.muted}>{money.format(cost())} spent</text>
       <For each={sessionBudget()}>{(line) => <text fg={theme.text.muted}>budget (with subagents) {line}</text>}</For>

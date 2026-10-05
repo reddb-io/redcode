@@ -2202,6 +2202,19 @@ test("direct footer shows full usage metadata when room is available", async () 
   }
 })
 
+test("direct footer shows the context window beside the usage when it is known", async () => {
+  const app = await renderFooter({
+    state: { usage: { tokens: 321000, percent: 279, limit: 115200, cost: 4.23 } },
+  })
+
+  try {
+    await app.renderOnce()
+    expect(app.captureCharFrame()).toContain("321.0K / 115.2K (279%) · $4.23")
+  } finally {
+    app.cleanup()
+  }
+})
+
 test("direct footer keeps model, variant, and usage before the menu and rich stop label", async () => {
   const app = await renderFooter({
     state: { phase: "running", model: "GPT-5.6 SoL", usage: { tokens: 8400, percent: 1, cost: 0.01 } },

@@ -27,6 +27,7 @@ import { SessionStore } from "@opencode/core/session/store"
 import { LayerNode } from "@opencode/util/effect/layer-node"
 import { DateTime, Deferred, Effect, Fiber, Schema } from "effect"
 import { testEffect } from "./lib/effect"
+import { offlineModels } from "./fixture/models"
 
 const it = testEffect(
   AppNodeBuilder.build(
@@ -44,6 +45,7 @@ const it = testEffect(
     [
       Bus.node.replace(Bus.configured({ persist: true })),
       Location.node.replace(Location.boundNode({ directory: AbsolutePath.make(process.cwd()) })),
+      offlineModels,
     ],
   ),
 )

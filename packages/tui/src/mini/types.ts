@@ -177,7 +177,8 @@ export type FooterState = {
   status: string
   notice: string
   model: string
-  usage: { tokens: number; percent?: number; cost?: number } | undefined
+  /** `limit` is the context window `percent` is of. */
+  usage: { tokens: number; percent?: number; limit?: number; cost?: number } | undefined
   first: boolean
   interrupt: number
   exit: number

@@ -133,14 +133,14 @@ test("prompt footer can hide details", async () => {
 
   try {
     await app.renderOnce()
-    expect(app.captureCharFrame()).toContain("1.0K (10%) · $1.00")
+    expect(app.captureCharFrame()).toContain("1.0K / 10.0K (10%) · $1.00")
     expect(app.captureCharFrame()).toContain("ctrl+p commands")
     expect(app.captureCharFrame()).toContain("New session /new")
 
     setShowDetails(false)
     await app.renderOnce()
     const frame = app.captureCharFrame()
-    expect(frame).not.toContain("1.0K (10%)")
+    expect(frame).not.toContain("1.0K / 10.0K (10%)")
     expect(frame).not.toContain("$1.00")
     expect(frame).not.toContain("ctrl+p commands")
     expect(frame).not.toContain("New session")

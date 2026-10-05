@@ -25,6 +25,7 @@ import { Location } from "@opencode/core/location"
 import { AbsolutePath } from "@opencode/core/schema"
 import { DateTime, Effect, Layer, Stream } from "effect"
 import { testEffect } from "./lib/effect"
+import { offlineModels } from "./fixture/models"
 
 const summary = (extra: string) =>
   [
@@ -138,6 +139,7 @@ const it = testEffect(
       llmClient.replace(client),
       Intelligence.node.replace(intelligence),
       Location.node.replace(Location.boundNode({ directory: AbsolutePath.make(process.cwd()) })),
+      offlineModels,
     ],
   ),
 )

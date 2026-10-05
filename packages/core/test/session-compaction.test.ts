@@ -33,6 +33,7 @@ import { Shell } from "@opencode/schema/shell"
 import { DateTime, Effect, Fiber, Layer, Schema, Stream } from "effect"
 import { asc, eq } from "drizzle-orm"
 import { testEffect } from "./lib/effect"
+import { offlineModels } from "./fixture/models"
 
 let requests: LLMRequest[] = []
 /** Appended to the mocked summary, to stand for a summarizer that repeats what it read. */
@@ -107,6 +108,7 @@ const it = testEffect(
       Bus.node.replace(Bus.configured({ persist: true })),
       llmClient.replace(client),
       Location.node.replace(Location.boundNode({ directory: AbsolutePath.make(process.cwd()) })),
+      offlineModels,
     ],
   ),
 )
@@ -967,5 +969,95 @@ it.effect("a summary prepared for a history that changed is written again", () =
     // The stale preparation may or may not have reached the model before it was cancelled; the checkpoint did not
     // use it and summarized the current history instead.
     expect(requests.some((request) => JSON.stringify(request.messages).includes("A different reply."))).toBe(true)
+  }),
+)
+
+test("the window in use is named by where it came from", () => {
+  const declared = { context: 1_000_000 }
+  const input = { providerID: "zai", modelID: "glm-5.3-flash", declared, configured: false }
+  expect(SessionCompaction.windowSource(input)).toBe("from the zai model list or the models catalog")
+  expect(SessionCompaction.windowSource({ ...input, configured: true })).toBe(
+    "set in the configuration for zai/glm-5.3-flash",
+  )
+  expect(SessionCompaction.windowSource({ ...input, learned: 131_072 })).toBe("learned from a refusal by zai")
+  // A lesson above what the catalog declares does not bound the window, so the catalog's number is the one in use.
+  expect(SessionCompaction.windowSource({ ...input, learned: 2_000_000, configured: true })).toBe(
+    "set in the configuration for zai/glm-5.3-flash",
+  )
+  expect(
+    SessionCompaction.windowSource({
+      ...input,
+      configured: true,
+      declared: { context: SessionCompaction.GUESSED_WINDOW },
+    }),
+  ).toBe("a guess: zai reported no context size for glm-5.3-flash, and the models catalog does not list it")
+})
+
+/** A model whose window holds a few exchanges of this test's size, not the latest one whole. */
+const narrow = SessionRunnerModel.resolved(model, {
+  capabilities: { tools: true, input: ["text"], output: ["text"] },
+  cost,
+  limit: { context: 20_000, output: 2_000 },
+})
+
+it.effect("a long latest exchange is cut at the allowance when carrying it whole would not fit the window", () =>
+  Effect.gen(function* () {
+    const compaction = yield* SessionCompaction.Service
+    const session = yield* insertSession(Session.ID.make("ses_long_exchange"))
+    const steps = Array.from({ length: 6 }, (_, index) =>
+      measuredReply(index === 5 ? 32_000 : 0, `Step ${index} ${"work ".repeat(4_000)}`),
+    )
+    requests = []
+    expect(
+      yield* compaction.compact({
+        reason: "auto",
+        context: {
+          ...loaded(session, [userRequest("Earlier request"), measuredReply(100, "Earlier answer"), userRequest("Build it", 1), ...steps]),
+          model: narrow,
+        },
+      }),
+    ).toEqual({ status: "completed" })
+
+    // The 18k threshold cannot hold the 30k exchange, so the newest step stays verbatim and the rest is summarized.
+    const stored = (yield* (yield* SessionStore.Service).context(session.id))[0]
+    if (stored?.type !== "compaction" || stored.status !== "completed") throw new Error("Expected compaction")
+    expect(stored.recent).toContain("Step 5 ")
+    expect(stored.recent).not.toContain("Step 4 ")
+    expect(stored.recent).not.toContain("Build it")
+    const summarized = JSON.stringify(requests[0]?.messages)
+    expect(summarized).toContain("Build it")
+    expect(summarized).toContain("Step 4 ")
+    expect(summarized).not.toContain("Step 5 ")
+    expect(stored.summary).toContain("Build it")
+  }),
+)
+
+it.effect("ends with one message naming the numbers when no checkpoint can fit the window", () =>
+  Effect.gen(function* () {
+    const compaction = yield* SessionCompaction.Service
+    const session = yield* insertSession(Session.ID.make("ses_unfit_window"))
+    const huge = measuredReply(30_000, `Huge step ${"work ".repeat(20_000)}`)
+    requests = []
+    const outcome = yield* compaction.compact({
+      reason: "auto",
+      context: {
+        ...loaded(session, [userRequest("Earlier request"), measuredReply(100, "Earlier answer"), userRequest("Build it", 1), huge]),
+        model: narrow,
+      },
+    })
+
+    // The newest step alone is over the threshold: no summary is requested and nothing replaces the history.
+    expect(requests).toHaveLength(0)
+    expect(outcome).toMatchObject({ status: "failed", error: { type: "compaction.unavailable" } })
+    const message = outcome.status === "failed" ? outcome.error.message : ""
+    expect(message).toStartWith("Compaction cannot bring this conversation under the context window: 30,000 tokens of history, at least ")
+    expect(message).toMatch(
+      / after compaction \(the system prompt, instructions and tool definitions take \d+\), against a window of 20,000 tokens \(from the test model list or the models catalog\)\. /,
+    )
+    expect(message).toEndWith(
+      "Pick a model with a larger context window, or set providers.test.models.summary-model.limit.context in the configuration if the provider allows more.",
+    )
+    const stored = yield* (yield* SessionStore.Service).context(session.id)
+    expect(stored).toMatchObject([{ type: "compaction", status: "failed", error: { message } }])
   }),
 )

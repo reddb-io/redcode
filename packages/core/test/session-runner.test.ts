@@ -112,6 +112,7 @@ import { testEffect } from "./lib/effect"
 import { promptLocationNode } from "./fixture/prompt-location"
 import { LocationServiceMap } from "@opencode/core/location-service-map"
 import { Expected } from "./lib/session-message"
+import { Token } from "@opencode/core/util/token"
 import { permissionLayer } from "./lib/permission"
 import { agentHost, modelHost, host, noProviders } from "./plugin/host"
 import { CodeModeInstructions } from "@opencode/core/codemode/instructions"
@@ -183,6 +184,8 @@ const undersizedContextModel = testModel("undersized-context", { context: 1, out
 const recoveryModel = testModel("recovery", { context: 200_000, output: 1_000 })
 const fittedOutputModel = testModel("fitted-output", { context: 100_000, output: 64_000 })
 const smallWindowModel = testModel("small-window", { context: 64_000, output: 16_000 })
+// The window an endpoint gets for a model it reports no limit for and the catalog does not list.
+const guessedModel = testModel("guessed", { context: SessionCompaction.GUESSED_WINDOW, output: 8_192 })
 
 test("calculates step cost using the matching context tier", () => {
   expect(
@@ -809,6 +812,58 @@ const setupOverflowRecovery = Effect.fnUntraced(function* (s: Scenario) {
   s.currentModel = recoveryModel
   s.requests.length = 0
 })
+
+/**
+ * A provider whose real window is far larger than any the session believes in: it accepts every request and
+ * counts its tokens as the estimate does, answers a summary prompt with a checkpoint, and otherwise makes `steps`
+ * tool calls of about 15k tokens each before a final answer.
+ */
+const wideProvider = (s: Scenario) => {
+  const prompts = [
+    SessionCompaction.buildPrompt(false),
+    SessionCompaction.buildPrompt(true),
+    SessionCompaction.buildPrompt(true, true),
+  ]
+  const state = { steps: 0, calls: 0 }
+  const isSummary = (request: LLMRequest) => prompts.includes(userTexts(request).at(-1) ?? "")
+  const stream = Stream.suspend(() => {
+    const request = s.requests.at(-1)!
+    const size = SessionCompaction.estimateRequest(request)
+    const usage = { inputTokens: size, nonCachedInputTokens: size }
+    if (isSummary(request))
+      return Stream.fromIterable(
+        TestLLM.complete(
+          { reason: { normalized: "stop" }, usage },
+          LLMEvent.textStart({ id: "summary" }),
+          LLMEvent.textDelta({ id: "summary", text: checkpoint(`Summary ${s.requests.length}`) }),
+          LLMEvent.textEnd({ id: "summary" }),
+        ),
+      )
+    state.calls++
+    if (state.calls >= state.steps) {
+      state.calls = 0
+      return Stream.fromIterable(TestLLM.textWithUsage("Done", `done-${s.requests.length}`, size))
+    }
+    return Stream.fromIterable(
+      TestLLM.complete(
+        { reason: { normalized: "tool-calls" }, usage },
+        LLMEvent.toolCall({
+          id: `call-${s.requests.length}`,
+          name: "echo",
+          input: { text: `${s.requests.length} ${"lorem ipsum ".repeat(2_500)}` },
+        }),
+      ),
+    )
+  })
+  return {
+    stream,
+    isSummary,
+    set steps(value: number) {
+      state.steps = value
+      state.calls = 0
+    },
+  }
+}
 
 const messageTexts = (request: LLMRequest, role: "user" | "system") =>
   request.messages.flatMap((message) =>
@@ -4009,19 +4064,25 @@ describe("SessionRunnerLLM", () => {
     ])
   })
 
-  scenario("compacts before requesting an undersized configured context limit", function* (s) {
+  scenario("ends the turn instead of requesting an undersized configured context limit", function* (s) {
     yield* setupOverflowRecovery(s)
     s.currentModel = undersizedContextModel
     yield* s.llm.push(
-      TestLLM.text(checkpoint("Recover undersized limit"), "text-summary-undersized-limit"),
-      TestLLM.text("Recovered", "text-final-undersized-limit"),
+      TestLLM.text(checkpoint("Must not summarize"), "text-summary-undersized-limit"),
+      TestLLM.text("Must not run", "text-final-undersized-limit"),
     )
-    yield* s.runPrompt("Continue")
+    yield* s.admit("Continue")
+    const error = yield* s.resume.pipe(Effect.flip)
 
-    expect(s.requests).toHaveLength(2)
+    // Not even the system prompt fits a one-token window, so neither a summary nor a step is requested.
+    expect(error.message).toContain(" against a window of 1 tokens (from the fake model list or the models catalog). ")
+    expect(error.message).toContain("set providers.fake.models.undersized-context.limit.context in the configuration")
+    expect(s.requests).toHaveLength(0)
     expect(yield* s.context).toMatchObject([
-      { type: "compaction", summary: expect.stringContaining("## Objective\n- Recover undersized limit") },
+      Expected.user("Earlier question ".repeat(700)),
       { type: "assistant", finish: "stop" },
+      Expected.user("Continue"),
+      { type: "compaction", status: "failed", reason: "auto", error: { message: error.message } },
     ])
   })
 
@@ -4114,6 +4175,110 @@ describe("SessionRunnerLLM", () => {
     expect(userTexts(s.requests[0]).at(-1)).toContain("## Objective")
     expect(s.requests[0]?.generation?.maxTokens).toBe(16_000)
     expect(s.requests[1]?.generation?.maxTokens).toBe(16_000)
+  })
+
+  scenario("compacts a long exchange under a smaller window instead of carrying it whole", function* (s) {
+    // The report: a session grown to hundreds of thousands of tokens under a model with a 1M window, then the same
+    // model served by an endpoint that reports no limit, so the window is guessed at 115,200 tokens.
+    const provider = wideProvider(s)
+    yield* s.llm.always(provider.stream)
+    s.currentModel = testModel("wide", { context: 1_000_000, output: 32_000 })
+    provider.steps = 1
+    yield* s.runPrompt("Earlier request")
+    provider.steps = 30
+    yield* s.runPrompt("Build the thing")
+    expect(SessionCompaction.estimateRequest(s.requests.at(-1)!)).toBeGreaterThan(400_000)
+
+    s.currentModel = guessedModel
+    s.requests.length = 0
+    provider.steps = 12
+    yield* s.runPrompt("Continue")
+
+    // One checkpoint summarizes the long exchange down to its newest steps; before, the exchange was kept verbatim,
+    // the next step went out at 227k tokens with 1,024 output tokens, and the one after compacted all over again.
+    const steps = s.requests.filter((request) => !provider.isSummary(request))
+    expect(provider.isSummary(s.requests[0]!)).toBeTrue()
+    expect(SessionCompaction.estimateRequest(steps[0]!)).toBeLessThan(20_000)
+    for (const request of steps) {
+      expect(SessionCompaction.estimateRequest(request)).toBeLessThanOrEqual(SessionCompaction.GUESSED_WINDOW)
+      expect(request.generation?.maxTokens).toBe(8_192)
+    }
+    const checkpoints = (yield* s.messages).toReversed().filter((message) => message.type === "compaction")
+    expect(checkpoints.every((message) => message.status === "completed")).toBeTrue()
+    const first = checkpoints[0]
+    if (first?.status !== "completed") throw new Error("Expected a completed checkpoint")
+    expect(Token.estimate(first.recent)).toBeLessThan(12_000)
+    expect(first.recent).toContain("[User]: Continue")
+    expect(yield* s.context).toMatchObject([{ type: "compaction" }, { type: "assistant", finish: "stop" }])
+  })
+
+  scenario("ends the turn with one message when no checkpoint can fit the window", function* (s) {
+    const provider = wideProvider(s)
+    yield* s.llm.always(provider.stream)
+    s.currentModel = testModel("wide", { context: 1_000_000, output: 32_000 })
+    provider.steps = 1
+    yield* s.runPrompt("Earlier request")
+    provider.steps = 8
+    yield* s.runPrompt("Build the thing")
+    // A fixed prompt over the guessed window: no summary can bring the next request under it.
+    const agents = yield* Agent.Service
+    yield* agents.transform((editor) =>
+      editor.update(Agent.defaultID, (agent) => {
+        agent.system = "Rules ".repeat(70_000)
+      }),
+    )
+    s.currentModel = guessedModel
+    s.requests.length = 0
+    const store = yield* SessionStore.Service
+    const before = yield* store.context(sessionID)
+
+    yield* s.admit("Continue")
+    const error = yield* s.resume.pipe(Effect.flip)
+
+    expect(error.message).toStartWith(
+      "Compaction cannot bring this conversation under the context window: ",
+    )
+    expect(error.message).toContain(
+      " after compaction (the system prompt, instructions and tool definitions take 105,0",
+    )
+    expect(error.message).toContain(
+      " against a window of 115,200 tokens (a guess: fake reported no context size for guessed, and the models catalog does not list it). ",
+    )
+    expect(error.message).toEndWith(
+      "Pick a model with a larger context window, or set providers.fake.models.guessed.limit.context in the configuration if the provider allows more.",
+    )
+    // No summary was requested, no step was sent, and the history stays intact for a model that can hold it.
+    expect(s.requests).toHaveLength(0)
+    expect((yield* store.context(sessionID)).slice(0, before.length)).toEqual(before)
+    expect((yield* s.messages).filter((message) => message.type === "compaction")).toMatchObject([
+      { status: "failed", reason: "auto", error: { type: "compaction.unavailable", message: error.message } },
+    ])
+
+    // Another prompt ends the same way at no cost: nothing loops.
+    yield* s.admit("Try again")
+    expect((yield* s.resume.pipe(Effect.flip)).message).toContain(" against a window of 115,200 tokens (a guess: ")
+    expect(s.requests).toHaveLength(0)
+  })
+
+  scenario("elides a rejected whole compaction request to the target, not to 70% of its size", function* (s) {
+    const provider = wideProvider(s)
+    yield* s.llm.always(provider.stream)
+    s.currentModel = testModel("wide", { context: 1_000_000, output: 32_000 })
+    provider.steps = 10
+    yield* s.runPrompt("Build the thing")
+    s.currentModel = smallWindowModel
+    s.requests.length = 0
+    // One exchange cannot be shortened at an exchange boundary, so it is sent whole; a 64k provider rejects it.
+    yield* s.llm.push([LLMEvent.providerError({ message: "prompt too long", classification: "context-overflow" })])
+    provider.steps = 1
+    yield* s.runPrompt("Continue")
+
+    const summaries = s.requests.filter(provider.isSummary)
+    expect(summaries).toHaveLength(2)
+    expect(SessionCompaction.estimateRequest(summaries[0]!)).toBeGreaterThan(100_000)
+    // 70% of the rejected request would still be well over the 48k threshold of a 64k window.
+    expect(SessionCompaction.estimateRequest(summaries[1]!)).toBeLessThanOrEqual(48_000)
+    expect(yield* s.context).toMatchObject([{ type: "compaction", status: "completed" }, { type: "assistant" }])
   })
 
   scenario("publishes the original overflow when recovery summarization fails", function* (s) {

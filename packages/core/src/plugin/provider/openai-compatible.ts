@@ -3,9 +3,6 @@ import { Form } from "@opencode/schema/form"
 import { Effect, Option, Schema } from "effect"
 import { Config } from "../../config.js"
 import { Integration } from "../../integration.js"
-import { ModelLimit } from "../../model-limit.js"
-import { ModelsDev } from "../../models-dev.js"
-import { catalogLimits, knownLimit, type CatalogLimits } from "./catalog-limits.js"
 import { Provider } from "../../provider.js"
 import { RemoteCheck } from "../../remote-check.js"
 import { ConnectionCheck } from "@opencode/schema/connection-check"
@@ -16,9 +13,11 @@ import { ConnectionCheck } from "@opencode/schema/connection-check"
  * and files the key in the credential store under the new provider's own integration, never in configuration.
  *
  * The URL and the key are all it asks: the models and their limits come from `/models`, and the provider ID and
- * display name come from the host. Everything else sits behind one "customize" question. A limit the endpoint does
- * not report is taken from the models catalog, and one the catalog lacks is guessed and later corrected by the size
- * refusals the provider sends (see `ModelLimit`).
+ * display name come from the host. Everything else sits behind one "customize" question. Only a limit the endpoint
+ * reported or the user entered is written: a limit the endpoint does not report is resolved from the models catalog
+ * every time the provider is loaded (`ConfigProviderPlugin`), and one the catalog lacks is guessed there and later
+ * corrected by the size refusals the provider sends (see `ModelLimit`). A guess is never written, so the catalog
+ * learning a model later reaches it.
  *
  * An endpoint that turns out to be a RedRouter is not a generic endpoint: it is connected as the RedRouter
  * integration, which reads its own catalog, routes, key role and capabilities.
@@ -35,9 +34,6 @@ const API_KEY = /^[\x21-\x7e]+$/
 const SECRET_HEADER = /^(authorization|proxy-authorization|x-api-key|api-key)$/i
 const MAX_HEADERS = 32
 const MAX_ENTERED_MODELS = 500
-/** Limits for a model the endpoint does not describe: a guess that keeps proactive compaction working. */
-const DEFAULT_CONTEXT = 128_000
-const DEFAULT_OUTPUT = 8_192
 
 /** The fields shown only when the user asks to customize the connection. */
 const ADVANCED = [{ key: "advanced", op: "eq" as const, value: true }]
@@ -137,12 +133,7 @@ export const OpenAICompatiblePlugin = define({
           label: endpoint.name,
           configuration: { baseURL: endpoint.baseURL },
         })
-      const catalog = yield* Effect.serviceOption(ModelsDev.Service).pipe(
-        Effect.flatMap((service) => (Option.isSome(service) ? service.value.get() : Effect.succeed([]))),
-        Effect.map(catalogLimits),
-        Effect.orElseSucceed(() => catalogLimits([])),
-      )
-      const provider = providerConfig(endpoint, listed, catalog)
+      const provider = providerConfig(endpoint, listed)
       if (Object.keys(provider.models).length === 0)
         return yield* Effect.fail(
           new Error(
@@ -404,8 +395,11 @@ const prepared = (value: Integration.KeyPrepared): Integration.KeyPrepared => va
 
 const isRecord = (value: unknown): value is Record<string, unknown> => typeof value === "object" && value !== null
 
-/** The provider as written under `providers.<id>` in the global configuration. */
-export function providerConfig(endpoint: Endpoint, listed: ReadonlyArray<Listed>, catalog?: CatalogLimits) {
+/**
+ * The provider as written under `providers.<id>` in the global configuration. A model's `limit` holds only what the
+ * endpoint reported or the user entered; a model without one is resolved from the catalog, or guessed, on each load.
+ */
+export function providerConfig(endpoint: Endpoint, listed: ReadonlyArray<Listed>) {
   const byID = new Map(listed.filter((model) => model.id.trim()).map((model) => [model.id, model]))
   const ids = [...new Set([...byID.keys(), ...endpoint.models])]
   return {
@@ -417,7 +411,6 @@ export function providerConfig(endpoint: Endpoint, listed: ReadonlyArray<Listed>
       ids.map((id) => {
         const model = byID.get(id)
         const display = model?.display_name?.trim() || model?.name?.trim()
-        const known = catalog ? knownLimit(catalog, id) : undefined
         const context =
           endpoint.context ??
           positive([
@@ -428,21 +421,16 @@ export function providerConfig(endpoint: Endpoint, listed: ReadonlyArray<Listed>
             model?.max_model_len,
             model?.top_provider?.context_length,
             model?.meta?.n_ctx_train,
-          ]) ??
-          known?.context ??
-          ModelLimit.conservative(DEFAULT_CONTEXT)
-        const output = Math.min(
+          ])
+        const reported =
           endpoint.output ??
-            positive([
-              model?.max_completion_tokens,
-              model?.max_output_tokens,
-              model?.top_provider?.max_completion_tokens,
-            ]) ??
-            known?.output ??
-            DEFAULT_OUTPUT,
-          context,
-        )
-        return [id, { name: display || id, limit: { context, output } }] as const
+          positive([model?.max_completion_tokens, model?.max_output_tokens, model?.top_provider?.max_completion_tokens])
+        const output = reported === undefined || context === undefined ? reported : Math.min(reported, context)
+        const limit = {
+          ...(context === undefined ? {} : { context }),
+          ...(output === undefined ? {} : { output }),
+        }
+        return [id, { name: display || id, ...(Object.keys(limit).length ? { limit } : {}) }] as const
       }),
     ),
   }

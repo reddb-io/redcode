@@ -4,22 +4,65 @@ import { define } from "@opencode/plugin/effect/plugin"
 import { Document, type Entry } from "@opencode/schema/config"
 import { ConfigProvider } from "@opencode/schema/config/provider"
 import { Money } from "@opencode/schema/money"
-import { Effect } from "effect"
+import { Effect, Stream } from "effect"
+import { Bus } from "../../bus.js"
 import { Config } from "../../config.js"
 import { Model } from "../../model.js"
+import { ModelsDev } from "../../models-dev.js"
+import {
+  catalogLimits,
+  knownLimit,
+  undescribedLimit,
+  type CatalogLimits,
+} from "../../plugin/provider/catalog-limits.js"
 import { Provider } from "../../provider.js"
 import { Variant } from "../../variant.js"
 import { ConfigModelReasoningV1 } from "../../v1/config/model-reasoning.js"
 import { ConfigEntryObserver } from "./entry-observer.js"
 
+/** Generic OpenAI-compatible endpoints: nothing but their `/models`, the configuration and the catalog describes a model. */
+const GENERIC_PACKAGES = new Set([
+  "@opencode/ai/providers/openai-compatible",
+  "@opencode/ai/providers/openai-compatible-responses",
+])
+
 export const Plugin = define({
   id: "opencode.config.provider",
   effect: Effect.fn(function* (ctx) {
     const config = yield* Config.Service
+    const modelsDev = yield* ModelsDev.Service
+    const bus = yield* Bus.Service
+    // A configured model that no catalog or discovery describes takes its limits from the current models catalog on
+    // every fold, so a model the catalog learns later is not stuck with a guess (see `undescribedLimit`).
+    const catalog = { limits: catalogLimits(yield* modelsDev.get()) }
+    // Evaluated after `loaded` exists: the observer only runs it on later configuration updates.
+    const warnWithoutCatalog: Effect.Effect<void> = Effect.suspend(() => {
+      const undescribed = configuredProviders(loaded.entries).flatMap(([id, provider]) =>
+        Object.entries(provider.models ?? {}).flatMap(([modelID, model]) =>
+          authoredLimit(model.limit).context === undefined ? [`${id}/${modelID}`] : [],
+        ),
+      )
+      if (catalog.limits.size > 0 || undescribed.length === 0) return Effect.void
+      return Effect.logWarning(
+        "The models catalog is empty, so configured models without a limit of their own are guessed until it loads",
+        { models: undescribed.slice(0, 20), count: undescribed.length },
+      )
+    })
     const loaded = yield* ConfigEntryObserver.observe(
       config,
       ctx.event,
-      ctx.integration.reload().pipe(Effect.andThen(ctx.provider.reload())),
+      warnWithoutCatalog.pipe(Effect.andThen(ctx.integration.reload()), Effect.andThen(ctx.provider.reload())),
+    )
+    yield* warnWithoutCatalog
+    yield* bus.subscribe(ModelsDev.Event.Refreshed).pipe(
+      Stream.runForEach(() =>
+        modelsDev.get().pipe(
+          Effect.tap((data) => Effect.sync(() => (catalog.limits = catalogLimits(data)))),
+          Effect.andThen(warnWithoutCatalog),
+          Effect.andThen(ctx.model.reload()),
+        ),
+      ),
+      Effect.forkScoped({ startImmediately: true }),
     )
     yield* ctx.integration.transform((integrations) => {
       for (const [id, provider] of configuredProviders(loaded.entries)) {
@@ -48,17 +91,29 @@ export const Plugin = define({
         ConfigProvider.Info,
         {
           readonly providerID: string
-          readonly models: ReadonlyMap<string, { readonly inherit: boolean; readonly base?: Model.Info }>
+          /** Whether the configuration declares a generic OpenAI-compatible endpoint for this provider. */
+          readonly generic: boolean
+          readonly models: ReadonlyMap<
+            string,
+            { readonly inherit: boolean; readonly base?: Model.Info; readonly described: boolean }
+          >
         }
       >(),
     }
     yield* ctx.provider.transform((providers) => {
       const next: typeof sources.models = new Map()
+      // Models that configuration alone brought into being: no catalog, discovery or canonical provider describes
+      // them, so their limits are resolved in the model fold below.
+      const undescribed = new Set<string>()
+      const packages = new Map<string, string | undefined>()
       for (const [id, item] of configuredProviders(loaded.entries)) {
         const providerID = id
         const current = providers.get(providerID)
-        const source = providers.get(item.canonical ?? current?.provider.canonical ?? providerID)
+        const sourceID = item.canonical ?? current?.provider.canonical ?? providerID
+        const source = providers.get(sourceID)
         const changed = item.canonical !== undefined && item.canonical !== current?.provider.canonical
+        const declaredPackage = item.package ?? packages.get(providerID)
+        packages.set(providerID, declaredPackage)
         providers.update(providerID, (provider) => {
           if (changed && source && source.provider !== provider)
             Object.assign(provider, structuredClone(source.provider), {
@@ -73,13 +128,20 @@ export const Plugin = define({
           if (item.headers !== undefined) provider.headers = Provider.mergeHeaders(provider.headers, item.headers)
           if (item.body !== undefined) provider.body = Provider.mergeOverlay(provider.body, item.body)
         })
-        const definitions = new Map<string, { readonly inherit: boolean; readonly base?: Model.Info }>()
+        const definitions = new Map<
+          string,
+          { readonly inherit: boolean; readonly base?: Model.Info; readonly described: boolean }
+        >()
         for (const [id, config] of Object.entries(item.models ?? {})) {
-          const base = source?.models.get(config.modelID ?? id) ?? source?.models.get(id)
+          const baseID = source?.models.has(config.modelID ?? id) ? (config.modelID ?? id) : id
+          const base = source?.models.get(baseID)
           const inherit = changed || !current?.models.has(id)
+          const described = base !== undefined && !undescribed.has(`${sourceID}/${baseID}`)
+          if (described) undescribed.delete(`${providerID}/${id}`)
+          else undescribed.add(`${providerID}/${id}`)
           // Bind the source at this point in the provider fold. Later source edits/removal
           // and its credential availability must not change an already-defined alias.
-          definitions.set(id, { inherit, base: base && structuredClone(base) })
+          definitions.set(id, { inherit, base: base && structuredClone(base), described })
           if (!inherit) continue
           providers.models.update(providerID, id, (model) => {
             if (base) Object.assign(model, structuredClone(base))
@@ -87,7 +149,7 @@ export const Plugin = define({
             if (item.settings?.baseURL !== undefined && model.settings) delete model.settings.baseURL
           })
         }
-        next.set(item, { providerID, models: definitions })
+        next.set(item, { providerID, generic: GENERIC_PACKAGES.has(declaredPackage ?? ""), models: definitions })
       }
       sources.defaultModel = Config.latest(loaded.entries, "model")
       sources.models = next
@@ -99,6 +161,9 @@ export const Plugin = define({
       const configuredDefault = sources.defaultModel
       if (configuredDefault !== undefined) models.default.set(configuredDefault.providerID, configuredDefault.model)
       const filters = new Map<string, { include?: readonly string[]; exclude?: readonly string[] }>()
+      // What every configuration document so far declares for a model, so a later document's partial limit
+      // completes an earlier one instead of resolving it again.
+      const authored = new Map<string, Authored>()
       for (const [item, definition] of sources.models) {
         const providerID = definition.providerID
         if (item.includeModels !== undefined || item.excludeModels !== undefined) {
@@ -111,6 +176,8 @@ export const Plugin = define({
         for (const [id, config] of Object.entries(item.models ?? {})) {
           const source = definition.models.get(id)
           const inherit = source?.inherit || !models.get(providerID, id)
+          const declared = { ...authored.get(`${providerID}/${id}`), ...authoredLimit(config.limit) }
+          authored.set(`${providerID}/${id}`, declared)
           models.update(providerID, id, (model) => {
             if (inherit && source?.base) {
               Object.assign(model, structuredClone(source.base))
@@ -128,7 +195,12 @@ export const Plugin = define({
             if (config.body !== undefined) model.body = Provider.mergeOverlay(model.body, config.body)
             if (config.capabilities !== undefined)
               model.capabilities = Model.overlayCapabilities(model.capabilities, config.capabilities)
-            if (config.limit !== undefined) model.limit = { ...model.limit, ...config.limit }
+            const resolved =
+              source && !source.described
+                ? resolveLimit(declared, catalog.limits, [model.modelID, id], definition.generic)
+                : undefined
+            if (resolved) model.limit = resolved
+            else if (config.limit !== undefined) model.limit = { ...model.limit, ...config.limit }
             if (config.capabilities?.reasoning === true) {
               const defaults = ConfigModelReasoningV1.defaults({
                 providerID,
@@ -226,4 +298,47 @@ function configuredProviders(entries: readonly Entry[]) {
   return entries
     .filter((entry): entry is Document => entry.type === "document")
     .flatMap((file) => Object.entries(file.info.providers ?? {}))
+}
+
+type Authored = { readonly context?: number; readonly input?: number; readonly output?: number }
+
+/**
+ * What the configuration declares for a model, without the guess an older wizard froze into it: a guess was never a
+ * fact, so it is resolved again. The output written beside a guessed context was the default or the guess itself
+ * unless the endpoint reported it.
+ */
+function authoredLimit(limit: Authored | undefined): Authored {
+  if (!limit) return {}
+  const frozen = limit.context === undescribedLimit.context
+  const guessedOutput = frozen && (limit.output === undescribedLimit.output || limit.output === limit.context)
+  return {
+    ...(limit.context === undefined || frozen ? {} : { context: limit.context }),
+    ...(limit.input === undefined ? {} : { input: limit.input }),
+    ...(limit.output === undefined || guessedOutput ? {} : { output: limit.output }),
+  }
+}
+
+/**
+ * The limits of a model that configuration alone defines: its own numbers first, then what the catalog knows under
+ * its ids, then the guess on a generic OpenAI-compatible endpoint. Elsewhere a model the catalog does not know
+ * keeps its defaults, so nothing is returned.
+ */
+function resolveLimit(
+  declared: Authored,
+  limits: CatalogLimits,
+  ids: readonly string[],
+  generic: boolean,
+): Model.Info["limit"] | undefined {
+  const known =
+    declared.context !== undefined && declared.output !== undefined
+      ? undefined
+      : ids.map((id) => knownLimit(limits, id)).find((entry) => entry !== undefined)
+  const fallback = known ?? (generic ? undescribedLimit : undefined)
+  if (!fallback) return undefined
+  const context = declared.context ?? fallback.context
+  return {
+    context,
+    ...(declared.input === undefined ? {} : { input: declared.input }),
+    output: declared.output ?? Math.min(fallback.output, context),
+  }
 }

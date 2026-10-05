@@ -8,7 +8,6 @@ import { PluginHost } from "@opencode/core/plugin/host"
 import { Document, Info } from "@opencode/schema/config"
 import { testEffect } from "../lib/effect"
 import { PluginTestLayer } from "./fixture"
-import { catalogLimits, knownLimit } from "@opencode/core/plugin/provider/catalog-limits"
 import {
   deriveProviderID,
   discover,
@@ -187,24 +186,33 @@ describe("OpenAI-compatible wizard answers", () => {
       { id: "llamacpp", meta: { n_ctx_train: 8_192 } },
       { id: "silent" },
     ])
-    expect(config.models.vllm?.limit.context).toBe(32_768)
-    expect(config.models.lmstudio?.limit.context).toBe(16_384)
+    expect(config.models.vllm?.limit?.context).toBe(32_768)
+    expect(config.models.lmstudio?.limit?.context).toBe(16_384)
     expect(config.models.openrouter?.limit).toEqual({ context: 200_000, output: 16_000 })
-    expect(config.models.llamacpp?.limit.context).toBe(8_192)
-    expect(config.models.silent?.limit.context).toBeGreaterThan(0)
+    expect(config.models.llamacpp?.limit?.context).toBe(8_192)
+    // A limit the endpoint did not report is not written: the load resolves it from the current catalog, or guesses.
+    expect(config.models.silent).toEqual({ name: "silent" })
   })
 
-  test("writes discovered and entered models with their limits", () => {
+  test("writes discovered and entered models with the limits reported or entered, never a guess", () => {
     const config = providerConfig(endpoint({ baseURL: "https://api.example.com/v1", models: "gamma", output: 2_000 }), [
       { id: "alpha", name: "Alpha", context_length: 64_000 },
+      { id: "beta", max_completion_tokens: 16_000 },
     ])
     expect(config.package).toBe("@opencode/ai/providers/openai-compatible")
     expect(config.settings).toEqual({ baseURL: "https://api.example.com/v1", provider: "local" })
     expect(config.models.alpha).toEqual({ name: "Alpha", limit: { context: 64_000, output: 2_000 } })
-    expect(config.models.gamma?.name).toBe("gamma")
-    expect(config.models.gamma?.limit.output).toBe(2_000)
-    expect(config.models.gamma?.limit.context).toBeLessThan(128_000)
+    // An entered output applies to every model; a context nobody reported stays unwritten.
+    expect(config.models.beta).toEqual({ name: "beta", limit: { output: 2_000 } })
+    expect(config.models.gamma).toEqual({ name: "gamma", limit: { output: 2_000 } })
     expect(config).not.toHaveProperty("headers")
+    const reported = providerConfig(endpoint({ baseURL: "https://api.example.com/v1" }), [
+      { id: "beta", max_completion_tokens: 16_000 },
+      { id: "small", context_length: 8_000, max_completion_tokens: 16_000 },
+    ])
+    expect(reported.models.beta).toEqual({ name: "beta", limit: { output: 16_000 } })
+    // A reported output never exceeds the reported context.
+    expect(reported.models.small).toEqual({ name: "small", limit: { context: 8_000, output: 8_000 } })
   })
 })
 
@@ -253,31 +261,9 @@ describe("OpenAI-compatible discovery", () => {
   })
 })
 
-describe("OpenAI-compatible endpoints that the catalog and the router know", () => {
+describe("OpenAI-compatible endpoints that the router knows", () => {
   const base = `http://127.0.0.1:${server.port}`
   const at = (path: string) => endpoint({ baseURL: `${base}${path}` })
-
-  test("takes a limit the endpoint did not report from the models catalog, dropping router prefixes", () => {
-    const limits = new Map([
-      ["gpt-4o", { context: 128_000, output: 16_384 }],
-      ["claude-sonnet", { context: 200_000, output: 64_000 }],
-    ])
-    expect(knownLimit(limits, "gpt-4o")).toEqual({ context: 128_000, output: 16_384 })
-    expect(knownLimit(limits, "openai/gpt-4o")).toEqual({ context: 128_000, output: 16_384 })
-    expect(knownLimit(limits, "cc/anthropic/claude-sonnet")?.context).toBe(200_000)
-    expect(knownLimit(limits, "unknown-model")).toBeUndefined()
-
-    const config = providerConfig(
-      endpoint({ baseURL: "https://gw.example.com/v1" }),
-      [{ id: "openai/gpt-4o" }, { id: "vllm-own", max_model_len: 32_768 }, { id: "mystery" }],
-      limits,
-    )
-    expect(config.models["openai/gpt-4o"]?.limit).toEqual({ context: 128_000, output: 16_384 })
-    // What the endpoint reports wins over the catalog.
-    expect(config.models["vllm-own"]?.limit.context).toBe(32_768)
-    expect(config.models.mystery?.limit.context).toBeLessThan(128_000)
-    expect(catalogLimits([]).size).toBe(0)
-  })
 
   test("recognizes a RedRouter by its capabilities or by serving only System One models", async () => {
     expect(await Effect.runPromise(isRedRouter(at("/rr/v1"), "sk-good"))).toBe(true)

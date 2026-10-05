@@ -1,7 +1,13 @@
 import { describe, expect, test } from "bun:test"
-import type { SessionMessageInfo } from "@opencode/client"
+import type { ModelInfo, SessionMessageInfo } from "@opencode/client"
 import { Locale } from "../../src/util/locale"
-import { lastAssistantWithUsage, retryStatus, sessionFamily } from "../../src/util/session"
+import {
+  contextUsage,
+  formatContextUsage,
+  lastAssistantWithUsage,
+  retryStatus,
+  sessionFamily,
+} from "../../src/util/session"
 
 const assistant = (id: string, input: number): SessionMessageInfo => ({
   id,
@@ -78,5 +84,25 @@ describe("util.session", () => {
         seconds: 0,
       }),
     ).toBe(`Retry due · Gemini 3.7 Flash quota exhausted until ${Locale.time(at)} · attempt 3 · Usage limit reached`)
+  })
+})
+
+describe("util.session context usage", () => {
+  const messages = [assistant("msg_a", 321_000)]
+  const model = (context: number) =>
+    ({ providerID: "provider", id: "model", limit: { context, output: 8_192 } }) as unknown as ModelInfo
+
+  test("reports the window the percentage is of", () => {
+    expect(contextUsage(messages, [model(115_200)])).toEqual({ tokens: 321_000, limit: 115_200, percent: 279 })
+    // A model entry without a window gives neither a percentage nor a window.
+    expect(contextUsage(messages, [model(0)])).toEqual({ tokens: 321_000, limit: undefined, percent: undefined })
+    expect(contextUsage(messages, [])).toEqual({ tokens: 321_000, limit: undefined, percent: undefined })
+  })
+
+  test("formats the usage against its window compactly", () => {
+    expect(formatContextUsage(321_000, 279, 115_200)).toBe("321.0K / 115.2K (279%)")
+    expect(formatContextUsage(14_100, 1, 1_000_000)).toBe("14.1K / 1.0M (1%)")
+    expect(formatContextUsage(14_100, 1)).toBe("14.1K (1%)")
+    expect(formatContextUsage(14_100)).toBe("14.1K")
   })
 })
