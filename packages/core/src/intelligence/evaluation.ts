@@ -207,14 +207,27 @@ export function questions(checks: Record<string, string>): Record<string, Intell
   )
 }
 
+/**
+ * What a gate question asks, in the words a model can act on. A refusal that only names `task_0_criterion`
+ * leaves it to guess what to change, and it retries the same update until the loop guard stops the turn.
+ */
+const ISSUE_MEANING: ReadonlyArray<readonly [RegExp, string]> = [
+  [/^coverage$/, "it claims more than the selected requirement covers, or relies on truncated source text"],
+  [/^task_\d+_scope$/, "the task contradicts its source requirement or adds unrelated work"],
+  [/^task_\d+_criterion$/, "the task has no observable acceptance criterion; state how its completion is checked"],
+  [/^task_\d+_evidence$/, "the task is marked complete without successful, relevant evidence for its whole criterion"],
+]
+
 export function issueSummary(record: Intelligence.Evaluation) {
   return record.issues
-    .map((issue) =>
-      issue
+    .map((issue) => {
+      const text = issue
         .replace(/^Evaluation unavailable: /, "")
         .replace(/ Previous state preserved\.$/, "")
-        .replace(/\.+$/, ""),
-    )
+        .replace(/\.+$/, "")
+      const meaning = ISSUE_MEANING.find(([pattern]) => pattern.test(text))?.[1]
+      return meaning ? `${text} (${meaning})` : text
+    })
     .join(", ")
 }
 

@@ -149,7 +149,9 @@ export const Plugin = {
         root = parent
       }
       if (!root) return false
-      const environment = yield* sessions.environment({ sessionID: root.id }).pipe(Effect.orElseSucceed(() => undefined))
+      const environment = yield* sessions
+        .environment({ sessionID: root.id })
+        .pipe(Effect.orElseSucceed(() => undefined))
       return ShellGuard.lifted(environment, process.env)
     })
 
@@ -296,11 +298,13 @@ export const Plugin = {
           execute: (input, context) => {
             const polling = input.background === true ? undefined : ShellPolling.detect(input.command)
             if (polling)
-              return Effect.fail(new ToolFailure({
-                message: polling.probe
-                  ? ShellPolling.probeRefusal(polling, input.workdir)
-                  : ShellPolling.boundedRefusal(polling, input.workdir),
-              }))
+              return Effect.fail(
+                new ToolFailure({
+                  message: polling.probe
+                    ? ShellPolling.probeRefusal(polling, input.workdir)
+                    : ShellPolling.boundedRefusal(polling, input.command, input.workdir),
+                }),
+              )
             return Effect.gen(function* () {
               const timeout = input.background === true ? (input.timeout ?? 0) : (input.timeout ?? DEFAULT_TIMEOUT_MS)
               let finalTimeout = timeout
@@ -349,9 +353,10 @@ export const Plugin = {
                 const result = yield* shell.result(info)
                 if (!result.capture) return yield* new Shell.NotFoundError({ id: info.id })
                 const shown = ShellResult.output(result)
-                const whole = shell
-                  .output(info.id, { limit: VaultCapture.MAX_BYTES })
-                  .pipe(Effect.map((page) => page.output), Effect.orDie)
+                const whole = shell.output(info.id, { limit: VaultCapture.MAX_BYTES }).pipe(
+                  Effect.map((page) => page.output),
+                  Effect.orDie,
+                )
                 const output = { ...shown, output: yield* vaultOutput(whole, shown, input.capture, hosts, binding) }
                 return {
                   ...output,

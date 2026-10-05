@@ -216,7 +216,9 @@ function durationMs(args: string, powershell: boolean) {
     if (word.toLowerCase() === "infinity") return Number.POSITIVE_INFINITY
     const match = /^(\d+(?:\.\d+)?)([smhd]?)$/.exec(word)
     if (!match) return undefined
-    const scale = { "": 1_000, s: 1_000, m: 60_000, h: 3_600_000, d: 86_400_000 }[match[2] as "" | "s" | "m" | "h" | "d"]
+    const scale = { "": 1_000, s: 1_000, m: 60_000, h: 3_600_000, d: 86_400_000 }[
+      match[2] as "" | "s" | "m" | "h" | "d"
+    ]
     total += Number(match[1]) * scale
   }
   return total
@@ -828,7 +830,12 @@ export function probeCall(suggestion: ProbeSuggestion, workdir?: string) {
     suggestion.probe.type === "file" && workdir && !/^(?:\/|[A-Za-z]:[\\/])/.test(suggestion.probe.path)
       ? { ...suggestion.probe, path: `${workdir.replace(/[\\/]+$/, "")}/${suggestion.probe.path}` }
       : suggestion.probe
-  return JSON.stringify({ action: "probe", probe, interval_ms: suggestion.interval_ms, deadline_ms: suggestion.deadline_ms })
+  return JSON.stringify({
+    action: "probe",
+    probe,
+    interval_ms: suggestion.interval_ms,
+    deadline_ms: suggestion.deadline_ms,
+  })
 }
 
 export function detect(command: string): Detection | undefined {
@@ -1021,23 +1028,13 @@ export function probeRefusal(detection: Detection, workdir?: string) {
   return lines.join("\n")
 }
 
-/** Under the long-sleep threshold: five tries five seconds apart. */
-const BOUNDED_TRIES = 5
-const BOUNDED_SLEEP_S = 5
-
-/** A retry loop that gives up within 25 s, so the guard lets it run. */
-export function boundedWait(suggestion: Suggestion) {
-  const success = suggestion.monitor.mode === "poll" ? suggestion.monitor.success_contains : undefined
-  const check = success ? `${suggestion.command} | grep -q '${success.replaceAll("'", "'\\''")}'` : suggestion.command
-  const tries = Array.from({ length: BOUNDED_TRIES }, (_, index) => index + 1).join(" ")
-  return `for i in ${tries}; do ${check} && break; sleep ${BOUNDED_SLEEP_S}; done`
-}
-
 /**
- * The refusal when a shell check cannot be represented by a native monitor probe.
- * The shell tool can still run an independent long command in the background.
+ * The refusal when a shell wait cannot be represented by a native monitor probe (a CI check, a deploy, a job
+ * status: nothing a native probe observes). The shell tool's own `background` mode is the monitor for those: the
+ * command runs on, the turn is released and the session resumes when it exits. It is handed over as the exact
+ * call, because a model refused without one writes its own retry loop and holds the turn anyway.
  */
-export function boundedRefusal(detection: Detection, workdir?: string) {
+export function boundedRefusal(detection: Detection, command: string, workdir?: string) {
   const held = detection.waitMs !== undefined ? ` for up to ${duration(detection.waitMs)}` : ""
   const lines = [
     detection.kind === "loop"
@@ -1045,10 +1042,7 @@ export function boundedRefusal(detection: Detection, workdir?: string) {
       : detection.kind === "watch"
         ? "Not run: this command watches a job until it ends, which blocks the turn for as long as the job runs."
         : `Not run: this command sleeps${held}, which blocks the turn. Sleeps shorter than ${duration(LONG_SLEEP_MS)} are allowed.`,
-    "This wait cannot be converted to a native monitor probe. Run an independent long command with shell.background, or check the status once and report it.",
   ]
-  if (detection.before)
-    lines.push(`Run the part before the wait first, as its own shell call without any sleep: ${detection.before}`)
   const suggestion = detection.suggestion
   if (suggestion?.monitor.mode === "once") {
     lines.push(
@@ -1056,18 +1050,14 @@ export function boundedRefusal(detection: Detection, workdir?: string) {
       JSON.stringify({ command: suggestion.command, ...(workdir ? { workdir } : {}) }),
     )
   } else {
-    const check = suggestion ?? EXAMPLES[0]
     lines.push(
-      suggestion
-        ? "Instead, run the check once now with this shell call, report the status, and ask the user whether to check again later:"
-        : "Instead, run a status check once now, report the status, and ask the user whether to check again later. For example:",
-      JSON.stringify({ command: check.command, ...(workdir ? { workdir } : {}) }),
-      `If it should be ready within seconds, use a single bounded wait under ${duration(LONG_SLEEP_MS)} instead:`,
-      JSON.stringify({ command: boundedWait(check), ...(workdir ? { workdir } : {}) }),
+      "Run the same command in the background instead. The turn is released and this session resumes with the output when the command exits, so there is nothing to poll:",
+      JSON.stringify({ command, background: true, ...(workdir ? { workdir } : {}) }),
     )
   }
-  if (detection.after) lines.push(`Once the check reports success, run what came after the wait as its own shell call: ${detection.after}`)
-  lines.push("Do not retry with a longer sleep or a larger timeout.")
+  lines.push(
+    "Then end your response or do independent work. Do not write your own retry loop (for i in 1 2 3 …) or sleep in the foreground, do not retry with a longer sleep or a larger timeout, and do not start the same command twice.",
+  )
   return lines.join("\n")
 }
 

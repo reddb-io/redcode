@@ -44,3 +44,36 @@ describe("IntelligenceEvaluation.decide", () => {
       })
   })
 })
+
+describe("IntelligenceEvaluation.issueSummary", () => {
+  const record = (issues: string[]): Parameters<typeof IntelligenceEvaluation.issueSummary>[0] => ({
+    id: "eval_1",
+    fingerprint: "fp",
+    sessionID: "ses_1",
+    operation: "task_quality",
+    policy: "test",
+    decision: "needs_revision",
+    model: "test",
+    answers: {},
+    issues,
+    created: 0,
+    duration: 0,
+    usage: { input_tokens: 0, output_tokens: 0 },
+  })
+
+  test("explains the gate questions a model can act on, and leaves other issues as they are", () => {
+    expect(
+      IntelligenceEvaluation.issueSummary(record(["coverage", "task_0_scope", "task_2_criterion", "note_1"])),
+    ).toBe(
+      "coverage (it claims more than the selected requirement covers, or relies on truncated source text), task_0_scope (the task contradicts its source requirement or adds unrelated work), task_2_criterion (the task has no observable acceptance criterion; state how its completion is checked), note_1",
+    )
+  })
+
+  test("still strips the unavailable wrapper", () => {
+    expect(
+      IntelligenceEvaluation.issueSummary(
+        record(["Evaluation unavailable: Evaluator timed out. Previous state preserved."]),
+      ),
+    ).toBe("Evaluator timed out")
+  })
+})
