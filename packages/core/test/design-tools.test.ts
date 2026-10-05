@@ -195,6 +195,32 @@ describe("Design tools", () => {
     }),
   )
 
+  tools.effect("reads review notes by round, feedback and note, and never a prototype file with them", () =>
+    Effect.gen(function* () {
+      yield* reset()
+      const registry = yield* Tool.Service
+      const one = { id: designID, section: "notes" as const, feedback: "msg_review", note: 3 }
+      const round = { id: designID, section: "notes" as const, round: 2 }
+
+      expect((yield* toolDefinitions(registry)).find((tool) => tool.name === "design_read")?.description).toContain(
+        "Section notes lists every review note of the latest feedback round",
+      )
+      expect(yield* executeTool(registry, call("design_read", one))).toMatchObject({
+        status: "completed",
+        output: "Revision rev_one (not approved), section notes.",
+        metadata: { designID },
+      })
+      expect((yield* executeTool(registry, call("design_read", round))).status).toBe("completed")
+      expect(reads).toEqual([one, round])
+
+      const file = yield* executeTool(registry, call("design_read", { ...round, file: "index.html" }))
+      expect(file.status).toBe("error")
+      // A note is named by its number in the message, not by a label.
+      expect((yield* executeTool(registry, call("design_read", { ...one, note: "third" }))).status).toBe("error")
+      expect(reads).toHaveLength(2)
+    }),
+  )
+
   tools.effect("refuses to read prototype files out of a page snapshot", () =>
     Effect.gen(function* () {
       yield* reset()

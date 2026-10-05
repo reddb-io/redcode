@@ -8,11 +8,40 @@ import { Session } from "../session.js"
 import { SessionExecution } from "../session/execution.js"
 import { SessionInbox } from "../session/inbox.js"
 import { SessionSchema } from "../session/schema.js"
+import { DesignApproval } from "./approval.js"
 import { DesignRounds } from "./rounds.js"
 import { DesignStore } from "./store.js"
 
-/** Hard caps on what one review message may carry; the frozen feedback row keeps the full content. */
-export const LIMITS = { elementText: 240, selectedText: 12000, snapshot: 30000, message: 8000 } as const
+/**
+ * What one review message carries of each note. `message` is a target, not a cap: page-captured
+ * detail is shed to reach it and the user's own words never are, so a message can exceed it. The
+ * design document keeps every note whole.
+ */
+export const LIMITS = { elementText: 240, selectedText: 2000, preview: 600, message: 24000 } as const
+
+/** How much page-captured detail a message keeps for each note. */
+interface Detail {
+  /** Code points of selected text. */
+  selected: number
+  /** Whether the element text line is shown. */
+  element: boolean
+  /** Whether Context, XPath and Parent are shown. */
+  backups: boolean
+  /** Code points of breadcrumb. */
+  label: number
+}
+const FULL: Detail = { selected: LIMITS.selectedText, element: true, backups: true, label: Infinity }
+/** What is given up, one step at a time and for every note alike, until the message fits `LIMITS.message`. */
+const SHED: ReadonlyArray<Detail> = [
+  { selected: 240, element: false, backups: true, label: Infinity },
+  { selected: 240, element: false, backups: false, label: Infinity },
+  { selected: 240, element: false, backups: false, label: 96 },
+]
+
+/** A selector that is nothing but the element's own data-design-id, which the browser verified as unique. */
+const OWN_ID = /^\[data-design-id="[^"]+"\]$/
+/** The position the browser appends to a breadcrumb several elements share, such as ` (3 of 12)`. */
+const POSITION = / \(\d+ of \d+\+?\)$/
 
 const VARIANT_ID = /^[a-zA-Z0-9_-]{1,64}$/
 const VARIANT_MARKER = /^variant:([a-zA-Z0-9_-]{1,64})$/
@@ -32,21 +61,6 @@ function quote(text: string, limit: number) {
   return `"${value.slice(0, limit)}…"`
 }
 
-function flatten(context: Design.ParamContext | undefined) {
-  if (!context) return ""
-  return clean(
-    [
-      ...(context.preset ? [`preset=${context.preset}`] : []),
-      ...(context.variant ? [`variant=${context.variant}`] : []),
-      ...(context.component ? [`component=${context.component}`] : []),
-      ...(context.screen ? [`screen=${context.screen}`] : []),
-      ...Object.entries(context.values).flatMap(([component, fields]) =>
-        Object.entries(fields).map(([field, value]) => `${component}.${field}=${JSON.stringify(value)}`),
-      ),
-    ].join("; "),
-  )
-}
-
 function unscreened(context: Design.ParamContext): Design.ParamContext {
   const { screen: _, ...rest } = context
   return rest
@@ -62,11 +76,37 @@ function variantOf(input: Design.Feedback) {
 
 const notesOf = Design.notesOf
 
-/** A note's heading: its label, followed by its selector when the two differ. */
-function noteLabel(item: Design.FeedbackItem) {
-  const label = item.label ? clean(item.label) : ""
+/** A note's selector as the message shows it: the envelope already names its own variant. */
+function selectorOf(item: Design.FeedbackItem, variant: string | null) {
   const target = clean(item.target)
-  return label && label !== target ? `${label} — ${target}` : label || target
+  const prefix = `variant:${variant} `
+  return variant && target.startsWith(prefix) ? target.slice(prefix.length) : target
+}
+
+/**
+ * A note's heading: the browser's breadcrumb, verbatim, followed by the selector. The selector is left
+ * out when it is the element's own data-design-id and the breadcrumb already shows it. A breadcrumb
+ * over `limit` code points is cut before its position suffix, which stays whole.
+ */
+function noteLabel(item: Design.FeedbackItem, variant: string | null, limit = Infinity) {
+  const selector = selectorOf(item, variant)
+  const whole = item.label ? clean(item.label) : ""
+  const suffix = POSITION.exec(whole)?.[0] ?? ""
+  const label = `${DesignApproval.clip(whole.slice(0, whole.length - suffix.length), limit - suffix.length)}${suffix}`
+  if (!label || label === selector) return selector
+  return OWN_ID.test(selector) && label.includes(selector) ? label : `${label} — ${selector}`
+}
+
+/** The locators that back up a note's selector; an element addressed by its own data-design-id needs none. */
+function backupLocators(item: Design.FeedbackItem, variant: string | null) {
+  if (OWN_ID.test(selectorOf(item, variant))) return []
+  const xpath = item.xpath ? inline(item.xpath, 2000) : ""
+  return [
+    item.context ? `Context: ${inline(item.context, 240)}` : "",
+    xpath ? `XPath: ${xpath}` : "",
+    // The parent and grandparent are steps of the XPath, so they are named only when it is missing.
+    !xpath && item.parent ? `Parent: ${inline(item.parent, 1200)}` : "",
+  ].filter(Boolean)
 }
 
 /** One line of page- or user-provided text: indented like all user text, never spanning a line. */
@@ -134,16 +174,20 @@ export interface Context {
   target?: string
 }
 
-/** Render one review as a bounded, labelled message. Pure: both runtimes share it. */
+/**
+ * Render one review as a labelled message that lists every note. Pure: both runtimes share it.
+ * Nothing the user wrote is ever cut; see `LIMITS` for what is shed when a message runs long.
+ */
 export function render(input: Design.Feedback, context: Context) {
   const variant = variantOf(input)
   const notes = notesOf(input)
   const boards = (input.whiteboards ?? []).map((board, index) => ({
     target: board.target,
     file: path.join(context.storage, context.id, "reviews", `${input.id}-${index}.excalidraw`),
+    // A whiteboard drawn on a noted element is listed with the first note on that element.
+    note: notes.findIndex((item) => item.target === board.target),
   }))
-  const claimed = new Set<number>()
-  const preview = flatten(input.params)
+  const preview = DesignApproval.clip(DesignApproval.describeParams(input.params), LIMITS.preview)
   const text = clean(input.text || (input.review ? `Run anti-slop for ${input.review.name} (${input.review.id})` : ""))
   const open = DesignNotice.open({
     id: context.id,
@@ -152,68 +196,74 @@ export function render(input: Design.Feedback, context: Context) {
     variant,
     ended: input.end,
   })
-  const body = [
-    // The operation leads so that bounding the message never cuts its rules.
-    input.action ? operationSection(input.action) : "",
-    text ? `## ${DesignNotice.SECTION.message}\n${text}` : "",
-    notes.length
-      ? [
-          DesignNotice.notesHeading(notes.length),
-          ...notes.map((item, index) => {
-            const where = item.context ? inline(item.context, 240) : ""
-            const xpath = item.xpath ? inline(item.xpath, 2000) : ""
-            const parent = item.parent ? inline(item.parent, 1200) : ""
-            const selected = item.selectedText ? clean(item.selectedText) : ""
-            const element = item.elementText ? clean(item.elementText) : ""
-            // The screen gets its own line, so a note on another screen does not repeat every parameter.
-            const scenario =
-              item.params && !(input.params && sameParams(unscreened(item.params), unscreened(input.params)))
-                ? flatten(unscreened(item.params))
-                : ""
-            const screen = item.params?.screen ? inline(item.params.screen, 64) : ""
-            // A note drafted before a live reload still describes the revision it was captured on.
-            const revision = item.revision && item.revision !== input.revision ? attribute(item.revision) : ""
-            const attached = boards.flatMap((board, position) => {
-              if (claimed.has(position) || board.target !== item.target) return []
-              claimed.add(position)
-              return [`Whiteboard: ${board.file} (read it with the read tool)`]
-            })
-            return [
-              DesignNotice.noteHeading(index + 1, noteLabel(item)),
-              `${DesignNotice.LABEL.note}${clean(item.text) || "(no text)"}`,
-              // The heading's selector resolves to exactly this element; the XPath and context back it up.
-              where ? `Context: ${where}` : "",
-              xpath ? `XPath: ${xpath}` : "",
-              parent ? `Parent: ${parent}` : "",
-              selected ? `Selected text: ${quote(selected, LIMITS.selectedText)}` : "",
-              element && element !== selected ? `Element text: ${quote(element, LIMITS.elementText)}` : "",
-              screen ? `Screen: ${screen}` : "",
-              scenario ? `Scenario: ${scenario}` : "",
-              revision ? `Revision: ${revision}` : "",
-              ...attached,
+  const body = (detail: Detail) =>
+    [
+      input.action ? operationSection(input.action) : "",
+      text ? `## ${DesignNotice.SECTION.message}\n${text}` : "",
+      notes.length
+        ? [
+            [
+              DesignNotice.notesHeading(notes.length),
+              DesignNotice.notesSummary(notes.length, context.round),
+              !detail.backups && notes.some((item) => backupLocators(item, variant).length)
+                ? `Backup locators (Context, XPath, Parent) left out to fit; one note in full: ${DesignApproval.noteRequest(context.id, input.id, "<n>")}`
+                : "",
             ]
               .filter(Boolean)
-              .join("\n")
-          }),
-        ].join("\n\n")
-      : "",
-    boards.some((_, position) => !claimed.has(position))
-      ? [
-          `## ${DesignNotice.SECTION.whiteboards}`,
-          ...boards.flatMap((board, position) =>
-            claimed.has(position) ? [] : [`- ${clean(board.target)}: ${board.file} (read it with the read tool)`],
-          ),
-        ].join("\n")
-      : "",
-    preview ? `## ${DesignNotice.SECTION.preview}\n${preview}` : "",
-  ]
-    .filter(Boolean)
-    .join("\n\n")
+              .join("\n"),
+            ...notes.map((item, index) => {
+              const selected = item.selectedText ? inline(item.selectedText, Infinity) : ""
+              const more = [...selected].length - detail.selected
+              const element = item.elementText ? inline(item.elementText, LIMITS.elementText) : ""
+              // The screen gets its own line, so a note on another screen does not repeat every parameter.
+              const scenario =
+                item.params && !(input.params && sameParams(unscreened(item.params), unscreened(input.params)))
+                  ? DesignApproval.describeParams(item.params, false)
+                  : ""
+              // The preview parameters name the screen the reviewer was on; a note names its own only when it differs.
+              const screen =
+                item.params?.screen && item.params.screen !== input.params?.screen ? inline(item.params.screen, 64) : ""
+              // A note drafted before a live reload still describes the revision it was captured on.
+              const revision = item.revision && item.revision !== input.revision ? attribute(item.revision) : ""
+              return [
+                DesignNotice.noteHeading(index + 1, noteLabel(item, variant, detail.label)),
+                `${DesignNotice.LABEL.note}${clean(item.text) || "(no text)"}`,
+                ...(detail.backups ? backupLocators(item, variant) : []),
+                selected
+                  ? `Selected text: "${DesignApproval.clip(selected, detail.selected)}"${more > 0 ? ` (+${more} more characters; whole note: ${DesignApproval.noteRequest(context.id, input.id, index + 1)})` : ""}`
+                  : "",
+                // The breadcrumb usually quotes a short element's text already.
+                detail.element && element && element !== selected && !clean(item.label ?? "").includes(`"${element}"`)
+                  ? `Element text: "${element}"`
+                  : "",
+                screen ? `Screen: ${screen}` : "",
+                scenario ? `Scenario: ${scenario}` : "",
+                revision ? `Revision: ${revision}` : "",
+                ...boards.flatMap((board) =>
+                  board.note === index ? [`Whiteboard: ${board.file} (read it with the read tool)`] : [],
+                ),
+              ]
+                .filter(Boolean)
+                .join("\n")
+            }),
+          ].join("\n\n")
+        : "",
+      boards.some((board) => board.note < 0)
+        ? [
+            `## ${DesignNotice.SECTION.whiteboards}`,
+            ...boards.flatMap((board) =>
+              board.note < 0 ? [`- ${clean(board.target)}: ${board.file} (read it with the read tool)`] : [],
+            ),
+          ].join("\n")
+        : "",
+      preview ? `## ${DesignNotice.SECTION.preview}\n${preview}` : "",
+    ]
+      .filter(Boolean)
+      .join("\n\n")
   // A note whose element and ancestors carry no data-design-id asks for one, so later notes name it directly.
   // An element under a keyed ancestor counts as keyed on purpose: the selector and label already anchor
   // it to that id, so the request is only made when nothing stable is near.
   const unkeyed = notes.some((item) => !`${item.target} ${item.label ?? ""}`.includes("data-design-id"))
-  // The trailer carries the instructions; it is reserved before the user content is bounded.
   const trailer = [
     context.attachments.length
       ? [
@@ -228,7 +278,7 @@ export function render(input: Design.Feedback, context: Context) {
         : input.end
           ? "The user ended this review. Finish from these notes; do not reopen it without an explicit request."
           : notes.length
-            ? `Feedback round${context.round !== undefined ? ` ${context.round}` : ""}: fix everything in this round, publish one revision with design_preview, run one verify for the round (design_export {"revision":"<that revision>","format":"verify"${context.round !== undefined ? `,"round":${context.round}` : ""}}, wait for its native monitor, then read design_jobs once), then record each note's status (design_document update notes: [{"feedback":"${input.id}","index":<n>,"status":"resolved|partial|unresolved|accepted","reason":"...","evidence":{"job":"<verify job>"}}]; evidence only for resolved and partial, a reason for the rest). Run the artifact end-of-round checklist against the published revision, record findings without another correction cycle, then reply with what is resolved, partial, unresolved or accepted and why. Wait for the next requested round.`
+            ? `Feedback round${context.round !== undefined ? ` ${context.round}` : ""}: fix everything in this round, publish one revision with design_preview, run one verify for the round (design_export {"revision":"<that revision>","format":"verify"${context.round !== undefined ? `,"round":${context.round}` : ""}}, wait for its native monitor, then read design_jobs once), then record each note's status (design_document update notes: [{"feedback":"${input.id}","index":<n>,"status":"resolved|partial|unresolved|accepted","reason":"...","evidence":{"job":"<verify job>"}}]; evidence for resolved and partial, a reason for partial, unresolved and accepted). Run the artifact end-of-round checklist against the published revision, record findings without another correction cycle, then reply with what is resolved, partial, unresolved or accepted and why. Wait for the next requested round.`
             : "Publish one revision with design_preview, run the end-of-round checklist once and reply with a short checked/pending/unverified summary. Do not start an automatic correction cycle.",
       unkeyed
         ? "Some notes name elements without a data-design-id; when you edit such an element, give it a stable kebab-case data-design-id so later notes can name it directly."
@@ -243,11 +293,15 @@ export function render(input: Design.Feedback, context: Context) {
   ]
     .filter(Boolean)
     .join("\n\n")
-  const assemble = (middle: string) => `${open}\n${middle}\n\n${trailer}\n${DesignNotice.CLOSE}`
-  const budget = LIMITS.message - assemble("").length
-  if (body.length <= budget) return assemble(body)
-  const notice = `\n[Truncated: ${body.length - budget} characters omitted; the full notes are stored with feedback ${input.id}.]`
-  return assemble(`${body.slice(0, budget - notice.length)}${notice}`)
+  const message = (detail: Detail) => `${open}\n${body(detail)}\n\n${trailer}\n${DesignNotice.CLOSE}`
+  // A step is tried only while the message held is over the target, and kept only when it is shorter:
+  // a cut selection gains a marker, dropped locators gain a line and a clipped breadcrumb can gain
+  // its selector, so a step can cost more than it saves.
+  return SHED.reduce((rendered, detail) => {
+    if (rendered.length <= LIMITS.message) return rendered
+    const next = message(detail)
+    return next.length < rendered.length ? next : rendered
+  }, message(FULL))
 }
 
 /**
@@ -255,14 +309,18 @@ export function render(input: Design.Feedback, context: Context) {
  * rendered message (plus the target, which the message does not carry).
  */
 export function notice(input: Design.Feedback, context: Context): Design.FeedbackNotice {
+  const variant = variantOf(input)
+  const notes = notesOf(input)
   return {
     id: context.id,
     feedback: input.id,
     revision: input.revision,
-    variant: variantOf(input),
+    variant,
     ended: input.end,
     text: input.text.trim() || (input.review ? `Run anti-slop for ${input.review.name} (${input.review.id})` : ""),
-    notes: notesOf(input).map((item) => ({ label: noteLabel(item), text: item.text.trim() })),
+    notes: notes.map((item) => ({ label: noteLabel(item, variant), text: item.text.trim() })),
+    ...(notes.length ? { sent: notes.length } : {}),
+    ...(notes.length && context.round !== undefined ? { round: context.round } : {}),
     attachments: [...context.attachments],
     snapshot: input.snapshot.trim().length > 0,
     ...(input.action ? { operation: describeOperation(input.action) } : {}),

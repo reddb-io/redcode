@@ -8,8 +8,14 @@ import { useLanguage } from "@/runtime/i18n/language"
  */
 export function DesignFeedbackCard(props: { notice: Design.FeedbackNotice }) {
   const language = useLanguage()
+  // The count the reviewer sent: a message cut by an older renderer lists fewer notes than it names.
+  const sent = () => props.notice.sent ?? props.notice.notes.length
   const details = () =>
     [
+      props.notice.round === undefined
+        ? undefined
+        : language.t("session.design.feedback.round", { round: props.notice.round }),
+      sent() ? language.plural("session.design.feedback.notes", sent()) : undefined,
       props.notice.id,
       props.notice.target,
       props.notice.revision,
@@ -59,6 +65,11 @@ export function DesignFeedbackCard(props: { notice: Design.FeedbackNotice }) {
             )}
           </For>
         </ol>
+      </Show>
+      <Show when={props.notice.notes.length < sent()}>
+        <div class="text-13-regular text-v2-state-fg-warning">
+          {language.plural("session.design.feedback.reached", sent(), { reached: props.notice.notes.length })}
+        </div>
       </Show>
       <Show when={props.notice.attachments.length}>
         <div class="flex min-w-0 flex-wrap gap-1.5">

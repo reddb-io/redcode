@@ -141,6 +141,21 @@ const CLEAR = 0.1
  */
 const CLEAR_BY_OPERATION: Partial<Record<Intelligence.Operation, number>> = { task_quality: 0.5 }
 
+/** One gate answer against the bar that clears it. */
+const grade = (noul: number, clear: number) =>
+  noul >= REVISION ? ("needs_revision" as const) : noul > clear ? ("inconclusive" as const) : ("accepted" as const)
+
+/**
+ * One gate question's own verdict, read as {@link decide} reads it. A record's decision is the worst
+ * of its questions, so a caller that judges independent subjects in one request asks per question.
+ * `unavailable` when the review failed or holds no answer for the question.
+ */
+export function verdict(record: Intelligence.Evaluation, questionID: string): Intelligence.Evaluation["decision"] {
+  const answer = record.decision === "unavailable" ? undefined : record.answers[questionID]
+  if (!answer) return "unavailable"
+  return answer.type === "noul" ? grade(answer.noul, CLEAR_BY_OPERATION[record.operation] ?? CLEAR) : "accepted"
+}
+
 export function decide(
   questions: Record<string, Intelligence.Question>,
   response: Intelligence.Response,
@@ -155,11 +170,7 @@ export function decide(
       throw new Error({ message: "Incomplete or mismatched evaluation response" })
     if (answer.type !== "noul") return "accepted" as const
     if (answer.noul > clear) issues.push(id)
-    return answer.noul >= REVISION
-      ? ("needs_revision" as const)
-      : answer.noul > clear
-        ? ("inconclusive" as const)
-        : ("accepted" as const)
+    return grade(answer.noul, clear)
   })
   return {
     decision: states.includes("needs_revision")

@@ -42,6 +42,8 @@ describe("Design prompt", () => {
       "design.state(componentID, changedFields)",
       "window.__redcodeDesign",
       "kebab-case data-design-id",
+      "Every note of the message is listed and none is dropped",
+      "read that note in full with design_read section notes, passing its feedback id and note number",
       "Notes arrive in rounds",
       "design_export format verify with round set to the round's number",
       "Review once at the end of each round",

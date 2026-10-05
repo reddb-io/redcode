@@ -43,7 +43,8 @@ export function describe(text: string) {
   if (!notice) return { text: bound(text, LIMITS.text), notes: 0 }
   return {
     text: bound(notice.text.trim() || (notice.operation ? `Variant operation: ${notice.operation}` : ""), LIMITS.text),
-    notes: notice.notes.length,
+    // The count the reviewer sent: a message cut by an older renderer lists fewer notes than it names.
+    notes: notice.sent ?? notice.notes.length,
   }
 }
 

@@ -29,6 +29,22 @@ const FEEDBACK = {
     'A page-text snapshot was captured; fetch it with design_read {"id":"design_checkout","section":"snapshot","feedback":"msg_review_notes"} if you need page context.',
     "</design-review>",
   ].join("\n"),
+  // Left in sessions by the renderer that cut a message at a fixed size: five notes sent, two listed.
+  truncated: [
+    '<design-review id="design_checkout" revision="rev_2" feedback="msg_review_cut" variant="stone" ended="false">',
+    "## Notes (5)",
+    "",
+    '### 1. h1 "Checkout" — main > h1',
+    "Note: Make this title more prominent",
+    "",
+    "### 2. Order summary — aside.summary",
+    "Note: Give the totals mo",
+    "[Truncated: 2210 characters omitted; the full notes are stored with feedback msg_review_cut.]",
+    "",
+    "## Next step",
+    "Feedback round 3: fix everything in this round, publish one revision with design_preview.",
+    "</design-review>",
+  ].join("\n"),
   operation: [
     '<design-review id="design_checkout" revision="rev_3" feedback="msg_review_merge" ended="false">',
     "## Variant operation",
@@ -49,7 +65,7 @@ const FEEDBACK = {
     "</design-review>",
   ].join("\n"),
 }
-const KINDS = ["notes", "operation", "ended"] as const
+const KINDS = ["notes", "truncated", "operation", "ended"] as const
 
 const APPROVAL = {
   variant: "Design Checkout, revision rev_4, variant Stone (stone), approved. Continue in Plan.",

@@ -456,6 +456,13 @@ export const FeedbackNotice = Schema.Struct({
   ended: Schema.Boolean,
   text: Schema.String,
   notes: Schema.Array(Schema.Struct({ label: Schema.String, text: Schema.String })),
+  /**
+   * How many notes the message was sent with. Messages rendered before the note list was guaranteed
+   * complete could be cut short, so `notes` may hold fewer; absent when the message carries no notes.
+   */
+  sent: Schema.Int.pipe(optional),
+  /** The feedback round the notes belong to, when the message names it. */
+  round: Schema.Int.pipe(optional),
   attachments: Schema.Array(Schema.String),
   snapshot: Schema.Boolean,
   /** One line naming a requested variant operation, such as "delete Compact". */

@@ -204,12 +204,15 @@ describe("DesignRounds", () => {
     const stale = job("render_0", "rev_1", 1, [seen("msg_1", 1, true)])
     const feedback = SessionMessage.ID.make("msg_1")
     const gate = (update: Design.NoteUpdate, jobs = [stale, verify], by?: Design.NoteRecorder) =>
-      DesignRounds.gate(answered, update, jobs, by)
+      DesignRounds.triage(answered, [update], jobs, by).checked[0].refusal
     // Resolved: evidence is required, must be a verify of the current revision, and must have found the element cleanly.
     expect(gate({ feedback, index: 1, status: "resolved" })).toContain(
       `${DesignRounds.REFUSED} resolved for msg_1 #1 needs evidence`,
     )
-    expect(gate({ feedback, index: 1, status: "resolved" })).toContain("render_1 (revision rev_2, round 1, completed")
+    // A refusal about evidence points at the verify jobs, which the caller lists.
+    expect(DesignRounds.triage(answered, [{ feedback, index: 1, status: "resolved" }], [stale, verify]).see).toEqual([
+      "jobs",
+    ])
     expect(gate({ feedback, index: 1, status: "resolved", evidence: { job: "render_0" } })).toContain(
       "verified rev_1, not the current revision rev_2",
     )
@@ -259,9 +262,38 @@ describe("DesignRounds", () => {
     )
     expect(gate({ feedback, index: 2, status: "accepted", reason: "Kept on purpose" }, [])).toBeUndefined()
     expect(gate({ feedback, index: 2, status: "unresolved", reason: "Still there" }, [])).toBeUndefined()
+    // Evidence is optional for those two, but a job they do cite must be a verify that saw the note,
+    // on whatever revision.
+    const kept = { feedback, index: 2, status: "accepted", reason: "Kept on purpose" } as const
+    expect(gate({ ...kept, evidence: { job: "render_0" } }, [stale])).toContain(
+      "Evidence job render_0 verified round 1, not msg_1 #2 (round 1)",
+    )
+    expect(gate({ ...kept, evidence: { job: "render_9" } })).toContain("render_9 is not a completed verify job")
+    expect(gate({ ...kept, index: 1, evidence: { job: "render_0" } })).toBeUndefined()
+    // A note that is not recorded is said to be unknown before anything about its evidence, whoever asks.
+    const unknown = "Unknown note msg_9 #4."
+    const mistyped = SessionMessage.ID.make("msg_9")
+    expect(gate({ feedback: mistyped, index: 4, status: "resolved", evidence: { job: "render_9" } })).toBe(unknown)
+    expect(gate({ feedback: mistyped, index: 4, status: "resolved" }, [], "reviewer")).toBe(unknown)
+    expect(gate({ feedback: mistyped, index: 4, status: "accepted" })).toBe(unknown)
+    // It points at the recorded notes, not at the verify jobs.
+    expect(
+      DesignRounds.triage(
+        answered,
+        [{ feedback: mistyped, index: 4, status: "resolved", evidence: { job: "render_9" } }],
+        [stale, verify],
+      ).see,
+    ).toEqual(["notes"])
     // The blocker names the open notes and lifts once every note has an outcome.
     expect(DesignRounds.blocking(answered)).toContain(
       "Round 1 has 3 notes without a recorded outcome: msg_1 #1 (#title), msg_1 #2 (#gone), msg_1 #3 (#cta)",
+    )
+    // It ends on the call that lists that round's notes with their text.
+    expect(DesignRounds.blocking(answered)).toEndWith(
+      'unresolved or accepted with a reason are allowed. Every note of a round with its text: design_read {"section":"notes","round":1}.',
+    )
+    expect(DesignRounds.blocking({ ...answered, id: designID })).toEndWith(
+      'Every note of a round with its text: design_read {"id":"design_checkout","section":"notes","round":1}.',
     )
     const recorded = DesignRounds.apply(
       answered,
@@ -289,7 +321,138 @@ describe("DesignRounds", () => {
     const bothOpen = DesignRounds.blocking(later)
     expect(bothOpen).toContain("Round 1 has 3 notes without a recorded outcome")
     expect(bothOpen).toContain("; round 2 has 1 note without a recorded outcome: msg_2 #1 (#footer)")
+    // With more than one round pending, the round to read is left to the caller.
+    expect(bothOpen).toEndWith('design_read {"section":"notes","round":<round>}.')
     expect(DesignRounds.open(later)).toHaveLength(4)
+  })
+
+  test("the blocker names eight notes of a round and counts the rest", () => {
+    const many = DesignRounds.admit(
+      { rounds: undefined, notes: undefined },
+      message(
+        "msg_1",
+        "rev_1",
+        Array.from({ length: 14 }, (_, index) => note(`#n${index + 1}`, `Note ${index + 1}`)),
+      ),
+      100,
+    )
+    expect(DesignRounds.blocking(many)).toStartWith(
+      `Round 1 has 14 notes without a recorded outcome: ${Array.from({ length: 8 }, (_, index) => `msg_1 #${index + 1} (#n${index + 1})`).join(", ")} and 6 more. Fix them`,
+    )
+  })
+
+  test("every status of an update is judged on its own, and what the refusals point at is listed once", () => {
+    const opened = DesignRounds.admit(
+      { rounds: undefined, notes: undefined },
+      message("msg_1", "rev_1", [note("#title", "Bigger"), note("#gone", "Remove"), note("#cta", "Contrast")]),
+      100,
+    )
+    const answered = { ...DesignRounds.published(opened, "rev_2"), revision: "rev_2" }
+    const verify = job("render_1", "rev_2", 1, [
+      seen("msg_1", 1, true),
+      seen("msg_1", 2, false),
+      seen("msg_1", 3, true),
+    ])
+    const feedback = SessionMessage.ID.make("msg_1")
+    const updates: Design.NoteUpdate[] = [
+      { feedback, index: 1, status: "resolved", evidence: { job: "render_1" } },
+      { feedback: SessionMessage.ID.make("msg_9"), index: 1, status: "resolved", evidence: { job: "render_1" } },
+      { feedback, index: 2, status: "resolved", evidence: { job: "render_1" } },
+      { feedback, index: 3, status: "partial", evidence: { job: "render_1" } },
+      { feedback, index: 2, status: "accepted", reason: "Kept on purpose" },
+      { feedback: SessionMessage.ID.make("msg_9"), index: 2, status: "accepted", reason: "Kept on purpose" },
+    ]
+    const known = "Known notes: msg_1 #1 (round 1, open), msg_1 #2 (round 1, open), msg_1 #3 (round 1, open)."
+    const listed =
+      "Recent verify jobs (newest first): render_1 (revision rev_2, round 1, completed, 2 of 3 notes found without blocking findings)."
+
+    const triaged = DesignRounds.triage(answered, updates, [verify])
+    expect(triaged.checked.map((item) => item.update)).toEqual(updates)
+    expect(triaged.checked.map((item) => item.refusal)).toEqual([
+      undefined,
+      "Unknown note msg_9 #1.",
+      "Note status refused: msg_1 #2 cannot be resolved: render_1 did not find its element in rev_2 (element not found). Record it unresolved or accepted with a reason, or restore the element and verify again.",
+      "Note status refused: partial for msg_1 #3 needs a reason saying what still differs from the note.",
+      undefined,
+      "Unknown note msg_9 #2.",
+    ])
+    // Two unknown notes and one refusal about evidence: the caller lists the notes and the jobs once each.
+    expect(triaged.see).toEqual(["notes", "jobs"])
+    // A list no refusal points at is left out.
+    expect(DesignRounds.triage(answered, [updates[0], updates[1], updates[3]], [verify]).see).toEqual(["notes"])
+    expect(DesignRounds.triage(answered, [updates[0], updates[2], updates[3]], [verify]).see).toEqual(["jobs"])
+    expect(DesignRounds.triage(answered, [updates[0], updates[3]], [verify]).see).toEqual([])
+    expect(DesignRounds.triage(answered, [], [verify])).toEqual({ checked: [], see: [] })
+
+    expect(
+      DesignRounds.refusals({
+        refused: [
+          { feedback: "msg_9", index: 1, reason: "Unknown note msg_9 #1." },
+          { feedback: "msg_1", index: 2, reason: "Note status refused: no element." },
+        ],
+        context: [known, listed],
+      }),
+    ).toEqual(["msg_9 #1: Unknown note msg_9 #1.", "msg_1 #2: Note status refused: no element.", known, listed])
+    expect(DesignRounds.refusals({ refused: [], context: [] })).toEqual([])
+  })
+
+  test("a claimed fix is shown to a review as the reviewer's request and that note's own observation", () => {
+    const opened = DesignRounds.admit(
+      { rounds: undefined, notes: undefined },
+      message("msg_1", "rev_1", [
+        {
+          target: 'tr[data-design-id="row"]:nth-of-type(3) [data-design-id="rotate"]',
+          text: "Rotate per secret",
+          label: 'button "Rotate" in row "Webhooks"',
+          elementText: "Rotate",
+          selectedText: "Rotate",
+          xpath: "/html/body/main/table/tbody/tr[3]/td[4]/button",
+          context: "main > table",
+          parent: "td (/html/body/main/table/tbody/tr[3]/td[4])",
+          params: { values: { clients: { rows: 3 } }, screen: "clients" },
+        },
+        note("#other", "Another note"),
+      ]),
+      100,
+    )
+    const feedback = SessionMessage.ID.make("msg_1")
+    const verify = job("render_1", "rev_2", 1, [
+      seen("msg_1", 1, true, {
+        before: "/captures/render_1-0-before.png",
+        after: "/captures/render_1-0-after.png",
+        findings: ["review · small-control"],
+        scenarios: ["Clients list: exercised"],
+      }),
+      seen("msg_1", 2, true),
+    ])
+    const other = job("render_0", "rev_1", 1, [seen("msg_1", 1, false)])
+
+    expect(DesignRounds.isClaim({ status: "resolved" })).toBe(true)
+    expect(DesignRounds.isClaim({ status: "partial" })).toBe(true)
+    expect(DesignRounds.isClaim({ status: "unresolved" })).toBe(false)
+    expect(DesignRounds.isClaim({ status: "accepted" })).toBe(false)
+    // No locator, no capture path, no other note and no other job.
+    expect(
+      DesignRounds.claim(opened, { feedback, index: 1, status: "resolved", evidence: { job: "render_1" } }, [
+        other,
+        verify,
+      ]),
+    ).toEqual({
+      request: {
+        text: "Rotate per secret",
+        label: 'button "Rotate" in row "Webhooks"',
+        elementText: "Rotate",
+        screen: "clients",
+      },
+      observation: {
+        job: "render_1",
+        found: true,
+        blocking: false,
+        reason: "found; no findings",
+        findings: ["review · small-control"],
+        scenarios: ["Clients list: exercised"],
+      },
+    })
   })
 
   test("verdicts follow what the verify observed", () => {

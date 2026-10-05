@@ -30,6 +30,11 @@ export const SECTION = {
 export const LABEL = { note: "Note: ", operation: "Operation: " } as const
 /** User content continues on lines indented by this, so it never starts at column 0. */
 const INDENT = "    "
+/**
+ * Where a renderer puts a section heading: on the line after the opening tag, or after a blank line.
+ * User text reaches neither place, so a heading the user typed is never read as a section.
+ */
+const HEADING = "(?:^[^\\n]*|\\n)\\n## "
 const ATTACHED = " (attached as a file)"
 const APPROVAL_PREFIX = "Design "
 const APPROVAL_SUFFIX = ", approved. Continue in Plan."
@@ -50,8 +55,10 @@ export function open(input: {
 }
 
 /**
- * User-provided text must not close the envelope or forge a section: continuation lines are
- * indented so nothing the user wrote starts at column 0, where headings and labels live.
+ * User-provided text must not close the envelope or forge a section: continuation lines are indented,
+ * so they never start at column 0, where headings and labels live. The first line is not indented:
+ * a Message's first line sits at column 0 directly under its heading, which is why a section heading
+ * is read only where `HEADING` allows one.
  */
 export function userText(text: string) {
   return text.trim().replaceAll("</design-review", "[/design-review").replace(/\r?\n/g, `\n${INDENT}`)
@@ -59,6 +66,14 @@ export function userText(text: string) {
 
 export function notesHeading(count: number) {
   return `## ${SECTION.notes} (${count})`
+}
+
+/**
+ * The line directly under the notes heading: it tells the reader that the list is complete and names
+ * the feedback round when the sender knows it.
+ */
+export function notesSummary(count: number, round?: number) {
+  return `${round === undefined ? "" : `Round ${round}: `}${count} note${count === 1 ? "" : "s"}, all listed below.`
 }
 
 export function noteHeading(position: number, label: string) {
@@ -90,11 +105,20 @@ export function feedback(text: string): Design.FeedbackNotice | undefined {
   if (!head || !Schema.is(Design.ID)(head[1]) || !Schema.is(SessionMessage.ID)(head[3])) return undefined
   // Only column-0 lines are structure; user content was indented when rendered.
   const dedent = (value: string) => value.replaceAll(`\n${INDENT}`, "\n")
-  const section = (name: string) =>
-    new RegExp(`\\n## ${name}\\n([\\s\\S]*?)(?=\\n\\n## |\\n${escape(CLOSE)}|$)`).exec(text)?.[1] ?? ""
+  // One section's match: the body is the last group, after any group the heading pattern brings.
+  const heading = (name: string) =>
+    new RegExp(`${HEADING}${name}\\n([\\s\\S]*?)(?=\\n\\n## |\\n${escape(CLOSE)}|$)`).exec(text)
+  const section = (name: string) => heading(name)?.[1] ?? ""
   // A label or note text runs on over the indented continuation lines `userText` produced.
   const continued = `.*(?:\\n${INDENT}.*)*`
   const operation = new RegExp(`^${escape(LABEL.operation)}(.+)$`, "m").exec(section(escape(SECTION.operation)))?.[1]
+  // The count and the list come from one match, so they are always those of the same heading. The
+  // heading keeps the count the message was sent with, even when an older renderer cut the list.
+  const listed = heading(`${escape(SECTION.notes)} \\((\\d+)\\)`)
+  const notes = listed?.[2] ?? ""
+  const sent = listed?.[1]
+  // Messages rendered before `notesSummary` existed name their round only in the next step.
+  const round = /^Round (\d+): /.exec(notes)?.[1] ?? /^Feedback round (\d+):/m.exec(section(escape(SECTION.next)))?.[1]
   return {
     ...(operation ? { operation } : {}),
     id: head[1],
@@ -104,10 +128,10 @@ export function feedback(text: string): Design.FeedbackNotice | undefined {
     ended: head[5] === "true",
     text: dedent(section(escape(SECTION.message))),
     notes: [
-      ...section(`${escape(SECTION.notes)} \\(\\d+\\)`).matchAll(
-        new RegExp(`^### \\d+\\. (${continued})\\n${escape(LABEL.note)}(${continued})`, "gm"),
-      ),
+      ...notes.matchAll(new RegExp(`^### \\d+\\. (${continued})\\n${escape(LABEL.note)}(${continued})`, "gm")),
     ].map((match) => ({ label: dedent(match[1]), text: dedent(match[2]) })),
+    ...(sent ? { sent: Number(sent) } : {}),
+    ...(round ? { round: Number(round) } : {}),
     attachments: [
       ...section(escape(SECTION.attachments)).matchAll(new RegExp(`^- image \\d+: (.*)${escape(ATTACHED)}$`, "gm")),
     ].map((match) => match[1]),

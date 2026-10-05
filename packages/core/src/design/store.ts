@@ -6,7 +6,7 @@ import { Design } from "@opencode/schema/design"
 import { ConfigDesign } from "@opencode/schema/config/design"
 import { makeLocationNode } from "@opencode/util/effect/app-node"
 import { and, desc, eq, sql } from "drizzle-orm"
-import { Context, Effect, Layer, Schema, Semaphore } from "effect"
+import { Context, Effect, Layer, Result, Schema, Semaphore } from "effect"
 import { Database } from "../database/database.js"
 import { Config } from "../config.js"
 import { Intelligence } from "../intelligence.js"
@@ -24,6 +24,26 @@ import { DesignSystem } from "./system.js"
 import { DesignBuild } from "./build.js"
 import { DesignAssets } from "./assets.js"
 import { DesignCapture } from "./capture.js"
+
+/** The longest rendered review message the store admits, in characters; a longer one is refused, never cut. */
+export const LIMITS = { prompt: 100_000 } as const
+
+/**
+ * Bounds of the System One review of note statuses: how many notes one request judges, and the
+ * characters it carries of each note's request and of what the cited verify saw of it. A longer
+ * update is split into requests sent together, so no request grows with the design's history.
+ * Twenty notes at their largest, each with a 500-character reason, fit one Intelligence request
+ * (80,000 characters). Past that Intelligence splits the questions itself and repeats the whole state
+ * with every part, two at a time, which is the chaining this bound exists to prevent.
+ */
+export const REVIEW = { notes: 20, evidence: 1_200 } as const
+
+/** What the System One review said of one claimed fix; neither field when it accepted the claim. */
+interface Reviewed {
+  readonly update: Design.NoteUpdate
+  readonly refusal?: string
+  readonly unverified?: string
+}
 
 const make = Effect.gen(function* () {
   const db = (yield* Database.Service).db
@@ -469,6 +489,13 @@ const make = Effect.gen(function* () {
   ) {
     if (input.section === "snapshot") return yield* snapshot(sessionID, input.id, input.feedback)
     const document = yield* get(sessionID, input.id)
+    if (input.section === "notes") {
+      // Notes and their statuses live on the design document: a revision's copy of it was frozen
+      // before the round that reviews that revision had any notes.
+      const read = DesignApproval.notes(document, input)
+      if ("problem" in read) return yield* new Design.Error({ code: "not-found", message: read.problem })
+      return read.text
+    }
     const ref = input.revision ?? document.approvedRevision ?? document.revision
     if (!ref) return yield* new Design.Error({ code: "not-found", message: "No Design revision is recorded" })
     const approved = document.approvedRevision === ref
@@ -718,7 +745,97 @@ const make = Effect.gen(function* () {
     return yield* save(sessionID, { ...data, ...(system ? { system } : {}), ...discovery })
   }, lock.withPermits(1))
 
-  const update = Effect.fn("DesignStore.update")(function* (
+  /**
+   * The System One review of the statuses that claim a fix, answered per note: a refusal for a claim
+   * the review contradicts, `unverified` for one it could not judge. A request carries only what
+   * `DesignRounds.claim` gives for its own notes, bounded, so its size does not depend on the design's
+   * rounds, notes or jobs. Empty unless reasoning is dual.
+   */
+  const reviewNotes = Effect.fn("DesignStore.reviewNotes")(function* (
+    sessionID: SessionSchema.ID,
+    document: Design.Info,
+    claims: ReadonlyArray<Design.NoteUpdate>,
+    verifies: ReadonlyArray<Design.Job>,
+  ): Effect.fn.Return<ReadonlyArray<Reviewed>> {
+    if (!claims.length) return []
+    const unavailable = (reason: string) =>
+      claims.map((update) => ({ update, unverified: `System One review unavailable: ${reason}` }))
+    const settings = yield* Effect.result(intelligence.read(sessionID))
+    if (Result.isFailure(settings)) return unavailable(settings.failure.message)
+    const mode = IntelligenceEvaluation.mode(settings.success)
+    if (mode === "single") return []
+    if (mode === "dual" && !IntelligenceEvaluation.isReady(settings.success))
+      return unavailable("dual reasoning is selected but System One and System Two are not configured")
+    const batches = Array.from({ length: Math.ceil(claims.length / REVIEW.notes) }, (_, index) =>
+      claims.slice(index * REVIEW.notes, (index + 1) * REVIEW.notes),
+    )
+    // System One requests are never chained: every batch is sent at once and judged on its own.
+    const records = yield* Effect.forEach(
+      batches,
+      (batch) =>
+        Effect.result(
+          intelligence.evaluate({
+            sessionID,
+            operation: "design_completion",
+            subjectID: document.id,
+            sources: {
+              notes: batch.map((update) => {
+                const shown = DesignRounds.claim(document, update, verifies)
+                return {
+                  note: `${update.feedback} #${update.index}`,
+                  request: IntelligenceEvaluation.evidence(shown.request, { limit: REVIEW.evidence }),
+                  observation: IntelligenceEvaluation.evidence(shown.observation, { limit: REVIEW.evidence }),
+                }
+              }),
+            },
+            candidate: batch.map((update) => ({
+              note: `${update.feedback} #${update.index}`,
+              status: update.status,
+              ...(update.reason ? { reason: update.reason } : {}),
+            })),
+            questions: IntelligenceEvaluation.questions(
+              Object.fromEntries(
+                batch.map((_, index) => [
+                  `note_${index}`,
+                  `Does candidate[${index}] claim resolved or partial without relevant textual verification of the original note in sources.notes[${index}]? Do not infer visual correctness from an image filename or successful export alone.`,
+                ]),
+              ),
+            ),
+          }),
+        ),
+      { concurrency: "unbounded" },
+    )
+    // An observation is recorded for later study and decides nothing here.
+    if (mode !== "dual") return []
+    return batches.flatMap((batch, position) => {
+      const record = records[position]
+      return batch.map((update, index) => {
+        if (Result.isFailure(record))
+          return { update, unverified: `System One review unavailable: ${record.failure.message}` }
+        const review = record.success
+        if (!review) return { update, unverified: "System One review unavailable: no review was returned" }
+        const verdict = IntelligenceEvaluation.verdict(review, `note_${index}`)
+        if (verdict === "accepted") return { update }
+        if (verdict === "inconclusive") return { update, unverified: `System One review inconclusive (${review.id})` }
+        if (verdict === "unavailable")
+          return {
+            update,
+            unverified: `System One review unavailable (${review.id}): ${IntelligenceEvaluation.issueSummary(review) || "no answer for this note"}`,
+          }
+        return {
+          update,
+          refusal: `${DesignRounds.REFUSED} the System One review (${review.id}) judged that ${update.status} for ${update.feedback} #${update.index} is not backed by a textual verification of what the note asks. Compare the note with the current revision and record it again with a reason that says what changed, or record it unresolved or accepted with a reason.`,
+        }
+      })
+    })
+  })
+
+  /**
+   * Apply an update and say what became of each note status it carried. Statuses are judged one by
+   * one, so a refused status never keeps the others from being recorded; the update fails only when
+   * it carried statuses and none could be recorded.
+   */
+  const amend = Effect.fn("DesignStore.amend")(function* (
     sessionID: SessionSchema.ID,
     id: Design.ID,
     input: Design.Update,
@@ -762,42 +879,52 @@ const make = Effect.gen(function* () {
         error instanceof Design.Error ? error : new Design.Error({ code: "invalid", message: String(error) }),
     })
     const verifies = statuses?.length ? yield* jobs(sessionID, id) : []
-    for (const status of statuses ?? []) {
-      const refusal = DesignRounds.gate(current, status, verifies, recorder)
-      if (refusal) return yield* new Design.Error({ code: "invalid", message: refusal })
-    }
-    if (statuses?.length && recorder === "agent") {
-      const settings = yield* intelligence
-        .read(sessionID)
-        .pipe(Effect.mapError((error) => new Design.Error({ code: "unavailable", message: error.message })))
-      yield* IntelligenceEvaluation.requireConfigured(settings).pipe(
-        Effect.mapError((error) => new Design.Error({ code: "unavailable", message: error.message })),
-      )
-      const review = yield* intelligence
-        .evaluate({
-          sessionID,
-          operation: "design_completion",
-          subjectID: id,
-          sources: { notes: current.notes, verifies },
-          candidate: statuses,
-          questions: IntelligenceEvaluation.questions(
-            Object.fromEntries(
-              statuses.map((_, index) => [
-                `note_${index}`,
-                `Does candidate[${index}] claim resolved or partial without relevant textual verification of the original note? Do not infer visual correctness from an image filename or successful export alone.`,
-              ]),
+    const triaged = DesignRounds.triage(current, statuses ?? [], verifies, recorder)
+    // The reviewer's own statuses are never reviewed, and only a claimed fix is something to review.
+    const reviews =
+      recorder === "agent"
+        ? yield* reviewNotes(
+            sessionID,
+            current,
+            triaged.checked.flatMap((item) =>
+              item.refusal || !DesignRounds.isClaim(item.update) ? [] : [item.update],
             ),
-          ),
-        })
-        .pipe(Effect.mapError((error) => new Design.Error({ code: "unavailable", message: error.message })))
-      yield* IntelligenceEvaluation.requireReview(settings, review).pipe(
-        Effect.mapError((error) => new Design.Error({ code: "invalid", message: error.message })),
-      )
-    }
-    const recorded = statuses?.length
-      ? DesignRounds.apply(current, statuses, verifies, Date.now(), recorder)
+            verifies,
+          )
+        : []
+    const fates = triaged.checked.map((item) => {
+      const review = reviews.find((entry) => entry.update === item.update)
+      return { update: item.update, refusal: item.refusal ?? review?.refusal, unverified: review?.unverified }
+    })
+    const accepted = fates.filter((fate) => !fate.refusal)
+    const recorded = accepted.length
+      ? DesignRounds.apply(
+          current,
+          accepted.map((fate) => fate.update),
+          verifies,
+          Date.now(),
+          recorder,
+        )
       : { notes: current.notes }
     if ("problem" in recorded) return yield* new Design.Error({ code: "invalid", message: recorded.problem })
+    const outcome: DesignRounds.Outcome = {
+      recorded: accepted.length,
+      unverified: accepted.flatMap((fate) =>
+        fate.unverified ? [{ feedback: fate.update.feedback, index: fate.update.index, reason: fate.unverified }] : [],
+      ),
+      refused: fates.flatMap((fate) =>
+        fate.refusal ? [{ feedback: fate.update.feedback, index: fate.update.index, reason: fate.refusal }] : [],
+      ),
+      // The notes are named as this update leaves them, so a status it just recorded is not listed as open.
+      context: triaged.see.map((list) =>
+        list === "jobs" ? DesignRounds.describeJobs(verifies) : DesignRounds.describeNotes(recorded.notes ?? []),
+      ),
+    }
+    if (statuses?.length && !accepted.length)
+      return yield* new Design.Error({
+        code: "invalid",
+        message: ["No note status was recorded.", ...DesignRounds.refusals(outcome)].join("\n"),
+      })
     const { platform: _previous, ...data } = next
     const updated = {
       ...data,
@@ -817,8 +944,12 @@ const make = Effect.gen(function* () {
       )
       .run()
       .pipe(Effect.orDie)
-    return updated
+    return { document: updated, ...(statuses?.length ? { notes: outcome } : {}) }
   }, lock.withPermits(1))
+
+  /** {@link amend} for callers that only want the document: the review page and the protocol. */
+  const update = (sessionID: SessionSchema.ID, id: Design.ID, input: Design.Update) =>
+    amend(sessionID, id, input).pipe(Effect.map((result) => result.document))
 
   const approve = Effect.fn("DesignStore.approve")(function* (
     sessionID: SessionSchema.ID,
@@ -994,6 +1125,14 @@ const make = Effect.gen(function* () {
     yield* Effect.forEach(input.assets, (assetID) => asset(sessionID, id, assetID))
     if ((input.whiteboards?.length ?? 0) > 20)
       return yield* new Design.Error({ code: "invalid", message: "Too many whiteboard scenes" })
+    const prompt = render(document)
+    // The message is never cut to fit, so one too long for a model to act on is refused before anything
+    // is stored: the page keeps the draft and the reviewer decides how to split it.
+    if (prompt.length > LIMITS.prompt)
+      return yield* new Design.Error({
+        code: "invalid",
+        message: `This review is too long to send as one message (${prompt.length} characters; the limit is ${LIMITS.prompt}). Send it in two parts: about half of the notes now, the rest in a second message.`,
+      })
     yield* Effect.forEach(input.whiteboards ?? [], (board, index) => {
       const scene = JSON.stringify(board.scene)
       if (!scene || scene.length > 2 * 1024 * 1024)
@@ -1004,7 +1143,6 @@ const make = Effect.gen(function* () {
       })
     })
     // The prompt must exist before the feedback row: a retry of that row must reuse this round.
-    const prompt = render(document)
     yield* Effect.tryPromise({
       try: () => DesignFiles.atomic(path.join(storage, id, "feedback", `${input.id}.prompt.txt`), prompt),
       catch: () => new Design.Error({ code: "unavailable", message: "Unable to freeze Design feedback prompt" }),
@@ -1071,6 +1209,7 @@ const make = Effect.gen(function* () {
     putJob,
     implementation,
     update,
+    amend,
     refresh,
     approve,
     reopen,

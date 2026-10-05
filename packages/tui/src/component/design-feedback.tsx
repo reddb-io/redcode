@@ -5,8 +5,12 @@ import { useTheme } from "../context/theme"
 /** Compact transcript view of admitted browser feedback; the model reads the rendered message instead. */
 export function DesignFeedbackNotice(props: { notice: Design.FeedbackNotice }) {
   const theme = useTheme()
+  // The count the reviewer sent: a message cut by an older renderer lists fewer notes than it names.
+  const sent = () => props.notice.sent ?? props.notice.notes.length
   const details = () =>
     [
+      props.notice.round === undefined ? undefined : `round ${props.notice.round}`,
+      sent() ? `${sent()} note${sent() === 1 ? "" : "s"}` : undefined,
       props.notice.id,
       props.notice.target,
       props.notice.revision,
@@ -45,6 +49,11 @@ export function DesignFeedbackNotice(props: { notice: Design.FeedbackNotice }) {
           </text>
         )}
       </For>
+      <Show when={props.notice.notes.length < sent()}>
+        <text fg={theme.text.feedback.warning.base}>
+          {props.notice.notes.length} of {sent()} note{sent() === 1 ? "" : "s"} reached the agent
+        </text>
+      </Show>
       <Show when={props.notice.attachments.length}>
         <box flexDirection="row" paddingTop={1} gap={1} flexWrap="wrap">
           <For each={props.notice.attachments}>

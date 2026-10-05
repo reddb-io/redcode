@@ -127,48 +127,79 @@ export function apply(
 export const REFUSED = "Note status refused:"
 
 /**
- * The soft gate on note statuses, judged before an update is applied. `resolved` needs a completed
- * verify job on the design's current revision that found the note's element with no blocking
- * finding; `partial` needs such a job (whatever it saw) and a reason; `unresolved` and `accepted`
- * need a reason. A refusal names the recent verify jobs, as the todo evidence gate names callIDs.
+ * The gate over every status of one update, each judged on its own, so a refusal keeps out only the
+ * status it names. `see` names the lists the refusals point at (`describeNotes`, `describeJobs`), for
+ * the caller to give once for the update instead of once per refusal.
  */
-export function gate(
+export function triage(
+  document: Rounds & { readonly revision: string | null },
+  updates: ReadonlyArray<Design.NoteUpdate>,
+  jobs: ReadonlyArray<Design.Job>,
+  by: Design.NoteRecorder = "agent",
+) {
+  const checked = updates.map((update) => ({ update, refusal: refusal(document, update, jobs, by) }))
+  return {
+    checked: checked.map((item) => ({ update: item.update, refusal: item.refusal?.text })),
+    see: (["notes", "jobs"] as const).filter((list) => checked.some((item) => item.refusal?.see === list)),
+  }
+}
+
+/**
+ * The soft gate on one note status, judged before an update is applied: why the status cannot be
+ * recorded, or undefined when it can. The update must name a recorded note. `resolved` needs a
+ * completed verify job on the design's current revision that found the note's element with no blocking
+ * finding; `partial` needs such a job (whatever it saw) and a reason; `unresolved` and `accepted` need
+ * a reason, and a verify job only when they cite one. `see` names the list that tells the agent what
+ * to cite instead (the recorded notes or the recent verify jobs), as the todo evidence gate names
+ * callIDs.
+ */
+function refusal(
   document: Rounds & { readonly revision: string | null },
   update: Design.NoteUpdate,
   jobs: ReadonlyArray<Design.Job>,
-  by: Design.NoteRecorder = "agent",
-): string | undefined {
+  by: Design.NoteRecorder,
+): { readonly text: string; readonly see?: "jobs" | "notes" } | undefined {
   const name = `${update.feedback} #${update.index}`
-  const refuse = (text: string) => `${REFUSED} ${text} ${describeJobs(jobs)}`
+  const refuse = (text: string) => ({ text: `${REFUSED} ${text}`, see: "jobs" as const })
   const reason = update.reason?.trim()
+  // Checked before anything else: a mistyped id is not an evidence problem, and saying so would
+  // send the agent to verify again.
+  const note = (document.notes ?? []).find((item) => same(item, update))
+  if (!note) return { text: `Unknown note ${name}.`, see: "notes" }
   // The reviewer's escape hatch: a person can close a note the agent cannot verify, but only as
   // accepted or unresolved, with a reason, and the record says who did it.
   if (by === "reviewer" && update.status !== "unresolved" && update.status !== "accepted")
-    return `${REFUSED} the reviewer records a note as accepted or unresolved; resolved and partial come from the agent's verify.`
-  if (update.status === "unresolved" || update.status === "accepted")
-    return reason
-      ? undefined
-      : `${REFUSED} ${update.status} for ${name} needs a reason saying what stays open and why; the reviewer reads it.`
+    return {
+      text: `${REFUSED} the reviewer records a note as accepted or unresolved; resolved and partial come from the agent's verify.`,
+    }
+  const claimed = isClaim(update)
+  if (!claimed && !reason)
+    return {
+      text: `${REFUSED} ${update.status} for ${name} needs a reason saying what stays open and why; the reviewer reads it.`,
+    }
   if (!update.evidence)
-    return refuse(
-      `${update.status} for ${name} needs evidence: run one verify for the round on the current revision (design_export format verify, wait for its native monitor to complete) and cite it as {"evidence":{"job":"<verify job id>"}}.`,
-    )
+    return claimed
+      ? refuse(
+          `${update.status} for ${name} needs evidence: run one verify for the round on the current revision (design_export format verify, wait for its native monitor to complete) and cite it as {"evidence":{"job":"<verify job id>"}}.`,
+        )
+      : undefined
   const job = jobs.find((item) => item.id === update.evidence!.job)
   if (!job || job.input.format !== "verify" || job.status !== "completed" || !job.verify)
     return refuse(`Evidence job ${update.evidence.job} is not a completed verify job of this design.`)
-  if (job.input.revision !== document.revision)
+  if (claimed && job.input.revision !== document.revision)
     return refuse(
       `Evidence job ${job.id} verified ${job.input.revision}, not the current revision ${document.revision ?? "(unpublished)"}. Run one verify on the current revision and cite it.`,
     )
   const seen = observed(job, update)
-  if (!seen) {
-    const round = (document.notes ?? []).find((note) => same(note, update))?.round
+  if (!seen)
     return refuse(
-      `Evidence job ${job.id} verified round ${job.verify.round}, not ${name}${round === undefined ? "" : ` (round ${round})`}. Run design_export {"revision":"${document.revision}","format":"verify"${round === undefined ? "" : `,"round":${round}`}} and cite that job.`,
+      `Evidence job ${job.id} verified round ${job.verify.round}, not ${name} (round ${note.round}). Run design_export {"revision":"${document.revision}","format":"verify","round":${note.round}} and cite that job.`,
     )
-  }
+  if (!claimed) return undefined
   if (update.status === "partial")
-    return reason ? undefined : `${REFUSED} partial for ${name} needs a reason saying what still differs from the note.`
+    return reason
+      ? undefined
+      : { text: `${REFUSED} partial for ${name} needs a reason saying what still differs from the note.` }
   if (!seen.found)
     return refuse(
       `${name} cannot be resolved: ${job.id} did not find its element in ${job.input.revision} (${seen.reason}). Record it unresolved or accepted with a reason, or restore the element and verify again.`,
@@ -181,10 +212,68 @@ export function gate(
 }
 
 /**
- * Why the review cannot end or be approved now: notes of the latest round still awaiting an outcome.
- * Undefined when every note has one.
+ * A status that says the note was acted on. Only these are a claim a semantic review can contradict:
+ * `unresolved` and `accepted` say the note was not carried out, and why.
  */
-export function blocking(document: Rounds) {
+export const isClaim = (update: Pick<Design.NoteUpdate, "status">) =>
+  update.status === "resolved" || update.status === "partial"
+
+/**
+ * What a semantic review is shown for one claimed fix: what the reviewer asked for, and what the cited
+ * verify saw of that note. Nothing else of the design goes with it (no other note or job, no capture
+ * path, no locator), so a review does not grow with the design's history.
+ */
+export function claim(document: Rounds, update: Design.NoteUpdate, jobs: ReadonlyArray<Design.Job>) {
+  const item = (document.notes ?? []).find((note) => same(note, update))?.item
+  const seen = observed(
+    jobs.find((job) => job.id === update.evidence?.job),
+    update,
+  )
+  return {
+    request: { text: item?.text, label: item?.label, elementText: item?.elementText, screen: item?.params?.screen },
+    observation: seen && {
+      job: update.evidence?.job,
+      found: seen.found,
+      blocking: seen.blocking,
+      reason: seen.reason,
+      findings: seen.findings,
+      scenarios: seen.scenarios,
+    },
+  }
+}
+
+/** One note status that was refused, or recorded without a System One verdict, and why. */
+export interface Marked {
+  readonly feedback: string
+  readonly index: number
+  readonly reason: string
+}
+
+/**
+ * What one update did to the note statuses it carried: how many were recorded, which of those went in
+ * without a System One verdict, and which were refused. `context` holds the lists the refusals point
+ * at (the recorded notes, the verify jobs), each once. Told to the agent in the tool result; nothing
+ * here is stored.
+ */
+export interface Outcome {
+  readonly recorded: number
+  readonly unverified: ReadonlyArray<Marked>
+  readonly refused: ReadonlyArray<Marked>
+  readonly context: ReadonlyArray<string>
+}
+
+/** One line per refusal, then the lists they point at. */
+export const refusals = (outcome: Pick<Outcome, "refused" | "context">) => [
+  ...outcome.refused.map((item) => `${item.feedback} #${item.index}: ${item.reason}`),
+  ...outcome.context,
+]
+
+/**
+ * Why the review cannot end or be approved now: notes of any round still awaiting an outcome, up to
+ * eight named per round, and the call that lists a round's notes with their text. Undefined when
+ * every note has an outcome.
+ */
+export function blocking(document: Rounds & Partial<Pick<Design.Info, "id">>) {
   const pending = open(document)
   if (!pending.length) return undefined
   const rounds = [...new Set(pending.map((note) => note.round))].toSorted((a, b) => a - b)
@@ -195,7 +284,7 @@ export function blocking(document: Rounds) {
       .map((note) => `${note.feedback} #${note.index} (${label(note)})`)
       .join(", ")}${items.length > 8 ? ` and ${items.length - 8} more` : ""}`
   }
-  return `${rounds.map(describe).join("; ")}. Fix them, publish one revision, run one verify per round (design_export format verify with round set) and record each note with design_document update notes; unresolved or accepted with a reason are allowed.`
+  return `${rounds.map(describe).join("; ")}. Fix them, publish one revision, run one verify per round (design_export format verify with round set) and record each note with design_document update notes; unresolved or accepted with a reason are allowed. Every note of a round with its text: design_read {${document.id ? `"id":"${document.id}",` : ""}"section":"notes","round":${rounds.length === 1 ? rounds[0] : "<round>"}}.`
 }
 
 /** The verify jobs of a design, newest first, as a refusal or report names them. */
@@ -217,10 +306,13 @@ export function describeJobs(jobs: ReadonlyArray<Design.Job>, limit = 5) {
     .join("; ")}.`
 }
 
-/** Up to ten notes, for an error that has to name the ones the agent may update. */
+/**
+ * Up to ten notes, for an error that has to name the ones the agent may update. "Known", so the line
+ * is not read as the count of statuses an update recorded, which it can follow.
+ */
 export function describeNotes(list: ReadonlyArray<Design.Note>, limit = 10) {
-  if (!list.length) return "Notes: none recorded."
-  return `Notes: ${list
+  if (!list.length) return "Known notes: none."
+  return `Known notes: ${list
     .slice(-limit)
     .map((note) => `${note.feedback} #${note.index} (round ${note.round}, ${note.status})`)
     .join(", ")}${list.length > limit ? ` and ${list.length - limit} earlier` : ""}.`

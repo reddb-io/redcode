@@ -23,6 +23,7 @@ const suites = {
     "test/design-rounds.test.ts",
     "test/design-task-phases.test.ts",
     "test/design-conversations.test.ts",
+    "test/design-feed.test.ts",
     "test/design-feedback.test.ts",
     "test/design-prompt.test.ts",
     "test/design-system.test.ts",
@@ -127,6 +128,7 @@ const suites = {
     "test/redcode-workflows.test.tsx",
     "test/redcode-session.test.tsx",
     "test/context-satisfaction.test.tsx",
+    "test/design-notices.test.tsx",
     "test/cli/tui/monitors-tab.test.tsx",
     "test/cli/tui/monitors-model.test.ts",
     "test/cli/tui/session-terminals.test.tsx",
@@ -140,6 +142,7 @@ const suites = {
   schema: [
     "test/satisfaction.test.ts",
     "test/config.test.ts",
+    "test/design-notice.test.ts",
     "test/model.test.ts",
     "test/router-offers.test.ts",
     "test/session-error.test.ts",

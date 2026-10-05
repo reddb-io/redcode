@@ -3,6 +3,8 @@
 export * as DesignQuality from "./quality.js"
 
 import { Design } from "@opencode/schema/design"
+import { DesignNotice } from "@opencode/schema/design-notice"
+import { DesignApproval } from "./approval.js"
 import { device, type Platform } from "./ui/devices.js"
 
 /**
@@ -375,8 +377,8 @@ export function report(
     "id" | "input" | "status" | "progress" | "result" | "error" | "created" | "finished" | "audit" | "verify"
   >[],
   revision: string | null,
-  /** The design's notes, so the report can say which notes a verify did not see. */
-  notes: readonly Pick<Design.Note, "feedback" | "index" | "round">[] = [],
+  /** The design's notes, so the report can quote each verified note and say which notes a verify did not see. */
+  notes: readonly Pick<Design.Note, "feedback" | "index" | "round" | "item">[] = [],
 ) {
   const current = jobs
     .filter((job) => job.input.revision === revision && job.status === "completed" && job.audit)
@@ -405,11 +407,19 @@ export function report(
     ...(jobs.length > status.length ? [`${jobs.length - status.length} older job statuses omitted.`] : []),
     ...(verify?.verify
       ? [
-          `Current verify: ${verify.id}, round ${verify.verify.round}, revision ${revision}. One line per note; open the captures with the image-capable read tool before recording a status.`,
-          ...verify.verify.notes.map(
-            (note) =>
+          `Current verify: ${verify.id}, round ${verify.verify.round}, revision ${revision}. One line per note with what the verify saw, then the reviewer's note; open the captures with the image-capable read tool before recording a status.`,
+          ...verify.verify.notes.flatMap((note) => {
+            const asked = notes.find((item) => item.feedback === note.feedback && item.index === note.index)
+            return [
               `${note.index}. ${note.feedback} #${note.index} ${note.label}: ${note.reason}${note.before ? ` before: ${note.before}` : ""}${note.after ? ` after: ${note.after}` : ""}${note.findings.length ? ` findings: ${note.findings.slice(0, 4).join(" | ")}` : ""}`,
-          ),
+              // The verify only locates the element; the reviewer's words say what had to change in it.
+              ...(asked
+                ? [
+                    `${DesignNotice.LABEL.note}${DesignApproval.clip(DesignNotice.userText(asked.item.text) || "(no text)", 200)}`,
+                  ]
+                : []),
+            ]
+          }),
           ...verify.verify.findings,
           ...(() => {
             const seen = verify.verify!

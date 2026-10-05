@@ -283,6 +283,37 @@ describe("DesignFeed.reduce", () => {
     expect(items[1]).toMatchObject({ type: "reply", text: `${"x".repeat(DesignFeed.LIMITS.text)}…` })
   })
 
+  test("counts the notes a review was sent with, even when an older message lists fewer", () => {
+    // A stored message from before every note was guaranteed to be listed: sent with 14, cut after two.
+    const cut = [
+      '<design-review id="design_checkout" revision="rev_1" feedback="msg_cut" ended="false">',
+      "## Message",
+      "Second pass",
+      "",
+      "## Notes (14)",
+      "",
+      "### 1. #title",
+      "Note: Bigger",
+      "",
+      "### 2. #submit",
+      "Note: Ver",
+      "[Truncated: 3487 characters omitted; the full notes are stored with feedback msg_cut.]",
+      "",
+      "## Next step",
+      "Feedback round 9: fix everything in this round.",
+      "</design-review>",
+    ].join("\n")
+    expect(DesignFeed.describe(cut)).toEqual({ text: "Second pass", notes: 14 })
+    expect(
+      all([
+        event(SessionEvent.InboxEnqueued, 1, {
+          inboxID: "msg_cut",
+          item: { type: "user", payload: { text: cut }, delivery: "steer" },
+        }),
+      ]),
+    ).toEqual([{ type: "user", seq: 1, at, id: "msg_cut", text: "Second pass", notes: 14, pending: true }])
+  })
+
   test("a delivery without its admission, and events outside the review vocabulary, add nothing", () => {
     expect(
       all([

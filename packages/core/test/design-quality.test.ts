@@ -201,13 +201,72 @@ describe("DesignQuality.report", () => {
     })
 
     const report = DesignQuality.report([verify], "rev_current", [
-      { feedback: "msg_first", index: 1, round: 1 },
-      { feedback: "msg_late", index: 2, round: 1 },
+      { feedback: "msg_first", index: 1, round: 1, item: { target: "#save", text: "Say what is saved" } },
+      { feedback: "msg_late", index: 2, round: 1, item: { target: "#cancel", text: "Arrived later" } },
     ])
 
     expect(report).toContain("Current verify: job_verify, round 1, revision rev_current.")
     expect(report).toContain("1. msg_first #1 button Save: found, no findings")
     expect(report).toContain("1 note of round 1 arrived after this verify (msg_late #2); run the verify again")
+  })
+
+  test("quotes the reviewer's note under each verified note, so one the agent did not act on is in view", () => {
+    const seen = (index: number, label: string, extra: Partial<Design.VerifyNote> = {}): Design.VerifyNote => ({
+      feedback: "msg_round",
+      index,
+      label,
+      found: true,
+      blocking: false,
+      findings: [],
+      scenarios: [],
+      reason: "found; no findings",
+      ...extra,
+    })
+    const verify = job({
+      id: "job_verify",
+      input: { revision: "rev_current", format: "verify", round: 3 },
+      verify: {
+        revision: "rev_current",
+        round: 3,
+        width: 1280,
+        notes: [
+          seen(1, 'button "Rotate"', { before: "/captures/1-before.png", after: "/captures/1-after.png" }),
+          seen(2, 'td "Actions"', { findings: ["review · small-control: Control height is 28px."] }),
+          seen(3, "svg"),
+          seen(4, "footer"),
+        ],
+        findings: [],
+      },
+    })
+    // The longest note ends on an astral character that a cut by UTF-16 units would split.
+    const long = `${"é".repeat(199)}😀 and the rest is cut`
+    const note = (index: number, text: string) => ({
+      feedback: "msg_round",
+      index,
+      round: 3,
+      item: { target: `#note-${index}`, text },
+    })
+
+    const lines = DesignQuality.report([verify], "rev_current", [
+      note(1, "Rotate per secret, not per client"),
+      note(2, "Align the three actions\nin every row"),
+      note(3, long),
+    ]).split("\n")
+
+    const header = lines.findIndex((line) => line.startsWith("Current verify: job_verify, round 3"))
+    expect(lines[header]).toContain("One line per note with what the verify saw, then the reviewer's note;")
+    expect(lines.slice(header + 1, header + 9)).toEqual([
+      '1. msg_round #1 button "Rotate": found; no findings before: /captures/1-before.png after: /captures/1-after.png',
+      "Note: Rotate per secret, not per client",
+      '2. msg_round #2 td "Actions": found; no findings findings: review · small-control: Control height is 28px.',
+      "Note: Align the three actions",
+      "    in every row",
+      "3. msg_round #3 svg: found; no findings",
+      `Note: ${"é".repeat(199)}😀…`,
+      // A note the caller did not pass is still reported, without words that are not known.
+      "4. msg_round #4 footer: found; no findings",
+    ])
+    expect(lines[header + 9]).toStartWith("Record each note with design_document update")
   })
 })
 

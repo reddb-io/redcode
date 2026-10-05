@@ -117,6 +117,8 @@ export const Plugin = {
               })
               // The TUI and web show the chip and the identification's headline in place of the call.
               const display = yield* Ref.make<Record<string, string>>({})
+              // What a notes update did to each status, reported ahead of the document it returns.
+              const noted = yield* Ref.make<DesignRounds.Outcome | undefined>(undefined)
               const output = yield* Effect.gen(function* () {
                 if (input.action === "list") return yield* designs.list(context.sessionID)
                 if (input.action === "detect")
@@ -212,8 +214,11 @@ export const Plugin = {
                     },
                   ]
                 }
-                return [yield* designs.update(context.sessionID, input.id, input.input)]
+                const amended = yield* designs.amend(context.sessionID, input.id, input.input)
+                yield* Ref.set(noted, amended.notes)
+                return [amended.document]
               })
+              const outcome = yield* Ref.get(noted)
               const dependencies =
                 typeof output === "string"
                   ? []
@@ -223,12 +228,13 @@ export const Plugin = {
               const content =
                 typeof output === "string"
                   ? output
-                  : output
-                      .map(
+                  : [
+                      ...(outcome ? [DesignDocumentTool.recorded(output[0], outcome)] : []),
+                      ...output.map(
                         (document, index) =>
                           `Design ${document.id}: ${document.name}\n${DesignTarget.describe(document)}\nRoot: ${document.root}\nDependencies: ${dependencies[index]}\nEngine: ${document.engine}\nEntry: ${document.entry}\nCurrent revision: ${document.revision ?? "unpublished"}\n${Design.describeSystem(document.designSystem)}\n${input.action === "list" ? `Design system: ${DesignSystem.summary(document) || "none detected"}` : DesignSystem.describe(document)}\nRecorded project data:\n${DesignChecklist.context(document) || "Brief not recorded"}\nEnd-of-round review: design_playbook {designID:"${document.id}",checklist:true}. Use id="component" for an isolated component.\nParams: ${JSON.stringify({ controls: document.controls ?? [], presets: document.presets ?? [] })}\nQuestions: ${document.questions.join("; ")}\nFeedback rounds: ${DesignRounds.summary(document)}${document.manifest ? `\n${document.manifest}` : ""}`,
-                      )
-                      .join("\n\n")
+                      ),
+                    ].join("\n\n")
               return { output, content, metadata: { action: input.action, ...(yield* Ref.get(display)) } }
             }).pipe(Effect.mapError((error) => new ToolFailure({ message: error.message, error }))),
         }),
