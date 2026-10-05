@@ -1,5 +1,19 @@
 # @reddb-io/redcode
 
+## 0.72.4
+
+### Patch Changes
+
+- The Design review page's side panel is now a compact Feedback tab. The newest round's notes read as a checklist, one line per note with a status mark, and a note expands to show its element, what the agent says it changed and the recorded outcome. Settled rounds fold into one line with their tallies, "Only what is left" hides what is done, the agent's last reply stays in view with the rest of the conversation under Activity, and the message box stays pinned at the bottom.
+
+  While the agent works, the round shows how far it has come: received, fixing (how many notes are addressed), stopped, published, verifying, outcomes missing, or ready for review. Ready for review appears only once every note has an outcome on a verified latest revision and the agent is idle. The panel also shows the agent's live activity and how long ago the round was received.
+
+  A chip next to the revision picker tells you whether you are looking at the latest revision (Latest, N behind, Updating…, Load failed, Offline). A line above the preview says which round the revision on screen answers. When a newer revision has not replaced it yet, the line says why and offers the next step: add your open note and switch, or retry a send or a failed load. When you switch to the latest revision, your queued notes and message now move with you instead of staying on the old revision, so they can no longer be sent twice. Clicking a draft's Remove or Send in the message box no longer misses when the box grows.
+
+- Design review notes are now a checklist the agent cannot silently skip. The agent marks each note it changed with `design_document update addressed`, and `design_preview` refuses to publish an answer to a feedback round while a note of that round has neither a mark nor an outcome, quoting those notes. Publishing a preset, tweak or restore from the review page no longer closes the open round; only the agent's `design_preview` answers it. Publish, verify and `design_document` results end with what each round still waits for, and the Design context keeps a pointer to the round's open notes after compaction.
+- Show the MCP servers right below Context in the terminal sidebar and move Modified Files down to just above the footer, after the to-dos and the language servers.
+- The terminal sidebar shows where a Design review round stands while the agent works through it: `Round 9 · 8/14 addressed · 3 recorded` under the to-do group, followed by up to three notes that still have neither an addressed mark nor an outcome, each on one line with the element and the reviewer's words. It refreshes on the same 5 second poll as the tasks and disappears once every note of the round has an outcome or the review has ended.
+
 ## 0.72.3
 
 ### Patch Changes
