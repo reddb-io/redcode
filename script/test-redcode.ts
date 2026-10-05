@@ -90,6 +90,7 @@ const suites = {
     "test/session-reasoning-observation.test.ts",
     "test/session-stop-loss.test.ts",
     "test/session-tool-output-prune.test.ts",
+    "test/shell-polling.test.ts",
     "test/v1-migration.test.ts",
     "test/tool-subagent.test.ts",
     "test/tool-edit.test.ts",
