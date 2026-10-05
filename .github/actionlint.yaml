@@ -1,4 +1,4 @@
+# No self-hosted runner labels: Redcode is public, so GitHub-hosted runners cost nothing.
+# Listing a Blacksmith label here is a billing decision; actionlint rejects unlisted labels.
 self-hosted-runner:
-  labels:
-    - blacksmith-4vcpu-ubuntu-2404
-    - blacksmith-4vcpu-windows-2025
+  labels: []
