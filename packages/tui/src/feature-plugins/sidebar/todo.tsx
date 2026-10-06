@@ -59,11 +59,12 @@ export function SidebarTodo(props: { context: Plugin.Context; sessionID: string 
   // A revision's number (R7) is its position in the design's revision list, which is read again only when the
   // design publishes a new revision, not on every poll.
   const [revisions] = createResource(
+    // An empty key is `false`: Solid then skips the fetch, so a session without a review asks for nothing.
     () =>
       (designs()?.data ?? [])
         .filter((design) => !design.ended && design.revision && design.rounds?.length)
         .map((design) => `${design.id}:${design.revision}`)
-        .join(" "),
+        .join(" ") || false,
     (key) =>
       Promise.all(
         key.split(" ").map((entry) => {
