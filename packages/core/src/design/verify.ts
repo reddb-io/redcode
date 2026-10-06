@@ -14,6 +14,12 @@ export const WIDTHS = 3
 /** Recorded widths outside this range are clamped: narrower is not a real screen, wider costs more than it shows. */
 const RANGE = { minimum: 240, maximum: 3840 } as const
 
+/**
+ * Recorded widths this fraction apart share one viewport: a note taken at 1187px and one at 1210px
+ * render alike, while 768px and 800px may straddle a breakpoint and stay apart.
+ */
+const TOLERANCE = 0.025
+
 /** Up to this percent of an element's pixels may differ between identical renders (anti-aliasing), not an edit. */
 export const PIXELS = 0.1
 
@@ -37,8 +43,9 @@ export interface Collapsed {
 
 /**
  * Group a round's notes by the viewport each was taken at: the phone an app note names, the width a
- * web or slide note recorded (clamped to a real screen), or the widest configured viewport when the
- * note recorded neither, as every note was verified before widths were recorded. At most `cap`
+ * web or slide note recorded (clamped to a real screen, and sharing a slot with near widths, see
+ * `slots`), or the widest configured viewport when the note recorded neither, as every note was
+ * verified before widths were recorded. At most `cap`
  * viewports are kept, those with the most notes (wider first on a tie); the notes of any other are
  * verified at the nearest kept one, and `collapsed` says which, so the job can report it.
  */
@@ -49,16 +56,21 @@ export function placements(
 ) {
   const widest = sizes.reduce((best, item) => (item.width > best.width ? item : best))
   const phones = sizes.some((size) => size.device)
-  const wanted = notes.map((note): Viewport => {
-    const width = note.item.width
+  const clamped = notes.map((note) =>
+    note.item.width ? Math.min(RANGE.maximum, Math.max(RANGE.minimum, note.item.width)) : undefined,
+  )
+  const slot = slots(
+    clamped.filter((width) => width !== undefined),
+    sizes,
+  )
+  const wanted = notes.map((note, position): Viewport => {
+    const width = clamped[position]
     if (phones)
       return (
         sizes.find((size) => size.device && size.device === note.item.platform) ??
         (width ? nearest(sizes, width) : widest)
       )
-    if (!width) return widest
-    const clamped = Math.min(RANGE.maximum, Math.max(RANGE.minimum, width))
-    return sizes.find((size) => size.width === clamped) ?? { width: clamped, height: nearest(sizes, clamped).height }
+    return width ? slot(width) : widest
   })
   const groups = [...Map.groupBy(wanted.entries(), ([, viewport]) => key(viewport)).values()].map((entries) => ({
     viewport: entries[0][1],
@@ -94,6 +106,54 @@ function nearest(sizes: ReadonlyArray<Viewport>, width: number) {
   return sizes.reduce((best, item) => (Math.abs(item.width - width) < Math.abs(best.width - width) ? item : best))
 }
 
+/**
+ * The viewport each recorded width is verified at. A width within TOLERANCE of a configured viewport
+ * takes that viewport; the other widths, narrowest first, form slots of widths within TOLERANCE of
+ * the slot's narrowest, each verified at the width most of its notes recorded (the widest on a tie).
+ */
+function slots(widths: ReadonlyArray<number>, sizes: ReadonlyArray<Viewport>) {
+  const configured = (width: number) => {
+    const size = nearest(sizes, width)
+    return Math.abs(size.width - width) <= size.width * TOLERANCE ? size : undefined
+  }
+  const loose = widths.filter((width) => !configured(width))
+  const count = (width: number) => loose.filter((item) => item === width).length
+  const groups = [...new Set(loose)]
+    .toSorted((a, b) => a - b)
+    .reduce<number[][]>((all, width) => {
+      const last = all.at(-1)
+      return last && width <= last[0] * (1 + TOLERANCE) ? [...all.slice(0, -1), [...last, width]] : [...all, [width]]
+    }, [])
+  const chosen = new Map(
+    groups.flatMap((group) => {
+      const width = group.toSorted((a, b) => count(b) - count(a) || b - a)[0]
+      return group.map((item) => [item, width] as const)
+    }),
+  )
+  return (width: number): Viewport => {
+    const size = configured(width)
+    if (size) return size
+    const kept = chosen.get(width) ?? width
+    return { width: kept, height: nearest(sizes, kept).height }
+  }
+}
+
+/**
+ * Where a note was verified, when that is not where it was taken: a width that shares a slot with a
+ * near one, a width clamped to a real screen, or a viewport collapsed into a kept one past the cap.
+ * Empty when they match or the note recorded no viewport.
+ */
+export function displaced(item: Pick<Design.FeedbackItem, "width" | "platform">, viewport: Viewport) {
+  const width = item.width !== undefined && item.width !== viewport.width
+  const platform = item.platform !== undefined && viewport.device !== undefined && item.platform !== viewport.device
+  if (!width && !platform) return ""
+  const taken = viewportLabel({
+    width: item.width ?? viewport.width,
+    device: item.platform && viewport.device ? item.platform : undefined,
+  })
+  return `verified at ${viewportLabel(viewport)}, not at ${taken} where the note was taken`
+}
+
 /** A viewport as a note line or a report names it, such as `390px` or `393px iOS`. */
 export function viewportLabel(viewport: Pick<Viewport, "width" | "device">) {
   return `${viewport.width}px${viewport.device ? ` ${viewport.device === "ios" ? "iOS" : "Android"}` : ""}`
@@ -126,9 +186,13 @@ export interface Facts {
  * (undefined when that revision rendered without it), `after` on the verified one, `pixels` the
  * percent of differing pixels between same-size captures when it could be measured. Pass the same
  * facts twice when both sides are one revision: nothing changed.
+ *
+ * An element missing on the note's own revision is not a new element: the reviewer took the note on
+ * it there, so the locator missed it (a weak selector, another state). That measures nothing, so the
+ * delta is `known: false` and claims neither a change nor its absence.
  */
 export function delta(before: Facts | undefined, after: Facts, pixels?: number): Design.VerifyDelta {
-  if (!before) return { changed: true, added: true, text: false, markup: false, moved: false, resized: false }
+  if (!before) return { changed: false, known: false, text: false, markup: false, moved: false, resized: false }
   const differs = (a: number, b: number) => Math.abs(a - b) > SLACK
   const text = before.text !== after.text
   const markup = before.markup !== after.markup
@@ -152,9 +216,16 @@ const clip = (text: string) => {
   return `${/[\uD800-\uDBFF]$/.test(head) ? head.slice(0, -1) : head}…`
 }
 
+/** A delta that measured nothing, including the `added` that earlier verifies wrote for the same case. */
+export const unmeasured = (change: Design.VerifyDelta) => change.known === false || change.added === true
+
+/** A page-level note names no element: it resolves to the whole variant root or the document body. */
+export const isPage = (target: string) => target.replace(/^variant:[a-zA-Z0-9_-]{1,64} /, "").trim() === "page"
+
 /** The delta in a few words, for the note's verify reason and the agent. */
 export function describe(change: Design.VerifyDelta) {
-  if (change.added) return "change: new element (absent from the revision the note was taken on)"
+  if (unmeasured(change))
+    return "change: could not be measured (the element was not located on the revision the note was taken on), so this is no evidence of a change"
   if (!change.changed) return "change: none to the element (pixels, text, markup, style, position and size are the same)"
   const parts = [
     change.pixels !== undefined && change.pixels > PIXELS ? `${change.pixels}% of pixels` : "",
@@ -164,4 +235,28 @@ export function describe(change: Design.VerifyDelta) {
     change.resized ? "resized" : "",
   ].filter(Boolean)
   return `change: ${parts.join(", ")}`
+}
+
+/**
+ * What a note's verify reason says after found or missing and the findings: the change in its element
+ * (or why a page-level note has none), the scenarios that verified a behavior, and where it was
+ * verified when that is not where it was taken.
+ */
+export function remarks(input: {
+  readonly item: Pick<Design.FeedbackItem, "target" | "width" | "platform">
+  readonly viewport: Viewport
+  readonly found: boolean
+  readonly delta?: Design.VerifyDelta
+  readonly exercised?: ReadonlyArray<string>
+}) {
+  const measured = input.found && isPage(input.item.target)
+    ? "change: not measured for a page-level note (the whole page is not compared as one element)"
+    : input.found && input.delta
+      ? describe(input.delta)
+      : ""
+  const behavior =
+    input.found && input.exercised?.length
+      ? `behavior verified by scenario${input.exercised.length === 1 ? "" : "s"} ${input.exercised.join(", ")}`
+      : ""
+  return [measured, behavior, displaced(input.item, input.viewport)].filter(Boolean)
 }

@@ -410,6 +410,7 @@ export type DesignVerifyDelta = {
   moved: boolean
   resized: boolean
   added?: boolean
+  known?: boolean
   textBefore?: string
   textAfter?: string
 }
@@ -1141,6 +1142,7 @@ export type DesignVerifyNote = {
   after?: string
   findings: Array<string>
   scenarios: Array<string>
+  exercised?: Array<string>
   reason: string
   width?: number | "Infinity" | "-Infinity" | "NaN"
   platform?: "ios" | "android"

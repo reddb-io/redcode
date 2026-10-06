@@ -145,16 +145,28 @@ export function SidebarTodo(props: { context: Plugin.Context; sessionID: string 
                       </text>
                       <For each={kept().slice(0, ROUND_NOTES)}>
                         {(note) => (
-                          <NoteRow
-                            mark={note.status === "partial" ? "[~]" : "[✗]"}
-                            tone={
-                              note.status === "partial"
-                                ? theme.text.feedback.warning.base
-                                : theme.text.feedback.error.base
-                            }
-                            base={theme.text.base}
-                            item={note.item}
-                          />
+                          <box>
+                            <NoteRow
+                              mark={note.status === "partial" ? "[~]" : "[✗]"}
+                              tone={
+                                note.status === "partial"
+                                  ? theme.text.feedback.warning.base
+                                  : theme.text.feedback.error.base
+                              }
+                              base={theme.text.base}
+                              item={note.item}
+                            />
+                            {/* Why it stayed as it is, on one line under the note. */}
+                            <Show when={note.reason && flat(note.reason)}>
+                              {(reason) => (
+                                <box paddingLeft={4}>
+                                  <text wrapMode="none" truncate fg={theme.text.muted}>
+                                    {reason()}
+                                  </text>
+                                </box>
+                              )}
+                            </Show>
+                          </box>
                         )}
                       </For>
                       <Show when={kept().length > ROUND_NOTES}>
@@ -165,6 +177,14 @@ export function SidebarTodo(props: { context: Plugin.Context; sessionID: string 
                     </box>
                   )
                 }}
+              </Show>
+              {/* Earlier rounds are done, but what they left partial or unresolved is still counted. */}
+              <Show when={review.earlier}>
+                {(count) => (
+                  <text wrapMode="word" fg={theme.text.muted}>
+                    {count()} earlier {count() === 1 ? "note" : "notes"} partial/unresolved
+                  </text>
+                )}
               </Show>
             </box>
           )}
@@ -268,7 +288,8 @@ export function SidebarTodo(props: { context: Plugin.Context; sessionID: string 
 /**
  * The open reviews worth a block: those with a round that still has a note without an outcome (the work left,
  * counted as the agent's own design_document results recite it) or whose newest round is answered, so its
- * partial and unresolved outcomes stay in sight. Each review names its design when the session has several.
+ * partial and unresolved outcomes stay in sight; those of earlier rounds are counted on one line. Each review names
+ * its design when the session has several.
  */
 function designReviews(
   designs: ReadonlyArray<DesignInfo>,
@@ -276,11 +297,16 @@ function designReviews(
 ) {
   return designs
     .filter((design) => !design.ended)
-    .map((design) => ({
-      name: designs.length > 1 ? design.name : undefined,
-      summary: designRoundSummary(design, revisions?.get(design.id)),
-    }))
-    .filter((review) => review.summary.pending.length > 0 || review.summary.answered)
+    .map((design) => {
+      const summary = designRoundSummary(design, revisions?.get(design.id))
+      return {
+        name: designs.length > 1 ? design.name : undefined,
+        summary,
+        /** Partial and unresolved notes of the rounds before the newest one. */
+        earlier: summary.rounds.slice(0, -1).reduce((sum, round) => sum + round.partial + round.unresolved, 0),
+      }
+    })
+    .filter((review) => review.summary.pending.length > 0 || review.summary.answered || review.earlier > 0)
 }
 
 /** How the folded Design tasks stand: `1 in progress · 2 open · 3 done`, zero counts left out. */

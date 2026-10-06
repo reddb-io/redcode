@@ -50,6 +50,14 @@ describe("DesignRounds.implicit", () => {
     expect(next.rounds?.at(-1)).toEqual({ number: 2, opened: 3, revision: "rev_2", feedback: [typed.id] })
   })
 
+  test("takes the note on the revision the message arrived on, even after the agent published again", () => {
+    const answered = { ...DesignRounds.published(DesignRounds.admit(empty, review, 1), "rev_2"), revision: "rev_2" }
+    const late = DesignRounds.implicit(answered, { ...typed, revision: "rev_1" }, 4)
+    expect(late.rounds?.at(-1)).toEqual({ number: 2, opened: 4, revision: "rev_1", feedback: [typed.id] })
+    expect(late.notes?.at(-1)?.item.revision).toBe("rev_1")
+    expect(DesignRounds.implicit(answered, typed, 4).notes?.at(-1)?.item.revision).toBe("rev_2")
+  })
+
   test("records one note per message, and none for a blank message or an unpublished design", () => {
     const once = { ...DesignRounds.implicit(empty, typed, 1), revision: "rev_1" }
     expect(DesignRounds.implicit(once, typed, 2)).toBe(once)

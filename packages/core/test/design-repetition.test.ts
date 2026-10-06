@@ -210,6 +210,75 @@ describe("DesignStore.repetition", () => {
     }),
   )
 
+  it.live("sends nothing in observe mode", () =>
+    Effect.gen(function* () {
+      yield* seed
+      const store = yield* DesignStore.Service
+      const recorded = yield* revision()
+      yield* reasoning({ ...dual, sessionReasoning: "observe" })
+      const result = yield* store.repetition(sessionID, recorded, signatures, 1440)
+      expect(systemOne.asked).toEqual([])
+      expect(rules(result.checks)).toEqual([
+        ["redeclared-component", "review", undefined],
+        ["variants-too-similar", "review", undefined],
+      ])
+    }),
+  )
+
+  it.live("does not judge an accepted key, reuses verdicts for unchanged evidence and never sends source text", () =>
+    Effect.gen(function* () {
+      yield* seed
+      const store = yield* DesignStore.Service
+      const recorded = yield* revision()
+      // Accepted on the live document after this revision was published.
+      yield* store.update(sessionID, recorded.designID, {
+        decisions: [{ id: "accept:variants-too-similar@calm~bold", text: "Two takes on one grid, on purpose." }],
+      })
+      yield* reasoning(dual, () => ({ item_0: 0.95 }))
+      const first = yield* store.repetition(sessionID, recorded, signatures, 1440)
+      expect(systemOne.asked).toHaveLength(1)
+      expect((systemOne.asked[0]!.candidate as ReadonlyArray<{ key: string }>).map((item) => item.key)).toEqual([
+        "redeclared-component@Card",
+      ])
+      const sent = JSON.stringify(systemOne.asked[0]!.sources)
+      expect(sent).toContain("Button")
+      expect(sent).not.toContain("return")
+      expect(rules(first.checks)).toEqual([
+        ["redeclared-component", "review", "confirmed"],
+        ["variants-too-similar", "review", undefined],
+      ])
+      // The same evidence again: the verdict is reused and nothing is sent.
+      yield* reasoning(dual, () => ({ item_0: 0.95 }))
+      const second = yield* store.repetition(sessionID, recorded, signatures, 1440)
+      expect(systemOne.asked).toEqual([])
+      expect(rules(second.checks)).toEqual(rules(first.checks))
+    }),
+  )
+
+  it.live("degrades a failing reuse check to one info check and reports an unreadable approvals file", () =>
+    Effect.gen(function* () {
+      yield* seed
+      yield* reasoning(single)
+      const store = yield* DesignStore.Service
+      const recorded = yield* revision()
+      yield* Effect.promise(async () => {
+        await mkdir(path.join(recorded.document.application, ".red"), { recursive: true })
+        await writeFile(path.join(recorded.document.application, DesignSignature.FILE), "{ broken")
+      })
+      // An inventory entry without a file is a defect inside the check, never a failed audit.
+      const broken = {
+        ...recorded,
+        document: { ...recorded.document, inventory: [{ root: "src", file: undefined, name: "Card" } as unknown as Design.Component] },
+      }
+      const result = yield* store.repetition(sessionID, broken, signatures, 1440)
+      expect(rules(result.checks)).toEqual([
+        ["reuse-check-unavailable", "info", undefined],
+        ["variants-too-similar", "review", undefined],
+      ])
+      expect(result.findings).toEqual([expect.stringContaining("Approved designs: .red/design-signatures.json is unreadable")])
+    }),
+  )
+
   it.live("splits more than twenty flagged items into requests sent together", () =>
     Effect.sync(() => {
       const subjects = Array.from({ length: 45 }, (_, index) => ({

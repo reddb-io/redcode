@@ -90,6 +90,11 @@ const state = {
   failApproval: false,
   failFeedback: false,
   refused: undefined as string | undefined,
+  /** The next review message is answered with a 409 conflict, which the page holds for a resend or a discard. */
+  conflictFeedback: false,
+  conflicted: undefined as string | undefined,
+  /** The platforms the Details tab saved on the design. */
+  platforms: [] as string[],
   assets: [] as Design.Asset[],
   captures: [] as Design.ImportAsset[],
   approvals: [] as Design.Approve[],
@@ -145,6 +150,18 @@ const server = Bun.serve({
       state.document = { ...state.document, approvedRevision: state.document.revision, ended: true }
       return Response.json({ agent: "plan" })
     }
+    // Reopening withdraws a pending end too, as the store does; Keep reviewing uses it.
+    if (route === `${endpoint}/${design.id}/reopen` && request.method === "POST") {
+      const { endRequested: _ending, ...reopened } = state.document
+      state.document = { ...reopened, ended: false }
+      return Response.json(state.document)
+    }
+    if (route === `${endpoint}/${design.id}` && request.method === "PATCH") {
+      const patch = (await request.json()) as { platform?: string }
+      state.platforms.push(patch.platform ?? "")
+      state.document = Schema.decodeUnknownSync(Design.Info)({ ...state.document, ...patch })
+      return Response.json(state.document)
+    }
     if (route === `${endpoint}/${design.id}/revision`) {
       if (state.failRevisions) {
         state.failRevisions = false
@@ -191,6 +208,11 @@ const server = Bun.serve({
         state.failFeedback = false
         state.refused = feedback.id
         return Response.json({ message: "This review is too long to send as one message" }, { status: 400 })
+      }
+      if (state.conflictFeedback) {
+        state.conflictFeedback = false
+        state.conflicted = feedback.id
+        return Response.json({ message: "Reload the latest revision before sending" }, { status: 409 })
       }
       state.feedback.push(feedback)
       return Response.json([])
@@ -388,6 +410,8 @@ try {
 
   // The round's progress line: received, fixing, stopped, published, verifying and ready, derived from the
   // document, the jobs and live feed events (sequence above 0); the revision chip and the line above the preview.
+  // Both name the revision on screen first: its number counts from the oldest listed revision (rev_older is R1,
+  // rev_latest R2), so it stays the same when newer revisions are listed.
   const live = (...events: object[]) =>
     state.feed!.enqueue(new TextEncoder().encode(events.map((event) => `data: ${JSON.stringify(event)}\n\n`).join("")))
   const shown = async (id: string, pattern: RegExp) => {
@@ -405,13 +429,20 @@ try {
   live({ type: "user", seq: 61, at: 61, id: "msg_second", text: "Tighten the header", notes: 3, pending: true })
   await shown("round-stage", /^Received · waiting for the agent/)
   assert.equal(await page.locator("#round-steps").getAttribute("aria-label"), "Step 1 of 5: Received")
-  await shown("newer-label", /^Latest$/)
-  await shown("revision-line", /^This preview is from before round 2\.The agent has not taken the notes up yet\./)
+  await shown("newer-label", /^R2 · Latest$/)
+  await shown("revision-line", /^R2 · This preview is from before round 2\.The agent has not taken the notes up yet\./)
   live({ type: "user", seq: 62, at: 62, id: "msg_second", text: "Tighten the header", notes: 3 })
   await shown("round-stage", /^Fixing · 1 of 3 addressed$/)
   await shown("revision-line", /The agent is working on 2 notes\./)
   live({ type: "tool", seq: 63, at: 63, id: "call_edit", tool: "edit", status: "running", summary: "index.html" })
   await shown("agent-text", /^Running edit · 0 s · index\.html$/)
+  // A wait the feed reports (here a permission the terminal asks for) names itself, then hands the line back.
+  live({ type: "wait", seq: 68, at: 63, wait: "permission", active: true, message: "edit index.html" })
+  await shown("agent-text", /^Waiting for your approval in the terminal: edit index\.html$/)
+  assert.equal(await page.locator("#agent-state").getAttribute("data-state"), "waiting")
+  live({ type: "wait", seq: 69, at: 63, wait: "permission", active: false })
+  await shown("agent-text", /^Running edit · \d+ s · index\.html$/)
+  assert.equal(await page.locator("#agent-state").getAttribute("data-state"), "working")
   live({ type: "state", seq: 64, at: 64, state: "idle" })
   await page.clock.runFor(3000)
   await shown("round-stage", /^Stopped · 2 not addressed$/)
@@ -430,8 +461,8 @@ try {
   )
   await poll()
   await shown("round-stage", /^Published · not verified yet$/)
-  await shown("revision-line", /^Latest, .+, answers round 2\.$/)
-  await shown("newer-label", /^Latest$/)
+  await shown("revision-line", /^R2 · Latest, .+, answers round 2\.$/)
+  await shown("newer-label", /^R2 · Latest$/)
   const verify = {
     ...jobs[0]!,
     id: "job_verify_round",
@@ -460,22 +491,35 @@ try {
   await shown("round-stage", /^Ready for review · 2 marked resolved, 1 closed by you$/)
   assert.equal(await page.locator("#round-steps").getAttribute("aria-label"), "Step 5 of 5: Ready for review")
   assert.equal(await page.locator("#revision-line").getAttribute("data-tone"), "ok")
+  // Send & end with notes leaves the end pending: the round says so, and Keep reviewing withdraws it.
+  await shown("round-sub", /^Answered by revision R2$/)
+  state.document = { ...state.document, endRequested: true }
+  await poll()
+  await shown("round-sub", /^Answered by revision R2Ending after this roundKeep reviewing$/)
+  await page.locator('#round-sub [data-part="keep-reviewing"]').click()
+  await shown("round-sub", /^Answered by revision R2$/)
+  assert.equal(state.document.endRequested, undefined)
+  assert.equal(state.calls.filter((call) => call === `POST ${endpoint}/${design.id}/reopen`).length, 1)
   const readyStage = await page.locator("#round-stage").textContent()
   // A dropped feed is noticed by its silence, shown, and replaced; nothing claims the review is ready meanwhile.
   state.heartbeat = false
   state.feedDown = true
   await page.clock.runFor(45000)
-  await shown("newer-label", /^Offline$/)
+  await shown("newer-label", /^R2 · Offline$/)
   await shown("agent-text", /^Offline, retrying$/)
   assert.doesNotMatch((await page.locator("#round-stage").textContent()) ?? "", /^Ready/)
   state.feedDown = false
   state.heartbeat = true
   // The reconnect waits out its backoff; each attempt is a real request between steps of the fake clock.
-  for (let attempt = 0; attempt < 10 && (await page.locator("#newer-label").textContent()) !== "Latest"; attempt++) {
+  for (
+    let attempt = 0;
+    attempt < 10 && (await page.locator("#newer-label").textContent()) !== "R2 · Latest";
+    attempt++
+  ) {
     await page.clock.runFor(4000)
     await page.waitForTimeout(250)
   }
-  await shown("newer-label", /^Latest$/)
+  await shown("newer-label", /^R2 · Latest$/)
   await shown("agent-text", /^Agent idle/)
   state.jobs = jobs
   state.document = design
@@ -548,8 +592,8 @@ try {
     const select = document.querySelector("#review")!.shadowRoot!.querySelector<HTMLSelectElement>("#revisions")!
     return select.options.length === 3 && select.value === "rev_older"
   })
-  await shown("newer-label", /^2 behind$/)
-  await shown("revision-line", /^An older revision, from /)
+  await shown("newer-label", /^R1 · 2 behind$/)
+  await shown("revision-line", /^R1 · An older revision, from /)
   await page.locator("#revisions").selectOption("rev_new")
   await page.waitForFunction(
     () => !document.querySelector("#review")!.shadowRoot!.querySelector<HTMLSelectElement>("#revisions")!.disabled,
@@ -612,8 +656,11 @@ try {
   state.document = { ...state.document, revision: "rev_blocked", updated: 4 }
   state.revisions = [{ ...revisions[0]!, id: "rev_blocked" }, ...state.revisions]
   live({ type: "published", seq: 70, at: 70, design: design.id, revision: "rev_blocked", name: "Blocked" })
-  await shown("newer-label", /^1 behind$/)
-  await shown("revision-line", /^A newer revision is ready\.Your open note belongs to this one\.Add note and switch$/)
+  await shown("newer-label", /^R4 · 1 behind$/)
+  await shown(
+    "revision-line",
+    /^R4 · A newer revision is ready\.Your open note belongs to this one\.Add note and switch$/,
+  )
   await page.clock.runFor(5000)
   assert.equal(await page.locator("#revisions").inputValue(), "rev_deferred", "A note being written holds the switch")
   await page.locator('#revision-line [data-part="add-and-switch"]').click()
@@ -625,14 +672,18 @@ try {
   assert.equal(await page.locator("#notes .draft-text").textContent(), "Make the counter bigger")
   assert.equal(await page.locator("#note").inputValue(), "Keep my draft across the revision")
   assert.equal(await page.locator("#card").isHidden(), true)
-  await shown("newer-label", /^Latest$/)
+  await shown("newer-label", /^R5 · Latest$/)
   assert.equal((await draftOf("rev_deferred")).text, undefined)
   assert.equal((await draftOf("rev_deferred")).notes, undefined)
   // The steps below send the typed message alone.
   await page.locator('#notes .draft [data-copy="remove"]').click()
   assert.equal(await page.locator("#notes .draft").count(), 0, "A draft's Remove must not move away mid-click")
   assert.deepEqual(errors, [])
-  assert.equal(state.calls.filter((call) => call.startsWith("POST ")).length, 0)
+  // Nothing was posted on the page's own; the one reopen is the Keep reviewing click above.
+  assert.equal(
+    state.calls.filter((call) => call.startsWith("POST ") && call !== `POST ${endpoint}/${design.id}/reopen`).length,
+    0,
+  )
   // A failed revision-list fetch must retry after the document already advanced.
   state.document = { ...state.document, revision: "rev_retry", updated: 4 }
   state.revisions = [{ ...revisions[0]!, id: "rev_retry" }, ...state.revisions]
@@ -671,6 +722,22 @@ try {
   assert.equal(await page.locator("#feedback-status").isHidden(), true)
   assert.equal(state.feedback.length, 0)
   assert.ok(state.refused, "The refused review must have reached the server once")
+  // A conflict (409) is held for a resend instead; Discard releases it and clears the composer.
+  state.conflictFeedback = true
+  await page.locator("#send").click()
+  await page.locator("#pending-actions").waitFor()
+  assert.match(
+    (await page.locator("#feedback-status").textContent()) ?? "",
+    /HTTP 409: Reload the latest revision before sending/,
+  )
+  assert.equal(await page.locator("#note").isDisabled(), true)
+  await page.locator("#discard-pending").click()
+  await page.locator("#pending-actions").waitFor({ state: "hidden" })
+  assert.equal(await page.locator("#note").isEnabled(), true)
+  assert.equal(await page.locator("#note").inputValue(), "")
+  assert.equal(await page.locator("#feedback-status").isHidden(), true)
+  assert.equal(state.feedback.length, 0)
+  assert.ok(state.conflicted, "The conflicting review must have reached the server once")
   await page.locator("#note").fill("Keep my draft, shortened to fit")
   await page.locator("#send").click()
   await page.waitForFunction(() =>
@@ -843,6 +910,25 @@ try {
         ),
       )
   }
+  // The Platform control in Details shows for an app design and saves the platform the agent designs for.
+  state.document = { ...state.document, approvedRevision: null, ended: false, target: "app" }
+  await page.reload()
+  // The first load holds every action until it is done, the platform change included.
+  await page.waitForFunction(
+    () => !document.querySelector("#review")!.shadowRoot!.querySelector<HTMLButtonElement>("#approve")?.disabled,
+  )
+  await page.locator("#tab-details").click()
+  await page.locator("#platform-field").waitFor()
+  assert.equal(await page.locator("#platform").inputValue(), "")
+  await page.locator("#platform").selectOption("android")
+  await page.waitForFunction(
+    () =>
+      document.querySelector("#review")!.shadowRoot!.querySelector<HTMLOptionElement>('#platform option[value=""]')
+        ?.disabled === true,
+  )
+  assert.deepEqual(state.platforms, ["android"])
+  assert.equal(state.document.platform, "android")
+  assert.equal(await page.locator("#platform").inputValue(), "android")
   assert.deepEqual(errors, [])
   console.log(
     JSON.stringify({

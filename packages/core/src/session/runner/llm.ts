@@ -5,7 +5,7 @@ import { AIError, Message, ProviderErrorEvent, SystemPart } from "@opencode/ai"
 import { Monitor } from "@opencode/schema/monitor"
 import { Global } from "@opencode/util/global"
 import { and, desc, eq, sql } from "drizzle-orm"
-import { Cause, Clock, Effect, Exit, Fiber, FiberMap, Layer, Option, Schema } from "effect"
+import { Cause, Clock, DateTime, Effect, Exit, Fiber, FiberMap, Layer, Option, Schema } from "effect"
 import { Database } from "../../database/database.js"
 import { DesignIdentify } from "../../design/identify.js"
 import { DesignProposal } from "../../design/proposal.js"
@@ -42,6 +42,7 @@ import { SessionTodo } from "../todo.js"
 import { SessionTodoStore } from "../todo-store.js"
 import { HookRuntime } from "../../hook.js"
 import { MonitorRuntime } from "../../monitor.js"
+import { Session } from "../../session.js"
 import { ProviderRouter } from "../../provider-router.js"
 import { toSessionError } from "../to-session-error.js"
 import { DrainResult, Service, type Interface } from "./index.js"
@@ -81,6 +82,15 @@ const CONTINUE_AFTER_INCOMPLETE_STREAM =
   "The previous response was interrupted. Continue from where you left off without repeating completed content."
 /** Messages read back when judging a goal or reviewing a final response. */
 const RECENT = 60
+
+/**
+ * The prompt metadata sources of a message a person typed, the only ones a typed Design change request is
+ * tracked from: the terminal, the app, an ACP editor, and a prompt with no source (an SDK or HTTP client,
+ * the GitHub agent, the terminal's subagent composer). Every other source is a programmatic prompt (the
+ * review page, monitors, subagents, shells, budgets, goals, approvals) and is skipped, as is any source
+ * not listed here.
+ */
+const TYPED_SOURCES: ReadonlySet<unknown> = new Set([undefined, "tui", "app", "acp"])
 
 /** Goal continuation memory for one drain, reset by a new goal or a new user message. */
 interface GoalLoop {
@@ -122,6 +132,7 @@ const layer = Layer.effect(
     const facts = yield* SessionTaskFacts.Service
     const plans = yield* SessionPlan.Service
     const monitors = yield* MonitorRuntime.Service
+    const sessions = yield* Session.Service
     const inbox = yield* SessionInbox.Service
     const jobs = yield* Job.Service
     const skills = yield* Skill.Service
@@ -645,9 +656,10 @@ const layer = Layer.effect(
         classifications,
         user.id,
         Effect.gen(function* () {
+          const scrub = yield* vault.scrubber(loaded.session.projectID)
           const request = IntelligenceClassification.evaluation({
             sessionID,
-            scrub: yield* vault.scrubber(loaded.session.projectID),
+            scrub,
             request: { id: user.id, text: user.text, files: user.files },
             history: preceding
               .slice(-IntelligenceClassification.HISTORY)
@@ -698,13 +710,17 @@ const layer = Layer.effect(
           // only keeps it out of derived text and shows a notice, and nothing waits for it.
           yield* intelligence.evaluate(request).pipe(
             Effect.orElseSucceed(() => undefined),
-            Effect.tap((evaluation) =>
-              IntelligenceClassification.restricted(evaluation) === "flagged"
-                ? markRestricted(sessionID, user.id)
-                : IntelligenceClassification.designChange(evaluation, loaded.agent.id)
-                  ? noteDesignChange(sessionID, user)
-                  : Effect.void,
-            ),
+            Effect.tap((evaluation) => {
+              const restricted = IntelligenceClassification.restricted(evaluation)
+              if (restricted === "flagged") return markRestricted(sessionID, user.id)
+              // An unresolved restricted answer is never clean: the user's words are copied into the design only
+              // when S1 read them as clean, and the vault scrubber S1's own input gets still runs over them.
+              return restricted === "clean" &&
+                TYPED_SOURCES.has(user.metadata?.source) &&
+                IntelligenceClassification.designChange(evaluation, loaded.agent.id)
+                ? noteDesignChange(loaded, { ...user, text: scrub(user.text) })
+                : Effect.void
+            }),
           )
         }).pipe(
           Effect.catchCause((cause) => Effect.logWarning("Prompt classification unavailable", { sessionID, cause })),
@@ -729,21 +745,64 @@ const layer = Layer.effect(
      * note, so it is gated, recited and verified like a note from the review page. The classification lands
      * after the message was delivered and while the agent may already be working on it: the note joins the
      * open round whenever it arrives, and nothing waits for it, so delivery and the Step never block on S1.
-     * When the agent already stopped, the note waits for the next idle boundary's round continuation. Only
-     * dual reasoning gets here (single never classifies; observe answers read as unresolved, see
-     * `IntelligenceClassification.designChange`), and only for a message the user typed: a review-page
-     * message, continuation or other programmatic prompt carries a metadata source and is skipped. A message
-     * S1 flagged as restricted content never reaches this, so its words are not copied into the design.
+     * A note that lands while the agent works is continued by that drain's idle boundary; one that lands after
+     * the agent stopped has no boundary left, so once the Session is idle its round continuation is admitted
+     * through the inbox, which wakes the agent. The continuation marker counts the round's notes, so a late
+     * note re-arms a round that already got its continuation, and only a new note can. Only dual reasoning
+     * gets here (single never classifies; observe answers read as unresolved, see
+     * `IntelligenceClassification.designChange`), only for a message from `TYPED_SOURCES`, and only once S1
+     * read it as clean of restricted content; the caller scrubs vault values from the text.
      */
     const noteDesignChange = Effect.fn("SessionRunner.noteDesignChange")(function* (
-      sessionID: SessionSchema.ID,
+      loaded: SessionContext.Loaded,
       user: SessionMessage.User,
     ) {
-      if (user.metadata?.source !== undefined) return
-      const document = (yield* designs.list(sessionID))
-        .filter((item) => !item.ended && item.revision)
-        .toSorted((left, right) => right.updated - left.updated)[0]
-      if (document) yield* designs.noteMessage(sessionID, document.id, { id: user.id, text: user.text })
+      const sessionID = loaded.session.id
+      const document = yield* workingDesign(sessionID)
+      if (!document) return
+      const noted = yield* designs.noteMessage(sessionID, document.id, {
+        id: user.id,
+        text: user.text,
+        at: DateTime.toEpochMillis(user.time.created),
+      })
+      if (!noted || loaded.agent.id !== "design") return
+      yield* Effect.gen(function* () {
+        yield* sessions.wait(sessionID)
+        const unfinished = yield* unfinishedRound(sessionID)
+        if (!unfinished) return
+        // Reached once per recorded note: a retried classification of the same message records none.
+        yield* sessions.synthetic({
+          sessionID,
+          text: unfinished.text,
+          description: `Continuing Design feedback round ${unfinished.marker.round}`,
+          metadata: { [DesignRounds.CONTINUATION_KEY]: unfinished.marker },
+        })
+      }).pipe(
+        Effect.catchCause((cause) =>
+          Effect.logWarning("Design round continuation unavailable", { sessionID, cause: Cause.pretty(cause) }),
+        ),
+      )
+    })
+
+    /**
+     * The design a typed change request is about: of the open designs with a published revision, the one
+     * the agent last named in a design tool call among the recent assistant messages, else the one updated
+     * last. A design tool called from code mode is not seen here and falls back to the latter.
+     */
+    const workingDesign = Effect.fn("SessionRunner.workingDesign")(function* (sessionID: SessionSchema.ID) {
+      const candidates = (yield* designs.list(sessionID)).filter((item) => !item.ended && item.revision)
+      const named = (yield* store.messages({ sessionID, type: "assistant", order: "desc", limit: 20 }))
+        .flatMap((message) => (message.type === "assistant" ? message.content.toReversed() : []))
+        .flatMap((part) =>
+          part.type === "tool" && part.name.startsWith("design_") && part.state.status !== "streaming"
+            ? [part.state.input.id]
+            : [],
+        )
+        .find((id) => candidates.some((item) => item.id === id))
+      return (
+        candidates.find((item) => item.id === named) ??
+        candidates.toSorted((left, right) => right.updated - left.updated)[0]
+      )
     })
 
     /**
@@ -790,8 +849,9 @@ const layer = Layer.effect(
 
     /**
      * The continuation of a Design feedback round the agent stopped short of finishing: the first
-     * open design whose notes still await an outcome. Each round gets at most one, and its marker is the
-     * synthetic message itself, so a later idle boundary, another drain or a restart never repeats it.
+     * open design whose notes still await an outcome. Each round gets at most one per note count, and its
+     * marker is the synthetic message itself, so a later idle boundary, another drain or a restart never
+     * repeats it; only a note that joins the round afterwards (a typed change request) re-arms it.
      * A verify still queued or running is the agent waiting on its result, not a stop, and an ended
      * design (approval ends one) has nothing left to answer. A turn the user interrupted is not
      * continued, even after an explicit resume, until the next user message. Reads only the store and
@@ -829,6 +889,9 @@ const layer = Layer.effect(
         const jobs = yield* designs.jobs(sessionID, document.id)
         if (jobs.some((job) => job.input.format === "verify" && (job.status === "queued" || job.status === "running")))
           continue
+        const notes = DesignRounds.notes(document, round).length
+        // A marker covers the notes its round had when it was sent; one written before markers counted
+        // them covers the whole round.
         const marked = yield* db
           .select({ id: SessionMessageTable.id })
           .from(SessionMessageTable)
@@ -838,12 +901,13 @@ const layer = Layer.effect(
               eq(SessionMessageTable.type, "synthetic"),
               sql`json_extract(${SessionMessageTable.data}, ${`$.metadata.${DesignRounds.CONTINUATION_KEY}.designID`}) = ${document.id}`,
               sql`json_extract(${SessionMessageTable.data}, ${`$.metadata.${DesignRounds.CONTINUATION_KEY}.round`}) = ${round}`,
+              sql`ifnull(json_extract(${SessionMessageTable.data}, ${`$.metadata.${DesignRounds.CONTINUATION_KEY}.notes`}), ${notes}) >= ${notes}`,
             ),
           )
           .get()
           .pipe(Effect.orDie)
         const text = marked ? undefined : DesignRounds.continuation(document, jobs)
-        if (text) return { text, marker: { designID: document.id, round } }
+        if (text) return { text, marker: { designID: document.id, round, notes } }
       }
       return undefined
     })
@@ -1670,6 +1734,7 @@ export const node = makeLocationNode({
     SessionPlan.node,
     SessionGoalCompletion.node,
     MonitorRuntime.node,
+    Session.node,
     SessionInbox.node,
     Job.node,
     Skill.node,

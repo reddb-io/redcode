@@ -168,6 +168,30 @@ const locateNote = (
   }
 }
 
+/**
+ * Whether a scenario acts on or observes the element locateNote marked: one of its selectors matches
+ * the element, an element inside it, or an ancestor within the element's container (a button around
+ * a noted icon), but not a page-wide ancestor, which would make every scenario touch every note.
+ * Scoped to the note's variant like the scenario's own lookups. Runs inside the page, self-contained.
+ */
+const touchesNote = (input: { selectors: string[]; variant: string }) => {
+  const element = document.querySelector('[data-redcode-verify="target"]')
+  if (!element) return false
+  const container = document.querySelector('[data-redcode-verify="container"]') ?? element
+  const root = input.variant ? document.querySelector(`[data-design-variant="${input.variant}"]`) : null
+  const scope: ParentNode = root ?? document
+  return input.selectors.some((selector) => {
+    try {
+      return [...scope.querySelectorAll(selector), ...(root?.matches(selector) ? [root] : [])].some(
+        (node) => element.contains(node) || (node.contains(element) && container.contains(node)),
+      )
+    } catch {
+      // An invalid selector fails the scenario itself; it touches nothing.
+      return false
+    }
+  })
+}
+
 /** Layout facts about the marked element and its container, plus which of the page-wide checks fall inside it. */
 const scopedLayout = (selectors: string[]) => {
   const target = document.querySelector<HTMLElement>('[data-redcode-verify="target"]')
@@ -851,6 +875,13 @@ export const make = Effect.gen(function* () {
             const base = path.join(path.dirname(output), `${job.id}-${position}`)
             /** What the element's container already had before the fix: those findings never block the note. */
             const baseline = { nodes: new Set<string>(), errors: new Set<string>() }
+            // A page-level note resolves to the whole variant root or body: its crop is clamped to 2048px,
+            // so a change below the fold reads as none, and its fingerprint hashes the whole subtree with
+            // its scripts and animation state, so it can read as changed on every render. Its delta is not
+            // measured, and the status gate asks only for a completed verify (DesignRounds.triage).
+            const whole = DesignVerify.isPage(item.target)
+            /** Scenarios that verified a behavior of the note's element; see Design.VerifyNote.exercised. */
+            const exercised: string[] = []
             const verifyNote = Effect.gen(function* () {
               // Before: the revision the note was taken on, so the reviewer sees what changed.
               const origin = item.revision ?? roundInfo.revision
@@ -864,7 +895,7 @@ export const make = Effect.gen(function* () {
                 prior.rendered = true
                 if (located?.found) {
                   prior.facts = located
-                  prior.png = yield* crop(located.rect)
+                  if (!whole) prior.png = yield* crop(located.rect)
                   yield* capture(`${base}-before.jpg`, located)
                   result.before = `${base}-before.jpg`
                   for (const violation of yield* audit()) for (const node of violation.nodes) baseline.nodes.add(node)
@@ -889,8 +920,9 @@ export const make = Effect.gen(function* () {
                       Effect.catchTag("Design.Error", () => Effect.succeed(undefined)),
                     )
                   : undefined
-                const change =
-                  origin === revision.id
+                const change = whole
+                  ? undefined
+                  : origin === revision.id
                     ? DesignVerify.delta(located, located)
                     : prior.rendered
                       ? DesignVerify.delta(prior.facts, located, pixels)
@@ -932,6 +964,12 @@ export const make = Effect.gen(function* () {
                   }
                 }
                 // Scenarios on the note's screen and variant exercise the states the element takes part in.
+                // One added or changed since the note's revision is how the agent verifies a behavior a
+                // capture cannot show, so those run first.
+                const known = (prior.rendered ? yield* snapshot(origin) : revision.document).scenarios.map((scenario) =>
+                  JSON.stringify(scenario),
+                )
+                const fresh = (scenario: Design.Scenario) => !known.includes(JSON.stringify(scenario))
                 const relevant = revision.document.scenarios
                   .filter(
                     (scenario) =>
@@ -939,9 +977,18 @@ export const make = Effect.gen(function* () {
                       (!scenario.variant || scenario.variant === variant) &&
                       (scenario.screen ?? "") === (where.screen ?? ""),
                   )
+                  .toSorted((a, b) => Number(fresh(b)) - Number(fresh(a)))
                   .slice(0, 2)
                 for (const scenario of relevant) {
                   yield* prepare(root, revision.document, { variant, params: scenario.params, screen: scenario.screen })
+                  // Read before the actions run, which may replace the element.
+                  const touched =
+                    fresh(scenario) &&
+                    (yield* io(() =>
+                      page.evaluate<boolean>(
+                        `(${locate}).found && (${touchesNote.toString()})(${JSON.stringify({ selectors: [scenario.selector, ...scenario.actions.map((action) => action.selector)], variant: variant ?? "" })})`,
+                      ),
+                    ))
                   const scope = variant ? page.locator(`[data-design-variant="${variant}"]`) : page.locator("body")
                   const target = (selector: string) => scope.locator(selector).or(scope.and(page.locator(selector)))
                   const outcome = yield* io(async () => {
@@ -959,6 +1006,7 @@ export const make = Effect.gen(function* () {
                   }).pipe(Effect.catchTag("Design.Error", (error) => Effect.succeed(error.message)))
                   result.scenarios.push(`${scenario.name}: ${outcome}`)
                   if (outcome !== "exercised") result.findings.push(`review · scenario ${scenario.name}: ${outcome}`)
+                  if (outcome === "exercised" && touched) exercised.push(scenario.name)
                 }
               } else {
                 result.blocking = true
@@ -990,7 +1038,11 @@ export const make = Effect.gen(function* () {
                 : advisory
                   ? `found; ${advisory} advisory finding${advisory === 1 ? "" : "s"}`
                   : `found; no findings${result.scenarios.length ? `; ${result.scenarios.length} scenario${result.scenarios.length === 1 ? "" : "s"} exercised` : ""}`
-            if (result.found && result.delta) result.reason = `${result.reason}; ${DesignVerify.describe(result.delta)}`
+            if (exercised.length) result.exercised = exercised
+            result.reason = [
+              result.reason,
+              ...DesignVerify.remarks({ item, viewport, found: result.found, delta: result.delta, exercised }),
+            ].join("; ")
             results.push(result)
             yield* record(done + 1)
           }
@@ -1025,9 +1077,8 @@ export const make = Effect.gen(function* () {
           const evidence: string[] = []
           const checks: Design.AuditCheck[] = []
           const captures: Design.AuditCapture[] = []
-          /** Each direction's structural signature as first inspected, and the repetition checks it starts. */
+          /** Each direction's structural signature, taken once at the widest audited viewport. */
           const signatures: DesignSignature.Entry[] = []
-          let repeating: ReturnType<typeof store.repetition> | undefined
           /** "variant screen" keys: screens the prototype declares and screens an audit view showed. */
           const declared = new Set<string>()
           const visited = new Set<string>()
@@ -1090,15 +1141,6 @@ export const make = Effect.gen(function* () {
                 }),
               ),
             )
-            if (!scenario && !screen && !signatures.some((item) => item.variant === variant))
-              signatures.push({
-                ...(variant ? { variant } : {}),
-                width,
-                // An unsigned direction is only left out of the repetition checks; it never fails the audit.
-                signature: yield* io(() => page.evaluate(DesignSignature.capture, variant ?? null)).pipe(
-                  Effect.orElseSucceed(() => ""),
-                ),
-              })
             // Presentations are also checked per slide: content leaving the slide and text too small to project.
             if (presentation)
               checks.push(
@@ -1160,6 +1202,30 @@ export const make = Effect.gen(function* () {
             )
             captures.push({ file, width, variant, scenario, screen, fullPage })
           })
+          // Every direction is signed once, at the widest audited viewport (grids uncollapsed; see
+          // DesignSignature.VERSION), before the per-viewport inspection, so the repetition and reuse
+          // checks and their one System One request run alongside the whole audit. A presentation is
+          // inspected slide by slide and is not signed. The checks get a copy of the signatures.
+          const widest = sizes.toSorted((a, b) => b.width - a.width)[0]
+          if (widest && !presentation) {
+            yield* emulate(widest)
+            for (const variant of job.input.variant ? [job.input.variant] : valid.length ? valid.slice(0, 6) : [undefined]) {
+              yield* reset(variant)
+              if (screensMarked)
+                yield* io(() => page.waitForFunction(anyScreen, undefined, { timeout: 2000 }).catch(() => undefined))
+              signatures.push({
+                ...(variant ? { variant } : {}),
+                width: widest.width,
+                // An unsigned direction is only left out of the repetition checks; it never fails the audit.
+                signature: yield* io(() => page.evaluate(DesignSignature.capture, variant ?? null)).pipe(
+                  Effect.orElseSucceed(() => ""),
+                ),
+              })
+            }
+          }
+          const repeating = yield* store
+            .repetition(sessionID, revision, [...signatures], widest?.width ?? 0)
+            .pipe(Effect.forkChild({ startImmediately: true }), Effect.map(Fiber.join))
           for (const [index, viewport] of sizes.entries()) {
             const width = viewport.width
             yield* emulate(viewport)
@@ -1261,21 +1327,27 @@ export const make = Effect.gen(function* () {
               }
             }
             yield* progress((index + 1) / sizes.length)
-            // The first viewport signed every direction: the repetition checks and their one System One
-            // request run alongside the remaining viewports instead of after them.
-            if (index === 0)
-              repeating = yield* store
-                .repetition(sessionID, revision, signatures, viewport.width)
-                .pipe(Effect.forkChild({ startImmediately: true }), Effect.map(Fiber.join))
           }
-          const repeated = repeating
-            ? yield* repeating.pipe(Effect.catchTag("Design.Error", (error) => Effect.succeed(error.message)))
-            : undefined
+          // Neither a failure nor a defect of these checks fails the audit; it is reported instead.
+          const repeated = yield* repeating.pipe(
+            Effect.catchTag("Design.Error", (error) => Effect.succeed(error.message)),
+            Effect.catchDefect((defect) =>
+              Effect.logWarning("design repetition checks failed", { defect }).pipe(
+                Effect.as(defect instanceof Error ? defect.message : String(defect)),
+              ),
+            ),
+          )
           if (typeof repeated === "string")
             findings.push(`Repetition and design-system reuse checks unavailable: ${repeated}`)
+          if (typeof repeated === "object") findings.push(...repeated.findings)
+          // Accepted exceptions are read from the live document, so an accept applies to this audit.
+          const live = yield* store.get(sessionID, job.designID).pipe(
+            Effect.map((document) => document.decisions),
+            Effect.catchTag("Design.Error", () => Effect.succeed(revision.document.decisions)),
+          )
           const settled = DesignQuality.settle(
             [...checks, ...(typeof repeated === "object" ? repeated.checks : [])],
-            revision.document.decisions,
+            live,
             typeof repeated === "object" ? repeated.effects : undefined,
           )
           checks.splice(0, checks.length, ...settled.checks)

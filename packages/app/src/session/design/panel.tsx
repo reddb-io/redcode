@@ -294,9 +294,24 @@ function SessionDesignRow(props: {
                     >
                       {language.t(noteLabels[note.status])}
                     </span>
-                    <bdi dir="auto" class="min-w-0 truncate text-v2-text-text-base">
-                      {note.item.text.trim() || note.item.label || note.item.target}
-                    </bdi>
+                    <div class="flex min-w-0 flex-1 flex-col">
+                      <bdi dir="auto" class="min-w-0 truncate text-v2-text-text-base">
+                        {note.item.text.trim() || note.item.label || note.item.target}
+                      </bdi>
+                      {/* Why a note was not fixed, or kept: one line, the whole reason on hover. */}
+                      <Show when={note.status !== "open" && note.status !== "resolved" && note.reason?.trim()}>
+                        {(reason) => (
+                          <bdi
+                            dir="auto"
+                            class="min-w-0 truncate text-v2-text-text-muted"
+                            title={reason()}
+                            data-slot="session-design-note-reason"
+                          >
+                            {reason()}
+                          </bdi>
+                        )}
+                      </Show>
+                    </div>
                   </li>
                 )}
               </For>

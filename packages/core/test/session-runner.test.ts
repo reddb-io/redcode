@@ -35,6 +35,7 @@ import { App } from "@opencode/core/app"
 import { Permission } from "@opencode/core/permission"
 import { EventTable } from "@opencode/core/event/sql"
 import { Project } from "@opencode/core/project"
+import { Vault } from "@opencode/core/vault/vault"
 import { ProjectTable } from "@opencode/core/project/sql"
 import { Form } from "@opencode/core/form"
 import { AbsolutePath } from "@opencode/core/schema"
@@ -561,6 +562,7 @@ const layer = Layer.unwrap(
         MonitorRuntime.node,
         SessionExecution.node,
         Session.node,
+        Vault.node,
       ]),
       [
         ...replacements,
@@ -666,6 +668,7 @@ type Scenario = Effect.Success<typeof setup>
 const scenario = (
   name: string,
   body: (s: Scenario) => Effect.gen.Return<void, unknown, Layer.Success<typeof layer> | Scope.Scope>,
+  timeout?: number,
 ) =>
   it.effect(
     name,
@@ -673,18 +676,24 @@ const scenario = (
       const s = yield* setup
       return yield* body(s)
     }),
+    timeout,
   )
+/** A scenario too CPU heavy for the default timeout under load, such as estimating hundreds of thousands of tokens. */
+const heavyScenario = (name: string, body: Parameters<typeof scenario>[1]) => scenario(name, body, 120_000)
 
 const classificationFixture = Effect.fnUntraced(function* (
   mode: "dual" | "observe" = "dual",
   choices: Readonly<Record<string, string>> = {},
+  nouls: Readonly<Record<string, number>> = {},
 ) {
   const intelligence = yield* Intelligence.Service
-  const fixture = yield* Effect.acquireRelease(Effect.sync(() => intelligenceServer(choices)), (fixture) =>
-    Effect.sync(() => {
-      fixture.release()
-      fixture.server.stop(true)
-    }),
+  const fixture = yield* Effect.acquireRelease(
+    Effect.sync(() => intelligenceServer(choices, nouls)),
+    (fixture) =>
+      Effect.sync(() => {
+        fixture.release()
+        fixture.server.stop(true)
+      }),
   )
   yield* intelligence.save({
     apiKey: "fixture-intelligence-key",
@@ -1266,6 +1275,16 @@ const notesAfterClassification = Effect.fnUntraced(function* (
   return (yield* designs.get(sessionID, id)).notes ?? []
 })
 
+/** The round continuations once the background wake after a late note had its chance to admit `expected`, and its drain settled. */
+const continuationsAfterWake = Effect.fnUntraced(function* (s: Scenario, expected: number) {
+  for (let attempt = 0; attempt < 400; attempt++) {
+    if ((yield* roundContinuations(s)).length >= expected) break
+    yield* Effect.promise(() => Bun.sleep(5))
+  }
+  yield* s.session.wait(sessionID)
+  return yield* roundContinuations(s)
+})
+
 describe("SessionRunnerLLM", () => {
   scenario("reconciles 12 verified Design tasks out of 15 before returning to the reviewer", function* (s) {
     const agents = yield* Agent.Service
@@ -1448,40 +1467,155 @@ describe("SessionRunnerLLM", () => {
   const CHANGE = { work_route: "design", design_change_request: "change" }
   const TYPED = "Aumente o cabeçalho e corrija as cores do botão principal; mantenha o resto como está."
 
-  scenario("tracks a typed Design change request as one note once S1 reads it, without delaying the Step", function* (s) {
+  for (const source of ["tui", "app"])
+    scenario(
+      `tracks a request typed in the ${source} as one note once S1 reads it, and continues the stopped agent once`,
+      function* (s) {
+        const fixture = yield* classificationFixture("dual", CHANGE)
+        const id = yield* publishedDesign()
+        yield* s.llm.push(
+          TestLLM.text("Working on the header", `text_typed_change_${source}`),
+          TestLLM.text("Recorded the outcome", `text_typed_continued_${source}`),
+        )
+        const user = yield* s.session.prompt({ sessionID, text: TYPED, metadata: { source }, resume: false })
+        yield* s.resume
+        // The Step ran while S1 was still held.
+        expect(s.requests).toHaveLength(1)
+        const notes = yield* notesAfterClassification(fixture, id, user.id, 1)
+        expect(notes).toEqual([
+          expect.objectContaining({
+            feedback: user.id,
+            index: 1,
+            round: 1,
+            status: "open",
+            source: "message",
+            item: expect.objectContaining({ target: DesignRounds.PAGE, text: TYPED }),
+          }),
+        ])
+        const designs = yield* DesignStore.Service
+        const document = yield* designs.get(sessionID, id)
+        expect(DesignRounds.blocking(document)).toContain(TYPED)
+        expect(DesignRounds.unanswerable(document)).toContain(`${user.id} #1`)
+        // The agent had already stopped: the note wakes it for its round, once.
+        const continued = yield* continuationsAfterWake(s, 1)
+        expect(continued).toHaveLength(1)
+        expect(continued[0]).toMatchObject({
+          metadata: { [DesignRounds.CONTINUATION_KEY]: { designID: id, round: 1, notes: 1 } },
+        })
+        expect(continued[0]?.text).toContain(TYPED)
+        expect(s.requests).toHaveLength(2)
+        // A retry of the same message records nothing more.
+        expect(yield* designs.noteMessage(sessionID, id, { id: user.id, text: TYPED })).toBe(false)
+        expect((yield* designs.get(sessionID, id)).notes).toHaveLength(1)
+      },
+    )
+
+  for (const source of ["monitor", "design.feedback", "an-unknown-client"])
+    scenario(`never tracks a prompt from ${source} as a Design note`, function* (s) {
+      const fixture = yield* classificationFixture("dual", CHANGE)
+      const id = yield* publishedDesign()
+      yield* s.llm.push(TestLLM.text("Noted", `text_programmatic_change_${source}`))
+      const user = yield* s.session.prompt({ sessionID, text: TYPED, metadata: { source }, resume: false })
+      yield* s.resume
+      expect(yield* notesAfterClassification(fixture, id, user.id, 0)).toEqual([])
+    })
+
+  scenario("a typed note that joins a round after its continuation re-arms it exactly once", function* (s) {
     const fixture = yield* classificationFixture("dual", CHANGE)
     const id = yield* publishedDesign()
-    yield* s.llm.push(TestLLM.text("Working on the header", "text_typed_change"))
-    const user = yield* s.runPrompt(TYPED)
-    // The Step ran while S1 was still held.
-    expect(s.requests).toHaveLength(1)
-    const notes = yield* notesAfterClassification(fixture, id, user.id, 1)
-    expect(notes).toEqual([
-      expect.objectContaining({
-        feedback: user.id,
-        index: 1,
-        round: 1,
-        status: "open",
-        source: "message",
-        item: expect.objectContaining({ target: DesignRounds.PAGE, text: TYPED }),
-      }),
-    ])
     const designs = yield* DesignStore.Service
-    const document = yield* designs.get(sessionID, id)
-    expect(DesignRounds.blocking(document)).toContain(TYPED)
-    expect(DesignRounds.unanswerable(document)).toContain(`${user.id} #1`)
-    // A retry of the same message records nothing more.
-    expect(yield* designs.noteMessage(sessionID, id, { id: user.id, text: TYPED })).toBe(false)
-    expect((yield* designs.get(sessionID, id)).notes).toHaveLength(1)
+    const feedback = Schema.decodeUnknownSync(Design.Feedback)({
+      id: "msg_rearm_review",
+      revision: (yield* designs.get(sessionID, id)).revision,
+      text: "",
+      items: [{ target: "#title", text: "Make the title larger", label: "h1" }],
+      assets: [],
+      snapshot: "",
+      delivery: "steer",
+      end: false,
+    })
+    yield* designs.prepareFeedback(sessionID, id, feedback, () => "Review")
+    yield* designs.acknowledge(sessionID, id, feedback)
+    yield* s.llm.push(
+      TestLLM.text("Looking at the review", "text_rearm_stop"),
+      TestLLM.text("Still on it", "text_rearm_continued"),
+      TestLLM.text("Working on the header", "text_rearm_typed"),
+      TestLLM.text("Recorded the outcomes", "text_rearm_late"),
+    )
+    // The review page's own prompt is never a typed note.
+    yield* s.session.prompt({
+      sessionID,
+      text: "Answer the review",
+      metadata: { source: "design.feedback" },
+      resume: false,
+    })
+    yield* s.resume
+    expect(s.requests).toHaveLength(2)
+    expect(yield* roundContinuations(s)).toHaveLength(1)
+    const user = yield* s.session.prompt({ sessionID, text: TYPED, metadata: { source: "tui" }, resume: false })
+    yield* s.resume
+    // The round already got its continuation, and the typed note has not landed yet.
+    expect(s.requests).toHaveLength(3)
+    expect(yield* roundContinuations(s)).toHaveLength(1)
+    const notes = yield* notesAfterClassification(fixture, id, user.id, 2)
+    expect(notes.map((note) => [note.feedback, note.round])).toEqual([
+      [feedback.id, 1],
+      [user.id, 1],
+    ])
+    const continued = yield* continuationsAfterWake(s, 2)
+    expect(continued).toHaveLength(2)
+    expect(continued.map((message) => message.metadata?.[DesignRounds.CONTINUATION_KEY])).toEqual(
+      expect.arrayContaining([
+        { designID: id, round: 1, notes: 1 },
+        { designID: id, round: 1, notes: 2 },
+      ]),
+    )
+    expect(continued.find((message) => message.text.includes(TYPED))).toBeDefined()
+    expect(s.requests).toHaveLength(4)
+    // Nothing new joined the round: the next stop is left to the reviewer.
+    yield* TestClock.adjust("1 second")
+    yield* s.llm.push(TestLLM.text("Waiting for the reviewer", "text_rearm_after"))
+    yield* s.session.prompt({
+      sessionID,
+      text: "What is left?",
+      metadata: { source: "design.feedback" },
+      resume: false,
+    })
+    yield* s.resume
+    expect(s.requests).toHaveLength(5)
+    expect(yield* roundContinuations(s)).toHaveLength(2)
   })
 
-  scenario("never tracks a programmatic prompt as a Design note", function* (s) {
-    const fixture = yield* classificationFixture("dual", CHANGE)
+  scenario("notes a typed request only once S1 reads it as clean, with vault values scrubbed", function* (s) {
+    const vault = yield* Vault.Service
+    const name = yield* vault.set({
+      projectID: Project.ID.global,
+      name: "staging_password",
+      value: "Correct-Horse-Battery-417",
+      origin: "requested",
+    })
+    const unsure = yield* classificationFixture("dual", CHANGE, { restricted_content: 0.5 })
     const id = yield* publishedDesign()
-    yield* s.llm.push(TestLLM.text("Noted", "text_programmatic_change"))
-    const user = yield* s.session.prompt({ sessionID, text: TYPED, metadata: { source: "monitor" }, resume: false })
+    yield* s.llm.push(TestLLM.text("Noted", "text_unsure_change"))
+    const doubtful = yield* s.session.prompt({ sessionID, text: TYPED, metadata: { source: "tui" }, resume: false })
     yield* s.resume
-    expect(yield* notesAfterClassification(fixture, id, user.id, 0)).toEqual([])
+    expect(yield* notesAfterClassification(unsure, id, doubtful.id, 0)).toEqual([])
+    const fixture = yield* classificationFixture("dual", CHANGE)
+    yield* s.llm.push(
+      TestLLM.text("Changing the login", "text_scrubbed_change"),
+      TestLLM.text("Recorded the outcome", "text_scrubbed_continued"),
+    )
+    const user = yield* s.session.prompt({
+      sessionID,
+      text: "Show the staging password Correct-Horse-Battery-417 in the login hint",
+      metadata: { source: "tui" },
+      resume: false,
+    })
+    yield* s.resume
+    const notes = yield* notesAfterClassification(fixture, id, user.id, 1)
+    expect(notes[0]?.item.text).not.toContain("Correct-Horse-Battery-417")
+    expect(notes[0]?.item.text).toContain(name)
+    yield* continuationsAfterWake(s, 1)
   })
 
   scenario("observed classification never tracks a Design note", function* (s) {
@@ -4498,7 +4632,7 @@ describe("SessionRunnerLLM", () => {
     expect(s.requests[1]?.generation?.maxTokens).toBe(16_000)
   })
 
-  scenario("compacts a long exchange under a smaller window instead of carrying it whole", function* (s) {
+  heavyScenario("compacts a long exchange under a smaller window instead of carrying it whole", function* (s) {
     // The report: a session grown to hundreds of thousands of tokens under a model with a 1M window, then the same
     // model served by an endpoint that reports no limit, so the window is guessed at 115,200 tokens.
     const provider = wideProvider(s)

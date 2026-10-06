@@ -1422,6 +1422,7 @@ export type SessionDesignJobsOutput = ReadonlyArray<{
           readonly after?: string | undefined
           readonly findings: ReadonlyArray<string>
           readonly scenarios: ReadonlyArray<string>
+          readonly exercised?: ReadonlyArray<string> | undefined
           readonly reason: string
           readonly width?: number | undefined
           readonly platform?: "ios" | "android" | undefined
@@ -1434,6 +1435,7 @@ export type SessionDesignJobsOutput = ReadonlyArray<{
                 readonly moved: boolean
                 readonly resized: boolean
                 readonly added?: boolean | undefined
+                readonly known?: boolean | undefined
                 readonly textBefore?: string | undefined
                 readonly textAfter?: string | undefined
               }

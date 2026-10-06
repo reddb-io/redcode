@@ -2,6 +2,7 @@ export * as DesignRounds from "./rounds.js"
 
 import { Design } from "@opencode/schema/design"
 import { DesignApproval } from "./approval.js"
+import { DesignVerify } from "./verify.js"
 
 /**
  * Feedback rounds and note statuses, kept on the design document.
@@ -66,13 +67,16 @@ export const PAGE = "page"
  * the whole page, `<message id> #1`, marked `source: "message"`, joining the open round or opening a new
  * one as `admit` does for a review message. The note keeps the user's words whole. A message already in a
  * round, a blank one, or a design with no published revision changes nothing, so a retry records one note.
+ * `revision` is the one the user saw when the message arrived, which a verify compares the element against;
+ * the classification can land after the agent published again. Without one, the current revision.
  */
 export function implicit(
   document: Rounds & Pick<Design.Info, "revision">,
-  message: { readonly id: string; readonly text: string },
+  message: { readonly id: string; readonly text: string; readonly revision?: string },
   now = Date.now(),
 ): Rounds {
   if (!document.revision || !message.text.trim()) return document
+  const origin = message.revision ?? document.revision
   if (
     document.rounds?.some((round) => round.feedback.includes(message.id)) ||
     document.notes?.some((note) => note.feedback === message.id)
@@ -82,12 +86,12 @@ export function implicit(
   const joins = last && !last.published
   const round: Design.Round = joins
     ? { ...last, feedback: [...last.feedback, message.id] }
-    : { number: (last?.number ?? 0) + 1, opened: now, revision: document.revision, feedback: [message.id] }
+    : { number: (last?.number ?? 0) + 1, opened: now, revision: origin, feedback: [message.id] }
   const note: Design.Note = {
     feedback: message.id,
     index: 1,
     round: round.number,
-    item: { target: PAGE, text: message.text, revision: document.revision },
+    item: { target: PAGE, text: message.text, revision: origin },
     status: "open",
     source: "message",
     updated: now,
@@ -263,7 +267,8 @@ export function triage(
  * The soft gate on one note status, judged before an update is applied: why the status cannot be
  * recorded, or undefined when it can. The update must name a recorded note. `resolved` needs a
  * completed verify job on the design's current revision that found the note's element with no blocking
- * finding and, when that job measured the element's delta, some change in it; `partial` needs such a job (whatever it saw) and a reason; `unresolved` and `accepted` need
+ * finding and, when that job measured the element's delta, some change in it or a scenario that verified
+ * the behavior (page-level notes are not measured); `partial` needs such a job (whatever it saw) and a reason; `unresolved` and `accepted` need
  * a reason, and a verify job only when they cite one. `see` names the list that tells the agent what
  * to cite instead (the recorded notes or the recent verify jobs), as the todo evidence gate names
  * callIDs.
@@ -323,12 +328,18 @@ function refusal(
     return refuse(
       `${name} cannot be resolved: ${job.id} found blocking findings for it (${seen.findings.filter((finding) => finding.startsWith("error ·")).join("; ") || seen.reason}). Fix them, publish, verify again, or record partial with a reason.`,
     )
-  // The delta is the only evidence that the element was acted on: none at all means nothing to resolve.
-  if (update.status === "resolved" && seen.delta && !seen.delta.changed)
-    return refuse(
-      `${name} cannot be resolved: ${job.id} saw no change to its element since the revision the note was taken on (pixels, text, markup, style, position and size are the same${seen.width ? ` at ${seen.width}px` : ""}). Change the element the note names, publish and verify again, or record it unresolved or accepted with a reason saying why it stays as it is.`,
-    )
-  return undefined
+  // A measured delta is the visible evidence that the element was acted on: no change refuses resolved.
+  // Three cases are not evidence either way and pass on the completed verify alone: a page-level note
+  // (the whole variant or body cannot be compared as one element: its crop is clamped and its markup
+  // carries scripts and animation, so renderers do not measure it), a delta that could not be measured
+  // (the element was not located on the note's revision), and a behavior a capture cannot show,
+  // verified by a scenario added or changed since that revision which acted on the element.
+  if (update.status !== "resolved" || !seen.delta || seen.delta.changed) return undefined
+  if (DesignVerify.isPage(note.item.target) || DesignVerify.unmeasured(seen.delta) || seen.exercised?.length)
+    return undefined
+  return refuse(
+    `${name} cannot be resolved: ${job.id} saw no change to its element since the revision the note was taken on (pixels, text, markup, style, position and size are the same${seen.width ? ` at ${seen.width}px` : ""}). Change the element the note names, publish and verify again; for a behavior a capture cannot show (hover, focus, a script), add or update a scenario on the note's screen that acts on its element, publish and verify again; or record it unresolved or accepted with a reason saying why it stays as it is.`,
+  )
 }
 
 /**
@@ -351,6 +362,7 @@ export function claim(document: Rounds, update: Design.NoteUpdate, jobs: Readonl
     update,
   )
   const addressed = note?.addressed?.summary
+  const delta = seen?.delta
   return {
     request: { text: item?.text, label: item?.label, elementText: item?.elementText, screen: item?.params?.screen },
     observation: seen && {
@@ -360,17 +372,35 @@ export function claim(document: Rounds, update: Design.NoteUpdate, jobs: Readonl
       reason: seen.reason,
       findings: seen.findings,
       scenarios: seen.scenarios,
+      ...(seen.exercised?.length ? { exercised: seen.exercised } : {}),
     },
     // What the agent says it changed and what the verify saw change in the element, where the note was taken.
+    // The review clips this evidence in the middle, so the delta flags lead and the free text is cut first
+    // and comes last: a long summary or element text never pushes `changed` out of what System One reads.
     change:
-      addressed || seen?.delta
+      addressed || delta
         ? {
-            ...(addressed ? { addressed } : {}),
+            ...(delta ? { delta: flagsFirst(delta) } : {}),
+            // Said in words, so an all-false delta is not read as "nothing changed".
+            ...(delta && DesignVerify.unmeasured(delta) ? { unmeasured: DesignVerify.describe(delta) } : {}),
             ...(item?.width || item?.platform ? { taken: { width: item.width, platform: item.platform } } : {}),
             ...(seen?.width || seen?.platform ? { verified: { width: seen.width, platform: seen.platform } } : {}),
-            ...(seen?.delta ? { delta: seen.delta } : {}),
+            ...(addressed ? { addressed: DesignApproval.clip(addressed, CLAIM_CLIP.addressed) } : {}),
           }
         : undefined,
+  }
+}
+
+/** Code points of the free text a claim's change evidence keeps: the addressed summary and each element text. */
+const CLAIM_CLIP = { addressed: 200, text: 120 } as const
+
+/** The delta with its flags in front and its element text clipped behind them. */
+function flagsFirst(delta: Design.VerifyDelta) {
+  const { textBefore, textAfter, ...flags } = delta
+  return {
+    ...flags,
+    ...(textBefore ? { textBefore: DesignApproval.clip(textBefore, CLAIM_CLIP.text) } : {}),
+    ...(textAfter ? { textAfter: DesignApproval.clip(textAfter, CLAIM_CLIP.text) } : {}),
   }
 }
 

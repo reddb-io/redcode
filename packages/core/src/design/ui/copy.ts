@@ -40,6 +40,7 @@ export const reviewCopy = {
   round: "Round",
   roundAnswered: "Answered by revision",
   endingAfterRound: "Ending after this round",
+  keepReviewing: "Keep reviewing",
   stageReceived: "Received",
   stageFixing: "Fixing",
   stageStopped: "Stopped",

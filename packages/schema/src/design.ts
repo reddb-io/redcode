@@ -722,7 +722,8 @@ export interface Audit extends Schema.Schema.Type<typeof Audit> {}
 /**
  * What differs in a note's element between the revision the note was taken on and the verified one.
  * Every flag compares the located element only: its rendered pixels, visible text, markup or computed
- * style, and its box. `changed` is any of them; all false means the element looks and reads the same.
+ * style, and its box. `changed` is any of them; all false means the element looks and reads the same,
+ * unless `known` is false.
  */
 export const VerifyDelta = Schema.Struct({
   changed: Schema.Boolean,
@@ -733,8 +734,13 @@ export const VerifyDelta = Schema.Struct({
   markup: Schema.Boolean,
   moved: Schema.Boolean,
   resized: Schema.Boolean,
-  /** The element was not found on the earlier revision, which did render. */
+  /** Written by earlier verifies when the element was not found on the earlier revision; read as `known: false`. */
   added: Schema.Boolean.pipe(optional),
+  /**
+   * False when the change could not be measured: the element was not located on the revision the note
+   * was taken on, so every flag is false and claims nothing either way. Absent means measured.
+   */
+  known: Schema.Boolean.pipe(optional),
   /** The element's text on each side, clipped, when it changed. */
   textBefore: Schema.String.check(Schema.isMaxLength(240)).pipe(optional),
   textAfter: Schema.String.check(Schema.isMaxLength(240)).pipe(optional),
@@ -755,6 +761,11 @@ export const VerifyNote = Schema.Struct({
   after: Schema.String.pipe(optional),
   findings: Schema.Array(Schema.String),
   scenarios: Schema.Array(Schema.String),
+  /**
+   * Names of the scenarios that were added or changed since the revision the note was taken on, act on
+   * or observe the note's element, and reached their expected state: a behavior a capture cannot show.
+   */
+  exercised: Schema.Array(Schema.String).pipe(optional),
   /** One line a reviewer can read: found or missing, and what was observed. */
   reason: Schema.String,
   /** The viewport width the note was verified at: the one it was taken at, when recorded. */

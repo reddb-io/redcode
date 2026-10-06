@@ -720,7 +720,16 @@ describe("DesignVerify", () => {
     })
     expect(DesignVerify.describe(edited)).toBe("change: 12.35% of pixels, text, markup or style, moved, resized")
     expect(DesignVerify.delta(facts, facts, 3).changed).toBe(true)
-    expect(DesignVerify.delta(undefined, facts)).toMatchObject({ changed: true, added: true })
+    // Not located on the note's own revision: unknown, neither a change nor its absence.
+    const unknown = DesignVerify.delta(undefined, facts)
+    expect(unknown).toEqual({ changed: false, known: false, text: false, markup: false, moved: false, resized: false })
+    expect(DesignVerify.unmeasured(unknown)).toBe(true)
+    expect(DesignVerify.unmeasured(none)).toBe(false)
+    // An earlier verify's `added` reads the same way.
+    expect(DesignVerify.unmeasured({ ...none, changed: true, added: true })).toBe(true)
+    expect(DesignVerify.describe(unknown)).toBe(
+      "change: could not be measured (the element was not located on the revision the note was taken on), so this is no evidence of a change",
+    )
     // Quoted text is clipped to the schema's bound without splitting a character.
     const long = DesignVerify.delta(facts, { ...facts, text: "😀".repeat(300) }).textAfter!
     expect(long.length).toBeLessThanOrEqual(240)
@@ -743,7 +752,7 @@ describe("DesignVerify", () => {
     const gate = (update: Design.NoteUpdate) => DesignRounds.triage(answered, [update], [verify]).checked[0].refusal
     const cite = { evidence: { job: "render_1" } }
     expect(gate({ feedback, index: 1, status: "resolved", ...cite })).toBe(
-      `${DesignRounds.REFUSED} msg_1 #1 cannot be resolved: render_1 saw no change to its element since the revision the note was taken on (pixels, text, markup, style, position and size are the same at 390px). Change the element the note names, publish and verify again, or record it unresolved or accepted with a reason saying why it stays as it is.`,
+      `${DesignRounds.REFUSED} msg_1 #1 cannot be resolved: render_1 saw no change to its element since the revision the note was taken on (pixels, text, markup, style, position and size are the same at 390px). Change the element the note names, publish and verify again; for a behavior a capture cannot show (hover, focus, a script), add or update a scenario on the note's screen that acts on its element, publish and verify again; or record it unresolved or accepted with a reason saying why it stays as it is.`,
     )
     expect(gate({ feedback, index: 2, status: "resolved", ...cite })).toBeUndefined()
     expect(gate({ feedback, index: 1, status: "partial", reason: "Only the color changed", ...cite })).toBeUndefined()
@@ -788,5 +797,129 @@ describe("DesignVerify", () => {
       DesignRounds.claim(withViewport, { feedback, index: 2, status: "resolved", evidence: { job: "render_1" } }, [verify])
         .change,
     ).toBeUndefined()
+  })
+
+  test("an unmeasured delta, a behavior verified by a scenario and a page-level note pass the change gate on a clean verify", () => {
+    const opened = DesignRounds.admit(
+      { rounds: undefined, notes: undefined },
+      message("msg_1", "rev_1", [
+        note("#cta", "Bigger"),
+        note("#menu", "Open on hover"),
+        note("variant:stone page", "Calmer overall"),
+        note("#title", "Say hello"),
+      ]),
+      100,
+    )
+    const answered = { ...DesignRounds.published(opened, "rev_2"), revision: "rev_2" }
+    const facts = { rect: { x: 0, y: 0, width: 100, height: 40 }, text: "Go", markup: "a" }
+    const same = DesignVerify.delta(facts, facts, 0)
+    const unknown = DesignVerify.delta(undefined, facts)
+    const verify = job("render_1", "rev_2", 1, [
+      seen("msg_1", 1, true, { delta: unknown }),
+      seen("msg_1", 2, true, { delta: same, scenarios: ["Hover menu: exercised"], exercised: ["Hover menu"] }),
+      // A page-level note from a verify that still measured it: the gate does not read that delta.
+      seen("msg_1", 3, true, { delta: same }),
+      // A scenario ran on the screen but did not act on this element: a plain visual note is still refused.
+      seen("msg_1", 4, true, { delta: same, scenarios: ["Submit: exercised"] }),
+    ])
+    const feedback = SessionMessage.ID.make("msg_1")
+    const gate = (update: Design.NoteUpdate, jobs = [verify]) => DesignRounds.triage(answered, [update], jobs).checked[0].refusal
+    const resolved = (index: number) => ({ feedback, index, status: "resolved" as const, evidence: { job: "render_1" } })
+    expect(gate(resolved(1))).toBeUndefined()
+    expect(gate(resolved(2))).toBeUndefined()
+    expect(gate(resolved(3))).toBeUndefined()
+    expect(gate(resolved(4))).toContain("saw no change to its element")
+    // Each still needs a completed verify that found the element without a blocking finding.
+    expect(gate({ feedback, index: 3, status: "resolved" })).toContain("needs evidence: run one verify")
+    expect(gate(resolved(3), [job("render_1", "rev_2", 1, verify.verify.notes, "running")])).toContain(
+      "is not a completed verify job",
+    )
+    const blocked = job("render_1", "rev_2", 1, [
+      seen("msg_1", 1, true, { delta: unknown, blocking: true, findings: ["error · script error: boom"] }),
+      seen("msg_1", 2, false, { exercised: ["Hover menu"] }),
+    ])
+    expect(gate(resolved(1), [blocked])).toContain("found blocking findings for it (error · script error: boom)")
+    expect(gate(resolved(2), [blocked])).toContain("did not find its element")
+    // Partial, accepted and unresolved are untouched.
+    expect(gate({ ...resolved(4), status: "partial", reason: "Only the color" })).toBeUndefined()
+    expect(gate({ feedback, index: 4, status: "accepted", reason: "Stays" })).toBeUndefined()
+  })
+
+  test("a review is told an unmeasured change in words and which scenarios verified a behavior", () => {
+    const opened = DesignRounds.admit(
+      { rounds: undefined, notes: undefined },
+      message("msg_1", "rev_1", [note("#cta", "Bigger"), note("#menu", "Open on hover")]),
+      100,
+    )
+    const facts = { rect: { x: 0, y: 0, width: 100, height: 40 }, text: "Go", markup: "a" }
+    const verify = job("render_1", "rev_2", 1, [
+      seen("msg_1", 1, true, { delta: DesignVerify.delta(undefined, facts) }),
+      seen("msg_1", 2, true, { delta: DesignVerify.delta(facts, facts), exercised: ["Hover menu"] }),
+    ])
+    const feedback = SessionMessage.ID.make("msg_1")
+    const shown = (index: number) =>
+      DesignRounds.claim(opened, { feedback, index, status: "resolved", evidence: { job: "render_1" } }, [verify])
+    expect(shown(1).change?.unmeasured).toBe(DesignVerify.describe(DesignVerify.delta(undefined, facts)))
+    expect(shown(1).observation?.exercised).toBeUndefined()
+    expect(shown(2).change?.unmeasured).toBeUndefined()
+    expect(shown(2).observation?.exercised).toEqual(["Hover menu"])
+  })
+
+  test("near widths share one viewport, a width near a configured one takes it, and breakpoint neighbours stay apart", () => {
+    const plan = DesignVerify.placements(
+      [taken({ width: 1187 }), taken({ width: 1210 }), taken({ width: 1210 }), taken({ width: 393 }), taken({ width: 768 })],
+      web,
+    )
+    // 1187 and 1210 share the width most of their notes recorded; 393 is the configured 390.
+    expect(widths(plan)).toEqual([
+      ["390px", [3]],
+      ["768px", [4]],
+      ["1210px", [0, 1, 2]],
+    ])
+    expect(plan.collapsed).toEqual([])
+    // 800 is 4% from 768, past the tolerance: a breakpoint may lie between them, so each keeps its own.
+    expect(widths(DesignVerify.placements([taken({ width: 768 }), taken({ width: 800 })], web))).toEqual([
+      ["768px", [0]],
+      ["800px", [1]],
+    ])
+    // A tie keeps the wider width.
+    expect(widths(DesignVerify.placements([taken({ width: 1187 }), taken({ width: 1210 })], web))).toEqual([
+      ["1210px", [0, 1]],
+    ])
+  })
+
+  test("a note's reason says where it was verified when that is not where it was taken", () => {
+    const at = (width: number, device?: "ios" | "android") => ({ width, height: 900, ...(device ? { device } : {}) })
+    expect(DesignVerify.displaced({ width: 1187 }, at(1210))).toBe(
+      "verified at 1210px, not at 1187px where the note was taken",
+    )
+    expect(DesignVerify.displaced({ width: 1210 }, at(1210))).toBe("")
+    expect(DesignVerify.displaced({}, at(1440))).toBe("")
+    expect(DesignVerify.displaced({ width: 393, platform: "ios" }, at(412, "android"))).toBe(
+      "verified at 412px Android, not at 393px iOS where the note was taken",
+    )
+    const facts = { rect: { x: 0, y: 0, width: 100, height: 40 }, text: "Go", markup: "a" }
+    expect(
+      DesignVerify.remarks({
+        item: { target: "#menu", width: 800 },
+        viewport: at(768),
+        found: true,
+        delta: DesignVerify.delta(facts, facts),
+        exercised: ["Hover menu"],
+      }),
+    ).toEqual([
+      "change: none to the element (pixels, text, markup, style, position and size are the same)",
+      "behavior verified by scenario Hover menu",
+      "verified at 768px, not at 800px where the note was taken",
+    ])
+    expect(DesignVerify.remarks({ item: { target: "variant:stone page" }, viewport: at(1440), found: true })).toEqual([
+      "change: not measured for a page-level note (the whole page is not compared as one element)",
+    ])
+    // A missing element reports no change, only where it was looked for.
+    expect(
+      DesignVerify.remarks({ item: { target: "#cta", width: 9000 }, viewport: at(3840), found: false, exercised: ["X"] }),
+    ).toEqual(["verified at 3840px, not at 9000px where the note was taken"])
+    expect(DesignVerify.isPage("page")).toBe(true)
+    expect(DesignVerify.isPage("#page")).toBe(false)
   })
 })

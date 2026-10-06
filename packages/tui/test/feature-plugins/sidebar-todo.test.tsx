@@ -154,7 +154,11 @@ test("Design round shows its counts and the first three notes still without a ma
         context={context([], {
           agent: "design",
           designs: () => [
-            design([...round9, note(8, 1, { text: "Antiga" }, { status: "accepted", reason: "ok" })]),
+            design([
+              ...round9,
+              note(8, 1, { text: "Antiga" }, { status: "accepted", reason: "ok" }),
+              note(8, 2, { text: "Pendente" }, { status: "unresolved", reason: "Sem copy" }),
+            ]),
             design([note(3, 1, { text: "Encerrada" })], { id: "design_ended", name: "Ended", ended: true }),
           ],
         })}
@@ -181,8 +185,11 @@ test("Design round shows its counts and the first three notes still without a ma
     expect(frame).toContain("+3 more without a mark")
     // One line per note, however long the words.
     expect(frame).not.toContain("Resto 12")
-    // An older answered round is not the newest one, so it stays out of the sidebar.
+    // An older answered round is not the newest one: its notes leave the sidebar, but what it left unresolved
+    // is still counted on one line.
     expect(frame).not.toContain("Round 8")
+    expect(frame).not.toContain("Pendente")
+    expect(frame).toContain("1 earlier note partial/unresolved")
     expect(frame).not.toContain("Encerrada")
     expect(frame).not.toContain("Todo ·")
   } finally {
@@ -253,6 +260,8 @@ test("Design round follows the sidebar poll and stays as its outcomes once every
     // The answered round stays as one line of tallies, with the note that was not fixed under it.
     expect(settled).toContain("Round 9 · 1 resolved · 1 unresolved")
     expect(settled).toContain("[✗] [data-design-id…: Cor")
+    // Why it stayed, on one line under the note.
+    expect(settled).toContain("    Fora do escopo")
     expect(settled).not.toContain("Link quebrado")
     expect(settled).not.toContain("addressed")
   } finally {
@@ -285,11 +294,15 @@ test("An answered round lists its partial and unresolved notes and a requested e
     const rows = frame.split("\n").filter((line) => line.trim())
     expect(rows[0]).toContain("Design review · R2 · ending after this round")
     expect(rows[1]).toContain("Round 3 · 12 resolved · 1 partial · 4 unresolved")
+    // Each kept note says why on the line under it.
     expect(rows[2]).toContain("[~] [data-design-id…: Quase")
-    expect(rows[3]).toContain("[✗] [data-design-id…: Aberto 1")
-    expect(rows[4]).toContain("[✗] [data-design-id…: Aberto 2")
-    expect(rows[5]).toContain("+2 more partial or unresolved")
-    expect(rows).toHaveLength(6)
+    expect(rows[3]).toStartWith("    Falta o hover")
+    expect(rows[4]).toContain("[✗] [data-design-id…: Aberto 1")
+    expect(rows[5]).toStartWith("    Depois")
+    expect(rows[6]).toContain("[✗] [data-design-id…: Aberto 2")
+    expect(rows[7]).toStartWith("    Depois")
+    expect(rows[8]).toContain("+2 more partial or unresolved")
+    expect(rows).toHaveLength(9)
     expect(frame).not.toContain("Feito")
   } finally {
     app.renderer.destroy()

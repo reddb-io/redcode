@@ -217,6 +217,61 @@ describe("DesignQuality.report", () => {
     )
   })
 
+  test("merges repeated widths and keeps errors and design-wide findings ahead of a noisy audit's cap", () => {
+    const check = (rule: string, extra: Partial<Design.AuditCheck> = {}): Design.AuditCheck => ({
+      rule,
+      severity: "review",
+      selector: "body",
+      evidence: "Signal.",
+      fix: "Fix.",
+      width: 1440,
+      ...extra,
+    })
+    // What a renderer appends: per-viewport checks first, the repetition and reuse checks last.
+    const noisy = [
+      ...[390, 768, 1440].flatMap((width) =>
+        Array.from({ length: 41 }, (_, index) =>
+          check("small-control", { selector: `#control-${index}`, width, evidence: `Control height is ${width / 60}px.` }),
+        ),
+      ),
+      check("broken-image", { severity: "error", selector: "img", width: 768 }),
+      check("variants-too-similar", { key: "variants-too-similar@calm~bold", variant: "bold", judged: "confirmed" }),
+      check("redeclared-component", { key: "redeclared-component@Card", selector: "source src/main.tsx:4" }),
+      check("redeclared-component", { key: "redeclared-component@Panel", severity: "info", judged: "rejected" }),
+    ]
+    const settled = DesignQuality.settle(noisy, [
+      { id: DesignQuality.accepted("small-control@page:#control-40"), text: "A dense toolbar by design." },
+    ])
+    expect(settled.checks).toHaveLength(124)
+    expect(settled.findings).toEqual(["1 accepted exception recorded in decisions not flagged again: small-control@page:#control-40."])
+    const audit = job({
+      id: "job_noisy",
+      input: { revision: "rev_noisy", format: "audit" },
+      audit: { revision: "rev_noisy", findings: settled.findings, scenarios: [], widths: [390, 768, 1440], checks: settled.checks },
+    })
+    const lines = DesignQuality.report([audit], "rev_noisy").split("\n")
+    const listed = lines.filter((line) => /^(?:ERROR|REVIEW|INFO) /.test(line))
+    expect(lines).toContain(
+      "Checks: 124, 44 distinct after merging repeats at other widths and scenarios; the 30 that ask the most are listed (errors, then review, then info).",
+    )
+    expect(listed).toHaveLength(30)
+    expect(listed[0]).toStartWith("ERROR broken-image · 768px")
+    expect(listed[1]).toStartWith("REVIEW variants-too-similar · 1440px · bold")
+    expect(listed[2]).toStartWith("REVIEW redeclared-component · 1440px")
+    // One line per control, with every width it was found at and the narrowest occurrence's evidence.
+    expect(listed[3]).toBe(
+      "REVIEW small-control · 390/768/1440px · #control-0: Control height is 6.5px. Fix: Fix. [key small-control@page:#control-0]",
+    )
+    expect(lines).toContain("14 further distinct checks (0 error, 13 review, 1 info) in /exports/job_noisy.html; inspect the full report.")
+    // A quiet audit gets no merge summary.
+    const quiet = job({
+      id: "job_quiet",
+      input: { revision: "rev_quiet", format: "audit" },
+      audit: { revision: "rev_quiet", findings: [], scenarios: [], widths: [1440], checks: [check("placeholder-link")] },
+    })
+    expect(DesignQuality.report([quiet], "rev_quiet")).not.toContain("distinct after merging")
+  })
+
   test("asks for a fresh audit when only an older revision was audited", () => {
     const stale = job({
       id: "job_stale",

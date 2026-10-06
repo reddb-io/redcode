@@ -380,6 +380,36 @@ export function key(check: Pick<Design.AuditCheck, "rule" | "key" | "variant" | 
 /** The decision id that records a check as an accepted exception. */
 export const accepted = (check: string) => `accept:${check}`
 
+/** At most this many distinct checks are listed in a report; the rest are counted by severity. */
+const SHOWN = 30
+const RANK = { error: 0, review: 1, info: 2 } as const
+/** Design-wide findings, one per item rather than per element and width: listed first within a severity. */
+const WIDE = new Set([
+  "variants-too-similar",
+  "matches-approved-design",
+  "redeclared-component",
+  "color-off-token",
+  "font-off-system",
+])
+
+/**
+ * Checks as a report lists them: one entry per key, with every width and scenario it was found at
+ * (the evidence and fix of its most severe occurrence), errors first, then review, then info; within
+ * a severity the design-wide repetition and reuse findings lead, then the order the audit found them.
+ */
+export function merge(checks: readonly Design.AuditCheck[]) {
+  const ordered = [...checks].toSorted((a, b) => RANK[a.severity] - RANK[b.severity])
+  return [...Map.groupBy(ordered, (check) => key(check)).values()]
+    .map((group) => ({
+      ...group[0]!,
+      widths: [...new Set(group.map((check) => check.width))].toSorted((a, b) => a - b),
+      scenarios: group.some((check) => check.scenario)
+        ? [...new Set(group.map((check) => check.scenario ?? "initial"))]
+        : [],
+    }))
+    .toSorted((a, b) => RANK[a.severity] - RANK[b.severity] || Number(WIDE.has(b.rule)) - Number(WIDE.has(a.rule)))
+}
+
 /**
  * The audit's final checks: every check keyed, effects the design system declares itself (a gradient
  * text fill, a backdrop blur) downgraded to info, and checks whose key a decision accepts left out,
@@ -492,17 +522,30 @@ export function report(
               ? [`${current.audit.findings.length - 30} further findings in ${current.result}.`]
               : []),
             ...(current.audit.reuse ? [DesignReuse.describe(current.audit.reuse)] : []),
-            // Info checks ask for nothing, so they come after everything that does.
-            ...(current.audit.checks ?? [])
-              .toSorted((a, b) => Number(a.severity === "info") - Number(b.severity === "info"))
-              .slice(0, 30)
-              .map(
-                (check) =>
-                  `${check.severity.toUpperCase()} ${check.rule} · ${check.width}px${check.variant ? ` · ${check.variant}` : ""}${check.screen ? ` · slide ${check.screen}` : ""}${check.scenario ? ` · ${check.scenario}` : ""} · ${check.selector}: ${check.evidence} Fix: ${check.fix}${check.key ? ` [key ${check.key}]` : ""}`,
-              ),
-            ...((current.audit.checks?.length ?? 0) > 30
-              ? [`Further checks in ${current.result}; inspect the full report.`]
-              : []),
+            ...(() => {
+              const all = current.audit.checks ?? []
+              const merged = merge(all)
+              const shown = merged.slice(0, SHOWN)
+              const rest = merged.slice(SHOWN)
+              const count = (severity: Design.AuditCheck["severity"]) =>
+                rest.filter((check) => check.severity === severity).length
+              return [
+                ...(all.length > merged.length || rest.length
+                  ? [
+                      `Checks: ${all.length}, ${merged.length} distinct after merging repeats at other widths and scenarios; the ${shown.length} that ask the most are listed (errors, then review, then info).`,
+                    ]
+                  : []),
+                ...shown.map(
+                  (check) =>
+                    `${check.severity.toUpperCase()} ${check.rule} · ${check.widths.join("/")}px${check.variant ? ` · ${check.variant}` : ""}${check.screen ? ` · slide ${check.screen}` : ""}${check.scenarios.length ? ` · ${check.scenarios.join(", ")}` : ""} · ${check.selector}: ${check.evidence} Fix: ${check.fix}${check.key ? ` [key ${check.key}]` : ""}`,
+                ),
+                ...(rest.length
+                  ? [
+                      `${rest.length} further distinct checks (${count("error")} error, ${count("review")} review, ${count("info")} info) in ${current.result}; inspect the full report.`,
+                    ]
+                  : []),
+              ]
+            })(),
             ...(current.audit.checks?.some((check) => check.key && check.severity !== "info")
               ? [
                   `To keep a flagged check as a deliberate exception, add a decision with id "${accepted("<key>")}" and the reason as text; later audits do not flag that key again.`,

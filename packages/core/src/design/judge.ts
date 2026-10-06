@@ -5,12 +5,15 @@ import type { Intelligence } from "@opencode/schema/intelligence"
 import { IntelligenceEvaluation } from "../intelligence/evaluation.js"
 import { DesignSignature } from "./signature.js"
 import { DesignInventory } from "./inventory.js"
-import type { DesignReuse } from "./reuse.js"
+import { DesignReuse } from "./reuse.js"
 
 /**
  * The System One judge of deterministic repetition and reuse findings: one request asks one
- * question per flagged item, using only compact structural evidence (signatures, component names,
- * the design-system inventory entry), never captures or copy. A confirmed finding keeps review
+ * question per flagged item, using only compact structural evidence (signatures; for a component, the
+ * element and component names it renders, the props it reads, its file's imports and the
+ * design-system inventory entry), never captures, copy or source text: string literals, comments and
+ * JSX text never leave the machine. Items already accepted as exceptions are not asked, and a verdict
+ * is reused while the item's evidence is unchanged (see DesignStore.judge). A confirmed finding keeps review
  * severity; a rejected one becomes info; an unanswered one stays as found, marked unconfirmed.
  * Twenty items, each at most 2,000 characters of evidence, fit one 80,000-character request; more
  * items are split into requests sent together, never one after another.
@@ -96,7 +99,13 @@ export function subjects(checks: readonly Design.AuditCheck[], context: Context)
           declaration: {
             file: location?.[1],
             line: at,
-            code: file?.text.split("\n").slice(Math.max(0, at - 3), at + 25).join("\n") ?? "",
+            ...outline(file?.text.split("\n").slice(Math.max(0, at - 1), at + 25).join("\n") ?? ""),
+            imports: DesignReuse.imports(file?.text ?? "").slice(0, 24).map((item) => ({
+              from: item.specifier,
+              names: item.names.slice(0, 16),
+              ...(item.default ? { default: true } : {}),
+              ...(item.namespace ? { namespace: true } : {}),
+            })),
           },
           designSystem: entry
             ? {
@@ -112,6 +121,30 @@ export function subjects(checks: readonly Design.AuditCheck[], context: Context)
       },
     ]
   })
+}
+
+/**
+ * What a declaration renders and reads, without its copy: string literals, comments and JSX text are
+ * removed first, then the element and component tags it renders and the props it destructures or
+ * reads from `props` are listed.
+ */
+export function outline(code: string) {
+  const clean = code
+    .replace(/(["'])(?:\\.|(?!\1)[^\\\n])*\1|`(?:\\.|[^\\`])*`/g, '""')
+    .replace(/\/\*[\s\S]*?\*\/|\/\/[^\n]*/g, "")
+    .replace(/>[^<>{}]*</g, "><")
+  const unique = (values: readonly string[], limit: number) => [...new Set(values)].slice(0, limit)
+  const destructured = /\(\s*\{([^}]*)\}/.exec(clean)?.[1] ?? ""
+  return {
+    renders: unique([...clean.matchAll(/<([\p{L}_$][\p{L}\p{N}_$.:-]*)/gu)].map((match) => match[1]!), 32),
+    props: unique(
+      [
+        ...destructured.split(",").map((item) => /^\s*(?:\.\.\.)?([\p{L}_$][\p{L}\p{N}_$]*)/u.exec(item)?.[1] ?? ""),
+        ...[...clean.matchAll(/\bprops\.([\p{L}_$][\p{L}\p{N}_$]*)/gu)].map((match) => match[1]!),
+      ].filter(Boolean),
+      32,
+    ),
+  }
 }
 
 /** Subjects in batches of {@link LIMIT.items}, each the input of one request; all are sent at once. */

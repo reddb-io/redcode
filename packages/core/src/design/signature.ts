@@ -13,19 +13,32 @@ import { DesignFiles } from "./files.js"
  * L landmark/section order (runs collapsed as `section*3`), C multi-column grid/flex containers in
  * document order (`g3` a three-track grid, `f4` a four-item row), H heading counts per level 1-6,
  * P dominant text and surface colors (each channel quantized to 3 bits), F first font families,
- * V log2 buckets of the class-token and tag vocabularies, T text-length buckets in code points
- * (≤12, ≤40, ≤120, longer), N rendered element count.
+ * V log2 buckets of the class-token and tag vocabularies, T text-length buckets in display columns,
+ * where an East Asian wide character counts two, so a translation lands in the buckets its rendered
+ * width does (≤12, ≤40, ≤120, longer), N rendered element count.
+ *
+ * An audit signs every direction once, at the widest viewport it renders (the target's widest
+ * standard width: the widest configured breakpoint for web, the wider phone for app, 1920 for
+ * presentation), so grids are compared uncollapsed; signatures taken at different widths are never
+ * compared. v1 signatures counted text in code points and were taken at the narrowest viewport.
  */
-export const VERSION = "v1"
+export const VERSION = "v2"
 
 /**
  * Conservative thresholds: within a revision two directions are too similar when their structure is
  * at least 90% alike, whatever their colors (a recolor is not a new composition). A new design
  * matches an approved one only when structure is at least 95% alike and the whole signature 92%,
  * because designs of one application share the design system's paint by intent. Directions under
- * twenty rendered elements are too small to judge and are never compared.
+ * twenty rendered elements are too small to judge and are never compared. A direction with fewer
+ * than `structure` landmark, column and heading tokens has too little layout to compare (two
+ * different layouts made of plain boxes would look alike): it matches only an identical signature.
  */
-export const THRESHOLD = { variants: 0.9, approved: { structure: 0.95, score: 0.92 }, elements: 20 } as const
+export const THRESHOLD = {
+  variants: 0.9,
+  approved: { structure: 0.95, score: 0.92 },
+  elements: 20,
+  structure: 3,
+} as const
 
 /** The computed style fields a signature reads; the browser uses getComputedStyle, tests pass a reader. */
 export interface Style {
@@ -192,6 +205,8 @@ export function capture(variant: string | null, scope?: Document, read?: (elemen
   const classes = new Set(elements.flatMap((element) => [...element.classList]))
   const tags = new Set(elements.map((element) => element.tagName.toLowerCase()))
   const text = [0, 0, 0, 0]
+  // East Asian wide characters (Han, kana, Hangul, full-width forms) take two columns when rendered.
+  const wide = /[\p{Script=Han}\p{Script=Hiragana}\p{Script=Katakana}\p{Script=Hangul}　-〿！-｠￠-￦]/u
   for (const element of elements) {
     const own = [...element.childNodes]
       .filter((node) => node.nodeType === 3)
@@ -200,11 +215,11 @@ export function capture(variant: string | null, scope?: Document, read?: (elemen
       .trim()
       .replace(/\s+/gu, " ")
     if (!own) continue
-    const length = [...own].length
-    text[length <= 12 ? 0 : length <= 40 ? 1 : length <= 120 ? 2 : 3]++
+    const span = [...own].reduce((sum, character) => sum + (wide.test(character) ? 2 : 1), 0)
+    text[span <= 12 ? 0 : span <= 40 ? 1 : span <= 120 ? 2 : 3]++
   }
   return [
-    "v1",
+    "v2",
     `L=${landmarks.join(".")}`,
     `C=${columns.join(".")}`,
     `H=${headings.join(".")}`,
@@ -247,16 +262,28 @@ export function parse(signature: string): Parsed | undefined {
 
 /**
  * How alike two signatures are, from 0 to 1. `structure` weighs layout only (landmarks 35%, columns
- * 30%, heading profile 15%, text-length distribution 10%, vocabulary size 10%); `paint` weighs colors
- * 60% and fonts 40%; `score` is 80% structure and 20% paint.
+ * 30%, heading profile 15%, text-length distribution 10%, vocabulary size 10%), over the components
+ * at least one side has: two empty landmark lists are no evidence of likeness, so their weight is
+ * dropped rather than scored alike. Below {@link THRESHOLD.structure} tokens on either side, structure
+ * is 1 for identical layouts and 0 otherwise. `paint` weighs colors 60% and fonts 40%; `score` is 80%
+ * structure and 20% paint.
  */
 export function similarity(a: Parsed, b: Parsed) {
+  const parts = [
+    { weight: 0.35, present: a.landmarks.length + b.landmarks.length, alike: sequence(a.landmarks, b.landmarks) },
+    { weight: 0.3, present: a.columns.length + b.columns.length, alike: sequence(a.columns, b.columns) },
+    { weight: 0.15, present: total(a.headings) + total(b.headings), alike: distribution(a.headings, b.headings) },
+    { weight: 0.1, present: total(a.text) + total(b.text), alike: distribution(a.text, b.text) },
+    { weight: 0.1, present: 1, alike: ratio(a.vocabulary, b.vocabulary) },
+  ].filter((part) => part.present > 0)
+  const enough = (value: Parsed) =>
+    value.landmarks.length + value.columns.length + total(value.headings) >= THRESHOLD.structure
+  const layout = (value: Parsed) =>
+    JSON.stringify([value.landmarks, value.columns, value.headings, value.text, value.vocabulary, value.elements])
   const structure =
-    0.35 * sequence(a.landmarks, b.landmarks) +
-    0.3 * sequence(a.columns, b.columns) +
-    0.15 * distribution(a.headings, b.headings) +
-    0.1 * distribution(a.text, b.text) +
-    0.1 * ratio(a.vocabulary, b.vocabulary)
+    enough(a) && enough(b)
+      ? parts.reduce((sum, part) => sum + part.weight * part.alike, 0) / parts.reduce((sum, part) => sum + part.weight, 0)
+      : Number(layout(a) === layout(b))
   const paint = 0.6 * jaccard(a.colors, b.colors) + 0.4 * jaccard(a.fonts, b.fonts)
   // Rounded so float error never decides a threshold.
   const round = (value: number) => Math.round(value * 10_000) / 10_000
@@ -279,6 +306,7 @@ export function repeated(entries: readonly Entry[]): Design.AuditCheck[] {
   return parsed.flatMap((current, index) => {
     const earlier = parsed
       .slice(0, index)
+      .filter((other) => other.entry.width === current.entry.width)
       .map((other) => ({ other, alike: similarity(other.value, current.value) }))
       .filter((item) => item.alike.structure >= THRESHOLD.variants)
       .toSorted((a, b) => b.alike.structure - a.alike.structure)[0]
@@ -307,28 +335,44 @@ export const Approved = Schema.Struct({
   revision: Schema.String,
   variant: Schema.String.pipe(Schema.optionalKey),
   signature: Schema.String,
+  /** The viewport width the signature was taken at; absent on approvals recorded before widths were kept. */
+  width: Schema.Number.pipe(Schema.optionalKey),
   approved: Schema.Number,
 })
 export interface Approved extends Schema.Schema.Type<typeof Approved> {}
+/** The file format this version reads and writes; a newer one is kept untouched. */
+export const FORMAT = 1
 const decodeFile = Schema.decodeUnknownOption(
-  Schema.fromJsonString(Schema.Struct({ version: Schema.Literal(1), designs: Schema.Array(Approved) })),
+  Schema.fromJsonString(Schema.Struct({ version: Schema.Literal(FORMAT), designs: Schema.Array(Approved) })),
 )
+const decodeVersion = Schema.decodeUnknownOption(Schema.fromJsonString(Schema.Struct({ version: Schema.Number })))
 
-/** Where approved signatures live, next to the generated .red/DESIGN.md of the application. */
+/**
+ * Where approved signatures live, next to the generated .red/DESIGN.md of the application, and kept
+ * with it under the application's own version control so later designs and conversations see them.
+ */
 export const FILE = ".red/design-signatures.json"
 /** The newest approvals kept; older ones fall off so the file stays small. */
 export const KEEP = 40
 
-/** Directions that re-create an approved design other than `design`. */
-export function matches(entries: readonly Entry[], approved: readonly Approved[], design: string): Design.AuditCheck[] {
-  const references = approved.flatMap((item) => {
-    const value = item.design === design ? undefined : parse(item.signature)
-    return value && value.elements >= THRESHOLD.elements ? [{ item, value }] : []
+/**
+ * Directions that re-create an approved design other than `design`. Only approvals signed at the
+ * entry's width are compared; `skipped` counts the other designs' approvals that were not (signed at
+ * another width, before widths were kept, or with an older signature version).
+ */
+export function matches(entries: readonly Entry[], approved: readonly Approved[], design: string) {
+  const others = approved.filter((item) => item.design !== design)
+  const references = others.flatMap((item) => {
+    const value = parse(item.signature)
+    return value && value.elements >= THRESHOLD.elements && item.width !== undefined ? [{ item, value }] : []
   })
-  return entries.flatMap((entry) => {
+  const widths = new Set(entries.map((entry) => entry.width))
+  const skipped = others.length - references.filter((reference) => widths.has(reference.item.width!)).length
+  const checks = entries.flatMap((entry): Design.AuditCheck[] => {
     const value = parse(entry.signature)
     if (!value || value.elements < THRESHOLD.elements) return []
     const best = references
+      .filter((reference) => reference.item.width === entry.width)
       .map((reference) => ({ reference, alike: similarity(reference.value, value) }))
       .filter(
         (candidate) =>
@@ -351,24 +395,59 @@ export function matches(entries: readonly Entry[], approved: readonly Approved[]
       },
     ]
   })
+  return { checks, skipped }
 }
 
-/** Approved signatures recorded for the application; none when the file is missing or unreadable. */
-export async function approved(application: string): Promise<readonly Approved[]> {
+/**
+ * Approved signatures recorded for the application: none when the file is missing. An unreadable
+ * file or one in a newer format yields none and a `problem`; such a file is never overwritten.
+ */
+export async function approved(application: string): Promise<{ designs: readonly Approved[]; problem?: string }> {
   const file = Bun.file(path.join(application, FILE))
-  if (!(await file.exists())) return []
-  const parsed = decodeFile(await file.text())
-  return parsed._tag === "Some" ? parsed.value.designs : []
+  if (!(await file.exists())) return { designs: [] }
+  const text = await file.text().catch(() => undefined)
+  const parsed = text === undefined ? undefined : decodeFile(text)
+  if (parsed?._tag === "Some") return { designs: parsed.value.designs }
+  const version = text === undefined ? undefined : decodeVersion(text)
+  return {
+    designs: [],
+    problem:
+      version?._tag === "Some" && version.value.version > FORMAT
+        ? `${FILE} was written in a newer format (${version.value.version}); approved designs were not compared, and the file is kept as it is.`
+        : `${FILE} is unreadable; approved designs were not compared, and the file is kept as it is until it is fixed or removed.`,
+  }
 }
 
-/** Records an approval's signature, replacing the design's previous one and keeping the newest {@link KEEP}. */
-export async function record(application: string, entry: Approved) {
-  const designs = [entry, ...(await approved(application)).filter((item) => item.design !== entry.design)].slice(0, KEEP)
-  await DesignFiles.atomic(path.join(application, FILE), JSON.stringify({ version: 1, designs }, null, 2) + "\n")
+/** Pending writes per signature file, so two approvals in this process never interleave their read-modify-write. */
+const writing = new Map<string, Promise<unknown>>()
+
+/**
+ * Records an approval's signature, replacing the design's previous one and keeping the newest
+ * {@link KEEP}. Writes to one file run one after another; an unreadable or newer-format file is
+ * kept and the approval is not recorded (`kept` says why). A write failure rejects.
+ */
+export function record(application: string, entry: Approved): Promise<{ kept?: string }> {
+  const target = path.join(application, FILE)
+  const next = (writing.get(target) ?? Promise.resolve())
+    .catch(() => undefined)
+    .then(async () => {
+      const current = await approved(application)
+      if (current.problem) return { kept: current.problem }
+      const designs = [entry, ...current.designs.filter((item) => item.design !== entry.design)].slice(0, KEEP)
+      await DesignFiles.atomic(target, JSON.stringify({ version: FORMAT, designs }, null, 2) + "\n")
+      return {}
+    })
+  writing.set(target, next)
+  return next.finally(() => {
+    if (writing.get(target) === next) writing.delete(target)
+  })
 }
 
 /** The signature an approval keeps: the approved variant's, else the page's, else the only one captured. */
-export function chosen(entries: readonly { readonly variant?: string; readonly signature: string }[], variant?: string) {
+export function chosen<T extends { readonly variant?: string; readonly signature: string }>(
+  entries: readonly T[],
+  variant?: string,
+) {
   return (
     entries.find((entry) => variant !== undefined && entry.variant === variant) ??
     entries.find((entry) => entry.variant === undefined) ??
@@ -395,9 +474,12 @@ function sequence(a: readonly string[], b: readonly string[]) {
   return 1 - row[b.length]! / Math.max(a.length, b.length)
 }
 
+function total(values: readonly number[]) {
+  return values.reduce((sum, value) => sum + value, 0)
+}
+
 /** Overlap of two count histograms after normalizing each to proportions. */
 function distribution(a: readonly number[], b: readonly number[]) {
-  const total = (values: readonly number[]) => values.reduce((sum, value) => sum + value, 0)
   const left = total(a)
   const right = total(b)
   if (!left && !right) return 1

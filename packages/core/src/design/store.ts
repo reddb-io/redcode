@@ -28,6 +28,7 @@ import { DesignCapture } from "./capture.js"
 import { DesignJudge } from "./judge.js"
 import { DesignReuse } from "./reuse.js"
 import { DesignSignature } from "./signature.js"
+import { DesignQuality } from "./quality.js"
 
 /** The longest rendered review message the store admits, in characters; a longer one is refused, never cut. */
 export const LIMITS = { prompt: 100_000 } as const
@@ -613,7 +614,7 @@ const make = Effect.gen(function* () {
     yield* get(sessionID, id)
     const rows = yield* db.select().from(JobTable).where(eq(JobTable.design_id, id)).all().pipe(Effect.orDie)
     return yield* Effect.forEach(rows, (row) =>
-      Schema.decodeUnknownEffect(Design.Job)(row.data).pipe(
+      Schema.decodeUnknownEffect(Design.Job)(compatible(row.data)).pipe(
         Effect.mapError(() => new Design.Error({ code: "invalid", message: `Invalid Design job: ${row.id}` })),
       ),
     )
@@ -768,9 +769,11 @@ const make = Effect.gen(function* () {
   /**
    * An audit's repetition and design-system reuse checks: directions of the revision that repeat each
    * other, directions that re-create an approved design of the application, and components, colors or
-   * fonts the revision's sources re-declare instead of reusing. The renderer forks this once the first
-   * viewport captured the signatures, so its one System One request (dual reasoning only) runs
-   * alongside the rest of the audit, never after it and never after another request.
+   * fonts the revision's sources re-declare instead of reusing. The renderer forks this once every
+   * direction is signed, so its one System One request (dual reasoning only) runs alongside the rest
+   * of the audit, never after it and never after another request. Keys the live document accepts as
+   * exceptions are not judged; `findings` says what could not be compared. A reuse check that fails
+   * becomes one info check instead of failing the audit.
    */
   const repetition = Effect.fn("DesignStore.repetition")(function* (
     sessionID: SessionSchema.ID,
@@ -781,36 +784,79 @@ const make = Effect.gen(function* () {
     const document = recorded.document
     const facts = yield* Effect.tryPromise({
       try: async () => {
-        const [files, approved, tokens] = await Promise.all([
+        const [sources, approved, tokens] = await Promise.all([
           DesignReuse.read(blobs, recorded.files),
           DesignSignature.approved(document.application),
           DesignReuse.system(document),
         ])
-        return { files, approved, tokens }
+        return { sources, approved, tokens }
       },
       catch: () =>
         new Design.Error({ code: "unavailable", message: "Unable to read the revision for the reuse checks" }),
     })
+    // Decisions come from the live document, so an exception accepted since this revision applies now.
+    const decisions = (yield* get(sessionID, recorded.designID).pipe(
+      Effect.catchTag("Design.Error", () => Effect.succeed(document)),
+    )).decisions
     const inventory = document.inventory ?? []
     const aliases = document.system?.aliases
-    const reuse = DesignReuse.check({ engine: document.engine, files: facts.files, inventory, tokens: facts.tokens, aliases, width })
-    const found = [
-      ...DesignSignature.repeated(signatures),
-      ...DesignSignature.matches(signatures, facts.approved, document.id),
-      ...reuse.checks,
-    ]
+    const files = facts.sources.files
+    const reuse = yield* Effect.try({
+      try: () =>
+        DesignReuse.check({
+          engine: document.engine,
+          files,
+          inventory,
+          tokens: facts.tokens,
+          aliases,
+          width,
+          base: path.relative(document.application, document.root).replaceAll("\\", "/"),
+          skipped: facts.sources.skipped,
+        }),
+      catch: (error) => error,
+    }).pipe(
+      Effect.catch((error) =>
+        Effect.logWarning("design reuse check failed", { error }).pipe(
+          Effect.map((): ReturnType<typeof DesignReuse.check> => ({
+            checks: [DesignReuse.unavailable(error instanceof Error ? error.message : String(error), width)],
+          })),
+        ),
+      ),
+    )
+    const matched = DesignSignature.matches(signatures, facts.approved.designs, document.id)
+    const found = [...DesignSignature.repeated(signatures), ...matched.checks, ...reuse.checks]
     const outcomes = yield* judge(
       sessionID,
       document.id,
-      DesignJudge.subjects(found, { signatures, approved: facts.approved, files: facts.files, inventory, aliases }),
+      DesignJudge.subjects(
+        found.filter((check) => !decisions.some((decision) => check.key && decision.id === DesignQuality.accepted(check.key))),
+        { signatures, approved: facts.approved.designs, files, inventory, aliases },
+      ),
     )
-    return { checks: DesignJudge.apply(found, outcomes), reuse: reuse.reuse, effects: facts.tokens }
+    return {
+      checks: DesignJudge.apply(found, outcomes),
+      reuse: reuse.reuse,
+      effects: facts.tokens,
+      findings: [
+        ...(facts.approved.problem ? [`Approved designs: ${facts.approved.problem}`] : []),
+        ...(matched.skipped
+          ? [
+              `${matched.skipped} approved design signature${matched.skipped === 1 ? " was" : "s were"} not compared: signed at another width than this audit's ${signatures[0]?.width ?? width}px or by an older Redcode. Approving that design again records a comparable signature.`,
+            ]
+          : []),
+      ],
+    }
   })
 
+  /** Verdicts already given, per design, flagged key and evidence hash, so an unchanged item is not judged again. */
+  const verdicts = new Map<string, DesignJudge.Outcome>()
+
   /**
-   * One System One request per {@link DesignJudge.LIMIT} flagged items, all sent at once. Nothing is
-   * sent with single reasoning: the deterministic findings stand as found. Observe mode sends and
-   * decides nothing; an unavailable System One leaves every item unconfirmed.
+   * One System One request per {@link DesignJudge.LIMIT} flagged items not judged before, all sent at
+   * once, in dual reasoning only. Nothing is sent with single reasoning or in observe mode: the
+   * deterministic findings stand as found. An unavailable System One leaves every new item
+   * unconfirmed; a confirmed or rejected verdict is reused, in this process, while the item's evidence
+   * stays the same.
    */
   const judge = Effect.fn("DesignStore.judge")(function* (
     sessionID: SessionSchema.ID,
@@ -822,13 +868,18 @@ const make = Effect.gen(function* () {
     if (Result.isFailure(settings))
       return DesignJudge.unconfirmed(subjects, `System One unavailable: ${settings.failure.message}`)
     const mode = IntelligenceEvaluation.mode(settings.success)
-    if (mode === "single") return []
-    if (mode === "dual" && !IntelligenceEvaluation.isReady(settings.success))
+    if (mode !== "dual") return []
+    if (!IntelligenceEvaluation.isReady(settings.success))
       return DesignJudge.unconfirmed(
         subjects,
         "System One unavailable: dual reasoning is selected but System One and System Two are not configured",
       )
-    const requests = DesignJudge.requests(subjects)
+    const cache = (subject: DesignJudge.Subject) =>
+      `${subjectID}\u0000${subject.key}\u0000${Bun.hash(JSON.stringify(subject.source)).toString(36)}`
+    const cached = subjects.flatMap((subject) => verdicts.get(cache(subject)) ?? [])
+    const fresh = subjects.filter((subject) => !verdicts.has(cache(subject)))
+    if (!fresh.length) return cached
+    const requests = DesignJudge.requests(fresh)
     const records = yield* Effect.forEach(
       requests,
       (request) =>
@@ -844,13 +895,18 @@ const make = Effect.gen(function* () {
         ),
       { concurrency: "unbounded" },
     )
-    if (mode !== "dual") return []
-    return requests.flatMap((request, index) => {
+    const judged = requests.flatMap((request, index) => {
       const record = records[index]!
-      return Result.isFailure(record)
+      const outcomes = Result.isFailure(record)
         ? DesignJudge.read(request.batch, undefined, record.failure.message)
         : DesignJudge.read(request.batch, record.success)
+      return outcomes.map((outcome, item) => ({ subject: request.batch[item]!, outcome }))
     })
+    for (const item of judged)
+      if (item.outcome.verdict !== "unconfirmed") verdicts.set(cache(item.subject), item.outcome)
+    // Oldest verdicts fall off first so the cache stays small.
+    for (const stale of [...verdicts.keys()].slice(0, Math.max(0, verdicts.size - 1_000))) verdicts.delete(stale)
+    return [...cached, ...judged.map((item) => item.outcome)]
   })
 
   /**
@@ -878,9 +934,12 @@ const make = Effect.gen(function* () {
     const batches = Array.from({ length: Math.ceil(shown.length / REVIEW.notes) }, (_, index) =>
       shown.slice(index * REVIEW.notes, (index + 1) * REVIEW.notes),
     )
-    // Only a resolved claim with a measured delta is asked whether that change carries out the note.
-    const judged = (entry: (typeof shown)[number]) =>
-      entry.update.status === "resolved" ? entry.shown.change?.delta : undefined
+    // Only a resolved claim with a measured change is asked whether that change carries out the note:
+    // an unmeasured delta or a behavior verified by a scenario shows no change to judge.
+    const judged = (entry: (typeof shown)[number]) => {
+      const delta = entry.shown.change?.delta
+      return entry.update.status === "resolved" && delta?.changed && !DesignVerify.unmeasured(delta) ? delta : undefined
+    }
     // System One requests are never chained: every batch is sent at once and judged on its own.
     const records = yield* Effect.forEach(
       batches,
@@ -1206,6 +1265,7 @@ const make = Effect.gen(function* () {
       .filter((job) => job.input.revision === revisionID && job.status === "completed" && job.audit?.signatures?.length)
       .toSorted((a, b) => (b.finished ?? b.created) - (a.finished ?? a.created))[0]
     const signed = audited?.audit?.signatures && DesignSignature.chosen(audited.audit.signatures, variant?.id)
+    // A signature that cannot be recorded never blocks the approval; it is logged instead.
     if (signed)
       yield* Effect.tryPromise({
         try: () =>
@@ -1215,10 +1275,18 @@ const make = Effect.gen(function* () {
             revision: revisionID,
             ...(signed.variant ? { variant: signed.variant } : {}),
             signature: signed.signature,
+            width: signed.width,
             approved: Date.now(),
           }),
-        catch: () => new Design.Error({ code: "unavailable", message: "Unable to record the approved signature" }),
-      }).pipe(Effect.ignore)
+        catch: (error) => error,
+      }).pipe(
+        Effect.flatMap((result) =>
+          result.kept
+            ? Effect.logWarning("design approved signature not recorded", { design: id, reason: result.kept })
+            : Effect.void,
+        ),
+        Effect.catch((error) => Effect.logWarning("design approved signature write failed", { design: id, error })),
+      )
     const { endRequested: _ending, ...closed } = document
     yield* save(sessionID, { ...closed, approvedRevision: revisionID, ended: true })
     return { plan: file, revision: revisionID }
@@ -1339,6 +1407,9 @@ const make = Effect.gen(function* () {
     const rounds = DesignRounds.admit(document, input)
     // Ending at once would refuse the publish and outcomes these notes need, so the end waits for them.
     const deferred = input.end && Design.notesOf(input).length > 0
+    // A later message that does not end the review withdraws a pending end: the reviewer is still reviewing.
+    // The same end request retried sets it again.
+    const { endRequested: _pending, ...admitted } = { ...document, ...rounds }
     yield* db
       .transaction((tx) =>
         Effect.gen(function* () {
@@ -1347,13 +1418,12 @@ const make = Effect.gen(function* () {
             .set({ admitted: true })
             .where(and(eq(FeedbackTable.id, input.id), eq(FeedbackTable.design_id, id)))
             .run()
-          if (input.end || rounds !== document)
+          if (input.end || document.endRequested || rounds !== document)
             yield* tx
               .update(DesignTable)
               .set({
                 data: {
-                  ...document,
-                  ...rounds,
+                  ...admitted,
                   ended: document.ended || (input.end && !deferred),
                   ...(deferred && !document.ended ? { endRequested: true } : {}),
                   updated: Date.now(),
@@ -1377,14 +1447,29 @@ const make = Effect.gen(function* () {
    * Track a chat message the user typed that asks for changes to the prototype as a note (see
    * `DesignRounds.implicit`), under the lock review messages take, so the two never race on a round. An
    * ended review is left alone. Whether a note was recorded; a retry of the same message records none.
+   * `at` is when the message arrived: the note is taken on the revision current then, since the agent may
+   * have published again before the classification landed; without one, or before any revision, the
+   * current revision.
    */
   const noteMessage = Effect.fn("DesignStore.noteMessage")(function* (
     sessionID: SessionSchema.ID,
     id: Design.ID,
-    message: { readonly id: string; readonly text: string },
+    message: { readonly id: string; readonly text: string; readonly at?: number },
   ) {
     const document = yield* get(sessionID, id)
-    const rounds = document.ended ? document : DesignRounds.implicit(document, message)
+    const origin =
+      message.at === undefined
+        ? undefined
+        : yield* db
+            .select({ id: RevisionTable.id })
+            .from(RevisionTable)
+            .where(and(eq(RevisionTable.design_id, id), sql`${RevisionTable.created} <= ${message.at}`))
+            .orderBy(desc(RevisionTable.created))
+            .get()
+            .pipe(Effect.orDie)
+    const rounds = document.ended
+      ? document
+      : DesignRounds.implicit(document, { id: message.id, text: message.text, revision: origin?.id })
     if (rounds === document) return false
     yield* db
       .update(DesignTable)
@@ -1439,3 +1524,35 @@ export const node = makeLocationNode({
   layer: Layer.effect(Service, make),
   deps: [Database.node, Intelligence.node, Location.node, SessionStore.node, Config.node],
 })
+
+const SEVERITIES = new Set(["error", "review", "info"])
+const VERDICTS = new Set(["confirmed", "rejected", "unconfirmed"])
+
+/**
+ * A stored or served job, readable by this version whichever version wrote it: an audit check
+ * severity this version does not know reads as `review` (it asks for a look, never for nothing), and
+ * an unknown judge verdict is dropped. Older jobs lack only optional fields and decode as they are.
+ * Apply before decoding `Design.Job` from the database or from the design app.
+ */
+export function compatible(data: unknown): unknown {
+  if (!isObject(data) || !isObject(data.audit) || !Array.isArray(data.audit.checks)) return data
+  return {
+    ...data,
+    audit: {
+      ...data.audit,
+      checks: data.audit.checks.map((check: unknown) => {
+        if (!isObject(check)) return check
+        const known = (value: unknown, set: ReadonlySet<string>) => typeof value === "string" && set.has(value)
+        return {
+          ...Object.fromEntries(Object.entries(check).filter(([name]) => name !== "judged")),
+          severity: known(check.severity, SEVERITIES) ? check.severity : "review",
+          ...(known(check.judged, VERDICTS) ? { judged: check.judged } : {}),
+        }
+      }),
+    },
+  }
+}
+
+function isObject(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value)
+}

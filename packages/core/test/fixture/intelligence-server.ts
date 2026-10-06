@@ -5,9 +5,12 @@ const Request = Schema.Struct({ model: Schema.String, questions: Schema.Record(S
 
 /**
  * Real local HTTP transport with a controllable classification response; it never calls a provider. `choices`
- * overrides the chosen option of a choice question by id.
+ * overrides the chosen option of a choice question by id, and `nouls` the probability of a noul question.
  */
-export function intelligenceServer(choices: Readonly<Record<string, string>> = {}) {
+export function intelligenceServer(
+  choices: Readonly<Record<string, string>> = {},
+  nouls: Readonly<Record<string, number>> = {},
+) {
   const started = Promise.withResolvers<void>()
   const release = Promise.withResolvers<void>()
   const requests: Array<{ classification: boolean }> = []
@@ -26,7 +29,7 @@ export function intelligenceServer(choices: Readonly<Record<string, string>> = {
         model: input.model,
         answers: Object.fromEntries(
           Object.entries(input.questions).map(([id, question]) => {
-            if (question.type === "noul") return [id, { type: "noul", noul: 0.01 }]
+            if (question.type === "noul") return [id, { type: "noul", noul: nouls[id] ?? 0.01 }]
             if (question.type === "choice") {
               const wanted =
                 choices[id] ??

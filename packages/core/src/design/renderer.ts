@@ -68,7 +68,15 @@ const make = Effect.gen(function* () {
     Effect.gen(function* () {
       const app = yield* connection(sessionID)
       if (!app) return yield* local.jobs(sessionID, id)
-      return [...(yield* call(app, sessionID, `/${encodeURIComponent(id)}/job`, Schema.Array(Design.Job)))]
+      // A newer design app may serve check severities this version does not know; they read as review.
+      const served = yield* call(app, sessionID, `/${encodeURIComponent(id)}/job`, Schema.Array(Schema.Unknown))
+      return yield* Effect.forEach(served, (job) =>
+        Schema.decodeUnknownEffect(Design.Job)(DesignStore.compatible(job)).pipe(
+          Effect.mapError(
+            () => new Design.Error({ code: "unavailable", message: "The design app answered with an unreadable job" }),
+          ),
+        ),
+      )
     })
   const directory: Interface["directory"] = (revision) =>
     Effect.gen(function* () {
