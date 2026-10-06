@@ -1,0 +1,423 @@
+/// <reference lib="dom" />
+/// <reference lib="dom.iterable" />
+export * as DesignSignature from "./signature.js"
+
+import path from "node:path"
+import { Schema } from "effect"
+import { Design } from "@opencode/schema/design"
+import { DesignFiles } from "./files.js"
+
+/**
+ * A structural signature of one rendered direction: what its layout is made of, never what its copy
+ * says, so the same composition in another language signs the same. Fields, separated by `;`:
+ * L landmark/section order (runs collapsed as `section*3`), C multi-column grid/flex containers in
+ * document order (`g3` a three-track grid, `f4` a four-item row), H heading counts per level 1-6,
+ * P dominant text and surface colors (each channel quantized to 3 bits), F first font families,
+ * V log2 buckets of the class-token and tag vocabularies, T text-length buckets in code points
+ * (≤12, ≤40, ≤120, longer), N rendered element count.
+ */
+export const VERSION = "v1"
+
+/**
+ * Conservative thresholds: within a revision two directions are too similar when their structure is
+ * at least 90% alike, whatever their colors (a recolor is not a new composition). A new design
+ * matches an approved one only when structure is at least 95% alike and the whole signature 92%,
+ * because designs of one application share the design system's paint by intent. Directions under
+ * twenty rendered elements are too small to judge and are never compared.
+ */
+export const THRESHOLD = { variants: 0.9, approved: { structure: 0.95, score: 0.92 }, elements: 20 } as const
+
+/** The computed style fields a signature reads; the browser uses getComputedStyle, tests pass a reader. */
+export interface Style {
+  readonly display: string
+  readonly gridTemplateColumns: string
+  readonly flexDirection: string
+  readonly color: string
+  readonly backgroundColor: string
+  readonly fontFamily: string
+}
+
+/**
+ * Runs inside the rendered page (self-contained so page.evaluate can serialize it): the signature of
+ * the variant root named `variant`, or of the body. `scope` and `read` exist for tests on a parsed
+ * document; the browser passes neither.
+ */
+export function capture(variant: string | null, scope?: Document, read?: (element: Element) => Style) {
+  const doc = scope ?? document
+  const style = read ?? ((element: Element) => getComputedStyle(element))
+  const root = variant
+    ? [...doc.querySelectorAll("[data-design-variant]")].find(
+        (element) => element.getAttribute("data-design-variant") === variant,
+      )
+    : doc.body
+  if (!root) return ""
+  const skipped = new Set(["SCRIPT", "STYLE", "TEMPLATE", "NOSCRIPT", "LINK", "META"])
+  const hidden = new Set<Element>()
+  const elements = [root, ...root.querySelectorAll("*")].slice(0, 4000).filter((element) => {
+    if (skipped.has(element.tagName.toUpperCase())) return false
+    if (element.parentElement && hidden.has(element.parentElement)) {
+      hidden.add(element)
+      return false
+    }
+    if (style(element).display === "none") {
+      hidden.add(element)
+      return false
+    }
+    return true
+  })
+  const roles: Record<string, string> = {
+    banner: "header",
+    navigation: "nav",
+    main: "main",
+    region: "section",
+    complementary: "aside",
+    contentinfo: "footer",
+    form: "form",
+    search: "form",
+    dialog: "dialog",
+    table: "table",
+    grid: "table",
+  }
+  const landmarkTags = new Set(["header", "nav", "main", "section", "article", "aside", "footer", "form", "table", "dialog"])
+  const collapse = (tokens: string[], limit: number) =>
+    tokens
+      .reduce<{ token: string; count: number }[]>((runs, token) => {
+        const last = runs.at(-1)
+        if (last?.token === token) return [...runs.slice(0, -1), { token, count: last.count + 1 }]
+        return [...runs, { token, count: 1 }]
+      }, [])
+      .map((run) => (run.count > 1 ? `${run.token}*${run.count}` : run.token))
+      .slice(0, limit)
+  const landmarks = collapse(
+    elements.flatMap((element) => {
+      const tag = element.tagName.toLowerCase()
+      const role = roles[element.getAttribute("role") ?? ""]
+      if (role) return [role]
+      if (landmarkTags.has(tag)) return [tag]
+      if ((tag === "ul" || tag === "ol") && element.children.length >= 3) return ["list"]
+      return []
+    }),
+    32,
+  )
+  const tracks = (value: string) => {
+    const repeated = /^repeat\(\s*(\d+)/.exec(value.trim())
+    if (repeated) return Number(repeated[1])
+    if (!value || value === "none") return 0
+    // Computed values list resolved tracks; named lines in brackets and nested functions are not tracks.
+    let depth = 0
+    let count = 0
+    let inside = false
+    for (const character of value.replace(/\[[^\]]*\]/g, " ")) {
+      if (character === "(") depth++
+      if (character === ")") depth--
+      const space = /\s/.test(character) && depth === 0
+      if (!space && !inside) count++
+      inside = !space
+    }
+    return count
+  }
+  const columns = collapse(
+    elements.flatMap((element) => {
+      const computed = style(element)
+      if (computed.display === "grid" || computed.display === "inline-grid") {
+        const count = tracks(computed.gridTemplateColumns)
+        return count >= 2 ? [`g${Math.min(count, 12)}`] : []
+      }
+      if (
+        (computed.display === "flex" || computed.display === "inline-flex") &&
+        !computed.flexDirection.startsWith("column")
+      ) {
+        const count = [...element.children].filter((child) => !hidden.has(child) && !skipped.has(child.tagName.toUpperCase())).length
+        return count >= 2 ? [`f${Math.min(count, 9)}`] : []
+      }
+      return []
+    }),
+    24,
+  )
+  const headings = [0, 0, 0, 0, 0, 0]
+  for (const element of elements) {
+    const named = /^h([1-6])$/i.exec(element.tagName)
+    const level = named
+      ? Number(named[1])
+      : element.getAttribute("role") === "heading"
+        ? Math.min(Math.max(Number(element.getAttribute("aria-level") ?? 2) || 2, 1), 6)
+        : 0
+    if (level) headings[level - 1]++
+  }
+  const quantize = (value: string) => {
+    const color = value.trim().toLowerCase().replace(/\s+/g, "")
+    if (!color || color === "transparent" || color === "rgba(0,0,0,0)") return ""
+    const hex = /^#([0-9a-f]{3,8})$/.exec(color)?.[1]
+    const channels = hex
+      ? (hex.length <= 4 ? [...hex.slice(0, 3)].map((digit) => digit + digit) : [0, 2, 4].map((at) => hex.slice(at, at + 2))).map(
+          (pair) => parseInt(pair, 16),
+        )
+      : /^rgba?\(([\d.]+),([\d.]+),([\d.]+)(?:,([\d.]+))?\)$/.exec(color)?.slice(1, 5)
+    if (!channels) return color.slice(0, 24)
+    if (!hex && channels[3] !== undefined && Number(channels[3]) === 0) return ""
+    return channels
+      .slice(0, 3)
+      .map((channel) => Math.min(7, Math.floor(Number(channel) / 32)))
+      .join("")
+  }
+  const paint = new Map<string, number>()
+  for (const element of elements) {
+    const computed = style(element)
+    for (const value of [computed.color, computed.backgroundColor]) {
+      const token = quantize(value ?? "")
+      if (token) paint.set(token, (paint.get(token) ?? 0) + 1)
+    }
+  }
+  const colors = [...paint]
+    .toSorted((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]))
+    .slice(0, 5)
+    .map(([token]) => token)
+  const fonts = [
+    ...new Set(
+      elements
+        .map((element) =>
+          (style(element).fontFamily ?? "")
+            .split(",")[0]!
+            .trim()
+            .replace(/^["']|["']$/g, "")
+            .toLowerCase()
+            .replace(/[.;=]/g, "_"),
+        )
+        .filter(Boolean),
+    ),
+  ]
+    .toSorted()
+    .slice(0, 4)
+  const bucket = (count: number) => Math.round(Math.log2(count + 1))
+  const classes = new Set(elements.flatMap((element) => [...element.classList]))
+  const tags = new Set(elements.map((element) => element.tagName.toLowerCase()))
+  const text = [0, 0, 0, 0]
+  for (const element of elements) {
+    const own = [...element.childNodes]
+      .filter((node) => node.nodeType === 3)
+      .map((node) => node.textContent ?? "")
+      .join(" ")
+      .trim()
+      .replace(/\s+/gu, " ")
+    if (!own) continue
+    const length = [...own].length
+    text[length <= 12 ? 0 : length <= 40 ? 1 : length <= 120 ? 2 : 3]++
+  }
+  return [
+    "v1",
+    `L=${landmarks.join(".")}`,
+    `C=${columns.join(".")}`,
+    `H=${headings.join(".")}`,
+    `P=${colors.join(".")}`,
+    `F=${fonts.join(".")}`,
+    `V=${bucket(classes.size)}.${bucket(tags.size)}`,
+    `T=${text.join(".")}`,
+    `N=${elements.length}`,
+  ].join(";")
+}
+
+export interface Parsed {
+  readonly landmarks: readonly string[]
+  readonly columns: readonly string[]
+  readonly headings: readonly number[]
+  readonly colors: readonly string[]
+  readonly fonts: readonly string[]
+  readonly vocabulary: readonly number[]
+  readonly text: readonly number[]
+  readonly elements: number
+}
+
+export function parse(signature: string): Parsed | undefined {
+  const [version, ...fields] = signature.split(";")
+  if (version !== VERSION) return undefined
+  const field = (key: string) =>
+    (fields.find((entry) => entry.startsWith(`${key}=`))?.slice(key.length + 1) ?? "").split(".").filter(Boolean)
+  const numbers = (key: string) => field(key).map(Number)
+  return {
+    landmarks: field("L"),
+    columns: field("C"),
+    headings: numbers("H"),
+    colors: field("P"),
+    fonts: field("F"),
+    vocabulary: numbers("V"),
+    text: numbers("T"),
+    elements: Number(field("N")[0] ?? 0),
+  }
+}
+
+/**
+ * How alike two signatures are, from 0 to 1. `structure` weighs layout only (landmarks 35%, columns
+ * 30%, heading profile 15%, text-length distribution 10%, vocabulary size 10%); `paint` weighs colors
+ * 60% and fonts 40%; `score` is 80% structure and 20% paint.
+ */
+export function similarity(a: Parsed, b: Parsed) {
+  const structure =
+    0.35 * sequence(a.landmarks, b.landmarks) +
+    0.3 * sequence(a.columns, b.columns) +
+    0.15 * distribution(a.headings, b.headings) +
+    0.1 * distribution(a.text, b.text) +
+    0.1 * ratio(a.vocabulary, b.vocabulary)
+  const paint = 0.6 * jaccard(a.colors, b.colors) + 0.4 * jaccard(a.fonts, b.fonts)
+  // Rounded so float error never decides a threshold.
+  const round = (value: number) => Math.round(value * 10_000) / 10_000
+  return { structure: round(structure), paint: round(paint), score: round(0.8 * structure + 0.2 * paint) }
+}
+
+/** One direction's signature as an audit captured it. */
+export interface Entry {
+  readonly variant?: string
+  readonly width: number
+  readonly signature: string
+}
+
+/** Directions of one revision whose structure repeats an earlier direction's. */
+export function repeated(entries: readonly Entry[]): Design.AuditCheck[] {
+  const parsed = entries.flatMap((entry) => {
+    const value = parse(entry.signature)
+    return value && value.elements >= THRESHOLD.elements && entry.variant ? [{ entry, value }] : []
+  })
+  return parsed.flatMap((current, index) => {
+    const earlier = parsed
+      .slice(0, index)
+      .map((other) => ({ other, alike: similarity(other.value, current.value) }))
+      .filter((item) => item.alike.structure >= THRESHOLD.variants)
+      .toSorted((a, b) => b.alike.structure - a.alike.structure)[0]
+    if (!earlier) return []
+    const first = earlier.other.entry.variant!
+    const second = current.entry.variant!
+    return [
+      {
+        rule: "variants-too-similar",
+        key: `variants-too-similar@${first}~${second}`,
+        severity: "review" as const,
+        selector: `[data-design-variant="${second}"]`,
+        evidence: `Variant "${second}" repeats the composition of variant "${first}": structure ${percent(earlier.alike.structure)} alike (landmarks ${describe(current.value.landmarks)}; columns ${describe(current.value.columns)}), colors and fonts ${percent(earlier.alike.paint)} alike.`,
+        fix: "Give each direction its own composition (layout, hierarchy, density, navigation), not a recolor or a copy edit of another; or merge the two directions.",
+        width: current.entry.width,
+        variant: second,
+      },
+    ]
+  })
+}
+
+/** An approved design's signature, kept in the application so later designs and conversations can see it. */
+export const Approved = Schema.Struct({
+  design: Schema.String,
+  name: Schema.String,
+  revision: Schema.String,
+  variant: Schema.String.pipe(Schema.optionalKey),
+  signature: Schema.String,
+  approved: Schema.Number,
+})
+export interface Approved extends Schema.Schema.Type<typeof Approved> {}
+const decodeFile = Schema.decodeUnknownOption(
+  Schema.fromJsonString(Schema.Struct({ version: Schema.Literal(1), designs: Schema.Array(Approved) })),
+)
+
+/** Where approved signatures live, next to the generated .red/DESIGN.md of the application. */
+export const FILE = ".red/design-signatures.json"
+/** The newest approvals kept; older ones fall off so the file stays small. */
+export const KEEP = 40
+
+/** Directions that re-create an approved design other than `design`. */
+export function matches(entries: readonly Entry[], approved: readonly Approved[], design: string): Design.AuditCheck[] {
+  const references = approved.flatMap((item) => {
+    const value = item.design === design ? undefined : parse(item.signature)
+    return value && value.elements >= THRESHOLD.elements ? [{ item, value }] : []
+  })
+  return entries.flatMap((entry) => {
+    const value = parse(entry.signature)
+    if (!value || value.elements < THRESHOLD.elements) return []
+    const best = references
+      .map((reference) => ({ reference, alike: similarity(reference.value, value) }))
+      .filter(
+        (candidate) =>
+          candidate.alike.structure >= THRESHOLD.approved.structure && candidate.alike.score >= THRESHOLD.approved.score,
+      )
+      .toSorted((a, b) => b.alike.score - a.alike.score)[0]
+    if (!best) return []
+    const label = entry.variant ? `Variant "${entry.variant}"` : "The page"
+    const source = best.reference.item
+    return [
+      {
+        rule: "matches-approved-design",
+        key: `matches-approved-design@${entry.variant ?? "page"}~${source.design}`,
+        severity: "review" as const,
+        selector: entry.variant ? `[data-design-variant="${entry.variant}"]` : "body",
+        evidence: `${label} matches approved design "${source.name}" (${source.design}, revision ${source.revision}${source.variant ? `, variant ${source.variant}` : ""}): structure ${percent(best.alike.structure)} alike, whole signature ${percent(best.alike.score)}.`,
+        fix: "When reusing that layout is intended, record it in decisions; otherwise give this design a composition of its own instead of re-creating the approved one.",
+        width: entry.width,
+        ...(entry.variant ? { variant: entry.variant } : {}),
+      },
+    ]
+  })
+}
+
+/** Approved signatures recorded for the application; none when the file is missing or unreadable. */
+export async function approved(application: string): Promise<readonly Approved[]> {
+  const file = Bun.file(path.join(application, FILE))
+  if (!(await file.exists())) return []
+  const parsed = decodeFile(await file.text())
+  return parsed._tag === "Some" ? parsed.value.designs : []
+}
+
+/** Records an approval's signature, replacing the design's previous one and keeping the newest {@link KEEP}. */
+export async function record(application: string, entry: Approved) {
+  const designs = [entry, ...(await approved(application)).filter((item) => item.design !== entry.design)].slice(0, KEEP)
+  await DesignFiles.atomic(path.join(application, FILE), JSON.stringify({ version: 1, designs }, null, 2) + "\n")
+}
+
+/** The signature an approval keeps: the approved variant's, else the page's, else the only one captured. */
+export function chosen(entries: readonly { readonly variant?: string; readonly signature: string }[], variant?: string) {
+  return (
+    entries.find((entry) => variant !== undefined && entry.variant === variant) ??
+    entries.find((entry) => entry.variant === undefined) ??
+    (entries.length === 1 ? entries[0] : undefined)
+  )
+}
+
+const percent = (value: number) => `${Math.round(value * 100)}%`
+const describe = (tokens: readonly string[]) => tokens.slice(0, 8).join(" ") || "none"
+
+/** 1 minus the edit distance over the longer length: order matters, as it does in a layout. */
+function sequence(a: readonly string[], b: readonly string[]) {
+  if (!a.length && !b.length) return 1
+  const row = Array.from({ length: b.length + 1 }, (_, index) => index)
+  for (const [i, left] of a.entries()) {
+    let diagonal = row[0]!
+    row[0] = i + 1
+    for (const [j, right] of b.entries()) {
+      const above = row[j + 1]!
+      row[j + 1] = Math.min(above + 1, row[j]! + 1, diagonal + (left === right ? 0 : 1))
+      diagonal = above
+    }
+  }
+  return 1 - row[b.length]! / Math.max(a.length, b.length)
+}
+
+/** Overlap of two count histograms after normalizing each to proportions. */
+function distribution(a: readonly number[], b: readonly number[]) {
+  const total = (values: readonly number[]) => values.reduce((sum, value) => sum + value, 0)
+  const left = total(a)
+  const right = total(b)
+  if (!left && !right) return 1
+  if (!left || !right) return 0
+  return Array.from({ length: Math.max(a.length, b.length) }, (_, index) =>
+    Math.min((a[index] ?? 0) / left, (b[index] ?? 0) / right),
+  ).reduce((sum, value) => sum + value, 0)
+}
+
+function jaccard(a: readonly string[], b: readonly string[]) {
+  if (!a.length && !b.length) return 1
+  const union = new Set([...a, ...b])
+  return a.filter((item, index) => b.includes(item) && a.indexOf(item) === index).length / union.size
+}
+
+function ratio(a: readonly number[], b: readonly number[]) {
+  const pairs = Array.from({ length: Math.max(a.length, b.length) }, (_, index) => [a[index] ?? 0, b[index] ?? 0])
+  if (!pairs.length) return 1
+  return (
+    pairs.reduce((sum, [left, right]) => sum + (Math.max(left!, right!) ? Math.min(left!, right!) / Math.max(left!, right!) : 1), 0) /
+    pairs.length
+  )
+}

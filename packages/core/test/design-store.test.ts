@@ -18,6 +18,7 @@ import { DesignCapture } from "../src/design/capture"
 import { DesignFiles } from "../src/design/files"
 import { DesignRounds } from "../src/design/rounds"
 import { DesignStore } from "../src/design/store"
+import { DesignVerify } from "../src/design/verify"
 import { Intelligence, type EvaluationInput } from "../src/intelligence"
 import { IntelligenceEvaluation } from "../src/intelligence/evaluation"
 import { Location } from "../src/location"
@@ -769,14 +770,24 @@ describe("DesignStore note statuses", () => {
    * One answered feedback round: `count` notes on the published revision, the revision that answers
    * them, and that revision's verify and audit jobs. `tag` keeps ids apart between designs.
    */
-  const answered = (design: Design.Info, tag: string, number: number, count: number) =>
+  const answered = (
+    design: Design.Info,
+    tag: string,
+    number: number,
+    count: number,
+    shape: {
+      readonly item?: (index: number) => Partial<Design.FeedbackItem>
+      readonly seen?: (index: number) => Partial<Design.VerifyNote>
+      readonly summary?: (index: number) => string
+    } = {},
+  ) =>
     Effect.gen(function* () {
       const store = yield* DesignStore.Service
       const feedback = Schema.decodeUnknownSync(Design.Feedback)({
         id: `msg_${tag}_round_${pad(number)}`,
         revision: (yield* store.get(sessionID, design.id)).revision,
         text: "",
-        items: Array.from({ length: count }, (_, index) => captured(index + 1)),
+        items: Array.from({ length: count }, (_, index) => ({ ...captured(index + 1), ...shape.item?.(index + 1) })),
         assets: [],
         snapshot: "",
         delivery: "steer",
@@ -789,7 +800,7 @@ describe("DesignStore note statuses", () => {
         addressed: Array.from({ length: count }, (_, index) => ({
           feedback: feedback.id,
           index: index + 1,
-          summary: `Rotates the secret of row ${pad(index + 1)}`,
+          summary: shape.summary?.(index + 1) ?? `Rotates the secret of row ${pad(index + 1)}`,
         })),
       })
       const revision = yield* store.publish(sessionID, design.id, `Round ${number}`, undefined, false, true)
@@ -813,6 +824,7 @@ describe("DesignStore note statuses", () => {
             findings: [finding, finding],
             scenarios: ["Clients list with secrets: exercised"],
             reason: "found; 2 advisory findings",
+            ...shape.seen?.(index + 1),
           })),
         },
       })
@@ -1119,7 +1131,7 @@ describe("DesignStore note statuses", () => {
       yield* seed
       // The last note of the second request is the one the review contradicts.
       yield* reasoning(dual, (input) =>
-        nouls(input, Object.keys(input.questions).length === 10 ? { note_9: 0.95 } : {}),
+        nouls(input, Object.keys(input.questions).length === 14 ? { note_13: 0.95 } : {}),
       )
       const store = yield* DesignStore.Service
       const design = yield* reviewable
@@ -1134,22 +1146,154 @@ describe("DesignStore note statuses", () => {
         })),
       })
 
-      expect(DesignStore.REVIEW.notes).toBe(20)
-      expect(systemOne.asked.map((input) => Object.keys(input.questions).length)).toEqual([20, 10])
+      expect(DesignStore.REVIEW.notes).toBe(16)
+      expect(systemOne.asked.map((input) => Object.keys(input.questions).length)).toEqual([16, 14])
       expect(systemOne.peak).toBe(2)
       // A full request of notes like these is well inside the 80,000 characters System One takes at once.
       expect(size(systemOne.asked[0])).toBeLessThan(50_000)
       // Each request numbers its own notes from zero.
       expect(Object.keys(systemOne.asked[1].questions)).toEqual(
-        Array.from({ length: 10 }, (_, index) => `note_${index}`),
+        Array.from({ length: 14 }, (_, index) => `note_${index}`),
       )
       expect(systemOne.asked[1].candidate).toEqual(
-        Array.from({ length: 10 }, (_, index) => ({ note: `msg_a_round_01 #${index + 21}`, status: "resolved" })),
+        Array.from({ length: 14 }, (_, index) => ({ note: `msg_a_round_01 #${index + 17}`, status: "resolved" })),
       )
       expect(recorded.notes?.recorded).toBe(29)
       expect(recorded.notes?.refused.map((item) => item.index)).toEqual([30])
       const expected: Design.NoteStatus[] = [...Array.from({ length: 29 }, () => "resolved" as const), "open"]
       expect(statuses(recorded.document)).toEqual(expected)
+    }),
+  )
+
+  const facts = { rect: { x: 0, y: 0, width: 120, height: 32 }, text: "Rotate secret", markup: "a" }
+  /** Note 1 got new text, note 2 only grew, note 3 did not change at all. */
+  const deltas = (index: number): Partial<Design.VerifyNote> => ({
+    width: 390,
+    delta:
+      index === 1
+        ? DesignVerify.delta(facts, { ...facts, text: "Rotate this secret" }, 18)
+        : index === 2
+          ? DesignVerify.delta(facts, { ...facts, rect: { ...facts.rect, height: 48 } }, 40)
+          : DesignVerify.delta(facts, facts, 0),
+  })
+
+  it.live("resolved needs a change in the element in single reasoning too, and nothing is sent", () =>
+    Effect.gen(function* () {
+      yield* seed
+      yield* reasoning(single, (input) => nouls(input))
+      const store = yield* DesignStore.Service
+      const design = yield* reviewable
+      const round = yield* answered(design, "a", 1, 3, { seen: deltas, item: () => ({ width: 390 }) })
+      const cite = { evidence: { job: round.job } }
+
+      const recorded = yield* store.amend(sessionID, design.id, {
+        notes: [1, 2, 3].map((index) => ({ feedback: round.feedback, index, status: "resolved" as const, ...cite })),
+      })
+      expect(recorded.notes?.recorded).toBe(2)
+      expect(recorded.notes?.refused).toEqual([
+        {
+          feedback: round.feedback,
+          index: 3,
+          reason: `${DesignRounds.REFUSED} ${round.feedback} #3 cannot be resolved: ${round.job} saw no change to its element since the revision the note was taken on (pixels, text, markup, style, position and size are the same at 390px). Change the element the note names, publish and verify again, or record it unresolved or accepted with a reason saying why it stays as it is.`,
+        },
+      ])
+      // The way out the refusal names is open.
+      const closed = yield* store.amend(sessionID, design.id, {
+        notes: [{ feedback: round.feedback, index: 3, status: "accepted", reason: "The label already reads right" }],
+      })
+      expect(statuses(closed.document)).toEqual(["resolved", "resolved", "accepted"])
+      expect(systemOne.asked).toEqual([])
+    }),
+  )
+
+  it.live("dual reasoning asks whether each resolved note's change carries it out, in the same request", () =>
+    Effect.gen(function* () {
+      yield* seed
+      yield* reasoning(dual, (input) => nouls(input, { note_1_change: 0.95 }))
+      const store = yield* DesignStore.Service
+      const design = yield* reviewable
+      const round = yield* answered(design, "a", 1, 4, {
+        seen: (index) => (index === 4 ? deltas(1) : deltas(index)),
+        item: (index) => ({ width: 390, ...(index === 1 ? { platform: "ios" as const } : {}) }),
+      })
+      const cite = { evidence: { job: round.job } }
+
+      const recorded = yield* store.amend(sessionID, design.id, {
+        notes: [
+          { feedback: round.feedback, index: 1, status: "resolved", ...cite },
+          { feedback: round.feedback, index: 2, status: "resolved", ...cite },
+          { feedback: round.feedback, index: 3, status: "resolved", ...cite },
+          { feedback: round.feedback, index: 4, status: "partial", reason: "Copy changed, layout not yet", ...cite },
+        ],
+      })
+      // One request: note 3 was refused before it, and a partial claim is not asked about its change.
+      expect(systemOne.asked).toHaveLength(1)
+      const asked = systemOne.asked[0]
+      expect(Object.keys(asked.questions)).toEqual(["note_0", "note_0_change", "note_1", "note_1_change", "note_2"])
+      expect(asked.questions.note_0_change.instructions).toStartWith(
+        "Does sources.notes[0].change.delta show that the element changed in a way that cannot plausibly carry out",
+      )
+      // The change carries the addressed mark, where the note was taken and verified, and the delta.
+      const notes = (asked.sources as { notes: ReadonlyArray<{ change?: { content: string } }> }).notes
+      expect(JSON.parse(notes[0].change!.content)).toEqual({
+        addressed: "Rotates the secret of row 01",
+        taken: { width: 390, platform: "ios" },
+        verified: { width: 390 },
+        delta: DesignVerify.delta(facts, { ...facts, text: "Rotate this secret" }, 18),
+      })
+      expect(recorded.notes?.recorded).toBe(2)
+      expect(recorded.notes?.refused.map((item) => item.index)).toEqual([2, 3])
+      expect(recorded.notes?.refused[0].reason).toBe(
+        `${DesignRounds.REFUSED} the System One review (evaluation_1) judged that the change the verify saw in the element of ${round.feedback} #2 (change: 40% of pixels, resized) cannot plausibly carry out what the note asks. Change what the note asks for, publish and verify again, or record it partial, unresolved or accepted with a reason.`,
+      )
+      expect(statuses(recorded.document)).toEqual(["resolved", "open", "open", "partial"])
+
+      // An inconclusive answer on the change leaves the note recorded and unverified, as before.
+      yield* reasoning(dual, (input) => nouls(input, { note_0_change: 0.4 }))
+      const unsure = yield* store.amend(sessionID, design.id, {
+        notes: [{ feedback: round.feedback, index: 2, status: "resolved", ...cite }],
+      })
+      expect(unsure.notes?.unverified).toEqual([
+        { feedback: round.feedback, index: 2, reason: "System One review inconclusive (evaluation_1)" },
+      ])
+    }),
+  )
+
+  it.live("a full request of the largest notes with their change stays inside one System One request", () =>
+    Effect.gen(function* () {
+      yield* seed
+      yield* reasoning(dual, (input) => nouls(input))
+      const store = yield* DesignStore.Service
+      const design = yield* reviewable
+      const long = (seed: string, length: number) => seed.repeat(Math.ceil(length / seed.length)).slice(0, length)
+      const count = DesignStore.REVIEW.notes
+      const round = yield* answered(design, "a", 1, count, {
+        item: (index) => ({ text: long(`Rotate ${index} `, 4000), elementText: long("x", 240), width: 390 }),
+        summary: () => long("Rewrote it ", 300),
+        seen: () => ({
+          width: 390,
+          platform: "android",
+          reason: long("found ", 400),
+          findings: Array.from({ length: 10 }, () => finding),
+          delta: DesignVerify.delta(
+            { ...facts, text: long("Before ", 400) },
+            { ...facts, text: long("After ", 400), markup: "b" },
+            12.5,
+          ),
+        }),
+      })
+      yield* store.amend(sessionID, design.id, {
+        notes: Array.from({ length: count }, (_, index) => ({
+          feedback: round.feedback,
+          index: index + 1,
+          status: "resolved" as const,
+          reason: long("Because ", 500),
+          evidence: { job: round.job },
+        })),
+      })
+      expect(systemOne.asked).toHaveLength(1)
+      expect(Object.keys(systemOne.asked[0].questions)).toHaveLength(2 * count)
+      expect(size(systemOne.asked[0])).toBeLessThan(80_000)
     }),
   )
 })

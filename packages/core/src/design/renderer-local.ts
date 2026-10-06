@@ -21,10 +21,12 @@ import { DesignAssets } from "./assets.js"
 import { DesignRaster } from "./raster.js"
 import { DesignRuntime } from "./runtime.js"
 import { DesignQuality } from "./quality.js"
+import { DesignSignature } from "./signature.js"
 import { DesignRounds } from "./rounds.js"
 import { DesignViewports } from "./viewports.js"
 import { DesignGate } from "./gate.js"
 import { DesignLocate } from "./locate.js"
+import { DesignVerify } from "./verify.js"
 import { screens } from "./ui/screens.js"
 import { deck, slides } from "./ui/slides.js"
 import { device } from "./ui/devices.js"
@@ -96,10 +98,13 @@ const currentScreens = () => {
  * into view so a focused capture shows it. Runs inside the page, given the resolver's source.
  */
 type Rect = { x: number; y: number; width: number; height: number }
-type Located = { found: false; how: string } | { found: true; how: string; rect: Rect; container: Rect }
+type Located =
+  | { found: false; how: string }
+  | { found: true; how: string; rect: Rect; container: Rect; text: string; markup: string }
 const locateNote = (
   input: { target: string; xpath: string; variant: string },
   resolve: typeof DesignLocate.resolve,
+  facts: typeof DesignLocate.facts,
 ): Located => {
   document.querySelectorAll("[data-redcode-verify]").forEach((node) => node.removeAttribute("data-redcode-verify"))
   const hit = resolve(document, input)
@@ -116,11 +121,50 @@ const locateNote = (
   element.scrollIntoView({ block: "center", inline: "nearest" })
   const box = element.getBoundingClientRect()
   const around = (container === element ? element : container).getBoundingClientRect()
+  // The computed properties a visual edit of the element usually touches, for the before/after delta.
+  const style = getComputedStyle(element)
+  const read = facts(
+    element,
+    [
+      "color",
+      "background-color",
+      "background-image",
+      "font-family",
+      "font-size",
+      "font-weight",
+      "font-style",
+      "line-height",
+      "letter-spacing",
+      "text-align",
+      "text-transform",
+      "text-decoration-line",
+      "padding",
+      "margin",
+      "border",
+      "border-radius",
+      "box-shadow",
+      "outline",
+      "opacity",
+      "display",
+      "visibility",
+      "flex-direction",
+      "justify-content",
+      "align-items",
+      "gap",
+      "grid-template-columns",
+      "width",
+      "height",
+    ]
+      .map((name) => style.getPropertyValue(name))
+      .join(";"),
+  )
   return {
     found: true,
     how: hit.how,
     rect: { x: box.x + scrollX, y: box.y + scrollY, width: box.width, height: box.height },
     container: { x: around.x + scrollX, y: around.y + scrollY, width: around.width, height: around.height },
+    text: read.text,
+    markup: read.markup,
   }
 }
 
@@ -583,20 +627,23 @@ export const make = Effect.gen(function* () {
               code: "invalid",
               message: round === undefined ? "No feedback round to verify yet" : `Round ${round} has no notes`,
             })
-          // One width is enough to find a note's element: the widest viewport shows the most of the page.
-          const VIEWPORT = sizes.reduce((best, item) => (item.width > best.width ? item : best))
-          const WIDTH = VIEWPORT.width
+          // Each note is judged at the viewport it was taken at (the widest for a note that recorded none),
+          // with at most DesignVerify.WIDTHS viewports per job.
+          const plan = DesignVerify.placements(notes, sizes)
+          const WIDTHS = [...new Set(plan.placements.map((item) => item.viewport.width))].toSorted((a, b) => a - b)
+          const WIDTH = WIDTHS.at(-1)!
           /** One note's budget; a note that exceeds it is recorded as timed out and the job goes on. */
           const NOTE_BUDGET = "45 seconds"
           const VARIANT = /^[a-zA-Z0-9_-]{1,64}$/
-          const findings: string[] = []
+          const findings: string[] = DesignVerify.collapsedFindings(plan.collapsed)
+          if (plan.collapsed.length) yield* Effect.logInfo("design verify collapsed viewports", { collapsed: findings })
+          const raster = yield* DesignRaster.make
           type Draft = {
             -readonly [K in keyof Design.VerifyNote]: Design.VerifyNote[K] extends ReadonlyArray<string>
               ? string[]
               : Design.VerifyNote[K]
           }
           const results: Draft[] = []
-          yield* emulate(VIEWPORT)
           const { AxeBuilder } = yield* io((signal) => DesignRuntime.load("@axe-core/playwright", signal))
           const escape = (value: string) =>
             value.replaceAll("&", "&amp;").replaceAll("<", "&lt;").replaceAll('"', "&quot;")
@@ -738,6 +785,33 @@ export const make = Effect.gen(function* () {
                 }),
               )
             })
+          /** The element alone as a PNG for the before/after pixel comparison, bounded to what the raster worker decodes. */
+          const crop = (rect: Rect) =>
+            io(async () => {
+              const width = await page.evaluate(() => document.documentElement.scrollWidth)
+              const height = await page.evaluate(() => document.documentElement.scrollHeight)
+              const x = Math.max(0, Math.floor(rect.x))
+              const y = Math.max(0, Math.floor(rect.y))
+              return page.screenshot({
+                type: "png",
+                fullPage: true,
+                clip: {
+                  x,
+                  y,
+                  width: Math.max(1, Math.min(Math.round(rect.width), 2048, width - x)),
+                  height: Math.max(1, Math.min(Math.round(rect.height), 2048, height - y)),
+                },
+                animations: "disabled",
+                scale: "css",
+              })
+            })
+          /** Results in the round's order, whatever viewport order they were verified in. */
+          const ordered = () =>
+            results.toSorted(
+              (a, b) =>
+                notes.findIndex((note) => note.feedback === a.feedback && note.index === a.index) -
+                notes.findIndex((note) => note.feedback === b.feedback && note.index === b.index),
+            )
           /** Records what the job has so far, so a timeout or crash keeps every finished note. */
           const record = (done: number) =>
             store.putJob(sessionID, {
@@ -745,16 +819,21 @@ export const make = Effect.gen(function* () {
               status: "running",
               started,
               progress: done / notes.length,
-              verify: { revision: revision.id, round, width: WIDTH, notes: results, findings },
+              verify: { revision: revision.id, round, width: WIDTH, widths: WIDTHS, notes: ordered(), findings },
             })
-          for (const [position, note] of notes.entries()) {
+          // Notes are verified one viewport after another, so each viewport is set up once.
+          const order = plan.placements.flatMap((placement) =>
+            placement.notes.map((position) => ({ position, note: notes[position], viewport: placement.viewport })),
+          )
+          for (const [done, { position, note, viewport }] of order.entries()) {
+            if (done === 0 || viewport !== order[done - 1].viewport) yield* emulate(viewport)
             const item = note.item
             // The variant id reaches selectors; one the review frame could not have produced is ignored.
             const named = item.params?.variant ?? /^variant:([a-zA-Z0-9_-]{1,64}) /.exec(item.target)?.[1]
             const variant = named && VARIANT.test(named) ? named : undefined
             const where = { variant, params: item.params?.values, screen: item.params?.screen }
             // Serialized with the resolver, which the page cannot import.
-            const locate = `(${locateNote.toString()})(${JSON.stringify({ target: item.target, xpath: item.xpath ?? "", variant: variant ?? "" })}, ${DesignLocate.resolve.toString()})`
+            const locate = `(${locateNote.toString()})(${JSON.stringify({ target: item.target, xpath: item.xpath ?? "", variant: variant ?? "" })}, ${DesignLocate.resolve.toString()}, ${DesignLocate.facts.toString()})`
             const result: Draft = {
               feedback: note.feedback,
               index: note.index,
@@ -764,6 +843,8 @@ export const make = Effect.gen(function* () {
               findings: [],
               scenarios: [],
               reason: "",
+              width: viewport.width,
+              ...(viewport.device ? { platform: viewport.device } : {}),
             }
             if (named && !variant)
               result.findings.push(`review · variant id ${JSON.stringify(named)} is invalid; located on the whole page`)
@@ -774,11 +855,16 @@ export const make = Effect.gen(function* () {
               // Before: the revision the note was taken on, so the reviewer sees what changed.
               const origin = item.revision ?? roundInfo.revision
               const source = origin === revision.id ? undefined : yield* before(origin)
+              /** The element on the revision the note was taken on, when that revision rendered. */
+              const prior: { rendered: boolean; facts?: DesignVerify.Facts; png?: Buffer } = { rendered: false }
               if (source) {
                 yield* serve(source)
                 const problem = yield* prepare(source, yield* snapshot(origin), where)
                 const located = problem ? undefined : yield* io(() => page.evaluate<Located>(locate))
+                prior.rendered = true
                 if (located?.found) {
+                  prior.facts = located
+                  prior.png = yield* crop(located.rect)
                   yield* capture(`${base}-before.jpg`, located)
                   result.before = `${base}-before.jpg`
                   for (const violation of yield* audit()) for (const node of violation.nodes) baseline.nodes.add(node)
@@ -794,6 +880,22 @@ export const make = Effect.gen(function* () {
                 : yield* io(() => page.evaluate<Located>(locate))
               if (located.found) {
                 result.found = true
+                // Read before the scenarios below change the element's state. Same-size crops compare pixel
+                // by pixel; a resized element is already a change, and a failed comparison measures nothing.
+                const earlier = prior.png
+                const pixels = earlier
+                  ? yield* crop(located.rect).pipe(
+                      Effect.flatMap((png) => raster.compare(earlier, png)),
+                      Effect.catchTag("Design.Error", () => Effect.succeed(undefined)),
+                    )
+                  : undefined
+                const change =
+                  origin === revision.id
+                    ? DesignVerify.delta(located, located)
+                    : prior.rendered
+                      ? DesignVerify.delta(prior.facts, located, pixels)
+                      : undefined
+                if (change) result.delta = change
                 yield* capture(`${base}-after.jpg`, located)
                 result.after = `${base}-after.jpg`
                 const checks = yield* io(() =>
@@ -888,10 +990,11 @@ export const make = Effect.gen(function* () {
                 : advisory
                   ? `found; ${advisory} advisory finding${advisory === 1 ? "" : "s"}`
                   : `found; no findings${result.scenarios.length ? `; ${result.scenarios.length} scenario${result.scenarios.length === 1 ? "" : "s"} exercised` : ""}`
+            if (result.found && result.delta) result.reason = `${result.reason}; ${DesignVerify.describe(result.delta)}`
             results.push(result)
-            yield* record(position + 1)
+            yield* record(done + 1)
           }
-          report.verify = { revision: revision.id, round, width: WIDTH, notes: results, findings }
+          report.verify = { revision: revision.id, round, width: WIDTH, widths: WIDTHS, notes: ordered(), findings }
           const image = (file: string | undefined, alt: string) =>
             file
               ? Bun.file(file)
@@ -903,16 +1006,16 @@ export const make = Effect.gen(function* () {
               : Promise.resolve(`<p>${alt}: no capture</p>`)
           const sections = yield* io(() =>
             Promise.all(
-              results.map(
+              ordered().map(
                 async (item) =>
-                  `<section id="note-${item.index}-${escape(item.feedback)}"><h2>${item.index}. ${escape(item.label)} — ${escape(item.reason)}</h2><p>Note: ${escape(notes.find((note) => note.feedback === item.feedback && note.index === item.index)?.item.text ?? "")}</p>${await image(item.before, "Before")}${await image(item.after, "After")}<h3>Findings</h3><ul>${item.findings.map((finding) => `<li>${escape(finding)}</li>`).join("") || "<li>None</li>"}</ul><h3>Scenarios</h3><ul>${item.scenarios.map((line) => `<li>${escape(line)}</li>`).join("") || "<li>None on this screen</li>"}</ul></section>`,
+                  `<section id="note-${item.index}-${escape(item.feedback)}"><h2>${item.index}. ${escape(item.label)} — ${escape(item.reason)}</h2>${item.width ? `<p>Verified at ${escape(DesignVerify.viewportLabel({ width: item.width, device: item.platform }))}</p>` : ""}<p>Note: ${escape(notes.find((note) => note.feedback === item.feedback && note.index === item.index)?.item.text ?? "")}</p>${await image(item.before, "Before")}${await image(item.after, "After")}<h3>Findings</h3><ul>${item.findings.map((finding) => `<li>${escape(finding)}</li>`).join("") || "<li>None</li>"}</ul><h3>Scenarios</h3><ul>${item.scenarios.map((line) => `<li>${escape(line)}</li>`).join("") || "<li>None on this screen</li>"}</ul></section>`,
               ),
             ),
           )
           yield* io(() =>
             DesignFiles.atomic(
               output,
-              `<!doctype html><meta charset="utf-8"><title>Design verify</title><h1>${escape(revision.document.name)}</h1><p>Round ${round} verified on revision ${escape(revision.id)} at ${WIDTH}px. Captures are evidence for the agent's per-note statuses, not approval.</p>${findings.length ? `<ul>${findings.map((finding) => `<li>${escape(finding)}</li>`).join("")}</ul>` : ""}${sections.join("\n")}`,
+              `<!doctype html><meta charset="utf-8"><title>Design verify</title><h1>${escape(revision.document.name)}</h1><p>Round ${round} verified on revision ${escape(revision.id)} at ${WIDTHS.join(", ")}px. Captures are evidence for the agent's per-note statuses, not approval.</p>${findings.length ? `<ul>${findings.map((finding) => `<li>${escape(finding)}</li>`).join("")}</ul>` : ""}${sections.join("\n")}`,
             ),
           )
         }
@@ -922,6 +1025,9 @@ export const make = Effect.gen(function* () {
           const evidence: string[] = []
           const checks: Design.AuditCheck[] = []
           const captures: Design.AuditCapture[] = []
+          /** Each direction's structural signature as first inspected, and the repetition checks it starts. */
+          const signatures: DesignSignature.Entry[] = []
+          let repeating: ReturnType<typeof store.repetition> | undefined
           /** "variant screen" keys: screens the prototype declares and screens an audit view showed. */
           const declared = new Set<string>()
           const visited = new Set<string>()
@@ -984,6 +1090,15 @@ export const make = Effect.gen(function* () {
                 }),
               ),
             )
+            if (!scenario && !screen && !signatures.some((item) => item.variant === variant))
+              signatures.push({
+                ...(variant ? { variant } : {}),
+                width,
+                // An unsigned direction is only left out of the repetition checks; it never fails the audit.
+                signature: yield* io(() => page.evaluate(DesignSignature.capture, variant ?? null)).pipe(
+                  Effect.orElseSucceed(() => ""),
+                ),
+              })
             // Presentations are also checked per slide: content leaving the slide and text too small to project.
             if (presentation)
               checks.push(
@@ -1146,7 +1261,25 @@ export const make = Effect.gen(function* () {
               }
             }
             yield* progress((index + 1) / sizes.length)
+            // The first viewport signed every direction: the repetition checks and their one System One
+            // request run alongside the remaining viewports instead of after them.
+            if (index === 0)
+              repeating = yield* store
+                .repetition(sessionID, revision, signatures, viewport.width)
+                .pipe(Effect.forkChild({ startImmediately: true }), Effect.map(Fiber.join))
           }
+          const repeated = repeating
+            ? yield* repeating.pipe(Effect.catchTag("Design.Error", (error) => Effect.succeed(error.message)))
+            : undefined
+          if (typeof repeated === "string")
+            findings.push(`Repetition and design-system reuse checks unavailable: ${repeated}`)
+          const settled = DesignQuality.settle(
+            [...checks, ...(typeof repeated === "object" ? repeated.checks : [])],
+            revision.document.decisions,
+            typeof repeated === "object" ? repeated.effects : undefined,
+          )
+          checks.splice(0, checks.length, ...settled.checks)
+          findings.push(...settled.findings)
           if (captures.length >= 36)
             findings.push(
               "Capture budget reached (36 views). Check the capture manifest and inspect any missing variants or states separately.",
@@ -1178,6 +1311,8 @@ export const make = Effect.gen(function* () {
             widths: [...new Set(captures.map((capture) => capture.width))],
             checks,
             captures,
+            signatures,
+            ...(typeof repeated === "object" && repeated.reuse ? { reuse: repeated.reuse } : {}),
           }
           const escape = (text: string) =>
             text.replaceAll("&", "&amp;").replaceAll("<", "&lt;").replaceAll('"', "&quot;")

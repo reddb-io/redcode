@@ -15,6 +15,7 @@ import { DesignPlugin } from "@opencode/core/plugin/design"
 import { Session } from "@opencode/core/session"
 import { Tool } from "@opencode/core/tool"
 import { DesignPlaybookTool } from "@opencode/core/tool/plugin/design-playbook"
+import { DesignPreviewTool } from "@opencode/core/tool/plugin/design-preview"
 import { DesignReadTool } from "@opencode/core/tool/plugin/design-read"
 import { DesignRenderTool } from "@opencode/core/tool/plugin/design-render"
 import { makeLocationNode } from "@opencode/util/effect/app-node"
@@ -524,3 +525,16 @@ function designAgent() {
     return agent
   })
 }
+
+describe("design_preview unchanged publishes", () => {
+  test("only the prototype's own files decide whether a publish changed anything", () => {
+    const files = { "index.html": "a".repeat(64), "app.css": "b".repeat(64) }
+    expect(DesignPreviewTool.sameFiles({ files }, { files: { ...files } })).toBe(true)
+    // Compiled output can differ between builds of the same source.
+    expect(
+      DesignPreviewTool.sameFiles({ files: { ...files, ".compiled/index.js": "c" } }, { files: { ...files, ".compiled/index.js": "d" } }),
+    ).toBe(true)
+    expect(DesignPreviewTool.sameFiles({ files }, { files: { ...files, "app.css": "e".repeat(64) } })).toBe(false)
+    expect(DesignPreviewTool.sameFiles({ files }, { files: { ...files, "new.html": "f".repeat(64) } })).toBe(false)
+  })
+})

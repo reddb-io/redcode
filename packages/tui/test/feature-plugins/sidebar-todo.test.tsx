@@ -26,17 +26,17 @@ function context(
     client: {
       session: {
         todo: { list: async () => todos },
-        design: { list: async () => options.designs?.() ?? [] },
+        design: {
+          list: async () => options.designs?.() ?? [],
+          // Newest first, as the server lists them: revision_2 is R2.
+          revisions: async () => [{ id: "revision_2" }, { id: "revision_1" }],
+        },
       },
     },
   } as unknown as Context
 }
 
-async function settle(
-  app: Awaited<ReturnType<typeof testRender>>,
-  ready: (frame: string) => boolean,
-  timeout = 500,
-) {
+async function settle(app: Awaited<ReturnType<typeof testRender>>, ready: (frame: string) => boolean, timeout = 500) {
   for (let attempt = 0; attempt < timeout / 10 && !ready(app.captureCharFrame()); attempt++) {
     await Bun.sleep(10)
     await app.renderOnce()
@@ -116,12 +116,14 @@ function design(notes: ReadonlyArray<DesignNote>, extra: Partial<DesignInfo> = {
     revision: "revision_2",
     approvedRevision: null,
     ended: false,
-    rounds: [...new Set(notes.map((item) => item.round))].map((number) => ({
-      number,
-      opened: 1,
-      revision: "revision_1",
-      feedback: [`feedback_${number}`],
-    })),
+    rounds: [...new Set(notes.map((item) => item.round))]
+      .toSorted((a, b) => a - b)
+      .map((number) => ({
+        number,
+        opened: 1,
+        revision: "revision_1",
+        feedback: [`feedback_${number}`],
+      })),
     notes,
     ...extra,
   } as DesignInfo
@@ -164,38 +166,50 @@ test("Design round shows its counts and the first three notes still without a ma
   )
 
   try {
-    const frame = await settle(app, (frame) => frame.includes("Round 9"))
+    const frame = await settle(app, (frame) => frame.includes("Round 9") && frame.includes("R2"))
     const rows = frame.split("\n").filter((line) => line.trim())
-    expect(rows[0]).toContain("Todo · Design")
-    // Two designs are listed, so each round names its design and the line wraps rather than losing a
-    // count; the ended review shows nothing.
-    expect(rows[1]).toContain("Checkout · Round 9 · 8/14 addressed")
-    expect(rows[2]).toContain("3 recorded")
+    // Two designs are listed, so the review names its design and the revision it is on; the ended review
+    // shows nothing.
+    expect(rows[0]).toContain("Design review · Checkout · R2")
+    // Wrapped rather than losing a count.
+    expect(rows[1]).toContain("Round 9 · 8/14 addressed")
+    expect(frame).toContain("3 recorded")
     // The element is held to a few cells so the user's words keep the rest of the row.
-    expect(rows[3]).toContain('[ ] button "Rotaci…": Trocar')
-    expect(rows[4]).toContain('[ ] svg in button "…: アイ')
-    expect(rows[5]).toContain("[ ] [data-design-id…: Resto")
-    expect(rows[6]).toContain("+3 more without a mark")
-    expect(rows).toHaveLength(7)
+    expect(frame).toContain('[ ] button "Rotaci…": Trocar')
+    expect(frame).toContain('[ ] svg in button "…: アイ')
+    expect(frame).toContain("[ ] [data-design-id…: Resto")
+    expect(frame).toContain("+3 more without a mark")
     // One line per note, however long the words.
     expect(frame).not.toContain("Resto 12")
+    // An older answered round is not the newest one, so it stays out of the sidebar.
     expect(frame).not.toContain("Round 8")
     expect(frame).not.toContain("Encerrada")
+    expect(frame).not.toContain("Todo ·")
   } finally {
     app.renderer.destroy()
   }
 })
 
-test("Design round follows the sidebar poll and leaves once every note has an outcome", async () => {
+test("Design round follows the sidebar poll and stays as its outcomes once every note has one", async () => {
   const notes = [note(9, 1, { tag: "a", elementText: "Ajuda", text: "Link quebrado" }), note(9, 2, { text: "Cor" })]
   const state = { designs: [design(notes)] }
   const app = await testRender(
     () => (
       <SidebarTodo
-        context={context([{ id: "todo_setup", content: "Aprovar o protótipo", status: "pending", priority: "high", phase: "design" }], {
-          agent: "design",
-          designs: () => state.designs,
-        })}
+        context={context(
+          [
+            { id: "todo_setup", content: "Aprovar o protótipo", status: "pending", priority: "high", phase: "design" },
+            {
+              id: "todo_slop",
+              content: "Rodar o anti-slop",
+              status: "completed",
+              priority: "high",
+              phase: "design",
+              closedAt: Date.now(),
+            },
+          ],
+          { agent: "design", designs: () => state.designs },
+        )}
         sessionID="session"
       />
     ),
@@ -203,11 +217,26 @@ test("Design round follows the sidebar poll and leaves once every note has an ou
   )
 
   try {
-    const first = await settle(app, (frame) => frame.includes("Round 9"))
+    const first = await settle(app, (frame) => frame.includes("Round 9") && frame.includes("R2"))
+    expect(first).toContain("Design review · R2")
     expect(first).toContain("Round 9 · 0/2 addressed · 0 recorded")
     expect(first).not.toContain("Checkout")
     expect(first).toContain('[ ] a "Ajuda": Link quebrado')
     expect(first).toContain("[ ] [data-design-id…: Cor")
+    // The Design tasks fold into one line under their own header while the review has rounds.
+    expect(first).toContain("Todo · Design")
+    expect(first).toContain("▶ Design tasks · 1 open · 1 done")
+    expect(first).not.toContain("Aprovar o protótipo")
+
+    const rows = first.split("\n")
+    await app.mockMouse.click(
+      4,
+      rows.findIndex((line) => line.includes("Design tasks")),
+    )
+    const unfolded = await settle(app, (frame) => frame.includes("Aprovar o protótipo"))
+    expect(unfolded).toContain("▼ Design tasks")
+    expect(unfolded).toContain("[ ] Aprovar o protótipo")
+    expect(unfolded).toContain("[✓] Rodar o anti-slop")
 
     state.designs = [design([{ ...notes[0], ...addressed }, notes[1]])]
     const marked = await settle(app, (frame) => frame.includes("1/2 addressed"), 8_000)
@@ -220,14 +249,52 @@ test("Design round follows the sidebar poll and leaves once every note has an ou
         { ...notes[1], status: "unresolved", reason: "Fora do escopo" },
       ]),
     ]
-    const settled = await settle(app, (frame) => !frame.includes("Round 9"), 8_000)
-    expect(settled).not.toContain("Round 9")
-    // The Design tasks stay; only the round block left.
-    expect(settled).toContain("[ ] Aprovar o protótipo")
+    const settled = await settle(app, (frame) => frame.includes("1 resolved"), 8_000)
+    // The answered round stays as one line of tallies, with the note that was not fixed under it.
+    expect(settled).toContain("Round 9 · 1 resolved · 1 unresolved")
+    expect(settled).toContain("[✗] [data-design-id…: Cor")
+    expect(settled).not.toContain("Link quebrado")
+    expect(settled).not.toContain("addressed")
   } finally {
     app.renderer.destroy()
   }
 }, 25_000)
+
+test("An answered round lists its partial and unresolved notes and a requested end is named", async () => {
+  const outcomes = [
+    ...Array.from({ length: 12 }, (_, position) =>
+      note(3, position + 1, { text: `Feito ${position + 1}` }, { status: "resolved" }),
+    ),
+    note(3, 13, { text: "Quase" }, { status: "partial", reason: "Falta o hover" }),
+    ...Array.from({ length: 4 }, (_, position) =>
+      note(3, 14 + position, { text: `Aberto ${position + 1}` }, { status: "unresolved", reason: "Depois" }),
+    ),
+  ]
+  const app = await testRender(
+    () => (
+      <SidebarTodo
+        context={context([], { designs: () => [design(outcomes, { endRequested: true })] })}
+        sessionID="session"
+      />
+    ),
+    { width: 60, height: 30 },
+  )
+
+  try {
+    const frame = await settle(app, (frame) => frame.includes("Round 3") && frame.includes("R2"))
+    const rows = frame.split("\n").filter((line) => line.trim())
+    expect(rows[0]).toContain("Design review · R2 · ending after this round")
+    expect(rows[1]).toContain("Round 3 · 12 resolved · 1 partial · 4 unresolved")
+    expect(rows[2]).toContain("[~] [data-design-id…: Quase")
+    expect(rows[3]).toContain("[✗] [data-design-id…: Aberto 1")
+    expect(rows[4]).toContain("[✗] [data-design-id…: Aberto 2")
+    expect(rows[5]).toContain("+2 more partial or unresolved")
+    expect(rows).toHaveLength(6)
+    expect(frame).not.toContain("Feito")
+  } finally {
+    app.renderer.destroy()
+  }
+})
 
 test("A round with every note marked addressed still shows until the outcomes are recorded", async () => {
   const app = await testRender(
@@ -244,6 +311,7 @@ test("A round with every note marked addressed still shows until the outcomes ar
     const frame = await settle(app, (frame) => frame.includes("Round 4"))
     const rows = frame.split("\n").filter((line) => line.trim())
     expect(rows).toHaveLength(2)
+    expect(rows[0]).toContain("Design review")
     expect(rows[1]).toContain("Round 4 · 1/1 addressed · 0 recorded")
   } finally {
     app.renderer.destroy()

@@ -29,7 +29,12 @@ export function resolve(
       return undefined
     }
   }
-  const located = query && query !== "page" && query !== "diagram" ? select(query) : undefined
+  // A page-level note names no element: it is judged against the whole variant, or the document body.
+  if (query === "page") {
+    const whole = root ?? document.body
+    return whole ? { found: true, how: "page", node: whole } : { found: false, how: "not found" }
+  }
+  const located = query && query !== "diagram" ? select(query) : undefined
   // The selector's last compound is the element's own id, as in tr[data-design-id="row"] [data-design-id="save"];
   // a positional compound (:nth-of-type) marks a repeated id, which alone would resolve the first one.
   const own = /(?:^|[\s>+~])[^\s>+~[\]:]*(\[data-design-id="(?:[^"\\]|\\.)*"\])$/.exec(query)?.[1]
@@ -49,4 +54,18 @@ export function resolve(
       return null
     }
   }
+}
+
+/**
+ * What a verify compares of a located element across two revisions: its text with whitespace
+ * collapsed, and an FNV-1a fingerprint of its markup plus `style`, the computed style the page read
+ * for it. The verify's own marker attribute is left out, so marking the element never counts as a
+ * change. Runs inside the page like `resolve`: self-contained.
+ */
+export function facts(element: Element, style: string) {
+  const markup = `${element.outerHTML.replace(/ data-redcode-verify="[^"]*"/g, "")}\n${style}`
+  // A loop, not an array of code units: an element's markup can be large.
+  let hash = 0x811c9dc5
+  for (let index = 0; index < markup.length; index++) hash = Math.imul(hash ^ markup.charCodeAt(index), 16777619)
+  return { text: (element.textContent ?? "").replace(/\s+/g, " ").trim(), markup: (hash >>> 0).toString(16) }
 }

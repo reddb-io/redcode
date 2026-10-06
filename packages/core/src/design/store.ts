@@ -19,24 +19,29 @@ import { DesignFiles } from "./files.js"
 import { DesignApproval } from "./approval.js"
 import { DesignParams } from "./params.js"
 import { DesignRounds } from "./rounds.js"
+import { DesignVerify } from "./verify.js"
 import { DesignGate } from "./gate.js"
 import { DesignSystem } from "./system.js"
 import { DesignBuild } from "./build.js"
 import { DesignAssets } from "./assets.js"
 import { DesignCapture } from "./capture.js"
+import { DesignJudge } from "./judge.js"
+import { DesignReuse } from "./reuse.js"
+import { DesignSignature } from "./signature.js"
 
 /** The longest rendered review message the store admits, in characters; a longer one is refused, never cut. */
 export const LIMITS = { prompt: 100_000 } as const
 
 /**
  * Bounds of the System One review of note statuses: how many notes one request judges, and the
- * characters it carries of each note's request and of what the cited verify saw of it. A longer
- * update is split into requests sent together, so no request grows with the design's history.
- * Twenty notes at their largest, each with a 500-character reason, fit one Intelligence request
+ * characters it carries of each note's request, of what the cited verify saw of it and of its change
+ * (the addressed mark, the viewport and the element's delta). A longer update is split into requests
+ * sent together, so no request grows with the design's history. Sixteen notes at their largest, each
+ * with a 500-character reason and a second question on its change, fit one Intelligence request
  * (80,000 characters). Past that Intelligence splits the questions itself and repeats the whole state
  * with every part, two at a time, which is the chaining this bound exists to prevent.
  */
-export const REVIEW = { notes: 20, evidence: 1_200 } as const
+export const REVIEW = { notes: 16, evidence: 1_200, change: 900 } as const
 
 /** What the System One review said of one claimed fix; neither field when it accepted the claim. */
 interface Reviewed {
@@ -761,6 +766,94 @@ const make = Effect.gen(function* () {
   }, lock.withPermits(1))
 
   /**
+   * An audit's repetition and design-system reuse checks: directions of the revision that repeat each
+   * other, directions that re-create an approved design of the application, and components, colors or
+   * fonts the revision's sources re-declare instead of reusing. The renderer forks this once the first
+   * viewport captured the signatures, so its one System One request (dual reasoning only) runs
+   * alongside the rest of the audit, never after it and never after another request.
+   */
+  const repetition = Effect.fn("DesignStore.repetition")(function* (
+    sessionID: SessionSchema.ID,
+    recorded: Design.Revision,
+    signatures: ReadonlyArray<DesignSignature.Entry>,
+    width: number,
+  ) {
+    const document = recorded.document
+    const facts = yield* Effect.tryPromise({
+      try: async () => {
+        const [files, approved, tokens] = await Promise.all([
+          DesignReuse.read(blobs, recorded.files),
+          DesignSignature.approved(document.application),
+          DesignReuse.system(document),
+        ])
+        return { files, approved, tokens }
+      },
+      catch: () =>
+        new Design.Error({ code: "unavailable", message: "Unable to read the revision for the reuse checks" }),
+    })
+    const inventory = document.inventory ?? []
+    const aliases = document.system?.aliases
+    const reuse = DesignReuse.check({ engine: document.engine, files: facts.files, inventory, tokens: facts.tokens, aliases, width })
+    const found = [
+      ...DesignSignature.repeated(signatures),
+      ...DesignSignature.matches(signatures, facts.approved, document.id),
+      ...reuse.checks,
+    ]
+    const outcomes = yield* judge(
+      sessionID,
+      document.id,
+      DesignJudge.subjects(found, { signatures, approved: facts.approved, files: facts.files, inventory, aliases }),
+    )
+    return { checks: DesignJudge.apply(found, outcomes), reuse: reuse.reuse, effects: facts.tokens }
+  })
+
+  /**
+   * One System One request per {@link DesignJudge.LIMIT} flagged items, all sent at once. Nothing is
+   * sent with single reasoning: the deterministic findings stand as found. Observe mode sends and
+   * decides nothing; an unavailable System One leaves every item unconfirmed.
+   */
+  const judge = Effect.fn("DesignStore.judge")(function* (
+    sessionID: SessionSchema.ID,
+    subjectID: Design.ID,
+    subjects: ReadonlyArray<DesignJudge.Subject>,
+  ): Effect.fn.Return<ReadonlyArray<DesignJudge.Outcome>> {
+    if (!subjects.length) return []
+    const settings = yield* Effect.result(intelligence.read(sessionID))
+    if (Result.isFailure(settings))
+      return DesignJudge.unconfirmed(subjects, `System One unavailable: ${settings.failure.message}`)
+    const mode = IntelligenceEvaluation.mode(settings.success)
+    if (mode === "single") return []
+    if (mode === "dual" && !IntelligenceEvaluation.isReady(settings.success))
+      return DesignJudge.unconfirmed(
+        subjects,
+        "System One unavailable: dual reasoning is selected but System One and System Two are not configured",
+      )
+    const requests = DesignJudge.requests(subjects)
+    const records = yield* Effect.forEach(
+      requests,
+      (request) =>
+        Effect.result(
+          intelligence.evaluate({
+            sessionID,
+            operation: "design_completion",
+            subjectID,
+            sources: request.sources,
+            candidate: request.candidate,
+            questions: request.questions,
+          }),
+        ),
+      { concurrency: "unbounded" },
+    )
+    if (mode !== "dual") return []
+    return requests.flatMap((request, index) => {
+      const record = records[index]!
+      return Result.isFailure(record)
+        ? DesignJudge.read(request.batch, undefined, record.failure.message)
+        : DesignJudge.read(request.batch, record.success)
+    })
+  })
+
+  /**
    * The System One review of the statuses that claim a fix, answered per note: a refusal for a claim
    * the review contradicts, `unverified` for one it could not judge. A request carries only what
    * `DesignRounds.claim` gives for its own notes, bounded, so its size does not depend on the design's
@@ -781,9 +874,13 @@ const make = Effect.gen(function* () {
     if (mode === "single") return []
     if (mode === "dual" && !IntelligenceEvaluation.isReady(settings.success))
       return unavailable("dual reasoning is selected but System One and System Two are not configured")
-    const batches = Array.from({ length: Math.ceil(claims.length / REVIEW.notes) }, (_, index) =>
-      claims.slice(index * REVIEW.notes, (index + 1) * REVIEW.notes),
+    const shown = claims.map((update) => ({ update, shown: DesignRounds.claim(document, update, verifies) }))
+    const batches = Array.from({ length: Math.ceil(shown.length / REVIEW.notes) }, (_, index) =>
+      shown.slice(index * REVIEW.notes, (index + 1) * REVIEW.notes),
     )
+    // Only a resolved claim with a measured delta is asked whether that change carries out the note.
+    const judged = (entry: (typeof shown)[number]) =>
+      entry.update.status === "resolved" ? entry.shown.change?.delta : undefined
     // System One requests are never chained: every batch is sent at once and judged on its own.
     const records = yield* Effect.forEach(
       batches,
@@ -794,25 +891,35 @@ const make = Effect.gen(function* () {
             operation: "design_completion",
             subjectID: document.id,
             sources: {
-              notes: batch.map((update) => {
-                const shown = DesignRounds.claim(document, update, verifies)
-                return {
-                  note: `${update.feedback} #${update.index}`,
-                  request: IntelligenceEvaluation.evidence(shown.request, { limit: REVIEW.evidence }),
-                  observation: IntelligenceEvaluation.evidence(shown.observation, { limit: REVIEW.evidence }),
-                }
-              }),
+              notes: batch.map((entry) => ({
+                note: `${entry.update.feedback} #${entry.update.index}`,
+                request: IntelligenceEvaluation.evidence(entry.shown.request, { limit: REVIEW.evidence }),
+                observation: IntelligenceEvaluation.evidence(entry.shown.observation, { limit: REVIEW.evidence }),
+                ...(entry.shown.change
+                  ? { change: IntelligenceEvaluation.evidence(entry.shown.change, { limit: REVIEW.change }) }
+                  : {}),
+              })),
             },
-            candidate: batch.map((update) => ({
-              note: `${update.feedback} #${update.index}`,
-              status: update.status,
-              ...(update.reason ? { reason: update.reason } : {}),
+            candidate: batch.map((entry) => ({
+              note: `${entry.update.feedback} #${entry.update.index}`,
+              status: entry.update.status,
+              ...(entry.update.reason ? { reason: entry.update.reason } : {}),
             })),
             questions: IntelligenceEvaluation.questions(
               Object.fromEntries(
-                batch.map((_, index) => [
-                  `note_${index}`,
-                  `Does candidate[${index}] claim resolved or partial without relevant textual verification of the original note in sources.notes[${index}]? Do not infer visual correctness from an image filename or successful export alone.`,
+                batch.flatMap((entry, index) => [
+                  [
+                    `note_${index}`,
+                    `Does candidate[${index}] claim resolved or partial without relevant textual verification of the original note in sources.notes[${index}]? Do not infer visual correctness from an image filename or successful export alone.`,
+                  ],
+                  ...(judged(entry)
+                    ? [
+                        [
+                          `note_${index}_change`,
+                          `Does sources.notes[${index}].change.delta show that the element changed in a way that cannot plausibly carry out what the original note in sources.notes[${index}].request asks (for example only an unrelated property changed, or the new text contradicts the text the note asks for)? Judge only the change flags, the text before and after and the addressed summary; answer no when the change could plausibly carry out the note or when the note asks for something the delta cannot show.`,
+                      ],
+                    ]
+                    : []),
                 ]),
               ),
             ),
@@ -824,23 +931,33 @@ const make = Effect.gen(function* () {
     if (mode !== "dual") return []
     return batches.flatMap((batch, position) => {
       const record = records[position]
-      return batch.map((update, index) => {
+      return batch.map((entry, index): Reviewed => {
+        const update = entry.update
         if (Result.isFailure(record))
           return { update, unverified: `System One review unavailable: ${record.failure.message}` }
         const review = record.success
         if (!review) return { update, unverified: "System One review unavailable: no review was returned" }
         const verdict = IntelligenceEvaluation.verdict(review, `note_${index}`)
-        if (verdict === "accepted") return { update }
-        if (verdict === "inconclusive") return { update, unverified: `System One review inconclusive (${review.id})` }
-        if (verdict === "unavailable")
+        const delta = judged(entry)
+        const change = delta ? IntelligenceEvaluation.verdict(review, `note_${index}_change`) : "accepted"
+        if (verdict === "needs_revision")
+          return {
+            update,
+            refusal: `${DesignRounds.REFUSED} the System One review (${review.id}) judged that ${update.status} for ${update.feedback} #${update.index} is not backed by a textual verification of what the note asks. Compare the note with the current revision and record it again with a reason that says what changed, or record it unresolved or accepted with a reason.`,
+          }
+        if (delta && change === "needs_revision")
+          return {
+            update,
+            refusal: `${DesignRounds.REFUSED} the System One review (${review.id}) judged that the change the verify saw in the element of ${update.feedback} #${update.index} (${DesignVerify.describe(delta)}) cannot plausibly carry out what the note asks. Change what the note asks for, publish and verify again, or record it partial, unresolved or accepted with a reason.`,
+          }
+        if (verdict === "unavailable" || change === "unavailable")
           return {
             update,
             unverified: `System One review unavailable (${review.id}): ${IntelligenceEvaluation.issueSummary(review) || "no answer for this note"}`,
           }
-        return {
-          update,
-          refusal: `${DesignRounds.REFUSED} the System One review (${review.id}) judged that ${update.status} for ${update.feedback} #${update.index} is not backed by a textual verification of what the note asks. Compare the note with the current revision and record it again with a reason that says what changed, or record it unresolved or accepted with a reason.`,
-        }
+        if (verdict === "inconclusive" || change === "inconclusive")
+          return { update, unverified: `System One review inconclusive (${review.id})` }
+        return { update }
       })
     })
   })
@@ -1084,6 +1201,24 @@ const make = Effect.gen(function* () {
         ),
       catch: () => new Design.Error({ code: "unavailable", message: "Unable to write the Design plan" }),
     })
+    // The approved direction's signature lets later designs, in any conversation, see they re-create it.
+    const audited = (yield* jobs(sessionID, id))
+      .filter((job) => job.input.revision === revisionID && job.status === "completed" && job.audit?.signatures?.length)
+      .toSorted((a, b) => (b.finished ?? b.created) - (a.finished ?? a.created))[0]
+    const signed = audited?.audit?.signatures && DesignSignature.chosen(audited.audit.signatures, variant?.id)
+    if (signed)
+      yield* Effect.tryPromise({
+        try: () =>
+          DesignSignature.record(document.application, {
+            design: id,
+            name: document.name,
+            revision: revisionID,
+            ...(signed.variant ? { variant: signed.variant } : {}),
+            signature: signed.signature,
+            approved: Date.now(),
+          }),
+        catch: () => new Design.Error({ code: "unavailable", message: "Unable to record the approved signature" }),
+      }).pipe(Effect.ignore)
     const { endRequested: _ending, ...closed } = document
     yield* save(sessionID, { ...closed, approvedRevision: revisionID, ended: true })
     return { plan: file, revision: revisionID }
@@ -1238,6 +1373,30 @@ const make = Effect.gen(function* () {
     return { id: input.id, status: "admitted" as const }
   }, lock.withPermits(1))
 
+  /**
+   * Track a chat message the user typed that asks for changes to the prototype as a note (see
+   * `DesignRounds.implicit`), under the lock review messages take, so the two never race on a round. An
+   * ended review is left alone. Whether a note was recorded; a retry of the same message records none.
+   */
+  const noteMessage = Effect.fn("DesignStore.noteMessage")(function* (
+    sessionID: SessionSchema.ID,
+    id: Design.ID,
+    message: { readonly id: string; readonly text: string },
+  ) {
+    const document = yield* get(sessionID, id)
+    const rounds = document.ended ? document : DesignRounds.implicit(document, message)
+    if (rounds === document) return false
+    yield* db
+      .update(DesignTable)
+      .set({ data: { ...document, ...rounds, updated: Date.now() } })
+      .where(
+        and(eq(DesignTable.id, id), eq(DesignTable.session_id, sessionID), eq(DesignTable.directory, location.directory)),
+      )
+      .run()
+      .pipe(Effect.orDie)
+    return true
+  }, lock.withPermits(1))
+
   return {
     storage,
     blobs,
@@ -1261,6 +1420,7 @@ const make = Effect.gen(function* () {
     importAsset,
     jobs,
     putJob,
+    repetition,
     implementation,
     update,
     amend,
@@ -1269,6 +1429,7 @@ const make = Effect.gen(function* () {
     reopen,
     prepareFeedback,
     acknowledge,
+    noteMessage,
   }
 })
 

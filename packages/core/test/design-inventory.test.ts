@@ -2,6 +2,7 @@ import { expect, test } from "bun:test"
 import { mkdir, symlink } from "node:fs/promises"
 import path from "node:path"
 import { DesignInventory } from "@opencode/core/design/inventory"
+import { DesignSystem } from "@opencode/core/design/system"
 import { tmpdir } from "./fixture/tmpdir"
 
 const fixture = async (root: string) => {
@@ -72,30 +73,78 @@ test("skips a root that links outside the application", async () => {
   expect(await DesignInventory.scan(application, ["src/linked"])).toEqual([])
 })
 
-test("bounds each root to sixty entries and the inventory to two hundred so late roots still appear", async () => {
+test("bounds each file to sixteen names, each root to 400 entries and the inventory to 800 so late roots still appear", async () => {
   await using tmp = await tmpdir()
   await Promise.all([
     ...Array.from({ length: 30 }, (_, index) =>
       Bun.write(
         path.join(tmp.path, "src/components", `Group${String(index).padStart(2, "0")}.tsx`),
-        Array.from({ length: 10 }, (_, entry) => `export const Item${index}x${entry} = () => null`).join("\n"),
+        Array.from({ length: 20 }, (_, entry) => `export const Item${index}x${entry} = () => null`).join("\n"),
       ),
     ),
     Bun.write(path.join(tmp.path, "src/design-system/Late.tsx"), "export const Late = () => null"),
   ])
   const inventory = await DesignInventory.scan(tmp.path, ["src/components", "src/design-system"])
-  expect(inventory.filter((entry) => entry.root === "src/components")).toHaveLength(60)
+  expect(inventory.filter((entry) => entry.file === "src/components/Group00.tsx")).toHaveLength(16)
+  expect(inventory.filter((entry) => entry.root === "src/components")).toHaveLength(400)
   expect(inventory.at(-1)).toEqual({ root: "src/design-system", file: "src/design-system/Late.tsx", name: "Late" })
   expect(inventory[0]).toEqual({ root: "src/components", file: "src/components/Group00.tsx", name: "Item0x0" })
   await Promise.all(
-    Array.from({ length: 5 }, (_, root) =>
-      Bun.write(
-        path.join(tmp.path, `src/root${root}/All.tsx`),
-        Array.from({ length: 60 }, (_, entry) => `export const R${root}x${entry} = () => null`).join("\n"),
+    Array.from({ length: 3 }, (_, root) =>
+      Promise.all(
+        Array.from({ length: 30 }, (_, file) =>
+          Bun.write(
+            path.join(tmp.path, `src/root${root}/File${String(file).padStart(2, "0")}.tsx`),
+            Array.from({ length: 16 }, (_, entry) => `export const R${root}f${file}x${entry} = () => null`).join("\n"),
+          ),
+        ),
       ),
     ),
   )
-  expect(
-    await DesignInventory.scan(tmp.path, ["src/root0", "src/root1", "src/root2", "src/root3", "src/root4"]),
-  ).toHaveLength(200)
+  expect(await DesignInventory.scan(tmp.path, ["src/root0", "src/root1", "src/root2"])).toHaveLength(800)
+})
+
+test("keeps a whole shadcn ui folder, primary export first, and lists it per file for the model", async () => {
+  await using tmp = await tmpdir()
+  const parts = ["Content", "Header", "Footer", "Title", "Description", "Trigger", "Close", "Portal", "Overlay"]
+  const names = [
+    "accordion", "alert", "alert-dialog", "aspect-ratio", "avatar", "badge", "breadcrumb", "button", "calendar", "card",
+    "carousel", "chart", "checkbox", "collapsible", "command", "context-menu", "dialog", "drawer", "dropdown-menu", "form",
+    "hover-card", "input", "input-otp", "label", "menubar", "navigation-menu", "pagination", "popover", "progress",
+    "radio-group", "resizable", "scroll-area", "select", "separator", "sheet", "sidebar", "skeleton", "slider", "sonner",
+    "switch", "table", "tabs", "textarea", "toast", "toggle", "toggle-group", "tooltip",
+  ]
+  const pascal = (name: string) => name.split("-").map((part) => part[0]!.toUpperCase() + part.slice(1)).join("")
+  // Dialog, Select and Table carry all nine parts; the others between one and nine, about 280 exports in all.
+  const own = (name: string, index: number) =>
+    ["dialog", "select", "table"].includes(name) ? parts : parts.slice(0, (index % 9) + 1)
+  await Promise.all(
+    names.map((name, index) =>
+      Bun.write(
+        path.join(tmp.path, "src/components/ui", `${name}.tsx`),
+        // shadcn lists the parts first and the primary export among them, as in its generated files.
+        `${own(name, index).map((part) => `const ${pascal(name)}${part} = () => null`).join("\n")}\nconst ${pascal(name)} = () => null\nexport { ${own(name, index).map((part) => `${pascal(name)}${part}`).join(", ")}, ${pascal(name)} }\n`,
+      ),
+    ),
+  )
+  const inventory = await DesignInventory.scan(tmp.path, ["src/components/ui"])
+  for (const name of ["Dialog", "Select", "Table", "Tooltip"]) expect(inventory.some((entry) => entry.name === name)).toBe(true)
+  expect(inventory.find((entry) => entry.file === "src/components/ui/dialog.tsx")?.name).toBe("Dialog")
+  const described = DesignSystem.describe({
+    sources: [],
+    inventory,
+    system: { paths: ["src/components/ui"], css: [], tailwind: true, aliases: { "@/": "./src/" } },
+  })
+  expect(described).toContain('Components src/components/ui (import { Name } from "@/components/ui/<file>"):')
+  expect(described).toContain("- dialog.tsx: Dialog; also DialogClose, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogOverlay, +3 more")
+  expect(described).toContain("- select.tsx: Select; also SelectClose, SelectContent")
+  expect(described).toContain("- table.tsx: Table; also TableClose, TableContent")
+  // Past sixty files the rest are counted and pointed to, never silently dropped.
+  const many = DesignSystem.describe({
+    sources: [],
+    inventory: Array.from({ length: 70 }, (_, index) => ({ root: "src/ui", file: `src/ui/c${index}.tsx`, name: `C${index}` })),
+  })
+  expect(many).toContain("- c59.tsx: C59")
+  expect(many).not.toContain("- c60.tsx")
+  expect(many).toContain("10 more component files not listed (70 exports in all): read the Components section of .red/DESIGN.md")
 })

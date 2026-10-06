@@ -1193,10 +1193,11 @@ details{border-top:1px solid var(--edge);padding:14px 0}summary{cursor:pointer;f
     element("feedback-status").dataset.tone = state.feedbackError ? "error" : "info"
     // A refused message (a 409 conflict, say) holds newer revisions back until it is sent, discarded or resent.
     element("pending-actions").hidden = !state.pending || !state.feedbackError
-    // The server refuses to end a review while any round has notes without an outcome (DesignRounds.open).
-    const open = openNotes().length > 0
-    element("send-end").hidden = !!state.pending || open
-    element("round-open").hidden = !open || !!state.pending
+    // A plain end is refused while any round has notes without an outcome (DesignRounds.open); a message with
+    // notes may end the review, which the server then defers until every note has an outcome.
+    const blocked = openNotes().length > 0 && !state.notes.length
+    element("send-end").hidden = !!state.pending || blocked
+    element("round-open").hidden = !blocked || !!state.pending
     input("note").disabled = !!state.pending
   }
   type Mark = Design.NoteStatus | "addressed"
@@ -1755,16 +1756,22 @@ details{border-top:1px solid var(--edge);padding:14px 0}summary{cursor:pointer;f
     const job =
       verified?.type === "verified" ? verified.job : notes.findLast((note) => note.evidence?.job)?.evidence?.job
     const sub = element("round-sub")
-    const signature = JSON.stringify([round.published ?? "", job ?? ""])
+    // Send & end with notes keeps the review open for this round; the line says so until the review ends.
+    const ending = !!state.design?.endRequested && !state.design.ended
+    const answered = round.published ? revisionName(round.published) : ""
+    const signature = JSON.stringify([answered, job ?? "", ending])
     if (sub.dataset.signature === signature) return
     sub.dataset.signature = signature
+    const end = document.createElement("span")
+    end.dataset.copy = "endingAfterRound"
+    end.textContent = copy.endingAfterRound
     // Before an answer the progress line says where the round stands; this line names the answer and its captures.
-    if (!round.published) return sub.replaceChildren()
+    if (!round.published) return sub.replaceChildren(...(ending ? [end] : []))
     const answer = document.createElement("span")
     answer.dataset.copy = "roundAnswered"
-    answer.dataset.copySuffix = ` ${revisionName(round.published)}`
+    answer.dataset.copySuffix = ` ${answered}`
     answer.textContent = `${copy.roundAnswered}${answer.dataset.copySuffix}`
-    sub.replaceChildren(answer)
+    sub.replaceChildren(answer, ...(ending ? [end] : []))
     if (!job) return
     const report = document.createElement("a")
     report.href = `${endpoint}/${encodeURIComponent(state.design!.id)}/job/${encodeURIComponent(job)}/file`
@@ -2521,7 +2528,12 @@ details{border-top:1px solid var(--edge);padding:14px 0}summary{cursor:pointer;f
   const queueCard = () => {
     const card = state.card
     if (!card || state.pending || !card.text.trim()) return false
+    // Where the note was taken, so the verify judges it at that width and on that phone.
+    const width = Math.min(10000, Math.round(element(card.frame).clientWidth))
+    const platform = phone()?.platform
     state.notes.push({
+      ...(width > 0 ? { width } : {}),
+      ...(platform ? { platform } : {}),
       target: card.target,
       params: paramContext(),
       revision: state.revision,

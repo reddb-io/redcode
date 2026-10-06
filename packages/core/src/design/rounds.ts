@@ -58,6 +58,46 @@ export function admit(document: Rounds, feedback: Design.Feedback, now = Date.no
   }
 }
 
+/** The target of a note on the whole page, as the review page names one. */
+export const PAGE = "page"
+
+/**
+ * Record a chat message the user typed that asks for changes to the published prototype as one note on
+ * the whole page, `<message id> #1`, marked `source: "message"`, joining the open round or opening a new
+ * one as `admit` does for a review message. The note keeps the user's words whole. A message already in a
+ * round, a blank one, or a design with no published revision changes nothing, so a retry records one note.
+ */
+export function implicit(
+  document: Rounds & Pick<Design.Info, "revision">,
+  message: { readonly id: string; readonly text: string },
+  now = Date.now(),
+): Rounds {
+  if (!document.revision || !message.text.trim()) return document
+  if (
+    document.rounds?.some((round) => round.feedback.includes(message.id)) ||
+    document.notes?.some((note) => note.feedback === message.id)
+  )
+    return document
+  const last = latest(document)
+  const joins = last && !last.published
+  const round: Design.Round = joins
+    ? { ...last, feedback: [...last.feedback, message.id] }
+    : { number: (last?.number ?? 0) + 1, opened: now, revision: document.revision, feedback: [message.id] }
+  const note: Design.Note = {
+    feedback: message.id,
+    index: 1,
+    round: round.number,
+    item: { target: PAGE, text: message.text, revision: document.revision },
+    status: "open",
+    source: "message",
+    updated: now,
+  }
+  return {
+    rounds: joins ? [...(document.rounds ?? []).slice(0, -1), round] : [...(document.rounds ?? []), round],
+    notes: [...(document.notes ?? []), note],
+  }
+}
+
 /**
  * A revision the agent published answers the open round: it closes to new notes and records that
  * revision. Revisions published from the review page never call this.
@@ -223,7 +263,7 @@ export function triage(
  * The soft gate on one note status, judged before an update is applied: why the status cannot be
  * recorded, or undefined when it can. The update must name a recorded note. `resolved` needs a
  * completed verify job on the design's current revision that found the note's element with no blocking
- * finding; `partial` needs such a job (whatever it saw) and a reason; `unresolved` and `accepted` need
+ * finding and, when that job measured the element's delta, some change in it; `partial` needs such a job (whatever it saw) and a reason; `unresolved` and `accepted` need
  * a reason, and a verify job only when they cite one. `see` names the list that tells the agent what
  * to cite instead (the recorded notes or the recent verify jobs), as the todo evidence gate names
  * callIDs.
@@ -283,6 +323,11 @@ function refusal(
     return refuse(
       `${name} cannot be resolved: ${job.id} found blocking findings for it (${seen.findings.filter((finding) => finding.startsWith("error ·")).join("; ") || seen.reason}). Fix them, publish, verify again, or record partial with a reason.`,
     )
+  // The delta is the only evidence that the element was acted on: none at all means nothing to resolve.
+  if (update.status === "resolved" && seen.delta && !seen.delta.changed)
+    return refuse(
+      `${name} cannot be resolved: ${job.id} saw no change to its element since the revision the note was taken on (pixels, text, markup, style, position and size are the same${seen.width ? ` at ${seen.width}px` : ""}). Change the element the note names, publish and verify again, or record it unresolved or accepted with a reason saying why it stays as it is.`,
+    )
   return undefined
 }
 
@@ -299,11 +344,13 @@ export const isClaim = (update: Pick<Design.NoteUpdate, "status">) =>
  * path, no locator), so a review does not grow with the design's history.
  */
 export function claim(document: Rounds, update: Design.NoteUpdate, jobs: ReadonlyArray<Design.Job>) {
-  const item = (document.notes ?? []).find((note) => same(note, update))?.item
+  const note = (document.notes ?? []).find((item) => same(item, update))
+  const item = note?.item
   const seen = observed(
     jobs.find((job) => job.id === update.evidence?.job),
     update,
   )
+  const addressed = note?.addressed?.summary
   return {
     request: { text: item?.text, label: item?.label, elementText: item?.elementText, screen: item?.params?.screen },
     observation: seen && {
@@ -314,6 +361,16 @@ export function claim(document: Rounds, update: Design.NoteUpdate, jobs: Readonl
       findings: seen.findings,
       scenarios: seen.scenarios,
     },
+    // What the agent says it changed and what the verify saw change in the element, where the note was taken.
+    change:
+      addressed || seen?.delta
+        ? {
+            ...(addressed ? { addressed } : {}),
+            ...(item?.width || item?.platform ? { taken: { width: item.width, platform: item.platform } } : {}),
+            ...(seen?.width || seen?.platform ? { verified: { width: seen.width, platform: seen.platform } } : {}),
+            ...(seen?.delta ? { delta: seen.delta } : {}),
+          }
+        : undefined,
   }
 }
 

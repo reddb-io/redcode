@@ -1,6 +1,8 @@
 import type { DesignFeedbackItem, DesignInfo } from "@opencode/client"
 import { SessionTodo } from "@opencode/schema/session-todo"
 import { Plugin } from "@opencode/plugin/tui"
+import { designRoundSummary, outcomeTally } from "@opencode/util/design-round-summary"
+import type { RGBA } from "@opentui/core"
 import { useTerminalDimensions } from "@opentui/solid"
 import { createMemo, createResource, createSignal, For, onCleanup, Show } from "solid-js"
 import { errorMessage } from "../../util/error"
@@ -19,6 +21,7 @@ export function SidebarTodo(props: { context: Plugin.Context; sessionID: string 
   const dimensions = useTerminalDimensions()
   const [open, setOpen] = createSignal(true)
   const [all, setAll] = createSignal(false)
+  const [tasksOpen, setTasksOpen] = createSignal(false)
   const [expanded, setExpanded] = createSignal<string>()
   const [clock, setClock] = createSignal(Date.now())
   const agent = () => props.context.data.session.get(props.sessionID)?.agent ?? "build"
@@ -53,62 +56,140 @@ export function SidebarTodo(props: { context: Plugin.Context; sessionID: string 
         (item.closedAt !== undefined && clock() - item.closedAt < CLOSED_WINDOW_MS),
     ),
   )
-  const shown = createMemo(() => (all() ? visible() : visible().slice(0, Math.max(3, dimensions().height - 20))))
-  const rounds = createMemo(() => pendingRounds(designs()?.data ?? []))
+  // A revision's number (R7) is its position in the design's revision list, which is read again only when the
+  // design publishes a new revision, not on every poll.
+  const [revisions] = createResource(
+    () =>
+      (designs()?.data ?? [])
+        .filter((design) => !design.ended && design.revision && design.rounds?.length)
+        .map((design) => `${design.id}:${design.revision}`)
+        .join(" "),
+    (key) =>
+      Promise.all(
+        key.split(" ").map((entry) => {
+          const designID = entry.slice(0, entry.indexOf(":"))
+          // Only the ids are kept; an unreachable list leaves the ordinal unknown.
+          return props.context.client.session.design
+            .revisions({ sessionID: props.sessionID, designID })
+            .then(
+              (list) => list.map((revision) => ({ id: revision.id })),
+              () => [],
+            )
+            .then((list) => [designID, list] as const)
+        }),
+      ).then((entries) => new Map(entries)),
+  )
+  const reviews = createMemo(() => designReviews(designs()?.data ?? [], revisions.latest))
+  // While a review has rounds to show, the Design tasks (setup, approval, anti-slop) fold into one line.
+  const folded = createMemo(() =>
+    reviews().length ? visible().filter((item) => (item.phase ?? "build") === "design") : [],
+  )
+  const listed = createMemo(() =>
+    folded().length && !tasksOpen() ? visible().filter((item) => (item.phase ?? "build") !== "design") : visible(),
+  )
+  const shown = createMemo(() => (all() ? listed() : listed().slice(0, Math.max(3, dimensions().height - 20))))
   const designError = () => (agent() === "design" ? designs()?.error : undefined)
 
   return (
-    <Show when={visible().length > 0 || tasks()?.error || rounds().length > 0 || designError()}>
+    <Show when={visible().length > 0 || tasks()?.error || reviews().length > 0 || designError()}>
       <box>
-        <box flexDirection="row" gap={1} onMouseDown={() => visible().length > 2 && setOpen(!open())}>
-          <Show when={visible().length > 2}>
-            <text fg={theme.text.action.primary.base}>{open() ? "▼" : "▶"}</text>
-          </Show>
-          <text fg={theme.text.action.primary.base}>
-            <b>Todo · {agent() === "design" ? "Design" : agent() === "plan" ? "Plan / Design" : "Build"}</b>
-          </text>
-        </box>
-        <Show when={tasks()?.error}>
-          <text fg={theme.text.feedback.error.base} wrapMode="word">
-            Tasks unavailable: {tasks()?.error}
-          </text>
-        </Show>
         <Show when={designError()}>
           <text fg={theme.text.feedback.error.base} wrapMode="word">
             Review notes unavailable: {designError()}
           </text>
         </Show>
-        <For each={rounds()}>
-          {(round) => (
+        <For each={reviews()}>
+          {(review) => (
             <box>
-              {/* Wrapped, not cut: the counts are the point of the line and a sidebar row is ~37 cells. */}
               <text wrapMode="word" fg={theme.text.muted}>
                 <span style={{ fg: theme.text.base, bold: true }}>
-                  {round.design ? `${round.design} · ` : ""}Round {round.number}
-                </span>{" "}
-                · {round.addressed}/{round.total} addressed · {round.recorded} recorded
+                  Design review{review.name ? ` · ${review.name}` : ""}
+                </span>
+                {review.summary.revision?.ordinal ? ` · R${review.summary.revision.ordinal}` : ""}
+                {review.summary.endRequested ? " · ending after this round" : ""}
               </text>
-              <For each={round.left.slice(0, ROUND_NOTES)}>
-                {(note) => (
-                  <box flexDirection="row" gap={0}>
-                    <text flexShrink={0} wrapMode="none" fg={theme.text.muted}>
-                      [ ] {element(note.item)}:{" "}
-                    </text>
-                    <text flexGrow={1} flexShrink={1} minWidth={0} wrapMode="none" truncate fg={theme.text.base}>
-                      {flat(note.item.text) || "(no text)"}
-                    </text>
-                  </box>
-                )}
+              <For each={review.summary.pending}>
+                {(round) => {
+                  const left = round.notes.filter((note) => note.status === "open" && !note.addressed)
+                  return (
+                    <box>
+                      {/* Wrapped, not cut: the counts are the point of the line and a sidebar row is ~37 cells. */}
+                      <text wrapMode="word" fg={theme.text.muted}>
+                        <span style={{ fg: theme.text.base, bold: true }}>Round {round.number}</span> ·{" "}
+                        {round.addressed}/{round.total} addressed · {round.recorded} recorded
+                      </text>
+                      <For each={left.slice(0, ROUND_NOTES)}>
+                        {(note) => (
+                          <NoteRow mark="[ ]" tone={theme.text.muted} base={theme.text.base} item={note.item} />
+                        )}
+                      </For>
+                      <Show when={left.length > ROUND_NOTES}>
+                        <text paddingLeft={4} fg={theme.text.muted}>
+                          +{left.length - ROUND_NOTES} more without a mark
+                        </text>
+                      </Show>
+                    </box>
+                  )
+                }}
               </For>
-              <Show when={round.left.length > ROUND_NOTES}>
-                <text paddingLeft={4} fg={theme.text.muted}>
-                  +{round.left.length - ROUND_NOTES} more without a mark
-                </text>
+              {/* The newest round once every note has an outcome: one line of tallies, then what stayed open. */}
+              <Show when={review.summary.answered}>
+                {(round) => {
+                  const kept = () =>
+                    round().notes.filter((note) => note.status === "partial" || note.status === "unresolved")
+                  return (
+                    <box>
+                      <text wrapMode="word" fg={theme.text.muted}>
+                        <span style={{ fg: theme.text.base, bold: true }}>Round {round().number}</span> ·{" "}
+                        {outcomeTally(round())}
+                      </text>
+                      <For each={kept().slice(0, ROUND_NOTES)}>
+                        {(note) => (
+                          <NoteRow
+                            mark={note.status === "partial" ? "[~]" : "[✗]"}
+                            tone={
+                              note.status === "partial"
+                                ? theme.text.feedback.warning.base
+                                : theme.text.feedback.error.base
+                            }
+                            base={theme.text.base}
+                            item={note.item}
+                          />
+                        )}
+                      </For>
+                      <Show when={kept().length > ROUND_NOTES}>
+                        <text paddingLeft={4} fg={theme.text.muted}>
+                          +{kept().length - ROUND_NOTES} more partial or unresolved
+                        </text>
+                      </Show>
+                    </box>
+                  )
+                }}
               </Show>
             </box>
           )}
         </For>
-        <Show when={visible().length <= 2 || open()}>
+        <Show when={visible().length > 0 || tasks()?.error}>
+          <box flexDirection="row" gap={1} onMouseDown={() => listed().length > 2 && setOpen(!open())}>
+            <Show when={listed().length > 2}>
+              <text fg={theme.text.action.primary.base}>{open() ? "▼" : "▶"}</text>
+            </Show>
+            <text fg={theme.text.action.primary.base}>
+              <b>Todo · {agent() === "design" ? "Design" : agent() === "plan" ? "Plan / Design" : "Build"}</b>
+            </text>
+          </box>
+        </Show>
+        <Show when={tasks()?.error}>
+          <text fg={theme.text.feedback.error.base} wrapMode="word">
+            Tasks unavailable: {tasks()?.error}
+          </text>
+        </Show>
+        <Show when={folded().length}>
+          <text wrapMode="word" fg={theme.text.action.secondary.base} onMouseUp={() => setTasksOpen(!tasksOpen())}>
+            {tasksOpen() ? "▼" : "▶"} Design tasks · {taskTally(folded())}
+          </text>
+        </Show>
+        <Show when={listed().length <= 2 || open()}>
           <For each={shown()}>
             {(item) => {
               const key = item.id ?? item.content
@@ -173,9 +254,9 @@ export function SidebarTodo(props: { context: Plugin.Context; sessionID: string 
               )
             }}
           </For>
-          <Show when={visible().length > shown().length}>
+          <Show when={listed().length > shown().length}>
             <text fg={theme.text.action.secondary.base} onMouseUp={() => setAll(true)}>
-              +{visible().length - shown().length} more
+              +{listed().length - shown().length} more
             </text>
           </Show>
         </Show>
@@ -185,29 +266,50 @@ export function SidebarTodo(props: { context: Plugin.Context; sessionID: string 
 }
 
 /**
- * Every round of an open review that still has a note without an outcome, newest first, counted as the
- * agent's own design_document results recite it: notes it marked addressed (an outcome keeps the mark),
- * notes with an outcome, and the notes still without either, which are the work left.
+ * The open reviews worth a block: those with a round that still has a note without an outcome (the work left,
+ * counted as the agent's own design_document results recite it) or whose newest round is answered, so its
+ * partial and unresolved outcomes stay in sight. Each review names its design when the session has several.
  */
-function pendingRounds(designs: ReadonlyArray<DesignInfo>) {
+function designReviews(
+  designs: ReadonlyArray<DesignInfo>,
+  revisions: ReadonlyMap<string, ReadonlyArray<{ readonly id: string }>> | undefined,
+) {
   return designs
     .filter((design) => !design.ended)
-    .flatMap((design) => {
-      const notes = design.notes ?? []
-      return [...new Set(notes.filter((note) => note.status === "open").map((note) => note.round))]
-        .toSorted((a, b) => b - a)
-        .map((number) => {
-          const round = notes.filter((note) => note.round === number)
-          return {
-            design: designs.length > 1 ? design.name : undefined,
-            number,
-            total: round.length,
-            addressed: round.filter((note) => note.addressed).length,
-            recorded: round.filter((note) => note.status !== "open").length,
-            left: round.filter((note) => note.status === "open" && !note.addressed),
-          }
-        })
-    })
+    .map((design) => ({
+      name: designs.length > 1 ? design.name : undefined,
+      summary: designRoundSummary(design, revisions?.get(design.id)),
+    }))
+    .filter((review) => review.summary.pending.length > 0 || review.summary.answered)
+}
+
+/** How the folded Design tasks stand: `1 in progress · 2 open · 3 done`, zero counts left out. */
+function taskTally(items: ReadonlyArray<{ readonly status: string }>) {
+  return (
+    [
+      ["in progress", items.filter((item) => item.status === "in_progress").length],
+      ["blocked", items.filter((item) => item.status === "blocked").length],
+      ["open", items.filter((item) => item.status === "pending").length],
+      ["done", items.filter((item) => item.status === "completed").length],
+    ] as const
+  )
+    .filter((entry) => entry[1] > 0)
+    .map((entry) => `${entry[1]} ${entry[0]}`)
+    .join(" · ")
+}
+
+/** One note of a round on one row: its mark, the element held to a few cells, then the user's words cut to fit. */
+function NoteRow(props: { mark: string; tone: RGBA; base: RGBA; item: DesignFeedbackItem }) {
+  return (
+    <box flexDirection="row" gap={0}>
+      <text flexShrink={0} wrapMode="none" fg={props.tone}>
+        {props.mark} {element(props.item)}:{" "}
+      </text>
+      <text flexGrow={1} flexShrink={1} minWidth={0} wrapMode="none" truncate fg={props.base}>
+        {flat(props.item.text) || "(no text)"}
+      </text>
+    </box>
+  )
 }
 
 /**

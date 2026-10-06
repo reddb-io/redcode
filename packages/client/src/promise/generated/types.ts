@@ -368,7 +368,7 @@ export type DesignRender = {
 
 export type DesignAuditCheck = {
   rule: string
-  severity: "error" | "review"
+  severity: "error" | "review" | "info"
   selector: string
   evidence: string
   fix: string
@@ -376,6 +376,8 @@ export type DesignAuditCheck = {
   variant?: string
   scenario?: string
   screen?: string
+  key?: string
+  judged?: "confirmed" | "rejected" | "unconfirmed"
 }
 
 export type DesignAuditCapture = {
@@ -387,17 +389,29 @@ export type DesignAuditCapture = {
   fullPage: boolean
 }
 
-export type DesignVerifyNote = {
-  feedback: string
-  index: number
-  label: string
-  found: boolean
-  blocking: boolean
-  before?: string
-  after?: string
-  findings: Array<string>
-  scenarios: Array<string>
-  reason: string
+export type DesignAuditSignature = {
+  variant?: string
+  width: number | "Infinity" | "-Infinity" | "NaN"
+  signature: string
+}
+
+export type DesignAuditReuse = {
+  imported: Array<string>
+  redeclared: Array<string>
+  files: Array<string>
+  ratio?: number | "Infinity" | "-Infinity" | "NaN"
+}
+
+export type DesignVerifyDelta = {
+  changed: boolean
+  pixels?: number | "Infinity" | "-Infinity" | "NaN"
+  text: boolean
+  markup: boolean
+  moved: boolean
+  resized: boolean
+  added?: boolean
+  textBefore?: string
+  textAfter?: string
 }
 
 export type DesignVariantOperation = {
@@ -1113,14 +1127,24 @@ export type DesignAudit = {
   widths: Array<number | "Infinity" | "-Infinity" | "NaN">
   checks?: Array<DesignAuditCheck>
   captures?: Array<DesignAuditCapture>
+  signatures?: Array<DesignAuditSignature>
+  reuse?: DesignAuditReuse
 }
 
-export type DesignVerify = {
-  revision: string
-  round: number
-  width: number | "Infinity" | "-Infinity" | "NaN"
-  notes: Array<DesignVerifyNote>
+export type DesignVerifyNote = {
+  feedback: string
+  index: number
+  label: string
+  found: boolean
+  blocking: boolean
+  before?: string
+  after?: string
   findings: Array<string>
+  scenarios: Array<string>
+  reason: string
+  width?: number | "Infinity" | "-Infinity" | "NaN"
+  platform?: "ios" | "android"
+  delta?: DesignVerifyDelta
 }
 
 export type SessionInboxSynthetic = {
@@ -2563,22 +2587,17 @@ export type DesignFeedbackItem = {
   parent?: string
   revision?: string
   resent?: { feedback: string; index: number }
+  width?: number
+  platform?: "ios" | "android"
 }
 
-export type DesignJob = {
-  id: string
-  designID: string
-  input: DesignRender
-  status: "queued" | "running" | "completed" | "failed" | "cancelled" | "interrupted"
-  progress: number | "Infinity" | "-Infinity" | "NaN"
-  phase?: "preparing"
-  result: string | null
-  error: string | null
-  created: number | "Infinity" | "-Infinity" | "NaN"
-  started?: number | "Infinity" | "-Infinity" | "NaN"
-  finished?: number | "Infinity" | "-Infinity" | "NaN"
-  audit?: DesignAudit
-  verify?: DesignVerify
+export type DesignVerify = {
+  revision: string
+  round: number
+  width: number | "Infinity" | "-Infinity" | "NaN"
+  widths?: Array<number | "Infinity" | "-Infinity" | "NaN">
+  notes: Array<DesignVerifyNote>
+  findings: Array<string>
 }
 
 export type SessionForked = {
@@ -3163,6 +3182,7 @@ export type DesignNote = {
   reason?: string
   evidence?: DesignNoteEvidence
   by?: "agent" | "reviewer"
+  source?: "message"
   updated: number | "Infinity" | "-Infinity" | "NaN"
 }
 
@@ -3179,6 +3199,22 @@ export type DesignFeedback = {
   whiteboards?: Array<{ target: string; scene: JsonValue }>
   delivery: "steer" | "queue"
   end: boolean
+}
+
+export type DesignJob = {
+  id: string
+  designID: string
+  input: DesignRender
+  status: "queued" | "running" | "completed" | "failed" | "cancelled" | "interrupted"
+  progress: number | "Infinity" | "-Infinity" | "NaN"
+  phase?: "preparing"
+  result: string | null
+  error: string | null
+  created: number | "Infinity" | "-Infinity" | "NaN"
+  started?: number | "Infinity" | "-Infinity" | "NaN"
+  finished?: number | "Infinity" | "-Infinity" | "NaN"
+  audit?: DesignAudit
+  verify?: DesignVerify
 }
 
 export type SessionMessageAssistantTool1 = {

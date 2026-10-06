@@ -1,4 +1,4 @@
-import { createResource, For, Match, Show, Switch } from "solid-js"
+import { createMemo, createResource, For, Match, Show, Switch } from "solid-js"
 import { createStore } from "solid-js/store"
 import type { DesignInfo } from "@opencode/client/promise"
 import { Design } from "@opencode/schema/design"
@@ -14,7 +14,7 @@ import { useServerSDK } from "@/runtime/server/client"
 import { formatServerError } from "@/runtime/server/errors"
 import { showToast } from "@/shell/notifications/toast"
 import type { SessionDesignModel } from "./model"
-import { designStatus } from "./state"
+import { designReview, designStatus } from "./state"
 
 /** The Design tab: the session's designs with their review state, and the way into the browser review. */
 export function SessionDesignPanel(props: { design: SessionDesignModel }) {
@@ -149,6 +149,7 @@ export function SessionDesignPanel(props: { design: SessionDesignModel }) {
                   <For each={items()}>
                     {(design) => (
                       <SessionDesignRow
+                        sessionID={props.design.sessionID() ?? ""}
                         design={design}
                         pending={store.pending === design.id}
                         busy={store.pending !== ""}
@@ -174,7 +175,19 @@ const statusLabels = {
   closed: "session.design.status.closed",
 } as const
 
+// The notes of the newest round the row lists; the review page lists them all.
+const ROUND_NOTES = 5
+
+const noteLabels = {
+  open: "session.design.note.open",
+  resolved: "session.design.note.resolved",
+  partial: "session.design.note.partial",
+  unresolved: "session.design.note.unresolved",
+  accepted: "session.design.note.accepted",
+} as const
+
 function SessionDesignRow(props: {
+  sessionID: string
   design: DesignInfo
   pending: boolean
   busy: boolean
@@ -182,7 +195,33 @@ function SessionDesignRow(props: {
   onReopen: () => void
 }) {
   const language = useLanguage()
+  const server = useServerSDK()
   const status = () => designStatus(props.design)
+  // A revision's number (R7) is its position in the revision list, read again only when a new revision is published.
+  const [revisions] = createResource(
+    () => (props.sessionID && props.design.revision ? `${props.design.id}:${props.design.revision}` : undefined),
+    () =>
+      server.api.session.design
+        .revisions({ sessionID: props.sessionID, designID: props.design.id })
+        .then((list) => list.map((revision) => ({ id: revision.id })))
+        .catch(() => []),
+  )
+  const review = createMemo(() =>
+    designReview(
+      props.design,
+      revisions.state === "ready" || revisions.state === "refreshing" ? revisions.latest : undefined,
+    ),
+  )
+  const name = (revision: { id: string; ordinal: number }) =>
+    revision.ordinal ? language.t("session.design.revision.ordinal", { ordinal: revision.ordinal }) : revision.id
+  const tally = () => {
+    const round = review().round
+    if (!round) return ""
+    return (["open", "resolved", "partial", "unresolved", "accepted"] as const)
+      .filter((key) => round[key] > 0)
+      .map((key) => language.plural(`session.design.round.${key}`, round[key]))
+      .join(" · ")
+  }
   const target = () => {
     if (props.design.target === "app")
       return props.design.platform === "android"
@@ -215,9 +254,11 @@ function SessionDesignRow(props: {
       </div>
       <div class="flex min-w-0 flex-wrap items-center gap-x-2 text-12-regular text-v2-text-text-muted">
         <Show when={target()}>{(value) => <span>{value()}</span>}</Show>
-        <Show when={props.design.revision}>
+        <Show when={review().summary.revision}>
           {(revision) => (
-            <span class="truncate">{language.t("session.design.revision", { revision: revision() })}</span>
+            <span class="truncate" title={revision().id}>
+              {language.t("session.design.revision", { revision: name(revision()) })}
+            </span>
           )}
         </Show>
         <Show when={props.design.approvedRevision && props.design.approvedRevision !== props.design.revision}>
@@ -226,6 +267,55 @@ function SessionDesignRow(props: {
           </span>
         </Show>
       </div>
+      <Show when={review().round}>
+        {(round) => (
+          <div class="flex min-w-0 flex-col gap-1 pt-1" data-slot="session-design-round">
+            <div class="flex min-w-0 flex-wrap items-baseline gap-x-2 text-12-regular text-v2-text-text-muted">
+              <span class="shrink-0 text-12-medium text-v2-text-text-base">
+                {language.t("session.design.round", { round: round().number })}
+              </span>
+              <span>{tally()}</span>
+              <Show when={review().summary.endRequested}>
+                <span class="text-v2-text-text-accent">{language.t("session.design.round.ending")}</span>
+              </Show>
+            </div>
+            <ul class="flex min-w-0 flex-col gap-0.5 text-12-regular">
+              <For each={review().notes.slice(0, ROUND_NOTES)}>
+                {(note) => (
+                  <li class="flex min-w-0 items-baseline gap-2" data-status={note.status}>
+                    <span
+                      class="w-20 shrink-0 truncate"
+                      classList={{
+                        "text-v2-state-fg-success": note.status === "resolved",
+                        "text-v2-state-fg-warning": note.status === "partial",
+                        "text-v2-state-fg-danger": note.status === "unresolved",
+                        "text-v2-text-text-muted": note.status === "open" || note.status === "accepted",
+                      }}
+                    >
+                      {language.t(noteLabels[note.status])}
+                    </span>
+                    <bdi dir="auto" class="min-w-0 truncate text-v2-text-text-base">
+                      {note.item.text.trim() || note.item.label || note.item.target}
+                    </bdi>
+                  </li>
+                )}
+              </For>
+            </ul>
+            <Show when={review().notes.length > ROUND_NOTES}>
+              <div class="text-12-regular text-v2-text-text-faint">
+                {language.t("session.design.round.more", { count: review().notes.length - ROUND_NOTES })}
+              </div>
+            </Show>
+            <Show when={review().earlier}>
+              {(count) => (
+                <div class="text-12-regular text-v2-text-text-muted">
+                  {language.plural("session.design.round.earlier", count())}
+                </div>
+              )}
+            </Show>
+          </div>
+        )}
+      </Show>
       <Show when={Design.describeSystem(props.design.designSystem).trim()}>
         {(name) => (
           <div class="min-w-0 truncate text-12-regular text-v2-text-text-faint">

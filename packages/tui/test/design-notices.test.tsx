@@ -75,6 +75,19 @@ const messages = [
         },
         time: { created: 1, completed: 2 },
       },
+      {
+        // The publish announces the revision's number, which the cards name instead of its id.
+        type: "tool",
+        id: "call_preview",
+        name: "design_preview",
+        state: {
+          status: "completed",
+          input: { id: "design_checkout" },
+          content: [{ type: "text", text: "Published revision R1 (rev_1) for design_checkout." }],
+          metadata: { designID: "design_checkout", revision: "rev_1", ordinal: 1 },
+        },
+        time: { created: 2, completed: 2 },
+      },
     ],
     time: { created: 1, completed: 2 },
   },
@@ -157,13 +170,13 @@ test.each([60, 120])("Design feedback and the design chip render as cards at wid
     expect(frame).toContain("Design system: Tailwind theme")
     // The chip's change hint is addressed to the agent.
     expect(frame).not.toContain("change: design_document")
-    expect(text).toContain("Design review · 1 note · design_checkout · rev_1 · stone")
+    expect(text).toContain("Design review · 1 note · design_checkout · on R1 · stone")
     expect(frame).toContain("Looks close")
     expect(frame).toContain('1. h1 "Checkout"')
     expect(frame).not.toContain("<design-review")
     expect(frame).not.toContain("user-provided data")
     // The cut message names its round and the count it was sent with, then says how many notes arrived.
-    expect(text).toContain("Design review · round 2 · 3 notes · design_checkout · rev_1 · stone")
+    expect(text).toContain("Design review · round 2 · 3 notes · design_checkout · on R1 · stone")
     expect(text).toContain("2. Order summary — aside.summary — Give the to 2 of 3 notes reached the agent")
     expect(text.match(/reached the agent/g)).toHaveLength(1)
     expect(frame).not.toContain("[Truncated")
@@ -176,7 +189,7 @@ test.each([60, 120])("Design approval renders as a card that opens the review at
     await setup.waitForVisualIdle()
     const frame = setup.captureCharFrame()
     expect(frame).toContain("Design approved · Checkout")
-    expect(frame).toContain("Stone · rev_1")
+    expect(frame).toContain("Stone · R1 · rev_1")
     expect(frame).not.toContain("Design plan: /tmp/plan.md")
     const lines = frame.split("\n")
     const y = lines.findIndex((line) => line.includes("Open design and decisions"))

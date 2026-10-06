@@ -164,6 +164,59 @@ describe("DesignQuality.report", () => {
     expect(report).toContain("stop after that final audit without another correction pass")
   })
 
+  test("names each check's key, the reuse evidence and what stayed flagged since the previous audit", () => {
+    const check = (rule: string, extra: Partial<Design.AuditCheck> = {}): Design.AuditCheck => ({
+      rule,
+      severity: "review",
+      selector: '[data-design-variant="bold"]',
+      evidence: "Signal.",
+      fix: "Fix.",
+      width: 1440,
+      ...extra,
+    })
+    const repeated = check("variants-too-similar", { key: "variants-too-similar@calm~bold", variant: "bold", judged: "confirmed" })
+    const current = job({
+      id: "job_now",
+      input: { revision: "rev_now", format: "audit" },
+      created: 3,
+      finished: 4,
+      audit: {
+        revision: "rev_now",
+        findings: [],
+        scenarios: [],
+        widths: [1440],
+        checks: [
+          check("redeclared-component", { key: "redeclared-component@Card", severity: "info", judged: "rejected" }),
+          repeated,
+        ],
+        reuse: { imported: ["Button"], redeclared: ["Card"], files: ["src/components/ui/button.tsx"], ratio: 0.5 },
+      },
+    })
+    const previous = job({
+      id: "job_then",
+      input: { revision: "rev_then", format: "audit" },
+      audit: {
+        revision: "rev_then",
+        findings: [],
+        scenarios: [],
+        widths: [1440],
+        checks: [repeated, check("placeholder-link", { selector: "a" })],
+      },
+    })
+    const report = DesignQuality.report([current, previous], "rev_now")
+    const lines = report.split("\n")
+    expect(report).toContain("Design-system reuse: 1 component imported (Button) from 1 file; 1 re-declared (Card); reuse 50%.")
+    // The info check asks for nothing, so it is listed after the review check.
+    expect(lines.findIndex((line) => line.startsWith("REVIEW variants-too-similar"))).toBeLessThan(
+      lines.findIndex((line) => line.startsWith("INFO redeclared-component")),
+    )
+    expect(report).toContain("[key variants-too-similar@calm~bold]")
+    expect(report).toContain('add a decision with id "accept:<key>"')
+    expect(report).toContain(
+      "By key since job_then: 1 still flagged (variants-too-similar@calm~bold), 1 no longer flagged, 0 new.",
+    )
+  })
+
   test("asks for a fresh audit when only an older revision was audited", () => {
     const stale = job({
       id: "job_stale",

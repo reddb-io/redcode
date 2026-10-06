@@ -3,8 +3,11 @@ import { Intelligence } from "@opencode/schema/intelligence"
 
 const Request = Schema.Struct({ model: Schema.String, questions: Schema.Record(Schema.String, Intelligence.Question) })
 
-/** Real local HTTP transport with a controllable classification response; it never calls a provider. */
-export function intelligenceServer() {
+/**
+ * Real local HTTP transport with a controllable classification response; it never calls a provider. `choices`
+ * overrides the chosen option of a choice question by id.
+ */
+export function intelligenceServer(choices: Readonly<Record<string, string>> = {}) {
   const started = Promise.withResolvers<void>()
   const release = Promise.withResolvers<void>()
   const requests: Array<{ classification: boolean }> = []
@@ -26,13 +29,14 @@ export function intelligenceServer() {
             if (question.type === "noul") return [id, { type: "noul", noul: 0.01 }]
             if (question.type === "choice") {
               const wanted =
-                id === "work_route"
+                choices[id] ??
+                (id === "work_route"
                   ? "investigation"
                   : id === "verification_focus"
                     ? "evidence"
                     : id === "user_feedback"
                       ? "corrects"
-                      : "no_matching_skill"
+                      : "no_matching_skill")
               const choice = Object.hasOwn(question.criteria, wanted) ? wanted : Object.keys(question.criteria)[0]!
               return [
                 id,

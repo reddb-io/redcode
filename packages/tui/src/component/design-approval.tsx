@@ -4,7 +4,12 @@ import type { Design } from "@opencode/schema/design"
 import { useTheme } from "../context/theme"
 
 /** Transcript card of a Design approval: what was approved, and the way back to the review. */
-export function DesignApprovalNotice(props: { notice: Design.ApprovalNotice; onOpen: () => void }) {
+export function DesignApprovalNotice(props: {
+  notice: Design.ApprovalNotice
+  /** The approved revision's number (R7), when the transcript announced it. */
+  ordinal?: number
+  onOpen: () => void
+}) {
   const theme = useTheme()
   const renderer = useRenderer()
   const [hover, setHover] = createSignal(false)
@@ -21,7 +26,11 @@ export function DesignApprovalNotice(props: { notice: Design.ApprovalNotice; onO
       <text fg={theme.text.feedback.success.base}>Design approved · {props.notice.name}</text>
       <text fg={theme.text.base}>
         {props.notice.variant?.name ?? "Entire revision"}
-        <span style={{ fg: theme.text.muted }}> · {props.notice.revision}</span>
+        <span style={{ fg: theme.text.muted }}>
+          {" "}
+          · {props.ordinal ? `R${props.ordinal} · ` : ""}
+          {props.notice.revision}
+        </span>
       </text>
       <text fg={theme.text.muted}>Decisions and acceptance criteria are saved. Continue in Plan.</text>
       <text

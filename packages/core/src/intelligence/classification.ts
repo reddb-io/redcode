@@ -216,6 +216,25 @@ const definitions: Record<string, Intelligence.Question> = {
     },
     criteria: DesignTargetCriteria.PLATFORMS,
   },
+  // A typed change request becomes a tracked Design note from this answer, so no separate call reads it.
+  design_change_request: {
+    type: "choice",
+    instructions: {
+      question:
+        "If a design prototype is under review in this session, does the current message ask the agent to change that prototype?",
+      note: "This answer is irrelevant unless work_route is design or sources.session.mode is design. Judge what the message asks for from its meaning, in whatever language it uses.",
+    },
+    criteria: {
+      none: "Acknowledgement, chit-chat or anything else; or no prototype is under review",
+      question: "Asks a question or for an explanation or opinion without asking for a change",
+      approval: "Approves, accepts or ends the review of the current prototype without asking for a change",
+      new_design: "Asks for a new or entirely different design instead of changes to the current prototype",
+      change: {
+        what: "Asks for one or more specific changes to the current prototype that the agent must carry out, such as resizing, recoloring, moving, rewording, adding or removing parts of it",
+        not_for: "A question, an approval, a brand-new design, or a preference stated without asking for a change",
+      },
+    },
+  },
 }
 
 export const questions: Record<string, Intelligence.Question> = Object.fromEntries(
@@ -460,6 +479,13 @@ export const toolNamespace = (evaluation: Intelligence.Evaluation | undefined) =
 
 export const workRoute = (evaluation: Intelligence.Evaluation | undefined) => choice(evaluation, "work_route")
 
+/**
+ * Whether System One reliably read the request as specific changes to the design prototype under review, so the
+ * harness tracks it as a Design note: only while the Design agent runs or the request was routed as design.
+ */
+export const designChange = (evaluation: Intelligence.Evaluation | undefined, agent: string) =>
+  choice(evaluation, "design_change_request") === "change" && (agent === "design" || workRoute(evaluation) === "design")
+
 /** The skills System One reliably recommends, most confident first, at most three. */
 export function recommendations(evaluation: Intelligence.Evaluation | undefined) {
   if (!evaluation || evaluation.mode === "observe" || evaluation.decision === "unavailable") return []
@@ -552,7 +578,12 @@ export function context(evaluation: Intelligence.Evaluation | undefined) {
   const route = workRoute(evaluation)
   const lines = Object.keys(definitions).flatMap((id) => {
     const answer = answers[id]
-    if (["design_target", "design_platform", "restricted_content", "verification_focus"].includes(id) || !answer)
+    if (
+      ["design_target", "design_platform", "design_change_request", "restricted_content", "verification_focus"].includes(
+        id,
+      ) ||
+      !answer
+    )
       return []
     if (id === "change_kind" && route !== "local_change" && route !== "design" && route !== "plan_review") return []
     if (answer.type === "noul") return answer.noul >= 0.8 ? [`${id}: probability ${answer.noul.toFixed(2)}`] : []

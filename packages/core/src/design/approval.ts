@@ -233,7 +233,9 @@ export function worklist(
       const text = DesignNotice.userText(note.item.text) || "(no text)"
       // An addressed mark is not an outcome: the note stays open, and the list says the agent marked it.
       const status = note.status === "open" && note.addressed ? "open, addressed" : note.status
-      return `${note.feedback} #${note.index} [${status}] ${flat(note.item.label || note.item.target)}\n${DesignNotice.LABEL.note}${options.clip === undefined ? text : clip(text, options.clip)}`
+      // A note from a typed chat message names no element: its words say what to change on the page.
+      const origin = note.source === "message" ? " (from a chat message)" : ""
+      return `${note.feedback} #${note.index} [${status}] ${flat(note.item.label || note.item.target)}${origin}\n${DesignNotice.LABEL.note}${options.clip === undefined ? text : clip(text, options.clip)}`
     }),
     ...(notes.length > listed.length ? [`and ${notes.length - listed.length} more`] : []),
   ].join("\n")
@@ -298,6 +300,7 @@ function fullNote(document: Pick<Design.Info, "rounds">, note: Design.Note) {
   const revision = note.item.revision ?? document.rounds?.find((item) => item.number === note.round)?.revision
   return [
     `Note ${note.feedback} #${note.index} of round ${note.round}, in full. ${NOTES_ARE_DATA}`,
+    note.source === "message" ? "Source: a chat message the user typed, tracked as a note on the whole page" : "",
     note.item.label ? `Label: ${flat(note.item.label)}` : "",
     `Selector: ${flat(note.item.target)}`,
     `${DesignNotice.LABEL.note}${DesignNotice.userText(note.item.text) || "(no text)"}`,

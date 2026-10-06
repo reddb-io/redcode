@@ -338,4 +338,56 @@ describe("IntelligenceClassification", () => {
     expect(IntelligenceClassification.routerGuidance(record("unavailable", {}))).toBeUndefined()
     expect(IntelligenceClassification.routerGuidance(undefined)).toBeUndefined()
   })
+
+  test("asks with every request whether it changes the design under review, in whatever language", () => {
+    const input = IntelligenceClassification.evaluation({
+      sessionID: "ses_test",
+      request: { id: "msg_request", text: "ヘッダーを大きくして、ボタンの色を直してください" },
+      history: [],
+      omitted: 0,
+      session: { mode: "design", goal: "", plan: "" },
+      skills: [],
+      scrub: (text) => text,
+    })
+    const question = input.questions.design_change_request
+    expect(question?.type).toBe("choice")
+    expect(question?.type === "choice" ? Object.keys(question.criteria).toSorted() : []).toEqual([
+      "approval",
+      "change",
+      "new_design",
+      "none",
+      "question",
+    ])
+    expect(JSON.stringify(question?.instructions)).toContain("in whatever language it uses")
+  })
+
+  test("reads a design change request only from a confident answer while design is in play", () => {
+    const labels = ["none", "question", "approval", "new_design", "change"]
+    const routes = ["answer", "design", "local_change"]
+    const change = (confidence: number, route?: string) =>
+      record("accepted", {
+        design_change_request: choice("change", confidence, labels),
+        ...(route ? { work_route: choice(route, 0.9, routes) } : {}),
+      })
+    expect(IntelligenceClassification.designChange(change(0.9), "design")).toBe(true)
+    expect(IntelligenceClassification.designChange(change(0.9, "design"), "build")).toBe(true)
+    expect(IntelligenceClassification.designChange(change(0.9, "local_change"), "build")).toBe(false)
+    expect(IntelligenceClassification.designChange(change(0.59), "design")).toBe(false)
+    expect(
+      IntelligenceClassification.designChange(
+        record("accepted", { design_change_request: choice("question", 0.95, labels) }),
+        "design",
+      ),
+    ).toBe(false)
+    expect(
+      IntelligenceClassification.designChange(
+        { ...record("accepted", { design_change_request: choice("change", 0.95, labels) }), mode: "observe" },
+        "design",
+      ),
+    ).toBe(false)
+    expect(IntelligenceClassification.designChange(record("unavailable", {}), "design")).toBe(false)
+    expect(IntelligenceClassification.designChange(undefined, "design")).toBe(false)
+    // The harness consumes the answer; the agent's assessment does not repeat it.
+    expect(IntelligenceClassification.context(change(0.9, "design"))).not.toContain("design_change_request")
+  })
 })

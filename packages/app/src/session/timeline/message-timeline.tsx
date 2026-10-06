@@ -38,6 +38,7 @@ import { SessionHeaderSpacer } from "@/session/header/session-header"
 import type { BackgroundTask } from "../summary/background"
 import { DesignNotice } from "@opencode/schema/design-notice"
 import { DesignApprovalCard, DesignFeedbackCard } from "../design/cards"
+import { designOrdinals } from "../design/state"
 import { announceRestricted, RestrictedNotice } from "./restricted-notice"
 
 const SessionSummaryPanel = lazy(async () => {
@@ -280,6 +281,8 @@ function MessageTimelineView(
   })
 
   announceRestricted(props.session.data.info)
+  // Design cards name a revision by its number (R7) when the agent's publish announced it in this session.
+  const designRevisions = createMemo(() => designOrdinals(props.session.history.messages()))
   const rowRenderer = createSessionTimelineRowRenderer({
     sessionID: () => sessionID()!,
     status: sessionStatus,
@@ -305,13 +308,17 @@ function MessageTimelineView(
     userCard: (message) => {
       if (message.metadata?.source !== "design.feedback") return undefined
       const notice = DesignNotice.feedback(message.text)
-      return notice ? <DesignFeedbackCard notice={notice} /> : undefined
+      return notice ? <DesignFeedbackCard notice={notice} ordinal={designRevisions().get(notice.revision)} /> : undefined
     },
     noticeCard: (message) => {
       if (message.type !== "synthetic") return undefined
       const notice = DesignNotice.approval(message)
       return notice ? (
-        <DesignApprovalCard notice={notice} onOpen={() => command.trigger("session.design")} />
+        <DesignApprovalCard
+          notice={notice}
+          ordinal={designRevisions().get(notice.revision)}
+          onOpen={() => command.trigger("session.design")}
+        />
       ) : undefined
     },
     actions: props.actions,

@@ -6,6 +6,7 @@ import { Design } from "@opencode/schema/design"
 import { DesignNotice } from "@opencode/schema/design-notice"
 import { DesignApproval } from "./approval.js"
 import { DesignRounds } from "./rounds.js"
+import { DesignReuse } from "./reuse.js"
 import { device, type Platform } from "./ui/devices.js"
 
 /**
@@ -371,6 +372,44 @@ export async function screenNotice(root: string, engine: Design.Info["engine"], 
   return warnings.length ? `\nScreen warnings:\n${warnings.map((line) => `- ${line}`).join("\n")}` : ""
 }
 
+/** A check's stable name across revisions and viewports: its own key, else rule, direction, slide and selector. */
+export function key(check: Pick<Design.AuditCheck, "rule" | "key" | "variant" | "screen" | "selector">) {
+  return check.key ?? `${check.rule}@${check.variant ?? "page"}${check.screen ? `/${check.screen}` : ""}:${check.selector}`
+}
+
+/** The decision id that records a check as an accepted exception. */
+export const accepted = (check: string) => `accept:${check}`
+
+/**
+ * The audit's final checks: every check keyed, effects the design system declares itself (a gradient
+ * text fill, a backdrop blur) downgraded to info, and checks whose key a decision accepts left out,
+ * with one finding that says how many were not flagged again.
+ */
+export function settle(
+  checks: readonly Design.AuditCheck[],
+  decisions: readonly Design.Decision[],
+  system?: { readonly gradient: boolean; readonly glass: boolean },
+) {
+  const keys = new Set(decisions.flatMap((decision) => (decision.id.startsWith("accept:") ? [decision.id.slice(7)] : [])))
+  const keyed = checks.map((check) => {
+    const named = { ...check, key: key(check) }
+    const declared =
+      (check.rule === "gradient-heading" && system?.gradient) || (check.rule === "decorative-glass" && system?.glass)
+    return declared && check.severity === "review"
+      ? { ...named, severity: "info" as const, evidence: `${check.evidence} The design system declares this effect.` }
+      : named
+  })
+  const skipped = [...new Set(keyed.filter((check) => keys.has(check.key)).map((check) => check.key))]
+  return {
+    checks: keyed.filter((check) => !keys.has(check.key)),
+    findings: skipped.length
+      ? [
+          `${skipped.length} accepted exception${skipped.length === 1 ? "" : "s"} recorded in decisions not flagged again: ${skipped.slice(0, 8).join(", ")}${skipped.length > 8 ? ", …" : ""}.`,
+        ]
+      : [],
+  }
+}
+
 /** Both runtimes receive the same evidence instead of a path-only job status. */
 export function report(
   jobs: readonly Pick<
@@ -452,14 +491,22 @@ export function report(
             ...(current.audit.findings.length > 30
               ? [`${current.audit.findings.length - 30} further findings in ${current.result}.`]
               : []),
+            ...(current.audit.reuse ? [DesignReuse.describe(current.audit.reuse)] : []),
+            // Info checks ask for nothing, so they come after everything that does.
             ...(current.audit.checks ?? [])
+              .toSorted((a, b) => Number(a.severity === "info") - Number(b.severity === "info"))
               .slice(0, 30)
               .map(
                 (check) =>
-                  `${check.severity.toUpperCase()} ${check.rule} · ${check.width}px${check.variant ? ` · ${check.variant}` : ""}${check.screen ? ` · slide ${check.screen}` : ""}${check.scenario ? ` · ${check.scenario}` : ""} · ${check.selector}: ${check.evidence} Fix: ${check.fix}`,
+                  `${check.severity.toUpperCase()} ${check.rule} · ${check.width}px${check.variant ? ` · ${check.variant}` : ""}${check.screen ? ` · slide ${check.screen}` : ""}${check.scenario ? ` · ${check.scenario}` : ""} · ${check.selector}: ${check.evidence} Fix: ${check.fix}${check.key ? ` [key ${check.key}]` : ""}`,
               ),
             ...((current.audit.checks?.length ?? 0) > 30
               ? [`Further checks in ${current.result}; inspect the full report.`]
+              : []),
+            ...(current.audit.checks?.some((check) => check.key && check.severity !== "info")
+              ? [
+                  `To keep a flagged check as a deliberate exception, add a decision with id "${accepted("<key>")}" and the reason as text; later audits do not flag that key again.`,
+                ]
               : []),
             "Read these captures with the image-capable read tool before judging visual quality:",
             ...(current.audit.captures ?? []).map(
@@ -472,6 +519,19 @@ export function report(
             ...(previous?.audit
               ? [
                   `Previous audit ${previous.id} (${previous.input.revision}): ${previous.audit.findings.length} findings. Compare the named fixes on equivalent variants, states and viewports; a count reduction alone does not prove resolution.`,
+                  ...(() => {
+                    const flagged = (audit: Design.Audit) =>
+                      new Set((audit.checks ?? []).filter((check) => check.severity !== "info").map(key))
+                    const before = flagged(previous.audit!)
+                    const now = flagged(current.audit!)
+                    const kept = [...now].filter((item) => before.has(item))
+                    const gone = [...before].filter((item) => !now.has(item))
+                    return before.size
+                      ? [
+                          `By key since ${previous.id}: ${kept.length} still flagged${kept.length ? ` (${kept.slice(0, 6).join(", ")}${kept.length > 6 ? ", …" : ""})` : ""}, ${gone.length} no longer flagged, ${now.size - kept.length} new.`,
+                        ]
+                      : []
+                  })(),
                 ]
               : []),
             "End-of-round review: inspect structure/use and craft against the artifact checklist, record findings and pending Design tasks, then report and stop. For automatic end-of-round reviews: Do not edit, republish or start another correction cycle from these findings. An explicit browser Run anti-slop request authorizes one correction pass after its initial audit, one changed publication and one final audit to verify the named fixes; stop after that final audit without another correction pass. Disclose unresolved and unverified items. Human approval remains required.",

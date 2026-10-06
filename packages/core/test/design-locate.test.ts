@@ -64,8 +64,10 @@ describe("DesignLocate.resolve", () => {
     expect(resolve('[data-design-id="legal"]', "missing")).toEqual({ found: false, how: "variant missing" })
   })
 
-  test("treats page and diagram notes and invalid selectors as unresolved without throwing", () => {
-    expect(resolve("page")).toEqual({ found: false, how: "not found" })
+  test("resolves a page note to the variant root or the body, and leaves diagram and invalid selectors unresolved", () => {
+    expect(resolve("page")).toMatchObject({ how: "page" })
+    expect(resolve("page", "console")).toMatchObject({ how: "page" })
+    expect(resolve("page", "missing")).toEqual({ found: false, how: "variant missing" })
     expect(resolve("diagram")).toEqual({ found: false, how: "not found" })
     expect(resolve("button[[", "console", "/html/body/div[1]")).toEqual({ found: false, how: "not found" })
   })
@@ -78,5 +80,18 @@ describe("DesignLocate.resolve", () => {
       variant: "console",
     })
     expect(hit.found && hit.node.textContent).toBe("Rotate 2")
+  })
+})
+
+describe("DesignLocate.facts", () => {
+  const first = (html: string) => page(html).querySelector("#cta")!
+
+  test("the verify marker never counts as a change; text, markup and style do", () => {
+    const plain = DesignLocate.facts(first(`<button id="cta">  Enviar\n  agora </button>`), "color:red")
+    expect(plain.text).toBe("Enviar agora")
+    expect(DesignLocate.facts(first(`<button id="cta" data-redcode-verify="target">  Enviar\n  agora </button>`), "color:red")).toEqual(plain)
+    expect(DesignLocate.facts(first(`<button id="cta">送信</button>`), "color:red").text).toBe("送信")
+    expect(DesignLocate.facts(first(`<button id="cta" class="big">  Enviar\n  agora </button>`), "color:red").markup).not.toBe(plain.markup)
+    expect(DesignLocate.facts(first(`<button id="cta">  Enviar\n  agora </button>`), "color:blue").markup).not.toBe(plain.markup)
   })
 })

@@ -3,7 +3,11 @@ import type { Design } from "@opencode/schema/design"
 import { useTheme } from "../context/theme"
 
 /** Compact transcript view of admitted browser feedback; the model reads the rendered message instead. */
-export function DesignFeedbackNotice(props: { notice: Design.FeedbackNotice }) {
+export function DesignFeedbackNotice(props: {
+  notice: Design.FeedbackNotice
+  /** The number (R7) of the revision the notes were taken on, when the transcript announced it. */
+  ordinal?: number
+}) {
   const theme = useTheme()
   // The count the reviewer sent: a message cut by an older renderer lists fewer notes than it names.
   const sent = () => props.notice.sent ?? props.notice.notes.length
@@ -13,7 +17,7 @@ export function DesignFeedbackNotice(props: { notice: Design.FeedbackNotice }) {
       sent() ? `${sent()} note${sent() === 1 ? "" : "s"}` : undefined,
       props.notice.id,
       props.notice.target,
-      props.notice.revision,
+      props.ordinal ? `on R${props.ordinal}` : props.notice.revision,
       props.notice.variant ?? undefined,
       props.notice.ended ? "ended" : undefined,
     ]

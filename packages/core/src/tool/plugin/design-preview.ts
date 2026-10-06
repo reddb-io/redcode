@@ -204,10 +204,19 @@ export const Plugin = {
                     }),
                   )
                 : undefined
-              const number = numbered(yield* designs.revisions(context.sessionID, document.id), revision.id)
+              const revisions = yield* designs.revisions(context.sessionID, document.id)
+              const number = numbered(revisions, revision.id)
+              // An unchanged prototype is said out loud: the verify would see no change in any note's element.
+              const parent = revisions.find((item) => item.id === revision.parent)
+              const unchanged =
+                revision.id === document.revision
+                  ? `\nNothing changed since R${number}: the prototype files and the design record are the same, so no new revision was published.`
+                  : parent && sameFiles(parent, revision)
+                    ? `\nNothing changed since R${numbered(revisions, parent.id)}: the prototype files of R${number} are byte-identical to it. R${number} was still published because it answers the open feedback round, but a verify sees no change in the elements of notes taken on R${numbered(revisions, parent.id)}, and resolved is refused for a note whose element did not change. Edit what the notes ask for and publish again, or record those notes unresolved or accepted with a reason.`
+                    : ""
               return {
                 output: revision,
-                content: `Published revision R${number} (${revision.id}) for ${revision.designID}. Name it R${number} in your reply. The user can annotate this revision. Root: ${revision.document.root}${notice ?? ""}${link ? `\n${link}` : ""}${recited ? `\n${recited}` : ""}`,
+                content: `Published revision R${number} (${revision.id}) for ${revision.designID}. Name it R${number} in your reply. The user can annotate this revision. Root: ${revision.document.root}${unchanged}${notice ?? ""}${link ? `\n${link}` : ""}${recited ? `\n${recited}` : ""}`,
                 metadata: { designID: document.id, revision: revision.id, ordinal: number },
               }
             }).pipe(Effect.mapError((error) => new ToolFailure({ message: error.message, error }))),
@@ -279,4 +288,11 @@ export const Plugin = {
 /** A revision's number in its design's history (R7): its position in the newest-first, immutable revision list. */
 function numbered(revisions: readonly Design.Revision[], id: string) {
   return revisions.length - revisions.findIndex((revision) => revision.id === id)
+}
+
+/** The prototype's own files are byte-identical; compiled output is left out, since a rebuild may differ. */
+export function sameFiles(a: Pick<Design.Revision, "files">, b: Pick<Design.Revision, "files">) {
+  const own = (revision: Pick<Design.Revision, "files">) =>
+    Object.entries(revision.files).filter(([file]) => !file.startsWith(".compiled/"))
+  return own(a).length === own(b).length && own(a).every(([file, hash]) => b.files[file] === hash)
 }

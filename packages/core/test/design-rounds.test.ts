@@ -2,6 +2,7 @@ import { describe, expect, test } from "bun:test"
 import { Design } from "@opencode/schema/design"
 import { SessionMessage } from "@opencode/schema/session-message"
 import { DesignRounds } from "@opencode/core/design/rounds"
+import { DesignVerify } from "@opencode/core/design/verify"
 
 const designID = Design.ID.make("design_checkout")
 const message = (id: string, revision: string, items: Design.FeedbackItem[]): Design.Feedback => ({
@@ -472,6 +473,8 @@ describe("DesignRounds", () => {
         findings: ["review · small-control"],
         scenarios: ["Clients list: exercised"],
       },
+      // Neither an addressed mark nor a delta: no change to show.
+      change: undefined,
     })
   })
 
@@ -627,5 +630,163 @@ describe("DesignRounds checklist", () => {
     )
     if ("problem" in settled) throw new Error(settled.problem)
     expect(DesignRounds.continuation({ ...answered, notes: settled.notes }, verified)).toBeUndefined()
+  })
+})
+
+describe("DesignVerify", () => {
+  const web = [
+    { width: 390, height: 900 },
+    { width: 768, height: 900 },
+    { width: 1440, height: 900 },
+  ]
+  const phones = [
+    { width: 393, height: 852, device: "ios" as const },
+    { width: 412, height: 915, device: "android" as const },
+  ]
+  const taken = (extra: Partial<Design.FeedbackItem> = {}) => ({ item: { target: "#cta", text: "Bigger", ...extra } })
+  const widths = (plan: ReturnType<typeof DesignVerify.placements>) =>
+    plan.placements.map((item) => [DesignVerify.viewportLabel(item.viewport), item.notes])
+
+  test("notes are grouped by the viewport they were taken at; a note without one keeps the widest", () => {
+    const plan = DesignVerify.placements([taken({ width: 390 }), taken(), taken({ width: 390 }), taken({ width: 1187 })], web)
+    // An unconfigured width is used as recorded, at the nearest viewport's height.
+    expect(widths(plan)).toEqual([
+      ["390px", [0, 2]],
+      ["1187px", [3]],
+      ["1440px", [1]],
+    ])
+    expect(plan.placements[1].viewport).toEqual({ width: 1187, height: 900 })
+    expect(plan.collapsed).toEqual([])
+    // A width no screen has is clamped to one.
+    expect(widths(DesignVerify.placements([taken({ width: 100 }), taken({ width: 9000 })], web))).toEqual([
+      ["240px", [0]],
+      ["3840px", [1]],
+    ])
+  })
+
+  test("past the cap the least used viewports collapse into the nearest kept one, and say so", () => {
+    const plan = DesignVerify.placements(
+      [taken({ width: 390 }), taken({ width: 390 }), taken({ width: 768 }), taken({ width: 1440 }), taken({ width: 800 })],
+      web,
+      3,
+    )
+    // One note each at 768, 800 and 1440: the wider ones are kept and 768 joins 800.
+    expect(widths(plan)).toEqual([
+      ["390px", [0, 1]],
+      ["800px", [2, 4]],
+      ["1440px", [3]],
+    ])
+    expect(DesignVerify.collapsedFindings(plan.collapsed, 3)).toEqual([
+      "review · 1 note taken at 768px verified at 800px: one verify renders at most 3 viewports",
+    ])
+  })
+
+  test("an app note is verified on the phone it was taken on, the widest phone without one", () => {
+    const plan = DesignVerify.placements([taken({ platform: "ios", width: 393 }), taken(), taken({ width: 400 })], phones)
+    // A width without a phone picks the phone nearest to it.
+    expect(widths(plan)).toEqual([
+      ["393px iOS", [0, 2]],
+      ["412px Android", [1]],
+    ])
+    // A single phone takes every note, whatever it recorded.
+    expect(widths(DesignVerify.placements([taken({ platform: "android" })], [phones[0]]))).toEqual([["393px iOS", [0]]])
+  })
+
+  test("the delta compares the element's text, markup, box and pixels; the same facts twice is no change", () => {
+    const facts = { rect: { x: 10, y: 20, width: 100, height: 40 }, text: "Salvar", markup: "a1" }
+    const none = DesignVerify.delta(facts, facts)
+    expect(none).toEqual({ changed: false, text: false, markup: false, moved: false, resized: false })
+    expect(DesignVerify.describe(none)).toBe(
+      "change: none to the element (pixels, text, markup, style, position and size are the same)",
+    )
+    // Sub-pixel layout and anti-aliasing noise are not a change.
+    expect(
+      DesignVerify.delta(facts, { ...facts, rect: { x: 11, y: 21, width: 101, height: 40 } }, 0.05).changed,
+    ).toBe(false)
+    const edited = DesignVerify.delta(
+      facts,
+      { rect: { x: 10, y: 60, width: 160, height: 40 }, text: "保存する", markup: "b2" },
+      12.346,
+    )
+    expect(edited).toEqual({
+      changed: true,
+      pixels: 12.35,
+      text: true,
+      markup: true,
+      moved: true,
+      resized: true,
+      textBefore: "Salvar",
+      textAfter: "保存する",
+    })
+    expect(DesignVerify.describe(edited)).toBe("change: 12.35% of pixels, text, markup or style, moved, resized")
+    expect(DesignVerify.delta(facts, facts, 3).changed).toBe(true)
+    expect(DesignVerify.delta(undefined, facts)).toMatchObject({ changed: true, added: true })
+    // Quoted text is clipped to the schema's bound without splitting a character.
+    const long = DesignVerify.delta(facts, { ...facts, text: "😀".repeat(300) }).textAfter!
+    expect(long.length).toBeLessThanOrEqual(240)
+    expect(long).toBe(`${"😀".repeat(119)}…`)
+  })
+
+  test("resolved is refused when the verify saw no change in the note's element; partial and the rest are not", () => {
+    const opened = DesignRounds.admit(
+      { rounds: undefined, notes: undefined },
+      message("msg_1", "rev_1", [note("#cta", "Bigger"), note("#title", "Say hello")]),
+      100,
+    )
+    const answered = { ...DesignRounds.published(opened, "rev_2"), revision: "rev_2" }
+    const facts = { rect: { x: 0, y: 0, width: 100, height: 40 }, text: "Go", markup: "a" }
+    const verify = job("render_1", "rev_2", 1, [
+      seen("msg_1", 1, true, { width: 390, delta: DesignVerify.delta(facts, facts, 0) }),
+      seen("msg_1", 2, true, { delta: DesignVerify.delta(facts, { ...facts, text: "Hello" }) }),
+    ])
+    const feedback = SessionMessage.ID.make("msg_1")
+    const gate = (update: Design.NoteUpdate) => DesignRounds.triage(answered, [update], [verify]).checked[0].refusal
+    const cite = { evidence: { job: "render_1" } }
+    expect(gate({ feedback, index: 1, status: "resolved", ...cite })).toBe(
+      `${DesignRounds.REFUSED} msg_1 #1 cannot be resolved: render_1 saw no change to its element since the revision the note was taken on (pixels, text, markup, style, position and size are the same at 390px). Change the element the note names, publish and verify again, or record it unresolved or accepted with a reason saying why it stays as it is.`,
+    )
+    expect(gate({ feedback, index: 2, status: "resolved", ...cite })).toBeUndefined()
+    expect(gate({ feedback, index: 1, status: "partial", reason: "Only the color changed", ...cite })).toBeUndefined()
+    expect(gate({ feedback, index: 1, status: "accepted", reason: "Stays as designed" })).toBeUndefined()
+    expect(gate({ feedback, index: 1, status: "unresolved", reason: "Not this round", ...cite })).toBeUndefined()
+    // A verify that measured no delta (the earlier revision could not render) refuses nothing new.
+    const unmeasured = job("render_2", "rev_2", 1, [seen("msg_1", 1, true)])
+    expect(
+      DesignRounds.triage(answered, [{ feedback, index: 1, status: "resolved", evidence: { job: "render_2" } }], [unmeasured])
+        .checked[0].refusal,
+    ).toBeUndefined()
+  })
+
+  test("a claimed fix shows a review the addressed mark, where the note was taken and the delta", () => {
+    const opened = DesignRounds.admit(
+      { rounds: undefined, notes: undefined },
+      message("msg_1", "rev_1", [note("#cta", "Bigger"), note("#other", "Other")]),
+      100,
+    )
+    const marked = DesignRounds.tick(opened, [{ feedback: "msg_1", index: 1, summary: "Raised the font size" }], 200)
+    const withViewport = {
+      ...opened,
+      notes: marked.notes.map((item) =>
+        item.index === 1 ? { ...item, item: { ...item.item, width: 390, platform: undefined } } : item,
+      ),
+    }
+    const facts = { rect: { x: 0, y: 0, width: 100, height: 40 }, text: "Go", markup: "a" }
+    const delta = DesignVerify.delta(facts, { ...facts, rect: { ...facts.rect, height: 56 }, markup: "b" }, 30)
+    const verify = job("render_1", "rev_2", 1, [seen("msg_1", 1, true, { width: 390, delta }), seen("msg_1", 2, true)])
+    const feedback = SessionMessage.ID.make("msg_1")
+    expect(
+      DesignRounds.claim(withViewport, { feedback, index: 1, status: "resolved", evidence: { job: "render_1" } }, [verify])
+        .change,
+    ).toEqual({
+      addressed: "Raised the font size",
+      taken: { width: 390, platform: undefined },
+      verified: { width: 390, platform: undefined },
+      delta,
+    })
+    // Neither a mark nor a delta: nothing about a change to show.
+    expect(
+      DesignRounds.claim(withViewport, { feedback, index: 2, status: "resolved", evidence: { job: "render_1" } }, [verify])
+        .change,
+    ).toBeUndefined()
   })
 })

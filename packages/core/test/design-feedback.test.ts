@@ -814,6 +814,23 @@ describe("DesignFeedback screens", () => {
     )
     expect(unframed).toContain("### 1. #card\nNote: Label it\nScreen: pay")
   })
+
+  test("names the viewport a note was taken at, and only when the page recorded one", () => {
+    const text = DesignFeedback.render(
+      {
+        ...base,
+        items: [
+          { target: "#card", text: "Label it", width: 390 },
+          { target: "#tab", text: "Raise it", width: 393, platform: "ios" },
+          { target: "#list", text: "Show totals" },
+        ],
+      },
+      context,
+    )
+    expect(text).toContain("### 1. #card\nNote: Label it\nViewport: 390px\n\n### 2. #tab\nNote: Raise it\nViewport: 393px iOS")
+    expect(text).toContain("### 3. #list\nNote: Show totals\n\n")
+    expect(text.split("Viewport:")).toHaveLength(3)
+  })
 })
 
 describe("DesignFeedback variant operations", () => {

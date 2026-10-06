@@ -295,10 +295,7 @@ export function describe(document: Document) {
     ...(facts.tokens.length ? [`Tokens: ${facts.tokens.join(", ")}`] : []),
     ...(facts.pipeline.length ? [`Pipeline: ${facts.pipeline.join("; ")}`] : []),
     ...(facts.framework ? [`Framework: ${facts.framework}`] : []),
-    ...[...new Set(inventory.map((entry) => entry.root))].toSorted().map((root) => {
-      const names = inventory.filter((entry) => entry.root === root).map((entry) => entry.name)
-      return `Components ${root}: ${names.slice(0, 40).join(", ")}${names.length > 40 ? ` (+${names.length - 40} more)` : ""}`
-    }),
+    ...components(inventory, system?.aliases),
     ...(stories ? [`Stories: ${stories} files`] : []),
     ...(system
       ? [
@@ -313,6 +310,42 @@ export function describe(document: Document) {
         ]
       : []),
   ].join("\n")
+}
+
+/** Component files the model-visible block lists, and secondary exports shown per file. */
+const LISTED = { files: 60, secondary: 6 } as const
+
+/**
+ * The inventory one line per component file under its root: the primary export, then the others,
+ * with the import path each root takes. Past {@link LISTED} files a line says how many are left and
+ * where the whole list is.
+ */
+function components(inventory: readonly Design.Component[], aliases?: Readonly<Record<string, string>>) {
+  const roots = [...new Set(inventory.map((entry) => entry.root))].toSorted()
+  const files = roots.flatMap((root) => [
+    ...new Set(inventory.filter((entry) => entry.root === root).map((entry) => entry.file)),
+  ])
+  const listed = files.slice(0, LISTED.files)
+  return [
+    ...roots.flatMap((root) => {
+      const own = listed.filter((file) => inventory.some((entry) => entry.file === file && entry.root === root))
+      if (!own.length) return []
+      const example = DesignInventory.specifier(`${root}/Name.tsx`, aliases)
+      return [
+        `Components ${root} (import { Name } from "${example.slice(0, -"Name".length)}<file>"):`,
+        ...own.map((file) => {
+          const [primary, ...rest] = inventory.filter((entry) => entry.file === file).map((entry) => entry.name)
+          const shown = rest.slice(0, LISTED.secondary)
+          return `- ${file.slice(root.length + 1)}: ${primary}${shown.length ? `; also ${shown.join(", ")}${rest.length > shown.length ? `, +${rest.length - shown.length} more` : ""}` : ""}`
+        }),
+      ]
+    }),
+    ...(files.length > listed.length
+      ? [
+          `${files.length - listed.length} more component files not listed (${inventory.length} exports in all): read the Components section of ${DesignManifest.FILE}, or list the component roots with the read tool.`,
+        ]
+      : []),
+  ]
 }
 
 /** Paths and counts only: what a list and the Design Context Source carry on every turn. */

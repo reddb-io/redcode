@@ -59,6 +59,7 @@ import { useEditorContext } from "../../context/editor"
 import { openEditor } from "../../editor"
 import { browserDisabled, NO_BROWSER, openDesignUrl } from "@opencode/util/open"
 import { getDesignReviewLink, openDesignReview } from "@opencode/util/design-review"
+import { announcedOrdinals } from "@opencode/util/design-round-summary"
 import { useDialog } from "../../ui/dialog"
 import { DialogSelect } from "../../ui/dialog-select"
 import { useGoalCommand } from "../../component/goal-command"
@@ -2263,11 +2264,23 @@ function BackgroundToolHint(props: { messages: SessionMessageInfo[] }) {
 function SessionMessageView(props: { message: SessionMessageInfo }) {
   return (
     <Switch>
-      <Match when={designFeedback(props.message)}>{(notice) => <DesignFeedbackNotice notice={notice()} />}</Match>
+      <Match when={designFeedback(props.message)}>
+        {(notice) => {
+          const ordinal = useRevisionOrdinal(() => notice().revision)
+          return <DesignFeedbackNotice notice={notice()} ordinal={ordinal()} />
+        }}
+      </Match>
       <Match when={designApproval(props.message)}>
         {(notice) => {
           const keymap = Keymap.use()
-          return <DesignApprovalNotice notice={notice()} onOpen={() => keymap.dispatch("session.design.review")} />
+          const ordinal = useRevisionOrdinal(() => notice().revision)
+          return (
+            <DesignApprovalNotice
+              notice={notice()}
+              ordinal={ordinal()}
+              onOpen={() => keymap.dispatch("session.design.review")}
+            />
+          )
         }}
       </Match>
       <Match when={props.message.type === "user"}>
@@ -2308,6 +2321,23 @@ function designFeedback(message: SessionMessageInfo) {
 function designApproval(message: SessionMessageInfo) {
   if (message.type !== "synthetic") return undefined
   return DesignNotice.approval(message)
+}
+
+/**
+ * A revision's number (R7) as the agent's design_preview or design_history result in this session announced
+ * it; undefined for a revision published from the review page, whose number the transcript does not carry.
+ */
+function useRevisionOrdinal(revision: () => string) {
+  const ctx = use()
+  const data = useData()
+  return createMemo(() =>
+    announcedOrdinals(
+      data.session.message
+        .list(ctx.sessionID)
+        .flatMap((message) => (message.type === "assistant" ? message.content : []))
+        .filter((content): content is SessionMessageAssistantTool => content.type === "tool"),
+    ).get(revision()),
+  )
 }
 
 function SessionPartView(props: {

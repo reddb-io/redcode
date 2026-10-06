@@ -6,8 +6,14 @@ import { Schema } from "effect"
 import { Design } from "@opencode/schema/design"
 import { DesignFiles } from "./files.js"
 
-const LIMIT = 200
-const ROOT_LIMIT = 60
+/**
+ * Bounds: every component file of a root is read (up to FILES), keeping at most NAMES exports per
+ * file so one large barrel cannot crowd out the rest, ROOT_LIMIT entries per root so later roots
+ * still appear, and LIMIT in all. A shadcn ui folder (about fifty files, under three hundred exports) fits whole.
+ */
+const LIMIT = 800
+const ROOT_LIMIT = 400
+const NAMES = 16
 const FILES = 400
 const BYTES = 256 * 1024
 const SKIP = /(?:^|\/)(?:node_modules|__tests__|__mocks__|__snapshots__)\//
@@ -74,9 +80,13 @@ async function exports(application: string, root: string, file: string) {
   const names = code === undefined ? undefined : scanned(code, path.extname(file))
   if (!names) return []
   const fallback = path.basename(file, path.extname(file))
+  const primary = fallback.replace(/[-_]/g, "").toLowerCase()
   return names
     .map((name) => (name === "default" ? fallback : name))
     .filter((name, index, all) => NAME.test(name) && all.indexOf(name) === index)
+    // The file's primary export (dialog.tsx → Dialog) leads, so the per-file bound never drops it.
+    .toSorted((a, b) => Number(b.toLowerCase() === primary) - Number(a.toLowerCase() === primary))
+    .slice(0, NAMES)
     .map((name) => {
       const props = new RegExp(`\\b(?:interface|type)\\s+(${name}Props)\\b`).exec(code!)?.[1]
       return props ? { root, file: relative, name, props } : { root, file: relative, name }
@@ -102,4 +112,21 @@ function scanned(code: string, extension: string) {
   } catch {
     return undefined
   }
+}
+
+/** How a prototype imports a component file: through a configured alias when one covers it, else its project path. */
+export function specifier(file: string, aliases?: Readonly<Record<string, string>>) {
+  const stem = file.replace(/\.[^/.]+$/, "").replace(/\/index$/, "")
+  const alias = Object.entries(aliases ?? {})
+    .map(([find, target]) => ({ find: find.replace(/\/\*?$/, ""), target: normalize(target) }))
+    .find((item) => stem === item.target || stem.startsWith(`${item.target}/`))
+  return alias ? `${alias.find}${stem.slice(alias.target.length)}` : stem
+}
+
+/** A project-relative alias target without `./`, a trailing slash or a trailing `/*`. */
+export function normalize(target: string) {
+  return path.posix
+    .normalize(target.replaceAll("\\", "/"))
+    .replace(/^\.\/|\/\*?$/g, "")
+    .replace(/^\.$/, "")
 }

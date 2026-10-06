@@ -1,0 +1,5 @@
+---
+"@reddb-io/redcode": patch
+---
+
+Design review notes are now verified where they were taken and need a visible change to count as resolved. The review page records the preview width and, for app designs, the phone of each note, and the agent's review message names it. A round's verify renders each note at that width or phone (at most three viewports per verify; notes from others are verified at the nearest one and the job says so) and compares the note's element on the revision the note was taken on with the new one: pixels, text, markup or computed style, position and size. `resolved` is refused when the verify saw no change at all in the element, with a message telling the agent to change it or record the note `unresolved` or `accepted` with a reason. With dual reasoning, the System One review of each resolved note also sees the addressed summary, the viewport and the change, and is asked in the same request whether that change plausibly carries out the note. A design_preview publish whose prototype files are byte-identical to the previous revision now says that nothing changed.

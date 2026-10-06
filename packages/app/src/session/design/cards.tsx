@@ -6,7 +6,11 @@ import { useLanguage } from "@/runtime/i18n/language"
  * Transcript card for admitted browser feedback, in place of the rendered `<design-review>` prompt the
  * model reads: the reviewer's message, the numbered notes and what came with them.
  */
-export function DesignFeedbackCard(props: { notice: Design.FeedbackNotice }) {
+export function DesignFeedbackCard(props: {
+  notice: Design.FeedbackNotice
+  /** The number (R7) of the revision the notes were taken on, when the transcript announced it. */
+  ordinal?: number
+}) {
   const language = useLanguage()
   // The count the reviewer sent: a message cut by an older renderer lists fewer notes than it names.
   const sent = () => props.notice.sent ?? props.notice.notes.length
@@ -18,7 +22,11 @@ export function DesignFeedbackCard(props: { notice: Design.FeedbackNotice }) {
       sent() ? language.plural("session.design.feedback.notes", sent()) : undefined,
       props.notice.id,
       props.notice.target,
-      props.notice.revision,
+      props.ordinal
+        ? language.t("session.design.feedback.on", {
+            revision: language.t("session.design.revision.ordinal", { ordinal: props.ordinal }),
+          })
+        : props.notice.revision,
       props.notice.variant ?? undefined,
       props.notice.ended ? language.t("session.design.feedback.ended") : undefined,
     ]
@@ -90,7 +98,12 @@ export function DesignFeedbackCard(props: { notice: Design.FeedbackNotice }) {
 }
 
 /** Transcript card of a Design approval: what was approved, and the way back to the session's designs. */
-export function DesignApprovalCard(props: { notice: Design.ApprovalNotice; onOpen: () => void }) {
+export function DesignApprovalCard(props: {
+  notice: Design.ApprovalNotice
+  /** The approved revision's number (R7), when the transcript announced it. */
+  ordinal?: number
+  onOpen: () => void
+}) {
   const language = useLanguage()
   return (
     <div
@@ -107,8 +120,10 @@ export function DesignApprovalCard(props: { notice: Design.ApprovalNotice; onOpe
         <bdi dir="auto" class="min-w-0 truncate text-v2-text-text-base">
           {props.notice.variant?.name ?? language.t("session.design.approval.entire")}
         </bdi>
-        <bdi dir="ltr" class="shrink-0 text-v2-text-text-muted">
-          {props.notice.revision}
+        <bdi dir="ltr" class="shrink-0 text-v2-text-text-muted" title={props.notice.revision}>
+          {props.ordinal
+            ? language.t("session.design.revision.ordinal", { ordinal: props.ordinal })
+            : props.notice.revision}
         </bdi>
       </div>
       <div class="text-12-regular text-v2-text-text-muted">{language.t("session.design.approval.saved")}</div>

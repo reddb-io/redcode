@@ -701,7 +701,9 @@ const layer = Layer.effect(
             Effect.tap((evaluation) =>
               IntelligenceClassification.restricted(evaluation) === "flagged"
                 ? markRestricted(sessionID, user.id)
-                : Effect.void,
+                : IntelligenceClassification.designChange(evaluation, loaded.agent.id)
+                  ? noteDesignChange(sessionID, user)
+                  : Effect.void,
             ),
           )
         }).pipe(
@@ -720,6 +722,28 @@ const layer = Layer.effect(
       const session = yield* store.get(sessionID)
       const metadata = session && VaultRestricted.mark(session.metadata, messageID, "sensitive")
       if (metadata) yield* bus.publish(SessionEvent.MetadataUpdated, { sessionID, metadata })
+    })
+
+    /**
+     * Tracks a typed chat message System One reliably read as changes to the published prototype as a Design
+     * note, so it is gated, recited and verified like a note from the review page. The classification lands
+     * after the message was delivered and while the agent may already be working on it: the note joins the
+     * open round whenever it arrives, and nothing waits for it, so delivery and the Step never block on S1.
+     * When the agent already stopped, the note waits for the next idle boundary's round continuation. Only
+     * dual reasoning gets here (single never classifies; observe answers read as unresolved, see
+     * `IntelligenceClassification.designChange`), and only for a message the user typed: a review-page
+     * message, continuation or other programmatic prompt carries a metadata source and is skipped. A message
+     * S1 flagged as restricted content never reaches this, so its words are not copied into the design.
+     */
+    const noteDesignChange = Effect.fn("SessionRunner.noteDesignChange")(function* (
+      sessionID: SessionSchema.ID,
+      user: SessionMessage.User,
+    ) {
+      if (user.metadata?.source !== undefined) return
+      const document = (yield* designs.list(sessionID))
+        .filter((item) => !item.ended && item.revision)
+        .toSorted((left, right) => right.updated - left.updated)[0]
+      if (document) yield* designs.noteMessage(sessionID, document.id, { id: user.id, text: user.text })
     })
 
     /**

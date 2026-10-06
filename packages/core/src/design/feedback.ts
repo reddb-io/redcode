@@ -237,6 +237,9 @@ export function render(input: Design.Feedback, context: Context) {
                   ? `Element text: "${element}"`
                   : "",
                 screen ? `Screen: ${screen}` : "",
+                item.width || item.platform
+                  ? `Viewport: ${[item.width ? `${item.width}px` : "", item.platform === "ios" ? "iOS" : item.platform === "android" ? "Android" : ""].filter(Boolean).join(" ")}`
+                  : "",
                 scenario ? `Scenario: ${scenario}` : "",
                 revision ? `Revision: ${revision}` : "",
                 ...boards.flatMap((board) =>

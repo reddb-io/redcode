@@ -6,6 +6,11 @@
     "noUncheckedIndexedAccess": false,
     "tsBuildInfoFile": "node_modules/.ts-dist/browser.tsbuildinfo"
   },
-  "include": ["script/design-review-smoke.ts"],
+  "include": [
+    "script/design-review-smoke.ts",
+    "test/design-locate.test.ts",
+    "test/design-repetition.test.ts",
+    "test/design-signature.test.ts"
+  ],
   "references": [{ "path": "./tsconfig.json" }]
 }

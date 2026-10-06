@@ -675,9 +675,12 @@ const scenario = (
     }),
   )
 
-const classificationFixture = Effect.fnUntraced(function* (mode: "dual" | "observe" = "dual") {
+const classificationFixture = Effect.fnUntraced(function* (
+  mode: "dual" | "observe" = "dual",
+  choices: Readonly<Record<string, string>> = {},
+) {
   const intelligence = yield* Intelligence.Service
-  const fixture = yield* Effect.acquireRelease(Effect.sync(intelligenceServer), (fixture) =>
+  const fixture = yield* Effect.acquireRelease(Effect.sync(() => intelligenceServer(choices)), (fixture) =>
     Effect.sync(() => {
       fixture.release()
       fixture.server.stop(true)
@@ -1232,6 +1235,37 @@ const roundContinuations = (s: Scenario) =>
     ),
   )
 
+/** A Design agent Session with one published revision and no review round yet. */
+const publishedDesign = Effect.fnUntraced(function* () {
+  const agents = yield* Agent.Service
+  const designs = yield* DesignStore.Service
+  const bus = yield* Bus.Service
+  yield* DesignPlugin.Plugin.effect(host({ agent: agentHost(agents) }))
+  yield* bus.publish(SessionEvent.AgentSelected, { sessionID, agent: Agent.ID.make("design") })
+  const design = yield* designs.create(sessionID, { name: "Checkout", journey: "new", engine: "html", kind: "screen" })
+  yield* designs.publish(sessionID, design.id, "First")
+  return design.id
+})
+
+/** The design's notes once the background classification of `messageID` has had its chance to record one. */
+const notesAfterClassification = Effect.fnUntraced(function* (
+  fixture: Effect.Success<ReturnType<typeof classificationFixture>>,
+  id: Design.ID,
+  messageID: string,
+  expected: number,
+) {
+  yield* Effect.promise(() => fixture.started)
+  fixture.release()
+  yield* fixture.classified(messageID)
+  const designs = yield* DesignStore.Service
+  for (let attempt = 0; attempt < 40; attempt++) {
+    const notes = (yield* designs.get(sessionID, id)).notes ?? []
+    if (notes.length >= expected && expected > 0) return notes
+    yield* Effect.promise(() => Bun.sleep(5))
+  }
+  return (yield* designs.get(sessionID, id)).notes ?? []
+})
+
 describe("SessionRunnerLLM", () => {
   scenario("reconciles 12 verified Design tasks out of 15 before returning to the reviewer", function* (s) {
     const agents = yield* Agent.Service
@@ -1409,6 +1443,64 @@ describe("SessionRunnerLLM", () => {
     // An explicit resume runs a step, but the interrupted turn is not continued on top of it.
     expect(s.requests).toHaveLength(2)
     expect(yield* roundContinuations(s)).toHaveLength(0)
+  })
+
+  const CHANGE = { work_route: "design", design_change_request: "change" }
+  const TYPED = "Aumente o cabeçalho e corrija as cores do botão principal; mantenha o resto como está."
+
+  scenario("tracks a typed Design change request as one note once S1 reads it, without delaying the Step", function* (s) {
+    const fixture = yield* classificationFixture("dual", CHANGE)
+    const id = yield* publishedDesign()
+    yield* s.llm.push(TestLLM.text("Working on the header", "text_typed_change"))
+    const user = yield* s.runPrompt(TYPED)
+    // The Step ran while S1 was still held.
+    expect(s.requests).toHaveLength(1)
+    const notes = yield* notesAfterClassification(fixture, id, user.id, 1)
+    expect(notes).toEqual([
+      expect.objectContaining({
+        feedback: user.id,
+        index: 1,
+        round: 1,
+        status: "open",
+        source: "message",
+        item: expect.objectContaining({ target: DesignRounds.PAGE, text: TYPED }),
+      }),
+    ])
+    const designs = yield* DesignStore.Service
+    const document = yield* designs.get(sessionID, id)
+    expect(DesignRounds.blocking(document)).toContain(TYPED)
+    expect(DesignRounds.unanswerable(document)).toContain(`${user.id} #1`)
+    // A retry of the same message records nothing more.
+    expect(yield* designs.noteMessage(sessionID, id, { id: user.id, text: TYPED })).toBe(false)
+    expect((yield* designs.get(sessionID, id)).notes).toHaveLength(1)
+  })
+
+  scenario("never tracks a programmatic prompt as a Design note", function* (s) {
+    const fixture = yield* classificationFixture("dual", CHANGE)
+    const id = yield* publishedDesign()
+    yield* s.llm.push(TestLLM.text("Noted", "text_programmatic_change"))
+    const user = yield* s.session.prompt({ sessionID, text: TYPED, metadata: { source: "monitor" }, resume: false })
+    yield* s.resume
+    expect(yield* notesAfterClassification(fixture, id, user.id, 0)).toEqual([])
+  })
+
+  scenario("observed classification never tracks a Design note", function* (s) {
+    const fixture = yield* classificationFixture("observe", CHANGE)
+    const id = yield* publishedDesign()
+    yield* s.llm.push(TestLLM.text("Noted", "text_observed_change"))
+    const user = yield* s.runPrompt(TYPED)
+    expect(yield* notesAfterClassification(fixture, id, user.id, 0)).toEqual([])
+  })
+
+  scenario("single reasoning keeps a typed Design request untracked and asks S1 nothing", function* (s) {
+    const fixture = yield* classificationFixture("dual", CHANGE)
+    yield* fixture.intelligence.sessionMode(sessionID, { reasoning: "single" })
+    const id = yield* publishedDesign()
+    yield* s.llm.push(TestLLM.text("Noted", "text_single_change"))
+    yield* s.runPrompt(TYPED)
+    expect(fixture.requests.filter((request) => request.classification)).toHaveLength(0)
+    const designs = yield* DesignStore.Service
+    expect((yield* designs.get(sessionID, id)).notes ?? []).toEqual([])
   })
 
   scenario("stops Design no-op edits at the third call even with inherited Build permissions", function* (s) {

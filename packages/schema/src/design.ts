@@ -169,6 +169,10 @@ export const FeedbackItem = Schema.Struct({
   revision: Schema.String.pipe(optional),
   /** The earlier note this one re-sends, so its outcome chains across rounds. */
   resent: Schema.Struct({ feedback: Schema.String, index: Schema.Int }).pipe(optional),
+  /** The preview's width in CSS pixels when the note was taken; the verify renders the note at it. */
+  width: Schema.Int.check(Schema.isBetween({ minimum: 1, maximum: 10000 })).pipe(optional),
+  /** The phone an app design was previewed on when the note was taken. */
+  platform: Platform.pipe(optional),
 }).annotate({ identifier: "Design.FeedbackItem" })
 export interface FeedbackItem extends Schema.Schema.Type<typeof FeedbackItem> {}
 
@@ -227,6 +231,11 @@ export const Note = Schema.Struct({
   evidence: NoteEvidence.pipe(optional),
   /** Absent on statuses recorded before recorders were tracked; those came from the agent. */
   by: NoteRecorder.pipe(optional),
+  /**
+   * `message` when the note is a chat message the user typed asking for changes to the prototype, tracked as one
+   * note on the whole page; absent on notes from the review page.
+   */
+  source: Schema.Literals(["message"]).pipe(optional),
   updated: Schema.Number,
 }).annotate({ identifier: "Design.Note" })
 export interface Note extends Schema.Schema.Type<typeof Note> {}
@@ -642,7 +651,11 @@ export function exportFile(format: Render["format"]) {
 
 export const AuditCheck = Schema.Struct({
   rule: Schema.String,
-  severity: Schema.Literals(["error", "review"]),
+  /**
+   * `info` is evidence that asks for nothing: a check System One judged a false positive, or an effect
+   * the project's design system declares itself.
+   */
+  severity: Schema.Literals(["error", "review", "info"]),
   selector: Schema.String,
   evidence: Schema.String,
   fix: Schema.String,
@@ -651,6 +664,13 @@ export const AuditCheck = Schema.Struct({
   scenario: Schema.String.pipe(optional),
   /** The slide (screen id) a presentation audit checked. */
   screen: Schema.String.pipe(optional),
+  /**
+   * A stable name for this finding across revisions and viewports. A design decision with id
+   * `accept:<key>` records it as an accepted exception, and later audits do not flag it again.
+   */
+  key: Schema.String.pipe(optional),
+  /** What the System One judge said of a deterministic repetition or reuse finding; absent when it was not asked. */
+  judged: Schema.Literals(["confirmed", "rejected", "unconfirmed"]).pipe(optional),
 }).annotate({ identifier: "Design.AuditCheck" })
 export interface AuditCheck extends Schema.Schema.Type<typeof AuditCheck> {}
 
@@ -665,6 +685,26 @@ export const AuditCapture = Schema.Struct({
 }).annotate({ identifier: "Design.AuditCapture" })
 export interface AuditCapture extends Schema.Schema.Type<typeof AuditCapture> {}
 
+export const AuditSignature = Schema.Struct({
+  variant: Schema.String.pipe(optional),
+  width: Schema.Number,
+  /** A compact, language-independent layout signature; see DesignSignature in core. */
+  signature: Schema.String,
+}).annotate({ identifier: "Design.AuditSignature" })
+export interface AuditSignature extends Schema.Schema.Type<typeof AuditSignature> {}
+
+export const AuditReuse = Schema.Struct({
+  /** Design-system components the sources import. */
+  imported: Schema.Array(Schema.String),
+  /** Components the sources declare under a design-system component's name. */
+  redeclared: Schema.Array(Schema.String),
+  /** Design-system files the sources import, project-relative. */
+  files: Schema.Array(Schema.String),
+  /** imported / (imported + redeclared), from 0 to 1; absent when neither happened. */
+  ratio: Schema.Number.pipe(optional),
+}).annotate({ identifier: "Design.AuditReuse" })
+export interface AuditReuse extends Schema.Schema.Type<typeof AuditReuse> {}
+
 export const Audit = Schema.Struct({
   revision: Schema.String,
   findings: Schema.Array(Schema.String),
@@ -672,8 +712,34 @@ export const Audit = Schema.Struct({
   widths: Schema.Array(Schema.Number),
   checks: Schema.Array(AuditCheck).pipe(optional),
   captures: Schema.Array(AuditCapture).pipe(optional),
+  /** The structural signature of each direction as first rendered, the evidence for repetition checks. */
+  signatures: Schema.Array(AuditSignature).pipe(optional),
+  /** Which design-system components the revision's sources import and which they re-declare. */
+  reuse: AuditReuse.pipe(optional),
 }).annotate({ identifier: "Design.Audit" })
 export interface Audit extends Schema.Schema.Type<typeof Audit> {}
+
+/**
+ * What differs in a note's element between the revision the note was taken on and the verified one.
+ * Every flag compares the located element only: its rendered pixels, visible text, markup or computed
+ * style, and its box. `changed` is any of them; all false means the element looks and reads the same.
+ */
+export const VerifyDelta = Schema.Struct({
+  changed: Schema.Boolean,
+  /** Percent of the element's pixels that differ; absent when the two captures differ in size or one is missing. */
+  pixels: Schema.Number.pipe(optional),
+  text: Schema.Boolean,
+  /** The element's markup or its computed style differs. */
+  markup: Schema.Boolean,
+  moved: Schema.Boolean,
+  resized: Schema.Boolean,
+  /** The element was not found on the earlier revision, which did render. */
+  added: Schema.Boolean.pipe(optional),
+  /** The element's text on each side, clipped, when it changed. */
+  textBefore: Schema.String.check(Schema.isMaxLength(240)).pipe(optional),
+  textAfter: Schema.String.check(Schema.isMaxLength(240)).pipe(optional),
+}).annotate({ identifier: "Design.VerifyDelta" })
+export interface VerifyDelta extends Schema.Schema.Type<typeof VerifyDelta> {}
 
 /** What a round's verify job observed for one note on the new revision. */
 export const VerifyNote = Schema.Struct({
@@ -691,13 +757,22 @@ export const VerifyNote = Schema.Struct({
   scenarios: Schema.Array(Schema.String),
   /** One line a reviewer can read: found or missing, and what was observed. */
   reason: Schema.String,
+  /** The viewport width the note was verified at: the one it was taken at, when recorded. */
+  width: Schema.Number.pipe(optional),
+  /** The phone the note was verified on, for an app design. */
+  platform: Platform.pipe(optional),
+  /** What changed in the element since the revision the note was taken on; absent when that revision could not be rendered. */
+  delta: VerifyDelta.pipe(optional),
 }).annotate({ identifier: "Design.VerifyNote" })
 export interface VerifyNote extends Schema.Schema.Type<typeof VerifyNote> {}
 
 export const Verify = Schema.Struct({
   revision: Schema.String,
   round: Schema.Int,
+  /** The widest viewport the round was verified at; each note names its own in `width`. */
   width: Schema.Number,
+  /** Every viewport width the round was verified at, narrowest first. */
+  widths: Schema.Array(Schema.Number).pipe(optional),
   notes: Schema.Array(VerifyNote),
   findings: Schema.Array(Schema.String),
 }).annotate({ identifier: "Design.Verify" })

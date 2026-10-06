@@ -155,7 +155,7 @@ test("describe and summary carry paths and counts, never file content", async ()
   expect(described).toContain("Tokens: src/styles/globals.css")
   expect(described).toContain("Pipeline: Tailwind (tailwind.config.ts); CSS custom properties (src/styles/globals.css)")
   expect(described).toContain("Framework: react ^18.3.1")
-  expect(described).toContain("Components src/components: Button, Card")
+  expect(described).toContain('Components src/components (import { Name } from "src/components/<file>"):\n- Button.tsx: Button\n- Card.tsx: Card')
   expect(described).not.toContain("DO NOT LEAK")
   expect(described).not.toContain("## Stack")
   expect(DesignSystem.summary(loaded)).toBe(
