@@ -1,5 +1,0 @@
----
-"@reddb-io/redcode": patch
----
-
-The design review gate that refuses `resolved` when the verify saw no change in the note's element now judges the cases it got wrong. A note whose element could not be located on the revision it was taken on is no longer counted as changed: the verify says the change could not be measured, `resolved` stays possible on a clean verify, and the dual-mode System One review is told in words that this is no evidence of a change. A behavior a capture cannot show (hover, focus, a script) can be resolved when a scenario added or changed for it acts on the element and reaches its state; the note's verify line names that scenario. Page-level notes are no longer compared as one element and need only a completed verify. The refusal names each way out. Notes taken at nearly the same width (such as 1187px and 1210px, or 393px next to a 390px viewport) now share one verify viewport, and a note's verify line says when it was verified at a different width or phone than it was taken on.

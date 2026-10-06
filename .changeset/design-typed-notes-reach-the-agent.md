@@ -1,5 +1,0 @@
----
-"@reddb-io/redcode": patch
----
-
-Design change requests typed in the terminal, the app or an ACP editor now become review notes. Before, every message from those clients was treated as programmatic and skipped. Prompts from the review page, monitors, subagents, goals and other harness sources, and prompts from any source Redcode does not know, are still never turned into notes. A note that arrives after the design agent has stopped now wakes the agent once to work on it, including when the note joins a feedback round that already got its continuation. The note is compared against the revision the user was looking at when they sent the message, not a revision the agent published afterwards. The note text goes through the vault scrubber, and a message is kept out of the design unless System One reads it as clean of restricted content. The note review given to System One now puts the verify's change flags first and shortens the summary and element text, so trimming the evidence never cuts the flags.

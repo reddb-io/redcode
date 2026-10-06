@@ -1,5 +1,0 @@
----
-"@reddb-io/redcode": patch
----
-
-Design tasks no longer get stuck on the evidence gate. When a Design task's completion cites no usable evidence, the newest successful design preview, export or verify that no later edit of its design made stale is attached, and the response says which one. Editing another design, or a file in another design's work folder, no longer makes a preview stale. A refused Design completion names the next call to make and never blocks the task; Build and Plan tasks behave as before. After a context compaction in the middle of a review round, the agent still sees the open notes with their status (unaddressed, addressed, or verified without an outcome), whether the round was published, the state of its verify and the next step. When the local browser cannot be installed or launched, the verify job says that retrying will not help and that the notes can be recorded as partial with "verification unavailable" as the reason, which the note status gate now accepts by citing the failed verify of the current revision.
