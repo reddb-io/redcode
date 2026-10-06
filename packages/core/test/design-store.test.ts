@@ -908,7 +908,7 @@ describe("DesignStore note statuses", () => {
             feedback: round.feedback,
             index: 2,
             reason:
-              'Note status refused: resolved for msg_a_round_01 #2 needs evidence: run one verify for the round on the current revision (design_export format verify, wait for its native monitor to complete) and cite it as {"evidence":{"job":"<verify job id>"}}.',
+              'Note status refused: resolved for msg_a_round_01 #2 needs evidence: run one verify for the round on the current revision (design_export format verify, wait for its native monitor to complete) and cite it as {"evidence":{"job":"<verify job id>"}}. Or record it unresolved or accepted with a reason.',
           },
         ],
         // What the refusals point at, with the notes as this update left them.
@@ -938,8 +938,8 @@ describe("DesignStore note statuses", () => {
           "No note status was recorded.",
           "msg_a_round_10 #2: Unknown note msg_a_round_10 #2.",
           "msg_a_round_10 #3: Unknown note msg_a_round_10 #3.",
-          "msg_a_round_01 #2: Note status refused: partial for msg_a_round_01 #2 needs a reason saying what still differs from the note.",
-          "msg_a_round_01 #4: Note status refused: Evidence job render_missing is not a completed verify job of this design.",
+          "msg_a_round_01 #2: Note status refused: partial for msg_a_round_01 #2 needs a reason saying what still differs from the note. Or record it unresolved or accepted with a reason.",
+          "msg_a_round_01 #4: Note status refused: Evidence job render_missing is not a completed verify job of this design. Or record it unresolved or accepted with a reason.",
           left,
           listed,
         ].join("\n"),
@@ -1221,7 +1221,7 @@ describe("DesignStore note statuses", () => {
         {
           feedback: round.feedback,
           index: 3,
-          reason: `${DesignRounds.REFUSED} ${round.feedback} #3 cannot be resolved: ${round.job} saw no change to its element since the revision the note was taken on (pixels, text, markup, style, position and size are the same at 390px). Change the element the note names, publish and verify again; for a behavior a capture cannot show (hover, focus, a script), add or update a scenario on the note's screen that acts on its element, publish and verify again; or record it unresolved or accepted with a reason saying why it stays as it is.`,
+          reason: `${DesignRounds.REFUSED} ${round.feedback} #3 cannot be resolved: ${round.job} saw no change to its element since the revision the note was taken on (pixels, text, markup, style, position and size are the same at 390px). Change the element the note names, publish and verify again; for a behavior a capture cannot show (hover, focus, a script), add or update a scenario on the note's screen that acts on its element, publish and verify again. Or record it unresolved or accepted with a reason.`,
         },
       ])
       // The way out the refusal names is open.

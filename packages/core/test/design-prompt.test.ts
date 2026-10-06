@@ -3,6 +3,9 @@ import path from "node:path"
 import { Glob } from "bun"
 import { DesignPrompt } from "@opencode/core/design/prompt"
 import { DesignPlaybooks } from "@opencode/core/design/playbooks"
+import { DesignFeedback } from "@opencode/core/design/feedback"
+import { Design } from "@opencode/schema/design"
+import { Schema } from "effect"
 
 // The Design tools the plugins register, read from their sources so the prompt cannot name a tool that no longer exists.
 const registered = async () => {
@@ -46,9 +49,10 @@ describe("Design prompt", () => {
       "read that note in full with design_read section notes, passing its feedback id and note number",
       "Notes arrive in rounds",
       "design_export format verify with round set to the round's number",
-      "Review once at the end of each round",
-      "Announce “Applying anti-slop” only while this review is running",
-      "do not edit, republish or repeatedly audit",
+      "The anti-slop review is optional and not a step of a round",
+      "Announce “Applying anti-slop” only while it runs",
+      "Audit findings are reported, never fixed on your own",
+      "The fixes the user's notes ask for are always completed",
     ])
       expect(DesignPrompt.instructions).toContain(phrase)
   })
@@ -60,8 +64,8 @@ describe("Design prompt", () => {
       "the round's notes are your checklist",
       "mark it with design_document update addressed: [{feedback, index, summary}]",
       "a mark is not an outcome and needs no evidence",
-      "Record a note you will not change as unresolved or accepted with a reason instead",
-      "design_preview refuses to publish while the open round has a note with neither a mark nor an outcome",
+      "A note you will not change: record it instead as unresolved or accepted with a reason",
+      "it is refused while a note of the round has neither a mark nor an outcome",
       "List them with their marks and outcomes with design_read section notes",
       "Publish and verify once per round, not once per note",
     ])
@@ -71,11 +75,46 @@ describe("Design prompt", () => {
     expect(prompt).not.toContain("record the task and note outcomes")
     // The mark comes before the publish, and the publish before the verify and the outcomes.
     const rounds = prompt.slice(prompt.indexOf("Notes arrive in rounds"))
-    expect(rounds.indexOf("design_document update addressed")).toBeLessThan(rounds.indexOf("Then publish one revision"))
-    expect(rounds.indexOf("Then publish one revision")).toBeLessThan(rounds.indexOf("design_document update notes"))
+    expect(rounds.indexOf("design_document update addressed")).toBeLessThan(rounds.indexOf("3. Publish one revision"))
+    expect(rounds.indexOf("3. Publish one revision")).toBeLessThan(rounds.indexOf("design_document update notes"))
     const screen = DesignPlaybooks.render(DesignPlaybooks.find("screen")!)
     expect(screen).toContain("are its checklist")
     expect(screen).toContain("mark it with design_document update addressed")
+  })
+
+  test("says the six round steps in the same words as the review message", () => {
+    const prompt = DesignPrompt.instructions
+    const steps = prompt.slice(prompt.indexOf("Finish every round with these steps:")).split("\n").slice(1, 7)
+    expect(steps.map((line) => line.slice(0, 3))).toEqual(["1. ", "2. ", "3. ", "4. ", "5. ", "6. "])
+    const trailer = DesignFeedback.render(
+      Schema.decodeUnknownSync(Design.Feedback)({
+        id: "msg_review_1",
+        revision: "rev_1",
+        text: "",
+        items: [{ target: "#title", text: "Make the title larger" }],
+        assets: [],
+        snapshot: "",
+        delivery: "steer",
+        end: false,
+      }),
+      { id: Design.ID.make("design_1"), storage: "/store", round: 1, attachments: [] },
+    )
+    // Each step opens with the same words in the prompt and in the trailer of a review message.
+    for (const [index, opening] of [
+      "Fix the notes in the prototype source. After each note or group, mark it",
+      "A note you will not change: record it instead",
+      "Publish one revision with design_preview; it is refused while a note of the round has neither a mark nor an outcome, and lists those notes.",
+      "Run one verify: design_export",
+      "Record every note's outcome in ONE",
+      "Reply for the",
+    ].entries()) {
+      expect(steps[index]).toContain(`${index + 1}. ${opening}`)
+      expect(trailer).toContain(`${index + 1}. ${opening}`)
+    }
+  })
+
+  test("stays within its previous size", () => {
+    expect(new TextEncoder().encode(DesignPrompt.instructions).length).toBeLessThan(24_967)
   })
 
   test("keeps the design-system contract and never overwrites product code", () => {
@@ -90,9 +129,9 @@ describe("Design prompt", () => {
       expect(DesignPrompt.instructions).toContain(phrase)
   })
 
-  test("manual anti-slop corrects once while automatic end-of-round review stays report-only", () => {
+  test("manual anti-slop corrects once while any other audit stays report-only and optional", () => {
     expect(DesignPrompt.instructions).toContain(
-      "This automatic end-of-round review does not start another development cycle",
+      "run it only when the user asks (the review page's Run anti-slop, or a typed request) or when design.gate requires an audit before approval",
     )
     const manual = DesignPrompt.instructions.split('A browser request to "Run anti-slop"')[1]!.split("\n\n")[0]!
     for (const phrase of [
@@ -103,11 +142,13 @@ describe("Design prompt", () => {
       "one final variant-scoped audit of that new revision",
       "If nothing needs correction, do not publish unchanged files",
       "do not start another correction pass",
-      "overrides the report-only rule for automatic end-of-round reviews",
+      "the only case where audit findings are fixed",
     ])
       expect(manual).toContain(phrase)
     const playbook = DesignPlaybooks.render(DesignPlaybooks.find("quality")!)
-    expect(playbook).toContain("Automatic end-of-round reviews report findings without starting new edits")
+    expect(playbook).toContain("Findings are reported to the user, never fixed on your own")
+    expect(playbook).toContain("it is not a step of a feedback round")
+    expect(playbook).not.toContain("For feedback notes, also run one format verify")
     expect(playbook).toContain(
       "An explicit browser Run anti-slop request instead authorizes one bounded correction pass",
     )

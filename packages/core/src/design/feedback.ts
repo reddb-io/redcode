@@ -291,11 +291,11 @@ export function render(input: Design.Feedback, context: Context) {
                 "3. Publish one revision with design_preview; it is refused while a note of the round has neither a mark nor an outcome, and lists those notes.",
                 `4. Run one verify: design_export {"revision":"<that revision>","format":"verify"${context.round !== undefined ? `,"round":${context.round}` : ""}}, wait for its native monitor, then read design_jobs once.`,
                 `5. Record every note's outcome in ONE update, one notes entry per note, not one update per note: design_document update {"notes":[{"feedback":"${input.id}","index":<n>,"status":"resolved|partial|unresolved|accepted","reason":"...","evidence":{"job":"<verify job>"}}, ...]}; evidence for resolved and partial, a reason for partial, unresolved and accepted.`,
-                `6. Run the artifact end-of-round checklist against the published revision without another correction cycle, reply with what is resolved, partial, unresolved or accepted and why, and ${input.end ? "say the review has ended" : "wait for the next round"}.`,
+                `6. Reply for the revision you published with what is resolved, partial, unresolved or accepted and why, and ${input.end ? "say the review has ended" : "wait for the next round"}. An anti-slop audit is optional: run it only when the reviewer asks, and report its findings instead of fixing them.`,
               ]
                 .filter(Boolean)
                 .join("\n")
-            : "Publish one revision with design_preview, run the end-of-round checklist once and reply with a short checked/pending/unverified summary. Do not start an automatic correction cycle.",
+            : "Publish one revision with design_preview and reply with a short summary of what changed. An anti-slop audit is optional: run it only when the reviewer asks, and report its findings instead of fixing them.",
       unkeyed
         ? "Some notes name elements without a data-design-id; when you edit such an element, give it a stable kebab-case data-design-id so later notes can name it directly."
         : "",

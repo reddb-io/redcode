@@ -149,6 +149,8 @@ export function invalidating(
   proof: SessionTaskFacts.Result,
   messageID?: string,
 ) {
+  // A design proof is about one design: a file edit inside another design's work directory leaves it standing.
+  const design = proof.paths.length > 0 && proof.paths.every((entry) => entry.startsWith(SessionTaskFacts.DESIGN))
   return results
     .filter(
       (entry) =>
@@ -156,9 +158,79 @@ export function invalidating(
         !entry.abandoned &&
         (entry.callID !== proof.callID || entry.messageID !== proof.messageID) &&
         (entry.settled ? entry.completed > proof.completed : entry.messageID !== messageID) &&
-        SessionTaskFacts.overlaps(entry.paths, proof.paths),
+        SessionTaskFacts.overlaps(design ? entry.paths.map(designScope) : entry.paths, proof.paths),
     )
     .toSorted((a, b) => b.completed - a.completed)[0]
+}
+
+/** A design's work directory, where Design edits its files: `.red/code/design/<id>/work/`. */
+const WORK = /(?:^|\/)\.red\/code\/design\/(design_[A-Za-z0-9_-]+)\/work(?:\/|$)/
+
+/** A file inside a design's work directory as the design it belongs to; any other path unchanged. */
+const designScope = (entry: string) => {
+  const match = WORK.exec(entry.replaceAll("\\", "/"))
+  return match ? `${SessionTaskFacts.DESIGN}${match[1]}` : entry
+}
+
+/** The design a result works on: its design scope, or the design whose work directory it edited. */
+const designOf = (entry: SessionTaskFacts.Result) =>
+  entry.paths
+    .map(designScope)
+    .find((scope) => scope.startsWith(SessionTaskFacts.DESIGN))
+    ?.slice(SessionTaskFacts.DESIGN.length)
+
+/**
+ * Evidence for a Design task. Design work edits after a preview as a matter of course, so a refusal
+ * here is first answered with the newest successful design verification (`design_preview`,
+ * `design_export`, `design_jobs`) that no later edit of its design made stale, and the result says
+ * which one was attached. Only when none exists is the refusal kept, naming the exact next call.
+ * Every other refusal and every non-Design task goes through {@link judge} unchanged.
+ */
+export function resolve(input: Parameters<typeof judge>[0] & { design?: boolean }):
+  | {
+      proof: SessionTaskFacts.Result
+      proofs: ReadonlyArray<SessionTaskFacts.Result>
+      explanation: string
+      /** Which result was attached on the model's behalf, for the tool's response. */
+      attached?: string
+    }
+  | { error: string } {
+  const outcome = judge(input)
+  if (!input.design) return outcome
+  const describeProof = (proof: SessionTaskFacts.Result) =>
+    `${proof.callID} (${proof.tool}, message ${proof.messageID}, ${iso(proof.completed)})`
+  if ("proof" in outcome)
+    return !input.claim && outcome.proof.tool.startsWith("design_")
+      ? { ...outcome, attached: `Evidence attached automatically: ${describeProof(outcome.proof)}.` }
+      : outcome
+  if (!outcome.error.startsWith(REFUSED)) return outcome
+  const fresh = input.observed.results
+    .filter(
+      (entry) =>
+        entry.tool.startsWith("design_") &&
+        entry.kind === "verification" &&
+        entry.settled &&
+        entry.successful &&
+        !entry.abandoned &&
+        entry.completed >= input.source.created &&
+        !invalidating(input.observed.results, entry, input.messageID),
+    )
+    .toSorted((a, b) => b.completed - a.completed)[0]
+  if (fresh)
+    return {
+      proof: fresh,
+      proofs: [fresh],
+      explanation:
+        input.claim?.explanation?.trim() || input.fallback || `auto-attached latest design verification ${fresh.tool}`,
+      attached: `Evidence attached automatically: ${describeProof(fresh)}, the newest design verification after the last edit of its design; the cited evidence was not usable: ${firstLine(outcome.error.slice(REFUSED.length).trim(), 200)}`,
+    }
+  const design = input.observed.results
+    .filter((entry) => !entry.abandoned && designOf(entry))
+    .toSorted((a, b) => b.completed - a.completed)
+    .map(designOf)[0]
+  return {
+    error: `${REFUSED} Next step: call design_preview${design ? ` for ${design}` : ""} (or design_export for an export or a verify) after your last design edit, then resend this completion without evidence so the fresh result is attached automatically; this refusal does not block the task. ${outcome.error.slice(REFUSED.length).trim()}`,
+  }
 }
 
 /**
@@ -171,7 +243,7 @@ export function invalidating(
  * behalf, and then only a verification result (a successful shell check, a design preview or
  * export) that is newer than every edit overlapping it. Refusals list the candidates inline.
  */
-export function resolve(input: {
+function judge(input: {
   observed: Observed
   /** The result the model cites, if it cites one. */
   claim: { callID: string; messageID?: string; explanation?: string } | undefined

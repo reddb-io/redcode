@@ -89,6 +89,8 @@ const make = Effect.gen(function* () {
     const seen = new Set<string>()
     // Recheck each completion proof against facts that arrive before the write commits.
     const proven = new Map<string, ReadonlyArray<SessionTaskFacts.Result>>()
+    // Evidence attached on a Design task's behalf, reported back so the model knows what was recorded.
+    const attached: string[] = []
     const changes = yield* Effect.forEach(incoming, (item) =>
       Effect.gen(function* () {
         const supplied = item.content?.trim()
@@ -182,9 +184,12 @@ const make = Effect.gen(function* () {
         // A task that is already complete keeps its stored evidence when re-sent without new
         // evidence; review() is what reopens it when later edits made that evidence stale.
         const kept = before?.status === "completed" && !claim ? before.evidence : undefined
+        // Design tasks get fresh design evidence attached and are never blocked by refusals.
+        const design = (before?.phase ?? input.phase) === "design"
         const resolved =
           status === "completed" && source && !kept
             ? resolve({
+                design,
                 observed,
                 claim,
                 source,
@@ -207,8 +212,10 @@ const make = Effect.gen(function* () {
         // time until the model supplies one, and never counts toward blocking the task.
         if (resolved && "error" in resolved && resolved.error.startsWith(NEEDS_EXPLANATION))
           return yield* new SessionTodo.Error({ message: resolved.error })
+        // A Design refusal names the next call instead: design work edits after every preview, so
+        // blocking would strand the task. The loop guard still counts the failures and ends a real loop.
         const attempts =
-          resolved && "error" in resolved && before
+          resolved && "error" in resolved && before && !design
             ? failedAttempts(
                 observed.results,
                 before,
@@ -247,6 +254,7 @@ const make = Effect.gen(function* () {
                 .slice(0, 24)}`
             : `todo_${crypto.randomUUID()}`)
         if (proof) proven.set(id, proof.proofs)
+        if (proof?.attached) attached.push(`${id}: ${proof.attached}`)
         return {
           id,
           revision: before?.revision ?? 1,
@@ -645,7 +653,7 @@ const make = Effect.gen(function* () {
             }),
           )
           if (commit) yield* commit.write
-          return { todos: result, notes }
+          return { todos: result, notes: [...attached, ...notes] }
         }),
       )
       .pipe(Effect.catchTag("SqlError", Effect.die))

@@ -235,6 +235,26 @@ export function injectScreens(html: string, target?: Design.Surface) {
   return tag + html
 }
 
+/** Prefix of a job failure caused by the local browser being unavailable. */
+export const UNAVAILABLE = "Browser unavailable:"
+
+/**
+ * A job that cannot get a browser (Playwright or Chromium missing, an offline install, a launch
+ * failure) fails the same way on every retry until that is fixed, so the message says so and, for a
+ * verify, names the outcome that records the round instead of looping on it.
+ */
+export const unavailable = (job: Pick<Design.Job, "id" | "input">) => (error: Design.Error) =>
+  error.message.startsWith(UNAVAILABLE)
+    ? error
+    : new Design.Error({
+        code: "unavailable",
+        message: `${UNAVAILABLE} ${error.message.trim()} Retrying fails the same way until the browser can be installed or launched, so do not retry in a loop. ${
+          job.input.format === "verify"
+            ? `Record each open note of the round partial (or unresolved) with the reason "verification unavailable: <cause>" and evidence {"job":"${job.id}"}, then tell the reviewer.`
+            : "Tell the user what failed instead of retrying."
+        }`,
+      })
+
 const io = <A>(run: (signal: AbortSignal) => Promise<A>) =>
   Effect.tryPromise({
     try: run,
@@ -334,16 +354,18 @@ export const make = Effect.gen(function* () {
         : DesignViewports.of(revision.document, design)
     // The build and first-use browser setup can take minutes, so the render budget starts after them;
     // a bound of their own keeps a stalled install from holding the renderer.
-    const prepared = yield* Effect.all([directory(revision), setup]).pipe(
+    const prepared = yield* Effect.all([directory(revision), setup.pipe(Effect.mapError(unavailable(job)))]).pipe(
       Effect.timeoutOrElse({
         duration: "10 minutes",
         orElse: () =>
           Effect.fail(
-            new Design.Error({
-              code: "unavailable",
-              message:
-                "Preparing the renderer (building the revision and installing the browser) exceeded ten minutes; retry the render.",
-            }),
+            unavailable(job)(
+              new Design.Error({
+                code: "unavailable",
+                message:
+                  "Preparing the renderer (building the revision and installing the browser) exceeded ten minutes.",
+              }),
+            ),
           ),
       }),
     )
@@ -359,7 +381,7 @@ export const make = Effect.gen(function* () {
     )
     yield* Effect.scoped(
       Effect.gen(function* () {
-        const instance = yield* browser(prepared[1])
+        const instance = yield* browser(prepared[1]).pipe(Effect.mapError(unavailable(job)))
         /** Script errors of the current page; the audit and verify clear it before each view they check. */
         const runtimeErrors: string[] = []
         /**
@@ -1482,6 +1504,7 @@ export const make = Effect.gen(function* () {
               .catch(() => undefined),
           )
           const current = (yield* store.jobs(sessionID, id)).find((item) => item.id === job.id)
+          const failure = Cause.squash(cause)
           yield* store.putJob(sessionID, {
             ...job,
             ...(current?.verify
@@ -1493,7 +1516,9 @@ export const make = Effect.gen(function* () {
                 }
               : {}),
             status: Cause.hasInterrupts(cause) ? "interrupted" : "failed",
-            error: Cause.pretty(cause),
+            // The agent reads this error back: a Design failure is its message, never a stack trace.
+            error:
+              !Cause.hasInterrupts(cause) && failure instanceof Design.Error ? failure.message : Cause.pretty(cause),
             finished: Date.now(),
           })
         }),

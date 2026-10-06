@@ -31,7 +31,29 @@ export function reminder(todos: ReadonlyArray<Info>) {
   ].join("\n")
 }
 
-/** Close verified Design work once, without turning a review into another correction cycle. */
+/** How many times Design is sent back to unfinished work per user message. */
+export const DESIGN_CONTINUATIONS = 3
+
+/**
+ * Send Design back to work it stopped short of: its unfinished tasks, or the open designs named in
+ * `unpublished`, which have no published revision yet. Undefined when neither remains.
+ */
+export function designContinue(todos: ReadonlyArray<Info>, unpublished: ReadonlyArray<string>) {
+  const remaining = active(todos).filter((todo) => todo.status !== "blocked")
+  if (!remaining.length && !unpublished.length) return
+  return [
+    unpublished.length
+      ? `The Design work is not finished: ${unpublished.join(", ")} has no published revision yet. Continue instead of giving a final response: finish the prototype source and publish it with design_preview.`
+      : "You still have unfinished Design tasks. Continue with the next actionable one instead of giving a final response.",
+    ...remaining.map((todo) => `- ${todo.id} [${todo.status}] ${todo.content}`),
+    "Complete a task only with verified evidence and record a concrete blocker instead of leaving it silently. A task that waits on the user (the prototype approval, the plan handoff, an answer) stays pending: say so in one line and stop.",
+  ].join("\n")
+}
+
+/**
+ * Close verified Design work once after an audit: its findings are reported to the user, not fixed in
+ * another correction cycle.
+ */
 export function designReminder(todos: ReadonlyArray<Info>, observed: SessionTodoEvidence.Observed) {
   const remaining = active(todos)
   if (!remaining.length) return
@@ -53,14 +75,14 @@ export function designReminder(todos: ReadonlyArray<Info>, observed: SessionTodo
     .toSorted((a, b) => b.completed - a.completed)
   if (!proofs.length) return
   return [
-    "Reconcile Design tasks before finishing this review.",
+    "Reconcile Design tasks before finishing this audit.",
     "Design tasks track setup work, the approval request and anti-slop findings. Use todowrite to mark each verified one completed, citing the relevant result's callID and messageID with an explanation of how it meets that task's criterion. A final response saying a fix is done does not update its task.",
     "Review notes are not tasks: they are tracked separately on the design, with addressed marks and outcomes recorded through design_document update. A design_preview publish alone proves no note outcome; resolved and partial need a verify job of the round.",
     ...remaining.map((todo) => `- ${todo.id} r${todo.revision} [${todo.status}] ${todo.content}`),
     "Available current-request Design evidence:",
     ...proofs.slice(0, 5).map((proof) => `${proof.callID} (${proof.tool}, message ${proof.messageID})`),
     "Keep partial, unresolved, unverified and user-approval tasks open; record a concrete reason where useful. Do not complete every task just because publication or an audit succeeded.",
-    "This is one bookkeeping pass only: do not edit, republish, export, audit, approve or start another correction cycle. Update the task statuses from existing evidence, report completed and remaining items, then return control to the reviewer.",
+    "This is one bookkeeping pass only: report the audit findings to the user instead of fixing them, so do not edit, republish, export, audit, approve or start another correction cycle. Update the task statuses from existing evidence, report completed and remaining items, then return control to the reviewer.",
   ].join("\n")
 }
 

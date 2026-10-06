@@ -87,8 +87,9 @@ const draft = info({
   questions: ["Keep bulk actions?"],
 })
 
-// The store's documents and availability, changed between reads the way a Session's steps observe them.
+// The store's documents, jobs and availability, changed between reads the way a Session's steps observe them.
 let documents: Design.Info[] = []
+let renders: Design.Job[] = []
 let unreadable = false
 
 const store = Layer.mock(DesignStore.Service, {
@@ -99,11 +100,13 @@ const store = Layer.mock(DesignStore.Service, {
       ? Effect.fail(new Design.Error({ code: "unavailable", message: "Design store is unreadable" }))
       : Effect.succeed(documents),
   approval: () => Effect.succeed(approval),
+  jobs: () => Effect.succeed(renders),
 })
 
-const reset = (next: Design.Info[]) =>
+const reset = (next: Design.Info[], jobs: Design.Job[] = []) =>
   Effect.sync(() => {
     documents = next
+    renders = jobs
     unreadable = false
   })
 
@@ -237,7 +240,7 @@ describe("DesignContext", () => {
     ),
   )
 
-  it.effect("names the round whose notes wait for an outcome, and changes only when that flips", () =>
+  it.effect("names the round whose notes wait for an outcome and announces progress with the round state alone", () =>
     provided(
       Effect.gen(function* () {
         const note = (index: number, status: Design.NoteStatus, round = 9): Design.Note => ({
@@ -263,14 +266,22 @@ describe("DesignContext", () => {
         expect(initial.text).toContain(line)
         expect(initial.text).not.toMatch(/\b3 notes\b/)
 
-        // Recording outcomes or marking notes one by one changes nothing until the last one is recorded.
+        // Recording outcomes or marking notes one by one announces only the round state, never the whole context.
         const progressed = {
           ...waiting,
           notes: [note(1, "resolved"), { ...note(2, "open"), addressed: { summary: "Done", at: 2 } }, note(3, "open")],
         }
         yield* reset([progressed])
         const partway = yield* readUpdate(context.load(sessionID), initial)
-        expect(partway.changed).toBe(false)
+        expect(partway.changed).toBe(true)
+        expect(partway.text).toStartWith("Design review progress.")
+        expect(partway.text).toContain("msg_round_9 #2 [addressed] Note 2")
+        expect(partway.text).toContain("msg_round_9 #3 [unaddressed] Note 3")
+        expect(partway.text).not.toContain("msg_round_9 #1")
+        expect(partway.text).not.toContain("Objective:")
+        expect(partway.text).toContain("next step: fix the 1 unaddressed note of round 9")
+        // The same state read again admits nothing.
+        expect((yield* readUpdate(context.load(sessionID), partway)).changed).toBe(false)
         yield* reset([{ ...waiting, notes: [note(1, "resolved"), note(2, "accepted"), note(3, "unresolved")] }])
         const settled = yield* readUpdate(context.load(sessionID), partway)
         expect(settled.changed).toBe(true)
@@ -294,6 +305,95 @@ describe("DesignContext", () => {
         expect(requested).toContain("Round 9 has notes without an outcome")
         expect(requested).toContain(
           "Review open until every note has an outcome: the user asked to end it after this round",
+        )
+      }),
+    ),
+  )
+
+  it.effect("recites the open notes, the publish, the verify and the next step after compaction, bounded", () =>
+    provided(
+      Effect.gen(function* () {
+        const notes = Array.from(
+          { length: 13 },
+          (_, index): Design.Note => ({
+            feedback: "msg_review",
+            index: index + 1,
+            round: 2,
+            item: { target: `#n${index + 1}`, text: `Ajustar o espaçamento ${index + 1} ${"大".repeat(300)}` },
+            status: index === 0 ? "resolved" : "open",
+            addressed: { summary: "Done", at: 2 },
+            updated: 1,
+          }),
+        )
+        const document = {
+          ...draft,
+          revision: "rev_three",
+          rounds: [{ number: 2, opened: 1, revision: "rev_two", feedback: ["msg_review"], published: "rev_three" }],
+          notes,
+        }
+        const job = (status: Design.Job["status"], extra: Partial<Design.Job> = {}): Design.Job => ({
+          id: `render_${status}`,
+          designID: draft.id,
+          input: { revision: "rev_three", format: "verify", round: 2 },
+          status,
+          progress: 0,
+          result: null,
+          error: null,
+          created: status === "completed" ? 3 : 2,
+          ...extra,
+        })
+        yield* reset([document])
+        const context = yield* DesignContext.Service
+        const initial = yield* readInitial(context.load(sessionID))
+        // Resume and compaction render the epoch baseline from the stored value, so the state survives.
+        expect(Instructions.renderInitial(context.load(sessionID), initial.values)).toBe(initial.text)
+        expect(initial.text).toContain("msg_review #2 [addressed] Ajustar o espaçamento 2")
+        expect(initial.text).not.toContain("msg_review #1 ")
+        expect(initial.text).toContain(`and 2 more: design_read {"id":"${draft.id}","section":"notes"}`)
+        expect(initial.text).toContain(
+          `Published: rev_three; verify: none on the current revision; next step: design_export {"id":"${draft.id}","input":{"revision":"rev_three","format":"verify","round":2}}`,
+        )
+        // Each quoted note keeps a bounded part of its text.
+        expect(initial.text.match(/大+/g)!.every((run) => run.length <= 160)).toBe(true)
+
+        yield* reset([document], [job("running")])
+        const running = yield* readUpdate(context.load(sessionID), initial)
+        expect(running.text).toContain("verify: running (render_running); next step: wait for the native monitor")
+
+        yield* reset([document], [job("failed", { error: "Browser unavailable: Chromium setup failed.\n    at x" })])
+        const failed = yield* readUpdate(context.load(sessionID), running)
+        expect(failed.text).toContain("verify: failed (render_failed): Browser unavailable: Chromium setup failed.;")
+        expect(failed.text).toContain(
+          'record each open note partial with the reason "verification unavailable: Browser unavailable: Chromium setup failed." citing render_failed',
+        )
+        expect(failed.text).not.toContain("    at x")
+
+        const completed = job("completed", {
+          verify: {
+            revision: "rev_three",
+            round: 2,
+            width: 1440,
+            notes: [
+              {
+                feedback: "msg_review",
+                index: 2,
+                label: "n2",
+                found: true,
+                blocking: false,
+                findings: [],
+                scenarios: [],
+                reason: "found",
+              },
+            ],
+            findings: [],
+          },
+        })
+        yield* reset([document], [completed])
+        const done = yield* readUpdate(context.load(sessionID), failed)
+        expect(done.text).toContain("msg_review #2 [verified, no outcome]")
+        expect(done.text).toContain("msg_review #3 [addressed]")
+        expect(done.text).toContain(
+          "verify: done (render_completed) on rev_three; next step: record each note's outcome in one design_document update notes citing render_completed",
         )
       }),
     ),

@@ -29,6 +29,34 @@ describe("SessionTodo", () => {
     ).toBe(`${content}: Sem acesso`)
   })
 
+  test("the Design continuation asks to publish an unpublished design first, then lists the unfinished tasks", () => {
+    const pending = {
+      id: "todo_1",
+      content: "Wire the payment outcome param",
+      status: "pending",
+      priority: "high",
+    } as const
+    const blocked = {
+      id: "todo_2",
+      content: "Read the brand tokens",
+      status: "blocked",
+      priority: "low",
+      reason: "No access",
+    } as const
+    const unpublished = SessionTodo.designContinue([pending, blocked], ["Checkout"])!
+    expect(unpublished).toStartWith("The Design work is not finished: Checkout has no published revision yet.")
+    expect(unpublished).toContain("publish it with design_preview")
+    expect(unpublished).toContain("- todo_1 [pending] Wire the payment outcome param")
+    expect(unpublished).not.toContain("todo_2")
+    const published = SessionTodo.designContinue([pending], [])!
+    expect(published).toStartWith("You still have unfinished Design tasks.")
+    expect(published).not.toContain("design_preview")
+    expect(published).toContain("A task that waits on the user")
+    // Nothing left: only blocked or finished tasks, every design published.
+    expect(SessionTodo.designContinue([blocked, { ...pending, status: "completed" }], [])).toBeUndefined()
+    expect(SessionTodo.DESIGN_CONTINUATIONS).toBe(3)
+  })
+
   test("Design reconciliation lists task identities and fresh proof without asking for more corrections", () => {
     const reminder = SessionTodo.designReminder(
       [{ id: "todo_1", revision: 2, content: "Fix title contrast", status: "pending", priority: "high" }],
@@ -47,6 +75,7 @@ describe("SessionTodo", () => {
     )
     expect(reminder).toContain("todo_1 r2 [pending] Fix title contrast")
     expect(reminder).toContain("call_msg_audit (design_export, message msg_audit)")
+    expect(reminder).toContain("report the audit findings to the user instead of fixing them")
     expect(reminder).toContain("do not edit, republish, export, audit, approve or start another correction cycle")
     expect(reminder).toContain("Keep partial, unresolved, unverified and user-approval tasks open")
     expect(reminder).toContain("Design tasks track setup work, the approval request and anti-slop findings.")

@@ -148,6 +148,8 @@ const layer = Layer.effect(
     // Prompt classifications outlive the Step that started them, so a slow one still lands in history.
     const classifications = yield* FiberMap.make<SessionMessage.ID>()
     const observedClassifications = new Set<SessionMessage.ID>()
+    // User messages single reasoning already considered as a typed Design note.
+    const typedRequests = new Set<SessionMessage.ID>()
     // Design-system warm-ups run beside the Step; `warmed` holds the user message each Session last warmed for.
     const warmups = yield* FiberMap.make<SessionSchema.ID, void, never>()
     const warmed = new Map<SessionSchema.ID, SessionMessage.ID>()
@@ -223,6 +225,9 @@ const layer = Layer.effect(
       let step = input.continuation?.step ?? 1
       let entering = true
       let todoContinuations = 0
+      // Whether a Step since the user message or the last Design continuation called tools: a reply that
+      // only talked (an answer, a question) is not sent back to work.
+      let worked = false
       let guardStopped = false
       let stopLoss = SessionStopLoss.FRESH
       let goalLoop: GoalLoop = { stalled: 0, unavailable: 0 }
@@ -349,6 +354,7 @@ const layer = Layer.effect(
                   if (promoted > 0) {
                     step = 1
                     todoContinuations = 0
+                    worked = false
                     stopLoss = SessionStopLoss.FRESH
                     guardStopped = false
                   }
@@ -415,6 +421,7 @@ const layer = Layer.effect(
           }),
         )
         if (Exit.isFailure(result)) return yield* Effect.failCause(result.cause)
+        if (result.value) worked = true
         continuing = verification?.pending
           ? false
           : codeRepair?.pending
@@ -453,14 +460,30 @@ const layer = Layer.effect(
             yield* Effect.firstSuccessOf([todos.review(sessionID), todos.get(sessionID)]),
             next.context.agent.id,
           )
-          // Design may return with pending findings or approval tasks. Reconcile verified work
-          // once; the normal task continuation would start another correction cycle.
-          const reminder =
-            next.context.agent.id === "design"
-              ? todoContinuations === 0 && tasks.length
-                ? SessionTodo.designReminder(tasks, yield* facts.load(sessionID))
-                : undefined
-              : SessionTodo.reminder(tasks)
+          if (next.context.agent.id === "design") {
+            // A round the agent stopped short of finishing gets its next step; otherwise unfinished Design
+            // work (a pending task, an open design with no published revision) is continued, at most
+            // DESIGN_CONTINUATIONS times per user message and only after a reply that called tools.
+            const unfinished = yield* unfinishedRound(sessionID)
+            const nudge =
+              unfinished || !worked || todoContinuations >= SessionTodo.DESIGN_CONTINUATIONS
+                ? undefined
+                : yield* designContinuation(sessionID, tasks, todoContinuations)
+            if (unfinished)
+              yield* bus.publish(SessionEvent.Synthetic, {
+                sessionID,
+                text: unfinished.text,
+                description: `Continuing Design feedback round ${unfinished.marker.round}`,
+                metadata: { [DesignRounds.CONTINUATION_KEY]: unfinished.marker },
+              })
+            if (nudge) {
+              yield* bus.publish(SessionEvent.Synthetic, { sessionID, text: nudge })
+              todoContinuations++
+              worked = false
+            }
+            continuing = Boolean(unfinished || nudge)
+          }
+          const reminder = next.context.agent.id === "design" ? undefined : SessionTodo.reminder(tasks)
           if (reminder && todoContinuations < 7) {
             yield* bus.publish(SessionEvent.Synthetic, { sessionID, text: reminder })
             todoContinuations++
@@ -471,17 +494,6 @@ const layer = Layer.effect(
             if (goal?.status === "active")
               yield* goals.save(goal, { ...goal, status: "paused", reason: SessionTodo.limitReason }).pipe(Effect.orDie)
             yield* Effect.logWarning("Task continuation limit reached", { sessionID, attempts: todoContinuations })
-          }
-          const unfinished =
-            !continuing && next.context.agent.id === "design" ? yield* unfinishedRound(sessionID) : undefined
-          if (unfinished) {
-            yield* bus.publish(SessionEvent.Synthetic, {
-              sessionID,
-              text: unfinished.text,
-              description: `Continuing Design feedback round ${unfinished.marker.round}`,
-              metadata: { [DesignRounds.CONTINUATION_KEY]: unfinished.marker },
-            })
-            continuing = true
           }
         }
         // At the idle boundary an active goal continues through the inbox; otherwise the final response is reviewed.
@@ -643,7 +655,11 @@ const layer = Layer.effect(
       const user = (yield* store.messages({ sessionID, type: "user", limit: 1 }))[0]
       const settings = yield* intelligence.read(sessionID)
       const mode = IntelligenceEvaluation.mode(settings)
-      if (user?.type !== "user" || !settings.enabled || mode === "single") return undefined
+      if (user?.type !== "user") return undefined
+      if (!settings.enabled || mode === "single") {
+        yield* noteTypedRequest(loaded, user)
+        return undefined
+      }
       if (mode === "observe" && observedClassifications.has(user.id)) return undefined
       const stored = (yield* intelligence
         .history(sessionID, { operation: "prompt_classification", subjectID: user.id, limit: 1 })
@@ -749,9 +765,10 @@ const layer = Layer.effect(
      * the agent stopped has no boundary left, so once the Session is idle its round continuation is admitted
      * through the inbox, which wakes the agent. The continuation marker counts the round's notes, so a late
      * note re-arms a round that already got its continuation, and only a new note can. Only dual reasoning
-     * gets here (single never classifies; observe answers read as unresolved, see
-     * `IntelligenceClassification.designChange`), only for a message from `TYPED_SOURCES`, and only once S1
-     * read it as clean of restricted content; the caller scrubs vault values from the text.
+     * gets here (single never classifies and notes typed messages itself, see `noteTypedRequest`; observe
+     * answers read as unresolved, see `IntelligenceClassification.designChange`), only for a message from
+     * `TYPED_SOURCES`, and only once S1 read it as clean of restricted content; the caller scrubs vault values
+     * from the text.
      */
     const noteDesignChange = Effect.fn("SessionRunner.noteDesignChange")(function* (
       loaded: SessionContext.Loaded,
@@ -782,6 +799,34 @@ const layer = Layer.effect(
           Effect.logWarning("Design round continuation unavailable", { sessionID, cause: Cause.pretty(cause) }),
         ),
       )
+    })
+
+    /**
+     * Tracks a typed message as a Design note in single reasoning, which has no classification to tell a
+     * change request from anything else: every message from `TYPED_SOURCES` sent to the Design agent while
+     * an open design has a published revision becomes a note on the whole page with the user's own words,
+     * vault values scrubbed, and nothing asks System One. A note the user did not mean as a change (a
+     * question, a thank-you) is closed as accepted with a reason, which costs one line. A message the
+     * vault withheld is skipped. Each message is considered once, on the first Step after it was promoted,
+     * so a design created and published while answering it never gets that message as a note; the note
+     * lands before the Step runs, so this drain's idle boundary continues its round and nothing is woken.
+     */
+    const noteTypedRequest = Effect.fn("SessionRunner.noteTypedRequest")(function* (
+      loaded: SessionContext.Loaded,
+      user: SessionMessage.User,
+    ) {
+      if (loaded.agent.id !== "design" || !TYPED_SOURCES.has(user.metadata?.source) || typedRequests.has(user.id))
+        return
+      typedRequests.add(user.id)
+      if (VaultRestricted.excluded(loaded.session.metadata).has(user.id)) return
+      const document = yield* workingDesign(loaded.session.id)
+      if (!document) return
+      const scrub = yield* vault.scrubber(loaded.session.projectID)
+      yield* designs.noteMessage(loaded.session.id, document.id, {
+        id: user.id,
+        text: scrub(user.text),
+        at: DateTime.toEpochMillis(user.time.created),
+      })
     })
 
     /**
@@ -848,17 +893,11 @@ const layer = Layer.effect(
     })
 
     /**
-     * The continuation of a Design feedback round the agent stopped short of finishing: the first
-     * open design whose notes still await an outcome. Each round gets at most one per note count, and its
-     * marker is the synthetic message itself, so a later idle boundary, another drain or a restart never
-     * repeats it; only a note that joins the round afterwards (a typed change request) re-arms it.
-     * A verify still queued or running is the agent waiting on its result, not a stop, and an ended
-     * design (approval ends one) has nothing left to answer. A turn the user interrupted is not
-     * continued, even after an explicit resume, until the next user message. Reads only the store and
-     * the Session: no System One request.
+     * Whether the agent's stop is the user's to resume: input is waiting in the inbox, or the user
+     * interrupted a turn since their last message (even after an explicit resume, until the next one).
      */
-    const unfinishedRound = Effect.fn("SessionRunner.unfinishedRound")(function* (sessionID: SessionSchema.ID) {
-      if (yield* SessionInbox.has(db, sessionID, "input")) return undefined
+    const halted = Effect.fn("SessionRunner.halted")(function* (sessionID: SessionSchema.ID) {
+      if (yield* SessionInbox.has(db, sessionID, "input")) return true
       const user = yield* db
         .select({ seq: SessionMessageTable.seq })
         .from(SessionMessageTable)
@@ -879,7 +918,21 @@ const layer = Layer.effect(
         )
         .get()
         .pipe(Effect.orDie)
-      if (interrupted) return undefined
+      return interrupted !== undefined
+    })
+
+    /**
+     * The continuation of a Design feedback round the agent stopped short of finishing: the first
+     * open design whose notes still await an outcome. A round gets up to `DesignRounds.CONTINUATIONS` per
+     * note count while each is followed by progress (see `DesignRounds.continues`); its markers are the
+     * synthetic messages themselves, so a later idle boundary, another drain or a restart counts them,
+     * and a note that joins the round afterwards (a typed change request) starts a new count.
+     * A verify still queued or running is the agent waiting on its result, not a stop, and an ended
+     * design (approval ends one) has nothing left to answer. A halted turn (see `halted`) is not
+     * continued. Reads only the store and the Session: no System One request.
+     */
+    const unfinishedRound = Effect.fn("SessionRunner.unfinishedRound")(function* (sessionID: SessionSchema.ID) {
+      if (yield* halted(sessionID)) return undefined
       const documents = (yield* designs.list(sessionID)).filter(
         (document) => !document.ended && DesignRounds.open(document).length > 0,
       )
@@ -892,8 +945,12 @@ const layer = Layer.effect(
         const notes = DesignRounds.notes(document, round).length
         // A marker covers the notes its round had when it was sent; one written before markers counted
         // them covers the whole round.
-        const marked = yield* db
-          .select({ id: SessionMessageTable.id })
+        const sent = yield* db
+          .select({
+            progress: sql<
+              string | null
+            >`json_extract(${SessionMessageTable.data}, ${`$.metadata.${DesignRounds.CONTINUATION_KEY}.progress`})`,
+          })
           .from(SessionMessageTable)
           .where(
             and(
@@ -904,12 +961,48 @@ const layer = Layer.effect(
               sql`ifnull(json_extract(${SessionMessageTable.data}, ${`$.metadata.${DesignRounds.CONTINUATION_KEY}.notes`}), ${notes}) >= ${notes}`,
             ),
           )
-          .get()
+          .orderBy(SessionMessageTable.seq)
+          .all()
           .pipe(Effect.orDie)
-        const text = marked ? undefined : DesignRounds.continuation(document, jobs)
-        if (text) return { text, marker: { designID: document.id, round, notes } }
+        const progress = DesignRounds.progress(document, jobs)
+        const continued = DesignRounds.continues(
+          sent.map((marker) => ({ progress: marker.progress ?? undefined })),
+          progress,
+        )
+        const text = continued ? DesignRounds.continuation(document, jobs) : undefined
+        if (text)
+          return { text, marker: { designID: document.id, round, notes, progress } satisfies DesignRounds.Marker }
       }
       return undefined
+    })
+
+    /**
+     * The continuation of Design work the agent stopped short of outside a feedback round: its pending
+     * tasks, or an open design with no published revision yet (see `SessionTodo.designContinue`). Once an
+     * audit completed since the user's message, its findings are reported, not fixed: the one bookkeeping
+     * pass of `SessionTodo.designReminder` replaces it. Nothing is continued for a halted turn, while a
+     * job of an open design is queued or running (a monitor resumes the agent), or when every design of
+     * the Session has ended. Reads only the store: no System One request.
+     */
+    const designContinuation = Effect.fn("SessionRunner.designContinuation")(function* (
+      sessionID: SessionSchema.ID,
+      tasks: ReadonlyArray<SessionTodo.Info>,
+      sent: number,
+    ) {
+      if (yield* halted(sessionID)) return undefined
+      const all = yield* designs.list(sessionID)
+      const documents = all.filter((document) => !document.ended)
+      if (all.length && !documents.length) return undefined
+      const jobs = (yield* Effect.forEach(documents, (document) => designs.jobs(sessionID, document.id))).flat()
+      if (jobs.some((job) => job.status === "queued" || job.status === "running")) return undefined
+      const user = (yield* store.messages({ sessionID, type: "user", limit: 1 }))[0]
+      const since = user ? DateTime.toEpochMillis(user.time.created) : 0
+      if (jobs.some((job) => job.input.format === "audit" && job.status === "completed" && job.created >= since))
+        return sent === 0 && tasks.length ? SessionTodo.designReminder(tasks, yield* facts.load(sessionID)) : undefined
+      return SessionTodo.designContinue(
+        tasks,
+        documents.filter((document) => !document.revision).map((document) => document.name),
+      )
     })
 
     /**

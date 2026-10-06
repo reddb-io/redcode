@@ -1086,7 +1086,12 @@ const make = Effect.gen(function* () {
             sessionID,
             base,
             triaged.checked.flatMap((item) =>
-              item.refusal || !DesignRounds.isClaim(item.update) ? [] : [item.update],
+              // A partial resting on a failed verify claims no verified fix: there is nothing to review.
+              item.refusal ||
+              !DesignRounds.isClaim(item.update) ||
+              DesignRounds.unverifiable(base, item.update, verifies)
+                ? []
+                : [item.update],
             ),
             verifies,
           )

@@ -20,7 +20,7 @@ export const Plugin = {
           name: "design_playbook",
           options: { codemode: false },
           description:
-            "Read artifact guidance. At the end of a Design round, use checklist=true and designID to review the recorded brief, direction and design system without starting another development cycle. Optional id selects component, screen, flow or slides.",
+            "Read artifact guidance. For an anti-slop review the user asked for (or one design.gate requires before approval), use checklist=true and designID to review the recorded brief, direction and design system and report findings without starting another development cycle. Optional id selects component, screen, flow or slides.",
           input: Schema.Struct({
             id: Schema.optional(Schema.String),
             designID: Schema.optional(Design.ID),

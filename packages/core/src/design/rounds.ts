@@ -206,12 +206,18 @@ export function apply(
     const position = current.findIndex((note) => same(note, update))
     if (position < 0) return { problem: `Unknown note ${update.feedback} #${update.index}. ${describeNotes(current)}` }
     const job = update.evidence ? jobs.find((item) => item.id === update.evidence!.job) : undefined
-    if (update.evidence && (!job || job.input.format !== "verify" || job.status !== "completed" || !job.verify))
+    // A failed verify is cited only as the reason a note could not be verified (see `unverifiable`).
+    const failed = job?.input.format === "verify" && job.status === "failed" && update.status !== "resolved"
+    if (
+      update.evidence &&
+      !failed &&
+      (!job || job.input.format !== "verify" || job.status !== "completed" || !job.verify)
+    )
       return {
         problem: `Evidence job ${update.evidence.job} is not a completed verify job of this design. ${describeJobs(jobs)}`,
       }
     const seen = observed(job, update)
-    if (job && !seen)
+    if (job && !seen && !failed)
       return {
         problem: `Evidence job ${job.id} did not cover note ${update.feedback} #${update.index} (it verified round ${job.verify!.round}). ${describeJobs(jobs)}`,
       }
@@ -271,7 +277,8 @@ export function triage(
  * the behavior (page-level notes are not measured); `partial` needs such a job (whatever it saw) and a reason; `unresolved` and `accepted` need
  * a reason, and a verify job only when they cite one. `see` names the list that tells the agent what
  * to cite instead (the recorded notes or the recent verify jobs), as the todo evidence gate names
- * callIDs.
+ * callIDs. Every refused claim ends with the same way out (`ESCAPE`), which offers partial once a verify
+ * of the current revision failed the note.
  */
 function refusal(
   document: Rounds & { readonly revision: string | null },
@@ -280,7 +287,12 @@ function refusal(
   by: Design.NoteRecorder,
 ): { readonly text: string; readonly see?: "jobs" | "notes" } | undefined {
   const name = `${update.feedback} #${update.index}`
-  const refuse = (text: string) => ({ text: `${REFUSED} ${text}`, see: "jobs" as const })
+  // Every refusal of a claim names the way out; after a failed verify of this note on the current
+  // revision, that way includes partial, citing the failed job.
+  const failing = failedVerify(document, update, jobs)
+  const way = failing ? `Or record it partial citing ${failing.id}, unresolved or accepted, with a reason.` : ESCAPE
+  const claimed = isClaim(update)
+  const refuse = (text: string) => ({ text: `${REFUSED} ${text}${claimed ? ` ${way}` : ""}`, see: "jobs" as const })
   const reason = update.reason?.trim()
   // Checked before anything else: a mistyped id is not an evidence problem, and saying so would
   // send the agent to verify again.
@@ -292,11 +304,16 @@ function refusal(
     return {
       text: `${REFUSED} the reviewer records a note as accepted or unresolved; resolved and partial come from the agent's verify.`,
     }
-  const claimed = isClaim(update)
   if (!claimed && !reason)
     return {
       text: `${REFUSED} ${update.status} for ${name} needs a reason saying what stays open and why; the reviewer reads it.`,
     }
+  if (unverifiable(document, update, jobs))
+    return reason
+      ? undefined
+      : {
+          text: `${REFUSED} partial for ${name} after a failed verify needs a reason, such as "verification unavailable: <cause>". ${ESCAPE}`,
+        }
   if (!update.evidence)
     return claimed
       ? refuse(
@@ -319,14 +336,14 @@ function refusal(
   if (update.status === "partial")
     return reason
       ? undefined
-      : { text: `${REFUSED} partial for ${name} needs a reason saying what still differs from the note.` }
+      : { text: `${REFUSED} partial for ${name} needs a reason saying what still differs from the note. ${ESCAPE}` }
   if (!seen.found)
     return refuse(
-      `${name} cannot be resolved: ${job.id} did not find its element in ${job.input.revision} (${seen.reason}). Record it unresolved or accepted with a reason, or restore the element and verify again.`,
+      `${name} cannot be resolved: ${job.id} did not find its element in ${job.input.revision} (${seen.reason}). Restore the element and verify again.`,
     )
   if (seen.blocking)
     return refuse(
-      `${name} cannot be resolved: ${job.id} found blocking findings for it (${seen.findings.filter((finding) => finding.startsWith("error ·")).join("; ") || seen.reason}). Fix them, publish, verify again, or record partial with a reason.`,
+      `${name} cannot be resolved: ${job.id} found blocking findings for it (${seen.findings.filter((finding) => finding.startsWith("error ·")).join("; ") || seen.reason}). Fix them, publish and verify again.`,
     )
   // A measured delta is the visible evidence that the element was acted on: no change refuses resolved.
   // Three cases are not evidence either way and pass on the completed verify alone: a page-level note
@@ -338,8 +355,62 @@ function refusal(
   if (DesignVerify.isPage(note.item.target) || DesignVerify.unmeasured(seen.delta) || seen.exercised?.length)
     return undefined
   return refuse(
-    `${name} cannot be resolved: ${job.id} saw no change to its element since the revision the note was taken on (pixels, text, markup, style, position and size are the same${seen.width ? ` at ${seen.width}px` : ""}). Change the element the note names, publish and verify again; for a behavior a capture cannot show (hover, focus, a script), add or update a scenario on the note's screen that acts on its element, publish and verify again; or record it unresolved or accepted with a reason saying why it stays as it is.`,
+    `${name} cannot be resolved: ${job.id} saw no change to its element since the revision the note was taken on (pixels, text, markup, style, position and size are the same${seen.width ? ` at ${seen.width}px` : ""}). Change the element the note names, publish and verify again; for a behavior a capture cannot show (hover, focus, a script), add or update a scenario on the note's screen that acts on its element, publish and verify again.`,
   )
+}
+
+/** The way out every refused claim names: a note the agent will not or cannot change still gets an outcome. */
+export const ESCAPE = "Or record it unresolved or accepted with a reason."
+
+/**
+ * The newest completed verify of the current revision that observed the note and failed it (element
+ * not found, or a blocking finding): after one, partial with a reason is the honest outcome to offer.
+ */
+function failedVerify(
+  document: Pick<Design.Info, "revision">,
+  note: { feedback: string; index: number },
+  jobs: ReadonlyArray<Design.Job>,
+) {
+  return jobs
+    .filter(
+      (job) =>
+        job.input.format === "verify" &&
+        job.status === "completed" &&
+        job.input.revision === document.revision &&
+        observed(job, note) !== undefined,
+    )
+    .toSorted((a, b) => (b.finished ?? b.created) - (a.finished ?? a.created))
+    .find((job) => verdict(observed(job, note)!) === "fail")
+}
+
+/**
+ * The verify job that failed outright (status `failed`, such as a browser that could not be prepared)
+ * on the current revision for the note's round, when a status rests on it instead of a completed verify:
+ * the cited job, or, for an uncited `partial`, the newest verify of that round on the revision when it
+ * failed. No verify can complete then, so `partial` with a reason is how such a note still gets an
+ * outcome; `resolved` always needs a completed verify. Undefined otherwise.
+ */
+export function unverifiable(
+  document: Rounds & { readonly revision: string | null },
+  update: Design.NoteUpdate,
+  jobs: ReadonlyArray<Design.Job>,
+) {
+  const note = (document.notes ?? []).find((item) => same(item, update))
+  if (!note || update.status === "resolved") return undefined
+  const round = jobs
+    .filter(
+      (job) =>
+        job.input.format === "verify" &&
+        job.input.revision === document.revision &&
+        (job.input.round ?? latest(document)?.number) === note.round,
+    )
+    .toSorted((a, b) => b.created - a.created)
+  const job = update.evidence
+    ? round.find((item) => item.id === update.evidence!.job)
+    : update.status === "partial"
+      ? round[0]
+      : undefined
+  return job?.status === "failed" ? job : undefined
 }
 
 /**
@@ -488,18 +559,66 @@ export function recite(document: Rounds) {
 /** Metadata key of the continuation a round gets when the agent stops while notes await an outcome. */
 export const CONTINUATION_KEY = "designRound"
 
+/** How many continuations one round (at one note count) gets at most, while each is followed by progress. */
+export const CONTINUATIONS = 3
+
+/** What one continuation marker records: the round, its note count when sent, and the round's progress then. */
+export interface Marker {
+  readonly designID: string
+  readonly round: number
+  readonly notes: number
+  readonly progress: string
+}
+
 /**
- * The prompt that sends the agent back to a round it stopped short of finishing: what is still
- * missing (addressed marks for the open round, the publish that answers it, one verify on the current
- * revision per round with open notes, the outcomes), then those notes with their text (see `recite`).
- * Undefined when every note has an outcome.
+ * The round's progress, compared between continuations: the addressed marks and recorded outcomes of
+ * every note, the current revision and the completed verify jobs. Any of them changing since the
+ * previous continuation is progress; a reply that changed none of them is not.
+ */
+export function progress(document: Rounds & Pick<Design.Info, "revision">, jobs: ReadonlyArray<Design.Job>) {
+  const all = document.notes ?? []
+  const verified = jobs.filter((job) => job.input.format === "verify" && job.status === "completed").length
+  return `${all.filter((note) => note.addressed).length}/${all.filter((note) => note.status !== "open").length}/${document.revision ?? ""}/${verified}`
+}
+
+/**
+ * Whether a round gets another continuation, given the markers already sent for it at its current note
+ * count, oldest first (a typed note that joins the round leaves earlier markers covering fewer notes, which
+ * do not count): fewer than `CONTINUATIONS`, and progress since the newest one. A marker written
+ * before markers carried progress was the round's only continuation and ends it.
+ */
+export const continues = (sent: ReadonlyArray<{ readonly progress?: string }>, current: string) =>
+  sent.length < CONTINUATIONS && (sent.length === 0 || (sent.at(-1)!.progress ?? current) !== current)
+
+/**
+ * The prompt that sends the agent back to a round it stopped short of finishing: ONLY the next missing
+ * step (the first of: an addressed mark or an outcome for each note of the open round, the publish that
+ * answers it, one verify on the current revision per round with open notes, the outcomes), then the
+ * notes still without an outcome with their text (see `recite`). Undefined when every note has an outcome.
  */
 export function continuation(document: Rounds & Pick<Design.Info, "id" | "revision">, jobs: ReadonlyArray<Design.Job>) {
   const pending = open(document)
   const last = latest(document)
   if (!pending.length || !last) return undefined
-  const plural = (count: number, noun: string) => `${count} ${noun}${count === 1 ? "" : "s"}`
+  return [
+    `Design ${document.id}: the feedback round is not finished; ${pending.length === 1 ? "1 note still has" : `${pending.length} notes still have`} no recorded outcome.`,
+    `Next step: ${step(document, last, pending, jobs)}`,
+    recite(document),
+    "Do this step now, then go on to the next one until every note has an outcome, and reply to the reviewer with the outcomes. If you need the reviewer's answer first, ask it in one line and stop.",
+  ].join("\n")
+}
+
+/** The first missing step of a round, in the order the round is worked through. */
+function step(
+  document: Rounds & Pick<Design.Info, "revision">,
+  last: Design.Round,
+  pending: ReadonlyArray<Design.Note>,
+  jobs: ReadonlyArray<Design.Job>,
+) {
   const left = unaddressed(document).length
+  if (left)
+    return `fix the ${left === 1 ? "note" : `${left} notes`} of round ${last.number} without a mark below and mark each with design_document update {"addressed":[{"feedback":"<feedback>","index":<n>,"summary":"<what you changed>"}]}. ${ESCAPE}`
+  if (!last.published) return `publish one revision with design_preview; it answers round ${last.number}.`
   const unverified = [...new Set(pending.map((note) => note.round))]
     .toSorted((a, b) => a - b)
     .filter(
@@ -512,20 +631,10 @@ export function continuation(document: Rounds & Pick<Design.Info, "id" | "revisi
             job.verify?.round === round,
         ),
     )
-  const missing = [
-    left ? `an addressed mark or an outcome for ${plural(left, "note")} of round ${last.number}` : "",
-    last.published ? "" : `the design_preview publish that answers round ${last.number}`,
-    unverified.length
-      ? `a verify of the current revision for ${unverified.length === 1 ? "round" : "rounds"} ${unverified.join(", ")} (design_export format verify with round set; wait for its native monitor)`
-      : "",
-    `an outcome for ${plural(pending.length, "note")} (design_document update notes)`,
-  ].filter(Boolean)
-  return [
-    `Design ${document.id}: the feedback round is not finished. You stopped while ${plural(pending.length, "note")} still ${pending.length === 1 ? "has" : "have"} no recorded outcome.`,
-    `Still missing: ${missing.join("; ")}.`,
-    recite(document),
-    "Continue now: fix the notes, mark each addressed, publish one revision, run one verify per round and record each note's outcome; unresolved or accepted with a reason are allowed for a note you will not change. Then reply to the reviewer with the outcomes. This reminder is sent once per round.",
-  ].join("\n")
+  if (unverified.length)
+    return `run one verify of the current revision per round: ${unverified.map((round) => `design_export {"revision":"${document.revision}","format":"verify","round":${round}}`).join(", ")}, then wait for its native monitor.`
+  const failing = pending.filter((note) => failedVerify(document, note, jobs))
+  return `record every note's outcome in ONE design_document update notes, citing the round's verify job: resolved needs the element found without blocking findings; partial, unresolved and accepted need a reason.${failing.length ? ` A verify failed for ${failing.map((note) => `${note.feedback} #${note.index}`).join(", ")}: record partial with a reason saying what still differs, or unresolved or accepted with a reason.` : ""}`
 }
 
 /** The verify jobs of a design, newest first, as a refusal or report names them. */

@@ -392,8 +392,9 @@ describe("DesignRounds", () => {
     expect(triaged.checked.map((item) => item.refusal)).toEqual([
       undefined,
       "Unknown note msg_9 #1.",
-      "Note status refused: msg_1 #2 cannot be resolved: render_1 did not find its element in rev_2 (element not found). Record it unresolved or accepted with a reason, or restore the element and verify again.",
-      "Note status refused: partial for msg_1 #3 needs a reason saying what still differs from the note.",
+      // The cited verify failed the note: the way out offers partial citing it.
+      "Note status refused: msg_1 #2 cannot be resolved: render_1 did not find its element in rev_2 (element not found). Restore the element and verify again. Or record it partial citing render_1, unresolved or accepted, with a reason.",
+      `Note status refused: partial for msg_1 #3 needs a reason saying what still differs from the note. ${DesignRounds.ESCAPE}`,
       undefined,
       "Unknown note msg_9 #2.",
     ])
@@ -591,34 +592,51 @@ describe("DesignRounds checklist", () => {
     expect(DesignRounds.recite({ rounds: undefined, notes: undefined })).toBe("")
   })
 
-  test("the continuation names what the round still misses, then the notes, and is undefined once every note has an outcome", () => {
+  test("the continuation names only the next missing step, then the notes, and is undefined once every note has an outcome", () => {
     const round = opened(2)
     const document = { ...round, id: designID, revision: "rev_1" }
+    const closing =
+      "Do this step now, then go on to the next one until every note has an outcome, and reply to the reviewer with the outcomes. If you need the reviewer's answer first, ask it in one line and stop."
     expect(DesignRounds.continuation(document, [])).toBe(
       [
-        "Design design_checkout: the feedback round is not finished. You stopped while 2 notes still have no recorded outcome.",
-        "Still missing: an addressed mark or an outcome for 2 notes of round 1; the design_preview publish that answers round 1; a verify of the current revision for round 1 (design_export format verify with round set; wait for its native monitor); an outcome for 2 notes (design_document update notes).",
+        "Design design_checkout: the feedback round is not finished; 2 notes still have no recorded outcome.",
+        `Next step: fix the 2 notes of round 1 without a mark below and mark each with design_document update {"addressed":[{"feedback":"<feedback>","index":<n>,"summary":"<what you changed>"}]}. ${DesignRounds.ESCAPE}`,
         DesignRounds.recite(round),
-        "Continue now: fix the notes, mark each addressed, publish one revision, run one verify per round and record each note's outcome; unresolved or accepted with a reason are allowed for a note you will not change. Then reply to the reviewer with the outcomes. This reminder is sent once per round.",
+        closing,
       ].join("\n"),
     )
-    // Marked, answered and verified: only the outcomes are left.
     const marked = DesignRounds.tick(
       round,
       [1, 2].map((index) => ({ feedback, index, summary: "Done" })),
     )
+    // Marked but not published: only the publish is named.
+    const unpublished = DesignRounds.continuation({ ...document, notes: marked.notes }, [])!
+    expect(unpublished).toContain("Next step: publish one revision with design_preview; it answers round 1.")
+    expect(unpublished).not.toContain("design_export")
+    expect(unpublished).not.toContain("mark each")
     const answered = {
       ...DesignRounds.published({ ...round, notes: marked.notes }, "rev_2"),
       id: designID,
       revision: "rev_2",
     }
-    const verified = [job("render_1", "rev_2", 1, [seen(feedback, 1, true), seen(feedback, 2, true)])]
-    expect(DesignRounds.continuation(answered, verified)).toContain(
-      "Still missing: an outcome for 2 notes (design_document update notes).",
+    // Published: only the verify is named.
+    expect(DesignRounds.continuation(answered, [])).toContain(
+      'Next step: run one verify of the current revision per round: design_export {"revision":"rev_2","format":"verify","round":1}, then wait for its native monitor.',
     )
+    // Marked, answered and verified: only the outcomes are left.
+    const verified = [job("render_1", "rev_2", 1, [seen(feedback, 1, true), seen(feedback, 2, true)])]
+    const outcomes = DesignRounds.continuation(answered, verified)!
+    expect(outcomes).toContain("Next step: record every note's outcome in ONE design_document update notes")
+    expect(outcomes).not.toContain("A verify failed")
+    expect(outcomes).toContain(closing)
     // A verify of an older revision does not count.
     expect(DesignRounds.continuation({ ...answered, revision: "rev_3" }, verified)).toContain(
-      "a verify of the current revision for round 1",
+      'design_export {"revision":"rev_3","format":"verify","round":1}',
+    )
+    // After one failed verify of a note, partial with a reason is offered for it.
+    const failing = [job("render_2", "rev_2", 1, [seen(feedback, 1, true), seen(feedback, 2, false)])]
+    expect(DesignRounds.continuation(answered, failing)).toContain(
+      "A verify failed for msg_1 #2: record partial with a reason saying what still differs, or unresolved or accepted with a reason.",
     )
     const settled = DesignRounds.apply(
       answered,
@@ -630,6 +648,28 @@ describe("DesignRounds checklist", () => {
     )
     if ("problem" in settled) throw new Error(settled.problem)
     expect(DesignRounds.continuation({ ...answered, notes: settled.notes }, verified)).toBeUndefined()
+  })
+
+  test("a round continues while each continuation is followed by progress, at most three times", () => {
+    const round = { ...opened(2), id: designID, revision: "rev_1" }
+    const start = DesignRounds.progress(round, [])
+    expect(DesignRounds.continues([], start)).toBe(true)
+    // No progress since the first continuation: it stops.
+    expect(DesignRounds.continues([{ progress: start }], start)).toBe(false)
+    // A mark is progress.
+    const marked = { ...round, notes: DesignRounds.tick(round, [{ feedback, index: 1, summary: "Done" }]).notes }
+    const ticked = DesignRounds.progress(marked, [])
+    expect(ticked).not.toBe(start)
+    expect(DesignRounds.continues([{ progress: start }], ticked)).toBe(true)
+    // So are a publish and a completed verify.
+    expect(DesignRounds.progress({ ...marked, revision: "rev_2" }, [])).not.toBe(ticked)
+    expect(
+      DesignRounds.progress(marked, [job("render_1", "rev_1", 1, [seen(feedback, 1, true), seen(feedback, 2, true)])]),
+    ).not.toBe(ticked)
+    // Three continuations end it whatever happened since.
+    expect(DesignRounds.continues([{ progress: "a" }, { progress: "b" }, { progress: "c" }], "d")).toBe(false)
+    // A marker from before markers carried progress was the round's only continuation.
+    expect(DesignRounds.continues([{}], start)).toBe(false)
   })
 })
 
@@ -752,7 +792,7 @@ describe("DesignVerify", () => {
     const gate = (update: Design.NoteUpdate) => DesignRounds.triage(answered, [update], [verify]).checked[0].refusal
     const cite = { evidence: { job: "render_1" } }
     expect(gate({ feedback, index: 1, status: "resolved", ...cite })).toBe(
-      `${DesignRounds.REFUSED} msg_1 #1 cannot be resolved: render_1 saw no change to its element since the revision the note was taken on (pixels, text, markup, style, position and size are the same at 390px). Change the element the note names, publish and verify again; for a behavior a capture cannot show (hover, focus, a script), add or update a scenario on the note's screen that acts on its element, publish and verify again; or record it unresolved or accepted with a reason saying why it stays as it is.`,
+      `${DesignRounds.REFUSED} msg_1 #1 cannot be resolved: render_1 saw no change to its element since the revision the note was taken on (pixels, text, markup, style, position and size are the same at 390px). Change the element the note names, publish and verify again; for a behavior a capture cannot show (hover, focus, a script), add or update a scenario on the note's screen that acts on its element, publish and verify again. Or record it unresolved or accepted with a reason.`,
     )
     expect(gate({ feedback, index: 2, status: "resolved", ...cite })).toBeUndefined()
     expect(gate({ feedback, index: 1, status: "partial", reason: "Only the color changed", ...cite })).toBeUndefined()

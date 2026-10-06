@@ -1244,6 +1244,42 @@ const roundContinuations = (s: Scenario) =>
     ),
   )
 
+/** A prompt from the review page, which is never tracked as a typed Design note. */
+const reviewPrompt = Effect.fnUntraced(function* (s: Scenario, text: string) {
+  const message = yield* s.session.prompt({ sessionID, text, metadata: { source: "design.feedback" }, resume: false })
+  yield* s.resume
+  return message
+})
+
+/** A tool that stands for any Design work step, so the reply that follows it is a stop after work. */
+const workTool = Effect.fnUntraced(function* () {
+  const registry = yield* Tool.Service
+  yield* registry.transform((editor) =>
+    editor.add({
+      name: "design_write_part",
+      options: { codemode: false },
+      description: "Write part of the prototype",
+      input: Schema.Struct({ part: Schema.Number }),
+      output: Schema.String,
+      execute: () => Effect.succeed({ output: "Written", content: "Written" }),
+    }),
+  )
+})
+
+const designContinuations = (s: Scenario) =>
+  s.messages.pipe(
+    Effect.map((messages) =>
+      messages.flatMap((message) =>
+        message.type === "synthetic" &&
+        message.metadata?.[DesignRounds.CONTINUATION_KEY] === undefined &&
+        (message.text.startsWith("The Design work is not finished") ||
+          message.text.startsWith("You still have unfinished Design tasks"))
+          ? [message]
+          : [],
+      ),
+    ),
+  )
+
 /** A Design agent Session with one published revision and no review round yet. */
 const publishedDesign = Effect.fnUntraced(function* () {
   const agents = yield* Agent.Service
@@ -1286,88 +1322,111 @@ const continuationsAfterWake = Effect.fnUntraced(function* (s: Scenario, expecte
 })
 
 describe("SessionRunnerLLM", () => {
-  scenario("reconciles 12 verified Design tasks out of 15 before returning to the reviewer", function* (s) {
-    const agents = yield* Agent.Service
-    const todos = yield* SessionTodoStore.Service
-    const registry = yield* Tool.Service
-    yield* DesignPlugin.Plugin.effect(host({ agent: agentHost(agents) }))
-    yield* registerToolPlugin(TodoTool.Plugin)
-    yield* s.bus.publish(SessionEvent.AgentSelected, { sessionID, agent: Agent.ID.make("design") })
-    yield* registry.transform((editor) =>
-      editor.add({
-        name: "design_preview",
-        options: { codemode: false },
-        description: "Publish the corrected prototype",
-        input: Schema.Struct({ id: Schema.String }),
-        output: Schema.String,
-        execute: () => Effect.succeed({ output: "Published 12 fixes", content: "Published 12 fixes" }),
-      }),
-    )
-    yield* todos.write({ sessionID, phase: "build", todos: [{ content: "Implement the approved screen" }] })
-    yield* s.llm.push(
-      TestLLM.tool("call_design_tasks", "todowrite", {
-        todos: Array.from({ length: 15 }, (_, index) => ({
-          content: `Fix review finding ${index + 1}`,
-          criterion: `Finding ${index + 1} is corrected in the published prototype`,
-          priority: "medium",
-        })),
-      }),
-      TestLLM.tool("call_design_proof", "design_preview", { id: "design_profile" }),
-      TestLLM.text("Corrected 12 findings; 3 remain pending", "text_design_report"),
-      Stream.unwrap(
-        todos.get(sessionID).pipe(
-          Effect.map((tasks) =>
-            Stream.fromIterable(
-              TestLLM.tool("call_tick_design_tasks", "todowrite", {
-                todos: tasks
-                  .filter((task) => task.phase === "design")
-                  .slice(0, 12)
-                  .map((task) => ({
-                    id: task.id,
-                    status: "completed",
-                    evidence: {
-                      callID: "call_design_proof",
-                      explanation: `${task.content} is corrected in the published prototype`,
-                    },
-                  })),
-              }),
+  scenario(
+    "reconciles 12 verified Design tasks out of 15 once after an audit, without another correction cycle",
+    function* (s) {
+      const agents = yield* Agent.Service
+      const todos = yield* SessionTodoStore.Service
+      const registry = yield* Tool.Service
+      const designs = yield* DesignStore.Service
+      yield* DesignPlugin.Plugin.effect(host({ agent: agentHost(agents) }))
+      yield* registerToolPlugin(TodoTool.Plugin)
+      yield* s.bus.publish(SessionEvent.AgentSelected, { sessionID, agent: Agent.ID.make("design") })
+      const design = yield* designs.create(sessionID, {
+        name: "Profile",
+        journey: "new",
+        engine: "html",
+        kind: "screen",
+      })
+      yield* registry.transform((editor) =>
+        editor.add({
+          name: "design_preview",
+          options: { codemode: false },
+          description: "Publish the corrected prototype",
+          input: Schema.Struct({ id: Schema.String }),
+          output: Schema.String,
+          // Stands for the publish and the audit the request ran: its findings are reported, not fixed again.
+          execute: () =>
+            designs
+              .putJob(sessionID, {
+                id: "render_profile_audit",
+                designID: design.id,
+                input: { revision: "rev_profile", format: "audit" },
+                status: "completed",
+                progress: 1,
+                result: null,
+                error: null,
+                created: Date.now(),
+              })
+              .pipe(Effect.orDie, Effect.as({ output: "Published 12 fixes", content: "Published 12 fixes" })),
+        }),
+      )
+      yield* todos.write({ sessionID, phase: "build", todos: [{ content: "Implement the approved screen" }] })
+      yield* s.llm.push(
+        TestLLM.tool("call_design_tasks", "todowrite", {
+          todos: Array.from({ length: 15 }, (_, index) => ({
+            content: `Fix review finding ${index + 1}`,
+            criterion: `Finding ${index + 1} is corrected in the published prototype`,
+            priority: "medium",
+          })),
+        }),
+        TestLLM.tool("call_design_proof", "design_preview", { id: "design_profile" }),
+        TestLLM.text("Corrected 12 findings; 3 remain pending", "text_design_report"),
+        Stream.unwrap(
+          todos.get(sessionID).pipe(
+            Effect.map((tasks) =>
+              Stream.fromIterable(
+                TestLLM.tool("call_tick_design_tasks", "todowrite", {
+                  todos: tasks
+                    .filter((task) => task.phase === "design")
+                    .slice(0, 12)
+                    .map((task) => ({
+                      id: task.id,
+                      status: "completed",
+                      evidence: {
+                        callID: "call_design_proof",
+                        explanation: `${task.content} is corrected in the published prototype`,
+                      },
+                    })),
+                }),
+              ),
             ),
           ),
         ),
-      ),
-      TestLLM.text("Recorded 12 completed tasks; 3 remain pending", "text_design_reconciled"),
-    )
-    yield* s.runPrompt("Correct the review findings and leave the rest for my next review")
-    expect(
-      (yield* s.context).flatMap((message) =>
-        message.type === "assistant"
-          ? message.content.flatMap((part) =>
-              part.type === "tool" && part.state.status === "error" ? [part.state.error.message] : [],
-            )
-          : [],
-      ),
-    ).toEqual([])
-    const tasks = yield* todos.get(sessionID)
-    expect(tasks.filter((task) => task.phase === "design")).toHaveLength(15)
-    expect(tasks.filter((task) => task.phase === "design" && task.status === "completed")).toHaveLength(12)
-    expect(tasks.filter((task) => task.phase === "design" && task.status !== "completed")).toHaveLength(3)
-    expect(tasks.find((task) => task.phase === "build")?.status).not.toBe("completed")
-    expect(s.requests).toHaveLength(5)
-    expect(
-      (yield* s.messages).filter(
-        (message) => message.type === "synthetic" && message.text.startsWith("Reconcile Design tasks"),
-      ),
-    ).toHaveLength(1)
-    expect(
-      (yield* s.context)
-        .flatMap((message) =>
-          message.type === "assistant" ? message.content.filter((part) => part.type === "tool") : [],
-        )
-        .map((part) => part.name),
-    ).toEqual(["todowrite", "design_preview", "todowrite"])
-  })
+        TestLLM.text("Recorded 12 completed tasks; 3 remain pending", "text_design_reconciled"),
+      )
+      yield* s.runPrompt("Correct the review findings and leave the rest for my next review")
+      expect(
+        (yield* s.context).flatMap((message) =>
+          message.type === "assistant"
+            ? message.content.flatMap((part) =>
+                part.type === "tool" && part.state.status === "error" ? [part.state.error.message] : [],
+              )
+            : [],
+        ),
+      ).toEqual([])
+      const tasks = yield* todos.get(sessionID)
+      expect(tasks.filter((task) => task.phase === "design")).toHaveLength(15)
+      expect(tasks.filter((task) => task.phase === "design" && task.status === "completed")).toHaveLength(12)
+      expect(tasks.filter((task) => task.phase === "design" && task.status !== "completed")).toHaveLength(3)
+      expect(tasks.find((task) => task.phase === "build")?.status).not.toBe("completed")
+      expect(s.requests).toHaveLength(5)
+      expect(
+        (yield* s.messages).filter(
+          (message) => message.type === "synthetic" && message.text.startsWith("Reconcile Design tasks"),
+        ),
+      ).toHaveLength(1)
+      expect(
+        (yield* s.context)
+          .flatMap((message) =>
+            message.type === "assistant" ? message.content.filter((part) => part.type === "tool") : [],
+          )
+          .map((part) => part.name),
+      ).toEqual(["todowrite", "design_preview", "todowrite"])
+    },
+  )
 
-  scenario("a Design task reconciliation never repeats edits when the model leaves tasks pending", function* (s) {
+  scenario("a pending Design task is continued once, and a reply without tools ends it", function* (s) {
     const agents = yield* Agent.Service
     const todos = yield* SessionTodoStore.Service
     const registry = yield* Tool.Service
@@ -1394,40 +1453,47 @@ describe("SessionRunnerLLM", () => {
     expect(yield* todos.get(sessionID)).toHaveLength(1)
     expect(s.requests).toHaveLength(4)
     expect((yield* todos.get(sessionID))[0]?.status).not.toBe("completed")
-    expect(
-      (yield* s.messages).filter(
-        (message) => message.type === "synthetic" && message.text.startsWith("Reconcile Design tasks"),
-      ),
-    ).toHaveLength(1)
+    const continued = yield* designContinuations(s)
+    expect(continued).toHaveLength(1)
+    expect(continued[0]?.text).toContain("Wait for user approval")
+    expect(continued[0]?.text).toContain("A task that waits on the user")
+    // A question answered with text alone is not sent back to work.
     yield* TestClock.adjust("1 second")
     yield* s.llm.push(TestLLM.text("It is waiting for your approval", "text_design_followup"))
     yield* s.runPrompt("What is its status?")
     expect(s.requests).toHaveLength(5)
   })
 
-  scenario("a Design round published without outcomes gets exactly one continuation", function* (s) {
-    const round = yield* openDesignRound(s)
-    yield* s.llm.push(
-      TestLLM.text("Published the fixes", "text_round_stop"),
-      TestLLM.text("Recorded the outcome", "text_round_continued"),
-    )
-    yield* s.runPrompt("Answer the review")
-    expect(s.requests).toHaveLength(2)
-    const continued = yield* roundContinuations(s)
-    expect(continued).toHaveLength(1)
-    expect(continued[0]).toMatchObject({
-      metadata: { [DesignRounds.CONTINUATION_KEY]: { designID: round.id, round: 1 } },
-    })
-    expect(continued[0]?.text).toContain("the feedback round is not finished")
-    expect(continued[0]?.text).toContain("Note: Make the title larger")
-    expect(continued[0]?.text).toContain("a verify of the current revision for round 1")
-    // A second stop on the same round is left to the reviewer.
-    yield* TestClock.adjust("1 second")
-    yield* s.llm.push(TestLLM.text("Still waiting on the verify", "text_round_second_stop"))
-    yield* s.runPrompt("What is left?")
-    expect(s.requests).toHaveLength(3)
-    expect(yield* roundContinuations(s)).toHaveLength(1)
-  })
+  scenario(
+    "a Design round published without outcomes is not continued again after a reply without progress",
+    function* (s) {
+      const round = yield* openDesignRound(s)
+      yield* s.llm.push(
+        TestLLM.text("Published the fixes", "text_round_stop"),
+        TestLLM.text("Recorded the outcome", "text_round_continued"),
+      )
+      yield* reviewPrompt(s, "Answer the review")
+      expect(s.requests).toHaveLength(2)
+      const continued = yield* roundContinuations(s)
+      expect(continued).toHaveLength(1)
+      expect(continued[0]).toMatchObject({
+        metadata: { [DesignRounds.CONTINUATION_KEY]: { designID: round.id, round: 1 } },
+      })
+      expect(continued[0]?.text).toContain("the feedback round is not finished")
+      expect(continued[0]?.text).toContain("Note: Make the title larger")
+      // Only the next missing step is named: the verify, not the marks, the publish or the outcomes.
+      expect(continued[0]?.text).toContain(
+        `Next step: run one verify of the current revision per round: design_export {"revision":"${round.revision}","format":"verify","round":1}`,
+      )
+      expect(continued[0]?.text).not.toContain("design_preview")
+      // A second stop on the same round without progress is left to the reviewer.
+      yield* TestClock.adjust("1 second")
+      yield* s.llm.push(TestLLM.text("Still waiting on the verify", "text_round_second_stop"))
+      yield* reviewPrompt(s, "What is left?")
+      expect(s.requests).toHaveLength(3)
+      expect(yield* roundContinuations(s)).toHaveLength(1)
+    },
+  )
 
   scenario("a Design round with a verify still running is not continued", function* (s) {
     const round = yield* openDesignRound(s)
@@ -1443,14 +1509,19 @@ describe("SessionRunnerLLM", () => {
       created: 1,
     })
     yield* s.llm.push(TestLLM.text("Waiting for the verify", "text_round_verifying"))
-    yield* s.runPrompt("Answer the review")
+    yield* reviewPrompt(s, "Answer the review")
     expect(s.requests).toHaveLength(1)
     expect(yield* roundContinuations(s)).toHaveLength(0)
   })
 
   scenario("an interrupted Design turn is not continued", function* (s) {
     yield* openDesignRound(s)
-    yield* s.admit("Answer the review")
+    yield* s.session.prompt({
+      sessionID,
+      text: "Answer the review",
+      metadata: { source: "design.feedback" },
+      resume: false,
+    })
     yield* s.llm.push(TestLLM.text("Publishing", "text_round_interrupted"))
     const gate = yield* s.llm.gate
     yield* s.resume.pipe(Effect.exit, Effect.forkChild)
@@ -1566,8 +1637,8 @@ describe("SessionRunnerLLM", () => {
     expect(continued).toHaveLength(2)
     expect(continued.map((message) => message.metadata?.[DesignRounds.CONTINUATION_KEY])).toEqual(
       expect.arrayContaining([
-        { designID: id, round: 1, notes: 1 },
-        { designID: id, round: 1, notes: 2 },
+        expect.objectContaining({ designID: id, round: 1, notes: 1 }),
+        expect.objectContaining({ designID: id, round: 1, notes: 2 }),
       ]),
     )
     expect(continued.find((message) => message.text.includes(TYPED))).toBeDefined()
@@ -1626,15 +1697,183 @@ describe("SessionRunnerLLM", () => {
     expect(yield* notesAfterClassification(fixture, id, user.id, 0)).toEqual([])
   })
 
-  scenario("single reasoning keeps a typed Design request untracked and asks S1 nothing", function* (s) {
+  for (const source of ["tui", "app"])
+    scenario(`single reasoning tracks a request typed in the ${source} as a note without asking S1`, function* (s) {
+      const fixture = yield* classificationFixture("dual", CHANGE)
+      yield* fixture.intelligence.sessionMode(sessionID, { reasoning: "single" })
+      const id = yield* publishedDesign()
+      yield* s.llm.push(
+        TestLLM.text("Working on the header", `text_single_change_${source}`),
+        TestLLM.text("Recorded the outcome", `text_single_continued_${source}`),
+      )
+      const user = yield* s.session.prompt({ sessionID, text: TYPED, metadata: { source }, resume: false })
+      yield* s.resume
+      expect(fixture.requests.filter((request) => request.classification)).toHaveLength(0)
+      const designs = yield* DesignStore.Service
+      expect((yield* designs.get(sessionID, id)).notes).toEqual([
+        expect.objectContaining({
+          feedback: user.id,
+          index: 1,
+          round: 1,
+          status: "open",
+          source: "message",
+          item: expect.objectContaining({ target: DesignRounds.PAGE, text: TYPED }),
+        }),
+      ])
+      // The note was there before the Step ran, so the same drain continued its round, once.
+      const continued = yield* roundContinuations(s)
+      expect(continued).toHaveLength(1)
+      expect(continued[0]?.text).toContain(TYPED)
+      expect(s.requests).toHaveLength(2)
+    })
+
+  scenario("single reasoning never tracks a programmatic prompt as a Design note", function* (s) {
     const fixture = yield* classificationFixture("dual", CHANGE)
     yield* fixture.intelligence.sessionMode(sessionID, { reasoning: "single" })
     const id = yield* publishedDesign()
-    yield* s.llm.push(TestLLM.text("Noted", "text_single_change"))
-    yield* s.runPrompt(TYPED)
-    expect(fixture.requests.filter((request) => request.classification)).toHaveLength(0)
+    yield* s.llm.push(TestLLM.text("Noted", "text_single_programmatic"))
+    yield* s.session.prompt({ sessionID, text: TYPED, metadata: { source: "monitor" }, resume: false })
+    yield* s.resume
     const designs = yield* DesignStore.Service
     expect((yield* designs.get(sessionID, id)).notes ?? []).toEqual([])
+    expect(s.requests).toHaveLength(1)
+  })
+
+  scenario("single reasoning scrubs vault values from a typed Design note", function* (s) {
+    const vault = yield* Vault.Service
+    const name = yield* vault.set({
+      projectID: Project.ID.global,
+      name: "staging_password",
+      value: "Correct-Horse-Battery-417",
+      origin: "requested",
+    })
+    const id = yield* publishedDesign()
+    yield* s.llm.push(
+      TestLLM.text("Changing the login", "text_single_scrubbed"),
+      TestLLM.text("Recorded the outcome", "text_single_scrubbed_continued"),
+    )
+    yield* s.runPrompt("Show the staging password Correct-Horse-Battery-417 in the login hint")
+    const designs = yield* DesignStore.Service
+    const notes = (yield* designs.get(sessionID, id)).notes ?? []
+    expect(notes).toHaveLength(1)
+    expect(notes[0]?.item.text).not.toContain("Correct-Horse-Battery-417")
+    expect(notes[0]?.item.text).toContain(name)
+  })
+
+  scenario("a Design round continues again after progress, and stops after a continuation without it", function* (s) {
+    const round = yield* openDesignRound(s)
+    const designs = yield* DesignStore.Service
+    const registry = yield* Tool.Service
+    // Stands for design_export format verify and its monitor: a completed verify that failed the note.
+    yield* registry.transform((editor) =>
+      editor.add({
+        name: "design_verify_round",
+        options: { codemode: false },
+        description: "Verify the round",
+        input: Schema.Struct({}),
+        output: Schema.String,
+        execute: () =>
+          designs
+            .putJob(sessionID, {
+              id: "render_round_failed",
+              designID: round.id,
+              input: { revision: round.revision, format: "verify", round: 1 },
+              status: "completed",
+              progress: 1,
+              result: null,
+              error: null,
+              created: 1,
+              finished: 2,
+              verify: {
+                revision: round.revision,
+                round: 1,
+                width: 1440,
+                findings: [],
+                notes: [
+                  {
+                    feedback: "msg_round_review",
+                    index: 1,
+                    label: "h1",
+                    found: false,
+                    blocking: true,
+                    findings: [],
+                    scenarios: [],
+                    reason: "element not found",
+                  },
+                ],
+              },
+            })
+            .pipe(Effect.orDie, Effect.as({ output: "Verified", content: "Verified" })),
+      }),
+    )
+    yield* s.llm.push(
+      TestLLM.text("Published the fixes", "text_progress_stop"),
+      TestLLM.tool("call_progress_verify", "design_verify_round", {}),
+      TestLLM.text("Verified the round", "text_progress_second_stop"),
+      TestLLM.text("Waiting for the reviewer", "text_progress_idle"),
+    )
+    yield* reviewPrompt(s, "Answer the review")
+    expect(s.requests).toHaveLength(4)
+    const continued = yield* roundContinuations(s)
+    expect(continued).toHaveLength(2)
+    const texts = continued.map((message) => message.text)
+    expect(texts.filter((text) => text.includes("Next step: run one verify"))).toHaveLength(1)
+    // The verify was progress: the second continuation names the outcomes and offers partial for the failed note.
+    const outcomes = texts.filter((text) => text.includes("Next step: record every note's outcome"))
+    expect(outcomes).toHaveLength(1)
+    expect(outcomes[0]).toContain("A verify failed for msg_round_review #1: record partial with a reason")
+  })
+
+  scenario("continues a Design agent that stopped before publishing, at most three times per message", function* (s) {
+    const agents = yield* Agent.Service
+    const designs = yield* DesignStore.Service
+    yield* DesignPlugin.Plugin.effect(host({ agent: agentHost(agents) }))
+    yield* s.bus.publish(SessionEvent.AgentSelected, { sessionID, agent: Agent.ID.make("design") })
+    yield* designs.create(sessionID, { name: "Checkout", journey: "new", engine: "html", kind: "screen" })
+    yield* workTool()
+    yield* s.llm.push(
+      ...[1, 2, 3, 4].flatMap((attempt) => [
+        TestLLM.tool(`call_part_${attempt}`, "design_write_part", { part: attempt }),
+        TestLLM.text(`Wrote part ${attempt}`, `text_part_${attempt}`),
+      ]),
+    )
+    yield* s.runPrompt("Build the checkout prototype")
+    const continued = yield* designContinuations(s)
+    expect(continued).toHaveLength(3)
+    expect(continued[0]?.text).toContain("Checkout has no published revision yet")
+    expect(continued[0]?.text).toContain("design_preview")
+    expect(s.requests).toHaveLength(8)
+  })
+
+  scenario("never continues unfinished Design work while one of its jobs runs", function* (s) {
+    const agents = yield* Agent.Service
+    const designs = yield* DesignStore.Service
+    yield* DesignPlugin.Plugin.effect(host({ agent: agentHost(agents) }))
+    yield* s.bus.publish(SessionEvent.AgentSelected, { sessionID, agent: Agent.ID.make("design") })
+    const design = yield* designs.create(sessionID, {
+      name: "Checkout",
+      journey: "new",
+      engine: "html",
+      kind: "screen",
+    })
+    yield* designs.putJob(sessionID, {
+      id: "render_checkout_export",
+      designID: design.id,
+      input: { revision: "rev_checkout", format: "html" },
+      status: "running",
+      progress: 0,
+      result: null,
+      error: null,
+      created: 1,
+    })
+    yield* workTool()
+    yield* s.llm.push(
+      TestLLM.tool("call_part_running", "design_write_part", { part: 1 }),
+      TestLLM.text("Exporting", "text_part_running"),
+    )
+    yield* s.runPrompt("Build the checkout prototype")
+    expect(yield* designContinuations(s)).toHaveLength(0)
+    expect(s.requests).toHaveLength(2)
   })
 
   scenario("stops Design no-op edits at the third call even with inherited Build permissions", function* (s) {
