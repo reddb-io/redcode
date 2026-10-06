@@ -249,8 +249,34 @@ export type SessionBudgetTotals = { cost: number; tokens: number; unpriced: numb
 export type SessionGoalCommandAction = "set" | "pause" | "resume" | "drop" | "budget" | "status"
 
 export type DesignFeedEvent =
-  | { seq: number; at: number; type: "state"; state: "working" | "idle" }
-  | { seq: number; at: number; type: "user"; id: string; text: string; notes: number; pending?: boolean }
+  | {
+      seq: number
+      at: number
+      type: "state"
+      state: "working" | "idle"
+      outcome?: "failed" | "interrupted"
+      message?: string
+    }
+  | {
+      seq: number
+      at: number
+      type: "wait"
+      wait: "compaction" | "retry" | "permission"
+      active: boolean
+      until?: number
+      attempt?: number
+      message?: string
+    }
+  | {
+      seq: number
+      at: number
+      type: "user"
+      id: string
+      text: string
+      notes: number
+      pending?: boolean
+      cancelled?: boolean
+    }
   | { seq: number; at: number; type: "reply"; id: string; text: string }
   | {
       seq: number
@@ -261,7 +287,7 @@ export type DesignFeedEvent =
       status: "running" | "done" | "failed"
       summary: string
     }
-  | { seq: number; at: number; type: "published"; design: string; revision: string; name: string }
+  | { seq: number; at: number; type: "published"; design: string; revision: string; name: string; ordinal?: number }
   | { seq: number; at: number; type: "agent"; agent: string }
   | {
       seq: number
@@ -2545,6 +2571,7 @@ export type DesignJob = {
   input: DesignRender
   status: "queued" | "running" | "completed" | "failed" | "cancelled" | "interrupted"
   progress: number | "Infinity" | "-Infinity" | "NaN"
+  phase?: "preparing"
   result: string | null
   error: string | null
   created: number | "Infinity" | "-Infinity" | "NaN"
@@ -3268,6 +3295,7 @@ export type DesignInfo = {
   revision: string | null
   approvedRevision: string | null
   ended: boolean
+  endRequested?: boolean
   updated: number | "Infinity" | "-Infinity" | "NaN"
   rounds?: Array<DesignRound>
   notes?: Array<DesignNote>

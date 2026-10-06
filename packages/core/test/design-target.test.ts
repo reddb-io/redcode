@@ -307,3 +307,54 @@ describe("DesignTarget", () => {
     expect(await DesignTarget.recall(file, state.path)).toBeUndefined()
   })
 })
+
+describe("DesignTarget.prefetch", () => {
+  const request = DesignTarget.evaluation({
+    sessionID: "ses_prefetch",
+    requests: ["Design the onboarding of our iPhone app"],
+    design: { name: "Onboarding", kind: "flow" },
+  })
+
+  test("sends the classification at once, alongside identification, and choose reads that one answer", async () => {
+    const events: string[] = []
+    const detect = Effect.sync(() => events.push("detect started")).pipe(
+      Effect.andThen(Effect.sleep("30 millis")),
+      Effect.as(evaluated(request, { target: choice("app", 0.95, { app: 0.95, web: 0.05 }) })),
+    )
+    const outcome = await Effect.runPromise(
+      Effect.gen(function* () {
+        const pending = yield* DesignTarget.prefetch({ forced: undefined, mode: "dual", detect })
+        // Design system identification runs while the classification is in flight.
+        yield* Effect.sync(() => events.push("identification started"))
+        yield* Effect.sleep("10 millis")
+        yield* Effect.sync(() => events.push("identification finished"))
+        return yield* DesignTarget.choose({
+          requested: { target: "app" },
+          forced: undefined,
+          mode: "dual",
+          detect: pending,
+          ask: () => Effect.succeed(undefined),
+        })
+      }),
+    )
+    expect(events).toEqual(["detect started", "identification started", "identification finished"])
+    expect(outcome.source).toBe("detected")
+    expect(outcome.asked).toBe(false)
+  })
+
+  test("sends nothing when the prompt classification already read the target, or none is needed", async () => {
+    const calls: string[] = []
+    const detect = Effect.sync(() => {
+      calls.push("detect")
+      return undefined
+    })
+    const classified = { target: "web" as const, confidence: 0.9, reason: "web" }
+    for (const input of [
+      { forced: undefined, mode: "dual" as const, classified },
+      { forced: { target: "web" as const }, mode: "dual" as const },
+      { forced: undefined, mode: "single" as const },
+    ])
+      expect(await Effect.runPromise(DesignTarget.prefetch({ ...input, detect }).pipe(Effect.flatten))).toBeUndefined()
+    expect(calls).toEqual([])
+  })
+})

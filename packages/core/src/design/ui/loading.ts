@@ -16,10 +16,28 @@ export interface LoadingState {
   readonly since: number
   /** The failure summary in the error phase. */
   readonly message: string
-  /** The agent's live activity from the conversation feed, shown in the zero state. */
-  readonly agent: "idle" | "thinking" | "tool"
+  /**
+   * The agent's live activity from the conversation feed, shown in the zero state and the live line: idle,
+   * thinking, running a tool, waiting (compacting, a scheduled retry, a permission to approve in the terminal),
+   * or stopped short (its turn failed or was interrupted).
+   */
+  readonly agent: AgentActivity
   readonly tool: string
+  /** The failure message, the interruption's reason, the retry's error or the permission's action. */
+  readonly detail: string
+  /** When a scheduled retry is due, in epoch milliseconds; 0 otherwise. */
+  readonly until: number
 }
+
+export type AgentActivity =
+  | "idle"
+  | "thinking"
+  | "tool"
+  | "compacting"
+  | "retrying"
+  | "permission"
+  | "failed"
+  | "interrupted"
 
 export type LoadingEvent =
   /** The design list answered: the design's latest revision, or none yet. */
@@ -41,7 +59,20 @@ export type LoadingEvent =
   /** The frame's runtime (screens, slides) reported ready, fonts included. */
   | { readonly type: "ready" }
   | { readonly type: "failed"; readonly revision: string; readonly message: string }
-  | { readonly type: "agent"; readonly state: "working" | "idle" }
+  | {
+      readonly type: "agent"
+      readonly state: "working" | "idle"
+      readonly outcome?: "failed" | "interrupted"
+      readonly message?: string
+    }
+  /** The feed's wait entries: a working agent compacting, waiting for a retry, or for a permission. */
+  | {
+      readonly type: "wait"
+      readonly wait: "compaction" | "retry" | "permission"
+      readonly active: boolean
+      readonly until?: number
+      readonly message?: string
+    }
   | { readonly type: "tool"; readonly tool: string; readonly status: "running" | "done" | "failed" }
 
 /** How far the newest feedback round has come, as the Feedback panel's progress line names it. */
@@ -140,16 +171,26 @@ export function previewLoading() {
     message: "",
     agent: "idle",
     tool: "",
+    detail: "",
+    until: 0,
   })
+  const waits = { compaction: "compacting", retry: "retrying", permission: "permission" } as const
   const reduce = (state: LoadingState, event: LoadingEvent): LoadingState => {
     if (event.type === "agent")
       return event.state === "idle"
-        ? { ...state, agent: "idle", tool: "" }
-        : { ...state, agent: state.tool ? "tool" : "thinking" }
+        ? { ...state, agent: event.outcome ?? "idle", tool: "", detail: event.message ?? "", until: 0 }
+        : { ...state, agent: state.tool ? "tool" : "thinking", detail: "", until: 0 }
+    if (event.type === "wait") {
+      if (event.active)
+        return { ...state, agent: waits[event.wait], detail: event.message ?? "", until: event.until ?? 0 }
+      // Ending a wait the agent is not in (a retry that a permission already replaced) changes nothing.
+      if (state.agent !== waits[event.wait]) return state
+      return { ...state, agent: state.tool ? "tool" : "thinking", detail: "", until: 0 }
+    }
     if (event.type === "tool") {
-      if (event.status === "running") return { ...state, agent: "tool", tool: event.tool }
+      if (event.status === "running") return { ...state, agent: "tool", tool: event.tool, detail: "", until: 0 }
       if (event.tool !== state.tool) return state
-      return { ...state, agent: "thinking", tool: "" }
+      return { ...state, agent: "thinking", tool: "", detail: "", until: 0 }
     }
     if (event.type === "design") {
       if (!event.revision) return { ...state, phase: "empty", stage: "revision", revision: "", message: "" }

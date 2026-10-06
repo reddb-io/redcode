@@ -744,7 +744,24 @@ export type SessionBudgetUpdateOperation<E = never> = (
 
 export type SessionDesignFeedInput = { readonly sessionID: Session.ID; readonly after?: Event.Seq | undefined }
 export type SessionDesignFeedOutput =
-  | { readonly seq: number; readonly at: number; readonly type: "state"; readonly state: "working" | "idle" }
+  | {
+      readonly seq: number
+      readonly at: number
+      readonly type: "state"
+      readonly state: "working" | "idle"
+      readonly outcome?: "failed" | "interrupted" | undefined
+      readonly message?: string | undefined
+    }
+  | {
+      readonly seq: number
+      readonly at: number
+      readonly type: "wait"
+      readonly wait: "compaction" | "retry" | "permission"
+      readonly active: boolean
+      readonly until?: number | undefined
+      readonly attempt?: number | undefined
+      readonly message?: string | undefined
+    }
   | {
       readonly seq: number
       readonly at: number
@@ -753,6 +770,7 @@ export type SessionDesignFeedOutput =
       readonly text: string
       readonly notes: number
       readonly pending?: boolean | undefined
+      readonly cancelled?: boolean | undefined
     }
   | { readonly seq: number; readonly at: number; readonly type: "reply"; readonly id: string; readonly text: string }
   | {
@@ -771,6 +789,7 @@ export type SessionDesignFeedOutput =
       readonly design: string & Brand.Brand<"Design.ID">
       readonly revision: string
       readonly name: string
+      readonly ordinal?: number | undefined
     }
   | { readonly seq: number; readonly at: number; readonly type: "agent"; readonly agent: string }
   | {
@@ -901,6 +920,7 @@ export type SessionDesignListOutput = ReadonlyArray<{
   readonly revision: string | null
   readonly approvedRevision: string | null
   readonly ended: boolean
+  readonly endRequested?: boolean | undefined
   readonly updated: number
   readonly rounds?:
     | ReadonlyArray<{
@@ -1076,6 +1096,7 @@ export type SessionDesignCreateOutput = {
   readonly revision: string | null
   readonly approvedRevision: string | null
   readonly ended: boolean
+  readonly endRequested?: boolean | undefined
   readonly updated: number
   readonly rounds?:
     | ReadonlyArray<{
@@ -1244,6 +1265,7 @@ export type SessionDesignGetOutput = {
   readonly revision: string | null
   readonly approvedRevision: string | null
   readonly ended: boolean
+  readonly endRequested?: boolean | undefined
   readonly updated: number
   readonly rounds?:
     | ReadonlyArray<{
@@ -1325,6 +1347,7 @@ export type SessionDesignJobsOutput = ReadonlyArray<{
   }
   readonly status: "queued" | "running" | "completed" | "failed" | "cancelled" | "interrupted"
   readonly progress: number
+  readonly phase?: "preparing" | undefined
   readonly result: string | null
   readonly error: string | null
   readonly created: number
@@ -1587,6 +1610,7 @@ export type SessionDesignUpdateOutput = {
   readonly revision: string | null
   readonly approvedRevision: string | null
   readonly ended: boolean
+  readonly endRequested?: boolean | undefined
   readonly updated: number
   readonly rounds?:
     | ReadonlyArray<{
@@ -1755,6 +1779,7 @@ export type SessionDesignRefreshOutput = {
   readonly revision: string | null
   readonly approvedRevision: string | null
   readonly ended: boolean
+  readonly endRequested?: boolean | undefined
   readonly updated: number
   readonly rounds?:
     | ReadonlyArray<{
@@ -1940,6 +1965,7 @@ export type SessionDesignReopenOutput = {
   readonly revision: string | null
   readonly approvedRevision: string | null
   readonly ended: boolean
+  readonly endRequested?: boolean | undefined
   readonly updated: number
   readonly rounds?:
     | ReadonlyArray<{
@@ -2115,6 +2141,7 @@ export type SessionDesignRevisionsOutput = ReadonlyArray<{
     readonly revision: string | null
     readonly approvedRevision: string | null
     readonly ended: boolean
+    readonly endRequested?: boolean | undefined
     readonly updated: number
     readonly rounds?:
       | ReadonlyArray<{
@@ -2375,6 +2402,7 @@ export type SessionDesignRevisionOutput = {
     readonly revision: string | null
     readonly approvedRevision: string | null
     readonly ended: boolean
+    readonly endRequested?: boolean | undefined
     readonly updated: number
     readonly rounds?:
       | ReadonlyArray<{

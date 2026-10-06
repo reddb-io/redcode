@@ -40,9 +40,14 @@ export function mountPresent(host: HTMLElement, options: PresentOptions) {
   const escape = (value: string) => value.replaceAll("&", "&amp;").replaceAll("<", "&lt;").replaceAll('"', "&quot;")
   // Slide ids need no decoding; anything else in the fragment is ignored by start().
   const self = `${Date.now().toString(36)}${Math.random().toString(36).slice(2, 10)}`
+  // The review opens the presentation on the variant it shows; slide ids can repeat across variants.
+  const requested = new URLSearchParams(location.search).get("variant") ?? ""
+  const wanted = ID.test(requested) ? requested : ""
   const state = {
     host: logic.start(self, location.hash.slice(1), presenter ? Date.now() : 0),
     notes: {} as Record<string, string>,
+    /** The variant whose slides are presented; "" for slides outside variants. */
+    scope: wanted,
   }
   const frame = `position:absolute;left:0;top:0;width:${SLIDE.width}px;height:${SLIDE.height}px;border:0;transform-origin:0 0;background:#fff;opacity:0;transition:opacity .24s ease-out`
   // The slides stay out of sight until their frame has painted, so a window never shows a blank white box.
@@ -72,7 +77,7 @@ export function mountPresent(host: HTMLElement, options: PresentOptions) {
   const draw = () => {
     const sent = logic.command(state.host)
     state.host = sent.host
-    if (sent.message) slide.contentWindow?.postMessage(sent.message, "*")
+    if (sent.message) slide.contentWindow?.postMessage({ ...sent.message, variant: state.scope }, "*")
     const show = state.host.show
     const slides = state.host.slides
     const at = index()
@@ -85,7 +90,11 @@ export function mountPresent(host: HTMLElement, options: PresentOptions) {
     element<HTMLButtonElement>("next").disabled = logic.button("next", at, slides.length) === undefined
     element("end").hidden = !!next || at < 0
     upcoming!.style.visibility = next ? "visible" : "hidden"
-    if (next) upcoming!.contentWindow?.postMessage({ type: "design:screen", id: next.id, scroll: false }, "*")
+    if (next)
+      upcoming!.contentWindow?.postMessage(
+        { type: "design:screen", id: next.id, variant: state.scope, scroll: false },
+        "*",
+      )
     const notes = state.notes[show.slide] ?? ""
     element("notes").textContent = notes || copy.presentNoNotes
     if (notes) delete element("notes").dataset.empty
@@ -129,7 +138,9 @@ export function mountPresent(host: HTMLElement, options: PresentOptions) {
   }
   for (const target of upcoming ? [slide, upcoming] : [slide])
     target.addEventListener("load", () => {
-      if (target.srcdoc) setTimeout(() => shown(target), 3000)
+      if (!target.srcdoc) return
+      if (wanted) target.contentWindow?.postMessage({ type: "design:variant", id: wanted }, "*")
+      setTimeout(() => shown(target), 3000)
     })
   const view = (name: PresentOptions["view"]) => {
     const url = new URL(location.href)
@@ -192,8 +203,11 @@ export function mountPresent(host: HTMLElement, options: PresentOptions) {
         "variant" in item &&
         typeof item.variant === "string",
     )
-    // The slides of the variant the frame shows first, else the ones outside variants.
-    const scope = listed[0]?.variant ?? ""
+    // The slides of the variant the review showed, else of the one the frame shows first, else outside variants.
+    const scope = listed.some((item: { variant: string }) => item.variant === wanted)
+      ? wanted
+      : (listed[0]?.variant ?? "")
+    state.scope = scope
     dispatch({
       type: "frame",
       slides: listed

@@ -3,6 +3,7 @@ export * as DesignFeed from "./feed.js"
 import { Design } from "@opencode/schema/design"
 import { DesignNotice } from "@opencode/schema/design-notice"
 import { SessionEvent } from "@opencode/schema/session-event"
+import { Permission } from "@opencode/schema/permission"
 import { DateTime, Effect, Option, Schema, Stream } from "effect"
 import { Session } from "../session.js"
 import { SessionSchema } from "../session/schema.js"
@@ -32,6 +33,17 @@ const Verified = Schema.Array(
 )
 const decodeVerified = Schema.decodeUnknownOption(Verified)
 const isSessionEvent = Schema.is(Schema.toType(SessionEvent.Durable))
+const isAsked = Schema.is(Schema.toType(Permission.Event.Asked))
+const isReplied = Schema.is(Schema.toType(Permission.Event.Replied))
+// Output after a scheduled retry means the retried request is under way again.
+const RESUMED = new Set<SessionEvent.DurableEvent["type"]>([
+  "session.step.started",
+  "session.step.ended",
+  "session.step.failed",
+  "session.text.started",
+  "session.reasoning.started",
+  "session.tool.input.started",
+])
 
 export function bound(text: string, limit: number) {
   const value = text.trim()
@@ -62,6 +74,8 @@ export interface State {
   readonly calls: ReadonlyMap<string, Call>
   readonly users: ReadonlyMap<string, ReturnType<typeof describe>>
   readonly announced: ReadonlySet<string>
+  /** A retry is scheduled and no output of the retried request has arrived yet. */
+  readonly retrying?: boolean
 }
 
 export const initial: State = { calls: new Map(), users: new Map(), announced: new Set() }
@@ -71,6 +85,25 @@ export function reduce(
   state: State,
   event: SessionEvent.DurableEvent,
 ): readonly [State, ReadonlyArray<Design.FeedEvent>] {
+  const [next, entries] = entry(state, event)
+  if (!state.retrying || !RESUMED.has(event.type)) return [next, entries]
+  const resumed = { seq: event.durable.seq, at: event.created, type: "wait" as const, wait: "retry" as const }
+  return [{ ...next, retrying: false }, [{ ...resumed, active: false }, ...entries]]
+}
+
+/**
+ * A permission request of the Session is ephemeral: the review hears of it only while connected, and says
+ * the user approves it in the terminal.
+ */
+export function permission(
+  event: typeof Permission.Event.Asked.Type | typeof Permission.Event.Replied.Type,
+): ReadonlyArray<Design.FeedEvent> {
+  const base = { seq: 0, at: event.created, type: "wait" as const, wait: "permission" as const }
+  if (event.type === "permission.asked") return [{ ...base, active: true, message: event.data.action }]
+  return [{ ...base, active: false }]
+}
+
+function entry(state: State, event: SessionEvent.DurableEvent): readonly [State, ReadonlyArray<Design.FeedEvent>] {
   const base = { seq: event.durable.seq, at: event.created }
   if (event.type === "session.inbox.enqueued" && event.data.item.type === "user") {
     const summary = describe(event.data.item.payload.text)
@@ -83,13 +116,63 @@ export function reduce(
     const summary = state.users.get(event.data.inboxID)
     return [state, summary ? [{ ...base, type: "user", id: event.data.inboxID, ...summary }] : []]
   }
+  if (event.type === "session.inbox.cancelled") {
+    const summary = state.users.get(event.data.inboxID)
+    return [state, summary ? [{ ...base, type: "user", id: event.data.inboxID, ...summary, cancelled: true }] : []]
+  }
   if (event.type === "session.execution.started") return [state, [{ ...base, type: "state", state: "working" }]]
-  if (
-    event.type === "session.execution.succeeded" ||
-    event.type === "session.execution.failed" ||
-    event.type === "session.execution.interrupted"
-  )
-    return [state, [{ ...base, type: "state", state: "idle" }]]
+  if (event.type === "session.execution.succeeded")
+    return [{ ...state, retrying: false }, [{ ...base, type: "state", state: "idle" }]]
+  if (event.type === "session.execution.failed")
+    return [
+      { ...state, retrying: false },
+      [
+        {
+          ...base,
+          type: "state",
+          state: "idle",
+          outcome: "failed",
+          message: bound(event.data.error.message, LIMITS.summary),
+        },
+      ],
+    ]
+  if (event.type === "session.execution.interrupted")
+    return [
+      { ...state, retrying: false },
+      [{ ...base, type: "state", state: "idle", outcome: "interrupted", message: event.data.reason }],
+    ]
+  if (event.type === "session.retry.scheduled")
+    return [
+      { ...state, retrying: true },
+      [
+        {
+          ...base,
+          type: "wait",
+          wait: "retry",
+          active: true,
+          until: event.data.at,
+          attempt: event.data.attempt,
+          message: bound(event.data.error.message, LIMITS.summary),
+        },
+      ],
+    ]
+  if (event.type === "session.compaction.started")
+    return [state, [{ ...base, type: "wait", wait: "compaction", active: true }]]
+  if (event.type === "session.compaction.ended")
+    return [state, [{ ...base, type: "wait", wait: "compaction", active: false }]]
+  if (event.type === "session.compaction.failed")
+    return [
+      state,
+      [
+        {
+          ...base,
+          type: "wait",
+          wait: "compaction",
+          active: false,
+          message: bound(event.data.error.message, LIMITS.summary),
+        },
+      ],
+    ]
   if (event.type === "session.text.ended") {
     const text = bound(event.data.text, LIMITS.text)
     return [
@@ -163,8 +246,14 @@ export function stream(
           .subscribe()
           .pipe(
             Stream.filter(
-              (event): event is SessionEvent.DurableEvent =>
-                isSessionEvent(event) && event.durable.aggregateID === sessionID,
+              (
+                event,
+              ): event is
+                | SessionEvent.DurableEvent
+                | typeof Permission.Event.Asked.Type
+                | typeof Permission.Event.Replied.Type =>
+                (isSessionEvent(event) && event.durable.aggregateID === sessionID) ||
+                ((isAsked(event) || isReplied(event)) && event.data.sessionID === sessionID),
             ),
           ),
       )
@@ -172,7 +261,14 @@ export function stream(
       const inbox = yield* sessions.inbox(sessionID)
       const snapshot = history(messages, inbox)
       return Stream.fromIterable(snapshot.entries).pipe(
-        Stream.concat(Stream.fromPull(Effect.succeed(live)).pipe(Stream.mapAccum(() => snapshot.state, reduce))),
+        Stream.concat(
+          Stream.fromPull(Effect.succeed(live)).pipe(
+            Stream.mapAccum(
+              (): State => snapshot.state,
+              (state, event) => (isSessionEvent(event) ? reduce(state, event) : [state, permission(event)]),
+            ),
+          ),
+        ),
       )
     }),
   )
@@ -255,6 +351,20 @@ export function history(messages: readonly SessionMessage.Info[], inbox: readonl
         ]
       : [],
   )
+  // A compaction still running when the review connects is a wait the live events will end.
+  const last = messages.at(-1)
+  const compacting =
+    last?.type === "compaction" && last.status === "running"
+      ? [
+          {
+            seq: 0,
+            at: DateTime.toEpochMillis(last.time.created),
+            type: "wait" as const,
+            wait: "compaction" as const,
+            active: true,
+          },
+        ]
+      : []
   return {
     state: {
       ...snapshot.state,
@@ -263,7 +373,7 @@ export function history(messages: readonly SessionMessage.Info[], inbox: readonl
         ...pending.map((item) => [item.id, { text: item.text, notes: item.notes }] as const),
       ]),
     },
-    entries: [...snapshot.entries, ...pending],
+    entries: [...snapshot.entries, ...compacting, ...pending],
   }
 }
 
@@ -282,7 +392,16 @@ function completed(
     typeof design === "string" &&
     Schema.is(Design.ID)(design) &&
     typeof revision === "string"
-      ? [{ ...base, type: "published" as const, design, revision, name: String(call.input.name ?? "") }]
+      ? [
+          {
+            ...base,
+            type: "published" as const,
+            design,
+            revision,
+            name: String(call.input.name ?? ""),
+            ...(Number.isSafeInteger(metadata?.ordinal) ? { ordinal: Number(metadata?.ordinal) } : {}),
+          },
+        ]
       : []
   const verified =
     call?.name === "design_jobs"

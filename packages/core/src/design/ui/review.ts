@@ -5,7 +5,7 @@ import type { viewports } from "./viewports.js"
 import type { device } from "./devices.js"
 import type { stage } from "./stage.js"
 import type { deck } from "./slides.js"
-import type { LoadingEvent, previewLoading } from "./loading.js"
+import type { LoadingEvent, LoadingState, previewLoading } from "./loading.js"
 
 export interface ReviewOptions {
   base: string
@@ -213,8 +213,11 @@ export function mountReview(host: HTMLElement, options: ReviewOptions) {
     scroll: { x: 0, y: 0 },
     peerScroll: { x: 0, y: 0 },
     restoreScroll: false,
-    /** The phone an app design without a platform is previewed on; one with a platform uses its own. */
-    device: "ios" as "ios" | "android",
+    /**
+     * The phone frame the reviewer peeks at: a preview-only choice that never changes the design's platform;
+     * unset, the design's own platform (iPhone without one) is shown.
+     */
+    device: undefined as "ios" | "android" | undefined,
     /** The revision and slides the thumbnail strip was built for; unchanged, its frames are kept. */
     strip: "",
   }
@@ -379,11 +382,15 @@ details{border-top:1px solid var(--edge);padding:14px 0}summary{cursor:pointer;f
 #variant-menu{position:absolute;right:0;top:calc(100% + 4px);z-index:5;min-width:200px;padding:4px;display:grid;background:var(--surface);color:var(--ink);border:1px solid var(--edge);border-radius:var(--reddb-radius-md);box-shadow:0 8px 28px color-mix(in oklch,var(--ink) 18%,transparent)}#variant-menu button{border:0;background:transparent;text-align:left;border-radius:4px;padding:6px 10px;min-height:0;white-space:nowrap;font-size:12px}#variant-menu button:hover,#variant-menu button:focus-visible{background:var(--panel);outline-offset:-2px}.op-badge{margin-left:6px;font-size:10px;font-weight:600;line-height:16px;padding:0 6px;border-radius:999px;border:1px solid currentColor;color:var(--accent);white-space:nowrap}.variant-bar .tabs button[data-operation]{color:var(--accent)}#merge-bar{display:flex;align-items:center;gap:10px;min-width:0;overflow:auto;font-size:12px}#merge-options{display:flex;gap:10px}#merge-bar label{margin:0;display:flex;gap:6px;align-items:center;font-weight:400;white-space:nowrap}#merge-bar button{min-height:24px;padding:1px 8px;font-size:12px;white-space:nowrap}#operation-state{display:flex;flex-wrap:wrap;gap:8px;align-items:center;padding:8px 10px;margin:0 0 12px;border-radius:var(--reddb-radius-md);background:var(--panel);color:var(--reddb-color-feedback-danger-foreground);overflow-wrap:anywhere}#feedback-status[data-tone=error]{color:var(--reddb-color-feedback-danger-foreground)}#feedback-status[data-tone=success]{color:var(--reddb-color-feedback-success-foreground)}#operation-state button{padding:2px 8px;font-size:12px;color:var(--ink)}.note .note-orphaned{font-size:10px;font-weight:600;padding:0 6px;border-radius:4px;border:1px solid currentColor;color:var(--reddb-color-feedback-danger-foreground)}#approval-reselect{color:var(--reddb-color-feedback-danger-foreground)}
 .canvas{position:relative}.preview-state{position:absolute;inset:0;z-index:3;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:20px;padding:24px;background:var(--canvas);pointer-events:none;overflow:hidden}.preview-state button{pointer-events:auto}.canvas[data-phase=ready] .preview-state{display:none}.canvas:not([data-phase=ready]) .preview-pane{opacity:0}.canvas[data-phase=ready] .preview-pane{opacity:1;transition:opacity .24s ease-out}.skeleton{display:flex;flex-direction:column;align-items:center;gap:10px;width:min(100%,760px)}.sk-strip{display:none;gap:8px;align-self:stretch;overflow:hidden}.sk-strip i{flex:none;width:80px;aspect-ratio:16/9;border-radius:4px}.sk-frame{width:min(100%,calc(50vh * 4 / 3));aspect-ratio:4/3;border-radius:var(--reddb-radius-md);background:var(--surface);box-shadow:0 0 0 1px var(--edge);display:flex;flex-direction:column;gap:12px;padding:6%}.sk-frame i{display:block;height:10px;border-radius:4px}.sk-frame i:first-child{height:18px;width:45%}.sk-frame i:nth-child(2){width:80%}.sk-frame i:nth-child(3){width:62%}.sk-strip i,.sk-frame i{background:linear-gradient(90deg,var(--panel) 25%,color-mix(in oklch,var(--panel) 55%,var(--canvas)) 50%,var(--panel) 75%);background-size:300% 100%;animation:shimmer 1.6s ease-in-out infinite}@keyframes shimmer{from{background-position:100% 0}to{background-position:0 0}}.preview-state[data-target=presentation] .sk-strip{display:flex}.preview-state[data-target=presentation] .sk-frame{width:min(100%,calc(50vh * 16 / 9));aspect-ratio:16/9}.preview-state[data-target=app] .skeleton{width:auto}.preview-state[data-target=app] .sk-frame{width:auto;height:min(52vh,520px);aspect-ratio:9/19.5;border-radius:34px;box-shadow:0 0 0 8px var(--panel),0 0 0 9px var(--edge);padding:48px 18px}.preview-note{display:grid;justify-items:center;gap:4px;text-align:center;max-width:520px}#preview-stage{margin:0;font-weight:600}#preview-agent{margin:0}#preview-elapsed{font-variant-numeric:tabular-nums}#preview-elapsed:empty{display:none}#preview-error{margin:4px 0 0;white-space:pre-wrap;overflow-wrap:anywhere;color:var(--reddb-color-feedback-danger-foreground)}#preview-retry{margin-top:8px}.canvas[data-phase=error] .skeleton{display:none}.canvas[data-phase=empty] :is(.sk-strip,.sk-frame) i{animation:none}#no-variants{font-size:11px;opacity:.75}@media(prefers-reduced-motion:reduce){.canvas[data-phase=ready] .preview-pane{transition:none}.sk-strip i,.sk-frame i{animation:none}}
 .visually-hidden{position:absolute;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap;border:0;min-height:0}#tab-review{white-space:nowrap}.tab-count{display:inline-block;margin-left:6px;min-width:18px;padding:0 6px;border-radius:999px;background:var(--accent);color:var(--accent-ink);font-size:11px;font-weight:600;line-height:16px;text-align:center;font-variant-numeric:tabular-nums}#panel-review{display:flex;flex-direction:column;padding:0;overflow:hidden;--ok:var(--reddb-color-feedback-success-foreground);--warn:var(--reddb-color-feedback-warning-foreground);--bad:var(--reddb-color-feedback-danger-foreground);--info:var(--reddb-color-feedback-info-foreground);--mono:var(--reddb-font-family-mono,ui-monospace,monospace)}.review-scroll{flex:1 1 auto;min-height:0;overflow:auto;padding:14px 16px 16px;display:flex;flex-direction:column}.review-scroll>:not([hidden])~*{margin-top:12px}.review-scroll>.fold+.fold{margin-top:0}.review-scroll>p{margin:0}#rounds{display:grid;gap:6px;min-width:0}.round-head{display:flex;flex-wrap:wrap;align-items:baseline;gap:4px 8px;min-width:0}.round-head h2{font-size:15px;margin:0;white-space:nowrap}.round-tally{font-size:12px;color:var(--muted);white-space:nowrap;font-variant-numeric:tabular-nums}#rounds-only{margin-left:auto;flex:none;min-height:0;padding:1px 10px;border-radius:999px;font-size:12px;line-height:18px;color:var(--muted);background:transparent}#rounds-only:hover{color:var(--ink)}#rounds-only[aria-pressed=true]{border-color:var(--ink);color:var(--ink);font-weight:600}.round-sub{margin:0;font-size:11px;color:var(--muted);display:flex;flex-wrap:wrap;gap:2px 10px;overflow-wrap:anywhere}.round-sub:empty{display:none}.round-sub a,.row-evidence,.round-left a{color:var(--accent)}.round-alert{margin:0;padding:6px 10px;border:1px solid var(--bad);border-radius:var(--reddb-radius-md);background:var(--reddb-color-feedback-danger-surface,transparent);font-size:12px;overflow-wrap:anywhere}.round-alert strong{color:var(--bad)}.round-message{margin:0;font-size:12px;color:var(--muted);white-space:pre-line;overflow-wrap:anywhere;max-height:4.5em;overflow:hidden}.round-message strong{color:var(--ink);font-weight:600}#rounds-list{display:grid;min-width:0}#rounds-list>.rows,#rounds-list>.round-left{margin-bottom:10px}.rows{list-style:none;margin:0;padding:0;border-top:1px solid var(--edge);min-width:0}.rows>li{border-bottom:1px solid var(--edge);min-width:0}#rounds[data-only=true] .rows[data-block=current]>li[data-left=false]{display:none}.row-toggle{width:100%;display:grid;grid-template-columns:14px 18px 44px minmax(0,1fr);gap:6px;align-items:start;padding:5px 2px;border:0;border-radius:0;background:transparent;text-align:left;min-height:29px;font-size:13px;line-height:18px;font-weight:400}.row-toggle:hover{background:color-mix(in oklch,var(--ink) 5%,transparent)}.row-toggle:active{background:color-mix(in oklch,var(--ink) 9%,transparent)}.row-toggle:focus-visible{outline-offset:-2px}.row-toggle .num{font:500 11px/18px var(--mono);color:var(--muted);text-align:right;font-variant-numeric:tabular-nums}.row-toggle .tag{font:10px/18px var(--mono);color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.row-text{min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.row-toggle[aria-expanded=true] .row-text{white-space:pre-wrap;overflow-wrap:anywhere}.rows>li[data-status=resolved] .row-text,.rows>li[data-status=accepted] .row-text{color:var(--muted)}.glyph{width:14px;height:14px;display:block;flex:none;color:var(--muted)}.row-toggle .glyph{margin-top:2px}.glyph[data-mark=addressed]{color:var(--info)}.glyph[data-mark=resolved]{color:var(--ok)}.glyph[data-mark=partial]{color:var(--warn)}.glyph[data-mark=unresolved]{color:var(--bad)}.glyph .tick{stroke:var(--surface)}.row-body{padding:0 2px 10px 46px;display:grid;gap:6px;font-size:12px;min-width:0;overflow-wrap:anywhere}.row-body p{margin:0}.row-where{display:-webkit-box;-webkit-box-orient:vertical;-webkit-line-clamp:2;overflow:hidden}.row-label{display:block;font:11px/1.45 var(--mono);color:var(--muted);overflow-wrap:anywhere}.row-claim b,.row-outcome b{font-size:11px;font-weight:600;margin-right:6px}.row-claim b{color:var(--info)}.row-outcome[data-status=resolved] b{color:var(--ok)}.row-outcome[data-status=partial] b{color:var(--warn)}.row-outcome[data-status=unresolved] b{color:var(--bad)}.row-outcome[data-status=accepted] b{color:var(--muted)}.row-note,.row-claim>[data-copy=notVerified]{color:var(--muted)}.row-actions{display:flex;gap:6px;flex-wrap:wrap}.row-actions button{min-height:0;padding:1px 8px;font-size:11px;line-height:18px}.row-record{display:grid;gap:6px;padding:8px;border:1px solid var(--edge);border-radius:var(--reddb-radius-md);background:var(--panel)}.row-record label{margin:0;font-size:11px}.row-record select,.row-record input{min-height:26px;padding:2px 6px;font-size:12px}.row-record .row-actions{justify-content:flex-end}.tally{display:inline-flex;align-items:center;gap:3px;font-variant-numeric:tabular-nums}.tally .glyph{width:12px;height:12px}.fold{border-top:1px solid var(--edge);padding:0;min-width:0}.review-scroll details.fold:last-of-type{padding-bottom:0}.fold>summary{display:flex;align-items:baseline;gap:8px;padding:6px 2px;font-size:12px;list-style:none;min-width:0;border-radius:2px}.fold>summary::-webkit-details-marker{display:none}.fold>summary::before{content:"";flex:none;align-self:center;width:5px;height:5px;margin:0 4px 0 3px;border:solid var(--muted);border-width:0 1.5px 1.5px 0;transform:rotate(-45deg)}.fold[open]>summary{margin-bottom:0}.fold[open]>summary::before{transform:rotate(45deg)}.fold>summary:focus-visible{outline-offset:-2px}.fold-side{margin-left:auto;display:inline-flex;align-items:center;gap:8px;color:var(--muted);font-weight:400;white-space:nowrap;font-variant-numeric:tabular-nums}.fold-body{padding:2px 2px 10px 16px}.fold>.rows{margin:0 0 6px 16px}.round-done>summary b,.round-group>summary b{font-weight:600}.round-subhead{margin:8px 0 4px;font-size:11px;color:var(--muted)}.round-left{display:grid;gap:4px}.round-line{margin:0;display:flex;gap:8px;align-items:baseline;font-size:12px}.round-line .fold-side{margin-left:auto}#design-tasks .note{padding:3px 0;border:0;font-size:12px;display:flex;gap:8px;align-items:baseline;flex-wrap:nowrap}#design-tasks .note span{min-width:0;flex:1}#design-tasks .note small{display:inline;flex:none;font-size:11px}#design-tasks .note[data-status=completed] span,#design-tasks .note[data-status=cancelled] span{color:var(--muted)}.reply{display:grid;gap:4px;padding:8px 10px;border:1px solid var(--edge);border-radius:var(--reddb-radius-md);background:var(--panel);font-size:12px;min-width:0}.reply small{font-size:11px}.reply-text{line-height:18px;max-height:54px;overflow:hidden;overflow-wrap:anywhere}.reply[data-expanded=true] .reply-text{max-height:50vh;overflow:auto}.reply-text p{margin:0;min-height:6px}.reply:not([data-expanded=true]) .reply-text p:empty{display:none}.reply-text code{font:11px var(--mono);padding:0 3px;border-radius:3px;background:var(--canvas)}.link{justify-self:start;min-height:0;padding:0;border:0;background:none;color:var(--accent);font-size:12px}.link:hover{background:none;text-decoration:underline}#feed{display:grid;gap:6px;max-height:40vh;overflow:auto}#feed:not(:has(.entry:not([hidden]))) #feed-empty{display:block}#feed-empty{margin:0}#feed:has(.entry:not([hidden])) #feed-empty{display:none}.entry[data-kind=tool][data-status=failed]{color:var(--bad)}.entry p{margin:0;min-height:6px}.entry code{font:11px var(--mono)}#inbox summary{display:flex;align-items:center;gap:8px}#inbox-count{margin-left:auto}.fold-body label{margin-bottom:8px}.composer{flex:none;display:grid;gap:8px;padding:10px 16px 12px;border-top:1px solid var(--edge);background:var(--surface);min-width:0}#note{min-height:52px;height:52px;resize:vertical;padding:6px 9px;font-size:13px;line-height:20px}.composer[data-open=true] #note{min-height:88px}.compose-bar{display:flex;gap:8px;align-items:center;min-width:0}.attach{position:relative;margin:0;display:inline-flex;align-items:center;justify-content:center;flex:none;width:30px;height:30px;border:1px solid var(--edge);border-radius:var(--reddb-radius-md);color:var(--muted);cursor:pointer}.attach:hover{color:var(--ink);border-color:var(--muted)}.attach:has(input:focus-visible){outline:2px solid var(--accent);outline-offset:3px}.attach:has(input:disabled){opacity:.45;cursor:default}.attach svg{display:block}.sends{display:flex;gap:8px;flex:1;min-width:0}.sends>*{min-width:0}#send{flex:1 1 auto;margin:0}#send-end{flex:0 1 auto;white-space:nowrap}.hints{font-size:11px;color:var(--muted)}#feedback-status{margin:0;font-size:12px;white-space:pre-wrap;overflow-wrap:anywhere}#notes{display:grid;max-height:min(30vh,180px);overflow:auto;margin:0;border-top:1px solid var(--edge)}#notes:empty{display:none}.draft{display:flex;flex-wrap:wrap;align-items:center;gap:2px 6px;padding:4px 0;border-bottom:1px solid var(--edge);font-size:12px;min-width:0}.draft:hover,.draft:focus-within{background:color-mix(in oklch,var(--panel) 60%,transparent)}.draft-tag{flex:none;max-width:84px;font:10px/18px var(--mono);color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.draft-text{flex:1 1 0;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.draft button{flex:none;min-height:0;padding:0 7px;font-size:11px;line-height:18px}.draft .note-orphaned{font-size:10px;font-weight:600;padding:0 6px;border-radius:4px;border:1px solid currentColor;color:var(--bad)}@container(max-width:860px){aside>.tabs{gap:14px}}@container(max-width:640px){.review-scroll{padding:12px}.composer{padding:8px 12px;gap:6px}.composer:not([data-open=true]){grid-template-columns:minmax(0,1fr) auto;align-items:center}.composer:not([data-open=true])>:is(#notes,#feedback-status){grid-column:1/-1}.composer:not([data-open=true]) #note{min-height:32px;height:32px;resize:none;overflow:hidden;padding-top:5px;padding-bottom:5px;line-height:20px}.composer:not([data-open=true]) :is(.hints,.attach,#send-end){display:none}#notes{max-height:72px}}
-:host{--ok:var(--reddb-color-feedback-success-foreground);--warn:var(--reddb-color-feedback-warning-foreground);--bad:var(--reddb-color-feedback-danger-foreground)}#toolbar .rev-chip{display:inline-flex;align-items:center;gap:6px;flex:none;padding:3px 9px;font-size:12px;font-weight:600;white-space:nowrap;color:var(--ink)}#toolbar .rev-chip:disabled{opacity:1}.rev-chip:not([data-action=true]){cursor:default}.rev-chip:not([data-action=true]):hover{background:var(--surface);border-color:var(--edge)}.rev-chip .dot{width:8px;height:8px;flex:none;border-radius:50%;background:var(--ok)}.rev-chip[data-chip=behind],.rev-chip[data-chip=offline]{border-color:var(--warn)}.rev-chip[data-chip=behind] .dot{background:transparent;border:2px solid var(--warn)}.rev-chip[data-chip=offline] .dot{background:var(--warn);border-radius:1px;height:2px;width:9px}.rev-chip[data-chip=updating] .dot{background:transparent;border:2px solid var(--accent);border-right-color:transparent;animation:spin .8s linear infinite}.rev-chip[data-chip=failed]{border-color:var(--bad);color:var(--bad)}.rev-chip[data-chip=failed] .dot{background:var(--bad);border-radius:1px}.stage{display:flex;flex-direction:column;min-width:0;min-height:0;background:var(--canvas)}.stage>.canvas{flex:1 1 auto}.revision-line{flex:none;margin:12px 16px 0;padding:5px 10px;display:flex;flex-wrap:wrap;align-items:center;gap:2px 8px;font-size:12px;line-height:18px;border:1px solid var(--edge);border-left-width:3px;border-radius:var(--reddb-radius-md);background:var(--surface);color:var(--ink);overflow-wrap:anywhere;min-width:0}.revision-line[data-tone=warn]{border-color:var(--warn)}.revision-line[data-tone=bad]{border-color:var(--bad)}.revision-line[data-tone=ok]{border-left-color:var(--ok)}.revision-line b{font-weight:600}.revision-line span{color:var(--muted)}.revision-line button{margin-left:auto;min-height:0;padding:1px 10px;font-size:12px;line-height:18px;font-weight:600}.round-progress{display:grid;gap:5px;min-width:0}.steps{display:grid;grid-template-columns:repeat(5,1fr);gap:3px}.steps i{height:4px;border-radius:2px;background:var(--edge)}.steps i[data-s=done]{background:color-mix(in oklch,var(--ink) 70%,var(--edge))}.steps i[data-s=now]{background:var(--accent)}.steps[data-tone=halt] i[data-s=now]{background:var(--warn)}.steps[data-tone=ready] i{background:var(--ok)}.round-stage{margin:0;font-size:12px;min-width:0;overflow-wrap:anywhere}#round-stage b{font-weight:600}#round-stage span{color:var(--muted)}.round-live{display:flex;align-items:center;gap:8px;min-width:0}.round-live>.live{flex:0 1 auto}#round-received{display:block;margin-left:auto;flex:none;font-size:11px;line-height:18px;font-variant-numeric:tabular-nums}.live{margin:0;display:flex;align-items:center;gap:7px;font-size:12px;color:var(--muted);min-width:0}.live .dot{width:7px;height:7px;flex:none;border-radius:50%;background:var(--muted)}.live[data-state=working] .dot{background:var(--accent);animation:pulse 1.6s ease-in-out infinite}.live[data-state=offline]{color:var(--warn)}.live[data-state=offline] .dot{background:var(--warn);border-radius:1px;height:2px;width:9px}.live>span{white-space:nowrap;overflow:hidden;text-overflow:ellipsis;min-width:0}.action-dialog [data-newer]{margin:0 0 12px;padding:6px 10px;border:1px solid var(--warn);border-radius:var(--reddb-radius-md);font-size:12px}@keyframes pulse{50%{opacity:.3}}@media(prefers-reduced-motion:reduce){.live .dot,.rev-chip .dot{animation:none}}@container(max-width:640px){.revision-line{margin:8px 12px 0}#toolbar :is(#designs,#revisions){flex:1 1 88px}}
+:host{--ok:var(--reddb-color-feedback-success-foreground);--warn:var(--reddb-color-feedback-warning-foreground);--bad:var(--reddb-color-feedback-danger-foreground)}#toolbar .rev-chip{display:inline-flex;align-items:center;gap:6px;flex:none;padding:3px 9px;font-size:12px;font-weight:600;white-space:nowrap;color:var(--ink)}#toolbar .rev-chip:disabled{opacity:1}.rev-chip:not([data-action=true]){cursor:default}.rev-chip:not([data-action=true]):hover{background:var(--surface);border-color:var(--edge)}.rev-chip .dot{width:8px;height:8px;flex:none;border-radius:50%;background:var(--ok)}.rev-chip[data-chip=behind],.rev-chip[data-chip=offline]{border-color:var(--warn)}.rev-chip[data-chip=behind] .dot{background:transparent;border:2px solid var(--warn)}.rev-chip[data-chip=offline] .dot{background:var(--warn);border-radius:1px;height:2px;width:9px}.rev-chip[data-chip=updating] .dot{background:transparent;border:2px solid var(--accent);border-right-color:transparent;animation:spin .8s linear infinite}.rev-chip[data-chip=failed]{border-color:var(--bad);color:var(--bad)}.rev-chip[data-chip=failed] .dot{background:var(--bad);border-radius:1px}.stage{display:flex;flex-direction:column;min-width:0;min-height:0;background:var(--canvas)}.stage>.canvas{flex:1 1 auto}.revision-line{flex:none;margin:12px 16px 0;padding:5px 10px;display:flex;flex-wrap:wrap;align-items:center;gap:2px 8px;font-size:12px;line-height:18px;border:1px solid var(--edge);border-left-width:3px;border-radius:var(--reddb-radius-md);background:var(--surface);color:var(--ink);overflow-wrap:anywhere;min-width:0}.revision-line[data-tone=warn]{border-color:var(--warn)}.revision-line[data-tone=bad]{border-color:var(--bad)}.revision-line[data-tone=ok]{border-left-color:var(--ok)}.revision-line b{font-weight:600}.revision-line span{color:var(--muted)}.revision-line button{margin-left:auto;min-height:0;padding:1px 10px;font-size:12px;line-height:18px;font-weight:600}.round-progress{display:grid;gap:5px;min-width:0}.steps{display:grid;grid-template-columns:repeat(5,1fr);gap:3px}.steps i{height:4px;border-radius:2px;background:var(--edge)}.steps i[data-s=done]{background:color-mix(in oklch,var(--ink) 70%,var(--edge))}.steps i[data-s=now]{background:var(--accent)}.steps[data-tone=halt] i[data-s=now]{background:var(--warn)}.steps[data-tone=ready] i{background:var(--ok)}.round-stage{margin:0;font-size:12px;min-width:0;overflow-wrap:anywhere}#round-stage b{font-weight:600}#round-stage span{color:var(--muted)}.round-live{display:flex;align-items:center;gap:8px;min-width:0}.round-live>.live{flex:0 1 auto}#round-received{display:block;margin-left:auto;flex:none;font-size:11px;line-height:18px;font-variant-numeric:tabular-nums}.live{margin:0;display:flex;align-items:center;gap:7px;font-size:12px;color:var(--muted);min-width:0}.live .dot{width:7px;height:7px;flex:none;border-radius:50%;background:var(--muted)}.live[data-state=working] .dot{background:var(--accent);animation:pulse 1.6s ease-in-out infinite}.live[data-state=offline],.live[data-state=waiting]{color:var(--warn)}
+.live[data-state=waiting] .dot{background:var(--warn)}
+.live[data-state=failed]{color:var(--bad)}
+.live[data-state=failed] .dot{background:var(--bad)}.live[data-state=offline] .dot{background:var(--warn);border-radius:1px;height:2px;width:9px}.live>span{white-space:nowrap;overflow:hidden;text-overflow:ellipsis;min-width:0}.action-dialog [data-newer]{margin:0 0 12px;padding:6px 10px;border:1px solid var(--warn);border-radius:var(--reddb-radius-md);font-size:12px}@keyframes pulse{50%{opacity:.3}}@media(prefers-reduced-motion:reduce){.live .dot,.rev-chip .dot{animation:none}}@container(max-width:640px){.revision-line{margin:8px 12px 0}#toolbar :is(#designs,#revisions){flex:1 1 88px}}
     </style><header id="toolbar"><h1>${options.appearance ? `<img src="${options.appearance.favicon}" alt="RedDB">` : ""}<span data-copy="title">${copy.title}</span></h1><select id="designs" aria-label="${copy.alternatives}" data-copy-aria-label="alternatives"></select><div id="revision-tools" class="tools" hidden><select id="revisions" aria-label="${copy.history}" data-copy-aria-label="history"></select><button type="button" id="newer" class="rev-chip" data-chip="latest" hidden><i class="dot" aria-hidden="true"></i><span id="newer-label"></span></button></div><div class="actions"><div id="review-tools" class="tools" hidden><button type="button" id="annotate" aria-pressed="false" aria-label="${copy.annotate}" data-copy-aria-label="annotate" title="${copy.annotateShortcut}" data-copy-title="annotateShortcut">${icons.annotate}<span class="label" data-copy="annotateShort">${copy.annotateShort}</span></button><select id="width" aria-label="${copy.width}" data-copy-aria-label="width"><option value="100%" data-copy="full">${copy.full}</option><option value="390" data-copy="mobile">${copy.mobile}</option><option value="768" data-copy="tablet">${copy.tablet}</option><option value="1440" data-copy="desktop">${copy.desktop}</option></select><span class="segment" id="device-switch" role="group" aria-label="${copy.devicePlatform}" data-copy-aria-label="devicePlatform" hidden><button type="button" id="device-ios" aria-pressed="false"><span data-copy="platformIos">${copy.platformIos}</span></button><button type="button" id="device-android" aria-pressed="false"><span data-copy="platformAndroid">${copy.platformAndroid}</span></button></span><button id="restore" hidden title="${copy.restore}" data-copy-title="restore" aria-label="${copy.restore}" data-copy-aria-label="restore"><span data-copy="restore">${copy.restore}</span></button><button type="button" id="present" hidden><span data-copy="present">${copy.present}</span></button><button id="approve" class="primary"><span data-copy="approve">${copy.approve}</span></button><button id="reopen" hidden><span data-copy="reopen">${copy.reopen}</span></button></div><button type="button" id="refresh" class="icon" aria-label="${copy.refresh}" data-copy-aria-label="refresh" title="${copy.refresh}" data-copy-title="refresh">${icons.refresh}</button><div class="menu-host" id="menu-host"><button type="button" id="more" class="icon" aria-label="${copy.more}" data-copy-aria-label="more" title="${copy.more}" data-copy-title="more" aria-haspopup="menu" aria-expanded="false" aria-controls="menu">${icons.more}</button><div id="menu" role="menu" aria-label="${copy.more}" data-copy-aria-label="more" hidden><button type="button" role="menuitem" id="share"><span data-copy="share">${copy.share}</span></button><button type="button" role="menuitem" id="new"><span data-copy="create">${copy.create}</span></button><button type="button" role="menuitem" id="menu-refresh" data-for="refresh"><span data-copy="refresh">${copy.refresh}</span></button><button type="button" role="menuitem" id="menu-add-variant" data-for="add-variant"><span data-copy="addVariant">${copy.addVariant}</span></button><button type="button" role="menuitem" id="organize-variants"><span data-copy="organizeVariants">${copy.organizeVariants}</span></button></div></div></div></header>
     <section id="intake" hidden><form class="intake" id="create"><h2><span data-copy="create">${copy.create}</span></h2><label><span data-copy="name">${copy.name}</span><input id="name" required></label><div class="row"><label><span data-copy="journey">${copy.journey}</span><select id="journey"><option value="new" data-copy="new">${copy.new}</option><option value="existing" data-copy="existing">${copy.existing}</option></select></label><label><span data-copy="engine">${copy.engine}</span><select id="engine"><option value="html">HTML</option><option value="react">React</option><option value="solid">Solid</option></select></label></div><div class="row"><label><span data-copy="designTarget">${copy.designTarget}</span><select id="design-target"><option value="web" data-copy="targetWeb">${copy.targetWeb}</option><option value="app" data-copy="targetApp">${copy.targetApp}</option><option value="presentation" data-copy="targetPresentation">${copy.targetPresentation}</option></select></label><label id="design-platform-field" hidden><span data-copy="designPlatform">${copy.designPlatform}</span><select id="design-platform"><option value="" data-copy="platformBoth">${copy.platformBoth}</option><option value="ios" data-copy="platformIos">${copy.platformIos}</option><option value="android" data-copy="platformAndroid">${copy.platformAndroid}</option></select></label></div><label><span data-copy="application">${copy.application}</span><input id="application" value="."></label><label><span data-copy="objective">${copy.objective}</span><textarea id="objective" required></textarea></label><label><span data-copy="audience">${copy.audience}</span><input id="audience"></label><label><span data-copy="constraints">${copy.constraints}</span><textarea id="constraints"></textarea></label><label><span data-copy="references">${copy.references}</span><textarea id="references"></textarea></label><button class="primary"><span data-copy="create">${copy.create}</span></button></form></section>
-    <section id="studio"><div class="variant-bar"><div id="variants" class="tabs" role="tablist" aria-label="${copy.variants}" data-copy-aria-label="variants"></div><span id="no-variants" class="muted" data-copy="noVariants">${copy.noVariants}</span><div id="merge-bar" role="group" aria-label="${copy.mergeSelection}" data-copy-aria-label="mergeSelection" hidden><span id="merge-options"></span><button type="button" id="merge-variants" class="primary"><span data-copy="mergeVariants">${copy.mergeVariants}</span></button><button type="button" id="cancel-merge"><span data-copy="cancel">${copy.cancel}</span></button></div><span id="operation-badge" class="op-badge" role="status" hidden></span><span class="spacer"></span><button type="button" id="add-variant" class="icon" aria-label="${copy.addVariant}" data-copy-aria-label="addVariant" title="${copy.addVariant}" data-copy-title="addVariant">${icons.add}</button><div class="menu-host" id="variant-menu-host"><button type="button" id="variant-actions" aria-label="${copy.variantActions}" data-copy-aria-label="variantActions" title="${copy.variantActions}" data-copy-title="variantActions" aria-haspopup="menu" aria-expanded="false" aria-controls="variant-menu" hidden>${icons.more}<span class="label" data-copy="variantActions">${copy.variantActions}</span></button><div id="variant-menu" role="menu" aria-label="${copy.variantActions}" data-copy-aria-label="variantActions" hidden><button type="button" role="menuitem" id="run-anti-slop"><span data-copy="runAntiSlop">${copy.runAntiSlop}</span></button><button type="button" role="menuitem" id="rename-variant"><span data-copy="renameVariant">${copy.renameVariant}</span></button><button type="button" role="menuitem" id="split-variant"><span data-copy="splitVariant">${copy.splitVariant}</span></button><button type="button" role="menuitem" id="delete-variant"><span data-copy="deleteVariant">${copy.deleteVariant}</span></button><button type="button" role="menuitem" id="move-left"><span data-copy="moveLeft">${copy.moveLeft}</span></button><button type="button" role="menuitem" id="move-right"><span data-copy="moveRight">${copy.moveRight}</span></button><button type="button" role="menuitem" id="select-merge"><span data-copy="selectMerge">${copy.selectMerge}</span></button><button type="button" role="menuitem" id="menu-newer" data-for="newer"><span data-copy="latest">${copy.latest}</span></button><button type="button" role="menuitem" id="menu-reopen" data-for="reopen"><span data-copy="reopen">${copy.reopen}</span></button></div></div><span class="segment"><button type="button" id="view-single" class="icon" aria-pressed="true" aria-label="${copy.single}" data-copy-aria-label="single" title="${copy.single}" data-copy-title="single">${icons.single}</button><button type="button" id="view-compare" class="icon" aria-pressed="false" aria-label="${copy.sideBySide}" data-copy-aria-label="sideBySide" title="${copy.sideBySide}" data-copy-title="sideBySide">${icons.compare}</button></span></div><main><div class="stage" id="stage"><p id="revision-line" class="revision-line" role="status" hidden></p><div class="canvas" id="canvas" data-phase="loading"><div id="preview-state" class="preview-state" data-target="web"><div class="skeleton" aria-hidden="true"><div class="sk-strip"><i></i><i></i><i></i><i></i><i></i></div><div class="sk-frame"><i></i><i></i><i></i></div></div><div class="preview-note"><p id="preview-stage" role="status" aria-live="polite"></p><p id="preview-agent" class="muted" aria-live="polite" hidden></p><small id="preview-elapsed" class="muted" aria-hidden="true"></small><p id="preview-error" role="alert" hidden></p><button type="button" id="preview-retry" hidden><span data-copy="previewRetry">${copy.previewRetry}</span></button></div></div><section class="preview-pane" id="primary-pane" role="tabpanel"><div class="pane-label" id="primary-label" hidden></div><div id="screen-bar" class="screen-bar" hidden><span class="muted" id="screens-label" data-copy="screens">${copy.screens}</span><div id="screens" class="tabs" role="tablist" aria-label="${copy.screens}" data-copy-aria-label="screens"></div><span id="slide-count" class="muted" aria-live="polite" hidden></span></div><div class="viewport"><div class="device" id="preview-device"><div class="device-chrome"></div><iframe id="preview" title="${copy.review}" data-copy-title="review" sandbox="allow-scripts allow-forms" allow=""></iframe></div><div id="card" hidden role="dialog" aria-labelledby="card-label"><header><span id="card-label"></span><button type="button" id="card-close" aria-label="${copy.closeCard}" data-copy-aria-label="closeCard" title="${copy.closeCard}" data-copy-title="closeCard">×</button></header><textarea id="card-text" aria-label="${copy.cardNote}" data-copy-aria-label="cardNote"></textarea><small class="muted" data-copy="cardHint">${copy.cardHint}</small><div class="row"><button type="button" id="card-add" class="primary"><span data-copy="add">${copy.add}</span></button></div></div></div></section><section class="preview-pane" id="peer-pane" hidden><label class="pane-label"><span data-copy="compareVariant">${copy.compareVariant}</span><select id="peer-variant"></select></label><div class="viewport"><div class="device" id="peer-preview-device"><div class="device-chrome"></div><iframe id="peer-preview" title="${copy.compareVariant}" data-copy-title="compareVariant" sandbox="allow-scripts allow-forms" allow=""></iframe></div></div></section></div></div><aside><div class="tabs" role="tablist" aria-label="${copy.review}"><button type="button" role="tab" id="tab-review" aria-controls="panel-review" aria-selected="true" tabindex="0"><span data-copy="feedback">${copy.feedback}</span><span id="rounds-count" class="tab-count" data-open="false" hidden>0</span></button><button type="button" role="tab" id="tab-assets" aria-controls="panel-assets" aria-selected="false" tabindex="-1"><span data-copy="assets">${copy.assets}</span></button><button type="button" role="tab" id="tab-details" aria-controls="panel-details" aria-selected="false" tabindex="-1"><span data-copy="details">${copy.details}</span></button><button type="button" role="tab" id="tab-params" aria-controls="panel-params" aria-selected="false" tabindex="-1"><span data-copy="params">${copy.params}</span></button></div><section class="panel" role="tabpanel" id="panel-review" aria-labelledby="tab-review"><div class="review-scroll" id="review-scroll"><p id="agent-state" class="live" hidden><i class="dot" aria-hidden="true"></i><span id="agent-text"></span></p><p id="review-state" class="muted"></p><div id="operation-state" role="alert" hidden><span id="operation-error"></span><button type="button" id="retry-operation"><span data-copy="operationRetry">${copy.operationRetry}</span></button></div><p id="approval-reselect" data-copy="approvalReselect" hidden>${copy.approvalReselect}</p><section id="rounds" aria-labelledby="round-title" data-only="false" hidden><div class="round-head"><h2 id="round-title"></h2><span id="round-tally" class="round-tally" aria-live="polite"></span><button type="button" id="rounds-only" class="chip" aria-pressed="false"><span data-copy="onlyLeft">${copy.onlyLeft}</span></button></div><div id="round-progress" class="round-progress"><div id="round-steps" class="steps" role="img"><i></i><i></i><i></i><i></i><i></i></div><p class="round-stage"><span id="round-stage" aria-live="polite"></span></p><div id="round-live" class="round-live"><small id="round-received"></small></div></div><p id="round-sub" class="round-sub"></p><p id="round-alert" class="round-alert" role="status" hidden></p><p id="round-message" class="round-message" dir="auto" hidden></p><div id="rounds-list"></div></section><details id="design-tasks-section" class="fold"><summary><span data-copy="tasks">${copy.tasks}</span><span id="tasks-count" class="fold-side"></span></summary><div id="design-tasks" class="fold-body" aria-live="polite"></div></details><div id="reply" class="reply" hidden><small id="reply-head"></small><div id="reply-text" class="reply-text" dir="auto"></div><button type="button" id="reply-more" class="link" aria-expanded="false" aria-controls="reply-text" hidden></button></div><details id="activity" class="fold" hidden><summary><span data-copy="activity">${copy.activity}</span><span id="activity-count" class="fold-side"></span></summary><div id="feed" class="fold-body" role="log" aria-live="polite" hidden><p id="feed-empty" class="muted" data-copy="feedEmpty">${copy.feedEmpty}</p></div></details><details id="approved-record" class="fold" hidden><summary data-copy="approvalDetails">${copy.approvalDetails}</summary><pre id="approved-details" class="fold-body"></pre></details><details id="inbox" class="fold"><summary><span data-copy="findings">${copy.findings}</span><span id="inbox-count" data-open="false">0</span></summary><div class="fold-body"><p id="inbox-empty" class="muted" data-copy="inboxEmpty">${copy.inboxEmpty}</p><div id="inbox-list"></div><button type="button" id="queue-fixes" hidden><span data-copy="queueFixes">${copy.queueFixes}</span></button></div></details><details class="fold"><summary><span data-copy="diagram">${copy.diagram}</span></summary><div class="fold-body"><label><span data-copy="diagram">${copy.diagram}</span><textarea id="selection"></textarea></label><button type="button" id="whiteboard"><span data-copy="whiteboard">${copy.whiteboard}</span></button></div></details><small id="target" hidden></small></div><div class="composer" id="composer"><div id="notes"></div><p id="feedback-status" role="status" aria-live="polite" aria-atomic="true" hidden></p><textarea id="note" rows="2" aria-label="${copy.notes}" data-copy-aria-label="notes" placeholder="${copy.messageHint}" data-copy-placeholder="messageHint"></textarea><div class="compose-bar"><label class="attach" title="${copy.attachment}" data-copy-title="attachment">${icons.attach}<input id="attachment" class="visually-hidden" type="file" accept="image/png,image/jpeg,image/webp,image/svg+xml,image/gif" aria-label="${copy.attachment}" data-copy-aria-label="attachment"></label><div class="sends"><button id="send" class="primary"><span data-copy="send">${copy.send}</span></button><button id="send-end"><span data-copy="sendEnd">${copy.sendEnd}</span></button></div></div><small class="hints"><span id="send-hint" data-copy="sendHint">${copy.sendHint}</span> · <span id="draft" data-copy="draft">${copy.draft}</span></small><small id="round-open" class="hints" data-copy="roundOpen" hidden>${copy.roundOpen}</small></div></section><section class="panel" role="tabpanel" id="panel-assets" aria-labelledby="tab-assets" hidden><details open><summary><span data-copy="assets">${copy.assets}</span></summary><div id="assets"></div></details><details open><summary><span data-copy="export">${copy.export}</span></summary><button id="html"><span data-copy="html">${copy.html}</span></button><button id="pdf" hidden><span data-copy="pdf">${copy.pdf}</span></button><button id="audit"><span data-copy="audit">${copy.audit}</span></button><label><span data-copy="implementation">${copy.implementation}</span><input id="implementation" value="dist"></label><button id="compare"><span data-copy="compare">${copy.compare}</span></button><label><span data-copy="source">${copy.source}</span><select id="svg"></select></label><div class="row"><label><span data-copy="duration">${copy.duration}</span><input id="duration" type="number" min="0.1" max="10" step="0.1" value="3"></label><label><span data-copy="fps">${copy.fps}</span><input id="fps" type="number" min="1" max="25" value="20"></label></div><label><span data-copy="size">${copy.size}</span><input id="size" type="number" min="16" max="1024" value="512"></label><label class="check"><input type="checkbox" id="transparent"><span data-copy="transparent">${copy.transparent}</span></label><button id="gif"><span data-copy="gif">${copy.gif}</span></button></details><details open><summary><span data-copy="jobs">${copy.jobs}</span></summary><div id="jobs"></div></details>
+    <section id="studio"><div class="variant-bar"><div id="variants" class="tabs" role="tablist" aria-label="${copy.variants}" data-copy-aria-label="variants"></div><span id="no-variants" class="muted" data-copy="noVariants">${copy.noVariants}</span><div id="merge-bar" role="group" aria-label="${copy.mergeSelection}" data-copy-aria-label="mergeSelection" hidden><span id="merge-options"></span><button type="button" id="merge-variants" class="primary"><span data-copy="mergeVariants">${copy.mergeVariants}</span></button><button type="button" id="cancel-merge"><span data-copy="cancel">${copy.cancel}</span></button></div><span id="operation-badge" class="op-badge" role="status" hidden></span><span class="spacer"></span><button type="button" id="add-variant" class="icon" aria-label="${copy.addVariant}" data-copy-aria-label="addVariant" title="${copy.addVariant}" data-copy-title="addVariant">${icons.add}</button><div class="menu-host" id="variant-menu-host"><button type="button" id="variant-actions" aria-label="${copy.variantActions}" data-copy-aria-label="variantActions" title="${copy.variantActions}" data-copy-title="variantActions" aria-haspopup="menu" aria-expanded="false" aria-controls="variant-menu" hidden>${icons.more}<span class="label" data-copy="variantActions">${copy.variantActions}</span></button><div id="variant-menu" role="menu" aria-label="${copy.variantActions}" data-copy-aria-label="variantActions" hidden><button type="button" role="menuitem" id="run-anti-slop"><span data-copy="runAntiSlop">${copy.runAntiSlop}</span></button><button type="button" role="menuitem" id="rename-variant"><span data-copy="renameVariant">${copy.renameVariant}</span></button><button type="button" role="menuitem" id="split-variant"><span data-copy="splitVariant">${copy.splitVariant}</span></button><button type="button" role="menuitem" id="delete-variant"><span data-copy="deleteVariant">${copy.deleteVariant}</span></button><button type="button" role="menuitem" id="move-left"><span data-copy="moveLeft">${copy.moveLeft}</span></button><button type="button" role="menuitem" id="move-right"><span data-copy="moveRight">${copy.moveRight}</span></button><button type="button" role="menuitem" id="select-merge"><span data-copy="selectMerge">${copy.selectMerge}</span></button><button type="button" role="menuitem" id="menu-newer" data-for="newer"><span data-copy="latest">${copy.latest}</span></button><button type="button" role="menuitem" id="menu-reopen" data-for="reopen"><span data-copy="reopen">${copy.reopen}</span></button></div></div><span class="segment"><button type="button" id="view-single" class="icon" aria-pressed="true" aria-label="${copy.single}" data-copy-aria-label="single" title="${copy.single}" data-copy-title="single">${icons.single}</button><button type="button" id="view-compare" class="icon" aria-pressed="false" aria-label="${copy.sideBySide}" data-copy-aria-label="sideBySide" title="${copy.sideBySide}" data-copy-title="sideBySide">${icons.compare}</button></span></div><main><div class="stage" id="stage"><p id="revision-line" class="revision-line" role="status" hidden></p><div class="canvas" id="canvas" data-phase="loading"><div id="preview-state" class="preview-state" data-target="web"><div class="skeleton" aria-hidden="true"><div class="sk-strip"><i></i><i></i><i></i><i></i><i></i></div><div class="sk-frame"><i></i><i></i><i></i></div></div><div class="preview-note"><p id="preview-stage" role="status" aria-live="polite"></p><p id="preview-agent" class="muted" aria-live="polite" hidden></p><small id="preview-elapsed" class="muted" aria-hidden="true"></small><p id="preview-error" role="alert" hidden></p><button type="button" id="preview-retry" hidden><span data-copy="previewRetry">${copy.previewRetry}</span></button></div></div><section class="preview-pane" id="primary-pane" role="tabpanel"><div class="pane-label" id="primary-label" hidden></div><div id="screen-bar" class="screen-bar" hidden><span class="muted" id="screens-label" data-copy="screens">${copy.screens}</span><div id="screens" class="tabs" role="tablist" aria-label="${copy.screens}" data-copy-aria-label="screens"></div><span id="slide-count" class="muted" aria-live="polite" hidden></span></div><div class="viewport"><div class="device" id="preview-device"><div class="device-chrome"></div><iframe id="preview" title="${copy.review}" data-copy-title="review" sandbox="allow-scripts allow-forms" allow=""></iframe></div><div id="card" hidden role="dialog" aria-labelledby="card-label"><header><span id="card-label"></span><button type="button" id="card-close" aria-label="${copy.closeCard}" data-copy-aria-label="closeCard" title="${copy.closeCard}" data-copy-title="closeCard">×</button></header><textarea id="card-text" aria-label="${copy.cardNote}" data-copy-aria-label="cardNote"></textarea><small class="muted" data-copy="cardHint">${copy.cardHint}</small><div class="row"><button type="button" id="card-add" class="primary"><span data-copy="add">${copy.add}</span></button></div></div></div></section><section class="preview-pane" id="peer-pane" hidden><label class="pane-label"><span data-copy="compareVariant">${copy.compareVariant}</span><select id="peer-variant"></select></label><div class="viewport"><div class="device" id="peer-preview-device"><div class="device-chrome"></div><iframe id="peer-preview" title="${copy.compareVariant}" data-copy-title="compareVariant" sandbox="allow-scripts allow-forms" allow=""></iframe></div></div></section></div></div><aside><div class="tabs" role="tablist" aria-label="${copy.review}"><button type="button" role="tab" id="tab-review" aria-controls="panel-review" aria-selected="true" tabindex="0"><span data-copy="feedback">${copy.feedback}</span><span id="rounds-count" class="tab-count" data-open="false" hidden>0</span></button><button type="button" role="tab" id="tab-assets" aria-controls="panel-assets" aria-selected="false" tabindex="-1"><span data-copy="assets">${copy.assets}</span></button><button type="button" role="tab" id="tab-details" aria-controls="panel-details" aria-selected="false" tabindex="-1"><span data-copy="details">${copy.details}</span></button><button type="button" role="tab" id="tab-params" aria-controls="panel-params" aria-selected="false" tabindex="-1"><span data-copy="params">${copy.params}</span></button></div><section class="panel" role="tabpanel" id="panel-review" aria-labelledby="tab-review"><div class="review-scroll" id="review-scroll"><p id="agent-state" class="live" hidden><i class="dot" aria-hidden="true"></i><span id="agent-text"></span></p><p id="review-state" class="muted"></p><div id="operation-state" role="alert" hidden><span id="operation-error"></span><button type="button" id="retry-operation"><span data-copy="operationRetry">${copy.operationRetry}</span></button></div><p id="approval-reselect" data-copy="approvalReselect" hidden>${copy.approvalReselect}</p><section id="rounds" aria-labelledby="round-title" data-only="false" hidden><div class="round-head"><h2 id="round-title"></h2><span id="round-tally" class="round-tally" aria-live="polite"></span><button type="button" id="rounds-only" class="chip" aria-pressed="false"><span data-copy="onlyLeft">${copy.onlyLeft}</span></button></div><div id="round-progress" class="round-progress"><div id="round-steps" class="steps" role="img"><i></i><i></i><i></i><i></i><i></i></div><p class="round-stage"><span id="round-stage" aria-live="polite"></span></p><div id="round-live" class="round-live"><small id="round-received"></small></div></div><p id="round-sub" class="round-sub"></p><p id="round-alert" class="round-alert" role="status" hidden></p><p id="round-message" class="round-message" dir="auto" hidden></p><div id="rounds-list"></div></section><details id="design-tasks-section" class="fold"><summary><span data-copy="tasks">${copy.tasks}</span><span id="tasks-count" class="fold-side"></span></summary><div id="design-tasks" class="fold-body" aria-live="polite"></div></details><div id="reply" class="reply" hidden><small id="reply-head"></small><div id="reply-text" class="reply-text" dir="auto"></div><button type="button" id="reply-more" class="link" aria-expanded="false" aria-controls="reply-text" hidden></button></div><details id="activity" class="fold" hidden><summary><span data-copy="activity">${copy.activity}</span><span id="activity-count" class="fold-side"></span></summary><div id="feed" class="fold-body" role="log" aria-live="polite" hidden><p id="feed-empty" class="muted" data-copy="feedEmpty">${copy.feedEmpty}</p></div></details><details id="approved-record" class="fold" hidden><summary data-copy="approvalDetails">${copy.approvalDetails}</summary><pre id="approved-details" class="fold-body"></pre></details><details id="inbox" class="fold"><summary><span data-copy="findings">${copy.findings}</span><span id="inbox-count" data-open="false">0</span></summary><div class="fold-body"><p id="inbox-empty" class="muted" data-copy="inboxEmpty">${copy.inboxEmpty}</p><div id="inbox-list"></div><button type="button" id="queue-fixes" hidden><span data-copy="queueFixes">${copy.queueFixes}</span></button></div></details><details class="fold"><summary><span data-copy="diagram">${copy.diagram}</span></summary><div class="fold-body"><label><span data-copy="diagram">${copy.diagram}</span><textarea id="selection"></textarea></label><button type="button" id="whiteboard"><span data-copy="whiteboard">${copy.whiteboard}</span></button></div></details><small id="target" hidden></small></div><div class="composer" id="composer"><div id="notes"></div><p id="feedback-status" role="status" aria-live="polite" aria-atomic="true" hidden></p><div id="pending-actions" class="row" hidden><button type="button" id="discard-pending"><span data-copy="discardPending">${copy.discardPending}</span></button><button type="button" id="reload-resend"><span data-copy="reloadResend">${copy.reloadResend}</span></button></div><textarea id="note" rows="2" aria-label="${copy.notes}" data-copy-aria-label="notes" placeholder="${copy.messageHint}" data-copy-placeholder="messageHint"></textarea><div class="compose-bar"><label class="attach" title="${copy.attachment}" data-copy-title="attachment">${icons.attach}<input id="attachment" class="visually-hidden" type="file" accept="image/png,image/jpeg,image/webp,image/svg+xml,image/gif" aria-label="${copy.attachment}" data-copy-aria-label="attachment"></label><div class="sends"><button id="send" class="primary"><span data-copy="send">${copy.send}</span></button><button id="send-end"><span data-copy="sendEnd">${copy.sendEnd}</span></button></div></div><small class="hints"><span id="send-hint" data-copy="sendHint">${copy.sendHint}</span> · <span id="draft" data-copy="draft">${copy.draft}</span></small><small id="round-open" class="hints" data-copy="roundOpen" hidden>${copy.roundOpen}</small></div></section><section class="panel" role="tabpanel" id="panel-assets" aria-labelledby="tab-assets" hidden><details open><summary><span data-copy="assets">${copy.assets}</span></summary><div id="assets"></div></details><details open><summary><span data-copy="export">${copy.export}</span></summary><button id="html"><span data-copy="html">${copy.html}</span></button><button id="pdf" hidden><span data-copy="pdf">${copy.pdf}</span></button><button id="audit"><span data-copy="audit">${copy.audit}</span></button><label><span data-copy="implementation">${copy.implementation}</span><input id="implementation" value="dist"></label><button id="compare"><span data-copy="compare">${copy.compare}</span></button><label><span data-copy="source">${copy.source}</span><select id="svg"></select></label><div class="row"><label><span data-copy="duration">${copy.duration}</span><input id="duration" type="number" min="0.1" max="10" step="0.1" value="3"></label><label><span data-copy="fps">${copy.fps}</span><input id="fps" type="number" min="1" max="25" value="20"></label></div><label><span data-copy="size">${copy.size}</span><input id="size" type="number" min="16" max="1024" value="512"></label><label class="check"><input type="checkbox" id="transparent"><span data-copy="transparent">${copy.transparent}</span></label><button id="gif"><span data-copy="gif">${copy.gif}</span></button></details><details open><summary><span data-copy="jobs">${copy.jobs}</span></summary><div id="jobs"></div></details>
     </section><section class="panel" role="tabpanel" id="panel-details" aria-labelledby="tab-details" hidden>
+    <label id="platform-field" hidden><span data-copy="designPlatform">${copy.designPlatform}</span><select id="platform"><option value="" data-copy="platformBoth">${copy.platformBoth}</option><option value="ios" data-copy="platformIos">${copy.platformIos}</option><option value="android" data-copy="platformAndroid">${copy.platformAndroid}</option></select><small class="muted" data-copy="platformHint">${copy.platformHint}</small></label>
     <details><summary><span data-copy="system">${copy.system}</span></summary><div id="source-files"></div><button id="refresh-system"><span data-copy="refreshSystem">${copy.refreshSystem}</span></button></details><details><summary><span data-copy="decisions">${copy.decisions}</span></summary><div id="decisions"></div><h2><span data-copy="questions">${copy.questions}</span></h2><div id="questions"></div><h2><span data-copy="scenarios">${copy.scenarios}</span></h2><div id="scenarios"></div></details>
     <details><summary><span data-copy="tweaks">${copy.tweaks}</span></summary><label><span data-copy="token">${copy.token}</span><input id="token" value="--accent"></label><label><span data-copy="value">${copy.value}</span><input id="value" value="#285b49"></label><button id="apply"><span data-copy="apply">${copy.apply}</span></button><button id="reset"><span data-copy="reset">${copy.reset}</span></button></details>
     </section><section class="panel" role="tabpanel" id="panel-params" aria-labelledby="tab-params" hidden>
@@ -396,7 +403,7 @@ details{border-top:1px solid var(--edge);padding:14px 0}summary{cursor:pointer;f
     <div id="param-fields"></div></div>
     <div class="section"><label><span data-copy="paramName">${copy.paramName}</span><input id="param-name" required maxlength="100"></label>
     <button type="button" id="param-save" data-copy="paramSave">${copy.paramSave}</button>
-    <p class="muted" data-copy="paramPublish">${copy.paramPublish}</p></div></div></section></aside></main></section><dialog id="board-dialog" style="width:95vw;height:90vh;max-width:1400px"><button id="board-close"><span data-copy="close">${copy.close}</span></button><iframe id="board-frame" title="${copy.whiteboard}" data-copy-title="whiteboard" sandbox="allow-scripts" style="height:calc(100% - 50px);width:100%"></iframe></dialog><dialog id="anti-slop-dialog" class="action-dialog" aria-labelledby="anti-slop-heading"><h2 id="anti-slop-heading" data-copy="runAntiSlop">${copy.runAntiSlop}</h2><p id="anti-slop-variant"></p><p data-copy="antiSlopScope">${copy.antiSlopScope}</p><label><span data-copy="antiSlopFocus">${copy.antiSlopFocus}</span><textarea id="anti-slop-text" maxlength="4000"></textarea></label><div class="row"><button type="button" id="cancel-anti-slop" data-copy="cancel">${copy.cancel}</button><button type="button" id="confirm-anti-slop" class="primary" data-copy="runAntiSlop">${copy.runAntiSlop}</button></div></dialog><dialog id="approve-dialog" class="action-dialog" aria-labelledby="approve-heading"><h2 id="approve-heading" data-copy="confirm">${copy.confirm}</h2><p id="approval-revision"></p><p data-copy="approvalScope">${copy.approvalScope}</p><label class="check"><input type="checkbox" id="approval-screenshot" checked><span data-copy="approvalScreenshot">${copy.approvalScreenshot}</span></label><div id="approval-review" hidden><p class="muted" data-copy="approvalReviewNotes">${copy.approvalReviewNotes}</p><ul id="approval-review-list"></ul></div><div id="approval-open" hidden><p class="muted" data-copy="approvalOpenNotes">${copy.approvalOpenNotes}</p><ul id="approval-open-list"></ul></div><div class="row"><button id="cancel-approve" data-copy="cancel">${copy.cancel}</button><button id="record-approve" data-copy="approvalRecordAll" hidden>${copy.approvalRecordAll}</button><button id="confirm-approve" class="primary" data-copy="approveAction">${copy.approveAction}</button></div></dialog><dialog id="variant-dialog" class="action-dialog" aria-labelledby="variant-heading"><form id="variant-form"><h2 id="variant-heading" data-copy="addVariant">${copy.addVariant}</h2><p data-copy="variantHint">${copy.variantHint}</p><label><span data-copy="variantPrompt">${copy.variantPrompt}</span><textarea id="variant-prompt" required></textarea></label><div class="row"><button type="button" id="cancel-variant" data-copy="cancel">${copy.cancel}</button><button type="submit" id="request-variant" class="primary" data-copy="requestVariant">${copy.requestVariant}</button></div></form></dialog><dialog id="operation-dialog" class="action-dialog" aria-labelledby="operation-heading"><form id="operation-form"><h2 id="operation-heading"></h2><p id="operation-subject"></p><p id="operation-hint"></p><label id="operation-name-field"><span data-copy="renameLabel">${copy.renameLabel}</span><input id="operation-name" maxlength="100"></label><label id="operation-text-field"><span data-copy="operationGuidance">${copy.operationGuidance}</span><textarea id="operation-text" maxlength="2000"></textarea></label><div class="row"><button type="button" id="cancel-operation" data-copy="cancel">${copy.cancel}</button><button type="submit" id="confirm-operation" class="primary"></button></div></form></dialog><div id="status" role="status" aria-live="polite"></div>`
+    <p class="muted" data-copy="paramPublish">${copy.paramPublish}</p></div></div></section></aside></main></section><dialog id="board-dialog" style="width:95vw;height:90vh;max-width:1400px"><button id="board-close"><span data-copy="close">${copy.close}</span></button><iframe id="board-frame" title="${copy.whiteboard}" data-copy-title="whiteboard" sandbox="allow-scripts" style="height:calc(100% - 50px);width:100%"></iframe></dialog><dialog id="anti-slop-dialog" class="action-dialog" aria-labelledby="anti-slop-heading"><h2 id="anti-slop-heading" data-copy="runAntiSlop">${copy.runAntiSlop}</h2><p id="anti-slop-variant"></p><p data-copy="antiSlopScope">${copy.antiSlopScope}</p><label><span data-copy="antiSlopFocus">${copy.antiSlopFocus}</span><textarea id="anti-slop-text" maxlength="4000"></textarea></label><div class="row"><button type="button" id="cancel-anti-slop" data-copy="cancel">${copy.cancel}</button><button type="button" id="confirm-anti-slop" class="primary" data-copy="runAntiSlop">${copy.runAntiSlop}</button></div></dialog><dialog id="approve-dialog" class="action-dialog" aria-labelledby="approve-heading"><h2 id="approve-heading" data-copy="confirm">${copy.confirm}</h2><p id="approval-revision"></p><p data-copy="approvalScope">${copy.approvalScope}</p><label class="check"><input type="checkbox" id="approval-screenshot" checked><span data-copy="approvalScreenshot">${copy.approvalScreenshot}</span></label><div id="approval-review" hidden><p class="muted" data-copy="approvalReviewNotes">${copy.approvalReviewNotes}</p><ul id="approval-review-list"></ul></div><div id="approval-open" hidden><p class="muted" data-copy="approvalOpenNotes">${copy.approvalOpenNotes}</p><ul id="approval-open-list"></ul></div><div class="row"><button id="cancel-approve" data-copy="cancel">${copy.cancel}</button><button id="record-approve" data-copy="approvalRecordAll" hidden>${copy.approvalRecordAll}</button><button id="confirm-approve" class="primary" data-copy="approveAction">${copy.approveAction}</button></div></dialog><dialog id="variant-dialog" class="action-dialog" aria-labelledby="variant-heading"><form id="variant-form"><h2 id="variant-heading" data-copy="addVariant">${copy.addVariant}</h2><p data-copy="variantHint">${copy.variantHint}</p><label><span data-copy="variantPrompt">${copy.variantPrompt}</span><textarea id="variant-prompt" required></textarea></label><div class="row"><button type="button" id="cancel-variant" data-copy="cancel">${copy.cancel}</button><button type="submit" id="request-variant" class="primary" data-copy="requestVariant">${copy.requestVariant}</button></div></form></dialog><dialog id="operation-dialog" class="action-dialog" aria-labelledby="operation-heading"><form id="operation-form"><h2 id="operation-heading"></h2><p id="operation-subject"></p><p id="operation-hint"></p><label id="operation-name-field"><span data-copy="renameLabel">${copy.renameLabel}</span><input id="operation-name" maxlength="100"></label><label id="operation-text-field"><span data-copy="operationGuidance">${copy.operationGuidance}</span><textarea id="operation-text" maxlength="2000"></textarea></label><div class="row"><button type="button" id="cancel-operation" data-copy="cancel">${copy.cancel}</button><button type="submit" id="confirm-operation" class="primary"></button></div></form></dialog><dialog id="restore-dialog" class="action-dialog" aria-labelledby="restore-heading"><h2 id="restore-heading"></h2><div class="row"><button type="button" id="cancel-restore" data-copy="cancel">${copy.cancel}</button><button type="button" id="confirm-restore" class="primary" data-copy="restore">${copy.restore}</button></div></dialog><div id="status" role="status" aria-live="polite"></div>`
 
   for (const id of ["approve-dialog", "variant-dialog", "operation-dialog", "anti-slop-dialog"]) {
     const notice = document.createElement("p")
@@ -747,7 +754,7 @@ details{border-top:1px solid var(--edge);padding:14px 0}summary{cursor:pointer;f
    * between slides only moves the selection.
    */
   const drawStrip = (items: { id: string; name: string }[], current: string) => {
-    const key = JSON.stringify([state.revision, items.map((item) => item.id)])
+    const key = JSON.stringify([state.revision, state.variant, items.map((item) => item.id)])
     if (state.strip !== key) {
       state.strip = key
       element("screens").replaceChildren(
@@ -760,7 +767,10 @@ details{border-top:1px solid var(--edge);padding:14px 0}summary{cursor:pointer;f
           mini.tabIndex = -1
           mini.title = item.name
           // A framework can mount its slides after load, so the slide is asked for again a moment later.
-          const show = () => mini.contentWindow?.postMessage({ type: "design:screen", id: item.id, scroll: false }, "*")
+          const show = () => {
+            mini.contentWindow?.postMessage({ type: "design:variant", id: state.variant }, "*")
+            mini.contentWindow?.postMessage({ type: "design:screen", id: item.id, scroll: false }, "*")
+          }
           mini.onload = () => {
             show()
             setTimeout(show, 500)
@@ -1181,6 +1191,8 @@ details{border-top:1px solid var(--edge);padding:14px 0}summary{cursor:pointer;f
         : copy.feedbackSaved
       : ""
     element("feedback-status").dataset.tone = state.feedbackError ? "error" : "info"
+    // A refused message (a 409 conflict, say) holds newer revisions back until it is sent, discarded or resent.
+    element("pending-actions").hidden = !state.pending || !state.feedbackError
     // The server refuses to end a review while any round has notes without an outcome (DesignRounds.open).
     const open = openNotes().length > 0
     element("send-end").hidden = !!state.pending || open
@@ -1750,8 +1762,8 @@ details{border-top:1px solid var(--edge);padding:14px 0}summary{cursor:pointer;f
     if (!round.published) return sub.replaceChildren()
     const answer = document.createElement("span")
     answer.dataset.copy = "roundAnswered"
-    answer.dataset.copySuffix = ` …${round.published.slice(-8)}`
-    answer.textContent = `${copy.roundAnswered} …${round.published.slice(-8)}`
+    answer.dataset.copySuffix = ` ${revisionName(round.published)}`
+    answer.textContent = `${copy.roundAnswered}${answer.dataset.copySuffix}`
     sub.replaceChildren(answer)
     if (!job) return
     const report = document.createElement("a")
@@ -1890,6 +1902,17 @@ details{border-top:1px solid var(--edge);padding:14px 0}summary{cursor:pointer;f
     if (seconds < 3600) return fill(copy.timeMinutes, { count: Math.floor(seconds / 60) })
     return fill(copy.timeHours, { count: Math.floor(seconds / 3600) })
   }
+  /**
+   * A revision's number in its design's history (R7): its position in the immutable, newest-first revision list,
+   * so it needs no stored counter. 0 for a revision the page has not listed yet.
+   */
+  const ordinal = (id: string) => {
+    const index = state.revisions.findIndex((revision) => revision.id === id)
+    return index < 0 ? 0 : state.revisions.length - index
+  }
+  /** R7 for a listed revision, else the tail of its id. */
+  const revisionName = (id: string) =>
+    ordinal(id) ? fill(copy.chipRevision, { ordinal: ordinal(id) }) : `…${id.slice(-8)}`
   /** The agent's state as far as a connected feed tells it. */
   const agentState = () => (liveness.feed === "live" && state.agent ? state.agent : "unknown")
   /** Revisions newer than the one on screen; a publish the feed announced counts before the list has it. */
@@ -2033,6 +2056,26 @@ details{border-top:1px solid var(--edge);padding:14px 0}summary{cursor:pointer;f
     const first = state.feed.find((event) => event.type === "user" && event.id === round.feedback[0])
     write(element("round-received"), fill(copy.receivedAgo, { time: span(Date.now() - (first?.at ?? round.opened)) }))
   }
+  /** What the agent is doing beyond idle, from the preview's loading state: activity, a wait or why it stopped. */
+  const activityText = (view: LoadingState, now: number) => {
+    const detail = view.detail ? `: ${view.detail}` : ""
+    const reasons: Record<string, keyof ReviewCopy> = {
+      user: "interruptUser",
+      shutdown: "interruptShutdown",
+      superseded: "interruptSuperseded",
+      inactivity: "interruptInactivity",
+    }
+    if (view.agent === "tool") return fill(copy.agentTool, { tool: view.tool })
+    if (view.agent === "thinking") return copy.agentThinking
+    if (view.agent === "compacting") return copy.agentCompacting
+    if (view.agent === "retrying")
+      return `${view.until > now ? fill(copy.agentRetrying, { time: span(view.until - now) }) : copy.agentRetryingNow}${detail}`
+    if (view.agent === "permission") return `${copy.agentPermission}${detail}`
+    if (view.agent === "failed") return `${copy.agentFailed}${detail}`
+    if (view.agent === "interrupted")
+      return reasons[view.detail] ? `${copy.agentInterrupted} ${copy[reasons[view.detail]]}` : copy.agentInterrupted
+    return ""
+  }
   /** The agent's live activity, from live events only; counters freeze while the feed is offline. */
   const drawAgent = () => {
     const node = element("agent-state")
@@ -2046,6 +2089,9 @@ details{border-top:1px solid var(--edge);padding:14px 0}summary{cursor:pointer;f
     )
     const agent = agentState()
     const tool = liveness.tool
+    const activity = loading.view.agent
+    const waiting = activity === "compacting" || activity === "retrying" || activity === "permission"
+    const stopped = activity === "failed" || activity === "interrupted"
     const [kind, text] =
       liveness.feed === "none" || design?.ended
         ? ["", ""]
@@ -2062,25 +2108,29 @@ details{border-top:1px solid var(--edge);padding:14px 0}summary{cursor:pointer;f
                       ? copy.stateReviewing
                       : fill(copy.liveVerify, { time: span(now - (review.started ?? review.created)) }),
                   ]
-                : agent === "working"
-                  ? [
-                      "working",
-                      tool
-                        ? [fill(copy.liveTool, { tool: tool.name }), span(now - tool.since), tool.summary]
-                            .filter(Boolean)
-                            .join(" · ")
-                        : liveness.last
-                          ? fill(copy.liveLast, { time: span(now - liveness.last) })
-                          : copy.liveWorking,
-                    ]
-                  : agent === "idle"
-                    ? [
-                        "idle",
-                        liveness.idleLive
-                          ? fill(copy.liveIdleSince, { time: clock(liveness.idleSince) })
-                          : copy.liveIdle,
-                      ]
-                    : ["", ""]
+                : agent === "working" && waiting
+                  ? ["waiting", activityText(loading.view, now)]
+                  : agent === "idle" && stopped
+                    ? ["failed", activityText(loading.view, now)]
+                    : agent === "working"
+                      ? [
+                          "working",
+                          tool
+                            ? [fill(copy.liveTool, { tool: tool.name }), span(now - tool.since), tool.summary]
+                                .filter(Boolean)
+                                .join(" · ")
+                            : liveness.last
+                              ? fill(copy.liveLast, { time: span(now - liveness.last) })
+                              : copy.liveWorking,
+                        ]
+                      : agent === "idle"
+                        ? [
+                            "idle",
+                            liveness.idleLive
+                              ? fill(copy.liveIdleSince, { time: clock(liveness.idleSince) })
+                              : copy.liveIdle,
+                          ]
+                        : ["", ""]
     node.hidden = !text
     if ((node.dataset.state ?? "") !== kind) node.dataset.state = kind
     write(element("agent-text"), text)
@@ -2103,7 +2153,8 @@ details{border-top:1px solid var(--edge);padding:14px 0}summary{cursor:pointer;f
       chip.tabIndex = action ? 0 : -1
       syncMenu()
     }
-    write(element("newer-label"), text)
+    const number = state.revision ? ordinal(state.revision) : 0
+    write(element("newer-label"), number ? `${fill(copy.chipRevision, { ordinal: number })} · ${text}` : text)
     const hint = kind === "offline" ? copy.chipOfflineHint : action ? copy.latest : ""
     if (chip.title !== hint) chip.title = hint
     const label = hint ? `${text}. ${hint}` : text
@@ -2170,7 +2221,8 @@ details{border-top:1px solid var(--edge);padding:14px 0}summary{cursor:pointer;f
       liveness.switched?.revision === state.revision && kind !== "failed" && kind !== "card" && kind !== "pending"
         ? fill(copy.lineSwitched, { time: span(Date.now() - liveness.switched.created) })
         : ""
-    const lead = switched || bold
+    const number = shown && (switched || bold) ? ordinal(shown.id) : 0
+    const lead = number ? `${fill(copy.chipRevision, { ordinal: number })} · ${switched || bold}` : switched || bold
     const rest = switched ? bold : why
     const signature = JSON.stringify([lead, rest, tone, button])
     node.hidden = !lead
@@ -2202,7 +2254,10 @@ details{border-top:1px solid var(--edge);padding:14px 0}summary{cursor:pointer;f
         ),
       )
     if (button === "pending")
-      parts.push(action("linePendingAction", () => void run(() => send(false), element("send")), "retry-send"))
+      parts.push(
+        action("linePendingAction", () => void run(() => send(false), element("send")), "retry-send"),
+        action("discardPending", () => void run(async () => discardPending(false)), "discard-send"),
+      )
     const focused = node.contains(root.activeElement) ? (root.activeElement as HTMLElement).dataset.part : undefined
     node.replaceChildren(...parts)
     if (focused) node.querySelector<HTMLElement>(`[data-part="${focused}"]`)?.focus()
@@ -2441,6 +2496,28 @@ details{border-top:1px solid var(--edge);padding:14px 0}summary{cursor:pointer;f
     save()
     drawCard()
   }
+  /**
+   * Releases a message the server refused so it no longer holds newer revisions back. Discarding drops its
+   * notes and text; keeping them leaves the draft in the composer for a resend.
+   */
+  const discardPending = (keep: boolean) => {
+    const pending = state.pending
+    if (!pending) return
+    state.pending = undefined
+    state.feedbackError = ""
+    if (!keep && !pending.review) {
+      state.notes = []
+      state.assets = []
+      state.boards = []
+      state.snapshot = ""
+      input("note").value = ""
+    }
+    save()
+    drawNotes()
+    controls()
+    drawLiveness()
+    if (!keep) status(copy.discarded, "discarded")
+  }
   const queueCard = () => {
     const card = state.card
     if (!card || state.pending || !card.text.trim()) return false
@@ -2659,14 +2736,7 @@ details{border-top:1px solid var(--edge);padding:14px 0}summary{cursor:pointer;f
     }
     put("preview-stage", copy[key])
     element("preview-agent").hidden = view.phase !== "empty" || !options.feed
-    put(
-      "preview-agent",
-      view.agent === "tool"
-        ? copy.agentTool.replace("{{tool}}", view.tool)
-        : view.agent === "thinking"
-          ? copy.agentThinking
-          : copy.agentWaiting,
-    )
+    put("preview-agent", view.agent === "idle" ? copy.agentWaiting : activityText(view, Date.now()))
     put(
       "preview-elapsed",
       view.phase === "loading"
@@ -2740,7 +2810,13 @@ details{border-top:1px solid var(--edge);padding:14px 0}summary{cursor:pointer;f
       notes.dataset.copy = event.notes === 1 ? "feedNote" : "feedNotes"
       notes.dataset.copyPrefix = `${event.text ? " · " : ""}${event.notes} `
       notes.textContent = `${notes.dataset.copyPrefix}${event.notes === 1 ? copy.feedNote : copy.feedNotes}`
-      row.append(who, event.text, ...(event.notes ? [notes] : []))
+      const cancelled = document.createElement("small")
+      cancelled.className = "muted"
+      cancelled.dataset.copy = "feedCancelled"
+      cancelled.dataset.copyPrefix = " · "
+      cancelled.textContent = ` · ${copy.feedCancelled}`
+      if (event.cancelled) row.dataset.cancelled = "true"
+      row.append(who, event.text, ...(event.notes ? [notes] : []), ...(event.cancelled ? [cancelled] : []))
     }
     if (event.type === "reply") row.append(...markdown(event.text))
     if (event.type === "tool") {
@@ -2749,13 +2825,15 @@ details{border-top:1px solid var(--edge);padding:14px 0}summary{cursor:pointer;f
     }
     if (event.type === "published") {
       row.dataset.copy = "published"
-      row.dataset.copySuffix = `: ${event.name}`
-      row.textContent = `${copy.published}: ${event.name}`
+      // The tool result names the revision's number; a listed revision is numbered by the page.
+      const number = event.ordinal ?? ordinal(event.revision)
+      row.dataset.copySuffix = `${number ? ` ${fill(copy.chipRevision, { ordinal: number })}` : ""}: ${event.name}`
+      row.textContent = `${copy.published}${row.dataset.copySuffix}`
     }
     if (event.type === "verified") {
       const head = document.createElement("strong")
       head.dataset.copy = "verified"
-      head.dataset.copySuffix = ` ${event.round} ${copy.verifiedOn} ${event.revision.slice(-8)}`
+      head.dataset.copySuffix = ` ${event.round} ${copy.verifiedOn} ${revisionName(event.revision)}`
       head.textContent = `${copy.verified}${head.dataset.copySuffix}`
       const glyphs = { pass: "✓", warn: "◐", fail: "✗" } as const
       const lines = event.notes.map((note) => {
@@ -2911,7 +2989,19 @@ details{border-top:1px solid var(--edge);padding:14px 0}summary{cursor:pointer;f
     drawLiveness()
   }
   const follow = (event: Design.FeedEvent) => {
-    if (event.type === "state") loadingEvent({ type: "agent", state: event.state })
+    if (event.type === "state")
+      loadingEvent({ type: "agent", state: event.state, outcome: event.outcome, message: event.message })
+    // Waits only describe the live activity line; they are not conversation entries.
+    if (event.type === "wait") {
+      loadingEvent({
+        type: "wait",
+        wait: event.wait,
+        active: event.active,
+        until: event.until,
+        message: event.message,
+      })
+      return
+    }
     // A reconnect replays old tool calls; only those made while the agent works are its live activity.
     if (event.type === "tool" && state.agent === "working")
       loadingEvent({ type: "tool", tool: event.tool, status: event.status })
@@ -2938,7 +3028,7 @@ details{border-top:1px solid var(--edge);padding:14px 0}summary{cursor:pointer;f
       return
     }
     upsert(event)
-    if (event.type === "user" && !event.pending) {
+    if (event.type === "user" && !event.pending && !event.cancelled) {
       // Delivered into a turn: from here on the agent's working and idle states are about this operation.
       const running = state.agent === "working"
       if (operation?.feedback.id === event.id) {
@@ -3189,7 +3279,10 @@ details{border-top:1px solid var(--edge);padding:14px 0}summary{cursor:pointer;f
     const revisions = state.revisions
     picker(
       "revisions",
-      revisions.map((revision) => ({ id: revision.id, name: `${revision.name} · ${revision.id.slice(-8)}` })),
+      revisions.map((revision, index) => ({
+        id: revision.id,
+        name: `${fill(copy.chipRevision, { ordinal: revisions.length - index })} · ${revision.name} · ${revision.id.slice(-8)}`,
+      })),
     )
     if (state.revisions.some((revision) => revision.id === liveness.announced)) liveness.announced = ""
     const initial = changed || !state.revision
@@ -3425,7 +3518,9 @@ details{border-top:1px solid var(--edge);padding:14px 0}summary{cursor:pointer;f
   element("width").onchange = resize
   /** The phone frame an app design is previewed in; none for other targets or without frames. */
   const phone = () =>
-    state.design?.target === "app" && options.device ? options.device(state.design.platform ?? state.device) : undefined
+    state.design?.target === "app" && options.device
+      ? options.device(state.device ?? state.design.platform ?? "ios")
+      : undefined
   /**
    * The fixed frame a design is previewed in, scaled to fit its pane: a phone for an app design, a
    * 1920×1080 slide canvas for a presentation, none for the web.
@@ -3442,6 +3537,12 @@ details{border-top:1px solid var(--edge);padding:14px 0}summary{cursor:pointer;f
   const drawDevice = () => {
     const spec = frame()
     element("device-switch").hidden = !phone()
+    element("platform-field").hidden = state.design?.target !== "app"
+    // The page cannot clear a saved platform, so "both" is offered only while none is saved.
+    const both = element("platform").querySelector<HTMLOptionElement>('option[value=""]')!
+    both.disabled = !!state.design?.platform
+    if (input("platform").value !== (state.design?.platform ?? ""))
+      input("platform").value = state.design?.platform ?? ""
     element("width").hidden = !!spec
     element("present").hidden = !presenting()
     element("pdf").hidden = !presenting()
@@ -3502,19 +3603,25 @@ details{border-top:1px solid var(--edge);padding:14px 0}summary{cursor:pointer;f
   }
   const fitting = new ResizeObserver(() => fitDevice())
   for (const id of ["preview", "peer-preview"]) fitting.observe(element(`${id}-device`).parentElement!)
-  /** Switches an app design between the iPhone and the Android frame and records the platform on it. */
+  /** Peeks at an app design in the iPhone or the Android frame; the design's platform stays as it is. */
   const choosePlatform = async (platform: "ios" | "android") => {
-    const design = state.design
-    if (design?.target !== "app") return
+    if (state.design?.target !== "app") return
     state.device = platform
     drawDevice()
-    if (design.platform === platform) return
-    // Saved on the design so the agent designs and audits for the platform the reviewer looks at.
-    state.design = await api<Design.Info>(`/${design.id}`, "PATCH", { platform })
-    drawWidths()
   }
   click("device-ios", () => choosePlatform("ios"))
   click("device-android", () => choosePlatform("android"))
+  /** The explicit platform control in Details: saved on the design, so the agent designs and audits for it. */
+  element("platform").onchange = () =>
+    void run(async () => {
+      const design = state.design
+      const platform = input("platform").value
+      if (design?.target !== "app" || (platform !== "ios" && platform !== "android") || design.platform === platform)
+        return
+      state.design = await api<Design.Info>(`/${design.id}`, "PATCH", { platform })
+      state.device = undefined
+      drawWidths()
+    }, element("platform"))
   // Opened synchronously, inside the click, so the browser lets the new window through; it starts on
   // the slide on screen, and the presentation's own P key opens the presenter view.
   element("present").onclick = () => {
@@ -3522,6 +3629,7 @@ details{border-top:1px solid var(--edge);padding:14px 0}summary{cursor:pointer;f
     if (!design || !presenting()) return
     const url = new URL(`${endpoint}/${encodeURIComponent(design.id)}/present`, location.href)
     if (state.revision) url.searchParams.set("revision", state.revision)
+    if (state.variant) url.searchParams.set("variant", state.variant)
     url.hash = currentScreen()
     open(url.toString(), `redcode-audience-${design.id}`)
   }
@@ -3556,7 +3664,18 @@ details{border-top:1px solid var(--edge);padding:14px 0}summary{cursor:pointer;f
         : "100%"
     resize()
   }
+  // Restoring publishes a new latest revision: it asks first, and waits while the agent works, whose next
+  // publish would replace it.
   click("restore", async () => {
+    if (agentState() === "working") throw new Error(copy.restoreBusy)
+    write(element("restore-heading"), fill(copy.restoreConfirm, { revision: revisionName(state.revision) }))
+    element<HTMLDialogElement>("restore-dialog").showModal()
+    element("cancel-restore").focus()
+  })
+  element("cancel-restore").onclick = () => element<HTMLDialogElement>("restore-dialog").close()
+  click("confirm-restore", async () => {
+    element<HTMLDialogElement>("restore-dialog").close()
+    if (agentState() === "working") throw new Error(copy.restoreBusy)
     const result = await api<Design.Revision>(`/${state.design!.id}/restore`, "POST", { revision: state.revision })
     await refresh()
     await chooseRevision(result.id)
@@ -3725,8 +3844,19 @@ details{border-top:1px solid var(--edge);padding:14px 0}summary{cursor:pointer;f
     await refresh()
   })
   input("note").oninput = save
+  click("discard-pending", async () => discardPending(false))
+  // The message goes again from the latest revision: the drafts move along with the reload.
+  click("reload-resend", async () => {
+    discardPending(true)
+    await refresh()
+    const latest = state.design?.revision
+    if (latest && latest !== state.revision) await chooseRevision(latest, false, true)
+    await send(false)
+  })
   const send = async (end: boolean) => {
     if (!state.revision) return
+    // Text typed in an open note card is part of what Send sends.
+    queueCard()
     if (!state.pending && !state.notes.length && !input("note").value.trim()) throw new Error(copy.feedbackRequired)
     state.pending ??= {
       id: `msg_${crypto.randomUUID()}` as Design.Feedback["id"],
@@ -4259,6 +4389,8 @@ details{border-top:1px solid var(--edge);padding:14px 0}summary{cursor:pointer;f
       await api(`/${state.design!.id}/job`, "POST", {
         revision: format === "compare" ? state.design!.approvedRevision : state.revision,
         format,
+        // An audit inspects, and a PDF prints, the variant on screen.
+        ...((format === "audit" || format === "pdf") && state.variant ? { variant: state.variant } : {}),
         ...(format === "compare" ? { implementation: input("implementation").value } : {}),
         ...(format === "gif"
           ? {
@@ -4869,7 +5001,8 @@ details{border-top:1px solid var(--edge);padding:14px 0}summary{cursor:pointer;f
   drawLiveness()
   // Elapsed times are read from the clock each second; nothing counts on its own.
   const ticker = setInterval(() => {
-    if (loading.view.phase === "loading") drawLoading()
+    // A retry countdown in the zero state is read from the clock too.
+    if (loading.view.phase === "loading" || (loading.view.phase === "empty" && loading.view.until)) drawLoading()
     drawLiveness()
   }, 1000)
   void run(refresh)

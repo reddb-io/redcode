@@ -26,6 +26,8 @@ const Entry = Schema.Struct({
   target: Schema.String,
   root: Schema.String,
   ended: Schema.Boolean,
+  /** The reviewer asked to end the review once every note has an outcome; absent otherwise. */
+  ending: Schema.optional(Schema.Boolean),
   objective: Schema.String,
   brief: Schema.optional(Design.Brief),
   decisions: Schema.optional(Schema.Array(Design.Decision)),
@@ -46,7 +48,7 @@ const render = (entries: ReadonlyArray<typeof Entry.Type>) =>
   entries
     .map((entry) =>
       [
-        `Design ${entry.id}: ${entry.name}. Target: ${entry.target}. Review ${entry.ended ? "closed" : "open"}.`,
+        `Design ${entry.id}: ${entry.name}. Target: ${entry.target}. Review ${entry.ended ? "closed" : entry.ending ? "open until every note has an outcome: the user asked to end it after this round, so finish the notes (fix, mark, publish, verify, record outcomes) and do not ask for another round" : "open"}.`,
         entry.approval
           ? DesignApproval.guidance(entry.approval)
           : `Work: ${entry.root}. Objective: ${entry.objective || "Not recorded"}. Open questions: ${entry.questions.join("; ") || "None recorded"}. This design is not approved: its brief is draft project data, not a requirement.`,
@@ -86,6 +88,7 @@ const layer = Layer.effect(
           target: DesignTarget.label(document),
           root: document.root,
           ended: document.ended,
+          ...(document.endRequested && !document.ended ? { ending: true } : {}),
           objective: record ? "" : document.brief.objective,
           ...(record ? {} : { brief: document.brief, decisions: document.decisions }),
           questions: record ? [] : document.questions,

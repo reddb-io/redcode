@@ -587,4 +587,45 @@ describe("DesignRounds checklist", () => {
     expect(DesignRounds.recite({ ...round, notes: settled.notes })).toBe("")
     expect(DesignRounds.recite({ rounds: undefined, notes: undefined })).toBe("")
   })
+
+  test("the continuation names what the round still misses, then the notes, and is undefined once every note has an outcome", () => {
+    const round = opened(2)
+    const document = { ...round, id: designID, revision: "rev_1" }
+    expect(DesignRounds.continuation(document, [])).toBe(
+      [
+        "Design design_checkout: the feedback round is not finished. You stopped while 2 notes still have no recorded outcome.",
+        "Still missing: an addressed mark or an outcome for 2 notes of round 1; the design_preview publish that answers round 1; a verify of the current revision for round 1 (design_export format verify with round set; wait for its native monitor); an outcome for 2 notes (design_document update notes).",
+        DesignRounds.recite(round),
+        "Continue now: fix the notes, mark each addressed, publish one revision, run one verify per round and record each note's outcome; unresolved or accepted with a reason are allowed for a note you will not change. Then reply to the reviewer with the outcomes. This reminder is sent once per round.",
+      ].join("\n"),
+    )
+    // Marked, answered and verified: only the outcomes are left.
+    const marked = DesignRounds.tick(
+      round,
+      [1, 2].map((index) => ({ feedback, index, summary: "Done" })),
+    )
+    const answered = {
+      ...DesignRounds.published({ ...round, notes: marked.notes }, "rev_2"),
+      id: designID,
+      revision: "rev_2",
+    }
+    const verified = [job("render_1", "rev_2", 1, [seen(feedback, 1, true), seen(feedback, 2, true)])]
+    expect(DesignRounds.continuation(answered, verified)).toContain(
+      "Still missing: an outcome for 2 notes (design_document update notes).",
+    )
+    // A verify of an older revision does not count.
+    expect(DesignRounds.continuation({ ...answered, revision: "rev_3" }, verified)).toContain(
+      "a verify of the current revision for round 1",
+    )
+    const settled = DesignRounds.apply(
+      answered,
+      [
+        { feedback, index: 1, status: "accepted", reason: "Kept" },
+        { feedback, index: 2, status: "unresolved", reason: "Later" },
+      ],
+      [],
+    )
+    if ("problem" in settled) throw new Error(settled.problem)
+    expect(DesignRounds.continuation({ ...answered, notes: settled.notes }, verified)).toBeUndefined()
+  })
 })

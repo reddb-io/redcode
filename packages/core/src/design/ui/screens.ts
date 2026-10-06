@@ -30,6 +30,8 @@ export function screens() {
     queued: false,
     /** Every screen shown at once, as the PDF export of a deck prints them. */
     all: false,
+    /** With `all`, only this variant's screens print, besides the screens outside any variant. */
+    print: "",
     params: undefined as Record<string, Record<string, unknown>> | undefined,
     listeners: [] as { id: string; run: (fields: Record<string, unknown>, meta: { reset: boolean }) => void }[],
     /**
@@ -84,7 +86,10 @@ export function screens() {
   const find = (scope: string, id: string) =>
     nodes().find((node) => node.dataset.designScreen === id && scopeOf(node) === scope && !node.hasAttribute(REPEAT))
   const paint = () => {
-    if (state.all) return style(`[${REPEAT}]{display:none!important}`)
+    if (state.all)
+      return style(
+        `[${REPEAT}]{display:none!important}${state.print ? `[data-design-variant]:not([data-design-variant="${state.print}"]){display:none!important}` : ""}`,
+      )
     const shown = [...state.current].map(([variant, id]) =>
       variant
         ? `[data-design-variant="${variant}"] [data-design-screen="${id}"]`
@@ -233,7 +238,9 @@ export function screens() {
   })
   // Printing a deck shows every slide, one per page; tooling dispatches this before it prints.
   window.addEventListener("design:print", (event) => {
-    state.all = !(event instanceof CustomEvent) || event.detail?.all !== false
+    const detail = event instanceof CustomEvent ? event.detail : undefined
+    state.all = detail?.all !== false
+    state.print = typeof detail?.variant === "string" && ID.test(detail.variant) ? detail.variant : ""
     paint()
   })
   window.addEventListener("design:go", (event) => {

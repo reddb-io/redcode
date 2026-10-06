@@ -375,7 +375,7 @@ export async function screenNotice(root: string, engine: Design.Info["engine"], 
 export function report(
   jobs: readonly Pick<
     Design.Job,
-    "id" | "input" | "status" | "progress" | "result" | "error" | "created" | "finished" | "audit" | "verify"
+    "id" | "input" | "status" | "progress" | "phase" | "result" | "error" | "created" | "finished" | "audit" | "verify"
   >[],
   revision: string | null,
   /**
@@ -407,7 +407,7 @@ export function report(
   return [
     ...status.map(
       (job) =>
-        `${job.id}: ${job.status} (${Math.round(job.progress * 100)}%) revision=${job.input.revision}${job.input.variant ? ` variant=${job.input.variant}` : ""} ${job.result ?? job.error ?? ""}`,
+        `${job.id}: ${job.status} (${job.phase === "preparing" ? "preparing the build and browser" : `${Math.round(job.progress * 100)}%`}) revision=${job.input.revision}${job.input.variant ? ` variant=${job.input.variant}` : ""} ${job.result ?? job.error ?? ""}`,
     ),
     ...(jobs.length > status.length ? [`${jobs.length - status.length} older job statuses omitted.`] : []),
     ...(verify?.verify

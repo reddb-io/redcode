@@ -211,29 +211,52 @@ export const identify = <E, R>(input: {
       ]),
     )
     if (!pack) return heuristic(scanned, undefined, "the project could not be read; heuristic scan only")
-    const key = `${path.resolve(input.directory)}\0${input.application ?? ""}`
-    const fingerprint = createHash("sha256")
-      .update(`${VERSION}\0${input.application ?? ""}\0${pack.fingerprint}`)
-      .digest("hex")
-    // Only a verified, complete result is cached; a merge that throws falls back to the heuristic.
+    const key = cacheKey(input.directory, input.application)
+    const fingerprint = (application: string | undefined) =>
+      createHash("sha256")
+        .update(`${VERSION}\0${application ?? ""}\0${pack.fingerprint}`)
+        .digest("hex")
+    // Only a verified, complete result is cached; a merge that throws falls back to the heuristic. A
+    // result for no named application is also cached under the application it resolved, so a design
+    // that names that application reuses the warm-up instead of asking System One again.
     const save = (verdict: Verdict) =>
       Effect.promise(async () => {
         const identified = await settle(input.directory, scanned, pack, verdict).catch(() => undefined)
         if (!identified) return heuristic(scanned, pack, "the answer could not be merged; heuristic scan only")
-        if (!identified.partial) await remember(input.state, key, fingerprint, identified).catch(() => undefined)
+        const resolved = input.application === undefined ? identified.proposal?.application : undefined
+        if (!identified.partial)
+          await remember(
+            input.state,
+            [
+              [key, fingerprint(named(input.application))],
+              ...(resolved === undefined
+                ? []
+                : [[cacheKey(input.directory, resolved), fingerprint(named(resolved))] as const]),
+            ],
+            identified,
+          ).catch(() => undefined)
         return identified
       })
 
     if (input.mode !== "dual" && input.answer) return yield* save(fromAnswer(input.answer))
     // A background warm-up and a design created meanwhile share one identification, so one S1 call:
-    // the first registers itself before it reads the cache, the second waits for its result.
-    const flight = `${key}\0${fingerprint}`
+    // the first registers itself before it reads the cache, the second waits for its result. A design
+    // naming its application also waits for a warm-up of the whole project, whose result is cached
+    // under the application it resolved.
+    const flight = `${key}\0${fingerprint(named(input.application))}`
     const running = inflight.get(flight)
     if (running) return yield* Effect.promise(() => running)
+    const warming =
+      input.application === undefined
+        ? undefined
+        : inflight.get(`${cacheKey(input.directory)}\0${fingerprint(undefined)}`)
+    if (warming) yield* Effect.promise(() => warming)
     const pending = Promise.withResolvers<Identification>()
     inflight.set(flight, pending.promise)
     return yield* Effect.gen(function* () {
-      const cached = yield* Effect.promise(() => lookup(input.state, key, fingerprint).catch(() => undefined))
+      const cached = yield* Effect.promise(() =>
+        lookup(input.state, key, fingerprint(named(input.application))).catch(() => undefined),
+      )
       if (cached) return cached
       if (!scanned.proposal && !hasEvidence(pack))
         return {
@@ -268,6 +291,20 @@ export const identify = <E, R>(input: {
       ),
     )
   })
+
+/**
+ * Where an identification is cached: the project and the application named for it, empty when none
+ * was. The background warm-up and design_document create both key through here, so a warm-up that
+ * resolved the application a design names later is a cache hit for it.
+ */
+export const cacheKey = (directory: string, application?: string) =>
+  `${path.resolve(directory)}\0${named(application) ?? ""}`
+
+/** A named application in the scan's form ("apps/web", "." for the root), however it was spelled. */
+const named = (application: string | undefined) =>
+  application === undefined
+    ? undefined
+    : path.posix.normalize(application.replaceAll("\\", "/")).replace(/^\.\//, "").replace(/\/+$/, "") || "."
 
 /** Identifications in flight per project, application and scanned tree. */
 const inflight = new Map<string, Promise<Identification>>()
@@ -980,8 +1017,16 @@ async function lookup(state: string, key: string, fingerprint: string) {
 }
 
 /** Keeps the newest CACHE_ENTRIES results; a lost concurrent write only costs one more identification. */
-async function remember(state: string, key: string, fingerprint: string, identification: Identification) {
-  const all = { ...(await entries(state)), [key]: { fingerprint, at: Date.now(), identification } }
+async function remember(
+  state: string,
+  keys: ReadonlyArray<readonly [key: string, fingerprint: string]>,
+  identification: Identification,
+) {
+  const at = Date.now()
+  const all = {
+    ...(await entries(state)),
+    ...Object.fromEntries(keys.map(([key, fingerprint]) => [key, { fingerprint, at, identification }])),
+  }
   const kept = Object.fromEntries(
     Object.entries(all)
       .toSorted(([, a], [, b]) => b.at - a.at)

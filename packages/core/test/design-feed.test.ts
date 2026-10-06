@@ -3,6 +3,7 @@ import { Effect, Schema, Stream } from "effect"
 import { Design } from "@opencode/schema/design"
 import { SessionEvent } from "@opencode/schema/session-event"
 import { SessionMessage } from "@opencode/schema/session-message"
+import { Permission } from "@opencode/schema/permission"
 import { DesignFeed } from "@opencode/core/design/feed"
 import { DesignFeedback } from "@opencode/core/design/feedback"
 import { SessionSchema } from "@opencode/core/session/schema"
@@ -312,6 +313,71 @@ describe("DesignFeed.reduce", () => {
         }),
       ]),
     ).toEqual([{ type: "user", seq: 1, at, id: "msg_cut", text: "Second pass", notes: 14, pending: true }])
+  })
+
+  test("says why the agent waits, why it stopped, and that a cancelled prompt will not be delivered", () => {
+    const error = { type: "provider", message: "Overloaded" }
+    const items = all([
+      event(SessionEvent.InboxEnqueued, 1, {
+        inboxID: "msg_cancelled",
+        item: { type: "user", payload: { text: "Never mind" }, delivery: "queue" },
+      }),
+      event(SessionEvent.InboxCancelled, 2, { inboxID: "msg_cancelled" }),
+      event(SessionEvent.Execution.Started, 3, {}),
+      event(SessionEvent.Compaction.Started, 4, { reason: "auto", recent: "" }),
+      event(SessionEvent.Compaction.Failed, 5, { reason: "auto", error }),
+      event(SessionEvent.RetryScheduled, 6, { assistantMessageID, attempt: 2, at: at + 5000, error }),
+      event(SessionEvent.Text.Started, 7, { assistantMessageID, ordinal: 0 }),
+      event(SessionEvent.Text.Started, 8, { assistantMessageID, ordinal: 1 }),
+      event(SessionEvent.Execution.Failed, 9, { error }),
+      event(SessionEvent.Execution.Started, 10, {}),
+      event(SessionEvent.Execution.Interrupted, 11, { reason: "user" }),
+    ])
+    expect(items).toEqual([
+      { type: "user", seq: 1, at, id: "msg_cancelled", text: "Never mind", notes: 0, pending: true },
+      { type: "user", seq: 2, at, id: "msg_cancelled", text: "Never mind", notes: 0, cancelled: true },
+      { type: "state", seq: 3, at, state: "working" },
+      { type: "wait", seq: 4, at, wait: "compaction", active: true },
+      { type: "wait", seq: 5, at, wait: "compaction", active: false, message: "Overloaded" },
+      { type: "wait", seq: 6, at, wait: "retry", active: true, until: at + 5000, attempt: 2, message: "Overloaded" },
+      // The retried request's first output ends the wait, once.
+      { type: "wait", seq: 7, at, wait: "retry", active: false },
+      { type: "state", seq: 9, at, state: "idle", outcome: "failed", message: "Overloaded" },
+      { type: "state", seq: 10, at, state: "working" },
+      { type: "state", seq: 11, at, state: "idle", outcome: "interrupted", message: "user" },
+    ])
+    items.forEach((item) => expect(Schema.is(Design.FeedEvent)(item)).toBe(true))
+  })
+
+  test("numbers a published revision from the tool's metadata", () => {
+    expect(
+      all([
+        ...tool(1, "call_preview", "design_preview", { name: "Third" }),
+        success(3, "call_preview", { designID: "design_checkout", revision: "rev_3", ordinal: 3 }),
+      ]).filter((item) => item.type === "published"),
+    ).toEqual([{ type: "published", seq: 3, at, design: designID, revision: "rev_3", name: "Third", ordinal: 3 }])
+  })
+
+  test("a permission request is a live wait for approval in the terminal", () => {
+    const payload = { id: "evt_permission", created: at }
+    const asked = DesignFeed.permission(
+      Schema.decodeUnknownSync(Permission.Event.Asked)({
+        ...payload,
+        type: "permission.asked",
+        data: { id: "per_1", sessionID, action: "bash", resources: ["rm -rf dist"] },
+      }),
+    )
+    const replied = DesignFeed.permission(
+      Schema.decodeUnknownSync(Permission.Event.Replied)({
+        ...payload,
+        type: "permission.replied",
+        data: { sessionID, requestID: "per_1", reply: "once" },
+      }),
+    )
+    expect([...asked, ...replied]).toEqual([
+      { seq: 0, at, type: "wait", wait: "permission", active: true, message: "bash" },
+      { seq: 0, at, type: "wait", wait: "permission", active: false },
+    ])
   })
 
   test("a delivery without its admission, and events outside the review vocabulary, add nothing", () => {

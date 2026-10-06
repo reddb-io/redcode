@@ -957,11 +957,14 @@ const make = Effect.gen(function* () {
           ...(ticked ? DesignRounds.marks(ticked) : []),
         ].join("\n"),
       })
-    const { platform: _previous, ...data } = next
+    const { platform: _previous, endRequested, ...data } = next
+    // A Send & end that carried notes ends the review once the last open note has an outcome.
+    const ending = endRequested && !DesignRounds.open({ notes: recorded.notes }).length
     const updated = {
       ...data,
       ...(platform ? { platform } : {}),
       ...(recorded.notes ? { notes: recorded.notes } : {}),
+      ...(ending ? { ended: true } : endRequested ? { endRequested } : {}),
       updated: Date.now(),
     }
     yield* db
@@ -1081,12 +1084,15 @@ const make = Effect.gen(function* () {
         ),
       catch: () => new Design.Error({ code: "unavailable", message: "Unable to write the Design plan" }),
     })
-    yield* save(sessionID, { ...document, approvedRevision: revisionID, ended: true })
+    const { endRequested: _ending, ...closed } = document
+    yield* save(sessionID, { ...closed, approvedRevision: revisionID, ended: true })
     return { plan: file, revision: revisionID }
   }, lock.withPermits(1))
 
   const reopen = Effect.fn("DesignStore.reopen")(function* (sessionID: SessionSchema.ID, id: Design.ID) {
-    return yield* save(sessionID, { ...(yield* get(sessionID, id)), ended: false })
+    // Reopening also withdraws an end the reviewer requested for after the open round.
+    const { endRequested: _ending, ...document } = yield* get(sessionID, id)
+    return yield* save(sessionID, { ...document, ended: false })
   }, lock.withPermits(1))
 
   const prepareFeedback = Effect.fn("DesignStore.prepareFeedback")(function* (
@@ -1148,7 +1154,9 @@ const make = Effect.gen(function* () {
       return { feedback: previous, admitted: false as const, prompt }
     }
     if (document.ended) return yield* new Design.Error({ code: "conflict", message: "This review has ended" })
-    const pending = input.end ? DesignRounds.blocking(document) : undefined
+    // Send & end with notes is deferred until those notes have outcomes (see acknowledge); only a
+    // plain end must find every note already recorded.
+    const pending = input.end && !Design.notesOf(input).length ? DesignRounds.blocking(document) : undefined
     if (pending) return yield* new Design.Error({ code: "conflict", message: `The review cannot end yet. ${pending}` })
     if ((input.action || input.review) && document.revision !== input.revision)
       return yield* new Design.Error({
@@ -1194,6 +1202,8 @@ const make = Effect.gen(function* () {
   ) {
     const document = yield* get(sessionID, id)
     const rounds = DesignRounds.admit(document, input)
+    // Ending at once would refuse the publish and outcomes these notes need, so the end waits for them.
+    const deferred = input.end && Design.notesOf(input).length > 0
     yield* db
       .transaction((tx) =>
         Effect.gen(function* () {
@@ -1205,7 +1215,15 @@ const make = Effect.gen(function* () {
           if (input.end || rounds !== document)
             yield* tx
               .update(DesignTable)
-              .set({ data: { ...document, ...rounds, ended: document.ended || input.end, updated: Date.now() } })
+              .set({
+                data: {
+                  ...document,
+                  ...rounds,
+                  ended: document.ended || (input.end && !deferred),
+                  ...(deferred && !document.ended ? { endRequested: true } : {}),
+                  updated: Date.now(),
+                },
+              })
               .where(
                 and(
                   eq(DesignTable.id, id),

@@ -75,6 +75,9 @@ import { QuestionTool } from "@opencode/core/tool/plugin/question"
 import { Agent } from "@opencode/core/agent"
 import { AgentPlugin } from "@opencode/core/plugin/agent"
 import { DesignPlugin } from "@opencode/core/plugin/design"
+import { DesignStore } from "@opencode/core/design/store"
+import { DesignRounds } from "@opencode/core/design/rounds"
+import { Design } from "@opencode/schema/design"
 import { Config } from "@opencode/core/config"
 import { Document, Info } from "@opencode/schema/config"
 import { ConfigCompaction } from "@opencode/schema/config/compaction"
@@ -550,6 +553,7 @@ const layer = Layer.unwrap(
         SessionCompaction.node,
         LayerNodePlatform.llmClient,
         SessionRunnerLLM.node,
+        DesignStore.node,
         Intelligence.node,
         SessionGoal.node,
         SessionTodoStore.node,
@@ -1187,6 +1191,47 @@ const watchRename = Effect.fnUntraced(function* (sessionID: Session.ID) {
   )
 })
 
+/**
+ * A Design agent Session whose review round the agent already answered with a publish, while its one
+ * note still has no outcome: the state in which Design used to stop for good.
+ */
+const openDesignRound = Effect.fnUntraced(function* (s: Scenario) {
+  const agents = yield* Agent.Service
+  const designs = yield* DesignStore.Service
+  yield* DesignPlugin.Plugin.effect(host({ agent: agentHost(agents) }))
+  yield* s.bus.publish(SessionEvent.AgentSelected, { sessionID, agent: Agent.ID.make("design") })
+  const design = yield* designs.create(sessionID, { name: "Checkout", journey: "new", engine: "html", kind: "screen" })
+  const first = yield* designs.publish(sessionID, design.id, "First")
+  const feedback = Schema.decodeUnknownSync(Design.Feedback)({
+    id: "msg_round_review",
+    revision: first.id,
+    text: "",
+    items: [{ target: "#title", text: "Make the title larger", label: "h1" }],
+    assets: [],
+    snapshot: "",
+    delivery: "steer",
+    end: false,
+  })
+  yield* designs.prepareFeedback(sessionID, design.id, feedback, () => "Review")
+  yield* designs.acknowledge(sessionID, design.id, feedback)
+  yield* designs.amend(sessionID, design.id, {
+    addressed: [{ feedback: feedback.id, index: 1, summary: "Larger title" }],
+  })
+  const answer = yield* designs.publish(sessionID, design.id, "Answer", undefined, false, true)
+  return { id: design.id, revision: answer.id }
+})
+
+const roundContinuations = (s: Scenario) =>
+  s.messages.pipe(
+    Effect.map((messages) =>
+      messages.flatMap((message) =>
+        message.type === "synthetic" && message.metadata?.[DesignRounds.CONTINUATION_KEY] !== undefined
+          ? [message]
+          : [],
+      ),
+    ),
+  )
+
 describe("SessionRunnerLLM", () => {
   scenario("reconciles 12 verified Design tasks out of 15 before returning to the reviewer", function* (s) {
     const agents = yield* Agent.Service
@@ -1305,6 +1350,65 @@ describe("SessionRunnerLLM", () => {
     yield* s.llm.push(TestLLM.text("It is waiting for your approval", "text_design_followup"))
     yield* s.runPrompt("What is its status?")
     expect(s.requests).toHaveLength(5)
+  })
+
+  scenario("a Design round published without outcomes gets exactly one continuation", function* (s) {
+    const round = yield* openDesignRound(s)
+    yield* s.llm.push(
+      TestLLM.text("Published the fixes", "text_round_stop"),
+      TestLLM.text("Recorded the outcome", "text_round_continued"),
+    )
+    yield* s.runPrompt("Answer the review")
+    expect(s.requests).toHaveLength(2)
+    const continued = yield* roundContinuations(s)
+    expect(continued).toHaveLength(1)
+    expect(continued[0]).toMatchObject({
+      metadata: { [DesignRounds.CONTINUATION_KEY]: { designID: round.id, round: 1 } },
+    })
+    expect(continued[0]?.text).toContain("the feedback round is not finished")
+    expect(continued[0]?.text).toContain("Note: Make the title larger")
+    expect(continued[0]?.text).toContain("a verify of the current revision for round 1")
+    // A second stop on the same round is left to the reviewer.
+    yield* TestClock.adjust("1 second")
+    yield* s.llm.push(TestLLM.text("Still waiting on the verify", "text_round_second_stop"))
+    yield* s.runPrompt("What is left?")
+    expect(s.requests).toHaveLength(3)
+    expect(yield* roundContinuations(s)).toHaveLength(1)
+  })
+
+  scenario("a Design round with a verify still running is not continued", function* (s) {
+    const round = yield* openDesignRound(s)
+    const designs = yield* DesignStore.Service
+    yield* designs.putJob(sessionID, {
+      id: "render_round_verify",
+      designID: round.id,
+      input: { revision: round.revision, format: "verify", round: 1 },
+      status: "running",
+      progress: 0,
+      result: null,
+      error: null,
+      created: 1,
+    })
+    yield* s.llm.push(TestLLM.text("Waiting for the verify", "text_round_verifying"))
+    yield* s.runPrompt("Answer the review")
+    expect(s.requests).toHaveLength(1)
+    expect(yield* roundContinuations(s)).toHaveLength(0)
+  })
+
+  scenario("an interrupted Design turn is not continued", function* (s) {
+    yield* openDesignRound(s)
+    yield* s.admit("Answer the review")
+    yield* s.llm.push(TestLLM.text("Publishing", "text_round_interrupted"))
+    const gate = yield* s.llm.gate
+    yield* s.resume.pipe(Effect.exit, Effect.forkChild)
+    yield* gate.started
+    yield* s.session.interrupt(sessionID)
+    yield* s.session.wait(sessionID)
+    yield* gate.release
+    yield* s.resume
+    // An explicit resume runs a step, but the interrupted turn is not continued on top of it.
+    expect(s.requests).toHaveLength(2)
+    expect(yield* roundContinuations(s)).toHaveLength(0)
   })
 
   scenario("stops Design no-op edits at the third call even with inherited Build permissions", function* (s) {

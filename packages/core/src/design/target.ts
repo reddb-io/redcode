@@ -1,7 +1,7 @@
 export * as DesignTarget from "./target.js"
 
 import path from "node:path"
-import { Effect } from "effect"
+import { Effect, Fiber } from "effect"
 import type { Design } from "@opencode/schema/design"
 import { Intelligence } from "@opencode/schema/intelligence"
 import type { EvaluationInput } from "../intelligence.js"
@@ -220,6 +220,26 @@ export function chip(choice: Partial<Choice>, system: string) {
 export function describe(document: Partial<Choice>) {
   return `Target: ${label(document)} · playbooks: ${DesignPlaybooks.forTarget(document.target).join(", ")}`
 }
+
+/**
+ * Sends the `design_target` classification now and returns the effect that awaits its answer, so it
+ * runs alongside design system identification instead of after it: the two System One requests are
+ * never chained. Nothing is sent when choose would not read it: a forced target, single reasoning,
+ * or a target the per-message prompt classification already read (see classified).
+ */
+export const prefetch = <E, R>(input: {
+  readonly forced: Choice | undefined
+  readonly mode: ReturnType<typeof IntelligenceEvaluation.mode>
+  readonly classified?: Detection
+  readonly detect: Effect.Effect<Intelligence.Evaluation | undefined, E, R>
+}) =>
+  input.forced || input.mode !== "dual" || input.classified
+    ? Effect.succeed(Effect.succeed<Intelligence.Evaluation | undefined>(undefined))
+    : input.detect.pipe(
+        Effect.orElseSucceed(() => undefined),
+        Effect.forkChild({ startImmediately: true }),
+        Effect.map(Fiber.join),
+      )
 
 /** Settles the target of a design being created. See the module comment for the rules. */
 export function choose<DetectError, DetectEnv, AskError, AskEnv>(input: {

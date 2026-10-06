@@ -1156,13 +1156,13 @@ describe("DesignStore note statuses", () => {
 
 describe("DesignStore feedback checklist", () => {
   /** One review message with `count` notes on the design's current revision, admitted into the open round. */
-  const admit = (design: Design.Info, id: string, count: number) =>
+  const admit = (design: Design.Info, id: string, count: number, end = false) =>
     Effect.gen(function* () {
       const store = yield* DesignStore.Service
       const feedback = Schema.decodeUnknownSync(Design.Feedback)({
         id,
         revision: (yield* store.get(sessionID, design.id)).revision,
-        text: "",
+        text: count ? "" : "Looks good",
         items: Array.from({ length: count }, (_, index) => ({
           target: `#note-${index + 1}`,
           text: `Change ${index + 1}`,
@@ -1171,12 +1171,13 @@ describe("DesignStore feedback checklist", () => {
         assets: [],
         snapshot: "",
         delivery: "steer",
-        end: false,
+        end,
       })
       yield* store.prepareFeedback(sessionID, design.id, feedback, () => id)
       yield* store.acknowledge(sessionID, design.id, feedback)
       return feedback.id as string
     })
+  const statusesOf = (document: Design.Info) => (document.notes ?? []).map((note) => note.status)
   const published = (design: Design.Info) =>
     Effect.gen(function* () {
       const store = yield* DesignStore.Service
@@ -1360,6 +1361,91 @@ describe("DesignStore feedback checklist", () => {
       const answer = yield* store.publish(sessionID, design.id, restored.name, undefined, false, true)
       expect(answer.id).not.toBe(restored.id)
       expect(yield* published(design)).toBe(answer.id)
+    }),
+  )
+  it.live("Send & end with notes keeps the review open for that round and ends it once every note has an outcome", () =>
+    Effect.gen(function* () {
+      yield* seed
+      yield* reasoning(single)
+      const store = yield* DesignStore.Service
+      const design = yield* store.create(sessionID, checkout)
+      yield* store.publish(sessionID, design.id, "First")
+      const feedback = yield* admit(design, "msg_end_notes", 2, true)
+      // Ending now would refuse the publish and the outcomes these notes need.
+      expect(yield* store.get(sessionID, design.id)).toMatchObject({ ended: false, endRequested: true })
+      expect(statusesOf(yield* store.get(sessionID, design.id))).toEqual(["open", "open"])
+      // A plain end still waits for every outcome.
+      const early = yield* admit(design, "msg_end_plain_early", 0, true).pipe(Effect.flip)
+      expect(early.message).toStartWith("The review cannot end yet. Round 1 has 2 notes without a recorded outcome")
+
+      yield* write(path.join(design.root, design.entry), "<main>Fixed</main>")
+      yield* store.amend(sessionID, design.id, {
+        addressed: [1, 2].map((index) => ({ feedback, index, summary: `Changed ${index}` })),
+      })
+      const answer = yield* store.publish(sessionID, design.id, "Answer", undefined, false, true)
+      yield* store.putJob(sessionID, {
+        id: "render_end_verify",
+        designID: design.id,
+        input: { revision: answer.id, format: "verify", round: 1 },
+        status: "completed",
+        progress: 1,
+        result: "/exports/render_end_verify.html",
+        error: null,
+        created: 1,
+        finished: 1,
+        verify: {
+          revision: answer.id,
+          round: 1,
+          width: 1440,
+          findings: [],
+          notes: [1, 2].map((index) => ({
+            feedback,
+            index,
+            label: `button "Note ${index}"`,
+            found: true,
+            blocking: false,
+            findings: [],
+            scenarios: [],
+            reason: "found",
+          })),
+        },
+      })
+      // The first outcome leaves the end pending; the last one completes it.
+      yield* store.amend(sessionID, design.id, {
+        notes: [{ feedback, index: 1, status: "resolved", evidence: { job: "render_end_verify" } }],
+      })
+      expect(yield* store.get(sessionID, design.id)).toMatchObject({ ended: false, endRequested: true })
+      yield* store.amend(sessionID, design.id, {
+        notes: [{ feedback, index: 2, status: "accepted", reason: "Kept on purpose" }],
+      })
+      const ended = yield* store.get(sessionID, design.id)
+      expect(ended.ended).toBe(true)
+      expect(ended.endRequested).toBeUndefined()
+      expect(statusesOf(ended)).toEqual(["resolved", "accepted"])
+      // Approval honours the finished round; reopening withdraws nothing left to withdraw.
+      expect((yield* store.approve(sessionID, design.id, answer.id)).revision).toBe(answer.id)
+      expect((yield* store.reopen(sessionID, design.id)).endRequested).toBeUndefined()
+    }),
+  )
+
+  it.live("a plain end closes the review at once, and reopening withdraws a pending end", () =>
+    Effect.gen(function* () {
+      yield* seed
+      yield* reasoning(single)
+      const store = yield* DesignStore.Service
+      const design = yield* store.create(sessionID, checkout)
+      yield* store.publish(sessionID, design.id, "First")
+      yield* admit(design, "msg_plain_end", 0, true)
+      const closed = yield* store.get(sessionID, design.id)
+      expect(closed.ended).toBe(true)
+      expect(closed.endRequested).toBeUndefined()
+
+      yield* store.reopen(sessionID, design.id)
+      yield* admit(design, "msg_end_then_reopen", 1, true)
+      expect((yield* store.get(sessionID, design.id)).endRequested).toBe(true)
+      const reopened = yield* store.reopen(sessionID, design.id)
+      expect(reopened).toMatchObject({ ended: false })
+      expect(reopened.endRequested).toBeUndefined()
     }),
   )
 })

@@ -9,6 +9,7 @@ import { Cause, Clock, Effect, Exit, Fiber, FiberMap, Layer, Option, Schema } fr
 import { Database } from "../../database/database.js"
 import { DesignIdentify } from "../../design/identify.js"
 import { DesignProposal } from "../../design/proposal.js"
+import { DesignRounds } from "../../design/rounds.js"
 import { DesignStore } from "../../design/store.js"
 import { Location } from "../../location.js"
 import { Bus } from "../../bus.js"
@@ -460,6 +461,17 @@ const layer = Layer.effect(
               yield* goals.save(goal, { ...goal, status: "paused", reason: SessionTodo.limitReason }).pipe(Effect.orDie)
             yield* Effect.logWarning("Task continuation limit reached", { sessionID, attempts: todoContinuations })
           }
+          const unfinished =
+            !continuing && next.context.agent.id === "design" ? yield* unfinishedRound(sessionID) : undefined
+          if (unfinished) {
+            yield* bus.publish(SessionEvent.Synthetic, {
+              sessionID,
+              text: unfinished.text,
+              description: `Continuing Design feedback round ${unfinished.marker.round}`,
+              metadata: { [DesignRounds.CONTINUATION_KEY]: unfinished.marker },
+            })
+            continuing = true
+          }
         }
         // At the idle boundary an active goal continues through the inbox; otherwise the final response is reviewed.
         if (
@@ -750,6 +762,66 @@ const layer = Layer.effect(
         ),
         { onlyIfMissing: true },
       )
+    })
+
+    /**
+     * The continuation of a Design feedback round the agent stopped short of finishing: the first
+     * open design whose notes still await an outcome. Each round gets at most one, and its marker is the
+     * synthetic message itself, so a later idle boundary, another drain or a restart never repeats it.
+     * A verify still queued or running is the agent waiting on its result, not a stop, and an ended
+     * design (approval ends one) has nothing left to answer. A turn the user interrupted is not
+     * continued, even after an explicit resume, until the next user message. Reads only the store and
+     * the Session: no System One request.
+     */
+    const unfinishedRound = Effect.fn("SessionRunner.unfinishedRound")(function* (sessionID: SessionSchema.ID) {
+      if (yield* SessionInbox.has(db, sessionID, "input")) return undefined
+      const user = yield* db
+        .select({ seq: SessionMessageTable.seq })
+        .from(SessionMessageTable)
+        .where(and(eq(SessionMessageTable.session_id, sessionID), eq(SessionMessageTable.type, "user")))
+        .orderBy(desc(SessionMessageTable.seq))
+        .get()
+        .pipe(Effect.orDie)
+      const interrupted = yield* db
+        .select({ id: SessionMessageTable.id })
+        .from(SessionMessageTable)
+        .where(
+          and(
+            eq(SessionMessageTable.session_id, sessionID),
+            eq(SessionMessageTable.type, "assistant"),
+            sql`${SessionMessageTable.seq} > ${user?.seq ?? -1}`,
+            sql`json_extract(${SessionMessageTable.data}, '$.error.type') = 'aborted'`,
+          ),
+        )
+        .get()
+        .pipe(Effect.orDie)
+      if (interrupted) return undefined
+      const documents = (yield* designs.list(sessionID)).filter(
+        (document) => !document.ended && DesignRounds.open(document).length > 0,
+      )
+      for (const document of documents) {
+        const round = DesignRounds.latest(document)?.number
+        if (round === undefined) continue
+        const jobs = yield* designs.jobs(sessionID, document.id)
+        if (jobs.some((job) => job.input.format === "verify" && (job.status === "queued" || job.status === "running")))
+          continue
+        const marked = yield* db
+          .select({ id: SessionMessageTable.id })
+          .from(SessionMessageTable)
+          .where(
+            and(
+              eq(SessionMessageTable.session_id, sessionID),
+              eq(SessionMessageTable.type, "synthetic"),
+              sql`json_extract(${SessionMessageTable.data}, ${`$.metadata.${DesignRounds.CONTINUATION_KEY}.designID`}) = ${document.id}`,
+              sql`json_extract(${SessionMessageTable.data}, ${`$.metadata.${DesignRounds.CONTINUATION_KEY}.round`}) = ${round}`,
+            ),
+          )
+          .get()
+          .pipe(Effect.orDie)
+        const text = marked ? undefined : DesignRounds.continuation(document, jobs)
+        if (text) return { text, marker: { designID: document.id, round } }
+      }
+      return undefined
     })
 
     /**

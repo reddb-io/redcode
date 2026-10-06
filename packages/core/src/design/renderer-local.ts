@@ -24,6 +24,7 @@ import { DesignQuality } from "./quality.js"
 import { DesignRounds } from "./rounds.js"
 import { DesignViewports } from "./viewports.js"
 import { DesignGate } from "./gate.js"
+import { DesignLocate } from "./locate.js"
 import { screens } from "./ui/screens.js"
 import { deck, slides } from "./ui/slides.js"
 import { device } from "./ui/devices.js"
@@ -90,49 +91,21 @@ const currentScreens = () => {
 }
 
 /**
- * Locates a review note's element in the rendered page: by its data-design-id, then by the selector
- * the review frame recorded (within its variant root, else outside every variant), then by XPath.
- * Marks the element and its container so the checks that follow can address them, and scrolls the
- * element into view so a focused capture shows it. Runs inside the page; self-contained.
+ * Locates a review note's element in the rendered page (see DesignLocate.resolve for the order), marks
+ * the element and its container so the checks that follow can address them, and scrolls the element
+ * into view so a focused capture shows it. Runs inside the page, given the resolver's source.
  */
 type Rect = { x: number; y: number; width: number; height: number }
 type Located = { found: false; how: string } | { found: true; how: string; rect: Rect; container: Rect }
-const locateNote = (input: { target: string; xpath: string; variant: string }): Located => {
+const locateNote = (
+  input: { target: string; xpath: string; variant: string },
+  resolve: typeof DesignLocate.resolve,
+): Located => {
   document.querySelectorAll("[data-redcode-verify]").forEach((node) => node.removeAttribute("data-redcode-verify"))
-  const root = input.variant ? document.querySelector(`[data-design-variant="${input.variant}"]`) : null
-  if (input.variant && !root) return { found: false, how: "variant missing" }
-  const scope: ParentNode = root ?? document
-  const query = input.target.replace(/^variant:[a-zA-Z0-9_-]{1,64} /, "")
-  const attempt = (how: string, find: () => Element | null | undefined) => {
-    try {
-      const node = find()
-      return node instanceof HTMLElement || node instanceof SVGElement ? { node, how } : undefined
-    } catch {
-      return undefined
-    }
-  }
-  const design = /\[data-design-id="([^"]+)"\]/.exec(query)?.[1]
-  const outside = (found: Element[]) => found.find((node) => !node.closest("[data-design-variant]"))
-  const hit =
-    (design && attempt("data-design-id", () => scope.querySelector(`[data-design-id="${CSS.escape(design)}"]`))) ||
-    (query &&
-      query !== "page" &&
-      query !== "diagram" &&
-      (attempt("selector", () => scope.querySelector(query)) ||
-        (root && attempt("selector", () => outside([...document.querySelectorAll(query)]))))) ||
-    (input.xpath &&
-      attempt("xpath", () => {
-        const node = document.evaluate(
-          input.xpath,
-          document,
-          null,
-          XPathResult.FIRST_ORDERED_NODE_TYPE,
-          null,
-        ).singleNodeValue
-        return node instanceof Element && (!root || root.contains(node)) ? node : undefined
-      }))
-  if (!hit) return { found: false, how: "not found" }
-  const element = hit.node as Element
+  const hit = resolve(document, input)
+  if (!hit.found) return hit
+  const element = hit.node
+  if (!(element instanceof HTMLElement || element instanceof SVGElement)) return { found: false, how: "not found" }
   // The container is the nearest keyed or landmark ancestor; the scoped checks run inside it.
   const containers =
     "[data-design-id], [data-design-screen], section, article, main, header, nav, aside, footer, dialog, form, fieldset, table, ul, ol, li, tr"
@@ -222,7 +195,8 @@ export const make = Effect.gen(function* () {
       return pending
     })
 
-  const browser = Effect.gen(function* () {
+  /** Loads Playwright and installs Chromium on first use, which can take minutes. */
+  const setup = Effect.gen(function* () {
     const { chromium } = yield* io((signal) => DesignRuntime.load("playwright-core", signal))
     if (!(yield* io(() => Bun.file(chromium.executablePath()).exists()))) {
       const entry = yield* io((signal) => DesignRuntime.resolve("playwright-core", signal))
@@ -251,6 +225,10 @@ export const make = Effect.gen(function* () {
           ),
         )
     }
+    return chromium
+  })
+
+  const browser = Effect.fn("DesignRenderer.browser")(function* (chromium: Effect.Success<typeof setup>) {
     const server = yield* Effect.acquireRelease(
       io(() => chromium.launchServer({ headless: true, host: "127.0.0.1", timeout: 15000 })),
       (server) =>
@@ -271,10 +249,14 @@ export const make = Effect.gen(function* () {
     )
   })
 
-  const render = Effect.fn("DesignRenderer.render")(function* (sessionID: Design.Info["sessionID"], job: Design.Job) {
+  const render = Effect.fn("DesignRenderer.render")(function* (
+    sessionID: Design.Info["sessionID"],
+    job: Design.Job,
+    budget: number,
+  ) {
     const report: { audit?: Design.Audit; verify?: Design.Verify } = {}
     const started = Date.now()
-    yield* store.putJob(sessionID, { ...job, status: "running", started })
+    yield* store.putJob(sessionID, { ...job, status: "running", started, phase: "preparing" })
     const revision = yield* store.revision(sessionID, job.designID, job.input.revision)
     const design = yield* store.configured(revision.document.sessionID)
     // The layout audit covers only the configured viewport classes (design.viewports), the ones the gate requires.
@@ -282,7 +264,23 @@ export const make = Effect.gen(function* () {
       job.input.format === "audit"
         ? DesignGate.viewports(revision.document, design, design?.viewports)
         : DesignViewports.of(revision.document, design)
-    const root = yield* directory(revision)
+    // The build and first-use browser setup can take minutes, so the render budget starts after them;
+    // a bound of their own keeps a stalled install from holding the renderer.
+    const prepared = yield* Effect.all([directory(revision), setup]).pipe(
+      Effect.timeoutOrElse({
+        duration: "10 minutes",
+        orElse: () =>
+          Effect.fail(
+            new Design.Error({
+              code: "unavailable",
+              message:
+                "Preparing the renderer (building the revision and installing the browser) exceeded ten minutes; retry the render.",
+            }),
+          ),
+      }),
+    )
+    const root = prepared[0]
+    yield* store.putJob(sessionID, { ...job, status: "running", started })
     const progress = (value: number) => store.putJob(sessionID, { ...job, status: "running", started, progress: value })
     const presentation = revision.document.target === "presentation"
     const output = path.join(
@@ -293,7 +291,7 @@ export const make = Effect.gen(function* () {
     )
     yield* Effect.scoped(
       Effect.gen(function* () {
-        const instance = yield* browser
+        const instance = yield* browser(prepared[1])
         /** Script errors of the current page; the audit and verify clear it before each view they check. */
         const runtimeErrors: string[] = []
         /**
@@ -448,10 +446,15 @@ export const make = Effect.gen(function* () {
           yield* io(() => page.waitForFunction(anyScreen, undefined, { timeout: 2000 }).catch(() => undefined))
           // Every slide shows at once, one per 1920×1080 page (the slide runtime's print rules); notes stay hidden.
           const count = yield* io(() =>
-            page.evaluate(() => {
-              window.dispatchEvent(new CustomEvent("design:print"))
-              return document.querySelectorAll("section.slide").length
-            }),
+            // With a variant, only its slides print, besides those outside any variant.
+            page.evaluate((variant) => {
+              window.dispatchEvent(new CustomEvent("design:print", { detail: { variant } }))
+              return document.querySelectorAll(
+                variant
+                  ? `[data-design-variant="${variant}"] section.slide, section.slide:not([data-design-variant] *)`
+                  : "section.slide",
+              ).length
+            }, job.input.variant ?? ""),
           )
           if (!count)
             return yield* new Design.Error({
@@ -750,7 +753,8 @@ export const make = Effect.gen(function* () {
             const named = item.params?.variant ?? /^variant:([a-zA-Z0-9_-]{1,64}) /.exec(item.target)?.[1]
             const variant = named && VARIANT.test(named) ? named : undefined
             const where = { variant, params: item.params?.values, screen: item.params?.screen }
-            const locate = { target: item.target, xpath: item.xpath ?? "", variant: variant ?? "" }
+            // Serialized with the resolver, which the page cannot import.
+            const locate = `(${locateNote.toString()})(${JSON.stringify({ target: item.target, xpath: item.xpath ?? "", variant: variant ?? "" })}, ${DesignLocate.resolve.toString()})`
             const result: Draft = {
               feedback: note.feedback,
               index: note.index,
@@ -773,7 +777,7 @@ export const make = Effect.gen(function* () {
               if (source) {
                 yield* serve(source)
                 const problem = yield* prepare(source, yield* snapshot(origin), where)
-                const located = problem ? undefined : yield* io(() => page.evaluate(locateNote, locate))
+                const located = problem ? undefined : yield* io(() => page.evaluate<Located>(locate))
                 if (located?.found) {
                   yield* capture(`${base}-before.jpg`, located)
                   result.before = `${base}-before.jpg`
@@ -787,7 +791,7 @@ export const make = Effect.gen(function* () {
               if (problem) result.findings.push(problem)
               const located: Located = problem
                 ? { found: false, how: problem }
-                : yield* io(() => page.evaluate(locateNote, locate))
+                : yield* io(() => page.evaluate<Located>(locate))
               if (located.found) {
                 result.found = true
                 yield* capture(`${base}-after.jpg`, located)
@@ -878,7 +882,7 @@ export const make = Effect.gen(function* () {
             result.reason = !result.found
               ? Exit.isFailure(outcome)
                 ? blocking[0].replace(/^error · /, "")
-                : `element not found in ${revision.id} (${result.findings.find((finding) => !finding.startsWith("error ·") && !finding.startsWith("review ·")) ?? "not found"}; looked up by data-design-id, selector and XPath)`
+                : `element not found in ${revision.id} (${result.findings.find((finding) => !finding.startsWith("error ·") && !finding.startsWith("review ·")) ?? "not found"}; looked up by selector, data-design-id and XPath)`
               : blocking.length
                 ? `found; ${blocking.length} blocking finding${blocking.length === 1 ? "" : "s"}: ${blocking[0].replace(/^error · /, "")}`
                 : advisory
@@ -1193,7 +1197,7 @@ export const make = Effect.gen(function* () {
           )
         }
       }),
-    )
+    ).pipe(Effect.timeout(`${budget} seconds`))
     yield* store.putJob(sessionID, {
       ...job,
       status: "completed",
@@ -1211,8 +1215,11 @@ export const make = Effect.gen(function* () {
     input: Design.Render,
   ) {
     const revision = yield* store.revision(sessionID, id, input.revision)
-    if (input.variant && input.format !== "audit")
-      return yield* new Design.Error({ code: "invalid", message: "A variant filter is supported only for audits" })
+    if (input.variant && input.format !== "audit" && input.format !== "pdf")
+      return yield* new Design.Error({
+        code: "invalid",
+        message: "A variant filter is supported only for audits and PDF exports",
+      })
     if (input.format === "pdf" && revision.document.target !== "presentation")
       return yield* new Design.Error({
         code: "invalid",
@@ -1250,8 +1257,8 @@ export const make = Effect.gen(function* () {
       created: Date.now(),
     }
     yield* store.putJob(sessionID, job)
-    const fiber = yield* render(sessionID, job).pipe(
-      Effect.timeout(`${budget} seconds`),
+    // The budget starts once the render holds the renderer and is prepared; queue time never counts.
+    const fiber = yield* render(sessionID, job, budget).pipe(
       Effect.catchCause((cause) =>
         Effect.gen(function* () {
           // A job that did not finish keeps no captures; a verify's finished notes stay on the job.

@@ -265,6 +265,64 @@ describe("dual reasoning", () => {
     expect(s1.requests).toHaveLength(2)
   })
 
+  test("a warm-up of the whole project is a cache hit for a design that names the application it resolved", async () => {
+    await using tmp = await tmpdir()
+    await using state = await tmpdir()
+    await project(tmp.path)
+    const file = path.join(state.path, DesignIdentify.STATE)
+    const s1 = systemOne({ present: ["yes", 0.9] })
+    const warmed = await Effect.runPromise(identify(tmp.path, file, s1.evaluate))
+    expect(warmed.proposal?.application).toBe(".")
+    const named = (application: string) =>
+      Effect.runPromise(
+        DesignIdentify.identify({
+          directory: tmp.path,
+          application,
+          state: file,
+          mode: "dual",
+          sessionID: "ses_design_identify",
+          evaluate: s1.evaluate,
+        }),
+      )
+    expect(await named(".")).toEqual(warmed)
+    expect(await named("./")).toEqual(warmed)
+    expect(s1.requests).toHaveLength(1)
+    // Another application is not what the warm-up identified.
+    await named("src")
+    expect(s1.requests).toHaveLength(2)
+    expect(DesignIdentify.cacheKey(tmp.path, "./apps/web/")).toBe(DesignIdentify.cacheKey(tmp.path, "apps/web"))
+    expect(DesignIdentify.cacheKey(tmp.path)).not.toBe(DesignIdentify.cacheKey(tmp.path, "."))
+  })
+
+  test("a design naming its application while the warm-up is in flight shares its request", async () => {
+    await using tmp = await tmpdir()
+    await using state = await tmpdir()
+    await project(tmp.path)
+    const file = path.join(state.path, DesignIdentify.STATE)
+    const s1 = systemOne({ present: ["yes", 0.9] })
+    const slow = (input: EvaluationInput) => s1.evaluate(input).pipe(Effect.delay("50 millis"))
+    const [warmed, named] = await Promise.all([
+      Effect.runPromise(
+        DesignIdentify.warm({ directory: tmp.path, state: file, mode: "dual", sessionID: "ses_warm", evaluate: slow }),
+      ),
+      Bun.sleep(10).then(() =>
+        Effect.runPromise(
+          DesignIdentify.identify({
+            directory: tmp.path,
+            application: ".",
+            state: file,
+            mode: "dual",
+            sessionID: "ses_warm",
+            evaluate: slow,
+          }),
+        ),
+      ),
+    ])
+    expect(warmed).toBeUndefined()
+    expect(named.verified).toBe(true)
+    expect(s1.requests).toHaveLength(1)
+  })
+
   test("a project without any design evidence asks System One and the user nothing", async () => {
     await using tmp = await tmpdir()
     await using state = await tmpdir()

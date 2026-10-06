@@ -275,18 +275,23 @@ export function render(input: Design.Feedback, context: Context) {
       `## ${DesignNotice.SECTION.next}`,
       input.review
         ? `Run anti-slop once for variant ${inline(input.review.name)} (${input.review.id}) starting from published revision ${attribute(input.revision)}. This explicit request authorizes one correction pass after the initial audit. Call design_playbook with checklist:true for this design, then use the artifact-specific checklist, the recorded brief, direction and design system, plus the user's optional focus above. Inspect the selected variant's rendered evidence with design_export {"revision":"${attribute(input.revision)}","format":"audit","variant":"${input.review.id}"}; wait for its native monitor, read design_jobs once and inspect the captures. Record the concrete findings as Design tasks, then fix them in the selected variant's prototype source within the existing Design root and Session worktree. Preserve its stable id, the recorded direction and unrelated variants; do not modify product files. If changes were made, publish one revision on the same design with design_preview, then run one final design_export {"revision":"<new revision>","format":"audit","variant":"${input.review.id}"}; wait for its native monitor, read design_jobs once and inspect the captures to verify the named fixes. Update Design tasks using this evidence: call todowrite to mark each verified correction completed with the final audit result's callID and an explanation specific to that task; keep partial, unresolved and unverified tasks open with a reason. Reporting fixes in prose does not update task statuses. Report corrected, pending and unverified items with the new Review URL. If the initial audit finds nothing to fix, report that without publishing unchanged files. If an audit fails or is cancelled, report the unverified scope rather than claiming success. The final audit ends this request: do not start another correction pass, repeatedly audit, approve the design or switch to Plan or Build. Wait for the user's next request.`
-        : input.end
+        : input.end && !notes.length
           ? "The user ended this review. Finish from these notes; do not reopen it without an explicit request."
           : notes.length
             ? [
+                input.end
+                  ? "The user asked to end this review after this round. It stays open until every note below has an outcome, then ends by itself: work through the steps, do not ask for another round and do not reopen it without an explicit request."
+                  : "",
                 `Feedback round${context.round !== undefined ? ` ${context.round}` : ""}: its notes are your checklist, not Design tasks.`,
                 `1. Fix the notes in the prototype source. After each note or group, mark it: design_document update {"addressed":[{"feedback":"${input.id}","index":<n>,"summary":"<what you changed>"}]}.`,
                 `2. A note you will not change: record it instead with design_document update {"notes":[{"feedback":"${input.id}","index":<n>,"status":"unresolved|accepted","reason":"<why>"}]}.`,
                 "3. Publish one revision with design_preview; it is refused while a note of the round has neither a mark nor an outcome, and lists those notes.",
                 `4. Run one verify: design_export {"revision":"<that revision>","format":"verify"${context.round !== undefined ? `,"round":${context.round}` : ""}}, wait for its native monitor, then read design_jobs once.`,
-                `5. Record each note's outcome: design_document update {"notes":[{"feedback":"${input.id}","index":<n>,"status":"resolved|partial|unresolved|accepted","reason":"...","evidence":{"job":"<verify job>"}}]}; evidence for resolved and partial, a reason for partial, unresolved and accepted.`,
-                "6. Run the artifact end-of-round checklist against the published revision without another correction cycle, reply with what is resolved, partial, unresolved or accepted and why, and wait for the next round.",
-              ].join("\n")
+                `5. Record every note's outcome in ONE update, one notes entry per note, not one update per note: design_document update {"notes":[{"feedback":"${input.id}","index":<n>,"status":"resolved|partial|unresolved|accepted","reason":"...","evidence":{"job":"<verify job>"}}, ...]}; evidence for resolved and partial, a reason for partial, unresolved and accepted.`,
+                `6. Run the artifact end-of-round checklist against the published revision without another correction cycle, reply with what is resolved, partial, unresolved or accepted and why, and ${input.end ? "say the review has ended" : "wait for the next round"}.`,
+              ]
+                .filter(Boolean)
+                .join("\n")
             : "Publish one revision with design_preview, run the end-of-round checklist once and reply with a short checked/pending/unverified summary. Do not start an automatic correction cycle.",
       unkeyed
         ? "Some notes name elements without a data-design-id; when you edit such an element, give it a stable kebab-case data-design-id so later notes can name it directly."

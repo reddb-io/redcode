@@ -199,3 +199,81 @@ describe("revision freshness", () => {
     expect(loader.revision(revision({ round: undefined }))).toEqual({ chip: "latest", line: "" })
   })
 })
+
+describe("agent activity", () => {
+  const play = (events: Parameters<typeof loader.reduce>[1][]) =>
+    events.reduce((state, event) => loader.reduce(state, event), loader.initial(0))
+  const pick = (state: ReturnType<typeof loader.initial>) => ({
+    agent: state.agent,
+    tool: state.tool,
+    detail: state.detail,
+    until: state.until,
+  })
+
+  test("a turn that failed or was interrupted is not plain idle", () => {
+    expect(
+      pick(
+        play([
+          { type: "agent", state: "working" },
+          { type: "agent", state: "idle" },
+        ]),
+      ),
+    ).toEqual({
+      agent: "idle",
+      tool: "",
+      detail: "",
+      until: 0,
+    })
+    expect(pick(play([{ type: "agent", state: "idle", outcome: "failed", message: "Overloaded" }]))).toEqual({
+      agent: "failed",
+      tool: "",
+      detail: "Overloaded",
+      until: 0,
+    })
+    expect(pick(play([{ type: "agent", state: "idle", outcome: "interrupted", message: "user" }])).agent).toBe(
+      "interrupted",
+    )
+    // The next turn clears the reason.
+    expect(
+      pick(
+        play([
+          { type: "agent", state: "idle", outcome: "failed", message: "Overloaded" },
+          { type: "agent", state: "working" },
+        ]),
+      ),
+    ).toEqual({ agent: "thinking", tool: "", detail: "", until: 0 })
+  })
+
+  test("a scheduled retry waits until its time and ends with the next activity", () => {
+    const retrying = play([
+      { type: "agent", state: "working" },
+      { type: "wait", wait: "retry", active: true, until: 5000, message: "Overloaded" },
+    ])
+    expect(pick(retrying)).toEqual({ agent: "retrying", tool: "", detail: "Overloaded", until: 5000 })
+    expect(pick(loader.reduce(retrying, { type: "wait", wait: "retry", active: false })).agent).toBe("thinking")
+    expect(pick(loader.reduce(retrying, { type: "tool", tool: "read", status: "running" })).agent).toBe("tool")
+    expect(pick(loader.reduce(retrying, { type: "agent", state: "idle" })).agent).toBe("idle")
+  })
+
+  test("a permission waits for approval inside the tool that asked, and its end returns to that tool", () => {
+    const asking = play([
+      { type: "agent", state: "working" },
+      { type: "tool", tool: "bash", status: "running" },
+      { type: "wait", wait: "permission", active: true, message: "bash" },
+    ])
+    expect(pick(asking)).toEqual({ agent: "permission", tool: "bash", detail: "bash", until: 0 })
+    expect(pick(loader.reduce(asking, { type: "wait", wait: "permission", active: false })).agent).toBe("tool")
+    // A rejected permission fails the tool, which ends the wait too.
+    expect(pick(loader.reduce(asking, { type: "tool", tool: "bash", status: "failed" })).agent).toBe("thinking")
+  })
+
+  test("compaction is a wait, and ending a wait the agent is not in changes nothing", () => {
+    const compacting = play([
+      { type: "agent", state: "working" },
+      { type: "wait", wait: "compaction", active: true },
+    ])
+    expect(compacting.agent).toBe("compacting")
+    expect(loader.reduce(compacting, { type: "wait", wait: "retry", active: false })).toBe(compacting)
+    expect(loader.reduce(compacting, { type: "wait", wait: "compaction", active: false }).agent).toBe("thinking")
+  })
+})

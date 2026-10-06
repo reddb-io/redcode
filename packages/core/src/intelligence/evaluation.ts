@@ -213,6 +213,10 @@ export function questions(checks: Record<string, string>): Record<string, Intell
  */
 const ISSUE_MEANING: ReadonlyArray<readonly [RegExp, string]> = [
   [/^coverage$/, "it claims more than the selected requirement covers, or relies on truncated source text"],
+  [
+    /^task_\d+_coverage$/,
+    "the task claims more than its selected requirement covers, or relies on truncated source text",
+  ],
   [/^task_\d+_scope$/, "the task contradicts its source requirement or adds unrelated work"],
   [/^task_\d+_criterion$/, "the task has no observable acceptance criterion; state how its completion is checked"],
   [/^task_\d+_evidence$/, "the task is marked complete without successful, relevant evidence for its whole criterion"],

@@ -345,6 +345,11 @@ export const Info = Schema.Struct({
   revision: Schema.NullOr(Schema.String),
   approvedRevision: Schema.NullOr(Schema.String),
   ended: Schema.Boolean,
+  /**
+   * The reviewer sent Send & end with notes: the review stays open for that round and ends by itself
+   * once every note has an outcome. Absent when no end is pending.
+   */
+  endRequested: Schema.Boolean.pipe(optional),
   updated: Schema.Number,
   /** Feedback rounds and their notes; absent on documents that received no browser review yet. */
   rounds: Schema.Array(Round).pipe(optional),
@@ -502,7 +507,31 @@ export interface FeedbackNotice extends Schema.Schema.Type<typeof FeedbackNotice
  */
 const FeedBase = { seq: Schema.Number, at: Schema.Number }
 export const FeedEvent = Schema.Union([
-  Schema.Struct({ ...FeedBase, type: Schema.Literal("state"), state: Schema.Literals(["working", "idle"]) }),
+  Schema.Struct({
+    ...FeedBase,
+    type: Schema.Literal("state"),
+    state: Schema.Literals(["working", "idle"]),
+    /** Why an idle agent stopped when it did not finish: its turn failed, or something interrupted it. */
+    outcome: Schema.Literals(["failed", "interrupted"]).pipe(optional),
+    /** The failure's message, or what interrupted the turn (user, shutdown, superseded, inactivity). */
+    message: Schema.String.pipe(optional),
+  }),
+  /**
+   * What a working agent waits on: compacting its context, a scheduled retry of a failed model request, or a
+   * permission the user must approve in the terminal. `active` false ends the wait; an idle state ends every wait.
+   */
+  Schema.Struct({
+    ...FeedBase,
+    type: Schema.Literal("wait"),
+    wait: Schema.Literals(["compaction", "retry", "permission"]),
+    active: Schema.Boolean,
+    /** When a scheduled retry is due, in epoch milliseconds. */
+    until: Schema.Number.pipe(optional),
+    /** The retry's attempt number. */
+    attempt: Schema.Number.pipe(optional),
+    /** The error a retry or a failed compaction reports, or the action a permission asks for. */
+    message: Schema.String.pipe(optional),
+  }),
   Schema.Struct({
     ...FeedBase,
     type: Schema.Literal("user"),
@@ -512,6 +541,8 @@ export const FeedEvent = Schema.Union([
     notes: Schema.Number,
     /** True while the prompt is admitted but not yet delivered into a turn; absent once a turn takes it up. */
     pending: Schema.Boolean.pipe(optional),
+    /** True when the prompt left the inbox without being delivered; it will never reach a turn. */
+    cancelled: Schema.Boolean.pipe(optional),
   }),
   Schema.Struct({ ...FeedBase, type: Schema.Literal("reply"), id: Schema.String, text: Schema.String }),
   Schema.Struct({
@@ -528,6 +559,8 @@ export const FeedEvent = Schema.Union([
     design: ID,
     revision: Schema.String,
     name: Schema.String,
+    /** The revision's 1-based position in its design's history, shown as R7; absent from older tool results. */
+    ordinal: Schema.Int.pipe(optional),
   }),
   Schema.Struct({ ...FeedBase, type: Schema.Literal("agent"), agent: Schema.String }),
   /** A round's verify job finished: one verdict per note, with a link to the job's report and captures. */
@@ -584,7 +617,7 @@ export const Render = Schema.Struct({
   revision: Schema.String,
   /** pdf prints a presentation's slides, one 1920×1080 page each, without speaker notes. */
   format: Schema.Literals(["html", "gif", "audit", "compare", "verify", "pdf"]),
-  /** With format audit: inspect only this variant; omitted audits every direction. */
+  /** With format audit: inspect only this variant; omitted audits every direction. With pdf: print only its slides. */
   variant: VariantID.pipe(optional),
   /** With format verify: the feedback round whose notes are verified against `revision`; the latest round by default. */
   round: Schema.Int.check(Schema.isGreaterThanOrEqualTo(1)).pipe(optional),
@@ -676,6 +709,11 @@ export const Job = Schema.Struct({
   input: Render,
   status: Schema.Literals(["queued", "running", "completed", "failed", "cancelled", "interrupted"]),
   progress: Schema.Number,
+  /**
+   * A running job that is still preparing: installing the browser on first use and building the
+   * revision. The render budget starts once it ends. Absent otherwise.
+   */
+  phase: Schema.Literal("preparing").pipe(optional),
   result: Schema.NullOr(Schema.String),
   error: Schema.NullOr(Schema.String),
   created: Schema.Number,

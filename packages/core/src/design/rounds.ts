@@ -398,6 +398,49 @@ export function recite(document: Rounds) {
     .lines.join("\n")
 }
 
+/** Metadata key of the continuation a round gets when the agent stops while notes await an outcome. */
+export const CONTINUATION_KEY = "designRound"
+
+/**
+ * The prompt that sends the agent back to a round it stopped short of finishing: what is still
+ * missing (addressed marks for the open round, the publish that answers it, one verify on the current
+ * revision per round with open notes, the outcomes), then those notes with their text (see `recite`).
+ * Undefined when every note has an outcome.
+ */
+export function continuation(document: Rounds & Pick<Design.Info, "id" | "revision">, jobs: ReadonlyArray<Design.Job>) {
+  const pending = open(document)
+  const last = latest(document)
+  if (!pending.length || !last) return undefined
+  const plural = (count: number, noun: string) => `${count} ${noun}${count === 1 ? "" : "s"}`
+  const left = unaddressed(document).length
+  const unverified = [...new Set(pending.map((note) => note.round))]
+    .toSorted((a, b) => a - b)
+    .filter(
+      (round) =>
+        !jobs.some(
+          (job) =>
+            job.input.format === "verify" &&
+            job.status === "completed" &&
+            job.input.revision === document.revision &&
+            job.verify?.round === round,
+        ),
+    )
+  const missing = [
+    left ? `an addressed mark or an outcome for ${plural(left, "note")} of round ${last.number}` : "",
+    last.published ? "" : `the design_preview publish that answers round ${last.number}`,
+    unverified.length
+      ? `a verify of the current revision for ${unverified.length === 1 ? "round" : "rounds"} ${unverified.join(", ")} (design_export format verify with round set; wait for its native monitor)`
+      : "",
+    `an outcome for ${plural(pending.length, "note")} (design_document update notes)`,
+  ].filter(Boolean)
+  return [
+    `Design ${document.id}: the feedback round is not finished. You stopped while ${plural(pending.length, "note")} still ${pending.length === 1 ? "has" : "have"} no recorded outcome.`,
+    `Still missing: ${missing.join("; ")}.`,
+    recite(document),
+    "Continue now: fix the notes, mark each addressed, publish one revision, run one verify per round and record each note's outcome; unresolved or accepted with a reason are allowed for a note you will not change. Then reply to the reviewer with the outcomes. This reminder is sent once per round.",
+  ].join("\n")
+}
+
 /** The verify jobs of a design, newest first, as a refusal or report names them. */
 export function describeJobs(jobs: ReadonlyArray<Design.Job>, limit = 5) {
   const recent = jobs

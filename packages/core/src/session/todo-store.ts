@@ -27,6 +27,14 @@ import {
 } from "./todo-evidence.js"
 import { TodoHistoryTable, TodoTable } from "./redcode.sql.js"
 
+/**
+ * Bounds of the System One review of a task update: how many tasks one request judges and the
+ * characters it may carry, the bound Intelligence holds every request to. Past that bound
+ * Intelligence would split the questions itself and repeat the whole state with every part, two at
+ * a time; a larger update is instead split here into requests sent together.
+ */
+export const REVIEW = { tasks: 10, characters: 80_000 } as const
+
 /** Internal transaction hooks for a plan handoff. Network and filesystem work belongs in before. */
 export interface Commit {
   readonly before: Effect.Effect<void, SessionTodo.Error>
@@ -341,21 +349,8 @@ const make = Effect.gen(function* () {
     )
     // Judge each changed requirement against its own source and cited proof. Unrelated historical
     // tool output cannot crowd out the actual evidence or stand in for a missing result.
-    const semantic = yield* Effect.forEach(changes, (task) => {
-      const candidate = [
-        {
-          ...task,
-          ...(task.source
-            ? {
-                source: {
-                  ...task.source,
-                  quote: IntelligenceEvaluation.evidence(task.source.quote, { reference: task.source.id, limit: 8000 }),
-                },
-              }
-            : {}),
-        },
-      ]
-      const latest = observed.requests.filter((request) => !request.pending).at(-1)
+    const latest = observed.requests.filter((request) => !request.pending).at(-1)
+    const judged = changes.map((task, position) => {
       const requests = observed.requests.filter(
         (request) =>
           !request.pending &&
@@ -370,105 +365,188 @@ const make = Effect.gen(function* () {
           (result) =>
             result.settled && result.callID === task.evidence?.callID && result.messageID === task.evidence?.messageID,
         )
-      const review = intelligence
-        .evaluate({
-          sessionID: input.sessionID,
-          operation: task.status === "completed" ? "task_completion" : "task_quality",
-          subjectID: task.id,
-          sources: {
-            requests: requests.map((request) => ({
+      return {
+        position,
+        task,
+        operation: task.status === "completed" ? ("task_completion" as const) : ("task_quality" as const),
+        candidate: {
+          ...task,
+          ...(task.source
+            ? {
+                source: {
+                  ...task.source,
+                  quote: IntelligenceEvaluation.evidence(task.source.quote, { reference: task.source.id, limit: 8000 }),
+                },
+              }
+            : {}),
+        },
+        sources: {
+          requests: requests.map((request) => request.id),
+          previous: baseline
+            .filter((previous) => previous.id === task.id)
+            .map((previous) => ({
+              id: previous.id,
+              content: previous.content,
+              criterion: previous.criterion,
+              status: previous.status,
+            })),
+          results: results.map((result) => ({
+            ...result,
+            input: IntelligenceEvaluation.evidence(result.input, { limit: 2000 }),
+            summary: IntelligenceEvaluation.evidence(result.summary, { reference: result.callID, limit: 8000 }),
+          })),
+          excludedRequests: observed.requests.length - requests.length,
+          excludedResults: observed.results.length - results.length,
+        },
+      }
+    })
+    const evaluation = (batch: ReadonlyArray<(typeof judged)[number]>) => {
+      const cited = new Set(batch.flatMap((entry) => entry.sources.requests))
+      return {
+        sessionID: input.sessionID,
+        operation: batch[0]!.operation,
+        subjectID: batch.map((entry) => entry.task.id).join(","),
+        sources: {
+          // Requests are shared by the tasks they concern; each task names its own in sources.tasks.
+          requests: observed.requests
+            .filter((request) => cited.has(request.id))
+            .map((request) => ({
               id: request.id,
               text: IntelligenceEvaluation.evidence(request.text, { reference: request.id, limit: 8000 }),
             })),
-            previous: baseline
-              .filter((previous) => previous.id === task.id)
-              .map((previous) => ({
-                id: previous.id,
-                content: previous.content,
-                criterion: previous.criterion,
-                status: previous.status,
-              })),
-            ...(input.origin
-              ? {
-                  origin: {
-                    ...input.origin,
-                    quote: IntelligenceEvaluation.evidence(input.origin.quote, {
-                      reference: input.origin.id,
-                      limit: 8000,
-                    }),
-                  },
-                }
-              : {}),
-            results: results.map((result) => ({
-              ...result,
-              input: IntelligenceEvaluation.evidence(result.input, { limit: 2000 }),
-              summary: IntelligenceEvaluation.evidence(result.summary, { reference: result.callID, limit: 8000 }),
-            })),
-            coverage: {
-              scope:
-                "This task's source requirement, every subsequent user instruction, explicit scope change and cited proof are evaluated. Earlier unrelated history is excluded and is not proof of whole-session coverage.",
-              excludedRequests: observed.requests.length - requests.length,
-              excludedResults: observed.results.length - results.length,
-            },
-          },
-          candidate,
-          questions: {
-            ...IntelligenceEvaluation.questions({
-              coverage:
-                "Does the candidate contradict a subsequent user correction, claim verification or completion that depends on missing or truncated source text, or imply coverage beyond the explicitly selected requirement? Truncated evidence is not proof of its omitted portion.",
-              ...Object.fromEntries(
-                candidate.flatMap((task, index) => [
-                  [
-                    `task_${index}_scope`,
-                    `Does candidate[${index}] contradict its source requirement or introduce unrelated work?`,
-                  ],
-                  [
-                    `task_${index}_criterion`,
-                    `Does candidate[${index}] lack an observable acceptance criterion for its requirement?`,
-                  ],
-                  ...(task.status === "completed"
-                    ? [
-                        [
-                          `task_${index}_evidence`,
-                          `Is candidate[${index}] claimed complete without successful, relevant evidence in sources.results covering its entire criterion? A successful unrelated command is insufficient.`,
-                        ],
-                      ]
-                    : []),
-                ]),
-              ),
-            }),
-            ...Object.fromEntries(
-              candidate.map((_, index) => [
-                `task_${index}_quality`,
-                {
-                  type: "score" as const,
-                  instructions: `How clear, scoped and verifiable is candidate[${index}] as a task?`,
-                  criteria: [
-                    "Unclear, unscoped or unverifiable",
-                    "Goal is visible but scope or acceptance is ambiguous",
-                    "Clear scope and observable acceptance criterion",
-                    "Precise, concise, traceable to its requirement and independently verifiable",
-                  ],
+          tasks: batch.map((entry) => entry.sources),
+          ...(input.origin
+            ? {
+                origin: {
+                  ...input.origin,
+                  quote: IntelligenceEvaluation.evidence(input.origin.quote, {
+                    reference: input.origin.id,
+                    limit: 8000,
+                  }),
                 },
+              }
+            : {}),
+          coverage: {
+            scope:
+              "candidate[i] is judged only against sources.tasks[i]: its source requirement, the user instructions it names in sources.tasks[i].requests (every subsequent one included), explicit scope change and cited proof. Earlier unrelated history is excluded and is not proof of whole-session coverage.",
+          },
+        },
+        candidate: batch.map((entry) => entry.candidate),
+        questions: {
+          ...IntelligenceEvaluation.questions(
+            Object.fromEntries(
+              batch.flatMap((entry, index) => [
+                [
+                  `task_${index}_coverage`,
+                  `Does candidate[${index}] contradict a subsequent user correction among sources.tasks[${index}].requests, claim verification or completion that depends on missing or truncated source text, or imply coverage beyond its explicitly selected requirement? Truncated evidence is not proof of its omitted portion.`,
+                ],
+                [
+                  `task_${index}_scope`,
+                  `Does candidate[${index}] contradict its source requirement or introduce unrelated work?`,
+                ],
+                [
+                  `task_${index}_criterion`,
+                  `Does candidate[${index}] lack an observable acceptance criterion for its requirement?`,
+                ],
+                ...(entry.task.status === "completed"
+                  ? [
+                      [
+                        `task_${index}_evidence`,
+                        `Is candidate[${index}] claimed complete without successful, relevant evidence in sources.tasks[${index}].results covering its entire criterion? A successful unrelated command is insufficient.`,
+                      ],
+                    ]
+                  : []),
               ]),
             ),
-          },
-        })
-        .pipe(Effect.mapError((error) => new SessionTodo.Error({ message: error.message })))
-      return input.origin?.type === "plan" ? review.pipe(Effect.orElseSucceed(() => undefined)) : review
-    })
+          ),
+          ...Object.fromEntries(
+            batch.map((_, index) => [
+              `task_${index}_quality`,
+              {
+                type: "score" as const,
+                instructions: `How clear, scoped and verifiable is candidate[${index}] as a task?`,
+                criteria: [
+                  "Unclear, unscoped or unverifiable",
+                  "Goal is visible but scope or acceptance is ambiguous",
+                  "Clear scope and observable acceptance criterion",
+                  "Precise, concise, traceable to its requirement and independently verifiable",
+                ],
+              },
+            ]),
+          ),
+        },
+      }
+    }
+    // One System One request judges every changed task of an operation. Only an update too large for
+    // one request is split, and its parts are sent together: never one request per task, never chained.
+    const batches = (["task_quality", "task_completion"] as const).flatMap((operation) =>
+      judged
+        .filter((entry) => entry.operation === operation)
+        .reduce<Array<Array<(typeof judged)[number]>>>((result, entry) => {
+          const last = result.at(-1)
+          if (
+            last &&
+            last.length < REVIEW.tasks &&
+            JSON.stringify(evaluation([...last, entry])).length <= REVIEW.characters
+          ) {
+            last.push(entry)
+            return result
+          }
+          result.push([entry])
+          return result
+        }, []),
+    )
+    const reviews = batches.map((batch) => ({ batch, request: evaluation(batch) }))
+    const records = yield* Effect.forEach(
+      reviews,
+      (item) => {
+        const review = intelligence
+          .evaluate(item.request)
+          .pipe(Effect.mapError((error) => new SessionTodo.Error({ message: error.message })))
+        return input.origin?.type === "plan" ? review.pipe(Effect.orElseSucceed(() => undefined)) : review
+      },
+      { concurrency: "unbounded" },
+    )
+    // A batched record's decision is the worst of every task in it, so each task reads only its own
+    // questions: one task's refusal never stands in for another's verdict.
+    const semantic = reviews
+      .flatMap((item, at) =>
+        item.batch.map((entry, index) => {
+          const record = records[at]
+          if (!record || record.decision === "unavailable") return { entry, record }
+          const questions = Object.keys(item.request.questions).filter((id) => id.startsWith(`task_${index}_`))
+          const verdicts = questions.map((id) => IntelligenceEvaluation.verdict(record, id))
+          return {
+            entry,
+            record: {
+              ...record,
+              decision:
+                (["needs_revision", "unavailable", "inconclusive"] as const).find((decision) =>
+                  verdicts.includes(decision),
+                ) ?? ("accepted" as const),
+              issues: record.issues.filter((issue) => questions.includes(issue)),
+            },
+          }
+        }),
+      )
+      .toSorted((a, b) => a.entry.position - b.entry.position)
     // Structural and revision checks above always apply; only the S1 verdict depends on the mode.
     // Task bookkeeping never stalls on S1: a refusal keeps the previous state, while an unavailable
     // evaluator or an inconclusive verdict applies the update with a visible unverified note. A plan
     // handoff carries the user's approval (or the Goal's execution consent), which S1 informs but
-    // cannot overrule, so the tasks it admits only report the verdict.
-    const notes = (yield* Effect.forEach(semantic, (record) =>
-      input.origin?.type === "plan"
-        ? Effect.succeed(IntelligenceEvaluation.approved(settings, record))
-        : IntelligenceEvaluation.advise(settings, record),
-    ).pipe(Effect.mapError((error) => new SessionTodo.Error({ message: error.message })))).filter(
-      (note) => note !== undefined,
-    )
+    // cannot overrule, so the tasks it admits only report the verdict. Tasks share a review, so every
+    // note and refusal names the task it is about.
+    const notes = (yield* Effect.forEach(semantic, (item) =>
+      Effect.gen(function* () {
+        const note =
+          input.origin?.type === "plan"
+            ? IntelligenceEvaluation.approved(settings, item.record)
+            : yield* IntelligenceEvaluation.advise(settings, item.record)
+        return note === undefined ? undefined : `${item.entry.task.id}: ${note}`
+      }).pipe(
+        Effect.mapError((error) => new SessionTodo.Error({ message: `${item.entry.task.id}: ${error.message}` })),
+      ),
+    )).filter((note) => note !== undefined)
     // New facts alone are no conflict; another committed task update or a broken proof is.
     const settle = Effect.fnUntraced(function* (current: ReadonlyArray<SessionTodo.Info>) {
       if (SessionTaskFacts.hash(current) !== SessionTaskFacts.hash(baseline))

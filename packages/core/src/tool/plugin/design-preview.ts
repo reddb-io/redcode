@@ -204,10 +204,11 @@ export const Plugin = {
                     }),
                   )
                 : undefined
+              const number = numbered(yield* designs.revisions(context.sessionID, document.id), revision.id)
               return {
                 output: revision,
-                content: `Published ${revision.id} for ${revision.designID}. The user can annotate this revision. Root: ${revision.document.root}${notice ?? ""}${link ? `\n${link}` : ""}${recited ? `\n${recited}` : ""}`,
-                metadata: { designID: document.id, revision: revision.id },
+                content: `Published revision R${number} (${revision.id}) for ${revision.designID}. Name it R${number} in your reply. The user can annotate this revision. Root: ${revision.document.root}${notice ?? ""}${link ? `\n${link}` : ""}${recited ? `\n${recited}` : ""}`,
+                metadata: { designID: document.id, revision: revision.id, ordinal: number },
               }
             }).pipe(Effect.mapError((error) => new ToolFailure({ message: error.message, error }))),
         })
@@ -236,7 +237,10 @@ export const Plugin = {
               if (!input.restore) {
                 const content =
                   (yield* designs.revisions(context.sessionID, input.id))
-                    .map((revision) => `${revision.id}: ${revision.name} (parent ${revision.parent ?? "none"})`)
+                    .map(
+                      (revision, index, list) =>
+                        `R${list.length - index} ${revision.id}: ${revision.name} (parent ${revision.parent ?? "none"})`,
+                    )
                     .join("\n") || `Design ${input.id} has no published revisions.`
                 return { output: content, content, metadata: { designID: input.id } }
               }
@@ -258,11 +262,21 @@ export const Plugin = {
                 read(context),
                 yield* tooling(document, context),
               )
-              const content = `Restored ${input.restore} as ${revision.id} for ${revision.designID}. The user can annotate this revision. Root: ${revision.document.root}`
-              return { output: content, content, metadata: { designID: input.id, revision: revision.id } }
+              const number = numbered(yield* designs.revisions(context.sessionID, input.id), revision.id)
+              const content = `Restored ${input.restore} as revision R${number} (${revision.id}) for ${revision.designID}. The user can annotate this revision. Root: ${revision.document.root}`
+              return {
+                output: content,
+                content,
+                metadata: { designID: input.id, revision: revision.id, ordinal: number },
+              }
             }).pipe(Effect.mapError((error) => new ToolFailure({ message: error.message, error }))),
         })
       })
       .pipe(Effect.orDie)
   }),
+}
+
+/** A revision's number in its design's history (R7): its position in the newest-first, immutable revision list. */
+function numbered(revisions: readonly Design.Revision[], id: string) {
+  return revisions.length - revisions.findIndex((revision) => revision.id === id)
 }

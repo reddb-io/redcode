@@ -139,39 +139,46 @@ export const Plugin = {
                 if (input.action === "create") {
                   const mode = IntelligenceEvaluation.mode(yield* intelligence.read(context.sessionID))
                   const memory = path.join(global.state, DesignTarget.STATE)
+                  const forced = DesignTarget.forced()
+                  const classified =
+                    mode === "dual"
+                      ? yield* intelligence
+                          .history(context.sessionID, { operation: "prompt_classification", limit: 5 })
+                          .pipe(
+                            Effect.map(DesignTarget.latest),
+                            Effect.orElseSucceed(() => undefined),
+                          )
+                      : undefined
+                  // Target classification runs alongside design system identification, never after it.
+                  const detect = yield* DesignTarget.prefetch({
+                    forced,
+                    mode,
+                    classified,
+                    detect: sessions.context(context.sessionID).pipe(
+                      Effect.orElseSucceed(() => []),
+                      Effect.flatMap((messages) =>
+                        intelligence.evaluate(
+                          DesignTarget.evaluation({
+                            sessionID: context.sessionID,
+                            requests: messages.flatMap((message) => (message.type === "user" ? [message.text] : [])),
+                            design: { name: input.input.name, kind: input.input.kind },
+                          }),
+                        ),
+                      ),
+                    ),
+                  })
                   const created = yield* DesignProposal.around(
                     yield* proposal(context, input.input.application, input.system, true),
                     Effect.gen(function* () {
                       const target = yield* DesignTarget.choose({
                         requested: input.input,
-                        forced: DesignTarget.forced(),
+                        forced,
                         mode,
-                        classified:
-                          mode === "dual"
-                            ? yield* intelligence
-                                .history(context.sessionID, { operation: "prompt_classification", limit: 5 })
-                                .pipe(
-                                  Effect.map(DesignTarget.latest),
-                                  Effect.orElseSucceed(() => undefined),
-                                )
-                            : undefined,
+                        classified,
                         remembered: yield* Effect.promise(() =>
                           DesignTarget.recall(memory, location.directory).catch(() => undefined),
                         ),
-                        detect: sessions.context(context.sessionID).pipe(
-                          Effect.orElseSucceed(() => []),
-                          Effect.flatMap((messages) =>
-                            intelligence.evaluate(
-                              DesignTarget.evaluation({
-                                sessionID: context.sessionID,
-                                requests: messages.flatMap((message) =>
-                                  message.type === "user" ? [message.text] : [],
-                                ),
-                                design: { name: input.input.name, kind: input.input.kind },
-                              }),
-                            ),
-                          ),
-                        ),
+                        detect,
                         ask: (request) => ask(context, request),
                       })
                       if (target.settled)

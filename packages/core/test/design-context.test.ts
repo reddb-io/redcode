@@ -288,6 +288,13 @@ describe("DesignContext", () => {
         )
         yield* reset([{ ...older, ended: true }])
         expect((yield* readInitial(context.load(sessionID))).text).not.toContain("has notes without an outcome")
+        // A requested end keeps the pending round visible and tells the agent the review ends after it.
+        yield* reset([{ ...older, endRequested: true }])
+        const requested = (yield* readInitial(context.load(sessionID))).text
+        expect(requested).toContain("Round 9 has notes without an outcome")
+        expect(requested).toContain(
+          "Review open until every note has an outcome: the user asked to end it after this round",
+        )
       }),
     ),
   )
