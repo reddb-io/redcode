@@ -62,6 +62,8 @@ import { IntelligenceVerification } from "@opencode/core/intelligence/verificati
 import { IntelligenceCodeRepair } from "@opencode/core/intelligence/code-repair"
 import { Intelligence } from "@opencode/core/intelligence"
 import { SessionTaskFacts } from "@opencode/core/session/task-facts"
+import { SessionTodoStore } from "@opencode/core/session/todo-store"
+import { TodoTool } from "@opencode/core/tool/plugin/todo"
 import { SessionRunnerModel } from "@opencode/core/session/runner/model"
 import { SessionUsage } from "@opencode/core/session/usage"
 import { PluginSupervisor } from "@opencode/core/plugin/supervisor"
@@ -114,6 +116,7 @@ import { LocationServiceMap } from "@opencode/core/location-service-map"
 import { Expected } from "./lib/session-message"
 import { Token } from "@opencode/core/util/token"
 import { permissionLayer } from "./lib/permission"
+import { registerToolPlugin } from "./lib/tool"
 import { agentHost, modelHost, host, noProviders } from "./plugin/host"
 import { CodeModeInstructions } from "@opencode/core/codemode/instructions"
 import { repeatedLines } from "./fixture/reasoning-observation"
@@ -324,7 +327,7 @@ const permissionFail = {
       }),
     }),
 }
-const permission = permissionLayer()
+const permission = permissionLayer({ assert: () => Effect.void })
 const persistedBus = Bus.node.replace(Bus.configured({ persist: true }))
 const transformTools = (registry: Tool.Interface, tools: Readonly<Record<string, ToolInfo>>, options?: Tool.Options) =>
   registry.transform((editor) =>
@@ -533,6 +536,7 @@ const layer = Layer.unwrap(
         Agent.node,
         Model.node,
         Tool.node,
+        Permission.node,
         PluginHooks.node,
         echoNode,
         SessionRunnerModel.node,
@@ -548,6 +552,8 @@ const layer = Layer.unwrap(
         SessionRunnerLLM.node,
         Intelligence.node,
         SessionGoal.node,
+        SessionTodoStore.node,
+        SessionTaskFacts.node,
         MonitorRuntime.node,
         SessionExecution.node,
         Session.node,
@@ -1182,6 +1188,125 @@ const watchRename = Effect.fnUntraced(function* (sessionID: Session.ID) {
 })
 
 describe("SessionRunnerLLM", () => {
+  scenario("reconciles 12 verified Design tasks out of 15 before returning to the reviewer", function* (s) {
+    const agents = yield* Agent.Service
+    const todos = yield* SessionTodoStore.Service
+    const registry = yield* Tool.Service
+    yield* DesignPlugin.Plugin.effect(host({ agent: agentHost(agents) }))
+    yield* registerToolPlugin(TodoTool.Plugin)
+    yield* s.bus.publish(SessionEvent.AgentSelected, { sessionID, agent: Agent.ID.make("design") })
+    yield* registry.transform((editor) =>
+      editor.add({
+        name: "design_preview",
+        options: { codemode: false },
+        description: "Publish the corrected prototype",
+        input: Schema.Struct({ id: Schema.String }),
+        output: Schema.String,
+        execute: () => Effect.succeed({ output: "Published 12 fixes", content: "Published 12 fixes" }),
+      }),
+    )
+    yield* todos.write({ sessionID, phase: "build", todos: [{ content: "Implement the approved screen" }] })
+    yield* s.llm.push(
+      TestLLM.tool("call_design_tasks", "todowrite", {
+        todos: Array.from({ length: 15 }, (_, index) => ({
+          content: `Fix review finding ${index + 1}`,
+          criterion: `Finding ${index + 1} is corrected in the published prototype`,
+          priority: "medium",
+        })),
+      }),
+      TestLLM.tool("call_design_proof", "design_preview", { id: "design_profile" }),
+      TestLLM.text("Corrected 12 findings; 3 remain pending", "text_design_report"),
+      Stream.unwrap(
+        todos.get(sessionID).pipe(
+          Effect.map((tasks) =>
+            Stream.fromIterable(
+              TestLLM.tool("call_tick_design_tasks", "todowrite", {
+                todos: tasks
+                  .filter((task) => task.phase === "design")
+                  .slice(0, 12)
+                  .map((task) => ({
+                    id: task.id,
+                    status: "completed",
+                    evidence: {
+                      callID: "call_design_proof",
+                      explanation: `${task.content} is corrected in the published prototype`,
+                    },
+                  })),
+              }),
+            ),
+          ),
+        ),
+      ),
+      TestLLM.text("Recorded 12 completed tasks; 3 remain pending", "text_design_reconciled"),
+    )
+    yield* s.runPrompt("Correct the review findings and leave the rest for my next review")
+    expect(
+      (yield* s.context).flatMap((message) =>
+        message.type === "assistant"
+          ? message.content.flatMap((part) =>
+              part.type === "tool" && part.state.status === "error" ? [part.state.error.message] : [],
+            )
+          : [],
+      ),
+    ).toEqual([])
+    const tasks = yield* todos.get(sessionID)
+    expect(tasks.filter((task) => task.phase === "design")).toHaveLength(15)
+    expect(tasks.filter((task) => task.phase === "design" && task.status === "completed")).toHaveLength(12)
+    expect(tasks.filter((task) => task.phase === "design" && task.status !== "completed")).toHaveLength(3)
+    expect(tasks.find((task) => task.phase === "build")?.status).not.toBe("completed")
+    expect(s.requests).toHaveLength(5)
+    expect(
+      (yield* s.messages).filter(
+        (message) => message.type === "synthetic" && message.text.startsWith("Reconcile Design tasks"),
+      ),
+    ).toHaveLength(1)
+    expect(
+      (yield* s.context)
+        .flatMap((message) =>
+          message.type === "assistant" ? message.content.filter((part) => part.type === "tool") : [],
+        )
+        .map((part) => part.name),
+    ).toEqual(["todowrite", "design_preview", "todowrite"])
+  })
+
+  scenario("a Design task reconciliation never repeats edits when the model leaves tasks pending", function* (s) {
+    const agents = yield* Agent.Service
+    const todos = yield* SessionTodoStore.Service
+    const registry = yield* Tool.Service
+    yield* DesignPlugin.Plugin.effect(host({ agent: agentHost(agents) }))
+    yield* registerToolPlugin(TodoTool.Plugin)
+    yield* s.bus.publish(SessionEvent.AgentSelected, { sessionID, agent: Agent.ID.make("design") })
+    yield* registry.transform((editor) =>
+      editor.add({
+        name: "design_preview",
+        options: { codemode: false },
+        description: "Publish a prototype for human approval",
+        input: Schema.Struct({ id: Schema.String }),
+        output: Schema.String,
+        execute: () => Effect.succeed({ output: "Published", content: "Published" }),
+      }),
+    )
+    yield* s.llm.push(
+      TestLLM.tool("call_pending_design_task", "todowrite", { todos: [{ content: "Wait for user approval" }] }),
+      TestLLM.tool("call_pending_design_preview", "design_preview", { id: "design_profile" }),
+      TestLLM.text("Please review the prototype", "text_pending_design"),
+      TestLLM.text("User approval remains pending", "text_pending_reconciliation"),
+    )
+    yield* s.runPrompt("Publish the prototype for my approval")
+    expect(yield* todos.get(sessionID)).toHaveLength(1)
+    expect(s.requests).toHaveLength(4)
+    expect((yield* todos.get(sessionID))[0]?.status).not.toBe("completed")
+    expect(
+      (yield* s.messages).filter(
+        (message) => message.type === "synthetic" && message.text.startsWith("Reconcile Design tasks"),
+      ),
+    ).toHaveLength(1)
+    yield* TestClock.adjust("1 second")
+    yield* s.llm.push(TestLLM.text("It is waiting for your approval", "text_design_followup"))
+    yield* s.runPrompt("What is its status?")
+    expect(s.requests).toHaveLength(5)
+  })
+
   scenario("stops Design no-op edits at the third call even with inherited Build permissions", function* (s) {
     const agents = yield* Agent.Service
     yield* DesignPlugin.Plugin.effect(host({ agent: agentHost(agents) }))

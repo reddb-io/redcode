@@ -428,8 +428,7 @@ const layer = Layer.effect(
           !verification?.pending &&
           !codeRepair?.pending &&
           !guardStopped &&
-          // A Design reply can hand a preview to the reviewer while approval tasks remain pending.
-          !["question", "design"].includes(next.context.agent.id) &&
+          next.context.agent.id !== "question" &&
           !(yield* SessionInbox.nextPromotable(db, sessionID, "steer")) &&
           !(yield* monitors.list(sessionID)).some(Monitor.parks) &&
           step <
@@ -438,12 +437,18 @@ const layer = Layer.effect(
               Config.latestExperimental(yield* config.entries(), "turn_steps"),
             ) ?? Infinity)
         ) {
-          const reminder = SessionTodo.reminder(
-            SessionTodo.forAgent(
-              yield* Effect.firstSuccessOf([todos.review(sessionID), todos.get(sessionID)]),
-              next.context.agent.id,
-            ),
+          const tasks = SessionTodo.forAgent(
+            yield* Effect.firstSuccessOf([todos.review(sessionID), todos.get(sessionID)]),
+            next.context.agent.id,
           )
+          // Design may return with pending findings or approval tasks. Reconcile verified work
+          // once; the normal task continuation would start another correction cycle.
+          const reminder =
+            next.context.agent.id === "design"
+              ? todoContinuations === 0 && tasks.length
+                ? SessionTodo.designReminder(tasks, yield* facts.load(sessionID))
+                : undefined
+              : SessionTodo.reminder(tasks)
           if (reminder && todoContinuations < 7) {
             yield* bus.publish(SessionEvent.Synthetic, { sessionID, text: reminder })
             todoContinuations++

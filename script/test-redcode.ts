@@ -81,6 +81,7 @@ const suites = {
     "test/session-model-suggestion.test.ts",
     "test/session-native-compaction.test.ts",
     "test/session-runner.test.ts",
+    "test/session-todo.test.ts",
     "test/session-runner-message.test.ts",
     "test/session-runner-retry.test.ts",
     "test/session-runner-tool-events.test.ts",

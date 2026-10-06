@@ -31,6 +31,38 @@ export function reminder(todos: ReadonlyArray<Info>) {
   ].join("\n")
 }
 
+/** Close verified Design work once, without turning a review into another correction cycle. */
+export function designReminder(todos: ReadonlyArray<Info>, observed: SessionTodoEvidence.Observed) {
+  const remaining = active(todos)
+  if (!remaining.length) return
+  const since = observed.requests.reduce(
+    (latest, request) => (request.pending ? latest : Math.max(latest, request.created)),
+    0,
+  )
+  const proofs = observed.results
+    .filter(
+      (result) =>
+        result.tool.startsWith("design_") &&
+        result.kind === "verification" &&
+        result.successful &&
+        result.settled &&
+        !result.abandoned &&
+        result.completed >= since &&
+        !SessionTodoEvidence.invalidating(observed.results, result),
+    )
+    .toSorted((a, b) => b.completed - a.completed)
+  if (!proofs.length) return
+  return [
+    "Reconcile Design tasks before finishing this review.",
+    "Use todowrite to mark each verified correction completed, citing the relevant result's callID and messageID with an explanation of how it meets that task's criterion. A final response saying a fix is done does not update its task.",
+    ...remaining.map((todo) => `- ${todo.id} r${todo.revision} [${todo.status}] ${todo.content}`),
+    "Available current-request Design evidence:",
+    ...proofs.slice(0, 5).map((proof) => `${proof.callID} (${proof.tool}, message ${proof.messageID})`),
+    "Keep partial, unresolved, unverified and user-approval tasks open; record a concrete reason where useful. Do not complete every task just because publication or an audit succeeded.",
+    "This is one bookkeeping pass only: do not edit, republish, export, audit, approve or start another correction cycle. Update the task statuses from existing evidence, report completed and remaining items, then return control to the reviewer.",
+  ].join("\n")
+}
+
 export function blocker(todos: ReadonlyArray<Info>) {
   const remaining = active(todos)
   if (!remaining.length || remaining.some((todo) => todo.status !== "blocked")) return
