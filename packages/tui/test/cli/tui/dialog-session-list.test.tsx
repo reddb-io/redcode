@@ -23,7 +23,7 @@ import { emptyThemeSource, tmpdir } from "../../fixture/fixture"
 import { TestTuiContexts } from "../../fixture/tui-environment"
 import { createTuiResolvedConfig } from "../../fixture/tui-runtime"
 
-test("scopes sessions to the active session location", async () => {
+test("scopes sessions to the active location and prioritizes sessions needing input", async () => {
   const active = "/tmp/opencode/project-b"
   const events = createEventStream()
   const requestedProjects: string[] = []
@@ -41,6 +41,15 @@ test("scopes sessions to the active session location", async () => {
     requestedProjects.push(project)
     return json({
       data: [
+        {
+          id: "ses_recent",
+          projectID: project,
+          cost: 0,
+          tokens: { input: 0, output: 0, reasoning: 0, cache: { read: 0, write: 0 } },
+          time: { created: 1, updated: 10 },
+          title: "Recent session",
+          location: { directory: project === "proj_b" ? active : process.cwd() },
+        },
         {
           id: project === "proj_b" ? "ses_b" : "ses_a",
           projectID: project,
@@ -122,6 +131,33 @@ test("scopes sessions to the active session location", async () => {
     const frame = await app.waitForFrame((value) => value.includes("Project B session"), { maxPasses: 100 })
     expect(frame).not.toContain("Project A session")
     expect(requestedProjects.at(-1)).toBe("proj_b")
+    events.emit({
+      id: "evt_question",
+      created: 11,
+      type: "form.created",
+      location: { directory: active },
+      data: {
+        form: {
+          id: "frm_question",
+          sessionID: "ses_b",
+          title: "Target",
+          fields: [{ key: "target", type: "string" }],
+        },
+      },
+    })
+    const awaiting = await app.waitForFrame((value) => value.includes("? Project B session"))
+    expect(awaiting).toContain("Needs input")
+    expect(awaiting.indexOf("? Project B session")).toBeLessThan(awaiting.indexOf("Recent session"))
+    events.emit({
+      id: "evt_answered",
+      created: 12,
+      type: "form.replied",
+      data: { sessionID: "ses_b", id: "frm_question", answer: { target: "main" } },
+    })
+    const answered = await app.waitForFrame(
+      (value) => value.includes("Project B session") && !value.includes("Needs input"),
+    )
+    expect(answered).not.toContain("? Project B session")
   } finally {
     app.renderer.destroy()
     await storage.flush()

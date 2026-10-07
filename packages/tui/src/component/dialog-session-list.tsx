@@ -1,9 +1,8 @@
-import { createMemo, createResource, createSignal, onMount, Show } from "solid-js"
+import { createMemo, createResource, createSignal, onMount, Show, type JSX } from "solid-js"
 import path from "path"
 import type { SessionInfo } from "@opencode/client"
 import { Project } from "@opencode/schema/project"
-import { TextAttributes } from "@opentui/core"
-import type { RGBA } from "@opentui/core"
+import { TextAttributes, type RGBA } from "@opentui/core"
 import { useDialog } from "../ui/dialog"
 import { DialogSelect } from "../ui/dialog-select"
 import { useRoute } from "../context/route"
@@ -49,7 +48,7 @@ export function DialogSessionList() {
     },
   })
   const scope = (): Scope => prefs.scope ?? (prefs.allProjects ? "all" : "directory")
-  const nextScope = (): Scope => scope() === "directory" ? "project" : scope() === "project" ? "all" : "directory"
+  const nextScope = (): Scope => (scope() === "directory" ? "project" : scope() === "project" ? "all" : "directory")
   const pickerLocation = () =>
     (route.data.type === "session" ? data.session.get(route.data.sessionID)?.location : undefined) ??
     activeLocation.ref ??
@@ -156,7 +155,11 @@ export function DialogSessionList() {
         .filter((session) => !session.parentID)
         .map((session) => [session.id, session]),
     )
-    const pinned = sessionTabs.enabled() ? [] : local.session.pinned().filter((sessionID) => sessionMap.has(sessionID))
+    const awaiting = Array.from(sessionMap.values()).filter((session) => sessionTabs.status(session.id).attention)
+    const awaitingSet = new Set(awaiting.map((session) => session.id))
+    const pinned = sessionTabs.enabled()
+      ? []
+      : local.session.pinned().filter((sessionID) => sessionMap.has(sessionID) && !awaitingSet.has(sessionID))
     const pinnedSet = new Set(pinned)
     const slotByID = new Map(local.session.slots().map((sessionID, index) => [sessionID, index + 1]))
 
@@ -171,6 +174,7 @@ export function DialogSessionList() {
           : undefined
       const slot = sessionTabs.enabled() ? undefined : slotByID.get(session.id)
       const deleting = toDelete() === session.id
+      const attention = sessionTabs.status(session.id).attention
       return {
         title: deleting
           ? `Press ${shortcuts.get("session.delete")} again to confirm`
@@ -180,24 +184,29 @@ export function DialogSessionList() {
         footer,
         bg: deleting ? theme.background.action.destructive.focused : undefined,
         fg: deleting ? theme.text.action.destructive.focused : undefined,
-        gutter:
-          data.session.status(session.id) === "running" ||
-          data.session.family(session.id).some((id) => data.session.status(id) === "running")
-            ? (color: RGBA) => <Spinner color={color} />
-            : slot === undefined
-              ? undefined
-              : () => <text fg={theme.hue.accent[200]}>{slot}</text>,
+        gutter: sessionStatusGutter(
+          theme,
+          attention,
+          !attention &&
+            (data.session.status(session.id) === "running" ||
+              data.session.family(session.id).some((id) => data.session.status(id) === "running")),
+          slot === undefined ? undefined : () => <text fg={theme.text.formfield.selected}>{slot}</text>,
+        ),
       }
     }
 
     const remaining = sessions()
-      .filter((session) => !session.parentID && !pinnedSet.has(session.id))
+      .filter((session) => !session.parentID && !pinnedSet.has(session.id) && !awaitingSet.has(session.id))
       .map((session) => {
         const date = new Date(session.time.updated).toDateString()
         return option(session, date === today ? "Today" : date)
       })
 
-    return [...pinned.map((sessionID) => option(sessionMap.get(sessionID)!, "Pinned")), ...remaining]
+    return [
+      ...awaiting.map((session) => option(session, "Needs input")),
+      ...pinned.map((sessionID) => option(sessionMap.get(sessionID)!, "Pinned")),
+      ...remaining,
+    ]
   })
 
   onMount(() => dialog.setSize("large"))
@@ -306,4 +315,24 @@ function quickSwitchRange(first: string, last: string) {
   const prefix = first.slice(0, -1)
   if (first.endsWith("1") && last === `${prefix}9`) return `${prefix}1-9`
   return `${first} through ${last}`
+}
+
+export function sessionStatusGutter(
+  theme: ReturnType<ReturnType<typeof useTheme>["surface"]>,
+  attention: "permission" | "question" | false,
+  running: boolean,
+  fallback?: () => JSX.Element,
+) {
+  if (attention) {
+    return (color: RGBA) => (
+      <text
+        fg={color === theme.text.action.primary.focused ? color : theme.text.feedback.warning.base}
+        attributes={TextAttributes.BOLD}
+      >
+        {attention === "permission" ? "!" : "?"}
+      </text>
+    )
+  }
+  if (running) return (color: RGBA) => <Spinner color={color} />
+  return fallback
 }

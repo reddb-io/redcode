@@ -1272,6 +1272,7 @@ export const layer = Layer.effect(
         agent: context.agent.id,
         model: context.model,
         tools: context.tools,
+        toolChoice: "none",
         system: base.system,
         messages: redactMessages(base.messages),
         webSocket,

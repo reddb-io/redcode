@@ -25,6 +25,31 @@ These reliability and accounting changes do not establish a measured quality,
 latency or cost improvement for dual reasoning. Comparative results remain in
 [reasoning-evaluation.md](reasoning-evaluation.md).
 
+## October 7 reliability follow-up
+
+This follow-up adapts selected OpenCode V2 fixes without replacing Redcode's
+history repair, vault handling, durable Session execution, or provider accounting.
+
+| Area                | Adaptation                                                                                                                                                                                                                                           | Source                                                                    |
+| ------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------- |
+| Responses replay    | Unfinished reasoning loses provider continuation metadata; readable partial text remains plain text. Empty reasoning with neither summary nor encrypted content is omitted from the provider request. Completed signed reasoning remains replayable. | [#53603](https://github.com/anomalyco/opencode/pull/53603), merged        |
+| MCP names           | Remove registry-wide tool-name and namespace length caps while retaining nonempty names, valid characters, and reserved-name checks.                                                                                                                 | [#53586](https://github.com/anomalyco/opencode/pull/53586), merged        |
+| MCP input ownership | Carry the calling Session into form and URL elicitations and cancel pending input when the call ends or is interrupted.                                                                                                                              | [#53608](https://github.com/anomalyco/opencode/pull/53608), open proposal |
+| Summary compaction  | Keep tool definitions for history and cache continuity but force `toolChoice: none` on the summary request.                                                                                                                                          | [#53370](https://github.com/anomalyco/opencode/pull/53370), open proposal |
+| TUI attention       | Show permission/question markers instead of a working spinner and prioritize sessions needing input in Open and Sessions. Include known child-session input in the parent's status.                                                                  | [#53435](https://github.com/anomalyco/opencode/pull/53435), merged        |
+
+MCP connections remain Location-scoped. Correlated HTTP requests retain their
+Session context; legacy stdio or standalone SSE may use the sole in-flight call.
+Concurrent requests without enough correlation are cancelled rather than
+attributed to an arbitrary Session. Unsolicited requests retain the existing
+Location owner. This is not full concurrent elicitation support for every legacy
+transport.
+
+Regression contracts exercise real loopback HTTP and stdio MCP servers, isolated
+form replies/cancellation/interruption, long tool names through native and Code
+Mode execution, Responses request lowering, compaction requests, and rendered
+TUI menus. The tool registry suite is now part of the Redcode CI contracts.
+
 ## Reproducible catalog
 
 Builds consume the committed `packages/core/src/models-dev/snapshot.txt`.

@@ -60,6 +60,7 @@ const suites = {
     "test/monitor-progress.test.ts",
     "test/persistent-pty-daemon.test.ts",
     "test/mcp.test.ts",
+    "test/tool-registry.test.ts",
     "test/mcp-oauth.test.ts",
     "test/mcp-instructions.test.ts",
     "test/mcp-import-boundary.test.ts",

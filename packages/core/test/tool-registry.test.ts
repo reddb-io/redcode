@@ -4,6 +4,7 @@ import { CodeModeTool } from "@opencode/core/codemode/tool"
 import type { Permission } from "@opencode/core/permission"
 import { AppNodeBuilder } from "@opencode/core/effect/app-node-builder"
 import { Image } from "@opencode/core/image"
+import { Location } from "@opencode/core/location"
 import { PluginHooks } from "@opencode/core/plugin/hooks"
 import { Session } from "@opencode/core/session"
 import { SessionMessage } from "@opencode/core/session/message"
@@ -16,6 +17,7 @@ import { Deferred, Effect, Exit, Fiber, Layer, Logger, Schema, SchemaGetter, Sch
 import { z } from "zod"
 import { testEffect } from "./lib/effect"
 import { tmpdir } from "./fixture/tmpdir"
+import { tempLocationLayer } from "./fixture/location"
 import path from "node:path"
 import { pathToFileURL } from "node:url"
 
@@ -43,6 +45,7 @@ const imageStore = Layer.mock(Image.Service, {
 })
 const registryLayer = AppNodeBuilder.build(LayerNode.group([Tool.node, PluginHooks.node]), [
   Image.node.replace(imageStore),
+  Location.node.replace(tempLocationLayer),
 ])
 const it = testEffect(registryLayer)
 const identity = {
@@ -333,7 +336,6 @@ describe("Tool", () => {
         {
           before: make(),
           "": make(),
-          ["x".repeat(129)]: make(),
           "echo.tool": constant("first"),
           echo_tool: constant("last"),
           execute: make(),
@@ -350,21 +352,24 @@ describe("Tool", () => {
     }),
   )
 
-  it.effect("registers 128-character MCP tool names in Code Mode", () =>
+  it.effect("registers and executes long MCP tool names and namespaces in Code Mode", () =>
     Effect.gen(function* () {
       const service = yield* Tool.Service
-      const name = "x".repeat(128)
-      yield* transform(service, { [name]: make(), ["x".repeat(129)]: make() }, { namespace: "cloudflare" })
+      const name = "x".repeat(129)
+      const namespace = "cloudflare".repeat(8)
+      yield* transform(service, { [name]: make() }, { namespace })
 
       const snapshot = yield* service.snapshot()
-      expect(codeModeListings(snapshot.codeModeCatalog!).map((tool) => tool.path)).toEqual([`cloudflare.${name}`])
+      expect(codeModeListings(snapshot.codeModeCatalog!).map((tool) => tool.path)).toEqual([`${namespace}.${name}`])
       const result = yield* snapshot.execute({
         ...call("execute"),
         call: {
           type: "tool-call",
           id: "call-long-mcp-name",
           name: "execute",
-          input: { code: `return (await tools.cloudflare[${JSON.stringify(name)}]({ text: "hello" })).text` },
+          input: {
+            code: `return (await tools[${JSON.stringify(namespace)}][${JSON.stringify(name)}]({ text: "hello" })).text`,
+          },
         },
       })
       expect(result.content).toEqual([{ type: "text", text: "hello" }])
