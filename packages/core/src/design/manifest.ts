@@ -3,6 +3,7 @@ export * as DesignManifest from "./manifest.js"
 import path from "node:path"
 import { Design } from "@opencode/schema/design"
 import { DesignFiles } from "./files.js"
+import type { DesignReferences } from "./references.js"
 
 export const FILE = ".red/DESIGN.md"
 export const START = "<!-- redcode:design-system:start -->"
@@ -14,6 +15,7 @@ export interface Input {
   readonly tokens: readonly string[]
   readonly roots: readonly string[]
   readonly inventory: readonly Design.Component[]
+  readonly references?: readonly DesignReferences.Reference[]
 }
 
 export type Result =
@@ -84,6 +86,20 @@ function generated(input: Input) {
           "",
         ])
       : ["- No component root: no src/components, src/design-system or rendering packages/*/src index was found.", ""]),
+    ...(input.references?.length
+      ? [
+          "## Source references",
+          "_Inferred, not authoritative. CSS token names cover the observed discovery excerpt (up to 12,000 bytes and 100 names per file); component names cover the bounded inventory. SHA-256 hashes identify whole source files. Refresh after source changes; read project guidance before choosing a semantic role._",
+          "",
+          ...input.references.flatMap((reference) => [
+            `### ${reference.file}`,
+            `SHA-256: ${reference.hash}`,
+            ...reference.tokens.map((token) => `- ${token.name} (${reference.file}:${token.line})`),
+            ...(reference.components.length ? [`Exports: ${reference.components.join(", ")}`] : []),
+            "",
+          ]),
+        ]
+      : []),
     END,
   ].join("\n")
 }

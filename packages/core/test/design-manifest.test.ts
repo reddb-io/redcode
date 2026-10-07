@@ -3,6 +3,7 @@ import { stat } from "node:fs/promises"
 import path from "node:path"
 import { DesignManifest } from "@opencode/core/design/manifest"
 import { DesignSystem } from "@opencode/core/design/system"
+import { DesignFiles } from "@opencode/core/design/files"
 import { tmpdir } from "./fixture/tmpdir"
 
 const input = {
@@ -185,4 +186,40 @@ test("describe and summary carry paths and counts, never file content", async ()
     "Design system: none detected. Say so in designSystem and design from the brief; do not assume a component library.",
   )
   expect(DesignSystem.summary({ sources: [] })).toBe("")
+})
+
+test("refresh updates configured CSS token and component references with hashes while preserving user notes", async () => {
+  await using tmp = await tmpdir()
+  const palette = ":root {\n --product-accent: #aa5500;\n --spacing-unit: 4px;\n}"
+  const button = "export function Button() { return <button /> }"
+  await Bun.write(path.join(tmp.path, "styles", "palette.css"), palette)
+  await Bun.write(path.join(tmp.path, "src", "components", "Button.tsx"), button)
+  const options = { refresh: true, manifest: true, declared: ["src/components"], css: ["styles/palette.css"] }
+  const loaded = await DesignSystem.load(tmp.path, options)
+  expect(loaded.sources.find((source) => source.file === "styles/palette.css")).toMatchObject({
+    hash: DesignFiles.hash(palette),
+    authoritative: false,
+  })
+  const file = path.join(tmp.path, DesignManifest.FILE)
+  const initial = await Bun.file(file).text()
+  expect(initial).toContain("--product-accent (styles/palette.css:2)")
+  expect(initial).toContain("--spacing-unit (styles/palette.css:3)")
+  expect(initial).toContain(`SHA-256: ${DesignFiles.hash(palette)}`)
+  expect(initial).toContain(`SHA-256: ${DesignFiles.hash(button)}`)
+  expect(initial).toContain("Exports: Button")
+  expect(initial).toContain("Inferred, not authoritative")
+  expect((await DesignSystem.load(tmp.path, options)).manifest).toBe("")
+  await Bun.write(file, `${initial}\nKeep the product orange.\n`)
+  await Bun.write(path.join(tmp.path, "styles", "palette.css"), palette.replace("--product-accent", "--brand-accent"))
+  await Bun.write(
+    path.join(tmp.path, "src", "components", "Button.tsx"),
+    `${button}\nexport const ButtonLabel = () => <span />`,
+  )
+  expect((await DesignSystem.load(tmp.path, options)).manifest).toContain("refreshed")
+  const refreshed = await Bun.file(file).text()
+  expect(refreshed).not.toContain("--product-accent")
+  expect(refreshed).toContain("--brand-accent (styles/palette.css:2)")
+  expect(refreshed).not.toContain(`SHA-256: ${DesignFiles.hash(button)}`)
+  expect(refreshed).toContain("Exports: Button, ButtonLabel")
+  expect(refreshed).toEndWith("Keep the product orange.\n")
 })

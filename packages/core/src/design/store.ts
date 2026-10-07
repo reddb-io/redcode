@@ -27,6 +27,7 @@ import { DesignAssets } from "./assets.js"
 import { DesignCapture } from "./capture.js"
 import { DesignJudge } from "./judge.js"
 import { DesignReuse } from "./reuse.js"
+import { DesignLint } from "./lint.js"
 import { DesignSignature } from "./signature.js"
 import { DesignQuality } from "./quality.js"
 
@@ -123,6 +124,7 @@ const make = Effect.gen(function* () {
           refresh: false,
           manifest: input.journey === "existing",
           declared: DesignSystem.declared({ system }),
+          css: system?.css,
         }),
       catch: (error) =>
         error instanceof Design.Error
@@ -756,6 +758,7 @@ const make = Effect.gen(function* () {
           refresh: true,
           manifest: current.journey === "existing",
           declared: DesignSystem.declared({ system }),
+          css: system?.css,
         }),
       catch: (error) =>
         error instanceof Design.Error
@@ -824,7 +827,12 @@ const make = Effect.gen(function* () {
       ),
     )
     const matched = DesignSignature.matches(signatures, facts.approved.designs, document.id)
-    const found = [...DesignSignature.repeated(signatures), ...matched.checks, ...reuse.checks]
+    const found = [
+      ...DesignSignature.repeated(signatures),
+      ...matched.checks,
+      ...reuse.checks,
+      ...DesignLint.check({ files, sources: document.sources, width }),
+    ]
     const outcomes = yield* judge(
       sessionID,
       document.id,

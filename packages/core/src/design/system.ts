@@ -7,6 +7,7 @@ import { ConfigDesign } from "@opencode/schema/config/design"
 import { DesignFiles } from "./files.js"
 import { DesignInventory } from "./inventory.js"
 import { DesignManifest } from "./manifest.js"
+import { DesignReferences } from "./references.js"
 
 /** Bun's glob scanner cannot expand a brace containing both root files and recursive paths. */
 const PATTERNS = [
@@ -96,7 +97,7 @@ export function classify(file: string): Kind {
 }
 
 /** File hashes are provenance, not a claim that inferred tokens are authoritative. */
-export async function discover(application: string) {
+export async function discover(application: string, css: readonly string[] = []) {
   const files = (
     await Promise.all(
       PATTERNS.map((pattern) =>
@@ -105,7 +106,9 @@ export async function discover(application: string) {
     )
   )
     .flat()
+    .concat(css)
     .map((file) => file.split(path.sep).join("/"))
+    .filter((file, index, all) => all.indexOf(file) === index)
     .sort()
     .toSorted((a, b) => TIER[classify(a)] - TIER[classify(b)])
   return (
@@ -233,9 +236,14 @@ export const declared = (document: object) => configured(document)?.paths ?? []
  */
 export async function load(
   application: string,
-  options: { readonly refresh: boolean; readonly manifest: boolean; readonly declared?: readonly string[] },
+  options: {
+    readonly refresh: boolean
+    readonly manifest: boolean
+    readonly declared?: readonly string[]
+    readonly css?: readonly string[]
+  },
 ) {
-  const discovered = await discover(application)
+  const discovered = await discover(application, options.css)
   const found = roots(discovered, options.declared)
   const inventory = await DesignInventory.scan(application, found)
   const facts = stack(discovered)
@@ -257,12 +265,13 @@ export async function load(
       tokens: facts.tokens,
       roots: found.filter((root) => inventory.some((entry) => entry.root === root)),
       inventory,
+      references: await DesignReferences.collect(application, discovered, inventory),
     },
     options.refresh,
   )
   const written = result.status === "created" || result.status === "updated"
   return {
-    sources: written ? await discover(application) : discovered,
+    sources: written ? await discover(application, options.css) : discovered,
     inventory,
     manifest:
       result.status === "kept"

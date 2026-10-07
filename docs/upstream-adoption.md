@@ -116,6 +116,50 @@ perfect accuracy. Detection overhead in real sessions has not been measured.
 | [Effect RcMap #52635](https://github.com/anomalyco/opencode/pull/52635)         | Evaluate separately with a repeated reload/disposal reproduction. A dependency identity fix alone does not prove reported CPU or leaked-process symptoms are solved.                                                                                                                                                                              |
 | Catalog metadata integrity                                                      | The updater checks structure and snapshot completeness. Cross-field limits, capabilities and service-tier semantics need separate validation; catalog presence is not proof of provider behavior. Track [models.dev #6073](https://github.com/anomalyco/models.dev/issues/6073) and [#5792](https://github.com/anomalyco/models.dev/issues/5792). |
 
+## October 7 Design source references and lint
+
+Adapted the generated-reference and deterministic-lint ideas from
+[OpenCode draft PR #53485](https://github.com/anomalyco/opencode/pull/53485)
+to each application's own design system. The generated block of `.red/DESIGN.md`
+now lists observed CSS custom-property names with source lines, and token and
+component source files with SHA-256 hashes. Refresh updates that block while
+preserving handwritten guidance and Notes. Configured stylesheets are included
+in discovery even outside the conventional `src` paths; this does not adopt a
+system or grant permissions automatically.
+
+The existing revision audit includes two advisory rules:
+
+- `design/prefer-color-token`: a single literal CSS color has an exact equivalent
+  in an observed project custom property. The suggested token must still match
+  the semantic role; equality of colors does not establish that role.
+- `design/no-solid-line-height`: `line-height: 1`, `1.0`, `100%` or `1em` warrants
+  reviewing the actual glyphs. It is a possible clipping risk, not proof of clipping.
+
+Lint reads the published source blobs and the revision's observed token excerpts,
+so later draft edits or refreshed discovery do not rewrite historical evidence.
+Findings carry source paths, lines and stable keys. A CSS comment on the same
+line or immediately above can record a reasoned exception, for example
+`/* design-lint-allow design/no-solid-line-height: reviewed icon glyph */`.
+These exceptions remain visible as informational evidence. Existing explicit
+`accept:<key>` Design decisions also apply.
+
+Coverage is deliberately bounded: CSS files and actual `<style>` elements in
+HTML, Vue and Svelte; up to 200 revision files, 256 KB per file and 4 MB total.
+At most 20 findings per rule are recorded; excess findings are counted.
+Token evidence comes from discovery's first 20 excerpts, at most 12,000 bytes
+each; the manifest lists at most 100 token names per file. Only complete
+declarations contribute evidence. JSX style objects, inline HTML style
+attributes, Tailwind utilities, imported stylesheets and TypeScript/JSON token
+registries are outside these new rules. They remain available to existing
+reuse checks or manual review. Literal equivalence preserves alpha and does
+not try to normalize different color representations.
+
+Automatic reviews remain report-only and manual anti-slop retains its single
+bounded correction/publication/final-audit contract. No new CI failure baseline,
+theme-selector policy, legacy-token registry or RTL policy is imposed on the
+user's project. Those upstream rules require explicit project conventions before
+they can be adopted safely.
+
 ## Validation gate
 
 The Redcode workflow runs canonical lint/typecheck, generated-client drift,

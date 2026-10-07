@@ -268,6 +268,38 @@ describe("DesignStore lifecycle", () => {
 })
 
 describe("DesignStore revisions", () => {
+  it.live("source lint audits published blobs and observed project tokens after the draft and system change", () =>
+    Effect.gen(function* () {
+      const directory = yield* seed
+      yield* reasoning(single)
+      yield* write(path.join(directory, "src", "tokens.css"), ":root { --brand: #336699; }")
+      const store = yield* DesignStore.Service
+      const created = yield* store.create(sessionID, checkout)
+      yield* write(
+        path.join(created.root, created.entry),
+        "<style>.a {color:#336699; line-height:1;}</style><main class='a'>Checkout</main>",
+      )
+      const published = yield* store.publish(sessionID, created.id, "Preview")
+      yield* write(
+        path.join(created.root, created.entry),
+        "<style>.a {color:var(--brand); line-height:1.2;}</style><main>Draft</main>",
+      )
+      yield* write(path.join(directory, "src", "tokens.css"), ":root { --brand: #995500; }")
+      yield* store.refresh(sessionID, created.id)
+      const audited = yield* store.repetition(sessionID, published, [], 1440)
+      expect(audited.checks.filter((check) => check.rule.startsWith("design/"))).toHaveLength(2)
+      expect(audited.checks.find((check) => check.rule === "design/prefer-color-token")?.evidence).toContain(
+        "--brand in src/tokens.css:1",
+      )
+      expect(audited.checks.find((check) => check.rule === "design/no-solid-line-height")?.selector).toBe(
+        "source index.html:1",
+      )
+      expect(yield* store.revisions(sessionID, created.id)).toHaveLength(1)
+      expect(yield* read(path.join(created.root, created.entry))).toContain("Draft")
+      expect((yield* store.get(sessionID, created.id)).approvedRevision).toBeNull()
+    }),
+  )
+
   it.live("repeating an unchanged publication reuses the revision until the draft changes", () =>
     Effect.gen(function* () {
       yield* seed

@@ -390,6 +390,8 @@ const WIDE = new Set([
   "redeclared-component",
   "color-off-token",
   "font-off-system",
+  "design/prefer-color-token",
+  "design/no-solid-line-height",
 ])
 
 /**

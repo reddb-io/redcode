@@ -348,6 +348,7 @@ export async function commit(input: Commit) {
         refresh: true,
         manifest: true,
         declared: input.proposal.system.paths,
+        css: input.proposal.system.css,
       }).then(
         (loaded) => loaded.manifest,
         (error: unknown) => `${DesignManifest.FILE} not generated: ${String(error)}`,
