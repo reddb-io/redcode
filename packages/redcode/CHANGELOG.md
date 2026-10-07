@@ -1,5 +1,12 @@
 # @reddb-io/redcode
 
+## 0.72.8
+
+### Patch Changes
+
+- Generate project-specific CSS token and component references with source hashes in Design manifests. Audit published CSS and style blocks for literal colors that already have project tokens and solid line heights, retaining reasoned exceptions as evidence without starting an automatic correction cycle.
+- Recover interrupted Responses reasoning without replaying unfinished provider state. Keep long MCP tool names available, route MCP input requests to the calling session, and disable tool calls when generating compaction summaries. Highlight sessions waiting for permission or questions in the TUI session menus.
+
 ## 0.72.7
 
 ### Patch Changes
