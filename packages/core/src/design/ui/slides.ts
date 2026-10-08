@@ -260,7 +260,8 @@ export function deck() {
  * The slide runtime of a presentation, serialized into the prototype before the screen runtime (preview,
  * export, audit and PDF). Every top-level `<section class="slide">` becomes a screen of the screen
  * runtime: its own data-design-screen when it has one, else its id when that is a valid screen id, else
- * slide-N; its label is the slide number and first heading. A slide is a fixed 1920×1080 canvas, scaled
+ * slide-N. Every slide also gets a unique HTML id for annotation selectors, retained when reordered;
+ * its label is the slide number and first heading. A slide is a fixed 1920×1080 canvas, scaled
  * to fit a window of another size; its `<aside class="notes">` speaker notes stay hidden and reach the
  * host in a design:slides message. Arrow keys, Space, Page Up/Down, Home and End move between slides.
  * In print (the PDF export) every slide is one 1920×1080 page, after the host dispatches design:print.
@@ -289,6 +290,8 @@ export function slides(logic: typeof deck) {
   /** Marks unmarked slides as screens, numbered within their variant, and reports their notes. */
   const mark = () => {
     const taken = new Set(all().flatMap((node) => node.dataset.designScreen ?? []))
+    const occupied = [...document.querySelectorAll("[id]")].map((node) => node.id)
+    const ids = new Set(occupied)
     const numbers = new Map<string, number>()
     for (const node of all()) {
       const scope = scopeOf(node)
@@ -303,6 +306,15 @@ export function slides(logic: typeof deck) {
         const id = own || fallback.find((item) => !taken.has(item)) || `slide-${number}`
         taken.add(id)
         node.dataset.designScreen = id
+      }
+      // Preserve author ids; missing or repeated ids need a document-wide anchor, including variants.
+      if (!node.id || occupied.filter((id) => id === node.id).length > 1) {
+        const base = `${scope ? `${scope}-` : ""}${node.dataset.designScreen}`
+        const id = [base, ...Array.from({ length: ids.size + 1 }, (_, index) => `${base}-${index + 2}`)].find(
+          (id) => !ids.has(id),
+        )!
+        node.id = id
+        ids.add(id)
       }
       // A label of the slide's own stays; the runtime's follows the heading, which can arrive after the section.
       if (!node.dataset.designLabel || node.dataset.designLabel === node.dataset.slideLabel) {

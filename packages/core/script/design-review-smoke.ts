@@ -227,7 +227,7 @@ try {
   // A padded deck must not turn that native-size frame into a scrolling document.
   await Bun.write(
     path.join(directory.path, "slides.html"),
-    `<!doctype html><html><head><style>.deck{padding:24px}section.slide{background:lightblue}@media print{.deck{padding:0}}</style></head><body><main class="deck"><section class="slide" id="first"><h1>First slide</h1><aside class="notes">Speaker notes</aside></section><section class="slide" id="second"><h1>Second slide</h1></section></main></body></html>`,
+    `<!doctype html><html><head><style>.deck{padding:24px}section.slide{background:lightblue}@media print{.deck{padding:0}}</style></head><body><main class="deck"><section class="slide" id="first"><h1 data-design-id="title">First slide</h1><p>Plain text</p><aside class="notes">Speaker notes</aside></section><section class="slide" data-design-screen="second"><h1 data-design-id="title">Second slide</h1><p>Plain text</p></section></main></body></html>`,
   )
   const presentation = await DesignPage.preview(
     { ...revisions[0], document: { ...design, target: "presentation", entry: "slides.html" } },
@@ -238,6 +238,28 @@ try {
     await slidePage.setViewportSize({ width: 1920, height: 1080 })
     await slidePage.goto(`data:text/html;base64,${Buffer.from(presentation).toString("base64")}`)
     await slidePage.waitForSelector("#first[data-design-screen]")
+    assert.equal(await slidePage.locator("#second[data-design-screen=second]").count(), 1)
+    // Capture the production annotation message, rather than reimplementing selector generation.
+    const annotate = (query: string) =>
+      slidePage.evaluate(
+        (query) =>
+          new Promise<{ target: string; tag: string }>((resolve) => {
+            const receive = (event: MessageEvent) => {
+              if (event.data?.type !== "design:selection") return
+              window.removeEventListener("message", receive)
+              resolve({ target: event.data.target, tag: event.data.tag })
+            }
+            window.addEventListener("message", receive)
+            window.dispatchEvent(
+              new MessageEvent("message", { source: window, data: { type: "design:annotate", enabled: true } }),
+            )
+            document.querySelector(query)!.dispatchEvent(new MouseEvent("click", { bubbles: true }))
+          }),
+        query,
+      )
+    assert.deepEqual(await annotate("#first h1"), { target: '#first [data-design-id="title"]', tag: "h1" })
+    assert.deepEqual(await annotate("#first p"), { target: "#first > p:nth-of-type(1)", tag: "p" })
+    assert.deepEqual(await annotate("#first"), { target: "#first", tag: "section" })
     for (const viewport of [
       { width: 1920, height: 1080 },
       { width: 1920, height: 1200 },
@@ -269,6 +291,19 @@ try {
     await slidePage.waitForSelector("#second", { state: "visible" })
     assert.equal(await slidePage.locator("#first").isVisible(), false)
     assert.equal(await slidePage.locator("aside.notes").isVisible(), false)
+    assert.deepEqual(await annotate("#second h1"), { target: '#second [data-design-id="title"]', tag: "h1" })
+    assert.deepEqual(await annotate("body"), { target: "#second", tag: "section" })
+    await slidePage.evaluate(() => {
+      const first = document.querySelector("#first")!
+      first.parentElement!.append(first)
+    })
+    await slidePage.waitForFunction(
+      () => document.querySelector("#first")?.getAttribute("data-design-label") === "2. First slide",
+    )
+    assert.deepEqual(await slidePage.locator("section.slide").evaluateAll((nodes) => nodes.map((node) => node.id)), [
+      "second",
+      "first",
+    ])
 
     await slidePage.emulateMedia({ media: "print" })
     await slidePage.evaluate(() => window.dispatchEvent(new CustomEvent("design:print", { detail: { all: true } })))
@@ -292,6 +327,38 @@ try {
     )
     console.log(
       "Presentation fits without scrolling at native, near-native, desktop and mobile sizes; navigation and two-page PDF verified",
+    )
+    await Bun.write(
+      path.join(directory.path, "slides.html"),
+      `<!doctype html><html><body><div id="one-pricing"></div><main data-design-variant="one"><section class="slide" id="pricing" data-design-screen="pricing"><h1 data-design-id="title">Pricing</h1></section><section class="slide"><h1>Unmarked</h1></section></main><main data-design-variant="two"><section class="slide" id="pricing" data-design-screen="pricing"><h1 data-design-id="title">Pricing</h1></section></main></body></html>`,
+    )
+    const variants = await DesignPage.preview(
+      { ...revisions[0], document: { ...design, target: "presentation", entry: "slides.html" } },
+      directory.path,
+    )
+    await slidePage.emulateMedia({ media: "screen" })
+    await slidePage.goto(`data:text/html;base64,${Buffer.from(variants).toString("base64")}`)
+    await slidePage.waitForSelector("#one-pricing-2")
+    assert.deepEqual(await slidePage.locator("section.slide").evaluateAll((nodes) => nodes.map((node) => node.id)), [
+      "one-pricing-2",
+      "one-slide-2",
+      "two-pricing",
+    ])
+    for (const variant of ["one", "two"]) {
+      await slidePage.evaluate(
+        (id) =>
+          window.dispatchEvent(new MessageEvent("message", { source: window, data: { type: "design:variant", id } })),
+        variant,
+      )
+      const query = variant === "one" ? "#one-pricing-2" : "#two-pricing"
+      assert.deepEqual(await annotate(`${query} h1`), {
+        target: `variant:${variant} ${query} [data-design-id="title"]`,
+        tag: "h1",
+      })
+      assert.deepEqual(await annotate("body"), { target: `variant:${variant} ${query}`, tag: "section" })
+    }
+    console.log(
+      "Presentation annotations use unique slide IDs for repeated elements, plain text, backgrounds and variants; reordering preserves IDs",
     )
   } finally {
     await slidePage.close()

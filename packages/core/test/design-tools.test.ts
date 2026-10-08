@@ -173,9 +173,16 @@ describe("Design tools", () => {
     Effect.gen(function* () {
       yield* reset()
       const registry = yield* Tool.Service
-      const names = (yield* toolDefinitions(registry)).map((tool) => tool.name)
+      const agent = yield* designAgent()
+      const snapshot = yield* registry.snapshot(Permission.forAgent(agent as never, []))
+      const names = snapshot.definitions.map((tool) => tool.name)
 
       expect(names).toEqual(expect.arrayContaining(["design_read", "design_export", "design_jobs", "design_playbook"]))
+      expect(names).not.toContain("execute")
+      expect(yield* snapshot.execute({ ...call("design_read", { id: designID }), agent: agent.id })).toMatchObject({
+        output: "Revision rev_one (not approved), section summary.",
+        metadata: { designID },
+      })
     }),
   )
 
@@ -532,7 +539,10 @@ describe("design_preview unchanged publishes", () => {
     expect(DesignPreviewTool.sameFiles({ files }, { files: { ...files } })).toBe(true)
     // Compiled output can differ between builds of the same source.
     expect(
-      DesignPreviewTool.sameFiles({ files: { ...files, ".compiled/index.js": "c" } }, { files: { ...files, ".compiled/index.js": "d" } }),
+      DesignPreviewTool.sameFiles(
+        { files: { ...files, ".compiled/index.js": "c" } },
+        { files: { ...files, ".compiled/index.js": "d" } },
+      ),
     ).toBe(true)
     expect(DesignPreviewTool.sameFiles({ files }, { files: { ...files, "app.css": "e".repeat(64) } })).toBe(false)
     expect(DesignPreviewTool.sameFiles({ files }, { files: { ...files, "new.html": "f".repeat(64) } })).toBe(false)

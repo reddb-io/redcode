@@ -1,5 +1,6 @@
 /** Untrusted frame sends descriptive data only. It never receives host credentials. */
 export function annotations() {
+  const presentation = Object.prototype.hasOwnProperty.call(window, "__redcodeSlides")
   const state = {
     enabled: false,
     variant: "",
@@ -153,25 +154,36 @@ export function annotations() {
   }
   const selector = (target: Element) => {
     const scope = scopeOf(target)
+    const slide = presentation ? target.closest("section.slide[id]") : null
+    const anchor = slide ? `#${CSS.escape(slide.id)}` : ""
+    const qualify = (query: string) => (anchor ? `${anchor} ${query}` : query)
     const budget = LIMITS.target - (state.variant ? `variant:${state.variant} `.length : 0)
     const fits = (query: string) => query.length <= budget && resolves(query, scope, target)
+    if (target === slide) return anchor
     const own = keys(target)
-    const direct = own.find(fits)
+    const direct = own.map(qualify).find(fits)
     if (direct) return direct
     // The nearest ancestor that is unique on its own anchors a short path down to the element.
     const steps: string[] = []
     for (let node: Element = target; node.parentElement; node = node.parentElement) {
       const parent: Element = node.parentElement
       steps.unshift(step(node))
+      if (parent === slide) {
+        const within = `${anchor} > ${steps.join(" > ")}`
+        if (fits(within)) return within
+        break
+      }
       if (parent === scope || parent === document.body || parent === document.documentElement) break
-      const anchor = keys(parent).find((query) => resolves(query, scope, parent))
-      if (!anchor) continue
-      const anchored = [...own.map((query) => `${anchor} ${query}`), `${anchor} > ${steps.join(" > ")}`].find(fits)
+      const keyed = keys(parent)
+        .map(qualify)
+        .find((query) => resolves(query, scope, parent))
+      if (!keyed) continue
+      const anchored = [...own.map((query) => `${keyed} ${query}`), `${keyed} > ${steps.join(" > ")}`].find(fits)
       if (anchored) return anchored
     }
-    const fallback = [...copy(target), CSS.escape(target.localName), bodyPath(target)].find(fits)
-    // A locator cut to fit would point elsewhere; an element too deep to address is reported as the page.
-    return fallback ?? "page"
+    const fallback = [...copy(target), CSS.escape(target.localName), bodyPath(target)].map(qualify).find(fits)
+    // Never cut a locator or lose the slide: an element too deep to address becomes a slide-level note.
+    return fallback ?? (anchor || "page")
   }
   const xpath = (target: Element) => {
     const steps: string[] = []
@@ -557,10 +569,21 @@ export function annotations() {
       if (!state.enabled || !(event.target instanceof Element)) return
       event.preventDefault()
       event.stopImmediatePropagation()
-      const target =
+      const nearest =
         event.target.closest("[data-mermaid-source], [data-mermaid], .mermaid") ??
         event.target.closest("[data-design-id], [id], button, a, input, select, textarea, td, th, table, svg") ??
         event.target
+      const slide = presentation
+        ? (event.target.closest("section.slide[id]") ??
+          [...document.querySelectorAll("section.slide[id]")].find((node) => node.getClientRects().length))
+        : undefined
+      // A generated slide id must not swallow clicks on its unkeyed text; letterboxing names the slide.
+      const target =
+        slide && (nearest === slide || !slide.contains(nearest))
+          ? slide.contains(event.target)
+            ? event.target
+            : slide
+          : nearest
       // A diagram's source is what the note is about; a text selection is next in line.
       const selectedText = target.getAttribute("data-mermaid-source") || (window.getSelection()?.toString() ?? "")
       state.selected = target
