@@ -49,6 +49,15 @@ function withoutEmptyCompatibilityContainers(input: Record<string, unknown>) {
 }
 
 describe("ConfigNormalize", () => {
+  test("preserves explicit vault enablement including false", () => {
+    expect(decoded({ vault: false }).vault).toBe(false)
+    expect(decoded({ vault: true }).vault).toBe(true)
+    expect(decoded({}).vault).toBeUndefined()
+    expect(normalized({ vault: "false" }).diagnostics).toContainEqual(
+      expect.objectContaining({ kind: "invalid", path: ["vault"] }),
+    )
+  })
+
   test("rejects every non-object root with one root diagnostic", () => {
     for (const input of [null, [], "config", true, 1]) {
       expect(ConfigNormalize.normalize(input)).toEqual({

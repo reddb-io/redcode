@@ -65,6 +65,10 @@ export class Info extends Schema.Class<Info>("Config.Info")({
   agents: Schema.Record(Schema.String, ConfigAgent.Info).pipe(optional).annotate({
     description: "Named built-in agent overrides and custom agent definitions",
   }),
+  vault: Schema.Boolean.pipe(optional).annotate({
+    description:
+      "Enable automatic project .env secret capture and vault requests (default: true). Repository configuration overrides global configuration.",
+  }),
   snapshots: Schema.Boolean.pipe(optional).annotate({
     description: "Enable snapshots used for undo and revert behavior",
   }),

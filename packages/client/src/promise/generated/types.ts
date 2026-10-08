@@ -2937,6 +2937,7 @@ export type ConfigEntry =
             permissions?: PermissionRuleset
           }
         }
+        vault?: boolean
         snapshots?: boolean
         watcher?: { ignore?: Array<string> }
         formatter?:

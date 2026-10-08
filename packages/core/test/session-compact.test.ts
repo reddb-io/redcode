@@ -56,7 +56,7 @@ const locations = Layer.effect(
       // oxlint-disable-next-line typescript-eslint/no-unsafe-type-assertion
       SessionCompaction.layer.pipe(
         Layer.provide(client),
-        Layer.provide(config),
+        Layer.provideMerge(config),
         Layer.provide(models),
       ) as unknown as Layer.Layer<LocationServices>,
   ),

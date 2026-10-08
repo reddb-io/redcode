@@ -95,6 +95,7 @@ export const PluginTestLayer = AppNodeBuilder.build(
     Model.node,
     ModelsDev.node,
     Command.node,
+    Config.node,
     Integration.node,
     KV.node,
     ManagedPolicy.node,

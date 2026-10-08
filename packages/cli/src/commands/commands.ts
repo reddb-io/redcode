@@ -437,12 +437,18 @@ const Root = Spec.make(typeof OPENCODE_CLI_NAME === "string" ? OPENCODE_CLI_NAME
       ],
     }),
     Spec.make("vault", {
-      description:
-        "Store secrets for the current project; agents see only {vault:<name>} references. The service keeps values in memory until it restarts",
+      description: "Manage project .env secrets and automatic vault handling",
       commands: [
+        Spec.make("enable", {
+          description: "Enable automatic vault handling for this repository, or globally with --global",
+          params: { global: Flag.boolean("global").pipe(Flag.withDefault(false)) },
+        }),
+        Spec.make("disable", {
+          description: "Disable automatic vault handling for this repository, or globally with --global",
+          params: { global: Flag.boolean("global").pipe(Flag.withDefault(false)) },
+        }),
         Spec.make("set", {
-          description:
-            "Store a secret, read from stdin when piped or from a hidden prompt; the service keeps it in memory until it restarts",
+          description: "Store a project .env secret, read from stdin when piped or from a hidden prompt",
           params: {
             server: ServerParams.server,
             name: Argument.string("name").pipe(
@@ -451,8 +457,7 @@ const Root = Spec.make(typeof OPENCODE_CLI_NAME === "string" ? OPENCODE_CLI_NAME
           },
         }),
         Spec.make("import", {
-          description:
-            "Store every NAME=value line of a .env file, read by the service; it keeps them in memory until it restarts",
+          description: "Import NAME=value entries from a .env file into this project",
           params: {
             server: ServerParams.server,
             file: Argument.string("file").pipe(Argument.withDescription(".env file to import")),

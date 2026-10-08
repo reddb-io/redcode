@@ -72,6 +72,7 @@ import { Plugin } from "@opencode/core/plugin"
 import { PluginHooks } from "@opencode/core/plugin/hooks"
 import { OptimizePlugin } from "@opencode/core/plugin/optimize"
 import { IdentityPlugin } from "@opencode/core/plugin/identity"
+import { VaultRequestTool } from "@opencode/core/tool/plugin/vault-request"
 import { QuestionTool } from "@opencode/core/tool/plugin/question"
 import { Agent } from "@opencode/core/agent"
 import { AgentPlugin } from "@opencode/core/plugin/agent"
@@ -6711,6 +6712,39 @@ describe("SessionRunnerLLM", () => {
         Expected.failedTool(
           { id: "call-question" },
           { error: { type: "aborted", message: "The user dismissed this question" } },
+        ),
+      ]),
+    ])
+  })
+
+  scenario("a declined real vault request stops before another model call", function* (s) {
+    yield* registerToolPlugin(VaultRequestTool.Plugin)
+    const forms = yield* Form.Service
+    yield* s.admit("Use a missing credential")
+    yield* s.llm.push(TestLLM.tool("call-vault", "vault_request", { name: "missing", purpose: "test" }), [])
+    const run = yield* s.resume.pipe(Effect.exit, Effect.forkChild)
+    const pending = yield* Effect.gen(function* () {
+      for (let attempt = 0; attempt < 1000; attempt++) {
+        const form = (yield* forms.list({ sessionID }))[0]
+        if (form) return form
+        yield* Effect.yieldNow
+      }
+      return yield* Effect.die("Vault form did not open")
+    })
+    yield* forms.cancel(pending.id)
+    const exit = yield* Fiber.join(run)
+    expect(exit._tag).toBe("Failure")
+    if (exit._tag === "Failure") expect(Cause.hasInterruptsOnly(exit.cause)).toBe(true)
+    expect(s.requests).toHaveLength(1)
+    expect(yield* forms.list({ sessionID })).toEqual([])
+    expect(yield* s.context).toMatchObject([
+      Expected.user("Use a missing credential"),
+      Expected.assistant({}, [
+        Expected.failedTool(
+          { id: "call-vault" },
+          {
+            error: { type: "aborted", message: new VaultRequestTool.CancelledError().message },
+          },
         ),
       ]),
     ])

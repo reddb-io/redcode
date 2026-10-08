@@ -15,13 +15,13 @@ export const GUIDE = [
   "A reference in a user message stands for that credential; use it and do not ask for the value again.",
   "Write references where the value belongs: in shell commands (any quoting, headers, JSON bodies, heredocs), webfetch URLs, MCP arguments, and .env files git ignores.",
   "Secrets in tool output, such as a token a login returns, come back as new references; for an opaque value no pattern recognizes, run the command with `capture`.",
-  "When you need a secret the vault lacks, call vault_request with a name and a purpose instead of asking in chat.",
+  "Only when the task requires a credential the vault lacks, call vault_request with a name and a purpose instead of asking in chat.",
   "The first time a secret goes to a new host the user approves it, so name the host plainly in the command, as a literal URL rather than a variable.",
   "Never print, echo, log or commit a secret, and never paste one into code, a git remote URL or any file other than an ignored .env.",
   "An unknown reference means the vault does not hold it, for example after the service restarted: request it again.",
 ].join(" ")
 
-const GUIDE_VERSION = 2
+const GUIDE_VERSION = 3
 
 const Entry = Schema.Struct({ name: Schema.String, kind: Schema.String, hosts: Schema.Array(Schema.String) })
 type Entry = typeof Entry.Type
@@ -41,7 +41,7 @@ export interface Interface {
    */
   readonly load: (
     projectID: Project.ID,
-    options: { readonly sinks: boolean; readonly directory?: string },
+    options: { readonly sinks: boolean; readonly directory?: string; readonly enabled?: boolean },
   ) => Instructions.List
 }
 
@@ -60,7 +60,7 @@ const layer = Layer.effect(
           Instructions.make<typeof GUIDE_VERSION>({
             key: Instructions.Key.make("vault/guide"),
             codec: Schema.toCodecJson(Schema.Literal(GUIDE_VERSION)),
-            read: Effect.succeed(options.sinks ? GUIDE_VERSION : Instructions.removed),
+            read: Effect.succeed(options.enabled !== false && options.sinks ? GUIDE_VERSION : Instructions.removed),
             render: {
               initial: () => GUIDE,
               changed: () => `The guidance on secrets changed. This supersedes it.\n\n${GUIDE}`,
@@ -70,19 +70,22 @@ const layer = Layer.effect(
           Instructions.make<ReadonlyArray<Entry>>({
             key: Instructions.Key.make("vault/names"),
             codec: Schema.toCodecJson(Schema.Array(Entry)),
-            read: (options.directory === undefined
-              ? Effect.void
-              : vault.attach({ projectID, directory: options.directory })
-            ).pipe(
-              Effect.andThen(vault.list(projectID)),
-              Effect.map((entries) =>
-                entries.length === 0
-                  ? Instructions.removed
-                  : entries
-                      .map((entry) => ({ name: entry.name, kind: entry.kind, hosts: entry.hosts ?? [] }))
-                      .toSorted((left, right) => left.name.localeCompare(right.name)),
-              ),
-            ),
+            read:
+              options.enabled === false
+                ? Effect.succeed(Instructions.removed)
+                : (options.directory === undefined
+                    ? Effect.void
+                    : vault.attach({ projectID, directory: options.directory })
+                  ).pipe(
+                    Effect.andThen(vault.list(projectID)),
+                    Effect.map((entries) =>
+                      entries.length === 0
+                        ? Instructions.removed
+                        : entries
+                            .map((entry) => ({ name: entry.name, kind: entry.kind, hosts: entry.hosts ?? [] }))
+                            .toSorted((left, right) => left.name.localeCompare(right.name)),
+                    ),
+                  ),
             render: {
               initial: (entries) => `Vault references in this project (values are never shown):\n${list(entries)}`,
               changed: (_previous, entries) =>

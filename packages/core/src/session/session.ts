@@ -31,6 +31,7 @@ import { SessionSkill } from "./skill.js"
 import { SessionSchema } from "./schema.js"
 import { SessionStore } from "./store.js"
 import { Vault } from "../vault/vault.js"
+import { Config } from "../config.js"
 import { VaultAdmission } from "../vault/admission.js"
 
 type PromptRequest = SessionPrompt.Input & {
@@ -204,7 +205,11 @@ export const make = Effect.fn("Session.make")(function* () {
           yield* vault.attach({ projectID: session.projectID, directory: session.location.directory })
           const item = {
             ...prepared,
-            payload: yield* VaultAdmission.protect(vault, session.projectID, prepared.payload),
+            payload: yield* Effect.gen(function* () {
+              const config = yield* Config.Service
+              if (Config.latest(yield* config.entries(), "vault") === false) return prepared.payload
+              return yield* VaultAdmission.protect(vault, session.projectID, prepared.payload)
+            }).pipe(instances.provide(session)),
           }
           if (input.resume !== false)
             yield* restore(
@@ -300,6 +305,7 @@ export const make = Effect.fn("Session.make")(function* () {
     input: { id?: SessionMessage.ID; delivery?: SessionInbox.Delivery; focus?: string },
   ) {
     const session = yield* get(sessionID)
+    const focus = input.focus
     if (session.revert) yield* SessionRevert.commit(bus, session)
     const inputID = input.id ?? SessionMessage.ID.create()
     const admitted = yield* admission
@@ -308,9 +314,13 @@ export const make = Effect.fn("Session.make")(function* () {
         sessionID,
         delivery: input.delivery ?? "steer",
         focus:
-          input.focus === undefined
+          focus === undefined
             ? undefined
-            : yield* VaultAdmission.protectText(vault, session.projectID, input.focus),
+            : yield* Effect.gen(function* () {
+                const config = yield* Config.Service
+                if (Config.latest(yield* config.entries(), "vault") === false) return focus
+                return yield* VaultAdmission.protectText(vault, session.projectID, focus)
+              }).pipe(instances.provide(session)),
       })
       .pipe(
         Effect.catchTag("SessionInbox.LifecycleConflict", () => new CompactionConflictError({ sessionID, inputID })),

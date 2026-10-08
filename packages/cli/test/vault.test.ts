@@ -6,7 +6,10 @@ import fs from "node:fs/promises"
 import os from "node:os"
 import path from "node:path"
 import { Readable } from "node:stream"
+import enableVault from "../src/commands/handlers/vault/enable"
+import disableVault from "../src/commands/handlers/vault/disable"
 import importVault from "../src/commands/handlers/vault/import"
+import { repositoryDirectory, writeVaultConfig } from "../src/commands/handlers/vault/configure"
 import setVault from "../src/commands/handlers/vault/set"
 import { callVault, importSummary, pipedValue } from "../src/commands/handlers/vault/shared"
 import { OPENCODE_VERSION } from "../src/version"
@@ -185,3 +188,75 @@ async function withStdin<A>(text: string, run: () => Promise<A>) {
     if (stdin) Object.defineProperty(process, "stdin", stdin)
   }
 }
+
+describe("vault configuration", () => {
+  test("preserves comments and unrelated settings and edits the highest priority file", async () => {
+    const root = await fs.mkdtemp(path.join(os.tmpdir(), "redcode-vault-config-"))
+    try {
+      await Bun.write(path.join(root, "opencode.json"), '{"model":"keep"}')
+      const preferred = path.join(root, ".red", "code", "config.jsonc")
+      await Bun.write(preferred, '{\n  // keep this comment\n  "shell": "bash",\n  "vault": true,\n}\n')
+      expect(await writeVaultConfig(root, false, false)).toBe(preferred)
+      expect(await Bun.file(preferred).text()).toContain("// keep this comment")
+      expect(await Bun.file(preferred).text()).toContain('"shell": "bash"')
+      expect(await Bun.file(preferred).text()).toContain('"vault": false')
+      expect(await Bun.file(path.join(root, "opencode.json")).text()).toBe('{"model":"keep"}')
+      await writeVaultConfig(root, true, false)
+      expect(await Bun.file(preferred).text()).toContain('"vault": true')
+    } finally {
+      await fs.rm(root, { recursive: true, force: true })
+    }
+  })
+
+  test("creates global config only on explicit global enablement and refuses malformed config", async () => {
+    const root = await fs.mkdtemp(path.join(os.tmpdir(), "redcode-vault-global-"))
+    try {
+      const file = await writeVaultConfig(root, true, true)
+      expect(file).toBe(path.join(root, "config.jsonc"))
+      expect(await Bun.file(file).json()).toEqual({ vault: true })
+      await Bun.write(file, "{broken")
+      await expect(writeVaultConfig(root, false, true)).rejects.toThrow("malformed")
+      expect(await Bun.file(file).text()).toBe("{broken")
+    } finally {
+      await fs.rm(root, { recursive: true, force: true })
+    }
+  })
+
+  test("resolves a nested working directory to its repository root", async () => {
+    const root = await fs.mkdtemp(path.join(os.tmpdir(), "redcode-vault-root-"))
+    try {
+      expect(Bun.spawnSync(["git", "init", root], { stderr: "ignore" }).exitCode).toBe(0)
+      const nested = path.join(root, "nested")
+      await fs.mkdir(nested)
+      expect(repositoryDirectory(nested)).toBe(root)
+    } finally {
+      await fs.rm(root, { recursive: true, force: true })
+    }
+  })
+})
+
+test("vault command handlers write repository and explicit global settings", async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "redcode-vault-handlers-"))
+  const previous = process.cwd()
+  const config = path.join(root, "global")
+  const layer = Global.layerWith({ config, state: path.join(root, "state") })
+  const run = <A, E>(effect: Effect.Effect<A, E, Global.Service | FileSystem.FileSystem | Scope.Scope>) =>
+    Effect.runPromise(effect.pipe(Effect.provide(layer), Effect.provide(NodeFileSystem.layer), Effect.scoped))
+  try {
+    expect(repositoryDirectory(root)).toBe(root)
+    expect(Bun.spawnSync(["git", "init", root], { stderr: "ignore" }).exitCode).toBe(0)
+    const nested = path.join(root, "nested")
+    await fs.mkdir(nested)
+    process.chdir(nested)
+    await withStdin("", () => run(enableVault({ global: true })))
+    expect(await Bun.file(path.join(config, "config.jsonc")).json()).toEqual({ vault: true })
+    await withStdin("", () => run(disableVault({ global: false })))
+    expect(await Bun.file(path.join(root, "redcode.jsonc")).json()).toEqual({ vault: false })
+    expect(await Bun.file(path.join(nested, "redcode.jsonc")).exists()).toBe(false)
+    await withStdin("", () => run(disableVault({ global: true })))
+    expect(await Bun.file(path.join(config, "config.jsonc")).json()).toEqual({ vault: false })
+  } finally {
+    process.chdir(previous)
+    await fs.rm(root, { recursive: true, force: true })
+  }
+})

@@ -23,7 +23,7 @@ export const promptLocationNode = makeGlobalNode({
       return yield* LayerMap.make(
         (ref: Location.Ref) =>
           LayerNode.compile(
-            LayerNode.group([PluginHooks.node, Image.node, Skill.node, Plugin.node, HookRuntime.node]),
+            LayerNode.group([PluginHooks.node, Image.node, Skill.node, Plugin.node, HookRuntime.node, Config.node]),
             {
               replacements: [
                 Config.node.replace(Config.testLayer()),

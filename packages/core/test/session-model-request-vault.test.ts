@@ -13,6 +13,9 @@ import { SessionModelTransport } from "@opencode/core/session/model-transport"
 import { SessionRunnerModel } from "@opencode/core/session/runner/model"
 import { Tool } from "@opencode/core/tool"
 import { Vault } from "@opencode/core/vault/vault"
+import { Config } from "@opencode/core/config"
+import { Document, Info } from "@opencode/schema/config"
+import { VaultRequestTool } from "@opencode/core/tool/plugin/vault-request"
 import { DateTime, Effect } from "effect"
 import { testEffect } from "./lib/effect"
 import { PluginTestLayer } from "./plugin/fixture"
@@ -189,6 +192,33 @@ describe("SessionModelRequest vault seam", () => {
       expect(error.message).toBe("nothing secret here")
       expect(error instanceof Tool.Error ? error.metadata : "not a tool error").toBeUndefined()
     }).pipe(Effect.provideService(SessionModelTransport.Service, transport)),
+  )
+
+  it.effect("surfaces a vault decline as a runner failure instead of a model result", () =>
+    Effect.gen(function* () {
+      const decline = new VaultRequestTool.CancelledError()
+      const prepared = yield* prepare(() => Effect.die(decline))
+      expect(yield* prepared.executeTool(call("call-vault-decline")).pipe(Effect.flip)).toBe(decline)
+    }).pipe(Effect.provideService(SessionModelTransport.Service, transport)),
+  )
+
+  it.effect("disables automatic capture and resolution but preserves existing secret redaction", () =>
+    Effect.gen(function* () {
+      const vault = yield* Vault.Service
+      const name = yield* vault.put({ projectID: session.projectID, kind: "github-token", value: token })
+      const prepared = yield* prepare(() =>
+        Effect.gen(function* () {
+          expect(yield* Vault.Current).toBeUndefined()
+          return { content: [{ type: "text" as const, text: token }] }
+        }),
+      )
+      expect((yield* prepared.executeTool(call("call-disabled"))).content).toEqual([
+        { type: "text", text: Vault.reference(name) },
+      ])
+    }).pipe(
+      Effect.provideService(SessionModelTransport.Service, transport),
+      Effect.provide(Config.testLayer([new Document({ type: "document", info: new Info({ vault: false }) })])),
+    ),
   )
 
   it.effect("neither resolves nor scrubs another project's secret", () =>

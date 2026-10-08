@@ -1,5 +1,5 @@
 import { describe, expect } from "bun:test"
-import { Deferred, Effect, Fiber, Layer } from "effect"
+import { Cause, Deferred, Effect, Exit, Fiber, Layer } from "effect"
 import { AppNodeBuilder } from "@opencode/core/effect/app-node-builder"
 import { LayerNode } from "@opencode/util/effect/layer-node"
 import { makeLocationNode } from "@opencode/util/effect/app-node"
@@ -15,6 +15,7 @@ import { Vault } from "@opencode/core/vault/vault"
 import { Project } from "@opencode/schema/project"
 import { Config } from "@opencode/core/config"
 import { Location } from "@opencode/core/location"
+import { Document, Info } from "@opencode/schema/config"
 import { AbsolutePath } from "@opencode/core/schema"
 import { location } from "./fixture/location"
 import { testEffect } from "./lib/effect"
@@ -40,28 +41,32 @@ const form = Layer.mock(Form.Service, {
 const toolNode = makeLocationNode({
   name: "test/vault-request-tool-plugin",
   layer: Layer.effectDiscard(registerToolPlugin(VaultRequestTool.Plugin)),
-  deps: [Tool.node, Permission.node, Form.node],
+  deps: [Tool.node, Permission.node, Form.node, Config.node],
 })
 
+const configLayer = Config.testLayer()
 const it = testEffect(
-  AppNodeBuilder.build(LayerNode.group([Tool.node, toolNode]), [
-    Permission.node.replace(
-      permissionLayer({
-        assert: (input) =>
-          deny
-            ? Effect.fail(
-                new Permission.BlockedError({ rules: [], permission: input.action, resources: [...input.resources] }),
-              )
-            : Effect.void,
-      }),
-    ),
-    Form.node.replace(form),
-    Config.node.replace(Config.testLayer()),
-    Location.node.replace(
-      Layer.succeed(Location.Service, Location.Service.of(location({ directory: AbsolutePath.make(process.cwd()) }))),
-    ),
-    Image.node.replace(imagePassthrough),
-  ]),
+  Layer.merge(
+    configLayer,
+    AppNodeBuilder.build(LayerNode.group([Tool.node, toolNode]), [
+      Permission.node.replace(
+        permissionLayer({
+          assert: (input) =>
+            deny
+              ? Effect.fail(
+                  new Permission.BlockedError({ rules: [], permission: input.action, resources: [...input.resources] }),
+                )
+              : Effect.void,
+        }),
+      ),
+      Form.node.replace(form),
+      Config.node.replace(configLayer),
+      Location.node.replace(
+        Layer.succeed(Location.Service, Location.Service.of(location({ directory: AbsolutePath.make(process.cwd()) }))),
+      ),
+      Image.node.replace(imagePassthrough),
+    ]),
+  ),
 )
 
 const call = (id: string, name = "Stripe Key") => ({
@@ -106,24 +111,18 @@ describe("VaultRequestTool", () => {
     }),
   )
 
-  it.effect("reports a decline as a result the model reads", () =>
+  it.effect("stops execution on a decline instead of returning a successful result", () =>
     Effect.gen(function* () {
       const vault = Vault.make()
       answer = { status: "cancelled" }
       const registry = yield* Tool.Service
-      const settled = yield* executeTool(registry, call("call-vault-decline")).pipe(
-        Effect.provideService(Vault.Current, Vault.bind(vault, projectID)),
+      const settled = yield* Effect.exit(
+        executeTool(registry, call("call-vault-decline")).pipe(
+          Effect.provideService(Vault.Current, Vault.bind(vault, projectID)),
+        ),
       )
-      expect(settled).toMatchObject({
-        status: "completed",
-        output: { declined: true },
-        content: [
-          {
-            type: "text",
-            text: "The user declined to provide {vault:stripe-key}. Continue without it, or ask how to proceed.",
-          },
-        ],
-      })
+      expect(Exit.isFailure(settled)).toBe(true)
+      if (Exit.isFailure(settled)) expect(Cause.squash(settled.cause)).toBeInstanceOf(VaultRequestTool.CancelledError)
       expect(yield* vault.list(projectID)).toEqual([])
     }),
   )
@@ -141,19 +140,19 @@ describe("VaultRequestTool", () => {
         Effect.gen(function* () {
           const vault = Vault.make()
           answer = item
-          const result = yield* executeTool(registry, call(`call-vault-empty-${index}`)).pipe(
-            Effect.provideService(Vault.Current, Vault.bind(vault, projectID)),
+          const result = yield* Effect.exit(
+            executeTool(registry, call(`call-vault-empty-${index}`)).pipe(
+              Effect.provideService(Vault.Current, Vault.bind(vault, projectID)),
+            ),
           )
           expect(yield* vault.list(projectID)).toEqual([])
           return result
         }),
       )
-      expect(settled.map((item) => (item.status === "completed" ? item.metadata : item))).toEqual([
-        { name: "stripe-key", declined: true },
-        { name: "stripe-key", declined: true },
-        { name: "stripe-key", declined: true },
-        { name: "stripe-key", declined: true },
-      ])
+      expect(settled.every(Exit.isFailure)).toBe(true)
+      settled.forEach((item) => {
+        if (Exit.isFailure(item)) expect(Cause.squash(item.cause)).toBeInstanceOf(VaultRequestTool.CancelledError)
+      })
       // An array answer carrying the typed text is refused whole, and never echoed back.
       expect(JSON.stringify(settled)).not.toContain(typed)
     }),
@@ -226,6 +225,31 @@ describe("VaultRequestTool", () => {
       expect(asked).toBeUndefined()
       expect(yield* vault.list(projectID)).toEqual([])
     }).pipe(Effect.ensuring(Effect.sync(() => (deny = false)))),
+  )
+
+  it.effect("blocks an already captured executor when configuration disables vault", () =>
+    Effect.gen(function* () {
+      const registry = yield* Tool.Service
+      const snapshot = yield* registry.snapshot()
+      const config = yield* Config.Test
+      yield* config.setEntries([new Document({ type: "document", info: new Info({ vault: false }) })])
+      asked = undefined
+      const result = yield* snapshot.execute(call("call-disabled")).pipe(Effect.flip)
+      expect(result.message).toBe("Vault is disabled for this repository.")
+      expect(asked).toBeUndefined()
+      // A repository choice takes precedence over a global setting.
+      yield* config.setEntries([
+        new Document({ type: "document", info: new Info({ vault: false }) }),
+        new Document({ type: "document", info: new Info({ vault: true }) }),
+      ])
+      answer = { status: "answered", answer: { value: typed } }
+      const vault = Vault.make()
+      expect(
+        (yield* snapshot
+          .execute(call("call-enabled"))
+          .pipe(Effect.provideService(Vault.Current, Vault.bind(vault, projectID)))).output,
+      ).toEqual({ name: "stripe-key", declined: false })
+    }),
   )
 
   it.effect("hides the tool from an agent that may not ask questions", () =>

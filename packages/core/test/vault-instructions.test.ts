@@ -35,6 +35,21 @@ describe("VaultInstructions", () => {
     ),
   )
 
+  it.effect("withdraws guidance and names when disabled, without forgetting secrets", () =>
+    provided(
+      Effect.gen(function* () {
+        const vault = yield* Vault.Service
+        const context = yield* VaultInstructions.Service
+        yield* vault.set({ projectID: projectA, name: "github-token", value: token, origin: "user" })
+        const enabled = yield* readInitial(context.load(projectA, { sinks: true }))
+        const disabled = context.load(projectA, { sinks: true, enabled: false })
+        expect((yield* readInitial(disabled)).text).toBe("")
+        expect((yield* readUpdate(disabled, enabled)).changed).toBe(true)
+        expect(yield* vault.resolve({ projectID: projectA, name: "github-token" })).toBe(token)
+      }),
+    ),
+  )
+
   it.effect("lists the project's references, never values, and delivers additions and removals as updates", () =>
     provided(
       Effect.gen(function* () {

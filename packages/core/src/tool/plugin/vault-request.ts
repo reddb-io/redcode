@@ -7,11 +7,13 @@ import { FORM_FIELD, FORM_KIND, reference, sanitize } from "@opencode/schema/vau
 import { Form } from "../../form.js"
 import { Permission } from "../../permission.js"
 import { Vault } from "../../vault/vault.js"
+import { Config } from "../../config.js"
+import { ConfigEntryObserver } from "../../config/plugin/entry-observer.js"
 
 export const name = "vault_request"
 
 export const description =
-  "Ask the user for a secret this project's vault does not hold, such as an API key or a password. The user types it into a masked field; you get back only its `{vault:<name>}` reference, which works in shell commands, webfetch URLs, MCP arguments and .env files. Say in `purpose` what it is for. Never ask for a secret in a message or a question instead."
+  "Ask the user for a secret this project's vault does not hold, such as an API key or a password. The user types it into a masked field; you get back only its `{vault:<name>}` reference, which works in shell commands, webfetch URLs, MCP arguments and .env files. Say in `purpose` what it is for. Only call this tool when the task actually requires a missing credential. Never call it for a placeholder, to recover a failed tool call, or to unblock execution. Never ask for a secret in a message or a question instead."
 
 export const Input = Schema.Struct({
   name: Schema.String.annotate({
@@ -25,20 +27,28 @@ export const Output = Schema.Struct({
   declined: Schema.Boolean,
 })
 
+export class CancelledError extends Schema.TaggedError<CancelledError>()("VaultRequestTool.CancelledError", {}) {
+  override get message() {
+    return "The user declined the secret request. Wait for new user input before requesting another secret."
+  }
+}
+
 /**
  * Asks the user for a secret through a form the clients render masked and store under a project-unique name. The
  * value goes from the form straight into the vault: the form service keeps no answer of a secret form, and the
- * result, its metadata and the stored call carry only the reference. Dismissing the form is a decline the model
- * reads, not a failure.
+ * result, its metadata and the stored call carry only the reference. Dismissing the form stops execution until the user provides new input.
  */
 export const Plugin = {
   id: "opencode.tool.vault-request",
   effect: Effect.fn("VaultRequestTool.Plugin")(function* (ctx: Context) {
     const forms = yield* Form.Service
     const permission = yield* Permission.Service
+    const config = yield* Config.Service
+    const loaded = yield* ConfigEntryObserver.observe(config, ctx.event, ctx.tool.reload())
 
     yield* ctx.tool
-      .transform((editor) =>
+      .transform((editor) => {
+        if (Config.latest(loaded.entries, "vault") === false) return
         editor.add({
           name,
           // Only an agent that may ask the user questions may ask for a secret.
@@ -48,6 +58,8 @@ export const Plugin = {
           output: Output,
           execute: (input, context) =>
             Effect.gen(function* () {
+              if (Config.latest(yield* config.entries(), "vault") === false)
+                return yield* new ToolFailure({ message: "Vault is disabled for this repository." })
               const binding = yield* Vault.Current
               if (!binding) return yield* new ToolFailure({ message: "The vault is not available outside a session." })
               const asked = sanitize(input.name) || "secret"
@@ -83,12 +95,9 @@ export const Plugin = {
                 })
                 .pipe(Effect.orDie)
               const value = state.status === "answered" ? state.answer[FORM_FIELD] : undefined
-              if (typeof value !== "string" || value === "")
-                return {
-                  output: { declined: true },
-                  content: `The user declined to provide ${reference(asked)}. Continue without it, or ask how to proceed.`,
-                  metadata: { name: asked, declined: true },
-                }
+              // Like question dismissal, tunnel through tool error conversion so the runner stops instead of
+              // presenting a successful result that can trigger another request with a different name.
+              if (typeof value !== "string" || value === "") return yield* Effect.die(new CancelledError())
               const stored = yield* binding.set({ name: asked, value, origin: "requested" })
               return {
                 output: { name: stored, declined: false },
@@ -96,8 +105,8 @@ export const Plugin = {
                 metadata: { name: stored, declined: false },
               }
             }),
-        }),
-      )
+        })
+      })
       .pipe(Effect.orDie)
   }),
 }

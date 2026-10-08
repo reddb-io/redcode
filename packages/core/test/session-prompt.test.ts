@@ -30,6 +30,7 @@ import { Plugin } from "@opencode/core/plugin"
 import { PluginHooks } from "@opencode/core/plugin/hooks"
 import { Snapshot } from "@opencode/core/snapshot"
 import { Skill } from "@opencode/core/skill"
+import { Document, Info } from "@opencode/schema/config"
 import { Config } from "@opencode/core/config"
 import { HookRuntime } from "@opencode/core/hook"
 import { Location } from "@opencode/core/location"
@@ -75,10 +76,16 @@ const locations = makeGlobalNode({
         (ref: Location.Ref) =>
           // oxlint-disable-next-line typescript-eslint/no-unsafe-type-assertion
           Layer.mergeAll(
-            LayerNode.compile(LayerNode.group([PluginHooks.node, Skill.node, HookRuntime.node]), {
+            LayerNode.compile(LayerNode.group([PluginHooks.node, Skill.node, HookRuntime.node, Config.node]), {
               replacements: [
                 Bus.node.replace(Layer.succeed(Bus.Service, bus)),
-                Config.node.replace(Config.testLayer()),
+                Config.node.replace(
+                  Config.testLayer(
+                    ref.directory === "/vault-disabled"
+                      ? [new Document({ type: "document", info: new Info({ vault: false }) })]
+                      : [],
+                  ),
+                ),
                 Location.node.replace(Layer.succeed(Location.Service, location(ref))),
               ],
             }),
@@ -281,6 +288,28 @@ describe("Session.prompt", () => {
       const inbox = yield* db.select().from(SessionInboxTable).all().pipe(Effect.orDie)
       expect(JSON.stringify([events, inbox])).not.toContain(token)
       expect(JSON.stringify(inbox)).toContain(checksum)
+    }),
+  )
+
+  it.effect("does not capture new prompt or compaction secrets when the repository disables vault", () =>
+    Effect.gen(function* () {
+      yield* setup
+      const session = yield* Session.Service
+      const vault = yield* Vault.Service
+      const database = yield* Database.Service
+      yield* database.db
+        .update(SessionTable)
+        .set({ directory: AbsolutePath.make("/vault-disabled") })
+        .where(eq(SessionTable.id, sessionID))
+        .run()
+        .pipe(Effect.orDie)
+      const token = "ghp" + "_" + "z".repeat(36)
+      const prompt = yield* session.prompt({ sessionID, text: `use ${token}`, resume: false })
+      expect(prompt.payload.text).toBe(`use ${token}`)
+      expect(prompt.payload.metadata?.vault).toBeUndefined()
+      const compact = yield* session.compact({ sessionID, focus: `keep ${token}` })
+      expect(compact.payload.focus).toBe(`keep ${token}`)
+      expect(yield* vault.list(Project.ID.global)).toEqual([])
     }),
   )
 

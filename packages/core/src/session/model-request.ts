@@ -29,6 +29,8 @@ import { makeLocationNode } from "@opencode/util/effect/app-node"
 import { App } from "../app.js"
 import { Permission } from "../permission.js"
 import { PluginHooks } from "../plugin/hooks.js"
+import { VaultRequestTool } from "../tool/plugin/vault-request.js"
+import { Config } from "../config.js"
 import { QuestionTool } from "../tool/plugin/question.js"
 import { Tool } from "../tool.js"
 import { SessionModelTransport } from "./model-transport.js"
@@ -59,7 +61,11 @@ const ESTIMATE_ERROR = 0.15
 const OUTPUT_TOKEN_MIN = 1_024
 
 /** Tool errors, plus the user declining a permission or dismissing a question. */
-export type ExecuteError = Tool.Error | Permission.DeclinedError | QuestionTool.CancelledError
+export type ExecuteError =
+  | Tool.Error
+  | Permission.DeclinedError
+  | QuestionTool.CancelledError
+  | VaultRequestTool.CancelledError
 
 export interface Prepared<Event = SessionRequest> {
   readonly event: Event
@@ -280,6 +286,7 @@ export const layer = Layer.effect(
     const store = yield* SessionStore.Service
     const app = yield* App.Metadata
     const vault = yield* Vault.Service
+    const config = yield* Config.Service
     const prepare = Effect.fn("SessionModelRequest.prepare")(function* <
       S extends SessionRequest & { tools?: Definitions },
     >(kind: SessionRequestKind, input: Input, shape: (draft: SessionRequest, tools: Definitions) => Effect.Effect<S>) {
@@ -470,31 +477,40 @@ export const layer = Layer.effect(
         // result is cleaned with the vault as it is when the call ends, so a secret another call just captured is
         // replaced too.
         executeTool: (call: Parameters<Prepared["executeTool"]>[0]) =>
-          tools.execute({ ...call, definitions: hooked, ...scrubbedProgress(call.progress, clean) }).pipe(
-            Effect.flatMap((result: Tool.NormalizedResult) =>
-              vault.scrubber(session.projectID).pipe(Effect.map((current) => scrubResult(result, current))),
-            ),
-            Effect.catch((error) =>
-              vault
-                .scrubber(session.projectID)
-                .pipe(
-                  Effect.flatMap((current) =>
-                    Effect.fail(error instanceof Tool.Error ? scrubError(error, current) : error),
-                  ),
+          config.entries().pipe(
+            Effect.flatMap((entries) =>
+              tools.execute({ ...call, definitions: hooked, ...scrubbedProgress(call.progress, clean) }).pipe(
+                Effect.flatMap((result: Tool.NormalizedResult) =>
+                  vault.scrubber(session.projectID).pipe(Effect.map((current) => scrubResult(result, current))),
                 ),
-            ),
-            Effect.provideService(Vault.Current, Vault.bind(vault, session.projectID)),
-            Effect.catchCauseFilter(
-              (cause) => {
-                const decline = cause.reasons.flatMap((r) =>
-                  Cause.isDieReason(r) &&
-                  (r.defect instanceof Permission.DeclinedError || r.defect instanceof QuestionTool.CancelledError)
-                    ? [r.defect]
-                    : [],
-                )[0]
-                return decline ? Result.succeed(decline) : Result.fail(cause)
-              },
-              (decline) => Effect.fail(decline),
+                Effect.catch((error) =>
+                  vault
+                    .scrubber(session.projectID)
+                    .pipe(
+                      Effect.flatMap((current) =>
+                        Effect.fail(error instanceof Tool.Error ? scrubError(error, current) : error),
+                      ),
+                    ),
+                ),
+                Effect.provideService(
+                  Vault.Current,
+                  Config.latest(entries, "vault") === false ? undefined : Vault.bind(vault, session.projectID),
+                ),
+                Effect.catchCauseFilter(
+                  (cause) => {
+                    const decline = cause.reasons.flatMap((r) =>
+                      Cause.isDieReason(r) &&
+                      (r.defect instanceof Permission.DeclinedError ||
+                        r.defect instanceof QuestionTool.CancelledError ||
+                        r.defect instanceof VaultRequestTool.CancelledError)
+                        ? [r.defect]
+                        : [],
+                    )[0]
+                    return decline ? Result.succeed(decline) : Result.fail(cause)
+                  },
+                  (decline) => Effect.fail(decline),
+                ),
+              ),
             ),
           ),
       }
@@ -516,5 +532,5 @@ export const layer = Layer.effect(
 export const node = makeLocationNode({
   service: Service,
   layer,
-  deps: [PluginHooks.node, SessionModelTransport.node, SessionStore.node, App.node, Vault.node],
+  deps: [PluginHooks.node, SessionModelTransport.node, SessionStore.node, App.node, Vault.node, Config.node],
 })

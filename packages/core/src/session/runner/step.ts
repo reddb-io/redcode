@@ -21,7 +21,7 @@ import { Snapshot } from "../../snapshot.js"
 import { HookRuntime } from "../../hook.js"
 import { Tool } from "../../tool.js"
 import { ToolOutput } from "../../tool-output.js"
-import { QuestionTool } from "../../tool/plugin/question.js"
+import { VaultRequestTool } from "../../tool/plugin/vault-request.js"
 import { StepFailedError } from "../error.js"
 import { SessionGoalCompletion } from "../goal-completion.js"
 import { SessionGoal } from "../goal.js"
@@ -122,7 +122,7 @@ export const make = Effect.gen(function* () {
     })
     const toolRuns: Array<{
       readonly call: ToolCall
-      readonly fiber: Fiber.Fiber<void, Permission.DeclinedError | QuestionTool.CancelledError>
+      readonly fiber: Fiber.Fiber<void, Exclude<SessionModelRequest.ExecuteError, Tool.Error>>
     }> = []
     const interruptTools = Effect.suspend(() => Fiber.interruptAll(toolRuns.map((run) => run.fiber)))
     let guardStop: string | undefined
@@ -362,7 +362,8 @@ export const make = Effect.gen(function* () {
             type: "aborted",
             message: input.isLocationClosed()
               ? "Interaction cancelled because the location shut down"
-              : decline.reason._tag === "QuestionTool.CancelledError"
+              : decline.reason._tag === "QuestionTool.CancelledError" ||
+                  decline.reason instanceof VaultRequestTool.CancelledError
                 ? decline.reason.message
                 : "The user declined this tool call",
           })
@@ -486,7 +487,7 @@ const isInterruptedStream = (failure: AIError) => {
 
 /** Tool.Error settles in each fiber; only user declines remain in the typed error channel. */
 const classifyToolExits = (
-  settled: Exit.Exit<Array<Exit.Exit<void, Permission.DeclinedError | QuestionTool.CancelledError>>>,
+  settled: Exit.Exit<Array<Exit.Exit<void, Exclude<SessionModelRequest.ExecuteError, Tool.Error>>>>,
   runs: ReadonlyArray<{ readonly call: ToolCall }>,
 ) => {
   const exits = Exit.isSuccess(settled) ? settled.value : []
