@@ -34,6 +34,10 @@ import { State } from "@opencode/core/state"
 import { McpTool } from "@opencode/core/tool/mcp"
 import { McpResourceTools } from "@opencode/core/tool/plugin/mcp-resource"
 import { Tool } from "@opencode/core/tool"
+import { Agent } from "@opencode/core/agent"
+import { DesignPlugin } from "@opencode/core/plugin/design"
+import { host } from "./plugin/host"
+import type { Types } from "effect"
 import { ToolOutput } from "@opencode/core/tool-output"
 import {
   Context,
@@ -545,6 +549,85 @@ test("MCP tool names match V1 sanitization", () => {
   expect(McpTool.namespace("context 7")).toBe("context_7")
   expect(McpTool.name("context 7", "resolve.library/id")).toBe("context_7_resolve_library_id")
 })
+
+testEffect(Layer.empty).live("Design calls a connected MCP through direct tools and Code Mode", () =>
+  Effect.gen(function* () {
+    const server = yield* resourceServer()
+    yield* Effect.gen(function* () {
+      const mcp = yield* Mcp.Service
+      yield* settled(mcp)
+      const agent: Types.DeepMutable<Agent.Info> = {
+        id: Agent.ID.make("design"),
+        name: Agent.Name.make("design"),
+        request: { settings: {}, headers: {}, body: {} },
+        mode: "primary",
+        hidden: false,
+        permissions: [{ action: "*", resource: "*", effect: "allow" }],
+      }
+      yield* DesignPlugin.Plugin.effect(
+        host({
+          agent: {
+            get: () => Effect.die("unused agent.get"),
+            list: () => Effect.die("unused agent.list"),
+            reload: () => Effect.void,
+            transform: (callback) => {
+              callback({
+                list: () => [agent],
+                get: () => agent,
+                default: () => {},
+                remove: () => {},
+                update: (_id, update) => update(agent),
+              })
+              return Effect.succeed({ dispose: Effect.void })
+            },
+          },
+        }),
+      )
+      const registry = yield* Tool.Service
+      const registration = yield* McpTool.Service
+      yield* registration.flush
+      const policy = Permission.forAgent(agent as never, [])
+      const identity = { sessionID: Session.ID.make("ses_design_mcp"), ...toolIdentity, agent: agent.id }
+      const direct = yield* registry.snapshot(policy, { codeMode: false })
+      expect(direct.definitions.map((tool) => tool.name)).toContain("resources_echo")
+      yield* direct.execute({
+        ...identity,
+        call: { type: "tool-call", id: "direct", name: "resources_echo", input: { mode: "direct" } },
+      })
+      const code = yield* registry.snapshot(policy)
+      expect(code.definitions.map((tool) => tool.name)).toEqual(["execute"])
+      expect(codeModeListings(code.codeModeCatalog!).map((tool) => tool.path)).toContain("resources.echo")
+      yield* code.execute({
+        ...identity,
+        call: {
+          type: "tool-call",
+          id: "code",
+          name: "execute",
+          input: { code: 'return await tools.resources.echo({ mode: "code" })' },
+        },
+      })
+      expect(server.state.toolCalls.map((call) => call.arguments)).toEqual([{ mode: "direct" }, { mode: "code" }])
+    }).pipe(
+      Effect.provide(
+        McpTool.layer.pipe(
+          Layer.provideMerge(
+            AppNodeBuilder.build(Tool.node, [
+              Image.node.replace(imagePassthrough),
+              Location.node.replace(tempLocationLayer),
+            ]),
+          ),
+          Layer.provideMerge(resourceMcpLayer(server.url)),
+          Layer.provideMerge(
+            Layer.mergeAll(
+              Layer.mock(Permission.Service, { assert: () => Effect.void }),
+              Layer.mock(Bus.Service, { subscribe: () => Stream.never }),
+            ),
+          ),
+        ),
+      ),
+    )
+  }),
+)
 
 test("passes session IDs as MCP request metadata", async () => {
   await Effect.runPromise(

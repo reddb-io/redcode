@@ -1,9 +1,11 @@
 import { describe, expect, test } from "bun:test"
-import { Effect, Layer, type Types } from "effect"
+import { Effect, Layer, Stream, type Types } from "effect"
 import { Design } from "@opencode/schema/design"
 import { DesignChecklist } from "@opencode/core/design/checklist"
 import { Monitor } from "@opencode/schema/monitor"
 import { Agent } from "@opencode/core/agent"
+import { Bus } from "@opencode/core/bus"
+import { Mcp } from "@opencode/core/mcp/index"
 import { AppNodeBuilder } from "@opencode/core/effect/app-node-builder"
 import { DesignRenderer } from "@opencode/core/design/renderer"
 import { DesignStore } from "@opencode/core/design/store"
@@ -174,7 +176,7 @@ describe("Design tools", () => {
       yield* reset()
       const registry = yield* Tool.Service
       const agent = yield* designAgent()
-      const snapshot = yield* registry.snapshot(Permission.forAgent(agent as never, []))
+      const snapshot = yield* registry.snapshot(Permission.forAgent(agent as never, []), { codeMode: false })
       const names = snapshot.definitions.map((tool) => tool.name)
 
       expect(names).toEqual(expect.arrayContaining(["design_read", "design_export", "design_jobs", "design_playbook"]))
@@ -454,6 +456,31 @@ describe("Design checklist scope", () => {
 })
 
 describe("Design agent permissions", () => {
+  it.effect("keeps configured MCP policies and denies unconnected tools and product mutations", () =>
+    Effect.gen(function* () {
+      const tools = ["lookup", "send", "restricted"].map((name) => ({
+        server: Mcp.ServerName.make("vela"),
+        name,
+        inputSchema: { type: "object" as const },
+      }))
+      const agent = yield* designAgent(tools, [
+        { action: "*", resource: "*", effect: "ask" },
+        { action: "vela_lookup", resource: "*", effect: "allow" },
+        { action: "vela_restricted", resource: "*", effect: "deny" },
+        { action: "vela_send", resource: "private", effect: "deny" },
+      ])
+      const policy = Permission.forAgent(agent as never, [{ action: "*", resource: "*", effect: "allow" }])
+      expect(Permission.evaluate("vela_lookup", "*", policy).effect).toBe("allow")
+      expect(Permission.evaluate("vela_send", "*", policy).effect).toBe("ask")
+      expect(Permission.evaluate("vela_send", "private", policy).effect).toBe("deny")
+      expect(Permission.evaluate("vela_restricted", "*", policy).effect).toBe("deny")
+      expect(Permission.evaluate("unconnected_lookup", "*", policy).effect).toBe("deny")
+      expect(Permission.evaluate("execute", "*", policy).effect).toBe("allow")
+      expect(Permission.evaluate("shell", "*", policy).effect).toBe("deny")
+      expect(Permission.evaluate("edit", "src/app.tsx", policy).effect).toBe("deny")
+    }),
+  )
+
   it.effect("keeps Design to its own tools and prototype directory, whatever the Session granted", () =>
     Effect.gen(function* () {
       const agent = yield* designAgent()
@@ -498,7 +525,10 @@ describe("Design agent permissions", () => {
 })
 
 /** Runs the Design plugin against one editable agent, the way the agent domain applies plugin transforms. */
-function designAgent() {
+function designAgent(
+  tools: Mcp.Tool[] = [],
+  permissions: Permission.Ruleset = [{ action: "*", resource: "*", effect: "allow" }],
+) {
   return Effect.gen(function* () {
     const agent: Types.DeepMutable<Agent.Info> = {
       id: Agent.ID.make("design"),
@@ -506,7 +536,7 @@ function designAgent() {
       request: { settings: {}, headers: {}, body: {} },
       mode: "subagent",
       hidden: false,
-      permissions: [{ action: "*", resource: "*", effect: "allow" }],
+      permissions: [...permissions],
     }
     yield* DesignPlugin.Plugin.effect(
       host({
@@ -530,7 +560,14 @@ function designAgent() {
       }),
     )
     return agent
-  })
+  }).pipe(
+    Effect.provide(
+      Layer.mergeAll(
+        Layer.mock(Mcp.Service, { tools: () => Effect.succeed(tools) }),
+        Layer.mock(Bus.Service, { subscribe: () => Stream.never }),
+      ),
+    ),
+  )
 }
 
 describe("design_preview unchanged publishes", () => {

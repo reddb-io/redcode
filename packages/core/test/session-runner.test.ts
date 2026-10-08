@@ -94,6 +94,7 @@ import { InstructionDiscovery } from "@opencode/core/instruction-discovery"
 import { SkillInstructions } from "@opencode/core/skill/instructions"
 import { ReferenceInstructions } from "@opencode/core/reference/instructions"
 import { McpInstructions } from "@opencode/core/mcp/instructions"
+import { Mcp } from "@opencode/core/mcp/index"
 import { SessionSystemPrompt } from "@opencode/core/session/system-prompt"
 import { ID, Model } from "@opencode/core/model"
 import { Location } from "@opencode/core/location"
@@ -501,6 +502,7 @@ const layer = Layer.unwrap(
       Plugin.node.replace(Layer.mock(Plugin.Service, { awaitActivation: Effect.void })),
       SessionModelTransport.node.replace(modelTransport),
       McpInstructions.node.replace(mcpInstructions),
+      Mcp.node.replace(Layer.mock(Mcp.Service, { tools: () => Effect.succeed([]) })),
     ]
     const execution = Layer.effect(
       SessionExecution.Service,
@@ -534,6 +536,7 @@ const layer = Layer.unwrap(
       LayerNode.group([
         Database.node,
         Bus.node,
+        Mcp.node,
         Form.node,
         SessionProjector.node,
         SessionStore.node,
@@ -4931,9 +4934,7 @@ describe("SessionRunnerLLM", () => {
     yield* s.admit("Continue")
     const error = yield* s.resume.pipe(Effect.flip)
 
-    expect(error.message).toStartWith(
-      "Compaction cannot bring this conversation under the context window: ",
-    )
+    expect(error.message).toStartWith("Compaction cannot bring this conversation under the context window: ")
     expect(error.message).toContain(
       " after compaction (the system prompt, instructions and tool definitions take 105,0",
     )

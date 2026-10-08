@@ -11,17 +11,18 @@ import { Vault } from "./vault.js"
  * baseline and the provider cache. Bump `GUIDE_VERSION` with the text so a running Session receives the new one.
  */
 export const GUIDE = [
-  "Secrets: this project keeps secrets in its git-ignored .env file, and you see each one only as a reference such as {vault:github-token}, the variable GITHUB_TOKEN, never its value.",
+  "Secrets live in the project's git-ignored .env; you see references like {vault:github-token} (GITHUB_TOKEN), never values.",
   "A reference in a user message stands for that credential; use it and do not ask for the value again.",
-  "Write references where the value belongs: in shell commands (any quoting, headers, JSON bodies, heredocs), webfetch URLs, MCP arguments, and .env files git ignores.",
-  "Secrets in tool output, such as a token a login returns, come back as new references; for an opaque value no pattern recognizes, run the command with `capture`.",
-  "Only when the task requires a credential the vault lacks, call vault_request with a name and a purpose instead of asking in chat.",
-  "The first time a secret goes to a new host the user approves it, so name the host plainly in the command, as a literal URL rather than a variable.",
-  "Never print, echo, log or commit a secret, and never paste one into code, a git remote URL or any file other than an ignored .env.",
-  "An unknown reference means the vault does not hold it, for example after the service restarted: request it again.",
+  "Use references in shell commands (any quoting), webfetch URLs, MCP arguments and ignored .env files.",
+  "Tool-output secrets become references; use shell `capture` for unrecognized opaque values.",
+  "Call vault_request with name and purpose only for a required missing credential; never ask in chat.",
+  "Connected MCP servers manage authentication. Use their tools; only a real credential error justifies requesting a secret. vault_request cannot cancel, unlock execution, recover failed calls or stand in as a placeholder. After refusal, wait for new instructions; never repeat or rename the request.",
+  "Sending a secret to a new host requires approval; use a literal URL.",
+  "Never print, log or commit secrets, or write them outside an ignored .env.",
+  "An unknown reference means the vault lacks that credential; request it only if required.",
 ].join(" ")
 
-const GUIDE_VERSION = 3
+const GUIDE_VERSION = 4
 
 const Entry = Schema.Struct({ name: Schema.String, kind: Schema.String, hosts: Schema.Array(Schema.String) })
 type Entry = typeof Entry.Type
