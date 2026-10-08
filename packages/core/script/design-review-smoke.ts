@@ -223,6 +223,79 @@ const server = Bun.serve({
 const browser = await chromium.launch({ headless: true })
 const page = await browser.newPage({ viewport: { width: 1440, height: 900 } })
 try {
+  // The review's slide frames are always 1920×1080, even when their host scales them down.
+  // A padded deck must not turn that native-size frame into a scrolling document.
+  await Bun.write(
+    path.join(directory.path, "slides.html"),
+    `<!doctype html><html><head><style>.deck{padding:24px}section.slide{background:lightblue}@media print{.deck{padding:0}}</style></head><body><main class="deck"><section class="slide" id="first"><h1>First slide</h1><aside class="notes">Speaker notes</aside></section><section class="slide" id="second"><h1>Second slide</h1></section></main></body></html>`,
+  )
+  const presentation = await DesignPage.preview(
+    { ...revisions[0], document: { ...design, target: "presentation", entry: "slides.html" } },
+    directory.path,
+  )
+  const slidePage = await browser.newPage()
+  try {
+    await slidePage.setViewportSize({ width: 1920, height: 1080 })
+    await slidePage.goto(`data:text/html;base64,${Buffer.from(presentation).toString("base64")}`)
+    await slidePage.waitForSelector("#first[data-design-screen]")
+    for (const viewport of [
+      { width: 1920, height: 1080 },
+      { width: 1920, height: 1200 },
+      { width: 1919, height: 1080 },
+      { width: 1280, height: 800 },
+      { width: 393, height: 852 },
+    ]) {
+      await slidePage.setViewportSize(viewport)
+      await slidePage.waitForFunction(() => {
+        const slide = document.querySelector("#first")!.getBoundingClientRect()
+        const scale = Math.min(innerWidth / 1920, innerHeight / 1080)
+        return (
+          Math.abs(slide.width - 1920 * scale) < 0.1 &&
+          Math.abs(slide.height - 1080 * scale) < 0.1 &&
+          Math.abs(slide.x - (innerWidth - slide.width) / 2) < 0.1 &&
+          Math.abs(slide.y - (innerHeight - slide.height) / 2) < 0.1
+        )
+      })
+      assert.deepEqual(
+        await slidePage.evaluate(() => ({
+          width: document.documentElement.scrollWidth,
+          height: document.documentElement.scrollHeight,
+          overflow: getComputedStyle(document.documentElement).overflow,
+        })),
+        { ...viewport, overflow: "hidden" },
+      )
+    }
+    await slidePage.keyboard.press("ArrowRight")
+    await slidePage.waitForSelector("#second", { state: "visible" })
+    assert.equal(await slidePage.locator("#first").isVisible(), false)
+    assert.equal(await slidePage.locator("aside.notes").isVisible(), false)
+
+    await slidePage.emulateMedia({ media: "print" })
+    await slidePage.evaluate(() => window.dispatchEvent(new CustomEvent("design:print", { detail: { all: true } })))
+    assert.equal(await slidePage.locator("section.slide:visible").count(), 2)
+    assert.deepEqual(
+      await slidePage.locator("#first").evaluate((node) => ({
+        position: getComputedStyle(node).position,
+        transform: getComputedStyle(node).transform,
+        width: node.getBoundingClientRect().width,
+        height: node.getBoundingClientRect().height,
+      })),
+      { position: "relative", transform: "none", width: 1920, height: 1080 },
+    )
+    assert.equal(
+      (
+        Buffer.from(await slidePage.pdf({ preferCSSPageSize: true }))
+          .toString("latin1")
+          .match(/\/Type\s*\/Page\b/g) ?? []
+      ).length,
+      2,
+    )
+    console.log(
+      "Presentation fits without scrolling at native, near-native, desktop and mobile sizes; navigation and two-page PDF verified",
+    )
+  } finally {
+    await slidePage.close()
+  }
   const errors: string[] = []
   page.on("pageerror", (error) => {
     errors.push(error.message)

@@ -334,12 +334,12 @@ export function slides(logic: typeof deck) {
       mark()
     })
   }
-  /** Scales the canvas to fit a window that is not 1920×1080, centered on black; a 1920×1080 frame is left alone. */
+  /** Centers the canvas at every window size, including the native-size review frame. */
   const fit = () => {
     const root = document.documentElement
     if (!root) return
     const scale = Math.min(innerWidth / WIDTH, innerHeight / HEIGHT)
-    if (!Number.isFinite(scale) || scale <= 0 || Math.abs(scale - 1) < 0.001) {
+    if (!Number.isFinite(scale) || scale <= 0) {
       delete root.dataset.slideFit
       return
     }
