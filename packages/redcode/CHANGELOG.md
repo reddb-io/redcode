@@ -1,5 +1,11 @@
 # @reddb-io/redcode
 
+## 0.72.10
+
+### Patch Changes
+
+- Keep presentation slides centered and free of document scrollbars in native-size previews and exports.
+
 ## 0.72.9
 
 ### Patch Changes
