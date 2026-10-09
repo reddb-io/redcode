@@ -3,7 +3,7 @@ import { fetch } from "bun"
 import { build, createServer } from "vite"
 import { icons } from "./vite.icons"
 import manifest from "./manifest.json" with { type: "json" }
-import platform from "../ui/vendor/design-system/platform/platform-manifest.json" with { type: "json" }
+import platform from "../design-system/platform/platform-manifest.json" with { type: "json" }
 
 test("bundles the design system's platform icons", async () => {
   const result = await build({
@@ -77,7 +77,7 @@ async function check(read: (path: string) => Promise<Uint8Array>) {
   await Promise.all(
     platform.icons.map(async (icon) => {
       expect(await read(`/${icon.file}`)).toEqual(
-        await Bun.file(new URL(`../ui/vendor/design-system/platform/${icon.file}`, import.meta.url)).bytes(),
+        await Bun.file(new URL(`../design-system/platform/${icon.file}`, import.meta.url)).bytes(),
       )
     }),
   )

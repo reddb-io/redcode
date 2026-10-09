@@ -7,7 +7,7 @@
 }
 
 /*
-  Tooltip, drawn to the design system's Tooltip (@opencode/ui/contracts/tooltip): caption-sized ink on
+  Tooltip, drawn to the design system's Tooltip (@reddb-io/design-system/contracts/tooltip): caption-sized ink on
   the overlay surface inside a 1px overlay border with the overlay shadow, one small control tall. `standard` wraps
   long explanations; `large` is the roomier panel for multi-line help.
 */
