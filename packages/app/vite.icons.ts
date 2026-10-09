@@ -1,7 +1,7 @@
 import { readFileSync } from "node:fs"
 import type { Plugin } from "vite"
 import manifest from "./manifest.json" with { type: "json" }
-import platform from "../ui/vendor/design-system/platform/platform-manifest.json" with { type: "json" }
+import platform from "../design-system/platform/platform-manifest.json" with { type: "json" }
 
 // Every channel serves the RedDB platform icons the design system publishes, byte-for-byte, at the paths its
 // platform manifest links (scripts/sync-design-system.ts vendors them).
@@ -9,7 +9,7 @@ export function icons(): Plugin {
   const files = [
     ...platform.icons.map((icon) => ({
       fileName: icon.file,
-      source: readFileSync(new URL(`../ui/vendor/design-system/platform/${icon.file}`, import.meta.url)),
+      source: readFileSync(new URL(`../design-system/platform/${icon.file}`, import.meta.url)),
       type: icon.file.endsWith(".svg") ? "image/svg+xml" : icon.file.endsWith(".ico") ? "image/x-icon" : "image/png",
     })),
     {

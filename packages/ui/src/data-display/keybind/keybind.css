@@ -1,5 +1,5 @@
 /*
-  Keybind, drawn to the design system's Kbd (@opencode/ui/contracts/kbd): caption-sized key caps in the
+  Keybind, drawn to the design system's Kbd (@reddb-io/design-system/contracts/kbd): caption-sized key caps in the
   secondary ink, outlined by the `muted` border. `ghost` drops the cap and keeps the legend.
 */
 [data-component="keybind-v2"] {

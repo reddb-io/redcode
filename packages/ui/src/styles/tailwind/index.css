@@ -15,7 +15,7 @@
 @source not "../../../src/assets";
 @source not "../../../src/i18n";
 @source not "../../../src/**/*.test.{ts,tsx}";
-@source "../../../vendor/design-system/kits/*/src/**/*.variants.ts";
+@source "../../../../design-system/kits/*/src/**/*.variants.ts";
 @import "./utilities.css";
 
 @import "../index.css";
@@ -98,4 +98,4 @@
 @import "./colors.css";
 
 /* The reddb.io design system: tokens, Application theme, Color Schemes, Density and Brand fonts. */
-@import "../../../vendor/design-system/styles/application.css";
+@import "@reddb-io/design-system/styles/application.css";

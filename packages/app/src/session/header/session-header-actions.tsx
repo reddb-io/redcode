@@ -1,6 +1,6 @@
 import { createMemo, For, Show } from "solid-js"
-import { quietControl } from "@opencode/ui/contracts/quiet-control"
-import { toggleButton } from "@opencode/ui/contracts/toggle-button"
+import { quietControl } from "@reddb-io/design-system/contracts/quiet-control"
+import { toggleButton } from "@reddb-io/design-system/contracts/toggle-button"
 import { Icon } from "@opencode/ui/icon"
 import type { IconName } from "@opencode/ui/icons/catalog"
 import { IconButton } from "@opencode/ui/icon-button"

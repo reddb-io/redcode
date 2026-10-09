@@ -39,7 +39,7 @@ export function createEarlyWindow() {
   const root = path.dirname(fileURLToPath(import.meta.url))
   const file = path.join(app.getPath("userData"), windowStateFile(id))
   const state = resolveWindowState(readWindowState(file), { width: 1280, height: 800 }, displays)
-  const icons = app.isPackaged ? path.join(process.resourcesPath, "icons") : path.join(root, "../../../ui/vendor/design-system/platform")
+  const icons = app.isPackaged ? path.join(process.resourcesPath, "icons") : path.join(root, "../../../design-system/platform")
 
   const win = new BrowserWindow({
     x: state.x,

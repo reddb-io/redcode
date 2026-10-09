@@ -1,11 +1,11 @@
-import { colorSchemes } from "../../../vendor/design-system/layers/color/src"
+import { colorSchemes } from "@reddb-io/design-system/color"
 import type { DesktopTheme, HexColor, ThemeVariant, V2ColorValue } from "../types"
 
 /**
  * The built-in Redcode theme: the reddb.io Design System's Application Theme.
  *
  * Every color below is a role from the vendored design system (`--reddb-color-*`), resolved per Color Scheme by
- * `vendor/design-system`. Nothing here is a raw color except the seeds, which only feed the engine's derived scales
+ * `@reddb-io/design-system`. Nothing here is a raw color except the seeds, which only feed the engine's derived scales
  * (diff, syntax, markdown) that the design system has no role for; they are the design system's Brand stops at the
  * pinned release. Both variants share one set of references because the roles flip with `data-color-scheme`.
  *

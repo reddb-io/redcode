@@ -1,8 +1,8 @@
 import { createSignal, onCleanup, Show } from "solid-js"
-import { DEFAULT_SYMBOL_PX, logoBox, px } from "../../vendor/design-system/kits/base/src/logo.box"
-import { selectMark, type LogoLayout, type LogoSurface } from "../../vendor/design-system/kits/base/src/logo.marks"
-import { observeActiveSurface } from "../../vendor/design-system/kits/base/src/logo.surface"
-import { logo, logoMark } from "../../vendor/design-system/kits/base/src/logo.variants"
+import { DEFAULT_SYMBOL_PX, logoBox, px } from "@reddb-io/design-system/logo/box"
+import { selectMark, type LogoLayout, type LogoSurface } from "@reddb-io/design-system/logo/marks"
+import { observeActiveSurface } from "@reddb-io/design-system/logo/surface"
+import { logo, logoMark } from "@reddb-io/design-system/logo/variants"
 
 /**
  * The design system's Base Kit Logo for Solid. Redcode carries the RedDB brand, and the Kit's Logo is Svelte, so

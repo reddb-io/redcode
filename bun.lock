@@ -68,6 +68,7 @@
         "@opencode/ui": "workspace:*",
         "@opencode/util": "workspace:*",
         "@pierre/trees": "1.0.0-beta.4",
+        "@reddb-io/design-system": "workspace:*",
         "@sentry/solid": "catalog:",
         "@solid-primitives/event-bus": "1.1.2",
         "@solid-primitives/event-listener": "catalog:",
@@ -321,6 +322,13 @@
         "@typescript/native-preview": "catalog:",
       },
     },
+    "packages/design-system": {
+      "name": "@reddb-io/design-system",
+      "version": "0.0.0",
+      "dependencies": {
+        "tailwind-variants": "^3.1.1",
+      },
+    },
     "packages/desktop": {
       "name": "@reddb-io/redcode-desktop",
       "version": "0.1.0",
@@ -385,6 +393,7 @@
         "@opencode/ui": "workspace:*",
         "@opencode/util": "workspace:*",
         "@pierre/trees": "1.0.0-beta.4",
+        "@reddb-io/design-system": "workspace:*",
         "@solid-primitives/event-listener": "catalog:",
         "@solid-primitives/keyed": "1.5.3",
         "@solid-primitives/media": "catalog:",
@@ -627,6 +636,7 @@
         "@opencode/ui": "workspace:*",
         "@opencode/util": "workspace:*",
         "@pierre/diffs": "catalog:",
+        "@reddb-io/design-system": "workspace:*",
         "@shikijs/stream": "catalog:",
         "@solid-primitives/event-listener": "catalog:",
         "@solid-primitives/media": "catalog:",
@@ -728,6 +738,7 @@
         "@kitlangton/solid-motion": "0.2.1",
         "@kobalte/core": "catalog:",
         "@pierre/diffs": "catalog:",
+        "@reddb-io/design-system": "workspace:*",
         "@solid-primitives/event-listener": "catalog:",
         "@solid-primitives/resize-observer": "catalog:",
         "fuzzysort": "catalog:",
@@ -1765,6 +1776,8 @@
     "@puppeteer/browsers": ["@puppeteer/browsers@3.2.3", "", { "dependencies": { "modern-tar": "^0.8.4", "yargs": "^18.0.0" }, "peerDependencies": { "proxy-agent": ">=8.0.1", "yauzl": "^2.10.0 || ^3.4.0" }, "optionalPeers": ["proxy-agent", "yauzl"], "bin": { "browsers": "lib/main-cli.js" } }, "sha512-2Bt3m6dDAJqmZehn0wiXSYyQmuhyiHHZ7FjvrVaS1W2RoFGV6eCK71UvKYkNJjkwC1Q9nobjhvTMhLQztFVINA=="],
 
     "@reddb-io/client": ["@reddb-io/client@1.23.4", "", {}, "sha512-k0kJZzkob58XoxgZhJAXAgM5ffcD9/ih1+Ay1yLs0XQ4xkIGG456rGY3z+j2ynTwdHV/GTks7UycaIDfTwpWvg=="],
+
+    "@reddb-io/design-system": ["@reddb-io/design-system@workspace:packages/design-system"],
 
     "@reddb-io/multi-rpc": ["@reddb-io/multi-rpc@0.29.6", "", { "dependencies": { "@reddb-io/toon": "0.29.6", "@reddb-io/toon-rpc": "0.29.6" } }, "sha512-OljioOTUEf6LlNXA0MbhwNO8V9q0W96GCh3y1u36ZAAfZxAhKDXgwu6Ato8hhO0hp5WRHlkW649sOWrIm9VKYg=="],
 
