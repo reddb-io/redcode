@@ -8,3 +8,8 @@ import path from "node:path"
 export function serviceRegistrationFile() {
   return path.join(process.env.REDCODE_TEST_HOME ?? homedir(), ".red", "code", "state", "service.json")
 }
+
+/** The pointer `redcode desktop` writes to tell the app which installation it belongs to: `{ version, cli, app }`. */
+export function desktopInstallFile() {
+  return path.join(process.env.REDCODE_TEST_HOME ?? homedir(), ".red", "code", "state", "desktop.json")
+}

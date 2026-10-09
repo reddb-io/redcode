@@ -51,6 +51,8 @@ const connect = Effect.fn("BackgroundService.connect")(function* (mode: "initial
 
   yield* Effect.logInfo("starting background service", { mode })
   const desktopCli = yield* DesktopCli.Service
+  const fs = yield* FileSystem.FileSystem
+  const path = yield* Path.Path
   const runFork = Effect.runForkWith(yield* Effect.context<FileSystem.FileSystem | Path.Path>())
   const cli = yield* desktopCli.resolve
   const file = serviceRegistrationFile()
@@ -75,11 +77,14 @@ const connect = Effect.fn("BackgroundService.connect")(function* (mode: "initial
   if (url.hostname === "0.0.0.0") url.hostname = "127.0.0.1"
   yield* Effect.logInfo("background service ready", { version: cli.version, probed: !!early, ...endpoint(url.origin) })
 
-  // Only packaged builds run a staged copy; the service now runs from the current stage, so an older copy at
-  // most belongs to a process still exiting.
+  // Only a bundled CLI runs from a staged copy; the service now runs from the current stage, so an older copy
+  // at most belongs to a process still exiting. An app that runs its installation's CLI removes every stage.
   if (mode === "initial" && app.isPackaged && cli.binary)
     runFork(
-      cleanStages(cli.binary).pipe(Effect.catch((error) => Effect.logError("failed to clean staged CLIs", { error }))),
+      (cli.source === "bundled"
+        ? cleanStages(cli.binary)
+        : fs.remove(path.join(app.getPath("userData"), "cli"), { recursive: true, force: true })
+      ).pipe(Effect.catch((error) => Effect.logError("failed to clean staged CLIs", { error }))),
     )
   const ready = { url: url.origin, password: service.auth.password } satisfies SidecarCredentials.Data
   SidecarCredentials.set(ready)
