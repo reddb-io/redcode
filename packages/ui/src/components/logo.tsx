@@ -1,16 +1,22 @@
 import { type ComponentProps } from "solid-js"
 
+// Redcode's mark is the prompt glyph `›_` in the Brand red, set in Space Grotesk Bold. The wordmark adds the name in
+// lowercase, as the CLI is spelled. Paths are outlines of the Brand typeface, so they never depend on a font loading.
+// The glyph paths are generated; edit the design system's fonts, not these numbers.
+const MARK = "M68 -6V-141L302 -239V-257L68 -355V-490H74L428 -320V-176L74 -6Z M533 162V48H1023V162Z"
+const WORD =
+  "M1278 0V-496H1402V-440H1420Q1431 -470 1456.5 -484Q1482 -498 1516 -498H1576V-386H1514Q1466 -386 1435 -360.5Q1404 -335 1404 -282V0Z M1888 14Q1814 14 1757.5 -17.5Q1701 -49 1669.5 -106.5Q1638 -164 1638 -242V-254Q1638 -332 1669 -389.5Q1700 -447 1756 -478.5Q1812 -510 1886 -510Q1959 -510 2013 -477.5Q2067 -445 2097 -387.5Q2127 -330 2127 -254V-211H1766Q1768 -160 1804 -128Q1840 -96 1892 -96Q1945 -96 1970 -119Q1995 -142 2008 -170L2111 -116Q2097 -90 2070.5 -59.5Q2044 -29 2000 -7.5Q1956 14 1888 14ZM1767 -305H1999Q1995 -348 1964.5 -374Q1934 -400 1885 -400Q1834 -400 1804 -374Q1774 -348 1767 -305Z M2427 14Q2368 14 2316.5 -15.5Q2265 -45 2234 -102Q2203 -159 2203 -240V-256Q2203 -337 2234 -394Q2265 -451 2316 -480.5Q2367 -510 2427 -510Q2472 -510 2502.5 -499.5Q2533 -489 2552 -473Q2571 -457 2581 -439H2599V-700H2725V0H2601V-60H2583Q2566 -32 2530.5 -9Q2495 14 2427 14ZM2465 -96Q2523 -96 2562 -133.5Q2601 -171 2601 -243V-253Q2601 -325 2562.5 -362.5Q2524 -400 2465 -400Q2407 -400 2368 -362.5Q2329 -325 2329 -253V-243Q2329 -171 2368 -133.5Q2407 -96 2465 -96Z M3086 14Q3014 14 2955.5 -16Q2897 -46 2863 -103Q2829 -160 2829 -241V-255Q2829 -336 2863 -393Q2897 -450 2955.5 -480Q3014 -510 3086 -510Q3157 -510 3208 -485Q3259 -460 3290.5 -416.5Q3322 -373 3332 -318L3210 -292Q3206 -322 3192 -346Q3178 -370 3152.5 -384Q3127 -398 3089 -398Q3051 -398 3020.5 -381.5Q2990 -365 2972.5 -332.5Q2955 -300 2955 -253V-243Q2955 -196 2972.5 -163.5Q2990 -131 3020.5 -114.5Q3051 -98 3089 -98Q3146 -98 3175.5 -127.5Q3205 -157 3213 -205L3335 -176Q3322 -123 3290.5 -79.5Q3259 -36 3208 -11Q3157 14 3086 14Z M3663 14Q3589 14 3530 -16Q3471 -46 3437 -103Q3403 -160 3403 -240V-256Q3403 -336 3437 -393Q3471 -450 3530 -480Q3589 -510 3663 -510Q3737 -510 3796 -480Q3855 -450 3889 -393Q3923 -336 3923 -256V-240Q3923 -160 3889 -103Q3855 -46 3796 -16Q3737 14 3663 14ZM3663 -98Q3721 -98 3759 -135.5Q3797 -173 3797 -243V-253Q3797 -323 3759.5 -360.5Q3722 -398 3663 -398Q3605 -398 3567 -360.5Q3529 -323 3529 -253V-243Q3529 -173 3567 -135.5Q3605 -98 3663 -98Z M4227 14Q4168 14 4116.5 -15.5Q4065 -45 4034 -102Q4003 -159 4003 -240V-256Q4003 -337 4034 -394Q4065 -451 4116 -480.5Q4167 -510 4227 -510Q4272 -510 4302.5 -499.5Q4333 -489 4352 -473Q4371 -457 4381 -439H4399V-700H4525V0H4401V-60H4383Q4366 -32 4330.5 -9Q4295 14 4227 14ZM4265 -96Q4323 -96 4362 -133.5Q4401 -171 4401 -243V-253Q4401 -325 4362.5 -362.5Q4324 -400 4265 -400Q4207 -400 4168 -362.5Q4129 -325 4129 -253V-243Q4129 -171 4168 -133.5Q4207 -96 4265 -96Z M4879 14Q4805 14 4748.5 -17.5Q4692 -49 4660.5 -106.5Q4629 -164 4629 -242V-254Q4629 -332 4660 -389.5Q4691 -447 4747 -478.5Q4803 -510 4877 -510Q4950 -510 5004 -477.5Q5058 -445 5088 -387.5Q5118 -330 5118 -254V-211H4757Q4759 -160 4795 -128Q4831 -96 4883 -96Q4936 -96 4961 -119Q4986 -142 4999 -170L5102 -116Q5088 -90 5061.5 -59.5Q5035 -29 4991 -7.5Q4947 14 4879 14ZM4758 -305H4990Q4986 -348 4955.5 -374Q4925 -400 4876 -400Q4825 -400 4795 -374Q4765 -348 4758 -305Z"
+
 export const Mark = (props: { class?: string }) => {
   return (
     <svg
       data-component="logo-mark"
       classList={{ [props.class ?? ""]: !!props.class }}
-      viewBox="0 0 16 20"
+      viewBox="28 -530 1035 732"
       fill="none"
       xmlns="http://www.w3.org/2000/svg"
     >
-      <path data-slot="logo-logo-mark-shadow" d="M12 16H4V8H12V16Z" fill="var(--icon-weak-base)" />
-      <path data-slot="logo-logo-mark-o" d="M12 4H4V16H12V4ZM16 20H0V0H16V20Z" fill="var(--icon-strong-base)" />
+      <path data-slot="logo-logo-mark-glyph" d={MARK} fill="var(--reddb-color-primary)" />
     </svg>
   )
 }
@@ -21,12 +27,11 @@ export const Splash = (props: Pick<ComponentProps<"svg">, "ref" | "class">) => {
       ref={props.ref}
       data-component="logo-splash"
       classList={{ [props.class ?? ""]: !!props.class }}
-      viewBox="0 0 80 100"
+      viewBox="28 -530 1035 732"
       fill="none"
       xmlns="http://www.w3.org/2000/svg"
     >
-      <path d="M60 80H20V40H60V80Z" fill="var(--icon-base)" />
-      <path d="M60 20H20V80H60V20ZM80 100H0V0H80V100Z" fill="var(--icon-strong-base)" />
+      <path d={MARK} fill="var(--reddb-color-primary)" />
     </svg>
   )
 }
@@ -35,28 +40,14 @@ export const Logo = (props: { class?: string }) => {
   return (
     <svg
       xmlns="http://www.w3.org/2000/svg"
-      viewBox="0 0 234 42"
+      viewBox="0 -760 5160 960"
       fill="none"
+      role="img"
+      aria-label="Redcode"
       classList={{ [props.class ?? ""]: !!props.class }}
     >
-      <g>
-        <path d="M18 30H6V18H18V30Z" fill="var(--icon-weak-base)" />
-        <path d="M18 12H6V30H18V12ZM24 36H0V6H24V36Z" fill="var(--icon-base)" />
-        <path d="M48 30H36V18H48V30Z" fill="var(--icon-weak-base)" />
-        <path d="M36 30H48V12H36V30ZM54 36H36V42H30V6H54V36Z" fill="var(--icon-base)" />
-        <path d="M84 24V30H66V24H84Z" fill="var(--icon-weak-base)" />
-        <path d="M84 24H66V30H84V36H60V6H84V24ZM66 18H78V12H66V18Z" fill="var(--icon-base)" />
-        <path d="M108 36H96V18H108V36Z" fill="var(--icon-weak-base)" />
-        <path d="M108 12H96V36H90V6H108V12ZM114 36H108V12H114V36Z" fill="var(--icon-base)" />
-        <path d="M144 30H126V18H144V30Z" fill="var(--icon-weak-base)" />
-        <path d="M144 12H126V30H144V36H120V6H144V12Z" fill="var(--icon-strong-base)" />
-        <path d="M168 30H156V18H168V30Z" fill="var(--icon-weak-base)" />
-        <path d="M168 12H156V30H168V12ZM174 36H150V6H174V36Z" fill="var(--icon-strong-base)" />
-        <path d="M198 30H186V18H198V30Z" fill="var(--icon-weak-base)" />
-        <path d="M198 12H186V30H198V12ZM204 36H180V6H198V0H204V36Z" fill="var(--icon-strong-base)" />
-        <path d="M234 24V30H216V24H234Z" fill="var(--icon-weak-base)" />
-        <path d="M216 12V18H228V12H216ZM234 24H216V30H234V36H210V6H234V24Z" fill="var(--icon-strong-base)" />
-      </g>
+      <path data-slot="logo-mark" d={MARK} fill="var(--reddb-color-primary)" />
+      <path data-slot="logo-word" d={WORD} fill="var(--v2-text-text-base)" />
     </svg>
   )
 }
