@@ -141,6 +141,7 @@ async function installNative(server: Info, downloads: boolean) {
     env: { ...globalThis.process.env, GOBIN: Global.Path.bin },
     stdout: "ignore",
     stderr: "ignore",
+    windowsHide: true,
   })
   if (await child.exited !== 0) return
   const name = server.command[0]
@@ -182,7 +183,7 @@ let roslynInstall: Promise<string | undefined> | undefined
 async function installRoslyn(downloads: boolean) {
   if (!downloads || !which("dotnet")) return
   roslynInstall ??= new Promise<string | undefined>((resolve) => {
-    const child = spawn("dotnet", ["tool", "install", "--global", "roslyn-language-server", "--prerelease"], { stdio: "ignore" })
+    const child = spawn("dotnet", ["tool", "install", "--global", "roslyn-language-server", "--prerelease"], { stdio: "ignore", windowsHide: true })
     child.once("error", () => resolve(undefined))
     child.once("exit", (code) => resolve(code === 0 ? which("roslyn-language-server") ?? roslynGlobalPath() : undefined))
   }).finally(() => { roslynInstall = undefined })
@@ -327,6 +328,7 @@ export async function start(server: Info, root: string, directory: string, downl
     cwd: root,
     env: { ...globalThis.process.env, ...server.env },
     stdio: "pipe",
+    windowsHide: true,
   })
   const exited = new Promise<number | null>((resolve, reject) => {
     process.once("error", reject)
@@ -373,7 +375,7 @@ async function sourcekitLaunch() {
 async function oxlintLaunch(server: Info, root: string, directory: string) {
   const executable = resolveCommand({ ...server, command: ["oxlint"] }, root, directory)
   if (!executable) return
-  const child = Bun.spawn([executable, "--help"], { stdout: "pipe", stderr: "ignore" })
+  const child = Bun.spawn([executable, "--help"], { stdout: "pipe", stderr: "ignore", windowsHide: true })
   const [code, output] = await Promise.all([child.exited, new Response(child.stdout).text()])
   return code === 0 && output.includes("--lsp") ? { executable, args: ["--lsp"] } : undefined
 }
@@ -477,7 +479,7 @@ async function elixirLaunch(downloads: boolean) {
   const directory = path.join(Global.Path.bin, "elixir-ls-master")
   const env = { ...globalThis.process.env, MIX_ENV: "prod" }
   for (const args of [["deps.get"], ["compile"], ["elixir_ls.release2", "-o", "release"]]) {
-    const child = Bun.spawn([mix, ...args], { cwd: directory, env, stdout: "ignore", stderr: "pipe" })
+    const child = Bun.spawn([mix, ...args], { cwd: directory, env, stdout: "ignore", stderr: "pipe", windowsHide: true })
     const [code, error] = await Promise.all([child.exited, new Response(child.stderr).text()])
     if (code !== 0) throw new Error(`LSP server elixir-ls build failed: mix ${args[0]}: ${error.trim()}`)
   }
@@ -558,7 +560,7 @@ async function unpack(url: string, name: string, directory: string, strip = 0) {
       ? ["powershell.exe", "-NoProfile", "-NonInteractive", "-Command", `$global:ProgressPreference = 'SilentlyContinue'; Expand-Archive -LiteralPath '${archive.replaceAll("'", "''")}' -DestinationPath '${directory.replaceAll("'", "''")}' -Force`]
       : ["unzip", "-o", archive, "-d", directory]
     : ["tar", name.endsWith(".tar.gz") ? "-xzf" : "-xf", name, ...(strip ? [`--strip-components=${strip}`] : [])]
-  const extraction = Bun.spawn(command, { cwd: directory, stdout: "ignore", stderr: "pipe" })
+  const extraction = Bun.spawn(command, { cwd: directory, stdout: "ignore", stderr: "pipe", windowsHide: true })
   const [code, error] = await Promise.all([extraction.exited, new Response(extraction.stderr).text()])
   await rm(archive, { force: true })
   if (code !== 0) throw new Error(`LSP server archive ${name} extraction failed: ${error.trim()}`)
@@ -567,7 +569,7 @@ async function unpack(url: string, name: string, directory: string, strip = 0) {
 async function javaLaunch(downloads: boolean) {
   const java = which("java")
   if (!java) throw new Error("LSP server jdtls requires Java 21 or newer")
-  const version = Bun.spawn([java, "-version"], { stdout: "ignore", stderr: "pipe" })
+  const version = Bun.spawn([java, "-version"], { stdout: "ignore", stderr: "pipe", windowsHide: true })
   const output = await new Response(version.stderr).text()
   const major = Number(output.match(/version "(\d+)/)?.[1])
   if ((await version.exited) !== 0 || !Number.isFinite(major) || major < 21)
@@ -581,7 +583,7 @@ async function javaLaunch(downloads: boolean) {
     if (!response.ok) throw new Error(`LSP server jdtls download failed: HTTP ${response.status}`)
     const archive = path.join(dist, "release.tar.gz")
     await Bun.write(archive, await response.bytes())
-    const extraction = Bun.spawn(["tar", "-xzf", path.basename(archive)], { cwd: dist, stdout: "ignore", stderr: "pipe" })
+    const extraction = Bun.spawn(["tar", "-xzf", path.basename(archive)], { cwd: dist, stdout: "ignore", stderr: "pipe", windowsHide: true })
     const [code, error] = await Promise.all([extraction.exited, new Response(extraction.stderr).text()])
     await rm(archive, { force: true })
     if (code !== 0) throw new Error(`LSP server jdtls extraction failed: ${error.trim()}`)
@@ -626,7 +628,7 @@ async function kotlinLaunch(downloads: boolean) {
   const command = globalThis.process.platform === "win32"
     ? ["powershell.exe", "-NoProfile", "-NonInteractive", "-Command", `$global:ProgressPreference = 'SilentlyContinue'; Expand-Archive -LiteralPath '${archive.replaceAll("'", "''")}' -DestinationPath '${dist.replaceAll("'", "''")}' -Force`]
     : ["unzip", "-o", archive, "-d", dist]
-  const extraction = Bun.spawn(command, { stdout: "ignore", stderr: "pipe" })
+  const extraction = Bun.spawn(command, { stdout: "ignore", stderr: "pipe", windowsHide: true })
   const [code, error] = await Promise.all([extraction.exited, new Response(extraction.stderr).text()])
   await rm(archive, { force: true })
   if (code !== 0 || !existsSync(launcher)) throw new Error(`LSP server kotlin-ls extraction failed: ${error.trim()}`)

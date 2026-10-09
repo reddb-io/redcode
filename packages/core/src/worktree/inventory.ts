@@ -267,6 +267,7 @@ async function mergedPullRequests(root: string) {
       stdout: "pipe",
       stderr: "ignore",
       timeout: 10_000,
+      windowsHide: true,
     },
   )
   const [output, exit] = await Promise.all([new Response(child.stdout).text(), child.exited])
@@ -341,6 +342,7 @@ export async function git(directory: string, args: string[], write = false) {
     stdin: "ignore",
     stdout: "pipe",
     stderr: "pipe",
+    windowsHide: true,
     env: {
       ...Object.fromEntries(Object.entries(process.env).filter(([key]) => !key.toUpperCase().startsWith("GIT_"))),
       GIT_OPTIONAL_LOCKS: write ? "1" : "0",

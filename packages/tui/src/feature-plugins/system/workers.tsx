@@ -23,6 +23,7 @@ function WorkersPage(props: {
 }) {
   const theme = useTheme()
   const dimensions = useTerminalDimensions()
+  props.state.watch()
   const [selectedID, setSelectedID] = createSignal<string>()
   const offline = () => props.state.status()?.lifecycle === "unavailable"
   const workers = createMemo(() => (offline() ? [] : props.state.status()?.payload?.workers ?? []))
@@ -342,6 +343,10 @@ function WorkersTab(props: { state: ReturnType<typeof createWorkerStatus>; onOpe
     onCleanup(cleanup)
   })
 
+  createEffect(() => {
+    if (composer.active("workers")) props.state.watch()
+  })
+
   Keymap.createLayer(() => ({
     mode: "composer",
     enabled: () => composer.active("workers"),
@@ -431,15 +436,18 @@ function redskilledColor(theme: ReturnType<typeof useTheme>, status: Status | un
   return theme.text.muted
 }
 
-// The drawer and full page observe one project poll and mutation state.
+// The drawer and full page observe one project poll and mutation state. Each status read can start a Redskilled
+// adapter process on the server, so the poll runs only while the drawer or page is on screen.
 function createWorkerStatus(context: Plugin.Context, location: () => LocationRef) {
   const [status, setStatus] = createSignal<Status>()
   const [loading, setLoading] = createSignal(true)
   const [busy, setBusy] = createSignal(false)
+  const [viewers, setViewers] = createSignal(0)
+  const watched = createMemo(() => viewers() > 0)
   let polling = false
   let revision = 0
   const load = async () => {
-    if (busy() || polling) return
+    if (busy() || polling || !watched()) return
     polling = true
     const observed = revision
     try {
@@ -482,9 +490,20 @@ function createWorkerStatus(context: Plugin.Context, location: () => LocationRef
       void load()
     }),
   )
-  const timer = setInterval(() => void load(), 5_000)
-  onCleanup(() => clearInterval(timer))
-  return { location, status, loading, busy, load, run }
+  createEffect(
+    on(watched, (visible) => {
+      if (!visible) return
+      void load()
+      const timer = setInterval(() => void load(), 5_000)
+      onCleanup(() => clearInterval(timer))
+    }),
+  )
+  // Marks the calling component as showing the status for as long as it stays mounted.
+  const watch = () => {
+    setViewers((count) => count + 1)
+    onCleanup(() => setViewers((count) => count - 1))
+  }
+  return { location, status, loading, busy, load, run, watch }
 }
 
 export default Plugin.define({

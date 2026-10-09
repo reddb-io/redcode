@@ -232,6 +232,7 @@ export const makeDaemonTransport = Effect.fn("PersistentPty.makeDaemonTransport"
             detached: true,
             stdio: "ignore",
             env: { ...process.env, OPENCODE_PTY_RUNTIME_DIR: directory },
+            windowsHide: true,
           })
           child.once("spawn", () => {
             child.unref()

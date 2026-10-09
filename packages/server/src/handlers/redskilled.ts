@@ -6,8 +6,10 @@ import { HttpApiBuilder } from "effect/unstable/httpapi"
 import { Api } from "../api"
 import { response } from "../location"
 import type { ControlOperation, Session, Snapshot, WorkflowOperation } from "../redskilled-client"
+import { statusSessions } from "../redskilled-status"
 
 const lastGood = new Map<string, { payload: Redskilled.Payload; at: string }>()
+const status = statusSessions({ create: open })
 
 export const RedskilledHandler = HttpApiBuilder.group(Api, "server.redskilled", (handlers) =>
   handlers
@@ -16,11 +18,10 @@ export const RedskilledHandler = HttpApiBuilder.group(Api, "server.redskilled", 
         const location = yield* Location.Service
         const scope = ctx.query.scope ?? "project"
         if (scope === "host") return unavailable(location.project.id, scope, "Redskilled ACP exposes only project status")
-        return yield* withSession(location.directory, (session) =>
-          Effect.tryPromise({ try: () => session.snapshot(), catch: error }).pipe(
-            Effect.map((snapshot) => project(snapshot, location.project.id)),
-          ),
-        ).pipe(Effect.catch((failure) => Effect.succeed(unavailable(location.project.id, scope, failure.message))))
+        return yield* Effect.tryPromise({ try: () => status.snapshot(location.directory), catch: error }).pipe(
+          Effect.map((snapshot) => project(snapshot, location.project.id)),
+          Effect.catch((failure) => Effect.succeed(unavailable(location.project.id, scope, failure.message))),
+        )
       })),
     )
     .handle("redskilled.consent", (ctx) =>
@@ -44,18 +45,23 @@ export const RedskilledHandler = HttpApiBuilder.group(Api, "server.redskilled", 
     ),
 )
 
+// Control and workflow operations each run on a session of their own, so an uncertain outcome never leaves the
+// shared status session unusable; the status session restarts afterwards to read the changed Project.
 const withSession = <A, E, R>(directory: string, use: (session: Session) => Effect.Effect<A, E, R>) =>
   Effect.acquireUseRelease(
-    Effect.tryPromise({
-      try: async () => {
-        const { createSession } = await import("../redskilled-client.js")
-        return createSession(directory)
-      },
-      catch: error,
-    }),
+    Effect.tryPromise({ try: () => open(directory), catch: error }),
     use,
-    (session) => Effect.sync(() => session.close()),
+    (session) =>
+      Effect.sync(() => {
+        session.close()
+        status.reset(directory)
+      }),
   )
+
+async function open(directory: string) {
+  const { createSession } = await import("../redskilled-client.js")
+  return createSession(directory)
+}
 
 const control = (operation: ControlOperation) =>
   Effect.gen(function* () {
