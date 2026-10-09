@@ -1,9 +1,9 @@
 #!/usr/bin/env bun
 
-// Packs one release archive per target with redcode, its RPC sidecar and the design app, taken from
-// the CLI and design packages `bun run assemble` left in dist/, plus the whiteboard bundle the design
-// app downloads from the same release. Windows archives are zip; the others are tar.gz, which keeps
-// file modes and symlinks.
+// Packs one release archive per target with redcode, its RPC sidecar, the design app and, outside musl, the unpacked
+// desktop app under `desktop/`, taken from the CLI, design and desktop packages `bun run assemble` left in dist/,
+// plus the whiteboard bundle the design app downloads from the same release. Windows archives are zip; the others are
+// tar.gz, which keeps file modes and symlinks (the macOS app bundle has both).
 
 import { $ } from "bun"
 import { createHash } from "node:crypto"
@@ -38,13 +38,28 @@ const archives = await Promise.all(
     }
     const archive = `redcode-${item.target}.${windows ? "zip" : "tar.gz"}`
     await rm(path.join(output, archive), { force: true })
-    // tar runs in the output directory and only sees the archive's own name: GNU tar reads a Windows
-    // drive letter such as `C:` in it as a remote host.
-    await (
-      windows
-        ? $`zip -X -q -j ${archive} ${files}`
-        : $`tar --mtime=@0 --owner=0 --group=0 --numeric-owner -czf ${archive} ${contents.flatMap((source) => ["-C", source.bin, ...source.names])}`
-    ).cwd(output)
+    // The desktop app travels as a tar inside its package; unpacked here under `desktop/`, beside redcode.
+    const desktop = RedcodePackages.desktop(packages, item)
+    const stage = path.join(output, `.desktop-${item.target}`)
+    await rm(stage, { recursive: true, force: true })
+    if (desktop) {
+      const tar = path.join(desktop.dir, RedcodePackages.DESKTOP_TAR)
+      if (!(await Bun.file(tar).exists())) throw new Error(`Missing desktop app: ${tar}`)
+      await mkdir(path.join(stage, "desktop"), { recursive: true })
+      await $`tar -xf - < ${Bun.file(tar)}`.cwd(path.join(stage, "desktop"))
+    }
+    // GNU tar reads a Windows drive letter such as `C:` in an archive name as a remote host, so tar only sees
+    // relative names, or the archive on stdin. zip runs a second time from the stage to keep the `desktop/` tree.
+    if (windows) {
+      await $`zip -X -q -j ${archive} ${files}`.cwd(output)
+      if (desktop) await $`zip -X -q -r -y ${path.join("..", archive)} desktop`.cwd(stage)
+    } else {
+      await $`tar --mtime=@0 --owner=0 --group=0 --numeric-owner -czf ${archive} ${[
+        ...contents.flatMap((source) => ["-C", source.bin, ...source.names]),
+        ...(desktop ? ["-C", stage, "desktop"] : []),
+      ]}`.cwd(output)
+    }
+    await rm(stage, { recursive: true, force: true })
     return archive
   }),
 )
@@ -58,4 +73,4 @@ const sums = await Promise.all(
   }),
 )
 await Bun.write(path.join(output, "SHA256SUMS"), sums.join("\n") + "\n")
-console.log(`Archived ${archives.length} Redcode native packages with the design app in ${output}`)
+console.log(`Archived ${archives.length} Redcode native packages with the design and desktop apps in ${output}`)

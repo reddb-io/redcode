@@ -932,6 +932,19 @@ const Root = Spec.make(typeof OPENCODE_CLI_NAME === "string" ? OPENCODE_CLI_NAME
         ),
       },
     }),
+    Spec.make("desktop", {
+      description: "Open Redcode Desktop, the desktop app of this installation",
+      params: {
+        path: Flag.boolean("path").pipe(
+          Flag.withDescription("Print the app's path (the .app bundle on macOS) and exit"),
+          Flag.withDefault(false),
+        ),
+        refresh: Flag.boolean("refresh").pipe(
+          Flag.withDescription("Prepare the app for this installation without opening it"),
+          Flag.withDefault(false),
+        ),
+      },
+    }),
     Spec.make("serve", {
       description: "Start the v2 API and web server",
       params: {

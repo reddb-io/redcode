@@ -3,12 +3,11 @@ import { Option, Schema } from "effect"
 
 export type CliLocation =
   | { readonly source: "environment" | "archive" | "pointer"; readonly binary: string; readonly version: string }
-  | { readonly source: "bundled"; readonly binary: string }
   | { readonly source: "development"; readonly binary: string }
 
 /**
  * Finds the `redcode` executable of the installation this app ships in. The desktop and its CLI share one
- * version, so an installation's CLI needs no `--version` spawn; development and bundled copies still do.
+ * version, so an installation's CLI needs no `--version` spawn; a development CLI still does.
  */
 export function locateCli(input: {
   readonly env: Readonly<Record<string, string | undefined>>
@@ -49,12 +48,7 @@ export function locateCli(input: {
 
   if (input.env.REDCODE_BIN) return { source: "development", binary: input.env.REDCODE_BIN }
 
-  // Builds from desktop.yml still carry their own copy. It precedes PATH because PATH is only a name, resolved
-  // when the CLI is spawned.
-  const bundled = paths.join(input.resourcesPath, executable)
-
-  if (input.exists(bundled)) return { source: "bundled", binary: bundled }
-
+  // PATH is only a name, resolved when the CLI is spawned.
   return { source: "development", binary: executable }
 }
 

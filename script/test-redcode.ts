@@ -110,6 +110,7 @@ const suites = {
     "test/config.test.ts",
     "test/reasoning-flag.test.ts",
     "test/debug-guards-report.test.ts",
+    "test/desktop.test.ts",
     "test/import-boundaries.test.ts",
     "test/server-connection.test.ts",
   ],

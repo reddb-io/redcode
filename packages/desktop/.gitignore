@@ -24,5 +24,3 @@ dist-ssr
 *.sw?
 out/
 
-resources/redcode*
-resources/*.metainfo.xml

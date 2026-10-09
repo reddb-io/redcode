@@ -3,7 +3,6 @@ import { promisify } from "node:util"
 import { app } from "electron"
 import { Context, Effect, FileSystem, Layer, Path } from "effect"
 import { BackgroundServiceState } from "./background-service-state"
-import { cleanStages } from "./cli-stages"
 import { DesktopCli } from "./desktop-cli"
 import { SidecarCredentials } from "./sidecar-credentials"
 import { serviceRegistrationFile } from "./registration"
@@ -77,14 +76,14 @@ const connect = Effect.fn("BackgroundService.connect")(function* (mode: "initial
   if (url.hostname === "0.0.0.0") url.hostname = "127.0.0.1"
   yield* Effect.logInfo("background service ready", { version: cli.version, probed: !!early, ...endpoint(url.origin) })
 
-  // Only a bundled CLI runs from a staged copy; the service now runs from the current stage, so an older copy
-  // at most belongs to a process still exiting. An app that runs its installation's CLI removes every stage.
-  if (mode === "initial" && app.isPackaged && cli.binary)
+  // Desktop releases before the unified Redcode release staged a copy of their bundled CLI in userData/cli. The
+  // app now runs its installation's CLI, so the stages are left over; Windows keeps an executable that has not
+  // exited yet, and a failed removal is retried on the next launch.
+  if (mode === "initial" && app.isPackaged)
     runFork(
-      (cli.source === "bundled"
-        ? cleanStages(cli.binary)
-        : fs.remove(path.join(app.getPath("userData"), "cli"), { recursive: true, force: true })
-      ).pipe(Effect.catch((error) => Effect.logError("failed to clean staged CLIs", { error }))),
+      fs
+        .remove(path.join(app.getPath("userData"), "cli"), { recursive: true, force: true })
+        .pipe(Effect.catch((error) => Effect.logError("failed to clean staged CLIs", { error }))),
     )
   const ready = { url: url.origin, password: service.auth.password } satisfies SidecarCredentials.Data
   SidecarCredentials.set(ready)

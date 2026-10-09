@@ -3,13 +3,13 @@
 //
 //   bun run bench:startup -- [--exe <path>] [--compare <path>] [--runs 5] [--warmup 1] [--service warm|cold]
 //                            [--fresh] [--offline] [--seed <userData dir>] [--profile-main] [--profile-renderer]
-//                            [--trace] [--out <dir>] [--home <dir>] [--window-at x,y]
+//                            [--trace] [--out <dir>] [--home <dir>] [--window-at x,y] [--cli <redcode>]
 //
 // The app runs in an isolated home directory (its own %APPDATA%, XDG dirs, OpenCode DB, config and
 // service registration) with the developer's OPENCODE_* / OTEL_* environment stripped, so it never
 // attaches to, restarts or reads the developer's live service or state and does not inherit their
-// telemetry configuration. `warm` starts one service from the bundled CLI before the runs and lets
-// every launch reuse it; `cold` stops it before each run so the desktop has to spawn it. `--fresh`
+// telemetry configuration. Every launch runs one CLI (`--cli`, else REDCODE_BIN or the redcode on PATH)
+// through REDCODE_DESKTOP_CLI. `warm` starts one service from it before the runs and lets every launch reuse it; `cold` stops it before each run so the desktop has to spawn it. `--fresh`
 // wipes the profile before each launch to measure the first launch after an install. `--compare`
 // alternates launches of a second build so machine drift affects both equally, and `--warmup`
 // launches are discarded (the first launch of a new binary pays the antivirus scan).
@@ -40,6 +40,7 @@ const args = parseArgs({
   args: process.argv.slice(2),
   options: {
     exe: { type: "string" },
+    cli: { type: "string" },
     compare: { type: "string" },
     runs: { type: "string", default: "5" },
     warmup: { type: "string", default: "1" },
@@ -81,7 +82,7 @@ const home = resolve(args.values.home ?? join(tmpdir(), "redcode-bench-startup")
 
 for (const build of builds) {
   if (!existsSync(build.exe))
-    throw new Error(`Packaged executable not found: ${build.exe}. Run 'bun run build && bun run package:win' (or pass --exe).`)
+    throw new Error(`Packaged executable not found: ${build.exe}. Run 'bun run package' (or pass --exe).`)
 }
 
 if (!Number.isSafeInteger(runs) || runs < 1) throw new Error("--runs must be a positive integer")
@@ -109,6 +110,10 @@ const paths = {
 
 prepareHome()
 
+const cli = args.values.cli ?? process.env.REDCODE_BIN ?? Bun.which("redcode")
+
+if (!cli) throw new Error("No redcode CLI found: pass --cli or set REDCODE_BIN")
+
 // The desktop deletes XDG_STATE_HOME on Windows, so isolation goes through the home directory.
 // OPENCODE_* and OTEL_* from the developer's shell would otherwise leak into the measured app and
 // its service (an OTLP endpoint alone adds a network round trip to every CLI exit).
@@ -125,6 +130,7 @@ const env = {
   XDG_CACHE_HOME: join(home, ".cache"),
   OPENCODE_DB: paths.db,
   OPENCODE_CONFIG_DIR: paths.config,
+  REDCODE_DESKTOP_CLI: cli,
   // Beta and prod builds check for updates on start; a closed proxy port fails that fast and offline.
   ...(args.values.offline || appId !== "io.reddb.redcode.dev" ? { HTTPS_PROXY: "http://127.0.0.1:9" } : {}),
 }
@@ -878,27 +884,9 @@ function summarize(list: Sample[]) {
   return out
 }
 
-// The service must come from the CLI bundled with the executable: the desktop restarts a service
-// whose version differs from its bundled CLI, which would turn a warm run into a cold one.
-function bundledCli(exe: string) {
-  const resources = process.platform === "darwin" ? join(dirname(exe), "..", "Resources") : join(dirname(exe), "resources")
-
-  return join(resources, process.platform === "win32" ? "redcode.exe" : "redcode")
-}
-
 async function warmService() {
   await stopService()
-  const clis = builds.map((build) => bundledCli(build.exe))
-
-  const identity = (cli: string) => {
-    const version = join(dirname(cli), "redcode.version")
-
-    return existsSync(version) ? readFileSync(version, "utf8").trim() : String(statSync(cli).size)
-  }
-
-  if (new Set(clis.map(identity)).size > 1)
-    throw new Error("The compared builds bundle different CLIs; the desktop would restart the service on the mismatch")
-  serviceProcess = spawn(clis[0], ["serve", "--service"], { env, detached: true, stdio: "ignore" })
+  serviceProcess = spawn(cli, ["serve", "--service"], { env, detached: true, stdio: "ignore" })
   serviceProcess.unref()
   const deadline = Date.now() + 60_000
 

@@ -114,20 +114,12 @@ describe("locateCli", () => {
       expected: { source: "development", binary: "redcode" },
     },
     {
-      name: "REDCODE_BIN, over a bundled copy",
+      name: "REDCODE_BIN",
       platform: "linux",
       env: { REDCODE_BIN: "/src/redcode/dist/redcode" },
       resourcesPath: "/opt/Redcode/resources",
-      files: { "/opt/Redcode/resources/redcode": "" },
+      files: {},
       expected: { source: "development", binary: "/src/redcode/dist/redcode" },
-    },
-    {
-      name: "a bundled copy",
-      platform: "win32",
-      resourcesPath: "C:\\Program Files\\Redcode\\resources",
-      execPath: "C:\\Program Files\\Redcode\\Redcode.exe",
-      files: { "C:\\Program Files\\Redcode\\resources\\redcode.exe": "" },
-      expected: { source: "bundled", binary: "C:\\Program Files\\Redcode\\resources\\redcode.exe" },
     },
     {
       name: "PATH on Windows",

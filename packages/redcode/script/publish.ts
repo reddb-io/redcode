@@ -40,11 +40,15 @@ async function packAndPublish(target: string, name: string) {
 const manifests = await RedcodePackages.list("./dist", Script.version)
 if (!manifests.some((item) => item.kind === "cli")) throw new Error("no Redcode binary packages were built")
 for (const item of manifests) {
-  // Every CLI package names its target's design app as an optional dependency; both must ship.
-  if (item.kind === "cli") RedcodePackages.design(manifests, item)
-  for (const name of RedcodePackages.binaries(item)) {
-    const binary = path.join(item.dir, "bin", name)
-    if (!(await Bun.file(binary).exists())) throw new Error(`missing release binary: ${binary}`)
+  // Every CLI package names its target's design app, and outside musl its desktop app, as optional dependencies;
+  // all of them must ship.
+  if (item.kind === "cli") {
+    RedcodePackages.design(manifests, item)
+    RedcodePackages.desktop(manifests, item)
+  }
+  for (const name of RedcodePackages.files(item)) {
+    const file = path.join(item.dir, name)
+    if (!(await Bun.file(file).exists())) throw new Error(`missing release file: ${file}`)
   }
 }
 

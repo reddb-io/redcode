@@ -79,7 +79,7 @@ export const layer = Layer.effect(
             command: cli.command,
             binary: cli.binary,
             development: !app.isPackaged && !cli.binary,
-            installed: cli.source !== "development" && cli.source !== "bundled",
+            installed: cli.source !== "development",
           },
           subscriptions,
           servers,

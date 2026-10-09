@@ -1,12 +1,14 @@
 import http from "node:http"
 import { getCACertificates, setDefaultCACertificates } from "node:tls"
-import { app } from "electron"
+import { app, shell } from "electron"
 import { Effect, Path } from "effect"
-import { DEEP_LINK_SCHEME } from "../constants"
+import { APP_ID, APP_NAME, DEEP_LINK_SCHEME } from "../constants"
 import { DesktopPaths } from "../paths"
 import { getUserShell, loadShellEnv } from "../service/shell-env"
+import { getStore } from "../storage/store"
 import { registerRendererProtocol, setDockIcon, setProtocolReporter } from "../windows"
 import { scoped } from "../native/logging"
+import { ShellIntegration } from "./shell-integration"
 
 // electron-context-menu attaches to every existing and future window, so it can load once the first
 // window is up instead of holding up startup with its dependency tree.
@@ -38,6 +40,16 @@ export const prepareDesktop = Effect.gen(function* () {
   const path = yield* Path.Path
   const paths = yield* DesktopPaths.resolve
 
+  // The launcher a packaged app registers is what setAsDefaultProtocolClient names on Linux, so it comes first.
+  if (app.isPackaged)
+    yield* ShellIntegration.register({
+      app,
+      shell,
+      store: getStore(),
+      appId: APP_ID,
+      name: APP_NAME,
+      scheme: DEEP_LINK_SCHEME,
+    })
   if (app.isPackaged || process.env.REDCODE_DESKTOP_DISABLE_PROTOCOL_REGISTRATION !== "1")
     app.setAsDefaultProtocolClient(DEEP_LINK_SCHEME)
   const runFork = Effect.runForkWith(yield* Effect.context())

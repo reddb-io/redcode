@@ -126,6 +126,7 @@ const Handlers = Runtime.handlers(Commands, {
   },
   pair: () => import("./commands/handlers/pair"),
   design: () => import("./commands/handlers/design"),
+  desktop: () => import("./commands/handlers/desktop"),
   reload: () => import("./commands/handlers/reload"),
   session: {
     "import-redcode": () => import("./commands/handlers/session/import-redcode"),
