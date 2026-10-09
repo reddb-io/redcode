@@ -10,7 +10,7 @@
   font-style: normal;
 }
 
-/* Space Grotesk and JetBrains Mono come from the design system (ui/src/design-system/vendor/assets/fonts.css). */
+/* Space Grotesk and JetBrains Mono come from the design system (ui/vendor/design-system/assets/fonts.css). */
 
 @media (display-mode: standalone) {
   /* WebKit excludes safe-area insets from dvh in installed apps. */

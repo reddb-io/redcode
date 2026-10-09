@@ -33,8 +33,7 @@ import { rootSession } from "@/shell/routes/session"
 import { TitlebarItem } from "@opencode/gui-extensions/sdk"
 import { useExtensionHost } from "@/runtime/extension/host"
 import { TitlebarItems, useTitlebarItems } from "@/runtime/extension/titlebar-items"
-import devIcon from "./icons/dev.png"
-import betaIcon from "./icons/beta.png"
+import { Logo } from "@opencode/ui/logo"
 
 const titlebarHeight = 36
 
@@ -663,17 +662,8 @@ function ChannelIndicator(props: { horizontal?: boolean; sidebar?: boolean }) {
   const platform = usePlatform()
   const host = useExtensionHost()
   const channel = import.meta.env.VITE_OPENCODE_CHANNEL
-  // The production build shows the Brand mark in the same 20px slot the channel badges use.
-  if (!channel || channel === "prod")
-    return (
-      <span
-        data-slot="titlebar-mark"
-        aria-hidden="true"
-        class="me-1.5 flex h-7 w-5 shrink-0 select-none items-center justify-center font-mono text-[13px] font-bold leading-none text-primary"
-      >
-        ›_
-      </span>
-    )
+  // Every build shows the RedDB symbol at its 16px minimum; other channels name themselves beside it.
+  if (!channel || channel === "prod") return <Logo layout="symbol" size={16} class="me-1.5 select-none" />
 
   const label = () => language.t(`titlebar.channel.${channel}`)
 
@@ -693,7 +683,7 @@ function ChannelIndicator(props: { horizontal?: boolean; sidebar?: boolean }) {
         component={debug() ? "button" : "div"}
         type={debug() ? "button" : undefined}
         data-slot="channel-indicator"
-        class="flex h-7 w-5 shrink-0 items-center justify-center rounded-md [app-region:no-drag]"
+        class="flex h-7 shrink-0 items-center gap-0.5 rounded-md pe-1.5 [app-region:no-drag]"
         classList={{
           "cursor-pointer hover:bg-foreground/8 active:bg-foreground/12 focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-focus":
             !!debug(),
@@ -702,12 +692,8 @@ function ChannelIndicator(props: { horizontal?: boolean; sidebar?: boolean }) {
         aria-label={debug()?.label}
         aria-pressed={debug()?.pressed}
       >
-        <img
-          src={channel === "beta" ? betaIcon : devIcon}
-          alt={debug() ? "" : label()}
-          class="size-5 shrink-0 rounded-sm"
-          draggable={false}
-        />
+        <Logo layout="symbol" size={16} class="m-0" />
+        <span class="select-none text-caption font-medium text-ink-muted">{label()}</span>
       </Dynamic>
     </Tooltip>
   )

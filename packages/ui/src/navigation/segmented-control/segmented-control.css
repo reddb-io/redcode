@@ -1,5 +1,5 @@
 /*
-  SegmentedControl, drawn to the design system's ToggleGroup (design-system/contracts/toggle-group.variants.ts):
+  SegmentedControl, drawn to the design system's ToggleGroup (@opencode/ui/contracts/toggle-group):
   flush segments one control tall inside a 1px `control-edge` outline, split by `control-edge` dividers. The pressed
   segment takes the selected surface, full ink, `font-medium` and a 2px ink bottom indicator.
 */

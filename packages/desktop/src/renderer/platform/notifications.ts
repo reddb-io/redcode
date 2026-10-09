@@ -9,7 +9,7 @@ export function createDesktopNotify(api: ElectronAPI): Platform["notify"] {
 
     const notification = new Notification(title, {
       body: description ?? "",
-      icon: new URL("./favicon-96x96-v3.png", location.href).href,
+      icon: new URL("./icon-192.png", location.href).href,
       silent: true,
     })
 

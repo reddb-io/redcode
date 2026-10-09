@@ -1,5 +1,5 @@
 /*
-  Switch, drawn to the design system's Switch (design-system/contracts/switch.variants.ts): a pill track on the
+  Switch, drawn to the design system's Switch (@opencode/ui/contracts/switch): a pill track on the
   `muted` surface inside a 1px `control-edge` outline with an ink thumb; on, the track fills with the Brand red.
   `compact` is the dense row size (16px tall), `standard` the form size (20px tall). The thumb slides with a short
   transform that drops under reduced motion.

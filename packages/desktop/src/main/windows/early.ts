@@ -39,7 +39,7 @@ export function createEarlyWindow() {
   const root = path.dirname(fileURLToPath(import.meta.url))
   const file = path.join(app.getPath("userData"), windowStateFile(id))
   const state = resolveWindowState(readWindowState(file), { width: 1280, height: 800 }, displays)
-  const icons = app.isPackaged ? path.join(process.resourcesPath, "icons") : path.join(root, "../../resources/icons")
+  const icons = app.isPackaged ? path.join(process.resourcesPath, "icons") : path.join(root, "../../../ui/vendor/design-system/platform")
 
   const win = new BrowserWindow({
     x: state.x,
@@ -49,7 +49,7 @@ export function createEarlyWindow() {
     show: true,
     autoHideMenuBar: true,
     title: "Redcode",
-    icon: path.join(icons, "icon.png"),
+    icon: path.join(icons, "icon-512.png"),
     backgroundColor: storedBackgroundColor(),
     ...(process.platform === "darwin" ? { titleBarStyle: "hidden" as const, trafficLightPosition: { x: 14, y: 14 } } : {}),
     ...(process.platform === "win32" ? { frame: false, titleBarStyle: "hidden" as const, titleBarOverlay: titlebarOverlay() } : {}),

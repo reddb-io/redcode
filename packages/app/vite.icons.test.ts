@@ -3,14 +3,15 @@ import { fetch } from "bun"
 import { build, createServer } from "vite"
 import { icons } from "./vite.icons"
 import manifest from "./manifest.json" with { type: "json" }
+import platform from "../ui/vendor/design-system/platform/platform-manifest.json" with { type: "json" }
 
-test.each(["dev", "beta", "prod", "local"])("bundles %s app icons", async (channel) => {
+test("bundles the design system's platform icons", async () => {
   const result = await build({
     root: import.meta.dirname,
     configFile: false,
     logLevel: "silent",
     plugins: [
-      icons(channel),
+      icons(),
       {
         name: "icons-only-fixture",
         transformIndexHtml: {
@@ -24,7 +25,7 @@ test.each(["dev", "beta", "prod", "local"])("bundles %s app icons", async (chann
 
   if (!("output" in result)) throw new Error("Expected a single build output")
 
-  await check(channel === "local" ? "dev" : channel, async (path) => {
+  await check(async (path) => {
     const file = result.output.find((file) => `/${file.fileName}` === path)
 
     if (file?.type !== "asset") throw new Error(`Missing asset: ${path}`)
@@ -33,12 +34,12 @@ test.each(["dev", "beta", "prod", "local"])("bundles %s app icons", async (chann
   })
 })
 
-test.each(["dev", "beta", "prod"])("serves %s app icons", async (channel) => {
+test("serves the design system's platform icons", async () => {
   const server = await createServer({
     root: import.meta.dirname,
     configFile: false,
     logLevel: "silent",
-    plugins: [icons(channel)],
+    plugins: [icons()],
     optimizeDeps: { noDiscovery: true, include: [] },
     server: { host: "127.0.0.1", port: 0, hmr: false, preTransformRequests: false, watch: null },
   })
@@ -49,7 +50,7 @@ test.each(["dev", "beta", "prod"])("serves %s app icons", async (channel) => {
 
     if (!url) throw new Error("Expected a local URL")
 
-    await check(channel, async (path) => {
+    await check(async (path) => {
       const response = await fetch(new URL(path, url))
       expect(response.status).toBe(200)
 
@@ -64,32 +65,20 @@ test.each(["dev", "beta", "prod"])("serves %s app icons", async (channel) => {
   }
 })
 
-async function check(channel: string, read: (path: string) => Promise<Uint8Array>) {
+async function check(read: (path: string) => Promise<Uint8Array>) {
   const html = new TextDecoder().decode(await read("/index.html"))
-  const actual: typeof manifest = JSON.parse(new TextDecoder().decode(await read("/site.webmanifest")))
-  expect(actual.icons.some((icon) => icon.purpose === "maskable")).toBe(true)
-  expect(actual).toEqual({
-    ...manifest,
-    icons: manifest.icons.map((icon) => ({ ...icon, src: `/icons/${channel}${icon.src}` })),
-  })
-  expect(html).toContain(`href="/icons/${channel}/favicon.ico"`)
-  expect(html).toContain(`href="/icons/${channel}/apple-touch-icon.png"`)
+  const actual = JSON.parse(new TextDecoder().decode(await read("/site.webmanifest")))
+  expect(actual).toEqual({ ...manifest, icons: platform.manifestIcons })
+  expect(html).toContain(`href="/favicon.svg"`)
+  expect(html).toContain(`href="/favicon.ico"`)
+  expect(html).toContain(`href="/apple-touch-icon-180.png"`)
   expect(html).toContain(`href="/site.webmanifest"`)
-  expect(html).not.toContain("%OPENCODE_")
 
   await Promise.all(
-    Object.entries({
-      "favicon.ico": "icon.ico",
-      "apple-touch-icon.png": "ios/AppIcon-60x60@3x.png",
-      "web-app-manifest-192x192.png": "android/mipmap-xxxhdpi/ic_launcher.png",
-      "web-app-manifest-512x512.png": "icon.png",
-    }).map(async ([name, source]) => {
-      const bytes = await read(`/icons/${channel}/${name}`)
-      expect(bytes).toEqual(await Bun.file(new URL(`./icons/${channel}/${source}`, import.meta.url)).bytes())
-      if (!name.endsWith(".png")) return
-      const size = name === "apple-touch-icon.png" ? 180 : Number(name.match(/(192|512)/)?.[0])
-      expect(new DataView(bytes.buffer, bytes.byteOffset).getUint32(16)).toBe(size)
-      expect(new DataView(bytes.buffer, bytes.byteOffset).getUint32(20)).toBe(size)
+    platform.icons.map(async (icon) => {
+      expect(await read(`/${icon.file}`)).toEqual(
+        await Bun.file(new URL(`../ui/vendor/design-system/platform/${icon.file}`, import.meta.url)).bytes(),
+      )
     }),
   )
 }

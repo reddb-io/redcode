@@ -789,12 +789,6 @@ function HomeSessionRow(
 function HomeSessionsEmpty(props: { onNewSession?: () => void; language: ReturnType<typeof useLanguage> }) {
   return (
     <div class="flex min-h-[min(100%,24rem)] flex-col items-center justify-center gap-3 px-6 py-12 text-center">
-      <span
-        aria-hidden="true"
-        class="mb-1 flex size-10 items-center justify-center rounded-lg border border-control-edge font-mono text-body font-bold text-ink-muted"
-      >
-        ›_
-      </span>
       <h2 class="m-0 text-body font-medium text-foreground">{props.language.t("home.sessions.empty")}</h2>
       <p class="m-0 max-w-[32ch] text-caption text-ink-muted">{props.language.t("home.sessions.empty.description")}</p>
       <Show when={props.onNewSession}>

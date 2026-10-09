@@ -1,7 +1,7 @@
 @import "../../navigation/menu/menu.css";
 
 /*
-  Select, drawn to the design system's Select (design-system/contracts/select.variants.ts): a field-shaped trigger on
+  Select, drawn to the design system's Select (@opencode/ui/contracts/select): a field-shaped trigger on
   a 1px `control-edge` outline with the ink focus outline; its listbox is the Menu surface (menu.css) whose options
   are highlighted `bg-foreground/10` and, when selected, `font-medium` with the check glyph.
 */

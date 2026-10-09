@@ -379,7 +379,7 @@ function RootSettings() {
         </Tabs.Content>
       )}
       <Tabs.Content value="about" class="settings-panel settings-about">
-        <SettingsAbout active={surface.view().tab === "about"} />
+        <SettingsAbout />
       </Tabs.Content>
       <Show when={single()} keyed>
         {(server) => (

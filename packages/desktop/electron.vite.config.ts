@@ -13,6 +13,7 @@ const channel = (() => {
 const nodePtyPkg = `@lydell/node-pty-${process.platform}-${process.arch}`
 
 const appPlugin = (await import("@opencode/app/vite")).default
+const { icons } = await import("@opencode/app/vite.icons")
 
 // Every module the entry reaches through static imports lands in one chunk. Automatic splitting
 // otherwise fragments the initial graph into ~50 files shared with lazy routes, and each file costs
@@ -104,7 +105,7 @@ const require = __cjs_mod__.createRequire(import.meta.url);
         command === "serve" && process.env.OPENCODE_TEST_ONBOARDING === "1",
       ),
     },
-    plugins: [pickerPlugin(), appPlugin, initialChunk],
+    plugins: [pickerPlugin(), appPlugin, icons(), initialChunk],
     publicDir: "../../../app/public",
     root: "src/renderer",
     build: {

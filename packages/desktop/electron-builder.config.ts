@@ -78,8 +78,9 @@ function getConfig(): Configuration {
       "!**/node_modules/js-yaml/bin{,/**/*}",
     ],
     // The Redcode binary runs as a background service, so it ships beside the app rather than inside the asar.
+    // The app icon is the RedDB platform icon the design system publishes (scripts/sync-design-system.ts).
     extraResources: [
-      { from: "resources/icons", to: "icons" },
+      { from: "../ui/vendor/design-system/platform", to: "icons", filter: ["icon-512.png"] },
       { from: "resources/", to: "", filter: ["redcode", "redcode.exe", "redcode.version"] },
     ],
     afterPack: async (context) => {
@@ -98,7 +99,7 @@ function getConfig(): Configuration {
     publish: channel === "prod" ? [{ provider: "generic", url: updateFeed }] : undefined,
     mac: {
       category: "public.app-category.developer-tools",
-      icon: "resources/icons/icon.png",
+      icon: "../ui/vendor/design-system/platform/icon-512.png",
       extendInfo: {
         NSAutoFillRequiresTextContentTypeForOneTimeCodeOnMac: true,
       },
@@ -115,7 +116,7 @@ function getConfig(): Configuration {
       schemes: ["redcode"],
     },
     win: {
-      icon: "resources/icons/icon.png",
+      icon: "../ui/vendor/design-system/platform/icon-512.png",
       target: ["nsis"],
       verifyUpdateCodeSignature: false,
     },
@@ -125,7 +126,7 @@ function getConfig(): Configuration {
       perMachine: false,
     },
     linux: {
-      icon: "resources/icons/icon.png",
+      icon: "../ui/vendor/design-system/platform/icon-512.png",
       category: "Development",
       executableName: appId,
       desktop: {

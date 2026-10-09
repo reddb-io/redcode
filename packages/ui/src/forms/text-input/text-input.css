@@ -1,5 +1,5 @@
 /*
-  TextInput, drawn to the design system's Input (design-system/contracts/input.variants.ts): the page ground inside a
+  TextInput, drawn to the design system's Input (@opencode/ui/contracts/input): the page ground inside a
   1px `control-edge` outline, the ink focus outline 2px off the field, and a `feedback-danger-border` outline when
   invalid. Heights are the Density control heights (`base` md, `large` lg).
 */
