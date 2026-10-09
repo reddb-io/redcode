@@ -3,6 +3,7 @@ import path from "node:path"
 import { fileURLToPath } from "node:url"
 
 import type { Configuration } from "electron-builder"
+import redcode from "../redcode/package.json" with { type: "json" }
 
 const packageDir = path.dirname(fileURLToPath(import.meta.url))
 
@@ -53,8 +54,10 @@ function getConfig(): Configuration {
     },
     // Linux launchers are .desktop files, so this is the desktop file name, not just the app id.
     // https://www.electron.build/docs/linux/
+    // The desktop ships in the same release as the CLI and the design app, so it carries the Redcode version.
     extraMetadata: {
       desktopName: `${appId}.desktop`,
+      version: process.env.REDCODE_VERSION ?? redcode.version,
     },
     files: [
       "out/**/*",
