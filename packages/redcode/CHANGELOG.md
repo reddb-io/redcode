@@ -1,5 +1,49 @@
 # @reddb-io/redcode
 
+## 0.73.0
+
+### Minor Changes
+
+- The web and desktop interface now uses the reddb.io design system: Space Grotesk and JetBrains Mono, the design
+  system's light and dark color schemes, ink focus and selection, one Brand-red primary action, and a redesigned home,
+  session transcript, composer and settings. The app is branded Redcode with the `>_` mark. Custom color themes keep
+  working; a saved `oc-2` theme moves to the new default automatically.
+- Redcode Desktop now installs with Redcode. Every archive (except Linux musl) carries the desktop app beside `redcode`, and npm installs the matching `@reddb-io/redcode-desktop-<os>-<arch>` package. `redcode desktop` opens it and registers its shortcut and the `redcode://` link handler on first launch. The desktop runs the `redcode` of its own installation and updates with `redcode upgrade`, which updates the CLI, the design app and the desktop together.
+- The server API gains what the web and desktop interface needs: `POST /api/vcs/init` initializes Git or Mercurial in a
+  project without version control, integrations can declare an external connection method whose credential lives outside
+  Redcode, `GET`/`POST /api/credential` list and create stored credentials, and a request for a missing project folder
+  now returns `404 LocationNotFoundError` instead of a server error. Listing a missing directory returns
+  `FileNotFoundError`, a failed session's idle marker carries its error, and in-app browser tools stay hidden until a
+  desktop browser attaches.
+- The app gains a left navigation rail and a collapsible side menu: pinned sessions, projects with their sessions
+  nested (status, unread, relative time), recent sessions and a filter. Ctrl/Cmd+B collapses it to the rail, back and
+  forward buttons return, and previous/next session and project commands work. The vertical tabs layout is replaced by
+  the side menu.
+- Session transcripts are denser and easier to scan: each finished turn collapses under a "Worked for 9m 26s · Ran 31
+  commands, edited 3 files…" header, tool groups count by kind including failures, running tools and the status line
+  show live elapsed time, each turn ends with an "Edited N files +X −Y" card with View changes and Undo, long messages
+  fold behind Show more, and a message can be forked from where it was sent.
+- The web and desktop interface catches up with upstream OpenCode v2: panels such as review, terminal, files, context,
+  side chat and the in-app browser (with an address bar, history and comments on page elements) now run as built-in
+  extensions in a tabbed side region; review controls live in their panels, steer and queue states are clearer, timeline
+  file links resolve deterministically, execution errors show in the timeline, and many smaller fixes land. Redcode's
+  design system, branding, navigation rail, timeline summaries and Design panel are kept; the Design command is now
+  `design.open` and existing keybinds migrate automatically.
+
+### Patch Changes
+
+- The design app now ships in the same release as Redcode: every archive carries `redcode-design` beside `redcode`, and npm installs the matching `@reddb-io/redcode-design-<target>` package with it. Redcode no longer downloads the design app from a separate `design-v*` release, and the `design.app.version` setting is ignored. macOS archives are now `tar.gz`.
+- Redcode runs the design app that ships in its own installation: beside the binary, or in the matching npm package.
+- Release builds of Redcode Desktop no longer show the "Dev" channel label in the titlebar.
+- Redcode Desktop and the design app now report the Redcode version, ahead of shipping in the same release as the CLI.
+- Redcode now carries the RedDB brand from the reddb.io design system. The titlebar shows the RedDB symbol (dev and beta
+  builds name their channel beside it), the new session, About, error, server connect and startup screens place the
+  RedDB Logo, and the web app, PWA and desktop app use the RedDB platform icons. The design system is vendored with its
+  own Sync from a pinned release.
+- On Windows, the background service no longer opens an empty terminal window every few seconds while it reads the red-skills project status.
+- Publish verified GitHub binaries independently of npm, honor the configured npm authentication mode, stop publication on registry authentication or network failures, and preserve service lifecycle failure diagnostics.
+- On Windows the background service no longer flashes empty terminal windows: language servers, their installers and archive extraction, the design app and its git and tar helpers, worktree git and `gh` checks, and the persistent terminal daemon now start without a console window. Redskilled status reads keep one adapter per project alive while they are polled instead of starting a new `red-skills-redskilled acp` process on every read, wait 30 seconds before retrying an adapter that failed or is not installed, and the TUI polls Redskilled workers only while the Workers tab or page is open.
+
 ## 0.72.12
 
 ### Patch Changes
