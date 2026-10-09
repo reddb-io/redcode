@@ -1,7 +1,6 @@
 import { describe, expect, test } from "bun:test"
 import { Effect } from "effect"
 import { DesignPresence } from "../src/design-presence"
-import { DesignWaiting } from "../src/design-waiting"
 
 const fixture = () => {
   const clock = { now: 1_000 }
@@ -128,23 +127,5 @@ describe("DesignPresence", () => {
       ),
     )
     expect(presence.connected("ses_a")).toBe(0)
-  })
-})
-
-describe("DesignWaiting", () => {
-  test("shows the start's elapsed time and reloads until the app runs", () => {
-    const page = DesignWaiting.page({ progress: { phase: "start", started: 1_000 }, now: 4_500 })
-    expect(page).toContain("Starting the design app…")
-    expect(page).toContain("<progress aria-label=")
-    expect(page).toContain("3 s")
-    expect(page).toContain('http-equiv="refresh"')
-  })
-
-  test("a failure stops reloading, escapes the reason and offers Retry", () => {
-    const page = DesignWaiting.page({ error: "spawn <redcode-design> failed", now: 0 })
-    expect(page).toContain("The design app did not start.")
-    expect(page).toContain("spawn &lt;redcode-design&gt; failed")
-    expect(page).toContain("Retry")
-    expect(page).not.toContain('http-equiv="refresh"')
   })
 })

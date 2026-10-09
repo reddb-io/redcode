@@ -9,6 +9,7 @@ import { setTimeout as sleep } from "node:timers/promises"
 import { Option, Schema } from "effect"
 import { Design } from "@opencode/schema/design"
 import { Global } from "@opencode/util/global"
+import { designReviewURL } from "@opencode/util/design-review"
 import { Flock } from "@opencode/util/flock"
 import { DesignAppBinary } from "./app-binary.js"
 import type { Database } from "../database/database.js"
@@ -352,15 +353,13 @@ export async function link(connection: Connection, sessionID: string, route = "/
   return url.toString()
 }
 
-/** The public review stays on the owning Redcode server, including when rendering uses the app. */
+/**
+ * The public review stays on the owning Redcode server, including when rendering uses the app: attach the Session,
+ * then return the server's stable review address, which carries no ticket.
+ */
 export async function review(connection: Connection, sessionID: string) {
   await link(connection, sessionID)
-  const response = await fetch(new URL(`/design/session/${encodeURIComponent(sessionID)}/link`, connection.host!.url), {
-    headers: connection.host!.authorization ? { authorization: connection.host!.authorization } : {},
-    signal: AbortSignal.timeout(10_000),
-  })
-  if (!response.ok) throw new Error(`Redcode did not return the Design review link (${response.status})`)
-  return Schema.decodeUnknownSync(Schema.Struct({ url: Schema.String }))(await response.json()).url
+  return designReviewURL(connection.host!.url, sessionID)
 }
 
 /** The renderer's private HTTP calls to the app; browser tickets never authorize these. */

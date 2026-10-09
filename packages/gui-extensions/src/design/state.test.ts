@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test"
 import type { DesignNote, SessionMessageAssistantTool, SessionMessageInfo } from "@opencode/client/promise"
-import { designActivity, designReview, designStatus, latestDesignPreview } from "./state"
+import { designActivity, designReview, designStatus, latestDesignPreview, openDesignReviewPane } from "./state"
 
 const assistant = (id: string, tools: { id: string; name: string; done: boolean }[]): SessionMessageInfo => ({
   id,
@@ -104,5 +104,32 @@ describe("designReview", () => {
     expect(review.round).toBeUndefined()
     expect(review.notes).toEqual([])
     expect(review.earlier).toBe(0)
+  })
+})
+
+describe("openDesignReviewPane", () => {
+  const session = { id: "ses_a", server: { url: "http://127.0.0.1:4096" } }
+  const pane = (attached: boolean) => {
+    const opened: string[] = []
+    return {
+      opened,
+      value: { attached: () => attached, open: (_session: typeof session, url: string) => void opened.push(url) },
+    }
+  }
+
+  test("opens the simplified review at its stable address in an attached desktop pane, with no ticket", () => {
+    const browser = pane(true)
+
+    expect(openDesignReviewPane({ status: "active", value: browser.value, generation: 1 }, session)).toBe(true)
+    expect(browser.opened).toEqual(["http://127.0.0.1:4096/design/session/ses_a/review?embed=1"])
+  })
+
+  test("leaves the review to a system browser while the pane cannot show it", () => {
+    const browser = pane(false)
+
+    expect(openDesignReviewPane({ status: "active", value: browser.value, generation: 1 }, session)).toBe(false)
+    expect(openDesignReviewPane({ status: "pending" }, session)).toBe(false)
+    expect(openDesignReviewPane({ status: "inactive", reason: "disabled" }, session)).toBe(false)
+    expect(browser.opened).toEqual([])
   })
 })

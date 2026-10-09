@@ -11,7 +11,7 @@ const setup: Setup<typeof definition> = (ctx) => {
   onCleanup(onIdle(() => void SessionDesignPanel.preload()))
   const layout = ctx.layout
   const sessions = ctx.sessions
-  const openReview = createDesignReview(ctx)
+  const review = createDesignReview(ctx)
   const key = `${ctx.id}:main`
   // Changes when a session mounts or unmounts, not on every switch between sessions.
   const mounted = createMemo(() => !!sessions.current())
@@ -82,7 +82,7 @@ const setup: Setup<typeof definition> = (ctx) => {
     list: (input) => (input.open.includes("main") ? [tab] : []),
     render: (props) => (
       <Suspense>
-        <SessionDesignPanel session={props.session} openReview={openReview} />
+        <SessionDesignPanel session={props.session} review={review} />
       </Suspense>
     ),
   })

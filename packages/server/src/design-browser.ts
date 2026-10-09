@@ -22,6 +22,7 @@ import { SessionGoal } from "@opencode/core/session/goal"
 import { SessionSchema } from "@opencode/core/session/schema"
 import { SessionTodoStore } from "@opencode/core/session/todo-store"
 import { SessionTodo } from "@opencode/schema/session-todo"
+import { designReviewURL } from "@opencode/util/design-review"
 import { Cause, Duration, Effect, Exit, Option, RcMap, Schema, Stream } from "effect"
 import { HttpRouter, HttpServerRequest, HttpServerResponse } from "effect/unstable/http"
 import { ServerAuth } from "./auth"
@@ -63,7 +64,11 @@ export const routes = (hosts: () => ReadonlyArray<string>, network: () => string
       const cors = yield* CorsConfig
       const locations = yield* LocationServiceMap.Service
 
-      /** A review link to this server at the address the client used, signed so a browser needs no credentials. */
+      /**
+       * A review link to this server at the address the client used, signed so a browser without server credentials
+       * (an unpaired one, or one on another device) can sign in once. Clients with credentials use the stable
+       * `designReviewURL` instead.
+       */
       const reviewLink = (host: string | undefined, sessionID: SessionSchema.ID) => {
         const link = new URL(`/design/session/${sessionID}/review`, DesignAccess.reviewOrigin(host))
         link.searchParams.set("ticket", DesignAccess.ticket(secret, sessionID))
@@ -165,13 +170,36 @@ export const routes = (hosts: () => ReadonlyArray<string>, network: () => string
             connected: DesignPresence.shared.connected(sessionID),
           })
         }
-        const linked = !trusted && DesignAccess.verify(secret, sessionID, url.searchParams.get("ticket") ?? undefined)
+        const ticket = url.searchParams.get("ticket") ?? undefined
+        const cookie = request.cookies[DesignAccess.COOKIE]
+        const linked = !trusted && DesignAccess.verify(secret, sessionID, ticket)
+        const held = !trusted && !linked && DesignAccess.verify(secret, sessionID, cookie)
         if (parts[0] === "permission" && parts.length === 1 && !trusted)
           return failure(401, "Server authorization is required for Design permissions")
         if (parts[1] === "revision" && parts[3] === "directory" && !trusted)
           return failure(401, "Server authorization is required for Design build paths")
-        if (!trusted && !linked && !DesignAccess.verify(secret, sessionID, request.cookies[DesignAccess.COOKIE]))
-          return failure(401, "This review link expired or belongs to another session; open the review again")
+        const page =
+          request.method === "GET" &&
+          ((parts[0] === "review" && parts.length === 1) || (parts[1] === "present" && parts.length === 2))
+        if (!trusted && !linked && !held) {
+          if (!page)
+            return failure(
+              401,
+              "This browser is not signed in to this review any more; reload the review page to see how to get back in",
+            )
+          // A person reads this one: say how to get back in, in a page instead of a JSON error.
+          const retry = new URL(url)
+          retry.searchParams.delete("ticket")
+          const { DesignLauncher } = yield* Effect.promise(() => import("@opencode/core/design/ui/launcher"))
+          return html(
+            DesignLauncher.denied({
+              sessionID,
+              retry: `${retry.pathname}${retry.search}`,
+              expired: !!ticket || !!cookie,
+            }),
+            401,
+          )
+        }
         if (request.method !== "GET") {
           const origin = request.headers.origin
           if (origin && URL.parse(origin)?.host !== request.headers.host)
@@ -180,13 +208,7 @@ export const routes = (hosts: () => ReadonlyArray<string>, network: () => string
             return failure(403, "Design writes must be JSON")
         }
         // In app mode, attach the renderer to this Session while the review remains on this server.
-        const page =
-          request.method === "GET" &&
-          ((parts[0] === "review" && parts.length === 1) || (parts[1] === "present" && parts.length === 2))
-        const signed =
-          DesignAccess.verify(secret, sessionID, url.searchParams.get("ticket") ?? undefined) ||
-          DesignAccess.verify(secret, sessionID, request.cookies[DesignAccess.COOKIE])
-        const design = page && signed && app.name !== DESIGN_APP ? yield* configured : undefined
+        const design = page && app.name !== DESIGN_APP ? yield* configured : undefined
         // Keep the browser on the owning server; another device cannot reach the app's loopback port.
         if (design && DesignAppMode.process(design)) yield* appLink(sessionID, `/${parts.join("/")}`)
         if (parts[0] === "share" && parts.length === 1 && request.method === "GET")
@@ -205,7 +227,11 @@ export const routes = (hosts: () => ReadonlyArray<string>, network: () => string
                   instances.provide(session),
                 )
               : yield* mutate(request, sessionID, parts, session.agent).pipe(instances.provide(session))
-        if (!linked) return response
+        // A ticket becomes the review cookie, and the cookie slides forward while the review is in use, so an open
+        // page never loses access mid-review; it lapses only after COOKIE_TTL without a request.
+        const renew =
+          linked || (held && (page || (parts[0] === "feed" && parts.length === 1) || DesignAccess.renewal(cookie)))
+        if (!renew) return response
         return response.pipe(
           HttpServerResponse.setCookieUnsafe(
             DesignAccess.COOKIE,
@@ -266,7 +292,7 @@ export const routes = (hosts: () => ReadonlyArray<string>, network: () => string
                 .map((session) => ({
                   title: session.title ?? session.location.directory,
                   directory: session.location.directory,
-                  url: reviewLink(request.headers.host, session.id),
+                  url: designReviewURL(DesignAccess.reviewOrigin(request.headers.host), session.id),
                 })),
             }),
           )
@@ -289,9 +315,10 @@ export const routes = (hosts: () => ReadonlyArray<string>, network: () => string
           model: source.model,
           title: `Design · ${source.title ?? source.location.directory}`,
         })
+        // Only a credentialed browser creates sessions here, so it opens the stable review without a ticket.
         return HttpServerResponse.jsonUnsafe({
           sessionID: session.id,
-          url: reviewLink(request.headers.host, session.id),
+          url: designReviewURL(DesignAccess.reviewOrigin(request.headers.host), session.id),
         })
       }).pipe(Effect.catchCause((cause) => Effect.succeed(errorResponse(Cause.squash(cause)))))
       yield* router.add("*", "/design", launch)
@@ -348,7 +375,9 @@ function read(
     if (parts[0] === "review" && parts.length === 1) {
       const { DesignPage } = yield* Effect.promise(() => import("@opencode/core/design/ui/page"))
       const configured = yield* store.configured(sessionID)
-      return html(DesignPage.review(sessionID, endpoint, configured?.breakpoints))
+      return html(
+        DesignPage.review(sessionID, endpoint, configured?.breakpoints, url.searchParams.get("embed") === "1"),
+      )
     }
     if (parts[0] === "feed" && parts.length === 1) {
       const cursor = Number(url.searchParams.get("after") ?? "0")
@@ -553,8 +582,9 @@ function mutate(
   })
 }
 
-function html(content: string) {
+function html(content: string, status = 200) {
   return HttpServerResponse.text(content, {
+    status,
     contentType: "text/html",
     headers: { "cache-control": "no-store", "content-security-policy": pageCSP },
   })

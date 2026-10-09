@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test"
-import { getDesignReviewLink, openDesignReview } from "./design-review.js"
+import { designReviewURL, getDesignReviewLink, openDesignReview } from "./design-review.js"
 
 const endpoint = { url: "http://127.0.0.1:4096", headers: { authorization: "Basic test" } }
 const review = "http://127.0.0.1:4096/design/session/ses_a/review?ticket=signed"
@@ -207,5 +207,15 @@ describe("openDesignReview", () => {
       launch: browser(true).launch,
     })
     expect(notice).toEqual({ variant: "info", message: `Design review: ${review}`, url: review })
+  })
+})
+
+describe("designReviewURL", () => {
+  test("is the ticketless review route on the given server, optionally simplified for an embedding app", () => {
+    expect(designReviewURL("http://127.0.0.1:4096", "ses_a")).toBe("http://127.0.0.1:4096/design/session/ses_a/review")
+    expect(designReviewURL("http://127.0.0.1:4096/", "ses_a", { embed: true })).toBe(
+      "http://127.0.0.1:4096/design/session/ses_a/review?embed=1",
+    )
+    expect(designReviewURL("https://devbox.local:8443/base", "ses_a")).not.toContain("ticket")
   })
 })

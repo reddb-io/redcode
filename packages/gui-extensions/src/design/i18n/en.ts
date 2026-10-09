@@ -5,6 +5,7 @@ export default {
   "title": "Designs",
   "refresh": "Refresh designs",
   "review.open": "Open review",
+  "review.external": "Open in system browser",
   "review.failed": "Couldn’t open the Design review",
   "loading": "Loading designs…",
   "error": "Couldn’t load the designs",

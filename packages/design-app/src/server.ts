@@ -164,7 +164,16 @@ async function dispatch(
         return new Response(null, { status: 403 })
     }
     const host = hosts.get(sessionID)
-    if (!host) return Response.json({ code: "unavailable", message: "Open the Design review again" }, { status: 503 })
+    // Redcode attaches the Session whenever its review page loads or the agent publishes, so this is transient.
+    if (!host)
+      return Response.json(
+        {
+          code: "unavailable",
+          message:
+            "The design app is re-attaching this Session; it does so automatically on the next review request. Nothing needs to restart.",
+        },
+        { status: 503 },
+      )
     const headers = new Headers(request.headers)
     headers.delete("host")
     headers.delete("origin")

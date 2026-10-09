@@ -17,7 +17,19 @@ const Claim = Schema.Struct({
 })
 const Link = Schema.Struct({ url: Schema.String, network: Schema.optional(Schema.String) })
 
-/** Read a stable review address without launching a browser. */
+/**
+ * The stable address of a Session's Design review on the server at `origin`. It carries no ticket and never
+ * expires: the desktop app, a browser paired with `redcode pair` and a browser already signed in to this review open
+ * it directly; any other browser gets a page that explains how to get in. `embed` asks for the simplified review
+ * shown beside the session, without the conversation the session already shows.
+ */
+export function designReviewURL(origin: string, sessionID: string, options?: { readonly embed?: boolean }) {
+  const url = new URL(`/design/session/${encodeURIComponent(sessionID)}/review`, origin)
+  if (options?.embed) url.searchParams.set("embed", "1")
+  return url.toString()
+}
+
+/** Read a signed review address, which any browser opens, without launching a browser. */
 export async function getDesignReviewLink(input: {
   readonly sessionID: string
   readonly endpoint: { readonly url: string; readonly headers?: Record<string, string> }

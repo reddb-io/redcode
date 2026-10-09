@@ -38,6 +38,7 @@ const READ_ONLY = new Set([
   "design_read",
   "design_detect",
   "design_history",
+  "design_link",
   "design_jobs",
   "goal_status",
   "list_mcp_resources",

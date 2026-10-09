@@ -5,6 +5,7 @@ import { stat } from "node:fs/promises"
 import { ToolFailure } from "@opencode/ai"
 import type { Context } from "@opencode/plugin/effect/plugin"
 import { Design } from "@opencode/schema/design"
+import { designReviewURL } from "@opencode/util/design-review"
 import { Cause, Effect, Schema } from "effect"
 import { DesignBuild } from "../../design/build.js"
 import { DesignAppConnection } from "../../design/app-connection.js"
@@ -193,6 +194,8 @@ export const Plugin = {
               const notice = yield* Effect.promise(() =>
                 DesignQuality.screenNotice(revision.document.root, revision.document.engine, revision.document.entry),
               )
+              // The stable review address: no ticket lands in the transcript, and the link never expires.
+              const host = apps.host()
               const link = DesignAppMode.process(configured)
                 ? yield* Effect.tryPromise(async () => {
                     const { DesignApp } = await import("../../design/app.js")
@@ -203,7 +206,9 @@ export const Plugin = {
                       onSuccess: (url) => `Review: ${url}`,
                     }),
                   )
-                : undefined
+                : host
+                  ? `Review: ${designReviewURL(host.url, context.sessionID)}`
+                  : undefined
               const revisions = yield* designs.revisions(context.sessionID, document.id)
               const number = numbered(revisions, revision.id)
               // An unchanged prototype is said out loud: the verify would see no change in any note's element.

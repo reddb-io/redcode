@@ -163,7 +163,6 @@ test("a resumed prototype keeps its review address visible without launching ano
     tokens: { input: 0, output: 0, reasoning: 0, cache: { read: 0, write: 0 } },
     time: { created: 1, updated: 1 },
   }
-  const review = "http://localhost/review/profile"
   const requests: string[] = []
   await using setup = await createAppFixture({
     state: state.path,
@@ -172,7 +171,6 @@ test("a resumed prototype keeps its review address visible without launching ano
     config: { animations: false, tabs: { mode: "off" }, session: { sidebar: "hide" } },
     fetch: (url) => {
       if (url.pathname.startsWith("/design/")) requests.push(url.pathname)
-      if (url.pathname === `/design/session/${session.id}/link`) return json({ url: review })
       if (url.pathname === `/api/session/${session.id}`) return json({ data: session })
       if (["inbox", "permission", "todo"].some((name) => url.pathname === `/api/session/${session.id}/${name}`))
         return json({ data: [] })
@@ -206,12 +204,13 @@ test("a resumed prototype keeps its review address visible without launching ano
     },
   })
   await setup.ready
-  await setup.waitForFrame((frame) => frame.includes(`» Preview: ${review}`))
-  const count = requests.length
+  // The stable review address needs no request and carries no ticket, so it never expires on screen.
+  await setup.waitForFrame((frame) => frame.includes(`/design/session/${session.id}/review`))
+  expect(setup.captureCharFrame()).toMatch(
+    /» Preview: http:\/\/localhost:\d+\/design\/session\/ses_profile_design\/review\s/,
+  )
   for (let index = 0; index < 3; index++) await setup.renderOnce()
-  expect(requests.length).toBe(count)
-  expect(requests.length).toBeGreaterThan(0)
-  expect(requests.every((url) => url === `/design/session/${session.id}/link`)).toBe(true)
+  expect(requests).toEqual([])
   setup.events.emit({
     id: "evt_design_handoff",
     created: 3,
@@ -221,7 +220,7 @@ test("a resumed prototype keeps its review address visible without launching ano
   })
   await setup.waitForFrame((frame) => !frame.includes("» Preview:"))
   expect(setup.renderer.root.findDescendantById("session-design-review-link")).toBeUndefined()
-  expect(requests.length).toBe(count)
+  expect(requests).toEqual([])
 })
 
 test("session location stays visible without the sidebar while Build runs and moves to its worktree", async () => {

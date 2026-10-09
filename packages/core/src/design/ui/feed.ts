@@ -5,7 +5,8 @@ import type { Design } from "@opencode/schema/design"
  * function into the standalone review page, so keep it self-contained: no imports beyond types,
  * no closures over module state. Reconnects from the last durable sequence with a 1 s to 10 s
  * backoff and stops when the signal aborts. A client-side rejection (any 4xx other than 408 and
- * 429) will not change by retrying, so it reports the feed as unavailable and stops.
+ * 429) will not change by retrying, so it reports the feed as unavailable with that status and stops:
+ * 401 and 403 mean this page lost access to the review.
  *
  * `onStatus` reports "live" once a connection answers and "offline" when it drops. The server writes
  * a heartbeat every 15 s, so a connection that delivers no bytes for longer than `silence` is treated
@@ -16,7 +17,7 @@ export function designFeed(
   request: (url: string, init?: RequestInit) => Promise<Response>,
   signal: AbortSignal,
   onEvent: (event: Design.FeedEvent) => void,
-  onUnavailable: () => void,
+  onUnavailable: (status: number) => void,
   onStatus: (status: "live" | "offline") => void = () => {},
   silence = 40000,
 ) {
@@ -56,7 +57,7 @@ export function designFeed(
         headers: { accept: "text/event-stream" },
       })
       if (response.status >= 400 && response.status < 500 && response.status !== 408 && response.status !== 429)
-        return false
+        return response.status
       if (!response.ok || !response.body) throw new Error(String(response.status))
       alive()
       onStatus("live")
@@ -92,10 +93,10 @@ export function designFeed(
   const loop = async () => {
     while (!signal.aborted) {
       // A dropped stream is routine (server restart, sleep); the next attempt resumes from `after`.
-      const retry = await read().catch(() => true)
+      const retry = await read().catch(() => true as const)
       if (signal.aborted) return
-      if (!retry) {
-        onUnavailable()
+      if (retry !== true) {
+        onUnavailable(retry)
         return
       }
       onStatus("offline")

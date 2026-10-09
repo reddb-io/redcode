@@ -93,3 +93,31 @@ function withScheme(input: string) {
 
   return `${local ? "http" : "https"}://${value}`
 }
+
+/**
+ * The server credential a pane request carries: the review the Design panel opens beside the session signs in with
+ * the desktop's own credential instead of a ticket. The pane also loads arbitrary sites, and the agent drives it, so
+ * the credential goes only to this session's Design routes on the server's exact origin, and only on requests that
+ * page makes itself or on a navigation nobody else started (the Design panel's, the address bar's). A page on
+ * another origin can neither receive it nor make a request that carries it. Undefined when the request gets none.
+ */
+export function reviewAuthorization(
+  request: {
+    readonly url: string
+    readonly method: string
+    readonly resourceType: string
+    /** The origin that issued the request; undefined for a navigation the browser started itself. */
+    readonly initiatorOrigin?: string
+  },
+  server: { readonly url: string; readonly sessionID: string; readonly authorization?: string },
+) {
+  if (!server.authorization || !URL.canParse(request.url) || !URL.canParse(server.url)) return
+  const url = new URL(request.url)
+  const origin = new URL(server.url).origin
+  const base = `/design/session/${encodeURIComponent(server.sessionID)}`
+  if (url.origin !== origin || (url.pathname !== base && !url.pathname.startsWith(`${base}/`))) return
+  const own = request.initiatorOrigin === origin
+  const opened =
+    request.initiatorOrigin === undefined && request.resourceType === "mainFrame" && request.method === "GET"
+  return own || opened ? server.authorization : undefined
+}

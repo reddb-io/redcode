@@ -33,6 +33,16 @@ describe("DesignAccess review tickets", () => {
     expect(DesignAccess.verify("secret", "ses_review", cookie, now + DesignAccess.LINK_TTL + 1)).toBe(true)
   })
 
+  test("a review cookie is due for a fresh one only once it is older than the renewal interval", () => {
+    const now = 5_000_000
+    const issued = DesignAccess.ticket("secret", "ses_review", DesignAccess.COOKIE_TTL, now)
+
+    expect(DesignAccess.renewal(issued, now)).toBe(false)
+    expect(DesignAccess.renewal(issued, now + DesignAccess.COOKIE_RENEWAL)).toBe(false)
+    expect(DesignAccess.renewal(issued, now + DesignAccess.COOKIE_RENEWAL + 1)).toBe(true)
+    expect(DesignAccess.COOKIE_RENEWAL).toBeLessThan(DesignAccess.COOKIE_TTL)
+  })
+
   test("an embedded server without a password keeps one secret for its lifetime", () => {
     const secret = DesignAccess.embeddedSecret()
 
