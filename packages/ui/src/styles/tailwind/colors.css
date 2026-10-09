@@ -285,4 +285,9 @@
   --color-v2-state-bg-info: var(--v2-state-bg-info);
   --color-v2-state-fg-info: var(--v2-state-fg-info);
   --color-v2-state-border-info: var(--v2-state-border-info);
+  --color-v2-status-attention: var(--v2-status-attention);
+  --color-v2-status-working: var(--v2-status-working);
+  --color-v2-status-queued: var(--v2-status-queued);
+  --color-v2-status-failed: var(--v2-status-failed);
+  --color-v2-status-done: var(--v2-status-done);
 }

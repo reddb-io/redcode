@@ -5,7 +5,13 @@ import {
   clampNavigationWidth,
   groupByDay,
   navigationAge,
+  navigationElapsed,
   navigationSessionOrder,
+  nextSessionAwaitingUser,
+  rollupSessionStatus,
+  SESSION_STATUSES,
+  sessionStatus,
+  type SessionStatus,
   stepNavigation,
   togglePinned,
 } from "./model"
@@ -58,19 +64,22 @@ describe("buildNavigationTree", () => {
     expect(ids(tree.recents)).toEqual(["a2"])
   })
 
-  test("shows the latest five, keeps sessions needing attention, and counts the rest as hidden", () => {
+  test("shows the latest five, keeps sessions with a status, and counts the rest as hidden", () => {
     const sessions = Array.from({ length: 8 }, (_, index) => session(`s${index}`, "/repo/alpha", 100 - index))
+    const statuses: Record<string, SessionStatus> = { s1: "done", s6: "working", s7: "approval" }
     const tree = buildNavigationTree({
       projects: [alpha],
       sessions,
       pinned: [],
-      attention: (id) => id === "s7",
+      status: (id) => statuses[id],
     })
     const project = tree.projects[0]!
-    expect(ids(project.sessions)).toEqual(["s0", "s1", "s2", "s3", "s4", "s7"])
-    expect(project.hidden).toBe(2)
+    expect(ids(project.sessions)).toEqual(["s0", "s1", "s2", "s3", "s4", "s6", "s7"])
+    expect(project.hidden).toBe(1)
     expect(project.total).toBe(8)
-    expect(project.attention).toBe(true)
+    // The project rolls up its most urgent session, even one that a collapsed row hides.
+    expect(project.status).toBe("approval")
+    expect(buildNavigationTree({ projects: [alpha], sessions, pinned: [] }).projects[0]!.status).toBeUndefined()
 
     const expanded = buildNavigationTree({ projects: [alpha], sessions, pinned: [], showAll: () => true })
     expect(expanded.projects[0]!.sessions).toHaveLength(8)
@@ -141,6 +150,66 @@ describe("navigation order", () => {
     expect(stepNavigation(["a", "b", "c"], undefined, 1)).toBe("a")
     expect(stepNavigation(["a", "b", "c"], "x", -1)).toBe("c")
     expect(stepNavigation([], "a", 1)).toBeUndefined()
+  })
+})
+
+describe("session status", () => {
+  const none = Object.fromEntries(SESSION_STATUSES.map((status) => [status, false])) as Record<SessionStatus, boolean>
+
+  test("picks one status by fixed priority", () => {
+    expect(sessionStatus(none)).toBeUndefined()
+    // Every signal at once, then each most urgent signal removed in turn.
+    const order = SESSION_STATUSES.map((_, index) =>
+      sessionStatus({
+        ...none,
+        ...Object.fromEntries(SESSION_STATUSES.slice(index).map((status) => [status, true])),
+      }),
+    )
+    expect(order).toEqual(["approval", "input", "working", "queued", "failed", "done"])
+    expect(sessionStatus({ ...none, done: true, failed: true, working: true })).toBe("working")
+  })
+
+  test("rolls a project up to its most urgent session", () => {
+    expect(rollupSessionStatus([])).toBeUndefined()
+    expect(rollupSessionStatus([undefined, "done", undefined])).toBe("done")
+    expect(rollupSessionStatus(["done", "working", "failed", "input"])).toBe("input")
+  })
+
+  test("jumps to the next session waiting on the user, most urgent first", () => {
+    const tree = buildNavigationTree({
+      projects: [alpha, beta],
+      sessions: [
+        session("a1", "/repo/alpha", 10),
+        session("a2", "/repo/alpha", 20),
+        session("b1", "/repo/beta", 30),
+        session("b2", "/repo/beta", 40),
+        session("p1", "/repo/beta", 50),
+      ],
+      pinned: ["p1"],
+      // Collapsed projects still count.
+      expanded: () => false,
+    })
+    const statuses: Record<string, SessionStatus> = {
+      a1: "done",
+      a2: "working",
+      b1: "input",
+      b2: "queued",
+      p1: "failed",
+    }
+    const status = (id: string) => statuses[id]
+    expect(nextSessionAwaitingUser(tree, status, undefined)).toBe("b1")
+    expect(nextSessionAwaitingUser(tree, status, "b1")).toBe("p1")
+    expect(nextSessionAwaitingUser(tree, status, "p1")).toBe("a1")
+    expect(nextSessionAwaitingUser(tree, status, "a1")).toBe("b1")
+    expect(nextSessionAwaitingUser(tree, status, "a2")).toBe("b1")
+    expect(nextSessionAwaitingUser(tree, () => "working", undefined)).toBeUndefined()
+  })
+
+  test("formats a live execution's elapsed time compactly", () => {
+    expect(navigationElapsed(-5)).toEqual({ unit: "second", seconds: 0 })
+    expect(navigationElapsed(42_900)).toEqual({ unit: "second", seconds: 42 })
+    expect(navigationElapsed(3 * 60_000 + 59_000)).toEqual({ unit: "minute", minutes: 3 })
+    expect(navigationElapsed(65 * 60_000)).toEqual({ unit: "hour", hours: 1, minutes: 5 })
   })
 })
 

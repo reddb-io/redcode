@@ -194,6 +194,14 @@ const semantics = (dark: boolean): Record<string, V2ColorValue> => ({
   "v2-state-fg-info": feedback("info", "foreground"),
   "v2-state-border-info": feedback("info", "border"),
 
+  // Session status marks. Waiting on the user is amber and live work is the running-badge blue; red
+  // is kept for a failed turn, and an unseen finish is plain ink.
+  "v2-status-attention": feedback("warning", "foreground"),
+  "v2-status-working": feedback("info", "foreground"),
+  "v2-status-queued": muted,
+  "v2-status-failed": feedback("danger", "foreground"),
+  "v2-status-done": foreground,
+
   ...agentTokens,
 
   "v2-elevation-raised": "var(--reddb-shadow-elevation-raised)",
