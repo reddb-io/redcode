@@ -30,6 +30,7 @@ import { DesignAppConnection } from "@opencode/core/design/app-connection"
 import { DesignHost } from "@opencode/core/design/host"
 import { Instance } from "@opencode/core/instance/service"
 import { SessionTransfer } from "@opencode/core/session/transfer"
+import { SessionImport } from "@opencode/core/session/import/service"
 import { SessionShare } from "@opencode/core/session/share"
 import { ShellSelect } from "@opencode/core/shell/select"
 import { MonitorRuntime } from "@opencode/core/monitor"
@@ -92,6 +93,7 @@ const applicationServiceNodes = [
   DesignAppConnection.node,
   Instance.node,
   SessionTransfer.node,
+  SessionImport.node,
   SessionShare.node,
   SdkPlugins.node,
   PluginUpdate.node,
