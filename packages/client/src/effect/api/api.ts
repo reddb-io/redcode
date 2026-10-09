@@ -4022,6 +4022,18 @@ export type IntegrationConnectKeyOperation<E = never> = (
   input: IntegrationConnectKeyInput,
 ) => Effect.Effect<IntegrationConnectKeyOutput, E>
 
+export type IntegrationConnectExternalInput = {
+  readonly integrationID: Integration.ID
+  readonly location?: { readonly directory?: string | undefined } | undefined
+  readonly methodID: Integration.MethodID
+  readonly answer?: Form.Answer | undefined
+  readonly label?: string | undefined
+}
+export type IntegrationConnectExternalOutput = void
+export type IntegrationConnectExternalOperation<E = never> = (
+  input: IntegrationConnectExternalInput,
+) => Effect.Effect<IntegrationConnectExternalOutput, E>
+
 export type IntegrationOauthConnectInput = {
   readonly integrationID: Integration.ID
   readonly location?: { readonly directory?: string | undefined } | undefined
@@ -4117,7 +4129,10 @@ export interface IntegrationApi<E = never> {
   readonly list: IntegrationListOperation<E>
   readonly get: IntegrationGetOperation<E>
   readonly wellknown: { readonly add: IntegrationWellknownAddOperation<E> }
-  readonly connect: { readonly key: IntegrationConnectKeyOperation<E> }
+  readonly connect: {
+    readonly key: IntegrationConnectKeyOperation<E>
+    readonly external: IntegrationConnectExternalOperation<E>
+  }
   readonly oauth: {
     readonly connect: IntegrationOauthConnectOperation<E>
     readonly status: IntegrationOauthStatusOperation<E>
@@ -4194,6 +4209,21 @@ export interface McpApi<E = never> {
   readonly resource: { readonly catalog: McpResourceCatalogOperation<E> }
 }
 
+export type CredentialListOutput = ReadonlyArray<Credential.Entry>
+export type CredentialListOperation<E = never> = () => Effect.Effect<CredentialListOutput, E>
+
+export type CredentialCreateInput = {
+  readonly id?: Credential.ID | undefined
+  readonly integrationID: Integration.ID
+  readonly label?: string | undefined
+  readonly value: Credential.Value
+  readonly activate?: boolean | undefined
+}
+export type CredentialCreateOutput = Credential.Entry
+export type CredentialCreateOperation<E = never> = (
+  input: CredentialCreateInput,
+) => Effect.Effect<CredentialCreateOutput, E>
+
 export type CredentialUpdateInput = { readonly credentialID: Credential.ID; readonly label: string }
 export type CredentialUpdateOutput = void
 export type CredentialUpdateOperation<E = never> = (
@@ -4213,6 +4243,8 @@ export type CredentialRemoveOperation<E = never> = (
 ) => Effect.Effect<CredentialRemoveOutput, E>
 
 export interface CredentialApi<E = never> {
+  readonly list: CredentialListOperation<E>
+  readonly create: CredentialCreateOperation<E>
   readonly update: CredentialUpdateOperation<E>
   readonly activate: CredentialActivateOperation<E>
   readonly remove: CredentialRemoveOperation<E>
@@ -4699,6 +4731,13 @@ export interface WorktreeApi<E = never> {
   readonly refresh: WorktreeRefreshOperation<E>
 }
 
+export type VcsInitInput = {
+  readonly location?: { readonly directory?: string | undefined } | undefined
+  readonly provider?: string | undefined
+}
+export type VcsInitOutput = void
+export type VcsInitOperation<E = never> = (input?: VcsInitInput) => Effect.Effect<VcsInitOutput, E>
+
 export type VcsGetInput = { readonly location?: { readonly directory?: string | undefined } | undefined }
 export type VcsGetOutput = { readonly location: Location.PublicRef; readonly data: Vcs.Info }
 export type VcsGetOperation<E = never> = (input?: VcsGetInput) => Effect.Effect<VcsGetOutput, E>
@@ -4729,6 +4768,7 @@ export type VcsDiffOutput = { readonly location: Location.PublicRef; readonly da
 export type VcsDiffOperation<E = never> = (input: VcsDiffInput) => Effect.Effect<VcsDiffOutput, E>
 
 export interface VcsApi<E = never> {
+  readonly init: VcsInitOperation<E>
   readonly get: VcsGetOperation<E>
   readonly base: VcsBaseOperation<E>
   readonly status: VcsStatusOperation<E>

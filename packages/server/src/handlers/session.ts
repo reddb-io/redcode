@@ -39,6 +39,7 @@ import {
   SkillNotFoundError,
 } from "@opencode/protocol/errors"
 import { AbsolutePath } from "@opencode/core/schema"
+import { locationErrors } from "../location"
 import { failedMessageDecode, failedSnapshot, missingMessage, missingSession } from "./session-error"
 
 import { activeSessions, listSessions } from "../session-read"
@@ -702,6 +703,7 @@ export const SessionHandler = HttpApiBuilder.group(Api, "server.session", (handl
                 Effect.catchTag("Tool.Error", (error) =>
                   Effect.fail(new InvalidRequestError({ message: `Could not prepare Build worktree: ${error.message}` })),
                 ),
+                locationErrors,
               ),
           }
         }),
@@ -738,6 +740,7 @@ export const SessionHandler = HttpApiBuilder.group(Api, "server.session", (handl
                   }),
                 ),
               ),
+              locationErrors,
             )
           return HttpApiSchema.NoContent.make()
         }),
@@ -756,6 +759,7 @@ export const SessionHandler = HttpApiBuilder.group(Api, "server.session", (handl
               Effect.catchTag("Session.SkillNotFoundError", (error) =>
                 Effect.fail(new SkillNotFoundError({ skill: error.skill, message: `Skill not found: ${error.skill}` })),
               ),
+              locationErrors,
             )
           return HttpApiSchema.NoContent.make()
         }),
@@ -844,6 +848,7 @@ export const SessionHandler = HttpApiBuilder.group(Api, "server.session", (handl
                 Effect.catchTag("Session.MessageNotFoundError", missingMessage),
                 Effect.catchTag("Session.BusyError", busySession),
                 Effect.catchTag("Snapshot.Error", failedSnapshot("stage session revert", ctx.params.sessionID)),
+                locationErrors,
               ),
           }
         }),
@@ -858,6 +863,7 @@ export const SessionHandler = HttpApiBuilder.group(Api, "server.session", (handl
               Effect.catchTag("Session.NotFoundError", missingSession),
               Effect.catchTag("Session.BusyError", busySession),
               Effect.catchTag("Snapshot.Error", failedSnapshot("clear session revert", ctx.params.sessionID)),
+              locationErrors,
             )
           return HttpApiSchema.NoContent.make()
         }),
@@ -900,6 +906,7 @@ export const SessionHandler = HttpApiBuilder.group(Api, "server.session", (handl
                 (error) => new InvalidRequestError({ message: error.message, field: error.field }),
               ),
               Effect.catchTag("Snapshot.Error", failedSnapshot("diff session turn", ctx.params.sessionID)),
+              locationErrors,
             ),
           }
         }),

@@ -316,7 +316,7 @@ function unresolvedProviderVariables(model: RuntimeInfo, baseURL: string) {
 }
 
 const nativeCredentialSettings = (specifier: string, credential: Credential.Value | undefined) => {
-  if (!credential) return {}
+  if (!credential || credential.type === "external") return {}
   if (credential.type === "key") return { apiKey: credential.key }
   if (specifier === "@opencode/ai/providers/anthropic" || specifier === "@opencode/ai/providers/anthropic-compatible")
     return { authToken: credential.access }

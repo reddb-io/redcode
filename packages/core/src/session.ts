@@ -10,6 +10,7 @@ import { Project } from "./project.js"
 import { Model } from "@opencode/schema/model"
 import { ModelResolver } from "./model-resolver.js"
 import { Location } from "./location.js"
+import type { FileSystem } from "./filesystem.js"
 import { SessionMessage } from "./session/message.js"
 import { PromptInput } from "@opencode/schema/prompt-input"
 import { Bus } from "./bus.js"
@@ -158,7 +159,10 @@ export interface Interface {
     readonly from?: SessionMessage.ID
     readonly to?: SessionMessage.ID
     readonly context?: number
-  }) => Effect.Effect<readonly FileDiff.Info[], NotFoundError | MessageNotFoundError | TurnRangeError | Snapshot.Error>
+  }) => Effect.Effect<
+    readonly FileDiff.Info[],
+    NotFoundError | MessageNotFoundError | TurnRangeError | Snapshot.Error | FileSystem.DirectoryNotFoundError
+  >
   /**
    * Durable admitted session work not yet visible in projected history,
    * ordered by admission. Includes unpromoted user and synthetic inputs and
@@ -199,7 +203,13 @@ export interface Interface {
     input: SessionPrompt.Input & { sessionID: SessionSchema.ID; id?: SessionMessage.ID; resume?: boolean },
   ) => Effect.Effect<
     SessionInbox.User,
-    NotFoundError | PromptConflictError | AttachmentError | SkillNotFoundError | HookRuntime.BlockedError | Tool.Error
+    | NotFoundError
+    | PromptConflictError
+    | AttachmentError
+    | SkillNotFoundError
+    | HookRuntime.BlockedError
+    | Tool.Error
+    | FileSystem.DirectoryNotFoundError
   >
   /** Generates text from current Session context without admitting input or mutating history. */
   readonly generate: (input: {
@@ -215,7 +225,10 @@ export interface Interface {
     skills?: PromptInput.Prompt["skills"]
     metadata?: SessionInbox.UserPayload["metadata"]
     delivery?: SessionInbox.Delivery
-  }) => Effect.Effect<void, NotFoundError | Command.NotFoundError | Command.ExecutionError>
+  }) => Effect.Effect<
+    void,
+    NotFoundError | Command.NotFoundError | Command.ExecutionError | FileSystem.DirectoryNotFoundError
+  >
   readonly shell: (input: {
     sessionID: SessionSchema.ID
     id?: SessionMessage.ID
@@ -226,7 +239,7 @@ export interface Interface {
     messageID?: SessionMessage.ID
     skill: Skill.ID
     resume?: boolean
-  }) => Effect.Effect<void, NotFoundError | SkillNotFoundError>
+  }) => Effect.Effect<void, NotFoundError | SkillNotFoundError | FileSystem.DirectoryNotFoundError>
   readonly compact: (
     input: CompactInput,
   ) => Effect.Effect<SessionInbox.Compaction, NotFoundError | CompactionConflictError>
@@ -249,8 +262,13 @@ export interface Interface {
       sessionID: SessionSchema.ID
       messageID: SessionMessage.ID
       files?: boolean
-    }) => Effect.Effect<SessionSchema.Revert, NotFoundError | MessageNotFoundError | BusyError | Snapshot.Error>
-    readonly clear: (sessionID: SessionSchema.ID) => Effect.Effect<void, NotFoundError | BusyError | Snapshot.Error>
+    }) => Effect.Effect<
+      SessionSchema.Revert,
+      NotFoundError | MessageNotFoundError | BusyError | Snapshot.Error | FileSystem.DirectoryNotFoundError
+    >
+    readonly clear: (
+      sessionID: SessionSchema.ID,
+    ) => Effect.Effect<void, NotFoundError | BusyError | Snapshot.Error | FileSystem.DirectoryNotFoundError>
     readonly commit: (sessionID: SessionSchema.ID) => Effect.Effect<void, NotFoundError | BusyError>
   }
 }
@@ -290,7 +308,10 @@ const layer = Layer.effect(
           return yield* Effect.die(new Error("Session.create requires either location or an existing parentID"))
         const project = yield* projects.resolve(location.directory)
         const model = input.model
-          ? yield* ModelResolver.bind(input.model).pipe(Effect.provide(locations.get(location)))
+          ? yield* ModelResolver.bind(input.model).pipe(
+              Effect.provide(locations.get(location)),
+              Effect.catchTag("FileSystem.DirectoryNotFoundError", Effect.die),
+            )
           : undefined
         const projected = yield* bus
           .publish(
@@ -335,7 +356,7 @@ const layer = Layer.effect(
         if (!created.parentID && (yield* fs.isDir(created.location.directory)))
           yield* HookRuntime.Service.use((hooks) =>
             hooks.run({ event: "SessionStart", session_id: sessionID, matcher: "startup" }),
-          ).pipe(instances.provide(created))
+          ).pipe(instances.provide(created), Effect.catchTag("FileSystem.DirectoryNotFoundError", Effect.die))
         return created
       }),
       fork: Effect.fn("Session.fork")(function* (input) {
@@ -458,7 +479,7 @@ const layer = Layer.effect(
       switchAgent: (input) => sessions.forSession(input.sessionID).switchAgent(input),
       switchModel: Effect.fn("Session.switchModel")(function* (input) {
         const session = yield* result.get(input.sessionID)
-        const model = yield* ModelResolver.bind(input.model).pipe(instances.provide(session))
+        const model = yield* ModelResolver.bind(input.model).pipe(instances.provide(session), Effect.catchTag("FileSystem.DirectoryNotFoundError", Effect.die))
         yield* sessions.forSession(input.sessionID).switchModel({ ...input, model })
       }),
       rename: (input) => sessions.forSession(input.sessionID).rename(input),

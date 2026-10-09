@@ -132,7 +132,11 @@ export const layer: Layer.Layer<
               if (session)
                 yield* HookRuntime.Service.use((hooks) =>
                   hooks.run({ event: "Stop", session_id: sessionID, matcher: "stop" }),
-                ).pipe(instances.provide(session))
+                ).pipe(
+                  instances.provide(session),
+                  // A Location removed during the run has no hooks left to observe the stop.
+                  Effect.catchTag("FileSystem.DirectoryNotFoundError", () => Effect.void),
+                )
               return
             }
             if (outcome.type === "interrupted") {

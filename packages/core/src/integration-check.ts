@@ -27,7 +27,7 @@ export const check = Effect.fn("IntegrationCheck.check")(function* (integrationI
       const credentials = yield* Credential.Service
       const credential = active.type === "credential" ? yield* credentials.get(active.id) : undefined
       const value = yield* integrations.connection.resolve(active)
-      const key = value?.type === "key" ? value.key : value?.access
+      const key = value?.type === "key" ? value.key : value?.type === "oauth" ? value.access : undefined
       const baseURL =
         integrationID === "red-router"
           ? redRouterEndpoint(credential)

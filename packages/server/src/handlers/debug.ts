@@ -8,7 +8,7 @@ import { Location } from "@opencode/core/location"
 import { Effect, Option, RcMap } from "effect"
 import { HttpApiBuilder } from "effect/unstable/httpapi"
 import { Api } from "../api"
-import { requestRef } from "../location"
+import { locationErrors, requestRef } from "../location"
 import { InvalidRequestError, ServiceUnavailableError } from "@opencode/protocol/errors"
 
 export const DebugHandler = HttpApiBuilder.group(Api, "server.debug", (handlers) =>
@@ -28,7 +28,7 @@ export const DebugHandler = HttpApiBuilder.group(Api, "server.debug", (handlers)
               limit: ctx.query.limit ?? 10_000,
             })
             .pipe(Effect.mapError((error) => new ServiceUnavailableError({ message: error.message, service: "ripgrep" })))
-        }).pipe(Effect.provide(locations.get(requestRef(ctx.request))))
+        }).pipe(Effect.provide(locations.get(requestRef(ctx.request))), locationErrors)
       }),
     )
     .handle(
@@ -55,7 +55,7 @@ export const DebugHandler = HttpApiBuilder.group(Api, "server.debug", (handlers)
                   : error,
               ),
             )
-        }).pipe(Effect.provide(locations.get(requestRef(ctx.request))))
+        }).pipe(Effect.provide(locations.get(requestRef(ctx.request))), locationErrors)
       }),
     )
     .handle(

@@ -25,6 +25,7 @@ import { Context, Effect, Encoding, Result, Schema, SchemaGetter, Struct } from 
 import { HttpApiEndpoint, HttpApiGroup, HttpApiMiddleware, HttpApiSchema, OpenApi } from "effect/unstable/httpapi"
 import {
   ConflictError,
+  LocationNotFoundError,
   DesignNotFoundError,
   CommandExecutionError,
   CommandNotFoundError,
@@ -1074,7 +1075,7 @@ export const makeSessionGroup = <I extends HttpApiMiddleware.AnyId, S, FormI ext
           }),
         }),
         success: Schema.Struct({ data: Schema.Array(FileDiff.Info) }),
-        error: [InvalidRequestError, MessageNotFoundError, SessionNotFoundError, UnknownError],
+        error: [InvalidRequestError, MessageNotFoundError, SessionNotFoundError, UnknownError, LocationNotFoundError],
       }).annotateMerge(
         OpenApi.annotations({
           identifier: "session.diff",

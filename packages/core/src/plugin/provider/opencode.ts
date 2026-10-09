@@ -154,7 +154,7 @@ export const OpencodePlugin = define<HttpClient.HttpClient | Bus.Service | Manag
       if (!connection) return { config: undefined, connection, organization: undefined, mcp: undefined }
       return yield* ctx.integration.connection.resolve(connection).pipe(
         Effect.flatMap((credential) => {
-          if (!credential)
+          if (!credential || credential.type === "external")
             return Effect.succeed({ config: undefined, connection, organization: undefined, mcp: undefined })
           return fetchConfig(http, credential).pipe(
             Effect.map((config) => ({
@@ -318,7 +318,8 @@ export const OpencodePlugin = define<HttpClient.HttpClient | Bus.Service | Manag
               return yield* Effect.fail(new Error("OpenCode Console connection changed"))
             }
             const credential = yield* ctx.integration.connection.resolve(active)
-            if (!credential) return yield* Effect.fail(new Error("OpenCode Console is not connected"))
+            if (!credential || credential.type === "external")
+              return yield* Effect.fail(new Error("OpenCode Console is not connected"))
             const metadata = credential.metadata
             const orgID = typeof metadata?.orgID === "string" ? metadata.orgID : undefined
             const token = credential.type === "oauth" ? credential.access : credential.key
@@ -396,7 +397,7 @@ export const OpencodePlugin = define<HttpClient.HttpClient | Bus.Service | Manag
   }),
 })
 
-function fetchConfig(http: HttpClient.HttpClient, value: Credential.Value) {
+function fetchConfig(http: HttpClient.HttpClient, value: Credential.Key | Credential.OAuth) {
   return http
     .execute(
       HttpClientRequest.get(`${serverUrl(value)}/api/v2/config`).pipe(
@@ -414,7 +415,7 @@ function fetchConfig(http: HttpClient.HttpClient, value: Credential.Value) {
     )
 }
 
-function credentialHeaders(value: Credential.Value): Record<string, string> {
+function credentialHeaders(value: Credential.Key | Credential.OAuth): Record<string, string> {
   const orgID = value.metadata?.orgID
   return {
     authorization: `Bearer ${value.type === "oauth" ? value.access : value.key}`,

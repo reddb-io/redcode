@@ -1,3 +1,4 @@
+import type { FileSystem } from "@opencode/core/filesystem"
 import { Config } from "@opencode/core/config"
 import { Bus } from "@opencode/core/bus"
 import { HookRuntime } from "@opencode/core/hook"
@@ -32,7 +33,7 @@ export const promptLocationNode = makeGlobalNode({
                 Plugin.node.replace(Layer.mock(Plugin.Service, { awaitActivation: Effect.void })),
               ],
             },
-          ) as Layer.Layer<LocationServices>,
+          ) as unknown as Layer.Layer<LocationServices, FileSystem.DirectoryNotFoundError>,
       )
     }),
   ),

@@ -13,6 +13,7 @@ import { Slug } from "./util/slug.js"
 import { Bus } from "./bus.js"
 import { Database } from "./database/database.js"
 import { Location } from "./location.js"
+import type { FileSystem } from "./filesystem.js"
 import { LocationServiceMap } from "./location-service-map.js"
 import { Project } from "./project.js"
 import { Worktree } from "@opencode/schema/worktree"
@@ -70,6 +71,7 @@ export class StrategyUnavailableError extends Schema.TaggedError<StrategyUnavail
 ) {}
 
 export type Error =
+  | FileSystem.DirectoryNotFoundError
   | Project.NotFoundError
   | SourceDirectoryNotFoundError
   | DestinationExistsError

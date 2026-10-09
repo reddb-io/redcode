@@ -68,6 +68,7 @@ export const backend = Effect.fn("SessionShare.backend")(function* (db: DB, shar
 })
 
 function credentialBackend(value: Credential.Value, credentialID: string, orgID?: string): Backend | undefined {
+  if (value.type === "external") return
   const server = value.metadata?.server
   const organization = orgID ?? value.metadata?.orgID
   if (typeof server !== "string" || typeof organization !== "string") return

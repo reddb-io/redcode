@@ -9,7 +9,7 @@ import { Effect } from "effect"
 import { HttpServerRequest } from "effect/unstable/http"
 import { HttpApiBuilder } from "effect/unstable/httpapi"
 import { Api } from "../api"
-import { requestRef } from "../location"
+import { locationErrors, requestRef } from "../location"
 
 export const GenerateHandler = HttpApiBuilder.group(Api, "server.generate", (handlers) =>
   Effect.gen(function* () {
@@ -51,7 +51,7 @@ export const GenerateHandler = HttpApiBuilder.group(Api, "server.generate", (han
             ),
           )
           return { data: { text, requests: request.payload.check ? requests : undefined } }
-        }).pipe(Effect.provide(locations.get(requestRef(incoming, global.config))))
+        }).pipe(Effect.provide(locations.get(requestRef(incoming, global.config))), locationErrors)
       }),
     )
   }),

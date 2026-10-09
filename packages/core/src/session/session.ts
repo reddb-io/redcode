@@ -89,7 +89,7 @@ export const make = Effect.fn("Session.make")(function* () {
         id: Tool.CallID.make(`auto_${messageID}`),
         progress: () => Effect.void,
       })
-    }).pipe(instances.provide(session))
+    }).pipe(instances.provide(session), Effect.catchTag("FileSystem.DirectoryNotFoundError", Effect.die))
   })
   const message = Effect.fn("Session.message")(function* (sessionID: SessionSchema.ID, messageID: SessionMessage.ID) {
     const stored = yield* store.message(messageID)
@@ -209,7 +209,7 @@ export const make = Effect.fn("Session.make")(function* () {
               const config = yield* Config.Service
               if (Config.latest(yield* config.entries(), "vault") === false) return prepared.payload
               return yield* VaultAdmission.protect(vault, session.projectID, prepared.payload)
-            }).pipe(instances.provide(session)),
+            }).pipe(instances.provide(session), Effect.catchTag("FileSystem.DirectoryNotFoundError", Effect.die)),
           }
           if (input.resume !== false)
             yield* restore(
@@ -320,7 +320,7 @@ export const make = Effect.fn("Session.make")(function* () {
                 const config = yield* Config.Service
                 if (Config.latest(yield* config.entries(), "vault") === false) return focus
                 return yield* VaultAdmission.protectText(vault, session.projectID, focus)
-              }).pipe(instances.provide(session)),
+              }).pipe(instances.provide(session), Effect.catchTag("FileSystem.DirectoryNotFoundError", Effect.die)),
       })
       .pipe(
         Effect.catchTag("SessionInbox.LifecycleConflict", () => new CompactionConflictError({ sessionID, inputID })),

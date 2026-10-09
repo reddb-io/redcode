@@ -5,7 +5,7 @@ import { SessionGuard } from "@opencode/schema/session-guard"
 import { NonNegativeInt, PositiveInt } from "@opencode/schema/schema"
 import { Schema } from "effect"
 import { HttpApiEndpoint, HttpApiGroup, HttpApiSchema, OpenApi } from "effect/unstable/httpapi"
-import { InvalidRequestError, ServiceUnavailableError } from "../errors.js"
+import { InvalidRequestError, LocationNotFoundError, ServiceUnavailableError } from "../errors.js"
 import { LocationQuery, locationQueryOpenApi } from "./location.js"
 
 export const DebugGroup = HttpApiGroup.make("server.debug")
@@ -18,7 +18,7 @@ export const DebugGroup = HttpApiGroup.make("server.debug")
         limit: Schema.optional(Schema.NumberFromString.pipe(Schema.decodeTo(PositiveInt))),
       }),
       success: Schema.Array(FileSystem.Entry),
-      error: ServiceUnavailableError,
+      error: [ServiceUnavailableError, LocationNotFoundError],
     })
       .annotateMerge(locationQueryOpenApi)
       .annotateMerge(OpenApi.annotations({
@@ -35,7 +35,7 @@ export const DebugGroup = HttpApiGroup.make("server.debug")
         limit: Schema.optional(Schema.NumberFromString.pipe(Schema.decodeTo(PositiveInt))),
       }),
       success: Schema.Array(FileSystem.Match),
-      error: [InvalidRequestError, ServiceUnavailableError],
+      error: [InvalidRequestError, ServiceUnavailableError, LocationNotFoundError],
     })
       .annotateMerge(locationQueryOpenApi)
       .annotateMerge(OpenApi.annotations({

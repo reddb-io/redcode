@@ -26,6 +26,30 @@ export class NotFoundError extends Schema.TaggedError<NotFoundError>()("FileSyst
   path: RelativePath,
 }) {}
 
+export class DirectoryNotFoundError extends Schema.TaggedError<DirectoryNotFoundError>()(
+  "FileSystem.DirectoryNotFoundError",
+  {
+    directory: AbsolutePath,
+    cause: Schema.Defect(),
+  },
+) {
+  override get message() {
+    return `Directory not found: ${this.directory}`
+  }
+}
+
+export class DirectoryAccessDeniedError extends Schema.TaggedError<DirectoryAccessDeniedError>()(
+  "FileSystem.DirectoryAccessDeniedError",
+  {
+    directory: AbsolutePath,
+    cause: Schema.Defect(),
+  },
+) {
+  override get message() {
+    return `Access denied to directory: ${this.directory}`
+  }
+}
+
 export const Content = Schema.Struct({
   uri: Schema.String,
   name: Schema.String.pipe(Schema.optional),
@@ -67,7 +91,8 @@ export interface Interface {
   readonly read: (
     input: ReadInput,
   ) => Effect.Effect<{ readonly content: Uint8Array; readonly mime: string }, NotFoundError>
-  readonly list: (input?: ListInput) => Effect.Effect<Entry[]>
+  /** Fails with `NotFoundError` when the path is missing or is not a directory. */
+  readonly list: (input?: ListInput) => Effect.Effect<Entry[], NotFoundError>
   readonly find: (input: FindInput) => Effect.Effect<Entry[]>
   /** Writes a file at an absolute path or one relative to the location; not confined to it. */
   readonly write: (input: WriteInput) => Effect.Effect<Write>
@@ -87,7 +112,24 @@ const baseLayer = Layer.effect(
     // configured directory as canonical; local placements keep symlink
     // canonicalization. This skip is boot-only: resolve/read/list below still
     // access the host filesystem per operation (tracked in #44568).
-    const root = location.workspaceID ? location.directory : yield* fs.realPath(location.directory).pipe(Effect.orDie)
+    const root = location.workspaceID
+      ? location.directory
+      : yield* fs.realPath(location.directory).pipe(
+          Effect.catch((cause): Effect.Effect<never, DirectoryNotFoundError | DirectoryAccessDeniedError> => {
+            if (cause.reason._tag === "NotFound")
+              return Effect.fail(new DirectoryNotFoundError({ directory: location.directory, cause }))
+            // macOS privacy denials arrive as Unknown with an EPERM cause.
+            if (
+              cause.reason._tag === "PermissionDenied" ||
+              (cause.reason._tag === "Unknown" &&
+                cause.reason.cause instanceof Error &&
+                "code" in cause.reason.cause &&
+                cause.reason.cause.code === "EPERM")
+            )
+              return Effect.fail(new DirectoryAccessDeniedError({ directory: location.directory, cause }))
+            return Effect.die(cause)
+          }),
+        )
     const resolve = Effect.fnUntraced(function* (input?: RelativePath) {
       const absolute = path.resolve(location.directory, input ?? ".")
       if (!FSUtil.contains(location.directory, absolute))
@@ -131,8 +173,16 @@ const baseLayer = Layer.effect(
       list: Effect.fn("FileSystem.list")(function* (input = {}) {
         // Navigation can leave the cwd without activating another Location.
         const directory = path.resolve(location.directory, input.path ?? ".")
-        const info = yield* fs.stat(directory).pipe(Effect.orDie)
-        if (info.type !== "Directory") return yield* Effect.die(new Error("Path is not a directory"))
+        const missing = new NotFoundError({ path: RelativePath.make(input.path ?? ".") })
+        const info = yield* fs.stat(directory).pipe(
+          Effect.catchReason(
+            "PlatformError",
+            "NotFound",
+            () => Effect.fail(missing),
+            (_, error) => Effect.die(error),
+          ),
+        )
+        if (info.type !== "Directory") return yield* missing
         return yield* fs.readDirectoryEntries(directory).pipe(
           Effect.orDie,
           Effect.map((items) =>

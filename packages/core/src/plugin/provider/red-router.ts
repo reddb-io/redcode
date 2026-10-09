@@ -596,7 +596,7 @@ export const connectionModel = Effect.fn("RouterProvider.connectionModel")(funct
     providerID === "red-router"
       ? redRouterEndpoint(credential)
       : routerEndpoint(credential, process.env.NINE_ROUTER_BASE_URL ?? "http://127.0.0.1:20128/v1")
-  if (!baseURL) return
+  if (!baseURL || value.type === "external") return
   const key = value.type === "key" ? value.key : value.access
   const cacheKey = `${providerID}:models:${Hash.sha256(`${baseURL}\n${key}`)}`
   const count = yield* kv.get(`${cacheKey}:resolved:count`)
