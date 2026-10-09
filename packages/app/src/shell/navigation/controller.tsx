@@ -1,7 +1,7 @@
 import type { SessionInfo } from "@opencode/client/promise"
 import { createMediaQuery } from "@solid-primitives/media"
-import { createMemo, startTransition } from "solid-js"
-import { createStore } from "solid-js/store"
+import { createEffect, createMemo, startTransition, untrack } from "solid-js"
+import { createStore, reconcile } from "solid-js/store"
 import { useNavigate } from "@solidjs/router"
 import { addProjects } from "@/home/projects/add"
 import { useProjectActions } from "@/home/projects/actions"
@@ -10,13 +10,23 @@ import { useLanguage } from "@/runtime/i18n/language"
 import { usePlatform } from "@/runtime/platform/platform"
 import { ServerConnection, useServers } from "@/runtime/server/registry"
 import { useGlobal, useServerCtx } from "@/runtime/server/runtime"
+import { isSessionForm } from "@/session/requests/session-request-tree"
+import { useSettings } from "@/settings/model"
 import { useSettingsSurface } from "@/settings/surface"
 import { useCommand } from "@/shell/commands/command"
 import { homeProjectDirectories } from "@/shell/layout/helpers"
 import { useLayout, type LocalProject } from "@/shell/state/layout"
 import { useTabs } from "@/shell/tabs/tabs"
 import { useDirectoryPicker } from "@/workspaces/selection/picker"
-import { buildNavigationTree, navigationProjectKey, navigationSessionOrder, stepNavigation } from "./model"
+import {
+  buildNavigationTree,
+  navigationProjectKey,
+  navigationSessionOrder,
+  nextSessionAwaitingUser,
+  sessionStatus,
+  type SessionStatus,
+  stepNavigation,
+} from "./model"
 
 /**
  * The rail and sidemenu's shared state. It lives in the shell, so the tree, the pins and the
@@ -31,11 +41,16 @@ export function createNavigationController() {
   const language = useLanguage()
   const navigate = useNavigate()
   const settings = useSettingsSurface()
+  const preferences = useSettings()
   const platform = usePlatform()
   const pickDirectory = useDirectoryPicker()
   const actions = useProjectActions()
   const mobile = createMediaQuery("(max-width: 767px)")
-  const [state, setState] = createStore({ query: "", showAll: {} as Record<string, boolean> })
+  const [state, setState] = createStore({
+    query: "",
+    showAll: {} as Record<string, boolean>,
+    since: {} as Record<string, number>,
+  })
 
   const conn = createMemo<ServerConnection.Any | undefined>(
     () =>
@@ -54,8 +69,43 @@ export function createNavigationController() {
       .filter((item) => item.server === serverKey())
       .map((item) => item.session),
   )
-  const running = (sessionID: string) => ctx()?.data.session.status(sessionID) === "running"
   const unread = (sessionID: string) => (ctx()?.notification.session.unseenCount(sessionID) ?? 0) > 0
+  // One status per root session. Requests raised by a subagent belong to the root the sidemenu shows.
+  const statuses = createMemo(() => {
+    const context = ctx()
+    if (!context) return new Map<string, SessionStatus>()
+    const data = context.data
+    const roots = (ids: string[]) => new Set(ids.map((id) => data.session.root(id)))
+    const approval = preferences.permissions.autoApprove()
+      ? new Set<string>()
+      : roots(data.session.permission.sessions())
+    const input = roots(
+      data.session.form.sessions().filter((id) => data.session.form.list(id)?.some(isSessionForm) ?? false),
+    )
+    return new Map(
+      index.sessions().flatMap((session) => {
+        const status = sessionStatus({
+          approval: approval.has(session.id),
+          input: input.has(session.id),
+          working: data.session.status(session.id) === "running",
+          // Like the session tab, parked synthetic context is not work waiting to run.
+          queued: data.session.pending.list(session.id).some((item) => item.type !== "synthetic"),
+          failed: context.notification.session.all(session.id).at(-1)?.type === "error",
+          done: unread(session.id),
+        })
+        return status ? [[session.id, status] as const] : []
+      }),
+    )
+  })
+  const status = (sessionID: string) => statuses().get(sessionID)
+  // When this client first saw each session running, for the live elapsed time. The server does not
+  // publish when an execution started, so one already running when the app loads counts from then.
+  createEffect(() => {
+    const active = ctx()?.data.session.active() ?? []
+    const now = Date.now()
+    const since = untrack(() => state.since)
+    setState("since", reconcile(Object.fromEntries(active.map((id) => [id, since[id] ?? now]))))
+  })
   const tree = createMemo(() =>
     buildNavigationTree({
       projects: ctx()?.projects.list() ?? [],
@@ -64,7 +114,7 @@ export function createNavigationController() {
       query: state.query,
       expanded: layout.navigation.expanded,
       showAll: (key) => !!state.showAll[key],
-      attention: (sessionID) => running(sessionID) || unread(sessionID),
+      status,
     }),
   )
 
@@ -131,6 +181,12 @@ export function createNavigationController() {
     if (session) openSession(session)
   }
 
+  function nextAwaitingUser() {
+    const next = nextSessionAwaitingUser(tree(), status, currentSession())
+    const session = next ? index.sessions().find((item) => item.id === next) : undefined
+    if (session) openSession(session)
+  }
+
   function stepProject(delta: 1 | -1) {
     const projects = tree().projects
     const key = stepNavigation(
@@ -172,6 +228,13 @@ export function createNavigationController() {
       category: language.t("command.category.session"),
       keybind: "alt+arrowdown",
       onSelect: () => stepSession(1),
+    },
+    {
+      id: "session.awaiting.next",
+      title: language.t("command.session.awaiting.next"),
+      category: language.t("command.category.session"),
+      keybind: "alt+shift+arrowdown",
+      onSelect: nextAwaitingUser,
     },
     {
       id: "project.previous",
@@ -244,9 +307,10 @@ export function createNavigationController() {
     },
     session: {
       open: openSession,
-      running,
+      status,
+      /** When this client first saw the session's current execution running. */
+      since: (sessionID: string) => state.since[sessionID] as number | undefined,
       unread,
-      error: (sessionID: string) => ctx()?.notification.session.unseenHasError(sessionID) ?? false,
       markRead: (sessionID: string) => ctx()?.notification.session.markViewed(sessionID),
       pinned: (sessionID: string) => {
         const server = serverKey()

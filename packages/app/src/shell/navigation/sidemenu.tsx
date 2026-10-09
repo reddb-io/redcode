@@ -4,13 +4,11 @@ import { input } from "@reddb-io/design-system/contracts/input"
 import { navItem } from "@reddb-io/design-system/contracts/nav-item"
 import { quietControl } from "@reddb-io/design-system/contracts/quiet-control"
 import { sidebarNavigation } from "@reddb-io/design-system/contracts/sidebar-navigation"
-import { statusIndicator } from "@reddb-io/design-system/contracts/status-indicator"
 import { Icon } from "@opencode/ui/icon"
 import { IconButton } from "@opencode/ui/icon-button"
 import { Menu } from "@opencode/ui/menu"
 import { ScrollView } from "@opencode/ui/scroll-view"
 import { Tooltip } from "@opencode/ui/tooltip"
-import { SessionProgressIndicatorV2 } from "@opencode/session-ui/v2/session-progress-indicator-v2"
 import { Key } from "@solid-primitives/keyed"
 import { createEffect, createMemo, createSignal, For, type JSX, onCleanup, Show } from "solid-js"
 import { createStore } from "solid-js/store"
@@ -26,7 +24,10 @@ import {
   NAVIGATION_PROJECT_LIMIT,
   navigationAge,
   type NavigationDay,
+  navigationElapsed,
   type NavigationSession,
+  sessionAwaitsUser,
+  type SessionStatus,
 } from "./model"
 
 const nav = sidebarNavigation()
@@ -44,7 +45,7 @@ type NavigationSessionItem = NavigationSession<LocalProject>
 export function NavigationSidemenu(props: { navigation: NavigationController }) {
   const language = props.navigation.language
   const [menu, setMenu] = createStore({ open: undefined as string | undefined })
-  const now = createNow()
+  const now = createNow(60_000)
   const tree = props.navigation.tree
   const empty = createMemo(
     () => tree().filtered && tree().pinned.length === 0 && tree().projects.length === 0 && tree().recents.length === 0,
@@ -310,13 +311,20 @@ function ProjectNode(props: {
             class="-ms-0.5 shrink-0 text-ink-muted transition-transform motion-reduce:transition-none"
             style={{ transform: props.project.expanded ? undefined : "rotate(-90deg)" }}
           />
-          <ProjectTile
-            project={props.project.project}
-            size="sm"
-            unread={unseen() > 0 || (!props.project.expanded && props.project.attention)}
-          />
+          <ProjectTile project={props.project.project} size="sm" />
           <bdi class={navItem().label({ class: current() ? "font-medium" : "" })}>{props.project.name}</bdi>
         </button>
+        <Show when={props.project.status}>
+          {(status) => (
+            <span
+              data-slot="navigation-project-status"
+              class="pointer-events-none absolute inset-y-0 end-2 flex items-center group-hover/row:invisible group-focus-within/row:invisible"
+              classList={{ invisible: props.menu === menuID() }}
+            >
+              <StatusMark status={status()} language={language} />
+            </span>
+          )}
+        </Show>
         <div
           class={`${ROW_ACTION} absolute inset-y-0 end-1 data-[menu=true]:opacity-100`}
           data-menu={props.menu === menuID()}
@@ -444,9 +452,9 @@ function SessionRow(props: {
   const id = () => props.item.session.id
   const menuID = () => `${props.idPrefix ?? ""}session:${id()}`
   const current = () => props.navigation.current.session() === id()
-  const running = () => props.navigation.session.running(id())
+  const status = () => props.navigation.session.status(id())
+  const since = () => (status() === "working" ? props.navigation.session.since(id()) : undefined)
   const unread = () => props.navigation.session.unread(id())
-  const error = () => props.navigation.session.error(id())
   const pinned = () => props.navigation.session.pinned(id())
   const title = () => sessionLabel(props.item.session)
   const age = () =>
@@ -481,8 +489,9 @@ function SessionRow(props: {
           selected: current(),
           focus: "inset",
           class: navItem({ current: current() }).root({
-            // Nested rows put their status under the project tile and their title under its name.
-            class: `min-w-0 flex-1 gap-2 pe-2 text-start text-body ${props.nested ? "ps-[calc(var(--reddb-spatial-inset-sm)+1.25rem)]" : ""}`,
+            // Nested rows put their status under the project tile and their title under its name. A row
+            // waiting on the user keeps full ink; idle and seen rows stay quiet.
+            class: `min-w-0 flex-1 gap-2 pe-2 text-start text-body ${props.nested ? "ps-[calc(var(--reddb-spatial-inset-sm)+1.25rem)]" : ""} ${sessionAwaitsUser(status()) ? "text-foreground" : ""}`,
           }),
         })}
         aria-current={current() ? "page" : undefined}
@@ -494,19 +503,19 @@ function SessionRow(props: {
         }}
       >
         <span class="flex size-4 shrink-0 items-center justify-center">
+          {/* Nested rows show only their status; flat rows trade the project tile for it. */}
           <Show
-            when={props.nested}
+            when={status()}
             fallback={
-              <Show when={!running()} fallback={<SessionProgressIndicatorV2 />}>
+              <Show when={!props.nested}>
                 <ProjectTile
                   project={props.item.project ?? { worktree: props.item.session.location.directory }}
                   size="sm"
-                  unread={unread() || error()}
                 />
               </Show>
             }
           >
-            <SessionStatus running={running()} unread={unread()} error={error()} language={language} />
+            {(value) => <StatusMark status={value()} language={language} />}
           </Show>
         </span>
         <span dir="auto" class={navItem().label({ class: "min-w-0 flex-1" })}>
@@ -516,7 +525,9 @@ function SessionRow(props: {
           class="shrink-0 text-caption tabular-nums text-ink-muted group-hover/row:invisible group-focus-within/row:invisible"
           classList={{ invisible: props.menu === menuID() }}
         >
-          {age()}
+          <Show when={since()} fallback={age()}>
+            {(start) => <Elapsed since={start()} language={language} />}
+          </Show>
         </span>
       </button>
       <div
@@ -557,44 +568,49 @@ function SessionRow(props: {
   )
 }
 
-function SessionStatus(props: {
-  running: boolean
-  unread: boolean
-  error: boolean
-  language: NavigationController["language"]
-}) {
+// Each status paints its own theme role; the live one pulses unless the user reduces motion.
+const STATUS_MARK: Record<SessionStatus, string> = {
+  approval: "bg-v2-status-attention",
+  input: "bg-v2-status-attention",
+  working: "bg-v2-status-working motion-safe:animate-pulse",
+  queued: "border border-v2-status-queued",
+  failed: "bg-v2-status-failed",
+  done: "bg-v2-status-done",
+}
+
+function StatusMark(props: { status: SessionStatus; language: NavigationController["language"] }) {
+  const label = () => props.language.t(`navigation.status.${props.status}`)
   return (
-    <Show
-      when={!props.running}
-      fallback={
-        <span class="flex size-4 items-center justify-center" title={props.language.t("navigation.session.running")}>
-          <SessionProgressIndicatorV2 />
-          <span class="sr-only">{props.language.t("navigation.session.running")}</span>
-        </span>
-      }
-    >
-      <Show when={props.unread || props.error}>
-        <span class="flex items-center">
-          <span
-            class={
-              props.error ? statusIndicator({ tone: "danger" }).mark() : "size-2 shrink-0 rounded-full bg-foreground"
-            }
-            aria-hidden="true"
-          />
-          <span class="sr-only">
-            {props.language.t(props.error ? "navigation.session.error" : "navigation.session.unread")}
-          </span>
-        </span>
-      </Show>
-    </Show>
+    <span data-status={props.status} class="flex size-4 items-center justify-center" title={label()}>
+      <span class={`size-2 shrink-0 rounded-full ${STATUS_MARK[props.status]}`} aria-hidden="true" />
+      <span class="sr-only">{label()}</span>
+    </span>
   )
 }
 
-/** A minute clock for relative times; one per sidemenu. */
-function createNow() {
+/** A live execution's elapsed time, ticking each second while it is shown. */
+function Elapsed(props: { since: number; language: NavigationController["language"] }) {
+  const now = createNow(1000)
+  const text = () => {
+    const elapsed = navigationElapsed(now() - props.since)
+    const number = new Intl.NumberFormat(props.language.intl())
+    if (elapsed.unit === "second")
+      return props.language.t("navigation.elapsed.seconds", { seconds: number.format(elapsed.seconds) })
+    if (elapsed.unit === "minute")
+      return props.language.t("navigation.elapsed.minutes", { minutes: number.format(elapsed.minutes) })
+    return props.language.t("navigation.elapsed.hoursMinutes", {
+      hours: number.format(elapsed.hours),
+      minutes: number.format(elapsed.minutes),
+    })
+  }
+  return <>{text()}</>
+}
+
+/** A clock that ticks every `interval` milliseconds while its owner lives. */
+function createNow(interval: number) {
   const [now, setNow] = createSignal(Date.now())
   createEffect(() => {
-    const timer = setInterval(() => setNow(Date.now()), 60_000)
+    const timer = setInterval(() => setNow(Date.now()), interval)
     onCleanup(() => clearInterval(timer))
   })
   return now

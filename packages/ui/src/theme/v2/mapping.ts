@@ -31,6 +31,18 @@ const darkAgentTokens: Record<string, V2ColorValue> = {
   "v2-agent-writer-solid": ref("v2-purple-400"),
 }
 
+/**
+ * A session's status in lists: one that waits on the user, a live execution, queued work, a failed
+ * last turn, and a finished turn not yet viewed. Only `failed` is an error.
+ */
+const statusTokens = (dark: boolean): Record<string, V2ColorValue> => ({
+  "v2-status-attention": ref(`v2-yellow-${dark ? 500 : 800}`),
+  "v2-status-working": ref(`v2-blue-${dark ? 500 : 800}`),
+  "v2-status-queued": ref("v2-text-text-muted"),
+  "v2-status-failed": ref(`v2-red-${dark ? 500 : 800}`),
+  "v2-status-done": ref("v2-text-text-base"),
+})
+
 const light: Record<string, V2ColorValue> = {
   "v2-background-bg-base": ref("v2-grey-100"),
   "v2-background-bg-deep": ref("v2-grey-200"),
@@ -77,6 +89,7 @@ const light: Record<string, V2ColorValue> = {
   "v2-state-bg-info": ref("v2-blue-200"),
   "v2-state-fg-info": ref("v2-blue-800"),
   "v2-state-border-info": ref("v2-blue-300"),
+  ...statusTokens(false),
   ...lightAgentTokens,
   ...V2_AVATAR_LIGHT,
   "v2-elevation-raised":
@@ -145,6 +158,7 @@ const dark: Record<string, V2ColorValue> = {
   "v2-state-bg-info": ref("v2-blue-1200"),
   "v2-state-fg-info": ref("v2-blue-500"),
   "v2-state-border-info": ref("v2-blue-900"),
+  ...statusTokens(true),
   ...darkAgentTokens,
   ...V2_AVATAR_DARK,
   "v2-elevation-raised":

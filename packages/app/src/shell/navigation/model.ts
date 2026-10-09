@@ -30,8 +30,8 @@ export type NavigationProject<P extends NavigationProjectLike> = {
   /** Sessions held back behind "Show more". */
   hidden: number
   total: number
-  /** A session of this project is running or unread, so a collapsed row still signals it. */
-  attention: boolean
+  /** The most urgent status among all of this project's sessions, so a collapsed row still signals it. */
+  status: SessionStatus | undefined
 }
 
 export type NavigationTree<P extends NavigationProjectLike> = {
@@ -49,8 +49,8 @@ export type NavigationInput<P extends NavigationProjectLike> = {
   query?: string
   expanded?: (key: string) => boolean
   showAll?: (key: string) => boolean
-  /** Running or unread sessions stay visible past the project limit. */
-  attention?: (sessionID: string) => boolean
+  /** Sessions with a status stay visible past the project limit. */
+  status?: (sessionID: string) => SessionStatus | undefined
   limit?: number
   recentLimit?: number
 }
@@ -94,11 +94,10 @@ export function buildNavigationTree<P extends NavigationProjectLike>(input: Navi
     const named = filtered && name.toLowerCase().includes(query)
     const candidates = named ? all : all.filter(matches)
     if (filtered && !named && candidates.length === 0) return []
-    const attention = all.some((item) => input.attention?.(item.session.id) ?? false)
     const visible =
       filtered || input.showAll?.(key)
         ? candidates
-        : candidates.filter((item, index) => index < limit || (input.attention?.(item.session.id) ?? false))
+        : candidates.filter((item, index) => index < limit || input.status?.(item.session.id) !== undefined)
     return [
       {
         key,
@@ -108,7 +107,7 @@ export function buildNavigationTree<P extends NavigationProjectLike>(input: Navi
         sessions: visible,
         hidden: candidates.length - visible.length,
         total: all.length,
-        attention,
+        status: rollupSessionStatus(all.map((item) => input.status?.(item.session.id))),
       },
     ]
   })
@@ -137,6 +136,60 @@ export function stepNavigation<T>(items: readonly T[], current: T | undefined, d
   const index = current === undefined ? -1 : items.indexOf(current)
   if (index === -1) return delta === 1 ? items[0] : items[items.length - 1]
   return items[(index + delta + items.length) % items.length]
+}
+
+/**
+ * A session's one status, most urgent first: a pending permission, a pending question, a live
+ * execution, inbox work waiting, a last turn that failed, then a finished turn this client has not
+ * viewed. A session with none of these shows nothing.
+ */
+export const SESSION_STATUSES = ["approval", "input", "working", "queued", "failed", "done"] as const
+export type SessionStatus = (typeof SESSION_STATUSES)[number]
+
+export function sessionStatus(signals: Record<SessionStatus, boolean>) {
+  return SESSION_STATUSES.find((status) => signals[status])
+}
+
+/** The most urgent of several statuses: what a project row shows for its sessions. */
+export function rollupSessionStatus(statuses: readonly (SessionStatus | undefined)[]) {
+  return SESSION_STATUSES.find((status) => statuses.includes(status))
+}
+
+/** Statuses that wait on the user rather than on the agent; their rows never recede. */
+export const sessionAwaitsUser = (status: SessionStatus | undefined) =>
+  status === "approval" || status === "input" || status === "failed" || status === "done"
+
+/** The next session waiting on the user after `current`: most urgent first, then sidemenu order. */
+export function nextSessionAwaitingUser<P extends NavigationProjectLike>(
+  tree: NavigationTree<P>,
+  status: (sessionID: string) => SessionStatus | undefined,
+  current: string | undefined,
+) {
+  const rank = (id: string) => SESSION_STATUSES.findIndex((item) => item === status(id))
+  const waiting = [
+    ...new Set([
+      ...tree.pinned.map((item) => item.session.id),
+      ...tree.projects.flatMap((project) => project.sessions.map((item) => item.session.id)),
+      ...tree.recents.map((item) => item.session.id),
+    ]),
+  ]
+    .filter((id) => sessionAwaitsUser(status(id)))
+    .toSorted((a, b) => rank(a) - rank(b))
+  return stepNavigation(waiting, current, 1)
+}
+
+export type NavigationElapsed =
+  | { unit: "second"; seconds: number }
+  | { unit: "minute"; minutes: number }
+  | { unit: "hour"; hours: number; minutes: number }
+
+/** A live execution's compact elapsed time: "42s", "3m", "1h 5m". */
+export function navigationElapsed(elapsed: number): NavigationElapsed {
+  const seconds = Math.max(0, Math.floor(elapsed / 1000))
+  if (seconds < 60) return { unit: "second", seconds }
+  const minutes = Math.floor(seconds / 60)
+  if (minutes < 60) return { unit: "minute", minutes }
+  return { unit: "hour", hours: Math.floor(minutes / 60), minutes: minutes % 60 }
 }
 
 export type NavigationDay = "today" | "yesterday" | "week" | "older"
