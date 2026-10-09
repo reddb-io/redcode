@@ -7,7 +7,9 @@ import { app } from "electron"
 import { Context, Effect, FileSystem, Layer, Option, Path, Schema } from "effect"
 import { BUNDLED_CLI_VERSION_KEY } from "../storage/keys"
 import { getStore } from "../storage/store"
+import { type CliLocation, locateCli } from "./cli-location"
 import { parseCliVersion } from "./cli-version"
+import { desktopInstallFile } from "./registration"
 
 const execFileAsync = promisify(execFile)
 
@@ -15,6 +17,7 @@ export interface Resolved {
   readonly version: string
   readonly command: readonly string[]
   readonly binary?: string
+  readonly source: CliLocation["source"]
 }
 
 export interface Interface {
@@ -29,21 +32,44 @@ export const layer = Layer.effect(
   Effect.gen(function* () {
     const path = yield* Path.Path
 
-    const resolve = yield* Effect.cached(
-      make().pipe(Effect.provide(yield* Effect.context<FileSystem.FileSystem | Path.Path>()), Effect.orDie),
+    // Lazy: test runs point REDCODE_TEST_HOME, and with it the pointer file, elsewhere during startup.
+    const location = yield* Effect.cached(
+      Effect.sync(() =>
+        locateCli({
+          env: process.env,
+          platform: process.platform,
+          resourcesPath: process.resourcesPath,
+          execPath: process.execPath,
+          version: app.getVersion(),
+          pointer: desktopInstallFile(),
+          exists: existsSync,
+          read: (file) => (existsSync(file) ? readFileSync(file, "utf8") : undefined),
+        }),
+      ),
     )
 
-    // Links ~/.local/bin/redcode to the executable inside the app bundle, whose path survives app updates.
-    // Staged copies are not linked: each version stages its own and older ones are removed.
+    const resolve = yield* Effect.cached(
+      location.pipe(
+        Effect.flatMap(make),
+        Effect.provide(yield* Effect.context<FileSystem.FileSystem | Path.Path>()),
+        Effect.orDie,
+      ),
+    )
+
+    // Links ~/.local/bin/redcode to the resolved executable. A bundled CLI is linked inside the app bundle,
+    // whose path survives app updates, rather than its staged copy: each version stages its own and older
+    // ones are removed.
     const install = Effect.gen(function* () {
       if (process.platform !== "darwin") return yield* Effect.fail(new Error("CLI installation requires macOS"))
-      if (!app.isPackaged) return yield* Effect.fail(new Error("Bundled CLI executable is unavailable"))
+      const cli = yield* location
+
+      if (cli.source === "development") return yield* Effect.fail(new Error("Bundled CLI executable is unavailable"))
       const fs = yield* FileSystem.FileSystem
       const directory = path.join(app.getPath("home"), ".local", "bin")
       const destination = path.join(directory, executableName())
       yield* fs.makeDirectory(directory, { recursive: true })
       yield* fs.remove(destination, { force: true })
-      yield* fs.symlink(path.join(process.resourcesPath, executableName()), destination)
+      yield* fs.symlink(cli.binary, destination)
 
       return destination
     }).pipe(
@@ -55,27 +81,23 @@ export const layer = Layer.effect(
   }),
 )
 
-const make = Effect.fn("DesktopCli.resolve")(function* () {
-  // Development runs the `redcode` on PATH, or the executable named by REDCODE_BIN.
-  if (!app.isPackaged) {
-    const binary = process.env.REDCODE_BIN ?? executableName()
-    const version = parseCliVersion(yield* run(binary, ["--version"]).pipe(Effect.orElseSucceed(() => "local")))
+const make = Effect.fn("DesktopCli.resolve")(function* (location: CliLocation) {
+  yield* Effect.logInfo("CLI executable resolved", location)
 
-    return { version, binary, command: [binary] } satisfies Resolved
+  if (location.source === "bundled") {
+    const version = yield* bundledVersion(location.binary)
+    const binary = yield* installCli(location.binary, version)
+
+    return { version, binary, command: [binary], source: location.source } satisfies Resolved
   }
 
-  return yield* resolveBundledCli()
-})
+  // Development runs the executable named by REDCODE_BIN, or the `redcode` on PATH.
+  const version =
+    location.source === "development"
+      ? parseCliVersion(yield* run(location.binary, ["--version"]).pipe(Effect.orElseSucceed(() => "local")))
+      : location.version
 
-const resolveBundledCli = Effect.fn("DesktopCli.resolveBundled")(function* () {
-  const path = yield* Path.Path
-  const bundled = path.join(process.resourcesPath, executableName())
-
-  yield* Effect.logInfo("CLI executable resolved", { bundled })
-  const version = yield* bundledVersion(bundled)
-  const binary = yield* installCli(bundled, version)
-
-  return { version, binary, command: [binary] } satisfies Resolved
+  return { version, binary: location.binary, command: [location.binary], source: location.source } satisfies Resolved
 })
 
 // Spawning the bundled executable for `--version` costs ~400 ms of startup on a 200 MB binary (and
