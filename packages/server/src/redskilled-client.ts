@@ -184,6 +184,9 @@ function spawnPublicAdapter(): AdapterProcess {
     stdin: "pipe",
     stdout: "pipe",
     stderr: "pipe",
+    // The background service has no console, so on Windows the adapter's .cmd shim would open a terminal window on
+    // every status poll.
+    windowsHide: true,
   })
   const stderr = capture(process.stderr)
   const close = () => {
