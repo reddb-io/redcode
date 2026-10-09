@@ -50,6 +50,7 @@
     "@opencode/web",
     "@opencode/www",
     "@reddb-io/redcode-design-app",
+    "@reddb-io/redcode-desktop",
     "@reddb-io/redcode-rpc-sidecar"
   ],
   "privatePackages": {

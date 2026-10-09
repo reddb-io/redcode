@@ -1,5 +1,5 @@
-import pkg from "../../../package.json"
+import redcode from "../../../../redcode/package.json"
 
 export function desktopVersion() {
-  return import.meta.env.OPENCODE_VERSION ?? pkg.version
+  return import.meta.env.OPENCODE_VERSION ?? redcode.version
 }

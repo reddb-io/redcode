@@ -46,6 +46,10 @@ test.each(channels)("channel identity for $channel", async ({ channel, appId }) 
   expect(config.linux?.desktop?.entry?.StartupWMClass).toBe(appId)
 
   expect(config.protocols).toMatchObject({ schemes: ["redcode"] })
+  // The desktop ships in the Redcode release, so it carries the Redcode version.
+  expect(config.extraMetadata?.version).toBe(
+    process.env.REDCODE_VERSION ?? (await Bun.file(path.join(import.meta.dirname, "../redcode/package.json")).json()).version,
+  )
   // Only production reads the rolling desktop-latest feed; GitHub's "latest" release belongs to the CLI.
   expect(config.publish).toEqual(
     channel === "prod"

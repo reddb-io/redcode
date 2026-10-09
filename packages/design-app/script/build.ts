@@ -9,7 +9,7 @@
 
 import { $ } from "bun"
 import path from "path"
-import pkg from "../package.json"
+import redcode from "../../redcode/package.json"
 
 const dir = path.resolve(import.meta.dir, "..")
 process.chdir(dir)
@@ -18,7 +18,7 @@ const single = process.argv.includes("--single")
 const release = process.argv.includes("--release")
 const upload = process.argv.includes("--upload")
 const skipInstall = process.argv.includes("--skip-install")
-const version = process.env.REDCODE_DESIGN_APP_VERSION ?? process.env.REDCODE_VERSION ?? pkg.version
+const version = process.env.REDCODE_DESIGN_APP_VERSION ?? process.env.REDCODE_VERSION ?? redcode.version
 if (!/^\d+\.\d+\.\d+(-[0-9A-Za-z.-]+)?$/.test(version)) throw new Error(`Invalid design app version: ${version}`)
 const { DesignApp } = await import("@opencode/core/design/app")
 const product = "redcode-design"

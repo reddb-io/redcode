@@ -1,4 +1,5 @@
 import { app } from "electron"
+import redcode from "../../../redcode/package.json"
 
 type Channel = "dev" | "beta" | "prod"
 
@@ -6,7 +7,8 @@ const raw = import.meta.env.REDCODE_DESKTOP_CHANNEL
 
 export const CHANNEL: Channel = raw === "beta" || raw === "prod" ? raw : "dev"
 
-export const VERSION = app.isPackaged ? app.getVersion() : (process.env.OPENCODE_VERSION ?? app.getVersion())
+// Packaged builds carry the Redcode version (electron-builder extraMetadata); development runs read it from source.
+export const VERSION = app.isPackaged ? app.getVersion() : (process.env.OPENCODE_VERSION ?? redcode.version)
 
 const appNames: Record<Channel, string> = {
   dev: "Redcode Dev",
