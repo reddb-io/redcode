@@ -85,7 +85,9 @@
     "./icons/file-type": "./src/components/file-icons/types.ts",
     "./icons/app": "./src/components/app-icons/types.ts",
     "./fonts/*": "./src/assets/fonts/*",
-    "./audio/*": "./src/assets/audio/*"
+    "./audio/*": "./src/assets/audio/*",
+    "./contracts/*": "./src/design-system/contracts/*.variants.ts",
+    "./design-system/color": "./src/design-system/color/index.ts"
   },
   "scripts": {
     "build": "rm -rf dist && tsc -p tsconfig.build.json",
@@ -120,7 +122,8 @@
     "remeda": "catalog:",
     "shiki": "catalog:",
     "solid-list": "catalog:",
-    "solid-sonner": "catalog:"
+    "solid-sonner": "catalog:",
+    "tailwind-variants": "3.1.1"
   },
   "peerDependencies": {
     "@solidjs/meta": "^0.29.0",

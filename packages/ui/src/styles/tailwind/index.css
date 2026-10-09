@@ -91,3 +91,6 @@
 }
 
 @import "./colors.css";
+
+/* The reddb.io design system: tokens, Application theme, Color Schemes, Density and Brand fonts. */
+@import "../../design-system/vendor/styles/application.css";
