@@ -1,5 +1,22 @@
 # @reddb-io/redcode
 
+## 0.74.0
+
+### Minor Changes
+
+- Design review links no longer expire under you. The agent's replies and the terminal session now show the review's stable address (`/design/session/<id>/review`, without a ticket): it opens directly in the desktop app, in a browser paired with `redcode pair`, and in any browser that already opened the review, whose sign-in now slides forward while the review is in use instead of lapsing after 12 hours. A browser without access gets a page that explains how to get in (the Design panel, `redcode design <id>` for a fresh link, or `redcode pair`) instead of a JSON error, and an open review that loses access says so in a banner instead of going quiet. Short-lived ticket links remain for sharing with another device or an unpaired browser, and the ticket is dropped from the address once it is used.
+
+  The Design agent has a new `design_link` tool that returns the review link without publishing, plus fresh share links when the user asks to share; it is told to use it, never a republish or a restart, when a link does not open.
+
+  In the desktop app, Open review in the Design panel now shows the review beside the session in the built-in browser, signed in with the desktop's own server credential (sent only to that session's review on the server's origin). This embedded review leaves out the agent's reply, the round message and the Activity transcript that the session already shows; the preview, variants, screens, devices, params, notes and approval stay. Open in system browser keeps the full review one click away.
+
+- Bring your OpenCode sessions into Redcode. `redcode session import --from opencode` reads OpenCode's local history (`~/.local/share/opencode/opencode.db`, or `$XDG_DATA_HOME/opencode`) without changing it and imports a session with its subagent sessions, compactions, tool calls and token usage. Pass the OpenCode session ID, `--latest` for the most recent session, or `--pick` to choose from a list; both look at sessions recorded in the current directory unless you add `--all`, and `--directory` places the import elsewhere when the original folder is gone. Imported sessions keep their OpenCode IDs, so importing one again reports it as already imported and names the existing session. Each import records where it came from in the session metadata and ends with a note, visible in the transcript, that the history came from OpenCode. Older OpenCode releases that kept sessions as JSON files are reported as unsupported. Clients can use the same import through the new `/api/experimental/session/import/sources`, `/api/experimental/session/import/sessions` and `/api/experimental/session/import/foreign` routes.
+- The app's side menu now shows one status per session, in a fixed priority: Needs approval, Needs input, Working (a subtle pulse and the elapsed time), Queued, Failed, then Done for a finished turn you have not viewed yet. Each project row rolls up the most urgent status of its sessions, so a collapsed project still shows that it needs you. Rows waiting on you keep full ink while idle and seen rows stay quiet, and **Next session needing you** (`Alt+Shift+Down`) jumps to the most urgent one. Themes gain `v2-status-*` color roles for these marks.
+
+### Patch Changes
+
+- npm installs no longer include Redcode Desktop: the desktop app is too large for the npm registry. Install Redcode with mise (`mise use -g github:reddb-io/redcode@latest`) or from the release archive at https://github.com/reddb-io/redcode/releases to get the desktop app; in an npm install, `redcode desktop` now says so instead of looking for a desktop package.
+
 ## 0.73.0
 
 ### Minor Changes
