@@ -67,7 +67,7 @@ describe("settings schema", () => {
         autoSave: true,
         releaseNotes: true,
         showFileTree: false,
-        showNavigation: false,
+        showNavigation: true,
         showSearch: false,
         showTerminal: false,
         timelineDetail: timelinePresets[2].value,
@@ -83,7 +83,6 @@ describe("settings schema", () => {
         mono: "",
         sans: "",
         terminal: "",
-        tabLayout: "horizontal",
       },
       keybinds: {},
       permissions: { autoApprove: false },
@@ -123,12 +122,12 @@ describe("settings schema", () => {
       timelineDetail: timelinePresets[2].value,
       followUpBehavior: "steer",
     })
+    // The retired vertical tab layout decodes away.
     expect(settings.appearance).toEqual({
       fontSize: 14,
       mono: "Custom Mono",
       sans: "",
       terminal: "",
-      tabLayout: "vertical",
     })
     expect(settings.permissions.autoApprove).toBe(true)
     expect(settings.workspaces).toEqual({ defaultDestination: "new", lastUsed: { good: "workspace" } })

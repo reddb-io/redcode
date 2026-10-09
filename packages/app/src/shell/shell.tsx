@@ -1,7 +1,8 @@
-import { lazy, Show, Suspense, type ParentProps } from "solid-js"
+import { createMemo, lazy, Show, Suspense, type ParentProps } from "solid-js"
 import { createStore } from "solid-js/store"
-import { createMediaQuery } from "@solid-primitives/media"
+import { makeEventListener } from "@solid-primitives/event-listener"
 import { ResizeHandle } from "@opencode/ui/resize-handle"
+import { sidebarLayout } from "@opencode/ui/contracts/sidebar-layout"
 import { Titlebar, type TitlebarUpdate } from "@/shell/titlebar/titlebar"
 import { usePlatform } from "@/runtime/platform/platform"
 import { ToastRegion } from "@/shell/notifications/toast"
@@ -13,8 +14,16 @@ import { SshAuthentication } from "@/servers/ssh/authentication"
 import { useUpdaterInstall } from "@/shell/updates/download"
 import { useCommand } from "@/shell/commands/command"
 import { useLanguage } from "@/runtime/i18n/language"
+import { createNavigationController } from "@/shell/navigation/controller"
+import { NavigationRail } from "@/shell/navigation/rail"
+import { NavigationSidemenu } from "@/shell/navigation/sidemenu"
+import { NAVIGATION_MAX_WIDTH, NAVIGATION_MIN_WIDTH } from "@/shell/navigation/model"
 
 const DebugBar = lazy(() => import("@/shell/debug/debug-bar").then((module) => ({ default: module.DebugBar })))
+
+const NAVIGATION_PANEL_ID = "navigation-sidemenu"
+// The rail's own width, as the DS rail layout computes it.
+const RAIL_WIDTH = "calc(var(--reddb-spatial-control-height-md) + 2 * var(--reddb-spatial-inset-sm))"
 
 export default function Layout(props: ParentProps) {
   const platform = usePlatform()
@@ -23,14 +32,12 @@ export default function Layout(props: ParentProps) {
   const installUpdate = useUpdaterInstall()
   const command = useCommand()
   const language = useLanguage()
-  const mobile = createMediaQuery("(max-width: 767px)")
-  const [state, setState] = createStore({
-    debugTools: false,
-    tabsWidth: 260,
-    tabsMount: undefined as HTMLElement | undefined,
-  })
-  const verticalTabs = () => preferences.appearance.tabLayout() === "vertical" && !mobile()
+  const navigation = createNavigationController()
+  const [state, setState] = createStore({ debugTools: false, resizing: false })
+  const mobile = navigation.mobile
   const bottomTitlebar = () => mobile() && preferences.general.mobileTitlebarPosition() === "bottom"
+  const opened = () => navigation.panel.opened()
+  const frame = createMemo(() => sidebarLayout({ rail: true, railOpen: true, panelOpen: opened() }))
 
   const update: TitlebarUpdate = {
     get state() {
@@ -55,6 +62,12 @@ export default function Layout(props: ParentProps) {
     },
   ])
 
+  // The DS drawer closes on Escape; the window listener runs after dialogs and menus took theirs.
+  makeEventListener(window, "keydown", (event) => {
+    if (event.key !== "Escape" || event.defaultPrevented || !mobile() || !opened()) return
+    navigation.panel.close()
+  })
+
   return (
     <TitlebarRightProvider>
       <div
@@ -69,37 +82,74 @@ export default function Layout(props: ParentProps) {
           "--shell-bottom-inset": bottomTitlebar()
             ? "8px"
             : "max(0px, calc(8px - var(--safe-area-inset-bottom, env(safe-area-inset-bottom, 0px))))",
+          "--navigation-rail-width": RAIL_WIDTH,
         }}
       >
-        <Titlebar
-          update={update}
-          verticalTabs={verticalTabs() ? { mount: state.tabsMount } : undefined}
-          debugTools={debugTools}
-        />
-        <div class="flex flex-1 min-h-0 min-w-0 flex-row">
-          <Show when={verticalTabs()}>
-            <aside
-              ref={(element) => setState("tabsMount", element)}
-              data-slot="vertical-tabs-sidebar"
-              class="relative flex h-full min-h-0 shrink-0 flex-col bg-v2-background-bg-deep pe-0.5 ps-2.5 pb-[var(--shell-bottom-inset,8px)] pt-[var(--shell-top-inset,8px)]"
-              style={{
-                width: `${state.tabsWidth}px`,
-                "padding-bottom": "max(10px, var(--safe-area-inset-bottom, env(safe-area-inset-bottom, 0px)))",
-              }}
-            >
-              <ResizeHandle
-                class="-end-2"
-                direction="horizontal"
-                size={state.tabsWidth}
-                min={140}
-                max={520}
-                onResize={(width) => setState("tabsWidth", width)}
-              />
-            </aside>
+        <Titlebar update={update} debugTools={debugTools} />
+        <div
+          data-sidebar-layout
+          data-sidebar-layout-mode="rail-panel"
+          data-panel-open={opened()}
+          class={frame().root({ class: "min-h-0 flex-1 grid-rows-[minmax(0,1fr)]" })}
+          style={{
+            // The DS frame is page chrome sized to the viewport; here it fills the space under the titlebar.
+            "min-height": "0",
+            // The sidemenu keeps the width the user dragged it to rather than the frame's 1 : 3 split.
+            "grid-template-columns":
+              !mobile() && opened() ? `${RAIL_WIDTH} ${navigation.panel.width()}px minmax(0, 1fr)` : undefined,
+            transition: state.resizing ? "none" : undefined,
+          }}
+        >
+          <div class={frame().railRegion()} style={{ "min-height": "0" }} data-sidebar-layout-region="rail">
+            <NavigationRail navigation={navigation} panelID={NAVIGATION_PANEL_ID} />
+          </div>
+          <Show when={mobile() && opened()}>
+            <button
+              type="button"
+              aria-label={language.t("navigation.close")}
+              data-sidebar-drawer-backdrop
+              class="fixed inset-0 z-30 bg-foreground/20 md:hidden"
+              onClick={navigation.panel.close}
+            />
           </Show>
+          <aside
+            id={NAVIGATION_PANEL_ID}
+            aria-label={language.t("sidebar.nav.projectsAndSessions")}
+            data-sidebar-layout-region="sidebar"
+            data-mobile-presentation="drawer"
+            data-state={opened() ? "open" : "closed"}
+            inert={!opened()}
+            class={frame().panel({ class: "relative flex min-h-0 flex-col max-md:p-0" })}
+            classList={{ "max-md:invisible md:border-e-0": !opened() }}
+          >
+            <NavigationSidemenu navigation={navigation} />
+            <Show when={!mobile() && opened()}>
+              <div
+                class="contents"
+                onPointerDown={() => {
+                  setState("resizing", true)
+                  window.addEventListener("pointerup", () => setState("resizing", false), { once: true })
+                }}
+              >
+                <ResizeHandle
+                  class="-end-1"
+                  direction="horizontal"
+                  size={navigation.panel.width()}
+                  min={NAVIGATION_MIN_WIDTH}
+                  max={NAVIGATION_MAX_WIDTH}
+                  collapseThreshold={NAVIGATION_MIN_WIDTH - 60}
+                  onCollapse={navigation.panel.close}
+                  onResize={navigation.panel.resize}
+                />
+              </div>
+            </Show>
+          </aside>
           {/* Size containment collapses percentage-height descendants in WebKit. */}
           <main
-            class="flex-1 min-h-0 min-w-0 overflow-x-hidden flex flex-col items-start contain-content"
+            class={frame().main({
+              class: "min-h-0 min-w-0 overflow-x-hidden flex flex-col items-start contain-content",
+            })}
+            data-sidebar-layout-region="main"
             style={{
               "padding-top": bottomTitlebar() ? "env(safe-area-inset-top, 0px)" : "0px",
               "padding-bottom":

@@ -1,6 +1,6 @@
 import { createEffect, createMemo, createResource, Match, Show, Switch, untrack } from "solid-js"
 import { createStore, unwrap } from "solid-js/store"
-import { Dynamic, Portal } from "solid-js/web"
+import { Dynamic } from "solid-js/web"
 import { useLocation, useNavigate } from "@solidjs/router"
 import { IconButton } from "@opencode/ui/icon-button"
 import { Icon } from "@opencode/ui/icon"
@@ -29,7 +29,6 @@ import { MobileDrawer, MobileDrawerContent, MobileDrawerLabel, MobileDrawerTrigg
 import { sessionTabTitle } from "./tab-title"
 import { SessionTabAvatar } from "@/shell/layout/session-tab-avatar"
 import { SessionProgressIndicatorV2 } from "@opencode/session-ui/v2/session-progress-indicator-v2"
-import { useSettingsDialog } from "@/settings/command"
 import { updaterAction } from "@/shell/updates/action"
 import type { UpdaterState } from "@/shell/updates/types"
 import { rootSession } from "@/shell/routes/session"
@@ -42,23 +41,17 @@ const minTitlebarZoom = 0.25
 const windowsControlsBaseWidth = 138 // 3 native Windows caption buttons at 46px each.
 // Native controls: 14px left inset, two 20px button pitches, and a 14px button.
 const macTrafficLightsBaseWidth = 68
-const macTrafficLightsTopClearance = 28
 
 export type TitlebarUpdate = {
   state: UpdaterState | undefined
   install: () => void
 }
 
-export function Titlebar(props: {
-  update?: TitlebarUpdate
-  debugTools?: { visible: boolean; toggle: () => void }
-  verticalTabs?: { mount?: HTMLElement }
-}) {
+export function Titlebar(props: { update?: TitlebarUpdate; debugTools?: { visible: boolean; toggle: () => void } }) {
   const platform = usePlatform()
   const command = useCommand()
   const language = useLanguage()
   const settings = useSettings()
-  const openSettings = useSettingsDialog()
   const navigate = useNavigate()
   const location = useLocation()
   const mobile = createMediaQuery("(max-width: 767px)")
@@ -68,7 +61,6 @@ export function Titlebar(props: {
   const windows = createMemo(() => platform.platform === "desktop" && platform.os === "windows")
   const linux = createMemo(() => platform.platform === "desktop" && platform.os === "linux")
   const macTrafficLights = createMemo(() => mac() && !platform.windowFullscreen?.())
-  const macVerticalTabs = createMemo(() => mac() && !!props.verticalTabs)
   const zoom = () => platform.webviewZoom?.() ?? 1
   const titlebarZoom = () => (windows() ? Math.max(zoom(), minTitlebarZoom) : zoom())
   const minHeight = () => {
@@ -112,7 +104,6 @@ export function Titlebar(props: {
   const rightState = createMemo<TitlebarRightState>(() => ({
     update: updateState(),
   }))
-  const hideVerticalTitlebar = createMemo(() => !!props.verticalTabs && !windows())
 
   const back = () => {
     const next = backPath(history)
@@ -148,7 +139,6 @@ export function Titlebar(props: {
   return (
     <header
       data-slot="titlebar-v2"
-      hidden={hideVerticalTitlebar()}
       classList={{
         "shrink-0 relative flex flex-row h-9 bg-v2-background-bg-deep overflow-visible": true,
         "order-last": bottom(),
@@ -341,68 +331,12 @@ export function Titlebar(props: {
               }
             }
             const toggleHome = () => tabs.toggleHome({ home: layout.route().type === "home", current: currentTab() })
-            const homeButton = (vertical = false) => (
-              <Show
-                when={vertical}
-                fallback={
-                  <Tooltip
-                    placement="bottom"
-                    value={
-                      <>
-                        {language.t("home.title")}
-                        <Keybind keys={command.keybindParts("home.toggle")} variant="neutral" />
-                      </>
-                    }
-                    class="shrink-0"
-                  >
-                    <button
-                      type="button"
-                      data-action="titlebar-home"
-                      class={`
-                        flex h-7 w-9 shrink-0 items-center justify-center rounded-md text-ink-muted
-                        hover:bg-foreground/8 hover:text-foreground active:bg-foreground/12
-                        aria-pressed:rounded-b-none aria-pressed:bg-foreground/10 aria-pressed:text-foreground
-                        aria-pressed:shadow-[inset_0_-2px_0_0_var(--reddb-color-foreground)]
-                        focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-focus
-                        [app-region:no-drag]
-                      `}
-                      onClick={toggleHome}
-                      aria-label={language.t("home.title")}
-                      aria-pressed={layout.route().type === "home"}
-                    >
-                      <Icon name="grid-plus" />
-                    </button>
-                  </Tooltip>
-                }
-              >
-                <button
-                  type="button"
-                  data-titlebar-tab-action
-                  data-action="vertical-tabs-home"
-                  data-state={layout.route().type === "home" ? "pressed" : undefined}
-                  class="group mb-1 flex h-7 w-full shrink-0 items-center gap-1.5 rounded-md ps-1.5 pe-2 text-[13px] leading-4 text-ink-muted hover:text-foreground data-[state=pressed]:font-medium data-[state=pressed]:text-foreground"
-                  onClick={toggleHome}
-                  aria-label={language.t("home.title")}
-                  aria-pressed={layout.route().type === "home"}
-                >
-                  <Icon name="grid-plus" class="shrink-0" />
-                  <span class="min-w-0 truncate">{language.t("home.title")}</span>
-                  <span
-                    class="ms-auto hidden min-w-0 truncate text-caption tabular-nums text-ink-muted group-hover:block group-focus-visible:block"
-                    aria-hidden="true"
-                  >
-                    <bdi dir="ltr">{command.keybind("home.toggle")}</bdi>
-                  </span>
-                </button>
-              </Show>
-            )
-
             command.register("titlebar-home", () => [
               {
                 id: "home.toggle",
                 title: language.t("home.title"),
                 category: language.t("command.category.view"),
-                keybind: windows() ? "alt+home" : "mod+b",
+                keybind: windows() ? "alt+home" : "mod+shift+h",
                 hidden: true,
                 onSelect: toggleHome,
               },
@@ -440,7 +374,7 @@ export function Titlebar(props: {
               ].filter((v) => v !== undefined)
             })
 
-            const [mobileTabs, setMobileTabs] = createStore({ open: false, settings: false })
+            const [mobileTabs, setMobileTabs] = createStore({ open: false })
             const currentProject = createMemo(() => {
               const tab = currentTab()
               const value = session()
@@ -475,26 +409,61 @@ export function Titlebar(props: {
                   "ps-3.5": windows(),
                 }}
               >
-                <Show when={!mobile() && (!props.verticalTabs || windows())}>
-                  <ChannelIndicator horizontal debugTools={props.debugTools} />
+                <Show when={!mobile()}>
+                  <ChannelIndicator debugTools={props.debugTools} />
                 </Show>
                 <Show when={windows() || linux()}>
                   <WindowsAppMenu command={command} platform={platform} />
                 </Show>
-                <Show when={!mobile() && !props.verticalTabs}>{homeButton()}</Show>
+                <Show when={!mobile() && settings.general.showNavigation()}>
+                  <div data-slot="titlebar-history" class="flex shrink-0 items-center gap-0.5 [app-region:no-drag]">
+                    <Tooltip
+                      placement="bottom"
+                      value={
+                        <>
+                          {language.t("common.goBack")}
+                          <Keybind keys={command.keybindParts("common.goBack")} variant="neutral" />
+                        </>
+                      }
+                    >
+                      <IconButton
+                        type="button"
+                        data-action="titlebar-back"
+                        variant="ghost-muted"
+                        size="large"
+                        icon={<Icon name="arrow-left" />}
+                        disabled={!backPath(history)}
+                        onClick={back}
+                        aria-label={language.t("common.goBack")}
+                      />
+                    </Tooltip>
+                    <Tooltip
+                      placement="bottom"
+                      value={
+                        <>
+                          {language.t("common.goForward")}
+                          <Keybind keys={command.keybindParts("common.goForward")} variant="neutral" />
+                        </>
+                      }
+                    >
+                      <IconButton
+                        type="button"
+                        data-action="titlebar-forward"
+                        variant="ghost-muted"
+                        size="large"
+                        icon={<Icon name="arrow-right" />}
+                        disabled={!forwardPath(history)}
+                        onClick={forward}
+                        aria-label={language.t("common.goForward")}
+                      />
+                    </Tooltip>
+                  </div>
+                </Show>
 
                 <Show
                   when={!mobile()}
                   fallback={
-                    <MobileDrawer
-                      open={mobileTabs.open}
-                      onOpenChange={(open) => setMobileTabs("open", open)}
-                      onContentPresentChange={(present) => {
-                        if (present || !mobileTabs.settings) return
-                        setMobileTabs("settings", false)
-                        openSettings()
-                      }}
-                    >
+                    <MobileDrawer open={mobileTabs.open} onOpenChange={(open) => setMobileTabs("open", open)}>
                       <MobileDrawerTrigger
                         data-slot="mobile-tabs-trigger"
                         class="flex h-7 min-w-0 flex-1 items-center gap-2 rounded-md px-2 text-[13px] leading-4 text-foreground hover:bg-foreground/8 focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-focus [app-region:no-drag]"
@@ -574,160 +543,50 @@ export function Titlebar(props: {
                             <Icon name="plus" />
                             {language.t("command.session.new")}
                           </button>
-                          <div class="flex shrink-0 flex-col gap-1 border-t border-muted pt-2">
-                            <button
-                              type="button"
-                              data-action="mobile-tabs-home"
-                              data-state={layout.route().type === "home" ? "pressed" : undefined}
-                              aria-current={layout.route().type === "home" ? "page" : undefined}
-                              class="flex h-11 w-full items-center gap-2 rounded-md px-2 text-body text-ink-muted hover:bg-foreground/8 active:bg-foreground/12 data-[state=pressed]:bg-foreground/10 data-[state=pressed]:font-medium data-[state=pressed]:text-foreground focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-focus"
-                              onClick={() => {
-                                if (layout.route().type !== "home") toggleHome()
-                                setMobileTabs("open", false)
-                              }}
-                            >
-                              <Icon name="grid-plus" />
-                              {language.t("home.title")}
-                            </button>
-                            <div class="flex items-center gap-1">
-                              <button
-                                type="button"
-                                data-action="mobile-tabs-settings"
-                                class="flex h-11 min-w-0 flex-1 items-center gap-2 rounded-md px-2 text-body text-ink-muted hover:bg-foreground/8 hover:text-foreground active:bg-foreground/12 focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-focus"
-                                onClick={() => setMobileTabs({ open: false, settings: true })}
-                              >
-                                <Icon name="settings-gear" size="small" />
-                                {language.t("sidebar.settings")}
-                              </button>
-                              <button
-                                type="button"
-                                data-action="mobile-tabs-help"
-                                class="flex h-11 shrink-0 items-center gap-2 rounded-md px-2 text-body text-ink-muted hover:bg-foreground/8 hover:text-foreground active:bg-foreground/12 focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-focus"
-                                onClick={() => {
-                                  setMobileTabs("open", false)
-                                  platform.openExternal("https://github.com/reddb-io/redcode/issues/new")
-                                }}
-                              >
-                                <Icon name="help" size="small" />
-                                {language.t("sidebar.help")}
-                              </button>
-                            </div>
-                          </div>
                         </div>
                       </MobileDrawerContent>
                     </MobileDrawer>
                   }
                 >
-                  <Show
-                    when={props.verticalTabs}
-                    fallback={
-                      <>
-                        <TitlebarTabStrip
-                          tabs={tabsStore}
-                          currentTab={currentTab()}
-                          onNavigate={(tab, el) => {
-                            tabs.select(tab)
-                            el?.scrollIntoView({ behavior: "instant" })
-                          }}
-                          onClose={(tab) => {
-                            const index = tabsStore.findIndex((item) => tabKey(item) === tabKey(tab))
-                            if (index !== -1) tabsStoreActions.closeTab(index)
-                          }}
-                          onReorder={(keys) => tabsStoreActions.reorder(keys)}
-                        />
-                        <Tooltip
-                          placement="bottom"
-                          value={
-                            <>
-                              {language.t("command.session.new")}
-                              <Keybind keys={newTabTooltipKeybind(command)} variant="neutral" />
-                            </>
-                          }
-                        >
-                          <IconButton
-                            type="button"
-                            variant="ghost-muted"
-                            size="large"
-                            class="shrink-0"
-                            icon={<Icon name="plus" />}
-                            onClick={openNewTab}
-                            aria-label={language.t("command.session.new")}
-                          />
-                        </Tooltip>
-                      </>
-                    }
-                  >
-                    {(vertical) => (
-                      <Show when={vertical().mount} keyed>
-                        {(mount) => (
-                          <Portal
-                            mount={mount}
-                            ref={(element) => (element.className = "flex size-full min-h-0 flex-col")}
-                          >
-                            <Show when={macVerticalTabs()}>
-                              <div
-                                class="mb-4 min-h-7 w-full shrink-0"
-                                style={{ height: `${macTrafficLightsTopClearance / zoom()}px` }}
-                                data-tauri-drag-region
-                              />
-                            </Show>
-                            <Show when={!windows()}>
-                              <ChannelIndicator sidebar debugTools={props.debugTools} />
-                            </Show>
-                            {homeButton(true)}
-                            <button
-                              type="button"
-                              data-titlebar-tab-action
-                              data-action="vertical-tabs-new-session"
-                              class="group flex h-7 w-full shrink-0 items-center gap-1.5 rounded-md ps-1.5 pe-2 text-[13px] leading-4 text-ink-muted hover:text-foreground"
-                              onClick={openNewTab}
-                              aria-label={language.t("command.session.new")}
-                            >
-                              <Icon name="edit" class="shrink-0" />
-                              <span class="min-w-0 truncate">{language.t("command.session.new")}</span>
-                              <span
-                                class="ms-auto hidden min-w-0 truncate text-caption tabular-nums text-ink-muted group-hover:block group-focus-visible:block"
-                                aria-hidden="true"
-                              >
-                                <bdi dir="ltr">{command.keybind("tab.new")}</bdi>
-                              </span>
-                            </button>
-                            <div class="mt-4 flex h-7 w-full shrink-0 items-center ps-2 text-eyebrow uppercase text-ink-muted">
-                              {language.t("titlebar.tabs")}
-                            </div>
-                            <div class="flex min-h-0 flex-1 flex-col gap-1">
-                              <TitlebarTabStrip
-                                orientation="vertical"
-                                tabs={tabsStore}
-                                currentTab={currentTab()}
-                                onNavigate={(tab, el) => {
-                                  tabs.select(tab)
-                                  el?.scrollIntoView({ behavior: "instant", block: "nearest" })
-                                }}
-                                onClose={(tab) => {
-                                  const index = tabsStore.findIndex((item) => tabKey(item) === tabKey(tab))
-                                  if (index !== -1) tabsStoreActions.closeTab(index)
-                                }}
-                                onReorder={(keys) => tabsStoreActions.reorder(keys)}
-                              />
-                            </div>
-                            <Show when={updateState().visible}>
-                              <div data-slot="vertical-tabs-footer" class="mt-2 flex w-full shrink-0 flex-col">
-                                <TitlebarUpdateIconButton state={updateState()} vertical />
-                              </div>
-                            </Show>
-                          </Portal>
-                        )}
-                      </Show>
-                    )}
-                  </Show>
+                  <>
+                    <TitlebarTabStrip
+                      tabs={tabsStore}
+                      currentTab={currentTab()}
+                      onNavigate={(tab, el) => {
+                        tabs.select(tab)
+                        el?.scrollIntoView({ behavior: "instant" })
+                      }}
+                      onClose={(tab) => {
+                        const index = tabsStore.findIndex((item) => tabKey(item) === tabKey(tab))
+                        if (index !== -1) tabsStoreActions.closeTab(index)
+                      }}
+                      onReorder={(keys) => tabsStoreActions.reorder(keys)}
+                    />
+                    <Tooltip
+                      placement="bottom"
+                      value={
+                        <>
+                          {language.t("command.session.new")}
+                          <Keybind keys={newTabTooltipKeybind(command)} variant="neutral" />
+                        </>
+                      }
+                    >
+                      <IconButton
+                        type="button"
+                        variant="ghost-muted"
+                        size="large"
+                        class="shrink-0"
+                        icon={<Icon name="plus" />}
+                        onClick={openNewTab}
+                        aria-label={language.t("command.session.new")}
+                      />
+                    </Tooltip>
+                  </>
                 </Show>
                 <Show when={!mobile()}>
                   <div class="flex-1" />
                 </Show>
-                <Show when={!props.verticalTabs}>
-                  <TitlebarRight state={rightState()} />
-                </Show>
+                <TitlebarRight state={rightState()} />
               </div>
             )
           }}
@@ -761,41 +620,24 @@ function TitlebarRight(props: { state: TitlebarRightState }) {
   )
 }
 
-function TitlebarUpdateIconButton(props: { state: TitlebarUpdatePillState; vertical?: boolean }) {
-  const label = () => (
-    <span
-      class="shrink-0 text-[11px] leading-4 font-medium text-foreground opacity-0 motion-safe:transition-all duration-150 ease-out group-hover:opacity-100 group-hover:translate-x-0 group-focus-within:opacity-100 group-focus-within:translate-x-0 motion-reduce:translate-x-0"
-      classList={{
-        "ms-px me-4 -translate-x-2 rtl:translate-x-2": props.vertical,
-        "ms-2 me-px translate-x-2 rtl:-translate-x-2": !props.vertical,
-      }}
-    >
-      {props.state.label}
-    </span>
-  )
+function TitlebarUpdateIconButton(props: { state: TitlebarUpdatePillState }) {
   return (
     <div
       data-slot="titlebar-update"
-      class="group relative shrink-0 rounded-full bg-v2-background-bg-deep transition-[width] duration-150 ease-out hover:z-30 focus-within:z-30 motion-reduce:transition-none"
-      classList={{
-        "h-7 w-7 self-start hover:w-[84px] focus-within:w-[84px]": props.vertical,
-        "me-3 h-5 w-5 hover:w-[68px] focus-within:w-[68px]": !props.vertical,
-      }}
+      class="group relative me-3 h-5 w-5 shrink-0 rounded-full bg-v2-background-bg-deep transition-[width] duration-150 ease-out hover:z-30 hover:w-[68px] focus-within:z-30 focus-within:w-[68px] motion-reduce:transition-none"
     >
       <button
         type="button"
-        class="absolute top-0 z-10 flex h-full w-full items-center overflow-hidden rounded-full border border-feedback-info-border bg-feedback-info-surface text-feedback-info-foreground focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus disabled:opacity-50 [app-region:no-drag]"
-        classList={{ "start-0 justify-start": props.vertical, "end-0 justify-end": !props.vertical }}
+        class="absolute end-0 top-0 z-10 flex h-full w-full items-center justify-end overflow-hidden rounded-full border border-feedback-info-border bg-feedback-info-surface text-feedback-info-foreground focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus disabled:opacity-50 [app-region:no-drag]"
         onClick={props.state.onInstall}
         disabled={props.state.installing}
         aria-busy={props.state.installing}
         aria-label={props.state.ariaLabel}
       >
-        <Show when={!props.vertical}>{label()}</Show>
-        <span
-          class="flex shrink-0 items-center justify-center"
-          classList={{ "size-7": props.vertical, "size-5": !props.vertical }}
-        >
+        <span class="ms-2 me-px shrink-0 translate-x-2 text-[11px] leading-4 font-medium text-foreground opacity-0 motion-safe:transition-all duration-150 ease-out group-hover:translate-x-0 group-hover:opacity-100 group-focus-within:translate-x-0 group-focus-within:opacity-100 motion-reduce:translate-x-0 rtl:-translate-x-2">
+          {props.state.label}
+        </span>
+        <span class="flex size-5 shrink-0 items-center justify-center">
           <Show
             when={!props.state.installing}
             fallback={<span data-slot="titlebar-update-loader" aria-hidden="true" />}
@@ -805,17 +647,12 @@ function TitlebarUpdateIconButton(props: { state: TitlebarUpdatePillState; verti
             </svg>
           </Show>
         </span>
-        <Show when={props.vertical}>{label()}</Show>
       </button>
     </div>
   )
 }
 
-function ChannelIndicator(props: {
-  horizontal?: boolean
-  sidebar?: boolean
-  debugTools?: { visible: boolean; toggle: () => void }
-}) {
+function ChannelIndicator(props: { debugTools?: { visible: boolean; toggle: () => void } }) {
   const language = useLanguage()
   const platform = usePlatform()
   const channel = import.meta.env.VITE_OPENCODE_CHANNEL
@@ -825,7 +662,7 @@ function ChannelIndicator(props: {
       <span
         data-slot="titlebar-mark"
         aria-hidden="true"
-        class={`flex h-7 w-5 shrink-0 select-none items-center justify-center font-mono text-[13px] font-bold leading-none text-primary ${props.sidebar ? "mb-4 ms-0.5 self-start" : ""} ${props.horizontal ? "me-1.5" : ""}`}
+        class="me-1.5 flex h-7 w-5 shrink-0 select-none items-center justify-center font-mono text-[13px] font-bold leading-none text-primary"
       >
         ›_
       </span>
@@ -835,18 +672,16 @@ function ChannelIndicator(props: {
   const debug = () => (channel === "dev" || channel === "local" ? props.debugTools : undefined)
   return (
     <Tooltip
-      placement={props.sidebar ? "right" : "bottom"}
+      placement="bottom"
       value={label()}
-      class={`shrink-0 [app-region:no-drag] ${props.sidebar ? "mb-4 ms-0.5 self-start" : ""} ${props.horizontal ? "me-1.5" : ""} ${props.horizontal && platform.platform === "web" ? "ps-2.5" : ""}`}
+      class={`me-1.5 shrink-0 [app-region:no-drag] ${platform.platform === "web" ? "ps-2.5" : ""}`}
     >
       <Dynamic
         component={debug() ? "button" : "div"}
         type={debug() ? "button" : undefined}
         data-slot="channel-indicator"
-        class="flex h-7 shrink-0 items-center justify-center rounded-md [app-region:no-drag]"
+        class="flex h-7 w-5 shrink-0 items-center justify-center rounded-md [app-region:no-drag]"
         classList={{
-          "w-6": props.sidebar,
-          "w-5": !props.sidebar,
           "cursor-pointer hover:bg-foreground/8 active:bg-foreground/12 focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-focus":
             !!debug(),
         }}
@@ -857,8 +692,7 @@ function ChannelIndicator(props: {
         <img
           src={channel === "beta" ? betaIcon : devIcon}
           alt={debug() ? "" : label()}
-          class="shrink-0 rounded-sm"
-          classList={{ "size-6": props.sidebar, "size-5": !props.sidebar }}
+          class="size-5 shrink-0 rounded-sm"
           draggable={false}
         />
       </Dynamic>

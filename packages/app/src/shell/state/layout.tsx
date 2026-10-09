@@ -19,6 +19,12 @@ import { SessionStateKey } from "@/runtime/server/scope"
 import { createSessionKeyReader, ensureSessionKey, pruneSessionKeys } from "./helpers"
 import { requireServerKey } from "@/shell/routes/session"
 import { closeSessionTab, openSessionTab, previewSessionTab, SESSION_BTW_TAB, type SessionTabs } from "./session-tabs"
+import {
+  clampNavigationWidth,
+  NAVIGATION_DEFAULT_WIDTH,
+  togglePinned,
+  type PinnedSession,
+} from "@/shell/navigation/model"
 
 export { createSessionKeyReader, ensureSessionKey, pruneSessionKeys }
 
@@ -164,6 +170,8 @@ export const layoutSchema = Persistence.struct({
   }),
   session: Persistence.struct({ width: Schema.Finite }),
   mobileSidebar: Persistence.struct({ opened: Schema.Boolean }),
+  // The rail's sidemenu: open state and width on wide windows. Below `md` it is a drawer (`mobileSidebar`).
+  navigation: Persistence.struct({ opened: Schema.Boolean, width: Schema.Finite }),
   sessionTabs: Persistence.record(Persistence.fallback(sessionTabsSchema, () => ({ all: [] }))),
   sessionView: Persistence.record(Persistence.fallback(sessionViewSchema, () => ({ scroll: {} }))),
   home: Persistence.struct({
@@ -234,11 +242,20 @@ export function initialLayout(server?: ServerConnection.Key): typeof layoutSchem
     fileTree: { opened: false, width: DEFAULT_FILE_TREE_WIDTH, tab: "changes" },
     session: { width: DEFAULT_SESSION_WIDTH },
     mobileSidebar: { opened: false },
+    navigation: { opened: true, width: NAVIGATION_DEFAULT_WIDTH },
     sessionTabs: {},
     sessionView: {},
     home: { selection: server ? { server } : {} },
   }
 }
+
+const navigationPinnedSchema = Persistence.struct({
+  list: Persistence.array(Persistence.struct({ server: Schema.String, session: Schema.String })),
+})
+const navigationTreeSchema = Persistence.struct({
+  expanded: Persistence.record(Schema.Boolean),
+  collapsedSections: Persistence.record(Schema.Boolean),
+})
 
 export const { use: useLayout, provider: LayoutProvider } = createSimpleContext({
   name: "Layout",
@@ -252,6 +269,11 @@ export const { use: useLayout, provider: LayoutProvider } = createSimpleContext(
       layoutPersistence,
       initialLayout(servers.list[0] ? ServerConnection.key(servers.list[0]) : undefined),
     )
+    const [pinned, setPinned] = persisted(Persist.global("navigation.pinned"), navigationPinnedSchema, { list: [] })
+    const [tree, setTree] = persisted(Persist.global("navigation.tree"), navigationTreeSchema, {
+      expanded: {},
+      collapsedSections: {},
+    })
     const [ephemeral, setEphemeral] = createStore({
       reviewPanelSource: "other" as ReviewPanelSource,
       sessionTabPreview: {} as Record<string, string | undefined>,
@@ -446,10 +468,39 @@ export const { use: useLayout, provider: LayoutProvider } = createSimpleContext(
           setStore("session", "width", width)
         },
       },
+      navigation: {
+        opened: createMemo(() => store.navigation?.opened ?? true),
+        width: createMemo(() => clampNavigationWidth(store.navigation?.width ?? NAVIGATION_DEFAULT_WIDTH)),
+        setOpened(opened: boolean) {
+          setStore("navigation", { width: store.navigation?.width ?? NAVIGATION_DEFAULT_WIDTH, opened })
+        },
+        resize(width: number) {
+          setStore("navigation", { opened: store.navigation?.opened ?? true, width: clampNavigationWidth(width) })
+        },
+        pinned: {
+          list: () => pinned.list,
+          has: (server: string, session: string) =>
+            pinned.list.some((item) => item.server === server && item.session === session),
+          toggle(entry: PinnedSession) {
+            setPinned("list", (list) => togglePinned(list, entry))
+          },
+        },
+        expanded: (key: string) => tree.expanded[key] ?? true,
+        setExpanded(key: string, expanded: boolean) {
+          setTree("expanded", key, expanded)
+        },
+        sectionOpen: (id: string) => !tree.collapsedSections[id],
+        toggleSection(id: string) {
+          setTree("collapsedSections", id, (collapsed) => !collapsed)
+        },
+      },
       mobileSidebar: {
         opened: createMemo(() => store.mobileSidebar?.opened ?? false),
         hide() {
           setStore("mobileSidebar", "opened", false)
+        },
+        show() {
+          setStore("mobileSidebar", "opened", true)
         },
         toggle() {
           setStore("mobileSidebar", "opened", (x) => !x)

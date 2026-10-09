@@ -67,6 +67,8 @@ export type HomeSessionsViewProps = {
   onRenameSession: (server: ServerConnection.Key, session: SessionInfo, title: string) => Promise<boolean>
   onExportSession: (server: ServerConnection.Key, session: SessionInfo) => Promise<void>
   onDeleteSession: (server: ServerConnection.Key, session: SessionInfo) => void
+  isPinned: (session: SessionInfo) => boolean
+  onTogglePin: (session: SessionInfo) => void
   onSetHoverTarget: (element: HTMLElement) => void
   onSetThumbTrack: (element: HTMLDivElement) => void
   onSetContent: (element: HTMLDivElement) => void
@@ -724,6 +726,11 @@ function HomeSessionRow(
               requestAnimationFrame(() => rowButton()?.focus())
             }}
           >
+            <Menu.Item onSelect={() => props.onTogglePin(props.record.session)}>
+              {props.language.t(
+                props.isPinned(props.record.session) ? "navigation.session.unpin" : "navigation.session.pin",
+              )}
+            </Menu.Item>
             <Menu.Item onSelect={openEditor}>{props.language.t("common.rename")}</Menu.Item>
             <Menu.Item onSelect={() => void props.onExportSession(props.server, props.record.session)}>
               {props.language.t("common.export")}…

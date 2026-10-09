@@ -1,23 +1,18 @@
 import { useDirectoryPicker } from "@/workspaces/selection/picker"
 import { useServerActionsController } from "@/servers/registry/controller"
 import { useSettingsCommand } from "@/settings/command"
-import { useSettingsSurface } from "@/settings/surface"
-import { type LocalProject } from "@/shell/state/layout"
 import { useLanguage } from "@/runtime/i18n/language"
 import { usePlatform } from "@/runtime/platform/platform"
 import { ServerConnection } from "@/runtime/server/registry"
-import { closeHomeProject, errorMessage, homeProjectDirectories } from "@/shell/layout/helpers"
+import { homeProjectDirectories } from "@/shell/layout/helpers"
 import { Persist, persisted } from "@/runtime/persistence/storage"
-import { showToast } from "@/shell/notifications/toast"
 import { useDialog } from "@opencode/ui/context/dialog"
 import { createResource } from "solid-js"
 import { Schema } from "effect"
 import { Persistence } from "@/runtime/persistence/schema"
 import type { HomeController } from "../model"
-import { useGlobal } from "@/runtime/server/runtime"
-import { SessionTransfer } from "@opencode/schema/session-transfer"
 import { useSshAuthenticate } from "@/servers/ssh/authenticate"
-import { useRevealProject } from "./reveal"
+import { useProjectActions } from "./actions"
 
 export const HomeServersSchema = Schema.Struct({
   collapsed: Persistence.record(Persistence.fallback(Schema.Boolean, () => false)),
@@ -29,21 +24,15 @@ export function createHomeProjectsController(home: HomeController) {
   const dialog = useDialog()
   const language = useLanguage()
   const openSettings = useSettingsCommand()
-  const settings = useSettingsSurface()
   const serverManagement = useServerActionsController()
-  const global = useGlobal()
   const authenticate = useSshAuthenticate()
-  const revealProject = useRevealProject()
+  const actions = useProjectActions()
   const [_state, setState, _, ready] = persisted(Persist.global("home.servers"), HomeServersSchema, { collapsed: {} })
   const [state] = createResource(
     () => ready.promise ?? Promise.resolve(),
     (promise) => promise.then(() => _state),
     { initialValue: _state },
   )
-  function directories(project: LocalProject) {
-    return [project.worktree, ...(project.sandboxes ?? [])]
-  }
-
   function choose(conn: ServerConnection.Any) {
     pickDirectory({
       server: conn,
@@ -101,70 +90,22 @@ export function createHomeProjectsController(home: HomeController) {
         if (authenticate(conn, () => home.project.openProjectNewSession(conn, directory))) return
         home.project.openProjectNewSession(conn, directory)
       },
-      canImportSession: !!platform.openAttachmentPickerDialog,
-      importSession: (conn: ServerConnection.Any, project: LocalProject) => {
-        if (!platform.openAttachmentPickerDialog) return
-        void platform
-          .openAttachmentPickerDialog(
-            {
-              title: language.t("command.session.import"),
-              accept: ["application/json"],
-              extensions: ["json"],
-            },
-            async (file) => {
-              const data = await Schema.decodeUnknownPromise(Schema.fromJsonString(SessionTransfer.Data))(
-                await file.text(),
-              )
-              const api = home.server.context(conn).sdk.api.session
-              const imported = await api.import({
-                ...Schema.encodeSync(SessionTransfer.Data)(data),
-                location: { directory: project.worktree },
-              } as Parameters<typeof api.import>[0])
-              home.project.openProjectSession(conn, project.worktree, imported)
-            },
-          )
-          .catch((cause: unknown) => {
-            showToast({
-              title: language.t("common.requestFailed"),
-              description: errorMessage(cause, language.t("common.requestFailed")),
-            })
-          })
-      },
-      edit: (conn: ServerConnection.Any, project: LocalProject) => {
-        settings.openProject({
-          server: ServerConnection.key(conn),
-          project: project.worktree,
-        })
-      },
-      unseenCount: (conn: ServerConnection.Any, project: LocalProject) => {
-        const notification = global.ensureServerCtx(conn).notification
-        return directories(project).reduce((total, directory) => total + notification.project.unseenCount(directory), 0)
-      },
-      clearNotifications: (conn: ServerConnection.Any, project: LocalProject) => {
-        const notification = global.ensureServerCtx(conn).notification
-        directories(project)
-          .filter((directory) => notification.project.unseenCount(directory) > 0)
-          .forEach((directory) => notification.project.markViewed(directory))
-      },
+      canImportSession: actions.canImportSession,
+      importSession: actions.importSession,
+      edit: actions.edit,
+      unseenCount: actions.unseenCount,
+      clearNotifications: actions.clearNotifications,
       choose: (conn: ServerConnection.Any) => {
         if (authenticate(conn, () => choose(conn))) return
         if (home.server.health(conn)?.healthy === false) return
         choose(conn)
       },
-      close: (conn: ServerConnection.Any, directory: string) => {
-        const next = closeHomeProject(
-          home.selection.value(),
-          ServerConnection.key(conn),
-          home.server.context(conn).projects,
-          directory,
-        )
-        if (next) home.selection.set(next)
-      },
+      close: actions.close,
       move: (conn: ServerConnection.Any, worktree: string, index: number) => {
         home.server.context(conn).projects.move(worktree, index)
       },
-      canReveal: revealProject.available,
-      reveal: revealProject.reveal,
+      canReveal: actions.canReveal,
+      reveal: actions.reveal,
     },
     utility: {
       settings: openSettings,

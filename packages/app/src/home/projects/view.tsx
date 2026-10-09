@@ -80,19 +80,14 @@ export function HomeProjectsView(props: HomeProjectsViewProps) {
   )
   return (
     <Show when={props.dropdown} fallback={<HomeProjectsPanel {...props} />}>
-      <Popover
-        open={state.open}
-        onOpenChange={(open) => setState("open", open)}
-        placement="bottom-start"
-        sameWidth
-        gutter={6}
-      >
+      <Popover open={state.open} onOpenChange={(open) => setState("open", open)} placement="bottom-start" gutter={6}>
         <Popover.Trigger
           data-component="home-projects-dropdown"
           aria-label={props.language.t("home.projects")}
           class={`
-            flex h-10 w-full min-w-0 items-center gap-2 rounded-md border border-control-edge bg-v2-background-bg-base
-            px-2 text-start text-body text-foreground hover:bg-foreground/8 aria-expanded:bg-foreground/10
+            flex h-[var(--reddb-spatial-control-height-md)] w-full min-w-0 items-center gap-2 rounded-md border
+            border-control-edge bg-v2-background-bg-base px-2 text-start text-body text-foreground hover:bg-foreground/8
+            aria-expanded:bg-foreground/10 md:w-auto md:max-w-80
             focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus
           `}
         >
@@ -119,7 +114,7 @@ export function HomeProjectsView(props: HomeProjectsViewProps) {
           <Popover.Content
             aria-label={props.language.t("home.projects")}
             dir={props.language.direction()}
-            class="z-50 max-h-[min(70dvh,var(--kb-popper-content-available-height))] overflow-hidden rounded-lg border border-elevation-overlay-border bg-elevation-overlay-surface p-1 shadow-elevation-overlay outline-none data-[expanded]:animate-in data-[expanded]:fade-in duration-150 ease-out motion-reduce:animate-none"
+            class="z-50 max-h-[min(70dvh,var(--kb-popper-content-available-height))] w-[max(18rem,var(--kb-popper-anchor-width))] max-w-[calc(100vw-1.5rem)] overflow-hidden rounded-lg border border-elevation-overlay-border bg-elevation-overlay-surface p-1 shadow-elevation-overlay outline-none data-[expanded]:animate-in data-[expanded]:fade-in duration-150 ease-out motion-reduce:animate-none"
           >
             <HomeProjectsPanel
               {...props}

@@ -38,9 +38,10 @@ export const clientSettings: Entry<SettingsRootTab>[] = [
   { tab: "general", label: "settings.general.row.language.title", target: "settings-language" },
   {
     tab: "general",
-    label: "settings.appearance.row.tabs.title",
-    target: "settings-tab-layout",
-    keywords: "vertical horizontal tabs",
+    label: "settings.general.row.showNavigation.title",
+    description: "settings.general.row.showNavigation.description",
+    target: "settings-show-navigation",
+    keywords: "back forward history navigation buttons",
   },
   {
     tab: "general",

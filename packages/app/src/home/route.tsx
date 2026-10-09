@@ -1,6 +1,4 @@
 import { ScrollView } from "@opencode/ui/scroll-view"
-import { createMediaQuery } from "@solid-primitives/media"
-import { Show } from "solid-js"
 import { createHomeController } from "./model"
 import { createHomeProjectsController } from "./projects/controller"
 import { HomeProjects } from "./projects/region"
@@ -10,7 +8,6 @@ import { createHomeSessionsController } from "./sessions/controller"
 import { HomeSessions } from "./sessions/region"
 
 export function Home() {
-  const mobile = createMediaQuery("(max-width: 767px)")
   const home = createHomeController()
   const projects = createHomeProjectsController(home)
   const sessions = createHomeSessionsController(home)
@@ -24,18 +21,12 @@ export function Home() {
         overflow-hidden rounded-lg bg-v2-background-bg-base shadow-[var(--v2-elevation-raised)]
       `}
     >
-      <Show when={!mobile()}>
-        <div class="flex min-h-0 w-56 shrink-0 flex-col border-e border-muted lg:w-64">
-          <HomeProjects projects={projects} scroll={scroll} />
-        </div>
-      </Show>
       <div class="flex min-h-0 min-w-0 flex-1 flex-col">
         <h1 class="sr-only">{projects.copy.language.t("home.title")}</h1>
-        <Show when={mobile()}>
-          <div class="relative z-40 shrink-0 px-3 pt-3">
-            <HomeProjects projects={projects} scroll={scroll} dropdown />
-          </div>
-        </Show>
+        {/* Projects live in the sidemenu; Home keeps a compact scope picker for its session list. */}
+        <div class="relative z-40 mx-auto flex w-full max-w-[60rem] shrink-0 px-3 pt-3 md:px-6 md:pt-6 lg:px-10">
+          <HomeProjects projects={projects} scroll={scroll} dropdown />
+        </div>
         <ScrollView
           class="min-h-0 flex-1 [container-type:size]"
           thumbContainer={scroll.viewport.thumbTrack()}

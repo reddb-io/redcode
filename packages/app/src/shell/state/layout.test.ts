@@ -41,10 +41,12 @@ describe("layout persistence", () => {
       fileTree: { opened: false, width: 200, tab: "changes" },
       session: { width: 600 },
       mobileSidebar: { opened: false },
+      navigation: { opened: true, width: 272 },
       sessionTabs: {},
       sessionView: {},
       home: { selection: { server: ServerConnection.Key.make("local") } },
     })
+    expect(decode({ navigation: { opened: false, width: 300 } }).navigation).toEqual({ opened: false, width: 300 })
     expect(
       decode({
         sidebar: { width: "bad" },

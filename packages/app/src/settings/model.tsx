@@ -12,7 +12,6 @@ export type WorkspaceDefaultDestination = Settings["workspaces"]["defaultDestina
 export type WorkspaceLastUsed = Settings["workspaces"]["lastUsed"][string]
 export type TerminalPlacement = Settings["general"]["terminalPlacement"]
 export type FollowUpBehavior = Settings["general"]["followUpBehavior"]
-export type TabLayout = Settings["appearance"]["tabLayout"]
 export type NotificationSettings = Settings["notifications"]
 export type SoundSettings = Settings["sounds"]
 
@@ -100,7 +99,6 @@ const appearanceSchema = Persistence.struct({
   mono: Schema.String,
   sans: Schema.String,
   terminal: Schema.String,
-  tabLayout: Schema.Literals(["horizontal", "vertical"]),
 })
 
 const permissionsSchema = Persistence.struct({
@@ -238,7 +236,7 @@ export const defaultSettings: Settings = {
     autoSave: true,
     releaseNotes: true,
     showFileTree: false,
-    showNavigation: false,
+    showNavigation: true,
     showSearch: false,
     showTerminal: false,
     timelineDetail: { ...timelinePresets[2].value },
@@ -249,7 +247,8 @@ export const defaultSettings: Settings = {
     followUpBehavior: "steer",
   },
   sessionSummary: { projectExpanded: true, serverExpanded: true },
-  appearance: { fontSize: 14, mono: "", sans: "", terminal: "", tabLayout: "horizontal" },
+  // The retired `tabLayout: "vertical"` decodes away: the rail's sidemenu, open by default, replaced it.
+  appearance: { fontSize: 14, mono: "", sans: "", terminal: "" },
   keybinds: {},
   permissions: { autoApprove: false },
   workspaces: { defaultDestination: "last-used", lastUsed: {} },
@@ -388,10 +387,6 @@ export const { use: useSettings, provider: SettingsProvider } = createSimpleCont
         terminalFont: withFallback(() => store.appearance?.terminal, defaultSettings.appearance.terminal),
         setTerminalFont(value: string) {
           setStore("appearance", "terminal", value.trim() ? value : "")
-        },
-        tabLayout: withFallback(() => store.appearance?.tabLayout, defaultSettings.appearance.tabLayout),
-        setTabLayout(value: TabLayout) {
-          setStore("appearance", "tabLayout", value)
         },
       },
       keybinds: {

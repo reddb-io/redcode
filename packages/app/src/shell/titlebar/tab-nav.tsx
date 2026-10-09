@@ -8,6 +8,7 @@ import { Icon } from "@opencode/ui/icon"
 import { Menu } from "@opencode/ui/menu"
 import { useGlobal, useServerCtx } from "@/runtime/server/runtime"
 import { useLanguage } from "@/runtime/i18n/language"
+import { useLayout } from "@/shell/state/layout"
 import { ServerConnection, serverName, useServers } from "@/runtime/server/registry"
 import { displayName } from "@/shell/layout/helpers"
 import { SessionTabAvatar } from "@/shell/layout/session-tab-avatar"
@@ -46,6 +47,11 @@ export function TabNavItem(props: {
   let titleEl!: HTMLSpanElement
   let measureFrame: number | undefined
   const rename = createMutation(() => ({ mutationFn: props.onRename }))
+  const layout = useLayout()
+  const pinned = () => !!props.session && layout.navigation.pinned.has(props.server, props.session.id)
+  const togglePin = () => {
+    if (props.session) layout.navigation.pinned.toggle({ server: props.server, session: props.session.id })
+  }
 
   const closeTab = (event: MouseEvent) => {
     event.preventDefault()
@@ -349,6 +355,9 @@ export function TabNavItem(props: {
         >
           <Menu.Item disabled={!props.session || rename.isPending} onSelect={() => setMenu("rename", true)}>
             {language.t("common.rename")}
+          </Menu.Item>
+          <Menu.Item disabled={!props.session} onSelect={togglePin}>
+            {language.t(pinned() ? "navigation.session.unpin" : "navigation.session.pin")}
           </Menu.Item>
           <Menu.Item onSelect={props.onClose}>{language.t("common.closeTab")}</Menu.Item>
         </Menu.Context.Content>
