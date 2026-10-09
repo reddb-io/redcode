@@ -1,6 +1,6 @@
 #!/usr/bin/env bun
 // Vendors the pinned reddb-io/design-system release into packages/ui.
-// Usage: bun scripts/sync-design-system.ts /path/to/design-system
+// Usage: bun scripts/sync-design-system.ts [/path/to/design-system] [/path/to/brand]
 //
 // The Svelte Kits cannot run in Solid, so this adopts the framework-free layers only: Tokens, Theme, Assets
 // (fonts) and the Kits' `*.variants.ts` contracts, which depend on `tailwind-variants` alone. The producer is the
@@ -13,6 +13,8 @@ import { pathToFileURL } from "node:url"
 
 const root = resolve(import.meta.dir, "..")
 const source = resolve(process.argv[2] ?? join(root, "../design-system"))
+// A reddb-io/brand checkout, for the house mark the design system does not publish yet.
+const brand = resolve(process.argv[3] ?? join(root, "../brand"))
 const manifest = JSON.parse(readFileSync(join(root, "design-system.manifest.json"), "utf8")) as {
   source: string
   version: string
@@ -70,6 +72,15 @@ try {
   rmSync(color, { recursive: true, force: true })
   mkdirSync(color, { recursive: true })
   for (const file of ["index.ts", "light.json", "dark.json"]) cpSync(join(release, "packages/color/src", file), join(color, file))
+  // The reddb.io house endorsement mark signs every sibling product (brand identity/house.md). The design system does
+  // not publish it yet, so it is read from the Brand Assets release the design system itself pins.
+  const brandVersion = JSON.parse(readFileSync(join(release, "vendor/brand/brand.lock.json"), "utf8")).version as string
+  const endorsement = join(destination, "endorsement")
+  mkdirSync(endorsement, { recursive: true })
+  for (const name of ["color", "inverse", "black", "white"]) {
+    const file = `assets/endorsement/reddb-endorsement-${name}.svg`
+    writeFileSync(join(endorsement, `reddb-endorsement-${name}.svg`), await Bun.$`git -C ${brand} show ${brandVersion}:${file}`.text())
+  }
   // Brand marks are the Logo's assets; the app places them as-is and never recolors them.
   const marks = join(destination, "marks")
   mkdirSync(marks, { recursive: true })
