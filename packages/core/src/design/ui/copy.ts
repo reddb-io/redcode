@@ -300,7 +300,6 @@ export const reviewCopy = {
   previewFailed: "The preview could not be built.",
   previewRetry: "Retry",
   appWaiting: "Opening the design review",
-  appDownloading: "Downloading redcode-design {{version}}… {{progress}}",
   appStarting: "Starting the design app…",
   appFailed: "The design app did not start.",
   appReload: "This page updates by itself.",

@@ -172,7 +172,7 @@ const suites = {
     "test/provider/openrouter.test.ts",
   ],
   util: ["src/design-review.test.ts"],
-  redcode: ["test/script/publish-registry.test.ts"],
+  redcode: ["test/script/publish-registry.test.ts", "test/script/packages.test.ts"],
   "rpc-sidecar": ["test/sidecar.test.ts"],
 }
 

@@ -7,7 +7,7 @@ import type { DesignApp } from "./app.js"
 import type { Database } from "../database/database.js"
 
 export interface Interface {
-  readonly connect: (version?: string) => Promise<DesignApp.Connection>
+  readonly connect: () => Promise<DesignApp.Connection>
 }
 
 export class Service extends Context.Service<Service, Interface>()("@redcode/DesignAppConnection") {}
@@ -19,12 +19,12 @@ export const configured = (input: {
   makeGlobalNode({
     service: Service,
     layer: Layer.succeed(Service, Service.of({
-      connect: async (version) => {
+      connect: async () => {
         const host = input.host()
         if (!host || (!input.database?.url && !path.isAbsolute(input.database?.path ?? "")))
           throw new Error("The design app needs a listening redcode server and a persistent database")
         const { DesignApp } = await import("./app.js")
-        return DesignApp.connect({ host, database: input.database, version })
+        return DesignApp.connect({ host, database: input.database })
       },
     })),
     deps: [],

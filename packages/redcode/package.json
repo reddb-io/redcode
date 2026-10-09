@@ -15,6 +15,7 @@
   },
   "scripts": {
     "build": "bun script/build.ts",
+    "assemble": "bun script/assemble.ts",
     "archive": "bun script/archive.ts",
     "publish": "bun script/publish.ts",
     "test": "bun test",

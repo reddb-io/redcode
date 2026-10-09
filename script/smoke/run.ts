@@ -411,7 +411,7 @@ async function checkWorktree() {
 async function checkDesign() {
   const project = path.join(root, "design")
   await mkdir(project)
-  // Design may download its app on first use unless --design-bin points at a local build.
+  // Design runs the redcode-design installed beside the binary unless --design-bin points at another build.
   const events = await session(project, "smoke:design Design a smoke screen.", {
     flags: ["--agent", "design"],
     timeout: 240_000,

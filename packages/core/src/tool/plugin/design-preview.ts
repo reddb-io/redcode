@@ -151,7 +151,7 @@ export const Plugin = {
               const configured = yield* designs.configured(context.sessionID)
               const app =
                 "path" in input && DesignAppMode.process(configured)
-                  ? yield* Effect.tryPromise(() => apps.connect(configured?.app?.version))
+                  ? yield* Effect.tryPromise(() => apps.connect())
                   : undefined
               const document =
                 "path" in input
@@ -196,7 +196,7 @@ export const Plugin = {
               const link = DesignAppMode.process(configured)
                 ? yield* Effect.tryPromise(async () => {
                     const { DesignApp } = await import("../../design/app.js")
-                    return DesignApp.review(app ?? (await apps.connect(configured?.app?.version)), context.sessionID)
+                    return DesignApp.review(app ?? (await apps.connect()), context.sessionID)
                   }).pipe(
                     Effect.match({
                       onFailure: (error) => `Review link unavailable: ${String(error)}`,
