@@ -1,3 +1,9 @@
-import { installBinaries } from "./binary"
+#!/usr/bin/env bun
+import { $ } from "bun"
+import { installCliToResources, resolveChannel } from "./utils"
 
-await installBinaries()
+const channel = resolveChannel()
+
+await $`bun ./scripts/copy-metainfo.ts ${channel}`
+
+await installCliToResources()

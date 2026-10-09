@@ -1,17 +1,24 @@
 {
-  "$schema": "https://json.schemastore.org/tsconfig",
-  "extends": "@tsconfig/bun/tsconfig.json",
   "compilerOptions": {
-    "lib": ["ESNext", "DOM", "DOM.Iterable"],
+    "noUnusedLocals": true,
+    "target": "ESNext",
+    "module": "ESNext",
+    "skipLibCheck": true,
+    "moduleResolution": "bundler",
+    "allowSyntheticDefaultImports": true,
+    "esModuleInterop": true,
     "jsx": "preserve",
     "jsxImportSource": "solid-js",
-    "types": ["vite/client", "node", "bun"],
-    "paths": {
-      "@/*": ["../app/src/*"]
-    },
-    "noUncheckedIndexedAccess": false,
-    "verbatimModuleSyntax": false,
-    "noImplicitOverride": false
+    "allowJs": true,
+    "resolveJsonModule": true,
+    "strict": true,
+    "isolatedModules": true,
+    "noEmit": true,
+    "emitDeclarationOnly": false,
+    "outDir": "node_modules/.ts-dist",
+    "types": ["vite/client", "node", "electron"]
   },
-  "include": ["src", "electron.vite.config.ts", "electron-builder.config.ts", "scripts"]
+  "references": [{ "path": "../app" }],
+  "include": ["src", "package.json"],
+  "exclude": ["src/**/*.test.ts"]
 }

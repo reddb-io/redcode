@@ -1,22 +1,28 @@
 import { app } from "electron"
 
-export type Channel = "dev" | "beta" | "prod"
+type Channel = "dev" | "beta" | "prod"
 
 const raw = import.meta.env.REDCODE_DESKTOP_CHANNEL
+
 export const CHANNEL: Channel = raw === "beta" || raw === "prod" ? raw : "dev"
 
-export const APP_NAMES: Record<Channel, string> = {
+export const VERSION = app.isPackaged ? app.getVersion() : (process.env.OPENCODE_VERSION ?? app.getVersion())
+
+const appNames: Record<Channel, string> = {
   dev: "Redcode Dev",
   beta: "Redcode Beta",
   prod: "Redcode",
 }
 
-export const APP_IDS: Record<Channel, string> = {
+const appIDs: Record<Channel, string> = {
   dev: "io.reddb.redcode.dev",
   beta: "io.reddb.redcode.beta",
   prod: "io.reddb.redcode",
 }
 
-export const DEEP_LINK_SCHEME = "redcode"
+// Unpackaged runs keep the dev application identity.
+export const APP_NAME = app.isPackaged ? appNames[CHANNEL] : appNames.dev
 
-export const UPDATER_ENABLED = app.isPackaged && CHANNEL !== "dev"
+export const APP_ID = app.isPackaged ? appIDs[CHANNEL] : appIDs.dev
+
+export const DEEP_LINK_SCHEME = "redcode"

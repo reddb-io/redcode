@@ -12,7 +12,10 @@ const targets = (await (await fetch(`http://127.0.0.1:${port}/json`)).json()) as
   type: string
   webSocketDebuggerUrl: string
 }[]
-const page = targets.find((target) => target.type === "page")
+// Embedded browser views are pages too; prefer the app window.
+const page =
+  targets.find((target) => target.type === "page" && /index\.html/.test((target as { url?: string }).url ?? "")) ??
+  targets.find((target) => target.type === "page")
 if (!page) throw new Error(`No page target on port ${port}`)
 const ws = new WebSocket(page.webSocketDebuggerUrl)
 await new Promise((resolve) => (ws.onopen = resolve))

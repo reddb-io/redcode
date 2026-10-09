@@ -71,6 +71,7 @@ jobs:
         # Releases are not signed yet; electron-builder must not look for certificates or try to publish.
         env:
           CSC_IDENTITY_AUTO_DISCOVERY: "false"
+        # prebuild writes the Linux metainfo and bundles the Redcode binary (resources/redcode + redcode.version).
         run: |
           bun run build
           bun ./scripts/prebuild.ts
@@ -97,22 +98,34 @@ jobs:
       GH_TOKEN: ${{ github.token }}
       TAG: ${{ github.event.inputs.tag || github.ref_name }}
     steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
+        with:
+          ref: ${{ github.event.inputs.tag || github.ref }}
+      - uses: ./.github/actions/setup-bun
+      # One directory per build job: both macOS jobs write latest-mac.yml, so flattening would drop one architecture.
       - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
         with:
           path: artifacts
           pattern: desktop-*
-          merge-multiple: true
+      - name: Merge the update feeds
+        env:
+          LATEST_YML_DIR: ${{ github.workspace }}/artifacts
+        run: |
+          mkdir -p release
+          find artifacts -type f -name 'redcode-desktop-*' -exec cp {} release/ \;
+          bun packages/desktop/scripts/finalize-latest-yml.ts release
+          ls -la release
       - name: Publish the versioned release
         # Never "latest": GitHub's latest release must keep pointing at the Redcode CLI.
         run: |
           if ! gh release view "$TAG" >/dev/null 2>&1; then
             gh release create "$TAG" --verify-tag --latest=false --title "Redcode Desktop ${TAG#desktop-v}" --notes "Redcode Desktop ${TAG#desktop-v}"
           fi
-          gh release upload "$TAG" artifacts/* --clobber
+          gh release upload "$TAG" release/* --clobber
       - name: Refresh the update feed
         # electron-updater reads latest*.yml from this rolling release.
         run: |
           if ! gh release view desktop-latest >/dev/null 2>&1; then
             gh release create desktop-latest --target main --latest=false --title "Redcode Desktop (update feed)" --notes "Rolling update feed for Redcode Desktop. Install from a desktop-v* release."
           fi
-          gh release upload desktop-latest artifacts/* --clobber
+          gh release upload desktop-latest release/* --clobber
