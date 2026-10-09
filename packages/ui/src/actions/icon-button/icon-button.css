@@ -1,124 +1,80 @@
 @import "../submit.css";
 
-* {
-  -webkit-font-smoothing: antialiased;
-  -moz-osx-font-smoothing: grayscale;
-  text-rendering: geometricPrecision;
-}
-
+/*
+  IconButton: a square control holding one 16px glyph. `ghost` and `ghost-muted` are the design system's quiet
+  control (rest transparent, hover 8%, pressed 12%, open 10%); `neutral` is the secondary outline; `contrast` and
+  `submit` are the primary action (submit.css). Never smaller than 24px, the WCAG 2.2 target floor.
+*/
 [data-component="icon-button-v2"] {
+  --button-bg: transparent;
+  --button-fg: var(--v2-text-text-base);
+  --button-border: transparent;
+  --button-bg-hover: var(--ui-state-hover);
+  --button-fg-hover: var(--button-fg);
+  --button-border-hover: var(--button-border);
+  --button-bg-pressed: var(--ui-state-pressed);
+  --button-bg-open: var(--ui-state-open);
+
   display: inline-flex;
+  flex-shrink: 0;
   align-items: center;
   justify-content: center;
-  border-radius: 6px;
-  color: var(--v2-text-text-base);
+  width: var(--reddb-spatial-control-height-sm);
+  height: var(--reddb-spatial-control-height-sm);
+  padding: 0;
+  border: 1px solid var(--button-border);
+  border-radius: var(--reddb-radius-md);
+  background-color: var(--button-bg);
+  color: var(--button-fg);
   user-select: none;
   outline: none;
-  padding: 0;
   cursor: default;
 }
 
-[data-component="icon-button-v2"]:focus {
-  outline: none;
-}
-
-[data-component="icon-button-v2"]:is(:focus-visible, [data-state="focus"]):not(:disabled) {
+[data-component="icon-button-v2"]:is(:focus-visible, [data-state="focus"]) {
   outline: 2px solid var(--v2-border-border-focus);
-  outline-offset: 2.5px;
+  outline-offset: 2px;
 }
 
-[data-component="icon-button-v2"][data-size="small"] {
-  width: 20px;
-  height: 20px;
-  border-radius: 4px;
+[data-component="icon-button-v2"]:is(:hover, [data-state="hover"]):not(:disabled) {
+  background-color: var(--button-bg-hover);
+  color: var(--button-fg-hover);
+  border-color: var(--button-border-hover);
 }
 
-[data-component="icon-button-v2"][data-size="normal"] {
-  width: 24px;
-  height: 24px;
+[data-component="icon-button-v2"]:is(:active, [data-state="pressed"]):not(:disabled) {
+  background-color: var(--button-bg-pressed);
+  color: var(--button-fg-hover);
+}
+
+[data-component="icon-button-v2"]:is([data-expanded], [aria-expanded="true"]):not(:disabled) {
+  background-color: var(--button-bg-open);
+  color: var(--button-fg-hover);
+}
+
+[data-component="icon-button-v2"]:is(:disabled, [data-disabled], [aria-disabled="true"], [data-state="disabled"]) {
+  opacity: 0.5;
+  cursor: not-allowed;
 }
 
 [data-component="icon-button-v2"][data-size="large"] {
-  width: 28px;
-  height: 28px;
+  width: var(--reddb-spatial-control-height-md);
+  height: var(--reddb-spatial-control-height-md);
 }
 
 [data-component="icon-button-v2"] [data-slot="icon-svg"] {
+  flex-shrink: 0;
   color: currentColor;
 }
 
-/* Neutral */
 [data-component="icon-button-v2"][data-variant="neutral"] {
-  background-color: var(--v2-background-bg-button-neutral);
-  color: var(--v2-text-text-base);
-  box-shadow: var(--v2-elevation-button-neutral);
+  --button-border: var(--v2-border-border-strong);
+  --button-border-hover: var(--v2-text-text-base);
+  --button-bg-hover: transparent;
+  --button-bg-pressed: var(--ui-state-hover);
 }
 
-[data-component="icon-button-v2"][data-variant="neutral"]:is(:hover, [data-state="hover"]):not(:disabled) {
-  background-image:
-    linear-gradient(90deg, var(--v2-overlay-simple-overlay-hover) 0%, var(--v2-overlay-simple-overlay-hover) 100%),
-    linear-gradient(90deg, var(--v2-background-bg-button-neutral) 0%, var(--v2-background-bg-button-neutral) 100%);
-}
-
-[data-component="icon-button-v2"][data-variant="neutral"]:is(:active, [data-state="pressed"]):not(:disabled) {
-  background-image:
-    linear-gradient(90deg, var(--v2-overlay-simple-overlay-pressed) 0%, var(--v2-overlay-simple-overlay-pressed) 100%),
-    linear-gradient(90deg, var(--v2-background-bg-button-neutral) 0%, var(--v2-background-bg-button-neutral) 100%);
-}
-
-[data-component="icon-button-v2"][data-variant="neutral"]:is(:disabled, [data-state="disabled"]) {
-  opacity: 0.5;
-  cursor: not-allowed;
-}
-
-/* Ghost */
-[data-component="icon-button-v2"][data-variant="ghost"] {
-  background-color: transparent;
-  color: var(--v2-text-text-base);
-}
-
-[data-component="icon-button-v2"][data-variant="ghost"]:is(:hover, [data-state="hover"]):not(:disabled):not(
-    [data-expanded]
-  ) {
-  background-color: var(--v2-overlay-simple-overlay-hover);
-}
-
-[data-component="icon-button-v2"][data-variant="ghost"]:is(:active, [data-state="pressed"]):not(:disabled) {
-  background-color: var(--v2-overlay-simple-overlay-pressed);
-}
-
-[data-component="icon-button-v2"][data-variant="ghost"]:where([data-expanded]):not(:disabled) {
-  background-color: var(--v2-overlay-simple-overlay-pressed);
-}
-
-[data-component="icon-button-v2"][data-variant="ghost"]:is(:disabled, [data-state="disabled"]) {
-  opacity: 0.5;
-  cursor: not-allowed;
-}
-
-/* Ghost */
 [data-component="icon-button-v2"][data-variant="ghost-muted"] {
-  background-color: transparent;
-  color: var(--v2-icon-icon-muted);
-}
-
-[data-component="icon-button-v2"][data-variant="ghost-muted"]:is(:hover, [data-state="hover"]):not(:disabled):not(
-    [data-expanded]
-  ) {
-  background-color: var(--v2-overlay-simple-overlay-hover);
-}
-
-[data-component="icon-button-v2"][data-variant="ghost-muted"]:is(:active, [data-state="pressed"]):not(:disabled) {
-  background-color: var(--v2-overlay-simple-overlay-pressed);
-  color: var(--v2-icon-icon-base);
-}
-
-[data-component="icon-button-v2"][data-variant="ghost-muted"]:where([data-expanded]):not(:disabled) {
-  background-color: var(--v2-overlay-simple-overlay-pressed);
-  color: var(--v2-icon-icon-base);
-}
-
-[data-component="icon-button-v2"][data-variant="ghost-muted"]:is(:disabled, [data-state="disabled"]) {
-  opacity: 0.5;
-  cursor: not-allowed;
+  --button-fg: var(--v2-text-text-muted);
+  --button-fg-hover: var(--v2-text-text-base);
 }

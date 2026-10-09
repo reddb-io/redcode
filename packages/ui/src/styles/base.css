@@ -34,6 +34,9 @@ html,
   font-feature-settings: var(--font-family-sans--font-feature-settings, normal); /* 5 */
   font-variation-settings: var(--font-family-sans--font-variation-settings, normal); /* 6 */
   -webkit-tap-highlight-color: transparent; /* 7 */
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  text-rendering: geometricPrecision;
 }
 
 /*
@@ -103,7 +106,7 @@ a {
 
 b,
 strong {
-  font-weight: bolder;
+  font-weight: var(--reddb-font-weight-bold, 700);
 }
 
 /*
@@ -285,11 +288,11 @@ textarea,
   crash when using `color-mix(…)` with `currentcolor`. (https://github.com/tailwindlabs/tailwindcss/issues/17194)
 */
 
-@supports (not (-webkit-appearance: -apple-pay-button)) /* Not Safari */ or (contain-intrinsic-size: 1px)
-  /* Safari 17+ */ {
-  ::placeholder {
-    color: color-mix(in oklab, currentcolor 50%, transparent);
-  }
+/*
+  Placeholder text is secondary ink: the design system's `ink-muted` holds AA, a translucent current colour does not.
+*/
+::placeholder {
+  color: var(--v2-text-text-muted);
 }
 
 /*
@@ -406,4 +409,18 @@ input:where([type="button"], [type="reset"], [type="submit"]),
   textarea::placeholder {
     font-size: 13px;
   }
+}
+
+/*
+  The design system's interaction-state fills (quiet-control contract): hover 8%, open 10%, pressed 12% of the ink.
+  Hover and pressed are the theme's own overlay fills (the default theme maps them onto those exact stops); open and
+  selected sit between them over the theme's ink. Declared wherever the roles re-resolve.
+*/
+:root,
+[data-color-scheme],
+[data-theme] {
+  --ui-state-hover: var(--v2-overlay-simple-overlay-hover);
+  --ui-state-open: color-mix(in srgb, var(--v2-text-text-base) 10%, transparent);
+  --ui-state-pressed: var(--v2-overlay-simple-overlay-pressed);
+  --ui-state-selected: color-mix(in srgb, var(--v2-text-text-base) 10%, transparent);
 }

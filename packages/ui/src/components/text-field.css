@@ -1,24 +1,26 @@
+/*
+  TextField (Kobalte text field). The `normal` variant is the design system's Input inside a Field: medium label,
+  the page ground inside a 1px `control-edge` outline, the ink focus outline, caption-sized description and error.
+*/
 [data-component="input"] {
   width: 100%;
 
   [data-slot="input-input"] {
     width: 100%;
-    color: var(--text-strong);
-
-    /* text-14-regular */
+    color: var(--v2-text-text-base);
     font-family: var(--font-family-sans);
-    font-size: 14px;
+    font-size: var(--reddb-type-body-font-size);
     font-style: normal;
-    font-weight: var(--font-weight-regular);
-    line-height: var(--line-height-large); /* 142.857% */
-    letter-spacing: var(--letter-spacing-normal);
+    font-weight: var(--reddb-font-weight-regular);
+    line-height: var(--reddb-line-height-normal);
+    letter-spacing: 0;
 
     &:focus {
       outline: none;
     }
 
     &::placeholder {
-      color: var(--text-weak);
+      color: var(--v2-text-text-muted);
     }
   }
 
@@ -26,18 +28,15 @@
     display: flex;
     flex-direction: column;
     align-items: flex-start;
-    gap: 8px;
+    gap: var(--reddb-spatial-gap-md);
 
     [data-slot="input-label"] {
-      color: var(--text-weak);
-
-      /* text-12-medium */
+      color: var(--v2-text-text-base);
       font-family: var(--font-family-sans);
-      font-size: var(--font-size-small);
+      font-size: var(--reddb-type-body-font-size);
       font-style: normal;
-      font-weight: var(--font-weight-medium);
-      line-height: 18px; /* 150% */
-      letter-spacing: var(--letter-spacing-normal);
+      font-weight: var(--reddb-font-weight-medium);
+      line-height: var(--reddb-line-height-snug);
     }
 
     [data-slot="input-wrapper"] {
@@ -45,26 +44,19 @@
       align-items: start;
       justify-content: space-between;
       width: 100%;
-      padding-inline-end: 4px;
-
-      border-radius: var(--radius-md);
-      border: 1px solid var(--border-weak-base);
-      background: var(--input-base);
+      padding-inline-end: var(--reddb-spatial-gap-sm);
+      border-radius: var(--reddb-radius-md);
+      border: 1px solid var(--v2-border-border-strong);
+      outline: 2px solid transparent;
+      outline-offset: 2px;
+      background: var(--background-base);
 
       &:focus-within:not(:has([data-readonly])) {
-        border-color: transparent;
-        /* border/shadow-xs/select */
-        box-shadow:
-          0 0 0 3px var(--border-weak-selected),
-          0 0 0 1px var(--border-selected),
-          0 1px 2px -1px rgba(19, 16, 16, 0.25),
-          0 1px 2px 0 rgba(19, 16, 16, 0.08),
-          0 1px 3px 0 rgba(19, 16, 16, 0.12);
+        outline-color: var(--v2-border-border-focus);
       }
 
       &:has([data-invalid]) {
-        background: var(--surface-critical-weak);
-        border: 1px solid var(--border-critical-selected);
+        border-color: var(--v2-state-border-danger);
       }
 
       &:not(:has([data-slot="input-copy-button"])) {
@@ -73,62 +65,47 @@
     }
 
     [data-slot="input-input"] {
-      color: var(--text-strong);
-
       display: flex;
-      height: 32px;
-      padding: 2px 12px;
+      height: calc(var(--reddb-spatial-control-height-md) - 2px);
+      padding: 0 var(--reddb-spatial-inset-sm);
       align-items: center;
       flex: 1;
       min-width: 0;
-
       background: transparent;
       border: none;
-
-      /* text-14-regular */
-      font-family: var(--font-family-sans);
-      font-size: 14px;
-      font-style: normal;
-      font-weight: var(--font-weight-regular);
-      line-height: var(--line-height-large); /* 142.857% */
-      letter-spacing: var(--letter-spacing-normal);
-
-      &:focus {
-        outline: none;
-      }
-
-      &::placeholder {
-        color: var(--text-weak);
-      }
+      font-size: var(--reddb-editable-text-md, var(--reddb-type-body-font-size));
     }
 
     textarea[data-slot="input-input"] {
       height: auto;
-      min-height: 32px;
-      padding: 6px 12px;
+      min-height: calc(var(--reddb-spatial-control-height-md) - 2px);
+      padding: var(--reddb-spatial-gap-sm) var(--reddb-spatial-inset-sm);
       resize: none;
     }
 
     [data-slot="input-copy-button"] {
       flex-shrink: 0;
-      margin-top: 4px;
-      color: var(--icon-base);
+      margin-top: 2px;
+      color: var(--v2-text-text-muted);
 
       &:hover {
-        color: var(--icon-strong-base);
+        color: var(--v2-text-text-base);
       }
     }
 
-    [data-slot="input-error"] {
-      color: var(--text-on-critical-base);
+    [data-slot="input-description"] {
+      color: var(--v2-text-text-muted);
+      font-size: var(--reddb-type-caption-font-size);
+      line-height: var(--reddb-line-height-normal);
+    }
 
-      /* text-12-medium */
+    [data-slot="input-error"] {
+      color: var(--v2-state-fg-danger);
       font-family: var(--font-family-sans);
-      font-size: var(--font-size-small);
+      font-size: var(--reddb-type-caption-font-size);
       font-style: normal;
-      font-weight: var(--font-weight-medium);
-      line-height: 18px; /* 150% */
-      letter-spacing: var(--letter-spacing-normal);
+      font-weight: var(--reddb-font-weight-regular);
+      line-height: var(--reddb-line-height-normal);
     }
   }
 }

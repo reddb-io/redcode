@@ -26,7 +26,7 @@
   padding-inline-end: 8px;
   overflow: clip;
   border: none;
-  border-radius: 6px;
+  border-radius: var(--reddb-radius-md);
   background-color: transparent;
   color: var(--v2-text-text-muted);
   text-align: start;
@@ -43,32 +43,32 @@
 }
 
 [data-component="file-tree-v2"] [data-slot="file-tree-v2-row"][data-ignored] {
-  color: var(--v2-text-text-faint);
+  color: var(--v2-text-text-muted);
 }
 
 [data-component="file-tree-v2"] [data-slot="file-tree-v2-row"]:hover {
-  --file-tree-v2-row-overlay: var(--v2-overlay-simple-overlay-hover);
+  --file-tree-v2-row-overlay: var(--ui-state-hover);
 
-  background-color: var(--v2-overlay-simple-overlay-hover);
+  background-color: var(--ui-state-hover);
 }
 
 [data-component="file-tree-v2"] [data-slot="file-tree-v2-row"][data-selected] {
-  --file-tree-v2-row-overlay: var(--v2-overlay-simple-overlay-pressed);
+  --file-tree-v2-row-overlay: var(--ui-state-pressed);
 
   color: var(--v2-text-text-base);
-  background-color: var(--v2-overlay-simple-overlay-pressed);
+  background-color: var(--ui-state-pressed);
 }
 
 [data-component="file-tree-v2"] [data-slot="file-tree-v2-row"][data-selected]:hover {
-  background-color: var(--v2-overlay-simple-overlay-pressed);
+  background-color: var(--ui-state-pressed);
 }
 
 [data-component="file-tree-v2"]
   [data-slot="file-tree-v2-context-trigger"][data-context-menu-open]
   [data-slot="file-tree-v2-row"]:not([data-selected]) {
-  --file-tree-v2-row-overlay: var(--v2-overlay-simple-overlay-hover);
+  --file-tree-v2-row-overlay: var(--ui-state-hover);
 
-  background-color: var(--v2-overlay-simple-overlay-hover);
+  background-color: var(--ui-state-hover);
 }
 
 [data-component="file-tree-v2"] [data-slot="file-tree-v2-guide"] {
@@ -87,7 +87,7 @@
 }
 
 [data-component="file-tree-v2"] .filetree-icon--mono {
-  color: var(--v2-icon-icon-muted);
+  color: var(--v2-text-text-muted);
 }
 
 [data-component="file-tree-v2"] .filetree-iconpair .filetree-icon--color {
@@ -146,10 +146,10 @@
   justify-content: center;
   width: 16px;
   height: 16px;
-  font-size: 11px;
-  font-weight: 530;
+  font-size: var(--reddb-type-caption-font-size);
+  font-weight: var(--reddb-font-weight-medium);
   line-height: 1;
-  letter-spacing: -0.04px;
+  letter-spacing: 0;
   text-align: center;
   text-transform: uppercase;
   font-variant-numeric: tabular-nums lining-nums;

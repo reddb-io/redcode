@@ -9,9 +9,15 @@
   overflow: visible;
 }
 
+/*
+  The avatar's colour is a categorical identity, so it comes from the design system's Series roles: a tint of the
+  series over the base surface with a stronger edge of the same series, under full ink. Gray is the neutral `muted`
+  chip; outline is the quiet form for closed projects.
+*/
 [data-slot="project-avatar-surface"] {
-  --project-avatar-bg: var(--v2-avatar-bg-gray);
-  --project-avatar-border: var(--v2-avatar-border-gray);
+  --project-avatar-series: var(--v2-text-text-muted);
+  --project-avatar-bg: color-mix(in srgb, var(--project-avatar-series) 24%, var(--v2-background-bg-base));
+  --project-avatar-border: color-mix(in srgb, var(--project-avatar-series) 56%, transparent);
   position: relative;
   box-sizing: border-box;
   display: flex;
@@ -20,72 +26,62 @@
   align-items: center;
   justify-content: center;
   overflow: hidden;
-  border-radius: 4px;
-  background:
-    linear-gradient(180deg, var(--v2-alpha-light-16) 0%, var(--v2-alpha-light-0) 100%), var(--project-avatar-bg);
-  box-shadow: inset 0 0 0 0.5px var(--project-avatar-border);
-  font-weight: 530;
-  font-size: 11px;
-  line-height: 1;
-  letter-spacing: 0.05px;
+  border-radius: var(--reddb-radius-sm);
+  background: var(--project-avatar-bg);
+  box-shadow: inset 0 0 0 1px var(--project-avatar-border);
+  font-family: var(--font-family-sans);
+  font-weight: var(--reddb-font-weight-bold);
+  font-size: 10px;
+  line-height: var(--line-height-tight);
+  letter-spacing: 0;
   font-variant-numeric: tabular-nums;
   text-transform: uppercase;
-  color: var(--v2-avatar-fg);
-  text-shadow: 0 0 4px var(--v2-alpha-dark-20);
+  color: var(--v2-text-text-base);
   user-select: none;
   -webkit-user-select: none;
 }
 
 [data-slot="project-avatar-surface"][data-variant="orange"] {
-  --project-avatar-bg: var(--v2-avatar-bg-orange);
-  --project-avatar-border: var(--v2-avatar-border-orange);
+  --project-avatar-series: var(--reddb-color-series-2);
 }
 
 [data-slot="project-avatar-surface"][data-variant="yellow"] {
-  --project-avatar-bg: var(--v2-avatar-bg-yellow);
-  --project-avatar-border: var(--v2-avatar-border-yellow);
+  --project-avatar-series: var(--reddb-color-series-5);
 }
 
 [data-slot="project-avatar-surface"][data-variant="cyan"] {
-  --project-avatar-bg: var(--v2-avatar-bg-cyan);
-  --project-avatar-border: var(--v2-avatar-border-cyan);
+  --project-avatar-series: var(--reddb-color-series-3);
 }
 
 [data-slot="project-avatar-surface"][data-variant="green"] {
-  --project-avatar-bg: var(--v2-avatar-bg-green);
-  --project-avatar-border: var(--v2-avatar-border-green);
+  --project-avatar-series: var(--reddb-color-series-3);
 }
 
 [data-slot="project-avatar-surface"][data-variant="red"] {
-  --project-avatar-bg: var(--v2-avatar-bg-red);
-  --project-avatar-border: var(--v2-avatar-border-red);
+  --project-avatar-series: var(--reddb-color-series-6);
 }
 
 [data-slot="project-avatar-surface"][data-variant="pink"] {
-  --project-avatar-bg: var(--v2-avatar-bg-pink);
-  --project-avatar-border: var(--v2-avatar-border-pink);
+  --project-avatar-series: var(--reddb-color-series-6);
 }
 
 [data-slot="project-avatar-surface"][data-variant="blue"] {
-  --project-avatar-bg: var(--v2-avatar-bg-blue);
-  --project-avatar-border: var(--v2-avatar-border-blue);
+  --project-avatar-series: var(--reddb-color-series-1);
 }
 
 [data-slot="project-avatar-surface"][data-variant="purple"] {
-  --project-avatar-bg: var(--v2-avatar-bg-purple);
-  --project-avatar-border: var(--v2-avatar-border-purple);
+  --project-avatar-series: var(--reddb-color-series-4);
 }
 
 [data-slot="project-avatar-surface"][data-variant="gray"] {
-  --project-avatar-bg: var(--v2-avatar-bg-gray);
-  --project-avatar-border: var(--v2-avatar-border-gray);
+  --project-avatar-bg: var(--v2-border-border-muted);
+  --project-avatar-border: var(--v2-border-border-base);
 }
 
 [data-slot="project-avatar-surface"][data-variant="outline"] {
-  --project-avatar-bg: var(--v2-background-bg-base);
+  --project-avatar-bg: transparent;
   --project-avatar-border: var(--v2-border-border-strong);
   color: var(--v2-text-text-muted);
-  text-shadow: none;
 }
 
 [data-slot="project-avatar-surface"][data-has-image] {
@@ -116,8 +112,8 @@
   height: 6px;
   right: -3px;
   top: -3px;
-  border-radius: 9999px;
-  background: var(--v2-background-bg-accent);
+  border-radius: var(--reddb-radius-full);
+  background: var(--v2-state-fg-info);
   pointer-events: none;
 }
 

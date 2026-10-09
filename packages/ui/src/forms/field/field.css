@@ -2,7 +2,7 @@
   display: flex;
   flex-direction: column;
   align-items: flex-start;
-  gap: 8px;
+  gap: var(--reddb-spatial-gap-md);
   width: 100%;
   min-width: 0;
 }
@@ -18,12 +18,11 @@
   padding: 0;
   border: 0;
   font-style: normal;
-  font-weight: 530;
-  font-size: 13px;
-  line-height: var(--line-height-compact);
-  letter-spacing: -0.04px;
+  font-weight: var(--reddb-font-weight-medium);
+  font-size: var(--reddb-type-body-font-size);
+  line-height: var(--reddb-line-height-snug);
+  letter-spacing: 0;
   color: var(--v2-text-text-base);
-  font-variation-settings: "slnt" 0;
   cursor: default;
   user-select: none;
 }
@@ -51,7 +50,7 @@
   border: 0;
   border-radius: 0;
   background: transparent;
-  color: var(--v2-icon-icon-muted);
+  color: var(--v2-text-text-muted);
   cursor: pointer;
   outline: none;
 }
@@ -66,22 +65,19 @@
 
 [data-component="field-v2"] [data-slot="field-v2-label-info"]:focus-visible {
   outline: 2px solid var(--v2-border-border-focus);
-  outline-offset: 1px;
-  border-radius: 2px;
+  outline-offset: 2px;
+  border-radius: var(--reddb-radius-sm);
 }
 
 [data-component="field-v2"] [data-slot="field-v2-prefix"],
 [data-component="field-v2"] [data-slot="field-v2-suffix"] {
   align-self: stretch;
   width: 100%;
-  min-height: 11px;
   font-style: normal;
-  font-weight: 440;
-  font-size: 11px;
-  line-height: 1;
-  letter-spacing: 0.05px;
+  font-weight: var(--reddb-font-weight-regular);
+  font-size: var(--reddb-type-caption-font-size);
+  line-height: var(--reddb-line-height-snug);
   color: var(--v2-text-text-muted);
-  font-variation-settings: "slnt" 0;
   user-select: none;
 }
 

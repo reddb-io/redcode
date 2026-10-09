@@ -1,25 +1,30 @@
+/*
+  Badge (data-component "tag"), drawn to the design system's Badge (design-system/contracts/badge.variants.ts):
+  `neutral` is the tinted neutral badge, caption-sized ink on the `muted` surface; `accent` is the filled neutral
+  badge (ink ground, page-coloured label), because the Brand red marks the primary action, never a label.
+*/
 [data-component="tag"] {
   box-sizing: border-box;
   display: inline-flex;
   flex-direction: row;
   align-items: center;
   justify-content: center;
-  gap: 4px;
-  height: 16px;
-  padding: 0 4px;
+  gap: var(--reddb-spatial-gap-sm);
+  height: 18px;
+  padding: 0 6px;
   user-select: none;
-
-  border-radius: 2px;
-  border: 0.5px solid var(--v2-border-border-base);
-  background: var(--v2-background-bg-layer-02);
-
+  border-radius: var(--reddb-radius-sm);
+  border: 1px solid transparent;
+  background: var(--v2-border-border-muted);
+  font-family: var(--font-family-sans);
   font-style: normal;
-  font-weight: 530;
-  font-size: 11px;
-  line-height: 1;
-  letter-spacing: 0.05px;
-  color: var(--v2-text-text-muted);
+  font-weight: var(--reddb-font-weight-medium);
+  font-size: var(--reddb-type-caption-font-size);
+  line-height: var(--line-height-compact);
+  letter-spacing: 0;
+  color: var(--v2-text-text-base);
   font-variant-numeric: tabular-nums;
+  white-space: nowrap;
 }
 
 [data-component="tag"][data-high-contrast] {
@@ -27,26 +32,11 @@
 }
 
 [data-component="tag"][data-variant="accent"] {
-  border: 0;
-  background: var(--v2-background-bg-accent);
-  color: var(--v2-text-text-contrast);
+  background: var(--v2-text-text-base);
+  color: var(--background-base);
 }
 
 [data-component="tag"][data-appearance="standard"] {
-  height: 18px;
-  padding: 0 6px;
-  border-radius: var(--radius-xs);
-  font-family: var(--font-family-sans);
-  font-size: var(--font-size-small);
-  font-style: normal;
-  font-weight: var(--font-weight-medium);
-  line-height: var(--line-height-large);
-  letter-spacing: var(--letter-spacing-normal);
-  font-variant-numeric: normal;
-}
-
-[data-component="tag"][data-appearance="standard"][data-variant="neutral"] {
-  border: 0.5px solid var(--border-weak-base);
-  background: var(--surface-raised-base);
-  color: var(--text-base);
+  height: 20px;
+  padding: 0 var(--reddb-spatial-gap-md);
 }

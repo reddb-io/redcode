@@ -2,16 +2,20 @@
   display: inline-flex;
 }
 
+/*
+  Popover, drawn to the design system's Popover (design-system/contracts/popover.variants.ts): the overlay surface
+  inside a 1px overlay border on the overlay shadow, rounded-lg.
+*/
 [data-component="popover-content"] {
   z-index: 50;
   min-width: 200px;
   max-width: 320px;
-  border-radius: var(--radius-md);
+  border-radius: var(--reddb-radius-lg);
   background-color: var(--surface-raised-stronger-non-alpha);
-
-  border: 1px solid color-mix(in oklch, var(--border-base) 50%, transparent);
+  color: var(--v2-text-text-base);
+  border: 1px solid var(--reddb-color-elevation-overlay-border);
   background-clip: padding-box;
-  box-shadow: var(--shadow-md);
+  box-shadow: var(--v2-elevation-overlay);
 
   transform-origin: var(--kb-popover-content-transform-origin);
 
@@ -20,32 +24,30 @@
   }
 
   &[data-closed] {
-    animation: popover-close 0.15s ease-out;
+    animation: popover-close 0.12s ease-in forwards;
   }
 
   &[data-expanded] {
-    animation: popover-open 0.15s ease-out;
+    animation: popover-open 0.12s ease-out;
   }
 
   [data-slot="popover-header"] {
     display: flex;
-    padding: 12px;
+    padding: var(--reddb-spatial-inset-sm);
     padding-bottom: 0;
     justify-content: space-between;
     align-items: center;
-    gap: 8px;
+    gap: var(--reddb-spatial-gap-md);
 
     [data-slot="popover-title"] {
       flex: 1;
-      color: var(--text-strong);
+      color: var(--v2-text-text-base);
       margin: 0;
-
       font-family: var(--font-family-sans);
-      font-size: var(--font-size-base);
+      font-size: var(--reddb-type-body-font-size);
       font-style: normal;
-      font-weight: var(--font-weight-medium);
-      line-height: var(--line-height-large);
-      letter-spacing: var(--letter-spacing-normal);
+      font-weight: var(--reddb-font-weight-medium);
+      line-height: var(--reddb-line-height-snug);
     }
 
     [data-slot="popover-close-button"] {
@@ -54,20 +56,18 @@
   }
 
   [data-slot="popover-description"] {
-    padding: 0 12px;
+    padding: var(--reddb-spatial-gap-sm) var(--reddb-spatial-inset-sm) 0;
     margin: 0;
-    color: var(--text-base);
-
+    color: var(--v2-text-text-muted);
     font-family: var(--font-family-sans);
-    font-size: var(--font-size-small);
+    font-size: var(--reddb-type-caption-font-size);
     font-style: normal;
-    font-weight: var(--font-weight-regular);
-    line-height: var(--line-height-large);
-    letter-spacing: var(--letter-spacing-normal);
+    font-weight: var(--reddb-font-weight-regular);
+    line-height: var(--reddb-line-height-normal);
   }
 
   [data-slot="popover-body"] {
-    padding: 12px;
+    padding: var(--reddb-spatial-inset-sm);
   }
 
   [data-slot="popover-arrow"] {
@@ -78,7 +78,7 @@
 @keyframes popover-open {
   from {
     opacity: 0;
-    transform: scale(0.96);
+    transform: scale(0.98);
   }
   to {
     opacity: 1;
@@ -93,6 +93,13 @@
   }
   to {
     opacity: 0;
-    transform: scale(0.96);
+    transform: scale(0.98);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  [data-component="popover-content"],
+  [data-component="popover-content"]:is([data-closed], [data-expanded]) {
+    animation: none;
   }
 }

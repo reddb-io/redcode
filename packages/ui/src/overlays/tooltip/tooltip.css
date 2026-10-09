@@ -6,56 +6,53 @@
   z-index: 1000;
 }
 
+/*
+  Tooltip, drawn to the design system's Tooltip (design-system/contracts/tooltip.variants.ts): caption-sized ink on
+  the overlay surface inside a 1px overlay border with the overlay shadow, one small control tall. `standard` wraps
+  long explanations; `large` is the roomier panel for multi-line help.
+*/
 [data-component="tooltip-v2"] {
   z-index: 1000;
   box-sizing: border-box;
   display: inline-flex;
   flex-direction: row;
   align-items: center;
-  padding: 5px 6px;
-  gap: 6px;
-
-  background: var(--v2-background-bg-layer-01);
-  box-shadow: var(--v2-elevation-floating);
-  border-radius: 4px;
-
+  min-height: var(--reddb-spatial-control-height-sm);
+  padding: var(--reddb-spatial-gap-sm) var(--reddb-spatial-gap-md);
+  gap: var(--reddb-spatial-gap-md);
+  background: var(--surface-raised-stronger-non-alpha);
+  border: 1px solid var(--reddb-color-elevation-overlay-border);
+  box-shadow: var(--v2-elevation-overlay);
+  border-radius: var(--reddb-radius-md);
+  font-family: var(--font-family-sans);
   font-style: normal;
-  font-weight: 530;
-  font-size: 11px;
-  line-height: 12px;
-  letter-spacing: 0.05px;
+  font-weight: var(--reddb-font-weight-medium);
+  font-size: var(--reddb-type-caption-font-size);
+  line-height: var(--reddb-line-height-snug);
+  letter-spacing: 0;
   color: var(--v2-text-text-base);
   font-variant-numeric: tabular-nums;
-  font-variation-settings: "slnt" 0;
-
   user-select: none;
   pointer-events: none;
-
-  animation: tooltipV2In 120ms ease-out;
+  animation: tooltipV2In 100ms ease-out;
   transform-origin: var(--kb-tooltip-content-transform-origin);
 
   &[data-closed] {
     animation: tooltipV2Out 80ms ease-in forwards;
+  }
+
+  /* Keyboard hints inside a tooltip sit in the secondary ink. */
+  [data-component="keybind-v2"] {
+    color: var(--v2-text-text-muted);
   }
 }
 
 [data-component="tooltip-v2"][data-appearance="standard"] {
   display: block;
   max-width: 320px;
-  padding: 2px 8px;
-  border: 1px solid var(--border-weak-base, rgba(0, 0, 0, 0.07));
-  border-radius: var(--radius-sm);
-  background: var(--surface-float-base);
-  color: var(--text-invert-strong);
-  box-shadow: var(--shadow-md);
-  font-family: var(--font-family-sans);
-  font-size: var(--font-size-small);
-  font-style: normal;
-  font-weight: var(--font-weight-medium);
-  line-height: var(--line-height-large);
-  letter-spacing: var(--letter-spacing-normal);
+  font-weight: var(--reddb-font-weight-regular);
+  line-height: var(--reddb-line-height-normal);
   font-variant-numeric: normal;
-  font-variation-settings: normal;
   user-select: text;
   animation: none;
 
@@ -66,10 +63,12 @@
 }
 
 [data-component="tooltip-v2"][data-appearance="large"] {
-  padding: 12px;
-  font-size: 13px;
-  line-height: var(--line-height-compact);
-  letter-spacing: -0.04px;
+  max-width: 360px;
+  padding: var(--reddb-spatial-inset-sm);
+  font-size: var(--reddb-type-body-font-size);
+  font-weight: var(--reddb-font-weight-regular);
+  line-height: var(--reddb-line-height-normal);
+  border-radius: var(--reddb-radius-lg);
 }
 
 @keyframes tooltipV2In {

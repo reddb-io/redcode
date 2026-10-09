@@ -2,7 +2,7 @@
   color: inherit;
   background: transparent;
   border: 0;
-  border-radius: var(--radius-md);
+  border-radius: var(--reddb-radius-sm);
   padding: 0;
   min-width: 0;
   font: inherit;
@@ -12,6 +12,6 @@
 
   &:focus {
     outline: none;
-    box-shadow: var(--inline-input-shadow, 0 0 0 1px var(--border-interactive-focus));
+    box-shadow: var(--inline-input-shadow, 0 0 0 2px var(--v2-border-border-focus));
   }
 }

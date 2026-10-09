@@ -1,42 +1,51 @@
+/*
+  RadioGroup, drawn to the design system's RadioGroup (design-system/contracts/radio-group.variants.ts): the round
+  choice box on a 1px `control-edge` outline; chosen, it fills with the Brand red around an `on-primary` dot. The
+  group label is the eyebrow role.
+*/
 [data-component="radio-v2"] {
   display: flex;
   flex-direction: column;
-  gap: 8px;
+  gap: var(--reddb-spatial-gap-md);
   cursor: default;
 
   [data-slot="radio-v2-label"] {
     display: inline-flex;
     align-items: center;
     user-select: none;
-    color: var(--v2-text-text-faint);
-    font-size: 11px;
+    color: var(--v2-text-text-muted);
+    font-size: var(--reddb-type-eyebrow-font-size);
     font-style: normal;
-    font-weight: 440;
-    line-height: 1;
-    letter-spacing: 0.05px;
-    font-variation-settings: "slnt" 0;
+    font-weight: var(--reddb-type-eyebrow-font-weight);
+    line-height: var(--reddb-line-height-snug);
+    letter-spacing: var(--reddb-type-eyebrow-letter-spacing);
+    text-transform: uppercase;
   }
 
   [data-slot="radio-v2-description"] {
-    color: var(--v2-text-text-faint);
-    font-size: 11px;
-    font-weight: 440;
-    line-height: 1.2;
-    letter-spacing: 0.05px;
+    color: var(--v2-text-text-muted);
+    font-size: var(--reddb-type-caption-font-size);
+    font-weight: var(--reddb-font-weight-regular);
+    line-height: var(--reddb-line-height-normal);
   }
 
   [data-slot="radio-v2-items"] {
     display: flex;
     flex-direction: column;
-    gap: 12px;
+    gap: var(--reddb-spatial-gap-md);
+  }
+
+  &:is([data-orientation="horizontal"], [aria-orientation="horizontal"]) [data-slot="radio-v2-items"] {
+    flex-direction: row;
+    flex-wrap: wrap;
+    column-gap: var(--reddb-spatial-gap-lg);
   }
 
   [data-slot="radio-v2-error"] {
     color: var(--v2-state-fg-danger);
-    font-size: 12px;
-    font-weight: var(--font-weight-regular);
-    line-height: var(--line-height-normal);
-    letter-spacing: var(--letter-spacing-normal);
+    font-size: var(--reddb-type-caption-font-size);
+    font-weight: var(--reddb-font-weight-regular);
+    line-height: var(--reddb-line-height-normal);
   }
 
   [data-slot="radio-v2-error"]:empty {
@@ -45,12 +54,14 @@
 }
 
 [data-slot="radio-v2-item"] {
+  --radio-size: var(--reddb-spatial-icon-size-md);
+
   position: relative;
   display: flex;
   flex-direction: row;
   align-items: flex-start;
-  padding: 0px;
-  gap: 8px;
+  padding: 0;
+  gap: var(--reddb-spatial-gap-md);
 
   &:where([data-disabled]) {
     cursor: not-allowed;
@@ -68,33 +79,27 @@
     border-width: 0;
   }
 
+  /* The stack is one label line tall so the box centres on the label's first line. */
   [data-slot="radio-v2-item-control-stack"] {
     position: relative;
-    width: 16px;
-    height: 20px;
+    width: var(--radio-size);
+    height: calc(var(--reddb-type-body-font-size) * 1.43);
     flex: none;
   }
 
   [data-slot="radio-v2-item-control"] {
     box-sizing: border-box;
     position: absolute;
-    width: 16px;
-    height: 16px;
+    width: var(--radio-size);
+    height: var(--radio-size);
     flex: none;
     flex-shrink: 0;
     left: 0;
-    top: calc(50% - 16px / 2);
-
-    border-radius: 9999px;
-    border: none;
-    box-shadow: inset 0 0 0 0.5px var(--v2-border-border-strong);
-
-    background:
-      linear-gradient(180deg, var(--v2-alpha-light-6) 0%, var(--v2-alpha-light-0) 100%), var(--v2-background-bg-base);
-    transition:
-      background 170ms ease-out,
-      opacity 170ms ease-out,
-      outline-color 170ms ease-out;
+    top: calc(50% - var(--radio-size) / 2);
+    border-radius: var(--reddb-radius-full);
+    border: 1px solid var(--v2-border-border-strong);
+    box-shadow: none;
+    background: var(--background-base);
   }
 
   &:where(:not([data-readonly]))
@@ -102,14 +107,12 @@
     ~ [data-slot="radio-v2-item-control-stack"]
     [data-slot="radio-v2-item-control"] {
     outline: 2px solid var(--v2-border-border-focus);
-    outline-offset: 1px;
+    outline-offset: 2px;
   }
 
   &:where(:hover):where(:not([data-disabled], [data-readonly])):where(:not([data-checked]))
     [data-slot="radio-v2-item-control"] {
-    background:
-      linear-gradient(0deg, var(--v2-overlay-simple-overlay-hover), var(--v2-overlay-simple-overlay-hover)),
-      linear-gradient(180deg, var(--v2-alpha-light-6) 0%, var(--v2-alpha-light-0) 100%), var(--v2-background-bg-base);
+    border-color: var(--v2-text-text-base);
   }
 
   &:where([data-disabled]) [data-slot="radio-v2-item-control"] {
@@ -117,40 +120,32 @@
   }
 
   &:where([data-checked]) [data-slot="radio-v2-item-control"] {
-    background:
-      linear-gradient(180deg, var(--v2-alpha-light-20) 0%, var(--v2-alpha-light-0) 100%), var(--v2-background-bg-accent);
+    border-color: var(--v2-background-bg-accent);
+    background: var(--v2-background-bg-accent);
   }
 
   &:where([data-checked]):where(:hover):where(:not([data-disabled], [data-readonly]))
     [data-slot="radio-v2-item-control"] {
-    background:
-      linear-gradient(
-        0deg,
-        var(--v2-overlay-simple-overlay-contrast-hover),
-        var(--v2-overlay-simple-overlay-contrast-hover)
-      ),
-      linear-gradient(180deg, var(--v2-alpha-light-20) 0%, var(--v2-alpha-light-0) 100%), var(--v2-background-bg-accent);
+    border-color: var(--surface-brand-hover);
+    background: var(--surface-brand-hover);
   }
 
   &:where([data-invalid]):where(:not([data-checked])) [data-slot="radio-v2-item-control"] {
-    background: var(--v2-state-bg-danger);
-    box-shadow: inset 0 0 0 0.5px var(--v2-state-border-danger);
+    border-color: var(--v2-state-border-danger);
   }
 
   [data-slot="radio-v2-item-indicator"] {
     box-sizing: border-box;
     position: absolute;
-    width: 6px;
-    height: 6px;
-    left: calc(50% - 6px / 2);
-    top: calc(50% - 6px / 2);
-    border-radius: 9999px;
-
-    background: var(--v2-grey-300);
+    width: calc(var(--radio-size) * 0.4);
+    height: calc(var(--radio-size) * 0.4);
+    left: 50%;
+    top: 50%;
+    transform: translate(-50%, -50%);
+    border-radius: var(--reddb-radius-full);
+    background: var(--text-on-brand-base);
     border: none;
-    box-shadow:
-      inset 0 0 0 0.5px var(--v2-overlay-gradient-depth-overlay-depth-top),
-      0px 0.5px 0.5px rgba(0, 0, 0, 0.4);
+    box-shadow: none;
   }
 
   [data-slot="radio-v2-item-text"] {
@@ -158,8 +153,8 @@
     flex-direction: column;
     justify-content: center;
     align-items: flex-start;
-    padding: 0px;
-    gap: 6px;
+    padding: 0;
+    gap: 2px;
   }
 
   [data-slot="radio-v2-item-label"] {
@@ -167,9 +162,8 @@
     user-select: none;
     color: inherit;
     font-style: normal;
-    font-weight: 440;
+    font-weight: var(--reddb-font-weight-regular);
     font-variant-numeric: tabular-nums;
-    font-variation-settings: "slnt" 0;
   }
 
   [data-slot="radio-v2-item-label-text"] {
@@ -177,26 +171,24 @@
     align-items: center;
     user-select: none;
     color: var(--v2-text-text-base);
-    font-size: 13px;
-    line-height: 20px;
-    letter-spacing: -0.04px;
+    font-size: var(--reddb-type-body-font-size);
+    line-height: 1.43;
+  }
+
+  &:where([data-checked]) [data-slot="radio-v2-item-label-text"] {
+    font-weight: var(--reddb-font-weight-medium);
   }
 
   [data-slot="radio-v2-item-description"] {
     color: var(--v2-text-text-muted);
-    font-size: 11px;
-    font-weight: 440;
-    line-height: 1;
-    letter-spacing: 0.05px;
+    font-size: var(--reddb-type-caption-font-size);
+    font-weight: var(--reddb-font-weight-regular);
+    line-height: var(--reddb-line-height-snug);
     font-variant-numeric: tabular-nums;
     user-select: none;
   }
 
-  &:where([data-disabled]) [data-slot="radio-v2-item-label-text"] {
+  &:where([data-disabled]) :is([data-slot="radio-v2-item-label-text"], [data-slot="radio-v2-item-description"]) {
     color: var(--v2-text-text-muted);
-  }
-
-  &:where([data-disabled]) [data-slot="radio-v2-item-description"] {
-    color: var(--v2-text-text-faint);
   }
 }

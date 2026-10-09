@@ -7,8 +7,8 @@
   --text-shimmer-spread: 5.2ch;
   --text-shimmer-gutter: calc(var(--text-shimmer-spread) + 1ch);
   --text-shimmer-size: calc(200% + var(--text-shimmer-gutter) + var(--text-shimmer-gutter));
-  --text-shimmer-base-color: var(--text-weak);
-  --text-shimmer-peak-color: var(--text-strong);
+  --text-shimmer-base-color: var(--v2-text-text-muted);
+  --text-shimmer-peak-color: var(--v2-text-text-base);
   --text-shimmer-sweep: linear-gradient(
     var(--text-shimmer-angle),
     transparent calc(50% - var(--text-shimmer-spread)),
@@ -48,7 +48,7 @@
 }
 
 [data-component="text-shimmer"] [data-slot="text-shimmer-char-shimmer"] {
-  color: var(--text-weaker);
+  color: var(--v2-text-text-muted);
   opacity: 0;
 }
 

@@ -10,7 +10,7 @@
   On hover, show the original file-type colors.
 */
 [data-component="filetree"] .filetree-icon--mono {
-  color: var(--icon-base);
+  color: var(--v2-text-text-muted);
 }
 
 [data-component="filetree"] .filetree-iconpair {

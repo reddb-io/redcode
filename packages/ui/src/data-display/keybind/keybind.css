@@ -1,9 +1,7 @@
-* {
-  -webkit-font-smoothing: antialiased;
-  -moz-osx-font-smoothing: grayscale;
-  text-rendering: geometricPrecision;
-}
-
+/*
+  Keybind, drawn to the design system's Kbd (design-system/contracts/kbd.variants.ts): caption-sized key caps in the
+  secondary ink, outlined by the `muted` border. `ghost` drops the cap and keeps the legend.
+*/
 [data-component="keybind-v2"] {
   box-sizing: border-box;
   font-variant-numeric: tabular-nums;
@@ -13,6 +11,7 @@
   padding: 0;
   gap: 2px;
   flex-shrink: 0;
+  color: var(--v2-text-text-muted);
 }
 
 [data-component="keybind-v2"] *,
@@ -27,20 +26,23 @@
   justify-content: center;
   align-items: center;
   padding: 0;
-  padding-inline: 4px;
-  gap: 4px;
-  min-width: 14px;
-  height: 14px;
-  border-radius: 2px;
+  padding-inline: 3px;
+  min-width: 18px;
+  height: 18px;
+  border-radius: var(--reddb-radius-sm);
+  border: 1px solid transparent;
   flex: none;
   flex-grow: 0;
 }
 
 [data-component="keybind-v2"][data-variant="neutral"] [data-slot="keybind-v2-key"] {
-  background: var(--v2-background-bg-layer-03);
+  border-color: var(--v2-border-border-base);
+  background: var(--v2-border-border-muted);
 }
 
 [data-component="keybind-v2"][data-variant="ghost"] [data-slot="keybind-v2-key"] {
+  min-width: 0;
+  padding-inline: 1px;
   background: transparent;
 }
 
@@ -49,28 +51,20 @@
   flex-direction: row;
   justify-content: center;
   align-items: center;
-  height: 11px;
   padding: 0;
   flex: none;
+  font-family: var(--font-family-sans);
   font-style: normal;
-  font-weight: 530;
-  font-size: 11px;
-  line-height: 1;
+  font-weight: var(--reddb-font-weight-medium);
+  font-size: var(--reddb-type-caption-font-size);
+  line-height: var(--line-height-compact);
   text-align: center;
-  letter-spacing: 0.05px;
+  letter-spacing: 0;
   text-transform: uppercase;
+  color: inherit;
   font-variant-numeric: tabular-nums;
   font-feature-settings:
     "tnum" on,
     "lnum" on;
-  font-variation-settings: "slnt" 0;
   user-select: none;
-}
-
-[data-component="keybind-v2"][data-variant="neutral"] [data-slot="keybind-v2-label"] {
-  color: var(--v2-text-text-muted);
-}
-
-[data-component="keybind-v2"][data-variant="ghost"] [data-slot="keybind-v2-label"] {
-  color: var(--v2-text-text-faint);
 }

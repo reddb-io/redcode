@@ -1,13 +1,17 @@
+/*
+  ContextMenu: the same overlay surface and listbox options as Menu (menu.css), highlighted `bg-foreground/10`.
+*/
 [data-component="context-menu-content"],
 [data-component="context-menu-sub-content"] {
-  min-width: 8rem;
+  min-width: 10rem;
   overflow: hidden;
-  border: none;
-  border-radius: var(--radius-md);
-  box-shadow: var(--shadow-xs-border);
+  border: 1px solid var(--reddb-color-elevation-overlay-border);
+  border-radius: var(--reddb-radius-lg);
+  box-shadow: var(--v2-elevation-overlay);
   background-clip: padding-box;
   background-color: var(--surface-raised-stronger-non-alpha);
-  padding: 4px;
+  color: var(--v2-text-text-base);
+  padding: var(--reddb-spatial-gap-sm);
   z-index: 100;
   transform-origin: var(--kb-menu-content-transform-origin);
 
@@ -16,7 +20,7 @@
     outline: none;
   }
 
-  animation: contextMenuContentHide var(--transition-duration) var(--transition-easing) forwards;
+  animation: contextMenuContentHide 100ms ease-in forwards;
 
   @starting-style {
     animation: none;
@@ -24,7 +28,7 @@
 
   &[data-expanded] {
     pointer-events: auto;
-    animation: contextMenuContentShow var(--transition-duration) var(--transition-easing) forwards;
+    animation: contextMenuContentShow 120ms ease-out forwards;
   }
 }
 
@@ -37,37 +41,40 @@
     position: relative;
     display: flex;
     align-items: center;
-    gap: 8px;
-    padding: 4px 8px;
-    border-radius: var(--radius-sm);
+    gap: var(--reddb-spatial-gap-md);
+    min-height: var(--reddb-spatial-control-height-md);
+    padding: 0 var(--reddb-spatial-gap-md) 0 var(--reddb-spatial-inset-sm);
+    border-radius: var(--reddb-radius-md);
     cursor: default;
     outline: none;
-
     font-family: var(--font-family-sans);
-    font-size: var(--font-size-base);
-    font-weight: var(--font-weight-medium);
-    line-height: var(--line-height-large);
-    letter-spacing: var(--letter-spacing-normal);
-    color: var(--text-strong);
-
-    transition-property: background-color, color;
-    transition-duration: var(--transition-duration);
-    transition-timing-function: var(--transition-easing);
+    font-size: var(--reddb-type-body-font-size);
+    font-weight: var(--reddb-font-weight-regular);
+    line-height: var(--reddb-line-height-snug);
+    color: var(--v2-text-text-base);
     user-select: none;
 
-    &:hover {
-      background-color: var(--surface-raised-base-hover);
+    &:is(:hover, [data-highlighted]) {
+      background-color: var(--ui-state-selected);
+    }
+
+    &:active {
+      background-color: var(--ui-state-pressed);
+    }
+
+    &[data-checked] {
+      font-weight: var(--reddb-font-weight-medium);
     }
 
     &[data-disabled] {
-      color: var(--text-weak);
+      opacity: 0.5;
       pointer-events: none;
     }
   }
 
   [data-slot="context-menu-sub-trigger"] {
     &[data-expanded] {
-      background: var(--surface-raised-base-hover);
+      background: var(--ui-state-selected);
       outline: none;
       border: none;
     }
@@ -86,24 +93,24 @@
   }
 
   [data-slot="context-menu-item-description"] {
-    font-size: var(--font-size-x-small);
-    color: var(--text-weak);
+    font-size: var(--reddb-type-caption-font-size);
+    color: var(--v2-text-text-muted);
   }
 
   [data-slot="context-menu-separator"] {
     height: 1px;
-    margin: 4px -4px;
-    border-top-color: var(--border-weak-base);
+    margin: var(--reddb-spatial-gap-sm) calc(var(--reddb-spatial-gap-sm) * -1);
+    border: none;
+    background: var(--v2-border-border-muted);
   }
 
   [data-slot="context-menu-group-label"] {
-    padding: 4px 8px;
+    padding: var(--reddb-spatial-gap-sm) var(--reddb-spatial-inset-sm);
     font-family: var(--font-family-sans);
-    font-size: var(--font-size-x-small);
-    font-weight: var(--font-weight-medium);
-    line-height: var(--line-height-large);
-    letter-spacing: var(--letter-spacing-normal);
-    color: var(--text-weak);
+    font-size: var(--reddb-type-caption-font-size);
+    font-weight: var(--reddb-font-weight-medium);
+    line-height: var(--reddb-line-height-snug);
+    color: var(--v2-text-text-muted);
   }
 
   [data-slot="context-menu-arrow"] {
@@ -114,21 +121,28 @@
 @keyframes contextMenuContentShow {
   from {
     opacity: 0;
-    transform: scaleY(0.95);
+    transform: scale(0.98);
   }
   to {
     opacity: 1;
-    transform: scaleY(1);
+    transform: scale(1);
   }
 }
 
 @keyframes contextMenuContentHide {
   from {
     opacity: 1;
-    transform: scaleY(1);
+    transform: scale(1);
   }
   to {
     opacity: 0;
-    transform: scaleY(0.95);
+    transform: scale(0.98);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  :is([data-component="context-menu-content"], [data-component="context-menu-sub-content"]),
+  :is([data-component="context-menu-content"], [data-component="context-menu-sub-content"])[data-expanded] {
+    animation: none;
   }
 }

@@ -1,7 +1,7 @@
 [data-component="card"] {
-  --card-pad-y: 10px;
-  --card-pad-r: 12px;
-  --card-pad-l: 10px;
+  --card-pad-y: var(--reddb-spatial-gap-md);
+  --card-pad-r: var(--reddb-spatial-inset-sm);
+  --card-pad-l: var(--reddb-spatial-inset-sm);
 
   width: 100%;
   display: flex;
@@ -9,16 +9,15 @@
   position: relative;
   background: transparent;
   border: none;
-  border-radius: var(--radius-md);
+  border-radius: var(--reddb-radius-md);
   padding: var(--card-pad-y) var(--card-pad-r) var(--card-pad-y) var(--card-pad-l);
 
-  /* text-14-regular */
   font-family: var(--font-family-sans);
-  font-size: var(--font-size-base);
+  font-size: var(--reddb-type-body-font-size);
   font-style: normal;
-  font-weight: var(--font-weight-regular);
-  line-height: var(--line-height-large);
-  letter-spacing: var(--letter-spacing-normal);
+  font-weight: var(--reddb-font-weight-regular);
+  line-height: var(--reddb-line-height-normal);
+  letter-spacing: 0;
   color: var(--v2-text-text-base);
 
   --card-gap: 8px;
@@ -26,10 +25,11 @@
   --card-indent: 0px;
   --card-line-pad: 8px;
 
-  --card-accent: var(--v2-icon-icon-base);
+  /* The left rule is the card's meaning: neutral `control-edge`, or the tone's foreground. */
+  --card-accent: var(--v2-border-border-strong);
 
   &:has([data-slot="card-title"]) {
-    gap: 8px;
+    gap: var(--reddb-spatial-gap-sm);
   }
 
   &:has([data-slot="card-title-icon"]) {
@@ -43,13 +43,13 @@
     top: var(--card-line-pad);
     bottom: var(--card-line-pad);
     width: 2px;
-    border-radius: 2px;
+    border-radius: var(--reddb-radius-full);
     background-color: var(--card-accent);
   }
 
   :where([data-card="title"], [data-slot="card-title"]) {
     color: var(--v2-text-text-base);
-    font-weight: var(--font-weight-medium);
+    font-weight: var(--reddb-font-weight-medium);
   }
 
   :where([data-slot="card-title"]) {
@@ -72,7 +72,7 @@
   }
 
   :where([data-slot="card-title-icon"][data-placeholder]) [data-slot="icon-svg"] {
-    color: var(--v2-text-text-faint);
+    color: var(--v2-text-text-muted);
   }
 
   :where([data-slot="card-title-icon"])

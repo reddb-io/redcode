@@ -1,12 +1,7 @@
-* {
-  -webkit-font-smoothing: antialiased;
-  -moz-osx-font-smoothing: grayscale;
-  text-rendering: geometricPrecision;
-}
-
+/* LineComment: a raised card (raised surface, 1px raised border, raised shadow) anchored to a diff line. */
 [data-component="line-comment-v2"] {
   box-sizing: border-box;
-  font-family: var(--v2-font-family-sans);
+  font-family: var(--font-family-sans);
   font-variant-numeric: tabular-nums;
   min-width: 0;
   width: 100%;
@@ -20,8 +15,10 @@
 }
 
 [data-component="line-comment-v2"] [data-slot="line-comment-v2-shell"] {
-  background: var(--v2-background-bg-layer-01);
-  border-radius: 6px;
+  background: var(--surface-raised-base);
+  color: var(--v2-text-text-base);
+  border: 1px solid var(--reddb-color-elevation-raised-border);
+  border-radius: var(--reddb-radius-lg);
   box-shadow: var(--v2-elevation-raised);
 }
 
@@ -46,23 +43,21 @@
 [data-component="line-comment-v2"][data-variant="display"] [data-slot="line-comment-v2-text"] {
   margin: 0;
   width: 100%;
-  font-size: 13px;
+  font-size: var(--reddb-type-body-font-size);
   font-style: normal;
-  font-weight: 440;
+  font-weight: var(--reddb-font-weight-regular);
   line-height: var(--line-height-compact);
-  letter-spacing: -0.04px;
+  letter-spacing: 0;
   color: var(--v2-text-text-base);
-  font-variation-settings: "slnt" 0;
 }
 
 [data-component="line-comment-v2"][data-variant="display"] [data-slot="line-comment-v2-meta"] {
-  font-size: 11px;
+  font-size: var(--reddb-type-caption-font-size);
   font-style: normal;
-  font-weight: 530;
+  font-weight: var(--reddb-font-weight-medium);
   line-height: var(--line-height-tight);
-  letter-spacing: 0.05px;
-  color: var(--v2-text-text-faint);
-  font-variation-settings: "slnt" 0;
+  letter-spacing: 0;
+  color: var(--v2-text-text-muted);
 }
 
 [data-component="line-comment-v2"][data-variant="display"] [data-slot="line-comment-v2-tools"] {
@@ -83,9 +78,9 @@
   gap: 3px;
   margin: 0;
   border: none;
-  border-radius: 4px;
+  border-radius: var(--reddb-radius-md);
   background: transparent;
-  color: var(--v2-icon-icon-muted);
+  color: var(--v2-text-text-muted);
   cursor: pointer;
   outline: none;
 }
@@ -100,11 +95,11 @@
 }
 
 [data-slot="line-comment-v2-overflow"]:is(:hover, [data-state="hover"]) {
-  background-color: var(--v2-overlay-simple-overlay-hover);
+  background-color: var(--ui-state-hover);
 }
 
 [data-slot="line-comment-v2-overflow"]:is(:active, [data-state="pressed"], [data-expanded]) {
-  background-color: var(--v2-overlay-simple-overlay-pressed);
+  background-color: var(--ui-state-pressed);
 }
 
 [data-slot="line-comment-v2-overflow"] svg {
@@ -135,11 +130,11 @@
   flex-direction: row;
   align-items: center;
   width: 100%;
-  font-size: 13px;
+  font-size: var(--reddb-type-body-font-size);
   font-style: normal;
-  font-weight: 530;
+  font-weight: var(--reddb-font-weight-medium);
   line-height: var(--line-height-compact);
-  letter-spacing: -0.04px;
+  letter-spacing: 0;
   color: var(--v2-text-text-base);
   user-select: none;
 }
@@ -153,26 +148,26 @@
   margin: 0;
   resize: vertical;
   border: 1px solid var(--v2-border-border-base);
-  border-radius: 6px;
-  background:
-    linear-gradient(180deg, var(--v2-alpha-light-2) 0%, var(--v2-alpha-light-0) 100%), var(--v2-background-bg-base);
-  font-size: 13px;
+  border-radius: var(--reddb-radius-md);
+  border-color: var(--v2-border-border-strong);
+  background: var(--background-base);
+  font-size: var(--reddb-type-body-font-size);
   font-style: normal;
-  font-weight: 440;
+  font-weight: var(--reddb-font-weight-regular);
   line-height: 1.35;
-  letter-spacing: -0.04px;
+  letter-spacing: 0;
   color: var(--v2-text-text-base);
-  font-variation-settings: "slnt" 0;
   outline: none;
 }
 
 [data-component="line-comment-v2"][data-variant="editor"] [data-slot="line-comment-v2-textarea"]::placeholder {
-  color: var(--v2-text-text-faint);
+  color: var(--v2-text-text-muted);
   user-select: none;
 }
 
 [data-component="line-comment-v2"][data-variant="editor"] [data-slot="line-comment-v2-textarea"]:focus {
-  border-color: var(--v2-border-border-focus);
+  outline: 2px solid var(--v2-border-border-focus);
+  outline-offset: 2px;
 }
 
 [data-component="line-comment-v2"][data-variant="editor"] [data-slot="line-comment-v2-footer"] {
@@ -187,13 +182,12 @@
 [data-component="line-comment-v2"][data-variant="editor"] [data-slot="line-comment-v2-footer-meta"] {
   flex: 1 1 auto;
   min-width: 0;
-  font-size: 11px;
+  font-size: var(--reddb-type-caption-font-size);
   font-style: normal;
-  font-weight: 530;
-  line-height: 1;
-  letter-spacing: 0.05px;
-  color: var(--v2-text-text-faint);
-  font-variation-settings: "slnt" 0;
+  font-weight: var(--reddb-font-weight-regular);
+  line-height: var(--line-height-compact);
+  letter-spacing: 0;
+  color: var(--v2-text-text-muted);
 }
 
 [data-component="line-comment-v2"][data-variant="editor"] [data-slot="line-comment-v2-footer-actions"] {
@@ -212,9 +206,9 @@
   overflow: auto;
   margin-top: 8px;
   padding: 4px;
-  border: 0.5px solid var(--v2-border-border-muted);
-  border-radius: 6px;
-  background: var(--v2-background-bg-layer-02);
+  border: 1px solid var(--reddb-color-elevation-overlay-border);
+  border-radius: var(--reddb-radius-md);
+  background: var(--surface-raised-stronger-non-alpha);
 }
 
 [data-component="line-comment-v2"][data-variant="editor"] [data-slot="line-comment-v2-mention-item"] {
@@ -225,7 +219,7 @@
   min-width: 0;
   padding: 6px 8px;
   border: 0;
-  border-radius: 4px;
+  border-radius: var(--reddb-radius-md);
   background: transparent;
   color: var(--v2-text-text-base);
   text-align: start;
@@ -233,14 +227,14 @@
 }
 
 [data-component="line-comment-v2"][data-variant="editor"] [data-slot="line-comment-v2-mention-item"][data-active] {
-  background: var(--v2-background-bg-layer-03);
+  background: var(--ui-state-selected);
 }
 
 [data-component="line-comment-v2"][data-variant="editor"] [data-slot="line-comment-v2-mention-path"] {
   display: flex;
   align-items: center;
   min-width: 0;
-  font-size: 12px;
+  font-size: var(--reddb-type-caption-font-size);
   line-height: 16px;
 }
 

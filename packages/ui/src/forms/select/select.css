@@ -1,21 +1,21 @@
 @import "../../navigation/menu/menu.css";
 
+/*
+  Select, drawn to the design system's Select (design-system/contracts/select.variants.ts): a field-shaped trigger on
+  a 1px `control-edge` outline with the ink focus outline; its listbox is the Menu surface (menu.css) whose options
+  are highlighted `bg-foreground/10` and, when selected, `font-medium` with the check glyph.
+*/
+
 /* Above modal dialogs (z-index 50); matches legacy select-content. */
 [data-popper-positioner]:has([data-slot="select-v2-content"]) {
   z-index: 60;
 }
 
-/* Dropdown surface (Type=menu) — overrides shared menu-v2 defaults for selects only. */
 [data-component="menu-v2-content"][data-slot="select-v2-content"] {
   padding: 0;
-  min-width: 160px;
+  min-width: 10rem;
   max-width: 23rem;
   overflow: hidden;
-  z-index: 60;
-  pointer-events: auto;
-  background: var(--v2-background-bg-layer-01);
-  border-radius: 6px;
-  box-shadow: var(--v2-elevation-floating);
   transform-origin: top center;
   animation: select-v2-content-in 120ms ease-out;
 }
@@ -38,64 +38,56 @@
 @keyframes select-v2-content-out {
   from {
     opacity: 1;
-    transform: translateY(0);
   }
   to {
     opacity: 0;
-    transform: translateY(-2px);
   }
 }
 
-/* Shared trigger structure for the inline control. */
+@media (prefers-reduced-motion: reduce) {
+  [data-component="menu-v2-content"][data-slot="select-v2-content"] {
+    animation-name: menu-v2-fade;
+  }
+}
+
+/* The trigger: a field, not a quiet control, so a value that can be changed always shows its boundary. */
 [data-component="select-v2"] {
   box-sizing: border-box;
   display: flex;
   flex-direction: row;
-  align-items: stretch;
+  align-items: center;
   padding-block: 0;
-  padding-inline: 0 6px;
-  gap: 8px;
+  padding-inline: var(--reddb-spatial-inset-sm) var(--reddb-spatial-gap-md);
+  gap: var(--reddb-spatial-gap-md);
   width: 280px;
-  height: 28px;
-  border: 0;
-  border-radius: 6px;
-  outline: 1px solid transparent;
-  outline-offset: 0;
-  background:
-    linear-gradient(180deg, var(--v2-alpha-light-2) 0%, var(--v2-alpha-light-0) 100%), var(--v2-background-bg-base);
-  box-shadow: var(--v2-elevation-button-neutral);
+  height: var(--reddb-spatial-control-height-md);
+  border: 1px solid var(--v2-border-border-strong);
+  border-radius: var(--reddb-radius-md);
+  outline: 2px solid transparent;
+  outline-offset: 2px;
+  background: transparent;
+  box-shadow: none;
+  color: var(--v2-text-text-base);
   flex: none;
   align-self: stretch;
   user-select: none;
-  transition:
-    background 85ms ease-out,
-    outline-color 85ms ease-out,
-    box-shadow 85ms ease-out;
+  cursor: pointer;
 }
 
-[data-component="select-v2"]:where(:hover):not([data-disabled], [data-invalid]):not(:focus-within):not(
-    [data-expanded]
-  ) {
-  background:
-    linear-gradient(0deg, var(--v2-overlay-simple-overlay-hover), var(--v2-overlay-simple-overlay-hover)),
-    linear-gradient(180deg, var(--v2-alpha-light-2) 0%, var(--v2-alpha-light-0) 100%), var(--v2-background-bg-base);
+[data-component="select-v2"]:where(:hover):not([data-disabled]) {
+  border-color: var(--v2-text-text-base);
 }
 
-[data-component="select-v2"]:where([data-expanded]):not([data-disabled], [data-invalid]) {
-  background:
-    linear-gradient(0deg, var(--v2-overlay-simple-overlay-hover), var(--v2-overlay-simple-overlay-hover)),
-    linear-gradient(180deg, var(--v2-alpha-light-2) 0%, var(--v2-alpha-light-0) 100%), var(--v2-background-bg-base);
-  outline-color: transparent;
+[data-component="select-v2"]:where([data-expanded]):not([data-disabled]) {
+  background: var(--ui-state-open);
 }
 
-[data-component="select-v2"]:where(:focus-within):not([data-disabled], [data-invalid]):not([data-expanded]) {
+[data-component="select-v2"]:where(:focus-visible):not([data-disabled]) {
   outline-color: var(--v2-border-border-focus);
-  box-shadow: none;
 }
 
 [data-component="select-v2"]:where([data-invalid]):not([data-disabled]) {
-  outline-color: var(--v2-state-fg-danger);
-  box-shadow: none;
+  border-color: var(--v2-state-border-danger);
 }
 
 [data-component="select-v2"]:where([data-disabled]) {
@@ -112,7 +104,7 @@
   min-width: 0;
   flex: 1 1 auto;
   min-height: 0;
-  cursor: default;
+  cursor: inherit;
 }
 
 [data-component="select-v2"] [data-slot="select-v2-value-text"] {
@@ -122,50 +114,40 @@
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-  padding-block: 0;
-  padding-inline: 8px 0;
+  padding: 0;
   margin: 0;
   border: 0;
   background: transparent;
   outline: none;
   text-align: start;
   font-style: normal;
-  font-weight: 440;
-  font-size: 13px;
-  line-height: 16px;
-  letter-spacing: -0.04px;
+  font-weight: var(--reddb-font-weight-regular);
+  font-size: var(--reddb-type-body-font-size);
+  line-height: var(--reddb-line-height-snug);
+  letter-spacing: 0;
   color: var(--v2-text-text-base);
-  font-variation-settings: "slnt" 0;
-  cursor: default;
+  cursor: inherit;
 }
 
 [data-component="select-v2"] [data-slot="select-v2-value-text"][data-placeholder-shown] {
-  color: var(--v2-text-text-faint);
+  color: var(--v2-text-text-muted);
 }
 
 [data-component="select-v2"][data-numeric] [data-slot="select-v2-value-text"] {
   font-variant-numeric: tabular-nums;
 }
 
-[data-component="select-v2"]:where([data-invalid]):not([data-disabled]) [data-slot="select-v2-value-text"] {
-  color: var(--v2-state-fg-danger);
-}
-
 [data-component="select-v2"] [data-slot="select-v2-chevron"] {
   display: flex;
-  flex-direction: row;
   justify-content: center;
   align-items: center;
-  align-self: center;
   flex: none;
-  width: 20px;
-  height: 20px;
-  padding: 2px;
-  gap: 3px;
+  width: var(--reddb-spatial-icon-size-md);
+  height: var(--reddb-spatial-icon-size-md);
+  padding: 0;
   border: 0;
-  border-radius: 4px;
   background: transparent;
-  color: var(--v2-icon-icon-muted);
+  color: var(--v2-text-text-muted);
   pointer-events: none;
 }
 
@@ -176,66 +158,36 @@
   transform-origin: 50% 50%;
 }
 
+[data-component="select-v2"] [data-slot="select-v2-chevron"] svg path {
+  stroke-width: 1.5;
+}
+
 [data-component="select-v2"][data-expanded] [data-slot="select-v2-chevron"] svg {
   transform: rotate(0deg);
 }
 
-/* Compact trigger for settings rows and similar inline contexts. */
+/* Inline: the compact trigger for settings rows and toolbars, one small control tall and as wide as its value. */
 [data-component="select-v2"][data-appearance="inline"] {
   width: fit-content;
   max-width: 100%;
-  height: 24px;
-  padding-block: 4px;
-  padding-inline: 8px 4px;
-  gap: 4px;
-  border-radius: 4px;
-  background: transparent;
-  box-shadow: none;
-  outline: none;
+  height: var(--reddb-spatial-control-height-sm);
+  padding-inline: var(--reddb-spatial-gap-md) var(--reddb-spatial-gap-sm);
+  gap: var(--reddb-spatial-gap-sm);
   align-self: auto;
 }
 
-[data-component="select-v2"][data-appearance="inline"]:where(:hover):not([data-disabled], [data-invalid]):not(
-    :focus-within
-  ):not([data-expanded]) {
-  background: var(--v2-overlay-simple-overlay-hover);
-}
-
-[data-component="select-v2"][data-appearance="inline"]:where([data-expanded]):not([data-disabled], [data-invalid]) {
-  background: var(--v2-overlay-simple-overlay-hover);
-  outline: none;
-  box-shadow: none;
-}
-
-[data-component="select-v2"][data-appearance="inline"]:where(:active):not([data-disabled], [data-invalid]):not(
-    [data-expanded]
-  ) {
-  background: var(--v2-overlay-simple-overlay-pressed);
-}
-
-[data-component="select-v2"][data-appearance="inline"] [data-slot="select-v2-value-text"] {
-  padding: 0;
-  font-weight: 530;
-}
-
-[data-component="select-v2"][data-appearance="inline"] [data-slot="select-v2-chevron"] {
-  width: 16px;
-  height: 16px;
-  padding: 0;
-}
-
-/* Listbox inside menu surface */
+/* Listbox inside the menu surface */
 [data-component="menu-v2-content"][data-slot="select-v2-content"] [data-slot="select-v2-listbox"] {
   box-sizing: border-box;
   display: flex;
   flex-direction: column;
   align-items: stretch;
   margin: 0;
-  padding: 4px;
+  padding: var(--reddb-spatial-gap-sm);
   list-style: none;
   min-width: 0;
   width: 100%;
-  max-height: 12rem;
+  max-height: 16rem;
   overflow-x: hidden;
   overflow-y: auto;
   outline: none;
@@ -244,10 +196,6 @@
   &:focus {
     outline: none;
   }
-
-  > *:not([role="presentation"]) + *:not([role="presentation"]) {
-    margin-top: 2px;
-  }
 }
 
 [data-slot="select-v2-listbox"] [data-component="menu-v2-item"],
@@ -255,24 +203,9 @@
   flex: none;
 }
 
-[data-slot="select-v2-listbox"] [data-component="menu-v2-item"] {
-  --menu-v2-fg: var(--v2-text-text-base);
-  --menu-v2-fg-muted: var(--v2-text-text-faint);
-  --menu-v2-fg-subtle: var(--v2-text-text-muted);
-  --menu-v2-icon: var(--v2-icon-icon-base);
-  --menu-v2-badge-bg: var(--v2-background-bg-layer-02);
-  --menu-v2-badge-border: var(--v2-border-border-base);
-  --menu-v2-hover: var(--v2-overlay-simple-overlay-hover);
-}
-
-/* Listbox uses data-selected; menu item CSS uses data-checked — mirror selection styling */
+/* A listbox marks its choice with data-selected where a menu uses data-checked: the same selection language. */
 [data-slot="select-v2-listbox"] [data-component="menu-v2-item"][data-selected] [data-slot="menu-v2-item-content"] {
-  font-weight: 440;
-  color: var(--menu-v2-fg);
-}
-
-[data-slot="select-v2-listbox"] [data-component="menu-v2-item"][data-selected] [data-slot="menu-v2-item-indicator"] {
-  color: var(--menu-v2-icon);
+  font-weight: var(--reddb-font-weight-medium);
 }
 
 [data-slot="select-v2-listbox"]

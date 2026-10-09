@@ -1,3 +1,10 @@
+/*
+  Menu, drawn to the design system's DropdownMenu on the overlay elevation (design-system/contracts/
+  dropdown-menu.variants.ts, popover.variants.ts): the overlay surface inside a 1px overlay border with the overlay
+  shadow; items are listbox options, highlighted `bg-foreground/10`, checked adds `font-medium` and the check glyph,
+  never a red fill. Select (select.css) renders its listbox with these same parts.
+*/
+
 /* Above modal dialogs (z-index 50); matches select-v2-content. */
 [data-popper-positioner]:has([data-component="menu-v2-content"]) {
   z-index: 60;
@@ -8,26 +15,26 @@
   display: flex;
   flex-direction: column;
   align-items: stretch;
-  padding: 2px;
-  min-width: 160px;
+  padding: var(--reddb-spatial-gap-sm);
+  min-width: 10rem;
   z-index: 60;
   pointer-events: auto;
-
-  background: var(--v2-background-bg-layer-01);
-  border-radius: 6px;
-  box-shadow: var(--v2-elevation-floating);
-
+  background: var(--surface-raised-stronger-non-alpha);
+  color: var(--v2-text-text-base);
+  border: 1px solid var(--reddb-color-elevation-overlay-border);
+  border-radius: var(--reddb-radius-lg);
+  background-clip: padding-box;
+  box-shadow: var(--v2-elevation-overlay);
   outline: none;
-
-  -webkit-font-smoothing: antialiased;
-  -moz-osx-font-smoothing: grayscale;
-  text-rendering: geometricPrecision;
-
   transform-origin: var(--kb-menu-content-transform-origin);
   animation: menu-v2-in 120ms ease-out;
 
   &:focus-visible {
     outline: none;
+  }
+
+  &[data-closed] {
+    animation: menu-v2-out 100ms ease-in forwards;
   }
 }
 
@@ -36,63 +43,51 @@
 }
 
 [data-component="menu-v2-item"] {
-  --menu-v2-fg: var(--v2-text-text-base);
-  --menu-v2-fg-muted: var(--v2-text-text-faint);
-  --menu-v2-fg-subtle: var(--v2-text-text-muted);
-  --menu-v2-icon: var(--v2-icon-icon-base);
-  --menu-v2-badge-bg: var(--v2-background-bg-layer-02);
-  --menu-v2-badge-border: var(--v2-border-border-base);
-  --menu-v2-hover: var(--v2-overlay-simple-overlay-hover);
-
-  -webkit-font-smoothing: antialiased;
-  -moz-osx-font-smoothing: grayscale;
-  text-rendering: geometricPrecision;
-
   box-sizing: border-box;
+  position: relative;
   display: flex;
   flex-shrink: 0;
   flex-direction: row;
   align-items: center;
-  gap: 8px;
-  height: 28px;
-  padding: 0 12px;
-  padding-inline-end: 6px;
+  gap: var(--reddb-spatial-gap-md);
+  min-height: var(--reddb-spatial-control-height-md);
+  padding: 0 var(--reddb-spatial-gap-md) 0 var(--reddb-spatial-inset-sm);
   background: transparent;
-  border-radius: 4px;
+  border-radius: var(--reddb-radius-md);
   outline: none;
   cursor: default;
   user-select: none;
-
-  font-variation-settings: "slnt" 0;
   font-variant-numeric: tabular-nums;
-  color: var(--menu-v2-fg);
+  color: var(--v2-text-text-base);
 
   [data-slot="menu-v2-item-content"] {
     display: flex;
     flex: 1 1 auto;
     flex-direction: row;
     align-items: center;
-    gap: 8px;
+    gap: var(--reddb-spatial-gap-md);
     min-width: 0;
+    font-size: var(--reddb-type-body-font-size);
+    font-weight: var(--reddb-font-weight-regular);
+    line-height: var(--reddb-line-height-snug);
+    letter-spacing: 0;
+    color: inherit;
+  }
 
-    font-size: 13px;
-    font-weight: 440;
-    line-height: var(--line-height-compact);
-    letter-spacing: -0.04px;
-    color: var(--menu-v2-fg);
+  [data-slot="menu-v2-item-content"] [data-slot="icon-svg"] {
+    flex: none;
+    color: var(--v2-text-text-muted);
   }
 
   [data-slot="menu-v2-item-shortcut"] {
     display: inline-flex;
     align-items: center;
     flex: none;
-    height: 11px;
-
-    font-size: 11px;
-    font-weight: 530;
-    line-height: 100%;
-    letter-spacing: 0.05px;
-    color: var(--menu-v2-fg-muted);
+    padding-inline-start: var(--reddb-spatial-gap-lg);
+    font-size: var(--reddb-type-caption-font-size);
+    font-weight: var(--reddb-font-weight-regular);
+    line-height: var(--line-height-compact);
+    color: var(--v2-text-text-muted);
     white-space: nowrap;
   }
 
@@ -103,19 +98,16 @@
     align-items: center;
     justify-content: center;
     flex: none;
-    gap: 4px;
-    height: 16px;
-    padding: 0 4px;
-
-    background: var(--menu-v2-badge-bg);
-    border: 0.5px solid var(--menu-v2-badge-border);
-    border-radius: 2px;
-
-    font-size: 11px;
-    font-weight: 530;
-    line-height: 100%;
-    letter-spacing: 0.05px;
-    color: var(--menu-v2-fg-subtle);
+    gap: var(--reddb-spatial-gap-sm);
+    height: 18px;
+    padding: 0 var(--reddb-spatial-gap-sm);
+    background: var(--v2-border-border-muted);
+    border: 1px solid var(--v2-border-border-base);
+    border-radius: var(--reddb-radius-sm);
+    font-size: var(--reddb-type-caption-font-size);
+    font-weight: var(--reddb-font-weight-medium);
+    line-height: var(--line-height-compact);
+    color: var(--v2-text-text-muted);
     white-space: nowrap;
   }
 
@@ -124,9 +116,13 @@
     align-items: center;
     justify-content: center;
     flex: none;
-    width: 16px;
-    height: 16px;
-    color: var(--menu-v2-icon);
+    width: var(--reddb-spatial-icon-size-md);
+    height: var(--reddb-spatial-icon-size-md);
+    color: var(--v2-text-text-base);
+  }
+
+  [data-slot="menu-v2-item-indicator"] svg path {
+    stroke-width: 1.5;
   }
 
   [data-slot="menu-v2-item-indicator"]:not([data-checked]) > svg {
@@ -135,22 +131,22 @@
 
   [data-slot="menu-v2-item-chevron"] {
     flex: none;
-    width: 16px;
-    height: 16px;
-    color: var(--menu-v2-fg-muted);
+    width: var(--reddb-spatial-icon-size-md);
+    height: var(--reddb-spatial-icon-size-md);
+    color: var(--v2-text-text-muted);
   }
 
-  &[data-highlighted] {
-    background: var(--menu-v2-hover);
+  &[data-highlighted],
+  &[data-expanded] {
+    background: var(--ui-state-selected);
+  }
+
+  &:active:not([data-disabled]) {
+    background: var(--ui-state-pressed);
   }
 
   &[data-checked] [data-slot="menu-v2-item-content"] {
-    font-weight: 440;
-    color: var(--menu-v2-fg);
-  }
-
-  &[data-checked] [data-slot="menu-v2-item-indicator"] {
-    color: var(--menu-v2-icon);
+    font-weight: var(--reddb-font-weight-medium);
   }
 
   &[data-disabled] {
@@ -161,8 +157,8 @@
 
 [data-slot="menu-v2-separator"] {
   height: 1px;
-  width: calc(100% + 4px);
-  margin: 2px -2px;
+  width: auto;
+  margin: var(--reddb-spatial-gap-sm) calc(var(--reddb-spatial-gap-sm) * -1);
   background: var(--v2-border-border-muted);
   border: none;
 }
@@ -171,141 +167,73 @@
   box-sizing: border-box;
   display: flex;
   align-items: center;
-  height: 28px;
-  padding: 0 12px;
-
-  font-size: 11px;
-  font-weight: 530;
-  letter-spacing: 0.05px;
-  color: var(--v2-text-text-faint);
+  min-height: var(--reddb-spatial-control-height-sm);
+  padding: 0 var(--reddb-spatial-inset-sm);
+  font-size: var(--reddb-type-caption-font-size);
+  font-weight: var(--reddb-font-weight-medium);
+  letter-spacing: 0;
+  color: var(--v2-text-text-muted);
   user-select: none;
   font-variant-numeric: tabular-nums;
 }
 
+/* `standard`: the roomier form for long, sentence-like actions. Same materials, taller items. */
 [data-component="menu-v2-content"][data-appearance="standard"] {
   min-width: 8rem;
-  padding: 4px;
   overflow: hidden;
-  border: 1px solid color-mix(in oklch, var(--border-base) 50%, transparent);
-  border-radius: var(--radius-md);
-  background: var(--surface-raised-stronger-non-alpha);
-  background-clip: padding-box;
-  box-shadow: var(--shadow-md);
-  z-index: 60;
-  animation: dropdown-menu-open 150ms ease-out;
-
-  &[data-closed] {
-    animation: dropdown-menu-close 150ms ease-out;
-  }
 
   [data-component="menu-v2-item"] {
-    position: relative;
-    height: auto;
-    min-height: 0;
-    padding: 4px 8px;
-    border-radius: var(--radius-sm);
-    color: var(--text-strong);
-    font-family: var(--font-family-sans);
-    font-size: var(--font-size-small);
-    font-weight: var(--font-weight-medium);
-    line-height: var(--line-height-large);
-    letter-spacing: var(--letter-spacing-normal);
-    font-variant-numeric: normal;
-    -webkit-font-smoothing: auto;
-    text-rendering: auto;
-
-    [data-slot="menu-v2-item-content"] {
-      font-family: inherit;
-      font-size: inherit;
-      font-weight: inherit;
-      line-height: inherit;
-      letter-spacing: inherit;
-      color: inherit;
-    }
-
-    &[data-highlighted] {
-      background: var(--surface-raised-base-hover);
-    }
-
-    &[data-disabled] {
-      color: var(--text-weak);
-      opacity: 1;
-    }
+    min-height: var(--reddb-spatial-control-height-md);
+    padding-block: var(--reddb-spatial-gap-sm);
 
     &[data-checked] {
-      padding-inline-end: 28px;
-    }
-
-    &[data-checked] [data-slot="menu-v2-item-content"] {
-      font-weight: inherit;
-      color: inherit;
+      padding-inline-end: calc(var(--reddb-spatial-icon-size-md) + var(--reddb-spatial-gap-md) * 2);
     }
 
     [data-slot="menu-v2-item-indicator"] {
       position: absolute;
-      inset-inline-end: 8px;
+      inset-inline-end: var(--reddb-spatial-gap-md);
       top: 50%;
-      width: 16px;
-      height: 16px;
       transform: translateY(-50%);
-      color: var(--icon-base);
     }
 
     [data-slot="menu-v2-item-chevron"] {
       margin-inline-start: auto;
-      color: var(--icon-base);
     }
-  }
-
-  [data-slot="menu-v2-separator"] {
-    width: calc(100% + 8px);
-    height: 1px;
-    margin: 4px -4px;
-    background: var(--border-weak-base);
-  }
-
-  [data-slot="menu-v2-group-label"] {
-    height: auto;
-    padding: 4px 8px;
-    color: var(--text-weak);
-    font-family: var(--font-family-sans);
-    font-size: var(--font-size-x-small);
-    font-weight: var(--font-weight-medium);
-    line-height: var(--line-height-large);
-    letter-spacing: var(--letter-spacing-normal);
-    font-variant-numeric: normal;
-  }
-}
-
-@keyframes dropdown-menu-open {
-  from {
-    opacity: 0;
-    transform: scale(0.96);
-  }
-  to {
-    opacity: 1;
-    transform: scale(1);
-  }
-}
-
-@keyframes dropdown-menu-close {
-  from {
-    opacity: 1;
-    transform: scale(1);
-  }
-  to {
-    opacity: 0;
-    transform: scale(0.96);
   }
 }
 
 @keyframes menu-v2-in {
   from {
     opacity: 0;
-    transform: scale(0.96);
+    transform: scale(0.97);
   }
   to {
     opacity: 1;
     transform: scale(1);
+  }
+}
+
+@keyframes menu-v2-out {
+  from {
+    opacity: 1;
+  }
+  to {
+    opacity: 0;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  [data-component="menu-v2-content"] {
+    animation-name: menu-v2-fade;
+  }
+}
+
+@keyframes menu-v2-fade {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
   }
 }

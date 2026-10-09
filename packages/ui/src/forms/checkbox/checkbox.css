@@ -1,7 +1,12 @@
+/*
+  Checkbox, drawn to the design system's choice box (design-system/contracts/checkbox.variants.ts): a 16px box on a
+  1px `control-edge` outline over the page ground; checked or mixed it fills with the Brand red under an
+  `on-primary` mark. Focus is the ink outline around the box.
+*/
 [data-component="checkbox"] {
   display: flex;
   align-items: var(--checkbox-align, center);
-  gap: 12px;
+  gap: var(--reddb-spatial-gap-md);
   cursor: default;
 
   [data-slot="checkbox-checkbox-input"] {
@@ -20,18 +25,16 @@
     display: flex;
     align-items: center;
     justify-content: center;
-    width: 16px;
-    height: 16px;
+    width: var(--reddb-spatial-icon-size-md);
+    height: var(--reddb-spatial-icon-size-md);
     padding: 2px;
     margin-top: var(--checkbox-offset, 0px);
     aspect-ratio: 1;
     flex-shrink: 0;
-    border-radius: var(--radius-sm);
-    border: 1px solid var(--border-weak-base);
-    transition:
-      border-color 220ms var(--tool-motion-ease, cubic-bezier(0.22, 1, 0.36, 1)),
-      background-color 220ms var(--tool-motion-ease, cubic-bezier(0.22, 1, 0.36, 1)),
-      box-shadow 220ms var(--tool-motion-ease, cubic-bezier(0.22, 1, 0.36, 1));
+    border-radius: var(--reddb-radius-sm);
+    border: 1px solid var(--v2-border-border-strong);
+    background-color: var(--background-base);
+    color: var(--text-on-brand-base);
   }
 
   [data-slot="checkbox-checkbox-indicator"] {
@@ -40,82 +43,85 @@
     justify-content: center;
     width: 100%;
     height: 100%;
-    color: var(--icon-base);
+    color: currentColor;
     opacity: 0;
-    transform: scale(0.9);
-    transition:
-      opacity 180ms var(--tool-motion-ease, cubic-bezier(0.22, 1, 0.36, 1)),
-      transform 220ms var(--tool-motion-ease, cubic-bezier(0.22, 1, 0.36, 1));
+  }
+
+  [data-slot="checkbox-checkbox-indicator"] svg {
+    width: 100%;
+    height: 100%;
+  }
+
+  [data-slot="checkbox-checkbox-content"] {
+    display: flex;
+    flex-direction: column;
+    min-width: 0;
   }
 
   [data-slot="checkbox-checkbox-label"] {
     user-select: none;
-    color: var(--text-base);
+    color: var(--v2-text-text-base);
     font-family: var(--font-family-sans);
-    font-size: var(--font-size-small);
+    font-size: var(--reddb-type-body-font-size);
     font-style: normal;
-    font-weight: var(--font-weight-regular);
-    line-height: var(--line-height-large);
-    letter-spacing: var(--letter-spacing-normal);
+    font-weight: var(--reddb-font-weight-regular);
+    line-height: var(--reddb-line-height-snug);
   }
 
   [data-slot="checkbox-checkbox-description"] {
-    color: var(--text-base);
+    color: var(--v2-text-text-muted);
     font-family: var(--font-family-sans);
-    font-size: 12px;
-    font-weight: var(--font-weight-regular);
-    line-height: var(--line-height-normal);
-    letter-spacing: var(--letter-spacing-normal);
+    font-size: var(--reddb-type-caption-font-size);
+    font-weight: var(--reddb-font-weight-regular);
+    line-height: var(--reddb-line-height-normal);
   }
 
   [data-slot="checkbox-checkbox-error"] {
-    color: var(--text-error);
+    color: var(--v2-state-fg-danger);
     font-family: var(--font-family-sans);
-    font-size: 12px;
-    font-weight: var(--font-weight-regular);
-    line-height: var(--line-height-normal);
-    letter-spacing: var(--letter-spacing-normal);
+    font-size: var(--reddb-type-caption-font-size);
+    font-weight: var(--reddb-font-weight-regular);
+    line-height: var(--reddb-line-height-normal);
   }
 
-  &:hover:not([data-disabled], [data-readonly]) [data-slot="checkbox-checkbox-control"] {
-    border-color: var(--border-hover);
-    background-color: var(--surface-hover);
+  [data-slot="checkbox-checkbox-error"]:empty {
+    display: none;
+  }
+
+  &:hover:not([data-disabled], [data-readonly], [data-checked], [data-indeterminate])
+    [data-slot="checkbox-checkbox-control"] {
+    border-color: var(--v2-text-text-base);
   }
 
   &:not([data-readonly]) [data-slot="checkbox-checkbox-input"]:focus-visible + [data-slot="checkbox-checkbox-control"] {
-    border-color: var(--border-focus);
-    box-shadow: var(--shadow-xs-border-focus);
+    outline: 2px solid var(--v2-border-border-focus);
+    outline-offset: 2px;
   }
 
   &[data-checked] [data-slot="checkbox-checkbox-control"],
   &[data-indeterminate] [data-slot="checkbox-checkbox-control"] {
-    border-color: var(--border-base);
-    background-color: var(--surface-weak);
+    border-color: var(--v2-background-bg-accent);
+    background-color: var(--v2-background-bg-accent);
   }
 
   &[data-checked]:hover:not([data-disabled], [data-readonly]) [data-slot="checkbox-checkbox-control"],
-  &[data-indeterminate]:hover:not([data-disabled]) [data-slot="checkbox-checkbox-control"] {
-    border-color: var(--border-hover);
-    background-color: var(--surface-hover);
+  &[data-indeterminate]:hover:not([data-disabled], [data-readonly]) [data-slot="checkbox-checkbox-control"] {
+    border-color: var(--surface-brand-hover);
+    background-color: var(--surface-brand-hover);
   }
 
   &[data-checked] [data-slot="checkbox-checkbox-indicator"],
   &[data-indeterminate] [data-slot="checkbox-checkbox-indicator"] {
     opacity: 1;
-    transform: scale(1);
   }
 
   &[data-disabled] {
     cursor: not-allowed;
-  }
-
-  &[data-disabled] [data-slot="checkbox-checkbox-control"] {
-    border-color: var(--border-disabled);
-    background-color: var(--surface-disabled);
+    opacity: 0.5;
   }
 
   &[data-invalid] [data-slot="checkbox-checkbox-control"] {
-    border-color: var(--border-error);
+    border-color: var(--v2-state-border-danger);
   }
 
   &[data-readonly] {

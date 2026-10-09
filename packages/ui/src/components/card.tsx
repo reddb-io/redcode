@@ -41,9 +41,9 @@ export function Card(props: CardProps) {
   const accent = () => {
     const v = variant()
     if (v === "error") return "var(--v2-state-fg-danger)"
-    if (v === "warning") return "var(--icon-warning-active)"
-    if (v === "success") return "var(--icon-success-active)"
-    if (v === "info") return "var(--icon-info-active)"
+    if (v === "warning") return "var(--v2-state-fg-warning)"
+    if (v === "success") return "var(--v2-state-fg-success)"
+    if (v === "info") return "var(--v2-state-fg-info)"
     return
   }
   return (

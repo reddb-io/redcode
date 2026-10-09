@@ -43,76 +43,60 @@
   text-align: left;
 }
 
-.text-12-regular {
+/*
+  Legacy type utilities, now spoken in the design system's type roles: the 12 family is the caption role (12px),
+  the 14 family the body role (14px), 16 and 20 the steps above body. Weights are the Brand's 400/500 only.
+*/
+.text-12-regular,
+.text-12-medium,
+.text-12-mono {
   font-family: var(--font-family-sans);
-  font-size: var(--font-size-small);
+  font-size: var(--reddb-type-caption-font-size);
   font-style: normal;
-  font-weight: var(--font-weight-regular);
-  line-height: var(--line-height-large); /* 166.667% */
-  letter-spacing: var(--letter-spacing-normal);
+  font-weight: var(--reddb-font-weight-regular);
+  line-height: var(--reddb-type-caption-line-height);
+  letter-spacing: var(--reddb-type-caption-letter-spacing);
 }
 
 .text-12-medium {
-  font-family: var(--font-family-sans);
-  font-size: var(--font-size-small);
-  font-style: normal;
-  font-weight: var(--font-weight-medium);
-  line-height: var(--line-height-large); /* 166.667% */
-  letter-spacing: var(--letter-spacing-normal);
+  font-weight: var(--reddb-font-weight-medium);
 }
 
-.text-12-mono {
-  font-family: var(--font-family-mono);
-  font-feature-settings: var(--font-feature-settings-mono);
-  font-size: var(--font-size-small);
-  font-style: normal;
-  font-weight: var(--font-weight-regular);
-  line-height: var(--line-height-large); /* 166.667% */
-  letter-spacing: var(--letter-spacing-normal);
-}
-
-.text-14-regular {
+.text-14-regular,
+.text-14-medium,
+.text-14-mono {
   font-family: var(--font-family-sans);
-  font-size: var(--font-size-base);
+  font-size: var(--reddb-type-body-font-size);
   font-style: normal;
-  font-weight: var(--font-weight-regular);
-  line-height: var(--line-height-x-large); /* 171.429% */
-  letter-spacing: var(--letter-spacing-normal);
+  font-weight: var(--reddb-font-weight-regular);
+  line-height: var(--reddb-type-body-line-height);
+  letter-spacing: var(--reddb-type-body-letter-spacing);
 }
 
 .text-14-medium {
-  font-family: var(--font-family-sans);
-  font-size: var(--font-size-base);
-  font-style: normal;
-  font-weight: var(--font-weight-medium);
-  line-height: var(--line-height-large); /* 171.429% */
-  letter-spacing: var(--letter-spacing-normal);
+  font-weight: var(--reddb-font-weight-medium);
 }
 
+.text-12-mono,
 .text-14-mono {
   font-family: var(--font-family-mono);
-  font-feature-settings: var(--font-feature-settings-mono);
-  font-size: var(--font-size-base);
-  font-style: normal;
-  font-weight: var(--font-weight-regular);
-  line-height: var(--line-height-large); /* 171.429% */
-  letter-spacing: var(--letter-spacing-normal);
+  font-feature-settings: var(--font-family-mono--font-feature-settings, normal);
 }
 
 .text-16-medium {
   font-family: var(--font-family-sans);
-  font-size: var(--font-size-large);
+  font-size: var(--reddb-font-size-base);
   font-style: normal;
-  font-weight: var(--font-weight-medium);
-  line-height: var(--line-height-x-large); /* 150% */
-  letter-spacing: var(--letter-spacing-tight);
+  font-weight: var(--reddb-font-weight-medium);
+  line-height: var(--reddb-line-height-snug);
+  letter-spacing: var(--reddb-letter-spacing-tight);
 }
 
 .text-20-medium {
   font-family: var(--font-family-sans);
-  font-size: var(--font-size-x-large);
+  font-size: var(--reddb-font-size-xl);
   font-style: normal;
-  font-weight: var(--font-weight-medium);
-  line-height: var(--line-height-x-large); /* 120% */
-  letter-spacing: var(--letter-spacing-tightest);
+  font-weight: var(--reddb-font-weight-medium);
+  line-height: var(--reddb-line-height-snug);
+  letter-spacing: var(--reddb-letter-spacing-tight);
 }

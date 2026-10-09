@@ -9,13 +9,13 @@
   min-width: 200px;
   max-width: 320px;
   max-height: calc(100vh - 1rem);
-  border-radius: 8px;
+  border-radius: var(--reddb-radius-lg);
   background-color: var(--surface-raised-stronger-non-alpha);
+  color: var(--v2-text-text-base);
   pointer-events: auto;
-
-  border: 1px solid color-mix(in oklch, var(--border-base) 50%, transparent);
+  border: 1px solid var(--reddb-color-elevation-overlay-border);
   background-clip: padding-box;
-  box-shadow: var(--shadow-md);
+  box-shadow: var(--v2-elevation-overlay);
 
   transform-origin: var(--kb-hovercard-content-transform-origin);
 
@@ -24,11 +24,11 @@
   }
 
   &[data-closed] {
-    animation: hover-card-close 0.15s ease-out;
+    animation: hover-card-close 0.12s ease-in forwards;
   }
 
   &[data-expanded] {
-    animation: hover-card-open 0.15s ease-out;
+    animation: hover-card-open 0.12s ease-out;
   }
 
   [data-slot="hover-card-body"] {
@@ -41,7 +41,7 @@
 @keyframes hover-card-open {
   from {
     opacity: 0;
-    transform: scale(0.96);
+    transform: scale(0.98);
   }
   to {
     opacity: 1;
@@ -56,6 +56,13 @@
   }
   to {
     opacity: 0;
-    transform: scale(0.96);
+    transform: scale(0.98);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  [data-component="hover-card-content"],
+  [data-component="hover-card-content"]:is([data-closed], [data-expanded]) {
+    animation: none;
   }
 }

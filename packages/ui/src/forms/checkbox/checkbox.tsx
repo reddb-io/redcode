@@ -20,7 +20,7 @@ export function Checkbox(props: CheckboxProps) {
               <path
                 d="M3 7.17905L5.02703 8.85135L9 3.5"
                 stroke="currentColor"
-                stroke-width="1.5"
+                stroke-width="2"
                 stroke-linecap="square"
               />
             </svg>
