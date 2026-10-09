@@ -21,8 +21,18 @@ import { viewports } from "./viewports.js"
 export const CSP =
   "default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' blob: data:; font-src 'self' data:; frame-src 'self'; connect-src 'self' data:; worker-src blob:"
 
-/** The browser review keeps its conversation and controls in the trusted shell. */
-export function review(sessionID: string, endpoint: string, breakpoints?: readonly number[]) {
+/**
+ * A review link's ticket is spent once the page loads: the server exchanged it for the review cookie. Dropping it
+ * from the address keeps it out of bookmarks, copies and history, and a reload signs in with the cookie.
+ */
+const UNTICKET =
+  'if(new URLSearchParams(location.search).has("ticket")){const u=new URL(location.href);u.searchParams.delete("ticket");history.replaceState(history.state,"",u)};'
+
+/**
+ * The browser review keeps its conversation and controls in the trusted shell. `embedded` leaves out the views that
+ * repeat the conversation of the session shown beside it (see `ReviewOptions.embedded`).
+ */
+export function review(sessionID: string, endpoint: string, breakpoints?: readonly number[], embedded = false) {
   const options = JSON.stringify({
     base: "",
     endpoint,
@@ -30,13 +40,14 @@ export function review(sessionID: string, endpoint: string, breakpoints?: readon
     copy: reviewCopy,
     appearance,
     breakpoints,
+    embedded,
   }).replaceAll("<", "\\u003c")
-  return `<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Design · Redcode</title><link rel="icon" type="image/svg+xml" href="${appearance.favicon}"><style>html,body,#review{height:100%;margin:0}</style></head><body><div id="review"></div><script>(${mountReview.toString()})(document.getElementById("review"), Object.assign(${options}, { feed: ${designFeed.toString()}, viewports: ${viewports.toString()}, device: ${device.toString()}, stage: ${stage.toString()}, deck: ${deck.toString()}, loading: ${previewLoading.toString()} }))</script></body></html>`
+  return `<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Design · Redcode</title><link rel="icon" type="image/svg+xml" href="${appearance.favicon}"><style>html,body,#review{height:100%;margin:0}</style></head><body><div id="review"></div><script>${UNTICKET}(${mountReview.toString()})(document.getElementById("review"), Object.assign(${options}, { feed: ${designFeed.toString()}, viewports: ${viewports.toString()}, device: ${device.toString()}, stage: ${stage.toString()}, deck: ${deck.toString()}, loading: ${previewLoading.toString()} }))</script></body></html>`
 }
 
 export function present(endpoint: string, designID: string, view: "audience" | "presenter", revision?: string) {
   const options = JSON.stringify({ endpoint, designID, view, revision, copy: reviewCopy }).replaceAll("<", "\\u003c")
-  return `<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>${reviewCopy.presentTitle} · Redcode</title><link rel="icon" type="image/svg+xml" href="${appearance.favicon}"></head><body><div id="present"></div><script>(${mountPresent.toString()})(document.getElementById("present"), Object.assign(${options}, { deck: ${deck.toString()}, stage: ${stage.toString()} }))</script></body></html>`
+  return `<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>${reviewCopy.presentTitle} · Redcode</title><link rel="icon" type="image/svg+xml" href="${appearance.favicon}"></head><body><div id="present"></div><script>${UNTICKET}(${mountPresent.toString()})(document.getElementById("present"), Object.assign(${options}, { deck: ${deck.toString()}, stage: ${stage.toString()} }))</script></body></html>`
 }
 
 /** Model-written markup is displayed only inside the review's sandboxed iframe. */

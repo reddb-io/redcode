@@ -2,10 +2,11 @@ import { expect } from "bun:test"
 import { Design } from "@opencode/schema/design"
 import { SessionInbox } from "@opencode/schema/session-inbox"
 import { SessionMessage } from "@opencode/schema/session-message"
-import { Effect, Schema } from "effect"
+import { Effect, Option, Schema } from "effect"
 import { tmpdir } from "../../core/test/fixture/tmpdir"
 import { it } from "../../core/test/lib/effect"
 import { DesignAccess } from "../src/design-access"
+import { ServerAuth } from "../src/auth"
 import { startServer } from "./fixture/server"
 
 it.live("Design entry creates a new session in a loaded project and keeps session-scoped tasks separate", () =>
@@ -49,7 +50,17 @@ it.live("Design entry creates a new session in a loaded project and keeps sessio
     expect(yield* Effect.promise(() => session.json())).toMatchObject({
       data: { agent: "design", location: { directory: directory.path } },
     })
-    const review = yield* Effect.promise(() => fetch(result.url))
+    // Only a credentialed browser creates sessions here, so it gets the stable review without a ticket.
+    expect(new URL(result.url).search).toBe("")
+    const stable = yield* Effect.promise(() => fetch(result.url, { headers: server.headers }))
+    expect(stable.status).toBe(200)
+    expect(stable.headers.get("set-cookie")).toBeNull()
+    yield* Effect.promise(() => stable.arrayBuffer())
+    const link = yield* request(`/design/session/${result.sessionID}/link`)
+    const signed = yield* Effect.promise(() => link.json()).pipe(
+      Effect.flatMap(Schema.decodeUnknownEffect(Schema.Struct({ url: Schema.String }))),
+    )
+    const review = yield* Effect.promise(() => fetch(signed.url))
     expect(review.status).toBe(200)
     expect(review.redirected).toBe(false)
     const cookie = (review.headers.get("set-cookie") ?? "").split(";")[0]
@@ -355,9 +366,20 @@ it.live("signed Design pages exchange tickets for scoped cookies without a Basic
           const denied = yield* request(pathname, { headers: { "sec-fetch-mode": "navigate" } })
           expect(denied.status).toBe(401)
           expect(denied.headers.get("www-authenticate")).toBeNull()
-          yield* Effect.promise(() => denied.arrayBuffer())
+          // A person opened this page: it explains how to get back in instead of answering JSON.
+          expect(denied.headers.get("content-type")).toStartWith("text/html")
+          const text = yield* Effect.promise(() => denied.text())
+          expect(text).toContain(`redcode design ${sessionID}`)
+          expect(text).toContain("redcode pair")
+          expect(text).toContain(`href=\\"/design/session/${sessionID}/review\\"`)
+          expect(text).not.toContain("ticket=")
         }),
     )
+    // API calls of an open page keep JSON errors; the page shows them as a banner.
+    const feedDenied = yield* request(`/design/session/${sessionID}/feed`)
+    expect(feedDenied.status).toBe(401)
+    expect(feedDenied.headers.get("content-type")).toStartWith("application/json")
+    yield* Effect.promise(() => feedDenied.arrayBuffer())
 
     yield* Effect.forEach(
       [
@@ -372,6 +394,55 @@ it.live("signed Design pages exchange tickets for scoped cookies without a Basic
           expect(denied.status).toBe(401)
           yield* Effect.promise(() => denied.arrayBuffer())
         }),
+    )
+  }),
+)
+
+it.live("a stable review link opens for a paired browser, and an open review's cookie slides forward", () =>
+  Effect.gen(function* () {
+    const directory = yield* Effect.acquireDisposable(Effect.promise(() => tmpdir()))
+    const server = yield* startServer(directory.path)
+    const sessionID = "ses_design_stable"
+    const created = yield* Effect.promise(() =>
+      fetch(new URL("/api/session", server.base), {
+        method: "POST",
+        headers: { ...server.headers, "content-type": "application/json" },
+        body: JSON.stringify({ id: sessionID, agent: "design", location: { directory: directory.path } }),
+      }),
+    )
+    expect(created.status).toBe(200)
+    yield* Effect.promise(() => created.arrayBuffer())
+    const review = new URL(`/design/session/${sessionID}/review`, server.base)
+    const get = (url: URL, cookie: string) =>
+      Effect.promise(() => fetch(url, { headers: { cookie, "sec-fetch-mode": "navigate" }, redirect: "manual" }))
+
+    // A browser paired with `redcode pair` holds the server's session cookie and needs no ticket.
+    const paired = `${ServerAuth.sessionCookieName(review.host)}=${ServerAuth.issueSession({ password: Option.some("secret"), username: "opencode" })}`
+    const opened = yield* get(review, paired)
+    expect(opened.status).toBe(200)
+    expect(opened.headers.get("set-cookie")).toBeNull()
+    yield* Effect.promise(() => opened.arrayBuffer())
+
+    // A review cookie is issued again on the page and once it is due, so polling keeps an open page signed in.
+    const fresh = `${DesignAccess.COOKIE}=${DesignAccess.ticket("secret", sessionID, DesignAccess.COOKIE_TTL)}`
+    const due = `${DesignAccess.COOKIE}=${DesignAccess.ticket("secret", sessionID, DesignAccess.COOKIE_TTL, Date.now() - DesignAccess.COOKIE_RENEWAL - 60_000)}`
+    const todo = new URL(`/design/session/${sessionID}/todo`, server.base)
+    const quiet = yield* get(todo, fresh)
+    expect(quiet.status).toBe(200)
+    expect(quiet.headers.get("set-cookie")).toBeNull()
+    yield* Effect.promise(() => quiet.arrayBuffer())
+    yield* Effect.forEach([get(todo, due), get(review, fresh)], (response) =>
+      Effect.gen(function* () {
+        const renewed = yield* response
+        expect(renewed.status).toBe(200)
+        const cookie = renewed.headers.get("set-cookie") ?? ""
+        expect(cookie).toStartWith(`${DesignAccess.COOKIE}=`)
+        expect(cookie).toContain(`Path=/design/session/${sessionID}`)
+        expect(cookie).toContain("HttpOnly")
+        const value = cookie.split(";")[0]!.slice(DesignAccess.COOKIE.length + 1)
+        expect(DesignAccess.renewal(value)).toBe(false)
+        yield* Effect.promise(() => renewed.arrayBuffer())
+      }),
     )
   }),
 )

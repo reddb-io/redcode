@@ -123,6 +123,7 @@ import { DesignReadTool } from "../tool/plugin/design-read.js"
 import { DesignDetectTool } from "../tool/plugin/design-detect.js"
 import { DesignDocumentToolPlugin } from "../tool/plugin/design-document.js"
 import { DesignPreviewTool } from "../tool/plugin/design-preview.js"
+import { DesignLinkTool } from "../tool/plugin/design-link.js"
 import { DesignAssetTool } from "../tool/plugin/design-asset.js"
 import { DesignRenderTool } from "../tool/plugin/design-render.js"
 import { DesignPlaybookTool } from "../tool/plugin/design-playbook.js"
@@ -320,6 +321,7 @@ const pre = [
   DesignDetectTool.Plugin,
   DesignDocumentToolPlugin.Plugin,
   DesignPreviewTool.Plugin,
+  DesignLinkTool.Plugin,
   DesignAssetTool.Plugin,
   DesignRenderTool.Plugin,
   DesignPlaybookTool.Plugin,

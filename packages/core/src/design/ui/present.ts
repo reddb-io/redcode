@@ -267,6 +267,7 @@ export function mountPresent(host: HTMLElement, options: PresentOptions) {
 
   const load = async () => {
     const response = await transport(`${options.endpoint}/${encodeURIComponent(options.designID)}`)
+    if (response.status === 401) return status(copy.accessLost)
     if (!response.ok) return status(`${copy.failure} (${response.status})`)
     const design: { name?: string; revision?: string | null } = await response.json()
     const revision = options.revision || design.revision

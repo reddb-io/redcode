@@ -9,7 +9,7 @@ import type { Embeds, Persisted, ServerEndpoints, Storage, Windows } from "../sd
 import { createBrowserPage, type BrowserPage, type Shared } from "./chromium"
 import { browserFailure } from "./errors"
 import { createBrowserNetwork, type BrowserNetwork } from "./network"
-import { destinationOrigin, fileURLWithin, refusal } from "./policy"
+import { destinationOrigin, fileURLWithin, refusal, reviewAuthorization } from "./policy"
 import { createRefs } from "./refs"
 import type { PaneEvent } from "./ipc"
 import { createBrowserRestoreStore } from "./restore"
@@ -111,12 +111,30 @@ export function createBrowserPane(input: {
         fileRoots: [],
       }
 
+      const partition = electron.session.fromPartition(entry.partition)
       // Navigation guards cover documents; subresources (img, script, fetch) also must not read
       // file: URLs outside the roots. One listener per partition covers every page in this attachment.
-      electron.session
-        .fromPartition(entry.partition)
-        .webRequest.onBeforeRequest({ urls: ["file://*/*"] }, (details, callback) =>
-          callback({ cancel: !fileURLWithin(details.url, entry.fileRoots) }),
+      partition.webRequest.onBeforeRequest({ urls: ["file://*/*"] }, (details, callback) =>
+        callback({ cancel: !fileURLWithin(details.url, entry.fileRoots) }),
+      )
+      // The Design review the Design panel opens here signs in with this server's credential instead of a ticket;
+      // reviewAuthorization keeps it from every other page and route. The pattern matches the server's host on any
+      // port; the policy then requires its exact origin.
+      const credential = Object.entries(server.headers).find(([name]) => name.toLowerCase() === "authorization")?.[1]
+      const host = new URL(server.url)
+      if (credential)
+        partition.webRequest.onBeforeSendHeaders(
+          { urls: [`${host.protocol}//${host.hostname}/*`] },
+          (details, callback) => {
+            const authorization = reviewAuthorization(details, {
+              url: server.url,
+              sessionID,
+              authorization: credential,
+            })
+            const present = Object.keys(details.requestHeaders).some((name) => name.toLowerCase() === "authorization")
+            if (authorization && !present) details.requestHeaders.Authorization = authorization
+            callback({ requestHeaders: details.requestHeaders })
+          },
         )
       // "unsupported" means the server has no browser plugin; the renderer stops retrying.
       let reason: "browser.pane.unsupported" | "browser.pane.replaced" | "browser.pane.suspended" | undefined

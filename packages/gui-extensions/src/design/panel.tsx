@@ -14,8 +14,8 @@ import type definition from "./index"
 import type { DesignReviewOpener } from "./model"
 import { designActivity, designReview, designStatus } from "./state"
 
-/** The Design tab: the session's designs with their review state, and the way into the browser review. */
-export default function SessionDesignPanel(props: { session: MountedSession; openReview: DesignReviewOpener }) {
+/** The Design tab: the session's designs with their review state, and the way into the review. */
+export default function SessionDesignPanel(props: { session: MountedSession; review: DesignReviewOpener }) {
   const ctx = useExtension<typeof definition>()
   const dialogs = ctx.dialogs
   const client = () => props.session.server.client
@@ -29,13 +29,10 @@ export default function SessionDesignPanel(props: { session: MountedSession; ope
   )
   // Reading an unresolved resource would suspend the whole side panel, so only settled values are read.
   const list = () => (designs.state === "ready" || designs.state === "refreshing" ? designs.latest : undefined)
-  const openReview = () => {
-    const sessionID = props.session.id
-    if (!sessionID || store.opening) return
+  const openReview = (where: "open" | "external") => {
+    if (!props.session.id || store.opening) return
     setStore("opening", true)
-    void props
-      .openReview(sessionID, { url: props.session.server.url, password: props.session.server.password })
-      .finally(() => setStore("opening", false))
+    void props.review[where](props.session).finally(() => setStore("opening", false))
   }
   // Approval freezes the current revision and hands the session to Plan; reopening lets the review take notes again.
   const act = (design: DesignInfo, action: "approve" | "reopen") => {
@@ -113,7 +110,25 @@ export default function SessionDesignPanel(props: { session: MountedSession; ope
               onClick={() => void refetch()}
             />
           </Tooltip>
-          <Button size="small" variant="outline" disabled={store.opening || !list()?.length} onClick={openReview}>
+          {/* The desktop opens the review in its browser pane; a system browser stays one click away. */}
+          <Show when={ctx.desktop}>
+            <Tooltip value={ctx.t("review.external")}>
+              <IconButton
+                size="small"
+                variant="ghost-muted"
+                icon={<Icon name="outline-arrow-up-right" />}
+                aria-label={ctx.t("review.external")}
+                disabled={store.opening || !list()?.length}
+                onClick={() => openReview("external")}
+              />
+            </Tooltip>
+          </Show>
+          <Button
+            size="small"
+            variant="outline"
+            disabled={store.opening || !list()?.length}
+            onClick={() => openReview("open")}
+          >
             {ctx.t("review.open")}
           </Button>
         </div>

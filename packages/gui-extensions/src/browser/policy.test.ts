@@ -1,5 +1,13 @@
 import { expect, test } from "bun:test"
-import { allowedDestination, destinationOrigin, fileURLWithin, localFileURL, normalizeURL, refusal } from "./policy"
+import {
+  allowedDestination,
+  destinationOrigin,
+  fileURLWithin,
+  localFileURL,
+  normalizeURL,
+  refusal,
+  reviewAuthorization,
+} from "./policy"
 
 test("allows cross-origin HTTP navigation but rejects unsafe destinations and embedded credentials", () => {
   expect(destinationOrigin("https://other.example/path")).toBe("https://other.example")
@@ -79,4 +87,51 @@ test("windows workspace roots match drive-letter file URLs", () => {
   expect(fileURLWithin("file:///c:/users/me/repo/out/index.html", roots)).toBe(inside)
   expect(fileURLWithin("file:///C:/Users/me/repo2/x.html", roots)).toBe(false)
   expect(fileURLWithin("file:///D:/Users/me/repo/x.html", roots)).toBe(false)
+})
+
+test("the server credential reaches only this session's Design review on the server's origin, from that page itself", () => {
+  const server = { url: "http://127.0.0.1:4096", sessionID: "ses_a", authorization: "Basic c2VjcmV0" }
+  const review = "http://127.0.0.1:4096/design/session/ses_a/review?embed=1"
+  const own = { method: "GET", resourceType: "xhr", initiatorOrigin: "http://127.0.0.1:4096" }
+  const credential = (request: { url: string; method: string; resourceType: string; initiatorOrigin?: string }) =>
+    reviewAuthorization(request, server)
+
+  // The Design panel's navigation, then the page's own reads and writes.
+  expect(credential({ url: review, method: "GET", resourceType: "mainFrame" })).toBe(server.authorization)
+  expect(credential({ ...own, url: "http://127.0.0.1:4096/design/session/ses_a/feed?after=0" })).toBe(
+    server.authorization,
+  )
+  expect(credential({ ...own, url: "http://127.0.0.1:4096/design/session/ses_a", method: "POST" })).toBe(
+    server.authorization,
+  )
+
+  for (const request of [
+    // Another origin: another port, host name or scheme of the same machine, or an unrelated site.
+    { ...own, url: "http://127.0.0.1:5173/design/session/ses_a/review", initiatorOrigin: "http://127.0.0.1:5173" },
+    { ...own, url: "http://localhost:4096/design/session/ses_a/review", initiatorOrigin: "http://localhost:4096" },
+    { ...own, url: "https://127.0.0.1:4096/design/session/ses_a/review", initiatorOrigin: "https://127.0.0.1:4096" },
+    { url: "https://evil.example/design/session/ses_a/review", method: "GET", resourceType: "mainFrame" },
+    // The server's other routes and other sessions' reviews.
+    { ...own, url: "http://127.0.0.1:4096/api/session" },
+    { ...own, url: "http://127.0.0.1:4096/design/session/ses_b/review" },
+    { ...own, url: "http://127.0.0.1:4096/design/session/ses_ab/review" },
+    { ...own, url: "http://127.0.0.1:4096/design/session/ses_a/../../api/session" },
+    // Requests and navigations another site starts toward the review.
+    { url: review, method: "GET", resourceType: "xhr", initiatorOrigin: "https://evil.example" },
+    { url: review, method: "GET", resourceType: "mainFrame", initiatorOrigin: "https://evil.example" },
+    { url: review, method: "GET", resourceType: "subFrame", initiatorOrigin: "https://evil.example" },
+    { url: review, method: "GET", resourceType: "xhr", initiatorOrigin: "null" },
+    // Only a plain navigation the browser started itself; a subresource always names its page.
+    { url: review, method: "POST", resourceType: "mainFrame" },
+    { url: review, method: "GET", resourceType: "image" },
+  ])
+    expect(credential(request)).toBeUndefined()
+
+  // A server without a password has no credential to give.
+  expect(
+    reviewAuthorization(
+      { url: review, method: "GET", resourceType: "mainFrame" },
+      { ...server, authorization: undefined },
+    ),
+  ).toBeUndefined()
 })

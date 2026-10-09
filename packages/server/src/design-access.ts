@@ -6,6 +6,8 @@ import { type CorsOptions, isAllowedRequestOrigin } from "./cors"
 export const COOKIE = "design_ticket"
 export const LINK_TTL = 10 * 60_000
 export const COOKIE_TTL = 12 * 60 * 60_000
+/** A review cookie older than this is issued again on its next request, so an open review never expires. */
+export const COOKIE_RENEWAL = 10 * 60_000
 
 /** Embedded servers without a configured password keep links local to this process lifetime. */
 export const embeddedSecret = (() => {
@@ -26,6 +28,15 @@ export function verify(secret: string, sessionID: string, value: string | undefi
   const expected = Buffer.from(sign(secret, sessionID, time))
   const actual = Buffer.from(signature)
   return expected.length === actual.length && timingSafeEqual(expected, actual)
+}
+
+/**
+ * Whether a valid review cookie is due for a fresh one: it was issued more than `COOKIE_RENEWAL` ago. The review
+ * polls every few seconds, so its cookie slides forward while the page stays open and lapses only after
+ * `COOKIE_TTL` without a request.
+ */
+export function renewal(value: string, now = Date.now()) {
+  return Number(value.split(".")[0]) - now < COOKIE_TTL - COOKIE_RENEWAL
 }
 
 /**

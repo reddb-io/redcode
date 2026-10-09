@@ -1,5 +1,20 @@
 import type { DesignInfo, SessionMessageAssistantTool, SessionMessageInfo } from "@opencode/client/promise"
 import { designRoundSummary } from "@opencode/util/design-round-summary"
+import { designReviewURL } from "@opencode/util/design-review"
+import type { Live } from "../sdk"
+
+/**
+ * Opens a session's Design review beside it in the desktop's browser pane, at the review's stable address in its
+ * simplified form, and says whether it did. It does not when a system browser has to show the review instead: the
+ * pane is off, still loading, not on this platform (`Browser` is desktop only), or not attached to this session yet.
+ */
+export function openDesignReviewPane<
+  Session extends { readonly id: string; readonly server: { readonly url: string } },
+>(browser: Live<{ attached(session: Session): boolean; open(session: Session, url: string): void }>, session: Session) {
+  if (browser.status !== "active" || !browser.value.attached(session)) return false
+  browser.value.open(session, designReviewURL(session.server.url, session.id, { embed: true }))
+  return true
+}
 
 /** Where a design stands in its review: the same buckets the terminal's Design list shows. */
 export function designStatus(design: Pick<DesignInfo, "revision" | "approvedRevision" | "ended">) {

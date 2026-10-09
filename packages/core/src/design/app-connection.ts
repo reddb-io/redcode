@@ -8,6 +8,8 @@ import type { Database } from "../database/database.js"
 
 export interface Interface {
   readonly connect: () => Promise<DesignApp.Connection>
+  /** The redcode server that serves this process's Design reviews, once it listens; undefined without one. */
+  readonly host: () => DesignApp.Host | undefined
 }
 
 export class Service extends Context.Service<Service, Interface>()("@redcode/DesignAppConnection") {}
@@ -19,6 +21,7 @@ export const configured = (input: {
   makeGlobalNode({
     service: Service,
     layer: Layer.succeed(Service, Service.of({
+      host: input.host,
       connect: async () => {
         const host = input.host()
         if (!host || (!input.database?.url && !path.isAbsolute(input.database?.path ?? "")))

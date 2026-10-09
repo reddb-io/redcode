@@ -58,7 +58,7 @@ import { useClient } from "../../context/client"
 import { useEditorContext } from "../../context/editor"
 import { openEditor } from "../../editor"
 import { browserDisabled, NO_BROWSER, openDesignUrl } from "@opencode/util/open"
-import { getDesignReviewLink, openDesignReview } from "@opencode/util/design-review"
+import { designReviewURL, openDesignReview } from "@opencode/util/design-review"
 import { announcedOrdinals } from "@opencode/util/design-round-summary"
 import { useDialog } from "../../ui/dialog"
 import { DialogSelect } from "../../ui/dialog-select"
@@ -318,7 +318,6 @@ export function Session(props: {
   const client = useClient()
   // A publish seen with launches disabled prints the review link once, not on every revision.
   const reviewLink = { shown: false }
-  const [reviewAddress, setReviewAddress] = createSignal<string>()
   const designActive = createMemo(() => session()?.agent === "design")
   const hasPublishedDesign = createMemo(() =>
     messages().some(
@@ -334,21 +333,14 @@ export function Session(props: {
     ),
   )
   createEffect(() => {
+    if (!designActive()) reviewLink.shown = false
+  })
+  // The review's stable address: it carries no ticket, so it never expires on screen. A browser that opened the review
+  // stays signed in to it, a paired browser opens it directly, and any other browser explains how to get in.
+  const reviewAddress = createMemo(() => {
     const endpoint = client.endpoint
-    const sessionID = route.sessionID
-    setReviewAddress(undefined)
-    if (!designActive()) {
-      reviewLink.shown = false
-      return
-    }
-    if (!endpoint || !hasPublishedDesign()) return
-    let active = true
-    onCleanup(() => {
-      active = false
-    })
-    void getDesignReviewLink({ sessionID, endpoint }).then((review) => {
-      if (active && designActive()) setReviewAddress(review?.url)
-    })
+    if (!endpoint || !designActive() || !hasPublishedDesign()) return undefined
+    return designReviewURL(endpoint.url, route.sessionID)
   })
   const reviewDesign = async (explicit: boolean) => {
     const endpoint = client.endpoint
@@ -372,7 +364,6 @@ export function Session(props: {
         return openDesignUrl(url, { configured: configuredDesignBrowser(config) })
       },
     })
-    if (notice?.url && designActive()) setReviewAddress(notice.url)
     if (notice && (explicit || !reviewLink.shown || notice.variant === "error"))
       toast.show({ variant: notice.variant, message: notice.message, duration: 8_000 })
     if (notice?.url) reviewLink.shown = true

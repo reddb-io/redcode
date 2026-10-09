@@ -157,20 +157,15 @@ describe("DesignApp.running", () => {
 })
 
 describe("DesignApp session calls", () => {
-  test("public reviews use the owning server after attaching the renderer app", async () => {
+  test("public reviews use the owning server's stable address after attaching the renderer app", async () => {
     const app = fake(() => new Response(null, { status: 204 }))
-    const host = fake(() =>
-      Response.json({ url: `http://127.0.0.1:35555/design/session/${sessionID}/review?ticket=owner` }),
-    )
     const url = await DesignApp.review(
-      { url: app.url, token: "shared-token", host: { url: host.url, authorization: "Bearer owner" } },
+      { url: app.url, token: "shared-token", host: { url: "http://127.0.0.1:35555", authorization: "Bearer owner" } },
       sessionID,
     )
-    expect(new URL(url).port).toBe("35555")
     expect(app.requests[0]?.path).toBe(`/design/session/${sessionID}/attach`)
-    expect(host.requests[0]?.path).toBe(`/design/session/${sessionID}/link`)
-    expect(host.requests[0]?.headers.get("authorization")).toBe("Bearer owner")
-    expect(url).not.toContain("shared-token")
+    // No ticket: the stable address never expires in a transcript, and the app's token never leaves it.
+    expect(url).toBe(`http://127.0.0.1:35555/design/session/${sessionID}/review`)
   })
 
   test("a review link attaches the Session owner first and carries a ticket for that Session", async () => {
